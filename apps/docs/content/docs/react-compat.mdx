@@ -1,0 +1,151 @@
+---
+title: "React Compatibility"
+description: "React-API-compatible shims via @nova/react-compat for incremental migration."
+---
+
+`@nova/react-compat` provides React-compatible APIs built on top of Nova's reactivity
+primitives. It lets you migrate a React codebase to Nova file-by-file.
+
+<Callout type="info">
+  The goal of `@nova/react-compat` is to make your existing React code run without changes
+  during migration — not to be a permanent API. Once a component is working, migrate it
+  to native Nova for better performance and DX.
+</Callout>
+
+## Installation
+
+```bash title="Terminal"
+bun add @nova/react-compat
+```
+
+## Hook Compatibility
+
+<TypeTable
+  type={{
+    "useState<T>(initial)": {
+      description: "Returns [signal, setter]. signal() reads the value; setter(value) or setter(fn) writes it.",
+      type: "[Signal<T>, Setter<T>]",
+    },
+    "useEffect(fn, deps?)": {
+      description: "Runs fn as an effect. deps are ignored — tracking is automatic.",
+      type: "void",
+    },
+    "useMemo(fn, deps?)": {
+      description: "Returns a computed value derived from other signals. deps are ignored.",
+      type: "T",
+    },
+    "useCallback(fn, deps?)": {
+      description: "Returns fn unchanged. deps are ignored — functions are stable in Nova.",
+      type: "T",
+    },
+    "useRef<T>(initial?)": {
+      description: "Returns a { current: T } ref object. Stable across renders.",
+      type: "{ current: T }",
+    },
+    "useContext(ctx)": {
+      description: "Reads the nearest provided context value.",
+      type: "T",
+    },
+    "createContext(default)": {
+      description: "Creates a context object compatible with Nova's context system.",
+      type: "Context<T>",
+    },
+    "memo(component)": {
+      description: "Returns the component unchanged — no-op in Nova (components run once).",
+      type: "ComponentFn",
+    },
+    "lazy(load)": {
+      description: "Code-splits a component. Use inside <Suspense>.",
+      type: "LazyComponent",
+    },
+    "Suspense": {
+      description: "Shows fallback while a lazy component loads.",
+      type: "ComponentFn",
+    },
+  }}
+/>
+
+## Key Differences from React
+
+<Tabs items={["useState reads", "No deps arrays", "class not className", "One render"]}>
+<Tab value="useState reads">
+
+In React, `count` is a plain number. In Nova, `count` is a signal — call it to read:
+
+```tsx
+// React
+const [count, setCount] = useState(0)
+return <span>{count}</span>  // plain value in JSX
+
+// Nova (via compat)
+const [count, setCount] = useState(0)
+return <span>{count()}</span>  // must call to read reactively
+// or: return <span>{() => count()}</span>
+```
+
+</Tab>
+<Tab value="No deps arrays">
+
+Nova tracks dependencies automatically. Deps arrays are accepted but ignored:
+
+```ts
+// React — deps required
+useEffect(() => {
+  document.title = name
+}, [name])
+
+// Nova — no deps needed
+useEffect(() => {
+  document.title = name()  // auto-tracked
+})
+```
+
+</Tab>
+<Tab value="class not className">
+
+Nova's JSX uses `class` (the HTML attribute). `className` is mapped automatically by
+`@nova/react-compat`, but native Nova uses `class`:
+
+```tsx
+// React
+<div className="container">
+
+// Nova (compat maps className → class)
+<div className="container">  // still works via compat
+
+// Nova native
+<div class="container">  // preferred
+```
+
+</Tab>
+<Tab value="One render">
+
+React components re-run on every state change. Nova components run once:
+
+```tsx
+// React — runs on every render
+function Fetcher() {
+  fetch("/api")  // called on every render!
+  return <div />
+}
+
+// Nova — runs once (correct)
+function Fetcher() {
+  onMount(() => fetch("/api"))  // called once after mount
+  return <div />
+}
+```
+
+</Tab>
+</Tabs>
+
+## What's Not Supported
+
+Some React APIs have no equivalent in Nova:
+
+- **`useReducer`** — Use `signal` with an action pattern instead.
+- **`useLayoutEffect`** — Use `onMount` with synchronous DOM reads.
+- **`forwardRef`** — Pass `ref` as a plain prop (Nova doesn't restrict ref forwarding).
+- **`useImperativeHandle`** — Return methods from the component or use a store.
+- **React DevTools** — Nova has its own debugging approach (signal graph inspection planned).
+- **React Server Components** — Not supported. Use `renderToString` / `renderToStream` instead.

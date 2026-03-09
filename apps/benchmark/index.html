@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nova — Framework Benchmark</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+      :root {
+        --bg: #0f0f11;
+        --surface: #1a1a1f;
+        --border: #2e2e38;
+        --text: #e8e8f0;
+        --muted: #888;
+        --accent: #7c6af7;
+        --fast: #4ade80;
+        --ok: #facc15;
+        --slow: #f87171;
+      }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter", system-ui, sans-serif;
+        font-size: 14px;
+        padding: 2rem;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      header { margin-bottom: 2rem }
+      h1 { font-size: 1.5rem; font-weight: 700; color: var(--accent); margin-bottom: 0.5rem }
+      .subtitle { color: var(--muted); font-size: 0.85rem; line-height: 1.6 }
+
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      button#run {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        padding: 0.6rem 1.5rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      button#run:disabled { opacity: 0.5; cursor: not-allowed }
+      button#run:hover:not(:disabled) { opacity: 0.85 }
+
+      #status { color: var(--muted); font-size: 0.85rem }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5rem;
+        background: var(--surface);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+
+      th, td {
+        padding: 0.6rem 1rem;
+        text-align: right;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+
+      th {
+        background: #111115;
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      td.test-name, th:first-child {
+        text-align: left;
+        color: var(--text);
+      }
+
+      td.test-name { color: var(--muted); font-size: 0.85rem }
+
+      .stddev { color: var(--muted); font-size: 0.8em }
+
+      .fast { color: var(--fast) }
+      .ok   { color: var(--ok) }
+      .slow { color: var(--slow) }
+
+      .note {
+        color: var(--muted);
+        font-size: 0.8rem;
+        margin-bottom: 0.75rem;
+        font-style: italic;
+      }
+
+      .legend {
+        display: flex;
+        gap: 1.5rem;
+        color: var(--muted);
+        font-size: 0.78rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+      }
+      .legend span { display: flex; align-items: center; gap: 0.4rem }
+      .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Nova — Framework Benchmark</h1>
+      <p class="subtitle">
+        Inspired by <a href="https://github.com/krausest/js-framework-benchmark" style="color:var(--accent)">js-framework-benchmark</a>.
+        Each test runs 5× in an off-screen container; mean ± stddev reported.<br>
+        <strong>Lower is better.</strong> All frameworks render the same row data (id + label).
+      </p>
+    </header>
+
+    <div class="controls">
+      <button id="run">▶ Run Benchmarks</button>
+      <span id="status">Click to start</span>
+    </div>
+
+    <div class="legend">
+      <span><span class="dot" style="background:var(--fast)"></span> &lt; 16 ms (60 fps budget)</span>
+      <span><span class="dot" style="background:var(--ok)"></span> 16–100 ms</span>
+      <span><span class="dot" style="background:var(--slow)"></span> &gt; 100 ms</span>
+    </div>
+
+    <div id="results"></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

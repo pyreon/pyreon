@@ -1,0 +1,230 @@
+---
+title: "Model"
+description: "Define reactive domain models with state, views, actions, snapshots, patches, and middleware."
+---
+
+`@nova/model` provides a structured way to define reactive domain models. Each model
+has typed state (backed by signals), computed views, and actions — plus built-in
+support for snapshots, JSON patches, middleware, and nested composition.
+
+<Callout type="info" title="Signals all the way down">
+  Every state field on a model instance is a Nova `Signal`. You read it by calling
+  it (`counter.count()`), write with `.set()` or `.update()`, and use it in
+  reactive contexts just like any other signal.
+</Callout>
+
+## Installation
+
+```bash title="Terminal"
+bun add @nova/model
+```
+
+## Defining a Model
+
+Use `model()` to declare state, views, and actions. Call `.create()` on the
+returned definition to get a live instance.
+
+<Steps>
+<Step>
+
+### Define the model
+
+```ts title="src/models/counter.ts"
+import { model } from "@nova/model"
+import { computed } from "@nova/reactivity"
+
+const Counter = model({
+  state: { count: 0 },
+  views: (self) => ({
+    doubled: computed(() => self.count() * 2),
+  }),
+  actions: (self) => ({
+    inc:   () => self.count.update(c => c + 1),
+    dec:   () => self.count.update(c => c - 1),
+    reset: () => self.count.set(0),
+  }),
+})
+```
+
+</Step>
+<Step>
+
+### Create an instance
+
+```ts
+const counter = Counter.create()        // count starts at 0
+const counter5 = Counter.create({ count: 5 })  // override defaults
+
+counter.count()    // 0
+counter.inc()
+counter.doubled()  // 2
+```
+
+</Step>
+<Step>
+
+### Use as a singleton hook
+
+```ts title="src/models/counter.ts"
+export const useCounter = Counter.asHook("app-counter")
+
+// In any component:
+const counter = useCounter()  // same instance everywhere
+```
+
+</Step>
+</Steps>
+
+## State, Views, and Actions
+
+| Concept | Description |
+|---|---|
+| **state** | Plain object of default values. Each key becomes a `Signal` on the instance. |
+| **views** | Factory receiving `self`. Return computed signals for derived state. |
+| **actions** | Factory receiving `self`. Return functions that mutate state signals. |
+
+The `self` proxy always reflects the fully initialized instance, so actions can
+call other actions and views can read state freely.
+
+## Snapshots
+
+Serialize and restore model state as plain JSON objects.
+
+```ts
+import { getSnapshot, applySnapshot } from "@nova/model"
+
+const snap = getSnapshot(counter)  // { count: 6 }
+
+// Persist to localStorage
+localStorage.setItem("counter", JSON.stringify(snap))
+
+// Restore later
+const saved = JSON.parse(localStorage.getItem("counter")!)
+applySnapshot(counter, saved)
+```
+
+`applySnapshot` coalesces all signal writes via `batch()`, so the UI updates
+once regardless of how many fields change. Keys absent from the snapshot are
+left unchanged.
+
+## JSON Patches
+
+Subscribe to every state mutation as a JSON patch. Useful for undo/redo,
+syncing over the network, or debugging.
+
+```ts
+import { onPatch } from "@nova/model"
+
+const unsub = onPatch(counter, (patch) => {
+  console.log(patch)
+  // { op: "replace", path: "/count", value: 7 }
+})
+
+counter.inc()  // triggers the listener
+
+unsub()  // stop listening
+```
+
+Nested model patches include the full path:
+
+```ts
+// { op: "replace", path: "/profile/name", value: "Alice" }
+```
+
+## Middleware
+
+Intercept every action call on an instance. Middlewares run in registration order
+and must call `next(call)` to continue the chain.
+
+```ts
+import { addMiddleware } from "@nova/model"
+
+const unsub = addMiddleware(counter, (call, next) => {
+  console.log(`before ${call.name}`, call.args)
+  const result = next(call)
+  console.log(`after ${call.name}`)
+  return result
+})
+```
+
+Each `call` has `name` (the action name), `args` (the arguments array), and
+`path` (a JSON-pointer like `"/inc"`). Middleware can modify `call.args` before
+forwarding, skip `next()` to block the action, or wrap the result.
+
+## Nested Models
+
+Use a `ModelDefinition` as a state field value to compose models. The nested model
+gets its own signals, patches, and snapshot serialization automatically.
+
+```ts title="src/models/app.ts"
+import { model } from "@nova/model"
+
+const Profile = model({
+  state: { name: "", avatar: "" },
+  actions: (self) => ({
+    setName: (n: string) => self.name.set(n),
+  }),
+})
+
+const App = model({
+  state: {
+    title: "My App",
+    profile: Profile,  // nested model definition
+  },
+  actions: (self) => ({
+    setTitle: (t: string) => self.title.set(t),
+  }),
+})
+
+const app = App.create({ profile: { name: "Alice" } })
+app.profile().name()       // "Alice"
+app.profile().setName("Bob")
+```
+
+Snapshots and patches traverse nested models recursively:
+
+```ts
+import { getSnapshot, onPatch } from "@nova/model"
+
+getSnapshot(app)
+// { title: "My App", profile: { name: "Bob", avatar: "" } }
+
+onPatch(app, (p) => console.log(p))
+app.profile().setName("Eve")
+// { op: "replace", path: "/profile/name", value: "Eve" }
+```
+
+## API Reference
+
+<TypeTable
+  type={{
+    "model(config)": {
+      description: "Define a model with state, views, and actions. Returns a ModelDefinition.",
+      type: "ModelDefinition<TState, TActions, TViews>",
+    },
+    ".create(initial?)": {
+      description: "Create a new instance, optionally overriding default state values.",
+      type: "ModelInstance<TState, TActions, TViews>",
+    },
+    ".asHook(id)": {
+      description: "Returns a hook function that always returns the same singleton instance for the given id.",
+      type: "() => ModelInstance<TState, TActions, TViews>",
+    },
+    "getSnapshot(instance)": {
+      description: "Serialize a model instance to a plain JS object (recursive for nested models).",
+      type: "Snapshot<TState>",
+    },
+    "applySnapshot(instance, snapshot)": {
+      description: "Restore state from a plain object. All writes are batched into one reactive flush.",
+      type: "void",
+    },
+    "onPatch(instance, listener)": {
+      description: "Subscribe to JSON patches on every state mutation. Returns an unsubscribe function.",
+      type: "() => void",
+    },
+    "addMiddleware(instance, fn)": {
+      description: "Intercept action calls. Call next(call) to continue. Returns an unsubscribe function.",
+      type: "() => void",
+    },
+  }}
+/>

@@ -1,0 +1,31 @@
+{
+  "name": "@pyreon/head",
+  "version": "0.1.0",
+  "description": "Head tag management for Pyreon — works in SSR and CSR",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-server",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/runtime-dom": "workspace:*",
+    "@happy-dom/global-registrator": "*",
+    "typescript": "*"
+  }
+}

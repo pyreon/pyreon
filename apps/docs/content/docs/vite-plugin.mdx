@@ -1,0 +1,156 @@
+---
+title: "Vite Plugin"
+description: "Setting up @nova/vite-plugin for JSX transforms and .nova single-file components."
+---
+
+`@nova/vite-plugin` configures Vite for Nova projects. It sets up the JSX transform, handles
+`.nova` single-file components, and enables HMR.
+
+## Installation
+
+```bash title="Terminal"
+bun add --dev @nova/vite-plugin
+```
+
+## Setup
+
+<Steps>
+<Step>
+
+### Configure Vite
+
+```ts title="vite.config.ts"
+import { defineConfig } from "vite"
+import nova from "@nova/vite-plugin"
+
+export default defineConfig({
+  plugins: [nova()],
+})
+```
+
+</Step>
+<Step>
+
+### Update tsconfig.json
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@nova/core"
+  }
+}
+```
+
+</Step>
+<Step>
+
+### Write your first component
+
+<Tabs items={[".tsx file", ".nova SFC"]}>
+<Tab value=".tsx file">
+```tsx title="src/Hello.tsx"
+import { signal } from "@nova/reactivity"
+
+export function Hello({ name }: { name: string }) {
+  const clicked = signal(false)
+
+  return (
+    <div>
+      <h1>Hello, {name}!</h1>
+      <button onClick={() => clicked.set(true)}>
+        {() => clicked() ? "Clicked!" : "Click me"}
+      </button>
+    </div>
+  )
+}
+```
+</Tab>
+<Tab value=".nova SFC">
+```html title="src/Hello.nova"
+<template>
+  <div>
+    <h1>Hello, {{ name }}!</h1>
+    <button @click="clicked = !clicked">
+      {{ clicked ? "Clicked!" : "Click me" }}
+    </button>
+  </div>
+</template>
+
+<script>
+export default {
+  props: { name: String },
+  setup(props) {
+    const clicked = signal(false)
+    return { clicked }
+  }
+}
+</script>
+
+<style scoped>
+h1 { color: indigo; }
+</style>
+```
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Mount and run
+
+```ts title="src/main.ts"
+import { mount } from "@nova/runtime-dom"
+import App from "./App"
+
+mount(<App />, document.getElementById("app")!)
+```
+
+```bash title="Terminal"
+bun run dev
+```
+
+</Step>
+</Steps>
+
+## .nova Single-File Component Structure
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <File name="App.nova" />
+    <File name="components" />
+    <Folder name="components" defaultOpen>
+      <File name="Button.nova" />
+      <File name="Header.tsx" />
+    </Folder>
+    <File name="main.ts" />
+  </Folder>
+  <File name="vite.config.ts" />
+  <File name="tsconfig.json" />
+  <File name="index.html" />
+</Files>
+
+The `.nova` format compiles to a standard ES module — you can mix `.nova` and `.tsx` files
+freely in the same project.
+
+## Plugin Options
+
+<TypeTable
+  type={{
+    "jsx": {
+      description: "Override JSX transform options.",
+      type: "object | false",
+      default: "{ importSource: '@nova/core' }",
+    },
+    "sfc": {
+      description: "Enable or disable .nova SFC processing.",
+      type: "boolean",
+      default: "true",
+    },
+    "hmr": {
+      description: "Enable Hot Module Replacement for signals.",
+      type: "boolean",
+      default: "true",
+    },
+  }}
+/>

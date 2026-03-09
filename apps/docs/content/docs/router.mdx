@@ -1,0 +1,773 @@
+---
+title: "Router"
+description: "createRouter, RouterProvider, RouterView, RouterLink, navigation guards, and typed params."
+---
+
+`@nova/router` is a client-side router with hash and history mode support, navigation guards,
+lazy routes, data loaders, nested routing, scroll restoration, and typed param/query access.
+
+## Installation
+
+```bash title="Terminal"
+bun add @nova/router
+```
+
+## Quick Start
+
+<Tabs items={["Hash mode", "History mode"]}>
+<Tab value="Hash mode">
+```tsx title="src/main.tsx"
+import { createRouter, RouterProvider, RouterView } from "@nova/router"
+import { mount } from "@nova/runtime-dom"
+import { lazy } from "@nova/core"
+
+const router = createRouter({
+  mode: "hash",
+  routes: [
+    { path: "/",        component: lazy(() => import("./pages/Home")) },
+    { path: "/about",   component: lazy(() => import("./pages/About")) },
+    { path: "/users/:id", component: lazy(() => import("./pages/User")) },
+  ],
+})
+
+function App() {
+  return (
+    <RouterProvider router={router}>
+      <nav>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/about">About</RouterLink>
+      </nav>
+      <RouterView />
+    </RouterProvider>
+  )
+}
+
+mount(<App />, document.getElementById("app")!)
+```
+</Tab>
+<Tab value="History mode">
+```tsx title="src/main.tsx"
+const router = createRouter({
+  mode: "history",  // uses window.history.pushState
+  routes: [
+    { path: "/",        component: lazy(() => import("./pages/Home")) },
+    { path: "/about",   component: lazy(() => import("./pages/About")) },
+    { path: "/users/:id", component: lazy(() => import("./pages/User")) },
+  ],
+})
+```
+
+<Callout type="warn" title="History mode requires server config">
+  In history mode, the server must return `index.html` for all routes. With Vite add
+  `server: { historyApiFallback: true }` to `vite.config.ts`.
+</Callout>
+</Tab>
+</Tabs>
+
+## Reading Route State
+
+```tsx title="src/pages/User.tsx"
+import { useRoute, useRouter } from "@nova/router"
+
+function UserPage() {
+  const route  = useRoute()   // reactive accessor → current route
+  const router = useRouter()  // programmatic navigation
+
+  return (
+    <div>
+      <h1>User #{() => route().params.id}</h1>
+      <button onClick={() => router.push("/")}>Back to Home</button>
+    </div>
+  )
+}
+```
+
+## Route Definitions
+
+<TypeTable
+  type={{
+    "path": {
+      description: "URL pattern. Use :param for dynamic segments, * for wildcard.",
+      type: "string",
+    },
+    "component": {
+      description: "Component to render. Can be a direct component or a lazy() import.",
+      type: "ComponentFn | LazyComponent",
+    },
+    "name": {
+      description: "Optional name for programmatic navigation via router.push({ name }).",
+      type: "string",
+    },
+    "loader": {
+      description: "Data loader function. Runs before navigation commits. Result available via useLoaderData().",
+      type: "(ctx: LoaderContext) => Promise<unknown>",
+    },
+    "redirect": {
+      description: "Redirect target. String path or function returning a path. Evaluated before guards.",
+      type: "string | ((to: ResolvedRoute) => string)",
+    },
+    "beforeEnter": {
+      description: "Route-level guard. Return false to cancel or a path string to redirect.",
+      type: "NavigationGuard | NavigationGuard[]",
+    },
+    "beforeLeave": {
+      description: "Guard run before leaving this route. Return false to cancel or a path to redirect.",
+      type: "NavigationGuard | NavigationGuard[]",
+    },
+    "children": {
+      description: "Child routes rendered inside this route's component via a nested <RouterView />.",
+      type: "RouteRecord[]",
+    },
+    "meta": {
+      description: "Arbitrary metadata attached to the route (e.g., auth requirements, page title).",
+      type: "RouteMeta",
+    },
+  }}
+/>
+
+## Path Patterns
+
+<Cards>
+  <Card
+    title="Exact match"
+    description='path: "/" — matches only the root path.'
+  />
+  <Card
+    title="Dynamic segment"
+    description='path: "/users/:id" — :id is available in route().params.id'
+  />
+  <Card
+    title="Wildcard"
+    description='path: "/docs/*" — matches anything under /docs/'
+  />
+  <Card
+    title="Catch-all"
+    description='path: "(.*)" — matches any path. Use as the last route for 404s.'
+  />
+</Cards>
+
+## Typed Route Params with `ExtractParams`
+
+Nova infers param types directly from path strings at compile time using the `ExtractParams` utility type.
+Pass your path as a generic to `useRoute()` to get fully typed `params`:
+
+```tsx title="src/pages/User.tsx"
+import { useRoute } from "@nova/router"
+import type { ExtractParams } from "@nova/router"
+
+// ExtractParams<"/users/:id"> → { id: string }
+// ExtractParams<"/org/:orgId/repo/:repoId"> → { orgId: string; repoId: string }
+
+function UserPage() {
+  const route = useRoute<"/users/:id">()
+
+  // route().params.id is typed as `string` — no cast needed
+  return <h1>User #{() => route().params.id}</h1>
+}
+```
+
+You can also use `ExtractParams` standalone for your own helpers:
+
+```ts
+import type { ExtractParams } from "@nova/router"
+
+type UserParams = ExtractParams<"/users/:id">
+// { id: string }
+
+type PostParams = ExtractParams<"/users/:userId/posts/:postId">
+// { userId: string; postId: string }
+```
+
+## Programmatic Navigation
+
+```ts
+const router = useRouter()
+
+router.push("/dashboard")         // navigate by path
+router.push("/users/42")          // with param in path
+router.replace("/login")          // replace current history entry
+router.back()                     // browser back
+```
+
+## Named Routes
+
+Give routes a `name` field for programmatic navigation without hardcoding paths:
+
+```tsx title="src/router.ts"
+const router = createRouter({
+  routes: [
+    { path: "/", name: "home", component: Home },
+    { path: "/users/:id", name: "user", component: UserPage },
+    { path: "/org/:orgId/repo/:repoId", name: "repo", component: RepoPage },
+  ],
+})
+```
+
+Navigate by name with typed params and optional query:
+
+```ts
+// Navigate to /users/42
+router.push({ name: "user", params: { id: "42" } })
+
+// Navigate to /org/acme/repo/nova?tab=issues
+router.push({
+  name: "repo",
+  params: { orgId: "acme", repoId: "nova" },
+  query: { tab: "issues" },
+})
+```
+
+You can also look up a route record by name using `findRouteByName`:
+
+```ts
+import { findRouteByName } from "@nova/router"
+
+const record = findRouteByName("user", router.routes)
+// record.path → "/users/:id"
+```
+
+<Callout type="info">
+  Named routes are indexed at startup via an internal `Map` for O(1) lookups. There is no runtime
+  cost per navigation beyond a single map read.
+</Callout>
+
+## Nested Routes
+
+Define child routes with the `children` field. The parent component renders a `<RouterView />` to
+display the matched child:
+
+```tsx title="src/router.ts"
+const router = createRouter({
+  routes: [
+    {
+      path: "/admin",
+      component: AdminLayout,
+      children: [
+        { path: "users",    component: AdminUsers },
+        { path: "settings", component: AdminSettings },
+      ],
+    },
+  ],
+})
+```
+
+```tsx title="src/layouts/AdminLayout.tsx"
+import { RouterView } from "@nova/router"
+
+function AdminLayout() {
+  return (
+    <div class="admin">
+      <aside><AdminSidebar /></aside>
+      <main>
+        {/* Renders AdminUsers or AdminSettings based on the URL */}
+        <RouterView />
+      </main>
+    </div>
+  )
+}
+```
+
+When the URL is `/admin/users`, the `matched` array contains two records: `[AdminLayout, AdminUsers]`.
+The top-level `<RouterView />` renders `AdminLayout` (depth 0), and the nested `<RouterView />`
+inside `AdminLayout` renders `AdminUsers` (depth 1).
+
+<Callout type="info">
+  Each `RouterView` automatically claims the next depth level during setup. You never need to
+  pass a depth prop — just place `<RouterView />` wherever you want the nested content to appear.
+</Callout>
+
+## Route Data Loaders
+
+Loaders fetch data before a navigation commits. The route component can read the result
+synchronously via `useLoaderData()` — no loading spinners or `useEffect` needed.
+
+### Defining a Loader
+
+```tsx title="src/router.ts"
+import { createRouter } from "@nova/router"
+
+async function fetchUser(ctx) {
+  const res = await fetch(`/api/users/${ctx.params.id}`, { signal: ctx.signal })
+  return res.json()
+}
+
+const router = createRouter({
+  routes: [
+    {
+      path: "/users/:id",
+      component: UserPage,
+      loader: fetchUser,
+    },
+  ],
+})
+```
+
+The `LoaderContext` passed to each loader contains:
+
+<TypeTable
+  type={{
+    "params": {
+      description: "Route params extracted from the URL pattern.",
+      type: "Record<string, string>",
+    },
+    "query": {
+      description: "Parsed query string parameters.",
+      type: "Record<string, string>",
+    },
+    "signal": {
+      description: "AbortSignal — aborted if a newer navigation supersedes this one.",
+      type: "AbortSignal",
+    },
+  }}
+/>
+
+### Reading Loader Data
+
+```tsx title="src/pages/UserPage.tsx"
+import { useLoaderData } from "@nova/router"
+
+interface User { id: string; name: string; email: string }
+
+function UserPage() {
+  const user = useLoaderData<User>()
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  )
+}
+```
+
+<Callout type="warn">
+  `useLoaderData()` must be called inside a route component rendered by `<RouterView />`. It reads
+  from a context pushed by the view before your component mounts.
+</Callout>
+
+### Parallel Loaders
+
+When multiple matched routes (e.g., nested routes) have loaders, they all run in parallel:
+
+```tsx
+const routes = [
+  {
+    path: "/org/:orgId",
+    component: OrgLayout,
+    loader: async (ctx) => fetch(`/api/orgs/${ctx.params.orgId}`).then(r => r.json()),
+    children: [
+      {
+        path: "members",
+        component: MemberList,
+        loader: async (ctx) => fetch(`/api/orgs/${ctx.params.orgId}/members`).then(r => r.json()),
+      },
+    ],
+  },
+]
+```
+
+### Prefetching Loader Data
+
+`<RouterLink>` automatically prefetches loader data when the user hovers over it:
+
+```tsx
+{/* Prefetch on hover (default) */}
+<RouterLink to="/users/42">View User</RouterLink>
+
+{/* Prefetch when the link scrolls into the viewport */}
+<RouterLink to="/users/42" prefetch="viewport">View User</RouterLink>
+
+{/* Disable prefetching */}
+<RouterLink to="/users/42" prefetch="none">View User</RouterLink>
+```
+
+For SSR, use `prefetchLoaderData()` to pre-run loaders before rendering:
+
+```ts title="server.ts"
+import { prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "@nova/router"
+
+// Server: run loaders before rendering
+const router = createRouter({ routes, url: req.url })
+await prefetchLoaderData(router, req.url)
+const html = await renderToString(<App />)
+
+// Embed data in the HTML
+const loaderJson = JSON.stringify(serializeLoaderData(router))
+// → <script>window.__NOVA_LOADER_DATA__=${loaderJson}</script>
+
+// Client: hydrate without re-running loaders
+const router = createRouter({ routes })
+hydrateLoaderData(router, window.__NOVA_LOADER_DATA__ ?? {})
+mount(<App />, document.getElementById("app")!)
+```
+
+## Navigation Guards
+
+Guards control whether a navigation is allowed, cancelled, or redirected.
+They can be synchronous or async. Return values:
+
+| Return value | Effect |
+|---|---|
+| `undefined` / `void` | Allow navigation |
+| `false` | Cancel navigation |
+| `"/some/path"` | Redirect to that path |
+
+### Guard Execution Order
+
+Guards run in this order during every navigation:
+
+<Steps>
+<Step>
+**`beforeLeave`** — Route-level guards on the **from** route. Use these for unsaved-changes prompts.
+</Step>
+<Step>
+**`beforeEnter`** — Route-level guards on the **to** route. Use these for auth checks on specific pages.
+</Step>
+<Step>
+**`beforeEach`** — Global guards registered on the router. Use these for app-wide auth or analytics.
+</Step>
+<Step>
+Navigation commits (URL updates, loaders run, component renders).
+</Step>
+<Step>
+**`afterEach`** — Global hooks after navigation. Use these for analytics or page-view tracking.
+</Step>
+</Steps>
+
+### Route-Level `beforeEnter`
+
+```tsx title="src/router.ts"
+const router = createRouter({
+  routes: [
+    {
+      path: "/admin",
+      component: AdminPanel,
+      beforeEnter: (to, from) => {
+        if (!isLoggedIn()) return "/login"  // redirect
+        // return nothing → allow navigation
+      },
+    },
+  ],
+})
+```
+
+You can pass an array of guards — they run in order:
+
+```tsx
+{
+  path: "/admin",
+  component: AdminPanel,
+  beforeEnter: [
+    (to, from) => { if (!isLoggedIn()) return "/login" },
+    (to, from) => { if (!isAdmin()) return "/403" },
+  ],
+}
+```
+
+### Route-Level `beforeLeave`
+
+```tsx
+{
+  path: "/editor",
+  component: Editor,
+  beforeLeave: (to, from) => {
+    if (hasUnsavedChanges()) {
+      return confirm("Discard changes?") ? undefined : false
+    }
+  },
+}
+```
+
+### Global `beforeEach`
+
+```ts
+router.beforeEach((to, from) => {
+  if (to.meta?.requiresAuth && !isLoggedIn()) {
+    return "/login"
+  }
+})
+```
+
+### Global `afterEach`
+
+```ts
+router.afterEach((to, from) => {
+  analytics.trackPageView(to.path)
+})
+```
+
+<Callout type="info">
+  Async guards are supported. If a new navigation starts while an async guard is pending, the
+  previous navigation is automatically cancelled via an internal generation counter.
+</Callout>
+
+## Redirect Routes
+
+Use the `redirect` field to redirect one path to another. Redirects are evaluated before any guards run.
+
+```tsx
+const routes = [
+  { path: "/settings", redirect: "/admin/settings", component: Empty },
+  {
+    path: "/old-profile/:id",
+    component: Empty,
+    redirect: (to) => `/users/${to.params.id}`,  // dynamic redirect
+  },
+]
+```
+
+<Callout type="warn">
+  Circular redirects are detected and aborted after 10 levels with a console error.
+</Callout>
+
+## Lazy Routes with Loading Component
+
+Use `lazy()` for code splitting. Optionally provide a loading component shown while the chunk loads
+and an error component shown if all retries fail:
+
+```tsx
+import { lazy } from "@nova/router"
+
+function Spinner() {
+  return <div class="spinner">Loading...</div>
+}
+
+function ChunkError() {
+  return <div class="error">Failed to load page. Please refresh.</div>
+}
+
+const routes = [
+  {
+    path: "/dashboard",
+    component: lazy(
+      () => import("./pages/Dashboard"),
+      { loading: Spinner, error: ChunkError },
+    ),
+  },
+]
+```
+
+Lazy chunks automatically retry up to 3 times with exponential backoff (500ms, 1s, 2s). If all
+retries fail and the error looks like a stale chunk (post-deploy 404 or syntax error), the router
+triggers a full page reload to fetch the new bundle.
+
+## Router Loading State
+
+The `loading()` accessor on the router is a reactive signal that returns `true` while any
+navigation is in flight (guards running, loaders fetching, lazy chunks loading):
+
+```tsx
+import { useRouter } from "@nova/router"
+
+function NavBar() {
+  const router = useRouter()
+
+  return (
+    <nav>
+      {() => router.loading() ? <ProgressBar /> : null}
+      <RouterLink to="/">Home</RouterLink>
+      <RouterLink to="/about">About</RouterLink>
+    </nav>
+  )
+}
+```
+
+## Scroll Behavior
+
+Control scroll restoration with the `scrollBehavior` option:
+
+<Tabs items={["Simple string", "Custom function"]}>
+<Tab value="Simple string">
+```ts
+const router = createRouter({
+  routes,
+  scrollBehavior: "top",      // scroll to top on every navigation
+  // scrollBehavior: "restore" // restore saved scroll position (browser back/forward)
+  // scrollBehavior: "none"    // do nothing
+})
+```
+</Tab>
+<Tab value="Custom function">
+```ts
+const router = createRouter({
+  routes,
+  scrollBehavior: (to, from, savedPosition) => {
+    // savedPosition is non-null on browser back/forward
+    if (savedPosition !== null) return "restore"
+
+    // Scroll to top for new navigations, unless route opts out
+    if (to.meta.scrollBehavior === "none") return "none"
+
+    return "top"
+  },
+})
+```
+</Tab>
+</Tabs>
+
+Per-route `meta.scrollBehavior` takes precedence over the global setting:
+
+```ts
+{
+  path: "/search",
+  component: SearchPage,
+  meta: { scrollBehavior: "none" },  // preserve scroll on re-navigation
+}
+```
+
+## Query String Handling
+
+Route query parameters are automatically parsed and available on `route().query`:
+
+```tsx
+// URL: /search?q=nova&page=2
+function SearchPage() {
+  const route = useRoute()
+
+  return (
+    <div>
+      <p>Searching for: {() => route().query.q}</p>
+      <p>Page: {() => route().query.page}</p>
+    </div>
+  )
+}
+```
+
+For building query strings programmatically, use the exported utilities:
+
+```ts
+import { parseQuery, stringifyQuery } from "@nova/router"
+
+parseQuery("q=hello&page=2")
+// → { q: "hello", page: "2" }
+
+stringifyQuery({ q: "hello", page: "2" })
+// → "?q=hello&page=2"
+```
+
+## Route Metadata
+
+Attach arbitrary data to routes via the `meta` field. Metadata from nested routes is merged
+(leaf takes precedence):
+
+```ts
+const routes = [
+  {
+    path: "/admin",
+    component: AdminLayout,
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: "settings",
+        component: AdminSettings,
+        meta: { title: "Admin Settings" },
+        // merged meta: { requiresAuth: true, title: "Admin Settings" }
+      },
+    ],
+  },
+]
+```
+
+Extend the `RouteMeta` interface via module augmentation for type-safe custom fields:
+
+```ts title="src/globals.d.ts"
+declare module "@nova/router" {
+  interface RouteMeta {
+    requiresRole?: "admin" | "user"
+    analyticsId?: string
+  }
+}
+```
+
+If a route's `meta` includes a `title` field, `document.title` is automatically updated on navigation.
+
+## RouterLink
+
+`<RouterLink>` renders an `<a>` tag with click handling, active class management, and optional
+loader prefetching:
+
+```tsx
+<RouterLink to="/about">About</RouterLink>
+
+<RouterLink to="/about" replace>About</RouterLink>  {/* replace instead of push */}
+
+<RouterLink to="/about" exact>About</RouterLink>  {/* active class only on exact match */}
+
+<RouterLink
+  to="/about"
+  activeClass="nav-active"
+  exactActiveClass="nav-exact"
+>
+  About
+</RouterLink>
+```
+
+By default, `RouterLink` applies `router-link-active` when the current path starts with the link's
+`to` path, and `router-link-exact-active` on exact match. The `exact` prop restricts active class
+to exact matches only.
+
+## SSR
+
+Pass the request URL via the `url` option so the router resolves the correct route on the server:
+
+```ts title="server.ts"
+import { createRouter, RouterProvider, RouterView } from "@nova/router"
+import { renderToString } from "@nova/runtime-server"
+
+const router = createRouter({
+  routes,
+  url: req.url,  // e.g. "/users/42?tab=posts"
+})
+
+const html = await renderToString(
+  <RouterProvider router={router}>
+    <RouterView />
+  </RouterProvider>
+)
+```
+
+## Full Example
+
+```tsx title="src/router.ts"
+import { createRouter, lazy } from "@nova/router"
+
+const router = createRouter({
+  mode: "history",
+  scrollBehavior: (to, from, saved) => saved !== null ? "restore" : "top",
+  routes: [
+    { path: "/", name: "home", component: Home },
+    { path: "/about", name: "about", component: About },
+    {
+      path: "/users/:id",
+      name: "user",
+      component: lazy(() => import("./pages/User"), { loading: Spinner }),
+      loader: async (ctx) => {
+        const res = await fetch(`/api/users/${ctx.params.id}`, { signal: ctx.signal })
+        return res.json()
+      },
+    },
+    {
+      path: "/admin",
+      component: AdminLayout,
+      meta: { requiresAuth: true },
+      beforeEnter: (to) => { if (!isLoggedIn()) return "/login" },
+      children: [
+        { path: "users", name: "admin-users", component: AdminUsers },
+        { path: "settings", name: "admin-settings", component: AdminSettings },
+      ],
+    },
+    { path: "/old-dashboard", redirect: "/admin", component: Empty },
+    { path: "(.*)", name: "not-found", component: NotFound },
+  ],
+})
+
+router.beforeEach((to, from) => {
+  if (to.meta?.requiresAuth && !isLoggedIn()) return "/login"
+})
+
+router.afterEach((to) => {
+  analytics.trackPageView(to.path)
+})
+
+export default router
+```

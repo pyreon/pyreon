@@ -1,0 +1,187 @@
+---
+title: "Suspense & Error Boundary"
+description: "lazy(), Suspense, and ErrorBoundary for code splitting and error recovery."
+---
+
+Nova provides `lazy()` for code-split components, `Suspense` to show a fallback while they
+load, and `ErrorBoundary` to catch and recover from rendering errors.
+
+## Lazy Loading
+
+<Steps>
+<Step>
+
+### Wrap a dynamic import with `lazy()`
+
+```ts title="src/routes.ts"
+import { lazy } from "@nova/core"
+
+const Dashboard = lazy(() => import("./pages/Dashboard"))
+const Settings  = lazy(() => import("./pages/Settings"))
+```
+
+<Callout type="warn" title="lazy() starts loading immediately">
+  The dynamic import is triggered as soon as `lazy()` is called, not when the component
+  is first rendered. Put lazy calls at the module level, not inside components.
+</Callout>
+
+</Step>
+<Step>
+
+### Wrap with `Suspense`
+
+```tsx title="src/App.tsx"
+import { Suspense } from "@nova/core"
+
+function App() {
+  return (
+    <Suspense fallback={<div class="spinner">Loading...</div>}>
+      <Dashboard />
+    </Suspense>
+  )
+}
+```
+
+</Step>
+<Step>
+
+### Add an `ErrorBoundary` for resilience
+
+```tsx title="src/App.tsx"
+import { Suspense, ErrorBoundary } from "@nova/core"
+
+function App() {
+  return (
+    <ErrorBoundary fallback={err => <div class="error">Error: {String(err)}</div>}>
+      <Suspense fallback={<div class="spinner">Loading...</div>}>
+        <Dashboard />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+</Step>
+</Steps>
+
+## API Reference
+
+<Tabs items={["lazy()", "Suspense", "ErrorBoundary"]}>
+<Tab value="lazy()">
+
+### `lazy(load)`
+
+Wraps a dynamic import. Returns a component that renders `null` while loading, then switches
+to the real component.
+
+```ts
+import { lazy } from "@nova/core"
+
+const Chart = lazy(() => import("./Chart"))
+// later, use <Chart /> inside a <Suspense>
+```
+
+<TypeTable
+  type={{
+    "load": {
+      description: "A function that returns a dynamic import promise resolving to { default: ComponentFn }.",
+      type: "() => Promise<{ default: ComponentFn<P> }>",
+    },
+    "return value": {
+      description: "A LazyComponent that can be used in JSX. Renders null until loaded.",
+      type: "LazyComponent<P>",
+    },
+  }}
+/>
+
+</Tab>
+<Tab value="Suspense">
+
+### `<Suspense fallback={...}>`
+
+Shows `fallback` while a lazy child is loading. Switches to children once loaded.
+
+```tsx
+<Suspense fallback={<Spinner />}>
+  <LazyPage />
+</Suspense>
+```
+
+<TypeTable
+  type={{
+    "fallback": {
+      description: "Shown while the lazy component is loading.",
+      type: "VNodeChild",
+    },
+    "children": {
+      description: "Should contain at least one lazy() component.",
+      type: "VNodeChild",
+    },
+  }}
+/>
+
+</Tab>
+<Tab value="ErrorBoundary">
+
+### `<ErrorBoundary fallback={fn}>`
+
+Catches errors thrown during rendering and shows a fallback UI instead.
+
+```tsx
+<ErrorBoundary
+  fallback={err => (
+    <div class="error-card">
+      <h3>Something went wrong</h3>
+      <pre>{String(err)}</pre>
+    </div>
+  )}
+>
+  <RiskyComponent />
+</ErrorBoundary>
+```
+
+<TypeTable
+  type={{
+    "fallback": {
+      description: "Function called with the caught error. Return a VNode to display.",
+      type: "(err: unknown) => VNodeChild",
+    },
+    "children": {
+      description: "The subtree to protect. Errors here are caught by the boundary.",
+      type: "VNodeChild",
+    },
+  }}
+/>
+
+</Tab>
+</Tabs>
+
+## Full Example: Route-Level Code Splitting
+
+```tsx title="src/App.tsx"
+import { lazy, Suspense, ErrorBoundary } from "@nova/core"
+import { useRoute } from "@nova/router"
+
+const Home      = lazy(() => import("./pages/Home"))
+const Dashboard = lazy(() => import("./pages/Dashboard"))
+const Settings  = lazy(() => import("./pages/Settings"))
+
+function App() {
+  const route = useRoute()
+
+  return (
+    <ErrorBoundary fallback={err => <p>Page failed: {String(err)}</p>}>
+      <Suspense fallback={<div class="page-loader">Loading...</div>}>
+        {() => {
+          switch (route().path) {
+            case "/":         return <Home />
+            case "/dashboard": return <Dashboard />
+            case "/settings": return <Settings />
+            default:          return <p>404</p>
+          }
+        }}
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```

@@ -1,0 +1,33 @@
+{
+  "title": "Nova Documentation",
+  "pages": [
+    "index",
+    "---Getting Started---",
+    "reactivity",
+    "components",
+    "lifecycle",
+    "---Core Concepts---",
+    "context",
+    "lists",
+    "portals",
+    "directives",
+    "keep-alive",
+    "transitions",
+    "---Advanced---",
+    "advanced-reactivity",
+    "error-handling",
+    "suspense",
+    "router",
+    "store",
+    "model",
+    "head",
+    "query",
+    "ssr",
+    "---Ecosystem---",
+    "react-compat",
+    "vite-plugin",
+    "performance",
+    "---Migration---",
+    "migration-react"
+  ]
+}

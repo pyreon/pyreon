@@ -1,0 +1,317 @@
+---
+title: "Error Handling"
+description: "ErrorBoundary, onErrorCaptured, error telemetry, and best practices for resilient Nova apps."
+---
+
+Nova provides layered error handling — from component-level boundaries to global telemetry hooks.
+Errors in child components are caught and can be recovered from without crashing the entire app.
+
+## ErrorBoundary
+
+The `ErrorBoundary` component catches errors thrown during child rendering and displays a
+fallback UI. The fallback receives the error and a `reset` function to retry.
+
+```tsx title="src/App.tsx"
+import { ErrorBoundary } from "@nova/core"
+
+function App() {
+  return (
+    <ErrorBoundary
+      fallback={(err, reset) => (
+        <div>
+          <p>Something went wrong: {String(err)}</p>
+          <button onClick={reset}>Try again</button>
+        </div>
+      )}
+    >
+      <Dashboard />
+    </ErrorBoundary>
+  )
+}
+```
+
+When `reset()` is called, the error state is cleared and the children are re-rendered.
+
+<TypeTable
+  type={{
+    "fallback": {
+      description: "Render function called when a child throws. Receives the error and a reset function.",
+      type: "(err: unknown, reset: () => void) => VNodeChild",
+    },
+    "children": {
+      description: "The component subtree to protect.",
+      type: "VNodeChild",
+    },
+  }}
+/>
+
+<Callout type="warn" title="Re-entry protection">
+  If the fallback itself throws, the error is **not** caught by the same boundary — it
+  propagates to the next outer `ErrorBoundary`. This prevents infinite loops.
+</Callout>
+
+---
+
+## onErrorCaptured
+
+The `onErrorCaptured` lifecycle hook lets any component handle errors from its subtree
+without rendering a full fallback UI. Return `true` to mark the error as handled and stop
+propagation.
+
+```tsx title="src/LoggingWrapper.tsx"
+import { signal } from "@nova/reactivity"
+import { onErrorCaptured } from "@nova/core"
+
+function LoggingWrapper(props: { children: any }) {
+  const lastError = signal<string | null>(null)
+
+  onErrorCaptured((err) => {
+    lastError.set(String(err))
+    return true  // handled — don't propagate further
+  })
+
+  return (
+    <>
+      <Show when={() => lastError() !== null}>
+        {() => <p class="error">{lastError()}</p>}
+      </Show>
+      {props.children}
+    </>
+  )
+}
+```
+
+### Propagation rules
+
+<Steps>
+<Step>
+
+**Child throws** — during setup, rendering, or a lifecycle hook.
+
+</Step>
+<Step>
+
+**Nearest `onErrorCaptured` handler runs** — if it returns `true`, propagation stops.
+
+</Step>
+<Step>
+
+**Nearest `ErrorBoundary` catches** — switches to fallback UI and reports via telemetry.
+
+</Step>
+<Step>
+
+**Uncaught errors** — if no boundary or handler exists, the error propagates to the browser.
+
+</Step>
+</Steps>
+
+---
+
+## Error Telemetry
+
+### registerErrorHandler
+
+Register global handlers that are called whenever a component error is caught — ideal for
+sending errors to Sentry, Datadog, or your own logging backend.
+
+```ts title="src/main.ts"
+import { registerErrorHandler } from "@nova/core"
+import * as Sentry from "@sentry/browser"
+
+const unregister = registerErrorHandler((ctx) => {
+  Sentry.captureException(ctx.error, {
+    extra: {
+      component: ctx.component,
+      phase: ctx.phase,
+      timestamp: ctx.timestamp,
+    },
+  })
+})
+
+// Later, to remove the handler:
+unregister()
+```
+
+<TypeTable
+  type={{
+    "ctx.component": {
+      description: "The component function name, or 'Anonymous'.",
+      type: "string",
+    },
+    "ctx.phase": {
+      description: "Lifecycle phase where the error occurred.",
+      type: "'setup' | 'render' | 'mount' | 'unmount' | 'effect'",
+    },
+    "ctx.error": {
+      description: "The thrown value.",
+      type: "unknown",
+    },
+    "ctx.timestamp": {
+      description: "Unix timestamp in milliseconds.",
+      type: "number",
+    },
+    "ctx.props": {
+      description: "Component props at the time of the error (optional).",
+      type: "Record<string, unknown> | undefined",
+    },
+  }}
+/>
+
+### reportError
+
+The `reportError` function is used internally by the framework to dispatch errors to all
+registered handlers. You can also call it directly to report custom errors through the
+same pipeline.
+
+```ts
+import { reportError } from "@nova/core"
+
+reportError({
+  component: "PaymentForm",
+  phase: "effect",
+  error: new Error("Payment gateway timeout"),
+  timestamp: Date.now(),
+})
+```
+
+<Callout type="info" title="Handler safety">
+  Errors thrown inside registered handlers are silently caught — a buggy handler will never
+  crash the framework or suppress other handlers.
+</Callout>
+
+---
+
+## Effect Error Handling
+
+Errors thrown inside `effect()` are caught by a global handler that defaults to `console.error`.
+You can replace it with `setErrorHandler` from `@nova/reactivity`.
+
+```ts title="src/setup.ts"
+import { setErrorHandler } from "@nova/reactivity"
+
+setErrorHandler((err) => {
+  console.error("[app] effect error:", err)
+  myMonitoring.track(err)
+})
+```
+
+<Callout type="info">
+  `setErrorHandler` handles reactivity-layer errors (inside `effect()`).
+  `registerErrorHandler` handles component-layer errors (setup, render, lifecycle).
+  Use both together for full coverage.
+</Callout>
+
+---
+
+## Patterns
+
+### Global error handler at app root
+
+Wrap your entire app in an `ErrorBoundary` and register a telemetry handler at startup.
+
+```tsx title="src/main.tsx"
+import { registerErrorHandler, ErrorBoundary } from "@nova/core"
+import { setErrorHandler } from "@nova/reactivity"
+import { mount } from "@nova/runtime-dom"
+
+// Telemetry for component errors
+registerErrorHandler((ctx) => {
+  fetch("/api/errors", {
+    method: "POST",
+    body: JSON.stringify(ctx),
+  })
+})
+
+// Telemetry for effect errors
+setErrorHandler((err) => {
+  fetch("/api/errors", {
+    method: "POST",
+    body: JSON.stringify({ error: String(err), phase: "effect", timestamp: Date.now() }),
+  })
+})
+
+mount(
+  <ErrorBoundary
+    fallback={(err, reset) => (
+      <div>
+        <h1>Application Error</h1>
+        <pre>{String(err)}</pre>
+        <button onClick={reset}>Reload</button>
+      </div>
+    )}
+  >
+    <App />
+  </ErrorBoundary>,
+  document.getElementById("root")!,
+)
+```
+
+### Per-route error boundaries
+
+Place boundaries around each route so a crash in one page does not take down the entire app.
+
+```tsx title="src/routes.tsx"
+function ProtectedRoute(props: { children: any }) {
+  return (
+    <ErrorBoundary
+      fallback={(err, reset) => (
+        <div>
+          <p>This page encountered an error.</p>
+          <button onClick={reset}>Retry</button>
+          <a href="/">Go home</a>
+        </div>
+      )}
+    >
+      {props.children}
+    </ErrorBoundary>
+  )
+}
+
+const routes = [
+  {
+    path: "/dashboard",
+    component: () => (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: "/settings",
+    component: () => (
+      <ProtectedRoute>
+        <Settings />
+      </ProtectedRoute>
+    ),
+  },
+]
+```
+
+### Graceful degradation with onErrorCaptured
+
+Use `onErrorCaptured` for non-critical sections where you want to show a partial UI
+instead of a full error screen.
+
+```tsx title="src/Sidebar.tsx"
+function Sidebar() {
+  const widgetError = signal<string | null>(null)
+
+  onErrorCaptured((err) => {
+    widgetError.set(String(err))
+    return true
+  })
+
+  return (
+    <aside>
+      <Nav />
+      <Show
+        when={() => widgetError() === null}
+        fallback={<p class="muted">Widget unavailable</p>}
+      >
+        <WeatherWidget />
+      </Show>
+    </aside>
+  )
+}
+```

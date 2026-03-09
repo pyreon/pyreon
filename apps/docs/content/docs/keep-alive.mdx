@@ -1,0 +1,118 @@
+---
+title: "KeepAlive"
+description: "Preserve component state by keeping children mounted while hiding them with CSS."
+---
+
+`KeepAlive` mounts its children once and never unmounts them. When the `active` accessor
+returns false, the children are CSS-hidden instead of destroyed — all reactive state,
+scroll positions, form values, and in-flight async operations are preserved.
+
+<Callout type="info" title="Layout transparency">
+  KeepAlive renders a wrapper `div` with `display: contents`, so it has no effect on your
+  layout. Children appear as if they are directly in the parent flow.
+</Callout>
+
+## Basic Usage
+
+```tsx title="src/Tabs.tsx"
+import { signal } from "@nova/reactivity"
+import { KeepAlive } from "@nova/runtime-dom"
+
+function Tabs() {
+  const tab = signal<"editor" | "preview">("editor")
+
+  return (
+    <div>
+      <nav>
+        <button onClick={() => tab.set("editor")}>Editor</button>
+        <button onClick={() => tab.set("preview")}>Preview</button>
+      </nav>
+
+      <KeepAlive active={() => tab() === "editor"}>
+        <Editor />
+      </KeepAlive>
+
+      <KeepAlive active={() => tab() === "preview"}>
+        <Preview />
+      </KeepAlive>
+    </div>
+  )
+}
+```
+
+Both `Editor` and `Preview` are mounted on first activation. Switching tabs hides one and
+shows the other — no state is lost. The editor keeps its cursor position, and the preview
+keeps its scroll position.
+
+## Multi-Slot Pattern for Routes
+
+Use one `KeepAlive` per route to preserve page state across navigation:
+
+```tsx title="src/App.tsx"
+import { KeepAlive } from "@nova/runtime-dom"
+import { useRoute } from "@nova/router"
+
+function App() {
+  const route = useRoute()
+
+  return (
+    <>
+      <KeepAlive active={() => route().path === "/dashboard"}>
+        <Dashboard />
+      </KeepAlive>
+      <KeepAlive active={() => route().path === "/settings"}>
+        <Settings />
+      </KeepAlive>
+    </>
+  )
+}
+```
+
+## When to Use KeepAlive
+
+| Scenario | Use KeepAlive? |
+|---|---|
+| Tabs with form inputs or scroll state | Yes |
+| Route views the user frequently switches between | Yes |
+| Heavy components that are expensive to re-mount | Yes |
+| Simple conditional content with no internal state | No — use `n-show` or conditional rendering |
+| Components that should reset on every visit | No — use normal mount/unmount |
+
+## Performance Considerations
+
+KeepAlive trades memory for speed. Hidden children stay fully mounted:
+
+- **Effects keep running.** A hidden component's reactive effects still execute on signal
+  changes. If a hidden component polls an API via an effect, that polling continues.
+- **DOM stays in the tree.** Hidden elements are still present in the DOM (with
+  `display: none`), so they consume memory and are included in queries like
+  `querySelectorAll`.
+- **Use sparingly.** KeepAlive is best for a small number of stateful views (tabs, route
+  pages) rather than large dynamic lists.
+
+If you need to pause effects while hidden, combine KeepAlive with a guard inside the effect:
+
+```tsx
+const active = () => tab() === "editor"
+
+effect(() => {
+  if (!active()) return  // skip work while hidden
+  fetchData()
+})
+```
+
+## API
+
+<TypeTable
+  type={{
+    "active": {
+      description: "Accessor returning true when children should be visible. Defaults to true.",
+      type: "() => boolean",
+      default: "() => true",
+    },
+    "children": {
+      description: "The content to keep alive.",
+      type: "VNodeChild",
+    },
+  }}
+/>

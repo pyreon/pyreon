@@ -1,0 +1,90 @@
+import { createContext, useContext } from "@pyreon/core"
+import type { Context } from "@pyreon/core"
+import type { RouterInstance } from "./types"
+
+/**
+ * Context frame that holds the loader data for the currently rendered route record.
+ * Pushed by RouterView's withLoaderData wrapper before invoking the route component.
+ */
+export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefined)
+
+/**
+ * Returns the data resolved by the current route's `loader` function.
+ * Must be called inside a route component rendered by <RouterView />.
+ *
+ * @example
+ * const routes = [{ path: "/users", component: Users, loader: fetchUsers }]
+ *
+ * function Users() {
+ *   const users = useLoaderData<User[]>()
+ *   return h("ul", null, users.map(u => h("li", null, u.name)))
+ * }
+ */
+export function useLoaderData<T = unknown>(): T {
+  return useContext(LoaderDataContext) as T
+}
+
+/**
+ * SSR helper: pre-run all loaders for the given path before rendering.
+ * Call this before `renderToString` so route components can read data via `useLoaderData()`.
+ *
+ * @example
+ * const router = createRouter({ routes, url: req.url })
+ * await prefetchLoaderData(router, req.url)
+ * const html = await renderToString(h(App, { router }))
+ */
+export async function prefetchLoaderData(router: RouterInstance, path: string): Promise<void> {
+  const route = router._resolve(path)
+  const ac = new AbortController()
+  router._abortController = ac
+  await Promise.all(
+    route.matched
+      .filter((r) => r.loader)
+      .map(async (r) => {
+        const data = await r.loader?.({ params: route.params, query: route.query, signal: ac.signal })
+        router._loaderData.set(r, data)
+      }),
+  )
+}
+
+/**
+ * Serialize loader data to a JSON-safe plain object for embedding in SSR HTML.
+ * Keys are route path patterns (stable across server and client).
+ *
+ * @example — SSR handler:
+ * await prefetchLoaderData(router, req.url)
+ * const { html, head } = await renderWithHead(h(App, null))
+ * const page = `...${head}
+ *   <script>window.__NOVA_LOADER_DATA__=${JSON.stringify(serializeLoaderData(router))}</script>
+ *   ...${html}...`
+ */
+export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [record, data] of router._loaderData) {
+    result[record.path] = data
+  }
+  return result
+}
+
+/**
+ * Hydrate loader data from a serialized object (e.g. `window.__NOVA_LOADER_DATA__`).
+ * Populates the router's internal `_loaderData` map so the initial render uses
+ * server-fetched data without re-running loaders on the client.
+ *
+ * Call this before `mount()`, after `createRouter()`.
+ *
+ * @example — client entry:
+ * import { hydrateLoaderData } from "@pyreon/router"
+ * const router = createRouter({ routes })
+ * hydrateLoaderData(router, window.__NOVA_LOADER_DATA__ ?? {})
+ * mount(h(App, null), document.getElementById("app")!)
+ */
+export function hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>): void {
+  if (!serialized || typeof serialized !== "object") return
+  const route = router._resolve(router.currentRoute().path)
+  for (const record of route.matched) {
+    if (Object.prototype.hasOwnProperty.call(serialized, record.path)) {
+      router._loaderData.set(record, serialized[record.path])
+    }
+  }
+}

@@ -1,0 +1,178 @@
+---
+title: "Overview"
+description: "A fine-grained reactivity framework for building user interfaces with no virtual DOM."
+---
+
+Nova is a fine-grained reactivity framework for building user interfaces. It compiles to efficient
+DOM operations where only the exact nodes that depend on a changed signal are updated — no virtual
+DOM diffing, no component re-renders.
+
+<Callout type="info" title="The key idea">
+  Components in Nova run **exactly once**. All subsequent updates flow through signals directly
+  to the DOM — there is no reconciler, no re-rendering, and no virtual DOM tree to diff.
+</Callout>
+
+## Why Nova?
+
+| Pain point | React / Vue | Nova |
+|---|---|---|
+| Re-renders | Whole component subtree re-renders on state change | Signal updates patch only the affected DOM node |
+| Stale closures | Effect deps arrays, `useCallback`, `useMemo` boilerplate | No deps arrays — tracking is automatic |
+| Bundle size | React DOM ~42 kB gzip | Nova core + runtime-dom ~6 kB gzip |
+| SSR | Full component tree hydration | Selective walk-and-claim hydration |
+| Migration | — | `@nova/react-compat` lets you migrate file-by-file |
+
+## Installation
+
+```bash title="Terminal"
+bun add @nova/core @nova/reactivity @nova/runtime-dom
+```
+
+## Quick Start
+
+A reactive counter. Only the `<span>` node updates when the signal changes — nothing else.
+
+```tsx title="src/main.tsx"
+import { signal } from "@nova/reactivity"
+import { mount } from "@nova/runtime-dom"
+
+function Counter() {
+  const count = signal(0)
+
+  return (
+    <div>
+      <span>{() => count()}</span>
+      <button onClick={() => count.update(n => n + 1)}>Increment</button>
+    </div>
+  )
+}
+
+mount(<Counter />, document.getElementById("app")!)
+```
+
+## Package Overview
+
+<Cards>
+  <Card
+    title="@nova/reactivity"
+    description="signal, computed, effect, batch, createSelector — the reactive primitives."
+    href="/docs/reactivity"
+  />
+  <Card
+    title="@nova/core"
+    description="h(), JSX runtime, Fragment, For, Portal, lifecycle hooks, context, Suspense."
+    href="/docs/components"
+  />
+  <Card
+    title="@nova/runtime-dom"
+    description="DOM renderer and mount(). Turns VNodes into real DOM updates."
+    href="/docs/ssr"
+  />
+  <Card
+    title="@nova/runtime-server"
+    description="renderToString and renderToStream for SSR. hydrateRoot for the client."
+    href="/docs/ssr"
+  />
+  <Card
+    title="@nova/router"
+    description="Hash and history mode routing, navigation guards, lazy routes."
+    href="/docs/router"
+  />
+  <Card
+    title="@nova/store"
+    description="defineStore — lazy singleton stores with computed and actions."
+    href="/docs/store"
+  />
+  <Card
+    title="@nova/react-compat"
+    description="React-compatible APIs for incremental migration. useState, useEffect, useMemo, and more."
+    href="/docs/react-compat"
+  />
+  <Card
+    title="@nova/vite-plugin"
+    description="Vite plugin for JSX transform and .nova single-file components."
+    href="/docs/vite-plugin"
+  />
+</Cards>
+
+## How Reactivity Works
+
+The render function runs once. Every dynamic value must be wrapped in `() =>` so it becomes
+a reactive accessor that Nova can subscribe to.
+
+```tsx
+function Profile() {
+  const name = signal("Alice")
+  const age = signal(30)
+
+  return (
+    <div>
+      {/* Static — rendered once, never updates */}
+      <h1>User Profile</h1>
+
+      {/* Reactive — updates when name changes */}
+      <p>{() => name()}</p>
+
+      {/* Reactive class — updates when age changes */}
+      <span class={() => age() >= 18 ? "adult" : "minor"}>
+        {() => age()} years old
+      </span>
+    </div>
+  )
+}
+```
+
+<Callout type="warn" title="Forgetting () => is the most common mistake">
+  Writing `{name()}` reads the signal **once at render time** and is static. Writing
+  `{() => name()}` creates a reactive accessor. When in doubt, wrap in `() =>`.
+</Callout>
+
+## Framework Comparison
+
+<Tabs items={["Nova", "React", "SolidJS"]}>
+<Tab value="Nova">
+```tsx
+import { signal } from "@nova/reactivity"
+
+function Counter() {
+  const count = signal(0)
+  return (
+    <button onClick={() => count.update(n => n + 1)}>
+      {() => count()} clicks
+    </button>
+  )
+}
+```
+**Component runs once. Signal updates patch the text node directly.**
+</Tab>
+<Tab value="React">
+```tsx
+import { useState } from "react"
+
+function Counter() {
+  const [count, setCount] = useState(0)
+  return (
+    <button onClick={() => setCount(n => n + 1)}>
+      {count} clicks
+    </button>
+  )
+}
+```
+**Component re-renders on every state change. React diffs the result.**
+</Tab>
+<Tab value="SolidJS">
+```tsx
+import { createSignal } from "solid-js"
+
+function Counter() {
+  const [count, setCount] = createSignal(0)
+  return (
+    <button onClick={() => setCount(n => n + 1)}>
+      {count()} clicks
+    </button>
+  )
+}
+```
+**Similar model to Nova. Solid compiles JSX; Nova uses a runtime renderer.**
+</Tab>
+</Tabs>

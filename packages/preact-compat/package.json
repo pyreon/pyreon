@@ -1,0 +1,42 @@
+{
+  "name": "@pyreon/preact-compat",
+  "version": "0.0.1",
+  "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Nova's reactive engine",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./hooks": {
+      "bun": "./src/hooks.ts",
+      "import": "./dist/hooks.js",
+      "types": "./dist/hooks.d.ts"
+    },
+    "./signals": {
+      "bun": "./src/signals.ts",
+      "import": "./dist/signals.js",
+      "types": "./dist/signals.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/hooks.ts ./src/signals.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "happy-dom": "^20.8.3",
+    "typescript": "*"
+  }
+}

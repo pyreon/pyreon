@@ -1,0 +1,26 @@
+{
+  "name": "@pyreon/compiler",
+  "version": "0.0.1",
+  "description": "Template and JSX compiler for Pyreon",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "typescript": "*"
+  },
+  "devDependencies": {}
+}

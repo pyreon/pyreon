@@ -1,0 +1,32 @@
+{
+  "name": "@pyreon/vite-plugin",
+  "version": "0.0.1",
+  "description": "Vite plugin for Pyreon — .nova SFC support, HMR, compiler integration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/compiler": "workspace:*"
+  },
+  "peerDependencies": {
+    "vite": ">=5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "*",
+    "vite": "^6.0.0"
+  }
+}

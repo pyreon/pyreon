@@ -1,0 +1,394 @@
+---
+title: "Migrating from React"
+description: "Step-by-step guide to migrating a React application to Nova."
+---
+
+This guide walks through migrating a React application to Nova step by step. You can migrate
+incrementally — one file at a time — using `@nova/react-compat` as a bridge.
+
+<Callout type="info" title="Incremental migration">
+  You don't need to rewrite everything at once. `@nova/react-compat` provides React-compatible
+  APIs so your app keeps working while you migrate file by file.
+</Callout>
+
+## Migration Steps
+
+<Steps>
+<Step>
+
+### Install Packages
+
+```bash title="Terminal"
+bun add @nova/core @nova/reactivity @nova/runtime-dom @nova/react-compat
+bun add --dev @nova/vite-plugin
+```
+
+Remove React packages once you're done, or keep them for incremental migration.
+
+</Step>
+<Step>
+
+### Update Vite Config
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```ts title="vite.config.ts"
+import { defineConfig } from "vite"
+import react from "@vitejs/plugin-react"
+
+export default defineConfig({
+  plugins: [react()],
+})
+```
+</Tab>
+<Tab value="After (Nova)">
+```ts title="vite.config.ts"
+import { defineConfig } from "vite"
+import novaPlugin from "@nova/vite-plugin"
+
+export default defineConfig({
+  plugins: [novaPlugin()],
+})
+```
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Update tsconfig.json
+
+```json title="tsconfig.json"
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@nova/core"
+  }
+}
+```
+
+</Step>
+<Step>
+
+### Replace Imports
+
+Change all `react` imports to `@nova/react-compat`. This is a search-and-replace.
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```ts
+import React from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
+import { createContext, useContext } from "react"
+import { memo, lazy, Suspense } from "react"
+```
+</Tab>
+<Tab value="After (Nova)">
+```ts
+import { useState, useEffect, useMemo, useRef, useCallback } from "@nova/react-compat"
+import { createContext, useContext } from "@nova/react-compat"
+import { memo, lazy, Suspense } from "@nova/react-compat"
+```
+</Tab>
+</Tabs>
+
+<Callout type="info">
+  You don't need to import the JSX factory — `jsxImportSource` in tsconfig handles that automatically.
+</Callout>
+
+</Step>
+<Step>
+
+### Add `()` to State Reads
+
+Every `useState` variable is now a signal — call it as a function to read its value.
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```tsx
+function Counter() {
+  const [count, setCount] = useState(0)
+  const [name, setName] = useState("Alice")
+
+  return (
+    <div>
+      <p>{name} clicked {count} times</p>
+      <button onClick={() => setCount(count + 1)}>Click</button>
+    </div>
+  )
+}
+```
+</Tab>
+<Tab value="After (Nova)">
+```tsx
+function Counter() {
+  const [count, setCount] = useState(0)
+  const [name, setName] = useState("Alice")
+
+  return (
+    <div>
+      <p>{name()} clicked {count()} times</p>
+      <button onClick={() => setCount(count() + 1)}>Click</button>
+    </div>
+  )
+}
+```
+</Tab>
+</Tabs>
+
+<Callout type="info" title="TypeScript helps">
+  A TS error like `Type 'Signal<number>' is not assignable to type 'number'` tells you
+  exactly where you forgot to add `()`.
+</Callout>
+
+</Step>
+<Step>
+
+### Remove Dependency Arrays
+
+Nova tracks dependencies at runtime — deps arrays are silently ignored. Remove them.
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```tsx
+useEffect(() => {
+  document.title = `${count} clicks`
+}, [count])
+
+const expensive = useMemo(() => {
+  return items.filter(i => i.active).length
+}, [items])
+
+const handler = useCallback(() => {
+  setCount(c => c + 1)
+}, [setCount])
+```
+</Tab>
+<Tab value="After (Nova)">
+```tsx
+useEffect(() => {
+  document.title = `${count()} clicks`  // auto-tracked
+})
+
+const expensive = useMemo(() => {
+  return items().filter(i => i.active).length  // auto-tracked
+})
+
+const handler = useCallback(() => {
+  setCount(c => c + 1)
+})  // stable by default, no deps needed
+```
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Switch `className` to `class`
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```tsx
+<div className="container">
+<button className={isActive ? "btn active" : "btn"}>
+```
+</Tab>
+<Tab value="After (Nova)">
+```tsx
+<div class="container">
+<button class={() => isActive() ? "btn active" : "btn"}>
+```
+</Tab>
+</Tabs>
+
+<Callout type="info">
+  `@nova/react-compat` maps `className` to `class` automatically, so this step can be deferred.
+</Callout>
+
+</Step>
+<Step>
+
+### Replace Lists with `For`
+
+`array.map` works but recreates DOM nodes on every signal update. `For` only patches
+additions and removals.
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```tsx title="src/TodoList.tsx"
+function TodoList() {
+  const [items, setItems] = useState<Todo[]>([])
+  return (
+    <ul>
+      {items.map(todo => (
+        <li key={todo.id}>{todo.text}</li>
+      ))}
+    </ul>
+  )
+}
+```
+</Tab>
+<Tab value="After (Nova)">
+```tsx title="src/TodoList.tsx"
+import { For } from "@nova/core"
+
+function TodoList() {
+  const [items, setItems] = useState<Todo[]>([])
+  return (
+    <ul>
+      <For
+        each={items}
+        key={t => t.id}
+        children={t => <li>{t.text}</li>}
+      />
+    </ul>
+  )
+}
+```
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Replace the Entry Point
+
+<Tabs items={["Before (React)", "After (Nova)"]}>
+<Tab value="Before (React)">
+```tsx title="src/main.tsx"
+import React from "react"
+import ReactDOM from "react-dom/client"
+import App from "./App"
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />)
+```
+</Tab>
+<Tab value="After (Nova)">
+```tsx title="src/main.tsx"
+import { mount } from "@nova/runtime-dom"
+import App from "./App"
+
+mount(<App />, document.getElementById("root")!)
+```
+</Tab>
+</Tabs>
+
+</Step>
+<Step>
+
+### Migrate to Native Nova APIs (Optional)
+
+Once the app works with `@nova/react-compat`, progressively replace compat APIs with native
+Nova for better performance and a cleaner codebase.
+
+<Tabs items={["useState → signal", "useEffect → effect", "useMemo → computed"]}>
+<Tab value="useState → signal">
+```tsx
+// Compat
+const [count, setCount] = useState(0)
+setCount(n => n + 1)
+
+// Native
+import { signal } from "@nova/reactivity"
+const count = signal(0)
+count.update(n => n + 1)
+```
+</Tab>
+<Tab value="useEffect → effect">
+```tsx
+// Compat
+useEffect(() => {
+  const id = setInterval(() => tick(), 1000)
+  return () => clearInterval(id)
+})
+
+// Native
+import { effect } from "@nova/reactivity"
+effect(() => {
+  const id = setInterval(() => tick(), 1000)
+  return () => clearInterval(id)
+})
+```
+</Tab>
+<Tab value="useMemo → computed">
+```tsx
+// Compat
+const doubled = useMemo(() => count() * 2)
+
+// Native
+import { computed } from "@nova/reactivity"
+const doubled = computed(() => count() * 2)
+// read: doubled()
+```
+</Tab>
+</Tabs>
+
+</Step>
+</Steps>
+
+## Common Issues
+
+### "count is not a function"
+
+You imported `useState` from `react` instead of `@nova/react-compat`. Check all imports.
+
+### Stale values in event handlers
+
+<Tabs items={["Wrong", "Correct"]}>
+<Tab value="Wrong">
+```tsx
+// Reads once at setup — stale forever
+const value = count()
+onClick={() => console.log(value)}  // always logs initial value
+```
+</Tab>
+<Tab value="Correct">
+```tsx
+// Reads current value at click time
+onClick={() => console.log(count())}
+```
+</Tab>
+</Tabs>
+
+### Component logic runs only once
+
+Nova components run exactly once. Move side effects to `onMount` or `effect`.
+
+<Tabs items={["React (bad pattern)", "Nova (correct)"]}>
+<Tab value="React (bad pattern)">
+```tsx
+function Fetcher() {
+  const [data, setData] = useState(null)
+  fetch("/api").then(r => r.json()).then(setData)  // runs on every render!
+  return <div>{data?.name}</div>
+}
+```
+</Tab>
+<Tab value="Nova (correct)">
+```tsx
+function Fetcher() {
+  const data = signal<{ name: string } | null>(null)
+  onMount(() => {
+    fetch("/api").then(r => r.json()).then(d => data.set(d))
+  })
+  return <div>{() => data()?.name}</div>
+}
+```
+</Tab>
+</Tabs>
+
+## Quick Reference
+
+| React | Nova |
+|---|---|
+| `import { useState } from "react"` | `import { useState } from "@nova/react-compat"` |
+| `const [x, setX] = useState(0)` | same (compat) or `const x = signal(0)` |
+| `{x}` in JSX | `{x()}` or `{() => x()}` |
+| `useEffect(fn, [deps])` | `useEffect(fn)` or `effect(fn)` |
+| `useMemo(fn, [deps])` | `useMemo(fn)` or `computed(fn)` |
+| `className="box"` | `class="box"` |
+| `items.map(i => <Li key={i.id} />)` | `<For each={items} key={i => i.id} children={i => <Li />} />` |
+| `ReactDOM.createRoot(el).render(<App />)` | `mount(<App />, el)` |
+| Re-renders on state change | Signals patch only the affected DOM nodes |
+| Deps arrays required | No deps arrays — auto-tracking |
+| Stale closures possible | No stale closures — signals always return current value |

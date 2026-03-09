@@ -1,0 +1,186 @@
+import { describe, expect, test } from "bun:test"
+import { effect, renderEffect, setErrorHandler } from "../effect"
+import { signal } from "../signal"
+import { effectScope, setCurrentScope } from "../scope"
+
+describe("effect", () => {
+  test("runs immediately", () => {
+    let ran = false
+    effect(() => {
+      ran = true
+    })
+    expect(ran).toBe(true)
+  })
+
+  test("re-runs when tracked signal changes", () => {
+    const s = signal(0)
+    let count = 0
+    effect(() => {
+      s() // track
+      count++
+    })
+    expect(count).toBe(1)
+    s.set(1)
+    expect(count).toBe(2)
+    s.set(2)
+    expect(count).toBe(3)
+  })
+
+  test("does not re-run after dispose", () => {
+    const s = signal(0)
+    let count = 0
+    const e = effect(() => {
+      s()
+      count++
+    })
+    e.dispose()
+    s.set(1)
+    expect(count).toBe(1) // only the initial run
+  })
+
+  test("tracks multiple signals", () => {
+    const a = signal(1)
+    const b = signal(2)
+    let result = 0
+    effect(() => {
+      result = a() + b()
+    })
+    expect(result).toBe(3)
+    a.set(10)
+    expect(result).toBe(12)
+    b.set(20)
+    expect(result).toBe(30)
+  })
+
+  test("does not track signals accessed after conditional branch", () => {
+    const toggle = signal(true)
+    const a = signal(1)
+    const b = signal(100)
+    let result = 0
+    effect(() => {
+      result = toggle() ? a() : b()
+    })
+    expect(result).toBe(1)
+    a.set(2)
+    expect(result).toBe(2)
+    toggle.set(false)
+    expect(result).toBe(100)
+    // a is no longer tracked
+    a.set(999)
+    expect(result).toBe(100)
+  })
+
+  test("catches errors via default error handler", () => {
+    const errors: unknown[] = []
+    const origError = console.error
+    console.error = (...args: unknown[]) => errors.push(args)
+
+    const s = signal(0)
+    effect(() => {
+      s()
+      throw new Error("boom")
+    })
+
+    expect(errors.length).toBe(1)
+    console.error = origError
+  })
+
+  test("setErrorHandler replaces the error handler", () => {
+    const caught: unknown[] = []
+    setErrorHandler((err) => caught.push(err))
+
+    const s = signal(0)
+    effect(() => {
+      s()
+      throw new Error("custom")
+    })
+
+    expect(caught.length).toBe(1)
+    expect((caught[0] as Error).message).toBe("custom")
+
+    // Restore default handler
+    setErrorHandler((err) => console.error("[nova] Unhandled effect error:", err))
+  })
+
+  test("effect notifies scope on re-run (not first run)", async () => {
+    const scope = effectScope()
+    setCurrentScope(scope)
+
+    let updateCount = 0
+    scope.addUpdateHook(() => { updateCount++ })
+
+    const s = signal(0)
+    effect(() => { s() })
+
+    setCurrentScope(null)
+
+    expect(updateCount).toBe(0) // first run does not notify
+
+    s.set(1) // re-run triggers notifyEffectRan
+    await new Promise((r) => setTimeout(r, 10))
+    expect(updateCount).toBe(1)
+
+    scope.stop()
+  })
+})
+
+describe("renderEffect", () => {
+  test("runs immediately and tracks signals", () => {
+    const s = signal(0)
+    let count = 0
+    renderEffect(() => {
+      s()
+      count++
+    })
+    expect(count).toBe(1)
+    s.set(1)
+    expect(count).toBe(2)
+  })
+
+  test("dispose stops tracking", () => {
+    const s = signal(0)
+    let count = 0
+    const dispose = renderEffect(() => {
+      s()
+      count++
+    })
+    expect(count).toBe(1)
+    dispose()
+    s.set(1)
+    expect(count).toBe(1)
+  })
+
+  test("dispose is idempotent", () => {
+    const s = signal(0)
+    const dispose = renderEffect(() => { s() })
+    dispose()
+    dispose() // should not throw
+  })
+
+  test("tracks dynamic dependencies", () => {
+    const toggle = signal(true)
+    const a = signal(1)
+    const b = signal(100)
+    let result = 0
+    renderEffect(() => {
+      result = toggle() ? a() : b()
+    })
+    expect(result).toBe(1)
+    toggle.set(false)
+    expect(result).toBe(100)
+    a.set(999) // no longer tracked
+    expect(result).toBe(100)
+  })
+
+  test("does not re-run after disposed during signal update", () => {
+    const s = signal(0)
+    let count = 0
+    const dispose = renderEffect(() => {
+      s()
+      count++
+    })
+    dispose()
+    s.set(5)
+    expect(count).toBe(1)
+  })
+})

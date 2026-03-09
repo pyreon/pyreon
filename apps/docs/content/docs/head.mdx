@@ -1,0 +1,156 @@
+---
+title: "Head Management"
+description: "Manage document head tags (title, meta, link, script) with useHead(), HeadProvider, and SSR support via renderWithHead()."
+---
+
+`@nova/head` lets you set `<title>`, `<meta>`, `<link>`, and other head tags from
+any component in your tree. Tags are deduplicated automatically — the innermost
+component wins when multiple components set the same tag.
+
+<Callout type="info" title="Deduplication rules">
+  Tags are keyed automatically: `title` always uses key `"title"`, meta tags are
+  keyed by `name` or `property`, link tags by `rel`, and scripts by `src`. When
+  two components register the same key, the last one added (deepest in the tree) wins.
+</Callout>
+
+## Installation
+
+```bash title="Terminal"
+bun add @nova/head
+```
+
+## Client-Side Setup
+
+Wrap your app root with `HeadProvider` so all descendant `useHead()` calls have
+somewhere to register their tags.
+
+```tsx title="src/main.tsx"
+import { mount } from "@nova/runtime-dom"
+import { h } from "@nova/core"
+import { HeadProvider, createHeadContext } from "@nova/head"
+import { App } from "./App"
+
+const headCtx = createHeadContext()
+
+mount(
+  h(HeadProvider, { context: headCtx },
+    h(App, null),
+  ),
+  document.getElementById("app")!,
+)
+```
+
+## Using `useHead()`
+
+Call `useHead()` inside any component to register head tags. Tags are removed
+automatically when the component unmounts.
+
+### Static tags
+
+```tsx title="src/pages/About.tsx"
+import { useHead } from "@nova/head"
+
+function About() {
+  useHead({
+    title: "About Us",
+    meta: [
+      { name: "description", content: "Learn more about our team." },
+      { property: "og:title", content: "About Us" },
+    ],
+    link: [
+      { rel: "canonical", href: "https://example.com/about" },
+    ],
+  })
+
+  return <div>About page content</div>
+}
+```
+
+### Reactive tags
+
+Pass a function to `useHead()` to make the tags reactive. When any signal read
+inside the function changes, the head tags update automatically.
+
+```tsx title="src/pages/Post.tsx"
+import { useHead } from "@nova/head"
+import { signal } from "@nova/reactivity"
+
+function Post() {
+  const title = signal("Loading...")
+
+  useHead(() => ({
+    title: title(),
+    meta: [
+      { property: "og:title", content: title() },
+    ],
+  }))
+
+  // Later, when data loads:
+  // title.set("My Blog Post")
+
+  return <article>{() => title()}</article>
+}
+```
+
+## Server-Side Rendering
+
+Use `renderWithHead()` instead of `renderToString()` to capture both the HTML body
+and the serialized head tags in one pass.
+
+```ts title="src/server.ts"
+import { h } from "@nova/core"
+import { renderWithHead } from "@nova/head"
+import { App } from "./App"
+
+const { html, head } = await renderWithHead(h(App, null))
+
+const page = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    ${head}
+  </head>
+  <body>
+    <div id="app">${html}</div>
+  </body>
+</html>`
+```
+
+<Callout type="warn" title="No HeadProvider needed for SSR">
+  `renderWithHead()` creates and injects the head context automatically.
+  You do not need to wrap your app in `HeadProvider` on the server — only on
+  the client.
+</Callout>
+
+## Supported Tag Types
+
+| Property | HTML Tag | Key Strategy |
+|---|---|---|
+| `title` | `<title>` | Always `"title"` — only one per page |
+| `meta` | `<meta>` | Keyed by `name` or `property` attribute |
+| `link` | `<link>` | Keyed by `rel` attribute |
+| `script` | `<script>` | Keyed by `src` attribute |
+| `base` | `<base>` | Always `"base"` — only one per page |
+
+## API Reference
+
+<TypeTable
+  type={{
+    "createHeadContext()": {
+      description: "Creates a head context value. Pass it to HeadProvider.",
+      type: "HeadContextValue",
+    },
+    "HeadProvider": {
+      description: "Context provider component. Accepts { context: HeadContextValue, children }.",
+      type: "ComponentFn<HeadProviderProps>",
+    },
+    "useHead(input)": {
+      description: "Register head tags from a component. Accepts a static object or reactive getter. Tags are removed on unmount.",
+      type: "void",
+    },
+    "renderWithHead(app)": {
+      description: "SSR helper. Returns { html, head } where head is a ready-to-inject HTML string.",
+      type: "Promise<{ html: string; head: string }>",
+    },
+  }}
+/>

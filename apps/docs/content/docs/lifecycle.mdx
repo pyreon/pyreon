@@ -1,0 +1,136 @@
+---
+title: "Lifecycle Hooks"
+description: "onMount, onUnmount, onUpdate, and onErrorCaptured lifecycle hooks."
+---
+
+Nova provides four lifecycle hooks that let components respond to mount, unmount, update,
+and error events.
+
+<Callout type="warn" title="Call hooks synchronously during setup">
+  All hooks must be called synchronously during the component function's initial execution.
+  Nova captures them from a component-local context that only exists during that first call.
+  Calling hooks inside `setTimeout`, `then()`, or `effect()` will silently do nothing.
+</Callout>
+
+## Mount Sequence
+
+<Steps>
+<Step>
+
+**Component function runs** — signals, computed values, effects, and hooks are registered.
+
+</Step>
+<Step>
+
+**VNode tree is returned** and rendered to the DOM.
+
+</Step>
+<Step>
+
+**`onMount` callbacks fire** — the DOM is live and refs are populated.
+
+</Step>
+<Step>
+
+**Signals update** — effects and reactive DOM expressions re-run as needed.
+
+</Step>
+<Step>
+
+**`onUnmount` callbacks fire** — component is removed from the DOM.
+
+</Step>
+</Steps>
+
+## `onMount`
+
+Runs after the component's DOM is inserted. Use it for DOM measurements, focus, subscriptions,
+and data fetching.
+
+```tsx title="src/DataLoader.tsx"
+import { signal, onMount } from "@nova/core"
+
+function DataLoader() {
+  const data = signal<string[] | null>(null)
+
+  onMount(() => {
+    fetch("/api/items")
+      .then(r => r.json())
+      .then(items => data.set(items))
+  })
+
+  return <div>{() => data() ? data()!.join(", ") : "Loading..."}</div>
+}
+```
+
+**Cleanup:** If `onMount` returns a function, it is called when the component unmounts.
+
+```tsx
+onMount(() => {
+  const sub = store.subscribe(update)
+  return () => sub.unsubscribe()  // cleanup
+})
+```
+
+## `onUnmount`
+
+Runs when the component is removed from the DOM.
+
+```tsx
+import { onUnmount } from "@nova/core"
+
+function Timer() {
+  const elapsed = signal(0)
+  const id = setInterval(() => elapsed.update(n => n + 1), 1000)
+
+  onUnmount(() => clearInterval(id))
+
+  return <span>{() => elapsed()}s</span>
+}
+```
+
+## `onUpdate`
+
+Runs after every reactive update within the component's scope. Useful for syncing external
+state after a signal changes.
+
+```tsx
+import { onUpdate } from "@nova/core"
+
+function ScrollSync() {
+  const scrollY = signal(0)
+
+  onUpdate(() => {
+    window.sessionStorage.setItem("scroll", String(scrollY()))
+  })
+
+  return <div onScroll={e => scrollY.set(e.currentTarget.scrollTop)}>...</div>
+}
+```
+
+## `onErrorCaptured`
+
+Catches errors thrown by child components. Return `true` to mark the error as handled
+(prevents it from propagating further up the tree).
+
+```tsx title="src/SafeWrapper.tsx"
+import { signal, onErrorCaptured } from "@nova/core"
+
+function SafeWrapper({ children }: { children: VNodeChild }) {
+  const error = signal<string | null>(null)
+
+  onErrorCaptured((err) => {
+    error.set(String(err))
+    return true  // handled — don't bubble up
+  })
+
+  return () => error()
+    ? <div class="error">Something went wrong: {error()}</div>
+    : children
+}
+```
+
+<Callout type="info">
+  For a ready-made error boundary, use `ErrorBoundary` from `@nova/core` — it wraps
+  `onErrorCaptured` in a reusable component. See the [Suspense](/docs/suspense) page.
+</Callout>

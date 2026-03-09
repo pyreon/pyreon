@@ -1,0 +1,393 @@
+---
+title: "Transitions & Animations"
+description: "Animate enter, leave, and list reordering with CSS classes."
+---
+
+Nova provides two components for CSS-driven animations: `Transition` for a single element
+and `TransitionGroup` for keyed lists with enter, leave, and move animations.
+
+## Transition
+
+`Transition` adds CSS classes to a single child element during enter and leave phases,
+controlled by a reactive `show` prop.
+
+```tsx title="src/FadeModal.tsx"
+import { signal } from "@nova/reactivity"
+import { Transition } from "@nova/runtime-dom"
+import { h } from "@nova/core"
+
+function FadeModal() {
+  const visible = signal(false)
+
+  return (
+    <>
+      <button onClick={() => visible.update(v => !v)}>Toggle</button>
+      <Transition name="fade" show={visible}>
+        <div class="modal">Hello Nova</div>
+      </Transition>
+    </>
+  )
+}
+```
+
+```css title="src/fade.css"
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 300ms ease;
+}
+```
+
+### CSS Class Lifecycle
+
+When the `show` signal changes, Nova applies classes in two phases:
+
+**Enter (show becomes `true`):**
+
+1. Frame 0 -- `{name}-enter-from` + `{name}-enter-active` are added.
+2. Frame 1 -- `{name}-enter-from` is removed, `{name}-enter-to` is added.
+3. On `transitionend` / `animationend` -- `{name}-enter-active` and `{name}-enter-to` are removed.
+
+**Leave (show becomes `false`):**
+
+1. Frame 0 -- `{name}-leave-from` + `{name}-leave-active` are added.
+2. Frame 1 -- `{name}-leave-from` is removed, `{name}-leave-to` is added.
+3. On `transitionend` / `animationend` -- all leave classes are removed and the element is unmounted.
+
+<Callout type="info" title="The element stays in the DOM during leave">
+  The child is not removed until the CSS transition or animation completes.
+  If the user toggles `show` back to `true` during a leave animation, Nova cancels
+  the leave and starts an enter transition immediately.
+</Callout>
+
+### Appear on Mount
+
+By default, the child appears instantly on first render. Set `appear` to run the enter
+animation on initial mount.
+
+```tsx
+<Transition name="fade" show={visible} appear>
+  <div class="modal">Animates in on mount</div>
+</Transition>
+```
+
+### Slide Example
+
+```css title="src/slide.css"
+.slide-enter-from {
+  transform: translateX(-100%);
+}
+.slide-leave-to {
+  transform: translateX(100%);
+}
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+```
+
+```tsx
+<Transition name="slide" show={visible}>
+  <aside class="sidebar">Navigation</aside>
+</Transition>
+```
+
+### Lifecycle Callbacks
+
+```tsx
+<Transition
+  name="fade"
+  show={visible}
+  onBeforeEnter={(el) => console.log("entering", el)}
+  onAfterEnter={(el) => console.log("entered", el)}
+  onBeforeLeave={(el) => console.log("leaving", el)}
+  onAfterLeave={(el) => console.log("left", el)}
+>
+  <div>Content</div>
+</Transition>
+```
+
+### Custom Class Names
+
+Override individual classes instead of using a prefix.
+
+```tsx
+<Transition
+  show={visible}
+  enterFrom="opacity-0"
+  enterActive="transition-opacity duration-300"
+  enterTo="opacity-100"
+  leaveFrom="opacity-100"
+  leaveActive="transition-opacity duration-300"
+  leaveTo="opacity-0"
+>
+  <div>Tailwind transitions</div>
+</Transition>
+```
+
+### `Transition` Props
+
+<TypeTable
+  type={{
+    "show": {
+      description: "Reactive boolean controlling visibility.",
+      type: "() => boolean",
+    },
+    "name": {
+      description: "CSS class prefix. Default: \"nova\".",
+      type: "string",
+    },
+    "appear": {
+      description: "Run enter animation on initial mount. Default: false.",
+      type: "boolean",
+    },
+    "enterFrom": {
+      description: "Override class for enter start state.",
+      type: "string",
+    },
+    "enterActive": {
+      description: "Override class applied during the entire enter phase.",
+      type: "string",
+    },
+    "enterTo": {
+      description: "Override class for enter end state.",
+      type: "string",
+    },
+    "leaveFrom": {
+      description: "Override class for leave start state.",
+      type: "string",
+    },
+    "leaveActive": {
+      description: "Override class applied during the entire leave phase.",
+      type: "string",
+    },
+    "leaveTo": {
+      description: "Override class for leave end state.",
+      type: "string",
+    },
+    "onBeforeEnter": {
+      description: "Called before enter classes are applied.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onAfterEnter": {
+      description: "Called after the enter transition completes.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onBeforeLeave": {
+      description: "Called before leave classes are applied.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onAfterLeave": {
+      description: "Called after the leave transition completes and the element is removed.",
+      type: "(el: HTMLElement) => void",
+    },
+    "children": {
+      description: "A single DOM element VNode to animate.",
+      type: "VNodeChild",
+    },
+  }}
+/>
+
+---
+
+## TransitionGroup
+
+`TransitionGroup` animates a keyed list. It handles enter and leave transitions for
+individual items and FLIP move animations when items reorder.
+
+```tsx title="src/AnimatedList.tsx"
+import { signal } from "@nova/reactivity"
+import { TransitionGroup } from "@nova/runtime-dom"
+import { h } from "@nova/core"
+
+let nextId = 3
+
+function AnimatedList() {
+  const items = signal([
+    { id: 1, text: "First" },
+    { id: 2, text: "Second" },
+  ])
+
+  const add = () => {
+    items.update(list => [...list, { id: nextId++, text: `Item ${nextId}` }])
+  }
+
+  const remove = (id: number) => {
+    items.update(list => list.filter(item => item.id !== id))
+  }
+
+  const shuffle = () => {
+    items.update(list => [...list].sort(() => Math.random() - 0.5))
+  }
+
+  return (
+    <>
+      <button onClick={add}>Add</button>
+      <button onClick={shuffle}>Shuffle</button>
+      <TransitionGroup
+        tag="ul"
+        name="list"
+        items={items}
+        keyFn={(item) => item.id}
+        render={(item) => (
+          <li class="item" onClick={() => remove(item.id)}>
+            {item.text}
+          </li>
+        )}
+      />
+    </>
+  )
+}
+```
+
+```css title="src/list.css"
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 300ms ease;
+}
+
+.list-move {
+  transition: transform 300ms ease;
+}
+```
+
+### How FLIP Move Works
+
+When items reorder, `TransitionGroup` uses the FLIP technique:
+
+1. **F**irst -- records each element's position before the DOM update.
+2. **L**ast -- reads each element's new position after the DOM update.
+3. **I**nvert -- applies an inverse `transform` so elements appear at their old position.
+4. **P**lay -- removes the transform with `{name}-move` class applied, letting CSS transition them smoothly.
+
+<Callout type="info" title="Move class">
+  The move class defaults to `{name}-move`. Override it with the `moveClass` prop.
+  Make sure it includes `transition: transform` (or equivalent) for the animation to work.
+</Callout>
+
+### `TransitionGroup` Props
+
+<TypeTable
+  type={{
+    "items": {
+      description: "Reactive accessor returning the list of items.",
+      type: "() => T[]",
+    },
+    "keyFn": {
+      description: "Returns a stable unique key for each item.",
+      type: "(item: T, index: number) => string | number",
+    },
+    "render": {
+      description: "Render function for each item. Must return a DOM element VNode (not a component).",
+      type: "(item: T, index: number) => VNode",
+    },
+    "tag": {
+      description: "Wrapper element tag. Default: \"div\".",
+      type: "string",
+    },
+    "name": {
+      description: "CSS class prefix. Default: \"nova\".",
+      type: "string",
+    },
+    "appear": {
+      description: "Run enter animation for items present on initial mount. Default: false.",
+      type: "boolean",
+    },
+    "moveClass": {
+      description: "Override class applied during FLIP move. Default: \"{name}-move\".",
+      type: "string",
+    },
+    "enterFrom": {
+      description: "Override class for enter start state.",
+      type: "string",
+    },
+    "enterActive": {
+      description: "Override class applied during enter phase.",
+      type: "string",
+    },
+    "enterTo": {
+      description: "Override class for enter end state.",
+      type: "string",
+    },
+    "leaveFrom": {
+      description: "Override class for leave start state.",
+      type: "string",
+    },
+    "leaveActive": {
+      description: "Override class applied during leave phase.",
+      type: "string",
+    },
+    "leaveTo": {
+      description: "Override class for leave end state.",
+      type: "string",
+    },
+    "onBeforeEnter": {
+      description: "Called before enter classes are applied.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onAfterEnter": {
+      description: "Called after the enter transition completes.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onBeforeLeave": {
+      description: "Called before leave classes are applied.",
+      type: "(el: HTMLElement) => void",
+    },
+    "onAfterLeave": {
+      description: "Called after the leave transition completes and the element is removed.",
+      type: "(el: HTMLElement) => void",
+    },
+  }}
+/>
+
+---
+
+## Tips and Gotchas
+
+<Callout type="error" title="Child must be a DOM element">
+  Both `Transition` and `TransitionGroup` inject a `ref` onto the child to apply CSS classes.
+  The child must be a native DOM element VNode (e.g., `<div>`, `<li>`) -- not a component.
+  If you wrap content in a component, the ref cannot be forwarded and animations will not run.
+</Callout>
+
+<Callout type="warn" title="Always define transition duration in CSS">
+  Nova listens for `transitionend` and `animationend` events to know when to clean up classes
+  and remove elements. If your CSS does not define a `transition` or `animation` duration,
+  these events will never fire and the element will stay in its transition state indefinitely.
+</Callout>
+
+- **Multiple CSS properties** -- If you transition multiple properties with different durations,
+  `transitionend` fires once per property. Nova uses `{ once: true }`, so it cleans up on the
+  first one. Keep transition durations uniform, or use a single `transition: all` shorthand.
+
+- **Leave animation and re-enter** -- If `show` toggles back to `true` during a leave animation,
+  `Transition` cancels the leave and starts entering immediately. No duplicate elements appear.
+
+- **TransitionGroup renders a wrapper element** -- Unlike `Transition`, `TransitionGroup`
+  renders a wrapper element (`<div>` by default). Set the `tag` prop to change it (e.g., `"ul"`).
+
+- **Stagger animations** -- Use `onBeforeEnter` to set a CSS custom property for staggered delays:
+  ```tsx
+  <TransitionGroup
+    name="stagger"
+    items={items}
+    keyFn={(item) => item.id}
+    render={(item, index) => <li style={`--i: ${index}`}>{item.text}</li>}
+  />
+  ```
+  ```css
+  .stagger-enter-active {
+    transition: all 300ms ease;
+    transition-delay: calc(var(--i) * 50ms);
+  }
+  ```

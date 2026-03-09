@@ -1,0 +1,111 @@
+---
+title: "Portals"
+description: "Portal for rendering children into a different DOM node, useful for modals and tooltips."
+---
+
+A `Portal` renders its children into a different DOM node than the one in the component tree.
+This is useful for modals, tooltips, dropdowns, and any UI that needs to escape its parent's
+overflow or z-index context.
+
+<Callout type="info" title="Context works through portals">
+  Even though the portal's children are rendered in a different DOM node, they still have
+  access to all context values from their logical parent in the component tree.
+</Callout>
+
+## Basic Usage
+
+```tsx title="src/Modal.tsx"
+import { Portal } from "@nova/core"
+import { signal } from "@nova/reactivity"
+
+function App() {
+  const open = signal(false)
+
+  return (
+    <div>
+      <button onClick={() => open.set(true)}>Open Modal</button>
+
+      {() => open() && (
+        <Portal target={document.body}>
+          <div class="modal-overlay" onClick={() => open.set(false)}>
+            <div class="modal" onClick={e => e.stopPropagation()}>
+              <h2>Modal Title</h2>
+              <p>This is rendered directly in document.body</p>
+              <button onClick={() => open.set(false)}>Close</button>
+            </div>
+          </div>
+        </Portal>
+      )}
+    </div>
+  )
+}
+```
+
+## Project Structure Example
+
+<Files>
+  <Folder name="src" defaultOpen>
+    <Folder name="components" defaultOpen>
+      <File name="Modal.tsx" />
+      <File name="Tooltip.tsx" />
+      <File name="Dropdown.tsx" />
+    </Folder>
+    <File name="App.tsx" />
+    <File name="main.tsx" />
+  </Folder>
+  <File name="index.html" />
+</Files>
+
+In `index.html`, add a `#portal-root` div next to `#app` as an alternative target:
+
+```html title="index.html"
+<body>
+  <div id="app"></div>
+  <div id="portal-root"></div>
+</body>
+```
+
+```tsx title="src/Tooltip.tsx"
+import { Portal } from "@nova/core"
+
+const portalRoot = document.getElementById("portal-root")!
+
+function Tooltip({ text, children }: { text: string; children: VNodeChild }) {
+  const show = signal(false)
+  const pos = signal({ x: 0, y: 0 })
+
+  return (
+    <span
+      onMouseEnter={e => { pos.set({ x: e.clientX, y: e.clientY }); show.set(true) }}
+      onMouseLeave={() => show.set(false)}
+    >
+      {children}
+      {() => show() && (
+        <Portal target={portalRoot}>
+          <div
+            class="tooltip"
+            style={() => `left:${pos().x}px;top:${pos().y}px`}
+          >
+            {text}
+          </div>
+        </Portal>
+      )}
+    </span>
+  )
+}
+```
+
+## API
+
+<TypeTable
+  type={{
+    "target": {
+      description: "The DOM element to render children into.",
+      type: "Element",
+    },
+    "children": {
+      description: "The content to render inside the target element.",
+      type: "VNodeChild",
+    },
+  }}
+/>

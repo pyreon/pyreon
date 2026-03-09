@@ -1,0 +1,342 @@
+---
+title: "Advanced Reactivity"
+description: "effectScope, watch, createResource, createStore, reconcile, renderEffect, cell, and error handling for effects."
+---
+
+Beyond signals, computed, and effects, Nova provides advanced reactive primitives for
+scope management, data fetching, deep reactive state, and more.
+
+## effectScope()
+
+An `EffectScope` groups effects together so they can be disposed as a unit. Components
+create scopes automatically, but you can create manual scopes for non-component contexts
+like tests or service layers.
+
+```ts title="src/scope-example.ts"
+import { signal, effect, effectScope } from "@nova/reactivity"
+
+const scope = effectScope()
+
+scope.runInScope(() => {
+  const count = signal(0)
+
+  // This effect is auto-registered with the scope
+  effect(() => {
+    console.log("count:", count())
+  })
+})
+
+// Later — dispose all effects created within the scope
+scope.stop()
+```
+
+<TypeTable
+  type={{
+    "effectScope()": {
+      description: "Creates a new EffectScope.",
+      type: "EffectScope",
+    },
+    "scope.runInScope(fn)": {
+      description: "Runs fn inside the scope so effects created within are auto-tracked.",
+      type: "T",
+    },
+    "scope.stop()": {
+      description: "Disposes all tracked effects and prevents further additions.",
+      type: "void",
+    },
+    "getCurrentScope()": {
+      description: "Returns the currently active scope, or null.",
+      type: "EffectScope | null",
+    },
+  }}
+/>
+
+<Callout type="info" title="Component scopes">
+  You rarely need `effectScope()` directly. In components, effects created during setup
+  are auto-tracked and disposed on unmount. Use manual scopes for service layers, tests,
+  or effects outside the component tree.
+</Callout>
+
+---
+
+## watch()
+
+`watch` observes a reactive source and calls a callback whenever the value changes.
+Unlike `effect`, it gives you both the new and old values, and only runs the callback
+on changes (not on initial setup, unless `immediate` is set).
+
+```ts title="src/watch-example.ts"
+import { signal, watch } from "@nova/reactivity"
+
+const userId = signal(1)
+
+const stop = watch(
+  () => userId(),
+  async (newId, oldId) => {
+    console.log(`User changed from ${oldId} to ${newId}`)
+    const res = await fetch(`/api/user/${newId}`)
+    // ...
+  },
+)
+
+userId.set(2)  // logs "User changed from 1 to 2"
+
+// Stop watching
+stop()
+```
+
+### Options
+
+<TypeTable
+  type={{
+    "immediate": {
+      description: "If true, run the callback immediately with the current value. Default: false.",
+      type: "boolean",
+    },
+  }}
+/>
+
+### Cleanup
+
+The callback can return a cleanup function. It runs before each re-invocation and when
+the watcher is stopped — useful for cancelling in-flight requests.
+
+```ts title="src/watch-cleanup.ts"
+const stop = watch(
+  () => searchQuery(),
+  (query) => {
+    const controller = new AbortController()
+    fetch(`/api/search?q=${query}`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(setResults)
+
+    // Returned function is called before the next run
+    return () => controller.abort()
+  },
+)
+```
+
+---
+
+## createResource()
+
+An async data-fetching primitive. Automatically re-fetches when the reactive source changes,
+and exposes `data`, `loading`, and `error` signals.
+
+```ts title="src/resource-example.ts"
+import { signal, createResource } from "@nova/reactivity"
+
+const userId = signal(1)
+
+const user = createResource(
+  () => userId(),                              // reactive source
+  (id) => fetch(`/api/user/${id}`).then(r => r.json()),  // fetcher
+)
+
+// In your component:
+// user.data()    — the fetched user (undefined while loading)
+// user.loading() — true while in flight
+// user.error()   — the last error, or undefined
+```
+
+<TypeTable
+  type={{
+    "data": {
+      description: "Signal containing the latest resolved value (undefined while loading).",
+      type: "Signal<T | undefined>",
+    },
+    "loading": {
+      description: "Signal that is true while a fetch is in flight.",
+      type: "Signal<boolean>",
+    },
+    "error": {
+      description: "Signal containing the last error thrown by the fetcher.",
+      type: "Signal<unknown>",
+    },
+    "refetch()": {
+      description: "Manually re-run the fetcher with the current source value.",
+      type: "void",
+    },
+  }}
+/>
+
+<Callout type="info" title="Race condition handling">
+  `createResource` tracks a request ID internally. If the source changes before a previous
+  fetch completes, the stale response is discarded — only the latest request's result is applied.
+</Callout>
+
+---
+
+## createStore() / reconcile() / isStore()
+
+For complex state with nested objects or arrays, `createStore` wraps a plain object in a
+deep reactive Proxy. You mutate properties directly — each property gets its own signal
+under the hood, so only the effects that read changed properties re-run.
+
+### createStore
+
+```ts title="src/store-example.ts"
+import { effect } from "@nova/reactivity"
+import { createStore } from "@nova/reactivity"
+
+const state = createStore({
+  count: 0,
+  user: { name: "Alice", age: 30 },
+  items: [{ id: 1, text: "hello" }],
+})
+
+effect(() => console.log(state.count))       // tracks only count
+effect(() => console.log(state.user.name))   // tracks only user.name
+
+state.count++                // only the count effect re-runs
+state.user.name = "Bob"     // only the name effect re-runs
+state.items[0].text = "hi"  // only effects reading items[0].text re-run
+```
+
+<Callout type="info" title="Fine-grained updates">
+  Unlike replacing a whole signal, mutating a store property only notifies the signals for
+  that specific property. Deeply nested updates are O(1) for reactivity.
+</Callout>
+
+### reconcile
+
+When you receive a full new state snapshot (e.g., from an API response), `reconcile` diffs
+it against the existing store and only triggers signals for properties that actually changed.
+
+```ts title="src/reconcile-example.ts"
+import { createStore, reconcile } from "@nova/reactivity"
+
+const state = createStore({
+  user: { name: "Alice", age: 30 },
+  items: [{ id: 1, text: "hello" }],
+})
+
+// API response arrives:
+const apiResponse = {
+  user: { name: "Alice", age: 31 },   // only age changed
+  items: [{ id: 1, text: "hello" }, { id: 2, text: "world" }],
+}
+
+reconcile(apiResponse, state)
+// Only state.user.age fires — name is unchanged
+// state.items[1] is newly created
+```
+
+### isStore
+
+Check whether a value is a reactive store proxy.
+
+```ts
+import { createStore, isStore } from "@nova/reactivity"
+
+const state = createStore({ count: 0 })
+isStore(state)  // true
+isStore({ count: 0 })  // false
+```
+
+---
+
+## renderEffect()
+
+A lightweight effect optimized for DOM render bindings. It skips `EffectScope` registration,
+error handling, and `onUpdate` notifications. The framework uses it internally to bind
+reactive expressions to DOM attributes and text nodes.
+
+```ts title="src/render-effect-example.ts"
+import { signal, renderEffect } from "@nova/reactivity"
+
+const count = signal(0)
+
+const dispose = renderEffect(() => {
+  // Updates a DOM node directly — no scope overhead
+  el.textContent = String(count())
+})
+
+// Manual cleanup — not auto-disposed by EffectScope
+dispose()
+```
+
+<Callout type="warn" title="Internal primitive">
+  `renderEffect` is primarily an internal optimization. In application code, prefer `effect()`
+  which integrates with component scopes and error handling automatically.
+</Callout>
+
+---
+
+## cell()
+
+A class-based alternative to `signal()`. Uses a single object allocation instead of
+multiple closures, making it faster for high-volume scenarios like list item labels.
+
+The tradeoff: cells are **not** automatically tracked by effects. You subscribe manually
+via `subscribe()` or `listen()`.
+
+```ts title="src/cell-example.ts"
+import { cell } from "@nova/reactivity"
+
+const name = cell("Alice")
+
+name.peek()         // "Alice" — read without subscribing
+name.set("Bob")     // notifies subscribers
+name.update(n => n.toUpperCase())  // "BOB"
+
+// Manual subscription
+const unsub = name.subscribe(() => {
+  console.log("name changed to", name.peek())
+})
+
+// Fire-and-forget (no unsubscribe — saves 1 allocation)
+name.listen(() => updateDOM(name.peek()))
+```
+
+<TypeTable
+  type={{
+    "cell(value)": {
+      description: "Creates a Cell with the given initial value.",
+      type: "Cell<T>",
+    },
+    "cell.peek()": {
+      description: "Reads the current value without subscribing.",
+      type: "T",
+    },
+    "cell.set(value)": {
+      description: "Sets a new value and notifies all subscribers. Skips if Object.is equal.",
+      type: "void",
+    },
+    "cell.update(fn)": {
+      description: "Updates the value using a function that receives the current value.",
+      type: "void",
+    },
+    "cell.subscribe(fn)": {
+      description: "Subscribes to changes. Returns an unsubscribe function.",
+      type: "() => void",
+    },
+    "cell.listen(fn)": {
+      description: "Fire-and-forget subscription — no unsubscribe returned.",
+      type: "void",
+    },
+  }}
+/>
+
+---
+
+## setErrorHandler()
+
+Set a global error handler for unhandled errors thrown inside effects. By default, effect
+errors are logged with `console.error`. Use this to integrate with your error monitoring.
+
+```ts title="src/error-handler.ts"
+import { setErrorHandler } from "@nova/reactivity"
+
+setErrorHandler((err) => {
+  // Send to monitoring service
+  myErrorTracker.captureException(err)
+  // Still log locally
+  console.error("[app] effect error:", err)
+})
+```
+
+<Callout type="info" title="Scope">
+  `setErrorHandler` only applies to `effect()` errors. For component-level error handling,
+  use `ErrorBoundary` or `onErrorCaptured` — see the [Error Handling](/docs/error-handling) guide.
+</Callout>

@@ -1,0 +1,190 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+
+:root {
+  --bg: #0f0f11;
+  --surface: #1a1a1f;
+  --border: #2e2e38;
+  --accent: #7c6af7;
+  --accent-hover: #9f91fa;
+  --text: #e8e8f0;
+  --muted: #888;
+  --danger: #f06060;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+#layout {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+}
+
+header h1 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: color 0.15s;
+}
+
+nav a:hover { color: var(--text) }
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+}
+
+/* Counter */
+.value {
+  font-size: 4rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: -2px;
+  line-height: 1;
+  margin: 1rem 0 0.25rem;
+}
+
+.doubled {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+button {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+button:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+/* TodoList */
+.remaining {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+input[type="text"] {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input[type="text"]:focus { border-color: var(--accent) }
+input[type="text"]::placeholder { color: var(--muted) }
+
+.todo-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.todo-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  transition: opacity 0.2s;
+}
+
+.todo-list li.done { opacity: 0.45 }
+.todo-list li.done span { text-decoration: line-through }
+
+.todo-list span { flex: 1 }
+
+button.remove {
+  padding: 0.2rem 0.5rem;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+button.remove:hover { color: var(--danger); border-color: var(--danger) }
+
+/* About */
+.card ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.card ul li { padding: 0.25rem 0 }

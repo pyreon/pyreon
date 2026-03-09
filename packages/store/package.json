@@ -1,0 +1,28 @@
+{
+  "name": "@pyreon/store",
+  "version": "0.0.1",
+  "description": "Global state management for Pyreon",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/reactivity",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch --external @pyreon/reactivity",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/reactivity": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "*"
+  }
+}

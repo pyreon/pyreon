@@ -1,0 +1,83 @@
+{
+  "date": "2026-03-09T11:26:27.330Z",
+  "packages": [
+    {
+      "name": "@pyreon/compiler",
+      "raw": 4196404,
+      "gzip": 1201687,
+      "brotli": 905197
+    },
+    {
+      "name": "@pyreon/core",
+      "raw": 3113,
+      "gzip": 1373,
+      "brotli": 1238
+    },
+    {
+      "name": "@pyreon/head",
+      "raw": 2472,
+      "gzip": 1134,
+      "brotli": 991
+    },
+    {
+      "name": "@pyreon/model",
+      "raw": 2507,
+      "gzip": 1114,
+      "brotli": 982
+    },
+    {
+      "name": "@pyreon/query",
+      "raw": 46442,
+      "gzip": 13385,
+      "brotli": 11913
+    },
+    {
+      "name": "@pyreon/react-compat",
+      "raw": 1889,
+      "gzip": 897,
+      "brotli": 807
+    },
+    {
+      "name": "@pyreon/reactivity",
+      "raw": 4813,
+      "gzip": 1946,
+      "brotli": 1752
+    },
+    {
+      "name": "@pyreon/router",
+      "raw": 10517,
+      "gzip": 3937,
+      "brotli": 3474
+    },
+    {
+      "name": "@pyreon/runtime-dom",
+      "raw": 20179,
+      "gzip": 6953,
+      "brotli": 6028
+    },
+    {
+      "name": "@pyreon/runtime-server",
+      "raw": 4732,
+      "gzip": 1953,
+      "brotli": 1707
+    },
+    {
+      "name": "@pyreon/server",
+      "raw": 3504,
+      "gzip": 1858,
+      "brotli": 1535
+    },
+    {
+      "name": "@pyreon/store",
+      "raw": 440,
+      "gzip": 288,
+      "brotli": 241
+    },
+    {
+      "name": "@pyreon/vite-plugin",
+      "raw": 1461,
+      "gzip": 897,
+      "brotli": 771
+    }
+  ]
+}

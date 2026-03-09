@@ -1,0 +1,23 @@
+{
+  "name": "@pyreon/playground",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/vite-plugin": "workspace:*",
+    "typescript": "*",
+    "vite": "^6.0.0"
+  }
+}

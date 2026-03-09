@@ -1,0 +1,29 @@
+{
+  "name": "@pyreon/runtime-server",
+  "version": "0.0.1",
+  "description": "SSR/SSG renderer for Pyreon — streaming HTML + static generation",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch --external @pyreon/core --external @pyreon/reactivity",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "*"
+  }
+}

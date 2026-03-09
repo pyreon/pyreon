@@ -1,0 +1,38 @@
+{
+  "name": "@pyreon/core",
+  "version": "0.0.1",
+  "description": "Core component model and lifecycle for Pyreon",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./jsx-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./dist/jsx-runtime.js",
+      "types": "./dist/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "bun": "./src/jsx-dev-runtime.ts",
+      "import": "./dist/jsx-dev-runtime.js",
+      "types": "./dist/jsx-dev-runtime.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/jsx-runtime.ts ./src/jsx-dev-runtime.ts --outdir ./dist --target browser --format esm --sourcemap --splitting --external @pyreon/reactivity",
+    "dev": "bun build ./src/index.ts ./src/jsx-runtime.ts ./src/jsx-dev-runtime.ts --outdir ./dist --target browser --format esm --sourcemap --splitting --watch --external @pyreon/reactivity",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/reactivity": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "*"
+  }
+}

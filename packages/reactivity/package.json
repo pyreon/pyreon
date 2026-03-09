@@ -1,0 +1,25 @@
+{
+  "name": "@pyreon/reactivity",
+  "version": "0.0.1",
+  "description": "Signals-based reactivity system for Pyreon",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "*"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@pyreon/router",
+  "version": "0.0.1",
+  "description": "Official router for Pyreon",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "*"
+  }
+}
