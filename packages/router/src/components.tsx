@@ -21,7 +21,13 @@ export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   // isolated per component tree in CSR.
   const frame = new Map([[RouterContext.id, router]])
   pushContext(frame)
-  onUnmount(() => popContext())
+  onUnmount(() => {
+    popContext()
+    // Clean up event listeners, caches, abort in-flight navigations.
+    // Safe to call multiple times (destroy is idempotent).
+    router.destroy()
+    setActiveRouter(null)
+  })
   // Also set the module fallback so programmatic useRouter() outside a component
   // tree (e.g. navigation guards in event handlers) still works in CSR.
   setActiveRouter(router)

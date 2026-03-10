@@ -1,3 +1,5 @@
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 import { onUnmount } from "@pyreon/core"
 import { signal, batch } from "@pyreon/reactivity"
 import type { Signal } from "@pyreon/reactivity"
@@ -88,7 +90,14 @@ export function useMutation<
     isSuccess,
     isError,
     isIdle,
-    mutate:      (vars, callbackOptions) => { observer.mutate(vars, callbackOptions).catch(() => {}) },
+    mutate:      (vars, callbackOptions) => {
+      observer.mutate(vars, callbackOptions).catch((err) => {
+        // Error is already captured in the error signal via the observer subscription.
+        // This catch prevents an unhandled promise rejection for fire-and-forget callers.
+        // Use mutateAsync() if you need to handle the error in a try/catch.
+        if (__DEV__) console.error("[pyreon/query] Mutation failed:", err)
+      })
+    },
     mutateAsync: (vars, callbackOptions) => observer.mutate(vars, callbackOptions),
     reset:       () => observer.reset(),
   }

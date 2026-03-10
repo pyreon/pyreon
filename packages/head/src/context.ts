@@ -19,6 +19,12 @@ export interface HeadTag {
 
 export interface UseHeadInput {
   title?: string
+  /**
+   * Title template — use `%s` as a placeholder for the page title.
+   * Applied to the resolved title after deduplication.
+   * @example useHead({ titleTemplate: "%s | My App" })
+   */
+  titleTemplate?: string | ((title: string) => string)
   meta?: Array<Record<string, string>>
   link?: Array<Record<string, string>>
   script?: Array<{ src?: string; children?: string } & Record<string, string | undefined>>
@@ -27,32 +33,70 @@ export interface UseHeadInput {
   /** Convenience: emits a <script type="application/ld+json"> tag with JSON.stringify'd content */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
   base?: Record<string, string>
+  /** Attributes to set on the <html> element (e.g. { lang: "en", dir: "ltr" }) */
+  htmlAttrs?: Record<string, string>
+  /** Attributes to set on the <body> element (e.g. { class: "dark" }) */
+  bodyAttrs?: Record<string, string>
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
+export interface HeadEntry {
+  tags: HeadTag[]
+  titleTemplate?: string | ((title: string) => string)
+  htmlAttrs?: Record<string, string>
+  bodyAttrs?: Record<string, string>
+}
+
 export interface HeadContextValue {
-  add(id: symbol, tags: HeadTag[]): void
+  add(id: symbol, entry: HeadEntry): void
   remove(id: symbol): void
   /** Returns deduplicated tags — last-added entry wins per key */
   resolve(): HeadTag[]
+  /** Returns the merged titleTemplate (last-added wins) */
+  resolveTitleTemplate(): (string | ((title: string) => string)) | undefined
+  /** Returns merged htmlAttrs (later entries override earlier) */
+  resolveHtmlAttrs(): Record<string, string>
+  /** Returns merged bodyAttrs (later entries override earlier) */
+  resolveBodyAttrs(): Record<string, string>
 }
 
 export function createHeadContext(): HeadContextValue {
-  const map = new Map<symbol, HeadTag[]>()
+  const map = new Map<symbol, HeadEntry>()
   return {
-    add(id, tags) { map.set(id, tags) },
+    add(id, entry) { map.set(id, entry) },
     remove(id) { map.delete(id) },
     resolve() {
       const keyed = new Map<string, HeadTag>()
       const unkeyed: HeadTag[] = []
-      for (const tags of map.values()) {
-        for (const tag of tags) {
+      for (const entry of map.values()) {
+        for (const tag of entry.tags) {
           if (tag.key) keyed.set(tag.key, tag)
           else unkeyed.push(tag)
         }
       }
       return [...keyed.values(), ...unkeyed]
+    },
+    resolveTitleTemplate() {
+      let template: (string | ((title: string) => string)) | undefined
+      for (const entry of map.values()) {
+        if (entry.titleTemplate !== undefined) template = entry.titleTemplate
+      }
+      return template
+    },
+    resolveHtmlAttrs() {
+      const attrs: Record<string, string> = {}
+      for (const entry of map.values()) {
+        if (entry.htmlAttrs) Object.assign(attrs, entry.htmlAttrs)
+      }
+      return attrs
+    },
+    resolveBodyAttrs() {
+      const attrs: Record<string, string> = {}
+      for (const entry of map.values()) {
+        if (entry.bodyAttrs) Object.assign(attrs, entry.bodyAttrs)
+      }
+      return attrs
     },
   }
 }

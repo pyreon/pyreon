@@ -104,6 +104,14 @@ describe("createHandler", () => {
     expect(html).toContain("__PYREON_LOADER_DATA__")
     expect(html).toContain('"items"')
   })
+
+  test("returns 500 on render error", async () => {
+    const BrokenApp: ComponentFn = () => { throw new Error("boom") }
+    const handler = createHandler({ App: BrokenApp, routes })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.status).toBe(500)
+    expect(await res.text()).toBe("Internal Server Error")
+  })
 })
 
 // ─── Middleware ───────────────────────────────────────────────────────────────

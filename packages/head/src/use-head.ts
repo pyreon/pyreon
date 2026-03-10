@@ -1,10 +1,10 @@
 import { useContext, onMount, onUnmount } from "@pyreon/core"
 import { effect } from "@pyreon/reactivity"
 import { HeadContext } from "./context"
-import type { HeadTag, UseHeadInput } from "./context"
+import type { HeadEntry, HeadTag, UseHeadInput } from "./context"
 import { syncDom } from "./dom"
 
-function buildTags(o: UseHeadInput): HeadTag[] {
+function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
   if (o.title != null) tags.push({ tag: "title", key: "title", children: o.title })
   o.meta?.forEach((m, i) => tags.push({
@@ -14,7 +14,7 @@ function buildTags(o: UseHeadInput): HeadTag[] {
   }))
   o.link?.forEach((l, i) => tags.push({
     tag: "link",
-    key: l["rel"] ? `link-${l["rel"]}` : `link-${i}`,
+    key: l.href ? `link-${l.rel ?? ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
     props: l,
   }))
   o.script?.forEach((s, i) => {
@@ -47,11 +47,17 @@ function buildTags(o: UseHeadInput): HeadTag[] {
     })
   }
   if (o.base) tags.push({ tag: "base", key: "base", props: o.base })
-  return tags
+  return {
+    tags,
+    titleTemplate: o.titleTemplate,
+    htmlAttrs: o.htmlAttrs,
+    bodyAttrs: o.bodyAttrs,
+  }
 }
 
 /**
- * Register head tags (title, meta, link, script, base) for the current component.
+ * Register head tags (title, meta, link, script, style, noscript, base, jsonLd)
+ * for the current component.
  *
  * Accepts a static object or a reactive getter:
  *   useHead({ title: "My Page", meta: [{ name: "description", content: "..." }] })
@@ -69,13 +75,13 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
   if (typeof input === "function") {
     if (typeof document !== "undefined") {
       // CSR: reactive — re-register whenever signals change
-      effect(() => { ctx.add(id, buildTags(input())); syncDom(ctx) })
+      effect(() => { ctx.add(id, buildEntry(input())); syncDom(ctx) })
     } else {
       // SSR: evaluate once synchronously (no effects on server)
-      ctx.add(id, buildTags(input()))
+      ctx.add(id, buildEntry(input()))
     }
   } else {
-    ctx.add(id, buildTags(input))
+    ctx.add(id, buildEntry(input))
     if (typeof document !== "undefined") {
       onMount(() => { syncDom(ctx); return undefined })
     }

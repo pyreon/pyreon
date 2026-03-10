@@ -22,7 +22,16 @@ const VOID_TAGS = new Set(["meta", "link", "base"])
  *   <body><div id="app">${html}</div></body>
  * </html>`
  */
-export async function renderWithHead(app: VNode): Promise<{ html: string; head: string }> {
+export interface RenderWithHeadResult {
+  html: string
+  head: string
+  /** Attributes to set on the <html> element */
+  htmlAttrs: Record<string, string>
+  /** Attributes to set on the <body> element */
+  bodyAttrs: Record<string, string>
+}
+
+export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> {
   const ctx = createHeadContext()
 
   // HeadInjector runs inside renderToString's ALS scope, so pushContext reaches
@@ -33,13 +42,26 @@ export async function renderWithHead(app: VNode): Promise<{ html: string; head: 
   }
 
   const html = await renderToString(h(HeadInjector as ComponentFn, null))
-  const head = ctx.resolve().map(serializeTag).join("\n  ")
-  return { html, head }
+  const titleTemplate = ctx.resolveTitleTemplate()
+  const head = ctx.resolve().map((tag) => serializeTag(tag, titleTemplate)).join("\n  ")
+  return {
+    html,
+    head,
+    htmlAttrs: ctx.resolveHtmlAttrs(),
+    bodyAttrs: ctx.resolveBodyAttrs(),
+  }
 }
 
-function serializeTag(tag: HeadTag): string {
+function serializeTag(
+  tag: HeadTag,
+  titleTemplate?: string | ((title: string) => string),
+): string {
   if (tag.tag === "title") {
-    return `<title>${esc(tag.children ?? "")}</title>`
+    const raw = tag.children ?? ""
+    const title = titleTemplate
+      ? typeof titleTemplate === "function" ? titleTemplate(raw) : titleTemplate.replace(/%s/g, raw)
+      : raw
+    return `<title>${esc(title)}</title>`
   }
   const attrs = Object.entries(tag.props ?? {})
     .map(([k, v]) => `${k}="${esc(v)}"`)

@@ -648,3 +648,62 @@ describe("renderToStream — additional coverage", () => {
     expect(scriptMatches).toHaveLength(1)
   })
 })
+
+// ─── Concurrent SSR isolation ─────────────────────────────────────────────────
+
+describe("concurrent SSR isolation", () => {
+  test("50 concurrent renders produce correct isolated output", async () => {
+    function Page(props: { id: number }) {
+      return h("div", { "data-id": props.id }, `page-${props.id}`)
+    }
+
+    const renders = Array.from({ length: 50 }, (_, i) =>
+      runWithRequestContext(() => renderToString(h(Page as unknown as ComponentFn, { id: i })))
+    )
+    const results = await Promise.all(renders)
+
+    for (let i = 0; i < 50; i++) {
+      const html = results[i]
+      expect(html).toContain(`data-id="${i}"`)
+      expect(html).toContain(`page-${i}`)
+    }
+  })
+
+  test("concurrent renders with different props do not leak state", async () => {
+    function UserPage(props: { name: string }) {
+      return h("div", null, `user:${props.name}`)
+    }
+
+    // Launch 40 concurrent renders with alternating data
+    const renders = Array.from({ length: 40 }, (_, i) =>
+      runWithRequestContext(() => {
+        const name = i % 2 === 0 ? `alice-${i}` : `bob-${i}`
+        return renderToString(h(UserPage as unknown as ComponentFn, { name }))
+      })
+    )
+    const results = await Promise.all(renders)
+
+    for (let i = 0; i < 40; i++) {
+      const expected = i % 2 === 0 ? `user:alice-${i}` : `user:bob-${i}`
+      expect(results[i]).toContain(expected)
+    }
+  })
+
+  test("concurrent renders with async components stay isolated", async () => {
+    async function SlowPage(props: { label: string }): Promise<VNode> {
+      await new Promise<void>(r => setTimeout(r, Math.random() * 10))
+      return h("span", null, props.label)
+    }
+
+    const renders = Array.from({ length: 30 }, (_, i) =>
+      runWithRequestContext(() =>
+        renderToString(h(SlowPage as unknown as ComponentFn, { label: `item-${i}` }))
+      )
+    )
+    const results = await Promise.all(renders)
+
+    for (let i = 0; i < 30; i++) {
+      expect(results[i]).toContain(`item-${i}`)
+    }
+  })
+})

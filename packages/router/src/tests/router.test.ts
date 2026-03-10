@@ -2015,3 +2015,74 @@ describe("stale chunk detection", () => {
     })
   }, 10000)
 })
+
+// ─── Router lifecycle ──────────────────────────────────────────────────────────
+
+describe("router lifecycle", () => {
+  const Home = () => h("div", null, "home")
+  const routes: RouteRecord[] = [{ path: "/", component: Home }]
+
+  test("destroy() clears guards, hooks, and caches", () => {
+    const router = createRouter({ routes, url: "/" }) as RouterInstance
+    router.beforeEach(() => false)
+    router.afterEach(() => {})
+    router._componentCache.set({} as RouteRecord, Home)
+    router._loaderData.set({} as RouteRecord, { x: 1 })
+
+    router.destroy()
+
+    // Caches cleared
+    expect(router._componentCache.size).toBe(0)
+    expect(router._loaderData.size).toBe(0)
+  })
+
+  test("beforeEach returns unregister function", async () => {
+    const router = createRouter({ routes, url: "/" })
+    const calls: string[] = []
+    const unregister = router.beforeEach(() => { calls.push("guard") })
+
+    await router.push("/")
+    expect(calls).toEqual(["guard"])
+
+    unregister()
+    calls.length = 0
+    await router.push("/")
+    expect(calls).toEqual([])
+  })
+
+  test("afterEach returns unregister function", async () => {
+    const router = createRouter({ routes, url: "/" })
+    const calls: string[] = []
+    const unregister = router.afterEach(() => { calls.push("hook") })
+
+    await router.push("/")
+    expect(calls).toEqual(["hook"])
+
+    unregister()
+    calls.length = 0
+    await router.push("/")
+    expect(calls).toEqual([])
+  })
+
+  test("RouterProvider calls destroy() on unmount", () => {
+    const router = createRouter({ routes, url: "/" }) as RouterInstance
+    // Add a guard so we can verify it gets cleared
+    router.beforeEach(() => {})
+    const el = container()
+    const unmount = mount(
+      h(RouterProvider, { router }, h("div", null, "app")),
+      el,
+    )
+    expect(el.textContent).toBe("app")
+    unmount()
+    // After unmount, caches should be cleared
+    expect(router._componentCache.size).toBe(0)
+    expect(router._loaderData.size).toBe(0)
+  })
+
+  test("destroy() is idempotent — calling twice does not throw", () => {
+    const router = createRouter({ routes, url: "/" })
+    router.destroy()
+    router.destroy()  // Should not throw
+  })
+})

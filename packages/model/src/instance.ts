@@ -10,11 +10,12 @@ import { runAction } from "./middleware"
 
 interface AnyModelDef {
   readonly [MODEL_BRAND]: true
-  readonly _config: ModelConfig<any, any, any>
+  readonly _config: ModelConfig<StateShape, Record<string, (...args: unknown[]) => unknown>, Record<string, Signal<unknown>>>
 }
 
 function isModelDef(v: unknown): v is AnyModelDef {
-  return v != null && typeof v === "object" && (v as any)[MODEL_BRAND] === true
+  if (v == null || typeof v !== "object") return false
+  return (v as Record<string, unknown>)[MODEL_BRAND] === true
 }
 
 // ─── Config shape ─────────────────────────────────────────────────────────────

@@ -103,8 +103,13 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  *   Search:  () => import("./Search"),
  * })
  */
-export function hydrateIslands(registry: Record<string, IslandLoader>): void {
+/**
+ * Hydrate all `<pyreon-island>` elements on the page.
+ * Returns a cleanup function that disconnects any pending observers/listeners.
+ */
+export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
   const islands = document.querySelectorAll("pyreon-island")
+  const cleanups: (() => void)[] = []
 
   for (const el of islands) {
     const componentId = el.getAttribute("data-component")
@@ -119,8 +124,11 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): void {
     const strategy = (el.getAttribute("data-hydrate") ?? "load") as HydrationStrategy
     const propsJson = el.getAttribute("data-props") ?? "{}"
 
-    scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
+    const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
+    if (cleanup) cleanups.push(cleanup)
   }
+
+  return () => { for (const fn of cleanups) fn() }
 }
 
 function scheduleHydration(
@@ -128,29 +136,29 @@ function scheduleHydration(
   loader: IslandLoader,
   propsJson: string,
   strategy: HydrationStrategy,
-): void {
-  const hydrate = () => hydrateIsland(el, loader, propsJson)
+): (() => void) | null {
+  let cancelled = false
+  const hydrate = () => { if (!cancelled) hydrateIsland(el, loader, propsJson) }
 
   switch (strategy) {
     case "load":
       hydrate()
-      break
+      return null
 
-    case "idle":
+    case "idle": {
       if ("requestIdleCallback" in window) {
-        requestIdleCallback(hydrate)
-      } else {
-        setTimeout(hydrate, 200)
+        const id = requestIdleCallback(hydrate)
+        return () => { cancelled = true; cancelIdleCallback(id) }
       }
-      break
+      const id = setTimeout(hydrate, 200)
+      return () => { cancelled = true; clearTimeout(id) }
+    }
 
     case "visible":
-      observeVisibility(el, hydrate)
-      break
+      return observeVisibility(el, hydrate)
 
     case "never":
-      // Skip — server-rendered HTML stays static
-      break
+      return null
 
     default:
       // media(query)
@@ -159,17 +167,19 @@ function scheduleHydration(
         const mql = window.matchMedia(query)
         if (mql.matches) {
           hydrate()
-        } else {
-          mql.addEventListener("change", function onChange(e) {
-            if (e.matches) {
-              mql.removeEventListener("change", onChange)
-              hydrate()
-            }
-          })
+          return null
         }
-      } else {
-        hydrate()
+        const onChange = (e: MediaQueryListEvent) => {
+          if (e.matches) {
+            mql.removeEventListener("change", onChange)
+            hydrate()
+          }
+        }
+        mql.addEventListener("change", onChange)
+        return () => { cancelled = true; mql.removeEventListener("change", onChange) }
       }
+      hydrate()
+      return null
   }
 }
 
@@ -179,20 +189,29 @@ async function hydrateIsland(
   propsJson: string,
 ): Promise<void> {
   try {
+    let props: Record<string, unknown>
+    try {
+      props = JSON.parse(propsJson)
+      if (typeof props !== "object" || props === null || Array.isArray(props)) {
+        throw new TypeError("Expected object")
+      }
+    } catch (parseErr) {
+      console.error("[pyreon/client] Invalid island props JSON:", parseErr)
+      return
+    }
+
     const mod = await loader()
     const Comp = typeof mod === "function" ? mod : mod.default
-    const props = JSON.parse(propsJson)
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
-    console.error("[pyreon/client] Failed to hydrate island:", err)
+    console.error(`[pyreon/client] Failed to hydrate island "${el.getAttribute("data-component") ?? "unknown"}":`, err)
   }
 }
 
-function observeVisibility(el: HTMLElement, callback: () => void): void {
+function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
   if (!("IntersectionObserver" in window)) {
-    // Fallback: hydrate immediately
     callback()
-    return
+    return null
   }
 
   const observer = new IntersectionObserver(
@@ -205,8 +224,9 @@ function observeVisibility(el: HTMLElement, callback: () => void): void {
         }
       }
     },
-    { rootMargin: "200px" }, // hydrate slightly before visible
+    { rootMargin: "200px" },
   )
 
   observer.observe(el)
+  return () => observer.disconnect()
 }

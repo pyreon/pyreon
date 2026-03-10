@@ -2,8 +2,8 @@
 
 export { mountChild } from "./mount"
 export type { DevtoolsComponentEntry, PyreonDevtools } from "./devtools"
-export { applyProp, applyProps, sanitizeHtml } from "./props"
-export type { Directive } from "./props"
+export { applyProp, applyProps, sanitizeHtml, setSanitizer } from "./props"
+export type { Directive, SanitizeFn } from "./props"
 export { createTemplate } from "./template"
 export { hydrateRoot } from "./hydrate"
 export { enableHydrationWarnings, disableHydrationWarnings } from "./hydration-debug"

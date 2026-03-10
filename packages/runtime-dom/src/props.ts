@@ -24,21 +24,103 @@ export type Directive = (el: HTMLElement, addCleanup: (fn: Cleanup) => void) => 
 
 const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
+// ─── Configurable sanitizer ──────────────────────────────────────────────────
+
+export type SanitizeFn = (html: string) => string
+
+let _customSanitizer: SanitizeFn | null = null
+
+/**
+ * Set a custom HTML sanitizer used by `innerHTML` and `sanitizeHtml()`.
+ * Overrides both the Sanitizer API and the built-in fallback.
+ *
+ * @example
+ * // With DOMPurify:
+ * import DOMPurify from "dompurify"
+ * setSanitizer((html) => DOMPurify.sanitize(html))
+ *
+ * // With sanitize-html:
+ * import sanitize from "sanitize-html"
+ * setSanitizer((html) => sanitize(html))
+ *
+ * // Reset to built-in:
+ * setSanitizer(null)
+ */
+export function setSanitizer(fn: SanitizeFn | null): void {
+  _customSanitizer = fn
+}
+
+// Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)
+const SAFE_TAGS = new Set([
+  "a", "abbr", "address", "article", "aside", "b", "bdi", "bdo", "blockquote",
+  "br", "caption", "cite", "code", "col", "colgroup", "dd", "del", "details",
+  "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2",
+  "h3", "h4", "h5", "h6", "header", "hr", "i", "ins", "kbd", "li", "main",
+  "mark", "nav", "ol", "p", "pre", "q", "rp", "rt", "ruby", "s", "samp",
+  "section", "small", "span", "strong", "sub", "summary", "sup", "table",
+  "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+])
+
+// Attributes that can carry executable code
+const UNSAFE_ATTR_RE = /^on/i
+
+/**
+ * Fallback tag-stripping sanitizer for environments without the Sanitizer API.
+ * Removes all tags not in SAFE_TAGS, strips event handler attributes,
+ * and blocks javascript:/data: URLs in href/src/action attributes.
+ */
+function fallbackSanitize(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  sanitizeNode(doc.body)
+  return doc.body.innerHTML
+}
+
+function sanitizeNode(node: Node): void {
+  const children = Array.from(node.childNodes)
+  for (const child of children) {
+    if (child.nodeType === 1) { // Element
+      const el = child as Element
+      const tag = el.tagName.toLowerCase()
+      if (!SAFE_TAGS.has(tag)) {
+        // Replace unsafe element with its text content
+        const text = document.createTextNode(el.textContent ?? "")
+        node.replaceChild(text, el)
+        continue
+      }
+      // Strip unsafe attributes
+      const attrs = Array.from(el.attributes)
+      for (const attr of attrs) {
+        if (UNSAFE_ATTR_RE.test(attr.name)) {
+          el.removeAttribute(attr.name)
+        } else if (URL_ATTRS.has(attr.name) && UNSAFE_URL_RE.test(attr.value)) {
+          el.removeAttribute(attr.name)
+        }
+      }
+      sanitizeNode(el)
+    }
+  }
+}
+
 /**
  * Sanitize an HTML string using the browser Sanitizer API (Chrome 105+).
- * Falls back to returning the string unchanged with a dev warning.
+ * Falls back to a tag-allowlist sanitizer that strips unsafe elements and attributes.
  */
 export function sanitizeHtml(html: string): string {
+  // User-provided sanitizer takes priority (e.g. DOMPurify)
+  if (_customSanitizer) return _customSanitizer(html)
+  // Native Sanitizer API (Chrome 105+)
   if (typeof window !== "undefined") {
     const san = (window as unknown as { Sanitizer?: new () => { sanitizeFor(tag: string, html: string): Element } }).Sanitizer
     if (san) {
       return new san().sanitizeFor("div", html).innerHTML
     }
   }
-  if (__DEV__) {
-    console.warn("[pyreon] sanitizeHtml: Sanitizer API unavailable — returning html unchanged.")
+  // Fallback: DOM-based allowlist sanitizer
+  if (typeof DOMParser !== "undefined") {
+    return fallbackSanitize(html)
   }
-  return html
+  // SSR or no DOM — strip all tags as last resort
+  return html.replace(/<[^>]*>/g, "")
 }
 
 // Matches onClick, onInput, onMouseEnter, etc.
@@ -84,18 +166,12 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     return () => el.removeEventListener(eventName, batched)
   }
 
-  // innerHTML — use Sanitizer API when available (Chrome 105+), warn in dev otherwise
+  // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer
   if (key === "innerHTML") {
     if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === "function") {
       ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(value as string)
     } else {
-      if (__DEV__) {
-        console.warn(
-          "[pyreon] innerHTML: Sanitizer API unavailable — HTML is set unsanitized. " +
-          "Use dangerouslySetInnerHTML with pre-sanitized content in production.",
-        )
-      }
-      ;(el as HTMLElement).innerHTML = value as string
+      ;(el as HTMLElement).innerHTML = sanitizeHtml(value as string)
     }
     return null
   }

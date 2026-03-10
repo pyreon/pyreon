@@ -495,6 +495,54 @@ describe("mount — Portal", () => {
     expect(target.querySelector("dialog")?.textContent).toBe("modal content")
     expect(src.querySelector("dialog")).toBeNull()
   })
+
+  test("portal re-mount after unmount works correctly", () => {
+    const src = container()
+    const target = container()
+    const unmount1 = mount(Portal({ target, children: h("span", null, "first") }), src)
+    expect(target.querySelector("span")?.textContent).toBe("first")
+    unmount1()
+    expect(target.querySelector("span")).toBeNull()
+    // Re-mount into same target
+    const unmount2 = mount(Portal({ target, children: h("span", null, "second") }), src)
+    expect(target.querySelector("span")?.textContent).toBe("second")
+    unmount2()
+    expect(target.querySelector("span")).toBeNull()
+  })
+
+  test("multiple portals into same target", () => {
+    const src = container()
+    const target = container()
+    const unmount1 = mount(Portal({ target, children: h("span", { class: "a" }, "A") }), src)
+    const unmount2 = mount(Portal({ target, children: h("span", { class: "b" }, "B") }), src)
+    expect(target.querySelectorAll("span").length).toBe(2)
+    expect(target.querySelector(".a")?.textContent).toBe("A")
+    expect(target.querySelector(".b")?.textContent).toBe("B")
+    unmount1()
+    expect(target.querySelectorAll("span").length).toBe(1)
+    expect(target.querySelector(".b")?.textContent).toBe("B")
+    unmount2()
+    expect(target.querySelectorAll("span").length).toBe(0)
+  })
+
+  test("portal with reactive Show toggle", () => {
+    const src = container()
+    const target = container()
+    const visible = signal(true)
+    mount(
+      h("div", null, () =>
+        visible()
+          ? Portal({ target, children: h("span", null, "vis") })
+          : null
+      ),
+      src,
+    )
+    expect(target.querySelector("span")?.textContent).toBe("vis")
+    visible.set(false)
+    expect(target.querySelector("span")).toBeNull()
+    visible.set(true)
+    expect(target.querySelector("span")?.textContent).toBe("vis")
+  })
 })
 
 // ─── ErrorBoundary ────────────────────────────────────────────────────────────
@@ -2231,10 +2279,58 @@ describe("props — additional coverage", () => {
     expect(a.getAttribute("href")).not.toBe("  javascript:alert(1)")
   })
 
-  test("sanitizeHtml returns html unchanged when no Sanitizer API", () => {
+  test("sanitizeHtml preserves safe tags", () => {
     const { sanitizeHtml } = require("../index")
-    const result = sanitizeHtml("<b>bold</b>")
-    expect(result).toBe("<b>bold</b>")
+    const result = sanitizeHtml("<b>bold</b><em>italic</em>")
+    expect(result).toContain("<b>bold</b>")
+    expect(result).toContain("<em>italic</em>")
+  })
+
+  test("sanitizeHtml strips script tags", () => {
+    const { sanitizeHtml } = require("../index")
+    const result = sanitizeHtml('<div>safe</div><script>alert(1)</script>')
+    expect(result).toContain("safe")
+    expect(result).not.toContain("<script>")
+  })
+
+  test("sanitizeHtml strips event handler attributes", () => {
+    const { sanitizeHtml } = require("../index")
+    const result = sanitizeHtml('<div onclick="alert(1)">hello</div>')
+    expect(result).toContain("hello")
+    expect(result).not.toContain("onclick")
+  })
+
+  test("sanitizeHtml strips javascript: URLs", () => {
+    const { sanitizeHtml } = require("../index")
+    const result = sanitizeHtml('<a href="javascript:alert(1)">link</a>')
+    expect(result).not.toContain("javascript:")
+  })
+
+  test("setSanitizer overrides built-in sanitizer", () => {
+    const { sanitizeHtml, setSanitizer } = require("../index")
+    // Set custom sanitizer that uppercases everything
+    setSanitizer((html: string) => html.toUpperCase())
+    expect(sanitizeHtml("<b>hello</b>")).toBe("<B>HELLO</B>")
+    // Reset to built-in
+    setSanitizer(null)
+    // Built-in should work again
+    const result = sanitizeHtml("<b>safe</b><script>bad</script>")
+    expect(result).toContain("safe")
+    expect(result).not.toContain("<script>")
+  })
+
+  test("sanitizeHtml strips iframe and object tags", () => {
+    const { sanitizeHtml } = require("../index")
+    const result = sanitizeHtml('<div>ok</div><iframe src="evil"></iframe><object data="x"></object>')
+    expect(result).toContain("ok")
+    expect(result).not.toContain("<iframe")
+    expect(result).not.toContain("<object")
+  })
+
+  test("sanitizeHtml handles nested unsafe elements", () => {
+    const { sanitizeHtml } = require("../index")
+    const result = sanitizeHtml('<div><script><script>alert(1)</script></script></div>')
+    expect(result).not.toContain("<script")
   })
 
   test("DOM property for known properties like value", () => {

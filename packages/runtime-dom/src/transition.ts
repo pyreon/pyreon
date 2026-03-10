@@ -153,7 +153,12 @@ export function Transition(props: TransitionProps): VNodeChild {
     }
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
-    if (typeof vnode.type !== "string") return vnode
+    if (typeof vnode.type !== "string") {
+      if (typeof vnode.type === "function") {
+        console.warn("[pyreon] Transition child is a component. Wrap it in a DOM element (e.g. <div>) for animations to work.")
+      }
+      return vnode
+    }
     return { ...vnode, props: { ...vnode.props, ref } as Props }
   }
 }

@@ -26,6 +26,6 @@
   "devDependencies": {
     "@pyreon/runtime-dom": "workspace:*",
     "@happy-dom/global-registrator": "*",
-    "typescript": "*"
+    "typescript": "^5.5.0"
   }
 }

@@ -96,23 +96,31 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     const router = createRouter({ routes, mode: "history", url: path })
 
     return runWithRequestContext(async () => {
-      // Pre-run loaders so data is available during render
-      await prefetchLoaderData(router as never, path)
+      try {
+        // Pre-run loaders so data is available during render
+        await prefetchLoaderData(router as never, path)
 
-      // Build the VNode tree
-      const app = h(RouterProvider, { router }, h(App, null))
+        // Build the VNode tree
+        const app = h(RouterProvider, { router }, h(App, null))
 
-      if (mode === "stream") {
-        return renderStreamResponse(app, router, template, clientEntry, ctx.headers)
+        if (mode === "stream") {
+          return renderStreamResponse(app, router, template, clientEntry, ctx.headers)
+        }
+
+        // ── String mode (default) ─────────────────────────────────────────────
+        const { html: appHtml, head } = await renderWithHead(app)
+        const loaderData = serializeLoaderData(router as never)
+        const scripts = buildScripts(clientEntry, loaderData)
+        const fullHtml = processTemplate(template, { head, app: appHtml, scripts })
+
+        return new Response(fullHtml, { status: 200, headers: ctx.headers })
+      } catch (err) {
+        console.error("[pyreon/server] Render error:", err)
+        return new Response("Internal Server Error", {
+          status: 500,
+          headers: { "Content-Type": "text/plain" },
+        })
       }
-
-      // ── String mode (default) ─────────────────────────────────────────────
-      const { html: appHtml, head } = await renderWithHead(app)
-      const loaderData = serializeLoaderData(router as never)
-      const scripts = buildScripts(clientEntry, loaderData)
-      const fullHtml = processTemplate(template, { head, app: appHtml, scripts })
-
-      return new Response(fullHtml, { status: 200, headers: ctx.headers })
     })
   }
 }
@@ -151,18 +159,26 @@ async function renderStreamResponse(
       const encoder = new TextEncoder()
       const push = (s: string) => controller.enqueue(encoder.encode(s))
 
-      push(shellHead)
+      try {
+        push(shellHead)
 
-      // Stream app content
-      let done = false
-      while (!done) {
-        const result = await reader.read()
-        done = result.done
-        if (result.value) push(result.value)
+        // Stream app content
+        let done = false
+        while (!done) {
+          const result = await reader.read()
+          done = result.done
+          if (result.value) push(result.value)
+        }
+
+        push(shellTail)
+      } catch (err) {
+        console.error("[pyreon/server] Stream render error:", err)
+        // Emit an inline error indicator — status code is already sent (200)
+        push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
+        push(shellTail)
+      } finally {
+        controller.close()
       }
-
-      push(shellTail)
-      controller.close()
     },
   })
 

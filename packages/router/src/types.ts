@@ -196,14 +196,16 @@ export interface Router {
   replace(path: string): Promise<void>
   /** Go back */
   back(): void
-  /** Register a global before-navigation guard */
-  beforeEach(guard: NavigationGuard): void
-  /** Register a global after-navigation hook (runs after navigation is committed) */
-  afterEach(hook: AfterEachHook): void
+  /** Register a global before-navigation guard. Returns an unregister function. */
+  beforeEach(guard: NavigationGuard): () => void
+  /** Register a global after-navigation hook. Returns an unregister function. */
+  afterEach(hook: AfterEachHook): () => void
   /** Current resolved route (reactive signal) */
   readonly currentRoute: () => ResolvedRoute
   /** True while a navigation (guards + loaders) is in flight */
   readonly loading: () => boolean
+  /** Remove all event listeners, clear caches, and abort in-flight navigations. */
+  destroy(): void
 }
 
 // ─── Internal router instance ─────────────────────────────────────────────────

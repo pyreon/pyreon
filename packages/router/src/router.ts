@@ -98,11 +98,17 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const currentPath = signal(getInitialLocation())
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
+  // Browser event listeners — stored so destroy() can remove them
+  let _popstateHandler: (() => void) | null = null
+  let _hashchangeHandler: (() => void) | null = null
+
   if (typeof window !== "undefined") {
     if (mode === "history") {
-      window.addEventListener("popstate", () => currentPath.set(getCurrentLocation()))
+      _popstateHandler = () => currentPath.set(getCurrentLocation())
+      window.addEventListener("popstate", _popstateHandler)
     } else {
-      window.addEventListener("hashchange", () => currentPath.set(getCurrentLocation()))
+      _hashchangeHandler = () => currentPath.set(getCurrentLocation())
+      window.addEventListener("hashchange", _hashchangeHandler)
     }
   }
 
@@ -307,13 +313,38 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     beforeEach(guard: NavigationGuard) {
       guards.push(guard)
+      return () => {
+        const idx = guards.indexOf(guard)
+        if (idx >= 0) guards.splice(idx, 1)
+      }
     },
 
     afterEach(hook: AfterEachHook) {
       afterHooks.push(hook)
+      return () => {
+        const idx = afterHooks.indexOf(hook)
+        if (idx >= 0) afterHooks.splice(idx, 1)
+      }
     },
 
     loading: () => loadingSignal() > 0,
+
+    destroy() {
+      if (_popstateHandler) {
+        window.removeEventListener("popstate", _popstateHandler)
+        _popstateHandler = null
+      }
+      if (_hashchangeHandler) {
+        window.removeEventListener("hashchange", _hashchangeHandler)
+        _hashchangeHandler = null
+      }
+      guards.length = 0
+      afterHooks.length = 0
+      componentCache.clear()
+      router._loaderData.clear()
+      router._abortController?.abort()
+      router._abortController = null
+    },
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),
   }

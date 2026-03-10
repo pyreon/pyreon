@@ -25,6 +25,6 @@
     "@pyreon/runtime-dom": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "*"
+    "typescript": "^5.5.0"
   }
 }

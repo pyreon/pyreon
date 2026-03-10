@@ -123,6 +123,57 @@ describe("renderWithHead — SSR", () => {
     expect(head).toContain("var x = 1 < 2 && 3 > 1")
     expect(head).not.toContain("&lt;")
   })
+
+  test("titleTemplate with %s placeholder", async () => {
+    function Layout() {
+      useHead({ titleTemplate: "%s | My App" })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead({ title: "About" })
+      return h("span", null)
+    }
+    const { head } = await renderWithHead(h(Layout, null))
+    expect(head).toContain("<title>About | My App</title>")
+  })
+
+  test("titleTemplate with function", async () => {
+    function Layout() {
+      useHead({ titleTemplate: (t: string) => t ? `${t} — Site` : "Site" })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead({ title: "Home" })
+      return h("span", null)
+    }
+    const { head } = await renderWithHead(h(Layout, null))
+    expect(head).toContain("<title>Home — Site</title>")
+  })
+
+  test("returns htmlAttrs and bodyAttrs", async () => {
+    function Page() {
+      useHead({ htmlAttrs: { lang: "en", dir: "ltr" }, bodyAttrs: { class: "dark" } })
+      return h("div", null)
+    }
+    const result = await renderWithHead(h(Page, null))
+    expect(result.htmlAttrs).toEqual({ lang: "en", dir: "ltr" })
+    expect(result.bodyAttrs).toEqual({ class: "dark" })
+  })
+
+  test("multiple link tags with same rel but different href are kept", async () => {
+    function Page() {
+      useHead({
+        link: [
+          { rel: "stylesheet", href: "/a.css" },
+          { rel: "stylesheet", href: "/b.css" },
+        ],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('href="/a.css"')
+    expect(head).toContain('href="/b.css"')
+  })
 })
 
 // ─── CSR tests ────────────────────────────────────────────────────────────────
@@ -203,6 +254,37 @@ describe("useHead — CSR", () => {
     const script = document.head.querySelector('script[type="application/ld+json"]')
     expect(script).not.toBeNull()
     expect(script?.textContent).toContain('"@type":"WebPage"')
+  })
+
+  test("titleTemplate applies to document.title", () => {
+    function Layout() {
+      useHead({ titleTemplate: "%s | My App" })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead({ title: "Dashboard" })
+      return h("span", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Layout, null) }), container)
+    expect(document.title).toBe("Dashboard | My App")
+  })
+
+  test("htmlAttrs sets attributes on <html>", () => {
+    function Page() {
+      useHead({ htmlAttrs: { lang: "fr" } })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.documentElement.getAttribute("lang")).toBe("fr")
+  })
+
+  test("bodyAttrs sets attributes on <body>", () => {
+    function Page() {
+      useHead({ bodyAttrs: { class: "dark-mode" } })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.body.getAttribute("class")).toBe("dark-mode")
   })
 
   test("incremental sync updates attributes in place", () => {
