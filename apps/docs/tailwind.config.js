@@ -11,8 +11,8 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Nova brand — vivid indigo
-        'nova-primary': {
+        // Pyreon brand — vivid indigo
+        'pyreon-primary': {
           50:  '#eef2ff',
           100: '#e0e7ff',
           200: '#c7d2fe',

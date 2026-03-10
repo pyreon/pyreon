@@ -3,7 +3,7 @@ title: "Transitions & Animations"
 description: "Animate enter, leave, and list reordering with CSS classes."
 ---
 
-Nova provides two components for CSS-driven animations: `Transition` for a single element
+Pyreon provides two components for CSS-driven animations: `Transition` for a single element
 and `TransitionGroup` for keyed lists with enter, leave, and move animations.
 
 ## Transition
@@ -12,9 +12,9 @@ and `TransitionGroup` for keyed lists with enter, leave, and move animations.
 controlled by a reactive `show` prop.
 
 ```tsx title="src/FadeModal.tsx"
-import { signal } from "@nova/reactivity"
-import { Transition } from "@nova/runtime-dom"
-import { h } from "@nova/core"
+import { signal } from "@pyreon/reactivity"
+import { Transition } from "@pyreon/runtime-dom"
+import { h } from "@pyreon/core"
 
 function FadeModal() {
   const visible = signal(false)
@@ -23,7 +23,7 @@ function FadeModal() {
     <>
       <button onClick={() => visible.update(v => !v)}>Toggle</button>
       <Transition name="fade" show={visible}>
-        <div class="modal">Hello Nova</div>
+        <div class="modal">Hello Pyreon</div>
       </Transition>
     </>
   )
@@ -44,7 +44,7 @@ function FadeModal() {
 
 ### CSS Class Lifecycle
 
-When the `show` signal changes, Nova applies classes in two phases:
+When the `show` signal changes, Pyreon applies classes in two phases:
 
 **Enter (show becomes `true`):**
 
@@ -60,7 +60,7 @@ When the `show` signal changes, Nova applies classes in two phases:
 
 <Callout type="info" title="The element stays in the DOM during leave">
   The child is not removed until the CSS transition or animation completes.
-  If the user toggles `show` back to `true` during a leave animation, Nova cancels
+  If the user toggles `show` back to `true` during a leave animation, Pyreon cancels
   the leave and starts an enter transition immediately.
 </Callout>
 
@@ -138,7 +138,7 @@ Override individual classes instead of using a prefix.
       type: "() => boolean",
     },
     "name": {
-      description: "CSS class prefix. Default: \"nova\".",
+      description: "CSS class prefix. Default: \"pyreon\".",
       type: "string",
     },
     "appear": {
@@ -200,9 +200,9 @@ Override individual classes instead of using a prefix.
 individual items and FLIP move animations when items reorder.
 
 ```tsx title="src/AnimatedList.tsx"
-import { signal } from "@nova/reactivity"
-import { TransitionGroup } from "@nova/runtime-dom"
-import { h } from "@nova/core"
+import { signal } from "@pyreon/reactivity"
+import { TransitionGroup } from "@pyreon/runtime-dom"
+import { h } from "@pyreon/core"
 
 let nextId = 3
 
@@ -296,7 +296,7 @@ When items reorder, `TransitionGroup` uses the FLIP technique:
       type: "string",
     },
     "name": {
-      description: "CSS class prefix. Default: \"nova\".",
+      description: "CSS class prefix. Default: \"pyreon\".",
       type: "string",
     },
     "appear": {
@@ -361,13 +361,13 @@ When items reorder, `TransitionGroup` uses the FLIP technique:
 </Callout>
 
 <Callout type="warn" title="Always define transition duration in CSS">
-  Nova listens for `transitionend` and `animationend` events to know when to clean up classes
+  Pyreon listens for `transitionend` and `animationend` events to know when to clean up classes
   and remove elements. If your CSS does not define a `transition` or `animation` duration,
   these events will never fire and the element will stay in its transition state indefinitely.
 </Callout>
 
 - **Multiple CSS properties** -- If you transition multiple properties with different durations,
-  `transitionend` fires once per property. Nova uses `{ once: true }`, so it cleans up on the
+  `transitionend` fires once per property. Pyreon uses `{ once: true }`, so it cleans up on the
   first one. Keep transition durations uniform, or use a single `transition: all` shorthand.
 
 - **Leave animation and re-enter** -- If `show` toggles back to `true` during a leave animation,

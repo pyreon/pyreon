@@ -3,14 +3,14 @@ title: "Server-Side Rendering"
 description: "renderToString, renderToStream, and hydrateRoot for server-side rendering."
 ---
 
-`@nova/runtime-server` provides `renderToString` and `renderToStream` for server-side rendering.
-The client uses `hydrateRoot` from `@nova/runtime-dom` to attach event listeners without
+`@pyreon/runtime-server` provides `renderToString` and `renderToStream` for server-side rendering.
+The client uses `hydrateRoot` from `@pyreon/runtime-dom` to attach event listeners without
 re-building the DOM.
 
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/runtime-server @nova/runtime-dom
+bun add @pyreon/runtime-server @pyreon/runtime-dom
 ```
 
 ## Full SSR Setup
@@ -23,7 +23,7 @@ bun add @nova/runtime-server @nova/runtime-dom
 <Tabs items={["renderToString", "renderToStream"]}>
 <Tab value="renderToString">
 ```ts title="server.ts"
-import { renderToString } from "@nova/runtime-server"
+import { renderToString } from "@pyreon/runtime-server"
 import App from "./src/App"
 
 const html = await renderToString(<App />)
@@ -32,7 +32,7 @@ const html = await renderToString(<App />)
 const response = new Response(
   `<!doctype html>
    <html>
-     <head><title>Nova SSR</title></head>
+     <head><title>Pyreon SSR</title></head>
      <body>
        <div id="app">${html}</div>
        <script type="module" src="/src/main.tsx"></script>
@@ -44,7 +44,7 @@ const response = new Response(
 </Tab>
 <Tab value="renderToStream">
 ```ts title="server.ts"
-import { renderToStream } from "@nova/runtime-server"
+import { renderToStream } from "@pyreon/runtime-server"
 import App from "./src/App"
 
 // Returns a ReadableStream — ideal for streaming SSR
@@ -63,7 +63,7 @@ return new Response(stream, {
 ### Client: hydrate instead of mount
 
 ```ts title="src/main.tsx"
-import { hydrateRoot } from "@nova/runtime-dom"
+import { hydrateRoot } from "@pyreon/runtime-dom"
 import App from "./App"
 
 hydrateRoot(document.getElementById("app")!, <App />)
@@ -92,7 +92,7 @@ hydrateRoot(document.getElementById("app")!, <App />)
 
 ## How Hydration Works
 
-Nova uses a **walk-and-claim** strategy — no special SSR markers are needed in the HTML.
+Pyreon uses a **walk-and-claim** strategy — no special SSR markers are needed in the HTML.
 
 | Content | Strategy |
 |---|---|

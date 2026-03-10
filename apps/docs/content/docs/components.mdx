@@ -1,12 +1,12 @@
 ---
 title: "Components & JSX"
-description: "Writing components with h(), JSX, Fragment, and understanding Nova's one-shot component model."
+description: "Writing components with h(), JSX, Fragment, and understanding Pyreon's one-shot component model."
 ---
 
-Nova components are plain functions that return a VNode. They run **exactly once**. All
+Pyreon components are plain functions that return a VNode. They run **exactly once**. All
 reactivity happens through signals and effects, not through re-renders.
 
-<Callout type="info" title="Three rules for Nova components">
+<Callout type="info" title="Three rules for Pyreon components">
   1. **Run once** — the component function is called once and never again.
   2. **Signals for reactive state** — use `signal()` for values that change over time.
   3. **Wrap dynamic values in `() =>`** — JSX expressions must be functions to be reactive.
@@ -20,7 +20,7 @@ Add to your `tsconfig.json`:
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@nova/core"
+    "jsxImportSource": "@pyreon/core"
   }
 }
 ```
@@ -30,7 +30,7 @@ No import needed — the JSX runtime is injected automatically.
 ## Writing a Component
 
 ```tsx title="src/Greeting.tsx"
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 function Greeting({ name }: { name: string }) {
   const count = signal(0)
@@ -57,7 +57,7 @@ JSX compiles to `h()` calls. You can also use `h()` directly without JSX.
 <Tabs items={["JSX", "h() hyperscript"]}>
 <Tab value="JSX">
 ```tsx
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 function Button({ label }: { label: string }) {
   const active = signal(false)
@@ -74,7 +74,7 @@ function Button({ label }: { label: string }) {
 </Tab>
 <Tab value="h() hyperscript">
 ```ts
-import { h, signal } from "@nova/core"
+import { h, signal } from "@pyreon/core"
 
 function Button({ label }: { label: string }) {
   const active = signal(false)
@@ -92,7 +92,7 @@ function Button({ label }: { label: string }) {
 Use `Fragment` (or `<>...</>`) to return multiple root elements.
 
 ```tsx
-import { Fragment } from "@nova/core"
+import { Fragment } from "@pyreon/core"
 
 function List() {
   return (
@@ -155,7 +155,7 @@ function Card({
 Use `ref` to get a reference to the underlying DOM element.
 
 ```tsx
-import { ref, onMount } from "@nova/core"
+import { ref, onMount } from "@pyreon/core"
 
 function AutoFocus() {
   const inputRef = ref<HTMLInputElement>(null)

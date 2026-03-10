@@ -3,7 +3,7 @@ title: "Suspense & Error Boundary"
 description: "lazy(), Suspense, and ErrorBoundary for code splitting and error recovery."
 ---
 
-Nova provides `lazy()` for code-split components, `Suspense` to show a fallback while they
+Pyreon provides `lazy()` for code-split components, `Suspense` to show a fallback while they
 load, and `ErrorBoundary` to catch and recover from rendering errors.
 
 ## Lazy Loading
@@ -14,7 +14,7 @@ load, and `ErrorBoundary` to catch and recover from rendering errors.
 ### Wrap a dynamic import with `lazy()`
 
 ```ts title="src/routes.ts"
-import { lazy } from "@nova/core"
+import { lazy } from "@pyreon/core"
 
 const Dashboard = lazy(() => import("./pages/Dashboard"))
 const Settings  = lazy(() => import("./pages/Settings"))
@@ -31,7 +31,7 @@ const Settings  = lazy(() => import("./pages/Settings"))
 ### Wrap with `Suspense`
 
 ```tsx title="src/App.tsx"
-import { Suspense } from "@nova/core"
+import { Suspense } from "@pyreon/core"
 
 function App() {
   return (
@@ -48,7 +48,7 @@ function App() {
 ### Add an `ErrorBoundary` for resilience
 
 ```tsx title="src/App.tsx"
-import { Suspense, ErrorBoundary } from "@nova/core"
+import { Suspense, ErrorBoundary } from "@pyreon/core"
 
 function App() {
   return (
@@ -75,7 +75,7 @@ Wraps a dynamic import. Returns a component that renders `null` while loading, t
 to the real component.
 
 ```ts
-import { lazy } from "@nova/core"
+import { lazy } from "@pyreon/core"
 
 const Chart = lazy(() => import("./Chart"))
 // later, use <Chart /> inside a <Suspense>
@@ -159,8 +159,8 @@ Catches errors thrown during rendering and shows a fallback UI instead.
 ## Full Example: Route-Level Code Splitting
 
 ```tsx title="src/App.tsx"
-import { lazy, Suspense, ErrorBoundary } from "@nova/core"
-import { useRoute } from "@nova/router"
+import { lazy, Suspense, ErrorBoundary } from "@pyreon/core"
+import { useRoute } from "@pyreon/router"
 
 const Home      = lazy(() => import("./pages/Home"))
 const Dashboard = lazy(() => import("./pages/Dashboard"))

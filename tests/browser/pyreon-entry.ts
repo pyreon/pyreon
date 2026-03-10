@@ -1,5 +1,5 @@
 /**
- * Browser entry point — re-exports Nova APIs and assigns them to window.__NOVA__
+ * Browser entry point — re-exports Pyreon APIs and assigns them to window.__PYREON__
  * so Playwright tests can use them via page.evaluate().
  */
 
@@ -8,7 +8,7 @@ import { h, Fragment, createContext, useContext, onMount, onUnmount, Show } from
 import { mount, hydrateRoot } from "@pyreon/runtime-dom"
 import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute } from "@pyreon/router"
 
-const Nova = {
+const Pyreon = {
   // Reactivity
   signal,
   computed,
@@ -35,4 +35,4 @@ const Nova = {
   useRoute,
 }
 
-;(window as any).__NOVA__ = Nova
+;(window as any).__PYREON__ = Pyreon

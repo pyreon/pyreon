@@ -1,14 +1,14 @@
 /**
  * @pyreon/react-compat
  *
- * React-compatible hook API that runs on Nova's reactive engine.
+ * React-compatible hook API that runs on Pyreon's reactive engine.
  *
- * Allows you to write familiar React-style code while getting Nova's
+ * Allows you to write familiar React-style code while getting Pyreon's
  * fine-grained reactivity, built-in router/store, and superior performance.
  *
  * DIFFERENCES FROM REACT:
  *  - No hooks rules: call these anywhere in a component, in loops, conditions, etc.
- *  - useEffect deps array is IGNORED — Nova tracks dependencies automatically.
+ *  - useEffect deps array is IGNORED — Pyreon tracks dependencies automatically.
  *  - useCallback/memo are identity functions — no re-renders means no stale closures.
  *  - Components run ONCE (setup), not on every render.
  *
@@ -19,7 +19,7 @@
  *             `import { createRoot } from "@pyreon/react-compat/dom"`
  */
 
-// Re-export Nova's JSX runtime so JSX transforms work the same way
+// Re-export Pyreon's JSX runtime so JSX transforms work the same way
 export { h as createElement, Fragment } from "@pyreon/core"
 export { h } from "@pyreon/core"
 export type { VNode as ReactNode, VNodeChild, Props } from "@pyreon/core"
@@ -87,7 +87,7 @@ export function useReducer<S, A>(
 /**
  * Drop-in for React's `useEffect`.
  *
- * The `deps` array is IGNORED — Nova tracks reactive dependencies automatically.
+ * The `deps` array is IGNORED — Pyreon tracks reactive dependencies automatically.
  * If `deps` is `[]` (mount-only), wrap the body in `runUntracked(() => ...)`.
  *
  * Returns a cleanup the same way React does (return a function from `fn`).
@@ -100,7 +100,7 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
       if (typeof cleanup === "function") onUnmount(cleanup)
     })
   } else {
-    // No deps or non-empty deps: run reactively (Nova auto-tracks)
+    // No deps or non-empty deps: run reactively (Pyreon auto-tracks)
     const e = effect(() => {
       const cleanup = fn()
       if (typeof cleanup === "function") return cleanup
@@ -111,7 +111,7 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
 
 /**
  * Drop-in for React's `useLayoutEffect`.
- * In Nova there is no paint distinction — maps to `onMount` (same as useEffect).
+ * In Pyreon there is no paint distinction — maps to `onMount` (same as useEffect).
  */
 export { useEffect as useLayoutEffect_ }
 
@@ -119,7 +119,7 @@ export { useEffect as useLayoutEffect_ }
 
 /**
  * Drop-in for React's `useMemo`.
- * The `deps` array is IGNORED — Nova's `computed` tracks dependencies automatically.
+ * The `deps` array is IGNORED — Pyreon's `computed` tracks dependencies automatically.
  * Returns a getter: call `value()` to read the memoized result.
  */
 export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
@@ -128,7 +128,7 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
 
 /**
  * Drop-in for React's `useCallback`.
- * In Nova, components run once so callbacks are never recreated — returns `fn` as-is.
+ * In Pyreon, components run once so callbacks are never recreated — returns `fn` as-is.
  */
 export function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T {
   return fn
@@ -176,7 +176,7 @@ export function useId(): string {
 
 /**
  * Drop-in for React's `memo` — wraps a component.
- * In Nova, components run once (no re-renders), so memoization is a no-op.
+ * In Pyreon, components run once (no re-renders), so memoization is a no-op.
  * Kept for API compatibility when migrating React code.
  */
 export function memo<P extends Record<string, unknown>>(
@@ -186,7 +186,7 @@ export function memo<P extends Record<string, unknown>>(
 }
 
 /**
- * Drop-in for React's `useTransition` — no-op in Nova (no concurrent mode).
+ * Drop-in for React's `useTransition` — no-op in Pyreon (no concurrent mode).
  * Returns `[false, (fn) => fn()]` to keep code runnable without changes.
  */
 export function useTransition(): [boolean, (fn: () => void) => void] {
@@ -194,7 +194,7 @@ export function useTransition(): [boolean, (fn: () => void) => void] {
 }
 
 /**
- * Drop-in for React's `useDeferredValue` — returns the value as-is in Nova.
+ * Drop-in for React's `useDeferredValue` — returns the value as-is in Pyreon.
  */
 export function useDeferredValue<T>(value: T): T {
   return value
@@ -204,7 +204,7 @@ export function useDeferredValue<T>(value: T): T {
 
 /**
  * Drop-in for React's `unstable_batchedUpdates` / React 18's automatic batching.
- * Nova's `batch()` does the same thing.
+ * Pyreon's `batch()` does the same thing.
  */
 export { batch }
 
@@ -229,7 +229,7 @@ export function createPortal(children: VNodeChild, target: Element): VNodeChild 
 
 /**
  * Drop-in for React's `useImperativeHandle`.
- * In Nova, expose methods via a ref prop directly — this is a compatibility shim.
+ * In Pyreon, expose methods via a ref prop directly — this is a compatibility shim.
  */
 export function useImperativeHandle<T>(
   ref: { current: T | null } | null | undefined,
@@ -245,7 +245,7 @@ export function useImperativeHandle<T>(
 // ─── Selector ─────────────────────────────────────────────────────────────────
 
 /**
- * Nova-specific: O(1) equality selector (no React equivalent).
+ * Pyreon-specific: O(1) equality selector (no React equivalent).
  * Useful for large lists where only the selected item should re-render.
  * @see createSelector in @pyreon/reactivity
  */
@@ -253,7 +253,7 @@ export { createSelector }
 
 // ─── onUpdate ─────────────────────────────────────────────────────────────────
 
-/** Nova-specific lifecycle hook — runs after each reactive update. */
+/** Pyreon-specific lifecycle hook — runs after each reactive update. */
 export { onMount, onUnmount, onUpdate }
 
 // ─── Suspense / lazy ──────────────────────────────────────────────────────────

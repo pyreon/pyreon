@@ -8,7 +8,7 @@
  * ## Server side
  *
  * `island()` wraps an async component import and returns a ComponentFn.
- * During SSR, it renders the component output inside a `<nova-island>` element
+ * During SSR, it renders the component output inside a `<pyreon-island>` element
  * with serialized props, so the client knows what to hydrate.
  *
  * ```tsx
@@ -80,7 +80,7 @@ export interface IslandMeta {
  * Returns an async ComponentFn that:
  *   1. Resolves the dynamic import
  *   2. Renders the component to VNodes
- *   3. Wraps the output in `<nova-island>` with serialized props + hydration strategy
+ *   3. Wraps the output in `<pyreon-island>` with serialized props + hydration strategy
  */
 export function island<P extends Props = Props>(
   loader: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>,
@@ -94,7 +94,7 @@ export function island<P extends Props = Props>(
     const serializedProps = serializeIslandProps(props)
 
     return h(
-      "nova-island",
+      "pyreon-island",
       {
         "data-component": name,
         "data-props": serializedProps,

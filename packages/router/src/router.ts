@@ -41,7 +41,7 @@ export function setActiveRouter(router: RouterInstance | null): void {
 
 export function useRouter(): Router {
   const router = useContext(RouterContext) ?? _activeRouter
-  if (!router) throw new Error("[nova-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
+  if (!router) throw new Error("[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
   return router
 }
 
@@ -50,7 +50,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   Record<string, string>
 > {
   const router = useContext(RouterContext) ?? _activeRouter
-  if (!router) throw new Error("[nova-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
+  if (!router) throw new Error("[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
   return router.currentRoute as never
 }
 
@@ -58,7 +58,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
 
 export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
-  const { routes, mode = "hash", scrollBehavior } = opts
+  const { routes, mode = "hash", scrollBehavior, onError, maxCacheSize = 100 } = opts
 
   // Pre-built O(1) name → record index. Computed once at startup.
   const nameIndex = buildNameIndex(routes)
@@ -113,7 +113,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   async function navigate(path: string, replace: boolean, redirectDepth = 0): Promise<void> {
     if (redirectDepth > 10) {
-      console.error("[nova-router] Circular redirect detected, aborting navigation to:", path)
+      console.error("[pyreon-router] Circular redirect detected, aborting navigation to:", path)
       return
     }
 
@@ -187,17 +187,35 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     const loadableRecords = to.matched.filter((r) => r.loader)
     if (loadableRecords.length > 0) {
       const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
-      const results = await Promise.all(
-        loadableRecords.map((r) =>
-          r.loader?.(loaderCtx).catch((err: unknown) => {
-            if (ac.signal.aborted) return undefined
-            console.error("[nova-router] loader failed:", err)
-            return undefined
-          }),
-        ),
+      const results = await Promise.allSettled(
+        loadableRecords.map((r) => {
+          if (!r.loader) return Promise.resolve(undefined)
+          return r.loader(loaderCtx)
+        }),
       )
       if (gen !== _navGen) return  // superseded while loaders were running
-      loadableRecords.forEach((r, i) => router._loaderData.set(r, results[i]))
+
+      for (let i = 0; i < loadableRecords.length; i++) {
+        const result = results[i]
+        const record = loadableRecords[i]
+        if (!result || !record) continue
+        if (result.status === "fulfilled") {
+          router._loaderData.set(record, result.value)
+        } else {
+          if (ac.signal.aborted) continue
+          const err = result.reason
+          console.error("[pyreon-router] loader failed:", err)
+          if (router._onError) {
+            const cancel = router._onError(err, to)
+            if (cancel === false) {
+              loadingSignal.update((n) => n - 1)
+              return
+            }
+          }
+          // Store the error so errorComponent can render it
+          router._loaderData.set(record, undefined)
+        }
+      }
     }
 
     // Save scroll position before leaving
@@ -242,7 +260,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     // Run afterEach hooks
     for (const hook of afterHooks) {
       try { hook(to, from) } catch (err) {
-        console.error("[nova-router] afterEach hook threw:", err)
+        console.error("[pyreon-router] afterEach hook threw:", err)
       }
     }
 
@@ -270,6 +288,8 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     _erroredChunks: new Set(),
     _loaderData: new Map(),
     _abortController: null,
+    _onError: onError,
+    _maxCacheSize: maxCacheSize,
 
     async push(location: string | { name: string; params?: Record<string, string>; query?: Record<string, string> }) {
       if (typeof location === "string") return navigate(sanitizePath(location), false)
@@ -311,7 +331,7 @@ async function runGuard(
   try {
     return await guard(to, from)
   } catch (err) {
-    console.error("[nova-router] Navigation guard threw:", err)
+    console.error("[pyreon-router] Navigation guard threw:", err)
     return false
   }
 }
@@ -324,7 +344,7 @@ function resolveNamedPath(
 ): string {
   const record = index.get(name)
   if (!record) {
-    console.warn(`[nova-router] No route named "${name}"`)
+    console.warn(`[pyreon-router] No route named "${name}"`)
     return "/"
   }
   let path = buildPath(record.path, params)
@@ -338,7 +358,7 @@ function resolveNamedPath(
 /** Block javascript: and data: URI injection in navigation targets. */
 function sanitizePath(path: string): string {
   if (/^\s*(?:javascript|data):/i.test(path)) {
-    console.warn(`[nova-router] Blocked unsafe navigation target: "${path}"`)
+    console.warn(`[pyreon-router] Blocked unsafe navigation target: "${path}"`)
     return "/"
   }
   return path

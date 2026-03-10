@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/react-compat",
   "version": "0.0.1",
-  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Nova's reactive engine",
+  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

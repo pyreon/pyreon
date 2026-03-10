@@ -13,7 +13,7 @@ export function App() {
     <RouterProvider router={router}>
       <div id="layout">
         <header>
-          <h1>Nova Playground</h1>
+          <h1>Pyreon Playground</h1>
           <nav>
             <RouterLink to="/">Home</RouterLink>
             <RouterLink to="/about">About</RouterLink>

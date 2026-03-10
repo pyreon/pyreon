@@ -36,13 +36,21 @@ export function createSelector<T>(source: () => T): (value: T) => boolean {
     if (newBucket) for (const fn of [...newBucket]) fn()
   })
 
+  // Reusable hosts per value — avoids allocating a closure per trackSubscriber call
+  const hosts = new Map<T, { _s: Set<() => void> | null }>()
+
   return (value: T): boolean => {
-    let bucket = subs.get(value)
-    if (!bucket) {
-      bucket = new Set()
-      subs.set(value, bucket)
+    let host = hosts.get(value)
+    if (!host) {
+      let bucket = subs.get(value)
+      if (!bucket) {
+        bucket = new Set()
+        subs.set(value, bucket)
+      }
+      host = { _s: bucket }
+      hosts.set(value, host)
     }
-    trackSubscriber(() => bucket as Set<() => void>)
+    trackSubscriber(host)
     return Object.is(current, value)
   }
 }

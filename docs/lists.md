@@ -1,6 +1,6 @@
 # Lists
 
-Nova provides the `For` component for efficient keyed list rendering. Unlike `array.map` inside JSX, `For` only creates and destroys DOM nodes for items that actually change — additions and removals are O(1) per item, and reordering moves existing DOM nodes without re-creating them.
+Pyreon provides the `For` component for efficient keyed list rendering. Unlike `array.map` inside JSX, `For` only creates and destroys DOM nodes for items that actually change — additions and removals are O(1) per item, and reordering moves existing DOM nodes without re-creating them.
 
 ## Why Not array.map?
 
@@ -17,7 +17,7 @@ function Bad() {
 }
 ```
 
-Every time `items` changes, the entire `items().map(...)` expression re-runs and Nova has to diff the result. For small lists this is fine. For long lists with frequent mutations, use `For`.
+Every time `items` changes, the entire `items().map(...)` expression re-runs and Pyreon has to diff the result. For small lists this is fine. For long lists with frequent mutations, use `For`.
 
 ## For Component
 
@@ -171,7 +171,7 @@ Then use `RowTemplate` as a component inside `For`:
 
 ## NativeItem
 
-`NativeItem` is a low-level escape hatch that lets you insert a pre-built `Node` directly into the Nova-managed DOM without any wrapping:
+`NativeItem` is a low-level escape hatch that lets you insert a pre-built `Node` directly into the Pyreon-managed DOM without any wrapping:
 
 ```ts
 import { NativeItem } from "@pyreon/core"
@@ -194,7 +194,7 @@ function RawChart({ canvas }: { canvas: HTMLCanvasElement }) {
 
 ## Gotchas
 
-**The `key` function must return a unique, stable value per item.** If two items return the same key, behavior is undefined. If an item's key changes between renders, Nova treats it as a destroy + create.
+**The `key` function must return a unique, stable value per item.** If two items return the same key, behavior is undefined. If an item's key changes between renders, Pyreon treats it as a destroy + create.
 
 **Do not mutate the array in place.** Signals use reference equality. Calling `push` on the underlying array will not trigger `For` to update.
 

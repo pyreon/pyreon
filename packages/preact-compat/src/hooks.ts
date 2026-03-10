@@ -2,7 +2,7 @@
  * @pyreon/preact-compat/hooks
  *
  * Preact hooks — separate import like `preact/hooks`.
- * All hooks run on Nova's reactive engine under the hood.
+ * All hooks run on Pyreon's reactive engine under the hood.
  */
 
 import {
@@ -42,7 +42,7 @@ export function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T
 
 /**
  * Drop-in for Preact's `useEffect`.
- * The `deps` array is IGNORED — Nova tracks dependencies automatically.
+ * The `deps` array is IGNORED — Pyreon tracks dependencies automatically.
  */
 export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
   if (deps !== undefined && deps.length === 0) {
@@ -63,7 +63,7 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
 
 /**
  * Drop-in for Preact's `useLayoutEffect`.
- * No distinction from useEffect in Nova — same implementation.
+ * No distinction from useEffect in Pyreon — same implementation.
  */
 export const useLayoutEffect = useEffect
 
@@ -81,7 +81,7 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
 
 /**
  * Drop-in for Preact's `useCallback`.
- * Components run once in Nova — returns `fn` as-is.
+ * Components run once in Pyreon — returns `fn` as-is.
  */
 export function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T {
   return fn
@@ -133,6 +133,6 @@ export function useId(): string {
 
 /**
  * Drop-in for Preact's `useErrorBoundary`.
- * Wraps Nova's `onErrorCaptured`.
+ * Wraps Pyreon's `onErrorCaptured`.
  */
 export { onErrorCaptured as useErrorBoundary }

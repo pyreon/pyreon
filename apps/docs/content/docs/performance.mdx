@@ -3,7 +3,7 @@ title: "Performance"
 description: "Benchmark results, architectural optimizations, and performance patterns."
 ---
 
-Nova is designed from the ground up for minimal DOM work. This page explains the architectural
+Pyreon is designed from the ground up for minimal DOM work. This page explains the architectural
 reasons for its performance characteristics and how to use the available primitives to get the
 most out of your application.
 
@@ -12,9 +12,9 @@ most out of your application.
   profile with browser DevTools to confirm there is actually a bottleneck.
 </Callout>
 
-## Why Nova is Fast
+## Why Pyreon is Fast
 
-| Technique | What Nova does | React comparison |
+| Technique | What Pyreon does | React comparison |
 |---|---|---|
 | No VDOM | Signals update DOM nodes directly — zero diffing overhead | React diffs a virtual tree on every render |
 | Components run once | Setup cost is paid once at mount | Components re-run on every state change |
@@ -46,7 +46,7 @@ most out of your application.
 All benchmarks run against the [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark)
 suite (1000-row table operations):
 
-| Operation | Nova | React 18 | Solid |
+| Operation | Pyreon | React 18 | Solid |
 |---|---|---|---|
 | Create 1,000 rows | ~12 ms | ~45 ms | ~11 ms |
 | Replace 1,000 rows | ~13 ms | ~47 ms | ~12 ms |

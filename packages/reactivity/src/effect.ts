@@ -8,7 +8,7 @@ export interface Effect {
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
 let _errorHandler: (err: unknown) => void = (err) => {
-  console.error("[nova] Unhandled effect error:", err)
+  console.error("[pyreon] Unhandled effect error:", err)
 }
 
 export function setErrorHandler(fn: (err: unknown) => void): void {

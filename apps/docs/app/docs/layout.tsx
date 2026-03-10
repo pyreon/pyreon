@@ -10,12 +10,12 @@ export default function Layout({ children }: Props) {
   return (
     <DocsLayout
       tree={source.pageTree}
-      githubUrl="https://github.com/nova-framework/nova"
+      githubUrl="https://github.com/pyreon/pyreon"
       nav={{
         title: (
           <span className="flex items-center gap-2 font-bold text-lg">
             <span className="text-indigo-500">◆</span>
-            Nova
+            Pyreon
           </span>
         ),
       }}

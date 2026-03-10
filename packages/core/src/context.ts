@@ -11,7 +11,7 @@ export interface Context<T> {
 }
 
 export function createContext<T>(defaultValue: T): Context<T> {
-  return { id: Symbol("NovaContext"), defaultValue }
+  return { id: Symbol("PyreonContext"), defaultValue }
 }
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────

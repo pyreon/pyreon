@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Bundle size tracker — measures the minified + gzipped size of each Nova package.
+ * Bundle size tracker — measures the minified + gzipped size of each Pyreon package.
  *
  * Usage:
  *   bun run scripts/bundle-size.ts          # table output
@@ -140,7 +140,7 @@ async function main() {
 
   // Table output
   console.log("")
-  console.log("  Nova Framework — Bundle Sizes")
+  console.log("  Pyreon Framework — Bundle Sizes")
   console.log("  ═══════════════════════════════════════════════════════════════")
   console.log(
     `  ${"Package".padEnd(25)} ${"Raw".padStart(10)} ${"Gzip".padStart(10)} ${"Brotli".padStart(10)}`,

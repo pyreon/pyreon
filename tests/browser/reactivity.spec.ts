@@ -1,14 +1,14 @@
 /**
- * Browser tests for Nova's reactivity system — signals, computed, effects, batch.
+ * Browser tests for Pyreon's reactivity system — signals, computed, effects, batch.
  * Verifies that reactive updates propagate to the real DOM.
  */
 
 import { test, expect } from "./fixtures"
 
 test.describe("reactivity", () => {
-  test("signal updates reflect in DOM text", async ({ novaPage: page }) => {
+  test("signal updates reflect in DOM text", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__NOVA__
+      const { h, mount, signal } = (window as any).__PYREON__
       const name = signal("Alice")
       ;(window as any).__name = name
       const app = document.getElementById("app")!
@@ -24,9 +24,9 @@ test.describe("reactivity", () => {
     await expect(page.locator("#name")).toHaveText("Bob")
   })
 
-  test("computed values update DOM", async ({ novaPage: page }) => {
+  test("computed values update DOM", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal, computed } = (window as any).__NOVA__
+      const { h, mount, signal, computed } = (window as any).__PYREON__
       const firstName = signal("John")
       const lastName = signal("Doe")
       const fullName = computed(() => `${firstName()} ${lastName()}`)
@@ -49,9 +49,9 @@ test.describe("reactivity", () => {
     await expect(page.locator("#full")).toHaveText("Jane Smith")
   })
 
-  test("batch coalesces updates into one DOM flush", async ({ novaPage: page }) => {
+  test("batch coalesces updates into one DOM flush", async ({ pyreonPage: page }) => {
     const result = await page.evaluate(() => {
-      const { h, mount, signal, batch } = (window as any).__NOVA__
+      const { h, mount, signal, batch } = (window as any).__PYREON__
       const a = signal(1)
       const b = signal(2)
       let renderCount = 0
@@ -77,9 +77,9 @@ test.describe("reactivity", () => {
     await expect(page.locator("#sum")).toHaveText("30")
   })
 
-  test("effect runs when dependencies change", async ({ novaPage: page }) => {
+  test("effect runs when dependencies change", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { signal, effect } = (window as any).__NOVA__
+      const { signal, effect } = (window as any).__PYREON__
       const count = signal(0)
       const log: number[] = []
       effect(() => {
@@ -99,9 +99,9 @@ test.describe("reactivity", () => {
     expect(log).toEqual([0, 1, 2])
   })
 
-  test("reactive class and style attributes", async ({ novaPage: page }) => {
+  test("reactive class and style attributes", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__NOVA__
+      const { h, mount, signal } = (window as any).__PYREON__
       const isActive = signal(false)
       ;(window as any).__isActive = isActive
       const app = document.getElementById("app")!
@@ -127,9 +127,9 @@ test.describe("reactivity", () => {
     await expect(el).toHaveCSS("color", "rgb(0, 128, 0)")
   })
 
-  test("conditional rendering with Show", async ({ novaPage: page }) => {
+  test("conditional rendering with Show", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal, Show } = (window as any).__NOVA__
+      const { h, mount, signal, Show } = (window as any).__PYREON__
       const visible = signal(false)
       ;(window as any).__visible = visible
       const app = document.getElementById("app")!
@@ -155,9 +155,9 @@ test.describe("reactivity", () => {
     await expect(page.locator("#content")).toBeVisible()
   })
 
-  test("signal.update() works correctly", async ({ novaPage: page }) => {
+  test("signal.update() works correctly", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__NOVA__
+      const { h, mount, signal } = (window as any).__PYREON__
       const count = signal(5)
       ;(window as any).__count = count
       const app = document.getElementById("app")!

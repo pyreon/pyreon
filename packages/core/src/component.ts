@@ -2,7 +2,7 @@ import { setCurrentHooks } from "./lifecycle"
 import type { ComponentFn, LifecycleHooks, Props, VNode } from "./types"
 
 /**
- * Identity wrapper — marks a function as a Nova component and preserves its type.
+ * Identity wrapper — marks a function as a Pyreon component and preserves its type.
  * Useful for IDE tooling and future compiler optimisations.
  */
 export function defineComponent<P extends Props>(fn: ComponentFn<P>): ComponentFn<P> {

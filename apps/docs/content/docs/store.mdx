@@ -3,7 +3,7 @@ title: "Store"
 description: "defineStore, resetStore, and resetAllStores for global state management."
 ---
 
-`@nova/store` provides composable global state through `defineStore`. Stores are lazily
+`@pyreon/store` provides composable global state through `defineStore`. Stores are lazily
 initialized singletons — the setup function runs once the first time the store is used.
 
 <Callout type="info" title="Stores are singletons">
@@ -15,7 +15,7 @@ initialized singletons — the setup function runs once the first time the store
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/store
+bun add @pyreon/store
 ```
 
 ## Defining a Store
@@ -26,8 +26,8 @@ bun add @nova/store
 ### Define the store
 
 ```ts title="src/stores/counter.ts"
-import { defineStore } from "@nova/store"
-import { signal, computed } from "@nova/reactivity"
+import { defineStore } from "@pyreon/store"
+import { signal, computed } from "@pyreon/reactivity"
 
 export const useCounterStore = defineStore(() => {
   const count = signal(0)
@@ -73,7 +73,7 @@ function Counter() {
 ### Reset if needed
 
 ```ts
-import { resetStore, resetAllStores } from "@nova/store"
+import { resetStore, resetAllStores } from "@pyreon/store"
 import { useCounterStore } from "./stores/counter"
 
 resetStore(useCounterStore)    // re-runs useCounterStore's setup on next call
@@ -86,8 +86,8 @@ resetAllStores()               // resets every registered store (useful in tests
 ## Store with Async Actions
 
 ```ts title="src/stores/user.ts"
-import { defineStore } from "@nova/store"
-import { signal } from "@nova/reactivity"
+import { defineStore } from "@pyreon/store"
+import { signal } from "@pyreon/reactivity"
 
 interface User { id: number; name: string }
 

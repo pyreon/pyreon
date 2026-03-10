@@ -102,8 +102,8 @@ describe("renderToString — Fragment", () => {
 describe("renderToString — components", () => {
   test("renders a component", async () => {
     const Greeting = (props: { name: string }) => h("p", null, `Hello, ${props.name}!`)
-    const html = await renderToString(h(Greeting, { name: "Nova" }))
-    expect(html).toBe("<p>Hello, Nova!</p>")
+    const html = await renderToString(h(Greeting, { name: "Pyreon" }))
+    expect(html).toBe("<p>Hello, Pyreon!</p>")
   })
 
   test("renders a component returning null", async () => {
@@ -230,10 +230,10 @@ describe("renderToStream — Suspense boundaries", () => {
     const html = await collectStream(renderToStream(vnode))
 
     // Fallback placeholder was emitted
-    expect(html).toContain('id="nova-s-0"')
+    expect(html).toContain('id="pyreon-s-0"')
     expect(html).toContain("loading...")
     // Resolved content emitted in template + swap
-    expect(html).toContain('id="nova-t-0"')
+    expect(html).toContain('id="pyreon-t-0"')
     expect(html).toContain("loaded")
     expect(html).toContain("__NS")
   })
@@ -263,8 +263,8 @@ describe("renderToStream — Suspense boundaries", () => {
 
     const full = chunkOrder.join("")
     // Placeholder chunk must appear before the resolved template chunk
-    const placeholderIdx = full.indexOf("nova-s-0")
-    const templateIdx = full.indexOf("nova-t-0")
+    const placeholderIdx = full.indexOf("pyreon-s-0")
+    const templateIdx = full.indexOf("pyreon-t-0")
     expect(placeholderIdx).toBeGreaterThanOrEqual(0)
     expect(templateIdx).toBeGreaterThan(placeholderIdx)
     // "after" sibling is in the HTML (not blocked by Suspense)
@@ -416,8 +416,8 @@ describe("renderToString — For component", () => {
       children: (item: string) => h("li", null, item),
     })
     const html = await renderToString(vnode)
-    expect(html).toContain("<!--nova-for-->")
-    expect(html).toContain("<!--/nova-for-->")
+    expect(html).toContain("<!--pyreon-for-->")
+    expect(html).toContain("<!--/pyreon-for-->")
     expect(html).toContain("<li>a</li>")
     expect(html).toContain("<li>b</li>")
     expect(html).toContain("<li>c</li>")
@@ -579,10 +579,10 @@ describe("renderToStream — additional coverage", () => {
       children: (item: string) => h("li", null, item),
     })
     const html = await collect(renderToStream(vnode))
-    expect(html).toContain("<!--nova-for-->")
+    expect(html).toContain("<!--pyreon-for-->")
     expect(html).toContain("<li>x</li>")
     expect(html).toContain("<li>y</li>")
-    expect(html).toContain("<!--/nova-for-->")
+    expect(html).toContain("<!--/pyreon-for-->")
   })
 
   test("streams reactive getter children", async () => {
@@ -639,10 +639,10 @@ describe("renderToStream — additional coverage", () => {
       h(Suspense, { fallback: h("p", null, "fb2"), children: h(Slow2 as unknown as ComponentFn, null) }),
     )
     const html = await collect(renderToStream(vnode))
-    expect(html).toContain("nova-s-0")
-    expect(html).toContain("nova-s-1")
-    expect(html).toContain("nova-t-0")
-    expect(html).toContain("nova-t-1")
+    expect(html).toContain("pyreon-s-0")
+    expect(html).toContain("pyreon-s-1")
+    expect(html).toContain("pyreon-t-0")
+    expect(html).toContain("pyreon-t-1")
     // The swap script should only be emitted once
     const scriptMatches = html.match(/function __NS/g)
     expect(scriptMatches).toHaveLength(1)

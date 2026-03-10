@@ -52,7 +52,7 @@ function renderToStream(vnode: VNode): ReadableStream<string>
 
 ## hydrateRoot
 
-On the client, `hydrateRoot` attaches Nova's reactivity to existing server-rendered HTML without rebuilding the DOM tree.
+On the client, `hydrateRoot` attaches Pyreon's reactivity to existing server-rendered HTML without rebuilding the DOM tree.
 
 ```ts
 import { hydrateRoot } from "@pyreon/runtime-dom"
@@ -89,7 +89,7 @@ Bun.serve({
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Nova SSR App</title>
+  <title>Pyreon SSR App</title>
 </head>
 <body>
   <div id="app">${appHtml}</div>
@@ -196,14 +196,14 @@ const html = await renderToString(h(App, null))
 On the client, serialize the data into the HTML and re-hydrate the store before calling `hydrateRoot`:
 
 ```html
-<script id="__NOVA_DATA__" type="application/json">
+<script id="__PYREON_DATA__" type="application/json">
   {"products": [...]}
 </script>
 ```
 
 ```ts
 // client.ts
-const data = JSON.parse(document.getElementById("__NOVA_DATA__")!.textContent!)
+const data = JSON.parse(document.getElementById("__PYREON_DATA__")!.textContent!)
 useProductStore().setInitial(data.products)
 hydrateRoot(document.getElementById("app")!, h(App, null))
 ```
@@ -234,4 +234,4 @@ function Analytics() {
 
 **`renderToString` does not run `onMount`.** Lifecycle hooks run only on the client. Do not rely on `onMount` for data that must be in the initial HTML.
 
-**Hydration expects the DOM to match exactly.** If the server and client render different HTML (different text, different attributes), Nova logs a warning and forces a re-render of the mismatched subtree. Always ensure signal initial values are identical between server and client.
+**Hydration expects the DOM to match exactly.** If the server and client render different HTML (different text, different attributes), Pyreon logs a warning and forces a re-render of the mismatched subtree. Always ensure signal initial values are identical between server and client.

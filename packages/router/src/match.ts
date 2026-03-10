@@ -19,6 +19,40 @@ export function parseQuery(qs: string): Record<string, string> {
   return result
 }
 
+/**
+ * Parse a query string preserving duplicate keys as arrays.
+ *
+ * @example
+ * parseQueryMulti("color=red&color=blue&size=lg")
+ * // → { color: ["red", "blue"], size: "lg" }
+ */
+export function parseQueryMulti(qs: string): Record<string, string | string[]> {
+  if (!qs) return {}
+  const result: Record<string, string | string[]> = {}
+  for (const part of qs.split("&")) {
+    const eqIdx = part.indexOf("=")
+    let key: string
+    let val: string
+    if (eqIdx < 0) {
+      key = decodeURIComponent(part)
+      val = ""
+    } else {
+      key = decodeURIComponent(part.slice(0, eqIdx))
+      val = decodeURIComponent(part.slice(eqIdx + 1))
+    }
+    if (!key) continue
+    const existing = result[key]
+    if (existing === undefined) {
+      result[key] = val
+    } else if (Array.isArray(existing)) {
+      existing.push(val)
+    } else {
+      result[key] = [existing, val]
+    }
+  }
+  return result
+}
+
 export function stringifyQuery(query: Record<string, string>): string {
   const parts: string[] = []
   for (const [k, v] of Object.entries(query)) {
@@ -45,18 +79,24 @@ export function matchPath(pattern: string, path: string): Record<string, string>
   const patternParts = pattern.split("/").filter(Boolean)
   const pathParts = path.split("/").filter(Boolean)
 
-  if (patternParts.length !== pathParts.length) return null
-
   const params: Record<string, string> = {}
   for (let i = 0; i < patternParts.length; i++) {
     const pp = patternParts[i] ?? ""
     const pt = pathParts[i] ?? ""
+    // Splat param — captures the rest of the path (e.g. ":path*")
+    if (pp.endsWith("*") && pp.startsWith(":")) {
+      const paramName = pp.slice(1, -1)
+      params[paramName] = pathParts.slice(i).map(decodeURIComponent).join("/")
+      return params
+    }
     if (pp.startsWith(":")) {
       params[pp.slice(1)] = decodeURIComponent(pt)
     } else if (pp !== pt) {
       return null
     }
   }
+
+  if (patternParts.length !== pathParts.length) return null
   return params
 }
 
@@ -76,6 +116,12 @@ function matchPrefix(pattern: string, path: string): { params: Record<string, st
   for (let i = 0; i < patternParts.length; i++) {
     const pp = patternParts[i] ?? ""
     const pt = pathParts[i] ?? ""
+    // Splat param in prefix — captures the rest
+    if (pp.endsWith("*") && pp.startsWith(":")) {
+      const paramName = pp.slice(1, -1)
+      params[paramName] = pathParts.slice(i).map(decodeURIComponent).join("/")
+      return { params, rest: "/" }
+    }
     if (pp.startsWith(":")) {
       params[pp.slice(1)] = decodeURIComponent(pt)
     } else if (pp !== pt) {
@@ -167,7 +213,12 @@ function mergeMeta(matched: RouteRecord[]): RouteMeta {
 
 /** Build a path string from a named route's pattern and params */
 export function buildPath(pattern: string, params: Record<string, string>): string {
-  return pattern.replace(/:([^/]+)/g, (_, key) => encodeURIComponent(params[key] ?? ""))
+  return pattern.replace(/:([^/]+)\*?/g, (match, key) => {
+    const val = params[key] ?? ""
+    // Splat params contain slashes — don't encode them
+    if (match.endsWith("*")) return val.split("/").map(encodeURIComponent).join("/")
+    return encodeURIComponent(val)
+  })
 }
 
 /** Find a route record by name (recursive, O(n)). Prefer buildNameIndex for repeated lookups. */

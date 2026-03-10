@@ -257,7 +257,7 @@ Pair with `Suspense` at the `RouterView` level to show a loading state during na
 // Vite — history mode fallback
 // vite.config.ts
 export default defineConfig({
-  plugins: [novaPlugin()],
+  plugins: [pyreonPlugin()],
   server: {
     historyApiFallback: true,
   },
@@ -277,7 +277,7 @@ router.push(`/user/${userId}`)
 router.replace("/login")
 
 // With query string
-router.push("/search?q=nova+framework")
+router.push("/search?q=pyreon+framework")
 
 // Go back/forward
 router.back()
@@ -286,7 +286,7 @@ router.forward()
 
 ## Nested Routes (Manual)
 
-Nova's router does not have built-in nested route configuration. For nested layouts, nest `RouterView` components and manage path matching manually:
+Pyreon's router does not have built-in nested route configuration. For nested layouts, nest `RouterView` components and manage path matching manually:
 
 ```tsx
 function AdminLayout() {

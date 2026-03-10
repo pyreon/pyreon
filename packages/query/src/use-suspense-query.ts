@@ -74,9 +74,9 @@ export interface QuerySuspenseProps {
 }
 
 /**
- * Nova-native Suspense boundary for queries. Shows `fallback` while any query
+ * Pyreon-native Suspense boundary for queries. Shows `fallback` while any query
  * is pending. On error, renders the `error` fallback or re-throws to the
- * nearest Nova `ErrorBoundary`.
+ * nearest Pyreon `ErrorBoundary`.
  *
  * Pair with `useSuspenseQuery` / `useSuspenseInfiniteQuery` to get non-undefined
  * `data` types inside children.

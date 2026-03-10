@@ -11,7 +11,11 @@ export type { ComponentFn }
  * // → { id: string; postId: string }
  */
 export type ExtractParams<T extends string> =
-  T extends `${string}:${infer Param}/${infer Rest}`
+  T extends `${string}:${infer Param}*/${infer Rest}`
+    ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
+    : T extends `${string}:${infer Param}*`
+    ? { [K in Param]: string }
+    : T extends `${string}:${infer Param}/${infer Rest}`
     ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
     : T extends `${string}:${infer Param}`
     ? { [K in Param]: string }
@@ -59,7 +63,7 @@ export interface ResolvedRoute<
 
 // ─── Lazy component ───────────────────────────────────────────────────────────
 
-export const LAZY_SYMBOL = Symbol("nova.lazy")
+export const LAZY_SYMBOL = Symbol("pyreon.lazy")
 
 export interface LazyComponent {
   readonly [LAZY_SYMBOL]: true
@@ -137,6 +141,8 @@ export interface RouteRecord<TPath extends string = string> {
    * Receives an AbortSignal that fires if a newer navigation supersedes this one.
    */
   loader?: RouteLoaderFn
+  /** Component rendered when this route's loader throws an error */
+  errorComponent?: ComponentFn
 }
 
 // ─── Router options ───────────────────────────────────────────────────────────
@@ -165,6 +171,18 @@ export interface RouterOptions {
    * const router = createRouter({ routes, url: req.url })
    */
   url?: string
+  /**
+   * Called when a route loader throws. If not provided, errors are logged
+   * and the navigation continues with `undefined` data for the failed loader.
+   * Return `false` to cancel the navigation.
+   */
+  onError?: (err: unknown, route: ResolvedRoute) => undefined | false
+  /**
+   * Maximum number of resolved lazy components to cache.
+   * When exceeded, the oldest entry is evicted.
+   * Default: 100.
+   */
+  maxCacheSize?: number
 }
 
 // ─── Router interface ─────────────────────────────────────────────────────────
@@ -202,6 +220,8 @@ export interface RouterInstance extends Router {
   _resolve(rawPath: string): ResolvedRoute
   _scrollPositions: Map<string, number>
   _scrollBehavior: RouterOptions["scrollBehavior"]
+  _onError: RouterOptions["onError"]
+  _maxCacheSize: number
   /**
    * Current RouterView nesting depth. Incremented by each RouterView as it
    * mounts (in tree order = depth-first), so each view knows which level of

@@ -11,7 +11,7 @@ export type {
   CleanupFn,
   NativeItem,
 } from "./types"
-export { h, Fragment } from "./h"
+export { h, Fragment, EMPTY_PROPS } from "./h"
 export { defineComponent, runWithHooks, propagateError, dispatchToErrorBoundary } from "./component"
 export { onMount, onUnmount, onUpdate, onErrorCaptured } from "./lifecycle"
 export type { Context } from "./context"

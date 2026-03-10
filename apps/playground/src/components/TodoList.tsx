@@ -9,7 +9,7 @@ interface Todo {
 
 export function TodoList() {
   const todos = signal<Todo[]>([
-    { id: 1, text: "Build Nova framework", done: true },
+    { id: 1, text: "Build Pyreon framework", done: true },
     { id: 2, text: "Write tests", done: true },
     { id: 3, text: "Build the playground", done: false },
   ])

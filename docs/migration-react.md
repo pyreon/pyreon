@@ -1,12 +1,12 @@
 # Migrating from React
 
-This guide walks through migrating a React application to Nova step by step. You can migrate incrementally — one file at a time — using `@pyreon/react-compat` as a bridge.
+This guide walks through migrating a React application to Pyreon step by step. You can migrate incrementally — one file at a time — using `@pyreon/react-compat` as a bridge.
 
 ## Overview
 
 | Step | What changes |
 |---|---|
-| 1 | Install Nova packages, add Vite plugin |
+| 1 | Install Pyreon packages, add Vite plugin |
 | 2 | Update tsconfig.json |
 | 3 | Replace `react` / `react-dom` imports |
 | 4 | Add `()` to all state reads |
@@ -14,7 +14,7 @@ This guide walks through migrating a React application to Nova step by step. You
 | 6 | Switch `className` to `class` |
 | 7 | Replace `array.map` lists with `For` |
 | 8 | Replace `ReactDOM.createRoot` with `mount` |
-| 9 | Gradually replace compat hooks with native Nova APIs |
+| 9 | Gradually replace compat hooks with native Pyreon APIs |
 
 ## Step 1: Install Packages
 
@@ -42,10 +42,10 @@ export default defineConfig({
 
 ```ts
 import { defineConfig } from "vite"
-import novaPlugin from "@pyreon/vite-plugin"
+import pyreonPlugin from "@pyreon/vite-plugin"
 
 export default defineConfig({
-  plugins: [novaPlugin()],
+  plugins: [pyreonPlugin()],
 })
 ```
 
@@ -175,11 +175,11 @@ Deps arrays are silently ignored in `@pyreon/react-compat`. Removing them is cos
 <button class={() => isActive() ? "btn active" : "btn"}>
 ```
 
-Note: `@pyreon/react-compat` maps `className` to `class` automatically, so this step can be deferred. Switch when you are ready to use Nova's reactive class shorthand.
+Note: `@pyreon/react-compat` maps `className` to `class` automatically, so this step can be deferred. Switch when you are ready to use Pyreon's reactive class shorthand.
 
 ## Step 8: Replace Lists with For
 
-Array.map works in Nova but recreates DOM nodes on every signal update. For reactive lists, replace with `For`.
+Array.map works in Pyreon but recreates DOM nodes on every signal update. For reactive lists, replace with `For`.
 
 **Before**
 
@@ -240,9 +240,9 @@ import App from "./App"
 mount(document.getElementById("root")!, <App />)
 ```
 
-## Step 10: Migrate to Native Nova APIs (Optional)
+## Step 10: Migrate to Native Pyreon APIs (Optional)
 
-Once the app works with `@pyreon/react-compat`, you can progressively replace compat APIs with native Nova equivalents for better performance and developer experience.
+Once the app works with `@pyreon/react-compat`, you can progressively replace compat APIs with native Pyreon equivalents for better performance and developer experience.
 
 ### useState → signal
 
@@ -326,7 +326,7 @@ You are using a React `useState` variable as a signal. Make sure you imported `u
 
 ### Stale values in event handlers
 
-React developers sometimes see stale closure values because they forget deps arrays. In Nova, there are no stale closures — the signal always returns the current value when called. If you see stale values, you are reading the signal outside of a tracking context (e.g., storing `count()` in a local variable at component setup time).
+React developers sometimes see stale closure values because they forget deps arrays. In Pyreon, there are no stale closures — the signal always returns the current value when called. If you see stale values, you are reading the signal outside of a tracking context (e.g., storing `count()` in a local variable at component setup time).
 
 ```tsx
 // Stale — reads once at setup
@@ -339,7 +339,7 @@ onClick={() => console.log(count())}
 
 ### Component renders look wrong after migration
 
-Nova components run once. If your component had logic that depended on re-running (e.g., side effects in the render body), extract them into `effect` or `onMount`.
+Pyreon components run once. If your component had logic that depended on re-running (e.g., side effects in the render body), extract them into `effect` or `onMount`.
 
 ```tsx
 // React — runs on every render
@@ -349,7 +349,7 @@ function Bad() {
   return <div>{x}</div>
 }
 
-// Nova — runs once (correct behavior)
+// Pyreon — runs once (correct behavior)
 function Good() {
   const x = signal(0)
   onMount(() => {
@@ -361,15 +361,15 @@ function Good() {
 
 ### Third-party React components
 
-Components from React ecosystem libraries (Radix UI, react-table, react-spring, etc.) will not work with Nova's JSX runtime. Options:
+Components from React ecosystem libraries (Radix UI, react-table, react-spring, etc.) will not work with Pyreon's JSX runtime. Options:
 
-1. Find a Nova-compatible alternative.
-2. Render the React component inside an `onMount` using `ReactDOM.createRoot` on a div, and use Nova signals to communicate between the Nova tree and the React subtree.
+1. Find a Pyreon-compatible alternative.
+2. Render the React component inside an `onMount` using `ReactDOM.createRoot` on a div, and use Pyreon signals to communicate between the Pyreon tree and the React subtree.
 3. Keep using React for that part of the UI and migrate around it.
 
 ## Before / After Summary
 
-| React | Nova |
+| React | Pyreon |
 |---|---|
 | `import { useState } from "react"` | `import { useState } from "@pyreon/react-compat"` |
 | `const [x, setX] = useState(0)` | same (compat) or `const x = signal(0)` |

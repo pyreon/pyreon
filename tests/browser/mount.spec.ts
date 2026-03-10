@@ -1,24 +1,24 @@
 /**
- * Browser tests for Nova's mount() — verifies real DOM rendering.
+ * Browser tests for Pyreon's mount() — verifies real DOM rendering.
  */
 
 import { test, expect } from "./fixtures"
 
 test.describe("mount", () => {
-  test("mounts a simple element", async ({ novaPage: page }) => {
+  test("mounts a simple element", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount } = (window as any).__NOVA__
+      const { h, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
-      mount(h("div", { id: "hello" }, "Hello Nova"), app)
+      mount(h("div", { id: "hello" }, "Hello Pyreon"), app)
     })
 
     const el = page.locator("#hello")
-    await expect(el).toHaveText("Hello Nova")
+    await expect(el).toHaveText("Hello Pyreon")
   })
 
-  test("mounts nested elements", async ({ novaPage: page }) => {
+  test("mounts nested elements", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount } = (window as any).__NOVA__
+      const { h, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       mount(
         h("div", { id: "outer" },
@@ -36,9 +36,9 @@ test.describe("mount", () => {
     await expect(spans.nth(1)).toHaveText("Child 2")
   })
 
-  test("mounts a component function", async ({ novaPage: page }) => {
+  test("mounts a component function", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount } = (window as any).__NOVA__
+      const { h, mount } = (window as any).__PYREON__
       const Greeting = (props: { name: string }) =>
         h("p", { id: "greeting" }, `Hello, ${props.name}!`)
       const app = document.getElementById("app")!
@@ -48,9 +48,9 @@ test.describe("mount", () => {
     await expect(page.locator("#greeting")).toHaveText("Hello, World!")
   })
 
-  test("mounts a fragment with multiple children", async ({ novaPage: page }) => {
+  test("mounts a fragment with multiple children", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, Fragment, mount } = (window as any).__NOVA__
+      const { h, Fragment, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       mount(
         h(Fragment, null,
@@ -67,9 +67,9 @@ test.describe("mount", () => {
     await expect(items.nth(1)).toHaveText("Second")
   })
 
-  test("applies attributes and event handlers", async ({ novaPage: page }) => {
+  test("applies attributes and event handlers", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__NOVA__
+      const { h, mount, signal } = (window as any).__PYREON__
       const count = signal(0)
       const app = document.getElementById("app")!
       mount(
@@ -90,9 +90,9 @@ test.describe("mount", () => {
     await expect(btn).toHaveText("Count: 1")
   })
 
-  test("unmount removes DOM and cleans up", async ({ novaPage: page }) => {
+  test("unmount removes DOM and cleans up", async ({ pyreonPage: page }) => {
     const textAfterUnmount = await page.evaluate(() => {
-      const { h, mount } = (window as any).__NOVA__
+      const { h, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       const unmount = mount(h("div", { id: "temp" }, "Temporary"), app)
 

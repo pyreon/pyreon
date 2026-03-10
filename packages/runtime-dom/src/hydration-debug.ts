@@ -35,7 +35,7 @@ export function warnHydrationMismatch(
 ): void {
   if (!_enabled) return
   console.warn(
-    `[nova] Hydration mismatch (${type}) at <${path}>: ` +
+    `[pyreon] Hydration mismatch (${type}) at <${path}>: ` +
       `expected "${String(expected)}", got "${String(actual)}"`,
   )
 }

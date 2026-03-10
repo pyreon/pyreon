@@ -8,14 +8,14 @@
 
 import { test, expect } from "@playwright/test"
 
-// Inject benchmark harness into the page using window.__nova
+// Inject benchmark harness into the page using window.__pyreon
 async function setupBench(page: import("@playwright/test").Page) {
   await page.goto("/")
   await page.waitForSelector("#layout", { timeout: 10_000 })
 
   // Inject the benchmark app into the DOM
   await page.evaluate(() => {
-    const { h, mount, signal, batch } = (window as any).__nova
+    const { h, mount, signal, batch } = (window as any).__pyreon
 
     // --- Data helpers ---
     const ADJ  = ["pretty","large","big","small","tall","short","long","handsome","plain","quaint","clean","elegant","easy","angry","crazy","helpful","mushy","odd","unsightly","adorable"]

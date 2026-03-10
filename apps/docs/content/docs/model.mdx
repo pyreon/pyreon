@@ -3,12 +3,12 @@ title: "Model"
 description: "Define reactive domain models with state, views, actions, snapshots, patches, and middleware."
 ---
 
-`@nova/model` provides a structured way to define reactive domain models. Each model
+`@pyreon/model` provides a structured way to define reactive domain models. Each model
 has typed state (backed by signals), computed views, and actions — plus built-in
 support for snapshots, JSON patches, middleware, and nested composition.
 
 <Callout type="info" title="Signals all the way down">
-  Every state field on a model instance is a Nova `Signal`. You read it by calling
+  Every state field on a model instance is a Pyreon `Signal`. You read it by calling
   it (`counter.count()`), write with `.set()` or `.update()`, and use it in
   reactive contexts just like any other signal.
 </Callout>
@@ -16,7 +16,7 @@ support for snapshots, JSON patches, middleware, and nested composition.
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/model
+bun add @pyreon/model
 ```
 
 ## Defining a Model
@@ -30,8 +30,8 @@ returned definition to get a live instance.
 ### Define the model
 
 ```ts title="src/models/counter.ts"
-import { model } from "@nova/model"
-import { computed } from "@nova/reactivity"
+import { model } from "@pyreon/model"
+import { computed } from "@pyreon/reactivity"
 
 const Counter = model({
   state: { count: 0 },
@@ -91,7 +91,7 @@ call other actions and views can read state freely.
 Serialize and restore model state as plain JSON objects.
 
 ```ts
-import { getSnapshot, applySnapshot } from "@nova/model"
+import { getSnapshot, applySnapshot } from "@pyreon/model"
 
 const snap = getSnapshot(counter)  // { count: 6 }
 
@@ -113,7 +113,7 @@ Subscribe to every state mutation as a JSON patch. Useful for undo/redo,
 syncing over the network, or debugging.
 
 ```ts
-import { onPatch } from "@nova/model"
+import { onPatch } from "@pyreon/model"
 
 const unsub = onPatch(counter, (patch) => {
   console.log(patch)
@@ -137,7 +137,7 @@ Intercept every action call on an instance. Middlewares run in registration orde
 and must call `next(call)` to continue the chain.
 
 ```ts
-import { addMiddleware } from "@nova/model"
+import { addMiddleware } from "@pyreon/model"
 
 const unsub = addMiddleware(counter, (call, next) => {
   console.log(`before ${call.name}`, call.args)
@@ -157,7 +157,7 @@ Use a `ModelDefinition` as a state field value to compose models. The nested mod
 gets its own signals, patches, and snapshot serialization automatically.
 
 ```ts title="src/models/app.ts"
-import { model } from "@nova/model"
+import { model } from "@pyreon/model"
 
 const Profile = model({
   state: { name: "", avatar: "" },
@@ -184,7 +184,7 @@ app.profile().setName("Bob")
 Snapshots and patches traverse nested models recursively:
 
 ```ts
-import { getSnapshot, onPatch } from "@nova/model"
+import { getSnapshot, onPatch } from "@pyreon/model"
 
 getSnapshot(app)
 // { title: "My App", profile: { name: "Bob", avatar: "" } }

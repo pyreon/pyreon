@@ -4,7 +4,7 @@ import type { Computed } from "@pyreon/reactivity"
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
 /** Property key stamped on every ModelDefinition to distinguish it from plain objects. */
-export const MODEL_BRAND = "__novaMod" as const
+export const MODEL_BRAND = "__pyreonMod" as const
 
 // ─── State type helpers ───────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ export type StateShape = Record<string, unknown>
  * - Anything else → as-is
  */
 export type ResolveField<T> =
-  T extends { readonly __novaMod: true; create(initial?: any): infer I } ? I : T
+  T extends { readonly __pyreonMod: true; create(initial?: any): infer I } ? I : T
 
 /** Map state shape to per-field signals. */
 export type StateSignals<TState extends StateShape> = {
@@ -43,7 +43,7 @@ export type ModelInstance<
  * Nested model fields become `Record<string, unknown>` (their own snapshot shape).
  */
 export type Snapshot<TState extends StateShape> = {
-  [K in keyof TState]: TState[K] extends { readonly __novaMod: true }
+  [K in keyof TState]: TState[K] extends { readonly __pyreonMod: true }
     ? Record<string, unknown>
     : TState[K]
 }

@@ -99,7 +99,7 @@ describe("effect", () => {
     expect((caught[0] as Error).message).toBe("custom")
 
     // Restore default handler
-    setErrorHandler((err) => console.error("[nova] Unhandled effect error:", err))
+    setErrorHandler((err) => console.error("[pyreon] Unhandled effect error:", err))
   })
 
   test("effect notifies scope on re-run (not first run)", async () => {

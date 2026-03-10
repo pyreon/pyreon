@@ -1,5 +1,5 @@
 /**
- * @pyreon/runtime-server — SSR/SSG renderer for Nova.
+ * @pyreon/runtime-server — SSR/SSG renderer for Pyreon.
  *
  * Walks a VNode tree and produces HTML strings.
  * Signal accessors (reactive getters `() => value`) are called synchronously
@@ -77,7 +77,7 @@ export async function renderToString(root: VNode | null): Promise<string> {
 
 /**
  * Run an async function with a fresh, isolated context stack and store registry.
- * Useful when you need to call Nova APIs (e.g. useHead, prefetchLoaderData)
+ * Useful when you need to call Pyreon APIs (e.g. useHead, prefetchLoaderData)
  * outside of renderToString but still want per-request isolation.
  */
 export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
@@ -146,9 +146,9 @@ async function streamNode(node: VNodeChild | null | (() => VNodeChild), enqueue:
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children } = vnode.props as unknown as ForProps<unknown>
-    enqueue("<!--nova-for-->")
+    enqueue("<!--pyreon-for-->")
     for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
-    enqueue("<!--/nova-for-->")
+    enqueue("<!--/pyreon-for-->")
     return
   }
 
@@ -207,7 +207,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   if (id === 0) mainEnqueue(SUSPENSE_SWAP_FN)
 
   // Stream the fallback synchronously (no await on children)
-  mainEnqueue(`<div id="nova-s-${id}">`)
+  mainEnqueue(`<div id="pyreon-s-${id}">`)
   await streamNode(fallback ?? null, enqueue)
   mainEnqueue("</div>")
 
@@ -219,8 +219,8 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
     _contextAls.run(ctxStore, async () => {
       const buf: string[] = []
       await streamNode(children ?? null, (s) => buf.push(s))
-      mainEnqueue(`<template id="nova-t-${id}">${buf.join("")}</template>`)
-      mainEnqueue(`<script>__NS("nova-s-${id}","nova-t-${id}")</script>`)
+      mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
+      mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
     }),
   )
 }
@@ -253,7 +253,7 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
     const { each, children } = vnode.props as unknown as ForProps<unknown>
     const parts = await Promise.all(each().map((item) => renderNode(children(item) as VNodeChild)))
     // Hydration markers so the client can claim existing For-rendered children
-    return `<!--nova-for-->${parts.join("")}<!--/nova-for-->`
+    return `<!--pyreon-for-->${parts.join("")}<!--/pyreon-for-->`
   }
 
   if (typeof vnode.type === "function") {

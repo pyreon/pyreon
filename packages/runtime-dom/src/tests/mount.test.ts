@@ -129,8 +129,8 @@ describe("mount — components", () => {
       h("p", null, `Hello, ${name}!`),
     )
     const el = container()
-    mount(h(Greeting, { name: "Nova" }), el)
-    expect(el.querySelector("p")?.textContent).toBe("Hello, Nova!")
+    mount(h(Greeting, { name: "Pyreon" }), el)
+    expect(el.querySelector("p")?.textContent).toBe("Hello, Pyreon!")
   })
 
   test("component with reactive state updates DOM", () => {
@@ -1596,7 +1596,7 @@ describe("hydrateRoot — extended", () => {
 
   test("hydrates with For — SSR markers present", () => {
     const el = container()
-    el.innerHTML = "<!--nova-for--><li>a</li><!--/nova-for-->"
+    el.innerHTML = "<!--pyreon-for--><li>a</li><!--/pyreon-for-->"
     const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
@@ -2255,17 +2255,17 @@ describe("props — additional coverage", () => {
 // ─── DevTools ────────────────────────────────────────────────────────────────
 
 describe("DevTools", () => {
-  test("installDevTools sets __NOVA_DEVTOOLS__ on window", () => {
+  test("installDevTools sets __PYREON_DEVTOOLS__ on window", () => {
     const { installDevTools } = require("../devtools")
     installDevTools()
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as Record<string, unknown>
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as Record<string, unknown>
     expect(devtools).not.toBeNull()
     expect(devtools.version).toBe("0.1.0")
   })
 
   test("registerComponent and getAllComponents", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getAllComponents: () => Array<{ id: string; name: string; parentId: string | null; childIds: string[] }>
       getComponentTree: () => Array<{ id: string; name: string; parentId: string | null }>
       highlight: (id: string) => void
@@ -2285,7 +2285,7 @@ describe("DevTools", () => {
 
   test("registerComponent with parentId creates parent-child relationship", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getAllComponents: () => Array<{ id: string; name: string; parentId: string | null; childIds: string[] }>
     }
 
@@ -2304,7 +2304,7 @@ describe("DevTools", () => {
 
   test("getComponentTree returns only root components", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getComponentTree: () => Array<{ id: string; parentId: string | null }>
     }
 
@@ -2323,7 +2323,7 @@ describe("DevTools", () => {
 
   test("highlight adds and removes outline", async () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       highlight: (id: string) => void
     }
     const el = document.createElement("div")
@@ -2341,7 +2341,7 @@ describe("DevTools", () => {
 
   test("onComponentMount and onComponentUnmount listeners", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       onComponentMount: (cb: (entry: { id: string; name: string }) => void) => () => void
       onComponentUnmount: (cb: (id: string) => void) => () => void
     }
@@ -2374,7 +2374,7 @@ describe("DevTools", () => {
 
   test("highlight with no el is noop", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
-    const devtools = (window as unknown as Record<string, unknown>).__NOVA_DEVTOOLS__ as {
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       highlight: (id: string) => void
     }
     registerComponent("no-el", "NoEl", null, null)
@@ -2473,7 +2473,7 @@ describe("TransitionGroup", () => {
     expect(el.querySelectorAll("span.item").length).toBeGreaterThanOrEqual(1)
   })
 
-  test("default tag is div and default name is nova", async () => {
+  test("default tag is div and default name is pyreon", async () => {
     const el = container()
     const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }])
@@ -2684,7 +2684,7 @@ describe("hydrateRoot — branch coverage", () => {
 
   test("hydrates For with SSR markers (start/end comment pair)", () => {
     const el = container()
-    el.innerHTML = "<div><!--nova-for--><li>item1</li><li>item2</li><!--/nova-for--></div>"
+    el.innerHTML = "<div><!--pyreon-for--><li>item1</li><li>item2</li><!--/pyreon-for--></div>"
     const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "item1" }, { id: 2, label: "item2" }])
     const cleanup = hydrateRoot(

@@ -15,8 +15,8 @@ scroll positions, form values, and in-flight async operations are preserved.
 ## Basic Usage
 
 ```tsx title="src/Tabs.tsx"
-import { signal } from "@nova/reactivity"
-import { KeepAlive } from "@nova/runtime-dom"
+import { signal } from "@pyreon/reactivity"
+import { KeepAlive } from "@pyreon/runtime-dom"
 
 function Tabs() {
   const tab = signal<"editor" | "preview">("editor")
@@ -49,8 +49,8 @@ keeps its scroll position.
 Use one `KeepAlive` per route to preserve page state across navigation:
 
 ```tsx title="src/App.tsx"
-import { KeepAlive } from "@nova/runtime-dom"
-import { useRoute } from "@nova/router"
+import { KeepAlive } from "@pyreon/runtime-dom"
+import { useRoute } from "@pyreon/router"
 
 function App() {
   const route = useRoute()

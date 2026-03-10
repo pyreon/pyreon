@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/vite-plugin",
   "version": "0.0.1",
-  "description": "Vite plugin for Pyreon — .nova SFC support, HMR, compiler integration",
+  "description": "Vite plugin for Pyreon — .pyreon SFC support, HMR, compiler integration",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

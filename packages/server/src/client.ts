@@ -1,5 +1,5 @@
 /**
- * Client-side entry helpers for Nova SSR/SSG apps.
+ * Client-side entry helpers for Pyreon SSR/SSG apps.
  *
  * ## Full app hydration
  *
@@ -48,11 +48,11 @@ export interface StartClientOptions {
 }
 
 /**
- * Hydrate a server-rendered Nova app on the client.
+ * Hydrate a server-rendered Pyreon app on the client.
  *
  * Handles:
  *   - Router creation (history mode)
- *   - Loader data hydration from `window.__NOVA_LOADER_DATA__`
+ *   - Loader data hydration from `window.__PYREON_LOADER_DATA__`
  *   - Hydration if container has SSR content, fresh mount otherwise
  *
  * Returns a cleanup function that unmounts the app.
@@ -65,14 +65,14 @@ export function startClient(options: StartClientOptions): () => void {
     : container
 
   if (!el) {
-    throw new Error(`[nova/client] Container "${container}" not found`)
+    throw new Error(`[pyreon/client] Container "${container}" not found`)
   }
 
   // Create client-side router (history mode to match SSR)
   const router = createRouter({ routes, mode: "history" })
 
   // Hydrate loader data from SSR (avoids re-fetching on initial render)
-  const loaderData = (window as unknown as Record<string, unknown>).__NOVA_LOADER_DATA__
+  const loaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   if (loaderData && typeof loaderData === "object") {
     hydrateLoaderData(router as never, loaderData as Record<string, unknown>)
   }
@@ -92,7 +92,7 @@ export function startClient(options: StartClientOptions): () => void {
 type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
 
 /**
- * Hydrate all `<nova-island>` elements on the page.
+ * Hydrate all `<pyreon-island>` elements on the page.
  *
  * Only loads JavaScript for components that are actually present in the HTML.
  * Respects hydration strategies (load, idle, visible, media, never).
@@ -104,7 +104,7 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * })
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): void {
-  const islands = document.querySelectorAll("nova-island")
+  const islands = document.querySelectorAll("pyreon-island")
 
   for (const el of islands) {
     const componentId = el.getAttribute("data-component")
@@ -112,7 +112,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): void {
 
     const loader = registry[componentId]
     if (!loader) {
-      console.warn(`[nova/client] No loader registered for island "${componentId}"`)
+      console.warn(`[pyreon/client] No loader registered for island "${componentId}"`)
       continue
     }
 
@@ -184,7 +184,7 @@ async function hydrateIsland(
     const props = JSON.parse(propsJson)
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
-    console.error(`[nova/client] Failed to hydrate island:`, err)
+    console.error("[pyreon/client] Failed to hydrate island:", err)
   }
 }
 

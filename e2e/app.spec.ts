@@ -1,5 +1,5 @@
 /**
- * End-to-end tests for the Nova Playground app.
+ * End-to-end tests for the Pyreon Playground app.
  * Tests the full application running in a real browser via Vite dev server.
  */
 
@@ -11,7 +11,7 @@ test.describe("Playground App", () => {
   })
 
   test("page loads and renders layout", async ({ page }) => {
-    await expect(page.locator("h1")).toHaveText("Nova Playground")
+    await expect(page.locator("h1")).toHaveText("Pyreon Playground")
     await expect(page.locator("nav")).toBeVisible()
     await expect(page.locator("main")).toBeVisible()
   })
@@ -100,7 +100,7 @@ test.describe("TodoList", () => {
   test("renders default todos", async ({ page }) => {
     const items = page.locator(".todo-list li")
     await expect(items).toHaveCount(3)
-    await expect(items.nth(0).locator("span")).toHaveText("Build Nova framework")
+    await expect(items.nth(0).locator("span")).toHaveText("Build Pyreon framework")
     await expect(items.nth(1).locator("span")).toHaveText("Write tests")
     await expect(items.nth(2).locator("span")).toHaveText("Build the playground")
   })
@@ -149,7 +149,7 @@ test.describe("TodoList", () => {
   })
 
   test("toggle a done todo marks it undone", async ({ page }) => {
-    // First item (Build Nova framework) is done — uncheck it
+    // First item (Build Pyreon framework) is done — uncheck it
     const firstCheckbox = page.locator(".todo-list li").nth(0).locator('input[type="checkbox"]')
     await firstCheckbox.click()
 
@@ -186,7 +186,7 @@ test.describe("Router Navigation", () => {
     await page.goto("/")
     await page.locator("nav a", { hasText: "About" }).click()
 
-    await expect(page.locator("h2", { hasText: "About Nova" })).toBeVisible()
+    await expect(page.locator("h2", { hasText: "About Pyreon" })).toBeVisible()
     await expect(page.locator("main p")).toContainText("fine-grained reactive UI framework")
     // Counter and TodoList should not be visible
     await expect(page.locator(".value")).not.toBeVisible()
@@ -196,7 +196,7 @@ test.describe("Router Navigation", () => {
     await page.goto("/")
     // Go to About
     await page.locator("nav a", { hasText: "About" }).click()
-    await expect(page.locator("h2", { hasText: "About Nova" })).toBeVisible()
+    await expect(page.locator("h2", { hasText: "About Pyreon" })).toBeVisible()
 
     // Go back to Home
     await page.locator("nav a", { hasText: "Home" }).click()
@@ -214,13 +214,13 @@ test.describe("Router Navigation", () => {
 
   test("header stays visible during navigation", async ({ page }) => {
     await page.goto("/")
-    await expect(page.locator("h1")).toHaveText("Nova Playground")
+    await expect(page.locator("h1")).toHaveText("Pyreon Playground")
 
     await page.locator("nav a", { hasText: "About" }).click()
-    await expect(page.locator("h1")).toHaveText("Nova Playground")
+    await expect(page.locator("h1")).toHaveText("Pyreon Playground")
 
     await page.locator("nav a", { hasText: "Home" }).click()
-    await expect(page.locator("h1")).toHaveText("Nova Playground")
+    await expect(page.locator("h1")).toHaveText("Pyreon Playground")
   })
 
   test("counter state resets when navigating away and back", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { h, pushContext, popContext, useContext } from "@pyreon/core"
+import { h, pushContext, popContext, useContext, createRef } from "@pyreon/core"
 import { onUnmount } from "@pyreon/core"
 import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
 import { setActiveRouter, isLazy, RouterContext } from "./router"
@@ -42,7 +42,7 @@ export interface RouterViewProps extends Props {
  * component — it automatically renders the next level of the matched route.
  *
  * How depth tracking works:
- * Nova components run once in depth-first tree order. Each `RouterView`
+ * Pyreon components run once in depth-first tree order. Each `RouterView`
  * captures `router._viewDepth` at setup time and immediately increments it,
  * so sibling and child views get the correct index. `onUnmount` decrements
  * the counter so dynamic route swaps work correctly.
@@ -98,7 +98,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
         raw.loader()
           .then((mod) => {
             const resolved = typeof mod === "function" ? mod : mod.default
-            router._componentCache.set(record, resolved)
+            cacheSet(router, record, resolved)
             router._loadingSignal.update((n) => n + 1)
           })
           .catch((err: unknown) => {
@@ -111,7 +111,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
               window.location.reload()
               return
             }
-            console.error("[nova-router] Chunk failed to load after 3 retries:", err)
+            console.error("[pyreon-router] Chunk failed to load after 3 retries:", err)
             router._erroredChunks.add(record)
             router._loadingSignal.update((n) => n + 1)  // re-render to show error UI
           })
@@ -120,11 +120,11 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       return raw.loadingComponent ? h(raw.loadingComponent, {}) : null
     }
 
-    router._componentCache.set(record, raw)
+    cacheSet(router, record, raw)
     return renderWithLoader(router, record, raw, route)
   }
 
-  return h("div", { "data-nova-router-view": true }, child as unknown as VNodeChild)
+  return h("div", { "data-pyreon-router-view": true }, child as unknown as VNodeChild)
 }
 
 // ─── RouterLink ───────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     const current = router.currentRoute().path
     const target = props.to
     const isExact = current === target
-    const isActive = isExact || (!props.exact && target !== "/" && current.startsWith(`${target}/`))
+    const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
 
     const classes: string[] = []
     if (isActive) classes.push(props.activeClass ?? "router-link-active")
@@ -183,7 +183,26 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     return classes.join(" ").trim()
   }
 
-  return h("a", { href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter }, props.children ?? props.to)
+  // Viewport prefetching — observe link visibility with IntersectionObserver
+  const ref = createRef<Element>()
+  if (prefetchMode === "viewport" && router && typeof IntersectionObserver !== "undefined") {
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          prefetchRoute(router as RouterInstance, props.to)
+          observer.disconnect()
+          break
+        }
+      }
+    })
+    // Observe after mount — the ref will be populated once the element is in the DOM
+    queueMicrotask(() => {
+      if (ref.current) observer.observe(ref.current)
+    })
+    onUnmount(() => observer.disconnect())
+  }
+
+  return h("a", { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter }, props.children ?? props.to)
 }
 
 /** Prefetch loader data for a route (only once per router + path). */
@@ -218,18 +237,44 @@ function renderWithLoader(
     return h(Comp, routeProps)
   }
   const data = router._loaderData.get(record)
+  // If loader data is undefined and route has an errorComponent, render it
+  if (data === undefined && record.errorComponent) {
+    return h(record.errorComponent, routeProps)
+  }
   return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
 }
 
 /**
  * Thin provider component that pushes LoaderDataContext before children mount.
- * Uses Nova's context stack so useLoaderData() reads it during child setup.
+ * Uses Pyreon's context stack so useLoaderData() reads it during child setup.
  */
 function LoaderDataProvider(props: { data: unknown; children: VNode | null }): VNode | null {
   const frame = new Map([[LoaderDataContext.id, props.data]])
   pushContext(frame)
   onUnmount(() => popContext())
   return props.children
+}
+
+/** Evict oldest cache entries when the component cache exceeds maxCacheSize. */
+function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn): void {
+  router._componentCache.set(record, comp)
+  if (router._componentCache.size > router._maxCacheSize) {
+    // Map iterates in insertion order — first key is oldest
+    const oldest = router._componentCache.keys().next().value
+    if (oldest) router._componentCache.delete(oldest)
+  }
+}
+
+/**
+ * Segment-aware prefix check for active link matching.
+ * `/admin` is a prefix of `/admin/users` but NOT of `/admin-panel`.
+ */
+function isSegmentPrefix(current: string, target: string): boolean {
+  if (target === "/") return false
+  const cs = current.split("/").filter(Boolean)
+  const ts = target.split("/").filter(Boolean)
+  if (ts.length > cs.length) return false
+  return ts.every((seg, i) => seg === cs[i])
 }
 
 /**

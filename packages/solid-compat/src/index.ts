@@ -1,23 +1,23 @@
-// @pyreon/solid-compat — SolidJS-compatible API shims running on Nova's reactive engine
+// @pyreon/solid-compat — SolidJS-compatible API shims running on Pyreon's reactive engine
 
 import {
-  signal as novaSignal,
-  computed as novaComputed,
-  effect as novaEffect,
-  batch as novaBatch,
+  signal as pyreonSignal,
+  computed as pyreonComputed,
+  effect as pyreonEffect,
+  batch as pyreonBatch,
   runUntracked,
   effectScope,
   getCurrentScope,
   setCurrentScope,
-  createSelector as novaCreateSelector,
+  createSelector as pyreonCreateSelector,
   EffectScope,
 } from "@pyreon/reactivity"
-import type { Signal as NovaSignal, Computed, Effect } from "@pyreon/reactivity"
+import type { Signal as PyreonSignal, Computed, Effect } from "@pyreon/reactivity"
 import {
-  onMount as novaOnMount,
-  onUnmount as novaOnUnmount,
-  createContext as novaCreateContext,
-  useContext as novaUseContext,
+  onMount as pyreonOnMount,
+  onUnmount as pyreonOnUnmount,
+  createContext as pyreonCreateContext,
+  useContext as pyreonUseContext,
   Show,
   Switch,
   Match,
@@ -35,7 +35,7 @@ export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
 export function createSignal<T>(
   initialValue: T,
 ): [SignalGetter<T>, SignalSetter<T>] {
-  const s = novaSignal<T>(initialValue)
+  const s = pyreonSignal<T>(initialValue)
 
   const getter: SignalGetter<T> = () => s()
 
@@ -53,13 +53,13 @@ export function createSignal<T>(
 // ─── createEffect ────────────────────────────────────────────────────────────
 
 export function createEffect(fn: () => void): void {
-  novaEffect(fn)
+  pyreonEffect(fn)
 }
 
 // ─── createRenderEffect ──────────────────────────────────────────────────────
 
 export function createRenderEffect(fn: () => void): void {
-  novaEffect(fn)
+  pyreonEffect(fn)
 }
 
 // ─── createComputed (legacy Solid API) ───────────────────────────────────────
@@ -69,7 +69,7 @@ export { createEffect as createComputed }
 // ─── createMemo ──────────────────────────────────────────────────────────────
 
 export function createMemo<T>(fn: () => T): () => T {
-  const c = novaComputed(fn)
+  const c = pyreonComputed(fn)
   return () => c()
 }
 
@@ -126,7 +126,7 @@ export function on<S extends (() => unknown) | AccessorArray, V>(
 
 // ─── batch ───────────────────────────────────────────────────────────────────
 
-export { novaBatch as batch }
+export { pyreonBatch as batch }
 
 // ─── untrack ─────────────────────────────────────────────────────────────────
 
@@ -134,12 +134,12 @@ export { runUntracked as untrack }
 
 // ─── onMount / onCleanup ─────────────────────────────────────────────────────
 
-export { novaOnMount as onMount }
-export { novaOnUnmount as onCleanup }
+export { pyreonOnMount as onMount }
+export { pyreonOnUnmount as onCleanup }
 
 // ─── createSelector ──────────────────────────────────────────────────────────
 
-export { novaCreateSelector as createSelector }
+export { pyreonCreateSelector as createSelector }
 
 // ─── mergeProps ──────────────────────────────────────────────────────────────
 
@@ -252,8 +252,8 @@ export function lazy<P extends Props>(
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 
-export { novaCreateContext as createContext }
-export { novaUseContext as useContext }
+export { pyreonCreateContext as createContext }
+export { pyreonUseContext as useContext }
 
 // ─── getOwner / runWithOwner ─────────────────────────────────────────────────
 

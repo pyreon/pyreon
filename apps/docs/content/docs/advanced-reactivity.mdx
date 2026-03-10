@@ -3,7 +3,7 @@ title: "Advanced Reactivity"
 description: "effectScope, watch, createResource, createStore, reconcile, renderEffect, cell, and error handling for effects."
 ---
 
-Beyond signals, computed, and effects, Nova provides advanced reactive primitives for
+Beyond signals, computed, and effects, Pyreon provides advanced reactive primitives for
 scope management, data fetching, deep reactive state, and more.
 
 ## effectScope()
@@ -13,7 +13,7 @@ create scopes automatically, but you can create manual scopes for non-component 
 like tests or service layers.
 
 ```ts title="src/scope-example.ts"
-import { signal, effect, effectScope } from "@nova/reactivity"
+import { signal, effect, effectScope } from "@pyreon/reactivity"
 
 const scope = effectScope()
 
@@ -66,7 +66,7 @@ Unlike `effect`, it gives you both the new and old values, and only runs the cal
 on changes (not on initial setup, unless `immediate` is set).
 
 ```ts title="src/watch-example.ts"
-import { signal, watch } from "@nova/reactivity"
+import { signal, watch } from "@pyreon/reactivity"
 
 const userId = signal(1)
 
@@ -124,7 +124,7 @@ An async data-fetching primitive. Automatically re-fetches when the reactive sou
 and exposes `data`, `loading`, and `error` signals.
 
 ```ts title="src/resource-example.ts"
-import { signal, createResource } from "@nova/reactivity"
+import { signal, createResource } from "@pyreon/reactivity"
 
 const userId = signal(1)
 
@@ -176,8 +176,8 @@ under the hood, so only the effects that read changed properties re-run.
 ### createStore
 
 ```ts title="src/store-example.ts"
-import { effect } from "@nova/reactivity"
-import { createStore } from "@nova/reactivity"
+import { effect } from "@pyreon/reactivity"
+import { createStore } from "@pyreon/reactivity"
 
 const state = createStore({
   count: 0,
@@ -204,7 +204,7 @@ When you receive a full new state snapshot (e.g., from an API response), `reconc
 it against the existing store and only triggers signals for properties that actually changed.
 
 ```ts title="src/reconcile-example.ts"
-import { createStore, reconcile } from "@nova/reactivity"
+import { createStore, reconcile } from "@pyreon/reactivity"
 
 const state = createStore({
   user: { name: "Alice", age: 30 },
@@ -227,7 +227,7 @@ reconcile(apiResponse, state)
 Check whether a value is a reactive store proxy.
 
 ```ts
-import { createStore, isStore } from "@nova/reactivity"
+import { createStore, isStore } from "@pyreon/reactivity"
 
 const state = createStore({ count: 0 })
 isStore(state)  // true
@@ -243,7 +243,7 @@ error handling, and `onUpdate` notifications. The framework uses it internally t
 reactive expressions to DOM attributes and text nodes.
 
 ```ts title="src/render-effect-example.ts"
-import { signal, renderEffect } from "@nova/reactivity"
+import { signal, renderEffect } from "@pyreon/reactivity"
 
 const count = signal(0)
 
@@ -272,7 +272,7 @@ The tradeoff: cells are **not** automatically tracked by effects. You subscribe 
 via `subscribe()` or `listen()`.
 
 ```ts title="src/cell-example.ts"
-import { cell } from "@nova/reactivity"
+import { cell } from "@pyreon/reactivity"
 
 const name = cell("Alice")
 
@@ -326,7 +326,7 @@ Set a global error handler for unhandled errors thrown inside effects. By defaul
 errors are logged with `console.error`. Use this to integrate with your error monitoring.
 
 ```ts title="src/error-handler.ts"
-import { setErrorHandler } from "@nova/reactivity"
+import { setErrorHandler } from "@pyreon/reactivity"
 
 setErrorHandler((err) => {
   // Send to monitoring service

@@ -15,8 +15,8 @@ overflow or z-index context.
 ## Basic Usage
 
 ```tsx title="src/Modal.tsx"
-import { Portal } from "@nova/core"
-import { signal } from "@nova/reactivity"
+import { Portal } from "@pyreon/core"
+import { signal } from "@pyreon/reactivity"
 
 function App() {
   const open = signal(false)
@@ -66,7 +66,7 @@ In `index.html`, add a `#portal-root` div next to `#app` as an alternative targe
 ```
 
 ```tsx title="src/Tooltip.tsx"
-import { Portal } from "@nova/core"
+import { Portal } from "@pyreon/core"
 
 const portalRoot = document.getElementById("portal-root")!
 

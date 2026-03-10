@@ -1,5 +1,5 @@
 /**
- * Browser tests for Nova's SSR hydration.
+ * Browser tests for Pyreon's SSR hydration.
  * Pre-renders HTML on the server side, then hydrates in the browser.
  */
 
@@ -10,11 +10,11 @@ test.describe("hydration", () => {
     // Navigate to hydration page with pre-rendered HTML
     const ssrHtml = '<div id="greeting"><span>Hello</span><span> World</span></div>'
     await page.goto(`/hydration?html=${encodeURIComponent(ssrHtml)}`)
-    await page.waitForFunction(() => (window as any).__NOVA__ !== undefined)
+    await page.waitForFunction(() => (window as any).__PYREON__ !== undefined)
 
     // Hydrate the pre-rendered HTML
     const nodeCount = await page.evaluate(() => {
-      const { h, hydrateRoot } = (window as any).__NOVA__
+      const { h, hydrateRoot } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       const childCountBefore = app.childNodes.length
 
@@ -38,10 +38,10 @@ test.describe("hydration", () => {
   test("hydrated event handlers work", async ({ page }) => {
     const ssrHtml = '<button id="btn">Count: 0</button>'
     await page.goto(`/hydration?html=${encodeURIComponent(ssrHtml)}`)
-    await page.waitForFunction(() => (window as any).__NOVA__ !== undefined)
+    await page.waitForFunction(() => (window as any).__PYREON__ !== undefined)
 
     await page.evaluate(() => {
-      const { h, hydrateRoot, signal } = (window as any).__NOVA__
+      const { h, hydrateRoot, signal } = (window as any).__PYREON__
       const count = signal(0)
       const app = document.getElementById("app")!
 
@@ -65,13 +65,13 @@ test.describe("hydration", () => {
   })
 
   test("hydrates component with reactive state", async ({ page }) => {
-    const ssrHtml = '<div id="app-root"><p>Hello, Nova!</p></div>'
+    const ssrHtml = '<div id="app-root"><p>Hello, Pyreon!</p></div>'
     await page.goto(`/hydration?html=${encodeURIComponent(ssrHtml)}`)
-    await page.waitForFunction(() => (window as any).__NOVA__ !== undefined)
+    await page.waitForFunction(() => (window as any).__PYREON__ !== undefined)
 
     await page.evaluate(() => {
-      const { h, hydrateRoot, signal } = (window as any).__NOVA__
-      const name = signal("Nova")
+      const { h, hydrateRoot, signal } = (window as any).__PYREON__
+      const name = signal("Pyreon")
       ;(window as any).__name = name
 
       const Greeting = () => h("div", { id: "app-root" }, h("p", null, () => `Hello, ${name()}!`))
@@ -79,7 +79,7 @@ test.describe("hydration", () => {
       hydrateRoot(app, h(Greeting, null))
     })
 
-    await expect(page.locator("#app-root p")).toHaveText("Hello, Nova!")
+    await expect(page.locator("#app-root p")).toHaveText("Hello, Pyreon!")
 
     await page.evaluate(() => {
       ;(window as any).__name.set("World")

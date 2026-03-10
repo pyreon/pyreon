@@ -1,18 +1,18 @@
 /**
- * @pyreon/vite-plugin — Vite integration for Nova framework.
+ * @pyreon/vite-plugin — Vite integration for Pyreon framework.
  *
- * Applies Nova's JSX reactive transform to .tsx, .jsx, and .nova files,
- * and configures Vite to use Nova's JSX runtime.
+ * Applies Pyreon's JSX reactive transform to .tsx, .jsx, and .pyreon files,
+ * and configures Vite to use Pyreon's JSX runtime.
  *
  * ## Basic usage (SPA)
  *
- *   import nova from "@pyreon/vite-plugin"
- *   export default { plugins: [nova()] }
+ *   import pyreon from "@pyreon/vite-plugin"
+ *   export default { plugins: [pyreon()] }
  *
  * ## SSR mode
  *
- *   import nova from "@pyreon/vite-plugin"
- *   export default { plugins: [nova({ ssr: { entry: "./src/entry-server.ts" } })] }
+ *   import pyreon from "@pyreon/vite-plugin"
+ *   export default { plugins: [pyreon({ ssr: { entry: "./src/entry-server.ts" } })] }
  *
  * In SSR mode, the plugin adds dev server middleware that:
  *   1. Loads your server entry via Vite's `ssrLoadModule`
@@ -27,7 +27,7 @@
 import { transformJSX } from "@pyreon/compiler"
 import type { Plugin, ViteDevServer } from "vite"
 
-export interface NovaPluginOptions {
+export interface PyreonPluginOptions {
   /**
    * Enable SSR dev middleware.
    *
@@ -36,7 +36,7 @@ export interface NovaPluginOptions {
    * or a default export of the same type.
    *
    * @example
-   * nova({ ssr: { entry: "./src/entry-server.ts" } })
+   * pyreonPlugin({ ssr: { entry: "./src/entry-server.ts" } })
    */
   ssr?: {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
@@ -44,11 +44,11 @@ export interface NovaPluginOptions {
   }
 }
 
-export default function novaPlugin(options?: NovaPluginOptions): Plugin {
+export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
 
   return {
-    name: "nova",
+    name: "pyreon",
     enforce: "pre",
 
     config(_, env) {
@@ -76,7 +76,7 @@ export default function novaPlugin(options?: NovaPluginOptions): Plugin {
 
     transform(code, id) {
       const ext = getExt(id)
-      if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".nova") return
+      if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".pyreon") return
       const result = transformJSX(code, id)
       return { code: result.code, map: null }
     },
@@ -101,7 +101,7 @@ export default function novaPlugin(options?: NovaPluginOptions): Plugin {
 
             if (typeof handler !== "function") {
               console.error(
-                `[nova/vite] SSR entry "${ssrConfig.entry}" must export a \`handler\` or default export: (Request) => Promise<Response>`,
+                `[pyreon/vite] SSR entry "${ssrConfig.entry}" must export a \`handler\` or default export: (Request) => Promise<Response>`,
               )
               return next()
             }
@@ -132,7 +132,7 @@ export default function novaPlugin(options?: NovaPluginOptions): Plugin {
           } catch (err) {
             // Let Vite handle the error overlay
             server.ssrFixStacktrace(err as Error)
-            console.error("[nova/vite] SSR error:", err)
+            console.error("[pyreon/vite] SSR error:", err)
             next(err)
           }
         })

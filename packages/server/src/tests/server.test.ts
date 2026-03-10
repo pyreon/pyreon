@@ -20,14 +20,14 @@ describe("HTML template", () => {
     expect(result).toContain("<title>Test</title>")
     expect(result).toContain("<div>Hello</div>")
     expect(result).toContain('src="/app.js"')
-    expect(result).not.toContain("<!--nova-head-->")
-    expect(result).not.toContain("<!--nova-app-->")
-    expect(result).not.toContain("<!--nova-scripts-->")
+    expect(result).not.toContain("<!--pyreon-head-->")
+    expect(result).not.toContain("<!--pyreon-app-->")
+    expect(result).not.toContain("<!--pyreon-scripts-->")
   })
 
   test("buildScripts emits loader data + client entry", () => {
     const scripts = buildScripts("/entry.js", { users: [{ id: 1 }] })
-    expect(scripts).toContain("window.__NOVA_LOADER_DATA__=")
+    expect(scripts).toContain("window.__PYREON_LOADER_DATA__=")
     expect(scripts).toContain('"users"')
     expect(scripts).toContain('src="/entry.js"')
   })
@@ -40,7 +40,7 @@ describe("HTML template", () => {
 
   test("buildScripts omits inline data when no loaders", () => {
     const scripts = buildScripts("/entry.js", {})
-    expect(scripts).not.toContain("__NOVA_LOADER_DATA__")
+    expect(scripts).not.toContain("__PYREON_LOADER_DATA__")
     expect(scripts).toContain('src="/entry.js"')
   })
 })
@@ -73,13 +73,13 @@ describe("createHandler", () => {
   })
 
   test("uses custom template", async () => {
-    const template = "<html><!--nova-head--><body><!--nova-app--><!--nova-scripts--></body></html>"
+    const template = "<html><!--pyreon-head--><body><!--pyreon-app--><!--pyreon-scripts--></body></html>"
     const handler = createHandler({ App: Home, routes, template })
     const res = await handler(new Request("http://localhost/"))
     const html = await res.text()
     expect(html).toContain("<html>")
     expect(html).toContain("<h1>Home</h1>")
-    expect(html).not.toContain("<!--nova-app-->")
+    expect(html).not.toContain("<!--pyreon-app-->")
   })
 
   test("includes client entry script", async () => {
@@ -101,7 +101,7 @@ describe("createHandler", () => {
     const handler = createHandler({ App: WithLoader, routes: loaderRoutes })
     const res = await handler(new Request("http://localhost/"))
     const html = await res.text()
-    expect(html).toContain("__NOVA_LOADER_DATA__")
+    expect(html).toContain("__PYREON_LOADER_DATA__")
     expect(html).toContain('"items"')
   })
 })
@@ -161,7 +161,7 @@ describe("island", () => {
     expect(Counter.name).toBe("Counter")
   })
 
-  test("island() renders with <nova-island> wrapper during SSR", async () => {
+  test("island() renders with <pyreon-island> wrapper during SSR", async () => {
     const Inner: ComponentFn = (props) => h("button", null, `Count: ${(props as Record<string, unknown>).initial}`)
     const Counter = island<{ initial: number }>(() => Promise.resolve({ default: Inner }), {
       name: "Counter",
@@ -171,8 +171,8 @@ describe("island", () => {
     // Simulate SSR by calling the async component
     const vnode = await (Counter as unknown as (props: { initial: number }) => Promise<VNode>)({ initial: 5 })
     expect(vnode).not.toBeNull()
-    // The wrapper should be a nova-island element
-    expect(vnode.type).toBe("nova-island")
+    // The wrapper should be a pyreon-island element
+    expect(vnode.type).toBe("pyreon-island")
     expect(vnode.props["data-component"]).toBe("Counter")
     expect(vnode.props["data-hydrate"]).toBe("idle")
     const parsedProps = JSON.parse(vnode.props["data-props"] as string)
@@ -210,7 +210,7 @@ describe("prerender", () => {
     const handler = createHandler({ App: Home, routes })
 
     const written: Record<string, string> = {}
-    const tmpDir = `/tmp/nova-ssg-test-${Date.now()}`
+    const tmpDir = `/tmp/pyreon-ssg-test-${Date.now()}`
 
     const result = await prerender({
       handler,
@@ -240,7 +240,7 @@ describe("prerender", () => {
     const App: ComponentFn = () => h("div", null)
     const handler = createHandler({ App, routes: [{ path: "/", component: App }] })
 
-    const tmpDir = `/tmp/nova-ssg-skip-${Date.now()}`
+    const tmpDir = `/tmp/pyreon-ssg-skip-${Date.now()}`
     const result = await prerender({
       handler,
       paths: ["/"],
@@ -258,7 +258,7 @@ describe("prerender", () => {
     const App: ComponentFn = () => h("div", null)
     const handler = createHandler({ App, routes: [{ path: "/", component: App }] })
 
-    const tmpDir = `/tmp/nova-ssg-async-${Date.now()}`
+    const tmpDir = `/tmp/pyreon-ssg-async-${Date.now()}`
     const result = await prerender({
       handler,
       paths: async () => ["/"],

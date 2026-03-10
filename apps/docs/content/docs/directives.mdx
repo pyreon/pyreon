@@ -4,7 +4,7 @@ description: "Custom directives for imperative DOM access using the n- prefix co
 ---
 
 Directives let you run imperative logic directly on a DOM element. Any prop starting with
-`n-` is treated as a directive — Nova calls your function with the element after it mounts,
+`n-` is treated as a directive — Pyreon calls your function with the element after it mounts,
 and runs any registered cleanup functions when the element is removed.
 
 ## Built-in: n-show
@@ -13,7 +13,7 @@ The `n-show` directive toggles an element's visibility via `display: none` witho
 Pass a reactive accessor that returns a boolean:
 
 ```tsx title="src/Toggle.tsx"
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 function Toggle() {
   const visible = signal(true)
@@ -35,7 +35,7 @@ in the DOM and preserves its state (scroll position, form input values, etc.).
 A directive is a function that receives the mounted element and an `addCleanup` callback:
 
 ```ts
-import type { Directive } from "@nova/runtime-dom"
+import type { Directive } from "@pyreon/runtime-dom"
 
 type Directive = (el: HTMLElement, addCleanup: (fn: () => void) => void) => void
 ```
@@ -46,7 +46,7 @@ is removed from the DOM.
 ### n-focus — Auto-focus on Mount
 
 ```tsx title="src/directives/focus.ts"
-import type { Directive } from "@nova/runtime-dom"
+import type { Directive } from "@pyreon/runtime-dom"
 
 const nFocus: Directive = (el) => {
   el.focus()
@@ -59,7 +59,7 @@ const nFocus: Directive = (el) => {
 ### n-click-outside — Detect Outside Clicks
 
 ```tsx title="src/directives/click-outside.ts"
-import type { Directive } from "@nova/runtime-dom"
+import type { Directive } from "@pyreon/runtime-dom"
 
 function nClickOutside(callback: () => void): Directive {
   return (el, addCleanup) => {
@@ -88,8 +88,8 @@ function Dropdown() {
 Directives can use `effect()` to react to signal changes:
 
 ```tsx title="src/directives/tooltip.ts"
-import type { Directive } from "@nova/runtime-dom"
-import { effect } from "@nova/reactivity"
+import type { Directive } from "@pyreon/runtime-dom"
+import { effect } from "@pyreon/reactivity"
 
 function nTooltip(text: () => string): Directive {
   return (el, addCleanup) => {

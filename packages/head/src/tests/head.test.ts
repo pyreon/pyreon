@@ -15,12 +15,12 @@ import type { HeadContextValue } from "../index"
 describe("renderWithHead — SSR", () => {
   test("extracts <title> from useHead", async () => {
     function Page() {
-      useHead({ title: "Hello Nova" })
+      useHead({ title: "Hello Pyreon" })
       return h("main", null, "content")
     }
     const { html, head } = await renderWithHead(h(Page, null))
     expect(html).toContain("<main>")
-    expect(head).toContain("<title>Hello Nova</title>")
+    expect(head).toContain("<title>Hello Pyreon</title>")
   })
 
   test("extracts <meta> tags from useHead", async () => {
@@ -84,6 +84,45 @@ describe("renderWithHead — SSR", () => {
     const { head } = await renderWithHead(h(AsyncPage as never, null))
     expect(head).toContain("<title>Async Page</title>")
   })
+
+  test("renders <style> tags", async () => {
+    function Page() {
+      useHead({ style: [{ children: "body { color: red }" }] })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<style>body { color: red }</style>")
+  })
+
+  test("renders <noscript> tags", async () => {
+    function Page() {
+      useHead({ noscript: [{ children: "<p>Please enable JavaScript</p>" }] })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<noscript><p>Please enable JavaScript</p></noscript>")
+  })
+
+  test("renders JSON-LD script tag", async () => {
+    function Page() {
+      useHead({ jsonLd: { "@type": "WebPage", name: "Test" } })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('type="application/ld+json"')
+    expect(head).toContain('"@type":"WebPage"')
+    expect(head).toContain('"name":"Test"')
+  })
+
+  test("script content is not HTML-escaped", async () => {
+    function Page() {
+      useHead({ script: [{ children: 'var x = 1 < 2 && 3 > 1' }] })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("var x = 1 < 2 && 3 > 1")
+    expect(head).not.toContain("&lt;")
+  })
 })
 
 // ─── CSR tests ────────────────────────────────────────────────────────────────
@@ -96,8 +135,8 @@ describe("useHead — CSR", () => {
     container = document.createElement("div")
     document.body.appendChild(container)
     ctx = createHeadContext()
-    // Clean up any nova-injected head tags from prior tests
-    document.head.querySelectorAll("[data-nova-head]").forEach((el) => el.remove())
+    // Clean up any pyreon-injected head tags from prior tests
+    for (const el of document.head.querySelectorAll("[data-pyreon-head]")) el.remove()
     document.title = ""
   })
 
@@ -123,7 +162,7 @@ describe("useHead — CSR", () => {
 
   test("removes meta tags on unmount", () => {
     function Page() {
-      useHead({ meta: [{ name: "keywords", content: "nova" }] })
+      useHead({ meta: [{ name: "keywords", content: "pyreon" }] })
       return h("div", null)
     }
     const cleanup = mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
@@ -142,5 +181,43 @@ describe("useHead — CSR", () => {
     expect(document.title).toBe("Initial")
     title.set("Updated")
     expect(document.title).toBe("Updated")
+  })
+
+  test("syncs <style> tags on mount", () => {
+    function Page() {
+      useHead({ style: [{ children: "body { margin: 0 }" }] })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const style = document.head.querySelector("style[data-pyreon-head]")
+    expect(style).not.toBeNull()
+    expect(style?.textContent).toBe("body { margin: 0 }")
+  })
+
+  test("syncs JSON-LD script on mount", () => {
+    function Page() {
+      useHead({ jsonLd: { "@type": "WebPage", name: "Test" } })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const script = document.head.querySelector('script[type="application/ld+json"]')
+    expect(script).not.toBeNull()
+    expect(script?.textContent).toContain('"@type":"WebPage"')
+  })
+
+  test("incremental sync updates attributes in place", () => {
+    const desc = signal("initial")
+    function Page() {
+      useHead(() => ({ meta: [{ name: "description", content: desc() }] }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const meta1 = document.head.querySelector('meta[name="description"]')
+    expect(meta1?.getAttribute("content")).toBe("initial")
+    desc.set("updated")
+    const meta2 = document.head.querySelector('meta[name="description"]')
+    // Same element should be reused (incremental sync)
+    expect(meta2).toBe(meta1)
+    expect(meta2?.getAttribute("content")).toBe("updated")
   })
 })

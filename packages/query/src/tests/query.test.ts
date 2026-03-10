@@ -57,7 +57,7 @@ function deferred<T>() {
 describe("QueryClientProvider / useQueryClient", () => {
   it("useQueryClient throws when no provider is present", () => {
     // Call directly outside any renderer — context stack is empty so it must throw.
-    expect(() => useQueryClient()).toThrow("[nova/query]")
+    expect(() => useQueryClient()).toThrow("[pyreon/query]")
   })
 
   it("provides the QueryClient to descendants", () => {
@@ -141,14 +141,14 @@ describe("useQuery", () => {
       el,
     )
 
-    resolve({ name: "Nova" })
+    resolve({ name: "Pyreon" })
     await promise
 
     // Let the observer's internal promise chain flush
     await new Promise(r => setTimeout(r, 0))
 
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.data()).toEqual({ name: "Nova" })
+    expect(query!.data()).toEqual({ name: "Pyreon" })
     unmount(); el.remove()
   })
 

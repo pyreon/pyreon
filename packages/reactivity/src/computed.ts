@@ -26,13 +26,10 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   let dirty = true
   let initialized = false
   let disposed = false
-  // Lazily allocated — leaf computeds used only inside effects never need the Set.
-  let subscribers: Set<() => void> | null = null
-  const getOrCreate = () => {
-    if (!subscribers) subscribers = new Set()
-    return subscribers
-  }
   const customEquals = options?.equals
+
+  // SubscriberHost — _s is lazily allocated by trackSubscriber
+  const host: { _s: Set<() => void> | null } = { _s: null }
 
   const recompute = () => {
     if (disposed) return
@@ -45,15 +42,15 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
       value = next
       dirty = false
       initialized = true
-      if (subscribers) notifySubscribers(subscribers)
+      if (host._s) notifySubscribers(host._s)
     } else {
       dirty = true
-      if (subscribers) notifySubscribers(subscribers)
+      if (host._s) notifySubscribers(host._s)
     }
   }
 
   const read = (): T => {
-    trackSubscriber(getOrCreate)
+    trackSubscriber(host)
     if (dirty) {
       value = withTracking(recompute, fn)
       dirty = false

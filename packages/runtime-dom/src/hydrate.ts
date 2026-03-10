@@ -87,7 +87,7 @@ function hydrateChild(
 
     if (initial == null || initial === false) {
       // Nothing rendered on server — insert comment marker + mountReactive
-      const marker = document.createComment("nova")
+      const marker = document.createComment("pyreon")
       if (domNode) {
         parent.insertBefore(marker, domNode)
       } else {
@@ -114,7 +114,7 @@ function hydrateChild(
     }
 
     // Reactive VNode / complex — insert comment marker and delegate to mountReactive
-    const marker = document.createComment("nova")
+    const marker = document.createComment("pyreon")
     if (domNode) {
       parent.insertBefore(marker, domNode)
     } else {
@@ -146,19 +146,19 @@ function hydrateChild(
     return hydrateChildren(vnode.children, domNode, parent, anchor, path)
   }
 
-  // For — look for SSR hydration markers <!--nova-for--> ... <!--/nova-for-->
+  // For — look for SSR hydration markers <!--pyreon-for--> ... <!--/pyreon-for-->
   if (vnode.type === ForSymbol) {
     // Check if SSR left boundary markers
     if (
       domNode?.nodeType === Node.COMMENT_NODE &&
-      (domNode as Comment).data === "nova-for"
+      (domNode as Comment).data === "pyreon-for"
     ) {
       // Remove the start marker, collect SSR-rendered children, remove end marker
       const startMarker = domNode
       let cursor: ChildNode | null = startMarker.nextSibling
       const ssrNodes: ChildNode[] = []
       while (cursor) {
-        if (cursor.nodeType === Node.COMMENT_NODE && (cursor as Comment).data === "/nova-for") {
+        if (cursor.nodeType === Node.COMMENT_NODE && (cursor as Comment).data === "/pyreon-for") {
           break
         }
         ssrNodes.push(cursor)
@@ -172,14 +172,14 @@ function hydrateChild(
       if (endMarker) endMarker.remove()
 
       // Replace start marker with the reactive For mount point
-      const marker = document.createComment("nova-for")
+      const marker = document.createComment("pyreon-for")
       parent.replaceChild(marker, startMarker)
       const cleanup = mountChild(vnode, parent, marker)
       return [cleanup, afterEnd ? firstReal(afterEnd) : null]
     }
 
     // No markers — fallback to fresh mount
-    const marker = document.createComment("nova-for")
+    const marker = document.createComment("pyreon-for")
     if (domNode) {
       parent.insertBefore(marker, domNode)
     } else {
@@ -228,8 +228,8 @@ function hydrateElement(
     const cleanups: Cleanup[] = []
 
     // Attach props (events + reactive effects) — don't set static attrs (SSR already did)
-    const propCleanups = applyProps(el, vnode.props)
-    cleanups.push(...propCleanups)
+    const propCleanup = applyProps(el, vnode.props)
+    if (propCleanup) cleanups.push(propCleanup)
 
     // Hydrate children
     const firstChild = firstReal(el.firstChild as ChildNode | null)
@@ -305,7 +305,7 @@ function hydrateComponent(
   } catch (err) {
     setCurrentScope(null)
     scope.stop()
-    console.error(`[nova] Error hydrating component <${componentName}>:`, err)
+    console.error(`[pyreon] Error hydrating component <${componentName}>:`, err)
     reportError({ component: componentName, phase: "setup", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
     return [noop, domNode]
   }
@@ -344,7 +344,7 @@ function hydrateComponent(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Hydrate a server-rendered container with a Nova VNode tree.
+ * Hydrate a server-rendered container with a Pyreon VNode tree.
  *
  * Reuses existing DOM elements for static structure, attaches event listeners
  * and reactive effects without re-rendering. Falls back to fresh mount for

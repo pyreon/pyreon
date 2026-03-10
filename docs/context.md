@@ -1,6 +1,6 @@
 # Context
 
-Nova's context system provides dependency injection for component trees. It lets ancestor components provide values that any descendant can read without passing props through every intermediate layer.
+Pyreon's context system provides dependency injection for component trees. It lets ancestor components provide values that any descendant can read without passing props through every intermediate layer.
 
 ## API Reference
 

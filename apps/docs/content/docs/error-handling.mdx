@@ -1,9 +1,9 @@
 ---
 title: "Error Handling"
-description: "ErrorBoundary, onErrorCaptured, error telemetry, and best practices for resilient Nova apps."
+description: "ErrorBoundary, onErrorCaptured, error telemetry, and best practices for resilient Pyreon apps."
 ---
 
-Nova provides layered error handling — from component-level boundaries to global telemetry hooks.
+Pyreon provides layered error handling — from component-level boundaries to global telemetry hooks.
 Errors in child components are caught and can be recovered from without crashing the entire app.
 
 ## ErrorBoundary
@@ -12,7 +12,7 @@ The `ErrorBoundary` component catches errors thrown during child rendering and d
 fallback UI. The fallback receives the error and a `reset` function to retry.
 
 ```tsx title="src/App.tsx"
-import { ErrorBoundary } from "@nova/core"
+import { ErrorBoundary } from "@pyreon/core"
 
 function App() {
   return (
@@ -59,8 +59,8 @@ without rendering a full fallback UI. Return `true` to mark the error as handled
 propagation.
 
 ```tsx title="src/LoggingWrapper.tsx"
-import { signal } from "@nova/reactivity"
-import { onErrorCaptured } from "@nova/core"
+import { signal } from "@pyreon/reactivity"
+import { onErrorCaptured } from "@pyreon/core"
 
 function LoggingWrapper(props: { children: any }) {
   const lastError = signal<string | null>(null)
@@ -116,7 +116,7 @@ Register global handlers that are called whenever a component error is caught �
 sending errors to Sentry, Datadog, or your own logging backend.
 
 ```ts title="src/main.ts"
-import { registerErrorHandler } from "@nova/core"
+import { registerErrorHandler } from "@pyreon/core"
 import * as Sentry from "@sentry/browser"
 
 const unregister = registerErrorHandler((ctx) => {
@@ -165,7 +165,7 @@ registered handlers. You can also call it directly to report custom errors throu
 same pipeline.
 
 ```ts
-import { reportError } from "@nova/core"
+import { reportError } from "@pyreon/core"
 
 reportError({
   component: "PaymentForm",
@@ -185,10 +185,10 @@ reportError({
 ## Effect Error Handling
 
 Errors thrown inside `effect()` are caught by a global handler that defaults to `console.error`.
-You can replace it with `setErrorHandler` from `@nova/reactivity`.
+You can replace it with `setErrorHandler` from `@pyreon/reactivity`.
 
 ```ts title="src/setup.ts"
-import { setErrorHandler } from "@nova/reactivity"
+import { setErrorHandler } from "@pyreon/reactivity"
 
 setErrorHandler((err) => {
   console.error("[app] effect error:", err)
@@ -211,9 +211,9 @@ setErrorHandler((err) => {
 Wrap your entire app in an `ErrorBoundary` and register a telemetry handler at startup.
 
 ```tsx title="src/main.tsx"
-import { registerErrorHandler, ErrorBoundary } from "@nova/core"
-import { setErrorHandler } from "@nova/reactivity"
-import { mount } from "@nova/runtime-dom"
+import { registerErrorHandler, ErrorBoundary } from "@pyreon/core"
+import { setErrorHandler } from "@pyreon/reactivity"
+import { mount } from "@pyreon/runtime-dom"
 
 // Telemetry for component errors
 registerErrorHandler((ctx) => {

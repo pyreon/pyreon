@@ -1,6 +1,6 @@
 # React Compatibility Layer
 
-`@pyreon/react-compat` provides React-API-compatible shims built on top of Nova's reactivity primitives. It lets you migrate a React codebase to Nova file-by-file without rewriting every component at once.
+`@pyreon/react-compat` provides React-API-compatible shims built on top of Pyreon's reactivity primitives. It lets you migrate a React codebase to Pyreon file-by-file without rewriting every component at once.
 
 ## Installation
 
@@ -33,7 +33,7 @@ For JSX factory, update `tsconfig.json`:
 
 ## Full API Mapping
 
-| React API | Nova equivalent | Available in react-compat |
+| React API | Pyreon equivalent | Available in react-compat |
 |---|---|---|
 | `useState(init)` | `signal(init)` + `.set()` | Yes |
 | `useReducer(r, init)` | `signal` + custom reducer | Yes |
@@ -47,7 +47,7 @@ For JSX factory, update `tsconfig.json`:
 | `useTransition()` | `[false, fn => fn()]` | Yes (no-op shim) |
 | `useDeferredValue(v)` | returns `v` unchanged | Yes (no-op shim) |
 | `useImperativeHandle` | attaches methods to ref | Yes |
-| `memo(Component)` | identity (Nova components run once) | Yes (identity) |
+| `memo(Component)` | identity (Pyreon components run once) | Yes (identity) |
 | `lazy(fn)` | `lazy(fn)` | Yes |
 | `Suspense` | `Suspense` | Yes |
 | `ErrorBoundary` | `ErrorBoundary` | Yes |
@@ -81,11 +81,11 @@ function Counter() {
 }
 ```
 
-This is the most common gotcha when migrating. React's `count` is a plain value; Nova's `count` is a signal (a function).
+This is the most common gotcha when migrating. React's `count` is a plain value; Pyreon's `count` is a signal (a function).
 
 ## useEffect
 
-Deps array is **ignored** — Nova auto-tracks dependencies.
+Deps array is **ignored** — Pyreon auto-tracks dependencies.
 
 ```tsx
 // React (deps array required)
@@ -93,7 +93,7 @@ useEffect(() => {
   document.title = `Count: ${count}`
 }, [count])
 
-// Nova react-compat (deps ignored, auto-tracked)
+// Pyreon react-compat (deps ignored, auto-tracked)
 useEffect(() => {
   document.title = `Count: ${count()}`
 })
@@ -110,14 +110,14 @@ useEffect(() => {
 
 ## useMemo
 
-Deps array is **ignored** — Nova auto-tracks.
+Deps array is **ignored** — Pyreon auto-tracks.
 
 ```tsx
 // React
 const filtered = useMemo(() =>
   items.filter(i => i.active), [items])
 
-// Nova react-compat — same code, deps ignored
+// Pyreon react-compat — same code, deps ignored
 const filtered = useMemo(() =>
   items().filter(i => i.active))
 // filtered is a computed getter — call filtered() to read
@@ -172,13 +172,13 @@ function Page() {
 
 ## memo
 
-In Nova, all components run once by definition. `memo()` is an identity function — it returns the component unchanged. There is no memoization needed.
+In Pyreon, all components run once by definition. `memo()` is an identity function — it returns the component unchanged. There is no memoization needed.
 
 ```tsx
 // React — prevents re-renders when props don't change
 const Item = memo(({ name }: { name: string }) => <li>{name}</li>)
 
-// Nova react-compat — memo is a no-op, same effect
+// Pyreon react-compat — memo is a no-op, same effect
 const Item = memo(({ name }: { name: string }) => <li>{name}</li>)
 ```
 
@@ -190,23 +190,23 @@ const Item = memo(({ name }: { name: string }) => <li>{name}</li>)
 // React
 <span>{count}</span>
 
-// Nova
+// Pyreon
 <span>{count()}</span>
 ```
 
-**Deps arrays are ignored.** Do not rely on them to throttle effect re-runs. If you have a `useEffect` that should only run once, it will still only run once in Nova — but because Nova's tracking detects no reactive dependencies inside, not because you passed `[]`.
+**Deps arrays are ignored.** Do not rely on them to throttle effect re-runs. If you have a `useEffect` that should only run once, it will still only run once in Pyreon — but because Pyreon's tracking detects no reactive dependencies inside, not because you passed `[]`.
 
-**`useLayoutEffect` maps to `onMount`.** There is no distinction between layout effects and mount effects in Nova, since there is no batched re-render cycle.
+**`useLayoutEffect` maps to `onMount`.** There is no distinction between layout effects and mount effects in Pyreon, since there is no batched re-render cycle.
 
-**No class components.** `@pyreon/react-compat` does not support class components, `componentDidMount`, `componentWillUnmount`, `PureComponent`, or `Component`. Migrate class components to functions before switching to Nova.
+**No class components.** `@pyreon/react-compat` does not support class components, `componentDidMount`, `componentWillUnmount`, `PureComponent`, or `Component`. Migrate class components to functions before switching to Pyreon.
 
-**No React DevTools.** Nova does not integrate with the React DevTools browser extension.
+**No React DevTools.** Pyreon does not integrate with the React DevTools browser extension.
 
 **React ecosystem libraries will not work.** Libraries that depend on React internals (`react-dom`, `react-spring`, `react-query`, Radix UI, etc.) will not function with `@pyreon/react-compat`. Migrate components one at a time and keep React packages for components that still use them.
 
-**Event names use native casing.** Nova uses `onClick` (React convention) but internally attaches native `addEventListener`. Non-standard React synthetic event handling (`onClickCapture`, `onChange` for input) follows standard DOM behavior.
+**Event names use native casing.** Pyreon uses `onClick` (React convention) but internally attaches native `addEventListener`. Non-standard React synthetic event handling (`onClickCapture`, `onChange` for input) follows standard DOM behavior.
 
-**`className` vs `class`.** Nova uses `class`. The react-compat layer maps `className` to `class` automatically, so both work during migration.
+**`className` vs `class`.** Pyreon uses `class`. The react-compat layer maps `className` to `class` automatically, so both work during migration.
 
 ## What Doesn't Work
 

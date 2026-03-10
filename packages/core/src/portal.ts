@@ -5,7 +5,7 @@ import type { VNode, VNodeChild, Props } from "./types"
  * children into `target` instead of the normal parent.
  */
 // biome-ignore lint/suspicious/noShadowRestrictedNames: intentional symbol
-export const PortalSymbol: unique symbol = Symbol("nova.Portal")
+export const PortalSymbol: unique symbol = Symbol("pyreon.Portal")
 
 export interface PortalProps {
   /** DOM element to render children into (e.g. document.body). */

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/query",
   "version": "0.0.1",
-  "description": "Nova adapter for TanStack Query",
+  "description": "Pyreon adapter for TanStack Query",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

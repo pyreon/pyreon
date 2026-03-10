@@ -1,12 +1,17 @@
-import { Fragment, ForSymbol, PortalSymbol, propagateError, dispatchToErrorBoundary, runWithHooks, reportError } from "@pyreon/core"
+import { Fragment, ForSymbol, PortalSymbol, EMPTY_PROPS, propagateError, dispatchToErrorBoundary, runWithHooks, reportError } from "@pyreon/core"
 import type { ComponentFn, ForProps, PortalProps, Ref, VNode, VNodeChild } from "@pyreon/core"
-import { effectScope, setCurrentScope, runUntracked, effect } from "@pyreon/reactivity"
+import { effectScope, setCurrentScope, runUntracked, renderEffect } from "@pyreon/reactivity"
 import { mountFor, mountKeyedList, mountReactive } from "./nodes"
 import { applyProps } from "./props"
 import { installDevTools, registerComponent, unregisterComponent } from "./devtools"
 
 type Cleanup = () => void
 const noop: Cleanup = () => {}
+
+// When > 0, we're mounting children inside an element — child cleanups can skip
+// DOM removal (parent element removal handles it). This avoids allocating a
+// removeChild closure for every nested element that has no reactive work.
+let _elementDepth = 0
 
 // Stack tracking which component is currently being mounted (depth-first order).
 // Used to infer parent/child relationships for DevTools.
@@ -37,12 +42,17 @@ export function mountChild(
     // so this peek is just for routing — not wasteful in practice.
     const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
     if (isKeyedArray(sample)) {
-      return mountKeyedList(
+      // Reactive boundary — children manage their own DOM lifecycle
+      const prevDepth = _elementDepth
+      _elementDepth = 0
+      const cleanup = mountKeyedList(
         child as () => VNode[],
         parent,
         anchor,
         (vnode, p, a) => mountChild(vnode, p, a),
       )
+      _elementDepth = prevDepth
+      return cleanup
     }
     // Text fast path: reactive string/number/boolean — update text.data in-place
     // instead of mountReactive (which creates a comment marker + teardown/rebuild).
@@ -54,17 +64,24 @@ export function mountChild(
         sample == null || sample === false ? "" : String(sample),
       )
       parent.insertBefore(text, anchor)
-      const e = effect(() => {
+      const dispose = renderEffect(() => {
         const v = (child as () => unknown)()
         text.data = v == null || v === false ? "" : String(v as string | number)
       })
+      // Inside an element, parent removal handles text node removal — just dispose the effect
+      if (_elementDepth > 0) return dispose
       return () => {
-        e.dispose()
+        dispose()
         const p = text.parentNode
         if (p && (p as Element).isConnected !== false) p.removeChild(text)
       }
     }
-    return mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+    // Reactive boundary — content manages its own DOM lifecycle
+    const prevDepth = _elementDepth
+    _elementDepth = 0
+    const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+    _elementDepth = prevDepth
+    return cleanup
   }
 
   // Array of children (e.g. from .map())
@@ -75,14 +92,11 @@ export function mountChild(
   // Nothing to render
   if (child == null || child === false) return noop
 
-  // Primitive — text node
+  // Primitive — text node (static, no reactive effects to tear down).
+  // DOM removal is handled by the parent element's cleanup, so return noop.
   if (typeof child !== "object") {
-    const text = document.createTextNode(String(child))
-    parent.insertBefore(text, anchor)
-    return () => {
-      const p = text.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(text)
-    }
+    parent.insertBefore(document.createTextNode(String(child)), anchor)
+    return noop
   }
 
   const vnode = child as VNode
@@ -93,7 +107,12 @@ export function mountChild(
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, key, children } = vnode.props as unknown as ForProps<unknown>
-    return mountFor(each, key, children, parent, anchor, mountChild)
+    // Reactive boundary — For manages its own DOM lifecycle
+    const prevDepth = _elementDepth
+    _elementDepth = 0
+    const cleanup = mountFor(each, key, children, parent, anchor, mountChild)
+    _elementDepth = prevDepth
+    return cleanup
   }
 
   // Portal — mount children into a different DOM target, outside the current tree
@@ -114,21 +133,46 @@ export function mountChild(
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   const el = document.createElement(vnode.type as string)
 
-  const cleanups: Cleanup[] = applyProps(el, vnode.props)
-  cleanups.push(mountChildren(vnode.children, el, null))
+  // Skip applyProps entirely when props is the shared empty sentinel (identity check — no allocation)
+  const props = vnode.props
+  const propCleanup: Cleanup | null = props !== EMPTY_PROPS ? applyProps(el, props) : null
+
+  // Mount children inside element context — nested elements can skip DOM removal closures
+  _elementDepth++
+  const childCleanup = mountChildren(vnode.children, el, null)
+  _elementDepth--
 
   parent.insertBefore(el, anchor)
 
   // Populate ref after the element is in the DOM
-  const ref = vnode.props.ref as Ref<Element> | null | undefined
+  const ref = props.ref as Ref<Element> | null | undefined
   if (ref && typeof ref === "object") ref.current = el
+
+  if (!propCleanup && childCleanup === noop && !ref) {
+    // No reactive work — if nested inside another element, parent removal handles us
+    if (_elementDepth > 0) return noop
+    return () => {
+      const p = el.parentNode
+      if (p && (p as Element).isConnected !== false) p.removeChild(el)
+    }
+  }
+
+  // Nested elements: parent removal handles DOM, cleanup only disposes reactive work
+  if (_elementDepth > 0) {
+    if (!ref && !propCleanup) return childCleanup
+    if (!ref && propCleanup) return () => { propCleanup(); childCleanup() }
+    const refToClean = ref
+    return () => {
+      if (refToClean && typeof refToClean === "object") refToClean.current = null
+      if (propCleanup) propCleanup()
+      childCleanup()
+    }
+  }
 
   return () => {
     if (ref && typeof ref === "object") ref.current = null
-    for (const fn of cleanups) fn()
-    // Skip removeChild when element is already in a detached subtree
-    // (e.g. after range.deleteContents() in mountFor fast paths). Calling
-    // removeChild on a detached parent is expensive in JS-based DOMs (happy-dom).
+    if (propCleanup) propCleanup()
+    childCleanup()
     const p = el.parentNode
     if (p && (p as Element).isConnected !== false) p.removeChild(el)
   }
@@ -172,7 +216,7 @@ function mountComponent(
     _mountingStack.pop()
     setCurrentScope(null)
     scope.stop()
-    console.error(`[nova] Error in component <${componentName}>:`, err)
+    console.error(`[pyreon] Error in component <${componentName}>:`, err)
     reportError({ component: componentName, phase: "setup", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
     dispatchToErrorBoundary(err)
     return noop
@@ -192,7 +236,7 @@ function mountComponent(
     _mountingStack.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
-    if (!handled) console.error("[nova] Error mounting component subtree:", err)
+    if (!handled) console.error("[pyreon] Error mounting component subtree:", err)
     reportError({ component: componentName, phase: "render", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
     return noop
   }
@@ -211,7 +255,7 @@ function mountComponent(
       scope.runInScope(() => { cleanup = fn() })
       if (cleanup) mountCleanups.push(cleanup)
     } catch (err) {
-      console.error("[nova] Error in onMount hook:", err)
+      console.error("[pyreon] Error in onMount hook:", err)
       reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
     }
   }
@@ -222,7 +266,7 @@ function mountComponent(
     subtreeCleanup()
     for (const fn of hooks.unmount) {
       try { fn() } catch (err) {
-        console.error("[nova] Error in onUnmount hook:", err)
+        console.error("[pyreon] Error in onUnmount hook:", err)
         reportError({ component: componentName, phase: "unmount", error: err, timestamp: Date.now() })
       }
     }
@@ -233,6 +277,31 @@ function mountComponent(
 // ─── Children ────────────────────────────────────────────────────────────────
 
 function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null): Cleanup {
+  if (children.length === 0) return noop
+  if (children.length === 1) {
+    const child = children[0]
+    if (child !== undefined) {
+      // Static text fast path: textContent is 1 DOM op vs createTextNode + insertBefore (2 ops)
+      if (anchor === null && (typeof child === "string" || typeof child === "number")) {
+        ;(parent as HTMLElement).textContent = String(child)
+        return noop
+      }
+      return mountChild(child, parent, anchor)
+    }
+  }
+  // 2-child fast path — avoids .map() array allocation (covers <tr><td/><td/></tr>)
+  if (children.length === 2) {
+    const c0 = children[0]
+    const c1 = children[1]
+    if (c0 !== undefined && c1 !== undefined) {
+      const d0 = mountChild(c0, parent, anchor)
+      const d1 = mountChild(c1, parent, anchor)
+      if (d0 === noop && d1 === noop) return noop
+      if (d0 === noop) return d1
+      if (d1 === noop) return d0
+      return () => { d0(); d1() }
+    }
+  }
   const cleanups = children.map((c) => mountChild(c, parent, anchor))
   return () => {
     for (const fn of cleanups) fn()

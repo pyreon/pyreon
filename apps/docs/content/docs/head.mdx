@@ -3,7 +3,7 @@ title: "Head Management"
 description: "Manage document head tags (title, meta, link, script) with useHead(), HeadProvider, and SSR support via renderWithHead()."
 ---
 
-`@nova/head` lets you set `<title>`, `<meta>`, `<link>`, and other head tags from
+`@pyreon/head` lets you set `<title>`, `<meta>`, `<link>`, and other head tags from
 any component in your tree. Tags are deduplicated automatically — the innermost
 component wins when multiple components set the same tag.
 
@@ -16,7 +16,7 @@ component wins when multiple components set the same tag.
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/head
+bun add @pyreon/head
 ```
 
 ## Client-Side Setup
@@ -25,9 +25,9 @@ Wrap your app root with `HeadProvider` so all descendant `useHead()` calls have
 somewhere to register their tags.
 
 ```tsx title="src/main.tsx"
-import { mount } from "@nova/runtime-dom"
-import { h } from "@nova/core"
-import { HeadProvider, createHeadContext } from "@nova/head"
+import { mount } from "@pyreon/runtime-dom"
+import { h } from "@pyreon/core"
+import { HeadProvider, createHeadContext } from "@pyreon/head"
 import { App } from "./App"
 
 const headCtx = createHeadContext()
@@ -48,7 +48,7 @@ automatically when the component unmounts.
 ### Static tags
 
 ```tsx title="src/pages/About.tsx"
-import { useHead } from "@nova/head"
+import { useHead } from "@pyreon/head"
 
 function About() {
   useHead({
@@ -72,8 +72,8 @@ Pass a function to `useHead()` to make the tags reactive. When any signal read
 inside the function changes, the head tags update automatically.
 
 ```tsx title="src/pages/Post.tsx"
-import { useHead } from "@nova/head"
-import { signal } from "@nova/reactivity"
+import { useHead } from "@pyreon/head"
+import { signal } from "@pyreon/reactivity"
 
 function Post() {
   const title = signal("Loading...")
@@ -98,8 +98,8 @@ Use `renderWithHead()` instead of `renderToString()` to capture both the HTML bo
 and the serialized head tags in one pass.
 
 ```ts title="src/server.ts"
-import { h } from "@nova/core"
-import { renderWithHead } from "@nova/head"
+import { h } from "@pyreon/core"
+import { renderWithHead } from "@pyreon/head"
 import { App } from "./App"
 
 const { html, head } = await renderWithHead(h(App, null))

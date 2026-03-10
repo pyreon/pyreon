@@ -3,7 +3,7 @@ title: "Lists & For"
 description: "For, createTemplate, and NativeItem for efficient keyed list rendering."
 ---
 
-Nova provides the `For` component for efficient keyed list rendering.
+Pyreon provides the `For` component for efficient keyed list rendering.
 
 <Callout type="error" title="Don't use array.map() for reactive lists">
   `array.map()` inside JSX works, but it creates and destroys all DOM nodes every time
@@ -14,8 +14,8 @@ Nova provides the `For` component for efficient keyed list rendering.
 ## Basic Usage
 
 ```tsx title="src/TodoList.tsx"
-import { For } from "@nova/core"
-import { signal } from "@nova/reactivity"
+import { For } from "@pyreon/core"
+import { signal } from "@pyreon/reactivity"
 
 interface Todo {
   id: number
@@ -25,7 +25,7 @@ interface Todo {
 
 function TodoList() {
   const todos = signal<Todo[]>([
-    { id: 1, text: "Learn Nova", done: false },
+    { id: 1, text: "Learn Pyreon", done: false },
     { id: 2, text: "Build something", done: false },
   ])
 
@@ -125,7 +125,7 @@ For very long lists where performance is critical, `createTemplate` pre-compiles
 template that is cloned for each item instead of being built from VNodes.
 
 ```ts title="src/fast-list.ts"
-import { createTemplate } from "@nova/runtime-dom"
+import { createTemplate } from "@pyreon/runtime-dom"
 
 const ItemTemplate = createTemplate<{ text: string; done: boolean }>(
   (item) => {

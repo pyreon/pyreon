@@ -18,7 +18,7 @@ import { signal, type Signal } from "./signal"
 // WeakMap: raw object → its reactive proxy (ensures each raw object gets one proxy)
 const proxyCache = new WeakMap<object, object>()
 
-const IS_STORE = Symbol("nova.store")
+const IS_STORE = Symbol("pyreon.store")
 
 /** Returns true if the value is a createStore proxy. */
 export function isStore(value: unknown): boolean {

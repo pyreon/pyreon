@@ -6,7 +6,7 @@ import { mountChild } from "./mount"
 export interface TransitionGroupProps<T = unknown> {
   /** Wrapper element tag. Default: "div" */
   tag?: string
-  /** CSS class prefix. Default: "nova" */
+  /** CSS class prefix. Default: "pyreon" */
   name?: string
   /** Animate items on initial mount. Default: false */
   appear?: boolean
@@ -70,7 +70,7 @@ type ItemEntry = {
  */
 export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
   const tag = props.tag ?? "div"
-  const n = props.name ?? "nova"
+  const n = props.name ?? "pyreon"
   const cls = {
     ef: props.enterFrom  ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,

@@ -45,9 +45,9 @@ export interface HandlerOptions {
   routes: RouteRecord[]
   /**
    * HTML template with placeholders:
-   *   <!--nova-head-->     — head tags (title, meta, link, etc.)
-   *   <!--nova-app-->      — rendered app HTML
-   *   <!--nova-scripts-->  — client entry + loader data
+   *   <!--pyreon-head-->     — head tags (title, meta, link, etc.)
+   *   <!--pyreon-app-->      — rendered app HTML
+   *   <!--pyreon-scripts-->  — client entry + loader data
    *
    * Defaults to a minimal HTML5 template.
    */
@@ -133,15 +133,15 @@ async function renderStreamResponse(
   const loaderData = serializeLoaderData(router as never)
   const scripts = buildScripts(clientEntry, loaderData)
 
-  // Split template around <!--nova-app-->
-  const [beforeApp, afterApp] = template.split("<!--nova-app-->")
+  // Split template around <!--pyreon-app-->
+  const [beforeApp, afterApp] = template.split("<!--pyreon-app-->")
   if (!beforeApp || afterApp === undefined) {
-    throw new Error("[nova/server] Template must contain <!--nova-app--> placeholder")
+    throw new Error("[pyreon/server] Template must contain <!--pyreon-app--> placeholder")
   }
 
   // Replace other placeholders in shell parts
-  const shellHead = beforeApp.replace("<!--nova-head-->", "")
-  const shellTail = afterApp.replace("<!--nova-scripts-->", scripts)
+  const shellHead = beforeApp.replace("<!--pyreon-head-->", "")
+  const shellTail = afterApp.replace("<!--pyreon-scripts-->", scripts)
 
   const appStream = renderToStream(app)
   const reader = appStream.getReader()

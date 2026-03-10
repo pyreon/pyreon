@@ -1,14 +1,14 @@
-# Nova Framework
+# Pyreon Framework
 
-Nova is a fine-grained reactivity framework for building user interfaces. It compiles to efficient DOM operations where only the exact nodes that depend on a changed signal are updated — no virtual DOM diffing, no component re-renders.
+Pyreon is a fine-grained reactivity framework for building user interfaces. It compiles to efficient DOM operations where only the exact nodes that depend on a changed signal are updated — no virtual DOM diffing, no component re-renders.
 
-## Why Nova
+## Why Pyreon
 
-| Pain point | React/Vue | Nova |
+| Pain point | React/Vue | Pyreon |
 |---|---|---|
 | Re-renders | Whole component subtree re-renders on state change | Signal updates patch only the affected DOM node |
 | Stale closures | Effect deps arrays, `useCallback`, `useMemo` boilerplate | No deps arrays — tracking is automatic |
-| Bundle size | React DOM ~42 kB gzip | Nova core + runtime-dom ~6 kB gzip |
+| Bundle size | React DOM ~42 kB gzip | Pyreon core + runtime-dom ~6 kB gzip |
 | SSR | Requires hydration of full component tree | Selective hydration, stream-first |
 | Migration | — | `@pyreon/react-compat` lets you migrate file-by-file |
 
@@ -57,7 +57,7 @@ function Counter() {
 mount(document.getElementById("app")!, <Counter />)
 ```
 
-The `count()` call inside JSX is a reactive getter. Nova wraps it in an effect automatically, so only that text node is updated when `count` changes. The `Counter` function itself runs exactly once.
+The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect automatically, so only that text node is updated when `count` changes. The `Counter` function itself runs exactly once.
 
 ## Package Overview
 
@@ -70,12 +70,12 @@ The `count()` call inside JSX is a reactive getter. Nova wraps it in an effect a
 | `@pyreon/router` | Hash/history router, guards, lazy routes |
 | `@pyreon/store` | `defineStore()` — composable global state |
 | `@pyreon/compiler` | Babel/TypeScript JSX transform |
-| `@pyreon/vite-plugin` | Vite plugin — `.nova` files, HMR |
+| `@pyreon/vite-plugin` | Vite plugin — `.pyreon` files, HMR |
 | `@pyreon/react-compat` | Drop-in React API shims for incremental migration |
 
 ## Framework Comparison
 
-| Feature | React 18 | Vue 3 | SolidJS | Nova |
+| Feature | React 18 | Vue 3 | SolidJS | Pyreon |
 |---|---|---|---|---|
 | Reactivity model | VDOM + re-render | Proxy + VDOM | Fine-grained signals | Fine-grained signals |
 | Component re-runs | On every state change | On every state change | Never | Never |

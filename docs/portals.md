@@ -94,7 +94,7 @@ function Button() {
 
 ## Context Preservation
 
-Even though the Portal renders into a different DOM node, it is still part of the Nova component tree. Context provided above the Portal is available to components inside it.
+Even though the Portal renders into a different DOM node, it is still part of the Pyreon component tree. Context provided above the Portal is available to components inside it.
 
 ```tsx
 const ThemeCtx = createContext({ primary: "#0070f3" })
@@ -146,7 +146,7 @@ h(Portal, { mount: document.body },
 
 ## Gotchas
 
-**The target element must exist when the Portal mounts.** If `mount` is `null` or `undefined`, Nova throws at mount time.
+**The target element must exist when the Portal mounts.** If `mount` is `null` or `undefined`, Pyreon throws at mount time.
 
 ```tsx
 // Wrong — querySelector may return null
@@ -160,6 +160,6 @@ if (!target) throw new Error("Portal target not found")
 <Portal mount={target}>
 ```
 
-**Events do not bubble through the DOM tree — they bubble through the Nova component tree.** If you attach a click handler to a parent component that wraps a Portal, it will not receive click events from inside the Portal via DOM event bubbling (because the Portal DOM is attached to a different node). Handle this explicitly.
+**Events do not bubble through the DOM tree — they bubble through the Pyreon component tree.** If you attach a click handler to a parent component that wraps a Portal, it will not receive click events from inside the Portal via DOM event bubbling (because the Portal DOM is attached to a different node). Handle this explicitly.
 
-**Multiple Portals to the same target render in mount order.** Nova appends Portal children to the target element in the order the Portals mount. If you need explicit ordering (e.g., z-index layers), use separate target elements or manage `z-index` via CSS.
+**Multiple Portals to the same target render in mount order.** Pyreon appends Portal children to the target element in the order the Portals mount. If you need explicit ordering (e.g., z-index layers), use separate target elements or manage `z-index` via CSS.

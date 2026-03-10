@@ -38,14 +38,14 @@ export const jsxs = jsx
 type Booleanish = boolean | "true" | "false"
 type StyleValue = string | Partial<CSSStyleDeclaration>
 
-/** Common HTML attributes accepted by all Nova elements */
-interface NovaHTMLAttributes {
+/** Common HTML attributes accepted by all Pyreon elements */
+interface PyreonHTMLAttributes {
   // Identity
   id?: string
   class?: string | (() => string)
   className?: string | (() => string)
   style?: StyleValue | (() => StyleValue)
-  // nova-specific directives
+  // pyreon-specific directives
   "n-show"?: boolean | (() => boolean)
   // Accessible
   role?: string
@@ -154,7 +154,7 @@ interface NovaHTMLAttributes {
 }
 
 /** Attributes specific to form inputs */
-interface InputAttributes extends NovaHTMLAttributes {
+interface InputAttributes extends PyreonHTMLAttributes {
   type?: string | (() => string)
   value?: string | number | (() => string | number)
   defaultValue?: string | number
@@ -184,14 +184,14 @@ interface InputAttributes extends NovaHTMLAttributes {
   height?: number | string
 }
 
-interface AnchorAttributes extends NovaHTMLAttributes {
+interface AnchorAttributes extends PyreonHTMLAttributes {
   href?: string | (() => string)
   target?: "_blank" | "_self" | "_parent" | "_top" | string
   rel?: string
   download?: string | boolean
 }
 
-interface ButtonAttributes extends NovaHTMLAttributes {
+interface ButtonAttributes extends PyreonHTMLAttributes {
   type?: "button" | "submit" | "reset"
   disabled?: boolean | (() => boolean)
   name?: string
@@ -204,7 +204,7 @@ interface ButtonAttributes extends NovaHTMLAttributes {
   formTarget?: string
 }
 
-interface TextareaAttributes extends NovaHTMLAttributes {
+interface TextareaAttributes extends PyreonHTMLAttributes {
   value?: string | (() => string)
   defaultValue?: string
   placeholder?: string | (() => string)
@@ -221,7 +221,7 @@ interface TextareaAttributes extends NovaHTMLAttributes {
   wrap?: "hard" | "soft"
 }
 
-interface SelectAttributes extends NovaHTMLAttributes {
+interface SelectAttributes extends PyreonHTMLAttributes {
   value?: string | string[] | (() => string | string[])
   defaultValue?: string | string[]
   disabled?: boolean | (() => boolean)
@@ -233,14 +233,14 @@ interface SelectAttributes extends NovaHTMLAttributes {
   autoFocus?: boolean
 }
 
-interface OptionAttributes extends NovaHTMLAttributes {
+interface OptionAttributes extends PyreonHTMLAttributes {
   value?: string | number | (() => string | number)
   disabled?: boolean | (() => boolean)
   selected?: boolean | (() => boolean)
   label?: string
 }
 
-interface FormAttributes extends NovaHTMLAttributes {
+interface FormAttributes extends PyreonHTMLAttributes {
   action?: string
   method?: "get" | "post"
   encType?: string
@@ -250,7 +250,7 @@ interface FormAttributes extends NovaHTMLAttributes {
   autoComplete?: string
 }
 
-interface ImgAttributes extends NovaHTMLAttributes {
+interface ImgAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   alt?: string | (() => string)
   width?: number | string | (() => number | string)
@@ -263,7 +263,7 @@ interface ImgAttributes extends NovaHTMLAttributes {
   sizes?: string
 }
 
-interface VideoAttributes extends NovaHTMLAttributes {
+interface VideoAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   width?: number | string
   height?: number | string
@@ -277,7 +277,7 @@ interface VideoAttributes extends NovaHTMLAttributes {
   crossOrigin?: "anonymous" | "use-credentials"
 }
 
-interface AudioAttributes extends NovaHTMLAttributes {
+interface AudioAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   controls?: boolean
   autoPlay?: boolean
@@ -287,13 +287,13 @@ interface AudioAttributes extends NovaHTMLAttributes {
   crossOrigin?: "anonymous" | "use-credentials"
 }
 
-interface LabelAttributes extends NovaHTMLAttributes {
+interface LabelAttributes extends PyreonHTMLAttributes {
   htmlFor?: string
   for?: string
   form?: string
 }
 
-interface ThAttributes extends NovaHTMLAttributes {
+interface ThAttributes extends PyreonHTMLAttributes {
   colSpan?: number
   rowSpan?: number
   scope?: "col" | "row" | "colgroup" | "rowgroup"
@@ -301,17 +301,17 @@ interface ThAttributes extends NovaHTMLAttributes {
   headers?: string
 }
 
-interface TdAttributes extends NovaHTMLAttributes {
+interface TdAttributes extends PyreonHTMLAttributes {
   colSpan?: number
   rowSpan?: number
   headers?: string
 }
 
-interface ColAttributes extends NovaHTMLAttributes {
+interface ColAttributes extends PyreonHTMLAttributes {
   span?: number
 }
 
-interface IframeAttributes extends NovaHTMLAttributes {
+interface IframeAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   width?: number | string
   height?: number | string
@@ -324,7 +324,7 @@ interface IframeAttributes extends NovaHTMLAttributes {
   title?: string
 }
 
-interface LinkAttributes extends NovaHTMLAttributes {
+interface LinkAttributes extends PyreonHTMLAttributes {
   href?: string | (() => string)
   rel?: string
   type?: string
@@ -335,7 +335,7 @@ interface LinkAttributes extends NovaHTMLAttributes {
   referrerPolicy?: string
 }
 
-interface MetaAttributes extends NovaHTMLAttributes {
+interface MetaAttributes extends PyreonHTMLAttributes {
   name?: string
   content?: string | (() => string)
   httpEquiv?: string
@@ -343,7 +343,7 @@ interface MetaAttributes extends NovaHTMLAttributes {
   property?: string
 }
 
-interface ScriptAttributes extends NovaHTMLAttributes {
+interface ScriptAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   type?: string
   async?: boolean
@@ -354,7 +354,7 @@ interface ScriptAttributes extends NovaHTMLAttributes {
   referrerPolicy?: string
 }
 
-interface SourceAttributes extends NovaHTMLAttributes {
+interface SourceAttributes extends PyreonHTMLAttributes {
   src?: string | (() => string)
   type?: string
   srcSet?: string
@@ -362,12 +362,12 @@ interface SourceAttributes extends NovaHTMLAttributes {
   media?: string
 }
 
-interface ProgressAttributes extends NovaHTMLAttributes {
+interface ProgressAttributes extends PyreonHTMLAttributes {
   value?: number | (() => number)
   max?: number
 }
 
-interface MeterAttributes extends NovaHTMLAttributes {
+interface MeterAttributes extends PyreonHTMLAttributes {
   value?: number | (() => number)
   min?: number
   max?: number
@@ -376,21 +376,21 @@ interface MeterAttributes extends NovaHTMLAttributes {
   optimum?: number
 }
 
-interface DetailsAttributes extends NovaHTMLAttributes {
+interface DetailsAttributes extends PyreonHTMLAttributes {
   open?: boolean | (() => boolean)
 }
 
-interface DialogAttributes extends NovaHTMLAttributes {
+interface DialogAttributes extends PyreonHTMLAttributes {
   open?: boolean | (() => boolean)
 }
 
-interface OlAttributes extends NovaHTMLAttributes {
+interface OlAttributes extends PyreonHTMLAttributes {
   start?: number
   reversed?: boolean
   type?: "1" | "a" | "A" | "i" | "I"
 }
 
-interface SvgAttributes extends NovaHTMLAttributes {
+interface SvgAttributes extends PyreonHTMLAttributes {
   viewBox?: string
   xmlns?: string
   fill?: string | (() => string)
@@ -427,99 +427,99 @@ declare global {
   namespace JSX {
   interface IntrinsicElements {
     // Document structure
-    html: NovaHTMLAttributes
-    head: NovaHTMLAttributes
-    body: NovaHTMLAttributes
-    title: NovaHTMLAttributes
-    base: NovaHTMLAttributes
+    html: PyreonHTMLAttributes
+    head: PyreonHTMLAttributes
+    body: PyreonHTMLAttributes
+    title: PyreonHTMLAttributes
+    base: PyreonHTMLAttributes
     meta: MetaAttributes
     link: LinkAttributes
     script: ScriptAttributes
-    style: NovaHTMLAttributes
-    noscript: NovaHTMLAttributes
+    style: PyreonHTMLAttributes
+    noscript: PyreonHTMLAttributes
     // Sections
-    main: NovaHTMLAttributes
-    header: NovaHTMLAttributes
-    footer: NovaHTMLAttributes
-    nav: NovaHTMLAttributes
-    aside: NovaHTMLAttributes
-    section: NovaHTMLAttributes
-    article: NovaHTMLAttributes
-    address: NovaHTMLAttributes
-    h1: NovaHTMLAttributes
-    h2: NovaHTMLAttributes
-    h3: NovaHTMLAttributes
-    h4: NovaHTMLAttributes
-    h5: NovaHTMLAttributes
-    h6: NovaHTMLAttributes
-    hgroup: NovaHTMLAttributes
+    main: PyreonHTMLAttributes
+    header: PyreonHTMLAttributes
+    footer: PyreonHTMLAttributes
+    nav: PyreonHTMLAttributes
+    aside: PyreonHTMLAttributes
+    section: PyreonHTMLAttributes
+    article: PyreonHTMLAttributes
+    address: PyreonHTMLAttributes
+    h1: PyreonHTMLAttributes
+    h2: PyreonHTMLAttributes
+    h3: PyreonHTMLAttributes
+    h4: PyreonHTMLAttributes
+    h5: PyreonHTMLAttributes
+    h6: PyreonHTMLAttributes
+    hgroup: PyreonHTMLAttributes
     // Block text
-    p: NovaHTMLAttributes
-    pre: NovaHTMLAttributes
-    blockquote: NovaHTMLAttributes
-    figure: NovaHTMLAttributes
-    figcaption: NovaHTMLAttributes
-    div: NovaHTMLAttributes
-    hr: NovaHTMLAttributes
+    p: PyreonHTMLAttributes
+    pre: PyreonHTMLAttributes
+    blockquote: PyreonHTMLAttributes
+    figure: PyreonHTMLAttributes
+    figcaption: PyreonHTMLAttributes
+    div: PyreonHTMLAttributes
+    hr: PyreonHTMLAttributes
     // Inline text
-    span: NovaHTMLAttributes
+    span: PyreonHTMLAttributes
     a: AnchorAttributes
-    em: NovaHTMLAttributes
-    strong: NovaHTMLAttributes
-    small: NovaHTMLAttributes
-    s: NovaHTMLAttributes
-    cite: NovaHTMLAttributes
-    q: NovaHTMLAttributes
-    abbr: NovaHTMLAttributes
-    time: NovaHTMLAttributes
-    code: NovaHTMLAttributes
-    var: NovaHTMLAttributes
-    samp: NovaHTMLAttributes
-    kbd: NovaHTMLAttributes
-    mark: NovaHTMLAttributes
-    sub: NovaHTMLAttributes
-    sup: NovaHTMLAttributes
-    i: NovaHTMLAttributes
-    b: NovaHTMLAttributes
-    u: NovaHTMLAttributes
-    bdi: NovaHTMLAttributes
-    bdo: NovaHTMLAttributes
-    br: NovaHTMLAttributes
-    wbr: NovaHTMLAttributes
-    ruby: NovaHTMLAttributes
-    rt: NovaHTMLAttributes
-    rp: NovaHTMLAttributes
+    em: PyreonHTMLAttributes
+    strong: PyreonHTMLAttributes
+    small: PyreonHTMLAttributes
+    s: PyreonHTMLAttributes
+    cite: PyreonHTMLAttributes
+    q: PyreonHTMLAttributes
+    abbr: PyreonHTMLAttributes
+    time: PyreonHTMLAttributes
+    code: PyreonHTMLAttributes
+    var: PyreonHTMLAttributes
+    samp: PyreonHTMLAttributes
+    kbd: PyreonHTMLAttributes
+    mark: PyreonHTMLAttributes
+    sub: PyreonHTMLAttributes
+    sup: PyreonHTMLAttributes
+    i: PyreonHTMLAttributes
+    b: PyreonHTMLAttributes
+    u: PyreonHTMLAttributes
+    bdi: PyreonHTMLAttributes
+    bdo: PyreonHTMLAttributes
+    br: PyreonHTMLAttributes
+    wbr: PyreonHTMLAttributes
+    ruby: PyreonHTMLAttributes
+    rt: PyreonHTMLAttributes
+    rp: PyreonHTMLAttributes
     // Lists
-    ul: NovaHTMLAttributes
+    ul: PyreonHTMLAttributes
     ol: OlAttributes
-    li: NovaHTMLAttributes
-    dl: NovaHTMLAttributes
-    dt: NovaHTMLAttributes
-    dd: NovaHTMLAttributes
+    li: PyreonHTMLAttributes
+    dl: PyreonHTMLAttributes
+    dt: PyreonHTMLAttributes
+    dd: PyreonHTMLAttributes
     // Forms
     form: FormAttributes
     label: LabelAttributes
     input: InputAttributes
     button: ButtonAttributes
     select: SelectAttributes
-    datalist: NovaHTMLAttributes
-    optgroup: NovaHTMLAttributes
+    datalist: PyreonHTMLAttributes
+    optgroup: PyreonHTMLAttributes
     option: OptionAttributes
     textarea: TextareaAttributes
-    output: NovaHTMLAttributes
+    output: PyreonHTMLAttributes
     progress: ProgressAttributes
     meter: MeterAttributes
-    fieldset: NovaHTMLAttributes
-    legend: NovaHTMLAttributes
+    fieldset: PyreonHTMLAttributes
+    legend: PyreonHTMLAttributes
     // Tables
-    table: NovaHTMLAttributes
-    caption: NovaHTMLAttributes
-    colgroup: NovaHTMLAttributes
+    table: PyreonHTMLAttributes
+    caption: PyreonHTMLAttributes
+    colgroup: PyreonHTMLAttributes
     col: ColAttributes
-    thead: NovaHTMLAttributes
-    tbody: NovaHTMLAttributes
-    tfoot: NovaHTMLAttributes
-    tr: NovaHTMLAttributes
+    thead: PyreonHTMLAttributes
+    tbody: PyreonHTMLAttributes
+    tfoot: PyreonHTMLAttributes
+    tr: PyreonHTMLAttributes
     th: ThAttributes
     td: TdAttributes
     // Media
@@ -527,9 +527,9 @@ declare global {
     video: VideoAttributes
     audio: AudioAttributes
     source: SourceAttributes
-    track: NovaHTMLAttributes
-    picture: NovaHTMLAttributes
-    canvas: NovaHTMLAttributes
+    track: PyreonHTMLAttributes
+    picture: PyreonHTMLAttributes
+    canvas: PyreonHTMLAttributes
     svg: SvgAttributes
     path: SvgAttributes
     circle: SvgAttributes
@@ -553,20 +553,20 @@ declare global {
     stop: SvgAttributes & { offset?: string | number; "stop-color"?: string; "stop-opacity"?: string | number }
     // Interactive / embedding
     details: DetailsAttributes
-    summary: NovaHTMLAttributes
+    summary: PyreonHTMLAttributes
     dialog: DialogAttributes
     iframe: IframeAttributes
-    embed: NovaHTMLAttributes
-    object: NovaHTMLAttributes
-    param: NovaHTMLAttributes
+    embed: PyreonHTMLAttributes
+    object: PyreonHTMLAttributes
+    param: PyreonHTMLAttributes
     // Semantic / misc
-    menu: NovaHTMLAttributes
-    menuitem: NovaHTMLAttributes
-    template: NovaHTMLAttributes
-    slot: NovaHTMLAttributes
-    portal: NovaHTMLAttributes
+    menu: PyreonHTMLAttributes
+    menuitem: PyreonHTMLAttributes
+    template: PyreonHTMLAttributes
+    slot: PyreonHTMLAttributes
+    portal: PyreonHTMLAttributes
     // Catch-all for custom elements and data-* attrs
-    [tagName: string]: NovaHTMLAttributes
+    [tagName: string]: PyreonHTMLAttributes
   }
   }
 }

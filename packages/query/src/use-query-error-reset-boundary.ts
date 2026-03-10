@@ -21,7 +21,7 @@ export interface QueryErrorResetBoundaryProps extends Props {
  * Wraps a subtree so that `useQueryErrorResetBoundary()` descendants can reset
  * all errored queries within this boundary.
  *
- * Pair with Nova's `ErrorBoundary` to retry failed queries when the user
+ * Pair with Pyreon's `ErrorBoundary` to retry failed queries when the user
  * dismisses the error fallback:
  *
  * @example

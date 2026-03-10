@@ -3,29 +3,29 @@ title: "Overview"
 description: "A fine-grained reactivity framework for building user interfaces with no virtual DOM."
 ---
 
-Nova is a fine-grained reactivity framework for building user interfaces. It compiles to efficient
+Pyreon is a fine-grained reactivity framework for building user interfaces. It compiles to efficient
 DOM operations where only the exact nodes that depend on a changed signal are updated — no virtual
 DOM diffing, no component re-renders.
 
 <Callout type="info" title="The key idea">
-  Components in Nova run **exactly once**. All subsequent updates flow through signals directly
+  Components in Pyreon run **exactly once**. All subsequent updates flow through signals directly
   to the DOM — there is no reconciler, no re-rendering, and no virtual DOM tree to diff.
 </Callout>
 
-## Why Nova?
+## Why Pyreon?
 
-| Pain point | React / Vue | Nova |
+| Pain point | React / Vue | Pyreon |
 |---|---|---|
 | Re-renders | Whole component subtree re-renders on state change | Signal updates patch only the affected DOM node |
 | Stale closures | Effect deps arrays, `useCallback`, `useMemo` boilerplate | No deps arrays — tracking is automatic |
-| Bundle size | React DOM ~42 kB gzip | Nova core + runtime-dom ~6 kB gzip |
+| Bundle size | React DOM ~42 kB gzip | Pyreon core + runtime-dom ~6 kB gzip |
 | SSR | Full component tree hydration | Selective walk-and-claim hydration |
-| Migration | — | `@nova/react-compat` lets you migrate file-by-file |
+| Migration | — | `@pyreon/react-compat` lets you migrate file-by-file |
 
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/core @nova/reactivity @nova/runtime-dom
+bun add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
 ```
 
 ## Quick Start
@@ -33,8 +33,8 @@ bun add @nova/core @nova/reactivity @nova/runtime-dom
 A reactive counter. Only the `<span>` node updates when the signal changes — nothing else.
 
 ```tsx title="src/main.tsx"
-import { signal } from "@nova/reactivity"
-import { mount } from "@nova/runtime-dom"
+import { signal } from "@pyreon/reactivity"
+import { mount } from "@pyreon/runtime-dom"
 
 function Counter() {
   const count = signal(0)
@@ -54,43 +54,43 @@ mount(<Counter />, document.getElementById("app")!)
 
 <Cards>
   <Card
-    title="@nova/reactivity"
+    title="@pyreon/reactivity"
     description="signal, computed, effect, batch, createSelector — the reactive primitives."
     href="/docs/reactivity"
   />
   <Card
-    title="@nova/core"
+    title="@pyreon/core"
     description="h(), JSX runtime, Fragment, For, Portal, lifecycle hooks, context, Suspense."
     href="/docs/components"
   />
   <Card
-    title="@nova/runtime-dom"
+    title="@pyreon/runtime-dom"
     description="DOM renderer and mount(). Turns VNodes into real DOM updates."
     href="/docs/ssr"
   />
   <Card
-    title="@nova/runtime-server"
+    title="@pyreon/runtime-server"
     description="renderToString and renderToStream for SSR. hydrateRoot for the client."
     href="/docs/ssr"
   />
   <Card
-    title="@nova/router"
+    title="@pyreon/router"
     description="Hash and history mode routing, navigation guards, lazy routes."
     href="/docs/router"
   />
   <Card
-    title="@nova/store"
+    title="@pyreon/store"
     description="defineStore — lazy singleton stores with computed and actions."
     href="/docs/store"
   />
   <Card
-    title="@nova/react-compat"
+    title="@pyreon/react-compat"
     description="React-compatible APIs for incremental migration. useState, useEffect, useMemo, and more."
     href="/docs/react-compat"
   />
   <Card
-    title="@nova/vite-plugin"
-    description="Vite plugin for JSX transform and .nova single-file components."
+    title="@pyreon/vite-plugin"
+    description="Vite plugin for JSX transform and .pyreon single-file components."
     href="/docs/vite-plugin"
   />
 </Cards>
@@ -98,7 +98,7 @@ mount(<Counter />, document.getElementById("app")!)
 ## How Reactivity Works
 
 The render function runs once. Every dynamic value must be wrapped in `() =>` so it becomes
-a reactive accessor that Nova can subscribe to.
+a reactive accessor that Pyreon can subscribe to.
 
 ```tsx
 function Profile() {
@@ -129,10 +129,10 @@ function Profile() {
 
 ## Framework Comparison
 
-<Tabs items={["Nova", "React", "SolidJS"]}>
-<Tab value="Nova">
+<Tabs items={["Pyreon", "React", "SolidJS"]}>
+<Tab value="Pyreon">
 ```tsx
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 function Counter() {
   const count = signal(0)
@@ -173,6 +173,6 @@ function Counter() {
   )
 }
 ```
-**Similar model to Nova. Solid compiles JSX; Nova uses a runtime renderer.**
+**Similar model to Pyreon. Solid compiles JSX; Pyreon uses a runtime renderer.**
 </Tab>
 </Tabs>

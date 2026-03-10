@@ -7,7 +7,7 @@ import type { HeadTag } from "./context"
 const VOID_TAGS = new Set(["meta", "link", "base"])
 
 /**
- * Render a Nova app to an HTML fragment + a serialized <head> string.
+ * Render a Pyreon app to an HTML fragment + a serialized <head> string.
  *
  * The returned `head` string can be injected directly into your HTML template:
  *
@@ -46,7 +46,11 @@ function serializeTag(tag: HeadTag): string {
     .join(" ")
   const open = attrs ? `<${tag.tag} ${attrs}` : `<${tag.tag}`
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
-  return `${open}>${esc(tag.children ?? "")}</${tag.tag}>`
+  // Script/style/noscript content is raw — only escape closing tags
+  const isRaw = tag.tag === "script" || tag.tag === "style" || tag.tag === "noscript"
+  const content = tag.children ?? ""
+  const body = isRaw ? content.replace(/<\/(script|style|noscript)/gi, "<\\/$1") : esc(content)
+  return `${open}>${body}</${tag.tag}>`
 }
 
 function esc(s: string): string {

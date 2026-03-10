@@ -29,7 +29,7 @@ export interface UseQueryResult<TData, TError = DefaultError> {
  * Subscribe to a query. Returns fine-grained reactive signals for data,
  * error and status — each signal only notifies effects that depend on it.
  *
- * `options` is a function so it can read Nova signals — when a signal changes
+ * `options` is a function so it can read Pyreon signals — when a signal changes
  * (e.g. a reactive query key), the observer is updated and refetches automatically.
  *
  * @example

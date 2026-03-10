@@ -26,6 +26,26 @@ function buildTags(o: UseHeadInput): HeadTag[] {
       ...(children != null ? { children } : {}),
     })
   })
+  o.style?.forEach((s, i) => {
+    const { children, ...rest } = s
+    tags.push({
+      tag: "style",
+      key: `style-${i}`,
+      props: rest as Record<string, string>,
+      children,
+    })
+  })
+  o.noscript?.forEach((ns, i) => {
+    tags.push({ tag: "noscript", key: `noscript-${i}`, children: ns.children })
+  })
+  if (o.jsonLd) {
+    tags.push({
+      tag: "script",
+      key: "jsonld",
+      props: { type: "application/ld+json" },
+      children: JSON.stringify(o.jsonLd),
+    })
+  }
   if (o.base) tags.push({ tag: "base", key: "base", props: o.base })
   return tags
 }
@@ -57,7 +77,7 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
   } else {
     ctx.add(id, buildTags(input))
     if (typeof document !== "undefined") {
-      onMount(() => syncDom(ctx))
+      onMount(() => { syncDom(ctx); return undefined })
     }
   }
 

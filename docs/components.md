@@ -1,6 +1,6 @@
 # Components & JSX
 
-Nova components are plain functions that return a VNode. They run exactly once. All reactivity happens through signals and effects, not through re-renders.
+Pyreon components are plain functions that return a VNode. They run exactly once. All reactivity happens through signals and effects, not through re-renders.
 
 ## JSX Setup
 
@@ -15,7 +15,7 @@ Add `jsxImportSource` to your TypeScript config:
 }
 ```
 
-Nova then provides `jsx`, `jsxs`, and `Fragment` from `@pyreon/core/jsx-runtime` automatically. You do not need to import `h` in every file when using JSX.
+Pyreon then provides `jsx`, `jsxs`, and `Fragment` from `@pyreon/core/jsx-runtime` automatically. You do not need to import `h` in every file when using JSX.
 
 If you use the Vite plugin, this is configured automatically. See [vite-plugin.md](./vite-plugin.md).
 
@@ -49,7 +49,7 @@ const Greet: ComponentFn<GreetProps> = ({ name, age }) => {
 
 1. A component function runs once per mount. There are no re-renders.
 2. Return a `VNode`, `null`, or a reactive getter `() => VNode | null`.
-3. Props are plain values (or signal getters) passed at call time. Nova does not proxy them.
+3. Props are plain values (or signal getters) passed at call time. Pyreon does not proxy them.
 
 ## defineComponent
 
@@ -133,7 +133,7 @@ function Layout({ children }: { children: VNodeChild }) {
 
 ### Reactive getter as child
 
-Wrap a signal read in an arrow function to make it reactive. Nova wraps this in an effect automatically.
+Wrap a signal read in an arrow function to make it reactive. Pyreon wraps this in an effect automatically.
 
 ```tsx
 function Counter() {
@@ -150,7 +150,7 @@ function Counter() {
 }
 ```
 
-Both forms are equivalent in JSX. Nova's JSX transform detects signal reads and wraps them appropriately.
+Both forms are equivalent in JSX. Pyreon's JSX transform detects signal reads and wraps them appropriately.
 
 ### Array children
 
@@ -236,7 +236,7 @@ function App() {
 
 ## Keys
 
-Use `key` to give Nova a stable identity for list items when the list can change order.
+Use `key` to give Pyreon a stable identity for list items when the list can change order.
 
 ```tsx
 {items.map(item => (
@@ -277,12 +277,12 @@ const user = signal({ name: "Alice", age: 30 })
 <Profile user={user} />
 ```
 
-**`class` not `className`.** Nova uses the HTML attribute name directly.
+**`class` not `className`.** Pyreon uses the HTML attribute name directly.
 
 ```tsx
 // Correct
 <div class="container">
 
-// Wrong (React convention, not Nova)
+// Wrong (React convention, not Pyreon)
 <div className="container">
 ```

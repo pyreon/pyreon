@@ -1,5 +1,5 @@
 /**
- * Error telemetry — hook into Nova's error reporting for Sentry, Datadog, etc.
+ * Error telemetry — hook into Pyreon's error reporting for Sentry, Datadog, etc.
  *
  * @example
  * import { registerErrorHandler } from "@pyreon/core"

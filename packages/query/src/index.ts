@@ -28,7 +28,7 @@ export type {
   QueryClientConfig,
 } from "@tanstack/query-core"
 
-// ─── Nova adapter ─────────────────────────────────────────────────────────────
+// ─── Pyreon adapter ─────────────────────────────────────────────────────────────
 
 export { QueryClientContext, QueryClientProvider, useQueryClient } from "./query-client"
 export type { QueryClientProviderProps } from "./query-client"

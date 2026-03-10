@@ -1,6 +1,6 @@
 # Lifecycle Hooks
 
-Nova provides four lifecycle hooks that let components respond to mount, unmount, update, and error events. All hooks must be called synchronously during component setup — the same restriction as React hooks, but for a different reason: Nova captures them from a component-local context that only exists during the initial function call.
+Pyreon provides four lifecycle hooks that let components respond to mount, unmount, update, and error events. All hooks must be called synchronously during component setup — the same restriction as React hooks, but for a different reason: Pyreon captures them from a component-local context that only exists during the initial function call.
 
 ## API Reference
 
@@ -79,7 +79,7 @@ function Timer() {
 }
 ```
 
-Note: If you return a cleanup from `onMount`, Nova calls it on unmount automatically. `onUnmount` is for cleanup that is set up outside of `onMount` (e.g., a global subscription registered synchronously during setup).
+Note: If you return a cleanup from `onMount`, Pyreon calls it on unmount automatically. `onUnmount` is for cleanup that is set up outside of `onMount` (e.g., a global subscription registered synchronously during setup).
 
 ## onUpdate
 

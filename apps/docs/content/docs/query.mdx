@@ -1,9 +1,9 @@
 ---
 title: "Query"
-description: "Data fetching with useQuery(), useMutation(), useInfiniteQuery(), and QuerySuspense — powered by TanStack Query core and Nova signals."
+description: "Data fetching with useQuery(), useMutation(), useInfiniteQuery(), and QuerySuspense — powered by TanStack Query core and Pyreon signals."
 ---
 
-`@nova/query` is a Nova adapter for [TanStack Query](https://tanstack.com/query) core.
+`@pyreon/query` is a Pyreon adapter for [TanStack Query](https://tanstack.com/query) core.
 It returns fine-grained reactive signals instead of re-rendering entire components,
 so only the parts of your UI that read `data()`, `isPending()`, or `isError()`
 update when those values change.
@@ -17,7 +17,7 @@ update when those values change.
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/query @tanstack/query-core
+bun add @pyreon/query @tanstack/query-core
 ```
 
 ## Setup
@@ -26,9 +26,9 @@ Wrap your app root with `QueryClientProvider` to make a `QueryClient` available 
 all descendant hooks.
 
 ```tsx title="src/main.tsx"
-import { mount } from "@nova/runtime-dom"
-import { h } from "@nova/core"
-import { QueryClient, QueryClientProvider } from "@nova/query"
+import { mount } from "@pyreon/runtime-dom"
+import { h } from "@pyreon/core"
+import { QueryClient, QueryClientProvider } from "@pyreon/query"
 import { App } from "./App"
 
 const queryClient = new QueryClient()
@@ -46,7 +46,7 @@ mount(
 Subscribe to a query with automatic caching, refetching, and stale-while-revalidate.
 
 ```tsx title="src/components/UserProfile.tsx"
-import { useQuery } from "@nova/query"
+import { useQuery } from "@pyreon/query"
 
 function UserProfile(props: { userId: number }) {
   const query = useQuery(() => ({
@@ -67,11 +67,11 @@ function UserProfile(props: { userId: number }) {
 
 ### Reactive query keys
 
-Pass a function to `useQuery()` so it can read Nova signals. When a signal inside
+Pass a function to `useQuery()` so it can read Pyreon signals. When a signal inside
 the options function changes, the observer updates and refetches automatically.
 
 ```ts
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 const page = signal(1)
 
@@ -88,7 +88,7 @@ const query = useQuery(() => ({
 Run create / update / delete operations with reactive status tracking.
 
 ```tsx title="src/components/CreatePost.tsx"
-import { useMutation, useQueryClient } from "@nova/query"
+import { useMutation, useQueryClient } from "@pyreon/query"
 
 function CreatePost() {
   const client = useQueryClient()
@@ -134,7 +134,7 @@ try {
 Paginated and infinite-scroll queries with `fetchNextPage` / `fetchPreviousPage`.
 
 ```tsx title="src/components/PostList.tsx"
-import { useInfiniteQuery } from "@nova/query"
+import { useInfiniteQuery } from "@pyreon/query"
 
 function PostList() {
   const query = useInfiniteQuery(() => ({
@@ -168,8 +168,8 @@ boundary component. Inside the boundary, `data` is typed as non-undefined — th
 boundary guarantees children only render after the query succeeds.
 
 ```tsx title="src/components/UserCard.tsx"
-import { h } from "@nova/core"
-import { useSuspenseQuery, QuerySuspense } from "@nova/query"
+import { h } from "@pyreon/core"
+import { useSuspenseQuery, QuerySuspense } from "@pyreon/query"
 
 function UserPage() {
   const user = useSuspenseQuery(() => ({
@@ -213,7 +213,7 @@ h(QuerySuspense, {
 Use `useQueryClient()` to access the query client for cache operations.
 
 ```ts
-import { useQueryClient } from "@nova/query"
+import { useQueryClient } from "@pyreon/query"
 
 const client = useQueryClient()
 
@@ -231,10 +231,10 @@ client.setQueryData(["posts", 1], (old) => ({ ...old, title: "Updated" }))
 
 Errors surface through the `error` and `isError` signals on every query and
 mutation result. For suspense queries, unhandled errors propagate to the nearest
-`QuerySuspense` error fallback or Nova `ErrorBoundary`.
+`QuerySuspense` error fallback or Pyreon `ErrorBoundary`.
 
 ```tsx
-import { QueryErrorResetBoundary, useQueryErrorResetBoundary } from "@nova/query"
+import { QueryErrorResetBoundary, useQueryErrorResetBoundary } from "@pyreon/query"
 
 function App() {
   return h(QueryErrorResetBoundary, null, () => {

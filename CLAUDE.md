@@ -2,7 +2,7 @@
 
 ## Overview
 Full-stack UI framework with fine-grained reactivity (signals). SSR, SSG, islands, SPA.
-Formerly "Nova" — all packages now under `@pyreon/*` scope.
+All packages under `@pyreon/*` scope.
 
 ## Benchmark Results (happy-dom)
 Pyreon beats ALL frameworks on every benchmark except creation (ties vanilla).
@@ -56,7 +56,7 @@ Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-
 `runWithRequestContext(fn)` isolates context + store per request via ALS.
 
 ### Island Architecture
-`island(loader, { name, hydrate })` → async ComponentFn → `<nova-island>` element.
+`island(loader, { name, hydrate })` → async ComponentFn → `<pyreon-island>` element.
 Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle, visible, media, never.
 
 ### JSX Compiler

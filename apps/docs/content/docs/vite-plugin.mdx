@@ -1,15 +1,15 @@
 ---
 title: "Vite Plugin"
-description: "Setting up @nova/vite-plugin for JSX transforms and .nova single-file components."
+description: "Setting up @pyreon/vite-plugin for JSX transforms and .pyreon single-file components."
 ---
 
-`@nova/vite-plugin` configures Vite for Nova projects. It sets up the JSX transform, handles
-`.nova` single-file components, and enables HMR.
+`@pyreon/vite-plugin` configures Vite for Pyreon projects. It sets up the JSX transform, handles
+`.pyreon` single-file components, and enables HMR.
 
 ## Installation
 
 ```bash title="Terminal"
-bun add --dev @nova/vite-plugin
+bun add --dev @pyreon/vite-plugin
 ```
 
 ## Setup
@@ -21,10 +21,10 @@ bun add --dev @nova/vite-plugin
 
 ```ts title="vite.config.ts"
 import { defineConfig } from "vite"
-import nova from "@nova/vite-plugin"
+import pyreon from "@pyreon/vite-plugin"
 
 export default defineConfig({
-  plugins: [nova()],
+  plugins: [pyreon()],
 })
 ```
 
@@ -37,7 +37,7 @@ export default defineConfig({
 {
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "@nova/core"
+    "jsxImportSource": "@pyreon/core"
   }
 }
 ```
@@ -47,10 +47,10 @@ export default defineConfig({
 
 ### Write your first component
 
-<Tabs items={[".tsx file", ".nova SFC"]}>
+<Tabs items={[".tsx file", ".pyreon SFC"]}>
 <Tab value=".tsx file">
 ```tsx title="src/Hello.tsx"
-import { signal } from "@nova/reactivity"
+import { signal } from "@pyreon/reactivity"
 
 export function Hello({ name }: { name: string }) {
   const clicked = signal(false)
@@ -66,8 +66,8 @@ export function Hello({ name }: { name: string }) {
 }
 ```
 </Tab>
-<Tab value=".nova SFC">
-```html title="src/Hello.nova"
+<Tab value=".pyreon SFC">
+```html title="src/Hello.pyreon"
 <template>
   <div>
     <h1>Hello, {{ name }}!</h1>
@@ -100,7 +100,7 @@ h1 { color: indigo; }
 ### Mount and run
 
 ```ts title="src/main.ts"
-import { mount } from "@nova/runtime-dom"
+import { mount } from "@pyreon/runtime-dom"
 import App from "./App"
 
 mount(<App />, document.getElementById("app")!)
@@ -113,14 +113,14 @@ bun run dev
 </Step>
 </Steps>
 
-## .nova Single-File Component Structure
+## .pyreon Single-File Component Structure
 
 <Files>
   <Folder name="src" defaultOpen>
-    <File name="App.nova" />
+    <File name="App.pyreon" />
     <File name="components" />
     <Folder name="components" defaultOpen>
-      <File name="Button.nova" />
+      <File name="Button.pyreon" />
       <File name="Header.tsx" />
     </Folder>
     <File name="main.ts" />
@@ -130,7 +130,7 @@ bun run dev
   <File name="index.html" />
 </Files>
 
-The `.nova` format compiles to a standard ES module — you can mix `.nova` and `.tsx` files
+The `.pyreon` format compiles to a standard ES module — you can mix `.pyreon` and `.tsx` files
 freely in the same project.
 
 ## Plugin Options
@@ -140,10 +140,10 @@ freely in the same project.
     "jsx": {
       description: "Override JSX transform options.",
       type: "object | false",
-      default: "{ importSource: '@nova/core' }",
+      default: "{ importSource: '@pyreon/core' }",
     },
     "sfc": {
-      description: "Enable or disable .nova SFC processing.",
+      description: "Enable or disable .pyreon SFC processing.",
       type: "boolean",
       default: "true",
     },

@@ -1,40 +1,40 @@
 /**
- * Lower-level browser tests for Nova's mount(), reactivity, and rendering primitives.
- * Uses the playground's Vite dev server which exposes Nova on window.__nova.
+ * Lower-level browser tests for Pyreon's mount(), reactivity, and rendering primitives.
+ * Uses the playground's Vite dev server which exposes Pyreon on window.__pyreon.
  */
 
 import { test, expect } from "@playwright/test"
 
-// Navigate and wait for Nova to be available on window
-async function setupNovaPage(page: import("@playwright/test").Page) {
+// Navigate and wait for Pyreon to be available on window
+async function setupPyreonPage(page: import("@playwright/test").Page) {
   await page.goto("/")
   await page.waitForSelector("#layout", { timeout: 10_000 })
-  // Verify Nova is exposed
-  const hasNova = await page.evaluate(() => !!(window as any).__nova)
-  expect(hasNova).toBe(true)
+  // Verify Pyreon is exposed
+  const hasPyreon = await page.evaluate(() => !!(window as any).__pyreon)
+  expect(hasPyreon).toBe(true)
 }
 
 test.describe("mount - low level", () => {
   test("mount a simple element and verify DOM output", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount } = (window as any).__nova
+      const { h, mount } = (window as any).__pyreon
       const app = document.getElementById("app")!
       app.innerHTML = ""
-      mount(h("div", { id: "simple" }, "Hello Nova"), app)
+      mount(h("div", { id: "simple" }, "Hello Pyreon"), app)
     })
 
     const el = page.locator("#simple")
-    await expect(el).toHaveText("Hello Nova")
+    await expect(el).toHaveText("Hello Pyreon")
     await expect(el).toBeVisible()
   })
 
   test("mount with reactive signal, update signal, verify DOM updates", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__nova
+      const { h, mount, signal } = (window as any).__pyreon
       const count = signal(0)
       ;(window as any).__count = count
 
@@ -62,10 +62,10 @@ test.describe("mount - low level", () => {
   })
 
   test("mount a list with reactive for-loop rendering", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount, signal } = (window as any).__nova
+      const { h, mount, signal } = (window as any).__pyreon
       const items = signal(["Apple", "Banana", "Cherry"])
       ;(window as any).__items = items
 
@@ -105,10 +105,10 @@ test.describe("mount - low level", () => {
   })
 
   test("conditional rendering with Show component", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount, signal, Show } = (window as any).__nova
+      const { h, mount, signal, Show } = (window as any).__pyreon
       const visible = signal(false)
       ;(window as any).__visible = visible
 
@@ -146,27 +146,27 @@ test.describe("mount - low level", () => {
   })
 
   test("mount a component function with props", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount } = (window as any).__nova
+      const { h, mount } = (window as any).__pyreon
 
       const Greeting = (props: { name: string; greeting?: string }) =>
         h("p", { id: "greeting" }, `${props.greeting ?? "Hello"}, ${props.name}!`)
 
       const app = document.getElementById("app")!
       app.innerHTML = ""
-      mount(h(Greeting, { name: "Nova", greeting: "Welcome" }), app)
+      mount(h(Greeting, { name: "Pyreon", greeting: "Welcome" }), app)
     })
 
-    await expect(page.locator("#greeting")).toHaveText("Welcome, Nova!")
+    await expect(page.locator("#greeting")).toHaveText("Welcome, Pyreon!")
   })
 
   test("nested components with reactive updates", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     await page.evaluate(() => {
-      const { h, mount, signal, computed } = (window as any).__nova
+      const { h, mount, signal, computed } = (window as any).__pyreon
 
       const price = signal(10)
       const quantity = signal(2)
@@ -215,10 +215,10 @@ test.describe("mount - low level", () => {
   })
 
   test("unmount cleans up DOM", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     const result = await page.evaluate(() => {
-      const { h, mount } = (window as any).__nova
+      const { h, mount } = (window as any).__pyreon
 
       const app = document.getElementById("app")!
       app.innerHTML = ""
@@ -236,10 +236,10 @@ test.describe("mount - low level", () => {
   })
 
   test("batch coalesces multiple signal updates", async ({ page }) => {
-    await setupNovaPage(page)
+    await setupPyreonPage(page)
 
     const renderCount = await page.evaluate(() => {
-      const { h, mount, signal, batch } = (window as any).__nova
+      const { h, mount, signal, batch } = (window as any).__pyreon
 
       const a = signal(1)
       const b = signal(2)

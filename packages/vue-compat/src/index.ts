@@ -1,14 +1,14 @@
 /**
  * @pyreon/vue-compat
  *
- * Vue 3-compatible Composition API that runs on Nova's reactive engine.
+ * Vue 3-compatible Composition API that runs on Pyreon's reactive engine.
  *
- * Allows you to write familiar Vue 3 Composition API code while getting Nova's
+ * Allows you to write familiar Vue 3 Composition API code while getting Pyreon's
  * fine-grained reactivity and superior performance.
  *
  * DIFFERENCES FROM VUE 3:
- *  - `deep` option in watch() is ignored — Nova tracks dependencies automatically.
- *  - `shallowReactive` uses per-property signals (still shallow, but Nova-flavored).
+ *  - `deep` option in watch() is ignored — Pyreon tracks dependencies automatically.
+ *  - `shallowReactive` uses per-property signals (still shallow, but Pyreon-flavored).
  *  - `readonly` returns a Proxy that throws on set (not Vue's readonly proxy).
  *  - `defineComponent` only supports Composition API (setup function), not Options API.
  *  - Components run ONCE (setup phase), not on every render.
@@ -20,15 +20,15 @@
 
 import {
   signal,
-  computed as novaComputed,
+  computed as pyreonComputed,
   effect,
   batch,
-  nextTick as novaNextTick,
+  nextTick as pyreonNextTick,
   createStore,
   type Signal,
 } from "@pyreon/reactivity"
 import {
-  h as novaH,
+  h as pyreonH,
   Fragment,
   onMount,
   onUnmount,
@@ -37,7 +37,7 @@ import {
   useContext,
 } from "@pyreon/core"
 import type { VNodeChild, ComponentFn, Props } from "@pyreon/core"
-import { mount as novaMount } from "@pyreon/runtime-dom"
+import { mount as pyreonMount } from "@pyreon/runtime-dom"
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
@@ -56,8 +56,8 @@ export interface Ref<T = unknown> {
  * Creates a reactive ref wrapping the given value.
  * Access via `.value` — reads track, writes trigger.
  *
- * Difference from Vue: backed by a Nova signal. No `__v_isShallow` distinction
- * at runtime since Nova signals are always shallow (deep reactivity is via stores).
+ * Difference from Vue: backed by a Pyreon signal. No `__v_isShallow` distinction
+ * at runtime since Pyreon signals are always shallow (deep reactivity is via stores).
  */
 export function ref<T>(value: T): Ref<T> {
   const s = signal(value)
@@ -76,9 +76,9 @@ export function ref<T>(value: T): Ref<T> {
 }
 
 /**
- * Creates a shallow ref — same as `ref()` in Nova since signals are inherently shallow.
+ * Creates a shallow ref — same as `ref()` in Pyreon since signals are inherently shallow.
  *
- * Difference from Vue: identical to `ref()` — Nova signals don't perform deep conversion.
+ * Difference from Vue: identical to `ref()` — Pyreon signals don't perform deep conversion.
  */
 export function shallowRef<T>(value: T): Ref<T> {
   return ref(value)
@@ -119,12 +119,12 @@ export interface ComputedRef<T = unknown> extends Ref<T> {
 
 /**
  * Creates a readonly computed ref.
- * Backed by Nova's `computed()`, wrapped in a `.value` accessor.
+ * Backed by Pyreon's `computed()`, wrapped in a `.value` accessor.
  *
  * Difference from Vue: setter is not supported — throws if assigned.
  */
 export function computed<T>(fn: () => T): ComputedRef<T> {
-  const c = novaComputed(fn)
+  const c = pyreonComputed(fn)
   const r = {
     [V_IS_REF]: true as const,
     get value(): T {
@@ -141,9 +141,9 @@ export function computed<T>(fn: () => T): ComputedRef<T> {
 
 /**
  * Creates a deeply reactive proxy from a plain object.
- * Backed by Nova's `createStore()`.
+ * Backed by Pyreon's `createStore()`.
  *
- * Difference from Vue: uses Nova's fine-grained per-property signals.
+ * Difference from Vue: uses Pyreon's fine-grained per-property signals.
  * Direct mutation triggers only affected signals.
  */
 export function reactive<T extends object>(obj: T): T {
@@ -155,7 +155,7 @@ export function reactive<T extends object>(obj: T): T {
 
 /**
  * Creates a shallow reactive proxy.
- * In Nova, `createStore` is already per-property (not deeply recursive for primitives),
+ * In Pyreon, `createStore` is already per-property (not deeply recursive for primitives),
  * but nested objects will be wrapped. For truly shallow behavior, use individual refs.
  *
  * Difference from Vue: backed by `createStore()` — same as `reactive()` in practice.
@@ -241,7 +241,7 @@ export function toRefs<T extends object>(obj: T): { [K in keyof T]: Ref<T[K]> } 
 export interface WatchOptions {
   /** Call the callback immediately with current value. Default: false */
   immediate?: boolean
-  /** Ignored in Nova — dependencies are tracked automatically. */
+  /** Ignored in Pyreon — dependencies are tracked automatically. */
   deep?: boolean
 }
 
@@ -251,7 +251,7 @@ type WatchSource<T> = Ref<T> | (() => T)
  * Watches a reactive source and calls `cb` when it changes.
  * Tracks old and new values.
  *
- * Difference from Vue: `deep` option is ignored — Nova tracks dependencies automatically.
+ * Difference from Vue: `deep` option is ignored — Pyreon tracks dependencies automatically.
  * Returns a stop function to dispose the watcher.
  */
 export function watch<T>(
@@ -288,7 +288,7 @@ export function watch<T>(
  * Runs the given function reactively — re-executes whenever its tracked
  * dependencies change.
  *
- * Difference from Vue: identical to Nova's `effect()`.
+ * Difference from Vue: identical to Pyreon's `effect()`.
  * Returns a stop function.
  */
 export function watchEffect(fn: () => void): () => void {
@@ -301,8 +301,8 @@ export function watchEffect(fn: () => void): () => void {
 /**
  * Registers a callback to run after the component is mounted.
  *
- * Difference from Vue: maps directly to Nova's `onMount()`.
- * In Nova there is no distinction between beforeMount and mounted.
+ * Difference from Vue: maps directly to Pyreon's `onMount()`.
+ * In Pyreon there is no distinction between beforeMount and mounted.
  */
 export function onMounted(fn: () => void): void {
   onMount(fn)
@@ -311,8 +311,8 @@ export function onMounted(fn: () => void): void {
 /**
  * Registers a callback to run before the component is unmounted.
  *
- * Difference from Vue: maps to Nova's `onUnmount()`.
- * In Nova there is no distinction between beforeUnmount and unmounted.
+ * Difference from Vue: maps to Pyreon's `onUnmount()`.
+ * In Pyreon there is no distinction between beforeUnmount and unmounted.
  */
 export function onUnmounted(fn: () => void): void {
   onUnmount(fn)
@@ -321,7 +321,7 @@ export function onUnmounted(fn: () => void): void {
 /**
  * Registers a callback to run after a reactive update.
  *
- * Difference from Vue: maps to Nova's `onUpdate()`.
+ * Difference from Vue: maps to Pyreon's `onUpdate()`.
  */
 export function onUpdated(fn: () => void): void {
   onUpdate(fn)
@@ -329,7 +329,7 @@ export function onUpdated(fn: () => void): void {
 
 /**
  * Registers a callback to run before mount.
- * In Nova there is no pre-mount phase — maps to `onMount()`.
+ * In Pyreon there is no pre-mount phase — maps to `onMount()`.
  */
 export function onBeforeMount(fn: () => void): void {
   onMount(fn)
@@ -337,7 +337,7 @@ export function onBeforeMount(fn: () => void): void {
 
 /**
  * Registers a callback to run before unmount.
- * In Nova there is no pre-unmount phase — maps to `onUnmount()`.
+ * In Pyreon there is no pre-unmount phase — maps to `onUnmount()`.
  */
 export function onBeforeUnmount(fn: () => void): void {
   onUnmount(fn)
@@ -348,10 +348,10 @@ export function onBeforeUnmount(fn: () => void): void {
 /**
  * Returns a Promise that resolves after all pending reactive updates have flushed.
  *
- * Difference from Vue: identical to Nova's `nextTick()`.
+ * Difference from Vue: identical to Pyreon's `nextTick()`.
  */
 export function nextTick(): Promise<void> {
-  return novaNextTick()
+  return pyreonNextTick()
 }
 
 // ─── Provide / Inject ─────────────────────────────────────────────────────────
@@ -369,21 +369,21 @@ function getOrCreateContext<T>(key: string | symbol, defaultValue?: T) {
 /**
  * Provides a value to all descendant components.
  *
- * Difference from Vue: backed by Nova's `createContext`/`useContext`.
+ * Difference from Vue: backed by Pyreon's `createContext`/`useContext`.
  * The key should be a string or symbol.
  */
 export function provide<T>(key: string | symbol, value: T): void {
   const ctx = getOrCreateContext<T>(key, value)
-  // In Nova, context is set via the context stack during component rendering.
+  // In Pyreon, context is set via the context stack during component rendering.
   // Since provide() is called during setup, we store it for inject() to read.
-  // This uses a simple module-level store since Nova contexts work differently.
+  // This uses a simple module-level store since Pyreon contexts work differently.
   _provideStore.set(key, value)
 }
 
 /**
  * Injects a value provided by an ancestor component.
  *
- * Difference from Vue: backed by Nova's context system.
+ * Difference from Vue: backed by Pyreon's context system.
  */
 export function inject<T>(key: string | symbol, defaultValue?: T): T | undefined {
   if (_provideStore.has(key)) {
@@ -408,7 +408,7 @@ interface ComponentOptions<P extends Props = Props> {
  * Defines a component using Vue 3 Composition API style.
  * Only supports the `setup()` function — Options API is not supported.
  *
- * Difference from Vue: returns a Nova `ComponentFn`. No template/render option —
+ * Difference from Vue: returns a Pyreon `ComponentFn`. No template/render option —
  * the setup function should return a render function or VNode directly.
  */
 export function defineComponent<P extends Props = Props>(
@@ -433,9 +433,9 @@ export function defineComponent<P extends Props = Props>(
 // ─── h ────────────────────────────────────────────────────────────────────────
 
 /**
- * Re-export of Nova's `h()` function for creating VNodes.
+ * Re-export of Pyreon's `h()` function for creating VNodes.
  */
-export { novaH as h, Fragment }
+export { pyreonH as h, Fragment }
 
 // ─── createApp ────────────────────────────────────────────────────────────────
 
@@ -445,7 +445,7 @@ interface App {
 }
 
 /**
- * Creates a Nova application instance — Vue 3 `createApp()` compatible.
+ * Creates a Pyreon application instance — Vue 3 `createApp()` compatible.
  *
  * Difference from Vue: does not support plugins, directives, or global config.
  * The component receives `props` if provided.
@@ -457,8 +457,8 @@ export function createApp(component: ComponentFn, props?: Props): App {
       if (!container) {
         throw new Error(`Cannot find mount target: ${el}`)
       }
-      const vnode = novaH(component, props ?? null)
-      return novaMount(vnode, container)
+      const vnode = pyreonH(component, props ?? null)
+      return pyreonMount(vnode, container)
     },
   }
 }

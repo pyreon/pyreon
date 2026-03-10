@@ -3,13 +3,13 @@ title: "Router"
 description: "createRouter, RouterProvider, RouterView, RouterLink, navigation guards, and typed params."
 ---
 
-`@nova/router` is a client-side router with hash and history mode support, navigation guards,
+`@pyreon/router` is a client-side router with hash and history mode support, navigation guards,
 lazy routes, data loaders, nested routing, scroll restoration, and typed param/query access.
 
 ## Installation
 
 ```bash title="Terminal"
-bun add @nova/router
+bun add @pyreon/router
 ```
 
 ## Quick Start
@@ -17,9 +17,9 @@ bun add @nova/router
 <Tabs items={["Hash mode", "History mode"]}>
 <Tab value="Hash mode">
 ```tsx title="src/main.tsx"
-import { createRouter, RouterProvider, RouterView } from "@nova/router"
-import { mount } from "@nova/runtime-dom"
-import { lazy } from "@nova/core"
+import { createRouter, RouterProvider, RouterView } from "@pyreon/router"
+import { mount } from "@pyreon/runtime-dom"
+import { lazy } from "@pyreon/core"
 
 const router = createRouter({
   mode: "hash",
@@ -67,7 +67,7 @@ const router = createRouter({
 ## Reading Route State
 
 ```tsx title="src/pages/User.tsx"
-import { useRoute, useRouter } from "@nova/router"
+import { useRoute, useRouter } from "@pyreon/router"
 
 function UserPage() {
   const route  = useRoute()   // reactive accessor → current route
@@ -148,12 +148,12 @@ function UserPage() {
 
 ## Typed Route Params with `ExtractParams`
 
-Nova infers param types directly from path strings at compile time using the `ExtractParams` utility type.
+Pyreon infers param types directly from path strings at compile time using the `ExtractParams` utility type.
 Pass your path as a generic to `useRoute()` to get fully typed `params`:
 
 ```tsx title="src/pages/User.tsx"
-import { useRoute } from "@nova/router"
-import type { ExtractParams } from "@nova/router"
+import { useRoute } from "@pyreon/router"
+import type { ExtractParams } from "@pyreon/router"
 
 // ExtractParams<"/users/:id"> → { id: string }
 // ExtractParams<"/org/:orgId/repo/:repoId"> → { orgId: string; repoId: string }
@@ -169,7 +169,7 @@ function UserPage() {
 You can also use `ExtractParams` standalone for your own helpers:
 
 ```ts
-import type { ExtractParams } from "@nova/router"
+import type { ExtractParams } from "@pyreon/router"
 
 type UserParams = ExtractParams<"/users/:id">
 // { id: string }
@@ -209,10 +209,10 @@ Navigate by name with typed params and optional query:
 // Navigate to /users/42
 router.push({ name: "user", params: { id: "42" } })
 
-// Navigate to /org/acme/repo/nova?tab=issues
+// Navigate to /org/acme/repo/pyreon?tab=issues
 router.push({
   name: "repo",
-  params: { orgId: "acme", repoId: "nova" },
+  params: { orgId: "acme", repoId: "pyreon" },
   query: { tab: "issues" },
 })
 ```
@@ -220,7 +220,7 @@ router.push({
 You can also look up a route record by name using `findRouteByName`:
 
 ```ts
-import { findRouteByName } from "@nova/router"
+import { findRouteByName } from "@pyreon/router"
 
 const record = findRouteByName("user", router.routes)
 // record.path → "/users/:id"
@@ -252,7 +252,7 @@ const router = createRouter({
 ```
 
 ```tsx title="src/layouts/AdminLayout.tsx"
-import { RouterView } from "@nova/router"
+import { RouterView } from "@pyreon/router"
 
 function AdminLayout() {
   return (
@@ -284,7 +284,7 @@ synchronously via `useLoaderData()` — no loading spinners or `useEffect` neede
 ### Defining a Loader
 
 ```tsx title="src/router.ts"
-import { createRouter } from "@nova/router"
+import { createRouter } from "@pyreon/router"
 
 async function fetchUser(ctx) {
   const res = await fetch(`/api/users/${ctx.params.id}`, { signal: ctx.signal })
@@ -324,7 +324,7 @@ The `LoaderContext` passed to each loader contains:
 ### Reading Loader Data
 
 ```tsx title="src/pages/UserPage.tsx"
-import { useLoaderData } from "@nova/router"
+import { useLoaderData } from "@pyreon/router"
 
 interface User { id: string; name: string; email: string }
 
@@ -384,7 +384,7 @@ const routes = [
 For SSR, use `prefetchLoaderData()` to pre-run loaders before rendering:
 
 ```ts title="server.ts"
-import { prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "@nova/router"
+import { prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "@pyreon/router"
 
 // Server: run loaders before rendering
 const router = createRouter({ routes, url: req.url })
@@ -393,11 +393,11 @@ const html = await renderToString(<App />)
 
 // Embed data in the HTML
 const loaderJson = JSON.stringify(serializeLoaderData(router))
-// → <script>window.__NOVA_LOADER_DATA__=${loaderJson}</script>
+// → <script>window.__PYREON_LOADER_DATA__=${loaderJson}</script>
 
 // Client: hydrate without re-running loaders
 const router = createRouter({ routes })
-hydrateLoaderData(router, window.__NOVA_LOADER_DATA__ ?? {})
+hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
 mount(<App />, document.getElementById("app")!)
 ```
 
@@ -526,7 +526,7 @@ Use `lazy()` for code splitting. Optionally provide a loading component shown wh
 and an error component shown if all retries fail:
 
 ```tsx
-import { lazy } from "@nova/router"
+import { lazy } from "@pyreon/router"
 
 function Spinner() {
   return <div class="spinner">Loading...</div>
@@ -557,7 +557,7 @@ The `loading()` accessor on the router is a reactive signal that returns `true` 
 navigation is in flight (guards running, loaders fetching, lazy chunks loading):
 
 ```tsx
-import { useRouter } from "@nova/router"
+import { useRouter } from "@pyreon/router"
 
 function NavBar() {
   const router = useRouter()
@@ -620,7 +620,7 @@ Per-route `meta.scrollBehavior` takes precedence over the global setting:
 Route query parameters are automatically parsed and available on `route().query`:
 
 ```tsx
-// URL: /search?q=nova&page=2
+// URL: /search?q=pyreon&page=2
 function SearchPage() {
   const route = useRoute()
 
@@ -636,7 +636,7 @@ function SearchPage() {
 For building query strings programmatically, use the exported utilities:
 
 ```ts
-import { parseQuery, stringifyQuery } from "@nova/router"
+import { parseQuery, stringifyQuery } from "@pyreon/router"
 
 parseQuery("q=hello&page=2")
 // → { q: "hello", page: "2" }
@@ -671,7 +671,7 @@ const routes = [
 Extend the `RouteMeta` interface via module augmentation for type-safe custom fields:
 
 ```ts title="src/globals.d.ts"
-declare module "@nova/router" {
+declare module "@pyreon/router" {
   interface RouteMeta {
     requiresRole?: "admin" | "user"
     analyticsId?: string
@@ -711,8 +711,8 @@ to exact matches only.
 Pass the request URL via the `url` option so the router resolves the correct route on the server:
 
 ```ts title="server.ts"
-import { createRouter, RouterProvider, RouterView } from "@nova/router"
-import { renderToString } from "@nova/runtime-server"
+import { createRouter, RouterProvider, RouterView } from "@pyreon/router"
+import { renderToString } from "@pyreon/runtime-server"
 
 const router = createRouter({
   routes,
@@ -729,7 +729,7 @@ const html = await renderToString(
 ## Full Example
 
 ```tsx title="src/router.ts"
-import { createRouter, lazy } from "@nova/router"
+import { createRouter, lazy } from "@pyreon/router"
 
 const router = createRouter({
   mode: "history",

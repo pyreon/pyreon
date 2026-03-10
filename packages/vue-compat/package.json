@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/vue-compat",
   "version": "0.0.1",
-  "description": "Vue 3-compatible Composition API shim for Pyreon — write Vue-style code that runs on Nova's reactive engine",
+  "description": "Vue 3-compatible Composition API shim for Pyreon — write Vue-style code that runs on Pyreon's reactive engine",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

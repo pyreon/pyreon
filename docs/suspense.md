@@ -1,6 +1,6 @@
 # Suspense, Lazy, and ErrorBoundary
 
-Nova provides `lazy()` for code-split components, `Suspense` to show a fallback while lazy components load, and `ErrorBoundary` to catch and recover from rendering errors.
+Pyreon provides `lazy()` for code-split components, `Suspense` to show a fallback while lazy components load, and `ErrorBoundary` to catch and recover from rendering errors.
 
 ## lazy()
 
@@ -193,7 +193,7 @@ const UserPage = lazy(() => import("./UserPage").then(m => ({ default: m.UserPag
 
 **`Suspense` fallback is synchronous.** The fallback renders immediately when a lazy child suspends. It does not wait for a timeout or minimum display duration. If flashing is a concern, add a CSS animation delay to the fallback element.
 
-**ErrorBoundary does not catch errors in event handlers.** Event handlers run outside Nova's rendering pipeline. Use `try/catch` directly in event handlers and surface errors via signals.
+**ErrorBoundary does not catch errors in event handlers.** Event handlers run outside Pyreon's rendering pipeline. Use `try/catch` directly in event handlers and surface errors via signals.
 
 ```tsx
 function Form() {

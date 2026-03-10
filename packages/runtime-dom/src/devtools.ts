@@ -1,16 +1,16 @@
 /**
- * Nova DevTools — exposes a `__NOVA_DEVTOOLS__` global hook for browser devtools extensions
+ * Pyreon DevTools — exposes a `__PYREON_DEVTOOLS__` global hook for browser devtools extensions
  * and in-app debugging utilities.
  *
  * Installed automatically on first `mount()` call in the browser.
  * No-op on the server (typeof window === "undefined").
  *
  * Usage:
- *   window.__NOVA_DEVTOOLS__.getComponentTree()    // root component entries
- *   window.__NOVA_DEVTOOLS__.getAllComponents()     // flat list of all live components
- *   window.__NOVA_DEVTOOLS__.highlight("comp-id")  // outline a component's DOM node
- *   window.__NOVA_DEVTOOLS__.onComponentMount(cb)  // subscribe to mount events
- *   window.__NOVA_DEVTOOLS__.onComponentUnmount(cb)// subscribe to unmount events
+ *   window.__PYREON_DEVTOOLS__.getComponentTree()    // root component entries
+ *   window.__PYREON_DEVTOOLS__.getAllComponents()     // flat list of all live components
+ *   window.__PYREON_DEVTOOLS__.highlight("comp-id")  // outline a component's DOM node
+ *   window.__PYREON_DEVTOOLS__.onComponentMount(cb)  // subscribe to mount events
+ *   window.__PYREON_DEVTOOLS__.onComponentUnmount(cb)// subscribe to unmount events
  */
 
 export interface DevtoolsComponentEntry {
@@ -22,7 +22,7 @@ export interface DevtoolsComponentEntry {
   childIds: string[]
 }
 
-export interface NovaDevtools {
+export interface PyreonDevtools {
   readonly version: string
   getComponentTree(): DevtoolsComponentEntry[]
   getAllComponents(): DevtoolsComponentEntry[]
@@ -66,7 +66,7 @@ export function installDevTools(): void {
   if (typeof window === "undefined" || _installed) return
   _installed = true
 
-  const devtools: NovaDevtools = {
+  const devtools: PyreonDevtools = {
     version: "0.1.0",
 
     getComponentTree() {
@@ -104,5 +104,5 @@ export function installDevTools(): void {
   }
 
   // Attach to window — compatible with browser devtools extensions
-  ;(window as unknown as Record<string, unknown>)["__NOVA_DEVTOOLS__"] = devtools
+  ;(window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ = devtools
 }

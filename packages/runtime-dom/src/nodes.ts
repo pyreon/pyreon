@@ -40,7 +40,7 @@ export function mountReactive(
   anchor: Node | null,
   mount: (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup,
 ): Cleanup {
-  const marker = document.createComment("nova")
+  const marker = document.createComment("pyreon")
   parent.insertBefore(marker, anchor)
 
   let currentCleanup: Cleanup = () => {}

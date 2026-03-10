@@ -1,5 +1,5 @@
 /**
- * @pyreon/server — SSR, SSG, and island architecture for Nova.
+ * @pyreon/server — SSR, SSG, and island architecture for Pyreon.
  *
  * Server-side:
  *   import { createHandler, prerender, island } from "@pyreon/server"

@@ -55,7 +55,7 @@ export async function prefetchLoaderData(router: RouterInstance, path: string): 
  * await prefetchLoaderData(router, req.url)
  * const { html, head } = await renderWithHead(h(App, null))
  * const page = `...${head}
- *   <script>window.__NOVA_LOADER_DATA__=${JSON.stringify(serializeLoaderData(router))}</script>
+ *   <script>window.__PYREON_LOADER_DATA__=${JSON.stringify(serializeLoaderData(router))}</script>
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
@@ -67,7 +67,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
 }
 
 /**
- * Hydrate loader data from a serialized object (e.g. `window.__NOVA_LOADER_DATA__`).
+ * Hydrate loader data from a serialized object (e.g. `window.__PYREON_LOADER_DATA__`).
  * Populates the router's internal `_loaderData` map so the initial render uses
  * server-fetched data without re-running loaders on the client.
  *
@@ -76,7 +76,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * @example — client entry:
  * import { hydrateLoaderData } from "@pyreon/router"
  * const router = createRouter({ routes })
- * hydrateLoaderData(router, window.__NOVA_LOADER_DATA__ ?? {})
+ * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
  * mount(h(App, null), document.getElementById("app")!)
  */
 export function hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>): void {

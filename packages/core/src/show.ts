@@ -96,4 +96,4 @@ export function Switch(props: SwitchProps): VNodeChild {
 }
 
 // Keep MatchSymbol export for any code that was using it
-export const MatchSymbol: unique symbol = Symbol("nova.Match")
+export const MatchSymbol: unique symbol = Symbol("pyreon.Match")

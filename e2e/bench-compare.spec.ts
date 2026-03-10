@@ -122,8 +122,8 @@ test.describe("Framework Comparison Benchmark", () => {
     const frameworks = Object.keys(allResults)
     expect(frameworks.length).toBeGreaterThanOrEqual(3)
 
-    const novaPresent = frameworks.includes("Pyreon")
-    expect(novaPresent).toBe(true)
+    const pyreonPresent = frameworks.includes("Pyreon")
+    expect(pyreonPresent).toBe(true)
 
     // Collect all test names from the first framework
     const firstKey = frameworks[0]

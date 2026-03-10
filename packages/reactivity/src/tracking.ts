@@ -17,14 +17,24 @@ export function setDepsCollector(collector: Array<Set<() => void>> | null): void
 }
 
 /**
- * Register the active effect as a subscriber.
- * Accepts a factory so the Set is created lazily — only when an effect is
- * actually tracking this signal. Signals read only outside effects (e.g. label
- * signals accessed via .subscribe) never allocate their subscriber Set.
+ * Subscriber host — any reactive source that can have downstream subscribers.
+ * Signals, computeds, and createSelector buckets all implement this interface.
+ * The Set is created lazily — only allocated when an effect actually tracks this source.
  */
-export function trackSubscriber(getOrCreate: () => Set<() => void>) {
+export interface SubscriberHost {
+  /** @internal subscriber set — null until first tracked by an effect */
+  _s: Set<() => void> | null
+}
+
+/**
+ * Register the active effect as a subscriber of the given reactive source.
+ * The subscriber Set is created lazily on the host — sources read only outside
+ * effects never allocate a Set.
+ */
+export function trackSubscriber(host: SubscriberHost) {
   if (activeEffect) {
-    const subscribers = getOrCreate()
+    if (!host._s) host._s = new Set()
+    const subscribers = host._s
     subscribers.add(activeEffect)
     if (_depsCollector) {
       // Fast path: renderEffect stores deps inline, no WeakMap

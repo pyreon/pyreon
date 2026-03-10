@@ -45,7 +45,7 @@ export function useQueryClient(): QueryClient {
   const client = useContext(QueryClientContext)
   if (!client) {
     throw new Error(
-      "[nova/query] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.",
+      "[pyreon/query] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.",
     )
   }
   return client

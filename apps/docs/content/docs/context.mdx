@@ -3,7 +3,7 @@ title: "Context"
 description: "createContext, useContext, and withContext for dependency injection in component trees."
 ---
 
-Nova's context system provides dependency injection for component trees. It lets ancestor
+Pyreon's context system provides dependency injection for component trees. It lets ancestor
 components provide values that any descendant can read without passing props through every
 intermediate layer.
 
@@ -15,7 +15,7 @@ intermediate layer.
 ### Create a context
 
 ```ts title="src/ThemeContext.ts"
-import { createContext } from "@nova/core"
+import { createContext } from "@pyreon/core"
 
 export const ThemeContext = createContext<"light" | "dark">("light")
 //                                                           ↑ default value
@@ -43,7 +43,7 @@ function App() {
 </Tab>
 <Tab value="withContext">
 ```tsx title="src/App.tsx"
-import { withContext } from "@nova/core"
+import { withContext } from "@pyreon/core"
 import { ThemeContext } from "./ThemeContext"
 
 function App() {
@@ -64,7 +64,7 @@ function App() {
 ### Consume the value
 
 ```tsx title="src/Button.tsx"
-import { useContext } from "@nova/core"
+import { useContext } from "@pyreon/core"
 import { ThemeContext } from "./ThemeContext"
 
 function Button({ label }: { label: string }) {
@@ -84,8 +84,8 @@ function Button({ label }: { label: string }) {
 If you provide a signal as the context value, consumers can read it reactively.
 
 ```tsx title="src/App.tsx"
-import { signal } from "@nova/reactivity"
-import { createContext } from "@nova/core"
+import { signal } from "@pyreon/reactivity"
+import { createContext } from "@pyreon/core"
 
 const ThemeContext = createContext(signal<"light" | "dark">("light"))
 

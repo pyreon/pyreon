@@ -1,8 +1,8 @@
 import { defineConfig } from "vite"
-import nova from "@pyreon/vite-plugin"
+import pyreon from "@pyreon/vite-plugin"
 
 export default defineConfig({
-  plugins: [nova()],
+  plugins: [pyreon()],
   resolve: {
     conditions: ["bun"],
   },

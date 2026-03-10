@@ -1,13 +1,13 @@
 /**
- * Browser tests for Nova's router — hash mode navigation in the browser.
+ * Browser tests for Pyreon's router — hash mode navigation in the browser.
  */
 
 import { test, expect } from "./fixtures"
 
 test.describe("router", () => {
-  test("renders the initial route", async ({ novaPage: page }) => {
+  test("renders the initial route", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__NOVA__
+      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__PYREON__
 
       const Home = () => h("div", { id: "home" }, "Home Page")
       const About = () => h("div", { id: "about" }, "About Page")
@@ -31,9 +31,9 @@ test.describe("router", () => {
     await expect(page.locator("#home")).toHaveText("Home Page")
   })
 
-  test("navigates between routes with router.push()", async ({ novaPage: page }) => {
+  test("navigates between routes with router.push()", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__NOVA__
+      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__PYREON__
 
       const Home = () => h("div", { id: "home" }, "Home Page")
       const About = () => h("div", { id: "about" }, "About Page")
@@ -65,9 +65,9 @@ test.describe("router", () => {
     await expect(page.locator("#about")).toHaveText("About Page")
   })
 
-  test("RouterLink navigates on click", async ({ novaPage: page }) => {
+  test("RouterLink navigates on click", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView, RouterLink } = (window as any).__NOVA__
+      const { h, mount, createRouter, RouterProvider, RouterView, RouterLink } = (window as any).__PYREON__
 
       const Home = () => h("div", { id: "home" }, "Home Page")
       const About = () => h("div", { id: "about" }, "About Page")
@@ -103,9 +103,9 @@ test.describe("router", () => {
     await expect(page.locator("#home")).toBeVisible()
   })
 
-  test("route params are accessible in components", async ({ novaPage: page }) => {
+  test("route params are accessible in components", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView, useRoute } = (window as any).__NOVA__
+      const { h, mount, createRouter, RouterProvider, RouterView, useRoute } = (window as any).__PYREON__
 
       const UserPage = () => {
         const route = useRoute()
@@ -142,9 +142,9 @@ test.describe("router", () => {
     await expect(page.locator("#user")).toHaveText("User: 99")
   })
 
-  test("hash changes in URL update the router", async ({ novaPage: page }) => {
+  test("hash changes in URL update the router", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__NOVA__
+      const { h, mount, createRouter, RouterProvider, RouterView } = (window as any).__PYREON__
 
       const Home = () => h("div", { id: "home" }, "Home Page")
       const About = () => h("div", { id: "about" }, "About Page")

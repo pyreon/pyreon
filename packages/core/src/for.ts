@@ -5,7 +5,7 @@ import type { VNode, Props, NativeItem } from "./types"
  * via mountFor, bypassing the generic VNode reconciler.
  */
 // biome-ignore lint/suspicious/noShadowRestrictedNames: intentional symbol
-export const ForSymbol: unique symbol = Symbol("nova.For")
+export const ForSymbol: unique symbol = Symbol("pyreon.For")
 
 export interface ForProps<T> {
   each: () => T[]

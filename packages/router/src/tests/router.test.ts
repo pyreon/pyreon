@@ -1083,11 +1083,11 @@ describe("useRouter / useRoute", () => {
   })
 
   test("useRouter throws when no router installed", () => {
-    expect(() => useRouter()).toThrow("[nova-router] No router installed")
+    expect(() => useRouter()).toThrow("[pyreon-router] No router installed")
   })
 
   test("useRoute throws when no router installed", () => {
-    expect(() => useRoute()).toThrow("[nova-router] No router installed")
+    expect(() => useRoute()).toThrow("[pyreon-router] No router installed")
   })
 
   test("useRouter returns router after setActiveRouter", () => {
@@ -1156,7 +1156,7 @@ describe("RouterView", () => {
     const el = container()
     mount(h(RouterView, {}), el)
     // RouterView always wraps in a div, but with no router the child is null
-    const wrapper = el.querySelector("[data-nova-router-view]")
+    const wrapper = el.querySelector("[data-pyreon-router-view]")
     expect(wrapper).not.toBeNull()
   })
 
@@ -1825,7 +1825,7 @@ describe("RouterView lazy error handling", () => {
     )
     await new Promise<void>((r) => setTimeout(r, 4500))
     // The wrapper div exists but component content should be empty
-    const wrapper = el.querySelector("[data-nova-router-view]")
+    const wrapper = el.querySelector("[data-pyreon-router-view]")
     // Text inside wrapper should be empty (only comment nodes)
     const spans = wrapper?.querySelectorAll("span")
     expect(spans?.length ?? 0).toBe(0)

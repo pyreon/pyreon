@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/preact-compat",
   "version": "0.0.1",
-  "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Nova's reactive engine",
+  "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

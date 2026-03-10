@@ -1,6 +1,6 @@
 # Vite Plugin
 
-`@pyreon/vite-plugin` configures Vite for Nova projects. It sets up the JSX transform, handles `.nova` single-file components, and enables HMR for signals and components.
+`@pyreon/vite-plugin` configures Vite for Pyreon projects. It sets up the JSX transform, handles `.pyreon` single-file components, and enables HMR for signals and components.
 
 ## Installation
 
@@ -12,28 +12,28 @@ bun add @pyreon/vite-plugin --dev
 
 ```ts
 import { defineConfig } from "vite"
-import novaPlugin from "@pyreon/vite-plugin"
+import pyreonPlugin from "@pyreon/vite-plugin"
 
 export default defineConfig({
-  plugins: [novaPlugin()],
+  plugins: [pyreonPlugin()],
 })
 ```
 
 That is the minimal config. The plugin automatically:
 
 - Configures Babel to transform JSX using `@pyreon/core` as the JSX import source
-- Registers the `.nova` file extension for single-file components
+- Registers the `.pyreon` file extension for single-file components
 - Enables HMR for components and signal state
 
 ## Plugin Options
 
 ```ts
-novaPlugin({
+pyreonPlugin({
   // JSX source package (default: "@pyreon/core")
   jsxImportSource: "@pyreon/core",
 
-  // Include .tsx, .jsx, .nova files in JSX transform (default: true)
-  include: /\.(tsx|jsx|nova)$/,
+  // Include .tsx, .jsx, .pyreon files in JSX transform (default: true)
+  include: /\.(tsx|jsx|pyreon)$/,
 
   // Exclude node_modules (default: true)
   exclude: /node_modules/,
@@ -65,14 +65,14 @@ The key settings:
 | Setting | Value | Why |
 |---|---|---|
 | `jsx` | `"react-jsx"` | Use the automatic JSX transform (no manual imports) |
-| `jsxImportSource` | `"@pyreon/core"` | Nova's JSX runtime instead of React's |
+| `jsxImportSource` | `"@pyreon/core"` | Pyreon's JSX runtime instead of React's |
 
-## .nova Files
+## .pyreon Files
 
-`.nova` files are treated as pure JSX — they have no `<template>`, `<script>`, or `<style>` sections (unlike Vue's SFCs). The extension is just a convention for Nova components.
+`.pyreon` files are treated as pure JSX — they have no `<template>`, `<script>`, or `<style>` sections (unlike Vue's SFCs). The extension is just a convention for Pyreon components.
 
 ```tsx
-// src/components/Button.nova
+// src/components/Button.pyreon
 import { signal } from "@pyreon/reactivity"
 
 interface ButtonProps {
@@ -100,15 +100,15 @@ export default function Button({ label, onClick }: ButtonProps) {
 }
 ```
 
-Import `.nova` files the same way as `.tsx`:
+Import `.pyreon` files the same way as `.tsx`:
 
 ```ts
-import Button from "./components/Button.nova"
+import Button from "./components/Button.pyreon"
 ```
 
 ## HMR
 
-Nova's HMR support hot-replaces component functions without losing signal state. When a component file changes:
+Pyreon's HMR support hot-replaces component functions without losing signal state. When a component file changes:
 
 1. The new component function is evaluated.
 2. Existing mounted instances are re-rendered with the new function.
@@ -140,7 +140,7 @@ Store-level state (from `@pyreon/store`) also persists across HMR updates.
 
 ## Project Structure
 
-A typical Vite + Nova project:
+A typical Vite + Pyreon project:
 
 ```
 my-app/
@@ -152,7 +152,7 @@ my-app/
     ├── main.ts        # mount entry point
     ├── App.tsx        # root component
     ├── components/
-    │   ├── Header.nova
+    │   ├── Header.pyreon
     │   └── Button.tsx
     ├── stores/
     │   └── user.ts
@@ -169,7 +169,7 @@ my-app/
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nova App</title>
+  <title>Pyreon App</title>
 </head>
 <body>
   <div id="app"></div>
@@ -199,7 +199,7 @@ mount(document.getElementById("app")!, <App />)
 
 ## CSS
 
-Nova does not include a CSS-in-JS solution. Use Vite's built-in CSS support:
+Pyreon does not include a CSS-in-JS solution. Use Vite's built-in CSS support:
 
 ```tsx
 // Component-scoped CSS module
@@ -221,7 +221,7 @@ import "./global.css"
 bun run vite build
 ```
 
-Output goes to `dist/`. The plugin tree-shakes Nova framework code — only the primitives you use are included in the bundle.
+Output goes to `dist/`. The plugin tree-shakes Pyreon framework code — only the primitives you use are included in the bundle.
 
 ## Environment Variables
 
@@ -249,4 +249,4 @@ function MyComponent() {
 }
 ```
 
-**TypeScript type errors in `.nova` files.** If your editor does not recognize `.nova` as JSX, add it to the `include` array in `tsconfig.json` and configure your editor's TypeScript plugin to treat `.nova` files as TSX.
+**TypeScript type errors in `.pyreon` files.** If your editor does not recognize `.pyreon` as JSX, add it to the `include` array in `tsconfig.json` and configure your editor's TypeScript plugin to treat `.pyreon` files as TSX.

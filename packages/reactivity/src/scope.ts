@@ -40,7 +40,7 @@ export class EffectScope {
       this._updatePending = false
       if (!this._active) return
       for (const fn of this._updateHooks) {
-        try { fn() } catch (err) { console.error("[nova] onUpdate error:", err) }
+        try { fn() } catch (err) { console.error("[pyreon] onUpdate error:", err) }
       }
     })
   }

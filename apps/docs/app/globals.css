@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  /* Nova brand: vivid indigo mapped to fumadocs primary */
+  /* Pyreon brand: vivid indigo mapped to fumadocs primary */
   --color-fd-primary: 239 68% 56%;
   --color-fd-background: 0 0% 100%;
   --color-fd-foreground: 224 71% 4%;

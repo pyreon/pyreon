@@ -41,7 +41,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!page) notFound()
 
   return {
-    title: `${page.data.title} — Nova Docs`,
+    title: `${page.data.title} — Pyreon Docs`,
     description: page.data.description,
   }
 }

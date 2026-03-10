@@ -1,5 +1,5 @@
 import type { Props } from "@pyreon/core"
-import { effect, batch } from "@pyreon/reactivity"
+import { renderEffect, batch } from "@pyreon/reactivity"
 
 type Cleanup = () => void
 
@@ -36,7 +36,7 @@ export function sanitizeHtml(html: string): string {
     }
   }
   if (__DEV__) {
-    console.warn("[nova] sanitizeHtml: Sanitizer API unavailable — returning html unchanged.")
+    console.warn("[pyreon] sanitizeHtml: Sanitizer API unavailable — returning html unchanged.")
   }
   return html
 }
@@ -46,16 +46,24 @@ const EVENT_RE = /^on[A-Z]/
 
 /**
  * Apply all props to a DOM element.
- * Returns cleanup functions (for reactive props and event listeners).
+ * Returns a single chained cleanup (or null if no props need teardown).
+ * Uses for-in instead of Object.keys() to avoid allocating a keys array.
  */
-export function applyProps(el: Element, props: Props): Cleanup[] {
-  const cleanups: Cleanup[] = []
-  for (const key of Object.keys(props)) {
+export function applyProps(el: Element, props: Props): Cleanup | null {
+  let cleanup: Cleanup | null = null
+  for (const key in props) {
     if (key === "key" || key === "ref") continue
-    const cleanup = applyProp(el, key, props[key])
-    if (cleanup) cleanups.push(cleanup)
+    const c = applyProp(el, key, props[key])
+    if (c) {
+      if (!cleanup) {
+        cleanup = c
+      } else {
+        const prev = cleanup
+        cleanup = () => { prev(); c() }
+      }
+    }
   }
-  return cleanups
+  return cleanup
 }
 
 /**
@@ -83,7 +91,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     } else {
       if (__DEV__) {
         console.warn(
-          "[nova] innerHTML: Sanitizer API unavailable — HTML is set unsanitized. " +
+          "[pyreon] innerHTML: Sanitizer API unavailable — HTML is set unsanitized. " +
           "Use dangerouslySetInnerHTML with pre-sanitized content in production.",
         )
       }
@@ -94,7 +102,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
   if (key === "dangerouslySetInnerHTML") {
     if (__DEV__) {
-      console.warn("[nova] dangerouslySetInnerHTML: ensure content is sanitized before rendering.")
+      console.warn("[pyreon] dangerouslySetInnerHTML: ensure content is sanitized before rendering.")
     }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
@@ -110,17 +118,19 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 
   // n-show: toggle display based on a reactive boolean
   if (key === "n-show") {
-    const e = effect(() => {
+    const dispose = renderEffect(() => {
       const visible = (value as () => boolean)()
       ;(el as HTMLElement).style.display = visible ? "" : "none"
     })
-    return () => e.dispose()
+    return dispose
   }
 
   // Reactive prop — function that returns the actual value
+  // Uses renderEffect (lighter than effect — no scope registration, no WeakMap)
+  // since lifecycle is managed by mountElement's cleanup array.
   if (typeof value === "function") {
-    const e = effect(() => setStaticProp(el, key, (value as () => unknown)()))
-    return () => e.dispose()
+    const dispose = renderEffect(() => setStaticProp(el, key, (value as () => unknown)()))
+    return dispose
   }
 
   setStaticProp(el, key, value)
@@ -134,7 +144,7 @@ const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
-    if (__DEV__) console.warn(`[nova] Blocked unsafe ${key} value: "${value}"`)
+    if (__DEV__) console.warn(`[pyreon] Blocked unsafe ${key} value: "${value}"`)
     return
   }
 

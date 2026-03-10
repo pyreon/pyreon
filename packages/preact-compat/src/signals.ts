@@ -2,14 +2,14 @@
  * @pyreon/preact-compat/signals
  *
  * Preact Signals compatibility layer (`@preact/signals` style).
- * Wraps Nova's signal/computed in `{ value }` accessor objects.
+ * Wraps Pyreon's signal/computed in `{ value }` accessor objects.
  */
 
 import {
-  signal as novaSignal,
-  computed as novaComputed,
-  effect as novaEffect,
-  batch as novaBatch,
+  signal as pyreonSignal,
+  computed as pyreonComputed,
+  effect as pyreonEffect,
+  batch as pyreonBatch,
 } from "@pyreon/reactivity"
 import type { Effect } from "@pyreon/reactivity"
 
@@ -33,7 +33,7 @@ export interface WritableSignal<T> extends ReadonlySignal<T> {
  * console.log(count.value)  // read (tracked)
  */
 export function signal<T>(initial: T): WritableSignal<T> {
-  const s = novaSignal<T>(initial)
+  const s = pyreonSignal<T>(initial)
   return {
     get value(): T {
       return s()
@@ -57,7 +57,7 @@ export function signal<T>(initial: T): WritableSignal<T> {
  * console.log(doubled.value)
  */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
-  const c = novaComputed(fn)
+  const c = pyreonComputed(fn)
   return {
     get value(): T {
       return c()
@@ -76,7 +76,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
  * Returns a dispose function.
  */
 export function effect(fn: () => void | (() => void)): () => void {
-  const e: Effect = novaEffect(() => {
+  const e: Effect = pyreonEffect(() => {
     const cleanup = fn()
     if (typeof cleanup === "function") return cleanup
   })
@@ -88,4 +88,4 @@ export function effect(fn: () => void | (() => void)): () => void {
 /**
  * Batch multiple signal writes into a single update.
  */
-export { novaBatch as batch }
+export { pyreonBatch as batch }

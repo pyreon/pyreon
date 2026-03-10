@@ -1,7 +1,7 @@
 // @pyreon/runtime-dom — surgical signal-to-DOM renderer (no virtual DOM)
 
 export { mountChild } from "./mount"
-export type { DevtoolsComponentEntry, NovaDevtools } from "./devtools"
+export type { DevtoolsComponentEntry, PyreonDevtools } from "./devtools"
 export { applyProp, applyProps, sanitizeHtml } from "./props"
 export type { Directive } from "./props"
 export { createTemplate } from "./template"
@@ -24,7 +24,7 @@ import { installDevTools } from "./devtools"
  * Returns an `unmount` function that removes everything and disposes effects.
  *
  * @example
- * const unmount = mount(h("div", null, "Hello Nova"), document.getElementById("app")!)
+ * const unmount = mount(h("div", null, "Hello Pyreon"), document.getElementById("app")!)
  */
 export function mount(root: VNodeChild, container: Element): () => void {
   installDevTools()

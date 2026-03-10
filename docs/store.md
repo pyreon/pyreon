@@ -54,7 +54,7 @@ Both `Counter` instances share the same `count` signal. Updates in one are immed
 
 ## Store Structure
 
-The `setup` function is a standard Nova composition function. You can use any reactivity primitives, lifecycle hooks, or context inside it.
+The `setup` function is a standard Pyreon composition function. You can use any reactivity primitives, lifecycle hooks, or context inside it.
 
 ```ts
 const useUserStore = defineStore("user", () => {

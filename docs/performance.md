@@ -1,12 +1,12 @@
 # Performance
 
-Nova is designed from the ground up for minimal DOM work. This page explains the architectural reasons for its performance characteristics and how to use the available primitives to get the most out of your application.
+Pyreon is designed from the ground up for minimal DOM work. This page explains the architectural reasons for its performance characteristics and how to use the available primitives to get the most out of your application.
 
 ## Benchmark Results
 
 The following numbers are from the [js-framework-benchmark](https://github.com/krausest/js-framework-benchmark) (Chrome, MacBook Pro M2, 2024). Lower is better for duration; lower is better for memory.
 
-| Benchmark | React 18 | Vue 3 | SolidJS | Nova |
+| Benchmark | React 18 | Vue 3 | SolidJS | Pyreon |
 |---|---|---|---|---|
 | Create 1,000 rows | 42 ms | 28 ms | 18 ms | 16 ms |
 | Replace 1,000 rows | 56 ms | 38 ms | 20 ms | 18 ms |
@@ -18,13 +18,13 @@ The following numbers are from the [js-framework-benchmark](https://github.com/k
 | Startup time | 38 ms | 32 ms | 12 ms | 10 ms |
 | Memory (1,000 rows) | 9.2 MB | 7.8 MB | 5.1 MB | 4.8 MB |
 
-These numbers are approximate and depend on the specific benchmark implementation. Nova and SolidJS have similar performance profiles because they share the same fine-grained reactivity model.
+These numbers are approximate and depend on the specific benchmark implementation. Pyreon and SolidJS have similar performance profiles because they share the same fine-grained reactivity model.
 
-## Why Nova Is Fast
+## Why Pyreon Is Fast
 
 ### 1. Components Run Once
 
-In React, every state change triggers a re-render of the component function and its subtree. In Nova, the component function runs exactly once. Subsequent updates are handled by granular effects that patch individual DOM nodes.
+In React, every state change triggers a re-render of the component function and its subtree. In Pyreon, the component function runs exactly once. Subsequent updates are handled by granular effects that patch individual DOM nodes.
 
 ```tsx
 // React — this function runs on every count change
@@ -34,7 +34,7 @@ function Counter() {
   return <span>{count}</span>
 }
 
-// Nova — this function runs ONCE
+// Pyreon — this function runs ONCE
 function Counter() {
   const count = signal(0)
   console.log("setup")  // fires once at mount
@@ -45,7 +45,7 @@ function Counter() {
 
 ### 2. No Virtual DOM
 
-React and Vue build a virtual DOM tree and diff it on every render. Nova's JSX transform compiles to direct DOM operations. When a signal changes, only the exact DOM node that reads that signal is updated.
+React and Vue build a virtual DOM tree and diff it on every render. Pyreon's JSX transform compiles to direct DOM operations. When a signal changes, only the exact DOM node that reads that signal is updated.
 
 ### 3. Targeted DOM Updates
 
@@ -203,7 +203,7 @@ batch(() => {
 })
 ```
 
-In event handlers, Nova automatically batches updates triggered synchronously in the same handler. Manual `batch` is needed for async handlers or when calling multiple store actions.
+In event handlers, Pyreon automatically batches updates triggered synchronously in the same handler. Manual `batch` is needed for async handlers or when calling multiple store actions.
 
 ## Memory
 
@@ -239,7 +239,7 @@ Load heavy components with `lazy()` to split them into separate chunks that only
 
 ## Profiling
 
-Use the browser's Performance tab to record a trace. Nova's effects appear as short tasks named after the signal that triggered them. Look for:
+Use the browser's Performance tab to record a trace. Pyreon's effects appear as short tasks named after the signal that triggered them. Look for:
 
 - **Long effect runs**: the effect function does too much work. Break it into smaller effects.
 - **Many effect runs**: a high-frequency signal (e.g., `mousemove`) drives too many dependencies. Debounce or throttle the signal update.

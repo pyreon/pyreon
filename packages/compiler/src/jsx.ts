@@ -1,5 +1,5 @@
 /**
- * JSX transform — wraps dynamic JSX expressions in `() =>` so the Nova runtime
+ * JSX transform — wraps dynamic JSX expressions in `() =>` so the Pyreon runtime
  * receives reactive getters instead of eagerly-evaluated snapshot values.
  *
  * Rules:

@@ -6,7 +6,7 @@ export interface TransitionProps {
   /**
    * CSS class name prefix.
    * "fade" → fade-enter-from, fade-enter-active, fade-enter-to, fade-leave-from, …
-   * Default: "nova"
+   * Default: "pyreon"
    */
   name?: string
   /** Reactive boolean controlling whether the child is shown. */
@@ -58,7 +58,7 @@ export interface TransitionProps {
  * // .fade-enter-active, .fade-leave-active { transition: opacity 300ms ease; }
  */
 export function Transition(props: TransitionProps): VNodeChild {
-  const n = props.name ?? "nova"
+  const n = props.name ?? "pyreon"
   const cls = {
     ef: props.enterFrom  ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,

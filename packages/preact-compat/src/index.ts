@@ -1,7 +1,7 @@
 /**
  * @pyreon/preact-compat
  *
- * Preact-compatible API shim that runs on Nova's reactive engine.
+ * Preact-compatible API shim that runs on Pyreon's reactive engine.
  *
  * Provides the core Preact API surface: h, Fragment, render, hydrate,
  * Component class, createContext, createRef, cloneElement, toChildArray,
@@ -11,7 +11,7 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import { h as novaH, Fragment } from "@pyreon/core"
+import { h as pyreonH, Fragment } from "@pyreon/core"
 import type { VNode, VNodeChild, Props, ComponentFn } from "@pyreon/core"
 import { createContext, useContext, createRef } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
@@ -20,11 +20,11 @@ import { signal, batch } from "@pyreon/reactivity"
 
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 
-/** Preact's hyperscript function — maps directly to Nova's h() */
-export { novaH as h }
+/** Preact's hyperscript function — maps directly to Pyreon's h() */
+export { pyreonH as h }
 
 /** Alias: Preact also exports createElement */
-export const createElement = novaH
+export const createElement = pyreonH
 
 export { Fragment }
 
@@ -32,7 +32,7 @@ export { Fragment }
 
 /**
  * Preact's `render(vnode, container)`.
- * Maps to Nova's `mount(vnode, container)`.
+ * Maps to Pyreon's `mount(vnode, container)`.
  */
 export function render(vnode: VNodeChild, container: Element): void {
   mount(vnode, container)
@@ -40,7 +40,7 @@ export function render(vnode: VNodeChild, container: Element): void {
 
 /**
  * Preact's `hydrate(vnode, container)`.
- * Maps to Nova's `hydrateRoot(container, vnode)`.
+ * Maps to Pyreon's `hydrateRoot(container, vnode)`.
  */
 export function hydrate(vnode: VNodeChild, container: Element): void {
   hydrateRoot(container, vnode as VNode)
@@ -59,7 +59,7 @@ export { createRef }
 /**
  * Preact-compatible class-based Component.
  *
- * Wraps Nova's signal-based reactivity so `setState` triggers re-renders.
+ * Wraps Pyreon's signal-based reactivity so `setState` triggers re-renders.
  * Usage: `class MyComp extends Component { render() { ... } }`
  */
 export class Component<P extends Props = Props, S extends Record<string, unknown> = Record<string, unknown>> {
@@ -89,7 +89,7 @@ export class Component<P extends Props = Props, S extends Record<string, unknown
   }
 
   /**
-   * Force a re-render. In Nova this triggers the state signal to re-fire.
+   * Force a re-render. In Pyreon this triggers the state signal to re-fire.
    */
   forceUpdate(): void {
     this._stateSignal.set({ ...this.state })

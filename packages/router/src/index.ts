@@ -1,5 +1,5 @@
 /**
- * @pyreon/router — type-safe client-side router for Nova.
+ * @pyreon/router — type-safe client-side router for Pyreon.
  *
  * Features:
  *   - TypeScript param inference from path strings
@@ -72,4 +72,4 @@ export type { LoaderContext, RouteLoaderFn } from "./types"
 export { useLoaderData, prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "./loader"
 
 // Match utilities (useful for SSR route pre-fetching)
-export { resolveRoute, parseQuery, stringifyQuery, buildPath, findRouteByName } from "./match"
+export { resolveRoute, parseQuery, parseQueryMulti, stringifyQuery, buildPath, findRouteByName } from "./match"

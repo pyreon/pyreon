@@ -29,7 +29,7 @@ const features = [
     icon: '📦',
     title: 'JSX Native',
     description:
-      'Full JSX support with jsxImportSource. Works with TypeScript, Vite, and .nova single-file components.',
+      'Full JSX support with jsxImportSource. Works with TypeScript, Vite, and .pyreon single-file components.',
   },
   {
     icon: '🔀',
@@ -55,14 +55,14 @@ export default function HomePage() {
       <nav className="flex items-center justify-between border-b border-fd-border px-6 py-4">
         <span className="flex items-center gap-2 font-bold text-lg">
           <span className="text-indigo-500">◆</span>
-          Nova
+          Pyreon
         </span>
         <div className="flex items-center gap-4 text-sm text-fd-muted-foreground">
           <Link href="/docs" className="hover:text-fd-foreground transition-colors">
             Docs
           </Link>
           <a
-            href="https://github.com/nova-framework/nova"
+            href="https://github.com/pyreon/pyreon"
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-fd-foreground transition-colors"
@@ -86,7 +86,7 @@ export default function HomePage() {
         </h1>
 
         <p className="mb-10 max-w-xl text-lg text-fd-muted-foreground">
-          Nova is a fine-grained reactivity framework. Signals update only the exact DOM
+          Pyreon is a fine-grained reactivity framework. Signals update only the exact DOM
           nodes that changed — no virtual DOM diffing, no component re-renders, no stale
           closures.
         </p>
@@ -130,7 +130,7 @@ export default function HomePage() {
 
       {/* Hello World */}
       <section className="flex flex-col items-center px-6 pb-20">
-        <h2 className="mb-2 text-2xl font-bold text-fd-foreground">Hello, Nova</h2>
+        <h2 className="mb-2 text-2xl font-bold text-fd-foreground">Hello, Pyreon</h2>
         <p className="mb-8 text-fd-muted-foreground">
           A reactive counter in 12 lines. The DOM updates surgically — only the{' '}
           <code className="rounded bg-fd-secondary px-1 text-sm">{'<span>'}</code> re-renders.
@@ -139,7 +139,7 @@ export default function HomePage() {
         <div className="w-full max-w-xl rounded-xl border border-fd-border bg-fd-card shadow-sm overflow-hidden">
           <div className="flex items-center justify-between border-b border-fd-border bg-fd-secondary px-4 py-2">
             <span className="text-xs text-fd-muted-foreground font-mono">src/counter.tsx</span>
-            <span className="text-xs text-indigo-500 font-medium">Nova</span>
+            <span className="text-xs text-indigo-500 font-medium">Pyreon</span>
           </div>
           <pre className="overflow-x-auto p-4 text-sm font-mono leading-relaxed">
             <code>
@@ -167,7 +167,7 @@ mount(<Counter />, document.getElementById('app')!)`}
       <section className="px-6 pb-20">
         <div className="mx-auto max-w-5xl">
           <h2 className="mb-2 text-center text-2xl font-bold text-fd-foreground">
-            Why Nova?
+            Why Pyreon?
           </h2>
           <p className="mb-10 text-center text-fd-muted-foreground">
             Designed from the ground up for minimal DOM work.
@@ -215,9 +215,9 @@ mount(<Counter />, document.getElementById('app')!)`}
       {/* Footer */}
       <footer className="mt-auto border-t border-fd-border px-6 py-8 text-center text-sm text-fd-muted-foreground">
         <p>
-          Nova is open source —{' '}
+          Pyreon is open source —{' '}
           <a
-            href="https://github.com/nova-framework/nova"
+            href="https://github.com/pyreon/pyreon"
             className="text-indigo-500 hover:underline"
             target="_blank"
             rel="noopener noreferrer"

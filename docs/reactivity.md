@@ -1,10 +1,10 @@
 # Reactivity
 
-Nova's reactivity system is the foundation of the framework. It provides fine-grained primitives that track dependencies automatically — no dependency arrays, no manual subscriptions.
+Pyreon's reactivity system is the foundation of the framework. It provides fine-grained primitives that track dependencies automatically — no dependency arrays, no manual subscriptions.
 
 ## How Tracking Works
 
-When you read a signal inside an `effect` or `computed`, Nova records that dependency. When the signal changes, only the effects that read it are re-run. This happens at the individual signal level, not at the component level, which is why components never re-run.
+When you read a signal inside an `effect` or `computed`, Pyreon records that dependency. When the signal changes, only the effects that read it are re-run. This happens at the individual signal level, not at the component level, which is why components never re-run.
 
 ```ts
 import { signal, computed, effect } from "@pyreon/reactivity"
@@ -108,7 +108,7 @@ stop.dispose()
 
 - `effect` runs the function immediately on creation.
 - It re-runs whenever any signal read inside it changes.
-- If the function returns a cleanup function, Nova calls it before the next run and when `dispose()` is called.
+- If the function returns a cleanup function, Pyreon calls it before the next run and when `dispose()` is called.
 
 ```ts
 const url = signal("/api/users")
