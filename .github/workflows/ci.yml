@@ -6,47 +6,106 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+# Cancel in-progress runs for the same branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
-      - uses: oven-sh/setup-bun@v2
+# Restrict all jobs to read-only by default
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
         with:
           bun-version: latest
-
       - run: bun install --frozen-lockfile
 
+  typecheck:
+    name: Typecheck
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
 
+  test:
+    name: Test
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
       - run: bun test
 
   build:
     name: Build
+    needs: install
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
         with:
           bun-version: latest
-
       - run: bun install --frozen-lockfile
-
       - run: bun run build
 
   lint:
     name: Lint
+    needs: install
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
         with:
           bun-version: latest
-
       - run: bun install --frozen-lockfile
-
       - run: bunx biome check .
+
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@6c05c4a00b91aa542267d8e32a8254774799d68d # v3.93.8
+        with:
+          extra_args: --only-verified
+
+  audit:
+    name: Dependency Audit
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@ecf28ddc73e819eb6fa29df6b34ef8921c743461 # v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Check for known vulnerabilities
+        run: "bunx audit-ci --config '{\"low\": true}'"
+        continue-on-error: true
+      - name: Verify no lockfile drift
+        run: |
+          bun install --frozen-lockfile
+          git diff --exit-code bun.lockb || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
