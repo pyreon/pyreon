@@ -1,17 +1,79 @@
 # Server-Side Rendering
 
-`@pyreon/runtime-server` provides `renderToString` and `renderToStream` for server-side rendering. The client uses `hydrateRoot` from `@pyreon/runtime-dom` to attach event listeners without re-building the DOM.
+Pyreon supports SSR through two packages:
+
+- `@pyreon/runtime-server` — low-level rendering primitives (`renderToString`, `renderToStream`)
+- `@pyreon/server` — high-level framework (`createHandler`, `prerender`, `island`)
 
 ## Installation
 
 ```bash
-bun add @pyreon/runtime-server    # server only
-bun add @pyreon/runtime-dom       # client only
+# Low-level SSR primitives
+bun add @pyreon/runtime-server
+
+# Full SSR framework (includes runtime-server)
+bun add @pyreon/server
+
+# Client-side hydration
+bun add @pyreon/runtime-dom
+```
+
+## Quick Start with createHandler
+
+The fastest way to get SSR running. `createHandler` returns a standard `Request → Response` handler:
+
+```ts
+import { createHandler } from "@pyreon/server"
+import { App } from "./App"
+import { routes } from "./routes"
+
+const handler = createHandler({
+  App,
+  routes,
+  template: await Bun.file("index.html").text(),
+})
+
+Bun.serve({ fetch: handler, port: 3000 })
+```
+
+The handler automatically:
+
+- Creates a router with the request URL
+- Runs route loaders
+- Renders the app to an HTML string
+- Injects the result into the template
+- Returns a `Response` with appropriate headers
+
+### Handler Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `App` | `ComponentFn` | Root application component |
+| `routes` | `RouteRecord[]` | Route definitions for the router |
+| `template` | `string` | HTML template with `<!--app-->` placeholder |
+| `middleware` | `Middleware[]` | Request middleware chain |
+
+### Middleware
+
+```ts
+import type { Middleware } from "@pyreon/server"
+
+const logger: Middleware = async (ctx, next) => {
+  console.log(`${ctx.request.method} ${ctx.url.pathname}`)
+  const response = await next()
+  console.log(`→ ${response.status}`)
+  return response
+}
+
+const handler = createHandler({
+  App, routes,
+  middleware: [logger],
+})
 ```
 
 ## renderToString
 
-Renders a VNode tree synchronously to an HTML string. Signal getters are snapshotted at render time.
+Low-level API that renders a VNode tree to an HTML string.
 
 ```ts
 import { renderToString } from "@pyreon/runtime-server"
@@ -21,179 +83,187 @@ const html = await renderToString(h(App, null))
 // => '<div class="app"><h1>Hello</h1></div>'
 ```
 
-### Signature
-
-```ts
-function renderToString(vnode: VNode): Promise<string>
-```
-
-Even though the API is async, the current implementation is synchronous internally. The `Promise` wrapper provides forward compatibility for async components.
+Signal getters are snapshotted at render time. The returned `Promise` provides forward compatibility for async components.
 
 ## renderToStream
 
-Renders to a `ReadableStream` of HTML chunks. Use this with streaming HTTP responses for faster time-to-first-byte.
+Renders to a `ReadableStream` of HTML chunks for faster time-to-first-byte:
 
 ```ts
 import { renderToStream } from "@pyreon/runtime-server"
-import { h } from "@pyreon/core"
 
-// Bun / Node.js (with Web Streams API)
 const stream = renderToStream(h(App, null))
 return new Response(stream, {
   headers: { "Content-Type": "text/html; charset=utf-8" },
 })
 ```
 
-### Signature
-
-```ts
-function renderToStream(vnode: VNode): ReadableStream<string>
-```
+When the component tree contains `Suspense` boundaries, `renderToStream` flushes completed sections as they resolve. Content outside `Suspense` is sent immediately.
 
 ## hydrateRoot
 
-On the client, `hydrateRoot` attaches Pyreon's reactivity to existing server-rendered HTML without rebuilding the DOM tree.
+On the client, `hydrateRoot` attaches Pyreon's reactivity to existing server-rendered HTML without rebuilding the DOM tree:
 
 ```ts
 import { hydrateRoot } from "@pyreon/runtime-dom"
-import { h } from "@pyreon/core"
 
-hydrateRoot(document.getElementById("app")!, h(App, null))
+hydrateRoot(document.getElementById("app")!, <App />)
 ```
 
-### Signature
+## Static Site Generation (SSG)
+
+Pre-render pages to static HTML files:
 
 ```ts
-function hydrateRoot(container: Element, vnode: VNode): void
+import { createHandler, prerender } from "@pyreon/server"
+
+const handler = createHandler({ App, routes })
+const result = await prerender({
+  handler,
+  paths: ["/", "/about", "/blog", "/blog/hello-world"],
+  outDir: "dist",
+})
+console.log(`Generated ${result.pages} pages in ${result.elapsed}ms`)
 ```
 
-## Full Example
+### Prerender Options
 
-### Server (Bun / Node.js)
+| Option | Type | Description |
+| --- | --- | --- |
+| `handler` | `RequestHandler` | The SSR handler from `createHandler` |
+| `paths` | `string[]` | URL paths to pre-render |
+| `outDir` | `string` | Output directory for HTML files |
+
+## Island Architecture
+
+See the dedicated [Islands guide](./islands.md) for full documentation.
+
+Islands let you render mostly-static pages with small interactive components that hydrate independently:
+
+```ts
+// Server
+import { island } from "@pyreon/server"
+
+const Counter = island(() => import("./Counter"), {
+  name: "Counter",
+  hydrate: "visible",  // load | idle | visible | media(query) | never
+})
+```
+
+```ts
+// Client entry
+import { hydrateIslands } from "@pyreon/server/client"
+
+const cleanup = hydrateIslands({
+  Counter: () => import("./Counter"),
+  Search: () => import("./Search"),
+})
+```
+
+## Full SSR Example
+
+### Server
 
 ```ts
 // server.ts
-import { renderToString } from "@pyreon/runtime-server"
-import { h } from "@pyreon/core"
+import { createHandler } from "@pyreon/server"
 import { App } from "./src/App"
+import { routes } from "./src/routes"
 
-Bun.serve({
-  port: 3000,
-  async fetch(req) {
-    const url = new URL(req.url)
-
-    if (url.pathname === "/") {
-      const appHtml = await renderToString(h(App, null))
-
-      const html = `<!DOCTYPE html>
+const template = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <title>Pyreon SSR App</title>
 </head>
 <body>
-  <div id="app">${appHtml}</div>
+  <div id="app"><!--app--></div>
   <script type="module" src="/client.js"></script>
 </body>
 </html>`
 
-      return new Response(html, {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      })
-    }
-
-    return new Response("Not found", { status: 404 })
-  },
-})
+const handler = createHandler({ App, routes, template })
+Bun.serve({ fetch: handler, port: 3000 })
 ```
 
 ### Client Entry
 
 ```ts
 // client.ts
-import { hydrateRoot } from "@pyreon/runtime-dom"
-import { h } from "@pyreon/core"
+import { startClient } from "@pyreon/server/client"
 import { App } from "./src/App"
+import { routes } from "./src/routes"
 
-hydrateRoot(document.getElementById("app")!, h(App, null))
+startClient({ App, routes, container: "#app" })
 ```
 
-### Shared App Component
+### Manual SSR (without createHandler)
 
-```tsx
-// src/App.tsx
-import { signal } from "@pyreon/reactivity"
+```ts
+import { renderToString } from "@pyreon/runtime-server"
+import { createRouter, RouterProvider } from "@pyreon/router"
+import { h } from "@pyreon/core"
 
-export function App() {
-  const count = signal(0)
-  return (
-    <div>
-      <h1>SSR Counter</h1>
-      <button onClick={() => count.update(n => n - 1)}>-</button>
-      <span>{count()}</span>
-      <button onClick={() => count.update(n => n + 1)}>+</button>
-    </div>
-  )
+Bun.serve({
+  port: 3000,
+  async fetch(req) {
+    const router = createRouter({
+      routes: [...],
+      url: req.url,
+    })
+
+    const appHtml = await renderToString(
+      h(RouterProvider, { router }, h(App, null))
+    )
+
+    return new Response(`<!DOCTYPE html>
+<html>
+<body>
+  <div id="app">${appHtml}</div>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>`, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    })
+  },
+})
+```
+
+## SSR with Data Fetching
+
+### Using Route Loaders
+
+Route loaders run automatically during SSR:
+
+```ts
+{
+  path: "/user/:id",
+  component: UserPage,
+  loader: async ({ params, signal }) => {
+    const res = await fetch(`/api/users/${params.id}`, { signal })
+    return res.json()
+  },
 }
 ```
 
-The server renders the initial HTML with `count = 0`. The client hydrates and attaches click handlers — no re-render needed.
-
-## Streaming with Suspense
-
-When the component tree contains `Suspense` boundaries, `renderToStream` flushes completed sections as they resolve:
+Loader data is available in the component via `useLoaderData()`. For client hydration, serialize and hydrate loader data:
 
 ```ts
-// server.ts
-const stream = renderToStream(
-  h(Suspense, { fallback: h("p", null, "Loading…") },
-    h(App, null)
-  )
-)
+import { serializeLoaderData, hydrateLoaderData } from "@pyreon/router"
 ```
 
-Content outside `Suspense` is sent immediately. Lazy component sections are sent as their imports resolve.
+### Using Stores
 
-## SSR with the Router
-
-Pass the initial path to the router to match server-side:
+Pre-populate stores before rendering:
 
 ```ts
-// server.ts
-import { createRouter } from "@pyreon/router"
-
-const router = createRouter({
-  mode: "history",
-  routes: [...],
-})
-
-// Set initial path from request
-router.replace(new URL(req.url).pathname)
-
-const html = await renderToString(
-  h(RouterProvider, { router },
-    h(App, null)
-  )
-)
-```
-
-## Data Fetching Before Render
-
-Fetch data before calling `renderToString` and pass it as props or store it in a store:
-
-```ts
-// server.ts
-import { useProductStore } from "./src/stores/products"
-
-// Pre-populate the store
 const store = useProductStore()
-const products = await api.getProducts()
-store.setInitial(products)
+store.setProducts(await api.getProducts())
 
 const html = await renderToString(h(App, null))
 ```
 
-On the client, serialize the data into the HTML and re-hydrate the store before calling `hydrateRoot`:
+Serialize store data into the HTML for client hydration:
 
 ```html
 <script id="__PYREON_DATA__" type="application/json">
@@ -201,20 +271,42 @@ On the client, serialize the data into the HTML and re-hydrate the store before 
 </script>
 ```
 
+### Using Head Tags
+
 ```ts
-// client.ts
-const data = JSON.parse(document.getElementById("__PYREON_DATA__")!.textContent!)
-useProductStore().setInitial(data.products)
-hydrateRoot(document.getElementById("app")!, h(App, null))
+import { renderWithHead } from "@pyreon/head"
+
+const { html, head } = renderWithHead(h(App, null))
+// Inject `head` into the <head> section of your HTML template
 ```
 
-## Hydration Limitations
+## Concurrent SSR Isolation
 
-**For lists remount on hydration.** The `For` component cannot reconcile server-rendered `<li>` elements with the client-side keyed list. On hydration, it clears and remounts its output. This does not cause a visible flash for static lists, but it does for lists with animations.
+Each SSR request gets its own isolated context and store registry via `AsyncLocalStorage`:
 
-**Reactive conditionals may flash.** If a reactive conditional (`{() => show() ? A : B}`) renders differently on the server (where signals start at their initial value) versus the client (which may have different initial state from cookies or localStorage), you will see a hydration mismatch.
+```ts
+import { runWithRequestContext } from "@pyreon/runtime-server"
+import { setStoreRegistryProvider } from "@pyreon/store"
 
-**No streaming Suspense with `renderToString`.** Use `renderToStream` to get Suspense-aware streaming.
+// Stores are automatically isolated per request
+setStoreRegistryProvider(() => als.getStore() ?? new Map())
+```
+
+This ensures that concurrent requests do not share reactive state.
+
+## Streaming with Suspense
+
+```ts
+const stream = renderToStream(
+  h(Suspense, { fallback: h("p", null, "Loading...") },
+    h(App, null)
+  )
+)
+```
+
+Content outside `Suspense` is sent immediately. Lazy component sections are sent as their imports resolve. The client then hydrates each section independently.
+
+## Gotchas
 
 **Server-only code must not reference DOM APIs.** `document`, `window`, and `navigator` do not exist on the server. Guard with `typeof document !== "undefined"` or use `onMount` which only runs on the client.
 
@@ -228,10 +320,12 @@ function Analytics() {
 }
 ```
 
-## Gotchas
+**`renderToString` does not run `onMount`.** Lifecycle hooks run only on the client.
 
-**Signal initial values must be serializable for hydration.** If a signal is initialized with a non-serializable value (a function, a DOM node, a class instance), you cannot pass it through the data island pattern.
+**Hydration expects the DOM to match.** If the server and client render different HTML, Pyreon logs a warning and forces a re-render of the mismatched subtree.
 
-**`renderToString` does not run `onMount`.** Lifecycle hooks run only on the client. Do not rely on `onMount` for data that must be in the initial HTML.
+**Signal initial values must be serializable.** Non-serializable values (functions, DOM nodes) cannot be passed through the data island pattern.
 
-**Hydration expects the DOM to match exactly.** If the server and client render different HTML (different text, different attributes), Pyreon logs a warning and forces a re-render of the mismatched subtree. Always ensure signal initial values are identical between server and client.
+**For lists remount on hydration.** The `For` component clears and remounts its output during hydration. No visible flash for static lists, but animations may replay.
+
+**No streaming Suspense with `renderToString`.** Use `renderToStream` for Suspense-aware streaming.
