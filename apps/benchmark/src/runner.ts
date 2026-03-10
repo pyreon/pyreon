@@ -1,7 +1,8 @@
 /**
  * Benchmark harness.
  *
- * Each test runs RUNS times; we report mean ± stddev in ms.
+ * Each test runs WARMUP + RUNS times; warmup samples are discarded.
+ * We report mean ± stddev in ms.
  * A forced layout (getBoundingClientRect) before timing ends ensures
  * the browser has flushed style/layout — same method used by js-framework-benchmark.
  */
@@ -19,21 +20,25 @@ export interface BenchSuite {
   results: BenchResult[]
 }
 
-const RUNS = 5
+export const WARMUP = 5
+export const RUNS = 20
 
 export async function bench(
   name: string,
   suite: BenchSuite,
   fn: () => void | Promise<void>,
+  resetFn?: () => void | Promise<void>,
 ): Promise<BenchResult> {
   const samples: number[] = []
 
-  for (let i = 0; i < RUNS; i++) {
+  for (let i = 0; i < WARMUP + RUNS; i++) {
+    if (resetFn) await resetFn()
     const t0 = performance.now()
     await fn()
     // Force layout flush so DOM work is included in the measurement
     suite.container.getBoundingClientRect()
-    samples.push(performance.now() - t0)
+    const elapsed = performance.now() - t0
+    if (i >= WARMUP) samples.push(elapsed)
     // Yield to browser between runs
     await tick()
   }

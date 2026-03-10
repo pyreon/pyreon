@@ -1,11 +1,16 @@
 /**
  * CLI benchmark — runs in Bun with happy-dom.
  * happy-dom must register BEFORE framework imports (React/Vue capture `document` at init).
+ *
+ * Methodology:
+ * - 5 warmup runs (discarded) + 20 timed runs per benchmark
+ * - Labels reset between partial update runs to avoid accumulation
+ * - Framework execution order randomized to avoid GC pressure bias
  */
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
 GlobalRegistrator.register()
 
-const [{ h, For }, { signal, cell }, { mount, createTemplate }, React, ReactDOM, Vue, Preact, PreactHooks, PreactCompat, Solid, SolidWeb] = await Promise.all([
+const [{ h, For }, { signal, createSelector }, { mount }, React, ReactDOM, Vue, Preact, PreactHooks, PreactCompat, Solid, SolidWeb] = await Promise.all([
   import("@pyreon/core"),
   import("@pyreon/reactivity"),
   import("@pyreon/runtime-dom"),
@@ -39,11 +44,20 @@ function makeRows(n: number): Row[] {
 
 // ─── Harness ──────────────────────────────────────────────────────────────────
 
-const RUNS = 5
-async function bench(fn: () => void | Promise<void>): Promise<number> {
+const WARMUP = 5
+const RUNS = 20
+
+async function bench(
+  fn: () => void | Promise<void>,
+  resetFn?: () => void | Promise<void>,
+): Promise<number> {
   const s: number[] = []
-  for (let i = 0; i < RUNS; i++) {
-    const t = performance.now(); await fn(); s.push(performance.now() - t)
+  for (let i = 0; i < WARMUP + RUNS; i++) {
+    if (resetFn) await resetFn()
+    const t = performance.now()
+    await fn()
+    const elapsed = performance.now() - t
+    if (i >= WARMUP) s.push(elapsed)
   }
   return s.reduce((a, b) => a + b, 0) / RUNS
 }
@@ -62,11 +76,10 @@ async function runVanilla(): Promise<Record<string, number>> {
   el.appendChild(table)
 
   let data: Row[] = []
-  let rowEls: HTMLElement[] = []       // parallel array of <tr> elements
-  let labelEls: HTMLElement[] = []     // parallel array of label <td> elements
+  let rowEls: HTMLElement[] = []
+  let labelEls: HTMLElement[] = []
   let selectedTr: HTMLElement | null = null
 
-  // Full render — used for create and replaceAll
   function renderAll(rows: Row[]) {
     data = rows
     tbody.innerHTML = ""
@@ -93,35 +106,50 @@ async function runVanilla(): Promise<Record<string, number>> {
   r._verify = el.querySelectorAll("tr").length
   r.replaceAll = await bench(() => renderAll(makeRows(1_000)))
 
-  // Optimized partial update — only touch the 100 affected text nodes
-  r.partialUpd = await bench(() => {
-    for (let i = 0; i < data.length; i += 10) {
-      const row = data[i] as Row
-      row.label = append(row.label);
-      (labelEls[i] as HTMLElement).textContent = row.label
-    }
-  })
+  // Targeted partial update — only touch the 100 affected text nodes
+  let origLabels = data.map(row => row.label)
+  r.partialUpd = await bench(
+    () => {
+      for (let i = 0; i < data.length; i += 10) {
+        const row = data[i] as Row
+        row.label = append(row.label);
+        (labelEls[i] as HTMLElement).textContent = row.label
+      }
+    },
+    // Reset labels before each run
+    () => {
+      for (let i = 0; i < data.length; i += 10) {
+        const orig = origLabels[i]
+        if (orig !== undefined) {
+          (data[i] as Row).label = orig;
+          (labelEls[i] as HTMLElement).textContent = orig
+        }
+      }
+    },
+  )
 
-  // Optimized select — O(1) className toggle on 2 elements
+  // Re-create clean rows for remaining tests
+  renderAll(makeRows(1_000))
+  origLabels = data.map(row => row.label)
+
+  // Targeted select — O(1) className toggle on 2 elements
   r.selectRow = await bench(() => {
     if (selectedTr) selectedTr.className = ""
     selectedTr = rowEls[500] as HTMLElement
     selectedTr.className = "selected"
   })
 
-  // Optimized swap — move 2 DOM nodes
+  // Targeted swap — move 2 DOM nodes
   r.swapRows = await bench(() => {
     const tmp = data[1] as Row; data[1] = data[998] as Row; data[998] = tmp
     const tmpEl = rowEls[1] as HTMLElement; rowEls[1] = rowEls[998] as HTMLElement; rowEls[998] = tmpEl
     const tmpLbl = labelEls[1] as HTMLElement; labelEls[1] = labelEls[998] as HTMLElement; labelEls[998] = tmpLbl
-    // DOM swap: insert row 998 before row 2, then old row 2 (now at 998 position) before row 999
     const ref2 = rowEls[2] as HTMLElement
     tbody.insertBefore(rowEls[1] as HTMLElement, ref2)
     const ref999 = (rowEls[999] as HTMLElement | undefined) ?? null
     tbody.insertBefore(rowEls[998] as HTMLElement, ref999)
   })
 
-  // Clear — remove all children
   r.clear = await bench(() => {
     tbody.innerHTML = ""
     data = []; rowEls = []; labelEls = []
@@ -134,57 +162,24 @@ async function runVanilla(): Promise<Record<string, number>> {
   return r
 }
 
-// ─── Nova ─────────────────────────────────────────────────────────────────────
+// ─── Pyreon ───────────────────────────────────────────────────────────────────
 
-async function runNova(): Promise<Record<string, number>> {
+async function runPyreon(): Promise<Record<string, number>> {
   const el = makeEl()
-  type RR = { id: number; label: ReturnType<typeof cell<string>> }
+  type RR = { id: number; label: ReturnType<typeof signal<string>> }
   const rowsSig = signal<RR[]>([])
-  const selId   = signal<number | null>(null)
+  const selId = signal<number | null>(null)
 
-  // Build RR[] directly — no intermediate Row[] + .map(toR) double allocation
-  // cell() instead of signal() — 1 allocation vs 6 closures per row label
+  // O(1) selection via createSelector — only 2 effects fire per change
+  const isSelected = createSelector(selId)
+
   function makeRR(n: number): RR[] {
     const rows = new Array<RR>(n)
     for (let i = 0; i < n; i++) {
-      rows[i] = { id: _id++, label: cell(`${pick(ADJ)} ${pick(COLS)} ${pick(NOUN)}`) }
+      rows[i] = { id: _id++, label: signal(`${pick(ADJ)} ${pick(COLS)} ${pick(NOUN)}`) }
     }
     return rows
   }
-
-  // O(1) selection via direct Map lookup — one subscribe, not per-row effects.
-  // When selId changes: deselect old tr, select new tr. Two className writes total.
-  const rowEls = new Map<number, HTMLElement>()
-  let prevSelEl: HTMLElement | null = null
-  const unsubSel = selId.subscribe(() => {
-    if (prevSelEl) prevSelEl.className = ""
-    const id = selId.peek()
-    if (id !== null) {
-      const newEl = rowEls.get(id)
-      if (newEl) { newEl.className = "selected"; prevSelEl = newEl }
-      else prevSelEl = null
-    } else {
-      prevSelEl = null
-    }
-  })
-
-  // createTemplate: cloneNode(true) from a pre-parsed <template> — fastest in happy-dom.
-  // subscribe() for reactive text (no effect overhead), direct Map for O(1) selection.
-  // null cleanup — signals are GC'd with rows, subscriptions die naturally.
-  const rowFactory = createTemplate<RR>(
-    "<tr><td>\x00</td><td>\x00</td></tr>",
-    (tr, row) => {
-      const td1 = tr.firstChild as HTMLElement
-      const td2 = td1.nextSibling as HTMLElement
-      const t1 = td1.firstChild as Text
-      const t2 = td2.firstChild as Text
-      t1.data = String(row.id)
-      t2.data = row.label.peek()
-      row.label.listen(() => { t2.data = row.label.peek() })
-      rowEls.set(row.id, tr)
-      return null
-    },
-  )
 
   const unmount = mount(
     h("table", null,
@@ -192,7 +187,11 @@ async function runNova(): Promise<Record<string, number>> {
         For({
           each: rowsSig,
           key: r => r.id,
-          children: rowFactory,
+          children: (row: RR) =>
+            h("tr", { class: () => isSelected(row.id) ? "selected" : "" },
+              h("td", null, String(row.id)),
+              h("td", null, () => row.label()),
+            ),
         })
       )
     ),
@@ -204,14 +203,24 @@ async function runNova(): Promise<Record<string, number>> {
   r.create1k   = await bench(() => rowsSig.set(makeRR(1_000)))
   r._verify = el.querySelectorAll("tr").length
   r.replaceAll = await bench(() => rowsSig.set(makeRR(1_000)))
-  // Fine-grained: only the mutated <td> nodes update — no list re-render
-  r.partialUpd = await bench(() => { cur().forEach((row, i) => { if (i % 10 === 0) row.label.update(l => append(l)) }) })
+
+  // Partial update with label reset
+  let origLabels = cur().map(row => row.label())
+  r.partialUpd = await bench(
+    () => { cur().forEach((row, i) => { if (i % 10 === 0) row.label.update(l => append(l)) }) },
+    () => { cur().forEach((row, i) => { if (i % 10 === 0) { const o = origLabels[i]; if (o !== undefined) row.label.set(o) } }) },
+  )
+
+  // Re-create clean rows
+  rowsSig.set(makeRR(1_000))
+  origLabels = cur().map(row => row.label())
+
   r.selectRow  = await bench(() => selId.set(cur()[500]?.id ?? null))
   r.swapRows   = await bench(() => { const c = [...cur()]; const t = c[1] as RR; c[1] = c[998] as RR; c[998] = t; rowsSig.set(c) })
   r.clear      = await bench(() => rowsSig.set([]))
   rowsSig.set(makeRR(1_000))
   r.create10k  = await bench(() => rowsSig.set(makeRR(10_000)))
-  unsubSel(); unmount(); el.remove()
+  unmount(); el.remove()
   return r
 }
 
@@ -252,11 +261,27 @@ async function runReact(): Promise<Record<string, number>> {
   const r: Record<string, number> = {}
   r.create1k   = await bench(() => setD(makeRows(1_000)))
   r.replaceAll = await bench(() => setD(makeRows(1_000)))
-  r.partialUpd = await bench(() => {
-    const u = [...cur]
-    for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
-    return setD(u)
-  })
+
+  let origLabels = cur.map(row => row.label)
+  r.partialUpd = await bench(
+    () => {
+      const u = [...cur]
+      for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
+      return setD(u)
+    },
+    () => {
+      cur = cur.map((row, i) => {
+        const orig = origLabels[i]
+        return orig !== undefined ? { ...row, label: orig } : row
+      })
+      return setD(cur)
+    },
+  )
+
+  // Re-create clean rows
+  await setD(makeRows(1_000))
+  origLabels = cur.map(row => row.label)
+
   r.selectRow  = await bench(() => setS(cur[500]?.id ?? null))
   r.swapRows   = await bench(() => {
     const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; return setD(u)
@@ -298,7 +323,33 @@ async function runVue(): Promise<Record<string, number>> {
   const r: Record<string, number> = {}
   r.create1k   = await bench(async () => { data.value = cur = makeRows(1_000); await tick() })
   r.replaceAll = await bench(async () => { data.value = cur = makeRows(1_000); await tick() })
-  r.partialUpd = await bench(async () => { const u = [...cur]; for (let i = 0; i < u.length; i += 10) (u[i] as Row).label = append((u[i] as Row).label); data.value = cur = u; await tick() })
+
+  let origLabels = cur.map(row => row.label)
+  r.partialUpd = await bench(
+    async () => {
+      const u = [...cur]
+      for (let i = 0; i < u.length; i += 10) {
+        const row = u[i] as Row
+        u[i] = { ...row, label: append(row.label) }
+      }
+      data.value = cur = u
+      await tick()
+    },
+    async () => {
+      cur = cur.map((row, i) => {
+        const orig = origLabels[i]
+        return orig !== undefined ? { ...row, label: orig } : row
+      })
+      data.value = cur
+      await tick()
+    },
+  )
+
+  // Re-create clean rows
+  data.value = cur = makeRows(1_000)
+  origLabels = cur.map(row => row.label)
+  await tick()
+
   r.selectRow  = await bench(async () => { selId.value = cur[500]?.id ?? null; await tick() })
   r.swapRows   = await bench(async () => { const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; data.value = cur = u; await tick() })
   r.clear      = await bench(async () => { data.value = cur = []; await tick() })
@@ -347,11 +398,27 @@ async function runPreact(): Promise<Record<string, number>> {
   const r: Record<string, number> = {}
   r.create1k   = await bench(() => setD(makeRows(1_000)))
   r.replaceAll = await bench(() => setD(makeRows(1_000)))
-  r.partialUpd = await bench(() => {
-    const u = [...cur]
-    for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
-    return setD(u)
-  })
+
+  let origLabels = cur.map(row => row.label)
+  r.partialUpd = await bench(
+    () => {
+      const u = [...cur]
+      for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
+      return setD(u)
+    },
+    () => {
+      cur = cur.map((row, i) => {
+        const orig = origLabels[i]
+        return orig !== undefined ? { ...row, label: orig } : row
+      })
+      return setD(cur)
+    },
+  )
+
+  // Re-create clean rows
+  await setD(makeRows(1_000))
+  origLabels = cur.map(row => row.label)
+
   r.selectRow  = await bench(() => setS(cur[500]?.id ?? null))
   r.swapRows   = await bench(() => {
     const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; return setD(u)
@@ -367,7 +434,7 @@ async function runPreact(): Promise<Record<string, number>> {
 
 async function runSolid(): Promise<Record<string, number>> {
   const el = makeEl()
-  const { createSignal, createEffect, createComponent } = Solid
+  const { createSignal, createSelector: solidCreateSelector, createEffect, createComponent } = Solid
   const { For } = Solid
   const { render: sr, insert } = SolidWeb
 
@@ -381,6 +448,9 @@ async function runSolid(): Promise<Record<string, number>> {
 
   const [rows, setRows] = createSignal<SRow[]>([])
   const [selectedId, setSelected] = createSignal<number | null>(null)
+
+  // O(1) selection — only 2 effects fire per change
+  const isSelected = solidCreateSelector(selectedId)
 
   const dispose = sr(() => {
     const table = document.createElement("table")
@@ -398,7 +468,8 @@ async function runSolid(): Promise<Record<string, number>> {
         td1.textContent = String(row.id)
         tr.appendChild(td1); tr.appendChild(td2)
         createEffect(() => { td2.textContent = row.label() })
-        createEffect(() => { tr.className = row.id === selectedId() ? "selected" : "" })
+        // O(1) selection via createSelector
+        createEffect(() => { tr.className = isSelected(row.id) ? "selected" : "" })
         return tr
       },
     }))
@@ -409,13 +480,30 @@ async function runSolid(): Promise<Record<string, number>> {
   r.create1k   = await bench(async () => { setRows(mkSRows(1_000)); await tick() })
   r._verify = el.querySelectorAll("tr").length
   r.replaceAll = await bench(async () => { setRows(mkSRows(1_000)); await tick() })
-  r.partialUpd = await bench(async () => {
-    const cur = rows()
-    for (let i = 0; i < cur.length; i += 10) {
-      const row = cur[i] as SRow; row.setLabel(append(row.label()))
-    }
-    await tick()
-  })
+
+  let origLabels = rows().map(row => row.label())
+  r.partialUpd = await bench(
+    async () => {
+      const cur = rows()
+      for (let i = 0; i < cur.length; i += 10) {
+        const row = cur[i] as SRow; row.setLabel(append(row.label()))
+      }
+      await tick()
+    },
+    async () => {
+      const cur = rows()
+      for (let i = 0; i < cur.length; i += 10) {
+        const orig = origLabels[i]
+        if (orig !== undefined) (cur[i] as SRow).setLabel(orig)
+      }
+      await tick()
+    },
+  )
+
+  // Re-create clean rows
+  setRows(mkSRows(1_000)); await tick()
+  origLabels = rows().map(row => row.label())
+
   r.selectRow  = await bench(async () => { setSelected(rows()[500]?.id ?? null); await tick() })
   r.swapRows   = await bench(async () => {
     const u = [...rows()]; const t = u[1] as SRow; u[1] = u[998] as SRow; u[998] = t
@@ -465,55 +553,66 @@ function printResults(all: Record<string, Record<string, number>>) {
     console.log(`${label}${cells.join("")}`)
   }
 
-  console.log(`\n${"slowdown vs best".padEnd(LABEL)}${fws.map(f => f.padStart(W)).join("")}`)
-  console.log("─".repeat(LABEL + W * fws.length))
+  const printSlowdown = (title: string, subset: string[]) => {
+    console.log(`\n${title.padEnd(LABEL)}${subset.map(f => f.padStart(W)).join("")}`)
+    console.log("─".repeat(LABEL + W * subset.length))
 
-  for (const [key, label] of TESTS) {
-    const vals = fws.map(f => all[f]?.[key] ?? 0)
-    const min = Math.min(...vals)
-    const cells = vals.map(v => {
-      const ratio = v / min
-      const s = `${ratio.toFixed(2)}×`.padStart(W)
-      if (ratio < 1.01) return `\x1b[32m${s}\x1b[0m`
-      if (ratio > 5)    return `\x1b[31m${s}\x1b[0m`
-      if (ratio > 2)    return `\x1b[33m${s}\x1b[0m`
-      return s
-    })
-    console.log(`${label}${cells.join("")}`)
+    for (const [key, label] of TESTS) {
+      const vals = subset.map(f => all[f]?.[key] ?? 0)
+      const min = Math.min(...vals)
+      const cells = vals.map(v => {
+        const ratio = v / min
+        const s = `${ratio.toFixed(2)}×`.padStart(W)
+        if (ratio < 1.01) return `\x1b[32m${s}\x1b[0m`
+        if (ratio > 5)    return `\x1b[31m${s}\x1b[0m`
+        if (ratio > 2)    return `\x1b[33m${s}\x1b[0m`
+        return s
+      })
+      console.log(`${label}${cells.join("")}`)
+    }
   }
+
+  printSlowdown("slowdown vs best", fws)
+
+  // Framework-only comparison (excludes vanilla raw DOM baseline)
+  const frameworkOnly = fws.filter(f => f !== "Vanilla JS")
+  if (frameworkOnly.length > 1) {
+    printSlowdown("vs best framework", frameworkOnly)
+  }
+
   console.log()
 }
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
-console.log("Benchmarking (happy-dom, 5 runs each)…\n")
+// Randomize framework execution order to avoid GC pressure bias
+const frameworks: Array<{ name: string; run: () => Promise<Record<string, number>> }> = [
+  { name: "Vanilla JS", run: runVanilla },
+  { name: "Pyreon", run: runPyreon },
+  { name: "Preact", run: runPreact },
+  { name: "React 19", run: runReact },
+  { name: "Vue 3", run: runVue },
+  // SolidJS excluded — renders 0 DOM rows in happy-dom (lazy/deferred rendering)
+  // { name: "SolidJS", run: runSolid },
+]
+
+for (let i = frameworks.length - 1; i > 0; i--) {
+  const j = Math.floor(Math.random() * (i + 1))
+  const a = frameworks[i] as typeof frameworks[0]
+  const b = frameworks[j] as typeof frameworks[0]
+  frameworks[i] = b
+  frameworks[j] = a
+}
+
+console.log(`Benchmarking (happy-dom, ${WARMUP} warmup + ${RUNS} timed runs each)…\n`)
 
 const results: Record<string, Record<string, number>> = {}
 
-process.stdout.write("  Vanilla JS … ")
-results["Vanilla JS"] = await runVanilla()
-console.log("✓")
-
-process.stdout.write("  Nova      … ")
-results.Nova = await runNova()
-console.log("✓")
-
-process.stdout.write("  Preact    … ")
-results.Preact = await runPreact()
-console.log("✓")
-
-process.stdout.write("  React 19  … ")
-results["React 19"] = await runReact()
-console.log("✓")
-
-process.stdout.write("  Vue 3     … ")
-results["Vue 3"] = await runVue()
-console.log("✓")
-
-// SolidJS excluded — renders 0 DOM rows in happy-dom (lazy/deferred rendering)
-// process.stdout.write("  SolidJS   … ")
-// results.SolidJS = await runSolid()
-// console.log("✓")
+for (const { name, run } of frameworks) {
+  process.stdout.write(`  ${name.padEnd(12)}… `)
+  results[name] = await run()
+  console.log("✓")
+}
 
 // Verify all frameworks actually rendered rows
 console.log("DOM verification (rows after create1k):")

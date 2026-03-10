@@ -4,11 +4,14 @@
  * Uses solid-js without JSX: createComponent() mirrors what the Solid
  * compiler emits for <For>. Each row gets a createSignal for its label
  * so partial updates only touch the changed text nodes — same model as
- * Nova's per-row signal.
+ * Pyreon's per-row signal.
+ *
+ * Uses createSelector for O(1) selection — only 2 effects fire per
+ * selection change, matching idiomatic Solid patterns.
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createSignal, createEffect, createComponent } from "solid-js"
+import { createSignal, createSelector, createEffect, createComponent } from "solid-js"
 import { For } from "solid-js"
 import { render, insert } from "solid-js/web"
 import type { BenchSuite } from "../runner"
@@ -28,6 +31,9 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
 
   const [rows, setRows] = createSignal<SolidRow[]>([])
   const [selectedId, setSelected] = createSignal<number | null>(null)
+
+  // O(1) selection — only the deselected and newly selected rows re-run
+  const isSelected = createSelector(selectedId)
 
   const dispose = render(() => {
     const table = document.createElement("table")
@@ -50,9 +56,9 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
           tr.appendChild(td2)
           // Reactive label — only this row's td2 updates when label changes
           createEffect(() => { td2.textContent = row.label() })
-          // Reactive selection — all rows subscribe to selectedId (idiomatic Solid)
+          // O(1) selection via createSelector — only 2 effects fire per change
           createEffect(() => {
-            tr.className = row.id === selectedId() ? "selected" : ""
+            tr.className = isSelected(row.id) ? "selected" : ""
           })
           return tr
         },
@@ -72,13 +78,34 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     await tick()
   })
 
-  await bench("partial update (every 10th)", suite, async () => {
-    const cur = rows()
-    for (let i = 0; i < cur.length; i += 10) {
-      cur[i]?.setLabel(`${cur[i]?.label() ?? ""} !!!`)
-    }
-    await tick()
-  })
+  // Store original labels for reset
+  let originalLabels: string[] = []
+  await bench(
+    "partial update (every 10th)",
+    suite,
+    async () => {
+      const cur = rows()
+      for (let i = 0; i < cur.length; i += 10) {
+        cur[i]?.setLabel(`${cur[i]?.label() ?? ""} !!!`)
+      }
+      await tick()
+    },
+    // Reset labels before each run
+    () => {
+      const cur = rows()
+      for (let i = 0; i < cur.length; i += 10) {
+        const orig = originalLabels[i]
+        if (orig !== undefined) {
+          cur[i]?.setLabel(orig)
+        }
+      }
+    },
+  )
+
+  // Re-create clean rows for remaining tests
+  setRows(mkRows(1_000))
+  originalLabels = rows().map((r) => r.label())
+  await tick()
 
   await bench("select row", suite, async () => {
     const r = rows()

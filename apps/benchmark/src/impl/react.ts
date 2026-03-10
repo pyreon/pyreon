@@ -101,15 +101,33 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
     await setRows(currentRows)
   })
 
-  await bench("partial update (every 10th)", suite, async () => {
-    const updated = [...currentRows]
-    for (let i = 0; i < updated.length; i += 10) {
-      const row = updated[i]
-      if (row) updated[i] = { ...row, label: `${row.label} !!!` }
-    }
-    currentRows = updated
-    await setRows(currentRows)
-  })
+  let originalLabels: string[] = currentRows.map((r) => r.label)
+  await bench(
+    "partial update (every 10th)",
+    suite,
+    async () => {
+      const updated = [...currentRows]
+      for (let i = 0; i < updated.length; i += 10) {
+        const row = updated[i]
+        if (row) updated[i] = { ...row, label: `${row.label} !!!` }
+      }
+      currentRows = updated
+      await setRows(currentRows)
+    },
+    // Reset labels before each run
+    async () => {
+      currentRows = currentRows.map((row, i) => {
+        const orig = originalLabels[i]
+        return orig !== undefined ? { ...row, label: orig } : row
+      })
+      await setRows(currentRows)
+    },
+  )
+
+  // Re-create clean rows for remaining tests
+  currentRows = buildRows(1_000)
+  await setRows(currentRows)
+  originalLabels = currentRows.map((r) => r.label)
 
   await bench("select row", suite, async () => {
     await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)

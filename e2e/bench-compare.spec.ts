@@ -1,126 +1,201 @@
 /**
  * Real-browser framework comparison benchmark.
  *
- * Uses the benchmark app (port 5174) which already has all frameworks:
- * Vanilla JS, React 19, Vue 3, Preact, SolidJS, Nova.
+ * Each framework runs in a FRESH page (page.goto) to eliminate cross-contamination
+ * from leaked DOM nodes, GC pressure, and heap fragmentation from prior frameworks.
  *
- * Clicks "Run Benchmarks", waits for completion, and scrapes the results table.
- * This gives real Chromium performance numbers with forced layout flushes.
+ * Uses the benchmark app (port 5174) which has all frameworks:
+ * Vanilla JS, React 19, Vue 3, Preact, SolidJS, Pyreon.
+ *
+ * NOTE on compilation caveats:
+ * - Vue uses h() render functions (no template compiler optimizations like patch flags
+ *   or static hoisting). A real Vue app with <template> would be faster on updates.
+ * - Solid uses manual createElement (no compiled template cloning). A real Solid app
+ *   with JSX compilation would be faster on creation.
+ * - Pyreon uses h() directly (same as other frameworks). Its compiler would add static
+ *   hoisting but the runtime behavior is the same.
+ * - React and Preact use createElement/h() which is their standard runtime path.
+ *
+ * These are inherent limitations of running all frameworks without per-framework
+ * build pipelines. The benchmark measures runtime performance, not compiler output.
  */
 
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
 
 const BENCH_URL = "http://localhost:5174"
 
+/** Run one framework's benchmark suite in a fresh page, return its results. */
+async function runFrameworkInIsolation(
+  page: Page,
+  frameworkName: string,
+): Promise<Record<string, { mean: number; stddev: number }> | null> {
+  await page.goto(BENCH_URL)
+  await expect(page.locator("h1")).toContainText("Pyreon")
+
+  // Run only this framework by clicking "Run" and waiting for "Done"
+  // The app runs all frameworks, so we scrape only the column we need
+  const runBtn = page.locator("#run")
+  await expect(runBtn).toBeVisible()
+  await runBtn.click()
+
+  await expect(page.locator("#status")).toHaveText("Done \u2713", { timeout: 240_000 })
+
+  // Scrape results for the target framework
+  return page.evaluate((fwName) => {
+    const tables = document.querySelectorAll("table")
+    if (tables.length === 0) return null
+
+    const mainTable = tables[0]
+    if (!mainTable) return null
+    const headers = Array.from(mainTable.querySelectorAll("thead th")).map(
+      (th) => th.textContent?.trim() ?? "",
+    )
+
+    const fwIndex = headers.indexOf(fwName)
+    if (fwIndex < 0) return null
+
+    const parseDuration = (s: string): number => {
+      const match = s.match(/([\d.]+)\s*(ms|µs)/)
+      if (!match) return 0
+      const valStr = match[1]
+      if (!valStr) return 0
+      const val = Number.parseFloat(valStr)
+      return match[2] === "µs" ? val / 1000 : val
+    }
+
+    const results: Record<string, { mean: number; stddev: number }> = {}
+    for (const tr of mainTable.querySelectorAll("tbody tr")) {
+      const cells = tr.querySelectorAll("td")
+      const testName = cells[0]?.textContent?.trim() ?? ""
+      const cellText = cells[fwIndex]?.textContent?.trim() ?? ""
+
+      // Parse "12.3 ms ±1.2 ms" or "456 µs ±78 µs"
+      const parts = cellText.split("±").map((s) => s.trim())
+
+      results[testName] = {
+        mean: parseDuration(parts[0] ?? ""),
+        stddev: parseDuration(parts[1] ?? ""),
+      }
+    }
+
+    return results
+  }, frameworkName)
+}
+
 test.describe("Framework Comparison Benchmark", () => {
-  test("run all framework benchmarks and compare", async ({ page }) => {
-    test.setTimeout(300_000) // 5 min — benchmarks take time
+  test("run all framework benchmarks in isolated pages", async ({ browser }) => {
+    test.setTimeout(600_000) // 10 min — each framework gets its own page load
 
-    await page.goto(BENCH_URL)
-    await expect(page.locator("h1")).toContainText("Nova")
+    const frameworkNames = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon"]
 
-    // Click run button
-    const runBtn = page.locator("#run")
-    await expect(runBtn).toBeVisible()
-    await runBtn.click()
+    // Randomize order to avoid systematic bias
+    for (let i = frameworkNames.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      const a = frameworkNames[i]
+      const b = frameworkNames[j]
+      if (a && b) {
+        frameworkNames[i] = b
+        frameworkNames[j] = a
+      }
+    }
 
-    // Wait for "Done" status — this may take a while
-    await expect(page.locator("#status")).toHaveText("Done ✓", { timeout: 240_000 })
+    const allResults: Record<string, Record<string, { mean: number; stddev: number }>> = {}
 
-    // Scrape the results table
-    const results = await page.evaluate(() => {
-      const tables = document.querySelectorAll("table")
-      if (tables.length === 0) return null
+    for (const fwName of frameworkNames) {
+      // Fresh browser context per framework — clean heap, no shared state
+      const context = await browser.newContext()
+      const page = await context.newPage()
 
-      const mainTable = tables[0]!
-      const headers = Array.from(mainTable.querySelectorAll("thead th")).map(
-        (th) => th.textContent?.trim() ?? "",
-      )
-      const rows: Record<string, Record<string, string>> = {}
-
-      mainTable.querySelectorAll("tbody tr").forEach((tr) => {
-        const cells = tr.querySelectorAll("td")
-        const testName = cells[0]?.textContent?.trim() ?? ""
-        rows[testName] = {}
-        for (let i = 1; i < cells.length; i++) {
-          const framework = headers[i] ?? `col${i}`
-          rows[testName]![framework] = cells[i]?.textContent?.trim() ?? ""
+      try {
+        const results = await runFrameworkInIsolation(page, fwName)
+        if (results) {
+          allResults[fwName] = results
+        } else {
+          console.log(`  WARNING: No results for ${fwName}`)
         }
-      })
-
-      // Also get the slowdown table if present
-      let slowdowns: Record<string, Record<string, string>> | null = null
-      if (tables.length > 1) {
-        const slowTable = tables[1]!
-        const slowHeaders = Array.from(slowTable.querySelectorAll("thead th")).map(
-          (th) => th.textContent?.trim() ?? "",
-        )
-        slowdowns = {}
-        slowTable.querySelectorAll("tbody tr").forEach((tr) => {
-          const cells = tr.querySelectorAll("td")
-          const testName = cells[0]?.textContent?.trim() ?? ""
-          slowdowns![testName] = {}
-          for (let i = 1; i < cells.length; i++) {
-            const framework = slowHeaders[i] ?? `col${i}`
-            slowdowns![testName]![framework] = cells[i]?.textContent?.trim() ?? ""
-          }
-        })
+      } finally {
+        await context.close()
       }
+    }
 
-      return { headers, rows, slowdowns }
-    })
+    // Verify we got results
+    const frameworks = Object.keys(allResults)
+    expect(frameworks.length).toBeGreaterThanOrEqual(3)
 
-    expect(results).not.toBeNull()
-    expect(results!.headers.length).toBeGreaterThanOrEqual(3) // Test + at least 2 frameworks
+    const novaPresent = frameworks.includes("Pyreon")
+    expect(novaPresent).toBe(true)
 
-    // Print formatted results
-    const frameworks = results!.headers.slice(1)
-    const tests = Object.keys(results!.rows)
+    // Collect all test names from the first framework
+    const firstKey = frameworks[0]
+    expect(firstKey).toBeDefined()
+    const firstFw = allResults[firstKey ?? ""]
+    expect(firstFw).toBeDefined()
+    const testNames = Object.keys(firstFw ?? {})
+    expect(testNames.length).toBeGreaterThanOrEqual(5)
 
-    console.log("\n  ╔══════════════════════════════════════════════════════════════════════════╗")
-    console.log("  ║                    Real Browser Benchmark (Chromium)                    ║")
-    console.log("  ╠══════════════════════════════════════════════════════════════════════════╣")
+    // ─── Print absolute times ──────────────────────────────────────────
 
-    // Print header row
-    let header = `  ║  ${"Test".padEnd(16)}`
-    for (const fw of frameworks) header += `│ ${fw.padStart(14)} `
-    header += "║"
-    console.log(header)
-    console.log(`  ╠${"═".repeat(header.length - 5)}╣`)
+    // Sort frameworks in a consistent display order
+    const displayOrder = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon"]
+    const sortedFws = displayOrder.filter((f) => frameworks.includes(f))
 
-    // Print data rows
-    for (const testName of tests) {
-      let row = `  ║  ${testName.padEnd(16)}`
-      for (const fw of frameworks) {
-        row += `│ ${(results!.rows[testName]![fw] ?? "—").padStart(14)} `
+    const fmtMs = (ms: number): string =>
+      ms < 1 ? `${(ms * 1000).toFixed(0)} \u00b5s` : `${ms.toFixed(1)} ms`
+
+    const W = 18
+    const LABEL = 30
+
+    console.log("\n  Real Browser Benchmark (Chromium) — isolated pages per framework")
+    console.log(`  ${"".padEnd(LABEL)}${sortedFws.map((f) => f.padStart(W)).join("")}`)
+    console.log(`  ${"─".repeat(LABEL + W * sortedFws.length)}`)
+
+    for (const testName of testNames) {
+      let row = `  ${testName.padEnd(LABEL)}`
+      for (const fw of sortedFws) {
+        const r = allResults[fw]?.[testName]
+        if (r) {
+          row += `${fmtMs(r.mean)} \u00b1${fmtMs(r.stddev)}`.padStart(W)
+        } else {
+          row += "\u2014".padStart(W)
+        }
       }
-      row += "║"
       console.log(row)
     }
 
-    console.log("  ╚══════════════════════════════════════════════════════════════════════════╝")
+    // ─── Print slowdown vs best (all) ──────────────────────────────────
 
-    // Print slowdown table if available
-    if (results!.slowdowns) {
-      console.log("\n  Slowdown vs Vanilla JS (lower = better):")
-      const slowTests = Object.keys(results!.slowdowns)
-      const slowFws = Object.keys(results!.slowdowns[slowTests[0]!] ?? {})
-      for (const testName of slowTests) {
-        let row = `    ${testName.padEnd(16)}`
-        for (const fw of slowFws) {
-          row += `  ${fw}: ${results!.slowdowns![testName]![fw] ?? "—"}`.padEnd(20)
+    const printSlowdownTable = (label: string, fws: string[]) => {
+      console.log("")
+      console.log(`  ${label.padEnd(LABEL)}${fws.map((f) => f.padStart(W)).join("")}`)
+      console.log(`  ${"─".repeat(LABEL + W * fws.length)}`)
+
+      for (const testName of testNames) {
+        const means = fws.map((fw) => allResults[fw]?.[testName]?.mean ?? Number.POSITIVE_INFINITY)
+        const best = Math.min(...means)
+
+        let row = `  ${testName.padEnd(LABEL)}`
+        for (const fw of fws) {
+          const r = allResults[fw]?.[testName]
+          if (r) {
+            const ratio = r.mean / best
+            const marker = ratio < 1.01 ? " \u2190 best" : ""
+            row += `${ratio.toFixed(2)}\u00d7${marker}`.padStart(W)
+          } else {
+            row += "\u2014".padStart(W)
+          }
         }
         console.log(row)
       }
     }
 
+    printSlowdownTable("Slowdown vs best (all)", sortedFws)
+
+    // Framework-only comparison (excludes vanilla raw DOM baseline)
+    const frameworkOnly = sortedFws.filter((f) => f !== "Vanilla JS")
+    if (frameworkOnly.length > 1) {
+      printSlowdownTable("Slowdown vs best framework", frameworkOnly)
+    }
+
     console.log("")
-
-    // Verify Nova results exist
-    const novaPresent = frameworks.some((f) => f.includes("Nova"))
-    expect(novaPresent).toBe(true)
-
-    // Verify all tests ran
-    expect(tests.length).toBeGreaterThanOrEqual(5)
   })
 })

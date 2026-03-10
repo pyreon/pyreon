@@ -1,7 +1,7 @@
 import { runVanilla } from "./impl/vanilla"
 import { runReact } from "./impl/react"
 import { runVue } from "./impl/vue"
-import { runNova } from "./impl/nova"
+import { runPyreon } from "./impl/pyreon"
 import { runPreact } from "./impl/preact"
 import { runSolid } from "./impl/solid"
 import type { BenchSuite } from "./runner"
@@ -50,31 +50,42 @@ function buildTable(suites: BenchSuite[]) {
 
   html += `</tbody></table>`
 
-  // Slowdown ratios vs Vanilla
-  const vanillaSuite = suites.find((s) => s.framework === "Vanilla JS")
-  if (vanillaSuite && suites.length > 1) {
-    html += `<p class="note">Slowdown vs Vanilla JS (lower = better, 1.0x = same speed)</p>`
-    html += `<table><thead><tr><th>Test</th>`
-    for (const s of suites.filter((s) => s.framework !== "Vanilla JS")) {
-      html += `<th>${s.framework} / Vanilla</th>`
-    }
-    html += `</tr></thead><tbody>`
-    for (const name of testNames) {
-      const base = vanillaSuite.results.find((x) => x.name === name)?.mean ?? 1
-      html += `<tr><td class="test-name">${name}</td>`
-      for (const suite of suites.filter((s) => s.framework !== "Vanilla JS")) {
-        const r = suite.results.find((x) => x.name === name)
-        if (r) {
-          const ratio = r.mean / base
-          const cls = ratio < 1.5 ? "fast" : ratio < 3 ? "ok" : "slow"
-          html += `<td><span class="${cls}">${ratio.toFixed(2)}×</span></td>`
-        } else {
-          html += `<td>—</td>`
-        }
+  // Slowdown ratio tables
+  if (suites.length > 1) {
+    const buildSlowdownTable = (label: string, subset: BenchSuite[]): string => {
+      let t = `<p class="note">${label} (lower = better, 1.00\u00d7 = fastest)</p>`
+      t += "<table><thead><tr><th>Test</th>"
+      for (const s of subset) {
+        t += `<th>${s.framework}</th>`
       }
-      html += `</tr>`
+      t += "</tr></thead><tbody>"
+      for (const name of testNames) {
+        const means = subset.map((s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY)
+        const best = Math.min(...means)
+        t += `<tr><td class="test-name">${name}</td>`
+        for (const suite of subset) {
+          const r = suite.results.find((x) => x.name === name)
+          if (r) {
+            const ratio = r.mean / best
+            const cls = ratio < 1.5 ? "fast" : ratio < 3 ? "ok" : "slow"
+            t += `<td><span class="${cls}">${ratio.toFixed(2)}\u00d7</span></td>`
+          } else {
+            t += "<td>\u2014</td>"
+          }
+        }
+        t += "</tr>"
+      }
+      t += "</tbody></table>"
+      return t
     }
-    html += `</tbody></table>`
+
+    html += buildSlowdownTable("Slowdown vs best (all)", suites)
+
+    // Framework-only comparison (excludes vanilla raw DOM baseline)
+    const frameworkOnly = suites.filter((s) => s.framework !== "Vanilla JS")
+    if (frameworkOnly.length > 1) {
+      html += buildSlowdownTable("Slowdown vs best framework", frameworkOnly)
+    }
   }
 
   tableEl.innerHTML = html
@@ -107,8 +118,19 @@ runBtn.addEventListener("click", async () => {
     { name: "React 19", run: runReact },
     { name: "Vue 3", run: runVue },
     { name: "SolidJS", run: runSolid },
-    { name: "Nova", run: runNova },
+    { name: "Pyreon", run: runPyreon },
   ]
+
+  // Randomize execution order to avoid GC pressure bias
+  for (let i = frameworks.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const a = frameworks[i]
+    const b = frameworks[j]
+    if (a && b) {
+      frameworks[i] = b
+      frameworks[j] = a
+    }
+  }
 
   for (const { name, run } of frameworks) {
     setStatus(`Running ${name}…`)

@@ -1,5 +1,5 @@
 /**
- * Real-browser benchmark tests for Nova.
+ * Real-browser benchmark tests for Pyreon.
  *
  * Runs the same 7 operations as bench-cli.ts but in Chromium via Playwright.
  * Each test verifies both correctness (DOM state) and records timing.
@@ -297,7 +297,7 @@ test.describe("Benchmark — real browser", () => {
     })
 
     console.log("\n  ╔══════════════════════════════════════╗")
-    console.log("  ║   Nova — Real Browser Benchmark      ║")
+    console.log("  ║   Pyreon — Real Browser Benchmark    ║")
     console.log("  ╠══════════════════════════════════════╣")
     console.log(`  ║  create1k:     ${results.create1k.toFixed(2).padStart(8)}ms         ║`)
     console.log(`  ║  replaceAll:   ${results.replaceAll.toFixed(2).padStart(8)}ms         ║`)
