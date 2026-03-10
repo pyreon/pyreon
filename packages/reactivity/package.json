@@ -1,7 +1,13 @@
 {
   "name": "@pyreon/reactivity",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Signals-based reactivity system for Pyreon",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/pyreon/pyreon.git", "directory": "packages/reactivity" },
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/reactivity#readme",
+  "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -17,7 +23,8 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap",
     "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

@@ -23,7 +23,6 @@ Pyreon beats ALL frameworks on every benchmark except creation (ties vanilla).
 | `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders |
 | `@pyreon/head` | useHead, HeadProvider, renderWithHead |
 | `@pyreon/model` | reactive models with patch tracking |
-| `@pyreon/query` | useQuery, useMutation, QuerySuspense, dehydrate/hydrate |
 | `@pyreon/server` | createHandler (SSR), prerender (SSG), island(), middleware |
 | `@pyreon/vite-plugin` | JSX transform + SSR dev middleware |
 | `@pyreon/react-compat` | useState, useEffect, useMemo, lazy, Suspense shims |

@@ -1,7 +1,13 @@
 {
   "name": "@pyreon/runtime-dom",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "DOM renderer for Pyreon",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/pyreon/pyreon.git", "directory": "packages/runtime-dom" },
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-dom#readme",
+  "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
+  "files": ["dist", "src", "README.md", "LICENSE"],
+  "sideEffects": false,
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -17,7 +23,8 @@
     "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity",
     "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch --external @pyreon/core --external @pyreon/reactivity",
     "test": "bun test --dom",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
