@@ -35,4 +35,5 @@ export interface MiddlewareContext {
 /**
  * Middleware function. Return a Response to short-circuit, or void to continue.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export type Middleware = (ctx: MiddlewareContext) => Response | void | Promise<Response | void>

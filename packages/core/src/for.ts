@@ -4,7 +4,6 @@ import type { NativeItem, Props, VNode } from "./types"
  * Symbol used as the VNode type for a For list — runtime-dom handles it
  * via mountFor, bypassing the generic VNode reconciler.
  */
-// biome-ignore lint/suspicious/noShadowRestrictedNames: intentional symbol
 export const ForSymbol: unique symbol = Symbol("pyreon.For")
 
 export interface ForProps<T> {

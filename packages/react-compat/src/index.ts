@@ -92,6 +92,7 @@ export function useReducer<S, A>(
  *
  * Returns a cleanup the same way React does (return a function from `fn`).
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
   if (deps !== undefined && deps.length === 0) {
     // [] means "run once on mount" — use onMount instead of a tracking effect

@@ -32,6 +32,7 @@ export function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T
  * Drop-in for Preact's `useEffect`.
  * The `deps` array is IGNORED — Pyreon tracks dependencies automatically.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
   if (deps !== undefined && deps.length === 0) {
     onMount((): undefined => {

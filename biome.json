@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["**/dist/**", "**/node_modules/**", "**/.turbo/**"]
+    "ignore": [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.turbo/**",
+      "e2e/**",
+      "tests/browser/**",
+      "apps/**",
+      "scripts/**"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -21,6 +29,9 @@
       "correctness": {
         "noUnusedVariables": "warn",
         "noUnusedImports": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn"
       },
       "style": {
         "noNonNullAssertion": "warn"

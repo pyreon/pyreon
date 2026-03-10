@@ -30,7 +30,8 @@ const noop: Cleanup = () => {}
 // ─── DOM cursor helpers ───────────────────────────────────────────────────────
 
 /** Skip comment and whitespace-only text nodes, return first "real" node */
-function firstReal(node: ChildNode | null): ChildNode | null {
+function firstReal(initialNode: ChildNode | null): ChildNode | null {
+  let node = initialNode
   while (node) {
     if (node.nodeType === Node.COMMENT_NODE) {
       node = node.nextSibling

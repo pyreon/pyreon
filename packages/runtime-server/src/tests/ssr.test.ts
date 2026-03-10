@@ -200,12 +200,12 @@ describe("concurrent SSR — context isolation", () => {
     const Ctx = createContext("none")
 
     function makeApp(value: string): ComponentFn {
-      return (async function App() {
+      return async function App() {
         // Inject context, then yield (simulates async data loading)
         pushContext(new Map([[Ctx.id, value]]))
         await new Promise<void>((r) => setTimeout(r, 5))
         return h("div", null, () => useContext(Ctx))
-      }) as unknown as ComponentFn
+      } as unknown as ComponentFn
     }
 
     const [html1, html2] = await Promise.all([
@@ -675,7 +675,9 @@ describe("concurrent SSR isolation", () => {
     }
 
     const renders = Array.from({ length: 50 }, (_, i) =>
-      runWithRequestContext(() => renderToString(h(Page as unknown as unknown as ComponentFn, { id: i }))),
+      runWithRequestContext(() =>
+        renderToString(h(Page as unknown as unknown as ComponentFn, { id: i })),
+      ),
     )
     const results = await Promise.all(renders)
 

@@ -4,7 +4,6 @@ import type { Props, VNode, VNodeChild } from "./types"
  * Symbol used as the VNode type for a Portal — runtime-dom mounts the
  * children into `target` instead of the normal parent.
  */
-// biome-ignore lint/suspicious/noShadowRestrictedNames: intentional symbol
 export const PortalSymbol: unique symbol = Symbol("pyreon.Portal")
 
 export interface PortalProps {

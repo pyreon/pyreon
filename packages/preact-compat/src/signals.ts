@@ -75,6 +75,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
  * Run a side-effect that auto-tracks signal reads.
  * Returns a dispose function.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export function effect(fn: () => void | (() => void)): () => void {
   const e: Effect = pyreonEffect(() => {
     const cleanup = fn()

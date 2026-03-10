@@ -50,8 +50,8 @@ describe("Cell", () => {
 
   test("listen() promotes to Set with multiple listeners", () => {
     const c = cell(0)
-    let a = 0,
-      b = 0
+    let a = 0
+    let b = 0
     c.listen(() => a++)
     c.listen(() => b++)
     expect(c._s).not.toBeNull()
@@ -74,8 +74,8 @@ describe("Cell", () => {
 
   test("subscribe() returns working unsubscribe (multi listener)", () => {
     const c = cell(0)
-    let a = 0,
-      b = 0
+    let a = 0
+    let b = 0
     c.listen(() => a++)
     const unsub = c.subscribe(() => b++)
     c.set(1)

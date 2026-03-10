@@ -88,7 +88,9 @@ describe("h()", () => {
   })
 
   test("handles component function type", () => {
-    const Comp = ((props: { name: string }) => h("span", null, props.name)) as ComponentFn<{ name: string }>
+    const Comp = ((props: { name: string }) => h("span", null, props.name)) as ComponentFn<{
+      name: string
+    }>
     const node = h(Comp, { name: "test" })
     expect(node.type as unknown).toBe(Comp)
     expect(node.props).toEqual({ name: "test" })

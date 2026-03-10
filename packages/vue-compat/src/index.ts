@@ -372,7 +372,7 @@ function getOrCreateContext<T>(key: string | symbol, defaultValue?: T) {
  * The key should be a string or symbol.
  */
 export function provide<T>(key: string | symbol, value: T): void {
-  const ctx = getOrCreateContext<T>(key, value)
+  getOrCreateContext<T>(key, value)
   // In Pyreon, context is set via the context stack during component rendering.
   // Since provide() is called during setup, we store it for inject() to read.
   // This uses a simple module-level store since Pyreon contexts work differently.

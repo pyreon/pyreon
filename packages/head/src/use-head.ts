@@ -10,7 +10,7 @@ function buildEntry(o: UseHeadInput): HeadEntry {
   o.meta?.forEach((m, i) =>
     tags.push({
       tag: "meta",
-      key: m["name"] ?? m["property"] ?? `meta-${i}`,
+      key: m.name ?? m.property ?? `meta-${i}`,
       props: m,
     }),
   )
@@ -25,7 +25,7 @@ function buildEntry(o: UseHeadInput): HeadEntry {
     const { children, ...rest } = s
     tags.push({
       tag: "script",
-      key: s["src"] ?? `script-${i}`,
+      key: s.src ?? `script-${i}`,
       props: rest as Record<string, string>,
       ...(children != null ? { children } : {}),
     })

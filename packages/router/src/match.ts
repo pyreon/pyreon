@@ -132,7 +132,7 @@ function matchPrefix(
     }
   }
 
-  const rest = "/" + pathParts.slice(patternParts.length).join("/")
+  const rest = `/${pathParts.slice(patternParts.length).join("/")}`
   return { params, rest }
 }
 

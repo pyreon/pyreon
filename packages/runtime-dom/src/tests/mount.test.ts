@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import {
-  ErrorBoundary as _ErrorBoundary,
   For,
   Fragment,
   Match,
   Portal,
   Show,
   Switch,
+  ErrorBoundary as _ErrorBoundary,
   createRef,
   defineComponent,
   h,
@@ -1672,10 +1672,7 @@ describe("hydrateRoot — extended", () => {
     el.innerHTML = "<div><p>old</p></div>"
     const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("p", null, "old"))
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, (() => content()) as unknown as VNodeChild),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, (() => content()) as unknown as VNodeChild))
     cleanup()
   })
 
@@ -2998,10 +2995,7 @@ describe("hydrateRoot — branch coverage", () => {
     const { hydrateRoot } = require("../index")
     const show = signal<VNodeChild>(null)
     // The div has no children, so domNode will be null inside
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, (() => show()) as unknown as VNodeChild),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, (() => show()) as unknown as VNodeChild))
     show.set("hello")
     cleanup()
   })
@@ -3011,10 +3005,7 @@ describe("hydrateRoot — branch coverage", () => {
     el.innerHTML = "<div></div>"
     const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("span", null, "initial"))
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, (() => content()) as unknown as VNodeChild),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, (() => content()) as unknown as VNodeChild))
     cleanup()
   })
 

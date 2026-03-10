@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { VNodeChild } from "@pyreon/core"
 import {
   useCallback,
   useEffect,
@@ -22,7 +23,6 @@ import {
   toChildArray,
   useContext,
 } from "../index"
-import type { VNodeChild } from "@pyreon/core"
 import { batch, computed, effect, signal } from "../signals"
 
 describe("@pyreon/preact-compat", () => {
@@ -96,8 +96,8 @@ describe("@pyreon/preact-compat", () => {
   })
 
   test("Component class setState updates state", () => {
-    class Counter extends Component<{}, { count: number }> {
-      constructor(props: {}) {
+    class Counter extends Component<Record<string, never>, { count: number }> {
+      constructor(props: Record<string, never>) {
         super(props)
         this.state = { count: 0 }
       }
