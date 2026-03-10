@@ -6,7 +6,7 @@
  * Results are printed to stdout for comparison with happy-dom numbers.
  */
 
-import { test, expect } from "@playwright/test"
+import { expect, test } from "@playwright/test"
 
 // Inject benchmark harness into the page using window.__pyreon
 async function setupBench(page: import("@playwright/test").Page) {
@@ -18,10 +18,58 @@ async function setupBench(page: import("@playwright/test").Page) {
     const { h, mount, signal, batch } = (window as any).__pyreon
 
     // --- Data helpers ---
-    const ADJ  = ["pretty","large","big","small","tall","short","long","handsome","plain","quaint","clean","elegant","easy","angry","crazy","helpful","mushy","odd","unsightly","adorable"]
-    const COLS = ["red","yellow","blue","green","pink","brown","purple","white","black","orange"]
-    const NOUN = ["table","chair","house","bbq","desk","car","pony","cookie","sandwich","burger","pizza","mouse","keyboard"]
-    function pick(a: string[]) { return a[Math.floor(Math.random() * a.length)] }
+    const ADJ = [
+      "pretty",
+      "large",
+      "big",
+      "small",
+      "tall",
+      "short",
+      "long",
+      "handsome",
+      "plain",
+      "quaint",
+      "clean",
+      "elegant",
+      "easy",
+      "angry",
+      "crazy",
+      "helpful",
+      "mushy",
+      "odd",
+      "unsightly",
+      "adorable",
+    ]
+    const COLS = [
+      "red",
+      "yellow",
+      "blue",
+      "green",
+      "pink",
+      "brown",
+      "purple",
+      "white",
+      "black",
+      "orange",
+    ]
+    const NOUN = [
+      "table",
+      "chair",
+      "house",
+      "bbq",
+      "desk",
+      "car",
+      "pony",
+      "cookie",
+      "sandwich",
+      "burger",
+      "pizza",
+      "mouse",
+      "keyboard",
+    ]
+    function pick(a: string[]) {
+      return a[Math.floor(Math.random() * a.length)]
+    }
     let _id = 1
     function makeRows(n: number) {
       return Array.from({ length: n }, () => ({
@@ -42,19 +90,23 @@ async function setupBench(page: import("@playwright/test").Page) {
     app.appendChild(container)
 
     mount(
-      h("table", { id: "bench-table" },
-        h("tbody", { id: "bench-tbody" },
-          () => rows().map((row: any) =>
-            h("tr", {
-              key: row.id,
-              class: () => selected() === row.id ? "selected" : "",
-              "data-id": row.id,
-            },
+      h(
+        "table",
+        { id: "bench-table" },
+        h("tbody", { id: "bench-tbody" }, () =>
+          rows().map((row: any) =>
+            h(
+              "tr",
+              {
+                key: row.id,
+                class: () => (selected() === row.id ? "selected" : ""),
+                "data-id": row.id,
+              },
               h("td", { class: "id-col" }, String(row.id)),
               h("td", { class: "label-col" }, () => row.label()),
-            )
-          )
-        )
+            ),
+          ),
+        ),
       ),
       container,
     )
@@ -81,28 +133,40 @@ async function setupBench(page: import("@playwright/test").Page) {
       swapRows: () => {
         const cur = [...rows()]
         if (cur.length >= 999) {
-          const tmp = cur[1]; cur[1] = cur[998]; cur[998] = tmp
+          const tmp = cur[1]
+          cur[1] = cur[998]
+          cur[998] = tmp
           rows.set(cur)
         }
       },
-      clear: () => { rows.set([]); selected.set(null) },
+      clear: () => {
+        rows.set([])
+        selected.set(null)
+      },
       create10k: () => rows.set(makeRows(10_000)),
     }
   })
 }
 
 // Time an operation in the browser, return ms
-async function timeOp(page: import("@playwright/test").Page, op: string, runs = 5): Promise<number> {
-  return page.evaluate(({ op, runs }) => {
-    const b = (window as any).__bench
-    const times: number[] = []
-    for (let i = 0; i < runs; i++) {
-      const t = performance.now()
-      b[op]()
-      times.push(performance.now() - t)
-    }
-    return times.reduce((a: number, b: number) => a + b, 0) / runs
-  }, { op, runs })
+async function timeOp(
+  page: import("@playwright/test").Page,
+  op: string,
+  runs = 5,
+): Promise<number> {
+  return page.evaluate(
+    ({ op, runs }) => {
+      const b = (window as any).__bench
+      const times: number[] = []
+      for (let i = 0; i < runs; i++) {
+        const t = performance.now()
+        b[op]()
+        times.push(performance.now() - t)
+      }
+      return times.reduce((a: number, b: number) => a + b, 0) / runs
+    },
+    { op, runs },
+  )
 }
 
 test.describe("Benchmark — real browser", () => {
@@ -170,7 +234,9 @@ test.describe("Benchmark — real browser", () => {
     await page.evaluate(() => (window as any).__bench.create1k())
 
     const row2Before = await page.locator("#bench-tbody tr:nth-child(2) .label-col").textContent()
-    const row999Before = await page.locator("#bench-tbody tr:nth-child(999) .label-col").textContent()
+    const row999Before = await page
+      .locator("#bench-tbody tr:nth-child(999) .label-col")
+      .textContent()
 
     const ms = await page.evaluate(() => {
       const b = (window as any).__bench
@@ -180,7 +246,9 @@ test.describe("Benchmark — real browser", () => {
     })
 
     const row2After = await page.locator("#bench-tbody tr:nth-child(2) .label-col").textContent()
-    const row999After = await page.locator("#bench-tbody tr:nth-child(999) .label-col").textContent()
+    const row999After = await page
+      .locator("#bench-tbody tr:nth-child(999) .label-col")
+      .textContent()
 
     // After swap, row at index 1 should have the old row 998's label (and vice versa)
     expect(row2After).toBe(row999Before)

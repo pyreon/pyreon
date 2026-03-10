@@ -7,8 +7,8 @@
  * - createSelector for O(1) selection (only 2 effects fire per selection change)
  * - Per-row signal for fine-grained label updates
  */
-import { h, For } from "@pyreon/core"
-import { signal, createSelector } from "@pyreon/reactivity"
+import { For, h } from "@pyreon/core"
+import { createSelector, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"

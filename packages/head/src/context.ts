@@ -43,9 +43,9 @@ export interface UseHeadInput {
 
 export interface HeadEntry {
   tags: HeadTag[]
-  titleTemplate?: string | ((title: string) => string)
-  htmlAttrs?: Record<string, string>
-  bodyAttrs?: Record<string, string>
+  titleTemplate?: string | ((title: string) => string) | undefined
+  htmlAttrs?: Record<string, string> | undefined
+  bodyAttrs?: Record<string, string> | undefined
 }
 
 export interface HeadContextValue {
@@ -64,8 +64,12 @@ export interface HeadContextValue {
 export function createHeadContext(): HeadContextValue {
   const map = new Map<symbol, HeadEntry>()
   return {
-    add(id, entry) { map.set(id, entry) },
-    remove(id) { map.delete(id) },
+    add(id, entry) {
+      map.set(id, entry)
+    },
+    remove(id) {
+      map.delete(id)
+    },
     resolve() {
       const keyed = new Map<string, HeadTag>()
       const unkeyed: HeadTag[] = []

@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { Fragment, Suspense, h, createContext, useContext, pushContext, For } from "@pyreon/core"
+import { For, Fragment, Suspense, createContext, h, pushContext, useContext } from "@pyreon/core"
 import type { ComponentFn, VNode } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
-import { renderToString, renderToStream, configureStoreIsolation, runWithRequestContext } from "../index"
+import {
+  configureStoreIsolation,
+  renderToStream,
+  renderToString,
+  runWithRequestContext,
+} from "../index"
 
 async function collectStream(stream: ReadableStream<string>): Promise<string> {
   const reader = stream.getReader()
@@ -144,7 +149,7 @@ describe("renderToStream", () => {
       await new Promise<void>((r) => setTimeout(r, 5))
       return h("span", null, "done")
     }
-    const stream = renderToStream(h("div", null, h(SlowChild as ComponentFn, null)))
+    const stream = renderToStream(h("div", null, h(SlowChild as unknown as ComponentFn, null)))
     const reader = stream.getReader()
     while (true) {
       const { done, value } = await reader.read()
@@ -161,7 +166,7 @@ describe("renderToStream", () => {
       await new Promise<void>((r) => setTimeout(r, 1))
       return h("p", null, "async")
     }
-    const html = await collect(renderToStream(h(Async as ComponentFn, null)))
+    const html = await collect(renderToStream(h(Async as unknown as ComponentFn, null)))
     expect(html).toBe("<p>async</p>")
   })
 })
@@ -195,12 +200,12 @@ describe("concurrent SSR — context isolation", () => {
     const Ctx = createContext("none")
 
     function makeApp(value: string): ComponentFn {
-      return async function App() {
+      return (async function App() {
         // Inject context, then yield (simulates async data loading)
         pushContext(new Map([[Ctx.id, value]]))
         await new Promise<void>((r) => setTimeout(r, 5))
         return h("div", null, () => useContext(Ctx))
-      }
+      }) as unknown as ComponentFn
     }
 
     const [html1, html2] = await Promise.all([
@@ -224,7 +229,7 @@ describe("renderToStream — Suspense boundaries", () => {
 
     const vnode = h(Suspense, {
       fallback: h("p", { id: "fallback" }, "loading..."),
-      children: h(Slow as unknown as ComponentFn, null),
+      children: h(Slow as unknown as unknown as ComponentFn, null),
     })
 
     const html = await collectStream(renderToStream(vnode))
@@ -246,10 +251,12 @@ describe("renderToStream — Suspense boundaries", () => {
       return h("span", null, "done")
     }
 
-    const vnode = h("div", null,
+    const vnode = h(
+      "div",
+      null,
       h(Suspense, {
         fallback: h("span", { id: "fb" }, "wait"),
-        children: h(SlowContent as unknown as ComponentFn, null),
+        children: h(SlowContent as unknown as unknown as ComponentFn, null),
       }),
       h("p", null, "after"),
     )
@@ -278,7 +285,7 @@ describe("renderToStream — Suspense boundaries", () => {
 
     const vnode = h(Suspense, {
       fallback: h("span", null, "fb"),
-      children: h(Data as unknown as ComponentFn, null),
+      children: h(Data as unknown as unknown as ComponentFn, null),
     })
 
     const html = await renderToString(vnode)
@@ -305,7 +312,7 @@ describe("concurrent SSR — context isolation", () => {
     // Wrapper component that injects a per-request context value then renders AsyncReader
     function RequestWrapper(props: { reqId: string; delay: number }): VNode {
       pushContext(new Map([[ReqIdCtx.id, props.reqId]]))
-      return h(AsyncReader as unknown as ComponentFn, { delay: props.delay })
+      return h(AsyncReader as unknown as unknown as ComponentFn, { delay: props.delay })
     }
 
     const N = 50
@@ -340,8 +347,8 @@ describe("concurrent SSR — context isolation", () => {
           h(
             ((props: { reqId: string; delay: number }): VNode => {
               pushContext(new Map([[ReqIdCtx.id, props.reqId]]))
-              return h(SlowReader as unknown as ComponentFn, { delay: props.delay })
-            }) as ComponentFn,
+              return h(SlowReader as unknown as unknown as ComponentFn, { delay: props.delay })
+            }) as unknown as ComponentFn,
             { reqId: `id-${i}`, delay },
           ),
         )
@@ -391,12 +398,12 @@ describe("runWithRequestContext", () => {
     const [r1, r2] = await Promise.all([
       runWithRequestContext(async () => {
         pushContext(new Map([[Ctx.id, "ctx-A"]]))
-        await new Promise<void>(r => setTimeout(r, 5))
+        await new Promise<void>((r) => setTimeout(r, 5))
         return useContext(Ctx)
       }),
       runWithRequestContext(async () => {
         pushContext(new Map([[Ctx.id, "ctx-B"]]))
-        await new Promise<void>(r => setTimeout(r, 5))
+        await new Promise<void>((r) => setTimeout(r, 5))
         return useContext(Ctx)
       }),
     ])
@@ -567,7 +574,9 @@ describe("renderToStream — additional coverage", () => {
   }
 
   test("streams Fragment children", async () => {
-    const html = await collect(renderToStream(h(Fragment, null, h("a", null, "1"), h("b", null, "2"))))
+    const html = await collect(
+      renderToStream(h(Fragment, null, h("a", null, "1"), h("b", null, "2"))),
+    )
     expect(html).toBe("<a>1</a><b>2</b>")
   })
 
@@ -627,16 +636,24 @@ describe("renderToStream — additional coverage", () => {
 
   test("multiple Suspense boundaries get incrementing IDs", async () => {
     async function Slow1(): Promise<VNode> {
-      await new Promise<void>(r => setTimeout(r, 5))
+      await new Promise<void>((r) => setTimeout(r, 5))
       return h("span", null, "s1")
     }
     async function Slow2(): Promise<VNode> {
-      await new Promise<void>(r => setTimeout(r, 5))
+      await new Promise<void>((r) => setTimeout(r, 5))
       return h("span", null, "s2")
     }
-    const vnode = h("div", null,
-      h(Suspense, { fallback: h("p", null, "fb1"), children: h(Slow1 as unknown as ComponentFn, null) }),
-      h(Suspense, { fallback: h("p", null, "fb2"), children: h(Slow2 as unknown as ComponentFn, null) }),
+    const vnode = h(
+      "div",
+      null,
+      h(Suspense, {
+        fallback: h("p", null, "fb1"),
+        children: h(Slow1 as unknown as unknown as ComponentFn, null),
+      }),
+      h(Suspense, {
+        fallback: h("p", null, "fb2"),
+        children: h(Slow2 as unknown as unknown as ComponentFn, null),
+      }),
     )
     const html = await collect(renderToStream(vnode))
     expect(html).toContain("pyreon-s-0")
@@ -658,7 +675,7 @@ describe("concurrent SSR isolation", () => {
     }
 
     const renders = Array.from({ length: 50 }, (_, i) =>
-      runWithRequestContext(() => renderToString(h(Page as unknown as ComponentFn, { id: i })))
+      runWithRequestContext(() => renderToString(h(Page as unknown as unknown as ComponentFn, { id: i }))),
     )
     const results = await Promise.all(renders)
 
@@ -678,8 +695,8 @@ describe("concurrent SSR isolation", () => {
     const renders = Array.from({ length: 40 }, (_, i) =>
       runWithRequestContext(() => {
         const name = i % 2 === 0 ? `alice-${i}` : `bob-${i}`
-        return renderToString(h(UserPage as unknown as ComponentFn, { name }))
-      })
+        return renderToString(h(UserPage as unknown as unknown as ComponentFn, { name }))
+      }),
     )
     const results = await Promise.all(renders)
 
@@ -691,14 +708,14 @@ describe("concurrent SSR isolation", () => {
 
   test("concurrent renders with async components stay isolated", async () => {
     async function SlowPage(props: { label: string }): Promise<VNode> {
-      await new Promise<void>(r => setTimeout(r, Math.random() * 10))
+      await new Promise<void>((r) => setTimeout(r, Math.random() * 10))
       return h("span", null, props.label)
     }
 
     const renders = Array.from({ length: 30 }, (_, i) =>
       runWithRequestContext(() =>
-        renderToString(h(SlowPage as unknown as ComponentFn, { label: `item-${i}` }))
-      )
+        renderToString(h(SlowPage as unknown as unknown as ComponentFn, { label: `item-${i}` })),
+      ),
     )
     const results = await Promise.all(renders)
 

@@ -63,7 +63,9 @@ describe("signal", () => {
   test("subscribe adds a static listener", () => {
     const s = signal(0)
     let notified = 0
-    const unsub = s.subscribe(() => { notified++ })
+    const unsub = s.subscribe(() => {
+      notified++
+    })
 
     s.set(1)
     expect(notified).toBe(1)

@@ -19,7 +19,7 @@
  * diffed rather than replaced wholesale. Excess old elements are removed.
  */
 
-import { isStore, createStore } from "./store"
+import { isStore } from "./store"
 
 type AnyObject = Record<PropertyKey, unknown>
 
@@ -40,7 +40,13 @@ function reconcileArray(source: unknown[], target: unknown[]): void {
     const sv = source[i]
     const tv = (target as unknown[])[i]
 
-    if (i < targetLen && sv !== null && typeof sv === "object" && tv !== null && typeof tv === "object") {
+    if (
+      i < targetLen &&
+      sv !== null &&
+      typeof sv === "object" &&
+      tv !== null &&
+      typeof tv === "object"
+    ) {
       // Both sides are objects — recurse
       reconcile(sv as object, tv as object)
     } else {

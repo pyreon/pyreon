@@ -9,8 +9,8 @@
 
 export interface BenchResult {
   name: string
-  mean: number     // ms
-  stddev: number   // ms
+  mean: number // ms
+  stddev: number // ms
   runs: number
 }
 
@@ -63,9 +63,61 @@ export interface Row {
 }
 
 let _nextId = 1
-const ADJECTIVES = ["pretty","large","big","small","tall","short","long","handsome","plain","quaint","clean","elegant","easy","angry","crazy","helpful","mushy","odd","unsightly","adorable","important","inexpensive","cheap","expensive","fancy"]
-const COLOURS = ["red","yellow","blue","green","pink","brown","purple","brown","white","black","orange"]
-const NOUNS = ["table","chair","house","bbq","desk","car","pony","cookie","sandwich","burger","pizza","mouse","keyboard"]
+const ADJECTIVES = [
+  "pretty",
+  "large",
+  "big",
+  "small",
+  "tall",
+  "short",
+  "long",
+  "handsome",
+  "plain",
+  "quaint",
+  "clean",
+  "elegant",
+  "easy",
+  "angry",
+  "crazy",
+  "helpful",
+  "mushy",
+  "odd",
+  "unsightly",
+  "adorable",
+  "important",
+  "inexpensive",
+  "cheap",
+  "expensive",
+  "fancy",
+]
+const COLOURS = [
+  "red",
+  "yellow",
+  "blue",
+  "green",
+  "pink",
+  "brown",
+  "purple",
+  "brown",
+  "white",
+  "black",
+  "orange",
+]
+const NOUNS = [
+  "table",
+  "chair",
+  "house",
+  "bbq",
+  "desk",
+  "car",
+  "pony",
+  "cookie",
+  "sandwich",
+  "burger",
+  "pizza",
+  "mouse",
+  "keyboard",
+]
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] as T

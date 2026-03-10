@@ -1,51 +1,50 @@
-import Link from 'next/link'
+import Link from "next/link"
 
 const features = [
   {
-    icon: '⚡',
-    title: 'Fine-Grained Signals',
+    icon: "⚡",
+    title: "Fine-Grained Signals",
     description:
-      'Only the exact DOM nodes that depend on a changed signal update — no component re-renders, no VDOM diffing.',
+      "Only the exact DOM nodes that depend on a changed signal update — no component re-renders, no VDOM diffing.",
   },
   {
-    icon: '🪶',
-    title: '~6 kB Gzipped',
-    description:
-      'Core + runtime-dom weighs under 6 kB gzipped. React DOM is ~42 kB.',
+    icon: "🪶",
+    title: "~6 kB Gzipped",
+    description: "Core + runtime-dom weighs under 6 kB gzipped. React DOM is ~42 kB.",
   },
   {
-    icon: '🔄',
-    title: 'Automatic Tracking',
+    icon: "🔄",
+    title: "Automatic Tracking",
     description:
-      'Dependencies are tracked at runtime — no dependency arrays, no useCallback, no useMemo boilerplate.',
+      "Dependencies are tracked at runtime — no dependency arrays, no useCallback, no useMemo boilerplate.",
   },
   {
-    icon: '🚀',
-    title: 'SSR + Hydration',
+    icon: "🚀",
+    title: "SSR + Hydration",
     description:
-      'renderToString and renderToStream on the server. Selective walk-and-claim hydration on the client.',
+      "renderToString and renderToStream on the server. Selective walk-and-claim hydration on the client.",
   },
   {
-    icon: '📦',
-    title: 'JSX Native',
+    icon: "📦",
+    title: "JSX Native",
     description:
-      'Full JSX support with jsxImportSource. Works with TypeScript, Vite, and .pyreon single-file components.',
+      "Full JSX support with jsxImportSource. Works with TypeScript, Vite, and .pyreon single-file components.",
   },
   {
-    icon: '🔀',
-    title: 'React Compat',
+    icon: "🔀",
+    title: "React Compat",
     description:
-      '@pyreon/react-compat provides React-compatible APIs so you can migrate one file at a time.',
+      "@pyreon/react-compat provides React-compatible APIs so you can migrate one file at a time.",
   },
 ]
 
 const sections = [
-  { href: '/docs/reactivity', title: 'Reactivity', desc: 'signal, computed, effect, batch' },
-  { href: '/docs/components', title: 'Components', desc: 'JSX, h(), Fragment, props' },
-  { href: '/docs/lifecycle', title: 'Lifecycle', desc: 'onMount, onUnmount, onUpdate' },
-  { href: '/docs/router', title: 'Router', desc: 'hash, history, guards, lazy routes' },
-  { href: '/docs/ssr', title: 'SSR', desc: 'renderToString, hydrateRoot' },
-  { href: '/docs/migration-react', title: 'Migrate from React', desc: 'step-by-step guide' },
+  { href: "/docs/reactivity", title: "Reactivity", desc: "signal, computed, effect, batch" },
+  { href: "/docs/components", title: "Components", desc: "JSX, h(), Fragment, props" },
+  { href: "/docs/lifecycle", title: "Lifecycle", desc: "onMount, onUnmount, onUpdate" },
+  { href: "/docs/router", title: "Router", desc: "hash, history, guards, lazy routes" },
+  { href: "/docs/ssr", title: "SSR", desc: "renderToString, hydrateRoot" },
+  { href: "/docs/migration-react", title: "Migrate from React", desc: "step-by-step guide" },
 ]
 
 export default function HomePage() {
@@ -79,16 +78,15 @@ export default function HomePage() {
         </div>
 
         <h1 className="mb-6 max-w-2xl text-5xl font-bold tracking-tight text-fd-foreground sm:text-6xl">
-          Build UIs with{' '}
+          Build UIs with{" "}
           <span className="bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent">
             surgical precision
           </span>
         </h1>
 
         <p className="mb-10 max-w-xl text-lg text-fd-muted-foreground">
-          Pyreon is a fine-grained reactivity framework. Signals update only the exact DOM
-          nodes that changed — no virtual DOM diffing, no component re-renders, no stale
-          closures.
+          Pyreon is a fine-grained reactivity framework. Signals update only the exact DOM nodes
+          that changed — no virtual DOM diffing, no component re-renders, no stale closures.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -122,7 +120,10 @@ export default function HomePage() {
             <code>
               <span className="text-fd-muted-foreground">$ </span>
               <span className="text-green-400">bun</span>
-              <span className="text-fd-foreground"> add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom</span>
+              <span className="text-fd-foreground">
+                {" "}
+                add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom
+              </span>
             </code>
           </pre>
         </div>
@@ -132,8 +133,8 @@ export default function HomePage() {
       <section className="flex flex-col items-center px-6 pb-20">
         <h2 className="mb-2 text-2xl font-bold text-fd-foreground">Hello, Pyreon</h2>
         <p className="mb-8 text-fd-muted-foreground">
-          A reactive counter in 12 lines. The DOM updates surgically — only the{' '}
-          <code className="rounded bg-fd-secondary px-1 text-sm">{'<span>'}</code> re-renders.
+          A reactive counter in 12 lines. The DOM updates surgically — only the{" "}
+          <code className="rounded bg-fd-secondary px-1 text-sm">{"<span>"}</code> re-renders.
         </p>
 
         <div className="w-full max-w-xl rounded-xl border border-fd-border bg-fd-card shadow-sm overflow-hidden">
@@ -166,9 +167,7 @@ mount(<Counter />, document.getElementById('app')!)`}
       {/* Feature Grid */}
       <section className="px-6 pb-20">
         <div className="mx-auto max-w-5xl">
-          <h2 className="mb-2 text-center text-2xl font-bold text-fd-foreground">
-            Why Pyreon?
-          </h2>
+          <h2 className="mb-2 text-center text-2xl font-bold text-fd-foreground">Why Pyreon?</h2>
           <p className="mb-10 text-center text-fd-muted-foreground">
             Designed from the ground up for minimal DOM work.
           </p>
@@ -180,9 +179,7 @@ mount(<Counter />, document.getElementById('app')!)`}
               >
                 <div className="mb-3 text-2xl">{f.icon}</div>
                 <h3 className="mb-2 font-semibold text-fd-foreground">{f.title}</h3>
-                <p className="text-sm text-fd-muted-foreground leading-relaxed">
-                  {f.description}
-                </p>
+                <p className="text-sm text-fd-muted-foreground leading-relaxed">{f.description}</p>
               </div>
             ))}
           </div>
@@ -215,7 +212,7 @@ mount(<Counter />, document.getElementById('app')!)`}
       {/* Footer */}
       <footer className="mt-auto border-t border-fd-border px-6 py-8 text-center text-sm text-fd-muted-foreground">
         <p>
-          Pyreon is open source —{' '}
+          Pyreon is open source —{" "}
           <a
             href="https://github.com/pyreon/pyreon"
             className="text-indigo-500 hover:underline"

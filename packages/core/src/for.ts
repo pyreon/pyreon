@@ -1,4 +1,4 @@
-import type { VNode, Props, NativeItem } from "./types"
+import type { NativeItem, Props, VNode } from "./types"
 
 /**
  * Symbol used as the VNode type for a For list — runtime-dom handles it

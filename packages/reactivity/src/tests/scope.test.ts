@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { effectScope, getCurrentScope, setCurrentScope, EffectScope } from "../scope"
 import { effect } from "../effect"
+import { EffectScope, effectScope, getCurrentScope, setCurrentScope } from "../scope"
 import { signal } from "../signal"
 
 describe("effectScope", () => {

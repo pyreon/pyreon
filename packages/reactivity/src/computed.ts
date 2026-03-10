@@ -1,5 +1,5 @@
-import { trackSubscriber, notifySubscribers, withTracking, cleanupEffect } from "./tracking"
 import { getCurrentScope } from "./scope"
+import { cleanupEffect, notifySubscribers, trackSubscriber, withTracking } from "./tracking"
 
 export interface Computed<T> {
   (): T

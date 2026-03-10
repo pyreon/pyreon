@@ -1,4 +1,4 @@
-import { useContext, onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount, useContext } from "@pyreon/core"
 import { effect } from "@pyreon/reactivity"
 import { HeadContext } from "./context"
 import type { HeadEntry, HeadTag, UseHeadInput } from "./context"
@@ -7,16 +7,20 @@ import { syncDom } from "./dom"
 function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
   if (o.title != null) tags.push({ tag: "title", key: "title", children: o.title })
-  o.meta?.forEach((m, i) => tags.push({
-    tag: "meta",
-    key: m["name"] ?? m["property"] ?? `meta-${i}`,
-    props: m,
-  }))
-  o.link?.forEach((l, i) => tags.push({
-    tag: "link",
-    key: l.href ? `link-${l.rel ?? ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
-    props: l,
-  }))
+  o.meta?.forEach((m, i) =>
+    tags.push({
+      tag: "meta",
+      key: m["name"] ?? m["property"] ?? `meta-${i}`,
+      props: m,
+    }),
+  )
+  o.link?.forEach((l, i) =>
+    tags.push({
+      tag: "link",
+      key: l.href ? `link-${l.rel ?? ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
+      props: l,
+    }),
+  )
   o.script?.forEach((s, i) => {
     const { children, ...rest } = s
     tags.push({
@@ -68,14 +72,17 @@ function buildEntry(o: UseHeadInput): HeadEntry {
  */
 export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
   const ctx = useContext(HeadContext)
-  if (!ctx) return  // no HeadProvider — silently no-op
+  if (!ctx) return // no HeadProvider — silently no-op
 
   const id = Symbol()
 
   if (typeof input === "function") {
     if (typeof document !== "undefined") {
       // CSR: reactive — re-register whenever signals change
-      effect(() => { ctx.add(id, buildEntry(input())); syncDom(ctx) })
+      effect(() => {
+        ctx.add(id, buildEntry(input()))
+        syncDom(ctx)
+      })
     } else {
       // SSR: evaluate once synchronously (no effects on server)
       ctx.add(id, buildEntry(input()))
@@ -83,7 +90,10 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
   } else {
     ctx.add(id, buildEntry(input))
     if (typeof document !== "undefined") {
-      onMount(() => { syncDom(ctx); return undefined })
+      onMount(() => {
+        syncDom(ctx)
+        return undefined
+      })
     }
   }
 

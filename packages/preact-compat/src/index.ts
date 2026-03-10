@@ -11,12 +11,12 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import { h as pyreonH, Fragment } from "@pyreon/core"
-import type { VNode, VNodeChild, Props, ComponentFn } from "@pyreon/core"
-import { createContext, useContext, createRef } from "@pyreon/core"
+import { Fragment, h as pyreonH } from "@pyreon/core"
+import type { Props, VNode, VNodeChild } from "@pyreon/core"
+import { createContext, createRef, useContext } from "@pyreon/core"
+import { batch, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import { hydrateRoot } from "@pyreon/runtime-dom"
-import { signal, batch } from "@pyreon/reactivity"
 
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,10 @@ export { createRef }
  * Wraps Pyreon's signal-based reactivity so `setState` triggers re-renders.
  * Usage: `class MyComp extends Component { render() { ... } }`
  */
-export class Component<P extends Props = Props, S extends Record<string, unknown> = Record<string, unknown>> {
+export class Component<
+  P extends Props = Props,
+  S extends Record<string, unknown> = Record<string, unknown>,
+> {
   props: P
   state: S
   private _stateSignal: ReturnType<typeof signal<S>>
@@ -81,7 +84,8 @@ export class Component<P extends Props = Props, S extends Record<string, unknown
   setState(partial: Partial<S> | ((prev: S) => Partial<S>)): void {
     batch(() => {
       const current = this._stateSignal()
-      const update = typeof partial === "function" ? (partial as (prev: S) => Partial<S>)(current) : partial
+      const update =
+        typeof partial === "function" ? (partial as (prev: S) => Partial<S>)(current) : partial
       const next = { ...current, ...update } as S
       this.state = next
       this._stateSignal.set(next)

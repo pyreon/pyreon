@@ -75,8 +75,11 @@
     "packages/compiler": {
       "name": "@pyreon/compiler",
       "version": "0.1.0",
-      "dependencies": {
+      "devDependencies": {
         "typescript": "^5.5.0",
+      },
+      "peerDependencies": {
+        "typescript": ">=5.0.0",
       },
     },
     "packages/core": {

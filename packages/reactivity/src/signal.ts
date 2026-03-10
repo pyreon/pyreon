@@ -31,7 +31,9 @@ interface SignalFn<T> {
 
 // Shared method implementations — defined once, assigned to every signal.
 // Uses `this` binding (signal methods are always called as `signal.method()`).
-function _peek(this: SignalFn<unknown>) { return this._v }
+function _peek(this: SignalFn<unknown>) {
+  return this._v
+}
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
   if (Object.is(this._v, newValue)) return

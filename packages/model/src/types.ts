@@ -15,8 +15,12 @@ export type StateShape = Record<string, unknown>
  * - ModelDefinition → the instance type it produces
  * - Anything else → as-is
  */
-export type ResolveField<T> =
-  T extends { readonly __pyreonMod: true; create(initial?: any): infer I } ? I : T
+export type ResolveField<T> = T extends {
+  readonly __pyreonMod: true
+  create(initial?: any): infer I
+}
+  ? I
+  : T
 
 /** Map state shape to per-field signals. */
 export type StateSignals<TState extends StateShape> = {
@@ -28,8 +32,7 @@ export type StateSignals<TState extends StateShape> = {
  * strongly typed for state signals, `any` for actions and views so that
  * actions can call each other without circular type issues.
  */
-export type ModelSelf<TState extends StateShape> =
-  StateSignals<TState> & Record<string, any>
+export type ModelSelf<TState extends StateShape> = StateSignals<TState> & Record<string, any>
 
 /** The public instance type returned by `.create()` and hooks. */
 export type ModelInstance<
@@ -69,10 +72,7 @@ export interface ActionCall {
   path: string
 }
 
-export type MiddlewareFn = (
-  call: ActionCall,
-  next: (call: ActionCall) => unknown,
-) => unknown
+export type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown
 
 // ─── Instance metadata ────────────────────────────────────────────────────────
 

@@ -1,9 +1,9 @@
-import { h, pushContext, popContext, useContext, createRef } from "@pyreon/core"
+import { createRef, h, popContext, pushContext, useContext } from "@pyreon/core"
 import { onUnmount } from "@pyreon/core"
 import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { setActiveRouter, isLazy, RouterContext } from "./router"
-import type { Router, RouterInstance, RouteRecord, ResolvedRoute } from "./types"
 import { LoaderDataContext, prefetchLoaderData } from "./loader"
+import { RouterContext, isLazy, setActiveRouter } from "./router"
+import type { ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
 
 // Track prefetched paths per router to avoid duplicate fetches
 const _prefetched = new WeakMap<RouterInstance, Set<string>>()
@@ -65,7 +65,8 @@ export interface RouterViewProps extends Props {
  * }
  */
 export const RouterView: ComponentFn<RouterViewProps> = (props) => {
-  const router = ((props.router as RouterInstance | undefined) ?? useContext(RouterContext)) as RouterInstance | null
+  const router = ((props.router as RouterInstance | undefined) ??
+    useContext(RouterContext)) as RouterInstance | null
   if (!router) return null
 
   // Claim this view's depth at setup time (depth-first component init order)
@@ -77,7 +78,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
   })
 
   const child = (): VNodeChild => {
-    router._loadingSignal()  // reactive — re-renders after lazy load completes
+    router._loadingSignal() // reactive — re-renders after lazy load completes
 
     const route = router.currentRoute()
 
@@ -85,7 +86,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
 
     // Render the matched record at this view's depth level
     const record = route.matched[depth]
-    if (!record) return null  // no component at this nesting level
+    if (!record) return null // no component at this nesting level
 
     const cached = router._componentCache.get(record)
     if (cached) {
@@ -101,7 +102,8 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       }
 
       const tryLoad = (attempt: number): Promise<void> =>
-        raw.loader()
+        raw
+          .loader()
           .then((mod) => {
             const resolved = typeof mod === "function" ? mod : mod.default
             cacheSet(router, record, resolved)
@@ -109,8 +111,9 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
           })
           .catch((err: unknown) => {
             if (attempt < 3) {
-              return new Promise<void>((res) => setTimeout(res, 500 * 2 ** attempt))
-                .then(() => tryLoad(attempt + 1))
+              return new Promise<void>((res) => setTimeout(res, 500 * 2 ** attempt)).then(() =>
+                tryLoad(attempt + 1),
+              )
             }
             // All retries failed — check for stale chunk (post-deploy 404 / parse error)
             if (typeof window !== "undefined" && isStaleChunk(err)) {
@@ -119,7 +122,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
             }
             console.error("[pyreon-router] Chunk failed to load after 3 retries:", err)
             router._erroredChunks.add(record)
-            router._loadingSignal.update((n) => n + 1)  // re-render to show error UI
+            router._loadingSignal.update((n) => n + 1) // re-render to show error UI
           })
 
       tryLoad(0)
@@ -208,7 +211,11 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     onUnmount(() => observer.disconnect())
   }
 
-  return h("a", { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter }, props.children ?? props.to)
+  return h(
+    "a",
+    { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
+    props.children ?? props.to,
+  )
 }
 
 /** Prefetch loader data for a route (only once per router + path). */

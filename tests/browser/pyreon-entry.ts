@@ -3,10 +3,17 @@
  * so Playwright tests can use them via page.evaluate().
  */
 
-import { signal, computed, effect, batch, nextTick } from "@pyreon/reactivity"
-import { h, Fragment, createContext, useContext, onMount, onUnmount, Show } from "@pyreon/core"
-import { mount, hydrateRoot } from "@pyreon/runtime-dom"
-import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute } from "@pyreon/router"
+import { Fragment, Show, createContext, h, onMount, onUnmount, useContext } from "@pyreon/core"
+import { batch, computed, effect, nextTick, signal } from "@pyreon/reactivity"
+import {
+  RouterLink,
+  RouterProvider,
+  RouterView,
+  createRouter,
+  useRoute,
+  useRouter,
+} from "@pyreon/router"
+import { hydrateRoot, mount } from "@pyreon/runtime-dom"
 
 const Pyreon = {
   // Reactivity
@@ -34,5 +41,4 @@ const Pyreon = {
   useRouter,
   useRoute,
 }
-
 ;(window as any).__PYREON__ = Pyreon

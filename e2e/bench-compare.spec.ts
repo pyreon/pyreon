@@ -20,7 +20,7 @@
  * build pipelines. The benchmark measures runtime performance, not compiler output.
  */
 
-import { test, expect, type Page } from "@playwright/test"
+import { type Page, expect, test } from "@playwright/test"
 
 const BENCH_URL = "http://localhost:5174"
 

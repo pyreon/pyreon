@@ -3,7 +3,7 @@
  * Tests the full application running in a real browser via Vite dev server.
  */
 
-import { test, expect } from "@playwright/test"
+import { expect, test } from "@playwright/test"
 
 test.describe("Playground App", () => {
   test.beforeEach(async ({ page }) => {

@@ -15,8 +15,8 @@ export { KeepAlive } from "./keep-alive"
 export type { KeepAliveProps } from "./keep-alive"
 
 import type { VNodeChild } from "@pyreon/core"
-import { mountChild } from "./mount"
 import { installDevTools } from "./devtools"
+import { mountChild } from "./mount"
 
 /**
  * Mount a VNode tree into a container element.

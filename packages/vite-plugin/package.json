@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "description": "Vite plugin for Pyreon — .pyreon SFC support, HMR, compiler integration",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/pyreon/pyreon.git", "directory": "packages/vite-plugin" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/vite-plugin"
+  },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vite-plugin#readme",
   "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
   "files": ["dist", "src", "README.md", "LICENSE"],
@@ -22,7 +26,7 @@
   "scripts": {
     "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap",
     "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch",
-    "test": "bun test",
+    "test": "echo 'no tests yet'",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },

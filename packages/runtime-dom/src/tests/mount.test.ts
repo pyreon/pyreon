@@ -1,9 +1,24 @@
 import { describe, expect, test } from "bun:test"
-import { For, Fragment, Portal, createRef, defineComponent, h, ErrorBoundary, Show, Switch, Match } from "@pyreon/core"
-import type { VNodeChild } from "@pyreon/core"
-import { signal, cell, effect } from "@pyreon/reactivity"
-import { mount, Transition, createTemplate } from "../index"
+import {
+  ErrorBoundary as _ErrorBoundary,
+  For,
+  Fragment,
+  Match,
+  Portal,
+  Show,
+  Switch,
+  createRef,
+  defineComponent,
+  h,
+} from "@pyreon/core"
+import type { ComponentFn, VNodeChild } from "@pyreon/core"
+import { cell, effect, signal } from "@pyreon/reactivity"
+import { Transition as _Transition, createTemplate, mount } from "../index"
 import type { Directive } from "../index"
+
+// Cast components that return VNodeChild (not VNode | null) so h() accepts them
+const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
+const ErrorBoundary = _ErrorBoundary as unknown as ComponentFn<Record<string, unknown>>
 
 function container(): HTMLElement {
   const el = document.createElement("div")
@@ -217,7 +232,11 @@ describe("mount — For", () => {
       { id: 3, label: "c" },
     ])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     expect(el.querySelectorAll("li").length).toBe(3)
@@ -229,11 +248,18 @@ describe("mount — For", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "a" }])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     expect(el.querySelectorAll("li").length).toBe(1)
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
     expect(el.querySelectorAll("li").length).toBe(2)
     expect(el.querySelectorAll("li")[1]?.textContent).toBe("b")
   })
@@ -245,7 +271,11 @@ describe("mount — For", () => {
       { id: 2, label: "b" },
     ])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     items.set([{ id: 1, label: "a" }])
@@ -261,7 +291,11 @@ describe("mount — For", () => {
       { id: 3, label: "c" },
     ])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     items.set([
@@ -279,7 +313,11 @@ describe("mount — For", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "old" }])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     items.set([{ id: 99, label: "new" }])
@@ -292,7 +330,11 @@ describe("mount — For", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "x" }])
     mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     items.set([])
@@ -303,7 +345,11 @@ describe("mount — For", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "x" }])
     const unmount = mount(
-      h("ul", null, For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) })),
+      h(
+        "ul",
+        null,
+        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+      ),
       el,
     )
     unmount()
@@ -320,25 +366,28 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     return { id, label: cell(text) }
   }
 
-  const rowFactory = createTemplate<RR>(
-    "<tr><td>\x00</td><td>\x00</td></tr>",
-    (tr, row) => {
-      const td1 = tr.firstChild as HTMLElement
-      const td2 = td1.nextSibling as HTMLElement
-      const t1 = td1.firstChild as Text
-      const t2 = td2.firstChild as Text
-      t1.data = String(row.id)
+  const rowFactory = createTemplate<RR>("<tr><td>\x00</td><td>\x00</td></tr>", (tr, row) => {
+    const td1 = tr.firstChild as HTMLElement
+    const td2 = td1.nextSibling as HTMLElement
+    const t1 = td1.firstChild as Text
+    const t2 = td2.firstChild as Text
+    t1.data = String(row.id)
+    t2.data = row.label.peek()
+    row.label.listen(() => {
       t2.data = row.label.peek()
-      row.label.listen(() => { t2.data = row.label.peek() })
-      return null
-    },
-  )
+    })
+    return null
+  })
 
   test("renders initial list with correct text", () => {
     const el = container()
     const items = signal<RR[]>([makeRR(1, "a"), makeRR(2, "b"), makeRR(3, "c")])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     const trs = el.querySelectorAll("tr")
@@ -352,7 +401,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const rows = [makeRR(1, "hello"), makeRR(2, "world")]
     const items = signal<RR[]>(rows)
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     // Update label via cell — should change DOM without re-rendering list
@@ -368,7 +421,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const el = container()
     const items = signal<RR[]>([makeRR(1, "old")])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     items.set([makeRR(10, "new1"), makeRR(11, "new2")])
@@ -385,7 +442,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const r3 = makeRR(3, "c")
     const items = signal<RR[]>([r1, r2, r3])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     const origTr2 = el.querySelectorAll("tr")[1]
@@ -404,7 +465,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const el = container()
     const items = signal<RR[]>([makeRR(1, "x"), makeRR(2, "y")])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     items.set([])
@@ -415,7 +480,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const el = container()
     const items = signal<RR[]>([makeRR(1, "first")])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     items.set([])
@@ -430,7 +499,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const r1 = makeRR(1, "a")
     const items = signal<RR[]>([r1])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     items.set([r1, makeRR(2, "b"), makeRR(3, "c")])
@@ -445,7 +518,11 @@ describe("mount — For + NativeItem (createTemplate)", () => {
     const r3 = makeRR(3, "c")
     const items = signal<RR[]>([r1, r2, r3])
     mount(
-      h("table", null, h("tbody", null, For({ each: items, key: r => r.id, children: rowFactory }))),
+      h(
+        "table",
+        null,
+        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+      ),
       el,
     )
     items.set([r1, r3])
@@ -531,9 +608,7 @@ describe("mount — Portal", () => {
     const visible = signal(true)
     mount(
       h("div", null, () =>
-        visible()
-          ? Portal({ target, children: h("span", null, "vis") })
-          : null
+        visible() ? Portal({ target, children: h("span", null, "vis") }) : null,
       ),
       src,
     )
@@ -555,7 +630,7 @@ describe("ErrorBoundary", () => {
     }
     mount(
       h(ErrorBoundary, {
-        fallback: (err) => h("p", { id: "fb" }, String(err)),
+        fallback: (err: unknown) => h("p", { id: "fb" }, String(err)),
         children: h(Broken, null),
       }),
       el,
@@ -565,7 +640,9 @@ describe("ErrorBoundary", () => {
 
   test("renders children when no error", () => {
     const el = container()
-    function Fine() { return h("p", { id: "ok" }, "works") }
+    function Fine() {
+      return h("p", { id: "ok" }, "works")
+    }
     mount(
       h(ErrorBoundary, {
         fallback: () => h("p", null, "error"),
@@ -587,11 +664,18 @@ describe("ErrorBoundary", () => {
 
     mount(
       h(ErrorBoundary, {
-        fallback: (_err, reset) =>
-          h("button", {
-            id: "retry",
-            onClick: () => { shouldThrow = false; reset() },
-          }, "retry"),
+        fallback: (_err: unknown, reset: () => void) =>
+          h(
+            "button",
+            {
+              id: "retry",
+              onClick: () => {
+                shouldThrow = false
+                reset()
+              },
+            },
+            "retry",
+          ),
         children: h(MaybeThrow, null),
       }),
       el,
@@ -619,11 +703,18 @@ describe("ErrorBoundary", () => {
 
     mount(
       h(ErrorBoundary, {
-        fallback: (_err, reset) =>
-          h("button", {
-            id: "fix",
-            onClick: () => { broken.set(false); reset() },
-          }, "fix"),
+        fallback: (_err: unknown, reset: () => void) =>
+          h(
+            "button",
+            {
+              id: "fix",
+              onClick: () => {
+                broken.set(false)
+                reset()
+              },
+            },
+            "fix",
+          ),
         children: h(Reactive, null),
       }),
       el,
@@ -641,7 +732,9 @@ describe("n-* directives", () => {
   test("directive function is called with the element", () => {
     const el = container()
     let capturedEl: HTMLElement | null = null
-    const nCapture: Directive = (el) => { capturedEl = el }
+    const nCapture: Directive = (el) => {
+      capturedEl = el
+    }
     mount(h("div", { "n-capture": nCapture }), el)
     expect(capturedEl).not.toBeNull()
     expect((capturedEl as unknown as HTMLElement).tagName).toBe("DIV")
@@ -651,7 +744,9 @@ describe("n-* directives", () => {
     const el = container()
     let cleaned = false
     const nTracked: Directive = (_el, addCleanup) => {
-      addCleanup(() => { cleaned = true })
+      addCleanup(() => {
+        cleaned = true
+      })
     }
     const unmount = mount(h("div", { "n-tracked": nTracked }), el)
     expect(cleaned).toBe(false)
@@ -661,7 +756,9 @@ describe("n-* directives", () => {
 
   test("directive can set element property", () => {
     const el = container()
-    const nTitle: Directive = (el) => { el.title = "hello" }
+    const nTitle: Directive = (el) => {
+      el.title = "hello"
+    }
     mount(h("span", { "n-title": nTitle }), el)
     expect((el.querySelector("span") as HTMLElement).title).toBe("hello")
   })
@@ -673,30 +770,21 @@ describe("Transition", () => {
   test("mounts child when show starts true", () => {
     const el = container()
     const visible = signal(true)
-    mount(
-      h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }),
-      el,
-    )
+    mount(h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }), el)
     expect(el.querySelector("#target")).not.toBeNull()
   })
 
   test("does not mount child when show starts false", () => {
     const el = container()
     const visible = signal(false)
-    mount(
-      h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }),
-      el,
-    )
+    mount(h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }), el)
     expect(el.querySelector("#target")).toBeNull()
   })
 
   test("mounts child reactively when show becomes true", () => {
     const el = container()
     const visible = signal(false)
-    mount(
-      h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }),
-      el,
-    )
+    mount(h(Transition, { show: visible, children: h("div", { id: "target" }, "hi") }), el)
     expect(el.querySelector("#target")).toBeNull()
     visible.set(true)
     expect(el.querySelector("#target")).not.toBeNull()
@@ -709,7 +797,9 @@ describe("Transition", () => {
     mount(
       h(Transition, {
         show: visible,
-        onBeforeEnter: () => { called = true },
+        onBeforeEnter: () => {
+          called = true
+        },
         children: h("div", { id: "t" }),
       }),
       el,
@@ -733,7 +823,9 @@ describe("Show", () => {
   test("renders fallback when when() is falsy", () => {
     const el = container()
     mount(
-      h(Show, { when: () => false, fallback: h("span", { id: "fb" }, "no") },
+      h(
+        Show,
+        { when: () => false, fallback: h("span", { id: "fb" }, "no") },
         h("span", { id: "s" }, "yes"),
       ),
       el,
@@ -745,10 +837,7 @@ describe("Show", () => {
   test("reactively toggles on signal change", () => {
     const el = container()
     const show = signal(false)
-    mount(
-      h(Show, { when: show }, h("div", { id: "t" }, "visible")),
-      el,
-    )
+    mount(h(Show, { when: show }, h("div", { id: "t" }, "visible")), el)
     expect(el.querySelector("#t")).toBeNull()
     show.set(true)
     expect(el.querySelector("#t")).not.toBeNull()
@@ -770,7 +859,9 @@ describe("Switch / Match", () => {
     const el = container()
     const route = signal("home")
     mount(
-      h(Switch, { fallback: h("span", { id: "notfound" }) },
+      h(
+        Switch,
+        { fallback: h("span", { id: "notfound" }) },
         h(Match, { when: () => route() === "home" }, h("span", { id: "home" })),
         h(Match, { when: () => route() === "about" }, h("span", { id: "about" })),
       ),
@@ -785,7 +876,9 @@ describe("Switch / Match", () => {
     const el = container()
     const route = signal("other")
     mount(
-      h(Switch, { fallback: h("span", { id: "notfound" }) },
+      h(
+        Switch,
+        { fallback: h("span", { id: "notfound" }) },
         h(Match, { when: () => route() === "home" }, h("span", { id: "home" })),
       ),
       el,
@@ -798,7 +891,9 @@ describe("Switch / Match", () => {
     const el = container()
     const route = signal("home")
     mount(
-      h(Switch, { fallback: h("span", { id: "notfound" }) },
+      h(
+        Switch,
+        { fallback: h("span", { id: "notfound" }) },
         h(Match, { when: () => route() === "home" }, h("span", { id: "home" })),
         h(Match, { when: () => route() === "about" }, h("span", { id: "about" })),
       ),
@@ -862,7 +957,15 @@ describe("mount — props (extended)", () => {
     const el = container()
     let receivedEvent: Event | null = null
     mount(
-      h("button", { onClick: (e: Event) => { receivedEvent = e } }, "click"),
+      h(
+        "button",
+        {
+          onClick: (e: Event) => {
+            receivedEvent = e
+          },
+        },
+        "click",
+      ),
       el,
     )
     el.querySelector("button")?.click()
@@ -875,10 +978,18 @@ describe("mount — props (extended)", () => {
     let mouseDown = false
     let mouseUp = false
     mount(
-      h("div", {
-        onMousedown: () => { mouseDown = true },
-        onMouseup: () => { mouseUp = true },
-      }, "target"),
+      h(
+        "div",
+        {
+          onMousedown: () => {
+            mouseDown = true
+          },
+          onMouseup: () => {
+            mouseUp = true
+          },
+        },
+        "target",
+      ),
       el,
     )
     const div = el.querySelector("div") as HTMLElement
@@ -892,7 +1003,15 @@ describe("mount — props (extended)", () => {
     const el = container()
     let count = 0
     const unmount = mount(
-      h("button", { onClick: () => { count++ } }, "click"),
+      h(
+        "button",
+        {
+          onClick: () => {
+            count++
+          },
+        },
+        "click",
+      ),
       el,
     )
     el.querySelector("button")?.click()
@@ -971,11 +1090,15 @@ describe("mount — For keyed list reorder patterns", () => {
 
   function mountList(el: HTMLElement, items: ReturnType<typeof signal<Item[]>>) {
     mount(
-      h("ul", null, For({
-        each: items,
-        key: (r) => r.id,
-        children: (r) => h("li", { key: r.id }, r.label),
-      })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r) => r.id,
+          children: (r) => h("li", { key: r.id }, r.label),
+        }),
+      ),
       el,
     )
   }
@@ -1133,8 +1256,14 @@ describe("mount — For keyed list reorder patterns", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "a" }])
     mountList(el, items)
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }])
-    items.set([{ id: 2, label: "b" }, { id: 3, label: "c" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
+    items.set([
+      { id: 2, label: "b" },
+      { id: 3, label: "c" },
+    ])
     items.set([{ id: 4, label: "d" }])
     const lis = el.querySelectorAll("li")
     expect(lis.length).toBe(1)
@@ -1196,7 +1325,9 @@ describe("Transition — extended", () => {
       h(Transition, {
         show: visible,
         appear: true,
-        onBeforeEnter: () => { beforeEnterCalled = true },
+        onBeforeEnter: () => {
+          beforeEnterCalled = true
+        },
         children: h("div", { id: "appear-test" }, "content"),
       }),
       el,
@@ -1212,7 +1343,9 @@ describe("Transition — extended", () => {
     mount(
       h(Transition, {
         show: visible,
-        onBeforeLeave: () => { beforeLeaveCalled = true },
+        onBeforeLeave: () => {
+          beforeLeaveCalled = true
+        },
         children: h("div", { id: "leave-cb" }, "content"),
       }),
       el,
@@ -1273,7 +1406,18 @@ describe("hydrateRoot", () => {
     el.innerHTML = "<button>click me</button>"
     const { hydrateRoot } = require("../index")
     let clicked = false
-    hydrateRoot(el, h("button", { onClick: () => { clicked = true } }, "click me"))
+    hydrateRoot(
+      el,
+      h(
+        "button",
+        {
+          onClick: () => {
+            clicked = true
+          },
+        },
+        "click me",
+      ),
+    )
     el.querySelector("button")?.click()
     expect(clicked).toBe(true)
   })
@@ -1292,7 +1436,10 @@ describe("hydrateRoot", () => {
     el.innerHTML = "<div>initial</div>"
     const { hydrateRoot } = require("../index")
     const text = signal("initial")
-    hydrateRoot(el, h("div", null, () => text()))
+    hydrateRoot(
+      el,
+      h("div", null, () => text()),
+    )
     expect(el.querySelector("div")?.textContent).toBe("initial")
     text.set("updated")
     expect(el.querySelector("div")?.textContent).toBe("updated")
@@ -1302,10 +1449,7 @@ describe("hydrateRoot", () => {
     const el = container()
     el.innerHTML = "<div><p><span>deep</span></p></div>"
     const { hydrateRoot } = require("../index")
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, h("p", null, h("span", null, "deep"))),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, h("p", null, h("span", null, "deep"))))
     expect(el.querySelector("span")?.textContent).toBe("deep")
     cleanup()
   })
@@ -1332,16 +1476,7 @@ describe("mount — edge cases", () => {
 
   test("deeply nested fragments", () => {
     const el = container()
-    mount(
-      h(Fragment, null,
-        h(Fragment, null,
-          h(Fragment, null,
-            h("span", null, "deep"),
-          ),
-        ),
-      ),
-      el,
-    )
+    mount(h(Fragment, null, h(Fragment, null, h(Fragment, null, h("span", null, "deep")))), el)
     expect(el.querySelector("span")?.textContent).toBe("deep")
   })
 
@@ -1354,9 +1489,7 @@ describe("mount — edge cases", () => {
 
   test("component returning fragment with mixed children", () => {
     const el = container()
-    const Mixed = defineComponent(() =>
-      h(Fragment, null, "text", h("b", null, "bold"), null, 42),
-    )
+    const Mixed = defineComponent(() => h(Fragment, null, "text", h("b", null, "bold"), null, 42))
     mount(h(Mixed, null), el)
     expect(el.textContent).toContain("text")
     expect(el.querySelector("b")?.textContent).toBe("bold")
@@ -1365,14 +1498,7 @@ describe("mount — edge cases", () => {
 
   test("mounting array of children", () => {
     const el = container()
-    mount(
-      h("div", null, ...[
-        h("span", null, "a"),
-        h("span", null, "b"),
-        h("span", null, "c"),
-      ]),
-      el,
-    )
+    mount(h("div", null, ...[h("span", null, "a"), h("span", null, "b"), h("span", null, "c")]), el)
     expect(el.querySelectorAll("span").length).toBe(3)
   })
 
@@ -1380,7 +1506,7 @@ describe("mount — edge cases", () => {
     const el = container()
     const show = signal(false)
     mount(
-      h("div", null, () => show() ? h("span", { id: "toggle" }, "yes") : null),
+      h("div", null, () => (show() ? h("span", { id: "toggle" }, "yes") : null)),
       el,
     )
     expect(el.querySelector("#toggle")).toBeNull()
@@ -1425,10 +1551,7 @@ describe("KeepAlive", () => {
     const el = container()
     const { KeepAlive } = require("../index")
     const active = signal(true)
-    mount(
-      h(KeepAlive, { active }, h("div", { id: "kept" }, "alive")),
-      el,
-    )
+    mount(h(KeepAlive, { active }, h("div", { id: "kept" }, "alive")), el)
     // KeepAlive mounts in onMount which fires sync in this framework
     await new Promise<void>((r) => queueMicrotask(r))
     expect(el.querySelector("#kept")).not.toBeNull()
@@ -1441,10 +1564,7 @@ describe("KeepAlive", () => {
     const el = container()
     const { KeepAlive } = require("../index")
     const active = signal(true)
-    const unmount = mount(
-      h(KeepAlive, { active }, h("div", { id: "ka-cleanup" }, "content")),
-      el,
-    )
+    const unmount = mount(h(KeepAlive, { active }, h("div", { id: "ka-cleanup" }, "content")), el)
     await new Promise<void>((r) => queueMicrotask(r))
     expect(el.querySelector("#ka-cleanup")).not.toBeNull()
     unmount()
@@ -1455,10 +1575,7 @@ describe("KeepAlive", () => {
   test("active defaults to true when not provided", async () => {
     const el = container()
     const { KeepAlive } = require("../index")
-    mount(
-      h(KeepAlive, {}, h("div", { id: "ka-default" }, "visible")),
-      el,
-    )
+    mount(h(KeepAlive, {}, h("div", { id: "ka-default" }, "visible")), el)
     await new Promise<void>((r) => queueMicrotask(r))
     expect(el.querySelector("#ka-default")).not.toBeNull()
     // Container should be visible (display not set to none)
@@ -1471,16 +1588,13 @@ describe("KeepAlive", () => {
     const el = container()
     const { KeepAlive } = require("../index")
     const active = signal(true)
-    mount(
-      h(KeepAlive, { active }, h("span", { id: "ka-toggle" }, "x")),
-      el,
-    )
+    mount(h(KeepAlive, { active }, h("span", { id: "ka-toggle" }, "x")), el)
     await new Promise<void>((r) => queueMicrotask(r))
     // Find the container div that KeepAlive creates
     const containers = el.querySelectorAll("div")
-    const keepAliveContainer = Array.from(containers).find(
-      (d) => d.querySelector("#ka-toggle"),
-    ) as HTMLElement | undefined
+    const keepAliveContainer = Array.from(containers).find((d) => d.querySelector("#ka-toggle")) as
+      | HTMLElement
+      | undefined
     if (keepAliveContainer) {
       expect(keepAliveContainer.style.display).not.toBe("none")
       active.set(false)
@@ -1529,7 +1643,10 @@ describe("hydrateRoot — extended", () => {
     el.innerHTML = "<div></div>"
     const { hydrateRoot } = require("../index")
     const show = signal<string | null>(null)
-    const cleanup = hydrateRoot(el, h("div", null, () => show()))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, () => show()),
+    )
     // Initially null — a comment marker is inserted
     show.set("hello")
     // After update, the text should appear
@@ -1543,7 +1660,10 @@ describe("hydrateRoot — extended", () => {
     const { hydrateRoot } = require("../index")
     const text = signal("hello")
     // Reactive text expects a TextNode but finds a SPAN — should fall back
-    const cleanup = hydrateRoot(el, h("div", null, () => text()))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, () => text()),
+    )
     cleanup()
   })
 
@@ -1552,7 +1672,10 @@ describe("hydrateRoot — extended", () => {
     el.innerHTML = "<div><p>old</p></div>"
     const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("p", null, "old"))
-    const cleanup = hydrateRoot(el, h("div", null, () => content()))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, (() => content()) as unknown as VNodeChild),
+    )
     cleanup()
   })
 
@@ -1637,7 +1760,15 @@ describe("hydrateRoot — extended", () => {
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
-      h("ul", null, For({ each: items, key: (r: { id: number }) => r.id, children: (r: { id: number; label: string }) => h("li", null, r.label) })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h("li", null, r.label),
+        }),
+      ),
     )
     cleanup()
   })
@@ -1649,7 +1780,11 @@ describe("hydrateRoot — extended", () => {
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
-      For({ each: items, key: (r: { id: number }) => r.id, children: (r: { id: number; label: string }) => h("li", null, r.label) }),
+      For({
+        each: items,
+        key: (r: { id: number }) => r.id,
+        children: (r: { id: number; label: string }) => h("li", null, r.label),
+      }),
     )
     cleanup()
   })
@@ -1689,7 +1824,9 @@ describe("hydrateRoot — extended", () => {
     let mountCalled = false
     const Comp = defineComponent(() => {
       const { onMount } = require("@pyreon/core")
-      onMount(() => { mountCalled = true })
+      onMount(() => {
+        mountCalled = true
+      })
       return h("span", null, "mounted")
     })
     const cleanup = hydrateRoot(el, h(Comp, null))
@@ -1714,11 +1851,15 @@ describe("mountFor — edge cases", () => {
 
   function mountForList(el: HTMLElement, items: ReturnType<typeof signal<Item[]>>) {
     mount(
-      h("ul", null, For({
-        each: items,
-        key: (r) => r.id,
-        children: (r) => h("li", { key: r.id }, r.label),
-      })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r) => r.id,
+          children: (r) => h("li", { key: r.id }, r.label),
+        }),
+      ),
       el,
     )
   }
@@ -1728,7 +1869,10 @@ describe("mountFor — edge cases", () => {
     const items = signal<Item[]>([])
     mountForList(el, items)
     expect(el.querySelectorAll("li").length).toBe(0)
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
     expect(el.querySelectorAll("li").length).toBe(2)
     expect(el.querySelectorAll("li")[0]?.textContent).toBe("a")
   })
@@ -1739,7 +1883,10 @@ describe("mountFor — edge cases", () => {
     mountForList(el, items)
     items.set([])
     expect(el.querySelectorAll("li").length).toBe(0)
-    items.set([{ id: 2, label: "y" }, { id: 3, label: "z" }])
+    items.set([
+      { id: 2, label: "y" },
+      { id: 3, label: "z" },
+    ])
     expect(el.querySelectorAll("li").length).toBe(2)
     expect(el.querySelectorAll("li")[0]?.textContent).toBe("y")
   })
@@ -1755,11 +1902,15 @@ describe("mountFor — edge cases", () => {
     ])
     // Mount directly in the ul so markers are first/last children
     mount(
-      h("ul", null, For({
-        each: items,
-        key: (r) => r.id,
-        children: (r) => h("li", { key: r.id }, r.label),
-      })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r) => r.id,
+          children: (r) => h("li", { key: r.id }, r.label),
+        }),
+      ),
       el,
     )
     expect(el.querySelectorAll("li").length).toBe(3)
@@ -1772,7 +1923,9 @@ describe("mountFor — edge cases", () => {
     const items = signal<Item[]>([{ id: 1, label: "a" }])
     // Mount with extra siblings so markers are not first/last
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         h("span", null, "before"),
         For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
         h("span", null, "after"),
@@ -1788,17 +1941,27 @@ describe("mountFor — edge cases", () => {
 
   test("replace-all with parent-swap optimization", () => {
     const el = container()
-    const items = signal<Item[]>([{ id: 1, label: "old1" }, { id: 2, label: "old2" }])
+    const items = signal<Item[]>([
+      { id: 1, label: "old1" },
+      { id: 2, label: "old2" },
+    ])
     mount(
-      h("ul", null, For({
-        each: items,
-        key: (r) => r.id,
-        children: (r) => h("li", { key: r.id }, r.label),
-      })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r) => r.id,
+          children: (r) => h("li", { key: r.id }, r.label),
+        }),
+      ),
       el,
     )
     // Replace with completely new keys
-    items.set([{ id: 10, label: "new1" }, { id: 11, label: "new2" }])
+    items.set([
+      { id: 10, label: "new1" },
+      { id: 11, label: "new2" },
+    ])
     expect(el.querySelectorAll("li").length).toBe(2)
     expect(el.querySelectorAll("li")[0]?.textContent).toBe("new1")
   })
@@ -1807,7 +1970,9 @@ describe("mountFor — edge cases", () => {
     const el = container()
     const items = signal<Item[]>([{ id: 1, label: "old" }])
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         h("span", null, "before"),
         For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
         h("span", null, "after"),
@@ -1829,7 +1994,10 @@ describe("mountFor — edge cases", () => {
     ])
     mountForList(el, items)
     // Remove middle item — hits stale entry removal path
-    items.set([{ id: 1, label: "a" }, { id: 3, label: "c" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 3, label: "c" },
+    ])
     expect(el.querySelectorAll("li").length).toBe(2)
     expect(el.querySelectorAll("li")[0]?.textContent).toBe("a")
     expect(el.querySelectorAll("li")[1]?.textContent).toBe("c")
@@ -1924,11 +2092,15 @@ describe("mountFor — edge cases", () => {
       { id: 2, label: "b" },
     ])
     const unmount = mount(
-      h("ul", null, For({
-        each: items,
-        key: (r) => r.id,
-        children: (r) => h("li", { key: r.id }, r.label),
-      })),
+      h(
+        "ul",
+        null,
+        For({
+          each: items,
+          key: (r) => r.id,
+          children: (r) => h("li", { key: r.id }, r.label),
+        }),
+      ),
       el,
     )
     expect(el.querySelectorAll("li").length).toBe(2)
@@ -1947,9 +2119,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
       { id: 2, text: "b" },
     ])
     mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     expect(el.querySelectorAll("li").length).toBe(2)
@@ -1963,9 +2133,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
       { id: 2, text: "b" },
     ])
     mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     items.set([])
@@ -1980,9 +2148,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
       { id: 3, text: "c" },
     ])
     mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     items.set([
@@ -2004,9 +2170,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
       { id: 3, text: "c" },
     ])
     mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     items.set([{ id: 2, text: "b" }])
@@ -2018,9 +2182,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
     const el = container()
     const items = signal([{ id: 1, text: "a" }])
     mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     items.set([
@@ -2038,9 +2200,7 @@ describe("mountKeyedList — via reactive keyed array", () => {
       { id: 2, text: "b" },
     ])
     const unmount = mount(
-      h("ul", null, () =>
-        items().map((it) => h("li", { key: it.id }, it.text)),
-      ),
+      h("ul", null, () => items().map((it) => h("li", { key: it.id }, it.text))),
       el,
     )
     unmount()
@@ -2055,7 +2215,7 @@ describe("mountReactive — edge cases", () => {
     const el = container()
     const show = signal(false)
     mount(
-      h("div", null, () => show() ? h("span", null, "yes") : null),
+      h("div", null, () => (show() ? h("span", null, "yes") : null)),
       el,
     )
     expect(el.querySelector("span")).toBeNull()
@@ -2067,7 +2227,7 @@ describe("mountReactive — edge cases", () => {
     const el = container()
     const show = signal(false)
     mount(
-      h("div", null, () => show() ? "visible" : false),
+      h("div", null, () => (show() ? "visible" : false)),
       el,
     )
     expect(el.querySelector("div")?.textContent).toBe("")
@@ -2103,7 +2263,7 @@ describe("mountReactive — edge cases", () => {
     const el = container()
     const show = signal(true)
     const unmount = mount(
-      h("div", null, () => show() ? h("span", null, "content") : null),
+      h("div", null, () => (show() ? h("span", null, "content") : null)),
       el,
     )
     unmount()
@@ -2129,7 +2289,9 @@ describe("mount — component branches", () => {
     let cleaned = false
     const Comp = defineComponent(() => {
       const { onMount } = require("@pyreon/core")
-      onMount(() => () => { cleaned = true })
+      onMount(() => () => {
+        cleaned = true
+      })
       return h("div", null, "with-cleanup")
     })
     const unmount = mount(h(Comp, null), el)
@@ -2143,7 +2305,9 @@ describe("mount — component branches", () => {
     let unmounted = false
     const Comp = defineComponent(() => {
       const { onUnmount } = require("@pyreon/core")
-      onUnmount(() => { unmounted = true })
+      onUnmount(() => {
+        unmounted = true
+      })
       return h("div", null, "unmount-test")
     })
     const unmount = mount(h(Comp, null), el)
@@ -2157,8 +2321,12 @@ describe("mount — component branches", () => {
     const Comp = defineComponent(() => {
       const { onUpdate } = require("@pyreon/core")
       const count = signal(0)
-      onUpdate(() => { /* update tracked */ })
-      return h("div", null,
+      onUpdate(() => {
+        /* update tracked */
+      })
+      return h(
+        "div",
+        null,
         h("span", null, () => String(count())),
         h("button", { onClick: () => count.update((n: number) => n + 1) }, "+"),
       )
@@ -2288,7 +2456,7 @@ describe("props — additional coverage", () => {
 
   test("sanitizeHtml strips script tags", () => {
     const { sanitizeHtml } = require("../index")
-    const result = sanitizeHtml('<div>safe</div><script>alert(1)</script>')
+    const result = sanitizeHtml("<div>safe</div><script>alert(1)</script>")
     expect(result).toContain("safe")
     expect(result).not.toContain("<script>")
   })
@@ -2321,7 +2489,9 @@ describe("props — additional coverage", () => {
 
   test("sanitizeHtml strips iframe and object tags", () => {
     const { sanitizeHtml } = require("../index")
-    const result = sanitizeHtml('<div>ok</div><iframe src="evil"></iframe><object data="x"></object>')
+    const result = sanitizeHtml(
+      '<div>ok</div><iframe src="evil"></iframe><object data="x"></object>',
+    )
     expect(result).toContain("ok")
     expect(result).not.toContain("<iframe")
     expect(result).not.toContain("<object")
@@ -2329,7 +2499,7 @@ describe("props — additional coverage", () => {
 
   test("sanitizeHtml handles nested unsafe elements", () => {
     const { sanitizeHtml } = require("../index")
-    const result = sanitizeHtml('<div><script><script>alert(1)</script></script></div>')
+    const result = sanitizeHtml("<div><script><script>alert(1)</script></script></div>")
     expect(result).not.toContain("<script")
   })
 
@@ -2354,7 +2524,10 @@ describe("DevTools", () => {
   test("installDevTools sets __PYREON_DEVTOOLS__ on window", () => {
     const { installDevTools } = require("../devtools")
     installDevTools()
-    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as Record<string, unknown>
+    const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as Record<
+      string,
+      unknown
+    >
     expect(devtools).not.toBeNull()
     expect(devtools.version).toBe("0.1.0")
   })
@@ -2362,7 +2535,12 @@ describe("DevTools", () => {
   test("registerComponent and getAllComponents", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
-      getAllComponents: () => Array<{ id: string; name: string; parentId: string | null; childIds: string[] }>
+      getAllComponents: () => Array<{
+        id: string
+        name: string
+        parentId: string | null
+        childIds: string[]
+      }>
       getComponentTree: () => Array<{ id: string; name: string; parentId: string | null }>
       highlight: (id: string) => void
       onComponentMount: (cb: (entry: { id: string }) => void) => () => void
@@ -2382,7 +2560,12 @@ describe("DevTools", () => {
   test("registerComponent with parentId creates parent-child relationship", () => {
     const { registerComponent, unregisterComponent } = require("../devtools")
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
-      getAllComponents: () => Array<{ id: string; name: string; parentId: string | null; childIds: string[] }>
+      getAllComponents: () => Array<{
+        id: string
+        name: string
+        parentId: string | null
+        childIds: string[]
+      }>
     }
 
     registerComponent("parent-1", "Parent", null, null)
@@ -2599,7 +2782,9 @@ describe("TransitionGroup", () => {
         items,
         keyFn: (item: { id: number }) => item.id,
         render: (item: { id: number }) => h("span", { class: "appear-item" }, String(item.id)),
-        onBeforeEnter: () => { enterCalled = true },
+        onBeforeEnter: () => {
+          enterCalled = true
+        },
       }),
       el,
     )
@@ -2696,7 +2881,9 @@ describe("TransitionGroup", () => {
         items,
         keyFn: (item: { id: number }) => item.id,
         render: (item: { id: number }) => h("span", null, String(item.id)),
-        onAfterEnter: () => { afterEnterCalled = true },
+        onAfterEnter: () => {
+          afterEnterCalled = true
+        },
       }),
       el,
     )
@@ -2728,8 +2915,12 @@ describe("TransitionGroup", () => {
         items,
         keyFn: (item: { id: number }) => item.id,
         render: (item: { id: number }) => h("span", { class: "leave-item" }, String(item.id)),
-        onBeforeLeave: () => { beforeLeaveCalled = true },
-        onAfterLeave: () => { /* after leave tracked */ },
+        onBeforeLeave: () => {
+          beforeLeaveCalled = true
+        },
+        onAfterLeave: () => {
+          /* after leave tracked */
+        },
       }),
       el,
     )
@@ -2782,11 +2973,20 @@ describe("hydrateRoot — branch coverage", () => {
     const el = container()
     el.innerHTML = "<div><!--pyreon-for--><li>item1</li><li>item2</li><!--/pyreon-for--></div>"
     const { hydrateRoot } = require("../index")
-    const items = signal([{ id: 1, label: "item1" }, { id: 2, label: "item2" }])
+    const items = signal([
+      { id: 1, label: "item1" },
+      { id: 2, label: "item2" },
+    ])
     const cleanup = hydrateRoot(
       el,
-      h("div", null,
-        For({ each: items, key: (r: { id: number }) => r.id, children: (r: { id: number; label: string }) => h("li", null, r.label) }),
+      h(
+        "div",
+        null,
+        For({
+          each: items,
+          key: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h("li", null, r.label),
+        }),
       ),
     )
     cleanup()
@@ -2798,7 +2998,10 @@ describe("hydrateRoot — branch coverage", () => {
     const { hydrateRoot } = require("../index")
     const show = signal<VNodeChild>(null)
     // The div has no children, so domNode will be null inside
-    const cleanup = hydrateRoot(el, h("div", null, () => show()))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, (() => show()) as unknown as VNodeChild),
+    )
     show.set("hello")
     cleanup()
   })
@@ -2808,7 +3011,10 @@ describe("hydrateRoot — branch coverage", () => {
     el.innerHTML = "<div></div>"
     const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("span", null, "initial"))
-    const cleanup = hydrateRoot(el, h("div", null, () => content()))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, (() => content()) as unknown as VNodeChild),
+    )
     cleanup()
   })
 
@@ -2837,8 +3043,14 @@ describe("hydrateRoot — branch coverage", () => {
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
-      h("div", null,
-        For({ each: items, key: (r: { id: number }) => r.id, children: (r: { id: number; label: string }) => h("li", null, r.label) }),
+      h(
+        "div",
+        null,
+        For({
+          each: items,
+          key: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h("li", null, r.label),
+        }),
       ),
     )
     cleanup()
@@ -2851,8 +3063,14 @@ describe("hydrateRoot — branch coverage", () => {
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
-      h("div", null,
-        For({ each: items, key: (r: { id: number }) => r.id, children: (r: { id: number; label: string }) => h("li", null, r.label) }),
+      h(
+        "div",
+        null,
+        For({
+          each: items,
+          key: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h("li", null, r.label),
+        }),
       ),
     )
     cleanup()
@@ -2865,7 +3083,10 @@ describe("hydrateRoot — branch coverage", () => {
     const { hydrateRoot } = require("../index")
     const show = signal<VNodeChild>(null)
     // The span is the domNode, but accessor returns null — hits line 91-92
-    const cleanup = hydrateRoot(el, h("div", null, () => show(), h("span", null, "existing")))
+    const cleanup = hydrateRoot(
+      el,
+      h("div", null, (() => show()) as unknown as VNodeChild, h("span", null, "existing")),
+    )
     cleanup()
   })
 })
@@ -2877,11 +3098,7 @@ describe("mount — error handling branches", () => {
     const el = container()
     // Pass an array directly to mountChild (line 72)
     const { mountChild } = require("../mount")
-    const cleanup = mountChild(
-      [h("span", null, "x"), h("span", null, "y")],
-      el,
-      null,
-    )
+    const cleanup = mountChild([h("span", null, "x"), h("span", null, "y")], el, null)
     expect(el.querySelectorAll("span").length).toBe(2)
     cleanup()
   })
@@ -2891,7 +3108,9 @@ describe("mount — error handling branches", () => {
     // A component whose render output itself causes an error during mount
     const BadRender = defineComponent(() => {
       // Return a VNode that includes a broken component child
-      const Throws = defineComponent((): never => { throw new Error("subtree error") })
+      const Throws = defineComponent((): never => {
+        throw new Error("subtree error")
+      })
       return h(Throws, null)
     })
     // Should not throw — error is caught in mountComponent's subtree try/catch
@@ -2902,7 +3121,9 @@ describe("mount — error handling branches", () => {
     const el = container()
     const Comp = defineComponent(() => {
       const { onMount } = require("@pyreon/core")
-      onMount(() => { throw new Error("onMount error") })
+      onMount(() => {
+        throw new Error("onMount error")
+      })
       return h("div", null, "content")
     })
     // Should not throw
@@ -2914,7 +3135,9 @@ describe("mount — error handling branches", () => {
     const el = container()
     const Comp = defineComponent(() => {
       const { onUnmount } = require("@pyreon/core")
-      onUnmount(() => { throw new Error("onUnmount error") })
+      onUnmount(() => {
+        throw new Error("onUnmount error")
+      })
       return h("div", null, "content")
     })
     const unmount = mount(h(Comp, null), el)

@@ -37,7 +37,12 @@ const _components = new Map<string, DevtoolsComponentEntry>()
 const _mountListeners: Array<(entry: DevtoolsComponentEntry) => void> = []
 const _unmountListeners: Array<(id: string) => void> = []
 
-export function registerComponent(id: string, name: string, el: Element | null, parentId: string | null): void {
+export function registerComponent(
+  id: string,
+  name: string,
+  el: Element | null,
+  parentId: string | null,
+): void {
   const entry: DevtoolsComponentEntry = { id, name, el, parentId, childIds: [] }
   _components.set(id, entry)
   if (parentId) {
@@ -83,7 +88,9 @@ export function installDevTools(): void {
       const el = entry.el as HTMLElement
       const prev = el.style.outline
       el.style.outline = "2px solid #00b4d8"
-      setTimeout(() => { el.style.outline = prev }, 1500)
+      setTimeout(() => {
+        el.style.outline = prev
+      }, 1500)
     },
 
     onComponentMount(cb: (entry: DevtoolsComponentEntry) => void): () => void {

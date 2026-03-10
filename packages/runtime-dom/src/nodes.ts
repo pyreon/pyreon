@@ -1,4 +1,4 @@
-import type { VNode, VNodeChild, NativeItem } from "@pyreon/core"
+import type { NativeItem, VNode, VNodeChild } from "@pyreon/core"
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 import { effect } from "@pyreon/reactivity"
@@ -92,7 +92,6 @@ interface KeyedEntry {
 // Entries use their first DOM node as anchor (element for simple vnodes, comment fallback for empty).
 const _keyedAnchors = new WeakSet<Node>()
 
-
 export function mountKeyedList(
   accessor: () => VNode[],
   parent: Node,
@@ -165,10 +164,10 @@ export function mountKeyedList(
     // Step 4: reorder using inline LIS with typed arrays.
     if (currentKeyOrder.length > 0 && n > 0) {
       if (n > lisPred.length) {
-        lisTails   = new Int32Array(n + 16)
+        lisTails = new Int32Array(n + 16)
         lisTailIdx = new Int32Array(n + 16)
-        lisPred    = new Int32Array(n + 16)
-        lisStay    = new Uint8Array(n + 16)
+        lisPred = new Int32Array(n + 16)
+        lisStay = new Uint8Array(n + 16)
       }
       lisPred.fill(-1, 0, n)
       lisStay.fill(0, 0, n)
@@ -265,16 +264,20 @@ export function mountFor<T>(
   // Using the element itself saves 1 createComment + 1 DOM node per entry.
   // pos is merged here (instead of a separate Map) to halve Map operations.
   // cleanup is null when the entry has no teardown work (saves function call overhead on clear).
-  interface ForEntry { anchor: Node; cleanup: Cleanup | null; pos: number }
+  interface ForEntry {
+    anchor: Node
+    cleanup: Cleanup | null
+    pos: number
+  }
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
   let cleanupCount = 0 // track entries with non-null cleanup to skip iteration when 0
   let anchorsRegistered = false // lazy _forAnchors population — only needed for reorder
 
-  let lisTails   = new Int32Array(16)
+  let lisTails = new Int32Array(16)
   let lisTailIdx = new Int32Array(16)
-  let lisPred    = new Int32Array(16)
-  let lisStay    = new Uint8Array(16)
+  let lisPred = new Int32Array(16)
+  let lisStay = new Uint8Array(16)
 
   const e = effect(() => {
     // Use startMarker.parentNode as the live parent so that if this For was
@@ -294,7 +297,11 @@ export function mountFor<T>(
         // Parent-swap: clone empty parent, move markers into it, replace in one shot.
         // This is O(1) DOM ops regardless of how many children existed — the old parent
         // with all its children is detached wholesale instead of removing nodes one by one.
-        if (parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
+        if (
+          parentParent &&
+          liveParent.firstChild === startMarker &&
+          liveParent.lastChild === tailMarker
+        ) {
           const fresh = liveParent.cloneNode(false) as Node
           fresh.appendChild(startMarker)
           fresh.appendChild(tailMarker)
@@ -356,7 +363,10 @@ export function mountFor<T>(
     // Uses Map.has (O(1)) per key — avoids O(n) Set construction for replace-all.
     let anyKept = false
     for (let i = 0; i < n; i++) {
-      if (cache.has(newKeys[i] as string | number)) { anyKept = true; break }
+      if (cache.has(newKeys[i] as string | number)) {
+        anyKept = true
+        break
+      }
     }
 
     if (!anyKept) {
@@ -367,7 +377,8 @@ export function mountFor<T>(
       cleanupCount = 0
 
       const parentParent = liveParent.parentNode
-      const canSwap = parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
+      const canSwap =
+        parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
 
       // Build all new entries into a fragment
       const frag = document.createDocumentFragment()
@@ -417,7 +428,10 @@ export function mountFor<T>(
     const newKeySet = new Set<string | number>(newKeys)
     for (const [key, entry] of cache) {
       if (!newKeySet.has(key)) {
-        if (entry.cleanup) { entry.cleanup(); cleanupCount-- }
+        if (entry.cleanup) {
+          entry.cleanup()
+          cleanupCount--
+        }
         entry.anchor.parentNode?.removeChild(entry.anchor)
         cache.delete(key)
       }
@@ -465,7 +479,10 @@ export function mountFor<T>(
       for (let i = 0; i < n; i++) {
         if (newKeys[i] !== currentKeys[i]) {
           diffs.push(i)
-          if (diffs.length > SMALL_K) { exceeded = true; break }
+          if (diffs.length > SMALL_K) {
+            exceeded = true
+            break
+          }
         }
       }
 
@@ -485,10 +502,10 @@ export function mountFor<T>(
 
     // ── LIS fallback ──────────────────────────────────────────────────────
     if (n > lisPred.length) {
-      lisTails   = new Int32Array(n + 16)
+      lisTails = new Int32Array(n + 16)
       lisTailIdx = new Int32Array(n + 16)
-      lisPred    = new Int32Array(n + 16)
-      lisStay    = new Uint8Array(n + 16)
+      lisPred = new Int32Array(n + 16)
+      lisStay = new Uint8Array(n + 16)
     }
     lisPred.fill(-1, 0, n)
     lisStay.fill(0, 0, n)
@@ -499,15 +516,24 @@ export function mountFor<T>(
       if (key === undefined) continue
       const v = cache.get(key)?.pos ?? -1
       if (v < 0) continue
-      let lo = 0; let hi = lisLen
-      while (lo < hi) { const mid = (lo + hi) >> 1; if ((lisTails[mid] ?? 0) < v) lo = mid + 1; else hi = mid }
-      lisTails[lo] = v; lisTailIdx[lo] = i
+      let lo = 0
+      let hi = lisLen
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1
+        if ((lisTails[mid] ?? 0) < v) lo = mid + 1
+        else hi = mid
+      }
+      lisTails[lo] = v
+      lisTailIdx[lo] = i
       if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] ?? -1
       if (lo === lisLen) lisLen++
     }
 
     let cur: number = lisLen > 0 ? (lisTailIdx[lisLen - 1] ?? -1) : -1
-    while (cur !== -1) { lisStay[cur] = 1; cur = lisPred[cur] ?? -1 }
+    while (cur !== -1) {
+      lisStay[cur] = 1
+      cur = lisPred[cur] ?? -1
+    }
 
     let cursor: Node = tailMarker
     for (let i = n - 1; i >= 0; i--) {
@@ -550,7 +576,7 @@ function smallKPlace(
   parent: Node,
   diffs: number[],
   newKeys: (string | number)[],
-  cache: Map<string | number, { anchor: Node; cleanup: Cleanup }>,
+  cache: Map<string | number, { anchor: Node; cleanup: Cleanup | null }>,
   tailMarker: Comment,
 ): void {
   const diffSet = new Set(diffs)
@@ -562,7 +588,10 @@ function smallKPlace(
 
     let nextNonDiff = -1
     for (let j = i + 1; j < prevDiffIdx; j++) {
-      if (!diffSet.has(j)) { nextNonDiff = j; break }
+      if (!diffSet.has(j)) {
+        nextNonDiff = j
+        break
+      }
     }
 
     if (nextNonDiff >= 0) {
@@ -574,7 +603,10 @@ function smallKPlace(
     const key = newKeys[i]
     if (key !== undefined) {
       const entry = cache.get(key)
-      if (entry) { moveEntryBefore(parent, entry.anchor, cursor); cursor = entry.anchor }
+      if (entry) {
+        moveEntryBefore(parent, entry.anchor, cursor)
+        cursor = entry.anchor
+      }
     }
     prevDiffIdx = i
   }
@@ -590,8 +622,11 @@ function smallKPlace(
 function moveEntryBefore(parent: Node, startNode: Node, before: Node): void {
   const next = startNode.nextSibling
   // Single-node fast path (covers all createTemplate rows — the common case)
-  if (!next || next === before ||
-      (next.parentNode === parent && (_forAnchors.has(next) || _keyedAnchors.has(next)))) {
+  if (
+    !next ||
+    next === before ||
+    (next.parentNode === parent && (_forAnchors.has(next) || _keyedAnchors.has(next)))
+  ) {
     parent.insertBefore(startNode, before)
     return
   }
@@ -602,7 +637,12 @@ function moveEntryBefore(parent: Node, startNode: Node, before: Node): void {
     const nextNode: Node | null = cur.nextSibling
     toMove.push(cur)
     cur = nextNode
-    if (cur && cur.parentNode === parent && (cur === before || _forAnchors.has(cur) || _keyedAnchors.has(cur))) break
+    if (
+      cur &&
+      cur.parentNode === parent &&
+      (cur === before || _forAnchors.has(cur) || _keyedAnchors.has(cur))
+    )
+      break
   }
   for (const node of toMove) {
     parent.insertBefore(node, before)

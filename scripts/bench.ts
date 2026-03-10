@@ -1,3 +1,5 @@
+import { join } from "node:path"
+import { serve } from "bun"
 /**
  * Headless benchmark runner using Playwright.
  * Usage: bun scripts/bench.ts
@@ -6,8 +8,6 @@
  * prints results, and exits.
  */
 import { chromium } from "playwright"
-import { serve } from "bun"
-import { join } from "node:path"
 
 const DIST = join(import.meta.dir, "../apps/benchmark/dist")
 const PORT = 4173
@@ -37,7 +37,9 @@ const browser = await chromium.launch({
 })
 const page = await browser.newPage()
 
-page.on("console", (msg) => { if (msg.type() === "error") console.error("[page]", msg.text()) })
+page.on("console", (msg) => {
+  if (msg.type() === "error") console.error("[page]", msg.text())
+})
 page.on("pageerror", (err) => console.error("[page error]", err.message))
 
 await page.goto(`http://localhost:${PORT}`)

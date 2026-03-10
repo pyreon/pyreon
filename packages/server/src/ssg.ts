@@ -28,7 +28,7 @@
  * })
  */
 
-import { writeFile, mkdir } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 export interface PrerenderOptions {
@@ -68,19 +68,12 @@ export interface PrerenderResult {
  * Paths like "/about" become `outDir/about/index.html`.
  */
 export async function prerender(options: PrerenderOptions): Promise<PrerenderResult> {
-  const {
-    handler,
-    outDir,
-    origin = "http://localhost",
-    onPage,
-  } = options
+  const { handler, outDir, origin = "http://localhost", onPage } = options
 
   const start = Date.now()
 
   // Resolve paths (may be async)
-  const paths = typeof options.paths === "function"
-    ? await options.paths()
-    : options.paths
+  const paths = typeof options.paths === "function" ? await options.paths() : options.paths
 
   let pages = 0
   const errors: PrerenderResult["errors"] = []
@@ -110,11 +103,12 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
           }
 
           // Determine file path: "/" → index.html, "/about" → about/index.html
-          const filePath = path === "/"
-            ? join(outDir, "index.html")
-            : path.endsWith(".html")
-              ? join(outDir, path)
-              : join(outDir, path, "index.html")
+          const filePath =
+            path === "/"
+              ? join(outDir, "index.html")
+              : path.endsWith(".html")
+                ? join(outDir, path)
+                : join(outDir, path, "index.html")
 
           await mkdir(dirname(filePath), { recursive: true })
           await writeFile(filePath, html, "utf-8")

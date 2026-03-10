@@ -2,7 +2,7 @@
  * Browser tests for Pyreon's mount() — verifies real DOM rendering.
  */
 
-import { test, expect } from "./fixtures"
+import { expect, test } from "./fixtures"
 
 test.describe("mount", () => {
   test("mounts a simple element", async ({ pyreonPage: page }) => {
@@ -21,7 +21,9 @@ test.describe("mount", () => {
       const { h, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       mount(
-        h("div", { id: "outer" },
+        h(
+          "div",
+          { id: "outer" },
           h("span", { class: "inner" }, "Child 1"),
           h("span", { class: "inner" }, "Child 2"),
         ),
@@ -53,10 +55,7 @@ test.describe("mount", () => {
       const { h, Fragment, mount } = (window as any).__PYREON__
       const app = document.getElementById("app")!
       mount(
-        h(Fragment, null,
-          h("p", { class: "frag" }, "First"),
-          h("p", { class: "frag" }, "Second"),
-        ),
+        h(Fragment, null, h("p", { class: "frag" }, "First"), h("p", { class: "frag" }, "Second")),
         app,
       )
     })
@@ -73,11 +72,15 @@ test.describe("mount", () => {
       const count = signal(0)
       const app = document.getElementById("app")!
       mount(
-        h("button", {
-          id: "btn",
-          "data-testid": "counter",
-          onClick: () => count.set(count() + 1),
-        }, () => `Count: ${count()}`),
+        h(
+          "button",
+          {
+            id: "btn",
+            "data-testid": "counter",
+            onClick: () => count.set(count() + 1),
+          },
+          () => `Count: ${count()}`,
+        ),
         app,
       )
     })

@@ -1,6 +1,6 @@
-import type { VNode, VNodeChild, Props } from "./types"
 import { h } from "./h"
 import { Fragment } from "./h"
+import type { Props, VNode, VNodeChild } from "./types"
 
 /** Internal marker attached to lazy()-wrapped components */
 export type LazyComponent<P extends Props = Props> = ((props: P) => VNode | null) & {

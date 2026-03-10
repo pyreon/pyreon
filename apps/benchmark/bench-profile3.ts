@@ -18,10 +18,10 @@ range.deleteContents()
 // Now all children are detached (parentNode = null)
 const t0 = performance.now()
 for (const el of children) {
-  void el.isConnected  // just reading isConnected
+  void el.isConnected // just reading isConnected
 }
 const t1 = performance.now()
-console.log(`5000 el.isConnected reads (detached): ${(t1-t0).toFixed(2)}ms`)
+console.log(`5000 el.isConnected reads (detached): ${(t1 - t0).toFixed(2)}ms`)
 
 // Test 2: reading parentNode on detached nodes
 const t2 = performance.now()
@@ -29,7 +29,7 @@ for (const el of children) {
   void el.parentNode
 }
 const t3 = performance.now()
-console.log(`5000 el.parentNode reads (detached): ${(t3-t2).toFixed(2)}ms`)
+console.log(`5000 el.parentNode reads (detached): ${(t3 - t2).toFixed(2)}ms`)
 
 // Test 3: removeChild on detached nodes (after range deletion)
 // Re-create structure
@@ -52,10 +52,10 @@ range2.deleteContents()
 const t4 = performance.now()
 for (const span of children2) {
   const inner = span.firstChild as HTMLElement
-  if (inner) span.removeChild(inner)  // remove inner from detached span
+  if (inner) span.removeChild(inner) // remove inner from detached span
 }
 const t5 = performance.now()
-console.log(`1000 removeChild on detached subtree: ${(t5-t4).toFixed(2)}ms`)
+console.log(`1000 removeChild on detached subtree: ${(t5 - t4).toFixed(2)}ms`)
 
 // Test 4: Does NOT calling removeChild save time?
 const parent3 = document.createElement("div")
@@ -79,4 +79,4 @@ for (const _span of children3) {
   // do nothing
 }
 const t7 = performance.now()
-console.log(`1000 empty loop (no removeChild): ${(t7-t6).toFixed(2)}ms`)
+console.log(`1000 empty loop (no removeChild): ${(t7 - t6).toFixed(2)}ms`)

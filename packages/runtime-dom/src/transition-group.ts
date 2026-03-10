@@ -1,6 +1,6 @@
-import { signal, effect, runUntracked } from "@pyreon/reactivity"
-import { createRef, onMount, onUnmount, h } from "@pyreon/core"
-import type { VNode, Props, VNodeChild } from "@pyreon/core"
+import { createRef, h, onMount, onUnmount } from "@pyreon/core"
+import type { Props, VNode, VNodeChild } from "@pyreon/core"
+import { effect, runUntracked, signal } from "@pyreon/reactivity"
 import { mountChild } from "./mount"
 
 export interface TransitionGroupProps<T = unknown> {
@@ -72,13 +72,13 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   const tag = props.tag ?? "div"
   const n = props.name ?? "pyreon"
   const cls = {
-    ef: props.enterFrom  ?? `${n}-enter-from`,
+    ef: props.enterFrom ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,
-    et: props.enterTo    ?? `${n}-enter-to`,
-    lf: props.leaveFrom  ?? `${n}-leave-from`,
+    et: props.enterTo ?? `${n}-enter-to`,
+    lf: props.leaveFrom ?? `${n}-leave-from`,
     la: props.leaveActive ?? `${n}-leave-active`,
-    lt: props.leaveTo    ?? `${n}-leave-to`,
-    mv: props.moveClass  ?? `${n}-move`,
+    lt: props.leaveTo ?? `${n}-leave-to`,
+    mv: props.moveClass ?? `${n}-move`,
   }
 
   const containerRef = createRef<HTMLElement>()
@@ -144,7 +144,10 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
         entry.leaving = true
         const el = entry.ref.current
         if (el) {
-          applyLeave(el, () => { entry.cleanup(); entries.delete(key) })
+          applyLeave(el, () => {
+            entry.cleanup()
+            entries.delete(key)
+          })
         } else {
           entry.cleanup()
           entries.delete(key)
@@ -155,16 +158,17 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     // 3. Mount new items (appended to container; re-ordered in step 4)
     const newEntries: ItemEntry[] = []
     for (let i = 0; i < items.length; i++) {
-      const item = items[i]
+      const item = items[i] as T
       const key = props.keyFn(item, i)
       if (!entries.has(key)) {
         const itemRef = createRef<HTMLElement>()
         // Use runUntracked so item-level signals don't re-trigger this effect
         const rawVNode = runUntracked(() => props.render(item, i))
         // Inject ref only into DOM-element VNodes
-        const vnode: VNode = typeof rawVNode.type === "string"
-          ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
-          : rawVNode
+        const vnode: VNode =
+          typeof rawVNode.type === "string"
+            ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
+            : rawVNode
         const cleanup = mountChild(vnode, container, null)
         const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false }
         entries.set(key, entry)
@@ -175,7 +179,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     // 4. Re-order all non-leaving elements to match new items order
     //    appendChild on an existing node moves it — no clone needed
     for (let i = 0; i < items.length; i++) {
-      const key = props.keyFn(items[i], i)
+      const key = props.keyFn(items[i] as T, i)
       const entry = entries.get(key)
       if (!entry || entry.leaving || !entry.ref.current) continue
       container.appendChild(entry.ref.current)
@@ -184,7 +188,9 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     // 5. Enter animations for new items (skip on first render unless `appear`)
     if (!isFirst || props.appear) {
       for (const entry of newEntries) {
-        queueMicrotask(() => { if (entry.ref.current) applyEnter(entry.ref.current) })
+        queueMicrotask(() => {
+          if (entry.ref.current) applyEnter(entry.ref.current)
+        })
       }
     }
 
@@ -194,7 +200,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
         for (const [key, entry] of entries) {
           if (entry.leaving || !entry.ref.current) continue
           const oldPos = oldPositions.get(key)
-          if (!oldPos) continue  // new item — enter animation handles it
+          if (!oldPos) continue // new item — enter animation handles it
           const newPos = entry.ref.current.getBoundingClientRect()
           const dx = oldPos.left - newPos.left
           const dy = oldPos.top - newPos.top
@@ -217,7 +223,10 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   })
 
   // Fire the effect once the container is in the DOM
-  onMount(() => { ready.set(true) })
+  onMount(() => {
+    ready.set(true)
+    return undefined
+  })
 
   onUnmount(() => {
     e.dispose()

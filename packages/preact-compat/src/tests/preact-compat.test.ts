@@ -1,34 +1,29 @@
-import { describe, test, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import {
-  h,
-  createElement,
-  Fragment,
-  render,
-  Component,
-  createContext,
-  useContext,
-  createRef,
-  cloneElement,
-  toChildArray,
-  isValidElement,
-  options,
-} from "../index"
-import {
-  useState,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
-  useCallback,
-  useRef,
   useReducer,
+  useRef,
+  useState,
 } from "../hooks"
 import {
-  signal,
-  computed,
-  effect,
-  batch,
-} from "../signals"
-import type { VNode } from "@pyreon/core"
+  Component,
+  Fragment,
+  cloneElement,
+  createContext,
+  createElement,
+  createRef,
+  h,
+  isValidElement,
+  options,
+  render,
+  toChildArray,
+  useContext,
+} from "../index"
+import type { VNodeChild } from "@pyreon/core"
+import { batch, computed, effect, signal } from "../signals"
 
 describe("@pyreon/preact-compat", () => {
   // ─── Core API ────────────────────────────────────────────────────────────
@@ -64,7 +59,7 @@ describe("@pyreon/preact-compat", () => {
   })
 
   test("toChildArray flattens children", () => {
-    const result = toChildArray(["a", ["b", ["c"]], null, undefined, false, "d"])
+    const result = toChildArray(["a", ["b", ["c"]], null, undefined, false, "d"] as VNodeChild[])
     expect(result).toEqual(["a", "b", "c", "d"])
   })
 
@@ -79,7 +74,7 @@ describe("@pyreon/preact-compat", () => {
 
   test("cloneElement replaces children when provided", () => {
     const original = h("div", null, "old")
-    const cloned = cloneElement(original, null, "new")
+    const cloned = cloneElement(original, undefined, "new")
     expect(cloned.children).toContain("new")
     expect(cloned.children).not.toContain("old")
   })
@@ -106,7 +101,9 @@ describe("@pyreon/preact-compat", () => {
         super(props)
         this.state = { count: 0 }
       }
-      render() { return h("span", null, String(this.state.count)) }
+      override render() {
+        return h("span", null, String(this.state.count))
+      }
     }
     const c = new Counter({})
     expect(c.state.count).toBe(0)

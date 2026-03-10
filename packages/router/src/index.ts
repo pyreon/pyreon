@@ -72,4 +72,11 @@ export type { LoaderContext, RouteLoaderFn } from "./types"
 export { useLoaderData, prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "./loader"
 
 // Match utilities (useful for SSR route pre-fetching)
-export { resolveRoute, parseQuery, parseQueryMulti, stringifyQuery, buildPath, findRouteByName } from "./match"
+export {
+  resolveRoute,
+  parseQuery,
+  parseQueryMulti,
+  stringifyQuery,
+  buildPath,
+  findRouteByName,
+} from "./match"

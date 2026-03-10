@@ -13,7 +13,7 @@
  * state.items[0].text = "world"           // only text-tracking effects re-run
  */
 
-import { signal, type Signal } from "./signal"
+import { type Signal, signal } from "./signal"
 
 // WeakMap: raw object → its reactive proxy (ensures each raw object gets one proxy)
 const proxyCache = new WeakMap<object, object>()
@@ -22,7 +22,11 @@ const IS_STORE = Symbol("pyreon.store")
 
 /** Returns true if the value is a createStore proxy. */
 export function isStore(value: unknown): boolean {
-  return value !== null && typeof value === "object" && (value as Record<symbol, unknown>)[IS_STORE] === true
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    (value as Record<symbol, unknown>)[IS_STORE] === true
+  )
 }
 
 /**

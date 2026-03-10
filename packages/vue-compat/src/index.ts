@@ -18,25 +18,16 @@
  *             `import { ref, computed, watch } from "@pyreon/vue-compat"`
  */
 
+import { Fragment, createContext, onMount, onUnmount, onUpdate, h as pyreonH } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
 import {
-  signal,
-  computed as pyreonComputed,
-  effect,
-  batch,
-  nextTick as pyreonNextTick,
-  createStore,
   type Signal,
+  createStore,
+  effect,
+  computed as pyreonComputed,
+  nextTick as pyreonNextTick,
+  signal,
 } from "@pyreon/reactivity"
-import {
-  h as pyreonH,
-  Fragment,
-  onMount,
-  onUnmount,
-  onUpdate,
-  createContext,
-  useContext,
-} from "@pyreon/core"
-import type { VNodeChild, ComponentFn, Props } from "@pyreon/core"
 import { mount as pyreonMount } from "@pyreon/runtime-dom"
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
@@ -101,7 +92,9 @@ export function triggerRef<T>(r: Ref<T>): void {
  * Returns `true` if the value is a ref (created by `ref()` or `computed()`).
  */
 export function isRef(val: unknown): val is Ref {
-  return val !== null && typeof val === "object" && (val as Record<symbol, unknown>)[V_IS_REF] === true
+  return (
+    val !== null && typeof val === "object" && (val as Record<symbol, unknown>)[V_IS_REF] === true
+  )
 }
 
 /**
@@ -305,7 +298,10 @@ export function watchEffect(fn: () => void): () => void {
  * In Pyreon there is no distinction between beforeMount and mounted.
  */
 export function onMounted(fn: () => void): void {
-  onMount(fn)
+  onMount(() => {
+    fn()
+    return undefined
+  })
 }
 
 /**
@@ -332,7 +328,10 @@ export function onUpdated(fn: () => void): void {
  * In Pyreon there is no pre-mount phase — maps to `onMount()`.
  */
 export function onBeforeMount(fn: () => void): void {
-  onMount(fn)
+  onMount(() => {
+    fn()
+    return undefined
+  })
 }
 
 /**

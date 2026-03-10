@@ -28,27 +28,27 @@ export type { VNode as ReactNode, VNodeChild, Props } from "@pyreon/core"
 export { onMount as useLayoutEffect } from "@pyreon/core"
 
 import {
-  signal,
-  computed,
-  effect,
-  batch,
-  createSelector,
-  runUntracked,
-  getCurrentScope,
-} from "@pyreon/reactivity"
-import {
+  ErrorBoundary,
+  Portal,
+  Suspense,
+  createContext,
+  createRef,
+  onErrorCaptured,
   onMount,
   onUnmount,
   onUpdate,
-  onErrorCaptured,
-  createRef,
-  createContext,
   useContext,
-  Portal,
-  Suspense,
-  ErrorBoundary,
 } from "@pyreon/core"
-import type { VNodeChild, CleanupFn, Props, ComponentFn, LazyComponent } from "@pyreon/core"
+import type { CleanupFn, ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
+import {
+  batch,
+  computed,
+  createSelector,
+  effect,
+  getCurrentScope,
+  runUntracked,
+  signal,
+} from "@pyreon/reactivity"
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -130,7 +130,10 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
  * Drop-in for React's `useCallback`.
  * In Pyreon, components run once so callbacks are never recreated — returns `fn` as-is.
  */
-export function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T {
+export function useCallback<T extends (...args: unknown[]) => unknown>(
+  fn: T,
+  _deps?: unknown[],
+): T {
   return fn
 }
 
@@ -238,7 +241,9 @@ export function useImperativeHandle<T>(
 ): void {
   onMount((): undefined => {
     if (ref) ref.current = init()
-    onUnmount(() => { if (ref) ref.current = null })
+    onUnmount(() => {
+      if (ref) ref.current = null
+    })
   })
 }
 

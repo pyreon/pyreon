@@ -8,8 +8,12 @@ function buildTbody(n: number): HTMLTableSectionElement {
   document.body.appendChild(tbody)
   for (let i = 0; i < n; i++) {
     const tr = document.createElement("tr")
-    const td1 = document.createElement("td"); td1.textContent = String(i); tr.appendChild(td1)
-    const td2 = document.createElement("td"); td2.textContent = "label"+i; tr.appendChild(td2)
+    const td1 = document.createElement("td")
+    td1.textContent = String(i)
+    tr.appendChild(td1)
+    const td2 = document.createElement("td")
+    td2.textContent = "label" + i
+    tr.appendChild(td2)
     tbody.appendChild(tr)
   }
   return tbody
@@ -24,7 +28,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
   range.setEnd(tbody, tbody.childNodes.length)
   range.deleteContents()
   const t1 = performance.now()
-  console.log(`range.deleteContents():        ${(t1-t0).toFixed(1)}ms`)
+  console.log(`range.deleteContents():        ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -34,7 +38,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
   const t0 = performance.now()
   while (tbody.firstChild) tbody.removeChild(tbody.firstChild)
   const t1 = performance.now()
-  console.log(`while removeChild:             ${(t1-t0).toFixed(1)}ms`)
+  console.log(`while removeChild:             ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -44,7 +48,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
   const t0 = performance.now()
   tbody.innerHTML = ""
   const t1 = performance.now()
-  console.log(`innerHTML = "":                ${(t1-t0).toFixed(1)}ms`)
+  console.log(`innerHTML = "":                ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -54,7 +58,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
   const t0 = performance.now()
   tbody.replaceChildren()
   const t1 = performance.now()
-  console.log(`replaceChildren():             ${(t1-t0).toFixed(1)}ms`)
+  console.log(`replaceChildren():             ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -62,10 +66,10 @@ function buildTbody(n: number): HTMLTableSectionElement {
 {
   const tbody = buildTbody(1000)
   const t0 = performance.now()
-  document.body.removeChild(tbody)  // detach
+  document.body.removeChild(tbody) // detach
   while (tbody.firstChild) tbody.removeChild(tbody.firstChild)
   const t1 = performance.now()
-  console.log(`detach+removeChild:            ${(t1-t0).toFixed(1)}ms`)
+  console.log(`detach+removeChild:            ${(t1 - t0).toFixed(1)}ms`)
   // (don't reattach)
 }
 
@@ -81,7 +85,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
     cur = next
   }
   const t1 = performance.now()
-  console.log(`move to fragment:              ${(t1-t0).toFixed(1)}ms`)
+  console.log(`move to fragment:              ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -93,8 +97,12 @@ function buildTbody(n: number): HTMLTableSectionElement {
   tbody.appendChild(startMarker)
   for (let i = 0; i < 1000; i++) {
     const tr = document.createElement("tr")
-    const td1 = document.createElement("td"); td1.textContent = String(i); tr.appendChild(td1)
-    const td2 = document.createElement("td"); td2.textContent = "label"+i; tr.appendChild(td2)
+    const td1 = document.createElement("td")
+    td1.textContent = String(i)
+    tr.appendChild(td1)
+    const td2 = document.createElement("td")
+    td2.textContent = "label" + i
+    tr.appendChild(td2)
     tbody.appendChild(tr)
   }
   tbody.appendChild(tailMarker)
@@ -105,7 +113,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
   range.setEndBefore(tailMarker)
   range.deleteContents()
   const t1 = performance.now()
-  console.log(`range between markers:         ${(t1-t0).toFixed(1)}ms`)
+  console.log(`range between markers:         ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }
 
@@ -117,8 +125,12 @@ function buildTbody(n: number): HTMLTableSectionElement {
   tbody.appendChild(startMarker)
   for (let i = 0; i < 1000; i++) {
     const tr = document.createElement("tr")
-    const td1 = document.createElement("td"); td1.textContent = String(i); tr.appendChild(td1)
-    const td2 = document.createElement("td"); td2.textContent = "label"+i; tr.appendChild(td2)
+    const td1 = document.createElement("td")
+    td1.textContent = String(i)
+    tr.appendChild(td1)
+    const td2 = document.createElement("td")
+    td2.textContent = "label" + i
+    tr.appendChild(td2)
     tbody.appendChild(tr)
   }
   tbody.appendChild(tailMarker)
@@ -132,6 +144,6 @@ function buildTbody(n: number): HTMLTableSectionElement {
     cur = next
   }
   const t1 = performance.now()
-  console.log(`move between markers to frag:  ${(t1-t0).toFixed(1)}ms`)
+  console.log(`move between markers to frag:  ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
 }

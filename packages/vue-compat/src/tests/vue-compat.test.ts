@@ -1,21 +1,21 @@
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
+import { mount } from "@pyreon/runtime-dom"
 import {
-  ref,
   computed,
-  watch,
-  watchEffect,
-  reactive,
-  readonly,
-  isRef,
-  unref,
-  toRefs,
-  nextTick,
   defineComponent,
   h,
+  isRef,
+  nextTick,
   onMounted,
   onUnmounted,
+  reactive,
+  readonly,
+  ref,
+  toRefs,
+  unref,
+  watch,
+  watchEffect,
 } from "../index"
-import { mount } from "@pyreon/runtime-dom"
 
 describe("@pyreon/vue-compat", () => {
   // ─── ref ────────────────────────────────────────────────────────────────
@@ -198,8 +198,12 @@ describe("@pyreon/vue-compat", () => {
     const Comp = defineComponent({
       name: "TestComp",
       setup() {
-        onMounted(() => { mounted.push("mounted") })
-        onUnmounted(() => { unmounted.push("unmounted") })
+        onMounted(() => {
+          mounted.push("mounted")
+        })
+        onUnmounted(() => {
+          unmounted.push("unmounted")
+        })
         return () => h("div", null, "test")
       },
     })

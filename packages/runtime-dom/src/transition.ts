@@ -1,6 +1,6 @@
-import { signal, effect, runUntracked } from "@pyreon/reactivity"
-import { createRef, onUnmount, h, Fragment } from "@pyreon/core"
-import type { VNodeChild, VNode, Props } from "@pyreon/core"
+import { Fragment, createRef, h, onUnmount } from "@pyreon/core"
+import type { Props, VNode, VNodeChild } from "@pyreon/core"
+import { effect, runUntracked, signal } from "@pyreon/reactivity"
 
 export interface TransitionProps {
   /**
@@ -60,12 +60,12 @@ export interface TransitionProps {
 export function Transition(props: TransitionProps): VNodeChild {
   const n = props.name ?? "pyreon"
   const cls = {
-    ef: props.enterFrom  ?? `${n}-enter-from`,
+    ef: props.enterFrom ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,
-    et: props.enterTo    ?? `${n}-enter-to`,
-    lf: props.leaveFrom  ?? `${n}-leave-from`,
+    et: props.enterTo ?? `${n}-enter-to`,
+    lf: props.leaveFrom ?? `${n}-leave-from`,
     la: props.leaveActive ?? `${n}-leave-active`,
-    lt: props.leaveTo    ?? `${n}-leave-to`,
+    lt: props.leaveTo ?? `${n}-leave-to`,
   }
 
   // Ref injected into the child element so we can apply/remove classes
@@ -77,7 +77,8 @@ export function Transition(props: TransitionProps): VNodeChild {
   let initialized = false
 
   const applyEnter = (el: HTMLElement) => {
-    pendingLeaveCancel?.(); pendingLeaveCancel = null
+    pendingLeaveCancel?.()
+    pendingLeaveCancel = null
     props.onBeforeEnter?.(el)
     el.classList.remove(cls.lf, cls.la, cls.lt)
     el.classList.add(cls.ef, cls.ea)
@@ -122,22 +123,34 @@ export function Transition(props: TransitionProps): VNodeChild {
       initialized = true
       // On initial mount: animate only if `appear` is set
       if (visible && props.appear) {
-        queueMicrotask(() => { const el = ref.current; if (el) applyEnter(el) })
+        queueMicrotask(() => {
+          const el = ref.current
+          if (el) applyEnter(el)
+        })
       }
       return
     }
     if (visible) {
       if (!isMounted.peek()) isMounted.set(true)
       // Enter: queueMicrotask ensures the element is in the DOM before we touch it
-      queueMicrotask(() => { const el = ref.current; if (el) applyEnter(el) })
+      queueMicrotask(() => {
+        const el = ref.current
+        if (el) applyEnter(el)
+      })
     } else if (isMounted.peek()) {
       const el = ref.current
-      if (!el) { isMounted.set(false); return }
+      if (!el) {
+        isMounted.set(false)
+        return
+      }
       applyLeave(el)
     }
   })
 
-  onUnmount(() => { pendingLeaveCancel?.(); pendingLeaveCancel = null })
+  onUnmount(() => {
+    pendingLeaveCancel?.()
+    pendingLeaveCancel = null
+  })
 
   // Return a reactive getter. Each call clones the child VNode with our injected ref
   // so we can read / write classes on the underlying DOM element.
@@ -146,7 +159,7 @@ export function Transition(props: TransitionProps): VNodeChild {
   // mountReactive instead of the null/primitive text-node fast-path, which
   // cannot later be swapped for a VNode when the element enters.
   const emptyFragment = h(Fragment, null)
-  return (): VNodeChild => {
+  return (() => {
     if (!isMounted()) return emptyFragment
     if (!rawChild || typeof rawChild !== "object" || Array.isArray(rawChild)) {
       return rawChild ?? null
@@ -155,10 +168,12 @@ export function Transition(props: TransitionProps): VNodeChild {
     // Only inject ref into DOM element children — component children need ref forwarding
     if (typeof vnode.type !== "string") {
       if (typeof vnode.type === "function") {
-        console.warn("[pyreon] Transition child is a component. Wrap it in a DOM element (e.g. <div>) for animations to work.")
+        console.warn(
+          "[pyreon] Transition child is a component. Wrap it in a DOM element (e.g. <div>) for animations to work.",
+        )
       }
       return vnode
     }
     return { ...vnode, props: { ...vnode.props, ref } as Props }
-  }
+  }) as unknown as VNode
 }

@@ -41,7 +41,11 @@ export async function prefetchLoaderData(router: RouterInstance, path: string): 
     route.matched
       .filter((r) => r.loader)
       .map(async (r) => {
-        const data = await r.loader?.({ params: route.params, query: route.query, signal: ac.signal })
+        const data = await r.loader?.({
+          params: route.params,
+          query: route.query,
+          signal: ac.signal,
+        })
         router._loaderData.set(r, data)
       }),
   )
@@ -79,7 +83,10 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
  * mount(h(App, null), document.getElementById("app")!)
  */
-export function hydrateLoaderData(router: RouterInstance, serialized: Record<string, unknown>): void {
+export function hydrateLoaderData(
+  router: RouterInstance,
+  serialized: Record<string, unknown>,
+): void {
   if (!serialized || typeof serialized !== "object") return
   const route = router._resolve(router.currentRoute().path)
   for (const record of route.matched) {

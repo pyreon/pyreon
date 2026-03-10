@@ -3,7 +3,7 @@
  * Uses the playground's Vite dev server which exposes Pyreon on window.__pyreon.
  */
 
-import { test, expect } from "@playwright/test"
+import { expect, test } from "@playwright/test"
 
 // Navigate and wait for Pyreon to be available on window
 async function setupPyreonPage(page: import("@playwright/test").Page) {
@@ -41,7 +41,9 @@ test.describe("mount - low level", () => {
       const app = document.getElementById("app")!
       app.innerHTML = ""
       mount(
-        h("div", { id: "reactive-test" },
+        h(
+          "div",
+          { id: "reactive-test" },
           h("span", { id: "count-display" }, () => `Count: ${count()}`),
         ),
         app,
@@ -72,10 +74,8 @@ test.describe("mount - low level", () => {
       const app = document.getElementById("app")!
       app.innerHTML = ""
       mount(
-        h("ul", { id: "fruit-list" },
-          () => items().map((item: string) =>
-            h("li", { class: "fruit-item" }, item),
-          ),
+        h("ul", { id: "fruit-list" }, () =>
+          items().map((item: string) => h("li", { class: "fruit-item" }, item)),
         ),
         app,
       )
@@ -96,7 +96,9 @@ test.describe("mount - low level", () => {
 
     // Remove an item
     await page.evaluate(() => {
-      ;(window as any).__items.update((list: string[]) => list.filter((x: string) => x !== "Banana"))
+      ;(window as any).__items.update((list: string[]) =>
+        list.filter((x: string) => x !== "Banana"),
+      )
     })
     await expect(listItems).toHaveCount(3)
     await expect(listItems.nth(0)).toHaveText("Apple")
@@ -115,7 +117,9 @@ test.describe("mount - low level", () => {
       const app = document.getElementById("app")!
       app.innerHTML = ""
       mount(
-        h("div", { id: "show-test" },
+        h(
+          "div",
+          { id: "show-test" },
           h(Show, {
             when: () => visible(),
             children: h("p", { id: "show-content" }, "Now you see me"),
@@ -175,7 +179,9 @@ test.describe("mount - low level", () => {
 
       const Total = (props: { price: () => number; quantity: () => number }) => {
         const total = computed(() => props.price() * props.quantity())
-        return h("div", { id: "total" },
+        return h(
+          "div",
+          { id: "total" },
           h("span", { id: "total-value" }, () => `Total: $${total()}`),
         )
       }
@@ -183,7 +189,9 @@ test.describe("mount - low level", () => {
       const app = document.getElementById("app")!
       app.innerHTML = ""
       mount(
-        h("div", { id: "shop" },
+        h(
+          "div",
+          { id: "shop" },
           h("span", { id: "price-display" }, () => `Price: $${price()}`),
           h("span", { id: "qty-display" }, () => `Qty: ${quantity()}`),
           h(Total, {

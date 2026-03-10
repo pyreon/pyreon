@@ -1,17 +1,40 @@
-import { describe, expect, test, beforeEach } from "bun:test"
-import { createRouter, prefetchLoaderData, serializeLoaderData, hydrateLoaderData, lazy, useRouter, useRoute, RouterView, RouterLink, RouterProvider } from "../index"
-import type { RouteRecord, ResolvedRoute } from "../index"
-import type { RouterInstance } from "../types"
-import { resolveRoute, findRouteByName, buildNameIndex, buildPath, parseQuery, stringifyQuery, matchPath } from "../match"
-import { ScrollManager } from "../scroll"
-import { getActiveRouter, setActiveRouter } from "../router"
+import { beforeEach, describe, expect, test } from "bun:test"
 import { h } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
+import {
+  RouterLink,
+  RouterProvider,
+  RouterView,
+  createRouter,
+  hydrateLoaderData,
+  lazy,
+  prefetchLoaderData,
+  serializeLoaderData,
+  useRoute,
+  useRouter,
+} from "../index"
+import type { ResolvedRoute, RouteRecord } from "../index"
+import {
+  buildNameIndex,
+  buildPath,
+  findRouteByName,
+  matchPath,
+  parseQuery,
+  resolveRoute,
+  stringifyQuery,
+} from "../match"
+import { getActiveRouter, setActiveRouter } from "../router"
+import { ScrollManager } from "../scroll"
+import type { RouterInstance } from "../types"
 
 // Access internal _resolve without DOM
 function resolveOn(routes: RouteRecord[], path: string) {
   const router = createRouter(routes) as ReturnType<typeof createRouter> & {
-    _resolve(path: string): ReturnType<typeof import("../index").createRouter> extends { currentRoute: () => infer R } ? R : never
+    _resolve(
+      path: string,
+    ): ReturnType<typeof import("../index").createRouter> extends { currentRoute: () => infer R }
+      ? R
+      : never
   }
   return (router as unknown as { _resolve(p: string): unknown })._resolve(path)
 }
@@ -44,15 +67,16 @@ describe("route matching", () => {
   })
 
   test("extracts dynamic param", () => {
-    const r = resolveOn(routes, "/user/42") as { params: Record<string, string>; matched: unknown[] }
+    const r = resolveOn(routes, "/user/42") as {
+      params: Record<string, string>
+      matched: unknown[]
+    }
     expect(r.params.id).toBe("42")
     expect(r.matched.length).toBeGreaterThan(0)
   })
 
   test("returns empty matched for unknown path", () => {
-    const r = resolveOn([
-      { path: "/", component: Home },
-    ], "/unknown") as { matched: unknown[] }
+    const r = resolveOn([{ path: "/", component: Home }], "/unknown") as { matched: unknown[] }
     expect(r.matched).toHaveLength(0)
   })
 
@@ -126,9 +150,7 @@ describe("nested route matching", () => {
         path: "/admin",
         component: AdminLayout,
         meta: { requiresAuth: true, title: "Admin" },
-        children: [
-          { path: "users", component: AdminUsers, meta: { title: "Users" } },
-        ],
+        children: [{ path: "users", component: AdminUsers, meta: { title: "Users" } }],
       },
     ]
     const r = resolveRoute("/admin/users", routesWithMeta)
@@ -232,9 +254,7 @@ describe("findRouteByName", () => {
       path: "/admin",
       component: AdminLayout,
       name: "admin",
-      children: [
-        { path: "users", component: AdminUsers, name: "admin-users" },
-      ],
+      children: [{ path: "users", component: AdminUsers, name: "admin-users" }],
     },
   ]
 
@@ -275,9 +295,7 @@ describe("buildNameIndex", () => {
         path: "/admin",
         component: AdminLayout,
         name: "admin",
-        children: [
-          { path: "users", component: AdminUsers, name: "admin-users" },
-        ],
+        children: [{ path: "users", component: AdminUsers, name: "admin-users" }],
       },
     ]
     const index = buildNameIndex(rs)
@@ -437,8 +455,14 @@ describe("beforeEnter guard", () => {
         path: "/multi",
         component: About,
         beforeEnter: [
-          () => { order.push("g1"); return true },
-          () => { order.push("g2"); return true },
+          () => {
+            order.push("g1")
+            return true
+          },
+          () => {
+            order.push("g2")
+            return true
+          },
         ],
       },
     ]
@@ -454,10 +478,7 @@ describe("beforeEnter guard", () => {
       {
         path: "/blocked",
         component: About,
-        beforeEnter: [
-          () => true,
-          () => false,
-        ],
+        beforeEnter: [() => true, () => false],
       },
     ]
     const router = createRouter({ routes: guardRoutes, url: "/" })
@@ -471,7 +492,9 @@ describe("beforeEnter guard", () => {
       {
         path: "/throws",
         component: About,
-        beforeEnter: () => { throw new Error("guard error") },
+        beforeEnter: () => {
+          throw new Error("guard error")
+        },
       },
     ]
     const router = createRouter({ routes: guardRoutes, url: "/" })
@@ -510,8 +533,14 @@ describe("beforeEach global guard", () => {
   test("multiple beforeEach guards run in order", async () => {
     const order: number[] = []
     const router = createRouter({ routes, url: "/" })
-    router.beforeEach(() => { order.push(1); return true })
-    router.beforeEach(() => { order.push(2); return true })
+    router.beforeEach(() => {
+      order.push(1)
+      return true
+    })
+    router.beforeEach(() => {
+      order.push(2)
+      return true
+    })
     await router.push("/about")
     expect(order).toEqual([1, 2])
   })
@@ -537,7 +566,9 @@ describe("afterEach hook", () => {
   test("afterEach is called after navigation", async () => {
     let called = false
     const router = createRouter({ routes, url: "/" })
-    router.afterEach(() => { called = true })
+    router.afterEach(() => {
+      called = true
+    })
     await router.push("/about")
     expect(called).toBe(true)
   })
@@ -557,7 +588,9 @@ describe("afterEach hook", () => {
 
   test("afterEach errors are caught and do not break navigation", async () => {
     const router = createRouter({ routes, url: "/" })
-    router.afterEach(() => { throw new Error("hook error") })
+    router.afterEach(() => {
+      throw new Error("hook error")
+    })
     await router.push("/about")
     // Navigation should still succeed
     expect(router.currentRoute().path).toBe("/about")
@@ -566,8 +599,12 @@ describe("afterEach hook", () => {
   test("multiple afterEach hooks all run", async () => {
     const calls: number[] = []
     const router = createRouter({ routes, url: "/" })
-    router.afterEach(() => { calls.push(1) })
-    router.afterEach(() => { calls.push(2) })
+    router.afterEach(() => {
+      calls.push(1)
+    })
+    router.afterEach(() => {
+      calls.push(2)
+    })
     await router.push("/about")
     expect(calls).toEqual([1, 2])
   })
@@ -589,8 +626,22 @@ describe("beforeLeave guard", () => {
   test("beforeLeave runs before entering new route", async () => {
     const order: string[] = []
     const leaveRoutes: RouteRecord[] = [
-      { path: "/a", component: Home, beforeLeave: () => { order.push("leave-a"); return true } },
-      { path: "/b", component: User, beforeEnter: () => { order.push("enter-b"); return true } },
+      {
+        path: "/a",
+        component: Home,
+        beforeLeave: () => {
+          order.push("leave-a")
+          return true
+        },
+      },
+      {
+        path: "/b",
+        component: User,
+        beforeEnter: () => {
+          order.push("enter-b")
+          return true
+        },
+      },
     ]
     const router = createRouter({ routes: leaveRoutes, url: "/a" })
     await router.push("/b")
@@ -599,7 +650,7 @@ describe("beforeLeave guard", () => {
 
   test("beforeLeave can redirect", async () => {
     const leaveRoutes: RouteRecord[] = [
-      { path: "/a", component: Home, beforeLeave: (to) => to.path === "/b" ? "/c" : undefined },
+      { path: "/a", component: Home, beforeLeave: (to) => (to.path === "/b" ? "/c" : undefined) },
       { path: "/b", component: User },
       { path: "/c", component: Home },
     ]
@@ -615,8 +666,14 @@ describe("beforeLeave guard", () => {
         path: "/a",
         component: Home,
         beforeLeave: [
-          () => { order.push("g1"); return true },
-          () => { order.push("g2"); return true },
+          () => {
+            order.push("g1")
+            return true
+          },
+          () => {
+            order.push("g2")
+            return true
+          },
         ],
       },
       { path: "/b", component: User },
@@ -631,10 +688,7 @@ describe("beforeLeave guard", () => {
       {
         path: "/a",
         component: Home,
-        beforeLeave: [
-          () => true,
-          () => false,
-        ],
+        beforeLeave: [() => true, () => false],
       },
       { path: "/b", component: User },
     ]
@@ -747,12 +801,31 @@ describe("guard execution order", () => {
   test("order: beforeLeave → beforeEnter → beforeEach → afterEach", async () => {
     const order: string[] = []
     const orderedRoutes: RouteRecord[] = [
-      { path: "/a", component: Home, beforeLeave: () => { order.push("beforeLeave"); return true } },
-      { path: "/b", component: User, beforeEnter: () => { order.push("beforeEnter"); return true } },
+      {
+        path: "/a",
+        component: Home,
+        beforeLeave: () => {
+          order.push("beforeLeave")
+          return true
+        },
+      },
+      {
+        path: "/b",
+        component: User,
+        beforeEnter: () => {
+          order.push("beforeEnter")
+          return true
+        },
+      },
     ]
     const router = createRouter({ routes: orderedRoutes, url: "/a" })
-    router.beforeEach(() => { order.push("beforeEach"); return true })
-    router.afterEach(() => { order.push("afterEach") })
+    router.beforeEach(() => {
+      order.push("beforeEach")
+      return true
+    })
+    router.afterEach(() => {
+      order.push("afterEach")
+    })
     await router.push("/b")
     expect(order).toEqual(["beforeLeave", "beforeEnter", "beforeEach", "afterEach"])
   })
@@ -849,14 +922,18 @@ describe("route loaders — prefetchLoaderData", () => {
       {
         path: "/user/:id",
         component: User,
-        loader: async ({ params, query }) => { captured = { params, query }; return null },
+        loader: async ({ params, query }) => {
+          captured = { params, query }
+          return null
+        },
       },
     ]
     const router = createRouter(loaderRoutes) as RouterInstance
     await prefetchLoaderData(router, "/user/42?tab=profile")
 
-    expect(captured?.params.id).toBe("42")
-    expect(captured?.query.tab).toBe("profile")
+    if (!captured) throw new Error("expected captured")
+    expect((captured as { params: Record<string, string> }).params.id).toBe("42")
+    expect((captured as { query: Record<string, string> }).query.tab).toBe("profile")
   })
 
   test("multiple loaders on matched records run in parallel", async () => {
@@ -865,12 +942,18 @@ describe("route loaders — prefetchLoaderData", () => {
       {
         path: "/admin",
         component: Home,
-        loader: async () => { order.push("parent"); return "parent-data" },
+        loader: async () => {
+          order.push("parent")
+          return "parent-data"
+        },
         children: [
           {
             path: "users",
             component: About,
-            loader: async () => { order.push("child"); return "child-data" },
+            loader: async () => {
+              order.push("child")
+              return "child-data"
+            },
           },
         ],
       },
@@ -926,8 +1009,12 @@ describe("route loaders — serializeLoaderData / hydrateLoaderData", () => {
 
   test("hydrateLoaderData handles null/undefined gracefully", () => {
     const router = createRouter({ routes, url: "/" }) as RouterInstance
-    expect(() => hydrateLoaderData(router, null as unknown as Record<string, unknown>)).not.toThrow()
-    expect(() => hydrateLoaderData(router, undefined as unknown as Record<string, unknown>)).not.toThrow()
+    expect(() =>
+      hydrateLoaderData(router, null as unknown as Record<string, unknown>),
+    ).not.toThrow()
+    expect(() =>
+      hydrateLoaderData(router, undefined as unknown as Record<string, unknown>),
+    ).not.toThrow()
   })
 
   test("loader is aborted when navigation is superseded", async () => {
@@ -967,7 +1054,9 @@ describe("route loaders — serializeLoaderData / hydrateLoaderData", () => {
       {
         path: "/fail",
         component: About,
-        loader: async () => { throw new Error("loader failed") },
+        loader: async () => {
+          throw new Error("loader failed")
+        },
       },
     ]
     const router = createRouter({ routes: loaderRoutes, url: "/" })
@@ -1004,7 +1093,14 @@ describe("ScrollManager", () => {
   test("restore does not throw in SSR (no window check)", () => {
     const sm = new ScrollManager()
     const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/b", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     expect(() => sm.restore(to, from)).not.toThrow()
   })
 })
@@ -1114,10 +1210,7 @@ describe("RouterProvider", () => {
   test("renders children", () => {
     const el = container()
     const router = createRouter({ routes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h("span", null, "child-content")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h("span", null, "child-content")), el)
     expect(el.textContent).toContain("child-content")
   })
 
@@ -1129,10 +1222,7 @@ describe("RouterProvider", () => {
       capturedRouter = useRouter()
       return null
     }
-    mount(
-      h(RouterProvider, { router }, h(Checker, null)),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(Checker, null)), el)
     expect(capturedRouter).toBe(router)
   })
 
@@ -1163,14 +1253,9 @@ describe("RouterView", () => {
   test("renders matched route component at depth 0", () => {
     const el = container()
     const HomePage = () => h("span", null, "home-page")
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: HomePage },
-    ]
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: HomePage }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     expect(el.textContent).toContain("home-page")
   })
 
@@ -1180,10 +1265,7 @@ describe("RouterView", () => {
       { path: "/specific", component: () => h("span", null, "specific") },
     ]
     const router = createRouter({ routes: viewRoutes, url: "/nonexistent" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // The wrapper div exists but should have no rendered component content
     const text = el.textContent ?? ""
     expect(text).not.toContain("specific")
@@ -1197,25 +1279,18 @@ describe("RouterView", () => {
       {
         path: "/parent",
         component: ParentComp,
-        children: [
-          { path: "child", component: ChildComp },
-        ],
+        children: [{ path: "child", component: ChildComp }],
       },
     ]
     const router = createRouter({ routes: nestedViewRoutes, url: "/parent/child" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     expect(el.textContent).toContain("child-content")
   })
 
   test("accepts explicit router prop", () => {
     const el = container()
     const TestComp = () => h("span", null, "explicit-router")
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: TestComp },
-    ]
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: TestComp }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
     // Pass router directly via prop instead of context
     mount(h(RouterView, { router }), el)
@@ -1233,10 +1308,7 @@ describe("RouterView", () => {
       { path: "/user/:id", component: PropsComp, meta: { title: "User" } },
     ]
     const router = createRouter({ routes: viewRoutes, url: "/user/42?tab=profile" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     expect(capturedProps.params).toEqual({ id: "42" })
     expect((capturedProps.query as Record<string, string>).tab).toBe("profile")
     expect((capturedProps.meta as Record<string, string>).title).toBe("User")
@@ -1258,10 +1330,7 @@ describe("RouterView", () => {
     // Prefetch to populate loader data
     await prefetchLoaderData(router as RouterInstance, "/data")
 
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // Navigate to the data route
     await router.push("/data")
     // The component should render
@@ -1279,10 +1348,7 @@ describe("RouterLink", () => {
   test("renders an <a> tag with correct href (hash mode)", () => {
     const el = container()
     const router = createRouter({ routes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")), el)
     const anchor = el.querySelector("a")
     expect(anchor).not.toBeNull()
     expect(anchor?.getAttribute("href")).toBe("#/about")
@@ -1292,10 +1358,7 @@ describe("RouterLink", () => {
   test("renders an <a> tag with correct href (history mode)", () => {
     const el = container()
     const router = createRouter({ routes, mode: "history", url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")), el)
     const anchor = el.querySelector("a")
     expect(anchor?.getAttribute("href")).toBe("/about")
   })
@@ -1303,10 +1366,7 @@ describe("RouterLink", () => {
   test("uses to as default children text", () => {
     const el = container()
     const router = createRouter({ routes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/about" })),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/about" })), el)
     const anchor = el.querySelector("a")
     expect(anchor?.textContent).toBe("/about")
   })
@@ -1314,10 +1374,7 @@ describe("RouterLink", () => {
   test("applies active class when route matches", () => {
     const el = container()
     const router = createRouter({ routes, url: "/about" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")), el)
     const anchor = el.querySelector("a")
     const cls = anchor?.getAttribute("class") ?? ""
     expect(cls).toContain("router-link-active")
@@ -1328,8 +1385,14 @@ describe("RouterLink", () => {
     const el = container()
     const router = createRouter({ routes, url: "/about" })
     mount(
-      h(RouterProvider, { router },
-        h(RouterLink, { to: "/about", activeClass: "my-active", exactActiveClass: "my-exact" }, "About"),
+      h(
+        RouterProvider,
+        { router },
+        h(
+          RouterLink,
+          { to: "/about", activeClass: "my-active", exactActiveClass: "my-exact" },
+          "About",
+        ),
       ),
       el,
     )
@@ -1345,10 +1408,7 @@ describe("RouterLink", () => {
       { path: "/admin", component: Home, children: [{ path: "users", component: About }] },
     ]
     const router = createRouter({ routes: nestedRoutes, url: "/admin/users" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/admin" }, "Admin")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/admin" }, "Admin")), el)
     const anchor = el.querySelector("a")
     const cls = anchor?.getAttribute("class") ?? ""
     expect(cls).toContain("router-link-active")
@@ -1362,10 +1422,7 @@ describe("RouterLink", () => {
       { path: "/admin", component: Home, children: [{ path: "users", component: About }] },
     ]
     const router = createRouter({ routes: nestedRoutes, url: "/admin/users" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/admin", exact: true }, "Admin")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/admin", exact: true }, "Admin")), el)
     const anchor = el.querySelector("a")
     const cls = anchor?.getAttribute("class") ?? ""
     expect(cls).not.toContain("router-link-active")
@@ -1374,10 +1431,7 @@ describe("RouterLink", () => {
   test("root path / does not match all paths as prefix", () => {
     const el = container()
     const router = createRouter({ routes, url: "/about" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/" }, "Home")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/" }, "Home")), el)
     const anchor = el.querySelector("a")
     const cls = anchor?.getAttribute("class") ?? ""
     // "/" should not be active for "/about"
@@ -1387,10 +1441,7 @@ describe("RouterLink", () => {
   test("click triggers router.push", async () => {
     const el = container()
     const router = createRouter({ routes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/about" }, "About")), el)
     const anchor = el.querySelector("a")
     expect(anchor).not.toBeNull()
     // Simulate click
@@ -1428,13 +1479,17 @@ describe("RouterLink", () => {
     let loaderCalled = false
     const prefetchRoutes: RouteRecord[] = [
       { path: "/", component: Home },
-      { path: "/data", component: About, loader: async () => { loaderCalled = true; return "data" } },
+      {
+        path: "/data",
+        component: About,
+        loader: async () => {
+          loaderCalled = true
+          return "data"
+        },
+      },
     ]
     const router = createRouter({ routes: prefetchRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/data" }, "Data")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/data" }, "Data")), el)
     const anchor = el.querySelector("a") as HTMLAnchorElement
     expect(anchor).not.toBeNull()
     // applyProp converts onMouseEnter -> addEventListener("mouseEnter", ...) via:
@@ -1452,7 +1507,14 @@ describe("RouterLink", () => {
     let loaderCalled = false
     const prefetchRoutes: RouteRecord[] = [
       { path: "/", component: Home },
-      { path: "/data", component: About, loader: async () => { loaderCalled = true; return "data" } },
+      {
+        path: "/data",
+        component: About,
+        loader: async () => {
+          loaderCalled = true
+          return "data"
+        },
+      },
     ]
     const router = createRouter({ routes: prefetchRoutes, url: "/" })
     mount(
@@ -1467,7 +1529,14 @@ describe("RouterLink", () => {
     let loaderCallCount = 0
     const prefetchRoutes: RouteRecord[] = [
       { path: "/", component: Home },
-      { path: "/data", component: About, loader: async () => { loaderCallCount++; return "data" } },
+      {
+        path: "/data",
+        component: About,
+        loader: async () => {
+          loaderCallCount++
+          return "data"
+        },
+      },
     ]
     const router = createRouter({ routes: prefetchRoutes, url: "/" }) as RouterInstance
     await prefetchLoaderData(router, "/data")
@@ -1494,7 +1563,14 @@ describe("ScrollManager (DOM)", () => {
       scrolledTo = opts?.top
     }) as typeof window.scrollTo
     const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/b", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
     expect(scrolledTo).toBe(0)
     window.scrollTo = origScrollTo
@@ -1510,8 +1586,22 @@ describe("ScrollManager (DOM)", () => {
       const opts = args[0] as { top?: number }
       scrolledTo = opts?.top
     }) as typeof window.scrollTo
-    const to: ResolvedRoute = { path: "/target", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/other", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const to: ResolvedRoute = {
+      path: "/target",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    const from: ResolvedRoute = {
+      path: "/other",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
     expect(scrolledTo).toBe(0) // window.scrollY is 0 in happy-dom
     window.scrollTo = origScrollTo
@@ -1521,9 +1611,18 @@ describe("ScrollManager (DOM)", () => {
     const sm = new ScrollManager("none")
     let scrollCalled = false
     const origScrollTo = window.scrollTo
-    window.scrollTo = (() => { scrollCalled = true }) as typeof window.scrollTo
+    window.scrollTo = (() => {
+      scrollCalled = true
+    }) as typeof window.scrollTo
     const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/b", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
     expect(scrollCalled).toBe(false)
     window.scrollTo = origScrollTo
@@ -1539,7 +1638,14 @@ describe("ScrollManager (DOM)", () => {
       scrolledTo = opts?.top
     }) as typeof window.scrollTo
     const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/b", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
     expect(scrolledTo).toBe(250)
     window.scrollTo = origScrollTo
@@ -1555,10 +1661,24 @@ describe("ScrollManager (DOM)", () => {
     sm.save("/target")
     const origScrollTo = window.scrollTo
     window.scrollTo = (() => {}) as typeof window.scrollTo
-    const to: ResolvedRoute = { path: "/target", params: {}, query: {}, hash: "", matched: [], meta: {} }
-    const from: ResolvedRoute = { path: "/other", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const to: ResolvedRoute = {
+      path: "/target",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    const from: ResolvedRoute = {
+      path: "/other",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
-    expect(receivedSaved).toBe(0) // saved position exists (0 from happy-dom)
+    expect(receivedSaved as unknown as number).toBe(0) // saved position exists (0 from happy-dom)
     window.scrollTo = origScrollTo
   })
 
@@ -1566,9 +1686,25 @@ describe("ScrollManager (DOM)", () => {
     const sm = new ScrollManager("top")
     let scrollCalled = false
     const origScrollTo = window.scrollTo
-    window.scrollTo = (() => { scrollCalled = true }) as typeof window.scrollTo
-    const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: { scrollBehavior: "none" } }
-    const from: ResolvedRoute = { path: "/b", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    window.scrollTo = (() => {
+      scrollCalled = true
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = {
+      path: "/a",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: { scrollBehavior: "none" },
+    }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
     sm.restore(to, from)
     expect(scrollCalled).toBe(false)
     window.scrollTo = origScrollTo
@@ -1654,9 +1790,7 @@ describe("nested route matching with params", () => {
       {
         path: "/user/:id",
         component: Home,
-        children: [
-          { path: "posts", component: About },
-        ],
+        children: [{ path: "posts", component: About }],
       },
     ]
     const r = resolveRoute("/user/42/posts", paramNested)
@@ -1669,9 +1803,7 @@ describe("nested route matching with params", () => {
       {
         path: "/org/:orgId",
         component: Home,
-        children: [
-          { path: "team/:teamId", component: About },
-        ],
+        children: [{ path: "team/:teamId", component: About }],
       },
     ]
     const r = resolveRoute("/org/acme/team/dev", paramNested)
@@ -1685,9 +1817,7 @@ describe("nested route matching with params", () => {
       {
         path: "/admin",
         component: AdminLayout,
-        children: [
-          { path: "users", component: AdminUsers },
-        ],
+        children: [{ path: "users", component: AdminUsers }],
       },
     ]
     // /admin/settings does not match any child, and /admin/settings != /admin
@@ -1700,9 +1830,7 @@ describe("nested route matching with params", () => {
       {
         path: "/admin",
         component: AdminLayout,
-        children: [
-          { path: "users", component: AdminUsers },
-        ],
+        children: [{ path: "users", component: AdminUsers }],
       },
     ]
     // /admin exact matches the parent
@@ -1720,40 +1848,29 @@ describe("RouterView with lazy routes", () => {
     const LoadingComp = () => h("span", null, "loading...")
     const ActualComp = () => h("span", null, "loaded!")
     const lazyComp = lazy(
-      () => new Promise<{ default: typeof ActualComp }>((res) =>
-        setTimeout(() => res({ default: ActualComp }), 50),
-      ),
+      () =>
+        new Promise<{ default: typeof ActualComp }>((res) =>
+          setTimeout(() => res({ default: ActualComp }), 50),
+        ),
       { loading: LoadingComp },
     )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // Initially shows loading
     expect(el.textContent).toContain("loading...")
   })
 
   test("lazy route resolves and populates component cache", async () => {
     const ActualComp = () => h("span", null, "loaded!")
-    const lazyComp = lazy(
-      () => Promise.resolve(ActualComp),
-    )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const lazyComp = lazy(() => Promise.resolve(ActualComp))
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" }) as RouterInstance
     // Initially the cache is empty
     expect(router._componentCache.size).toBe(0)
     // Mount triggers the lazy load
     const el = container()
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // Wait for the Promise to resolve + signal update
     await new Promise<void>((r) => setTimeout(r, 100))
     // After lazy load, the resolved component is cached
@@ -1765,17 +1882,10 @@ describe("RouterView with lazy routes", () => {
   test("lazy route with module default export", async () => {
     const el = container()
     const ActualComp = () => h("span", null, "default-export")
-    const lazyComp = lazy(
-      () => Promise.resolve({ default: ActualComp }),
-    )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const lazyComp = lazy(() => Promise.resolve({ default: ActualComp }))
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     await new Promise<void>((r) => setTimeout(r, 50))
     expect(el.textContent).toContain("default-export")
   })
@@ -1795,14 +1905,9 @@ describe("RouterView lazy error handling", () => {
       },
       { error: ErrorComp },
     )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // Wait for initial attempt + 3 retries with exponential backoff
     // attempt 0 immediate, retry 1 at 500ms, retry 2 at 1000ms, retry 3 at 2000ms
     await new Promise<void>((r) => setTimeout(r, 4500))
@@ -1812,17 +1917,10 @@ describe("RouterView lazy error handling", () => {
 
   test("lazy route shows null when error component not provided and retries fail", async () => {
     const el = container()
-    const lazyComp = lazy(
-      () => Promise.reject(new Error("chunk failed")),
-    )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const lazyComp = lazy(() => Promise.reject(new Error("chunk failed")))
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     await new Promise<void>((r) => setTimeout(r, 4500))
     // The wrapper div exists but component content should be empty
     const wrapper = el.querySelector("[data-pyreon-router-view]")
@@ -1843,7 +1941,9 @@ describe("concurrent navigation cancels in-flight loaders", () => {
         path: "/slow",
         component: About,
         loader: async ({ signal }) => {
-          signal.addEventListener("abort", () => { slowAborted = true })
+          signal.addEventListener("abort", () => {
+            slowAborted = true
+          })
           await new Promise<void>((r) => setTimeout(r, 100))
           return "slow"
         },
@@ -1869,7 +1969,9 @@ describe("back() in DOM", () => {
     const router = createRouter({ routes })
     let backCalled = false
     const origBack = window.history.back
-    window.history.back = () => { backCalled = true }
+    window.history.back = () => {
+      backCalled = true
+    }
     router.back()
     expect(backCalled).toBe(true)
     window.history.back = origBack
@@ -1928,13 +2030,17 @@ describe("prefetch error handling", () => {
     let loaderCallCount = 0
     const failRoutes: RouteRecord[] = [
       { path: "/", component: Home },
-      { path: "/fail", component: About, loader: async () => { loaderCallCount++; throw new Error("prefetch error") } },
+      {
+        path: "/fail",
+        component: About,
+        loader: async () => {
+          loaderCallCount++
+          throw new Error("prefetch error")
+        },
+      },
     ]
     const router = createRouter({ routes: failRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterLink, { to: "/fail" }, "Fail")),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/fail" }, "Fail")), el)
     const anchor = el.querySelector("a") as HTMLAnchorElement
     anchor.dispatchEvent(new Event("mouseEnter"))
     await new Promise<void>((r) => setTimeout(r, 100))
@@ -1956,22 +2062,19 @@ describe("stale chunk detection", () => {
     // Mock window.location.reload
     const origReload = window.location.reload
     Object.defineProperty(window.location, "reload", {
-      value: () => { reloadCalled = true },
+      value: () => {
+        reloadCalled = true
+      },
       writable: true,
       configurable: true,
     })
 
-    const lazyComp = lazy(
-      () => Promise.reject(new TypeError("Failed to fetch dynamically imported module")),
+    const lazyComp = lazy(() =>
+      Promise.reject(new TypeError("Failed to fetch dynamically imported module")),
     )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     // Wait for all retries to exhaust (500 + 1000 + 2000 = 3500ms)
     await new Promise<void>((r) => setTimeout(r, 4500))
     expect(reloadCalled).toBe(true)
@@ -1989,22 +2092,17 @@ describe("stale chunk detection", () => {
     let reloadCalled = false
     const origReload = window.location.reload
     Object.defineProperty(window.location, "reload", {
-      value: () => { reloadCalled = true },
+      value: () => {
+        reloadCalled = true
+      },
       writable: true,
       configurable: true,
     })
 
-    const lazyComp = lazy(
-      () => Promise.reject(new SyntaxError("Unexpected token '<'")),
-    )
-    const viewRoutes: RouteRecord[] = [
-      { path: "/", component: lazyComp as unknown as typeof Home },
-    ]
+    const lazyComp = lazy(() => Promise.reject(new SyntaxError("Unexpected token '<'")))
+    const viewRoutes: RouteRecord[] = [{ path: "/", component: lazyComp as unknown as typeof Home }]
     const router = createRouter({ routes: viewRoutes, url: "/" })
-    mount(
-      h(RouterProvider, { router }, h(RouterView, {})),
-      el,
-    )
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
     await new Promise<void>((r) => setTimeout(r, 4500))
     expect(reloadCalled).toBe(true)
 
@@ -2039,7 +2137,10 @@ describe("router lifecycle", () => {
   test("beforeEach returns unregister function", async () => {
     const router = createRouter({ routes, url: "/" })
     const calls: string[] = []
-    const unregister = router.beforeEach(() => { calls.push("guard") })
+    const unregister = router.beforeEach(() => {
+      calls.push("guard")
+      return undefined
+    })
 
     await router.push("/")
     expect(calls).toEqual(["guard"])
@@ -2053,7 +2154,9 @@ describe("router lifecycle", () => {
   test("afterEach returns unregister function", async () => {
     const router = createRouter({ routes, url: "/" })
     const calls: string[] = []
-    const unregister = router.afterEach(() => { calls.push("hook") })
+    const unregister = router.afterEach(() => {
+      calls.push("hook")
+    })
 
     await router.push("/")
     expect(calls).toEqual(["hook"])
@@ -2067,12 +2170,9 @@ describe("router lifecycle", () => {
   test("RouterProvider calls destroy() on unmount", () => {
     const router = createRouter({ routes, url: "/" }) as RouterInstance
     // Add a guard so we can verify it gets cleared
-    router.beforeEach(() => {})
+    router.beforeEach(() => undefined)
     const el = container()
-    const unmount = mount(
-      h(RouterProvider, { router }, h("div", null, "app")),
-      el,
-    )
+    const unmount = mount(h(RouterProvider, { router }, h("div", null, "app")), el)
     expect(el.textContent).toBe("app")
     unmount()
     // After unmount, caches should be cleared
@@ -2083,6 +2183,6 @@ describe("router lifecycle", () => {
   test("destroy() is idempotent — calling twice does not throw", () => {
     const router = createRouter({ routes, url: "/" })
     router.destroy()
-    router.destroy()  // Should not throw
+    router.destroy() // Should not throw
   })
 })

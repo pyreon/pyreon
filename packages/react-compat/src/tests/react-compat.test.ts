@@ -1,24 +1,24 @@
 import { describe, expect, test } from "bun:test"
 import { h } from "@pyreon/core"
+import { effect, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
-import { signal, effect } from "@pyreon/reactivity"
+import { createRoot, render } from "../dom"
 import {
-  useState,
-  useReducer,
-  useEffect,
-  useMemo,
-  useCallback,
-  useRef,
-  memo,
-  useTransition,
-  useDeferredValue,
-  useId,
+  batch,
   createPortal,
   lazy,
-  batch,
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useId,
   useImperativeHandle,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useTransition,
 } from "../index"
-import { createRoot, render } from "../dom"
 
 function container(): HTMLElement {
   const el = document.createElement("div")
@@ -89,10 +89,13 @@ describe("useReducer", () => {
 
   test("initializer function is called once", () => {
     let calls = 0
-    const [state] = useReducer((s: number) => s, () => {
-      calls++
-      return 99
-    })
+    const [state] = useReducer(
+      (s: number) => s,
+      () => {
+        calls++
+        return 99
+      },
+    )
     expect(state()).toBe(99)
     expect(calls).toBe(1)
   })
@@ -241,7 +244,9 @@ describe("useTransition", () => {
     const [isPending, startTransition] = useTransition()
     expect(isPending).toBe(false)
     let ran = false
-    startTransition(() => { ran = true })
+    startTransition(() => {
+      ran = true
+    })
     expect(ran).toBe(true)
   })
 })
@@ -479,7 +484,9 @@ describe("useEffect — cleanup from effect", () => {
       useEffect(() => {
         s()
         effectRuns++
-        return () => { /* cleanup */ }
+        return () => {
+          /* cleanup */
+        }
       })
       return h("div", null, "cleanup")
     }

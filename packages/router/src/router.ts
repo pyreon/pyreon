@@ -1,7 +1,10 @@
-import { computed, signal } from "@pyreon/reactivity"
 import { createContext, useContext } from "@pyreon/core"
+import { computed, signal } from "@pyreon/reactivity"
+import { buildNameIndex, buildPath, resolveRoute } from "./match"
+import { ScrollManager } from "./scroll"
 import {
   type AfterEachHook,
+  type ComponentFn,
   type LoaderContext,
   type NavigationGuard,
   type NavigationGuardResult,
@@ -11,10 +14,7 @@ import {
   type RouterInstance,
   type RouterOptions,
   isLazy,
-  type ComponentFn,
 } from "./types"
-import { resolveRoute, buildPath, buildNameIndex } from "./match"
-import { ScrollManager } from "./scroll"
 
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
@@ -41,7 +41,10 @@ export function setActiveRouter(router: RouterInstance | null): void {
 
 export function useRouter(): Router {
   const router = useContext(RouterContext) ?? _activeRouter
-  if (!router) throw new Error("[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
   return router
 }
 
@@ -50,7 +53,10 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   Record<string, string>
 > {
   const router = useContext(RouterContext) ?? _activeRouter
-  if (!router) throw new Error("[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.")
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
   return router.currentRoute as never
 }
 
@@ -123,7 +129,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       return
     }
 
-    const gen = ++_navGen  // claim this navigation generation
+    const gen = ++_navGen // claim this navigation generation
     loadingSignal.update((n) => n + 1)
 
     const to = resolveRoute(path, routes)
@@ -145,8 +151,14 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           : [record.beforeLeave]
         for (const guard of routeGuards) {
           const result = await runGuard(guard, to, from)
-          if (gen !== _navGen) { loadingSignal.update((n) => n - 1); return }
-          if (result === false) { loadingSignal.update((n) => n - 1); return }
+          if (gen !== _navGen) {
+            loadingSignal.update((n) => n - 1)
+            return
+          }
+          if (result === false) {
+            loadingSignal.update((n) => n - 1)
+            return
+          }
           if (typeof result === "string") {
             loadingSignal.update((n) => n - 1)
             return navigate(result, replace, redirectDepth + 1)
@@ -163,8 +175,14 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           : [record.beforeEnter]
         for (const guard of routeGuards) {
           const result = await runGuard(guard, to, from)
-          if (gen !== _navGen) { loadingSignal.update((n) => n - 1); return }
-          if (result === false) { loadingSignal.update((n) => n - 1); return }
+          if (gen !== _navGen) {
+            loadingSignal.update((n) => n - 1)
+            return
+          }
+          if (result === false) {
+            loadingSignal.update((n) => n - 1)
+            return
+          }
           if (typeof result === "string") {
             loadingSignal.update((n) => n - 1)
             return navigate(result, replace, redirectDepth + 1)
@@ -176,8 +194,14 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     // Global beforeEach guards
     for (const guard of guards) {
       const result = await runGuard(guard, to, from)
-      if (gen !== _navGen) { loadingSignal.update((n) => n - 1); return }
-      if (result === false) { loadingSignal.update((n) => n - 1); return }
+      if (gen !== _navGen) {
+        loadingSignal.update((n) => n - 1)
+        return
+      }
+      if (result === false) {
+        loadingSignal.update((n) => n - 1)
+        return
+      }
       if (typeof result === "string") {
         loadingSignal.update((n) => n - 1)
         return navigate(result, replace, redirectDepth + 1)
@@ -199,7 +223,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           return r.loader(loaderCtx)
         }),
       )
-      if (gen !== _navGen) return  // superseded while loaders were running
+      if (gen !== _navGen) return // superseded while loaders were running
 
       for (let i = 0; i < loadableRecords.length; i++) {
         const result = results[i]
@@ -265,7 +289,9 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     // Run afterEach hooks
     for (const hook of afterHooks) {
-      try { hook(to, from) } catch (err) {
+      try {
+        hook(to, from)
+      } catch (err) {
         console.error("[pyreon-router] afterEach hook threw:", err)
       }
     }
@@ -297,9 +323,18 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     _onError: onError,
     _maxCacheSize: maxCacheSize,
 
-    async push(location: string | { name: string; params?: Record<string, string>; query?: Record<string, string> }) {
+    async push(
+      location:
+        | string
+        | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+    ) {
       if (typeof location === "string") return navigate(sanitizePath(location), false)
-      const path = resolveNamedPath(location.name, location.params ?? {}, location.query ?? {}, nameIndex)
+      const path = resolveNamedPath(
+        location.name,
+        location.params ?? {},
+        location.query ?? {},
+        nameIndex,
+      )
       return navigate(path, false)
     },
 

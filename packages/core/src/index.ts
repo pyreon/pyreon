@@ -15,7 +15,14 @@ export { h, Fragment, EMPTY_PROPS } from "./h"
 export { defineComponent, runWithHooks, propagateError, dispatchToErrorBoundary } from "./component"
 export { onMount, onUnmount, onUpdate, onErrorCaptured } from "./lifecycle"
 export type { Context } from "./context"
-export { createContext, useContext, withContext, pushContext, popContext, setContextStackProvider } from "./context"
+export {
+  createContext,
+  useContext,
+  withContext,
+  pushContext,
+  popContext,
+  setContextStackProvider,
+} from "./context"
 export type { Ref } from "./ref"
 export { createRef } from "./ref"
 export { mapArray } from "./map-array"

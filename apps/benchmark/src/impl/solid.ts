@@ -11,9 +11,9 @@
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createSignal, createSelector, createEffect, createComponent } from "solid-js"
+import { createComponent, createEffect, createSelector, createSignal } from "solid-js"
 import { For } from "solid-js"
-import { render, insert } from "solid-js/web"
+import { insert, render } from "solid-js/web"
 import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"
 
@@ -42,27 +42,34 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
 
     insert(
       tbody,
-      createComponent(For as unknown as (props: {
-        each: SolidRow[]
-        children: (row: SolidRow) => HTMLElement
-      }) => HTMLElement[], {
-        get each() { return rows() },
-        children(row: SolidRow) {
-          const tr = document.createElement("tr")
-          const td1 = document.createElement("td")
-          const td2 = document.createElement("td")
-          td1.textContent = String(row.id)
-          tr.appendChild(td1)
-          tr.appendChild(td2)
-          // Reactive label — only this row's td2 updates when label changes
-          createEffect(() => { td2.textContent = row.label() })
-          // O(1) selection via createSelector — only 2 effects fire per change
-          createEffect(() => {
-            tr.className = isSelected(row.id) ? "selected" : ""
-          })
-          return tr
+      createComponent(
+        For as unknown as (props: {
+          each: SolidRow[]
+          children: (row: SolidRow) => HTMLElement
+        }) => HTMLElement[],
+        {
+          get each() {
+            return rows()
+          },
+          children(row: SolidRow) {
+            const tr = document.createElement("tr")
+            const td1 = document.createElement("td")
+            const td2 = document.createElement("td")
+            td1.textContent = String(row.id)
+            tr.appendChild(td1)
+            tr.appendChild(td2)
+            // Reactive label — only this row's td2 updates when label changes
+            createEffect(() => {
+              td2.textContent = row.label()
+            })
+            // O(1) selection via createSelector — only 2 effects fire per change
+            createEffect(() => {
+              tr.className = isSelected(row.id) ? "selected" : ""
+            })
+            return tr
+          },
         },
-      }),
+      ),
     )
 
     return table
@@ -118,7 +125,10 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     if (updated.length >= 999) {
       const tmp = updated[1]
       const b = updated[998]
-      if (tmp && b) { updated[1] = b; updated[998] = tmp }
+      if (tmp && b) {
+        updated[1] = b
+        updated[998] = tmp
+      }
     }
     setRows(updated)
     await tick()

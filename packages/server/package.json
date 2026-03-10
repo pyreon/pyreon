@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/pyreon/pyreon.git", "directory": "packages/server" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/server"
+  },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/server#readme",
   "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
   "type": "module",

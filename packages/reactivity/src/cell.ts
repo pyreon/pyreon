@@ -46,7 +46,10 @@ export class Cell<T> {
       // Promote to Set
       if (!this._s) {
         this._s = new Set()
-        if (this._l) { this._s.add(this._l); this._l = null }
+        if (this._l) {
+          this._s.add(this._l)
+          this._l = null
+        }
       }
       this._s.add(listener)
     }
@@ -55,7 +58,9 @@ export class Cell<T> {
   subscribe(listener: () => void): () => void {
     this.listen(listener)
     if (this._l === listener) {
-      return () => { if (this._l === listener) this._l = null }
+      return () => {
+        if (this._l === listener) this._l = null
+      }
     }
     return () => this._s?.delete(listener)
   }

@@ -1,5 +1,4 @@
-import { h } from "@pyreon/core"
-import { signal, computed } from "@pyreon/reactivity"
+import { computed, signal } from "@pyreon/reactivity"
 
 interface Todo {
   id: number
@@ -20,17 +19,12 @@ export function TodoList() {
   const addTodo = () => {
     const text = input().trim()
     if (!text) return
-    todos.update((list) => [
-      ...list,
-      { id: Date.now(), text, done: false },
-    ])
+    todos.update((list) => [...list, { id: Date.now(), text, done: false }])
     input.set("")
   }
 
   const toggle = (id: number) => {
-    todos.update((list) =>
-      list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)),
-    )
+    todos.update((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
   const remove = (id: number) => {
@@ -61,11 +55,7 @@ export function TodoList() {
         {() =>
           todos().map((todo) => (
             <li class={todo.done ? "done" : ""} key={todo.id}>
-              <input
-                type="checkbox"
-                checked={todo.done}
-                onChange={() => toggle(todo.id)}
-              />
+              <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />
               <span>{todo.text}</span>
               <button class="remove" onClick={() => remove(todo.id)}>
                 ×

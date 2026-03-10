@@ -2,7 +2,7 @@
  * Browser tests for Pyreon's router — hash mode navigation in the browser.
  */
 
-import { test, expect } from "./fixtures"
+import { expect, test } from "./fixtures"
 
 test.describe("router", () => {
   test("renders the initial route", async ({ pyreonPage: page }) => {
@@ -21,10 +21,7 @@ test.describe("router", () => {
       })
 
       const app = document.getElementById("app")!
-      mount(
-        h(RouterProvider, { router }, h(RouterView, null)),
-        app,
-      )
+      mount(h(RouterProvider, { router }, h(RouterView, null)), app)
     })
 
     await expect(page.locator("#home")).toBeVisible()
@@ -45,14 +42,10 @@ test.describe("router", () => {
         ],
         mode: "hash",
       })
-
       ;(window as any).__router = router
 
       const app = document.getElementById("app")!
-      mount(
-        h(RouterProvider, { router }, h(RouterView, null)),
-        app,
-      )
+      mount(h(RouterProvider, { router }, h(RouterView, null)), app)
     })
 
     await expect(page.locator("#home")).toBeVisible()
@@ -67,7 +60,8 @@ test.describe("router", () => {
 
   test("RouterLink navigates on click", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView, RouterLink } = (window as any).__PYREON__
+      const { h, mount, createRouter, RouterProvider, RouterView, RouterLink } = (window as any)
+        .__PYREON__
 
       const Home = () => h("div", { id: "home" }, "Home Page")
       const About = () => h("div", { id: "about" }, "About Page")
@@ -82,8 +76,12 @@ test.describe("router", () => {
 
       const app = document.getElementById("app")!
       mount(
-        h(RouterProvider, { router },
-          h("nav", null,
+        h(
+          RouterProvider,
+          { router },
+          h(
+            "nav",
+            null,
             h(RouterLink, { to: "/" }, "Home"),
             h(RouterLink, { to: "/about" }, "About"),
           ),
@@ -105,7 +103,8 @@ test.describe("router", () => {
 
   test("route params are accessible in components", async ({ pyreonPage: page }) => {
     await page.evaluate(() => {
-      const { h, mount, createRouter, RouterProvider, RouterView, useRoute } = (window as any).__PYREON__
+      const { h, mount, createRouter, RouterProvider, RouterView, useRoute } = (window as any)
+        .__PYREON__
 
       const UserPage = () => {
         const route = useRoute()
@@ -119,14 +118,10 @@ test.describe("router", () => {
         ],
         mode: "hash",
       })
-
       ;(window as any).__router = router
 
       const app = document.getElementById("app")!
-      mount(
-        h(RouterProvider, { router }, h(RouterView, null)),
-        app,
-      )
+      mount(h(RouterProvider, { router }, h(RouterView, null)), app)
     })
 
     await page.evaluate(() => {
@@ -158,10 +153,7 @@ test.describe("router", () => {
       })
 
       const app = document.getElementById("app")!
-      mount(
-        h(RouterProvider, { router }, h(RouterView, null)),
-        app,
-      )
+      mount(h(RouterProvider, { router }, h(RouterView, null)), app)
     })
 
     await expect(page.locator("#home")).toBeVisible()

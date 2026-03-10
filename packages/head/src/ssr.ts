@@ -43,7 +43,10 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 
   const html = await renderToString(h(HeadInjector as ComponentFn, null))
   const titleTemplate = ctx.resolveTitleTemplate()
-  const head = ctx.resolve().map((tag) => serializeTag(tag, titleTemplate)).join("\n  ")
+  const head = ctx
+    .resolve()
+    .map((tag) => serializeTag(tag, titleTemplate))
+    .join("\n  ")
   return {
     html,
     head,
@@ -52,14 +55,13 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
   }
 }
 
-function serializeTag(
-  tag: HeadTag,
-  titleTemplate?: string | ((title: string) => string),
-): string {
+function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) => string)): string {
   if (tag.tag === "title") {
     const raw = tag.children ?? ""
     const title = titleTemplate
-      ? typeof titleTemplate === "function" ? titleTemplate(raw) : titleTemplate.replace(/%s/g, raw)
+      ? typeof titleTemplate === "function"
+        ? titleTemplate(raw)
+        : titleTemplate.replace(/%s/g, raw)
       : raw
     return `<title>${esc(title)}</title>`
   }

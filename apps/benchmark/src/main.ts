@@ -1,9 +1,9 @@
-import { runVanilla } from "./impl/vanilla"
-import { runReact } from "./impl/react"
-import { runVue } from "./impl/vue"
-import { runPyreon } from "./impl/pyreon"
 import { runPreact } from "./impl/preact"
+import { runPyreon } from "./impl/pyreon"
+import { runReact } from "./impl/react"
 import { runSolid } from "./impl/solid"
+import { runVanilla } from "./impl/vanilla"
+import { runVue } from "./impl/vue"
 import type { BenchSuite } from "./runner"
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
@@ -60,7 +60,9 @@ function buildTable(suites: BenchSuite[]) {
       }
       t += "</tr></thead><tbody>"
       for (const name of testNames) {
-        const means = subset.map((s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY)
+        const means = subset.map(
+          (s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY,
+        )
         const best = Math.min(...means)
         t += `<tr><td class="test-name">${name}</td>`
         for (const suite of subset) {

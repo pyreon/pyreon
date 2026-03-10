@@ -1,4 +1,4 @@
-import type { VNode, VNodeChild, Props } from "./types"
+import type { Props, VNode, VNodeChild } from "./types"
 
 /**
  * Symbol used as the VNode type for a Portal — runtime-dom mounts the

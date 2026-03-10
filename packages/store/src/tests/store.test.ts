@@ -93,12 +93,20 @@ describe("resetAllStores", () => {
   test("clears all registrations", () => {
     let runsA = 0
     let runsB = 0
-    const useA = defineStore("all-a", () => { runsA++; return {} })
-    const useB = defineStore("all-b", () => { runsB++; return {} })
+    const useA = defineStore("all-a", () => {
+      runsA++
+      return {}
+    })
+    const useB = defineStore("all-b", () => {
+      runsB++
+      return {}
+    })
 
-    useA(); useB()
+    useA()
+    useB()
     resetAllStores()
-    useA(); useB()
+    useA()
+    useB()
     expect(runsA).toBe(2)
     expect(runsB).toBe(2)
   })

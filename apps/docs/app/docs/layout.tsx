@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react'
-import { DocsLayout } from 'fumadocs-ui/layouts/docs'
-import { source } from '@/lib/source'
+import { source } from "@/lib/source"
+import { DocsLayout } from "fumadocs-ui/layouts/docs"
+import type { ReactNode } from "react"
 
 interface Props {
   children: ReactNode

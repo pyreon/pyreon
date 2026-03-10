@@ -3,7 +3,7 @@
  * Pre-renders HTML on the server side, then hydrates in the browser.
  */
 
-import { test, expect } from "./fixtures"
+import { expect, test } from "./fixtures"
 
 test.describe("hydration", () => {
   test("hydrates static HTML and preserves DOM", async ({ page }) => {
@@ -20,10 +20,7 @@ test.describe("hydration", () => {
 
       hydrateRoot(
         app,
-        h("div", { id: "greeting" },
-          h("span", null, "Hello"),
-          h("span", null, " World"),
-        ),
+        h("div", { id: "greeting" }, h("span", null, "Hello"), h("span", null, " World")),
       )
 
       // DOM should be reused, not recreated
@@ -47,10 +44,14 @@ test.describe("hydration", () => {
 
       hydrateRoot(
         app,
-        h("button", {
-          id: "btn",
-          onClick: () => count.set(count() + 1),
-        }, () => `Count: ${count()}`),
+        h(
+          "button",
+          {
+            id: "btn",
+            onClick: () => count.set(count() + 1),
+          },
+          () => `Count: ${count()}`,
+        ),
       )
     })
 
@@ -74,7 +75,12 @@ test.describe("hydration", () => {
       const name = signal("Pyreon")
       ;(window as any).__name = name
 
-      const Greeting = () => h("div", { id: "app-root" }, h("p", null, () => `Hello, ${name()}!`))
+      const Greeting = () =>
+        h(
+          "div",
+          { id: "app-root" },
+          h("p", null, () => `Hello, ${name()}!`),
+        )
       const app = document.getElementById("app")!
       hydrateRoot(app, h(Greeting, null))
     })

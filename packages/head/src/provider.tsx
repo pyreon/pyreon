@@ -1,6 +1,5 @@
-import { h } from "@pyreon/core"
-import { pushContext, popContext, onUnmount } from "@pyreon/core"
-import type { ComponentFn, VNodeChild, Props } from "@pyreon/core"
+import { onUnmount, popContext, pushContext } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
 import { HeadContext } from "./context"
 import type { HeadContextValue } from "./context"
 

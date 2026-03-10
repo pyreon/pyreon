@@ -1,7 +1,6 @@
-import { h } from "@pyreon/core"
 import { RouterLink, RouterProvider, RouterView, createRouter } from "@pyreon/router"
-import { Home } from "./pages/Home"
 import { About } from "./pages/About"
+import { Home } from "./pages/Home"
 
 const router = createRouter([
   { path: "/", component: Home, name: "home" },

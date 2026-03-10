@@ -2,7 +2,7 @@
  * Vue 3 benchmark — reactive refs + template rendering via h().
  * No JSX transform needed — uses Vue's h() directly.
  */
-import { createApp, ref, h, defineComponent } from "vue"
+import { createApp, defineComponent, h, ref } from "vue"
 import type { BenchSuite, Row } from "../runner"
 import { bench, buildRows, tick } from "../runner"
 
@@ -26,10 +26,7 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
                   key: row.id,
                   class: { selected: row.id === selectedId.value },
                 },
-                [
-                  h("td", null, String(row.id)),
-                  h("td", null, row.label),
-                ],
+                [h("td", null, String(row.id)), h("td", null, row.label)],
               ),
             ),
           ),

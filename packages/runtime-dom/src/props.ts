@@ -1,5 +1,5 @@
 import type { Props } from "@pyreon/core"
-import { renderEffect, batch } from "@pyreon/reactivity"
+import { batch, renderEffect } from "@pyreon/reactivity"
 
 type Cleanup = () => void
 
@@ -52,13 +52,75 @@ export function setSanitizer(fn: SanitizeFn | null): void {
 
 // Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)
 const SAFE_TAGS = new Set([
-  "a", "abbr", "address", "article", "aside", "b", "bdi", "bdo", "blockquote",
-  "br", "caption", "cite", "code", "col", "colgroup", "dd", "del", "details",
-  "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2",
-  "h3", "h4", "h5", "h6", "header", "hr", "i", "ins", "kbd", "li", "main",
-  "mark", "nav", "ol", "p", "pre", "q", "rp", "rt", "ruby", "s", "samp",
-  "section", "small", "span", "strong", "sub", "summary", "sup", "table",
-  "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "var", "wbr",
+  "a",
+  "abbr",
+  "address",
+  "article",
+  "aside",
+  "b",
+  "bdi",
+  "bdo",
+  "blockquote",
+  "br",
+  "caption",
+  "cite",
+  "code",
+  "col",
+  "colgroup",
+  "dd",
+  "del",
+  "details",
+  "dfn",
+  "div",
+  "dl",
+  "dt",
+  "em",
+  "figcaption",
+  "figure",
+  "footer",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "header",
+  "hr",
+  "i",
+  "ins",
+  "kbd",
+  "li",
+  "main",
+  "mark",
+  "nav",
+  "ol",
+  "p",
+  "pre",
+  "q",
+  "rp",
+  "rt",
+  "ruby",
+  "s",
+  "samp",
+  "section",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "table",
+  "tbody",
+  "td",
+  "tfoot",
+  "th",
+  "thead",
+  "time",
+  "tr",
+  "u",
+  "ul",
+  "var",
+  "wbr",
 ])
 
 // Attributes that can carry executable code
@@ -78,7 +140,8 @@ function fallbackSanitize(html: string): string {
 function sanitizeNode(node: Node): void {
   const children = Array.from(node.childNodes)
   for (const child of children) {
-    if (child.nodeType === 1) { // Element
+    if (child.nodeType === 1) {
+      // Element
       const el = child as Element
       const tag = el.tagName.toLowerCase()
       if (!SAFE_TAGS.has(tag)) {
@@ -110,7 +173,11 @@ export function sanitizeHtml(html: string): string {
   if (_customSanitizer) return _customSanitizer(html)
   // Native Sanitizer API (Chrome 105+)
   if (typeof window !== "undefined") {
-    const san = (window as unknown as { Sanitizer?: new () => { sanitizeFor(tag: string, html: string): Element } }).Sanitizer
+    const san = (
+      window as unknown as {
+        Sanitizer?: new () => { sanitizeFor(tag: string, html: string): Element }
+      }
+    ).Sanitizer
     if (san) {
       return new san().sanitizeFor("div", html).innerHTML
     }
@@ -141,7 +208,10 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
         cleanup = c
       } else {
         const prev = cleanup
-        cleanup = () => { prev(); c() }
+        cleanup = () => {
+          prev()
+          c()
+        }
       }
     }
   }
@@ -178,7 +248,9 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
   if (key === "dangerouslySetInnerHTML") {
     if (__DEV__) {
-      console.warn("[pyreon] dangerouslySetInnerHTML: ensure content is sanitized before rendering.")
+      console.warn(
+        "[pyreon] dangerouslySetInnerHTML: ensure content is sanitized before rendering.",
+      )
     }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
@@ -189,7 +261,11 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     const directive = value as Directive
     const cleanups: Cleanup[] = []
     directive(el as HTMLElement, (fn) => cleanups.push(fn))
-    return cleanups.length > 0 ? () => { for (const fn of cleanups) fn() } : null
+    return cleanups.length > 0
+      ? () => {
+          for (const fn of cleanups) fn()
+        }
+      : null
   }
 
   // n-show: toggle display based on a reactive boolean

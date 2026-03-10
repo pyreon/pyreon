@@ -16,19 +16,13 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import {
-  Fragment,
-  ForSymbol,
-  PortalSymbol,
-  runWithHooks,
-  reportError,
-} from "@pyreon/core"
-import type { VNode, VNodeChild, ForProps, PortalProps, ComponentFn, Ref } from "@pyreon/core"
-import { effectScope, setCurrentScope, runUntracked, effect } from "@pyreon/reactivity"
+import { ForSymbol, Fragment, PortalSymbol, reportError, runWithHooks } from "@pyreon/core"
+import type { ComponentFn, Ref, VNode, VNodeChild } from "@pyreon/core"
+import { effect, effectScope, runUntracked, setCurrentScope } from "@pyreon/reactivity"
+import { warnHydrationMismatch } from "./hydration-debug"
 import { mountChild } from "./mount"
 import { mountReactive } from "./nodes"
 import { applyProps } from "./props"
-import { warnHydrationMismatch } from "./hydration-debug"
 
 type Cleanup = () => void
 const noop: Cleanup = () => {}
@@ -38,9 +32,13 @@ const noop: Cleanup = () => {}
 /** Skip comment and whitespace-only text nodes, return first "real" node */
 function firstReal(node: ChildNode | null): ChildNode | null {
   while (node) {
-    if (node.nodeType === Node.COMMENT_NODE) { node = node.nextSibling; continue }
+    if (node.nodeType === Node.COMMENT_NODE) {
+      node = node.nextSibling
+      continue
+    }
     if (node.nodeType === Node.TEXT_NODE && (node as Text).data.trim() === "") {
-      node = node.nextSibling; continue
+      node = node.nextSibling
+      continue
     }
     return node
   }
@@ -74,7 +72,12 @@ function hydrateChild(
       cleanups.push(cleanup)
       cursor = next
     }
-    return [() => { for (const c of cleanups) c() }, cursor]
+    return [
+      () => {
+        for (const c of cleanups) c()
+      },
+      cursor,
+    ]
   }
 
   // ── Null / false / undefined ───────────────────────────────────────────────
@@ -97,7 +100,11 @@ function hydrateChild(
       return [cleanup, domNode]
     }
 
-    if (typeof initial === "string" || typeof initial === "number" || typeof initial === "boolean") {
+    if (
+      typeof initial === "string" ||
+      typeof initial === "number" ||
+      typeof initial === "boolean"
+    ) {
       // Reactive text — reuse the existing text node
       if (domNode?.nodeType === Node.TEXT_NODE) {
         const textNode = domNode as Text
@@ -149,10 +156,7 @@ function hydrateChild(
   // For — look for SSR hydration markers <!--pyreon-for--> ... <!--/pyreon-for-->
   if (vnode.type === ForSymbol) {
     // Check if SSR left boundary markers
-    if (
-      domNode?.nodeType === Node.COMMENT_NODE &&
-      (domNode as Comment).data === "pyreon-for"
-    ) {
+    if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === "pyreon-for") {
       // Remove the start marker, collect SSR-rendered children, remove end marker
       const startMarker = domNode
       let cursor: ChildNode | null = startMarker.nextSibling
@@ -165,7 +169,7 @@ function hydrateChild(
         cursor = cursor.nextSibling
       }
       const endMarker = cursor
-      const afterEnd = endMarker ? endMarker.nextSibling as ChildNode | null : null
+      const afterEnd = endMarker ? (endMarker.nextSibling as ChildNode | null) : null
 
       // Remove SSR-rendered items (the reactive For will re-create them)
       for (const n of ssrNodes) n.remove()
@@ -250,9 +254,10 @@ function hydrateElement(
   }
 
   // Mismatch — fall back to fresh mount
-  const actual = domNode?.nodeType === Node.ELEMENT_NODE
-    ? (domNode as Element).tagName.toLowerCase()
-    : domNode?.nodeType ?? "null"
+  const actual =
+    domNode?.nodeType === Node.ELEMENT_NODE
+      ? (domNode as Element).tagName.toLowerCase()
+      : (domNode?.nodeType ?? "null")
   warnHydrationMismatch("tag", vnode.type, actual, elPath)
   const cleanup = mountChild(vnode, parent, anchor)
   return [cleanup, domNode]
@@ -274,7 +279,12 @@ function hydrateChildren(
     cleanups.push(cleanup)
     cursor = next
   }
-  return [() => { for (const c of cleanups) c() }, cursor]
+  return [
+    () => {
+      for (const c of cleanups) c()
+    },
+    cursor,
+  ]
 }
 
 // ─── Component hydration ──────────────────────────────────────────────────────
@@ -296,7 +306,10 @@ function hydrateComponent(
   const componentName = (vnode.type as ComponentFn).name ?? "Anonymous"
   const mergedProps =
     vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
-      ? { ...vnode.props, children: vnode.children.length === 1 ? vnode.children[0] : vnode.children }
+      ? {
+          ...vnode.props,
+          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+        }
       : vnode.props
 
   let result: ReturnType<typeof runWithHooks>
@@ -306,7 +319,13 @@ function hydrateComponent(
     setCurrentScope(null)
     scope.stop()
     console.error(`[pyreon] Error hydrating component <${componentName}>:`, err)
-    reportError({ component: componentName, phase: "setup", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
+    reportError({
+      component: componentName,
+      phase: "setup",
+      error: err,
+      timestamp: Date.now(),
+      props: vnode.props as Record<string, unknown>,
+    })
     return [noop, domNode]
   }
   setCurrentScope(null)
@@ -327,7 +346,9 @@ function hydrateComponent(
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
   for (const fn of hooks.mount) {
     let c: (() => void) | undefined
-    scope.runInScope(() => { c = fn() })
+    scope.runInScope(() => {
+      c = fn()
+    })
     if (c) mountCleanups.push(c)
   }
 

@@ -1,40 +1,37 @@
 // @pyreon/solid-compat — SolidJS-compatible API shims running on Pyreon's reactive engine
 
 import {
-  signal as pyreonSignal,
-  computed as pyreonComputed,
-  effect as pyreonEffect,
-  batch as pyreonBatch,
-  runUntracked,
-  effectScope,
-  getCurrentScope,
-  setCurrentScope,
-  createSelector as pyreonCreateSelector,
-  EffectScope,
-} from "@pyreon/reactivity"
-import type { Signal as PyreonSignal, Computed, Effect } from "@pyreon/reactivity"
-import {
+  ErrorBoundary,
+  For,
+  Match,
+  Show,
+  Suspense,
+  Switch,
+  createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
-  createContext as pyreonCreateContext,
   useContext as pyreonUseContext,
-  Show,
-  Switch,
-  Match,
-  For,
-  Suspense,
-  ErrorBoundary,
 } from "@pyreon/core"
-import type { VNode, VNodeChild, Props, ComponentFn } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import {
+  type EffectScope,
+  effectScope,
+  getCurrentScope,
+  batch as pyreonBatch,
+  computed as pyreonComputed,
+  createSelector as pyreonCreateSelector,
+  effect as pyreonEffect,
+  signal as pyreonSignal,
+  runUntracked,
+  setCurrentScope,
+} from "@pyreon/reactivity"
 
 // ─── createSignal ────────────────────────────────────────────────────────────
 
 export type SignalGetter<T> = () => T
 export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
 
-export function createSignal<T>(
-  initialValue: T,
-): [SignalGetter<T>, SignalSetter<T>] {
+export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter<T>] {
   const s = pyreonSignal<T>(initialValue)
 
   const getter: SignalGetter<T> = () => s()
@@ -106,9 +103,9 @@ export function on<S extends (() => unknown) | AccessorArray, V>(
 
   return () => {
     // Read dependencies to register tracking
-    const input: D = (Array.isArray(deps)
-      ? (deps as (() => unknown)[]).map((d) => d())
-      : (deps as () => unknown)()) as D
+    const input: D = (
+      Array.isArray(deps) ? (deps as (() => unknown)[]).map((d) => d()) : (deps as () => unknown)()
+    ) as D
 
     if (!initialized) {
       initialized = true
@@ -143,14 +140,13 @@ export { pyreonCreateSelector as createSelector }
 
 // ─── mergeProps ──────────────────────────────────────────────────────────────
 
-export function mergeProps<T extends object[]>(
-  ...sources: [...T]
-): T[number] {
+export function mergeProps<T extends object[]>(...sources: [...T]): T[number] {
   const target = {} as Record<string, unknown>
   for (const source of sources) {
     const descriptors = Object.getOwnPropertyDescriptors(source)
     for (const key of Object.keys(descriptors)) {
       const desc = descriptors[key]
+      if (!desc) continue
       // Preserve getters for reactivity
       if (desc.get) {
         Object.defineProperty(target, key, {
@@ -184,6 +180,7 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   const descriptors = Object.getOwnPropertyDescriptors(props)
   for (const key of Object.keys(descriptors)) {
     const desc = descriptors[key]
+    if (!desc) continue
     const target = keySet.has(key) ? picked : rest
     if (desc.get) {
       Object.defineProperty(target, key, {

@@ -27,13 +27,8 @@
 
 import { h } from "@pyreon/core"
 import type { ComponentFn } from "@pyreon/core"
-import { mount, hydrateRoot } from "@pyreon/runtime-dom"
-import {
-  createRouter,
-  RouterProvider,
-  hydrateLoaderData,
-  type RouteRecord,
-} from "@pyreon/router"
+import { type RouteRecord, RouterProvider, createRouter, hydrateLoaderData } from "@pyreon/router"
+import { hydrateRoot, mount } from "@pyreon/runtime-dom"
 import type { HydrationStrategy } from "./island"
 
 // ─── Full app hydration ──────────────────────────────────────────────────────
@@ -60,9 +55,7 @@ export interface StartClientOptions {
 export function startClient(options: StartClientOptions): () => void {
   const { App, routes, container = "#app" } = options
 
-  const el = typeof container === "string"
-    ? document.querySelector(container)
-    : container
+  const el = typeof container === "string" ? document.querySelector(container) : container
 
   if (!el) {
     throw new Error(`[pyreon/client] Container "${container}" not found`)
@@ -128,7 +121,9 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     if (cleanup) cleanups.push(cleanup)
   }
 
-  return () => { for (const fn of cleanups) fn() }
+  return () => {
+    for (const fn of cleanups) fn()
+  }
 }
 
 function scheduleHydration(
@@ -138,7 +133,9 @@ function scheduleHydration(
   strategy: HydrationStrategy,
 ): (() => void) | null {
   let cancelled = false
-  const hydrate = () => { if (!cancelled) hydrateIsland(el, loader, propsJson) }
+  const hydrate = () => {
+    if (!cancelled) hydrateIsland(el, loader, propsJson)
+  }
 
   switch (strategy) {
     case "load":
@@ -148,10 +145,16 @@ function scheduleHydration(
     case "idle": {
       if ("requestIdleCallback" in window) {
         const id = requestIdleCallback(hydrate)
-        return () => { cancelled = true; cancelIdleCallback(id) }
+        return () => {
+          cancelled = true
+          cancelIdleCallback(id)
+        }
       }
       const id = setTimeout(hydrate, 200)
-      return () => { cancelled = true; clearTimeout(id) }
+      return () => {
+        cancelled = true
+        clearTimeout(id)
+      }
     }
 
     case "visible":
@@ -176,7 +179,10 @@ function scheduleHydration(
           }
         }
         mql.addEventListener("change", onChange)
-        return () => { cancelled = true; mql.removeEventListener("change", onChange) }
+        return () => {
+          cancelled = true
+          mql.removeEventListener("change", onChange)
+        }
       }
       hydrate()
       return null
@@ -204,7 +210,10 @@ async function hydrateIsland(
     const Comp = typeof mod === "function" ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
-    console.error(`[pyreon/client] Failed to hydrate island "${el.getAttribute("data-component") ?? "unknown"}":`, err)
+    console.error(
+      `[pyreon/client] Failed to hydrate island "${el.getAttribute("data-component") ?? "unknown"}":`,
+      err,
+    )
   }
 }
 

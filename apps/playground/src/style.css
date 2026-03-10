@@ -1,4 +1,10 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 :root {
   --bg: #0f0f11;
@@ -54,7 +60,9 @@ nav a {
   transition: color 0.15s;
 }
 
-nav a:hover { color: var(--text) }
+nav a:hover {
+  color: var(--text);
+}
 
 main {
   display: flex;
@@ -143,8 +151,12 @@ input[type="text"] {
   transition: border-color 0.15s;
 }
 
-input[type="text"]:focus { border-color: var(--accent) }
-input[type="text"]::placeholder { color: var(--muted) }
+input[type="text"]:focus {
+  border-color: var(--accent);
+}
+input[type="text"]::placeholder {
+  color: var(--muted);
+}
 
 .todo-list {
   list-style: none;
@@ -164,10 +176,16 @@ input[type="text"]::placeholder { color: var(--muted) }
   transition: opacity 0.2s;
 }
 
-.todo-list li.done { opacity: 0.45 }
-.todo-list li.done span { text-decoration: line-through }
+.todo-list li.done {
+  opacity: 0.45;
+}
+.todo-list li.done span {
+  text-decoration: line-through;
+}
 
-.todo-list span { flex: 1 }
+.todo-list span {
+  flex: 1;
+}
 
 button.remove {
   padding: 0.2rem 0.5rem;
@@ -176,7 +194,10 @@ button.remove {
   line-height: 1;
 }
 
-button.remove:hover { color: var(--danger); border-color: var(--danger) }
+button.remove:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
 
 /* About */
 .card ul {
@@ -187,4 +208,6 @@ button.remove:hover { color: var(--danger); border-color: var(--danger) }
   margin-top: 1rem;
 }
 
-.card ul li { padding: 0.25rem 0 }
+.card ul li {
+  padding: 0.25rem 0;
+}

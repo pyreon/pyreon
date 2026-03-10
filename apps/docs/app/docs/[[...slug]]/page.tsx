@@ -1,8 +1,8 @@
-import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
-import { DocsPage, DocsBody, DocsTitle, DocsDescription } from 'fumadocs-ui/page'
-import { source } from '@/lib/source'
-import { getMDXComponents } from '@/mdx-components'
+import { source } from "@/lib/source"
+import { getMDXComponents } from "@/mdx-components"
+import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/page"
+import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 
 interface Props {
   params: Promise<{ slug?: string[] }>
@@ -16,14 +16,9 @@ export default async function Page({ params }: Props) {
   const MDX = page.data.body
 
   return (
-    <DocsPage
-      toc={page.data.toc}
-      tableOfContent={{ style: 'clerk' }}
-    >
+    <DocsPage toc={page.data.toc} tableOfContent={{ style: "clerk" }}>
       <DocsTitle>{page.data.title}</DocsTitle>
-      {page.data.description && (
-        <DocsDescription>{page.data.description}</DocsDescription>
-      )}
+      {page.data.description && <DocsDescription>{page.data.description}</DocsDescription>}
       <DocsBody>
         <MDX components={getMDXComponents()} />
       </DocsBody>

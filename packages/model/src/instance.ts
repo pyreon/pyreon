@@ -1,16 +1,20 @@
 import { signal } from "@pyreon/reactivity"
-import type { Signal } from "@pyreon/reactivity"
-import { MODEL_BRAND } from "./types"
-import type { StateShape, ModelInstance, Snapshot, InstanceMeta } from "./types"
-import { instanceMeta } from "./registry"
-import { trackedSignal, onPatch } from "./patch"
+import type { Computed, Signal } from "@pyreon/reactivity"
 import { runAction } from "./middleware"
+import { onPatch, trackedSignal } from "./patch"
+import { instanceMeta } from "./registry"
+import { MODEL_BRAND } from "./types"
+import type { InstanceMeta, ModelInstance, Snapshot, StateShape } from "./types"
 
 // ─── Model definition detection ───────────────────────────────────────────────
 
 interface AnyModelDef {
   readonly [MODEL_BRAND]: true
-  readonly _config: ModelConfig<StateShape, Record<string, (...args: unknown[]) => unknown>, Record<string, Signal<unknown>>>
+  readonly _config: ModelConfig<
+    StateShape,
+    Record<string, (...args: unknown[]) => unknown>,
+    Record<string, Signal<unknown>>
+  >
 }
 
 function isModelDef(v: unknown): v is AnyModelDef {
@@ -35,7 +39,7 @@ export interface ModelConfig<TState extends StateShape, TActions, TViews> {
 export function createInstance<
   TState extends StateShape,
   TActions extends Record<string, (...args: any[]) => any>,
-  TViews extends Record<string, Signal<any>>,
+  TViews extends Record<string, Signal<any> | Computed<any>>,
 >(
   config: ModelConfig<TState, TActions, TViews>,
   initial: Partial<Snapshot<TState>>,
@@ -58,13 +62,18 @@ export function createInstance<
 
   // `self` is a live proxy so that actions/views always see the final
   // (fully-populated) instance — including wrapped actions added later.
-  const self = new Proxy(instance, { get(_, k) { return instance[k as string] } })
+  const self = new Proxy(instance, {
+    get(_, k) {
+      return instance[k as string]
+    },
+  })
 
   // ── 1. State signals ──────────────────────────────────────────────────────
   for (const [key, defaultValue] of Object.entries(config.state)) {
     meta.stateKeys.push(key)
     const path = `/${key}`
-    const initValue: unknown = key in initial ? (initial as Record<string, unknown>)[key] : undefined
+    const initValue: unknown =
+      key in initial ? (initial as Record<string, unknown>)[key] : undefined
 
     let rawSig: Signal<unknown>
 
@@ -84,7 +93,12 @@ export function createInstance<
       rawSig = signal(initValue !== undefined ? initValue : defaultValue)
     }
 
-    const tracked = trackedSignal(rawSig, path, (p) => meta.emitPatch(p), () => meta.patchListeners.size > 0)
+    const tracked = trackedSignal(
+      rawSig,
+      path,
+      (p) => meta.emitPatch(p),
+      () => meta.patchListeners.size > 0,
+    )
     instance[key] = tracked
   }
 

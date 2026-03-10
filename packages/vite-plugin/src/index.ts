@@ -111,13 +111,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
             const fullUrl = new URL(url, origin)
             const request = new Request(fullUrl.href, {
               method: req.method,
-              headers: Object.entries(req.headers).reduce(
-                (h, [k, v]) => {
-                  if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v)
-                  return h
-                },
-                new Headers(),
-              ),
+              headers: Object.entries(req.headers).reduce((h, [k, v]) => {
+                if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v)
+                return h
+              }, new Headers()),
             })
 
             const response: Response = await handler(request)

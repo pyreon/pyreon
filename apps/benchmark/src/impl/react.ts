@@ -52,7 +52,9 @@ function App({
   const onSelect = useCallback((id: number) => setSelected(id), [])
 
   // useEffect fires after React commits — pass setters out so the caller knows React is ready
-  useEffect(() => { onMounted({ setRows, setSelected }) }, [])
+  useEffect(() => {
+    onMounted({ setRows, setSelected })
+  }, [])
 
   return r(
     "table",
@@ -74,7 +76,9 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   // Capture setters via Promise — value is unknown at bundle time, so Rollup cannot
   // dead-code-eliminate the calls to setRows/setSelected below.
   let resolveSetters!: (setters: Setters) => void
-  const settersPromise = new Promise<Setters>((res) => { resolveSetters = res })
+  const settersPromise = new Promise<Setters>((res) => {
+    resolveSetters = res
+  })
 
   root.render(r(App, { onMounted: resolveSetters }))
   const { setRows: reactSetRows, setSelected: reactSetSelected } = await settersPromise
@@ -138,7 +142,10 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
     if (updated.length >= 999) {
       const tmp = updated[1]
       const b = updated[998]
-      if (tmp && b) { updated[1] = b; updated[998] = tmp }
+      if (tmp && b) {
+        updated[1] = b
+        updated[998] = tmp
+      }
     }
     currentRows = updated
     await setRows(currentRows)

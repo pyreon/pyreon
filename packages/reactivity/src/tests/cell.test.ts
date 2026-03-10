@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { Cell, cell } from "../cell"
 
 describe("Cell", () => {
@@ -23,14 +23,16 @@ describe("Cell", () => {
 
   test("update() applies function to current value", () => {
     const c = cell(10)
-    c.update(v => v + 5)
+    c.update((v) => v + 5)
     expect(c.peek()).toBe(15)
   })
 
   test("listen() fires on set()", () => {
     const c = cell("a")
     let fired = false
-    c.listen(() => { fired = true })
+    c.listen(() => {
+      fired = true
+    })
     c.set("b")
     expect(fired).toBe(true)
   })
@@ -48,7 +50,8 @@ describe("Cell", () => {
 
   test("listen() promotes to Set with multiple listeners", () => {
     const c = cell(0)
-    let a = 0, b = 0
+    let a = 0,
+      b = 0
     c.listen(() => a++)
     c.listen(() => b++)
     expect(c._s).not.toBeNull()
@@ -71,7 +74,8 @@ describe("Cell", () => {
 
   test("subscribe() returns working unsubscribe (multi listener)", () => {
     const c = cell(0)
-    let a = 0, b = 0
+    let a = 0,
+      b = 0
     c.listen(() => a++)
     const unsub = c.subscribe(() => b++)
     c.set(1)
@@ -99,10 +103,10 @@ describe("Cell", () => {
   })
 
   test("NaN equality (Object.is)", () => {
-    const c = cell(NaN)
+    const c = cell(Number.NaN)
     let calls = 0
     c.listen(() => calls++)
-    c.set(NaN)
+    c.set(Number.NaN)
     expect(calls).toBe(0) // Object.is(NaN, NaN) is true
   })
 })

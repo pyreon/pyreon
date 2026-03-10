@@ -1,4 +1,4 @@
-import type { ResolvedRoute, RouteRecord, RouteMeta } from "./types"
+import type { ResolvedRoute, RouteMeta, RouteRecord } from "./types"
 
 // ─── Query string ─────────────────────────────────────────────────────────────
 
@@ -104,7 +104,10 @@ export function matchPath(pattern: string, path: string): Record<string, string>
  * Check if a path starts with a route's prefix (for nested route matching).
  * Returns the remaining path suffix, or null if no match.
  */
-function matchPrefix(pattern: string, path: string): { params: Record<string, string>; rest: string } | null {
+function matchPrefix(
+  pattern: string,
+  path: string,
+): { params: Record<string, string>; rest: string } | null {
   if (pattern === "(.*)" || pattern === "*") return { params: {}, rest: path }
 
   const patternParts = pattern.split("/").filter(Boolean)

@@ -1,5 +1,5 @@
-import type { ActionCall, MiddlewareFn, InstanceMeta } from "./types"
 import { instanceMeta } from "./registry"
+import type { ActionCall, InstanceMeta, MiddlewareFn } from "./types"
 
 // ─── Action runner ────────────────────────────────────────────────────────────
 
@@ -18,7 +18,9 @@ export function runAction(
 
   const dispatch = (idx: number, c: ActionCall): unknown => {
     if (idx >= meta.middlewares.length) return fn(...c.args)
-    return meta.middlewares[idx](c, (nextCall) => dispatch(idx + 1, nextCall))
+    const mw = meta.middlewares[idx]
+    if (!mw) return fn(...c.args)
+    return mw(c, (nextCall) => dispatch(idx + 1, nextCall))
   }
 
   return dispatch(0, call)
@@ -40,10 +42,7 @@ export function runAction(
  *   return result
  * })
  */
-export function addMiddleware(
-  instance: object,
-  middleware: MiddlewareFn,
-): () => void {
+export function addMiddleware(instance: object, middleware: MiddlewareFn): () => void {
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error("[@pyreon/model] addMiddleware: not a model instance")
   meta.middlewares.push(middleware)

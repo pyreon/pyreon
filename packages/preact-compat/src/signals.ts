@@ -6,10 +6,10 @@
  */
 
 import {
-  signal as pyreonSignal,
+  batch as pyreonBatch,
   computed as pyreonComputed,
   effect as pyreonEffect,
-  batch as pyreonBatch,
+  signal as pyreonSignal,
 } from "@pyreon/reactivity"
 import type { Effect } from "@pyreon/reactivity"
 

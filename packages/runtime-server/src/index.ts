@@ -14,7 +14,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks"
-import { Fragment, ForSymbol, Suspense, runWithHooks, setContextStackProvider } from "@pyreon/core"
+import { ForSymbol, Fragment, Suspense, runWithHooks, setContextStackProvider } from "@pyreon/core"
 import type { ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
 
 // ─── Streaming Suspense context ───────────────────────────────────────────────
@@ -109,14 +109,16 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
       }
       return withStoreContext(() =>
         _contextAls.run([], () =>
-          _streamCtxAls.run(ctx, async () => {
-            await streamNode(root, enqueue)
-            // Drain all pending Suspense resolutions (may spawn nested ones)
-            while (ctx.pending.length > 0) {
-              await Promise.all(ctx.pending.splice(0))
-            }
-            controller.close()
-          }).catch((err) => controller.error(err)),
+          _streamCtxAls
+            .run(ctx, async () => {
+              await streamNode(root, enqueue)
+              // Drain all pending Suspense resolutions (may spawn nested ones)
+              while (ctx.pending.length > 0) {
+                await Promise.all(ctx.pending.splice(0))
+              }
+              controller.close()
+            })
+            .catch((err) => controller.error(err)),
         ),
       )
     },
@@ -125,13 +127,22 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
 
 // ─── Streaming renderer ───────────────────────────────────────────────────────
 
-async function streamNode(node: VNodeChild | null | (() => VNodeChild), enqueue: (s: string) => void): Promise<void> {
+async function streamNode(
+  node: VNodeChild | null | (() => VNodeChild),
+  enqueue: (s: string) => void,
+): Promise<void> {
   if (typeof node === "function") {
     return streamNode((node as () => VNodeChild)(), enqueue)
   }
   if (node == null || node === false) return
-  if (typeof node === "string") { enqueue(escapeHtml(node)); return }
-  if (typeof node === "number" || typeof node === "boolean") { enqueue(String(node)); return }
+  if (typeof node === "string") {
+    enqueue(escapeHtml(node))
+    return
+  }
+  if (typeof node === "number" || typeof node === "boolean") {
+    enqueue(String(node))
+    return
+  }
   if (Array.isArray(node)) {
     for (const child of node) await streamNode(child, enqueue)
     return
@@ -171,7 +182,10 @@ async function streamNode(node: VNodeChild | null | (() => VNodeChild), enqueue:
     const attr = renderProp(key, value)
     if (attr) open += ` ${attr}`
   }
-  if (isVoidElement(tag)) { enqueue(`${open} />`); return }
+  if (isVoidElement(tag)) {
+    enqueue(`${open} />`)
+    return
+  }
   enqueue(`${open}>`)
   for (const child of vnode.children) await streamNode(child, enqueue)
   enqueue(`</${tag}>`)
@@ -347,8 +361,20 @@ function renderProp(key: string, value: unknown): string | null {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ])
 
 function isVoidElement(tag: string): boolean {

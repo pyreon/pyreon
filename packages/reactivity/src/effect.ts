@@ -1,5 +1,5 @@
-import { cleanupEffect, withTracking, setDepsCollector } from "./tracking"
 import { getCurrentScope } from "./scope"
+import { cleanupEffect, setDepsCollector, withTracking } from "./tracking"
 
 export interface Effect {
   dispose(): void

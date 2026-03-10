@@ -1,6 +1,6 @@
 import type { Signal } from "@pyreon/reactivity"
-import type { Patch, PatchListener } from "./types"
 import { instanceMeta, isModelInstance } from "./registry"
+import type { Patch, PatchListener } from "./types"
 
 // ─── Tracked signal ───────────────────────────────────────────────────────────
 
@@ -21,8 +21,7 @@ export function trackedSignal<T>(
 
   read.peek = (): T => inner.peek()
 
-  read.subscribe = (listener: () => void): (() => void) =>
-    inner.subscribe(listener)
+  read.subscribe = (listener: () => void): (() => void) => inner.subscribe(listener)
 
   read.set = (newValue: T): void => {
     const prev = inner.peek()
@@ -32,9 +31,7 @@ export function trackedSignal<T>(
     if (!Object.is(prev, newValue) && (!hasListeners || hasListeners())) {
       // For model instances, emit the snapshot rather than the live object
       // so patches are always plain JSON-serializable values.
-      const patchValue = isModelInstance(newValue)
-        ? snapshotValue(newValue as object)
-        : newValue
+      const patchValue = isModelInstance(newValue) ? snapshotValue(newValue as object) : newValue
       emitPatch({ op: "replace", path, value: patchValue })
     }
   }
@@ -53,6 +50,7 @@ function snapshotValue(instance: object): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of meta.stateKeys) {
     const sig = (instance as Record<string, Signal<unknown>>)[key]
+    if (!sig) continue
     const val = sig.peek()
     out[key] = isModelInstance(val) ? snapshotValue(val as object) : val
   }
@@ -72,10 +70,7 @@ function snapshotValue(instance: object): Record<string, unknown> {
  *   // { op: "replace", path: "/count", value: 6 }
  * })
  */
-export function onPatch(
-  instance: object,
-  listener: PatchListener,
-): () => void {
+export function onPatch(instance: object, listener: PatchListener): () => void {
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error("[@pyreon/model] onPatch: not a model instance")
   meta.patchListeners.add(listener)

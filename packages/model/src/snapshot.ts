@@ -1,7 +1,7 @@
 import { batch } from "@pyreon/reactivity"
 import type { Signal } from "@pyreon/reactivity"
-import type { StateShape, Snapshot } from "./types"
 import { instanceMeta, isModelInstance } from "./registry"
+import type { Snapshot, StateShape } from "./types"
 
 // ─── getSnapshot ──────────────────────────────────────────────────────────────
 
@@ -13,15 +13,14 @@ import { instanceMeta, isModelInstance } from "./registry"
  * getSnapshot(counter)  // { count: 6 }
  * getSnapshot(app)      // { profile: { name: "Alice" }, title: "My App" }
  */
-export function getSnapshot<TState extends StateShape>(
-  instance: object,
-): Snapshot<TState> {
+export function getSnapshot<TState extends StateShape>(instance: object): Snapshot<TState> {
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error("[@pyreon/model] getSnapshot: not a model instance")
 
   const out: Record<string, unknown> = {}
   for (const key of meta.stateKeys) {
     const sig = (instance as Record<string, Signal<unknown>>)[key]
+    if (!sig) continue
     const val = sig.peek()
     out[key] = isModelInstance(val) ? getSnapshot(val as object) : val
   }
@@ -49,6 +48,7 @@ export function applySnapshot<TState extends StateShape>(
     for (const key of meta.stateKeys) {
       if (!(key in snapshot)) continue
       const sig = (instance as Record<string, Signal<unknown>>)[key]
+      if (!sig) continue
       const val = (snapshot as Record<string, unknown>)[key]
       const current = sig.peek()
       if (isModelInstance(current)) {

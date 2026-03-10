@@ -12,9 +12,9 @@
  *   3. Optionally compares against a saved baseline (scripts/bundle-baseline.json)
  */
 
-import { gzipSync } from "node:zlib"
-import { readdir, readFile, writeFile } from "node:fs/promises"
+import { readFile, readdir, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
+import { gzipSync } from "node:zlib"
 
 const ROOT = resolve(import.meta.dir, "..")
 const PACKAGES_DIR = join(ROOT, "packages")

@@ -1,20 +1,20 @@
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import { computed, effect } from "@pyreon/reactivity"
 import type { Patch } from "../index"
-import { model, getSnapshot, applySnapshot, onPatch, addMiddleware } from "../index"
+import { addMiddleware, applySnapshot, getSnapshot, model, onPatch } from "../index"
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 const Counter = model({
   state: { count: 0 },
   views: (self) => ({
-    doubled:    computed(() => self.count() * 2),
+    doubled: computed(() => self.count() * 2),
     isPositive: computed(() => self.count() > 0),
   }),
   actions: (self) => ({
-    inc:   () => self.count.update((c: number) => c + 1),
-    dec:   () => self.count.update((c: number) => c - 1),
-    add:   (n: number) => self.count.update((c: number) => c + n),
+    inc: () => self.count.update((c: number) => c + 1),
+    dec: () => self.count.update((c: number) => c - 1),
+    add: (n: number) => self.count.update((c: number) => c + n),
     reset: () => self.count.set(0),
   }),
 })
@@ -22,8 +22,8 @@ const Counter = model({
 const Profile = model({
   state: { name: "", bio: "" },
   actions: (self) => ({
-    rename:  (n: string) => self.name.set(n),
-    setBio:  (b: string) => self.bio.set(b),
+    rename: (n: string) => self.name.set(n),
+    setBio: (b: string) => self.bio.set(b),
   }),
 })
 
@@ -87,7 +87,10 @@ describe("actions", () => {
     const M = model({
       state: { x: 0 },
       actions: (self) => ({
-        doubleInc: () => { self.inc(); self.inc() },
+        doubleInc: () => {
+          self.inc()
+          self.inc()
+        },
         inc: () => self.x.update((n: number) => n + 1),
       }),
     })
@@ -115,7 +118,9 @@ describe("views", () => {
   it("views are reactive in effects", () => {
     const c = Counter.create()
     const observed: boolean[] = []
-    effect(() => { observed.push(c.isPositive()) })
+    effect(() => {
+      observed.push(c.isPositive())
+    })
     c.inc()
     c.dec()
     expect(observed).toEqual([false, true, false])
@@ -151,7 +156,9 @@ describe("getSnapshot", () => {
 
   it("snapshot reflects current state after mutations", () => {
     const c = Counter.create()
-    c.inc(); c.inc(); c.inc()
+    c.inc()
+    c.inc()
+    c.inc()
     expect(getSnapshot(c)).toEqual({ count: 3 })
   })
 
@@ -181,7 +188,11 @@ describe("applySnapshot", () => {
     const M = model({ state: { a: 0, b: 0 } })
     const m = M.create()
     let effectRuns = 0
-    effect(() => { m.a(); m.b(); effectRuns++ })
+    effect(() => {
+      m.a()
+      m.b()
+      effectRuns++
+    })
     effectRuns = 0
     applySnapshot(m, { a: 1, b: 2 })
     expect(effectRuns).toBe(1)
@@ -206,7 +217,7 @@ describe("onPatch", () => {
     const c = Counter.create()
     const patches: Patch[] = []
     onPatch(c, (p) => patches.push(p))
-    c.count.set(0)  // same value
+    c.count.set(0) // same value
     expect(patches).toHaveLength(0)
   })
 
@@ -235,7 +246,10 @@ describe("addMiddleware", () => {
   it("intercepts action calls", () => {
     const c = Counter.create()
     const intercepted: string[] = []
-    addMiddleware(c, (call, next) => { intercepted.push(call.name); return next(call) })
+    addMiddleware(c, (call, next) => {
+      intercepted.push(call.name)
+      return next(call)
+    })
     c.inc()
     expect(intercepted).toContain("inc")
   })
@@ -249,7 +263,9 @@ describe("addMiddleware", () => {
 
   it("middleware can prevent action from running by not calling next", () => {
     const c = Counter.create()
-    addMiddleware(c, (_call, _next) => { /* block */ })
+    addMiddleware(c, (_call, _next) => {
+      /* block */
+    })
     c.inc()
     expect(c.count()).toBe(0)
   })
@@ -257,8 +273,16 @@ describe("addMiddleware", () => {
   it("multiple middlewares run in registration order", () => {
     const c = Counter.create()
     const log: string[] = []
-    addMiddleware(c, (call, next) => { log.push("A"); next(call); log.push("A'") })
-    addMiddleware(c, (call, next) => { log.push("B"); next(call); log.push("B'") })
+    addMiddleware(c, (call, next) => {
+      log.push("A")
+      next(call)
+      log.push("A'")
+    })
+    addMiddleware(c, (call, next) => {
+      log.push("B")
+      next(call)
+      log.push("B'")
+    })
     c.inc()
     // Koa-style: A→B→action→B'→A' (inner middleware unwraps first)
     expect(log).toEqual(["A", "B", "B'", "A'"])
@@ -267,7 +291,10 @@ describe("addMiddleware", () => {
   it("unsub removes the middleware", () => {
     const c = Counter.create()
     const log: string[] = []
-    const unsub = addMiddleware(c, (call, next) => { log.push(call.name); return next(call) })
+    const unsub = addMiddleware(c, (call, next) => {
+      log.push(call.name)
+      return next(call)
+    })
     unsub()
     c.inc()
     expect(log).toHaveLength(0)

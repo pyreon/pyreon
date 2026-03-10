@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { effect, renderEffect, setErrorHandler } from "../effect"
-import { signal } from "../signal"
 import { effectScope, setCurrentScope } from "../scope"
+import { signal } from "../signal"
 
 describe("effect", () => {
   test("runs immediately", () => {
@@ -107,10 +107,14 @@ describe("effect", () => {
     setCurrentScope(scope)
 
     let updateCount = 0
-    scope.addUpdateHook(() => { updateCount++ })
+    scope.addUpdateHook(() => {
+      updateCount++
+    })
 
     const s = signal(0)
-    effect(() => { s() })
+    effect(() => {
+      s()
+    })
 
     setCurrentScope(null)
 
@@ -152,7 +156,9 @@ describe("renderEffect", () => {
 
   test("dispose is idempotent", () => {
     const s = signal(0)
-    const dispose = renderEffect(() => { s() })
+    const dispose = renderEffect(() => {
+      s()
+    })
     dispose()
     dispose() // should not throw
   })

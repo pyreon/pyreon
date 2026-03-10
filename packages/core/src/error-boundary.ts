@@ -1,6 +1,6 @@
 import { signal } from "@pyreon/reactivity"
+import { popErrorBoundary, pushErrorBoundary } from "./component"
 import { onUnmount } from "./lifecycle"
-import { pushErrorBoundary, popErrorBoundary } from "./component"
 import { reportError } from "./telemetry"
 import type { VNodeChild, VNodeChildAtom } from "./types"
 
@@ -39,7 +39,7 @@ export function ErrorBoundary(props: {
   const reset = () => error.set(null)
 
   const handler = (err: unknown): boolean => {
-    if (error.peek() !== null) return false  // already in error state — let outer boundary catch it
+    if (error.peek() !== null) return false // already in error state — let outer boundary catch it
     error.set(err)
     reportError({ component: "ErrorBoundary", phase: "render", error: err, timestamp: Date.now() })
     return true

@@ -5,21 +5,9 @@
  * All hooks run on Pyreon's reactive engine under the hood.
  */
 
-import {
-  signal,
-  computed,
-  effect,
-  runUntracked,
-  getCurrentScope,
-} from "@pyreon/reactivity"
-import {
-  onMount,
-  onUnmount,
-  onErrorCaptured,
-  createRef,
-  useContext,
-} from "@pyreon/core"
+import { createRef, onErrorCaptured, onMount, onUnmount, useContext } from "@pyreon/core"
 import type { CleanupFn } from "@pyreon/core"
+import { computed, effect, getCurrentScope, runUntracked, signal } from "@pyreon/reactivity"
 
 export { useContext }
 
@@ -83,7 +71,10 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
  * Drop-in for Preact's `useCallback`.
  * Components run once in Pyreon — returns `fn` as-is.
  */
-export function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T {
+export function useCallback<T extends (...args: unknown[]) => unknown>(
+  fn: T,
+  _deps?: unknown[],
+): T {
   return fn
 }
 

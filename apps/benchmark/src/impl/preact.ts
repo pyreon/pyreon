@@ -5,9 +5,9 @@
  */
 import { h, render } from "preact"
 import { memo } from "preact/compat"
-import { useState, useEffect } from "preact/hooks"
+import { useEffect, useState } from "preact/hooks"
 import type { BenchSuite, Row } from "../runner"
-import { bench, buildRows, tick } from "../runner"
+import { bench, buildRows } from "../runner"
 
 /** Wait for Preact's async batch flush (microtask + one macro turn) */
 function afterCommit(): Promise<void> {
@@ -38,7 +38,9 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   const [rows, setRows] = useState<Row[]>([])
   const [selectedId, setSelected] = useState<number | null>(null)
 
-  useEffect(() => { onMounted({ setRows, setSelected }) }, [])
+  useEffect(() => {
+    onMounted({ setRows, setSelected })
+  }, [])
 
   return h(
     "table",
@@ -46,9 +48,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
     h(
       "tbody",
       null,
-      ...rows.map((row) =>
-        h(RowItem, { key: row.id, row, selected: row.id === selectedId }),
-      ),
+      ...rows.map((row) => h(RowItem, { key: row.id, row, selected: row.id === selectedId })),
     ),
   )
 }
@@ -57,13 +57,21 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
   const suite: BenchSuite = { framework: "Preact", container, results: [] }
 
   let resolveSetters!: (s: Setters) => void
-  const settersPromise = new Promise<Setters>((res) => { resolveSetters = res })
+  const settersPromise = new Promise<Setters>((res) => {
+    resolveSetters = res
+  })
 
   render(h(App, { onMounted: resolveSetters }), container)
   const { setRows: preactSetRows, setSelected: preactSetSelected } = await settersPromise
 
-  const setRows = async (rows: Row[]) => { preactSetRows(rows); await afterCommit() }
-  const setSelected = async (id: number | null) => { preactSetSelected(id); await afterCommit() }
+  const setRows = async (rows: Row[]) => {
+    preactSetRows(rows)
+    await afterCommit()
+  }
+  const setSelected = async (id: number | null) => {
+    preactSetSelected(id)
+    await afterCommit()
+  }
 
   let currentRows: Row[] = []
 
@@ -114,7 +122,10 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
     if (updated.length >= 999) {
       const tmp = updated[1]
       const b = updated[998]
-      if (tmp && b) { updated[1] = b; updated[998] = tmp }
+      if (tmp && b) {
+        updated[1] = b
+        updated[998] = tmp
+      }
     }
     currentRows = updated
     await setRows(currentRows)

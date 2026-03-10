@@ -425,148 +425,152 @@ interface SvgAttributes extends PyreonHTMLAttributes {
 
 declare global {
   namespace JSX {
-  interface IntrinsicElements {
-    // Document structure
-    html: PyreonHTMLAttributes
-    head: PyreonHTMLAttributes
-    body: PyreonHTMLAttributes
-    title: PyreonHTMLAttributes
-    base: PyreonHTMLAttributes
-    meta: MetaAttributes
-    link: LinkAttributes
-    script: ScriptAttributes
-    style: PyreonHTMLAttributes
-    noscript: PyreonHTMLAttributes
-    // Sections
-    main: PyreonHTMLAttributes
-    header: PyreonHTMLAttributes
-    footer: PyreonHTMLAttributes
-    nav: PyreonHTMLAttributes
-    aside: PyreonHTMLAttributes
-    section: PyreonHTMLAttributes
-    article: PyreonHTMLAttributes
-    address: PyreonHTMLAttributes
-    h1: PyreonHTMLAttributes
-    h2: PyreonHTMLAttributes
-    h3: PyreonHTMLAttributes
-    h4: PyreonHTMLAttributes
-    h5: PyreonHTMLAttributes
-    h6: PyreonHTMLAttributes
-    hgroup: PyreonHTMLAttributes
-    // Block text
-    p: PyreonHTMLAttributes
-    pre: PyreonHTMLAttributes
-    blockquote: PyreonHTMLAttributes
-    figure: PyreonHTMLAttributes
-    figcaption: PyreonHTMLAttributes
-    div: PyreonHTMLAttributes
-    hr: PyreonHTMLAttributes
-    // Inline text
-    span: PyreonHTMLAttributes
-    a: AnchorAttributes
-    em: PyreonHTMLAttributes
-    strong: PyreonHTMLAttributes
-    small: PyreonHTMLAttributes
-    s: PyreonHTMLAttributes
-    cite: PyreonHTMLAttributes
-    q: PyreonHTMLAttributes
-    abbr: PyreonHTMLAttributes
-    time: PyreonHTMLAttributes
-    code: PyreonHTMLAttributes
-    var: PyreonHTMLAttributes
-    samp: PyreonHTMLAttributes
-    kbd: PyreonHTMLAttributes
-    mark: PyreonHTMLAttributes
-    sub: PyreonHTMLAttributes
-    sup: PyreonHTMLAttributes
-    i: PyreonHTMLAttributes
-    b: PyreonHTMLAttributes
-    u: PyreonHTMLAttributes
-    bdi: PyreonHTMLAttributes
-    bdo: PyreonHTMLAttributes
-    br: PyreonHTMLAttributes
-    wbr: PyreonHTMLAttributes
-    ruby: PyreonHTMLAttributes
-    rt: PyreonHTMLAttributes
-    rp: PyreonHTMLAttributes
-    // Lists
-    ul: PyreonHTMLAttributes
-    ol: OlAttributes
-    li: PyreonHTMLAttributes
-    dl: PyreonHTMLAttributes
-    dt: PyreonHTMLAttributes
-    dd: PyreonHTMLAttributes
-    // Forms
-    form: FormAttributes
-    label: LabelAttributes
-    input: InputAttributes
-    button: ButtonAttributes
-    select: SelectAttributes
-    datalist: PyreonHTMLAttributes
-    optgroup: PyreonHTMLAttributes
-    option: OptionAttributes
-    textarea: TextareaAttributes
-    output: PyreonHTMLAttributes
-    progress: ProgressAttributes
-    meter: MeterAttributes
-    fieldset: PyreonHTMLAttributes
-    legend: PyreonHTMLAttributes
-    // Tables
-    table: PyreonHTMLAttributes
-    caption: PyreonHTMLAttributes
-    colgroup: PyreonHTMLAttributes
-    col: ColAttributes
-    thead: PyreonHTMLAttributes
-    tbody: PyreonHTMLAttributes
-    tfoot: PyreonHTMLAttributes
-    tr: PyreonHTMLAttributes
-    th: ThAttributes
-    td: TdAttributes
-    // Media
-    img: ImgAttributes
-    video: VideoAttributes
-    audio: AudioAttributes
-    source: SourceAttributes
-    track: PyreonHTMLAttributes
-    picture: PyreonHTMLAttributes
-    canvas: PyreonHTMLAttributes
-    svg: SvgAttributes
-    path: SvgAttributes
-    circle: SvgAttributes
-    ellipse: SvgAttributes
-    line: SvgAttributes
-    polyline: SvgAttributes
-    polygon: SvgAttributes
-    rect: SvgAttributes
-    text: SvgAttributes
-    tspan: SvgAttributes
-    g: SvgAttributes
-    defs: SvgAttributes
-    use: SvgAttributes & { href?: string }
-    symbol: SvgAttributes
-    clipPath: SvgAttributes
-    mask: SvgAttributes
-    marker: SvgAttributes
-    pattern: SvgAttributes
-    linearGradient: SvgAttributes
-    radialGradient: SvgAttributes
-    stop: SvgAttributes & { offset?: string | number; "stop-color"?: string; "stop-opacity"?: string | number }
-    // Interactive / embedding
-    details: DetailsAttributes
-    summary: PyreonHTMLAttributes
-    dialog: DialogAttributes
-    iframe: IframeAttributes
-    embed: PyreonHTMLAttributes
-    object: PyreonHTMLAttributes
-    param: PyreonHTMLAttributes
-    // Semantic / misc
-    menu: PyreonHTMLAttributes
-    menuitem: PyreonHTMLAttributes
-    template: PyreonHTMLAttributes
-    slot: PyreonHTMLAttributes
-    portal: PyreonHTMLAttributes
-    // Catch-all for custom elements and data-* attrs
-    [tagName: string]: PyreonHTMLAttributes
-  }
+    interface IntrinsicElements {
+      // Document structure
+      html: PyreonHTMLAttributes
+      head: PyreonHTMLAttributes
+      body: PyreonHTMLAttributes
+      title: PyreonHTMLAttributes
+      base: PyreonHTMLAttributes
+      meta: MetaAttributes
+      link: LinkAttributes
+      script: ScriptAttributes
+      style: PyreonHTMLAttributes
+      noscript: PyreonHTMLAttributes
+      // Sections
+      main: PyreonHTMLAttributes
+      header: PyreonHTMLAttributes
+      footer: PyreonHTMLAttributes
+      nav: PyreonHTMLAttributes
+      aside: PyreonHTMLAttributes
+      section: PyreonHTMLAttributes
+      article: PyreonHTMLAttributes
+      address: PyreonHTMLAttributes
+      h1: PyreonHTMLAttributes
+      h2: PyreonHTMLAttributes
+      h3: PyreonHTMLAttributes
+      h4: PyreonHTMLAttributes
+      h5: PyreonHTMLAttributes
+      h6: PyreonHTMLAttributes
+      hgroup: PyreonHTMLAttributes
+      // Block text
+      p: PyreonHTMLAttributes
+      pre: PyreonHTMLAttributes
+      blockquote: PyreonHTMLAttributes
+      figure: PyreonHTMLAttributes
+      figcaption: PyreonHTMLAttributes
+      div: PyreonHTMLAttributes
+      hr: PyreonHTMLAttributes
+      // Inline text
+      span: PyreonHTMLAttributes
+      a: AnchorAttributes
+      em: PyreonHTMLAttributes
+      strong: PyreonHTMLAttributes
+      small: PyreonHTMLAttributes
+      s: PyreonHTMLAttributes
+      cite: PyreonHTMLAttributes
+      q: PyreonHTMLAttributes
+      abbr: PyreonHTMLAttributes
+      time: PyreonHTMLAttributes
+      code: PyreonHTMLAttributes
+      var: PyreonHTMLAttributes
+      samp: PyreonHTMLAttributes
+      kbd: PyreonHTMLAttributes
+      mark: PyreonHTMLAttributes
+      sub: PyreonHTMLAttributes
+      sup: PyreonHTMLAttributes
+      i: PyreonHTMLAttributes
+      b: PyreonHTMLAttributes
+      u: PyreonHTMLAttributes
+      bdi: PyreonHTMLAttributes
+      bdo: PyreonHTMLAttributes
+      br: PyreonHTMLAttributes
+      wbr: PyreonHTMLAttributes
+      ruby: PyreonHTMLAttributes
+      rt: PyreonHTMLAttributes
+      rp: PyreonHTMLAttributes
+      // Lists
+      ul: PyreonHTMLAttributes
+      ol: OlAttributes
+      li: PyreonHTMLAttributes
+      dl: PyreonHTMLAttributes
+      dt: PyreonHTMLAttributes
+      dd: PyreonHTMLAttributes
+      // Forms
+      form: FormAttributes
+      label: LabelAttributes
+      input: InputAttributes
+      button: ButtonAttributes
+      select: SelectAttributes
+      datalist: PyreonHTMLAttributes
+      optgroup: PyreonHTMLAttributes
+      option: OptionAttributes
+      textarea: TextareaAttributes
+      output: PyreonHTMLAttributes
+      progress: ProgressAttributes
+      meter: MeterAttributes
+      fieldset: PyreonHTMLAttributes
+      legend: PyreonHTMLAttributes
+      // Tables
+      table: PyreonHTMLAttributes
+      caption: PyreonHTMLAttributes
+      colgroup: PyreonHTMLAttributes
+      col: ColAttributes
+      thead: PyreonHTMLAttributes
+      tbody: PyreonHTMLAttributes
+      tfoot: PyreonHTMLAttributes
+      tr: PyreonHTMLAttributes
+      th: ThAttributes
+      td: TdAttributes
+      // Media
+      img: ImgAttributes
+      video: VideoAttributes
+      audio: AudioAttributes
+      source: SourceAttributes
+      track: PyreonHTMLAttributes
+      picture: PyreonHTMLAttributes
+      canvas: PyreonHTMLAttributes
+      svg: SvgAttributes
+      path: SvgAttributes
+      circle: SvgAttributes
+      ellipse: SvgAttributes
+      line: SvgAttributes
+      polyline: SvgAttributes
+      polygon: SvgAttributes
+      rect: SvgAttributes
+      text: SvgAttributes
+      tspan: SvgAttributes
+      g: SvgAttributes
+      defs: SvgAttributes
+      use: SvgAttributes & { href?: string }
+      symbol: SvgAttributes
+      clipPath: SvgAttributes
+      mask: SvgAttributes
+      marker: SvgAttributes
+      pattern: SvgAttributes
+      linearGradient: SvgAttributes
+      radialGradient: SvgAttributes
+      stop: SvgAttributes & {
+        offset?: string | number
+        "stop-color"?: string
+        "stop-opacity"?: string | number
+      }
+      // Interactive / embedding
+      details: DetailsAttributes
+      summary: PyreonHTMLAttributes
+      dialog: DialogAttributes
+      iframe: IframeAttributes
+      embed: PyreonHTMLAttributes
+      object: PyreonHTMLAttributes
+      param: PyreonHTMLAttributes
+      // Semantic / misc
+      menu: PyreonHTMLAttributes
+      menuitem: PyreonHTMLAttributes
+      template: PyreonHTMLAttributes
+      slot: PyreonHTMLAttributes
+      portal: PyreonHTMLAttributes
+      // Catch-all for custom elements and data-* attrs
+      [tagName: string]: PyreonHTMLAttributes
+    }
   }
 }

@@ -1,17 +1,17 @@
-import { describe, it, expect } from "bun:test"
+import { describe, expect, it } from "bun:test"
 import {
-  createSignal,
+  batch,
   createEffect,
   createMemo,
   createRoot,
-  batch,
-  untrack,
-  on,
   createSelector,
+  createSignal,
   mergeProps,
-  splitProps,
-  onMount,
+  on,
   onCleanup,
+  onMount,
+  splitProps,
+  untrack,
 } from "../index"
 
 describe("@pyreon/solid-compat", () => {
@@ -174,7 +174,7 @@ describe("@pyreon/solid-compat", () => {
   // 13. splitProps separates props
   it("splitProps separates props", () => {
     const props = { name: "hello", class: "btn", onClick: () => {} }
-    const [local, rest] = splitProps(props, ["name"] as unknown as (keyof typeof props)[])
+    const [local, rest] = splitProps(props, "name")
     expect((local as Record<string, unknown>).name).toBe("hello")
     expect((local as Record<string, unknown>).class).toBeUndefined()
     expect((rest as Record<string, unknown>).class).toBe("btn")

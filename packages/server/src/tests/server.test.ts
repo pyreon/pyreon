@@ -1,12 +1,11 @@
 import { describe, expect, test } from "bun:test"
-import { h, Fragment } from "@pyreon/core"
+import { h } from "@pyreon/core"
 import type { ComponentFn, VNode } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
 import { createHandler } from "../handler"
-import { prerender } from "../ssg"
+import { DEFAULT_TEMPLATE, buildScripts, processTemplate } from "../html"
 import { island } from "../island"
-import { processTemplate, buildScripts, DEFAULT_TEMPLATE } from "../html"
 import type { Middleware } from "../middleware"
+import { prerender } from "../ssg"
 
 // ─── HTML template ───────────────────────────────────────────────────────────
 
@@ -73,7 +72,8 @@ describe("createHandler", () => {
   })
 
   test("uses custom template", async () => {
-    const template = "<html><!--pyreon-head--><body><!--pyreon-app--><!--pyreon-scripts--></body></html>"
+    const template =
+      "<html><!--pyreon-head--><body><!--pyreon-app--><!--pyreon-scripts--></body></html>"
     const handler = createHandler({ App: Home, routes, template })
     const res = await handler(new Request("http://localhost/"))
     const html = await res.text()
@@ -106,7 +106,9 @@ describe("createHandler", () => {
   })
 
   test("returns 500 on render error", async () => {
-    const BrokenApp: ComponentFn = () => { throw new Error("boom") }
+    const BrokenApp: ComponentFn = () => {
+      throw new Error("boom")
+    }
     const handler = createHandler({ App: BrokenApp, routes })
     const res = await handler(new Request("http://localhost/"))
     expect(res.status).toBe(500)
@@ -148,9 +150,15 @@ describe("middleware", () => {
 
   test("middleware chain runs in order", async () => {
     const order: number[] = []
-    const mw1: Middleware = () => { order.push(1) }
-    const mw2: Middleware = () => { order.push(2) }
-    const mw3: Middleware = () => { order.push(3) }
+    const mw1: Middleware = () => {
+      order.push(1)
+    }
+    const mw2: Middleware = () => {
+      order.push(2)
+    }
+    const mw3: Middleware = () => {
+      order.push(3)
+    }
     const handler = createHandler({ App, routes, middleware: [mw1, mw2, mw3] })
     await handler(new Request("http://localhost/"))
     expect(order).toEqual([1, 2, 3])
@@ -170,14 +178,17 @@ describe("island", () => {
   })
 
   test("island() renders with <pyreon-island> wrapper during SSR", async () => {
-    const Inner: ComponentFn = (props) => h("button", null, `Count: ${(props as Record<string, unknown>).initial}`)
+    const Inner: ComponentFn = (props) =>
+      h("button", null, `Count: ${(props as Record<string, unknown>).initial}`)
     const Counter = island<{ initial: number }>(() => Promise.resolve({ default: Inner }), {
       name: "Counter",
       hydrate: "idle",
     })
 
     // Simulate SSR by calling the async component
-    const vnode = await (Counter as unknown as (props: { initial: number }) => Promise<VNode>)({ initial: 5 })
+    const vnode = await (Counter as unknown as (props: { initial: number }) => Promise<VNode>)({
+      initial: 5,
+    })
     expect(vnode).not.toBeNull()
     // The wrapper should be a pyreon-island element
     expect(vnode.type).toBe("pyreon-island")

@@ -1,13 +1,8 @@
-import { describe, test, expect, beforeEach } from "bun:test"
+import { beforeEach, describe, expect, test } from "bun:test"
 import { h } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
-import {
-  createHeadContext,
-  HeadProvider,
-  useHead,
-  renderWithHead,
-} from "../index"
+import { HeadProvider, createHeadContext, renderWithHead, useHead } from "../index"
 import type { HeadContextValue } from "../index"
 
 // ─── SSR tests ────────────────────────────────────────────────────────────────
@@ -67,7 +62,7 @@ describe("renderWithHead — SSR", () => {
 
   test("escapes HTML entities in title", async () => {
     function Page() {
-      useHead({ title: 'A & B <script>' })
+      useHead({ title: "A & B <script>" })
       return h("div", null)
     }
     const { head } = await renderWithHead(h(Page, null))
@@ -116,7 +111,7 @@ describe("renderWithHead — SSR", () => {
 
   test("script content is not HTML-escaped", async () => {
     function Page() {
-      useHead({ script: [{ children: 'var x = 1 < 2 && 3 > 1' }] })
+      useHead({ script: [{ children: "var x = 1 < 2 && 3 > 1" }] })
       return h("div", null)
     }
     const { head } = await renderWithHead(h(Page, null))
@@ -139,7 +134,7 @@ describe("renderWithHead — SSR", () => {
 
   test("titleTemplate with function", async () => {
     function Layout() {
-      useHead({ titleTemplate: (t: string) => t ? `${t} — Site` : "Site" })
+      useHead({ titleTemplate: (t: string) => (t ? `${t} — Site` : "Site") })
       return h("div", null, h(Page, null))
     }
     function Page() {

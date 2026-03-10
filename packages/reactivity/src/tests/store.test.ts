@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import { createStore, isStore } from "../store"
 import { effect } from "../effect"
 import { reconcile } from "../reconcile"
+import { createStore, isStore } from "../store"
 
 describe("createStore", () => {
   test("reads primitive properties reactively", () => {
@@ -28,12 +28,15 @@ describe("createStore", () => {
     const state = createStore({ user: { name: "Alice", age: 30 } })
     const userCalls: number[] = []
     const nameCalls: string[] = []
-    effect(() => { userCalls.push(1); void state.user })        // tracks user object
-    effect(() => nameCalls.push(state.user.name))               // tracks name only
+    effect(() => {
+      userCalls.push(1)
+      void state.user
+    }) // tracks user object
+    effect(() => nameCalls.push(state.user.name)) // tracks name only
     expect(userCalls.length).toBe(1)
     state.user.age = 31
     // Only the age signal fires — user object didn't change, name didn't change
-    expect(nameCalls).toEqual(["Alice"])   // name effect didn't re-run
+    expect(nameCalls).toEqual(["Alice"]) // name effect didn't re-run
   })
 
   test("array — tracks length on push", () => {
@@ -52,7 +55,7 @@ describe("createStore", () => {
     expect(values).toEqual(["a"])
     state.items[0] = "x"
     expect(values).toEqual(["a", "x"])
-    state.items[1] = "y"  // different index — should not re-run this effect
+    state.items[1] = "y" // different index — should not re-run this effect
     expect(values).toEqual(["a", "x"])
   })
 
@@ -81,8 +84,8 @@ describe("reconcile", () => {
     effect(() => nameCalls.push(state.name))
     effect(() => ageCalls.push(state.age))
     reconcile({ name: "Alice", age: 31 }, state)
-    expect(nameCalls).toEqual(["Alice"])   // unchanged — no re-run
-    expect(ageCalls).toEqual([30, 31])     // changed — re-ran
+    expect(nameCalls).toEqual(["Alice"]) // unchanged — no re-run
+    expect(ageCalls).toEqual([30, 31]) // changed — re-ran
   })
 
   test("reconciles nested objects recursively", () => {
@@ -99,7 +102,7 @@ describe("reconcile", () => {
     effect(() => calls.push([...state.items]))
     reconcile({ items: ["a", "X", "c"] }, state)
     expect(state.items[1]).toBe("X")
-    expect(calls.length).toBe(2)  // initial + after reconcile
+    expect(calls.length).toBe(2) // initial + after reconcile
   })
 
   test("trims excess array elements", () => {

@@ -1,6 +1,6 @@
+import { effect } from "./effect"
 import { signal } from "./signal"
 import type { Signal } from "./signal"
-import { effect } from "./effect"
 import { runUntracked } from "./tracking"
 
 export interface Resource<T> {

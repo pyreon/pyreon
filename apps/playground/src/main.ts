@@ -1,7 +1,7 @@
 import "./style.css"
+import { Fragment, Show, h } from "@pyreon/core"
+import { batch, computed, effect, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
-import { h, Fragment, Show } from "@pyreon/core"
-import { signal, computed, effect, batch } from "@pyreon/reactivity"
 import { App } from "./App"
 
 // Expose Pyreon modules on window for e2e tests

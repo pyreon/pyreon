@@ -1,4 +1,4 @@
-import type { VNodeChild, VNode, Props } from "./types"
+import type { Props, VNode, VNodeChild, VNodeChildAtom } from "./types"
 
 // ─── Show ─────────────────────────────────────────────────────────────────────
 
@@ -22,8 +22,12 @@ export interface ShowProps extends Props {
  *   h(Dashboard, null)
  * )
  */
-export function Show(props: ShowProps): VNodeChild {
-  return () => (props.when() ? (props.children ?? null) : (props.fallback ?? null))
+export function Show(props: ShowProps): VNode | null {
+  // Returns a reactive accessor; the renderer unwraps it at mount time.
+  return ((): VNodeChildAtom =>
+    (props.when()
+      ? (props.children ?? null)
+      : (props.fallback ?? null)) as VNodeChildAtom) as unknown as VNode
 }
 
 // ─── Switch / Match ───────────────────────────────────────────────────────────
@@ -41,7 +45,7 @@ export interface MatchProps extends Props {
  * `Match` acts as a pure type/identity marker — Switch identifies it by checking
  * `vnode.type === Match` rather than by the runtime return value.
  */
-export function Match(_props: MatchProps): VNodeChild {
+export function Match(_props: MatchProps): VNode | null {
   // Match is never mounted directly — Switch inspects Match VNodes by type identity.
   return null
 }
@@ -62,8 +66,9 @@ export interface SwitchProps extends Props {
  *   h(Match, { when: () => route() === "/about" }, h(About, null)),
  * )
  */
-export function Switch(props: SwitchProps): VNodeChild {
-  return () => {
+export function Switch(props: SwitchProps): VNode | null {
+  // Returns a reactive accessor; the renderer unwraps it at mount time.
+  return ((): VNodeChildAtom => {
     const branches = Array.isArray(props.children)
       ? props.children
       : props.children != null
@@ -83,16 +88,19 @@ export function Switch(props: SwitchProps): VNodeChild {
         if (matchProps.when()) {
           // Children are stored in vnode.children (rest args of h())
           // or in props.children (when passed explicitly)
-          const ch = matchVNode.children.length > 0
-            ? (matchVNode.children.length === 1 ? matchVNode.children[0] : matchVNode.children)
-            : (matchProps.children ?? null)
-          return ch as VNodeChild
+          const ch =
+            matchVNode.children.length > 0
+              ? matchVNode.children.length === 1
+                ? matchVNode.children[0]
+                : matchVNode.children
+              : (matchProps.children ?? null)
+          return ch as VNodeChildAtom
         }
       }
     }
 
-    return props.fallback ?? null
-  }
+    return (props.fallback ?? null) as VNodeChildAtom
+  }) as unknown as VNode
 }
 
 // Keep MatchSymbol export for any code that was using it

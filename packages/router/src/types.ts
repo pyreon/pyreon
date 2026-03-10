@@ -10,16 +10,15 @@ export type { ComponentFn }
  * ExtractParams<'/user/:id/posts/:postId'>
  * // → { id: string; postId: string }
  */
-export type ExtractParams<T extends string> =
-  T extends `${string}:${infer Param}*/${infer Rest}`
-    ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
-    : T extends `${string}:${infer Param}*`
+export type ExtractParams<T extends string> = T extends `${string}:${infer Param}*/${infer Rest}`
+  ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
+  : T extends `${string}:${infer Param}*`
     ? { [K in Param]: string }
     : T extends `${string}:${infer Param}/${infer Rest}`
-    ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
-    : T extends `${string}:${infer Param}`
-    ? { [K in Param]: string }
-    : Record<never, never>
+      ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
+      : T extends `${string}:${infer Param}`
+        ? { [K in Param]: string }
+        : Record<never, never>
 
 // ─── Route meta ───────────────────────────────────────────────────────────────
 
@@ -191,7 +190,11 @@ export interface Router {
   /** Navigate to a path */
   push(path: string): Promise<void>
   /** Navigate to a path by name */
-  push(location: { name: string; params?: Record<string, string>; query?: Record<string, string> }): Promise<void>
+  push(location: {
+    name: string
+    params?: Record<string, string>
+    query?: Record<string, string>
+  }): Promise<void>
   /** Replace current history entry */
   replace(path: string): Promise<void>
   /** Go back */
@@ -210,7 +213,7 @@ export interface Router {
 
 // ─── Internal router instance ─────────────────────────────────────────────────
 
-import type { Signal, Computed } from "@pyreon/reactivity"
+import type { Computed, Signal } from "@pyreon/reactivity"
 
 export interface RouterInstance extends Router {
   routes: RouteRecord[]

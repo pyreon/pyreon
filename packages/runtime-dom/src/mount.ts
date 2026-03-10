@@ -1,9 +1,18 @@
-import { Fragment, ForSymbol, PortalSymbol, EMPTY_PROPS, propagateError, dispatchToErrorBoundary, runWithHooks, reportError } from "@pyreon/core"
+import {
+  EMPTY_PROPS,
+  ForSymbol,
+  Fragment,
+  PortalSymbol,
+  dispatchToErrorBoundary,
+  propagateError,
+  reportError,
+  runWithHooks,
+} from "@pyreon/core"
 import type { ComponentFn, ForProps, PortalProps, Ref, VNode, VNodeChild } from "@pyreon/core"
-import { effectScope, setCurrentScope, runUntracked, renderEffect } from "@pyreon/reactivity"
+import { effectScope, renderEffect, runUntracked, setCurrentScope } from "@pyreon/reactivity"
+import { registerComponent, unregisterComponent } from "./devtools"
 import { mountFor, mountKeyedList, mountReactive } from "./nodes"
 import { applyProps } from "./props"
-import { installDevTools, registerComponent, unregisterComponent } from "./devtools"
 
 type Cleanup = () => void
 const noop: Cleanup = () => {}
@@ -45,11 +54,8 @@ export function mountChild(
       // Reactive boundary — children manage their own DOM lifecycle
       const prevDepth = _elementDepth
       _elementDepth = 0
-      const cleanup = mountKeyedList(
-        child as () => VNode[],
-        parent,
-        anchor,
-        (vnode, p, a) => mountChild(vnode, p, a),
+      const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (vnode, p, a) =>
+        mountChild(vnode, p, a),
       )
       _elementDepth = prevDepth
       return cleanup
@@ -60,9 +66,7 @@ export function mountChild(
     // NOTE: null/undefined are excluded — they may later become VNodes (e.g. Show
     // starting hidden), so they must go through mountReactive for correct transitions.
     if (typeof sample === "string" || typeof sample === "number" || typeof sample === "boolean") {
-      const text = document.createTextNode(
-        sample == null || sample === false ? "" : String(sample),
-      )
+      const text = document.createTextNode(sample == null || sample === false ? "" : String(sample))
       parent.insertBefore(text, anchor)
       const dispose = renderEffect(() => {
         const v = (child as () => unknown)()
@@ -160,7 +164,11 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   // Nested elements: parent removal handles DOM, cleanup only disposes reactive work
   if (_elementDepth > 0) {
     if (!ref && !propCleanup) return childCleanup
-    if (!ref && propCleanup) return () => { propCleanup(); childCleanup() }
+    if (!ref && propCleanup)
+      return () => {
+        propCleanup()
+        childCleanup()
+      }
     const refToClean = ref
     return () => {
       if (refToClean && typeof refToClean === "object") refToClean.current = null
@@ -205,7 +213,10 @@ function mountComponent(
   // and matches JSX expectations: <Comp>child</Comp> → children in props.
   const mergedProps =
     vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
-      ? { ...vnode.props, children: vnode.children.length === 1 ? vnode.children[0] : vnode.children }
+      ? {
+          ...vnode.props,
+          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+        }
       : vnode.props
 
   try {
@@ -217,7 +228,13 @@ function mountComponent(
     setCurrentScope(null)
     scope.stop()
     console.error(`[pyreon] Error in component <${componentName}>:`, err)
-    reportError({ component: componentName, phase: "setup", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
+    reportError({
+      component: componentName,
+      phase: "setup",
+      error: err,
+      timestamp: Date.now(),
+      props: vnode.props as Record<string, unknown>,
+    })
     dispatchToErrorBoundary(err)
     return noop
   } finally {
@@ -237,14 +254,20 @@ function mountComponent(
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) console.error("[pyreon] Error mounting component subtree:", err)
-    reportError({ component: componentName, phase: "render", error: err, timestamp: Date.now(), props: vnode.props as Record<string, unknown> })
+    reportError({
+      component: componentName,
+      phase: "render",
+      error: err,
+      timestamp: Date.now(),
+      props: vnode.props as Record<string, unknown>,
+    })
     return noop
   }
 
   _mountingStack.pop()
 
   // Register with DevTools after subtree is mounted (first child el may now exist)
-  const firstEl = (parent instanceof Element ? parent.firstElementChild : null)
+  const firstEl = parent instanceof Element ? parent.firstElementChild : null
   registerComponent(compId, componentName, firstEl, parentId)
 
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
@@ -252,7 +275,9 @@ function mountComponent(
   for (const fn of hooks.mount) {
     try {
       let cleanup: (() => void) | undefined
-      scope.runInScope(() => { cleanup = fn() })
+      scope.runInScope(() => {
+        cleanup = fn()
+      })
       if (cleanup) mountCleanups.push(cleanup)
     } catch (err) {
       console.error("[pyreon] Error in onMount hook:", err)
@@ -265,9 +290,16 @@ function mountComponent(
     scope.stop()
     subtreeCleanup()
     for (const fn of hooks.unmount) {
-      try { fn() } catch (err) {
+      try {
+        fn()
+      } catch (err) {
         console.error("[pyreon] Error in onUnmount hook:", err)
-        reportError({ component: componentName, phase: "unmount", error: err, timestamp: Date.now() })
+        reportError({
+          component: componentName,
+          phase: "unmount",
+          error: err,
+          timestamp: Date.now(),
+        })
       }
     }
     for (const fn of mountCleanups) fn()
@@ -299,7 +331,10 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
       if (d0 === noop && d1 === noop) return noop
       if (d0 === noop) return d1
       if (d1 === noop) return d0
-      return () => { d0(); d1() }
+      return () => {
+        d0()
+        d1()
+      }
     }
   }
   const cleanups = children.map((c) => mountChild(c, parent, anchor))
@@ -314,7 +349,11 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
 function isKeyedArray(value: unknown): value is VNode[] {
   if (!Array.isArray(value) || value.length === 0) return false
   return value.every(
-    (v) => v !== null && typeof v === "object" && !Array.isArray(v) &&
-           (v as VNode).key !== null && (v as VNode).key !== undefined,
+    (v) =>
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      (v as VNode).key !== null &&
+      (v as VNode).key !== undefined,
   )
 }

@@ -10,7 +10,19 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
 GlobalRegistrator.register()
 
-const [{ h, For }, { signal, createSelector }, { mount }, React, ReactDOM, Vue, Preact, PreactHooks, PreactCompat, Solid, SolidWeb] = await Promise.all([
+const [
+  { h, For },
+  { signal, createSelector },
+  { mount },
+  React,
+  ReactDOM,
+  Vue,
+  Preact,
+  PreactHooks,
+  PreactCompat,
+  Solid,
+  SolidWeb,
+] = await Promise.all([
   import("@pyreon/core"),
   import("@pyreon/reactivity"),
   import("@pyreon/runtime-dom"),
@@ -28,12 +40,63 @@ const [{ h, For }, { signal, createSelector }, { mount }, React, ReactDOM, Vue, 
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-const ADJ  = ["pretty","large","big","small","tall","short","long","handsome","plain","quaint","clean","elegant","easy","angry","crazy","helpful","mushy","odd","unsightly","adorable"]
-const COLS = ["red","yellow","blue","green","pink","brown","purple","white","black","orange"]
-const NOUN = ["table","chair","house","bbq","desk","car","pony","cookie","sandwich","burger","pizza","mouse","keyboard"]
-function pick<T>(a: T[]) { return a[Math.floor(Math.random() * a.length)] as T }
+const ADJ = [
+  "pretty",
+  "large",
+  "big",
+  "small",
+  "tall",
+  "short",
+  "long",
+  "handsome",
+  "plain",
+  "quaint",
+  "clean",
+  "elegant",
+  "easy",
+  "angry",
+  "crazy",
+  "helpful",
+  "mushy",
+  "odd",
+  "unsightly",
+  "adorable",
+]
+const COLS = [
+  "red",
+  "yellow",
+  "blue",
+  "green",
+  "pink",
+  "brown",
+  "purple",
+  "white",
+  "black",
+  "orange",
+]
+const NOUN = [
+  "table",
+  "chair",
+  "house",
+  "bbq",
+  "desk",
+  "car",
+  "pony",
+  "cookie",
+  "sandwich",
+  "burger",
+  "pizza",
+  "mouse",
+  "keyboard",
+]
+function pick<T>(a: T[]) {
+  return a[Math.floor(Math.random() * a.length)] as T
+}
 
-interface Row { id: number; label: string }
+interface Row {
+  id: number
+  label: string
+}
 let _id = 1
 function makeRows(n: number): Row[] {
   return Array.from({ length: n }, () => ({
@@ -62,9 +125,17 @@ async function bench(
   return s.reduce((a, b) => a + b, 0) / RUNS
 }
 
-function tick() { return new Promise(r => setTimeout(r, 0)) }
-function makeEl(): HTMLElement { const e = document.createElement("div"); document.body.appendChild(e); return e }
-function append(label: string) { return `${label} !!!` }
+function tick() {
+  return new Promise((r) => setTimeout(r, 0))
+}
+function makeEl(): HTMLElement {
+  const e = document.createElement("div")
+  document.body.appendChild(e)
+  return e
+}
+function append(label: string) {
+  return `${label} !!!`
+}
 
 // ─── Vanilla ──────────────────────────────────────────────────────────────────
 
@@ -102,18 +173,18 @@ async function runVanilla(): Promise<Record<string, number>> {
   }
 
   const r: Record<string, number> = {}
-  r.create1k   = await bench(() => renderAll(makeRows(1_000)))
+  r.create1k = await bench(() => renderAll(makeRows(1_000)))
   r._verify = el.querySelectorAll("tr").length
   r.replaceAll = await bench(() => renderAll(makeRows(1_000)))
 
   // Targeted partial update — only touch the 100 affected text nodes
-  let origLabels = data.map(row => row.label)
+  let origLabels = data.map((row) => row.label)
   r.partialUpd = await bench(
     () => {
       for (let i = 0; i < data.length; i += 10) {
         const row = data[i] as Row
-        row.label = append(row.label);
-        (labelEls[i] as HTMLElement).textContent = row.label
+        row.label = append(row.label)
+        ;(labelEls[i] as HTMLElement).textContent = row.label
       }
     },
     // Reset labels before each run
@@ -121,8 +192,8 @@ async function runVanilla(): Promise<Record<string, number>> {
       for (let i = 0; i < data.length; i += 10) {
         const orig = origLabels[i]
         if (orig !== undefined) {
-          (data[i] as Row).label = orig;
-          (labelEls[i] as HTMLElement).textContent = orig
+          ;(data[i] as Row).label = orig
+          ;(labelEls[i] as HTMLElement).textContent = orig
         }
       }
     },
@@ -130,7 +201,7 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   // Re-create clean rows for remaining tests
   renderAll(makeRows(1_000))
-  origLabels = data.map(row => row.label)
+  origLabels = data.map((row) => row.label)
 
   // Targeted select — O(1) className toggle on 2 elements
   r.selectRow = await bench(() => {
@@ -141,9 +212,15 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   // Targeted swap — move 2 DOM nodes
   r.swapRows = await bench(() => {
-    const tmp = data[1] as Row; data[1] = data[998] as Row; data[998] = tmp
-    const tmpEl = rowEls[1] as HTMLElement; rowEls[1] = rowEls[998] as HTMLElement; rowEls[998] = tmpEl
-    const tmpLbl = labelEls[1] as HTMLElement; labelEls[1] = labelEls[998] as HTMLElement; labelEls[998] = tmpLbl
+    const tmp = data[1] as Row
+    data[1] = data[998] as Row
+    data[998] = tmp
+    const tmpEl = rowEls[1] as HTMLElement
+    rowEls[1] = rowEls[998] as HTMLElement
+    rowEls[998] = tmpEl
+    const tmpLbl = labelEls[1] as HTMLElement
+    labelEls[1] = labelEls[998] as HTMLElement
+    labelEls[998] = tmpLbl
     const ref2 = rowEls[2] as HTMLElement
     tbody.insertBefore(rowEls[1] as HTMLElement, ref2)
     const ref999 = (rowEls[999] as HTMLElement | undefined) ?? null
@@ -152,13 +229,17 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   r.clear = await bench(() => {
     tbody.innerHTML = ""
-    data = []; rowEls = []; labelEls = []
+    data = []
+    rowEls = []
+    labelEls = []
     selectedTr = null
   })
 
   renderAll(makeRows(1_000))
-  r.create10k  = await bench(() => renderAll(makeRows(10_000)))
-  data = []; tbody.innerHTML = ""; el.remove()
+  r.create10k = await bench(() => renderAll(makeRows(10_000)))
+  data = []
+  tbody.innerHTML = ""
+  el.remove()
   return r
 }
 
@@ -182,45 +263,69 @@ async function runPyreon(): Promise<Record<string, number>> {
   }
 
   const unmount = mount(
-    h("table", null,
-      h("tbody", null,
+    h(
+      "table",
+      null,
+      h(
+        "tbody",
+        null,
         For({
           each: rowsSig,
-          key: r => r.id,
+          key: (r) => r.id,
           children: (row: RR) =>
-            h("tr", { class: () => isSelected(row.id) ? "selected" : "" },
+            h(
+              "tr",
+              { class: () => (isSelected(row.id) ? "selected" : "") },
               h("td", null, String(row.id)),
               h("td", null, () => row.label()),
             ),
-        })
-      )
+        }),
+      ),
     ),
     el,
   )
 
   const cur = () => rowsSig()
   const r: Record<string, number> = {}
-  r.create1k   = await bench(() => rowsSig.set(makeRR(1_000)))
+  r.create1k = await bench(() => rowsSig.set(makeRR(1_000)))
   r._verify = el.querySelectorAll("tr").length
   r.replaceAll = await bench(() => rowsSig.set(makeRR(1_000)))
 
   // Partial update with label reset
-  let origLabels = cur().map(row => row.label())
+  let origLabels = cur().map((row) => row.label())
   r.partialUpd = await bench(
-    () => { cur().forEach((row, i) => { if (i % 10 === 0) row.label.update(l => append(l)) }) },
-    () => { cur().forEach((row, i) => { if (i % 10 === 0) { const o = origLabels[i]; if (o !== undefined) row.label.set(o) } }) },
+    () => {
+      cur().forEach((row, i) => {
+        if (i % 10 === 0) row.label.update((l) => append(l))
+      })
+    },
+    () => {
+      cur().forEach((row, i) => {
+        if (i % 10 === 0) {
+          const o = origLabels[i]
+          if (o !== undefined) row.label.set(o)
+        }
+      })
+    },
   )
 
   // Re-create clean rows
   rowsSig.set(makeRR(1_000))
-  origLabels = cur().map(row => row.label())
+  origLabels = cur().map((row) => row.label())
 
-  r.selectRow  = await bench(() => selId.set(cur()[500]?.id ?? null))
-  r.swapRows   = await bench(() => { const c = [...cur()]; const t = c[1] as RR; c[1] = c[998] as RR; c[998] = t; rowsSig.set(c) })
-  r.clear      = await bench(() => rowsSig.set([]))
+  r.selectRow = await bench(() => selId.set(cur()[500]?.id ?? null))
+  r.swapRows = await bench(() => {
+    const c = [...cur()]
+    const t = c[1] as RR
+    c[1] = c[998] as RR
+    c[998] = t
+    rowsSig.set(c)
+  })
+  r.clear = await bench(() => rowsSig.set([]))
   rowsSig.set(makeRR(1_000))
-  r.create10k  = await bench(() => rowsSig.set(makeRR(10_000)))
-  unmount(); el.remove()
+  r.create10k = await bench(() => rowsSig.set(makeRR(10_000)))
+  unmount()
+  el.remove()
   return r
 }
 
@@ -231,10 +336,12 @@ async function runReact(): Promise<Record<string, number>> {
   const { createElement: rc, useState, memo } = React
 
   const RowItem = memo(({ row, sel }: { row: Row; sel: boolean }) =>
-    rc("tr", { className: sel ? "selected" : undefined },
+    rc(
+      "tr",
+      { className: sel ? "selected" : undefined },
       rc("td", null, row.id),
       rc("td", null, row.label),
-    )
+    ),
   )
 
   let _setData: ((rows: Row[]) => void) | null = null
@@ -242,31 +349,57 @@ async function runReact(): Promise<Record<string, number>> {
 
   function App() {
     const [data, setData] = useState<Row[]>([])
-    const [sid, setSel]   = useState<number | null>(null)
-    _setData = setData; _setSel = setSel
-    return rc("table", null,
-      rc("tbody", null, data.map(row => rc(RowItem, { key: row.id, row, sel: row.id === sid })))
+    const [sid, setSel] = useState<number | null>(null)
+    _setData = setData
+    _setSel = setSel
+    return rc(
+      "table",
+      null,
+      rc(
+        "tbody",
+        null,
+        data.map((row) => rc(RowItem, { key: row.id, row, sel: row.id === sid })),
+      ),
     )
   }
 
   const root = ReactDOM.createRoot(el)
-  await new Promise<void>(res => { root.render(rc(App, null)); setTimeout(res, 20) })
+  await new Promise<void>((res) => {
+    root.render(rc(App, null))
+    setTimeout(res, 20)
+  })
 
-  function act(fn: () => void) { return new Promise<void>(res => { fn(); setTimeout(res, 0) }) }
+  function act(fn: () => void) {
+    return new Promise<void>((res) => {
+      fn()
+      setTimeout(res, 0)
+    })
+  }
 
   let cur: Row[] = []
-  const setD = (rows: Row[]) => { cur = rows; return act(() => { if (_setData) _setData(rows) }) }
-  const setS = (id: number | null) => act(() => { if (_setSel) _setSel(id) })
+  const setD = (rows: Row[]) => {
+    cur = rows
+    return act(() => {
+      if (_setData) _setData(rows)
+    })
+  }
+  const setS = (id: number | null) =>
+    act(() => {
+      if (_setSel) _setSel(id)
+    })
 
   const r: Record<string, number> = {}
-  r.create1k   = await bench(() => setD(makeRows(1_000)))
+  r.create1k = await bench(() => setD(makeRows(1_000)))
   r.replaceAll = await bench(() => setD(makeRows(1_000)))
 
-  let origLabels = cur.map(row => row.label)
+  let origLabels = cur.map((row) => row.label)
   r.partialUpd = await bench(
     () => {
       const u = [...cur]
-      for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
+      for (let i = 0; i < u.length; i += 10) {
+        const row = u[i] as Row
+        row.label = append(row.label)
+      }
       return setD(u)
     },
     () => {
@@ -280,16 +413,21 @@ async function runReact(): Promise<Record<string, number>> {
 
   // Re-create clean rows
   await setD(makeRows(1_000))
-  origLabels = cur.map(row => row.label)
+  origLabels = cur.map((row) => row.label)
 
-  r.selectRow  = await bench(() => setS(cur[500]?.id ?? null))
-  r.swapRows   = await bench(() => {
-    const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; return setD(u)
+  r.selectRow = await bench(() => setS(cur[500]?.id ?? null))
+  r.swapRows = await bench(() => {
+    const u = [...cur]
+    const t = u[1] as Row
+    u[1] = u[998] as Row
+    u[998] = t
+    return setD(u)
   })
-  r.clear      = await bench(() => setD([]))
+  r.clear = await bench(() => setD([]))
   await setD(makeRows(1_000))
-  r.create10k  = await bench(() => setD(makeRows(10_000)))
-  root.unmount(); el.remove()
+  r.create10k = await bench(() => setD(makeRows(10_000)))
+  root.unmount()
+  el.remove()
   return r
 }
 
@@ -299,32 +437,41 @@ async function runVue(): Promise<Record<string, number>> {
   const el = makeEl()
   const { createApp, ref: vref, h: hv, defineComponent } = Vue
 
-  const data  = vref<Row[]>([])
+  const data = vref<Row[]>([])
   const selId = vref<number | null>(null)
 
   const App = defineComponent({
     setup: () => () =>
       hv("table", null, [
-        hv("tbody", null,
-          data.value.map(row =>
-            hv("tr", { key: row.id, class: { selected: row.id === selId.value } },
-              [hv("td", null, String(row.id)), hv("td", null, row.label)]
-            )
-          )
+        hv(
+          "tbody",
+          null,
+          data.value.map((row) =>
+            hv("tr", { key: row.id, class: { selected: row.id === selId.value } }, [
+              hv("td", null, String(row.id)),
+              hv("td", null, row.label),
+            ]),
+          ),
         ),
-      ])
+      ]),
   })
 
   const app = createApp(App)
   app.mount(el)
-  await new Promise(res => setTimeout(res, 20))
+  await new Promise((res) => setTimeout(res, 20))
 
   let cur: Row[] = []
   const r: Record<string, number> = {}
-  r.create1k   = await bench(async () => { data.value = cur = makeRows(1_000); await tick() })
-  r.replaceAll = await bench(async () => { data.value = cur = makeRows(1_000); await tick() })
+  r.create1k = await bench(async () => {
+    data.value = cur = makeRows(1_000)
+    await tick()
+  })
+  r.replaceAll = await bench(async () => {
+    data.value = cur = makeRows(1_000)
+    await tick()
+  })
 
-  let origLabels = cur.map(row => row.label)
+  let origLabels = cur.map((row) => row.label)
   r.partialUpd = await bench(
     async () => {
       const u = [...cur]
@@ -347,15 +494,34 @@ async function runVue(): Promise<Record<string, number>> {
 
   // Re-create clean rows
   data.value = cur = makeRows(1_000)
-  origLabels = cur.map(row => row.label)
+  origLabels = cur.map((row) => row.label)
   await tick()
 
-  r.selectRow  = await bench(async () => { selId.value = cur[500]?.id ?? null; await tick() })
-  r.swapRows   = await bench(async () => { const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; data.value = cur = u; await tick() })
-  r.clear      = await bench(async () => { data.value = cur = []; await tick() })
-  data.value = cur = makeRows(1_000); await tick()
-  r.create10k  = await bench(async () => { data.value = cur = makeRows(10_000); await tick() })
-  data.value = []; app.unmount(); el.remove()
+  r.selectRow = await bench(async () => {
+    selId.value = cur[500]?.id ?? null
+    await tick()
+  })
+  r.swapRows = await bench(async () => {
+    const u = [...cur]
+    const t = u[1] as Row
+    u[1] = u[998] as Row
+    u[998] = t
+    data.value = cur = u
+    await tick()
+  })
+  r.clear = await bench(async () => {
+    data.value = cur = []
+    await tick()
+  })
+  data.value = cur = makeRows(1_000)
+  await tick()
+  r.create10k = await bench(async () => {
+    data.value = cur = makeRows(10_000)
+    await tick()
+  })
+  data.value = []
+  app.unmount()
+  el.remove()
   return r
 }
 
@@ -368,10 +534,12 @@ async function runPreact(): Promise<Record<string, number>> {
   const { useState: pus } = PreactHooks
 
   const RowItem = pmemo(({ row, sel }: { row: Row; sel: boolean }) =>
-    ph("tr", { className: sel ? "selected" : undefined },
+    ph(
+      "tr",
+      { className: sel ? "selected" : undefined },
       ph("td", null, row.id),
       ph("td", null, row.label),
-    )
+    ),
   )
 
   let _setData: ((rows: Row[]) => void) | null = null
@@ -380,30 +548,53 @@ async function runPreact(): Promise<Record<string, number>> {
   function App() {
     const [data, setData] = pus<Row[]>([])
     const [sid, setSel] = pus<number | null>(null)
-    _setData = setData; _setSel = setSel
-    return ph("table", null,
-      ph("tbody", null, data.map(row => ph(RowItem, { key: row.id, row, sel: row.id === sid })))
+    _setData = setData
+    _setSel = setSel
+    return ph(
+      "table",
+      null,
+      ph(
+        "tbody",
+        null,
+        data.map((row) => ph(RowItem, { key: row.id, row, sel: row.id === sid })),
+      ),
     )
   }
 
   pr(ph(App, null), el)
-  await new Promise<void>(res => setTimeout(res, 20))
+  await new Promise<void>((res) => setTimeout(res, 20))
 
-  function act(fn: () => void) { return new Promise<void>(res => { fn(); setTimeout(res, 0) }) }
+  function act(fn: () => void) {
+    return new Promise<void>((res) => {
+      fn()
+      setTimeout(res, 0)
+    })
+  }
 
   let cur: Row[] = []
-  const setD = (rows: Row[]) => { cur = rows; return act(() => { if (_setData) _setData(rows) }) }
-  const setS = (id: number | null) => act(() => { if (_setSel) _setSel(id) })
+  const setD = (rows: Row[]) => {
+    cur = rows
+    return act(() => {
+      if (_setData) _setData(rows)
+    })
+  }
+  const setS = (id: number | null) =>
+    act(() => {
+      if (_setSel) _setSel(id)
+    })
 
   const r: Record<string, number> = {}
-  r.create1k   = await bench(() => setD(makeRows(1_000)))
+  r.create1k = await bench(() => setD(makeRows(1_000)))
   r.replaceAll = await bench(() => setD(makeRows(1_000)))
 
-  let origLabels = cur.map(row => row.label)
+  let origLabels = cur.map((row) => row.label)
   r.partialUpd = await bench(
     () => {
       const u = [...cur]
-      for (let i = 0; i < u.length; i += 10) { const row = u[i] as Row; row.label = append(row.label) }
+      for (let i = 0; i < u.length; i += 10) {
+        const row = u[i] as Row
+        row.label = append(row.label)
+      }
       return setD(u)
     },
     () => {
@@ -417,16 +608,21 @@ async function runPreact(): Promise<Record<string, number>> {
 
   // Re-create clean rows
   await setD(makeRows(1_000))
-  origLabels = cur.map(row => row.label)
+  origLabels = cur.map((row) => row.label)
 
-  r.selectRow  = await bench(() => setS(cur[500]?.id ?? null))
-  r.swapRows   = await bench(() => {
-    const u = [...cur]; const t = u[1] as Row; u[1] = u[998] as Row; u[998] = t; return setD(u)
+  r.selectRow = await bench(() => setS(cur[500]?.id ?? null))
+  r.swapRows = await bench(() => {
+    const u = [...cur]
+    const t = u[1] as Row
+    u[1] = u[998] as Row
+    u[998] = t
+    return setD(u)
   })
-  r.clear      = await bench(() => setD([]))
+  r.clear = await bench(() => setD([]))
   await setD(makeRows(1_000))
-  r.create10k  = await bench(() => setD(makeRows(10_000)))
-  pr(null, el); el.remove()
+  r.create10k = await bench(() => setD(makeRows(10_000)))
+  pr(null, el)
+  el.remove()
   return r
 }
 
@@ -456,37 +652,57 @@ async function runSolid(): Promise<Record<string, number>> {
     const table = document.createElement("table")
     const tbody = document.createElement("tbody")
     table.appendChild(tbody)
-    insert(tbody, createComponent(For as unknown as (props: {
-      each: SRow[]
-      children: (row: SRow) => HTMLElement
-    }) => HTMLElement[], {
-      get each() { return rows() },
-      children(row: SRow) {
-        const tr = document.createElement("tr")
-        const td1 = document.createElement("td")
-        const td2 = document.createElement("td")
-        td1.textContent = String(row.id)
-        tr.appendChild(td1); tr.appendChild(td2)
-        createEffect(() => { td2.textContent = row.label() })
-        // O(1) selection via createSelector
-        createEffect(() => { tr.className = isSelected(row.id) ? "selected" : "" })
-        return tr
-      },
-    }))
+    insert(
+      tbody,
+      createComponent(
+        For as unknown as (props: {
+          each: SRow[]
+          children: (row: SRow) => HTMLElement
+        }) => HTMLElement[],
+        {
+          get each() {
+            return rows()
+          },
+          children(row: SRow) {
+            const tr = document.createElement("tr")
+            const td1 = document.createElement("td")
+            const td2 = document.createElement("td")
+            td1.textContent = String(row.id)
+            tr.appendChild(td1)
+            tr.appendChild(td2)
+            createEffect(() => {
+              td2.textContent = row.label()
+            })
+            // O(1) selection via createSelector
+            createEffect(() => {
+              tr.className = isSelected(row.id) ? "selected" : ""
+            })
+            return tr
+          },
+        },
+      ),
+    )
     return table
   }, el)
 
   const r: Record<string, number> = {}
-  r.create1k   = await bench(async () => { setRows(mkSRows(1_000)); await tick() })
+  r.create1k = await bench(async () => {
+    setRows(mkSRows(1_000))
+    await tick()
+  })
   r._verify = el.querySelectorAll("tr").length
-  r.replaceAll = await bench(async () => { setRows(mkSRows(1_000)); await tick() })
+  r.replaceAll = await bench(async () => {
+    setRows(mkSRows(1_000))
+    await tick()
+  })
 
-  let origLabels = rows().map(row => row.label())
+  let origLabels = rows().map((row) => row.label())
   r.partialUpd = await bench(
     async () => {
       const cur = rows()
       for (let i = 0; i < cur.length; i += 10) {
-        const row = cur[i] as SRow; row.setLabel(append(row.label()))
+        const row = cur[i] as SRow
+        row.setLabel(append(row.label()))
       }
       await tick()
     },
@@ -501,31 +717,47 @@ async function runSolid(): Promise<Record<string, number>> {
   )
 
   // Re-create clean rows
-  setRows(mkSRows(1_000)); await tick()
-  origLabels = rows().map(row => row.label())
+  setRows(mkSRows(1_000))
+  await tick()
+  origLabels = rows().map((row) => row.label())
 
-  r.selectRow  = await bench(async () => { setSelected(rows()[500]?.id ?? null); await tick() })
-  r.swapRows   = await bench(async () => {
-    const u = [...rows()]; const t = u[1] as SRow; u[1] = u[998] as SRow; u[998] = t
-    setRows(u); await tick()
+  r.selectRow = await bench(async () => {
+    setSelected(rows()[500]?.id ?? null)
+    await tick()
   })
-  r.clear      = await bench(async () => { setRows([]); await tick() })
-  setRows(mkSRows(1_000)); await tick()
-  r.create10k  = await bench(async () => { setRows(mkSRows(10_000)); await tick() })
-  dispose(); el.remove()
+  r.swapRows = await bench(async () => {
+    const u = [...rows()]
+    const t = u[1] as SRow
+    u[1] = u[998] as SRow
+    u[998] = t
+    setRows(u)
+    await tick()
+  })
+  r.clear = await bench(async () => {
+    setRows([])
+    await tick()
+  })
+  setRows(mkSRows(1_000))
+  await tick()
+  r.create10k = await bench(async () => {
+    setRows(mkSRows(10_000))
+    await tick()
+  })
+  dispose()
+  el.remove()
   return r
 }
 
 // ─── Output ───────────────────────────────────────────────────────────────────
 
 const TESTS: Array<[string, string]> = [
-  ["create1k",   "create 1k rows  "],
+  ["create1k", "create 1k rows  "],
   ["replaceAll", "replace all rows "],
   ["partialUpd", "partial update   "],
-  ["selectRow",  "select row       "],
-  ["swapRows",   "swap rows        "],
-  ["clear",      "clear rows       "],
-  ["create10k",  "create 10k rows  "],
+  ["selectRow", "select row       "],
+  ["swapRows", "swap rows        "],
+  ["clear", "clear rows       "],
+  ["create10k", "create 10k rows  "],
 ]
 
 function fmtMs(ms: number, w = 9): string {
@@ -537,35 +769,35 @@ function printResults(all: Record<string, Record<string, number>>) {
   const W = 12
   const LABEL = 20
 
-  console.log(`\n${"".padEnd(LABEL)}${fws.map(f => f.padStart(W)).join("")}`)
+  console.log(`\n${"".padEnd(LABEL)}${fws.map((f) => f.padStart(W)).join("")}`)
   console.log("─".repeat(LABEL + W * fws.length))
 
   for (const [key, label] of TESTS) {
-    const vals = fws.map(f => all[f]?.[key] ?? 0)
+    const vals = fws.map((f) => all[f]?.[key] ?? 0)
     const min = Math.min(...vals)
-    const cells = vals.map(v => {
+    const cells = vals.map((v) => {
       const s = fmtMs(v, W)
-      if (v === min)    return `\x1b[32m${s}\x1b[0m`
-      if (v > min * 5)  return `\x1b[31m${s}\x1b[0m`
-      if (v > min * 2)  return `\x1b[33m${s}\x1b[0m`
+      if (v === min) return `\x1b[32m${s}\x1b[0m`
+      if (v > min * 5) return `\x1b[31m${s}\x1b[0m`
+      if (v > min * 2) return `\x1b[33m${s}\x1b[0m`
       return s
     })
     console.log(`${label}${cells.join("")}`)
   }
 
   const printSlowdown = (title: string, subset: string[]) => {
-    console.log(`\n${title.padEnd(LABEL)}${subset.map(f => f.padStart(W)).join("")}`)
+    console.log(`\n${title.padEnd(LABEL)}${subset.map((f) => f.padStart(W)).join("")}`)
     console.log("─".repeat(LABEL + W * subset.length))
 
     for (const [key, label] of TESTS) {
-      const vals = subset.map(f => all[f]?.[key] ?? 0)
+      const vals = subset.map((f) => all[f]?.[key] ?? 0)
       const min = Math.min(...vals)
-      const cells = vals.map(v => {
+      const cells = vals.map((v) => {
         const ratio = v / min
         const s = `${ratio.toFixed(2)}×`.padStart(W)
         if (ratio < 1.01) return `\x1b[32m${s}\x1b[0m`
-        if (ratio > 5)    return `\x1b[31m${s}\x1b[0m`
-        if (ratio > 2)    return `\x1b[33m${s}\x1b[0m`
+        if (ratio > 5) return `\x1b[31m${s}\x1b[0m`
+        if (ratio > 2) return `\x1b[33m${s}\x1b[0m`
         return s
       })
       console.log(`${label}${cells.join("")}`)
@@ -575,7 +807,7 @@ function printResults(all: Record<string, Record<string, number>>) {
   printSlowdown("slowdown vs best", fws)
 
   // Framework-only comparison (excludes vanilla raw DOM baseline)
-  const frameworkOnly = fws.filter(f => f !== "Vanilla JS")
+  const frameworkOnly = fws.filter((f) => f !== "Vanilla JS")
   if (frameworkOnly.length > 1) {
     printSlowdown("vs best framework", frameworkOnly)
   }
@@ -598,8 +830,8 @@ const frameworks: Array<{ name: string; run: () => Promise<Record<string, number
 
 for (let i = frameworks.length - 1; i > 0; i--) {
   const j = Math.floor(Math.random() * (i + 1))
-  const a = frameworks[i] as typeof frameworks[0]
-  const b = frameworks[j] as typeof frameworks[0]
+  const a = frameworks[i] as (typeof frameworks)[0]
+  const b = frameworks[j] as (typeof frameworks)[0]
   frameworks[i] = b
   frameworks[j] = a
 }

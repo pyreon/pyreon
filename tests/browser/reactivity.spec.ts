@@ -3,7 +3,7 @@
  * Verifies that reactive updates propagate to the real DOM.
  */
 
-import { test, expect } from "./fixtures"
+import { expect, test } from "./fixtures"
 
 test.describe("reactivity", () => {
   test("signal updates reflect in DOM text", async ({ pyreonPage: page }) => {
@@ -12,7 +12,10 @@ test.describe("reactivity", () => {
       const name = signal("Alice")
       ;(window as any).__name = name
       const app = document.getElementById("app")!
-      mount(h("span", { id: "name" }, () => name()), app)
+      mount(
+        h("span", { id: "name" }, () => name()),
+        app,
+      )
     })
 
     await expect(page.locator("#name")).toHaveText("Alice")
@@ -33,7 +36,10 @@ test.describe("reactivity", () => {
       ;(window as any).__firstName = firstName
       ;(window as any).__lastName = lastName
       const app = document.getElementById("app")!
-      mount(h("span", { id: "full" }, () => fullName()), app)
+      mount(
+        h("span", { id: "full" }, () => fullName()),
+        app,
+      )
     })
 
     await expect(page.locator("#full")).toHaveText("John Doe")
@@ -106,11 +112,15 @@ test.describe("reactivity", () => {
       ;(window as any).__isActive = isActive
       const app = document.getElementById("app")!
       mount(
-        h("div", {
-          id: "styled",
-          class: () => isActive() ? "active" : "inactive",
-          style: () => isActive() ? "color: green" : "color: red",
-        }, "Toggle"),
+        h(
+          "div",
+          {
+            id: "styled",
+            class: () => (isActive() ? "active" : "inactive"),
+            style: () => (isActive() ? "color: green" : "color: red"),
+          },
+          "Toggle",
+        ),
         app,
       )
     })
@@ -134,7 +144,9 @@ test.describe("reactivity", () => {
       ;(window as any).__visible = visible
       const app = document.getElementById("app")!
       mount(
-        h("div", { id: "container" },
+        h(
+          "div",
+          { id: "container" },
           h(Show, {
             when: () => visible(),
             children: h("p", { id: "content" }, "Visible!"),
@@ -161,7 +173,10 @@ test.describe("reactivity", () => {
       const count = signal(5)
       ;(window as any).__count = count
       const app = document.getElementById("app")!
-      mount(h("span", { id: "val" }, () => `${count()}`), app)
+      mount(
+        h("span", { id: "val" }, () => `${count()}`),
+        app,
+      )
     })
 
     await expect(page.locator("#val")).toHaveText("5")

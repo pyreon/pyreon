@@ -90,7 +90,8 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       // AST: JsxAttribute → JsxAttributes → JsxOpeningElement | JsxSelfClosingElement
       const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
       const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ""
-      const isComponentElement = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+      const isComponentElement =
+        tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
 
       if (
         !isComponentElement &&
@@ -150,7 +151,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   // Prepend module-scope hoisted static VNode declarations
   if (hoists.length > 0) {
-    const preamble = hoists.map(h => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join("")
+    const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join("")
     result = preamble + result
   }
 
@@ -173,7 +174,7 @@ function isStaticJSXNode(node: StaticJSXNode): boolean {
 }
 
 function isStaticAttrs(attrs: ts.JsxAttributes): boolean {
-  return attrs.properties.every(prop => {
+  return attrs.properties.every((prop) => {
     // Spread attribute — always dynamic
     if (!ts.isJsxAttribute(prop)) return false
     // Boolean shorthand: <input disabled />

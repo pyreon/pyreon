@@ -1,38 +1,38 @@
-import { describe, test, expect } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import {
-  h,
+  ErrorBoundary,
+  For,
+  ForSymbol,
   Fragment,
+  Match,
+  MatchSymbol,
+  Portal,
+  PortalSymbol,
+  Show,
+  Suspense,
+  Switch,
+  createContext,
+  createRef,
   defineComponent,
-  runWithHooks,
-  propagateError,
   dispatchToErrorBoundary,
+  h,
+  mapArray,
+  onErrorCaptured,
   onMount,
   onUnmount,
   onUpdate,
-  onErrorCaptured,
-  createContext,
-  useContext,
-  withContext,
-  pushContext,
   popContext,
-  createRef,
-  Show,
-  Switch,
-  Match,
-  MatchSymbol,
-  For,
-  ForSymbol,
-  Portal,
-  PortalSymbol,
-  Suspense,
-  ErrorBoundary,
-  mapArray,
+  propagateError,
+  pushContext,
   registerErrorHandler,
   reportError,
+  runWithHooks,
+  useContext,
+  withContext,
 } from "../index"
-import { jsx, jsxs, Fragment as JsxFragment } from "../jsx-runtime"
 import { jsxDEV } from "../jsx-dev-runtime"
-import type { VNode, VNodeChild, ComponentFn, Props } from "../types"
+import { Fragment as JsxFragment, jsx, jsxs } from "../jsx-runtime"
+import type { ComponentFn, VNode, VNodeChild } from "../types"
 
 // ─── h() ─────────────────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ describe("h()", () => {
   })
 
   test("deeply nested arrays are flattened", () => {
-    const node = h("div", null, [[["deep"]]])
+    const node = h("div", null, [[["deep"]]] as unknown as VNodeChild)
     expect(node.children).toEqual(["deep"])
   })
 
@@ -88,9 +88,9 @@ describe("h()", () => {
   })
 
   test("handles component function type", () => {
-    const Comp: ComponentFn<{ name: string }> = (props) => h("span", null, props.name)
+    const Comp = ((props: { name: string }) => h("span", null, props.name)) as ComponentFn<{ name: string }>
     const node = h(Comp, { name: "test" })
-    expect(node.type).toBe(Comp)
+    expect(node.type as unknown).toBe(Comp)
     expect(node.props).toEqual({ name: "test" })
   })
 
@@ -208,7 +208,7 @@ describe("runWithHooks()", () => {
   })
 
   test("passes props to component function", () => {
-    let received: Props | null = null
+    let received: unknown = null
     const Comp: ComponentFn<{ msg: string }> = (props) => {
       received = props
       return null
@@ -222,17 +222,32 @@ describe("runWithHooks()", () => {
 
 describe("propagateError()", () => {
   test("returns true when handler marks error as handled", () => {
-    const hooks = { mount: [], unmount: [], update: [], error: [(_err: unknown) => true as boolean | undefined] }
+    const hooks = {
+      mount: [],
+      unmount: [],
+      update: [],
+      error: [(_err: unknown) => true as boolean | undefined],
+    }
     expect(propagateError(new Error("test"), hooks)).toBe(true)
   })
 
   test("returns false when no handlers", () => {
-    const hooks = { mount: [], unmount: [], update: [], error: [] as Array<(err: unknown) => boolean | undefined> }
+    const hooks = {
+      mount: [],
+      unmount: [],
+      update: [],
+      error: [] as Array<(err: unknown) => boolean | undefined>,
+    }
     expect(propagateError(new Error("test"), hooks)).toBe(false)
   })
 
   test("returns false when handler does not return true", () => {
-    const hooks = { mount: [], unmount: [], update: [], error: [(_err: unknown) => undefined as boolean | undefined] }
+    const hooks = {
+      mount: [],
+      unmount: [],
+      update: [],
+      error: [(_err: unknown) => undefined as boolean | undefined],
+    }
     expect(propagateError(new Error("test"), hooks)).toBe(false)
   })
 
@@ -244,7 +259,10 @@ describe("propagateError()", () => {
       update: [],
       error: [
         (_err: unknown) => true as boolean | undefined,
-        (_err: unknown) => { secondCalled = true; return true as boolean | undefined },
+        (_err: unknown) => {
+          secondCalled = true
+          return true as boolean | undefined
+        },
       ],
     }
     propagateError(new Error("test"), hooks)
@@ -347,31 +365,39 @@ describe("Show", () => {
   })
 
   test("returns children when condition is truthy", () => {
-    const getter = Show({ when: () => true, children: "visible" }) as () => VNodeChild
+    const getter = Show({ when: () => true, children: "visible" }) as unknown as () => VNodeChild
     expect(getter()).toBe("visible")
   })
 
   test("returns null when condition is falsy and no fallback", () => {
-    const getter = Show({ when: () => false, children: "visible" }) as () => VNodeChild
+    const getter = Show({ when: () => false, children: "visible" }) as unknown as () => VNodeChild
     expect(getter()).toBeNull()
   })
 
   test("returns fallback when condition is falsy", () => {
     const fallbackNode = h("span", null, "nope")
-    const getter = Show({ when: () => false, fallback: fallbackNode, children: "visible" }) as () => VNodeChild
+    const getter = Show({
+      when: () => false,
+      fallback: fallbackNode,
+      children: "visible",
+    }) as unknown as () => VNodeChild
     expect(getter()).toBe(fallbackNode)
   })
 
   test("reacts to condition changes", () => {
     let flag = true
-    const getter = Show({ when: () => flag, children: "yes", fallback: "no" }) as () => VNodeChild
+    const getter = Show({
+      when: () => flag,
+      children: "yes",
+      fallback: "no",
+    }) as unknown as () => VNodeChild
     expect(getter()).toBe("yes")
     flag = false
     expect(getter()).toBe("no")
   })
 
   test("returns null for children when children not provided and condition truthy", () => {
-    const getter = Show({ when: () => true }) as () => VNodeChild
+    const getter = Show({ when: () => true }) as unknown as () => VNodeChild
     expect(getter()).toBeNull()
   })
 })
@@ -387,7 +413,7 @@ describe("Switch / Match", () => {
         h(Match, { when: () => true }, "third"),
       ],
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe("second")
   })
 
@@ -395,12 +421,9 @@ describe("Switch / Match", () => {
     const fb = h("p", null, "404")
     const result = Switch({
       fallback: fb,
-      children: [
-        h(Match, { when: () => false }, "a"),
-        h(Match, { when: () => false }, "b"),
-      ],
+      children: [h(Match, { when: () => false }, "a"), h(Match, { when: () => false }, "b")],
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe(fb)
   })
 
@@ -408,7 +431,7 @@ describe("Switch / Match", () => {
     const result = Switch({
       children: [h(Match, { when: () => false }, "a")],
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBeNull()
   })
 
@@ -416,13 +439,13 @@ describe("Switch / Match", () => {
     const result = Switch({
       children: h(Match, { when: () => true }, "only"),
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe("only")
   })
 
   test("handles no children", () => {
     const result = Switch({})
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBeNull()
   })
 
@@ -440,12 +463,9 @@ describe("Switch / Match", () => {
     let b = false
     const result = Switch({
       fallback: "none",
-      children: [
-        h(Match, { when: () => a }, "A"),
-        h(Match, { when: () => b }, "B"),
-      ],
+      children: [h(Match, { when: () => a }, "A"), h(Match, { when: () => b }, "B")],
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe("none")
     b = true
     expect(getter()).toBe("B")
@@ -457,10 +477,10 @@ describe("Switch / Match", () => {
     const result = Switch({
       children: [h(Match, { when: () => true }, "child1", "child2")],
     })
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     const value = getter()
     expect(Array.isArray(value)).toBe(true)
-    expect(value).toEqual(["child1", "child2"])
+    expect(value as unknown).toEqual(["child1", "child2"])
   })
 })
 
@@ -487,7 +507,11 @@ describe("For()", () => {
     const keyFn = (item: number) => item
     const childFn = (item: number) => h("span", null, String(item))
     const node = For({ each: eachFn, key: keyFn, children: childFn })
-    const props = node.props as unknown as { each: typeof eachFn; key: typeof keyFn; children: typeof childFn }
+    const props = node.props as unknown as {
+      each: typeof eachFn
+      key: typeof keyFn
+      children: typeof childFn
+    }
     expect(props.each).toBe(eachFn)
     expect(props.key).toBe(keyFn)
     expect(props.children).toBe(childFn)
@@ -588,10 +612,14 @@ describe("ErrorBoundary", () => {
   test("returns a reactive getter", () => {
     // Must run inside runWithHooks since ErrorBoundary calls onUnmount
     const { vnode, hooks } = runWithHooks(() => {
-      return h("div", null, ErrorBoundary({
-        fallback: (err) => `Error: ${err}`,
-        children: "child content",
-      }) as VNodeChild)
+      return h(
+        "div",
+        null,
+        ErrorBoundary({
+          fallback: (err) => `Error: ${err}`,
+          children: "child content",
+        }) as VNodeChild,
+      )
     }, {})
     expect(vnode).not.toBeNull()
     // Should have registered onUnmount for cleanup
@@ -608,7 +636,7 @@ describe("ErrorBoundary", () => {
       return null
     }, {})
     expect(typeof result).toBe("function")
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe("child content")
   })
 
@@ -621,7 +649,7 @@ describe("ErrorBoundary", () => {
       })
       return null
     }, {})
-    const getter = result as () => VNodeChild
+    const getter = result as unknown as () => VNodeChild
     expect(getter()).toBe("dynamic child")
   })
 })
@@ -634,7 +662,10 @@ describe("dispatchToErrorBoundary()", () => {
     // so we test by pushing our own known handler.
     let caughtErr: unknown = null
     const { pushErrorBoundary: push, popErrorBoundary: pop } = require("../component")
-    push((err: unknown) => { caughtErr = err; return true })
+    push((err: unknown) => {
+      caughtErr = err
+      return true
+    })
     expect(dispatchToErrorBoundary(new Error("caught"))).toBe(true)
     expect((caughtErr as Error).message).toBe("caught")
     pop()
@@ -650,7 +681,10 @@ describe("mapArray()", () => {
     const mapped = mapArray(
       () => items,
       (item) => item,
-      (item) => { callCount++; return item * 10 },
+      (item) => {
+        callCount++
+        return item * 10
+      },
     )
 
     const result1 = mapped()
@@ -669,7 +703,10 @@ describe("mapArray()", () => {
     const mapped = mapArray(
       () => items,
       (item) => item,
-      (item) => { callCount++; return item * 10 },
+      (item) => {
+        callCount++
+        return item * 10
+      },
     )
 
     mapped() // initial: 3 calls
@@ -699,7 +736,10 @@ describe("mapArray()", () => {
     const mapped2 = mapArray(
       () => items,
       (item) => item,
-      (item) => { callCount++; return item * 100 },
+      (item) => {
+        callCount++
+        return item * 100
+      },
     )
     mapped2()
     expect(callCount).toBe(3)
@@ -720,7 +760,10 @@ describe("mapArray()", () => {
     const mapped = mapArray(
       () => items,
       (item) => item,
-      (item) => { callCount++; return item * 10 },
+      (item) => {
+        callCount++
+        return item * 10
+      },
     )
 
     mapped()
@@ -752,8 +795,12 @@ describe("registerErrorHandler / reportError", () => {
 
   test("multiple handlers are all called", () => {
     let count = 0
-    const unsub1 = registerErrorHandler(() => { count++ })
-    const unsub2 = registerErrorHandler(() => { count++ })
+    const unsub1 = registerErrorHandler(() => {
+      count++
+    })
+    const unsub2 = registerErrorHandler(() => {
+      count++
+    })
 
     reportError({ component: "X", phase: "setup", error: "err", timestamp: 0 })
     expect(count).toBe(2)
@@ -764,8 +811,12 @@ describe("registerErrorHandler / reportError", () => {
 
   test("handler errors are swallowed", () => {
     let secondCalled = false
-    const unsub1 = registerErrorHandler(() => { throw new Error("handler crash") })
-    const unsub2 = registerErrorHandler(() => { secondCalled = true })
+    const unsub1 = registerErrorHandler(() => {
+      throw new Error("handler crash")
+    })
+    const unsub2 = registerErrorHandler(() => {
+      secondCalled = true
+    })
 
     // Should not throw
     reportError({ component: "Y", phase: "mount", error: "err", timestamp: 0 })
@@ -886,10 +937,7 @@ describe("edge cases", () => {
   })
 
   test("nested Fragments", () => {
-    const node = h(Fragment, null,
-      h(Fragment, null, "a", "b"),
-      h(Fragment, null, "c"),
-    )
+    const node = h(Fragment, null, h(Fragment, null, "a", "b"), h(Fragment, null, "c"))
     expect(node.type).toBe(Fragment)
     expect(node.children).toHaveLength(2)
     expect((node.children[0] as VNode).type).toBe(Fragment)
@@ -917,12 +965,15 @@ describe("edge cases", () => {
 
   test("Show with VNode children", () => {
     const child = h("div", null, "content")
-    const getter = Show({ when: () => true, children: child }) as () => VNodeChild
+    const getter = Show({ when: () => true, children: child }) as unknown as () => VNodeChild
     expect(getter()).toBe(child)
   })
 
   test("For with objects", () => {
-    const items = [{ id: 1, name: "a" }, { id: 2, name: "b" }]
+    const items = [
+      { id: 1, name: "a" },
+      { id: 2, name: "b" },
+    ]
     const node = For({
       each: () => items,
       key: (item) => item.id,

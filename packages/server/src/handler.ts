@@ -26,17 +26,17 @@
 
 import { h } from "@pyreon/core"
 import type { ComponentFn } from "@pyreon/core"
-import { renderToString, renderToStream, runWithRequestContext } from "@pyreon/runtime-server"
+import { renderWithHead } from "@pyreon/head"
 import {
-  createRouter,
-  RouterProvider,
   type RouteRecord,
+  RouterProvider,
+  createRouter,
   prefetchLoaderData,
   serializeLoaderData,
 } from "@pyreon/router"
-import { renderWithHead } from "@pyreon/head"
+import { renderToStream, runWithRequestContext } from "@pyreon/runtime-server"
+import { DEFAULT_TEMPLATE, buildScripts, processTemplate } from "./html"
 import type { Middleware, MiddlewareContext } from "./middleware"
-import { processTemplate, buildScripts, DEFAULT_TEMPLATE } from "./html"
 
 export interface HandlerOptions {
   /** Root application component */

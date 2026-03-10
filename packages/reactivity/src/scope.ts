@@ -21,7 +21,11 @@ export class EffectScope {
   runInScope<T>(fn: () => T): T {
     const prev = _currentScope
     _currentScope = this
-    try { return fn() } finally { _currentScope = prev }
+    try {
+      return fn()
+    } finally {
+      _currentScope = prev
+    }
   }
 
   /** Register a callback to run after any reactive update in this scope. */
@@ -40,7 +44,11 @@ export class EffectScope {
       this._updatePending = false
       if (!this._active) return
       for (const fn of this._updateHooks) {
-        try { fn() } catch (err) { console.error("[pyreon] onUpdate error:", err) }
+        try {
+          fn()
+        } catch (err) {
+          console.error("[pyreon] onUpdate error:", err)
+        }
       }
     })
   }
