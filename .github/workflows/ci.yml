@@ -103,9 +103,9 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - name: Check for known vulnerabilities
-        run: "bunx audit-ci --config '{\"low\": true}'"
+        run: bunx audit-ci --low
         continue-on-error: true
       - name: Verify no lockfile drift
         run: |
-          bun install --frozen-lockfile
-          git diff --exit-code bun.lockb || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
+          bun install
+          git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)

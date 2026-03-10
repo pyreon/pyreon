@@ -24,8 +24,8 @@
     }
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --external typescript",
-    "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch --external typescript",
+    "build": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --packages external",
+    "dev": "bun build ./src/index.ts --outdir ./dist --target node --format esm --sourcemap --watch --packages external",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
