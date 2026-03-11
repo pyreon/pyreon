@@ -12,8 +12,8 @@ GlobalRegistrator.register()
 
 const [
   { h, For },
-  { signal, createSelector },
-  { mount },
+  { signal, createSelector, renderEffect, ...reactivityRest },
+  { mount, ...runtimeDomRest },
   React,
   ReactDOM,
   Vue,
@@ -279,6 +279,114 @@ async function runPyreon(): Promise<Record<string, number>> {
               h("td", null, String(row.id)),
               h("td", null, () => row.label()),
             ),
+        }),
+      ),
+    ),
+    el,
+  )
+
+  const cur = () => rowsSig()
+  const r: Record<string, number> = {}
+  r.create1k = await bench(() => rowsSig.set(makeRR(1_000)))
+  r._verify = el.querySelectorAll("tr").length
+  r.replaceAll = await bench(() => rowsSig.set(makeRR(1_000)))
+
+  // Partial update with label reset
+  let origLabels = cur().map((row) => row.label())
+  r.partialUpd = await bench(
+    () => {
+      cur().forEach((row, i) => {
+        if (i % 10 === 0) row.label.update((l) => append(l))
+      })
+    },
+    () => {
+      cur().forEach((row, i) => {
+        if (i % 10 === 0) {
+          const o = origLabels[i]
+          if (o !== undefined) row.label.set(o)
+        }
+      })
+    },
+  )
+
+  // Re-create clean rows
+  rowsSig.set(makeRR(1_000))
+  origLabels = cur().map((row) => row.label())
+
+  r.selectRow = await bench(() => selId.set(cur()[500]?.id ?? null))
+  r.swapRows = await bench(() => {
+    const c = [...cur()]
+    const t = c[1] as RR
+    c[1] = c[998] as RR
+    c[998] = t
+    rowsSig.set(c)
+  })
+  r.clear = await bench(() => rowsSig.set([]))
+  rowsSig.set(makeRR(1_000))
+  r.create10k = await bench(() => rowsSig.set(makeRR(10_000)))
+  unmount()
+  el.remove()
+  return r
+}
+
+// ─── Pyreon (tpl) ────────────────────────────────────────────────────────────
+
+async function runPyreonTpl(): Promise<Record<string, number>> {
+  // _tpl and _bind are exported from src but not yet in built types
+  // biome-ignore lint: benchmark file, cast is fine
+  const _tpl = (runtimeDomRest as any)._tpl as (
+    html: string,
+    bind: (el: HTMLElement) => (() => void) | null,
+  ) => { __isNative: true; el: HTMLElement; cleanup: (() => void) | null }
+  // biome-ignore lint: benchmark file, cast is fine
+  const _bind = (reactivityRest as any)._bind as (fn: () => void) => () => void
+
+  const el = makeEl()
+  type RR = { id: number; label: ReturnType<typeof signal<string>> }
+  const rowsSig = signal<RR[]>([])
+  const selId = signal<number | null>(null)
+
+  // O(1) selection via createSelector — only 2 effects fire per change
+  const isSelected = createSelector(selId)
+
+  function makeRR(n: number): RR[] {
+    const rows = new Array<RR>(n)
+    for (let i = 0; i < n; i++) {
+      rows[i] = { id: _id++, label: signal(`${pick(ADJ)} ${pick(COLS)} ${pick(NOUN)}`) }
+    }
+    return rows
+  }
+
+  const unmount = mount(
+    h(
+      "table",
+      null,
+      h(
+        "tbody",
+        null,
+        For({
+          each: rowsSig,
+          key: (r) => r.id,
+          children: (row: RR) =>
+            _tpl("<tr><td></td><td></td></tr>", (__root) => {
+              const __e0 = __root.children[0] as HTMLElement
+              const __e1 = __root.children[1] as HTMLElement
+              const __d0 = _bind(() => {
+                __root.className = isSelected(row.id) ? "selected" : ""
+              })
+              __e0.textContent = String(row.id)
+              // Use persistent TextNode + .data for reactive text updates
+              // (.textContent destroys/recreates child nodes on every update)
+              const __t0 = document.createTextNode("")
+              __e1.appendChild(__t0)
+              const __d1 = _bind(() => {
+                __t0.data = row.label()
+              })
+              return () => {
+                __d0()
+                __d1()
+              }
+            }),
         }),
       ),
     ),
@@ -632,7 +740,10 @@ async function runSolid(): Promise<Record<string, number>> {
   const el = makeEl()
   const { createSignal, createSelector: solidCreateSelector, createEffect, createComponent } = Solid
   const { For } = Solid
-  const { render: sr, insert } = SolidWeb
+  const { render: sr, insert, template: solidTemplate } = SolidWeb
+
+  // Pre-compiled template — same as what Solid's JSX compiler emits
+  const _tmpl$ = solidTemplate("<tr><td></td><td></td></tr>")
 
   type SRow = { id: number; label: () => string; setLabel: (s: string) => void }
   function mkSRows(n: number): SRow[] {
@@ -664,12 +775,11 @@ async function runSolid(): Promise<Record<string, number>> {
             return rows()
           },
           children(row: SRow) {
-            const tr = document.createElement("tr")
-            const td1 = document.createElement("td")
-            const td2 = document.createElement("td")
+            // Template-cloned row — matches Solid compiler output
+            const tr = _tmpl$() as HTMLElement
+            const td1 = tr.children[0] as HTMLElement
+            const td2 = tr.children[1] as HTMLElement
             td1.textContent = String(row.id)
-            tr.appendChild(td1)
-            tr.appendChild(td2)
             createEffect(() => {
               td2.textContent = row.label()
             })
@@ -821,6 +931,7 @@ function printResults(all: Record<string, Record<string, number>>) {
 const frameworks: Array<{ name: string; run: () => Promise<Record<string, number>> }> = [
   { name: "Vanilla JS", run: runVanilla },
   { name: "Pyreon", run: runPyreon },
+  { name: "Pyreon (tpl)", run: runPyreonTpl },
   { name: "Preact", run: runPreact },
   { name: "React 19", run: runReact },
   { name: "Vue 3", run: runVue },

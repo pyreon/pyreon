@@ -1,4 +1,12 @@
-import type { ComponentFn, ForProps, PortalProps, Ref, VNode, VNodeChild } from "@pyreon/core"
+import type {
+  ComponentFn,
+  ForProps,
+  NativeItem,
+  PortalProps,
+  Ref,
+  VNode,
+  VNodeChild,
+} from "@pyreon/core"
 import {
   dispatchToErrorBoundary,
   EMPTY_PROPS,
@@ -101,6 +109,26 @@ export function mountChild(
   if (typeof child !== "object") {
     parent.insertBefore(document.createTextNode(String(child)), anchor)
     return noop
+  }
+
+  // NativeItem — pre-built DOM element from _tpl() or createTemplate().
+  // Insert directly, bypassing VNode reconciliation entirely.
+  if ((child as unknown as NativeItem).__isNative) {
+    const native = child as unknown as NativeItem
+    parent.insertBefore(native.el, anchor)
+    if (!native.cleanup) {
+      if (_elementDepth > 0) return noop
+      return () => {
+        const p = native.el.parentNode
+        if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+      }
+    }
+    if (_elementDepth > 0) return native.cleanup
+    return () => {
+      native.cleanup!()
+      const p = native.el.parentNode
+      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+    }
   }
 
   const vnode = child as VNode

@@ -1,5 +1,6 @@
 import { runPreact } from "./impl/preact"
 import { runPyreon } from "./impl/pyreon"
+import { runPyreonTpl } from "./impl/pyreon-tpl"
 import { runReact } from "./impl/react"
 import { runSolid } from "./impl/solid"
 import { runVanilla } from "./impl/vanilla"
@@ -121,6 +122,7 @@ runBtn.addEventListener("click", async () => {
     { name: "Vue 3", run: runVue },
     { name: "SolidJS", run: runSolid },
     { name: "Pyreon", run: runPyreon },
+    { name: "Pyreon (tpl)", run: runPyreonTpl },
   ]
 
   // Randomize execution order to avoid GC pressure bias

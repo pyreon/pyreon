@@ -1,10 +1,11 @@
 /**
- * SolidJS benchmark — fine-grained reactivity + keyed list diffing.
+ * SolidJS benchmark — fine-grained reactivity + compiled template cloning.
  *
- * Uses solid-js without JSX: createComponent() mirrors what the Solid
- * compiler emits for <For>. Each row gets a createSignal for its label
- * so partial updates only touch the changed text nodes — same model as
- * Pyreon's per-row signal.
+ * Uses solid-js/web template() for row creation — this matches what Solid's
+ * JSX compiler emits (cloneNode(true) from cached <template> elements).
+ *
+ * Each row gets a createSignal for its label so partial updates only touch
+ * the changed text nodes — same model as Pyreon's per-row signal.
  *
  * Uses createSelector for O(1) selection — only 2 effects fire per
  * selection change, matching idiomatic Solid patterns.
@@ -13,7 +14,7 @@
  */
 import { createComponent, createEffect, createSelector, createSignal } from "solid-js"
 import { For } from "solid-js"
-import { insert, render } from "solid-js/web"
+import { insert, render, template } from "solid-js/web"
 import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"
 
@@ -25,6 +26,9 @@ function mkRows(n: number): SolidRow[] {
     return { id, label: get, setLabel: set }
   })
 }
+
+// Pre-compiled template — same as what Solid's JSX compiler emits
+const _tmpl$ = template("<tr><td></td><td></td></tr>")
 
 export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   const suite: BenchSuite = { framework: "SolidJS", container, results: [] }
@@ -52,21 +56,20 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
             return rows()
           },
           children(row: SolidRow) {
-            const tr = document.createElement("tr")
-            const td1 = document.createElement("td")
-            const td2 = document.createElement("td")
+            // Template-cloned row — matches Solid compiler output
+            const el = _tmpl$() as HTMLElement
+            const td1 = el.children[0] as HTMLElement
+            const td2 = el.children[1] as HTMLElement
             td1.textContent = String(row.id)
-            tr.appendChild(td1)
-            tr.appendChild(td2)
             // Reactive label — only this row's td2 updates when label changes
             createEffect(() => {
               td2.textContent = row.label()
             })
             // O(1) selection via createSelector — only 2 effects fire per change
             createEffect(() => {
-              tr.className = isSelected(row.id) ? "selected" : ""
+              el.className = isSelected(row.id) ? "selected" : ""
             })
-            return tr
+            return el
           },
         },
       ),

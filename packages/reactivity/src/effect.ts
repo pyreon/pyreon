@@ -64,6 +64,42 @@ export function effect(fn: () => void): Effect {
  *
  * Returns a dispose function (not an Effect object — saves 1 allocation).
  */
+/**
+ * Static-dep binding — compiler helper for template expressions.
+ *
+ * Like renderEffect but assumes dependencies never change (true for all
+ * compiler-emitted template bindings like `_tpl()` text/attribute updates).
+ *
+ * Tracks dependencies only on the first run. Re-runs skip cleanup, re-tracking,
+ * and tracking context save/restore entirely — just calls `fn()` directly.
+ *
+ * Per re-run savings vs renderEffect:
+ * - No deps iteration + Set.delete (cleanup)
+ * - No setDepsCollector + withTracking (re-registration)
+ * - Signal reads hit `if (activeEffect)` null check → instant return
+ */
+export function _bind(fn: () => void): () => void {
+  const deps: Array<Set<() => void>> = []
+  let disposed = false
+
+  const run = () => {
+    if (disposed) return
+    fn()
+  }
+
+  // First run: track deps so we know what to unsubscribe on dispose
+  setDepsCollector(deps)
+  withTracking(run, fn)
+  setDepsCollector(null)
+
+  return () => {
+    if (disposed) return
+    disposed = true
+    for (const s of deps) s.delete(run)
+    deps.length = 0
+  }
+}
+
 export function renderEffect(fn: () => void): () => void {
   const deps: Array<Set<() => void>> = []
   let disposed = false

@@ -16,6 +16,14 @@
  *  - A JSX node is static if: all props are string literals / booleans / static
  *    values, and all children are text nodes or other static JSX nodes.
  *
+ * Template emission:
+ *  - JSX element trees with ≥ 2 DOM elements (no components, no spread attrs)
+ *    are compiled to `_tpl(html, bindFn)` calls instead of nested `h()` calls.
+ *  - The HTML string is parsed once via <template>.innerHTML, then cloneNode(true)
+ *    for each instance (~5-10x faster than sequential createElement calls).
+ *  - Static attributes are baked into the HTML string; dynamic attributes and
+ *    text content use renderEffect in the bind function.
+ *
  * Implementation: TypeScript parser for positions + magic-string replacements.
  * No extra runtime dependencies — `typescript` is already in devDependencies.
  *
@@ -30,6 +38,8 @@ import ts from "typescript"
 export interface TransformResult {
   /** Transformed source code (JSX preserved, only expression containers modified) */
   code: string
+  /** Whether the output uses _tpl/_re template helpers (needs auto-import) */
+  usesTemplates?: boolean
 }
 
 // Props that should never be wrapped in a reactive getter
@@ -56,6 +66,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   type Hoist = { name: string; text: string }
   const hoists: Hoist[] = []
   let hoistIdx = 0
+  let needsTplImport = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -81,6 +92,30 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   }
 
   function walk(node: ts.Node): void {
+    // ── Template emission ──────────────────────────────────────────────────────
+    // Try to convert JSX element trees (≥ 2 DOM elements) to _tpl() calls.
+    // Must be checked before attribute/expression handling to avoid double-processing.
+    if (ts.isJsxElement(node)) {
+      const elemCount = templateElementCount(node)
+      if (elemCount >= 2) {
+        const tplCall = buildTemplateCall(node)
+        if (tplCall) {
+          const start = node.getStart(sf)
+          const end = node.getEnd()
+          // If child of another JSX element/fragment, wrap in expression container
+          const parent = node.parent
+          const needsBraces = parent && (ts.isJsxElement(parent) || ts.isJsxFragment(parent))
+          replacements.push({
+            start,
+            end,
+            text: needsBraces ? `{${tplCall}}` : tplCall,
+          })
+          needsTplImport = true
+          return // skip children — template handles everything
+        }
+      }
+    }
+
     // ── JSX attribute ──────────────────────────────────────────────────────────
     if (ts.isJsxAttribute(node)) {
       const name = ts.isIdentifier(node.name) ? node.name.text : ""
@@ -155,7 +190,362 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     result = preamble + result
   }
 
-  return { code: result }
+  // Prepend template imports if _tpl() was emitted
+  if (needsTplImport) {
+    result =
+      `import { _tpl } from "@pyreon/runtime-dom";\nimport { _bind } from "@pyreon/reactivity";\n` +
+      result
+  }
+
+  return { code: result, usesTemplates: needsTplImport }
+
+  // ── Template emission helpers (closures over sf, code) ──────────────────────
+
+  /**
+   * Count DOM elements in a JSX subtree. Returns -1 if the tree is not
+   * eligible for template emission (contains components, spread attrs,
+   * fragments, or unsupported child patterns).
+   */
+  function templateElementCount(node: ts.JsxElement | ts.JsxSelfClosingElement): number {
+    const tag = jsxTagName(node)
+    if (!tag || !isLowerCase(tag)) return -1
+
+    // Bail on spread attributes or key prop
+    const attrs = jsxAttrs(node)
+    for (const attr of attrs) {
+      if (ts.isJsxSpreadAttribute(attr)) return -1
+      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === "key")
+        return -1
+    }
+
+    let count = 1
+
+    if (ts.isJsxElement(node)) {
+      // Categorise children to detect unsupported patterns
+      let hasExprChild = false
+      let hasElemChild = false
+      let exprChildCount = 0
+
+      for (const child of node.children) {
+        if (ts.isJsxText(child)) continue
+
+        if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+          hasElemChild = true
+          const childCount = templateElementCount(child)
+          if (childCount === -1) return -1
+          count += childCount
+          continue
+        }
+
+        if (ts.isJsxExpression(child)) {
+          if (!child.expression) continue // empty expression (comment)
+          // Expression containing nested JSX → bail (too complex for v1)
+          if (containsJSXInExpr(child.expression)) return -1
+          hasExprChild = true
+          exprChildCount++
+          continue
+        }
+
+        // JsxFragment or unknown → bail
+        return -1
+      }
+
+      // Mixed expression + element children → bail (childNodes indexing unreliable)
+      if (hasExprChild && hasElemChild) return -1
+      // Multiple expression children → bail (v1: only single textContent supported)
+      if (exprChildCount > 1) return -1
+    }
+
+    return count
+  }
+
+  /**
+   * Build the complete `_tpl("html", (__root) => { ... })` call string
+   * for a template-eligible JSX element tree. Returns null if codegen fails.
+   */
+  function buildTemplateCall(node: ts.JsxElement | ts.JsxSelfClosingElement): string | null {
+    const bindLines: string[] = []
+    const disposerNames: string[] = []
+    let varIdx = 0
+    let dispIdx = 0
+
+    function nextVar(): string {
+      return `__e${varIdx++}`
+    }
+    function nextDisp(): string {
+      const name = `__d${dispIdx++}`
+      disposerNames.push(name)
+      return name
+    }
+
+    function processElement(
+      el: ts.JsxElement | ts.JsxSelfClosingElement,
+      accessor: string, // how to reach this element, e.g. "__root" or "__root.children[0]"
+    ): string | null {
+      const tag = jsxTagName(el)
+      if (!tag) return null
+
+      // Assign a variable if this element has dynamic parts
+      const hasDynamic = elementHasDynamic(el)
+      let varName: string
+      if (accessor === "__root") {
+        varName = "__root"
+      } else if (hasDynamic) {
+        varName = nextVar()
+        bindLines.push(`const ${varName} = ${accessor}`)
+      } else {
+        varName = accessor // not referenced, but keep for child access paths
+      }
+
+      // ── Attributes ──────────────────────────────────────────────────────────
+      let htmlAttrs = ""
+      const attrs = jsxAttrs(el)
+
+      for (const attr of attrs) {
+        if (!ts.isJsxAttribute(attr)) continue
+        const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
+        if (attrName === "key") continue
+
+        // Map JSX attr names to HTML
+        const htmlAttrName = JSX_TO_HTML_ATTR[attrName] ?? attrName
+
+        // ref
+        if (attrName === "ref") {
+          if (
+            attr.initializer &&
+            ts.isJsxExpression(attr.initializer) &&
+            attr.initializer.expression
+          ) {
+            const expr = sliceExpr(attr.initializer.expression)
+            bindLines.push(`${expr}.current = ${varName}`)
+          }
+          continue
+        }
+
+        // Event handler: onClick → addEventListener("click", fn)
+        if (EVENT_RE.test(attrName)) {
+          const eventName = attrName[2]!.toLowerCase() + attrName.slice(3)
+          if (
+            attr.initializer &&
+            ts.isJsxExpression(attr.initializer) &&
+            attr.initializer.expression
+          ) {
+            const expr = sliceExpr(attr.initializer.expression)
+            bindLines.push(`${varName}.addEventListener("${eventName}", ${expr})`)
+          }
+          continue
+        }
+
+        // Boolean shorthand: <input disabled />
+        if (!attr.initializer) {
+          htmlAttrs += ` ${htmlAttrName}`
+          continue
+        }
+
+        // String literal: class="foo"
+        if (ts.isStringLiteral(attr.initializer)) {
+          htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
+          continue
+        }
+
+        // Expression value: class={expr}
+        if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+          const exprNode = attr.initializer.expression
+          const expr = sliceExpr(exprNode)
+
+          // Static literal value → bake into HTML
+          if (isStatic(exprNode)) {
+            if (ts.isStringLiteral(exprNode)) {
+              htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
+            } else if (ts.isNumericLiteral(exprNode)) {
+              htmlAttrs += ` ${htmlAttrName}="${exprNode.text}"`
+            } else if (exprNode.kind === ts.SyntaxKind.TrueKeyword) {
+              htmlAttrs += ` ${htmlAttrName}`
+            }
+            // false/null/undefined → omit
+            continue
+          }
+
+          // Reactive (contains calls) → renderEffect
+          if (containsCall(exprNode)) {
+            const d = nextDisp()
+            if (htmlAttrName === "class") {
+              bindLines.push(`const ${d} = _bind(() => { ${varName}.className = ${expr} })`)
+            } else {
+              bindLines.push(
+                `const ${d} = _bind(() => { ${varName}.setAttribute("${htmlAttrName}", ${expr}) })`,
+              )
+            }
+          } else {
+            // One-time set (no calls = not reactive)
+            if (htmlAttrName === "class") {
+              bindLines.push(`${varName}.className = ${expr}`)
+            } else {
+              bindLines.push(`${varName}.setAttribute("${htmlAttrName}", ${expr})`)
+            }
+          }
+        }
+      }
+
+      let html = `<${tag}${htmlAttrs}>`
+
+      // ── Children ──────────────────────────────────────────────────────────
+      if (ts.isJsxElement(el)) {
+        let elemIdx = 0
+
+        for (const child of el.children) {
+          if (ts.isJsxText(child)) {
+            // Strip JSX whitespace: collapse newlines + surrounding spaces
+            const trimmed = child.text.replace(/\n\s*/g, "").trim()
+            if (trimmed) html += escapeHtmlText(trimmed)
+            continue
+          }
+
+          if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+            // Use the effective variable name for child path construction
+            const parentRef = accessor === "__root" ? "__root" : varName
+            const childAccessor = `${parentRef}.children[${elemIdx}]`
+            const childHtml = processElement(child, childAccessor)
+            if (childHtml === null) return null
+            html += childHtml
+            elemIdx++
+            continue
+          }
+
+          if (ts.isJsxExpression(child) && child.expression) {
+            const expr = sliceExpr(child.expression)
+            if (containsCall(child.expression)) {
+              // Create a persistent TextNode and update via .data — avoids
+              // the destroy/recreate overhead of .textContent on every update.
+              const tVar = `__t${varIdx++}`
+              const d = nextDisp()
+              bindLines.push(`const ${tVar} = document.createTextNode("")`)
+              bindLines.push(`${varName}.appendChild(${tVar})`)
+              bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+            } else {
+              bindLines.push(`${varName}.textContent = ${expr}`)
+            }
+          }
+
+          // Empty expression container (comment) → skip
+        }
+
+        if (!VOID_ELEMENTS.has(tag)) {
+          html += `</${tag}>`
+        }
+      } else {
+        // Self-closing
+        if (!VOID_ELEMENTS.has(tag)) {
+          html += `</${tag}>`
+        }
+      }
+
+      return html
+    }
+
+    const html = processElement(node, "__root")
+    if (html === null) return null
+
+    // Build bind function body
+    const escaped = html.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+
+    if (bindLines.length === 0 && disposerNames.length === 0) {
+      return `_tpl("${escaped}", () => null)`
+    }
+
+    let body = bindLines.map((l) => `  ${l}`).join("\n")
+    if (disposerNames.length > 0) {
+      body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join("; ")} }`
+    } else {
+      body += "\n  return null"
+    }
+
+    return `_tpl("${escaped}", (__root) => {\n${body}\n})`
+  }
+
+  /** Check if an element has any dynamic attributes, events, ref, or expression children */
+  function elementHasDynamic(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
+    const attrs = jsxAttrs(node)
+    for (const attr of attrs) {
+      if (!ts.isJsxAttribute(attr)) continue
+      const name = ts.isIdentifier(attr.name) ? attr.name.text : ""
+      if (name === "ref") return true
+      if (EVENT_RE.test(name)) return true
+      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+        if (!isStatic(attr.initializer.expression)) return true
+      }
+    }
+    if (ts.isJsxElement(node)) {
+      for (const child of node.children) {
+        if (ts.isJsxExpression(child) && child.expression) return true
+      }
+    }
+    return false
+  }
+
+  /** Slice expression source from the original code */
+  function sliceExpr(expr: ts.Expression): string {
+    return code.slice(expr.getStart(sf), expr.getEnd())
+  }
+
+  /** Get tag name string */
+  function jsxTagName(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
+    const tag = ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName
+    return ts.isIdentifier(tag) ? tag.text : ""
+  }
+
+  /** Get attribute list */
+  function jsxAttrs(
+    node: ts.JsxElement | ts.JsxSelfClosingElement,
+  ): ts.NodeArray<ts.JsxAttributeLike> {
+    return ts.isJsxElement(node)
+      ? node.openingElement.attributes.properties
+      : node.attributes.properties
+  }
+}
+
+// ─── Template constants ──────────────────────────────────────────────────────
+
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+])
+
+const JSX_TO_HTML_ATTR: Record<string, string> = {
+  className: "class",
+  htmlFor: "for",
+}
+
+function isLowerCase(s: string): boolean {
+  return s.length > 0 && s[0] === s[0]!.toLowerCase()
+}
+
+/** Check if an expression subtree contains JSX nodes */
+function containsJSXInExpr(node: ts.Node): boolean {
+  if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node))
+    return true
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
+  return ts.forEachChild(node, containsJSXInExpr) ?? false
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+}
+
+function escapeHtmlText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 }
 
 // ─── Static JSX analysis ──────────────────────────────────────────────────────

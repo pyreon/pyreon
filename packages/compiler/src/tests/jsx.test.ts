@@ -316,7 +316,9 @@ const B = <span>{b()}</span>
 
   test("handles deeply nested JSX", () => {
     const result = t("<div><span><em>{count()}</em></span></div>")
-    expect(result).toContain("() => count()")
+    // Template emission: 3 DOM elements → _tpl() call with renderEffect binding
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("count()")
   })
 
   test("returns unchanged code when no JSX present", () => {
@@ -398,5 +400,173 @@ describe("transformJSX return value", () => {
     // Should not throw with default filename
     const result = transformJSX("<div>{count()}</div>")
     expect(result.code).toContain("() => count()")
+  })
+})
+
+// ─── Template emission ──────────────────────────────────────────────────────
+
+describe("JSX transform — template emission", () => {
+  test("emits _tpl for 2+ element tree", () => {
+    const result = t("<div><span>hello</span></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<div><span>hello</span></div>")
+  })
+
+  test("does NOT emit _tpl for single element", () => {
+    const result = t("<div>hello</div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("does NOT emit _tpl for component elements", () => {
+    const result = t("<div><MyComponent /></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("does NOT emit _tpl for spread attributes", () => {
+    const result = t("<div {...props}><span /></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("does NOT emit _tpl for keyed elements", () => {
+    const result = t("<div key={id}><span /></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("bakes static string attributes into HTML", () => {
+    const result = t('<div class="box"><span /></div>')
+    // Quotes are escaped inside the _tpl("...") string literal
+    expect(result).toContain('class=\\"box\\"')
+    expect(result).toContain("_tpl(")
+  })
+
+  test("bakes boolean shorthand attributes into HTML", () => {
+    const result = t("<div><input disabled /></div>")
+    expect(result).toContain(" disabled")
+    expect(result).toContain("_tpl(")
+  })
+
+  test("generates renderEffect for reactive class", () => {
+    const result = t("<div class={cls()}><span /></div>")
+    expect(result).toContain("_bind(() => {")
+    expect(result).toContain("className = cls()")
+  })
+
+  test("generates renderEffect for reactive text child", () => {
+    const result = t("<div><span>{name()}</span></div>")
+    expect(result).toContain("_bind(() => {")
+    expect(result).toContain(".data = name()")
+  })
+
+  test("generates one-time set for static expression text", () => {
+    const result = t("<div><span>{label}</span></div>")
+    expect(result).toContain("textContent = label")
+    expect(result).not.toContain("_bind(")
+  })
+
+  test("generates addEventListener for event handlers", () => {
+    const result = t("<div><button onClick={handler}>click</button></div>")
+    expect(result).toContain('addEventListener("click", handler)')
+  })
+
+  test("uses element children indexing for nested access", () => {
+    const result = t("<div><span>{a()}</span><em>{b()}</em></div>")
+    // Can't have two expression children in same parent, but each is in its own element
+    expect(result).toContain("__root.children[0]")
+    expect(result).toContain("__root.children[1]")
+  })
+
+  test("handles deeply nested element paths", () => {
+    const result = t("<table><tbody><tr><td>{text()}</td></tr></tbody></table>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain(".data = text()")
+  })
+
+  test("adds template imports when _tpl is emitted", () => {
+    const result = transformJSX("<div><span>text</span></div>")
+    expect(result.code).toContain('import { _tpl } from "@pyreon/runtime-dom"')
+    expect(result.usesTemplates).toBe(true)
+  })
+
+  test("does NOT add template imports when no templates emitted", () => {
+    const result = transformJSX("<div>text</div>")
+    expect(result.code).not.toContain("_tpl")
+    expect(result.usesTemplates).toBeFalsy()
+  })
+
+  test("wraps _tpl call in braces when child of JSX element", () => {
+    // <Comp> is a component, so outer element is not templateized
+    // but <span><em> inside it has 2 elements
+    const result = t("<Comp><span><em>text</em></span></Comp>")
+    // The inner span+em gets templateized inside the component children
+    expect(result).toContain("{_tpl(")
+  })
+
+  test("handles self-closing void elements in template", () => {
+    const result = t("<div><br /><span>text</span></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<br>")
+    expect(result).not.toContain("</br>")
+  })
+
+  test("handles mixed static text and element children", () => {
+    const result = t('<div class="c"><span>inner</span></div>')
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span>inner</span>")
+  })
+
+  test("escapes quotes in HTML attribute values", () => {
+    const result = t('<div title="say &quot;hi&quot;"><span /></div>')
+    expect(result).toContain("_tpl(")
+  })
+
+  test("returns null cleanup when no dynamic bindings", () => {
+    const result = t("<div><span>static</span></div>")
+    expect(result).toContain("() => null")
+  })
+
+  test("composes multiple disposers in cleanup", () => {
+    const result = t("<div class={a()}><span>{b()}</span></div>")
+    expect(result).toContain("__d0()")
+    expect(result).toContain("__d1()")
+  })
+
+  test("maps className to class in HTML", () => {
+    const result = t('<div className="box"><span /></div>')
+    // Quotes escaped in _tpl string literal
+    expect(result).toContain('class=\\"box\\"')
+    expect(result).not.toContain("className")
+  })
+
+  test("maps htmlFor to for in HTML", () => {
+    const result = t('<div><label htmlFor="name">Name</label></div>')
+    expect(result).toContain('for=\\"name\\"')
+  })
+
+  test("bails on fragments inside template", () => {
+    const result = t("<div><>text</></div>")
+    // Fragment child → bail, fall through to normal wrapping
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("bails on expression children containing JSX", () => {
+    const result = t("<div><span />{show() && <em />}</div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("bails on mixed element + expression children", () => {
+    const result = t("<div><span />{text()}</div>")
+    // Element + expression in same parent → bail
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("benchmark-like row structure", () => {
+    const result = t(
+      '<tr class={cls()}><td class="id">{String(row.id)}</td><td>{row.label()}</td></tr>',
+    )
+    expect(result).toContain("_tpl(")
+    expect(result).toContain('<td class=\\"id\\"></td><td></td>')
+    expect(result).toContain("className = cls()")
+    expect(result).toContain(".data = String(row.id)")
+    expect(result).toContain(".data = row.label()")
   })
 })

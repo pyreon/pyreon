@@ -86,7 +86,7 @@ test.describe("Framework Comparison Benchmark", () => {
   test("run all framework benchmarks in isolated pages", async ({ browser }) => {
     test.setTimeout(600_000) // 10 min — each framework gets its own page load
 
-    const frameworkNames = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon"]
+    const frameworkNames = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon", "Pyreon (tpl)"]
 
     // Randomize order to avoid systematic bias
     for (let i = frameworkNames.length - 1; i > 0; i--) {
@@ -136,7 +136,7 @@ test.describe("Framework Comparison Benchmark", () => {
     // ─── Print absolute times ──────────────────────────────────────────
 
     // Sort frameworks in a consistent display order
-    const displayOrder = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon"]
+    const displayOrder = ["Vanilla JS", "Preact", "React 19", "Vue 3", "SolidJS", "Pyreon", "Pyreon (tpl)"]
     const sortedFws = displayOrder.filter((f) => frameworks.includes(f))
 
     const fmtMs = (ms: number): string =>

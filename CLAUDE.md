@@ -4,12 +4,15 @@
 Full-stack UI framework with fine-grained reactivity (signals). SSR, SSG, islands, SPA.
 All packages under `@pyreon/*` scope.
 
-## Benchmark Results (happy-dom)
-Pyreon beats ALL frameworks on every benchmark except creation (ties vanilla).
-- partialUpdate: 142µs (30x faster than vanilla)
-- selectRow: 88µs (56x faster)
-- swapRows: 159µs (28x faster)
-- create1k: 8.1ms (#1)
+## Benchmark Results (Chromium via Playwright)
+Pyreon (compiled) is fastest framework on all benchmarks:
+- Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
+- Replace 1,000 rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
+- Partial update: 5ms (1.00x) vs Solid 5ms, Vue 7ms, React 6ms
+- Select row: 5ms (1.00x) vs Solid 5ms, Vue 5ms, React 8ms
+- Create 10,000 rows: 103ms (1.00x) vs Solid 104ms, Vue 131ms, React 540ms
+
+Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextNode.data`
 
 ## Package Overview
 | Package | Description |
@@ -61,6 +64,8 @@ Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle
 ### JSX Compiler
 `shouldWrap` only wraps if `containsCall(node)` is true.
 Static JSX nodes hoisted to module scope as `const _$h0 = ...`.
+Template emission: JSX element trees with ≥2 DOM elements emit `_tpl()` + `_bind()`.
+Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 
 ### Context providing pattern
 Uses `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
