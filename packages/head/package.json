@@ -43,6 +43,7 @@
     "@pyreon/runtime-server": "workspace:*"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "*",
     "@pyreon/runtime-dom": "workspace:*"
   }
 }

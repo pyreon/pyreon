@@ -103,6 +103,7 @@
         "@pyreon/runtime-server": "workspace:*",
       },
       "devDependencies": {
+        "@happy-dom/global-registrator": "*",
         "@pyreon/runtime-dom": "workspace:*",
       },
     },
@@ -121,6 +122,10 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
       },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
     },
     "packages/react-compat": {
       "name": "@pyreon/react-compat",
@@ -129,6 +134,10 @@
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
       },
     },
     "packages/reactivity": {
@@ -143,6 +152,10 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
       },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
     },
     "packages/runtime-dom": {
       "name": "@pyreon/runtime-dom",
@@ -150,6 +163,10 @@
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
       },
     },
     "packages/runtime-server": {
@@ -181,6 +198,10 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
       },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
     },
     "packages/store": {
       "name": "@pyreon/store",
@@ -209,6 +230,10 @@
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
       },
     },
   },
