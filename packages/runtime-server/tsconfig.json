@@ -4,7 +4,7 @@
     "outDir": "./lib",
     "rootDir": "./src",
     "lib": ["ESNext", "DOM"],
-    "types": ["vitest/globals", "bun"]
+    "types": ["vitest/globals", "bun", "node"]
   },
   "include": ["src"]
 }

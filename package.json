@@ -19,6 +19,7 @@
     "@biomejs/biome": "2.4.4",
     "@playwright/test": "^1.58.2",
     "@types/bun": "^1.3.10",
+    "@types/node": "^25.4.0",
     "@vitus-labs/tools-lint": "^1.11.0",
     "@vitus-labs/tools-rolldown": "^1.11.0",
     "@vitus-labs/tools-typescript": "^1.11.0",

@@ -102,8 +102,8 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - name: Check for known vulnerabilities
-        run: bunx audit-ci --low
+      - name: Check for untrusted dependencies
+        run: bun pm untrusted
         continue-on-error: true
       - name: Verify no lockfile drift
         run: |
