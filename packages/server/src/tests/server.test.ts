@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test"
-import { h } from "@pyreon/core"
 import type { ComponentFn, VNode } from "@pyreon/core"
+import { h } from "@pyreon/core"
 import { createHandler } from "../handler"
-import { DEFAULT_TEMPLATE, buildScripts, processTemplate } from "../html"
+import { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "../html"
 import { island } from "../island"
 import type { Middleware } from "../middleware"
 import { prerender } from "../ssg"
@@ -242,16 +241,16 @@ describe("prerender", () => {
     expect(result.elapsed).toBeGreaterThanOrEqual(0)
 
     // Verify files exist
-    const indexFile = Bun.file(`${tmpDir}/index.html`)
-    expect(await indexFile.exists()).toBe(true)
-    const indexHtml = await indexFile.text()
+    const { readFile, rm } = await import("node:fs/promises")
+    const indexHtml = await readFile(`${tmpDir}/index.html`, "utf-8")
     expect(indexHtml).toContain("<h1>Home</h1>")
 
-    const aboutFile = Bun.file(`${tmpDir}/about/index.html`)
-    expect(await aboutFile.exists()).toBe(true)
+    const aboutStat = await import("node:fs").then((fs) =>
+      fs.existsSync(`${tmpDir}/about/index.html`),
+    )
+    expect(aboutStat).toBe(true)
 
     // Cleanup
-    const { rm } = await import("node:fs/promises")
     await rm(tmpDir, { recursive: true, force: true })
   })
 

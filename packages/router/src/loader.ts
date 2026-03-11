@@ -1,5 +1,5 @@
-import { createContext, useContext } from "@pyreon/core"
 import type { Context } from "@pyreon/core"
+import { createContext, useContext } from "@pyreon/core"
 import type { RouterInstance } from "./types"
 
 /**
@@ -90,7 +90,7 @@ export function hydrateLoaderData(
   if (!serialized || typeof serialized !== "object") return
   const route = router._resolve(router.currentRoute().path)
   for (const record of route.matched) {
-    if (Object.prototype.hasOwnProperty.call(serialized, record.path)) {
+    if (Object.hasOwn(serialized, record.path)) {
       router._loaderData.set(record, serialized[record.path])
     }
   }

@@ -1,10 +1,10 @@
-import { signal } from "@pyreon/reactivity"
 import type { Computed, Signal } from "@pyreon/reactivity"
+import { signal } from "@pyreon/reactivity"
 import { runAction } from "./middleware"
 import { onPatch, trackedSignal } from "./patch"
 import { instanceMeta } from "./registry"
-import { MODEL_BRAND } from "./types"
 import type { InstanceMeta, ModelInstance, Snapshot, StateShape } from "./types"
+import { MODEL_BRAND } from "./types"
 
 // ─── Model definition detection ───────────────────────────────────────────────
 

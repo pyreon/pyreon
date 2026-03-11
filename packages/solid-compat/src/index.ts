@@ -1,18 +1,18 @@
 // @pyreon/solid-compat — SolidJS-compatible API shims running on Pyreon's reactive engine
 
+import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
 import {
   ErrorBoundary,
   For,
   Match,
-  Show,
-  Suspense,
-  Switch,
   createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
   useContext as pyreonUseContext,
+  Show,
+  Suspense,
+  Switch,
 } from "@pyreon/core"
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
 import {
   type EffectScope,
   effectScope,

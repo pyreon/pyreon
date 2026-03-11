@@ -1,4 +1,3 @@
-import { describe, expect, test } from "bun:test"
 import { effect, renderEffect, setErrorHandler } from "../effect"
 import { effectScope, setCurrentScope } from "../scope"
 import { signal } from "../signal"

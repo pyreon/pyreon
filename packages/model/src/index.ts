@@ -1,11 +1,11 @@
 // ─── Core ─────────────────────────────────────────────────────────────────────
 
-export { model } from "./model"
 export type { ModelDefinition } from "./model"
+export { model } from "./model"
 
 // ─── Snapshot ─────────────────────────────────────────────────────────────────
 
-export { getSnapshot, applySnapshot } from "./snapshot"
+export { applySnapshot, getSnapshot } from "./snapshot"
 
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
@@ -18,12 +18,12 @@ export { addMiddleware } from "./middleware"
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type {
-  StateShape,
-  ModelInstance,
-  ModelSelf,
-  Snapshot,
-  Patch,
-  PatchListener,
   ActionCall,
   MiddlewareFn,
+  ModelInstance,
+  ModelSelf,
+  Patch,
+  PatchListener,
+  Snapshot,
+  StateShape,
 } from "./types"

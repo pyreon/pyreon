@@ -1,24 +1,41 @@
-import { describe, expect, test } from "bun:test"
+import type { ComponentFn, VNodeChild } from "@pyreon/core"
 import {
-  For,
-  Fragment,
-  Match,
-  Portal,
-  Show,
-  Switch,
   ErrorBoundary as _ErrorBoundary,
   createRef,
   defineComponent,
+  For,
+  Fragment,
   h,
+  Match,
+  onMount,
+  onUnmount,
+  onUpdate,
+  Portal,
+  Show,
+  Switch,
 } from "@pyreon/core"
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
 import { cell, effect, signal } from "@pyreon/reactivity"
-import { Transition as _Transition, createTemplate, mount } from "../index"
+import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
 import type { Directive } from "../index"
+import {
+  KeepAlive as _KeepAlive,
+  Transition as _Transition,
+  TransitionGroup as _TransitionGroup,
+  createTemplate,
+  disableHydrationWarnings,
+  enableHydrationWarnings,
+  hydrateRoot,
+  mount,
+  sanitizeHtml,
+  setSanitizer,
+} from "../index"
+import { mountChild } from "../mount"
 
 // Cast components that return VNodeChild (not VNode | null) so h() accepts them
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
+const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>
 const ErrorBoundary = _ErrorBoundary as unknown as ComponentFn<Record<string, unknown>>
+const KeepAlive = _KeepAlive as unknown as ComponentFn<Record<string, unknown>>
 
 function container(): HTMLElement {
   const el = document.createElement("div")
@@ -1392,19 +1409,17 @@ describe("Transition — extended", () => {
 // ─── Hydration ───────────────────────────────────────────────────────────────
 
 describe("hydrateRoot", () => {
-  test("hydrates basic element", () => {
+  test("hydrates basic element", async () => {
     const el = container()
     el.innerHTML = "<div><span>hello</span></div>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("div", null, h("span", null, "hello")))
     expect(el.querySelector("span")?.textContent).toBe("hello")
     cleanup()
   })
 
-  test("hydrates and attaches event handler", () => {
+  test("hydrates and attaches event handler", async () => {
     const el = container()
     el.innerHTML = "<button>click me</button>"
-    const { hydrateRoot } = require("../index")
     let clicked = false
     hydrateRoot(
       el,
@@ -1422,19 +1437,17 @@ describe("hydrateRoot", () => {
     expect(clicked).toBe(true)
   })
 
-  test("hydrates text content", () => {
+  test("hydrates text content", async () => {
     const el = container()
     el.innerHTML = "<p>some text</p>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("p", null, "some text"))
     expect(el.querySelector("p")?.textContent).toBe("some text")
     cleanup()
   })
 
-  test("hydrates reactive text", () => {
+  test("hydrates reactive text", async () => {
     const el = container()
     el.innerHTML = "<div>initial</div>"
-    const { hydrateRoot } = require("../index")
     const text = signal("initial")
     hydrateRoot(
       el,
@@ -1445,19 +1458,17 @@ describe("hydrateRoot", () => {
     expect(el.querySelector("div")?.textContent).toBe("updated")
   })
 
-  test("hydrates nested elements", () => {
+  test("hydrates nested elements", async () => {
     const el = container()
     el.innerHTML = "<div><p><span>deep</span></p></div>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("div", null, h("p", null, h("span", null, "deep"))))
     expect(el.querySelector("span")?.textContent).toBe("deep")
     cleanup()
   })
 
-  test("hydrates component", () => {
+  test("hydrates component", async () => {
     const el = container()
     el.innerHTML = "<p>Hello, World!</p>"
-    const { hydrateRoot } = require("../index")
     const Greeting = defineComponent(() => h("p", null, "Hello, World!"))
     const cleanup = hydrateRoot(el, h(Greeting, null))
     expect(el.querySelector("p")?.textContent).toBe("Hello, World!")
@@ -1549,7 +1560,6 @@ describe("mount — edge cases", () => {
 describe("KeepAlive", () => {
   test("mounts children and preserves them when toggled", async () => {
     const el = container()
-    const { KeepAlive } = require("../index")
     const active = signal(true)
     mount(h(KeepAlive, { active }, h("div", { id: "kept" }, "alive")), el)
     // KeepAlive mounts in onMount which fires sync in this framework
@@ -1562,7 +1572,6 @@ describe("KeepAlive", () => {
 
   test("cleanup disposes effect and child cleanup", async () => {
     const el = container()
-    const { KeepAlive } = require("../index")
     const active = signal(true)
     const unmount = mount(h(KeepAlive, { active }, h("div", { id: "ka-cleanup" }, "content")), el)
     await new Promise<void>((r) => queueMicrotask(r))
@@ -1574,7 +1583,6 @@ describe("KeepAlive", () => {
 
   test("active defaults to true when not provided", async () => {
     const el = container()
-    const { KeepAlive } = require("../index")
     mount(h(KeepAlive, {}, h("div", { id: "ka-default" }, "visible")), el)
     await new Promise<void>((r) => queueMicrotask(r))
     expect(el.querySelector("#ka-default")).not.toBeNull()
@@ -1586,7 +1594,6 @@ describe("KeepAlive", () => {
 
   test("toggles display:none when active changes", async () => {
     const el = container()
-    const { KeepAlive } = require("../index")
     const active = signal(true)
     mount(h(KeepAlive, { active }, h("span", { id: "ka-toggle" }, "x")), el)
     await new Promise<void>((r) => queueMicrotask(r))
@@ -1608,10 +1615,9 @@ describe("KeepAlive", () => {
 // ─── Hydration (extended coverage) ───────────────────────────────────────────
 
 describe("hydrateRoot — extended", () => {
-  test("hydrates Fragment children", () => {
+  test("hydrates Fragment children", async () => {
     const el = container()
     el.innerHTML = "<span>a</span><span>b</span>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h(Fragment, null, h("span", null, "a"), h("span", null, "b")))
     const spans = el.querySelectorAll("span")
     expect(spans.length).toBe(2)
@@ -1620,28 +1626,25 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates array children", () => {
+  test("hydrates array children", async () => {
     const el = container()
     el.innerHTML = "<div><span>x</span><span>y</span></div>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("div", null, h("span", null, "x"), h("span", null, "y")))
     expect(el.querySelectorAll("span").length).toBe(2)
     cleanup()
   })
 
-  test("hydrates null/false child — returns noop", () => {
+  test("hydrates null/false child — returns noop", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("div", null, null, false))
     expect(el.querySelector("div")).not.toBeNull()
     cleanup()
   })
 
-  test("hydrates reactive accessor returning null initially", () => {
+  test("hydrates reactive accessor returning null initially", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const show = signal<string | null>(null)
     const cleanup = hydrateRoot(
       el,
@@ -1654,10 +1657,9 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates reactive text that mismatches DOM node type", () => {
+  test("hydrates reactive text that mismatches DOM node type", async () => {
     const el = container()
     el.innerHTML = "<div><span>wrong</span></div>"
-    const { hydrateRoot } = require("../index")
     const text = signal("hello")
     // Reactive text expects a TextNode but finds a SPAN — should fall back
     const cleanup = hydrateRoot(
@@ -1667,47 +1669,42 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates reactive VNode (complex initial value)", () => {
+  test("hydrates reactive VNode (complex initial value)", async () => {
     const el = container()
     el.innerHTML = "<div><p>old</p></div>"
-    const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("p", null, "old"))
     const cleanup = hydrateRoot(el, h("div", null, (() => content()) as unknown as VNodeChild))
     cleanup()
   })
 
-  test("hydrates static text node", () => {
+  test("hydrates static text node", async () => {
     const el = container()
     el.innerHTML = "just text"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, "just text")
     expect(el.textContent).toContain("just text")
     cleanup()
   })
 
-  test("hydrates number as text", () => {
+  test("hydrates number as text", async () => {
     const el = container()
     el.innerHTML = "42"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, 42)
     expect(el.textContent).toContain("42")
     cleanup()
   })
 
-  test("hydration tag mismatch falls back to mount", () => {
+  test("hydration tag mismatch falls back to mount", async () => {
     const el = container()
     el.innerHTML = "<div>wrong</div>"
-    const { hydrateRoot } = require("../index")
     // Expect span but find div — should fall back
     const cleanup = hydrateRoot(el, h("span", null, "right"))
     // The span should have been mounted via fallback
     cleanup()
   })
 
-  test("hydrates element with ref", () => {
+  test("hydrates element with ref", async () => {
     const el = container()
     el.innerHTML = "<button>click</button>"
-    const { hydrateRoot } = require("../index")
     const ref = createRef<HTMLButtonElement>()
     const cleanup = hydrateRoot(el, h("button", { ref }, "click"))
     expect(ref.current).not.toBeNull()
@@ -1716,20 +1713,18 @@ describe("hydrateRoot — extended", () => {
     expect(ref.current).toBeNull()
   })
 
-  test("hydrates Portal — always remounts", () => {
+  test("hydrates Portal — always remounts", async () => {
     const el = container()
     const target = container()
     el.innerHTML = ""
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, Portal({ target, children: h("span", null, "portaled") }))
     expect(target.querySelector("span")?.textContent).toBe("portaled")
     cleanup()
   })
 
-  test("hydrates component with children prop", () => {
+  test("hydrates component with children prop", async () => {
     const el = container()
     el.innerHTML = "<div><p>child content</p></div>"
-    const { hydrateRoot } = require("../index")
     const Wrapper = defineComponent((props: { children?: VNodeChild }) =>
       h("div", null, props.children),
     )
@@ -1738,10 +1733,9 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates component that throws — error handled gracefully", () => {
+  test("hydrates component that throws — error handled gracefully", async () => {
     const el = container()
     el.innerHTML = "<p>content</p>"
-    const { hydrateRoot } = require("../index")
     const Broken = defineComponent((): never => {
       throw new Error("hydration boom")
     })
@@ -1750,10 +1744,9 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates with For — fresh mount fallback (no markers)", () => {
+  test("hydrates with For — fresh mount fallback (no markers)", async () => {
     const el = container()
     el.innerHTML = "<ul></ul>"
-    const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
@@ -1770,10 +1763,9 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates with For — SSR markers present", () => {
+  test("hydrates with For — SSR markers present", async () => {
     const el = container()
     el.innerHTML = "<!--pyreon-for--><li>a</li><!--/pyreon-for-->"
-    const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
@@ -1786,43 +1778,39 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydration skips comment and whitespace text nodes", () => {
+  test("hydration skips comment and whitespace text nodes", async () => {
     const el = container()
     // Simulate SSR output with comments and whitespace
     el.innerHTML = "<!-- comment -->   <p>real</p>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, h("p", null, "real"))
     expect(el.querySelector("p")?.textContent).toBe("real")
     cleanup()
   })
 
-  test("hydrates with missing DOM node (null domNode)", () => {
+  test("hydrates with missing DOM node (null domNode)", async () => {
     const el = container()
     el.innerHTML = ""
-    const { hydrateRoot } = require("../index")
     // VNode expects content but DOM is empty — should fall back
     const cleanup = hydrateRoot(el, h("div", null, "content"))
     cleanup()
   })
 
-  test("hydrates reactive accessor returning VNode with no domNode", () => {
+  test("hydrates reactive accessor returning VNode with no domNode", async () => {
     const el = container()
     el.innerHTML = ""
-    const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("p", null, "dynamic"))
-    const cleanup = hydrateRoot(el, () => content())
+    const cleanup = hydrateRoot(el, (() => content()) as unknown as VNodeChild)
     cleanup()
   })
 
-  test("hydrates component with onMount hooks", () => {
+  test("hydrates component with onMount hooks", async () => {
     const el = container()
     el.innerHTML = "<span>mounted</span>"
-    const { hydrateRoot } = require("../index")
     let mountCalled = false
     const Comp = defineComponent(() => {
-      const { onMount } = require("@pyreon/core")
       onMount(() => {
         mountCalled = true
+        return undefined
       })
       return h("span", null, "mounted")
     })
@@ -1831,11 +1819,10 @@ describe("hydrateRoot — extended", () => {
     cleanup()
   })
 
-  test("hydrates text mismatch for static string — falls back", () => {
+  test("hydrates text mismatch for static string — falls back", async () => {
     const el = container()
     // Put an element where text is expected
     el.innerHTML = "<span>not text</span>"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, "plain text")
     cleanup()
   })
@@ -2281,11 +2268,10 @@ describe("mount — component branches", () => {
     expect(el.querySelectorAll("span").length).toBe(2)
   })
 
-  test("component with onMount returning cleanup", () => {
+  test("component with onMount returning cleanup", async () => {
     const el = container()
     let cleaned = false
     const Comp = defineComponent(() => {
-      const { onMount } = require("@pyreon/core")
       onMount(() => () => {
         cleaned = true
       })
@@ -2297,11 +2283,10 @@ describe("mount — component branches", () => {
     expect(cleaned).toBe(true)
   })
 
-  test("component with onUnmount hook", () => {
+  test("component with onUnmount hook", async () => {
     const el = container()
     let unmounted = false
     const Comp = defineComponent(() => {
-      const { onUnmount } = require("@pyreon/core")
       onUnmount(() => {
         unmounted = true
       })
@@ -2313,10 +2298,9 @@ describe("mount — component branches", () => {
     expect(unmounted).toBe(true)
   })
 
-  test("component with onUpdate hook", () => {
+  test("component with onUpdate hook", async () => {
     const el = container()
     const Comp = defineComponent(() => {
-      const { onUpdate } = require("@pyreon/core")
       const count = signal(0)
       onUpdate(() => {
         /* update tracked */
@@ -2444,35 +2428,30 @@ describe("props — additional coverage", () => {
     expect(a.getAttribute("href")).not.toBe("  javascript:alert(1)")
   })
 
-  test("sanitizeHtml preserves safe tags", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml preserves safe tags", async () => {
     const result = sanitizeHtml("<b>bold</b><em>italic</em>")
     expect(result).toContain("<b>bold</b>")
     expect(result).toContain("<em>italic</em>")
   })
 
-  test("sanitizeHtml strips script tags", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml strips script tags", async () => {
     const result = sanitizeHtml("<div>safe</div><script>alert(1)</script>")
     expect(result).toContain("safe")
     expect(result).not.toContain("<script>")
   })
 
-  test("sanitizeHtml strips event handler attributes", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml strips event handler attributes", async () => {
     const result = sanitizeHtml('<div onclick="alert(1)">hello</div>')
     expect(result).toContain("hello")
     expect(result).not.toContain("onclick")
   })
 
-  test("sanitizeHtml strips javascript: URLs", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml strips javascript: URLs", async () => {
     const result = sanitizeHtml('<a href="javascript:alert(1)">link</a>')
     expect(result).not.toContain("javascript:")
   })
 
-  test("setSanitizer overrides built-in sanitizer", () => {
-    const { sanitizeHtml, setSanitizer } = require("../index")
+  test("setSanitizer overrides built-in sanitizer", async () => {
     // Set custom sanitizer that uppercases everything
     setSanitizer((html: string) => html.toUpperCase())
     expect(sanitizeHtml("<b>hello</b>")).toBe("<B>HELLO</B>")
@@ -2484,8 +2463,7 @@ describe("props — additional coverage", () => {
     expect(result).not.toContain("<script>")
   })
 
-  test("sanitizeHtml strips iframe and object tags", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml strips iframe and object tags", async () => {
     const result = sanitizeHtml(
       '<div>ok</div><iframe src="evil"></iframe><object data="x"></object>',
     )
@@ -2494,8 +2472,7 @@ describe("props — additional coverage", () => {
     expect(result).not.toContain("<object")
   })
 
-  test("sanitizeHtml handles nested unsafe elements", () => {
-    const { sanitizeHtml } = require("../index")
+  test("sanitizeHtml handles nested unsafe elements", async () => {
     const result = sanitizeHtml("<div><script><script>alert(1)</script></script></div>")
     expect(result).not.toContain("<script")
   })
@@ -2518,8 +2495,7 @@ describe("props — additional coverage", () => {
 // ─── DevTools ────────────────────────────────────────────────────────────────
 
 describe("DevTools", () => {
-  test("installDevTools sets __PYREON_DEVTOOLS__ on window", () => {
-    const { installDevTools } = require("../devtools")
+  test("installDevTools sets __PYREON_DEVTOOLS__ on window", async () => {
     installDevTools()
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as Record<
       string,
@@ -2529,8 +2505,7 @@ describe("DevTools", () => {
     expect(devtools.version).toBe("0.1.0")
   })
 
-  test("registerComponent and getAllComponents", () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
+  test("registerComponent and getAllComponents", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getAllComponents: () => Array<{
         id: string
@@ -2554,8 +2529,7 @@ describe("DevTools", () => {
     unregisterComponent("test-1")
   })
 
-  test("registerComponent with parentId creates parent-child relationship", () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
+  test("registerComponent with parentId creates parent-child relationship", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getAllComponents: () => Array<{
         id: string
@@ -2578,8 +2552,7 @@ describe("DevTools", () => {
     unregisterComponent("parent-1")
   })
 
-  test("getComponentTree returns only root components", () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
+  test("getComponentTree returns only root components", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       getComponentTree: () => Array<{ id: string; parentId: string | null }>
     }
@@ -2598,7 +2571,6 @@ describe("DevTools", () => {
   })
 
   test("highlight adds and removes outline", async () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       highlight: (id: string) => void
     }
@@ -2615,8 +2587,7 @@ describe("DevTools", () => {
     el.remove()
   })
 
-  test("onComponentMount and onComponentUnmount listeners", () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
+  test("onComponentMount and onComponentUnmount listeners", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       onComponentMount: (cb: (entry: { id: string; name: string }) => void) => () => void
       onComponentUnmount: (cb: (id: string) => void) => () => void
@@ -2642,14 +2613,12 @@ describe("DevTools", () => {
     expect(unmountedIds).not.toContain("listen-2")
   })
 
-  test("unregisterComponent is noop for unknown id", () => {
-    const { unregisterComponent } = require("../devtools")
+  test("unregisterComponent is noop for unknown id", async () => {
     // Should not throw
     unregisterComponent("does-not-exist")
   })
 
-  test("highlight with no el is noop", () => {
-    const { registerComponent, unregisterComponent } = require("../devtools")
+  test("highlight with no el is noop", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
       highlight: (id: string) => void
     }
@@ -2665,7 +2634,6 @@ describe("DevTools", () => {
 describe("TransitionGroup", () => {
   test("renders container element with specified tag", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }])
     mount(
       h(TransitionGroup, {
@@ -2683,7 +2651,6 @@ describe("TransitionGroup", () => {
 
   test("renders initial items", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }, { id: 3 }])
     mount(
       h(TransitionGroup, {
@@ -2703,7 +2670,6 @@ describe("TransitionGroup", () => {
 
   test("adding items triggers enter animation", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }])
     mount(
       h(TransitionGroup, {
@@ -2728,7 +2694,6 @@ describe("TransitionGroup", () => {
 
   test("removing items keeps element during leave animation", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }])
     mount(
       h(TransitionGroup, {
@@ -2751,7 +2716,6 @@ describe("TransitionGroup", () => {
 
   test("default tag is div and default name is pyreon", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }])
     mount(
       h(TransitionGroup, {
@@ -2768,7 +2732,6 @@ describe("TransitionGroup", () => {
 
   test("appear option triggers enter on initial mount", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     let enterCalled = false
     const items = signal([{ id: 1 }])
     mount(
@@ -2792,7 +2755,6 @@ describe("TransitionGroup", () => {
 
   test("custom class name overrides", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }])
     mount(
       h(TransitionGroup, {
@@ -2816,7 +2778,6 @@ describe("TransitionGroup", () => {
 
   test("leave callback with no ref.current removes entry immediately", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }])
     mount(
       h(TransitionGroup, {
@@ -2840,7 +2801,6 @@ describe("TransitionGroup", () => {
 
   test("reorder triggers move animation setup", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }, { id: 3 }])
     mount(
       h(TransitionGroup, {
@@ -2868,7 +2828,6 @@ describe("TransitionGroup", () => {
 
   test("onAfterEnter callback fires after enter transition", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     let afterEnterCalled = false
     const items = signal<Array<{ id: number }>>([])
     mount(
@@ -2902,7 +2861,6 @@ describe("TransitionGroup", () => {
 
   test("onBeforeLeave and onAfterLeave callbacks fire", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     let beforeLeaveCalled = false
     const items = signal([{ id: 1 }])
     mount(
@@ -2944,8 +2902,7 @@ describe("TransitionGroup", () => {
 // ─── Hydration debug ────────────────────────────────────────────────────────
 
 describe("hydration warnings", () => {
-  test("enableHydrationWarnings and disableHydrationWarnings", () => {
-    const { enableHydrationWarnings, disableHydrationWarnings } = require("../index")
+  test("enableHydrationWarnings and disableHydrationWarnings", async () => {
     // Should not throw
     enableHydrationWarnings()
     disableHydrationWarnings()
@@ -2956,20 +2913,18 @@ describe("hydration warnings", () => {
 // ─── Additional hydrate.ts branch coverage ───────────────────────────────────
 
 describe("hydrateRoot — branch coverage", () => {
-  test("hydrates raw array child (non-Fragment array path)", () => {
+  test("hydrates raw array child (non-Fragment array path)", async () => {
     const el = container()
     el.innerHTML = "<span>a</span><span>b</span>"
-    const { hydrateRoot } = require("../index")
     // Pass an array directly — hits the Array.isArray branch in hydrateChild
     const cleanup = hydrateRoot(el, [h("span", null, "a"), h("span", null, "b")])
     expect(el.querySelectorAll("span").length).toBe(2)
     cleanup()
   })
 
-  test("hydrates For with SSR markers (start/end comment pair)", () => {
+  test("hydrates For with SSR markers (start/end comment pair)", async () => {
     const el = container()
     el.innerHTML = "<div><!--pyreon-for--><li>item1</li><li>item2</li><!--/pyreon-for--></div>"
-    const { hydrateRoot } = require("../index")
     const items = signal([
       { id: 1, label: "item1" },
       { id: 2, label: "item2" },
@@ -2989,10 +2944,9 @@ describe("hydrateRoot — branch coverage", () => {
     cleanup()
   })
 
-  test("hydrates reactive accessor returning null with no domNode", () => {
+  test("hydrates reactive accessor returning null with no domNode", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const show = signal<VNodeChild>(null)
     // The div has no children, so domNode will be null inside
     const cleanup = hydrateRoot(el, h("div", null, (() => show()) as unknown as VNodeChild))
@@ -3000,37 +2954,33 @@ describe("hydrateRoot — branch coverage", () => {
     cleanup()
   })
 
-  test("hydrates reactive VNode accessor with marker when no domNode", () => {
+  test("hydrates reactive VNode accessor with marker when no domNode", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const content = signal<VNodeChild>(h("span", null, "initial"))
     const cleanup = hydrateRoot(el, h("div", null, (() => content()) as unknown as VNodeChild))
     cleanup()
   })
 
-  test("hydrates unknown symbol vnode type — returns noop", () => {
+  test("hydrates unknown symbol vnode type — returns noop", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const weirdVNode = { type: Symbol("weird"), props: {}, children: [], key: null }
     const cleanup = hydrateRoot(el, h("div", null, weirdVNode as VNodeChild))
     cleanup()
   })
 
-  test("hydration of text that matches existing text node — cleanup removes it", () => {
+  test("hydration of text that matches existing text node — cleanup removes it", async () => {
     const el = container()
     el.innerHTML = "hello"
-    const { hydrateRoot } = require("../index")
     const cleanup = hydrateRoot(el, "hello")
     expect(el.textContent).toBe("hello")
     cleanup()
   })
 
-  test("For with no SSR markers and domNode present", () => {
+  test("For with no SSR markers and domNode present", async () => {
     const el = container()
     el.innerHTML = "<div><span>existing</span></div>"
-    const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
@@ -3047,10 +2997,9 @@ describe("hydrateRoot — branch coverage", () => {
     cleanup()
   })
 
-  test("For with no SSR markers and no domNode", () => {
+  test("For with no SSR markers and no domNode", async () => {
     const el = container()
     el.innerHTML = "<div></div>"
-    const { hydrateRoot } = require("../index")
     const items = signal([{ id: 1, label: "a" }])
     const cleanup = hydrateRoot(
       el,
@@ -3067,11 +3016,10 @@ describe("hydrateRoot — branch coverage", () => {
     cleanup()
   })
 
-  test("reactive accessor returning null when domNode exists", () => {
+  test("reactive accessor returning null when domNode exists", async () => {
     const el = container()
     // Put a real DOM node that will be domNode, but accessor returns null
     el.innerHTML = "<div><span>existing</span></div>"
-    const { hydrateRoot } = require("../index")
     const show = signal<VNodeChild>(null)
     // The span is the domNode, but accessor returns null — hits line 91-92
     const cleanup = hydrateRoot(
@@ -3085,10 +3033,9 @@ describe("hydrateRoot — branch coverage", () => {
 // ─── mount.ts — error handling branches ──────────────────────────────────────
 
 describe("mount — error handling branches", () => {
-  test("mountChild with raw array", () => {
+  test("mountChild with raw array", async () => {
     const el = container()
     // Pass an array directly to mountChild (line 72)
-    const { mountChild } = require("../mount")
     const cleanup = mountChild([h("span", null, "x"), h("span", null, "y")], el, null)
     expect(el.querySelectorAll("span").length).toBe(2)
     cleanup()
@@ -3108,10 +3055,9 @@ describe("mount — error handling branches", () => {
     mount(h(BadRender, null), el)
   })
 
-  test("onMount hook that throws is caught", () => {
+  test("onMount hook that throws is caught", async () => {
     const el = container()
     const Comp = defineComponent(() => {
-      const { onMount } = require("@pyreon/core")
       onMount(() => {
         throw new Error("onMount error")
       })
@@ -3122,10 +3068,9 @@ describe("mount — error handling branches", () => {
     expect(el.querySelector("div")?.textContent).toBe("content")
   })
 
-  test("onUnmount hook that throws is caught", () => {
+  test("onUnmount hook that throws is caught", async () => {
     const el = container()
     const Comp = defineComponent(() => {
-      const { onUnmount } = require("@pyreon/core")
       onUnmount(() => {
         throw new Error("onUnmount error")
       })
@@ -3142,7 +3087,6 @@ describe("mount — error handling branches", () => {
 describe("TransitionGroup — cleanup", () => {
   test("unmount disposes effect and cleans up entries", async () => {
     const el = container()
-    const { TransitionGroup } = require("../index")
     const items = signal([{ id: 1 }, { id: 2 }])
     const unmount = mount(
       h(TransitionGroup, {

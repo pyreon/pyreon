@@ -11,12 +11,10 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import { Fragment, h as pyreonH } from "@pyreon/core"
 import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, createRef, useContext } from "@pyreon/core"
+import { createContext, createRef, Fragment, h as pyreonH, useContext } from "@pyreon/core"
 import { batch, signal } from "@pyreon/reactivity"
-import { mount } from "@pyreon/runtime-dom"
-import { hydrateRoot } from "@pyreon/runtime-dom"
+import { hydrateRoot, mount } from "@pyreon/runtime-dom"
 
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,4 @@
-import { h } from "./h"
-import { Fragment } from "./h"
+import { Fragment, h } from "./h"
 import type { Props, VNode, VNodeChild } from "./types"
 
 /** Internal marker attached to lazy()-wrapped components */

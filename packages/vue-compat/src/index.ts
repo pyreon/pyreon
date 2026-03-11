@@ -18,14 +18,14 @@
  *             `import { ref, computed, watch } from "@pyreon/vue-compat"`
  */
 
-import { Fragment, createContext, onMount, onUnmount, onUpdate, h as pyreonH } from "@pyreon/core"
 import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import { createContext, Fragment, onMount, onUnmount, onUpdate, h as pyreonH } from "@pyreon/core"
 import {
-  type Signal,
   createStore,
   effect,
   computed as pyreonComputed,
   nextTick as pyreonNextTick,
+  type Signal,
   signal,
 } from "@pyreon/reactivity"
 import { mount as pyreonMount } from "@pyreon/runtime-dom"
@@ -253,7 +253,7 @@ export function watch<T>(
   options?: WatchOptions,
 ): () => void {
   const getter = isRef(source) ? () => source.value : (source as () => T)
-  let oldValue: T | undefined = undefined
+  let oldValue: T | undefined
   let initialized = false
 
   if (options?.immediate) {

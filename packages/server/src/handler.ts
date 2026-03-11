@@ -24,18 +24,18 @@
  * Bun.serve({ fetch: handler })
  */
 
-import { h } from "@pyreon/core"
 import type { ComponentFn } from "@pyreon/core"
+import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head"
 import {
-  type RouteRecord,
-  RouterProvider,
   createRouter,
   prefetchLoaderData,
+  type RouteRecord,
+  RouterProvider,
   serializeLoaderData,
 } from "@pyreon/router"
 import { renderToStream, runWithRequestContext } from "@pyreon/runtime-server"
-import { DEFAULT_TEMPLATE, buildScripts, processTemplate } from "./html"
+import { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "./html"
 import type { Middleware, MiddlewareContext } from "./middleware"
 
 export interface HandlerOptions {

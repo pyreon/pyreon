@@ -1,8 +1,8 @@
-import { h, pushContext } from "@pyreon/core"
 import type { ComponentFn, VNode } from "@pyreon/core"
+import { h, pushContext } from "@pyreon/core"
 import { renderToString } from "@pyreon/runtime-server"
-import { HeadContext, createHeadContext } from "./context"
 import type { HeadTag } from "./context"
+import { createHeadContext, HeadContext } from "./context"
 
 const VOID_TAGS = new Set(["meta", "link", "base"])
 

@@ -14,8 +14,8 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks"
-import { ForSymbol, Fragment, Suspense, runWithHooks, setContextStackProvider } from "@pyreon/core"
 import type { ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
+import { ForSymbol, Fragment, runWithHooks, Suspense, setContextStackProvider } from "@pyreon/core"
 
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.

@@ -41,42 +41,38 @@
  * router.push({ name: "user", params: { id: "42" } })
  */
 
-// Types
-export type {
-  ExtractParams,
-  RouteMeta,
-  ResolvedRoute,
-  LazyComponent,
-  RouteComponent,
-  NavigationGuardResult,
-  NavigationGuard,
-  AfterEachHook,
-  RouteRecord,
-  RouterOptions,
-  ScrollBehaviorFn,
-  Router,
-} from "./types"
-
-// Lazy helper
-export { lazy } from "./types"
-
-// Router factory + hooks
-export { createRouter, useRouter, useRoute, RouterContext } from "./router"
-
+export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from "./components"
 // Components
-export { RouterProvider, RouterView, RouterLink } from "./components"
-export type { RouterProviderProps, RouterViewProps, RouterLinkProps } from "./components"
-
-// Data loaders
-export type { LoaderContext, RouteLoaderFn } from "./types"
-export { useLoaderData, prefetchLoaderData, serializeLoaderData, hydrateLoaderData } from "./loader"
-
+export { RouterLink, RouterProvider, RouterView } from "./components"
+export { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, useLoaderData } from "./loader"
 // Match utilities (useful for SSR route pre-fetching)
 export {
-  resolveRoute,
-  parseQuery,
-  parseQueryMulti,
-  stringifyQuery,
   buildPath,
   findRouteByName,
+  parseQuery,
+  parseQueryMulti,
+  resolveRoute,
+  stringifyQuery,
 } from "./match"
+// Router factory + hooks
+export { createRouter, RouterContext, useRoute, useRouter } from "./router"
+// Types
+// Data loaders
+export type {
+  AfterEachHook,
+  ExtractParams,
+  LazyComponent,
+  LoaderContext,
+  NavigationGuard,
+  NavigationGuardResult,
+  ResolvedRoute,
+  RouteComponent,
+  RouteLoaderFn,
+  RouteMeta,
+  RouteRecord,
+  Router,
+  RouterOptions,
+  ScrollBehaviorFn,
+} from "./types"
+// Lazy helper
+export { lazy } from "./types"

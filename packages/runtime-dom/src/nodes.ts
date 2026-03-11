@@ -1,6 +1,7 @@
 import type { NativeItem, VNode, VNodeChild } from "@pyreon/core"
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
+
 import { effect } from "@pyreon/reactivity"
 
 type Cleanup = () => void

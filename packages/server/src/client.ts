@@ -25,9 +25,9 @@
  * ```
  */
 
-import { h } from "@pyreon/core"
 import type { ComponentFn } from "@pyreon/core"
-import { type RouteRecord, RouterProvider, createRouter, hydrateLoaderData } from "@pyreon/router"
+import { h } from "@pyreon/core"
+import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from "@pyreon/router"
 import { hydrateRoot, mount } from "@pyreon/runtime-dom"
 import type { HydrationStrategy } from "./island"
 

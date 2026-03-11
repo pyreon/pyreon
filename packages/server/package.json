@@ -9,7 +9,9 @@
     "directory": "packages/server"
   },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/server#readme",
-  "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -20,6 +22,10 @@
       "bun": "./src/client.ts",
       "import": "./src/client.ts"
     }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",

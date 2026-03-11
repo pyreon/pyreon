@@ -1,9 +1,10 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "outDir": "./dist",
+    "outDir": "./lib",
     "rootDir": "./src",
-    "lib": ["ESNext"]
+    "lib": ["ESNext"],
+    "types": ["vitest/globals"]
   },
   "include": ["src"]
 }

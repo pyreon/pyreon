@@ -1,5 +1,5 @@
-import { batch } from "@pyreon/reactivity"
 import type { Signal } from "@pyreon/reactivity"
+import { batch } from "@pyreon/reactivity"
 import { instanceMeta, isModelInstance } from "./registry"
 import type { Snapshot, StateShape } from "./types"
 

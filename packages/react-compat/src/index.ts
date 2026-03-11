@@ -19,27 +19,24 @@
  *             `import { createRoot } from "@pyreon/react-compat/dom"`
  */
 
+export type { Props, VNode as ReactNode, VNodeChild } from "@pyreon/core"
 // Re-export Pyreon's JSX runtime so JSX transforms work the same way
-export { h as createElement, Fragment } from "@pyreon/core"
-export { h } from "@pyreon/core"
-export type { VNode as ReactNode, VNodeChild, Props } from "@pyreon/core"
-
 // Lifecycle
-export { onMount as useLayoutEffect } from "@pyreon/core"
+export { Fragment, h as createElement, h, onMount as useLayoutEffect } from "@pyreon/core"
 
+import type { CleanupFn, ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
 import {
-  ErrorBoundary,
-  Portal,
-  Suspense,
   createContext,
   createRef,
+  ErrorBoundary,
   onErrorCaptured,
   onMount,
   onUnmount,
   onUpdate,
+  Portal,
+  Suspense,
   useContext,
 } from "@pyreon/core"
-import type { CleanupFn, ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
 import {
   batch,
   computed,

@@ -22,7 +22,7 @@
  */
 
 export type { Signal } from "@pyreon/reactivity"
-export { signal, computed, effect, batch } from "@pyreon/reactivity"
+export { batch, computed, effect, signal } from "@pyreon/reactivity"
 
 // ─── Registry ─────────────────────────────────────────────────────────────────
 

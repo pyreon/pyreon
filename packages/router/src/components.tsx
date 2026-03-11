@@ -1,8 +1,7 @@
-import { createRef, h, popContext, pushContext, useContext } from "@pyreon/core"
-import { onUnmount } from "@pyreon/core"
 import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
+import { createRef, h, onUnmount, popContext, pushContext, useContext } from "@pyreon/core"
 import { LoaderDataContext, prefetchLoaderData } from "./loader"
-import { RouterContext, isLazy, setActiveRouter } from "./router"
+import { isLazy, RouterContext, setActiveRouter } from "./router"
 import type { ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
 
 // Track prefetched paths per router to avoid duplicate fetches

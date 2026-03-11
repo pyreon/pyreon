@@ -9,24 +9,31 @@
     "directory": "packages/router"
   },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/router#readme",
-  "bugs": { "url": "https://github.com/pyreon/pyreon/issues" },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "type": "module",
-  "main": "./dist/index.js",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
     }
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
-    "dev": "bun build ./src/index.ts --outdir ./dist --target browser --format esm --sourcemap --watch --external @pyreon/core --external @pyreon/reactivity --external @pyreon/runtime-dom",
-    "test": "bun test",
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },
@@ -34,8 +41,5 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*"
-  },
-  "devDependencies": {
-    "typescript": "^5.5.0"
   }
 }

@@ -1,5 +1,5 @@
-import { Fragment, createRef, h, onUnmount } from "@pyreon/core"
 import type { Props, VNode, VNodeChild } from "@pyreon/core"
+import { createRef, Fragment, h, onUnmount } from "@pyreon/core"
 import { effect, runUntracked, signal } from "@pyreon/reactivity"
 
 export interface TransitionProps {

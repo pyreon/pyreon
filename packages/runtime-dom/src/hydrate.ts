@@ -16,8 +16,8 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import { ForSymbol, Fragment, PortalSymbol, reportError, runWithHooks } from "@pyreon/core"
 import type { ComponentFn, Ref, VNode, VNodeChild } from "@pyreon/core"
+import { ForSymbol, Fragment, PortalSymbol, reportError, runWithHooks } from "@pyreon/core"
 import { effect, effectScope, runUntracked, setCurrentScope } from "@pyreon/reactivity"
 import { warnHydrationMismatch } from "./hydration-debug"
 import { mountChild } from "./mount"

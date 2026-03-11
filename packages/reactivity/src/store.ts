@@ -65,7 +65,7 @@ function wrap(raw: object): object {
       // Non-own properties: prototype methods (forEach, map, push, …)
       // These must be returned untracked so array methods work normally.
       // Array methods will then go through set/get on indices via the proxy.
-      if (!Object.prototype.hasOwnProperty.call(target, key)) {
+      if (!Object.hasOwn(target, key)) {
         return (target as Record<PropertyKey, unknown>)[key]
       }
 

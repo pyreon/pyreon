@@ -1,7 +1,7 @@
 import type { Computed, Signal } from "@pyreon/reactivity"
-import { type ModelConfig, createInstance } from "./instance"
-import { MODEL_BRAND } from "./types"
+import { createInstance, type ModelConfig } from "./instance"
 import type { ModelInstance, Snapshot, StateShape } from "./types"
+import { MODEL_BRAND } from "./types"
 
 // ─── Hook registry ────────────────────────────────────────────────────────────
 

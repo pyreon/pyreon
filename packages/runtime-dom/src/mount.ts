@@ -1,14 +1,14 @@
+import type { ComponentFn, ForProps, PortalProps, Ref, VNode, VNodeChild } from "@pyreon/core"
 import {
+  dispatchToErrorBoundary,
   EMPTY_PROPS,
   ForSymbol,
   Fragment,
   PortalSymbol,
-  dispatchToErrorBoundary,
   propagateError,
   reportError,
   runWithHooks,
 } from "@pyreon/core"
-import type { ComponentFn, ForProps, PortalProps, Ref, VNode, VNodeChild } from "@pyreon/core"
 import { effectScope, renderEffect, runUntracked, setCurrentScope } from "@pyreon/reactivity"
 import { registerComponent, unregisterComponent } from "./devtools"
 import { mountFor, mountKeyedList, mountReactive } from "./nodes"

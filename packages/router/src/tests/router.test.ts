@@ -1,19 +1,18 @@
-import { beforeEach, describe, expect, test } from "bun:test"
 import { h } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
+import type { ResolvedRoute, RouteRecord } from "../index"
 import {
-  RouterLink,
-  RouterProvider,
-  RouterView,
   createRouter,
   hydrateLoaderData,
   lazy,
   prefetchLoaderData,
+  RouterLink,
+  RouterProvider,
+  RouterView,
   serializeLoaderData,
   useRoute,
   useRouter,
 } from "../index"
-import type { ResolvedRoute, RouteRecord } from "../index"
 import {
   buildNameIndex,
   buildPath,
@@ -892,8 +891,8 @@ describe("lazy routes", () => {
     expect(lazyComp.errorComponent).toBe(ErrorComp)
   })
 
-  test("isLazy identifies lazy components", () => {
-    const { isLazy } = require("../types")
+  test("isLazy identifies lazy components", async () => {
+    const { isLazy } = await import("../types")
     const lazyComp = lazy(() => Promise.resolve(Home))
     expect(isLazy(lazyComp)).toBe(true)
     expect(isLazy(Home)).toBe(false)

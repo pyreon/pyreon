@@ -1,51 +1,67 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
+  "extends": ["@vitus-labs/tools-lint/biome"],
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": [
-      "**/dist/**",
-      "**/node_modules/**",
-      "**/.turbo/**",
-      "e2e/**",
-      "tests/browser/**",
-      "apps/**",
-      "scripts/**"
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/lib",
+      "!**/node_modules",
+      "!**/.turbo",
+      "!e2e",
+      "!tests/browser",
+      "!apps",
+      "!scripts"
     ]
   },
   "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
     "lineWidth": 100
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true,
-      "correctness": {
-        "noUnusedVariables": "warn",
-        "noUnusedImports": "warn"
-      },
-      "suspicious": {
-        "noExplicitAny": "warn"
-      },
-      "style": {
-        "noNonNullAssertion": "warn"
-      }
-    }
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "double",
-      "trailingCommas": "all",
-      "semicolons": "asNeeded"
-    }
+      "quoteStyle": "double"
+    },
+    "globals": [
+      "describe",
+      "test",
+      "it",
+      "expect",
+      "vi",
+      "beforeEach",
+      "afterEach",
+      "beforeAll",
+      "afterAll"
+    ]
   },
-  "organizeImports": {
-    "enabled": true
+  "linter": {
+    "rules": {
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noUnusedImports": "warn",
+        "noUnusedPrivateClassMembers": "warn",
+        "useHookAtTopLevel": "off"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": "warn"
+      },
+      "suspicious": {
+        "noEmptyBlockStatements": "warn",
+        "noTemplateCurlyInString": "warn",
+        "noConsole": "warn",
+        "useIterableCallbackReturn": "warn"
+      },
+      "nursery": {
+        "noShadow": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useConsistentArrayType": "warn"
+      }
+    }
   }
 }

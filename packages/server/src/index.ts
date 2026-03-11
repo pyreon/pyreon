@@ -52,21 +52,18 @@
  * ```
  */
 
+export type { HandlerOptions } from "./handler"
 // SSR handler
 export { createHandler } from "./handler"
-export type { HandlerOptions } from "./handler"
-
-// SSG
-export { prerender } from "./ssg"
-export type { PrerenderOptions, PrerenderResult } from "./ssg"
-
+export type { TemplateData } from "./html"
+// HTML template
+export { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "./html"
+export type { HydrationStrategy, IslandMeta, IslandOptions } from "./island"
 // Islands
 export { island } from "./island"
-export type { IslandOptions, IslandMeta, HydrationStrategy } from "./island"
 
 // Middleware
 export type { Middleware, MiddlewareContext } from "./middleware"
-
-// HTML template
-export { processTemplate, buildScripts, DEFAULT_TEMPLATE } from "./html"
-export type { TemplateData } from "./html"
+export type { PrerenderOptions, PrerenderResult } from "./ssg"
+// SSG
+export { prerender } from "./ssg"

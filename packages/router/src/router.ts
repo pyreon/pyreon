@@ -5,6 +5,7 @@ import { ScrollManager } from "./scroll"
 import {
   type AfterEachHook,
   type ComponentFn,
+  isLazy,
   type LoaderContext,
   type NavigationGuard,
   type NavigationGuardResult,
@@ -13,7 +14,6 @@ import {
   type Router,
   type RouterInstance,
   type RouterOptions,
-  isLazy,
 } from "./types"
 
 // ─── Router context ───────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
-import { createRef, h, onMount } from "@pyreon/core"
 import type { Props, VNodeChild } from "@pyreon/core"
+import { createRef, h, onMount } from "@pyreon/core"
 import { effect } from "@pyreon/reactivity"
 import { mountChild } from "./mount"
 

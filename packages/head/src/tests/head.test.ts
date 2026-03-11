@@ -1,9 +1,8 @@
-import { beforeEach, describe, expect, test } from "bun:test"
 import { h } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
-import { HeadProvider, createHeadContext, renderWithHead, useHead } from "../index"
 import type { HeadContextValue } from "../index"
+import { createHeadContext, HeadProvider, renderWithHead, useHead } from "../index"
 
 // ─── SSR tests ────────────────────────────────────────────────────────────────
 

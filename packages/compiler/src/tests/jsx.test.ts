@@ -1,4 +1,3 @@
-import { describe, expect, test } from "bun:test"
 import { transformJSX } from "../jsx"
 
 // Helper: transform and return the code string

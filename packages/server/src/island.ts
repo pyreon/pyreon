@@ -52,8 +52,8 @@
  *   - "never"          — never hydrate (render-only, no client JS)
  */
 
-import { h } from "@pyreon/core"
 import type { ComponentFn, Props, VNode } from "@pyreon/core"
+import { h } from "@pyreon/core"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

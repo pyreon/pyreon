@@ -1,32 +1,31 @@
-import { describe, expect, test } from "bun:test"
 import {
-  ErrorBoundary,
-  For,
-  ForSymbol,
-  Fragment,
-  Match,
-  MatchSymbol,
-  Portal,
-  PortalSymbol,
-  Show,
-  Suspense,
-  Switch,
   createContext,
   createRef,
   defineComponent,
   dispatchToErrorBoundary,
+  ErrorBoundary,
+  For,
+  ForSymbol,
+  Fragment,
   h,
+  Match,
+  MatchSymbol,
   mapArray,
   onErrorCaptured,
   onMount,
   onUnmount,
   onUpdate,
+  Portal,
+  PortalSymbol,
   popContext,
   propagateError,
   pushContext,
   registerErrorHandler,
   reportError,
   runWithHooks,
+  Show,
+  Suspense,
+  Switch,
   useContext,
   withContext,
 } from "../index"
@@ -659,11 +658,11 @@ describe("ErrorBoundary", () => {
 // ─── dispatchToErrorBoundary ─────────────────────────────────────────────────
 
 describe("dispatchToErrorBoundary()", () => {
-  test("dispatches to the most recently pushed boundary", () => {
+  test("dispatches to the most recently pushed boundary", async () => {
     // Previous ErrorBoundary tests may have left handlers on the stack,
     // so we test by pushing our own known handler.
     let caughtErr: unknown = null
-    const { pushErrorBoundary: push, popErrorBoundary: pop } = require("../component")
+    const { pushErrorBoundary: push, popErrorBoundary: pop } = await import("../component")
     push((err: unknown) => {
       caughtErr = err
       return true

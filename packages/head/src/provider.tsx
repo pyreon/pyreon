@@ -1,7 +1,7 @@
-import { onUnmount, popContext, pushContext } from "@pyreon/core"
 import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { HeadContext } from "./context"
+import { onUnmount, popContext, pushContext } from "@pyreon/core"
 import type { HeadContextValue } from "./context"
+import { HeadContext } from "./context"
 
 export interface HeadProviderProps extends Props {
   context: HeadContextValue

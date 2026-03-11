@@ -1,7 +1,7 @@
 import { onMount, onUnmount, useContext } from "@pyreon/core"
 import { effect } from "@pyreon/reactivity"
-import { HeadContext } from "./context"
 import type { HeadEntry, HeadTag, UseHeadInput } from "./context"
+import { HeadContext } from "./context"
 import { syncDom } from "./dom"
 
 function buildEntry(o: UseHeadInput): HeadEntry {

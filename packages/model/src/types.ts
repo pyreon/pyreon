@@ -1,5 +1,4 @@
-import type { Signal } from "@pyreon/reactivity"
-import type { Computed } from "@pyreon/reactivity"
+import type { Computed, Signal } from "@pyreon/reactivity"
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
