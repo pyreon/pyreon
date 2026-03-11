@@ -282,14 +282,16 @@ const { html, head } = renderWithHead(h(App, null))
 
 ## Concurrent SSR Isolation
 
-Each SSR request gets its own isolated context and store registry via `AsyncLocalStorage`:
+Each SSR request gets its own isolated context via `AsyncLocalStorage`:
 
 ```ts
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { setStoreRegistryProvider } from "@pyreon/store"
 
-// Stores are automatically isolated per request
-setStoreRegistryProvider(() => als.getStore() ?? new Map())
+await runWithRequestContext(async () => {
+  // Context and reactive state are isolated to this request
+  const html = await renderToString(h(App, null))
+  return html
+})
 ```
 
 This ensures that concurrent requests do not share reactive state.

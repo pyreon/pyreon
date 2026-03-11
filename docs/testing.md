@@ -180,40 +180,6 @@ test("Display updates reactively", () => {
 })
 ```
 
-## Testing Stores
-
-```ts
-import { test, expect, afterEach } from "bun:test"
-import { defineStore, resetAllStores } from "@pyreon/store"
-import { signal, computed } from "@pyreon/reactivity"
-
-afterEach(() => {
-  resetAllStores()  // clean slate between tests
-})
-
-const useCounter = defineStore("counter", () => {
-  const count = signal(0)
-  const doubled = computed(() => count() * 2)
-  const increment = () => count.update(n => n + 1)
-  return { count, doubled, increment }
-})
-
-test("store is a singleton", () => {
-  const a = useCounter()
-  const b = useCounter()
-  expect(a).toBe(b)
-})
-
-test("store actions update state", () => {
-  const store = useCounter()
-  expect(store.count()).toBe(0)
-
-  store.increment()
-  expect(store.count()).toBe(1)
-  expect(store.doubled()).toBe(2)
-})
-```
-
 ## Testing the Router
 
 ```tsx
@@ -268,58 +234,8 @@ test("SSR renders to string", async () => {
 })
 ```
 
-## Testing Models
-
-```ts
-import { test, expect } from "bun:test"
-import { model, getSnapshot, applySnapshot, onPatch } from "@pyreon/model"
-import { computed } from "@pyreon/reactivity"
-
-const Counter = model({
-  state: { count: 0 },
-  views: (self) => ({
-    doubled: computed(() => self.count() * 2),
-  }),
-  actions: (self) => ({
-    inc: () => self.count.update(c => c + 1),
-  }),
-})
-
-test("model state and actions", () => {
-  const counter = Counter.create()
-  expect(counter.count()).toBe(0)
-
-  counter.inc()
-  expect(counter.count()).toBe(1)
-  expect(counter.doubled()).toBe(2)
-})
-
-test("snapshots", () => {
-  const counter = Counter.create({ count: 10 })
-  expect(getSnapshot(counter)).toEqual({ count: 10 })
-
-  applySnapshot(counter, { count: 0 })
-  expect(counter.count()).toBe(0)
-})
-
-test("patch tracking", () => {
-  const counter = Counter.create()
-  const patches: unknown[] = []
-
-  const unsub = onPatch(counter, p => patches.push(p))
-  counter.inc()
-
-  expect(patches).toEqual([
-    { op: "replace", path: "/count", value: 1 },
-  ])
-
-  unsub()
-})
-```
-
 ## Tips
 
-- **Use `afterEach(() => resetAllStores())`** in store tests to prevent state leaking between tests.
 - **Call `router.destroy()`** after router tests to clean up event listeners.
 - **Call `unmount()`** after mounting components to clean up effects and prevent memory leaks.
 - **Use `happy-dom`** for fast DOM tests. It's significantly faster than jsdom for Pyreon's test suite.

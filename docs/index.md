@@ -70,9 +70,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |
 | `@pyreon/vite-plugin` | Vite integration — JSX transform, `.pyreon` files, HMR |
 | `@pyreon/router` | Hash/history router, nested routes, guards, loaders, prefetching |
-| `@pyreon/store` | `defineStore()` — composable global state singletons |
 | `@pyreon/head` | `useHead()` — reactive document head management with SSR |
-| `@pyreon/model` | Reactive models with patch tracking, snapshots, middleware |
 | `@pyreon/server` | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
 | `@pyreon/react-compat` | `useState`, `useEffect`, `useMemo`, `lazy`, `Suspense` shims for migration |
 
@@ -107,8 +105,6 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 ### Routing & State
 
 - [Router](./router.md) — client-side routing, guards, loaders, nested routes, prefetching
-- [Store](./store.md) — global state management with defineStore
-- [Model](./model.md) — reactive models with patch tracking and middleware
 
 ### Server
 

@@ -21,11 +21,9 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary |
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive |
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |
-| `@pyreon/store` | defineStore, resetStore, resetAllStores |
 | `@pyreon/runtime-server` | renderToString, renderToStream |
 | `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders |
 | `@pyreon/head` | useHead, HeadProvider, renderWithHead |
-| `@pyreon/model` | reactive models with patch tracking |
 | `@pyreon/server` | createHandler (SSR), prerender (SSG), island(), middleware |
 | `@pyreon/vite-plugin` | JSX transform + SSR dev middleware |
 | `@pyreon/react-compat` | useState, useEffect, useMemo, lazy, Suspense shims |

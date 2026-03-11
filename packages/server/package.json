@@ -33,7 +33,6 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/runtime-server": "workspace:*",
-    "@pyreon/store": "workspace:*"
+    "@pyreon/runtime-server": "workspace:*"
   }
 }

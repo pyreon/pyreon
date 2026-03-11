@@ -54,15 +54,16 @@ const result = await runWithRequestContext(async () => {
 })
 ```
 
-### `configureStoreIsolation(setStoreRegistryProvider)`
+### `configureStoreIsolation(registryProvider)`
 
-Wire up per-request `@pyreon/store` isolation for concurrent SSR. Call once at server startup. Prevents store state from leaking between requests.
+Wire up per-request store isolation for concurrent SSR. Call once at server startup with a function that hooks your store registry into the request-scoped `AsyncLocalStorage`. Prevents store state from leaking between requests.
 
 ```ts
-import { setStoreRegistryProvider } from "@pyreon/store"
 import { configureStoreIsolation } from "@pyreon/runtime-server"
 
-configureStoreIsolation(setStoreRegistryProvider)
+configureStoreIsolation(provider => {
+  // Wire your store registry to use the per-request provider
+})
 ```
 
 ## Behavior Notes

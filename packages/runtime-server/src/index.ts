@@ -38,18 +38,17 @@ const _fallbackStack: Map<symbol, unknown>[] = []
 setContextStackProvider(() => _contextAls.getStore() ?? _fallbackStack)
 
 // ─── Store isolation (optional) ───────────────────────────────────────────────
-// A second ALS isolates @pyreon/store registries between concurrent requests.
+// A second ALS isolates store registries between concurrent requests.
 // Activated only when the user calls configureStoreIsolation().
 
 const _storeAls = new AsyncLocalStorage<Map<string, unknown>>()
 let _storeIsolationActive = false
 
 /**
- * Wire up per-request @pyreon/store isolation.
- * Call once at server startup, passing `setStoreRegistryProvider` from @pyreon/store.
+ * Wire up per-request store isolation.
+ * Call once at server startup, passing a `setStoreRegistryProvider` function.
  *
  * @example
- * import { setStoreRegistryProvider } from "@pyreon/store"
  * import { configureStoreIsolation } from "@pyreon/runtime-server"
  * configureStoreIsolation(setStoreRegistryProvider)
  */

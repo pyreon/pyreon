@@ -136,7 +136,7 @@ function Counter() {
 }
 ```
 
-Store-level state (from `@pyreon/store`) also persists across HMR updates.
+Store-level state also persists across HMR updates.
 
 ## Project Structure
 

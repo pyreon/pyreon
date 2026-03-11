@@ -192,7 +192,7 @@ cleanup()  // disconnects IntersectionObservers, cancels idle callbacks, removes
 
 **Props must be JSON-serializable.** Island props are serialized to JSON for transport. Functions, DOM nodes, and class instances cannot be island props.
 
-**Islands are independent.** Each island hydrates its own subtree. They do not share reactive state unless you use a global store (`@pyreon/store`).
+**Islands are independent.** Each island hydrates its own subtree. They do not share reactive state unless you use a global store.
 
 **No context inheritance.** Since islands hydrate independently, they do not inherit context from the server-rendered parent tree. Use stores or explicit props instead.
 

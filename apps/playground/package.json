@@ -12,8 +12,7 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/router": "workspace:*",
-    "@pyreon/store": "workspace:*"
+    "@pyreon/router": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/vite-plugin": "workspace:*",

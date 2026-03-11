@@ -20,18 +20,6 @@
       "brotli": 991
     },
     {
-      "name": "@pyreon/model",
-      "raw": 2507,
-      "gzip": 1114,
-      "brotli": 982
-    },
-    {
-      "name": "@pyreon/query",
-      "raw": 46442,
-      "gzip": 13385,
-      "brotli": 11913
-    },
-    {
       "name": "@pyreon/react-compat",
       "raw": 1889,
       "gzip": 897,
@@ -66,12 +54,6 @@
       "raw": 3504,
       "gzip": 1858,
       "brotli": 1535
-    },
-    {
-      "name": "@pyreon/store",
-      "raw": 440,
-      "gzip": 288,
-      "brotli": 241
     },
     {
       "name": "@pyreon/vite-plugin",

@@ -80,9 +80,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/compiler`](packages/compiler/) | JSX transform with smart `shouldWrap`, static hoisting |
 | [`@pyreon/vite-plugin`](packages/vite-plugin/) | Vite integration — JSX transform, `.pyreon` files, HMR |
 | [`@pyreon/router`](packages/router/) | Hash/history router, nested routes, guards, loaders, prefetching |
-| [`@pyreon/store`](packages/store/) | `defineStore()` — composable global state singletons |
 | [`@pyreon/head`](packages/head/) | `useHead()` — reactive document head management with SSR |
-| [`@pyreon/model`](packages/model/) | Reactive models with patch tracking, snapshots, middleware |
 | [`@pyreon/server`](packages/server/) | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
 | [`@pyreon/react-compat`](packages/react-compat/) | `useState`, `useEffect`, `useMemo`, `lazy`, `Suspense` shims for migration |
 
@@ -126,9 +124,7 @@ signal.set() → re-run 1 effect → update 1 DOM node
 - [Portals](docs/portals.md) — rendering into separate DOM containers
 - [Suspense & ErrorBoundary](docs/suspense.md) — lazy loading, error recovery
 - [Router](docs/router.md) — client-side routing, guards, loaders, prefetching
-- [Store](docs/store.md) — global state management
 - [Head Management](docs/head.md) — document title, meta, link tags
-- [Model](docs/model.md) — reactive models with patch tracking
 - [SSR & SSG](docs/ssr.md) — server rendering and static generation
 - [Islands](docs/islands.md) — partial hydration architecture
 - [Security](docs/security.md) — HTML sanitization, XSS prevention
