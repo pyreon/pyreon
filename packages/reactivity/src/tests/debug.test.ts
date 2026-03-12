@@ -97,7 +97,7 @@ describe("debug", () => {
       s.set(2)
 
       // Wait for microtask (auto-dispose)
-      await new Promise((r) => queueMicrotask(r))
+      await new Promise((r) => queueMicrotask(() => r(undefined)))
 
       expect(logs.length).toBeGreaterThan(0)
       console.log = origLog
@@ -111,7 +111,7 @@ describe("debug", () => {
       why()
       // No signal updates
 
-      await new Promise((r) => queueMicrotask(r))
+      await new Promise((r) => queueMicrotask(() => r(undefined)))
 
       const noUpdateLog = logs.find((args) =>
         typeof args[0] === "string" ? args[0].includes("No signal") : false,
@@ -132,7 +132,7 @@ describe("debug", () => {
       const s = signal(0, { name: "x" })
       s.set(1)
 
-      await new Promise((r) => queueMicrotask(r))
+      await new Promise((r) => queueMicrotask(() => r(undefined)))
       // Should not throw or double-log
       console.log = origLog
     })
@@ -146,7 +146,7 @@ describe("debug", () => {
       why()
       s.set(1)
 
-      await new Promise((r) => queueMicrotask(r))
+      await new Promise((r) => queueMicrotask(() => r(undefined)))
 
       const anonLog = logs.find((args) =>
         args.some((a) => typeof a === "string" && a.includes("anonymous")),

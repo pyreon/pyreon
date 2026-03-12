@@ -92,12 +92,12 @@ describe("createResource", () => {
     expect(resolvers.length).toBe(2)
 
     // Resolve the SECOND request first
-    resolvers[1]("user-2")
+    resolvers[1]!("user-2")
     await new Promise((r) => setTimeout(r, 10))
     expect(resource.data()).toBe("user-2")
 
     // Now resolve the FIRST (stale) request — should be ignored
-    resolvers[0]("user-1")
+    resolvers[0]!("user-1")
     await new Promise((r) => setTimeout(r, 10))
     expect(resource.data()).toBe("user-2") // still user-2, not user-1
   })
@@ -120,12 +120,12 @@ describe("createResource", () => {
     userId.set(2)
 
     // Resolve second request
-    resolvers[1]("user-2")
+    resolvers[1]!("user-2")
     await new Promise((r) => setTimeout(r, 10))
     expect(resource.data()).toBe("user-2")
 
     // Reject first (stale) request — should be ignored
-    rejecters[0](new Error("stale error"))
+    rejecters[0]!(new Error("stale error"))
     await new Promise((r) => setTimeout(r, 10))
     expect(resource.error()).toBeUndefined()
     expect(resource.data()).toBe("user-2")

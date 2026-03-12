@@ -1,4 +1,4 @@
-import { h as pyreonH } from "@pyreon/core"
+import { h as pyreonH, type ComponentFn } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
 import {
   batch,
@@ -538,7 +538,7 @@ describe("@pyreon/vue-compat", () => {
   })
 
   it("createApp with props passes them to component", () => {
-    const Comp = (props: { name: string }) => h("div", null, props.name)
+    const Comp = ((props: { name: string }) => h("div", null, props.name)) as ComponentFn
     const el = container()
     const app = createApp(Comp, { name: "world" })
     const unmount = app.mount(el)
@@ -627,7 +627,7 @@ describe("@pyreon/vue-compat", () => {
 
     count.value = 10
     // Should have the change tracked
-    const lastCall = calls[calls.length - 1]
+    const lastCall = calls[calls.length - 1]!
     expect(lastCall[0]).toBe(10)
 
     stop()

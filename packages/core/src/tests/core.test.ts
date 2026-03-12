@@ -33,7 +33,7 @@ import {
 } from "../index"
 import { jsxDEV } from "../jsx-dev-runtime"
 import { Fragment as JsxFragment, jsx, jsxs } from "../jsx-runtime"
-import type { ComponentFn, VNode, VNodeChild } from "../types"
+import type { ComponentFn, Props, VNode, VNodeChild } from "../types"
 
 // ─── h() ─────────────────────────────────────────────────────────────────────
 
@@ -493,7 +493,7 @@ describe("For()", () => {
   test("returns a VNode with ForSymbol type", () => {
     const node = For({
       each: () => [1, 2, 3],
-      key: (item) => item,
+      by: (item) => item,
       children: (item) => h("li", null, String(item)),
     })
     expect(node.type).toBe(ForSymbol)
@@ -977,9 +977,9 @@ describe("edge cases", () => {
       { id: 1, name: "a" },
       { id: 2, name: "b" },
     ]
-    const node = For({
+    const node = For<{ id: number; name: string }>({
       each: () => items,
-      key: (item) => item.id,
+      by: (item) => item.id,
       children: (item) => h("span", null, item.name),
     })
     expect(node.type).toBe(ForSymbol)
@@ -992,7 +992,7 @@ describe("edge cases", () => {
 
 describe("lazy()", () => {
   test("returns a LazyComponent with __loading flag", () => {
-    const Comp = lazy(() => new Promise(() => {})) // never resolves
+    const Comp = lazy<Props>(() => new Promise(() => {})) // never resolves
     expect(typeof Comp).toBe("function")
     expect(typeof Comp.__loading).toBe("function")
     expect(Comp.__loading()).toBe(true)
@@ -1013,7 +1013,7 @@ describe("lazy()", () => {
   })
 
   test("throws on import error so ErrorBoundary can catch", async () => {
-    const Comp = lazy(() => Promise.reject(new Error("load failed")))
+    const Comp = lazy<Props>(() => Promise.reject(new Error("load failed")))
 
     await new Promise((r) => setTimeout(r, 0))
 
@@ -1022,7 +1022,7 @@ describe("lazy()", () => {
   })
 
   test("wraps non-Error rejection in Error", async () => {
-    const Comp = lazy(() => Promise.reject("string error"))
+    const Comp = lazy<Props>(() => Promise.reject("string error"))
 
     await new Promise((r) => setTimeout(r, 0))
 
@@ -1205,7 +1205,7 @@ describe("Switch — edge cases", () => {
 
 describe("Dynamic", () => {
   test("renders the given component", () => {
-    const Greeting: ComponentFn<{ name: string }> = (props) => h("span", null, props.name)
+    const Greeting: ComponentFn = (props) => h("span", null, (props as { name: string }).name)
     const result = Dynamic({ component: Greeting, name: "world" })
     expect(result).not.toBeNull()
     expect((result as VNode).type).toBe(Greeting)

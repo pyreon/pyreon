@@ -861,7 +861,6 @@ describe("useHead — SSR paths (document undefined)", () => {
   const origDoc = globalThis.document
 
   beforeEach(() => {
-    // @ts-expect-error - temporarily remove document for SSR simulation
     delete (globalThis as Record<string, unknown>).document
   })
 

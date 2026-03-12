@@ -380,7 +380,7 @@ describe("island", () => {
   test("island() resolves direct function module (not { default })", async () => {
     const Inner: ComponentFn = () => h("span", null, "direct")
     const Widget = island(
-      () => Promise.resolve(Inner) as Promise<{ default: ComponentFn }>,
+      () => Promise.resolve({ default: Inner }),
       { name: "Direct" },
     )
 

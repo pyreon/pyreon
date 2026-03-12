@@ -418,8 +418,8 @@ describe("renderToString — For component", () => {
     const items = signal(["a", "b", "c"])
     const vnode = For({
       each: items,
-      key: (item: string) => item,
-      children: (item: string) => h("li", null, item),
+      by: (item: unknown) => item as string,
+      children: (item: unknown) => h("li", null, item as string),
     })
     const html = await renderToString(vnode)
     expect(html).toContain("<!--pyreon-for-->")
@@ -583,8 +583,8 @@ describe("renderToStream — additional coverage", () => {
     const items = signal(["x", "y"])
     const vnode = For({
       each: items,
-      key: (item: string) => item,
-      children: (item: string) => h("li", null, item),
+      by: (item: unknown) => item as string,
+      children: (item: unknown) => h("li", null, item as string),
     })
     const html = await collect(renderToStream(vnode))
     expect(html).toContain("<!--pyreon-for-->")
@@ -802,6 +802,7 @@ describe("renderToStream — Suspense edge cases", () => {
     }
 
     const vnode = h(Suspense, {
+      fallback: h("span", null, ""),
       children: h(Content as unknown as ComponentFn, null),
     })
     const html = await collect(renderToStream(vnode))

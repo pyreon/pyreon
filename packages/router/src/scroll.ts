@@ -22,7 +22,7 @@ export class ScrollManager {
 
   /** Call after navigation is committed — applies scroll behavior */
   restore(to: ResolvedRoute, from: ResolvedRoute): void {
-    const behavior = (to.meta.scrollBehavior as typeof this._behavior) ?? this._behavior
+    const behavior = (to.meta.scrollBehavior as typeof this._behavior) ?? this._behavior ?? "top"
 
     if (typeof behavior === "function") {
       const saved = this._positions.get(to.path) ?? null

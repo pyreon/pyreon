@@ -237,8 +237,8 @@ function injectHmr(code: string, moduleId: string): string {
       matches.push({
         start: m.index,
         end: argsStart + args.length + 1, // +1 for closing paren
-        prefix: m[1],
-        name: m[2],
+        prefix: m[1]!,
+        name: m[2]!,
         args,
       })
     }
@@ -246,7 +246,7 @@ function injectHmr(code: string, moduleId: string): string {
 
     // Replace in reverse to preserve offsets
     for (let i = matches.length - 1; i >= 0; i--) {
-      const { start, end, prefix, name, args } = matches[i]
+      const { start, end, prefix, name, args } = matches[i]!
       const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
       output = output.slice(0, start) + replacement + output.slice(end)
     }

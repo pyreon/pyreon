@@ -490,7 +490,7 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
 
     // Reactive accessor that returns a function (not a value) — dev warning
     const badAccessor = () => (() => "oops") as unknown as VNodeChild
-    mount(h("div", null, badAccessor), el)
+    mount(h("div", null, badAccessor as VNodeChild), el)
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("returned a function instead of a value"),
@@ -1091,7 +1091,7 @@ describe("nodes.ts — mountKeyedList branches", () => {
       h("span", { key: 2 }, "b"),
     ] as VNodeChild)
 
-    mount(h("div", null, () => items()), el)
+    mount(h("div", null, (() => items()) as VNodeChild), el)
     expect(el.querySelectorAll("span").length).toBe(2)
 
     // Clear all
@@ -1107,7 +1107,7 @@ describe("nodes.ts — mountKeyedList branches", () => {
       h("span", { key: 3 }, "c"),
     ] as VNodeChild)
 
-    mount(h("div", null, () => items()), el)
+    mount(h("div", null, (() => items()) as VNodeChild), el)
     expect(el.querySelectorAll("span").length).toBe(3)
 
     // Remove middle item
@@ -1126,7 +1126,7 @@ describe("nodes.ts — mountKeyedList branches", () => {
       h("span", { key: 3 }, "c"),
     ] as VNodeChild)
 
-    mount(h("div", null, () => items()), el)
+    mount(h("div", null, (() => items()) as VNodeChild), el)
 
     // Reverse order — triggers LIS reorder
     items.set([
@@ -2095,7 +2095,7 @@ describe("nodes.ts — mountKeyedList LIS typed array reallocation", () => {
     const ids = Array.from({ length: 20 }, (_, i) => i)
     const items = signal(makeItems(ids) as VNodeChild)
 
-    mount(h("div", null, () => items()), el)
+    mount(h("div", null, (() => items()) as VNodeChild), el)
     expect(el.querySelectorAll("span").length).toBe(20)
 
     // Reverse to trigger LIS reorder with typed array growth
@@ -2343,14 +2343,14 @@ describe("devtools.ts — $p console helper branches", () => {
     installDevTools()
     const p = (window as unknown as Record<string, unknown>).$p as Record<string, (...args: unknown[]) => unknown>
     // Should not throw
-    p.highlight("nonexistent-id-12345")
+    p.highlight!("nonexistent-id-12345")
   })
 
   test("$p.help prints usage (line 291+)", () => {
     installDevTools()
     const p = (window as unknown as Record<string, unknown>).$p as Record<string, (...args: unknown[]) => unknown>
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    p.help()
+    p.help!()
     expect(logSpy).toHaveBeenCalled()
     logSpy.mockRestore()
   })

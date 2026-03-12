@@ -3103,8 +3103,8 @@ describe("router — navigation cancellation by newer navigation", () => {
     let guardCallCount = 0
     const el = document.createElement("div")
     document.body.appendChild(el)
-    const router = createRouter(
-      [
+    const router = createRouter({
+      routes: [
         {
           path: "/",
           component: () => h("div", null, "home"),
@@ -3117,8 +3117,8 @@ describe("router — navigation cancellation by newer navigation", () => {
         { path: "/a", component: () => h("div", null, "a") },
         { path: "/b", component: () => h("div", null, "b") },
       ],
-      { mode: "hash" },
-    )
+      mode: "hash",
+    })
 
     mount(h(RouterProvider, { router, children: h(RouterView, null) }), el)
     await new Promise((r) => setTimeout(r, 10))
@@ -3139,7 +3139,7 @@ describe("router — navigation cancellation by newer navigation", () => {
   })
 
   test("router.back() calls history.back (line 343)", () => {
-    const router = createRouter([{ path: "/", component: () => h("div", null) }], { mode: "hash" })
+    const router = createRouter({ routes: [{ path: "/", component: () => h("div", null) }], mode: "hash" })
     const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => {})
     router.back()
     expect(backSpy).toHaveBeenCalled()
@@ -3148,7 +3148,7 @@ describe("router — navigation cancellation by newer navigation", () => {
   })
 
   test("removeGuard and removeHook when already removed (lines 350, 358)", async () => {
-    const router = createRouter([{ path: "/", component: () => h("div", null) }], { mode: "hash" })
+    const router = createRouter({ routes: [{ path: "/", component: () => h("div", null) }], mode: "hash" })
     const removeGuard = router.beforeEach(() => true)
     const removeHook = router.afterEach(() => {})
     // Remove once

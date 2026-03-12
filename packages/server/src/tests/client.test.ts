@@ -128,7 +128,7 @@ describe("hydrateIslands", () => {
     const Widget: ComponentFn = () => h("div", null, "widget")
 
     const cleanup = hydrateIslands({
-      Widget: () => Promise.resolve(Widget) as Promise<{ default: ComponentFn }>,
+      Widget: () => Promise.resolve({ default: Widget }),
     })
     await new Promise((r) => setTimeout(r, 50))
     cleanup()
@@ -375,9 +375,9 @@ describe("hydrateIslands", () => {
     }
 
     // Remove IntersectionObserver to trigger fallback
-    const origIO = (window as Record<string, unknown>).IntersectionObserver
+    const origIO = (window as unknown as Record<string, unknown>).IntersectionObserver
     // biome-ignore lint/performance/noDelete: test cleanup
-    delete (window as Record<string, unknown>).IntersectionObserver
+    delete (window as unknown as Record<string, unknown>).IntersectionObserver
 
     const cleanup = hydrateIslands({
       Fallback: () => Promise.resolve({ default: Fallback }),
@@ -386,7 +386,7 @@ describe("hydrateIslands", () => {
     expect(hydrated).toBe(true)
     cleanup()
 
-    ;(window as Record<string, unknown>).IntersectionObserver = origIO
+    ;(window as unknown as Record<string, unknown>).IntersectionObserver = origIO
   })
 
   test("visible strategy: IntersectionObserver fires when element becomes visible", async () => {
@@ -523,8 +523,9 @@ describe("hydrateIslands", () => {
     expect(hydrated).toBe(false)
 
     // Now simulate the media query matching
-    if (storedOnChange) {
-      storedOnChange({ matches: true } as MediaQueryListEvent)
+    const onChange1 = storedOnChange as ((e: MediaQueryListEvent) => void) | null
+    if (onChange1) {
+      onChange1({ matches: true } as MediaQueryListEvent)
     }
     await new Promise((r) => setTimeout(r, 100))
     expect(hydrated).toBe(true)
@@ -566,8 +567,9 @@ describe("hydrateIslands", () => {
     await new Promise((r) => setTimeout(r, 50))
 
     // Trigger with matches: false — should not hydrate
-    if (storedOnChange) {
-      storedOnChange({ matches: false } as MediaQueryListEvent)
+    const onChange2 = storedOnChange as ((e: MediaQueryListEvent) => void) | null
+    if (onChange2) {
+      onChange2({ matches: false } as MediaQueryListEvent)
     }
     await new Promise((r) => setTimeout(r, 100))
     expect(hydrated).toBe(false)
