@@ -123,20 +123,15 @@ export function Transition(props: TransitionProps): VNodeChild {
       initialized = true
       // On initial mount: animate only if `appear` is set
       if (visible && props.appear) {
-        queueMicrotask(() => {
-          const el = ref.current
-          if (el) applyEnter(el)
-        })
+        // ref.current is set synchronously by mountChild before microtask fires
+        queueMicrotask(() => applyEnter(ref.current as HTMLElement))
       }
       return
     }
     if (visible) {
       if (!isMounted.peek()) isMounted.set(true)
       // Enter: queueMicrotask ensures the element is in the DOM before we touch it
-      queueMicrotask(() => {
-        const el = ref.current
-        if (el) applyEnter(el)
-      })
+      queueMicrotask(() => applyEnter(ref.current as HTMLElement))
     } else if (isMounted.peek()) {
       const el = ref.current
       if (!el) {

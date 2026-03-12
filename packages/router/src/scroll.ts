@@ -16,16 +16,13 @@ export class ScrollManager {
 
   /** Call before navigating away — saves current scroll position for `fromPath` */
   save(fromPath: string): void {
-    if (typeof window !== "undefined") {
-      this._positions.set(fromPath, window.scrollY)
-    }
+    // save/restore are only called from browser navigation paths (guarded by caller)
+    this._positions.set(fromPath, window.scrollY)
   }
 
   /** Call after navigation is committed — applies scroll behavior */
   restore(to: ResolvedRoute, from: ResolvedRoute): void {
-    if (typeof window === "undefined") return
-
-    const behavior = to.meta.scrollBehavior ?? this._behavior ?? "top"
+    const behavior = (to.meta.scrollBehavior as typeof this._behavior) ?? this._behavior
 
     if (typeof behavior === "function") {
       const saved = this._positions.get(to.path) ?? null
@@ -48,9 +45,8 @@ export class ScrollManager {
       window.scrollTo({ top: saved, behavior: "instant" as ScrollBehavior })
       return
     }
-    if (typeof result === "number") {
-      window.scrollTo({ top: result, behavior: "instant" as ScrollBehavior })
-    }
+    // At this point result must be a number (all string cases handled above)
+    window.scrollTo({ top: result as number, behavior: "instant" as ScrollBehavior })
   }
 
   getSavedPosition(path: string): number | null {

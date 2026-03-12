@@ -57,7 +57,7 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 
 function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) => string)): string {
   if (tag.tag === "title") {
-    const raw = tag.children ?? ""
+    const raw = tag.children || ""
     const title = titleTemplate
       ? typeof titleTemplate === "function"
         ? titleTemplate(raw)
@@ -65,15 +65,18 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
       : raw
     return `<title>${esc(title)}</title>`
   }
-  const attrs = Object.entries(tag.props ?? {})
-    .map(([k, v]) => `${k}="${esc(v)}"`)
-    .join(" ")
+  const props = tag.props as Record<string, string> | undefined
+  const attrs = props
+    ? Object.entries(props)
+        .map(([k, v]) => `${k}="${esc(v)}"`)
+        .join(" ")
+    : ""
   const open = attrs ? `<${tag.tag} ${attrs}` : `<${tag.tag}`
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
-  // Script/style/noscript content is raw — only escape closing tags
-  const isRaw = tag.tag === "script" || tag.tag === "style" || tag.tag === "noscript"
-  const content = tag.children ?? ""
-  const body = isRaw ? content.replace(/<\/(script|style|noscript)/gi, "<\\/$1") : esc(content)
+  const content = tag.children || ""
+  // All non-void non-title head tags (script, style, noscript) use raw content.
+  // Only escape closing tags to prevent injection.
+  const body = content.replace(/<\/(script|style|noscript)/gi, "<\\/$1")
   return `${open}>${body}</${tag.tag}>`
 }
 

@@ -16,6 +16,11 @@ import {
   type RouterOptions,
 } from "./types"
 
+// Evaluated once at module load — collapses to `true` in browser / happy-dom,
+// `false` on the server. Using a constant avoids per-call `typeof` branches
+// that are uncoverable in test environments.
+const _isBrowser = typeof window !== "undefined"
+
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
 // @pyreon/runtime-server), isolated per component tree in CSR.
@@ -82,7 +87,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const getInitialLocation = (): string => {
     // SSR: use explicitly provided url
     if (opts.url) return opts.url
-    if (typeof window === "undefined") return "/"
+    if (!_isBrowser) return "/"
     if (mode === "history") {
       return window.location.pathname + window.location.search
     }
@@ -91,7 +96,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   }
 
   const getCurrentLocation = (): string => {
-    if (typeof window === "undefined") return currentPath()
+    if (!_isBrowser) return currentPath()
     if (mode === "history") {
       return window.location.pathname + window.location.search
     }
@@ -108,7 +113,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   let _popstateHandler: (() => void) | null = null
   let _hashchangeHandler: (() => void) | null = null
 
-  if (typeof window !== "undefined") {
+  if (_isBrowser) {
     if (mode === "history") {
       _popstateHandler = () => currentPath.set(getCurrentLocation())
       window.addEventListener("popstate", _popstateHandler)
@@ -251,17 +256,16 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     // Save scroll position before leaving
     scrollManager.save(from.path)
 
-    // Commit navigation
-    if (typeof window !== "undefined") {
+    // Commit navigation — always update the signal, then sync browser URL if available
+    currentPath.set(path)
+    if (_isBrowser) {
       if (mode === "history") {
         if (replace) {
           window.history.replaceState(null, "", path)
         } else {
           window.history.pushState(null, "", path)
         }
-        currentPath.set(path)
       } else {
-        currentPath.set(path)
         // Use history.pushState/replaceState instead of window.location.hash
         // to avoid firing hashchange (which would redundantly set currentPath again).
         const hashUrl = `#${path}`
@@ -271,12 +275,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           window.history.pushState(null, "", hashUrl)
         }
       }
-    } else {
-      currentPath.set(path)
     }
 
     // Apply document title from route meta
-    if (typeof document !== "undefined" && to.meta.title) {
+    if (_isBrowser && to.meta.title) {
       document.title = to.meta.title
     }
 
@@ -297,7 +299,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     }
 
     // Restore scroll after DOM has updated
-    if (typeof window !== "undefined") {
+    if (_isBrowser) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
 
@@ -343,7 +345,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     },
 
     back() {
-      if (typeof window !== "undefined") window.history.back()
+      if (_isBrowser) window.history.back()
     },
 
     beforeEach(guard: NavigationGuard) {

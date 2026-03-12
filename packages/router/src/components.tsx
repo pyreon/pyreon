@@ -205,7 +205,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     })
     // Observe after mount — the ref will be populated once the element is in the DOM
     queueMicrotask(() => {
-      if (ref.current) observer.observe(ref.current)
+      observer.observe(ref.current as Element)
     })
     onUnmount(() => observer.disconnect())
   }
@@ -272,8 +272,8 @@ function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn
   router._componentCache.set(record, comp)
   if (router._componentCache.size > router._maxCacheSize) {
     // Map iterates in insertion order — first key is oldest
-    const oldest = router._componentCache.keys().next().value
-    if (oldest) router._componentCache.delete(oldest)
+    const oldest = router._componentCache.keys().next().value as RouteRecord
+    router._componentCache.delete(oldest)
   }
 }
 

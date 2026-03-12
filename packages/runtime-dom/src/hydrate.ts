@@ -154,36 +154,9 @@ function hydrateChild(
     return hydrateChildren(vnode.children, domNode, parent, anchor, path)
   }
 
-  // For — look for SSR hydration markers <!--pyreon-for--> ... <!--/pyreon-for-->
+  // For — always fresh-mount (firstReal/nextReal skip comments, so SSR markers
+  // are never the domNode cursor; the reactive For will recreate all items)
   if (vnode.type === ForSymbol) {
-    // Check if SSR left boundary markers
-    if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === "pyreon-for") {
-      // Remove the start marker, collect SSR-rendered children, remove end marker
-      const startMarker = domNode
-      let cursor: ChildNode | null = startMarker.nextSibling
-      const ssrNodes: ChildNode[] = []
-      while (cursor) {
-        if (cursor.nodeType === Node.COMMENT_NODE && (cursor as Comment).data === "/pyreon-for") {
-          break
-        }
-        ssrNodes.push(cursor)
-        cursor = cursor.nextSibling
-      }
-      const endMarker = cursor
-      const afterEnd = endMarker ? (endMarker.nextSibling as ChildNode | null) : null
-
-      // Remove SSR-rendered items (the reactive For will re-create them)
-      for (const n of ssrNodes) n.remove()
-      if (endMarker) endMarker.remove()
-
-      // Replace start marker with the reactive For mount point
-      const marker = document.createComment("pyreon-for")
-      parent.replaceChild(marker, startMarker)
-      const cleanup = mountChild(vnode, parent, marker)
-      return [cleanup, afterEnd ? firstReal(afterEnd) : null]
-    }
-
-    // No markers — fallback to fresh mount
     const marker = document.createComment("pyreon-for")
     if (domNode) {
       parent.insertBefore(marker, domNode)
@@ -304,7 +277,8 @@ function hydrateComponent(
   const mountCleanups: Cleanup[] = []
   let nextDom: ChildNode | null = domNode
 
-  const componentName = (vnode.type as ComponentFn).name ?? "Anonymous"
+  // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
+  const componentName = ((vnode.type as ComponentFn).name || "Anonymous") as string
   const mergedProps =
     vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
       ? {

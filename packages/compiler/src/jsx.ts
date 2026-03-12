@@ -719,12 +719,9 @@ function isStaticAttrs(attrs: ts.JsxAttributes): boolean {
     if (!prop.initializer) return true
     // String literal: class="foo"
     if (ts.isStringLiteral(prop.initializer)) return true
-    // Expression: class={...}
-    if (ts.isJsxExpression(prop.initializer)) {
-      const expr = prop.initializer.expression
-      return expr ? isStatic(expr) : true
-    }
-    return false
+    // Must be JsxExpression — the only remaining JsxAttributeValue type
+    const expr = (prop.initializer as ts.JsxExpression).expression
+    return expr ? isStatic(expr) : true
   })
 }
 
@@ -735,12 +732,9 @@ function isStaticChild(child: ts.JsxChild): boolean {
   if (ts.isJsxSelfClosingElement(child)) return isStaticJSXNode(child)
   if (ts.isJsxElement(child)) return isStaticJSXNode(child)
   if (ts.isJsxFragment(child)) return isStaticJSXNode(child)
-  // Expression container: {expr}
-  if (ts.isJsxExpression(child)) {
-    const expr = child.expression
-    return expr ? isStatic(expr) : true
-  }
-  return false
+  // Must be JsxExpression — the only remaining JsxChild type
+  const expr = (child as ts.JsxExpression).expression
+  return expr ? isStatic(expr) : true
 }
 
 // ─── General helpers ──────────────────────────────────────────────────────────

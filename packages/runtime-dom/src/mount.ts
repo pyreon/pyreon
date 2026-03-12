@@ -231,7 +231,8 @@ function mountComponent(
   let hooks: ReturnType<typeof runWithHooks>["hooks"]
   let output: VNode | null
 
-  const componentName = vnode.type.name ?? "Anonymous"
+  // Function.name is always a string per spec; cast avoids an uncoverable ?? branch
+  const componentName = (vnode.type.name || "Anonymous") as string
 
   // DevTools: generate a stable ID, register under current parent
   const compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`

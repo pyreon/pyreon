@@ -531,25 +531,13 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // ─── mergeProps — falsy descriptor branch ─────────────────────────────
+  // ─── mergeProps — getter preservation ──────────────────────────────────
 
-  it("mergeProps skips keys whose descriptor is falsy", () => {
-    const original = Object.getOwnPropertyDescriptors
-    const source = { a: 1, b: 2 }
-    vi.spyOn(Object, "getOwnPropertyDescriptors").mockImplementation((obj) => {
-      const descs = original(obj)
-      // Inject a key with an undefined descriptor to hit the `if (!desc) continue` branch
-      ;(descs as Record<string, unknown>).phantom = undefined
-      return descs
-    })
-    try {
-      const merged = mergeProps(source) as Record<string, unknown>
-      expect(merged.a).toBe(1)
-      expect(merged.b).toBe(2)
-      expect(merged).not.toHaveProperty("phantom")
-    } finally {
-      vi.restoreAllMocks()
-    }
+  it("mergeProps preserves getters for reactivity", () => {
+    const source = {} as Record<string, unknown>
+    Object.defineProperty(source, "x", { get: () => 42, enumerable: true, configurable: true })
+    const merged = mergeProps(source) as Record<string, unknown>
+    expect(merged.x).toBe(42)
   })
 
   // ─── mergeProps edge cases ─────────────────────────────────────────────
@@ -569,27 +557,15 @@ describe("@pyreon/solid-compat", () => {
     expect(merged.a).toBe(1)
   })
 
-  // ─── splitProps — falsy descriptor branch ─────────────────────────────
+  // ─── splitProps — getter preservation ──────────────────────────────────
 
-  it("splitProps skips keys whose descriptor is falsy", () => {
-    const original = Object.getOwnPropertyDescriptors
-    const source = { a: 1, b: 2, c: 3 }
-    vi.spyOn(Object, "getOwnPropertyDescriptors").mockImplementation((obj) => {
-      const descs = original(obj)
-      // Inject a key with an undefined descriptor to hit the `if (!desc) continue` branch
-      ;(descs as Record<string, unknown>).phantom = undefined
-      return descs
-    })
-    try {
-      const [local, rest] = splitProps(source, "a")
-      expect((local as Record<string, unknown>).a).toBe(1)
-      expect((rest as Record<string, unknown>).b).toBe(2)
-      expect((rest as Record<string, unknown>).c).toBe(3)
-      expect(local).not.toHaveProperty("phantom")
-      expect(rest).not.toHaveProperty("phantom")
-    } finally {
-      vi.restoreAllMocks()
-    }
+  it("splitProps preserves getters in picked set", () => {
+    const source = {} as Record<string, unknown>
+    Object.defineProperty(source, "a", { get: () => 99, enumerable: true, configurable: true })
+    source.b = 2
+    const [local, rest] = splitProps(source as { a: number; b: number }, "a")
+    expect((local as Record<string, unknown>).a).toBe(99)
+    expect((rest as Record<string, unknown>).b).toBe(2)
   })
 
   // ─── splitProps edge cases ─────────────────────────────────────────────

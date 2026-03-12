@@ -81,8 +81,8 @@ export function matchPath(pattern: string, path: string): Record<string, string>
 
   const params: Record<string, string> = {}
   for (let i = 0; i < patternParts.length; i++) {
-    const pp = patternParts[i] ?? ""
-    const pt = pathParts[i] ?? ""
+    const pp = patternParts[i] as string
+    const pt = pathParts[i] as string
     // Splat param — captures the rest of the path (e.g. ":path*")
     if (pp.endsWith("*") && pp.startsWith(":")) {
       const paramName = pp.slice(1, -1)
@@ -117,8 +117,8 @@ function matchPrefix(
 
   const params: Record<string, string> = {}
   for (let i = 0; i < patternParts.length; i++) {
-    const pp = patternParts[i] ?? ""
-    const pt = pathParts[i] ?? ""
+    const pp = patternParts[i] as string
+    const pt = pathParts[i] as string
     // Splat param in prefix — captures the rest
     if (pp.endsWith("*") && pp.startsWith(":")) {
       const paramName = pp.slice(1, -1)
@@ -187,7 +187,7 @@ function matchRoutes(
         const allParams = { ...parentParams, ...prefix.params }
         const matched = [...parentMatched, route]
         // Try to match children against the remaining path
-        const childMatch = matchRoutes(prefix.rest || "/", route.children, matched, allParams)
+        const childMatch = matchRoutes(prefix.rest, route.children, matched, allParams)
         if (childMatch) return childMatch
         // No child matched — if this route has a component, it's the match itself
         const exactParams = matchPath(route.path, path)

@@ -243,9 +243,9 @@ export function useImperativeHandle<T>(
 ): void {
   onMount((): undefined => {
     if (ref) ref.current = init()
-    onUnmount(() => {
-      if (ref) ref.current = null
-    })
+  })
+  onUnmount(() => {
+    if (ref) ref.current = null
   })
 }
 

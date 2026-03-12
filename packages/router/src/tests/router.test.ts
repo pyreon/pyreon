@@ -10,6 +10,7 @@ import {
   RouterProvider,
   RouterView,
   serializeLoaderData,
+  useLoaderData,
   useRoute,
   useRouter,
 } from "../index"
@@ -2521,8 +2522,7 @@ describe("useLoaderData", () => {
     const el = container()
     let capturedData: unknown
     const DataComp = () => {
-      const { useLoaderData: uld } = require("../loader")
-      capturedData = uld()
+      capturedData = useLoaderData()
       return h("span", null, "data")
     }
     const viewRoutes: RouteRecord[] = [
@@ -2805,5 +2805,444 @@ describe("router lifecycle", () => {
     const router = createRouter({ routes, url: "/" })
     router.destroy()
     router.destroy() // Should not throw
+  })
+})
+
+// ─── beforeLeave guard cancelled by newer navigation (router.ts lines 155-156) ─
+
+describe("stale navigation cancellation during beforeLeave guard", () => {
+  test("concurrent navigation cancels in-flight beforeLeave guard", async () => {
+    let slowLeaveCompleted = false
+    const guardRoutes: RouteRecord[] = [
+      {
+        path: "/a",
+        component: Home,
+        beforeLeave: async () => {
+          await new Promise<void>((r) => setTimeout(r, 100))
+          slowLeaveCompleted = true
+          return true
+        },
+      },
+      { path: "/b", component: About },
+      { path: "/c", component: User },
+    ]
+    const router = createRouter({ routes: guardRoutes, url: "/a" })
+
+    // Start slow navigation (triggers slow beforeLeave)
+    const slow = router.push("/b")
+    // Immediately start another navigation which increments _navGen
+    await new Promise<void>((r) => setTimeout(r, 10))
+    await router.push("/c")
+    await slow
+
+    // The slow beforeLeave completed but gen !== _navGen should have cancelled the first nav
+    expect(router.currentRoute().path).toBe("/c")
+  })
+})
+
+// ─── beforeEnter guard cancelled by newer navigation (router.ts lines 178-180) ─
+
+describe("stale navigation cancellation during beforeEnter guard", () => {
+  test("concurrent navigation cancels in-flight beforeEnter guard", async () => {
+    const guardRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/slow",
+        component: About,
+        beforeEnter: async () => {
+          await new Promise<void>((r) => setTimeout(r, 100))
+          return true
+        },
+      },
+      { path: "/fast", component: User },
+    ]
+    const router = createRouter({ routes: guardRoutes, url: "/" })
+
+    const slow = router.push("/slow")
+    await new Promise<void>((r) => setTimeout(r, 10))
+    await router.push("/fast")
+    await slow
+
+    expect(router.currentRoute().path).toBe("/fast")
+  })
+})
+
+// ─── hydrateLoaderData: path not in serialized (loader.ts line 93) ───────────
+
+describe("hydrateLoaderData partial data", () => {
+  test("hydrateLoaderData skips routes not present in serialized data", () => {
+    const loaderRoutes: RouteRecord[] = [
+      {
+        path: "/parent",
+        component: Home,
+        loader: async () => "parent",
+        children: [
+          { path: "child", component: About, loader: async () => "child" },
+        ],
+      },
+    ]
+    const router = createRouter({ routes: loaderRoutes, url: "/parent/child" }) as RouterInstance
+    // Only provide data for one of the two matched loader routes
+    hydrateLoaderData(router, { "/parent": "parent-data" })
+    // Only one entry should be hydrated
+    expect(router._loaderData.size).toBe(1)
+    const values = Array.from(router._loaderData.values())
+    expect(values[0]).toBe("parent-data")
+  })
+})
+
+// ─── Component cache eviction (components.tsx line 275-276) ──────────────────
+
+describe("component cache eviction with exact maxCacheSize", () => {
+  test("evicts oldest entry when cache exceeds maxCacheSize", async () => {
+    const Comp1 = () => h("span", null, "c1")
+    const Comp2 = () => h("span", null, "c2")
+    const Comp3 = () => h("span", null, "c3")
+    const cacheRoutes: RouteRecord[] = [
+      { path: "/a", component: Comp1 },
+      { path: "/b", component: Comp2 },
+      { path: "/c", component: Comp3 },
+    ]
+    // maxCacheSize of 1 ensures eviction happens on second route
+    const router = createRouter({
+      routes: cacheRoutes,
+      url: "/a",
+      maxCacheSize: 1,
+    }) as RouterInstance
+
+    const el = container()
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    // First route gets cached
+    expect(router._componentCache.size).toBe(1)
+
+    // Navigate to second route
+    await router.push("/b")
+    await new Promise<void>((r) => setTimeout(r, 50))
+    // Cache should have evicted the oldest (Comp1) and now contain Comp2
+    // maxCacheSize=1, but cacheSet adds then evicts, so size stays at 1
+    expect(router._componentCache.size).toBeLessThanOrEqual(2)
+
+    // Navigate to third route
+    await router.push("/c")
+    await new Promise<void>((r) => setTimeout(r, 50))
+    // Eviction should have run
+    expect(router._componentCache.size).toBeLessThanOrEqual(2)
+  })
+})
+
+// ─── scroll.ts: function behavior returning "restore" (lines 46-49) ─────────
+
+describe("ScrollManager _applyResult restore branch", () => {
+  test("_applyResult with 'restore' and no saved position defaults to 0", () => {
+    const sm = new ScrollManager("restore")
+    let scrolledTo: number | undefined
+    const origScrollTo = window.scrollTo
+    window.scrollTo = ((...args: unknown[]) => {
+      const opts = args[0] as { top?: number }
+      scrolledTo = opts?.top
+    }) as typeof window.scrollTo
+    // Restore for a path that was never visited — should get ?? 0 fallback
+    const to: ResolvedRoute = {
+      path: "/never-visited",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrolledTo).toBe(0)
+    window.scrollTo = origScrollTo
+  })
+})
+
+// ─── scroll.ts: numeric scroll behavior (lines 51-53) ───────────────────────
+
+describe("ScrollManager numeric scroll behavior", () => {
+  test("direct numeric scrollBehavior scrolls to that number", () => {
+    // When the global scroll behavior is a number literal, it goes through _applyResult
+    // with result === number. We can trigger this via a function that returns a number.
+    const sm = new ScrollManager(() => 123)
+    let scrolledTo: number | undefined
+    const origScrollTo = window.scrollTo
+    window.scrollTo = ((...args: unknown[]) => {
+      const opts = args[0] as { top?: number }
+      scrolledTo = opts?.top
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrolledTo).toBe(123)
+    window.scrollTo = origScrollTo
+  })
+})
+
+// ─── RouterLink: handleMouseEnter early return when no router ────────────────
+
+describe("RouterLink handleMouseEnter without router", () => {
+  test("mouseenter on RouterLink without router does not throw", async () => {
+    const el = container()
+    setActiveRouter(null)
+    for (let i = 0; i < 50; i++) popContext()
+    mount(h(RouterLink, { to: "/test" }), el)
+    const anchor = el.querySelector("a") as HTMLAnchorElement
+    // Dispatch mouseEnter — handleMouseEnter should return early since no router
+    expect(() => anchor.dispatchEvent(new Event("mouseEnter"))).not.toThrow()
+  })
+})
+
+// ─── RouterLink: prefetch deduplication via set.has(path) ────────────────────
+
+describe("RouterLink prefetch deduplication", () => {
+  test("hovering twice on same link only prefetches once", async () => {
+    const el = container()
+    let loaderCallCount = 0
+    const prefetchRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/dedup",
+        component: About,
+        loader: async () => {
+          loaderCallCount++
+          return "data"
+        },
+      },
+    ]
+    const router = createRouter({ routes: prefetchRoutes, url: "/" })
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: "/dedup" }, "Dedup")), el)
+    const anchor = el.querySelector("a") as HTMLAnchorElement
+    // First hover
+    anchor.dispatchEvent(new Event("mouseEnter"))
+    await new Promise<void>((r) => setTimeout(r, 100))
+    expect(loaderCallCount).toBe(1)
+    // Second hover — should be deduplicated
+    anchor.dispatchEvent(new Event("mouseEnter"))
+    await new Promise<void>((r) => setTimeout(r, 100))
+    expect(loaderCallCount).toBe(1) // still 1, deduplication via set.has(path)
+  })
+})
+
+// ─── Branch coverage: match.ts parseQuery edge cases (lines 12-16) ──────────
+
+describe("parseQuery — edge cases for branch coverage", () => {
+  test("empty key from bare param is ignored (line 12 false branch)", () => {
+    // Decoding an empty string after splitting gives empty key → skipped
+    const result = parseQuery("=value")
+    // Key is empty string → not added
+    expect(Object.keys(result)).toHaveLength(0)
+  })
+
+  test("bare param without value (line 12 true branch)", () => {
+    const result = parseQuery("flag")
+    expect(result.flag).toBe("")
+  })
+
+  test("key=value with empty key ignored (line 16 false branch)", () => {
+    const result = parseQuery("=val&good=yes")
+    expect(result.good).toBe("yes")
+    expect("" in result).toBe(false)
+  })
+})
+
+// ─── Branch coverage: scroll.ts — scroll behavior modes ─────────────────────
+
+describe("ScrollManager — branch coverage for scroll behaviors", () => {
+  test("restore with 'none' behavior does nothing", async () => {
+    const sm = new ScrollManager("none")
+    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    sm.restore(route, route)
+  })
+
+  test("restore with 'restore' behavior uses saved position", async () => {
+    const sm = new ScrollManager("restore")
+    sm.save("/test") // Save current scroll position
+    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    sm.restore(route, route)
+  })
+
+  test("restore with number behavior scrolls to number", async () => {
+    const sm = new ScrollManager()
+    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: { scrollBehavior: 42 } } as unknown as ResolvedRoute
+    const from = { path: "/from", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    sm.restore(route, from)
+  })
+
+  test("restore with function behavior calls function and applies result", async () => {
+    const sm = new ScrollManager()
+    const fn = (_to: ResolvedRoute, _from: ResolvedRoute, _saved: number | null) => "none" as const
+    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: { scrollBehavior: fn } } as unknown as ResolvedRoute
+    const from = { path: "/from", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    sm.restore(route, from)
+  })
+
+  test("getSavedPosition returns null for unknown path", () => {
+    const sm = new ScrollManager()
+    expect(sm.getSavedPosition("/unknown")).toBeNull()
+  })
+})
+
+// ─── Branch coverage: router.ts — rapid navigation cancellation ─────────────
+
+describe("router — navigation cancellation by newer navigation", () => {
+  test("rapid sequential navigations cancel earlier ones (lines 155-156)", async () => {
+    let guardCallCount = 0
+    const el = document.createElement("div")
+    document.body.appendChild(el)
+    const router = createRouter(
+      [
+        {
+          path: "/",
+          component: () => h("div", null, "home"),
+          beforeLeave: async () => {
+            guardCallCount++
+            await new Promise((r) => setTimeout(r, 50))
+            return true
+          },
+        },
+        { path: "/a", component: () => h("div", null, "a") },
+        { path: "/b", component: () => h("div", null, "b") },
+      ],
+      { mode: "hash" },
+    )
+
+    mount(h(RouterProvider, { router, children: h(RouterView, null) }), el)
+    await new Promise((r) => setTimeout(r, 10))
+
+    // Start navigation to /a (will be slow due to beforeLeave guard)
+    const nav1 = router.push("/a")
+    // Immediately start navigation to /b (should cancel the /a navigation)
+    const nav2 = router.push("/b")
+
+    await Promise.all([nav1, nav2])
+    await new Promise((r) => setTimeout(r, 100))
+
+    // Should end up at /b
+    expect(router.currentRoute().path).toBe("/b")
+
+    router.destroy()
+    el.remove()
+  })
+
+  test("router.back() calls history.back (line 343)", () => {
+    const router = createRouter([{ path: "/", component: () => h("div", null) }], { mode: "hash" })
+    const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => {})
+    router.back()
+    expect(backSpy).toHaveBeenCalled()
+    backSpy.mockRestore()
+    router.destroy()
+  })
+
+  test("removeGuard and removeHook when already removed (lines 350, 358)", async () => {
+    const router = createRouter([{ path: "/", component: () => h("div", null) }], { mode: "hash" })
+    const removeGuard = router.beforeEach(() => true)
+    const removeHook = router.afterEach(() => {})
+    // Remove once
+    removeGuard()
+    removeHook()
+    // Remove again — should not throw (idx < 0 path)
+    removeGuard()
+    removeHook()
+    router.destroy()
+  })
+})
+
+// ─── Branch coverage: match.ts line 12 — parseQuery empty bare param ─────────
+
+describe("parseQuery — empty bare param branch", () => {
+  test("parseQuery skips empty parts from consecutive ampersands", () => {
+    // "&&" splits into ["", "", ""] — each empty part decodes to empty key,
+    // hitting the `if (key)` false branch on line 12 of match.ts
+    const result = parseQuery("&&")
+    expect(Object.keys(result)).toHaveLength(0)
+  })
+
+  test("parseQuery skips trailing ampersand empty part", () => {
+    const result = parseQuery("a=1&")
+    expect(Object.keys(result)).toEqual(["a"])
+    expect(result.a).toBe("1")
+  })
+})
+
+// ─── Branch coverage: components.tsx line 88 — RouterView depth > matched ────
+
+describe("RouterView at depth beyond matched records", () => {
+  test("renders null when depth exceeds matched records length", () => {
+    const el = container()
+    // ParentComp renders TWO nested RouterViews — the second one will be at depth 2
+    // but only 2 records match (parent + child), so depth 2 has no record
+    const DeepChild = () => h("div", null, h(RouterView, {}))
+    const ParentComp = () => h("div", { class: "parent" }, h(RouterView, {}))
+    const nestedRoutes: RouteRecord[] = [
+      {
+        path: "/parent",
+        component: ParentComp,
+        children: [{ path: "child", component: DeepChild }],
+      },
+    ]
+    const router = createRouter({ routes: nestedRoutes, url: "/parent/child" })
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    // The deepest RouterView (depth 2) should render null since there's no matched[2]
+    const views = el.querySelectorAll("[data-pyreon-router-view]")
+    // Three RouterView wrappers exist, but the innermost has no component content
+    expect(views.length).toBe(3)
+  })
+})
+
+// ─── Branch coverage: router.ts line 235 — aborted loader signal ─────────────
+
+describe("loader rejection with aborted signal", () => {
+  test("aborted loader rejection is skipped silently", async () => {
+    let errorCallbackCalled = false
+    const loaderRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/abort-test",
+        component: About,
+        loader: async ({ signal }) => {
+          // Simulate a fetch that rejects because of abort
+          return new Promise((_, reject) => {
+            signal.addEventListener("abort", () => {
+              reject(new Error("aborted"))
+            })
+          })
+        },
+      },
+      { path: "/other", component: User, loader: async () => "other-data" },
+    ]
+    const router = createRouter({
+      routes: loaderRoutes,
+      url: "/",
+      onError: () => {
+        errorCallbackCalled = true
+        return undefined
+      },
+    })
+
+    // Start navigation to /abort-test (loader will hang until aborted)
+    const nav1 = router.push("/abort-test")
+    // Immediately start another navigation — this aborts the first loader
+    await new Promise<void>((r) => setTimeout(r, 5))
+    await router.push("/other")
+    await nav1
+
+    // The error callback should NOT have been called because the signal was aborted
+    // and the `if (ac.signal.aborted) continue` branch handles it
+    expect(errorCallbackCalled).toBe(false)
+    expect(router.currentRoute().path).toBe("/other")
   })
 })

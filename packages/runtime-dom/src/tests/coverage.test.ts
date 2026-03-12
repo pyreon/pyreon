@@ -921,19 +921,11 @@ describe("props.ts — uncovered branches", () => {
     unmount()
   })
 
-  test("n-show directive toggles display (lines 273-277)", () => {
+  test("n-show prop toggles display (lines 273-277)", () => {
     const el = container()
     const visible = signal(true)
 
-    // n-show is caught by the n-* directive path (key.startsWith("n-")),
-    // so it must be passed as a directive function, not a raw signal.
-    const nShowDirective = (target: HTMLElement, addCleanup: (fn: () => void) => void) => {
-      const e = effect(() => {
-        target.style.display = visible() ? "" : "none"
-      })
-      addCleanup(() => e.dispose())
-    }
-    mount(h("div", { "n-show": nShowDirective }), el)
+    mount(h("div", { "n-show": () => visible() }), el)
     const div = el.querySelector("div") as HTMLElement
     expect(div.style.display).toBe("")
 

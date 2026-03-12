@@ -528,7 +528,7 @@ describe("useImperativeHandle", () => {
     unmount()
   })
 
-  test("does not clear ref.current on unmount (onUnmount inside onMount is no-op)", () => {
+  test("clears ref.current on unmount", () => {
     const el = container()
     const ref = { current: null as { value: number } | null }
 
@@ -541,9 +541,7 @@ describe("useImperativeHandle", () => {
     expect(ref.current).not.toBeNull()
     expect(ref.current?.value).toBe(42)
     unmount()
-    // onUnmount called inside onMount callback is a no-op (hooks context
-    // is not active during mount-hook execution), so ref is not cleared.
-    expect(ref.current).not.toBeNull()
+    expect(ref.current).toBeNull()
   })
 
   test("no-op when ref is null", () => {

@@ -2358,17 +2358,10 @@ describe("mount — component branches", () => {
 // ─── props.ts — additional coverage ──────────────────────────────────────────
 
 describe("props — additional coverage", () => {
-  test("n-show as directive toggles display via n-* path", () => {
+  test("n-show prop toggles display reactively", () => {
     const el = container()
     const visible = signal(true)
-    // n-show is caught by the n-* directive path, so pass a directive function
-    const nShow: Directive = (el, addCleanup) => {
-      const e = effect(() => {
-        el.style.display = visible() ? "" : "none"
-      })
-      addCleanup(() => e.dispose())
-    }
-    mount(h("div", { "n-show": nShow }), el)
+    mount(h("div", { "n-show": () => visible() }), el)
     const div = el.querySelector("div") as HTMLElement
     expect(div.style.display).toBe("")
     visible.set(false)

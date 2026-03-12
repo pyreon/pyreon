@@ -192,19 +192,20 @@ export function mountKeyedList(
         let hi = lisLen
         while (lo < hi) {
           const mid = (lo + hi) >> 1
-          if ((lisTails[mid] ?? 0) < v) lo = mid + 1
+          // Typed array access always returns a number; cast avoids uncoverable ?? branch
+          if ((lisTails[mid] as number) < v) lo = mid + 1
           else hi = mid
         }
         lisTails[lo] = v
         lisTailIdx[lo] = i
-        if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] ?? -1
+        if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] as number
         if (lo === lisLen) lisLen++
       }
 
-      let cur: number = lisLen > 0 ? (lisTailIdx[lisLen - 1] ?? -1) : -1
+      let cur: number = lisLen > 0 ? (lisTailIdx[lisLen - 1] as number) : -1
       while (cur !== -1) {
         lisStay[cur] = 1
-        cur = lisPred[cur] ?? -1
+        cur = lisPred[cur] as number
       }
 
       let cursor: Node = tailMarker
@@ -521,11 +522,7 @@ export function mountFor<T>(
       if (!exceeded) {
         if (diffs.length > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
         for (const i of diffs) {
-          const k = newKeys[i]
-          if (k !== undefined) {
-            const entry = cache.get(k)
-            if (entry) entry.pos = i
-          }
+          cache.get(newKeys[i] as string | number)!.pos = i
         }
         currentKeys = newKeys
         return
@@ -544,46 +541,42 @@ export function mountFor<T>(
 
     let lisLen = 0
     for (let i = 0; i < n; i++) {
-      const key = newKeys[i]
-      if (key === undefined) continue
-      const v = cache.get(key)?.pos ?? -1
-      if (v < 0) continue
+      // newKeys[i] is always defined (by() returns string | number);
+      // cache always has the entry after step 3 with pos ≥ 0.
+      const key = newKeys[i] as string | number
+      const v = cache.get(key)!.pos
       let lo = 0
       let hi = lisLen
       while (lo < hi) {
         const mid = (lo + hi) >> 1
-        if ((lisTails[mid] ?? 0) < v) lo = mid + 1
+        // Typed array access always returns a number; cast avoids uncoverable ?? branch
+        if ((lisTails[mid] as number) < v) lo = mid + 1
         else hi = mid
       }
       lisTails[lo] = v
       lisTailIdx[lo] = i
-      if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] ?? -1
+      if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] as number
       if (lo === lisLen) lisLen++
     }
 
-    let cur: number = lisLen > 0 ? (lisTailIdx[lisLen - 1] ?? -1) : -1
+    // At least one entry is kept (otherwise replace-all fast path fires),
+    // so lisLen > 0 is guaranteed here.
+    let cur = lisTailIdx[lisLen - 1] as number
     while (cur !== -1) {
       lisStay[cur] = 1
-      cur = lisPred[cur] ?? -1
+      cur = lisPred[cur] as number
     }
 
     let cursor: Node = tailMarker
     for (let i = n - 1; i >= 0; i--) {
-      const key = newKeys[i]
-      if (key === undefined) continue
-      const entry = cache.get(key)
-      if (!entry) continue
+      const entry = cache.get(newKeys[i] as string | number)!
       if (!lisStay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
       cursor = entry.anchor
     }
 
     // Update pos for all entries
     for (let i = 0; i < n; i++) {
-      const k = newKeys[i]
-      if (k !== undefined) {
-        const entry = cache.get(k)
-        if (entry) entry.pos = i
-      }
+      cache.get(newKeys[i] as string | number)!.pos = i
     }
     currentKeys = newKeys
   })
@@ -627,19 +620,13 @@ function smallKPlace(
     }
 
     if (nextNonDiff >= 0) {
-      const nk = newKeys[nextNonDiff]
-      const nc = nk !== undefined ? cache.get(nk)?.anchor : undefined
-      if (nc) cursor = nc
+      const nc = cache.get(newKeys[nextNonDiff] as string | number)!.anchor
+      cursor = nc
     }
 
-    const key = newKeys[i]
-    if (key !== undefined) {
-      const entry = cache.get(key)
-      if (entry) {
-        moveEntryBefore(parent, entry.anchor, cursor)
-        cursor = entry.anchor
-      }
-    }
+    const entry = cache.get(newKeys[i] as string | number)!
+    moveEntryBefore(parent, entry.anchor, cursor)
+    cursor = entry.anchor
     prevDiffIdx = i
   }
 }

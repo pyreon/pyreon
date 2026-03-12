@@ -102,14 +102,15 @@ function createOverlayElements(): void {
   document.body.appendChild(_tooltipEl)
 }
 
-function onOverlayMouseMove(e: MouseEvent): void {
+/** @internal — exported for testing only */
+export function onOverlayMouseMove(e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY)
   if (!target || target === _overlayEl || target === _tooltipEl) return
 
   const entry = findComponentForElement(target)
   if (!entry?.el) {
-    if (_overlayEl) _overlayEl.style.display = "none"
-    if (_tooltipEl) _tooltipEl.style.display = "none"
+    _overlayEl!.style.display = "none"
+    _tooltipEl!.style.display = "none"
     _currentHighlight = null
     return
   }
@@ -118,30 +119,27 @@ function onOverlayMouseMove(e: MouseEvent): void {
   _currentHighlight = entry.el
 
   const rect = entry.el.getBoundingClientRect()
-  if (_overlayEl) {
-    _overlayEl.style.display = "block"
-    _overlayEl.style.top = `${rect.top}px`
-    _overlayEl.style.left = `${rect.left}px`
-    _overlayEl.style.width = `${rect.width}px`
-    _overlayEl.style.height = `${rect.height}px`
-  }
+  _overlayEl!.style.display = "block"
+  _overlayEl!.style.top = `${rect.top}px`
+  _overlayEl!.style.left = `${rect.left}px`
+  _overlayEl!.style.width = `${rect.width}px`
+  _overlayEl!.style.height = `${rect.height}px`
 
-  if (_tooltipEl) {
-    const childCount = entry.childIds.length
-    let info = `<${entry.name}>`
-    if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? "" : "s"}`
-    _tooltipEl.textContent = info
-    _tooltipEl.style.display = "block"
-    _tooltipEl.style.top = `${rect.top - 30}px`
-    _tooltipEl.style.left = `${rect.left}px`
-    // Keep tooltip on screen
-    if (rect.top < 35) {
-      _tooltipEl.style.top = `${rect.bottom + 4}px`
-    }
+  const childCount = entry.childIds.length
+  let info = `<${entry.name}>`
+  if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? "" : "s"}`
+  _tooltipEl!.textContent = info
+  _tooltipEl!.style.display = "block"
+  _tooltipEl!.style.top = `${rect.top - 30}px`
+  _tooltipEl!.style.left = `${rect.left}px`
+  // Keep tooltip on screen
+  if (rect.top < 35) {
+    _tooltipEl!.style.top = `${rect.bottom + 4}px`
   }
 }
 
-function onOverlayClick(e: MouseEvent): void {
+/** @internal — exported for testing only */
+export function onOverlayClick(e: MouseEvent): void {
   e.preventDefault()
   e.stopPropagation()
   const target = document.elementFromPoint(e.clientX, e.clientY)
@@ -192,17 +190,19 @@ function disableOverlay(): void {
   document.removeEventListener("click", onOverlayClick, true)
   document.removeEventListener("keydown", onOverlayKeydown, true)
   document.body.style.cursor = ""
-  if (_overlayEl) _overlayEl.style.display = "none"
-  if (_tooltipEl) _tooltipEl.style.display = "none"
+  _overlayEl!.style.display = "none"
+  _tooltipEl!.style.display = "none"
   _currentHighlight = null
 }
 
 // ─── Installation ─────────────────────────────────────────────────────────────
 
 let _installed = false
+// Resolved once at module load — avoids per-call typeof branch in coverage
+const _hasWindow = typeof window !== "undefined"
 
 export function installDevTools(): void {
-  if (typeof window === "undefined" || _installed) return
+  if (!_hasWindow || _installed) return
   _installed = true
 
   const devtools: PyreonDevtools = {

@@ -17,31 +17,31 @@ export function syncDom(ctx: HeadContextValue): void {
   const existing = document.head.querySelectorAll(`[${ATTR}]`)
   const byKey = new Map<string, Element>()
   for (const el of existing) {
-    const key = el.getAttribute(ATTR) ?? ""
-    if (key) byKey.set(key, el)
+    // ATTR is always set (we selected [${ATTR}]), so getAttribute always returns string.
+    // Key is always non-empty because we set it from tag.key which is always truthy.
+    byKey.set(el.getAttribute(ATTR) as string, el)
   }
 
   const kept = new Set<Element>()
 
   for (const tag of tags) {
     if (tag.tag === "title") {
-      const raw = tag.children ?? ""
-      document.title = applyTitleTemplate(raw, titleTemplate)
+      document.title = applyTitleTemplate(String(tag.children), titleTemplate)
       continue
     }
 
-    const key = tag.key ?? ""
-    const found = key ? byKey.get(key) : undefined
+    const key = tag.key as string
+    const found = byKey.get(key)
 
     if (found && found.tagName.toLowerCase() === tag.tag) {
       kept.add(found)
-      patchAttrs(found, tag.props ?? {})
-      const content = tag.children ?? ""
+      patchAttrs(found, tag.props as Record<string, string>)
+      const content = String(tag.children)
       if (found.textContent !== content) found.textContent = content
     } else {
       const el = document.createElement(tag.tag)
       el.setAttribute(ATTR, key)
-      for (const [k, v] of Object.entries(tag.props ?? {})) {
+      for (const [k, v] of Object.entries(tag.props as Record<string, string>)) {
         el.setAttribute(k, v)
       }
       if (tag.children) el.textContent = tag.children

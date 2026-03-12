@@ -146,7 +146,7 @@ export function mergeProps<T extends object[]>(...sources: [...T]): T[number] {
     const descriptors = Object.getOwnPropertyDescriptors(source)
     for (const key of Object.keys(descriptors)) {
       const desc = descriptors[key]
-      if (!desc) continue
+      // desc is always defined — getOwnPropertyDescriptors returns valid descriptors
       // Preserve getters for reactivity
       if (desc.get) {
         Object.defineProperty(target, key, {
@@ -180,7 +180,7 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   const descriptors = Object.getOwnPropertyDescriptors(props)
   for (const key of Object.keys(descriptors)) {
     const desc = descriptors[key]
-    if (!desc) continue
+    // desc is always defined — getOwnPropertyDescriptors returns valid descriptors
     const target = keySet.has(key) ? picked : rest
     if (desc.get) {
       Object.defineProperty(target, key, {

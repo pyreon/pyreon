@@ -146,7 +146,7 @@ function sanitizeNode(node: Node): void {
       const tag = el.tagName.toLowerCase()
       if (!SAFE_TAGS.has(tag)) {
         // Replace unsafe element with its text content
-        const text = document.createTextNode(el.textContent ?? "")
+        const text = document.createTextNode(el.textContent as string)
         node.replaceChild(text, el)
         continue
       }
@@ -171,23 +171,9 @@ function sanitizeNode(node: Node): void {
 export function sanitizeHtml(html: string): string {
   // User-provided sanitizer takes priority (e.g. DOMPurify)
   if (_customSanitizer) return _customSanitizer(html)
-  // Native Sanitizer API (Chrome 105+)
-  if (typeof window !== "undefined") {
-    const san = (
-      window as unknown as {
-        Sanitizer?: new () => { sanitizeFor(tag: string, html: string): Element }
-      }
-    ).Sanitizer
-    if (san) {
-      return new san().sanitizeFor("div", html).innerHTML
-    }
-  }
-  // Fallback: DOM-based allowlist sanitizer
-  if (typeof DOMParser !== "undefined") {
-    return fallbackSanitize(html)
-  }
-  // SSR or no DOM — strip all tags as last resort
-  return html.replace(/<[^>]*>/g, "")
+  // DOM-based allowlist sanitizer — DOMParser is available in all browser targets.
+  // sanitizeHtml is only called for innerHTML (DOM-only), so SSR fallback is not needed.
+  return fallbackSanitize(html)
 }
 
 // Matches onClick, onInput, onMouseEnter, etc.
@@ -256,6 +242,15 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     return null
   }
 
+  // n-show: toggle display based on a reactive boolean
+  if (key === "n-show") {
+    const dispose = renderEffect(() => {
+      const visible = (value as () => boolean)()
+      ;(el as HTMLElement).style.display = visible ? "" : "none"
+    })
+    return dispose
+  }
+
   // Custom directive: n-* keys call the directive function with (el, addCleanup)
   if (key.startsWith("n-")) {
     const directive = value as Directive
@@ -266,15 +261,6 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
           for (const fn of cleanups) fn()
         }
       : null
-  }
-
-  // n-show: toggle display based on a reactive boolean
-  if (key === "n-show") {
-    const dispose = renderEffect(() => {
-      const visible = (value as () => boolean)()
-      ;(el as HTMLElement).style.display = visible ? "" : "none"
-    })
-    return dispose
   }
 
   // Reactive prop — function that returns the actual value

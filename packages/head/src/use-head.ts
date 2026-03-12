@@ -17,7 +17,7 @@ function buildEntry(o: UseHeadInput): HeadEntry {
   o.link?.forEach((l, i) =>
     tags.push({
       tag: "link",
-      key: l.href ? `link-${l.rel ?? ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
+      key: l.href ? `link-${l.rel || ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
       props: l,
     }),
   )
@@ -89,16 +89,16 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
     }
   } else {
     ctx.add(id, buildEntry(input))
-    if (typeof document !== "undefined") {
-      onMount(() => {
-        syncDom(ctx)
-        return undefined
-      })
-    }
+    // onMount is a no-op in SSR; syncDom has its own typeof document guard
+    onMount(() => {
+      syncDom(ctx)
+      return undefined
+    })
   }
 
   onUnmount(() => {
     ctx.remove(id)
-    if (typeof document !== "undefined") syncDom(ctx)
+    // syncDom has its own typeof document guard — no need to check here
+    syncDom(ctx)
   })
 }

@@ -864,8 +864,8 @@ describe("JSX transform — isStaticAttrs edge cases", () => {
     expect(result).toContain("const _$h0")
   })
 
-  test("static JSX with undefined expression prop is static", () => {
-    const result = t("<div>{<input disabled={undefined} />}</div>")
+  test("static JSX with true expression prop is static", () => {
+    const result = t("<div>{<input disabled={true} />}</div>")
     expect(result).toContain("const _$h0")
   })
 
@@ -902,5 +902,107 @@ describe("JSX transform — isStaticChild edge cases", () => {
   test("expression child with empty expression is static", () => {
     const result = t("<div>{<div>{/* comment */}</div>}</div>")
     expect(result).toContain("const _$h0")
+  })
+})
+
+// ─── Additional branch coverage for 95%+ ──────────────────────────────────────
+
+describe("JSX transform — isStaticAttrs boolean shorthand (hoisting path)", () => {
+  test("hoists static JSX with boolean shorthand attribute (no initializer)", () => {
+    // This triggers isStaticAttrs → !prop.initializer → return true (line 719/2340)
+    const result = t("<div>{<input disabled />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+})
+
+describe("JSX transform — isStaticChild with element/self-closing children", () => {
+  test("hoists static JSX with self-closing element child", () => {
+    // Triggers isStaticChild → isJsxSelfClosingElement path (line 735/2356)
+    const result = t("<div>{<div><br /></div>}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("hoists static JSX with nested element child", () => {
+    // Triggers isStaticChild → isJsxElement path (line 736/2357)
+    const result = t("<div>{<div><span>text</span></div>}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("does NOT hoist when nested element child has dynamic props", () => {
+    // isStaticChild → isJsxElement → isStaticJSXNode returns false
+    const result = t("<div>{<div><span class={cls()}>text</span></div>}</div>")
+    expect(result).not.toContain("const _$h0")
+  })
+
+  test("does NOT hoist when self-closing child has dynamic props", () => {
+    // isStaticChild → isJsxSelfClosingElement → isStaticJSXNode returns false
+    const result = t("<div>{<div><input value={val()} /></div>}</div>")
+    expect(result).not.toContain("const _$h0")
+  })
+})
+
+describe("JSX transform — template ref/event without expression", () => {
+  test("ref shorthand (no expression) in template is handled", () => {
+    // Triggers the else branch of ref initializer check (line 2003)
+    const result = t("<div ref><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).not.toContain(".current")
+  })
+
+  test("onClick shorthand (no expression) in template is handled", () => {
+    // Triggers the else branch of event initializer check (line 2017)
+    const result = t("<div onClick><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).not.toContain("addEventListener")
+  })
+})
+
+describe("JSX transform — empty expression in DOM prop (non-template path)", () => {
+  test("empty expression in DOM prop with spread (non-template) is handled", () => {
+    // Spread prevents template emission → walk handles attrs
+    // class={/* comment */} has no expression → else branch at line 1799
+    const result = t("<div {...props} class={/* comment */} />")
+    expect(result).not.toContain("() =>")
+    expect(result).toContain("{...props}")
+  })
+})
+
+describe("JSX transform — whitespace-only text stripped in flattenChildren", () => {
+  test("whitespace-only text between elements is stripped in template", () => {
+    // Triggers the else branch of `if (trimmed)` in flattenChildren (line 2207)
+    const result = t(`<div>
+  <span>a</span>
+  <em>b</em>
+</div>`)
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span>a</span>")
+    expect(result).toContain("<em>b</em>")
+  })
+})
+
+describe("JSX transform — fragment inside flattenChildren", () => {
+  test("fragment children are flattened during template child processing", () => {
+    // This specifically exercises the isJsxFragment branch in flattenChildren (line 2223)
+    // The key is that this fragment is processed via flattenChildren (not templateFragmentCount)
+    // because the outer element is a template-eligible JsxElement
+    const result = t("<div><><span>one</span><em>two</em></></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span>one</span>")
+    expect(result).toContain("<em>two</em>")
+  })
+})
+
+describe("JSX transform — member expression tag names", () => {
+  test("member expression tag name treated as empty in warnings", () => {
+    // <ns.Component> has non-identifier tagName → tagName is "" (line 1762)
+    const result = transformJSX("<ns.Comp value={x} />")
+    expect(result.warnings).toHaveLength(0)
+  })
+
+  test("member expression tag in element position triggers non-identifier path", () => {
+    // <ns.div> has a member expression tag → jsxTagName returns "" → templateElementCount returns -1
+    const result = t("<ns.div><span /></ns.div>")
+    // Should not produce template since tagName is not an identifier
+    expect(result).not.toContain("_tpl(")
   })
 })

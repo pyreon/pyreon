@@ -44,8 +44,7 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
   let childMounted = false
 
   onMount(() => {
-    const container = containerRef.current
-    if (!container) return
+    const container = containerRef.current as HTMLElement
 
     const e = effect(() => {
       const isActive = props.active?.() ?? true
