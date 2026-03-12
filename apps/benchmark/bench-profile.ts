@@ -21,7 +21,7 @@ mount(
       null,
       For({
         each: rowsSig,
-        key: (r) => r.id,
+        by: (r) => r.id,
         children: (row) =>
           h(
             "tr",

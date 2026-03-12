@@ -35,7 +35,7 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
         null,
         For({
           each: rows,
-          key: (row) => row.id,
+          by: (row) => row.id,
           children: (row: ReactiveRow) =>
             // Template-optimised row — same output the compiler would emit
             _tpl("<tr><td></td><td></td></tr>", (__root) => {

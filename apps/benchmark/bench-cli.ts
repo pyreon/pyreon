@@ -269,10 +269,10 @@ async function runPyreon(): Promise<Record<string, number>> {
       h(
         "tbody",
         null,
-        For({
+        For<RR>({
           each: rowsSig,
-          key: (r) => r.id,
-          children: (row: RR) =>
+          by: (r) => r.id,
+          children: (row) =>
             h(
               "tr",
               { class: () => (isSelected(row.id) ? "selected" : "") },
@@ -364,10 +364,10 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
       h(
         "tbody",
         null,
-        For({
+        For<RR>({
           each: rowsSig,
-          key: (r) => r.id,
-          children: (row: RR) =>
+          by: (r) => r.id,
+          children: (row) =>
             _tpl("<tr><td></td><td></td></tr>", (__root) => {
               const __e0 = __root.children[0] as HTMLElement
               const __e1 = __root.children[1] as HTMLElement

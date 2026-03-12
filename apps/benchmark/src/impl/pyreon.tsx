@@ -2,12 +2,12 @@
  * Pyreon benchmark — idiomatic signals + For + createSelector.
  *
  * Uses the same patterns a typical Pyreon developer would write:
- * - h() for VNode creation (same as other frameworks use their h())
+ * - JSX for VNode creation (compiled to h() calls)
  * - For with keyed children for efficient list diffing
  * - createSelector for O(1) selection (only 2 effects fire per selection change)
  * - Per-row signal for fine-grained label updates
  */
-import { For, h } from "@pyreon/core"
+import { For } from "@pyreon/core"
 import { createSelector, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import type { BenchSuite } from "../runner"
@@ -24,25 +24,18 @@ export async function runPyreon(container: HTMLElement): Promise<BenchSuite> {
   const isSelected = createSelector(selectedId)
 
   const unmount = mount(
-    h(
-      "table",
-      null,
-      h(
-        "tbody",
-        null,
-        For({
-          each: rows,
-          key: (row) => row.id,
-          children: (row: ReactiveRow) =>
-            h(
-              "tr",
-              { class: () => (isSelected(row.id) ? "selected" : "") },
-              h("td", null, String(row.id)),
-              h("td", null, () => row.label()),
-            ),
-        }),
-      ),
-    ),
+    <table>
+      <tbody>
+        <For each={rows} by={(row: ReactiveRow) => row.id}>
+          {(row: ReactiveRow) => (
+            <tr class={() => (isSelected(row.id) ? "selected" : "")}>
+              <td>{String(row.id)}</td>
+              <td>{() => row.label()}</td>
+            </tr>
+          )}
+        </For>
+      </tbody>
+    </table>,
     container,
   )
 

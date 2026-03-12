@@ -138,11 +138,11 @@ export function mountChild(
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, key, children } = vnode.props as unknown as ForProps<unknown>
+    const { each, by, children } = vnode.props as unknown as ForProps<unknown>
     // Reactive boundary — For manages its own DOM lifecycle
     const prevDepth = _elementDepth
     _elementDepth = 0
-    const cleanup = mountFor(each, key, children, parent, anchor, mountChild)
+    const cleanup = mountFor(each, by, children, parent, anchor, mountChild)
     _elementDepth = prevDepth
     return cleanup
   }

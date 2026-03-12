@@ -78,6 +78,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       const ext = getExt(id)
       if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".pyreon") return
       const result = transformJSX(code, id)
+      // Surface compiler warnings in the terminal
+      for (const w of result.warnings) {
+        this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
+      }
       return { code: result.code, map: null }
     },
 

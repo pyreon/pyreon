@@ -8,7 +8,7 @@ export const ForSymbol: unique symbol = Symbol("pyreon.For")
 
 export interface ForProps<T> {
   each: () => T[]
-  key: (item: T) => string | number
+  by: (item: T) => string | number
   children: (item: T) => VNode | NativeItem
 }
 
@@ -21,7 +21,7 @@ export interface ForProps<T> {
  * is the number of actually displaced entries.
  *
  * Usage:
- *   h("ul", null, For({ each: items, key: r => r.id, children: r => h("li", ...) }))
+ *   <For each={items} by={r => r.id}>{r => <li>...</li>}</For>
  */
 export function For<T>(props: ForProps<T>): VNode {
   return {

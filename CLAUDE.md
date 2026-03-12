@@ -40,10 +40,15 @@ Root tsconfig has `"customConditions": ["bun"]`.
 `signal<T>()` returns callable function with `.set()` and `.update()`.
 Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 
-### VNode / h() types
-- `h<P extends Props>(type, props, ...children)` — children stored in `vnode.children`
+### JSX & VNode
+
+- JSX configured via `jsxImportSource: "@pyreon/core"` in root tsconfig (`jsx: "preserve"`)
+- JSX automatic runtime: `@pyreon/core/jsx-runtime` (jsx, jsxs, Fragment)
+- `h<P extends Props>(type, props, ...children)` — lower-level API, children stored in `vnode.children`
 - Components must merge: `props.children = vnode.children.length === 1 ? vnode.children[0] : vnode.children`
 - `ComponentFn<P> = (props: P) => VNode | null`
+- `<For each={items} by={r => r.id}>{r => <li>...</li>}</For>` — keyed list rendering
+  - Prop is `by` (not `key`) because JSX extracts `key` as a special VNode reconciliation prop
 
 ### Router
 Context-based: `RouterContext = createContext<RouterInstance | null>(null)`.

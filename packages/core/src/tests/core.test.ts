@@ -503,18 +503,18 @@ describe("For()", () => {
     expect(typeof ForSymbol).toBe("symbol")
   })
 
-  test("props contain each, key, children functions", () => {
+  test("props contain each, by, children functions", () => {
     const eachFn = () => [1, 2]
     const keyFn = (item: number) => item
     const childFn = (item: number) => h("span", null, String(item))
-    const node = For({ each: eachFn, key: keyFn, children: childFn })
+    const node = For({ each: eachFn, by: keyFn, children: childFn })
     const props = node.props as unknown as {
       each: typeof eachFn
-      key: typeof keyFn
+      by: typeof keyFn
       children: typeof childFn
     }
     expect(props.each).toBe(eachFn)
-    expect(props.key).toBe(keyFn)
+    expect(props.by).toBe(keyFn)
     expect(props.children).toBe(childFn)
   })
 })

@@ -252,7 +252,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -268,7 +268,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -291,7 +291,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -311,7 +311,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -333,7 +333,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -350,7 +350,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -365,7 +365,7 @@ describe("mount — For", () => {
       h(
         "ul",
         null,
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
       ),
       el,
     )
@@ -403,7 +403,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -421,7 +421,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -441,7 +441,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -462,7 +462,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -485,7 +485,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -500,7 +500,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -519,7 +519,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -538,7 +538,7 @@ describe("mount — For + NativeItem (createTemplate)", () => {
       h(
         "table",
         null,
-        h("tbody", null, For({ each: items, key: (r) => r.id, children: rowFactory })),
+        h("tbody", null, For({ each: items, by: (r) => r.id, children: rowFactory })),
       ),
       el,
     )
@@ -1112,7 +1112,7 @@ describe("mount — For keyed list reorder patterns", () => {
         null,
         For({
           each: items,
-          key: (r) => r.id,
+          by: (r) => r.id,
           children: (r) => h("li", { key: r.id }, r.label),
         }),
       ),
@@ -1755,7 +1755,7 @@ describe("hydrateRoot — extended", () => {
         null,
         For({
           each: items,
-          key: (r: { id: number }) => r.id,
+          by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => h("li", null, r.label),
         }),
       ),
@@ -1771,7 +1771,7 @@ describe("hydrateRoot — extended", () => {
       el,
       For({
         each: items,
-        key: (r: { id: number }) => r.id,
+        by: (r: { id: number }) => r.id,
         children: (r: { id: number; label: string }) => h("li", null, r.label),
       }),
     )
@@ -1840,7 +1840,7 @@ describe("mountFor — edge cases", () => {
         null,
         For({
           each: items,
-          key: (r) => r.id,
+          by: (r) => r.id,
           children: (r) => h("li", { key: r.id }, r.label),
         }),
       ),
@@ -1891,7 +1891,7 @@ describe("mountFor — edge cases", () => {
         null,
         For({
           each: items,
-          key: (r) => r.id,
+          by: (r) => r.id,
           children: (r) => h("li", { key: r.id }, r.label),
         }),
       ),
@@ -1911,7 +1911,7 @@ describe("mountFor — edge cases", () => {
         "div",
         null,
         h("span", null, "before"),
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
         h("span", null, "after"),
       ),
       el,
@@ -1935,7 +1935,7 @@ describe("mountFor — edge cases", () => {
         null,
         For({
           each: items,
-          key: (r) => r.id,
+          by: (r) => r.id,
           children: (r) => h("li", { key: r.id }, r.label),
         }),
       ),
@@ -1958,7 +1958,7 @@ describe("mountFor — edge cases", () => {
         "div",
         null,
         h("span", null, "before"),
-        For({ each: items, key: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
+        For({ each: items, by: (r) => r.id, children: (r) => h("li", { key: r.id }, r.label) }),
         h("span", null, "after"),
       ),
       el,
@@ -2081,7 +2081,7 @@ describe("mountFor — edge cases", () => {
         null,
         For({
           each: items,
-          key: (r) => r.id,
+          by: (r) => r.id,
           children: (r) => h("li", { key: r.id }, r.label),
         }),
       ),
@@ -2936,7 +2936,7 @@ describe("hydrateRoot — branch coverage", () => {
         null,
         For({
           each: items,
-          key: (r: { id: number }) => r.id,
+          by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => h("li", null, r.label),
         }),
       ),
@@ -2989,7 +2989,7 @@ describe("hydrateRoot — branch coverage", () => {
         null,
         For({
           each: items,
-          key: (r: { id: number }) => r.id,
+          by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => h("li", null, r.label),
         }),
       ),
@@ -3008,7 +3008,7 @@ describe("hydrateRoot — branch coverage", () => {
         null,
         For({
           each: items,
-          key: (r: { id: number }) => r.id,
+          by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => h("li", null, r.label),
         }),
       ),

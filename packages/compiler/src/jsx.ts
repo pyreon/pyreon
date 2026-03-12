@@ -35,11 +35,24 @@
 
 import ts from "typescript"
 
+export interface CompilerWarning {
+  /** Warning message */
+  message: string
+  /** Source file line number (1-based) */
+  line: number
+  /** Source file column number (0-based) */
+  column: number
+  /** Warning code for filtering */
+  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop"
+}
+
 export interface TransformResult {
   /** Transformed source code (JSX preserved, only expression containers modified) */
   code: string
   /** Whether the output uses _tpl/_re template helpers (needs auto-import) */
   usesTemplates?: boolean
+  /** Compiler warnings for common mistakes */
+  warnings: CompilerWarning[]
 }
 
 // Props that should never be wrapped in a reactive getter
@@ -61,6 +74,12 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   type Replacement = { start: number; end: number; text: string }
   const replacements: Replacement[] = []
+  const warnings: CompilerWarning[] = []
+
+  function warn(node: ts.Node, message: string, warnCode: CompilerWarning["code"]): void {
+    const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf))
+    warnings.push({ message, line: line + 1, column: character, code: warnCode })
+  }
 
   // ── Static hoisting state ─────────────────────────────────────────────────
   type Hoist = { name: string; text: string }
@@ -112,6 +131,26 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
           })
           needsTplImport = true
           return // skip children — template handles everything
+        }
+      }
+    }
+
+    // ── Warnings for common mistakes ────────────────────────────────────────────
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxElement(node)) {
+      const opening = ts.isJsxElement(node) ? node.openingElement : node
+      const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ""
+
+      // Warn: <For each={...}> without a by prop
+      if (tagName === "For") {
+        const hasBy = opening.attributes.properties.some(
+          (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === "by",
+        )
+        if (!hasBy) {
+          warn(
+            opening.tagName,
+            `<For> without a "by" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.`,
+            "missing-key-on-for",
+          )
         }
       }
     }
@@ -174,7 +213,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   walk(sf)
 
-  if (replacements.length === 0 && hoists.length === 0) return { code }
+  if (replacements.length === 0 && hoists.length === 0) return { code, warnings }
 
   // Apply replacements from right to left so earlier positions stay valid
   replacements.sort((a, b) => b.start - a.start)
@@ -197,7 +236,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       result
   }
 
-  return { code: result, usesTemplates: needsTplImport }
+  return { code: result, usesTemplates: needsTplImport, warnings }
 
   // ── Template emission helpers (closures over sf, code) ──────────────────────
 
