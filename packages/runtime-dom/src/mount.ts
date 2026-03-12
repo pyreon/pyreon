@@ -22,6 +22,8 @@ import { registerComponent, unregisterComponent } from "./devtools"
 import { mountFor, mountKeyedList, mountReactive } from "./nodes"
 import { applyProps } from "./props"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 type Cleanup = () => void
 const noop: Cleanup = () => {}
 
@@ -267,6 +269,21 @@ function mountComponent(
     return noop
   } finally {
     setCurrentScope(null)
+  }
+
+  // Validate component return value in dev mode
+  if (__DEV__ && output != null) {
+    const t = typeof output
+    if (
+      t !== "string" &&
+      t !== "number" &&
+      t !== "function" &&
+      !(typeof output === "object" && "type" in (output as object))
+    ) {
+      console.warn(
+        `[pyreon] Component "${componentName}" returned an invalid value. Components must return JSX, null, a string, or a number.`,
+      )
+    }
   }
 
   // Register onUpdate hooks with the scope so they fire after reactive re-runs

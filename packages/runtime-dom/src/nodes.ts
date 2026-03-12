@@ -4,6 +4,8 @@ type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
 import { effect } from "@pyreon/reactivity"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 type Cleanup = () => void
 
 /**
@@ -52,6 +54,11 @@ export function mountReactive(
     currentCleanup()
     currentCleanup = () => {}
     const value = accessor()
+    if (__DEV__ && typeof value === "function") {
+      console.warn(
+        "[pyreon] A reactive child returned a function instead of a value. Did you mean {count()} instead of {count}?",
+      )
+    }
     if (value != null && value !== false) {
       const cleanup = mount(value, parent, marker)
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
@@ -323,6 +330,18 @@ export function mountFor<T>(
     if (currentKeys.length === 0) {
       const frag = document.createDocumentFragment()
       const keys = new Array<string | number>(n)
+      if (__DEV__) {
+        const seen = new Set<string | number>()
+        for (let i = 0; i < n; i++) {
+          const k = getKey(items[i] as T)
+          if (seen.has(k)) {
+            console.warn(
+              `[pyreon] Duplicate key "${k}" in <For>. Keys must be unique for correct reconciliation.`,
+            )
+          }
+          seen.add(k)
+        }
+      }
       for (let i = 0; i < n; i++) {
         const item = items[i] as T
         const key = getKey(item)
@@ -357,6 +376,18 @@ export function mountFor<T>(
     const newKeys = new Array<string | number>(n)
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
+    }
+    if (__DEV__) {
+      const seen = new Set<string | number>()
+      for (let i = 0; i < n; i++) {
+        const k = newKeys[i] as string | number
+        if (seen.has(k)) {
+          console.warn(
+            `[pyreon] Duplicate key "${k}" in <For>. Keys must be unique for correct reconciliation.`,
+          )
+        }
+        seen.add(k)
+      }
     }
 
     // ── Replace-all fast path ─────────────────────────────────────────────

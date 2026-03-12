@@ -18,6 +18,8 @@ import type { VNodeChild } from "@pyreon/core"
 import { installDevTools } from "./devtools"
 import { mountChild } from "./mount"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 /**
  * Mount a VNode tree into a container element.
  * Clears the container first, then mounts the given child.
@@ -27,6 +29,11 @@ import { mountChild } from "./mount"
  * const unmount = mount(h("div", null, "Hello Pyreon"), document.getElementById("app")!)
  */
 export function mount(root: VNodeChild, container: Element): () => void {
+  if (__DEV__ && container == null) {
+    throw new Error(
+      '[pyreon] mount() called with a null/undefined container. Make sure the element exists in the DOM, e.g. document.getElementById("app")',
+    )
+  }
   installDevTools()
   container.innerHTML = ""
   return mountChild(root, container, null)

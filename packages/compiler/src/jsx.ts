@@ -112,11 +112,11 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   function walk(node: ts.Node): void {
     // ── Template emission ──────────────────────────────────────────────────────
-    // Try to convert JSX element trees (≥ 2 DOM elements) to _tpl() calls.
+    // Try to convert JSX element trees (≥ 1 DOM elements) to _tpl() calls.
     // Must be checked before attribute/expression handling to avoid double-processing.
     if (ts.isJsxElement(node)) {
       const elemCount = templateElementCount(node)
-      if (elemCount >= 2) {
+      if (elemCount >= 1) {
         const tplCall = buildTemplateCall(node)
         if (tplCall) {
           const start = node.getStart(sf)
@@ -260,16 +260,10 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     let count = 1
 
     if (ts.isJsxElement(node)) {
-      // Categorise children to detect unsupported patterns
-      let hasExprChild = false
-      let hasElemChild = false
-      let exprChildCount = 0
-
       for (const child of node.children) {
         if (ts.isJsxText(child)) continue
 
         if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-          hasElemChild = true
           const childCount = templateElementCount(child)
           if (childCount === -1) return -1
           count += childCount
@@ -278,23 +272,58 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
         if (ts.isJsxExpression(child)) {
           if (!child.expression) continue // empty expression (comment)
-          // Expression containing nested JSX → bail (too complex for v1)
+          // Expression containing nested JSX → bail (too complex)
           if (containsJSXInExpr(child.expression)) return -1
-          hasExprChild = true
-          exprChildCount++
           continue
         }
 
-        // JsxFragment or unknown → bail
+        if (ts.isJsxFragment(child)) {
+          // Inline fragment children if all are template-eligible
+          const fragCount = templateFragmentCount(child)
+          if (fragCount === -1) return -1
+          count += fragCount
+          continue
+        }
+
+        // Unknown → bail
         return -1
       }
-
-      // Mixed expression + element children → bail (childNodes indexing unreliable)
-      if (hasExprChild && hasElemChild) return -1
-      // Multiple expression children → bail (v1: only single textContent supported)
-      if (exprChildCount > 1) return -1
     }
 
+    return count
+  }
+
+  /**
+   * Count template-eligible elements inside a fragment.
+   * Returns -1 if any child is not template-eligible.
+   */
+  function templateFragmentCount(frag: ts.JsxFragment): number {
+    let count = 0
+    for (const child of frag.children) {
+      if (ts.isJsxText(child)) continue
+
+      if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+        const childCount = templateElementCount(child)
+        if (childCount === -1) return -1
+        count += childCount
+        continue
+      }
+
+      if (ts.isJsxExpression(child)) {
+        if (!child.expression) continue
+        if (containsJSXInExpr(child.expression)) return -1
+        continue
+      }
+
+      if (ts.isJsxFragment(child)) {
+        const fragCount = templateFragmentCount(child)
+        if (fragCount === -1) return -1
+        count += fragCount
+        continue
+      }
+
+      return -1
+    }
     return count
   }
 
@@ -430,43 +459,77 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
       // ── Children ──────────────────────────────────────────────────────────
       if (ts.isJsxElement(el)) {
-        let elemIdx = 0
+        // Flatten children (inline fragments) into a flat list
+        const flatChildren = flattenChildren(el.children)
 
-        for (const child of el.children) {
-          if (ts.isJsxText(child)) {
-            // Strip JSX whitespace: collapse newlines + surrounding spaces
-            const trimmed = child.text.replace(/\n\s*/g, "").trim()
-            if (trimmed) html += escapeHtmlText(trimmed)
+        // Determine if we need childNodes indexing (mixed element + non-element children)
+        let hasElemChild = false
+        let hasNonElemChild = false
+        let exprCount = 0
+        for (const child of flatChildren) {
+          if (child.kind === "element") hasElemChild = true
+          if (child.kind === "expression") { hasNonElemChild = true; exprCount++ }
+          if (child.kind === "text") hasNonElemChild = true
+        }
+        const useMixed = hasElemChild && hasNonElemChild
+        // Multiple expressions need individual TextNode placeholders
+        const useMultiExpr = exprCount > 1
+
+        let childNodeIdx = 0
+
+        for (const child of flatChildren) {
+          if (child.kind === "text") {
+            html += escapeHtmlText(child.text)
+            childNodeIdx++
             continue
           }
 
-          if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-            // Use the effective variable name for child path construction
+          if (child.kind === "element") {
             const parentRef = accessor === "__root" ? "__root" : varName
-            const childAccessor = `${parentRef}.children[${elemIdx}]`
-            const childHtml = processElement(child, childAccessor)
+            const childAccessor = useMixed
+              ? `${parentRef}.childNodes[${childNodeIdx}]`
+              : `${parentRef}.children[${child.elemIdx}]`
+            const childHtml = processElement(child.node, childAccessor)
             if (childHtml === null) return null
             html += childHtml
-            elemIdx++
+            childNodeIdx++
             continue
           }
 
-          if (ts.isJsxExpression(child) && child.expression) {
+          if (child.kind === "expression") {
             const expr = sliceExpr(child.expression)
             if (containsCall(child.expression)) {
-              // Create a persistent TextNode and update via .data — avoids
-              // the destroy/recreate overhead of .textContent on every update.
-              const tVar = `__t${varIdx++}`
-              const d = nextDisp()
-              bindLines.push(`const ${tVar} = document.createTextNode("")`)
-              bindLines.push(`${varName}.appendChild(${tVar})`)
-              bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+              if (useMixed || useMultiExpr) {
+                // Insert a comment placeholder in the HTML, replace with TextNode in bind
+                html += "<!>"
+                const parentRef = accessor === "__root" ? "__root" : varName
+                const tVar = `__t${varIdx++}`
+                const d = nextDisp()
+                bindLines.push(`const ${tVar} = document.createTextNode("")`)
+                bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+                bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+              } else {
+                // Single expression, no element siblings — use appendChild
+                const tVar = `__t${varIdx++}`
+                const d = nextDisp()
+                bindLines.push(`const ${tVar} = document.createTextNode("")`)
+                bindLines.push(`${varName}.appendChild(${tVar})`)
+                bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+              }
             } else {
-              bindLines.push(`${varName}.textContent = ${expr}`)
+              if (useMixed || useMultiExpr) {
+                // Static expression with mixed/multi content — replace comment placeholder
+                html += "<!>"
+                const parentRef = accessor === "__root" ? "__root" : varName
+                const tVar = `__t${varIdx++}`
+                bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
+                bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+              } else {
+                bindLines.push(`${varName}.textContent = ${expr}`)
+              }
             }
+            childNodeIdx++
           }
-
-          // Empty expression container (comment) → skip
         }
 
         if (!VOID_ELEMENTS.has(tag)) {
@@ -500,6 +563,52 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     }
 
     return `_tpl("${escaped}", (__root) => {\n${body}\n})`
+  }
+
+  /** Flat child descriptor for template children processing */
+  type FlatChild =
+    | { kind: "text"; text: string }
+    | { kind: "element"; node: ts.JsxElement | ts.JsxSelfClosingElement; elemIdx: number }
+    | { kind: "expression"; expression: ts.Expression }
+
+  /**
+   * Flatten JSX children, inlining fragment children and stripping whitespace-only text.
+   * Returns a flat array of child descriptors with element indices pre-computed.
+   */
+  function flattenChildren(children: ts.NodeArray<ts.JsxChild>): FlatChild[] {
+    const result: FlatChild[] = []
+    let elemIdx = 0
+
+    function addChildren(kids: ts.NodeArray<ts.JsxChild>): void {
+      for (const child of kids) {
+        if (ts.isJsxText(child)) {
+          const trimmed = child.text.replace(/\n\s*/g, "").trim()
+          if (trimmed) result.push({ kind: "text", text: trimmed })
+          continue
+        }
+
+        if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+          result.push({ kind: "element", node: child, elemIdx })
+          elemIdx++
+          continue
+        }
+
+        if (ts.isJsxExpression(child)) {
+          if (!child.expression) continue // empty expression (comment)
+          result.push({ kind: "expression", expression: child.expression })
+          continue
+        }
+
+        if (ts.isJsxFragment(child)) {
+          // Inline fragment children as if they were direct children
+          addChildren(child.children)
+          continue
+        }
+      }
+    }
+
+    addChildren(children)
+    return result
   }
 
   /** Check if an element has any dynamic attributes, events, ref, or expression children */

@@ -18,14 +18,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | Package | Description |
 |---|---|
 | `@pyreon/reactivity` | signal, computed, effect, batch, createSelector, createStore |
-| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary |
+| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic |
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive |
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |
 | `@pyreon/runtime-server` | renderToString, renderToStream |
 | `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders |
 | `@pyreon/head` | useHead, HeadProvider, renderWithHead |
 | `@pyreon/server` | createHandler (SSR), prerender (SSG), island(), middleware |
-| `@pyreon/vite-plugin` | JSX transform + SSR dev middleware |
+| `@pyreon/vite-plugin` | JSX transform + SSR dev middleware + signal-preserving HMR |
 | `@pyreon/react-compat` | useState, useEffect, useMemo, lazy, Suspense shims |
 
 UI component packages (`@pyreon/styler`, `@pyreon/hooks`, `@pyreon/elements`, etc.) live in a separate repo: `pyreon/ui-system`.
@@ -67,7 +67,8 @@ Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle
 ### JSX Compiler
 `shouldWrap` only wraps if `containsCall(node)` is true.
 Static JSX nodes hoisted to module scope as `const _$h0 = ...`.
-Template emission: JSX element trees with ≥2 DOM elements emit `_tpl()` + `_bind()`.
+Template emission: JSX element trees with ≥1 DOM element emit `_tpl()` + `_bind()`.
+Supports mixed element+expression children (via `childNodes[]` indexing), multiple expressions, and fragment inlining.
 Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 
 ### Context providing pattern
@@ -75,6 +76,24 @@ Uses `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`
 
 ### onMount signature
 `onMount(fn: () => CleanupFn | undefined)` — callbacks must return `undefined`, not `void`.
+
+### Code Splitting & Dynamic Components
+- `lazy(loader)` — wraps dynamic import with Suspense `__loading` integration
+- `Dynamic({ component, ...props })` — renders component by reference or string tag
+- Re-exported from `@pyreon/react-compat` for compatibility
+
+### Signal-Preserving HMR (Vite plugin)
+- Top-level `signal()` calls rewritten to `__hmr_signal(moduleId, name, signal, initialValue)`
+- `import.meta.hot.dispose` saves signal values to `globalThis.__pyreon_hmr_registry__`
+- On hot reload, signals restore their previous values instead of reinitializing
+- Virtual module `virtual:pyreon/hmr-runtime` serves the HMR helpers
+
+### Dev-Mode Warnings (`__DEV__`)
+- `mount()` validates container is not null/undefined
+- Component output validation (must return VNode, string, null, or function)
+- Duplicate `by` keys in `<For>` loops logged as warnings
+- Passing raw signal (function) as child instead of calling it
+- All guarded by `__DEV__` — tree-shaken in production builds
 
 ### exactOptionalPropertyTypes
 Enabled in root tsconfig — optional properties need explicit `| undefined` when assigned from functions that may return undefined.

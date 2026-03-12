@@ -3,11 +3,13 @@ import {
   createRef,
   defineComponent,
   dispatchToErrorBoundary,
+  Dynamic,
   ErrorBoundary,
   For,
   ForSymbol,
   Fragment,
   h,
+  lazy,
   Match,
   MatchSymbol,
   mapArray,
@@ -983,5 +985,71 @@ describe("edge cases", () => {
     expect(node.type).toBe(ForSymbol)
     const props = node.props as unknown as { each: () => typeof items }
     expect(props.each()).toBe(items)
+  })
+})
+
+// ─── lazy() ───────────────────────────────────────────────────────────────────
+
+describe("lazy()", () => {
+  test("returns a LazyComponent with __loading flag", () => {
+    const Comp = lazy(() => new Promise(() => {})) // never resolves
+    expect(typeof Comp).toBe("function")
+    expect(typeof Comp.__loading).toBe("function")
+    expect(Comp.__loading()).toBe(true)
+  })
+
+  test("resolves to the loaded component", async () => {
+    const Inner: ComponentFn<{ name: string }> = (props) => h("span", null, props.name)
+    const Comp = lazy(() => Promise.resolve({ default: Inner }))
+
+    // Wait for microtask to resolve
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(Comp.__loading()).toBe(false)
+    const result = Comp({ name: "hello" })
+    expect(result).not.toBeNull()
+    // lazy wraps via h(comp, props) so type is the component function
+    expect((result as VNode).type).toBe(Inner)
+  })
+
+  test("throws on import error so ErrorBoundary can catch", async () => {
+    const Comp = lazy(() => Promise.reject(new Error("load failed")))
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(Comp.__loading()).toBe(false)
+    expect(() => Comp({})).toThrow("load failed")
+  })
+
+  test("wraps non-Error rejection in Error", async () => {
+    const Comp = lazy(() => Promise.reject("string error"))
+
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(() => Comp({})).toThrow("string error")
+  })
+})
+
+// ─── Dynamic ──────────────────────────────────────────────────────────────────
+
+describe("Dynamic", () => {
+  test("renders the given component", () => {
+    const Greeting: ComponentFn<{ name: string }> = (props) => h("span", null, props.name)
+    const result = Dynamic({ component: Greeting, name: "world" })
+    expect(result).not.toBeNull()
+    expect((result as VNode).type).toBe(Greeting)
+    expect((result as VNode).props).toEqual({ name: "world" })
+  })
+
+  test("renders a string element", () => {
+    const result = Dynamic({ component: "div", class: "box" })
+    expect(result).not.toBeNull()
+    expect((result as VNode).type).toBe("div")
+    expect((result as VNode).props).toEqual({ class: "box" })
+  })
+
+  test("returns null when component is falsy", () => {
+    const result = Dynamic({ component: "" })
+    expect(result).toBeNull()
   })
 })

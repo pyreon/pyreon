@@ -24,7 +24,7 @@ export type { Props, VNode as ReactNode, VNodeChild } from "@pyreon/core"
 // Lifecycle
 export { Fragment, h as createElement, h, onMount as useLayoutEffect } from "@pyreon/core"
 
-import type { CleanupFn, ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
+import type { CleanupFn, ComponentFn, Props, VNodeChild } from "@pyreon/core"
 import {
   createContext,
   createRef,
@@ -263,26 +263,10 @@ export { onMount, onUnmount, onUpdate }
 
 /**
  * Drop-in for React's `lazy()`.
- * Wraps a dynamic import — the returned component renders null until the module
- * resolves. Pair with `<Suspense>` to show a fallback during loading.
- *
- * Usage:
- *   const MyPage = lazy(() => import("./MyPage"))
- *   <Suspense fallback={<Spinner />}><MyPage /></Suspense>
+ * Re-exported from `@pyreon/core` — wraps a dynamic import, renders null until
+ * the module resolves. Pair with `<Suspense>` to show a fallback during loading.
  */
-export function lazy<P extends Props>(
-  load: () => Promise<{ default: ComponentFn<P> }>,
-): LazyComponent<P> {
-  const loaded = signal<ComponentFn<P> | null>(null)
-  load().then((m) => loaded.set(m.default))
-
-  const wrapper = (props: P): ReturnType<ComponentFn<P>> => {
-    const comp = loaded()
-    return comp ? comp(props) : null
-  }
-  wrapper.__loading = () => loaded() === null
-  return wrapper as LazyComponent<P>
-}
+export { lazy } from "@pyreon/core"
 
 /**
  * Drop-in for React's `<Suspense>`.
