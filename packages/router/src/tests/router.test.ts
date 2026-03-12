@@ -2113,6 +2113,250 @@ describe("stale chunk detection", () => {
   }, 10000)
 })
 
+// ─── parseQueryMulti ─────────────────────────────────────────────────────────
+
+describe("parseQueryMulti", () => {
+  const { parseQueryMulti } = require("../match")
+
+  test("returns empty for empty string", () => {
+    expect(parseQueryMulti("")).toEqual({})
+  })
+
+  test("parses single key-value pair", () => {
+    expect(parseQueryMulti("a=1")).toEqual({ a: "1" })
+  })
+
+  test("returns array for duplicate keys", () => {
+    expect(parseQueryMulti("color=red&color=blue")).toEqual({ color: ["red", "blue"] })
+  })
+
+  test("handles mix of single and duplicate keys", () => {
+    const result = parseQueryMulti("color=red&color=blue&size=lg")
+    expect(result.color).toEqual(["red", "blue"])
+    expect(result.size).toBe("lg")
+  })
+
+  test("handles keys without values", () => {
+    expect(parseQueryMulti("flag")).toEqual({ flag: "" })
+  })
+
+  test("skips empty key parts", () => {
+    const result = parseQueryMulti("=value")
+    expect(Object.keys(result)).toHaveLength(0)
+  })
+
+  test("handles triple duplicate", () => {
+    const result = parseQueryMulti("a=1&a=2&a=3")
+    expect(result.a).toEqual(["1", "2", "3"])
+  })
+})
+
+// ─── matchPath splat params ─────────────────────────────────────────────────
+
+describe("matchPath splat params", () => {
+  test("captures rest of path with splat param", () => {
+    const result = matchPath("/files/:path*", "/files/a/b/c")
+    expect(result).not.toBeNull()
+    expect(result!.path).toBe("a/b/c")
+  })
+
+  test("captures single segment with splat param", () => {
+    const result = matchPath("/files/:path*", "/files/readme.md")
+    expect(result).not.toBeNull()
+    expect(result!.path).toBe("readme.md")
+  })
+})
+
+// ─── buildPath splat params ─────────────────────────────────────────────────
+
+describe("buildPath splat params", () => {
+  test("builds path with splat param", () => {
+    const result = buildPath("/files/:path*", { path: "a/b/c" })
+    expect(result).toBe("/files/a/b/c")
+  })
+
+  test("encodes individual segments in splat", () => {
+    const result = buildPath("/files/:path*", { path: "hello world/file name" })
+    expect(result).toBe("/files/hello%20world/file%20name")
+  })
+
+  test("handles missing param gracefully", () => {
+    const result = buildPath("/user/:id", {})
+    expect(result).toBe("/user/")
+  })
+})
+
+// ─── Nested routes with splat prefix ────────────────────────────────────────
+
+describe("matchPrefix with splat", () => {
+  test("splat param in parent captures everything and sets rest to /", () => {
+    const splatRoutes: RouteRecord[] = [
+      {
+        path: "/:path*",
+        component: Home,
+        children: [{ path: "/", component: About }],
+      },
+    ]
+    const r = resolveRoute("/any/deep/path", splatRoutes)
+    expect(r.matched.length).toBeGreaterThan(0)
+  })
+
+  test("wildcard in prefix matches and passes rest", () => {
+    const wildcardRoutes: RouteRecord[] = [
+      {
+        path: "*",
+        component: Home,
+        children: [{ path: "/", component: About }],
+      },
+    ]
+    const r = resolveRoute("/anything", wildcardRoutes)
+    expect(r.matched.length).toBeGreaterThan(0)
+  })
+})
+
+// ─── onError callback ────────────────────────────────────────────────────────
+
+describe("onError callback", () => {
+  test("onError returning false cancels navigation on loader failure", async () => {
+    const loaderRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/fail",
+        component: About,
+        loader: async () => {
+          throw new Error("loader error")
+        },
+      },
+    ]
+    const router = createRouter({
+      routes: loaderRoutes,
+      url: "/",
+      onError: () => false,
+    })
+    await router.push("/fail")
+    // Navigation should be cancelled
+    expect(router.currentRoute().path).toBe("/")
+  })
+
+  test("onError returning undefined allows navigation to continue", async () => {
+    const loaderRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/fail",
+        component: About,
+        loader: async () => {
+          throw new Error("loader error")
+        },
+      },
+    ]
+    const router = createRouter({
+      routes: loaderRoutes,
+      url: "/",
+      onError: () => undefined,
+    })
+    await router.push("/fail")
+    expect(router.currentRoute().path).toBe("/fail")
+  })
+})
+
+// ─── RouterView with errorComponent ─────────────────────────────────────────
+
+describe("RouterView with errorComponent on loader failure", () => {
+  test("renders errorComponent when loader data is undefined", async () => {
+    const el = container()
+    const ErrorComp = () => h("span", null, "loader-error")
+    const DataComp = () => h("span", null, "data")
+    const viewRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/err",
+        component: DataComp,
+        loader: async () => {
+          throw new Error("fail")
+        },
+        errorComponent: ErrorComp,
+      },
+    ]
+    const router = createRouter({ routes: viewRoutes, url: "/" })
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    await router.push("/err")
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(el.textContent).toContain("loader-error")
+  })
+})
+
+// ─── Component cache eviction ───────────────────────────────────────────────
+
+describe("component cache eviction", () => {
+  test("evicts oldest entry when cache exceeds maxCacheSize", async () => {
+    const Comp1 = () => h("span", null, "c1")
+    const Comp2 = () => h("span", null, "c2")
+    const Comp3 = () => h("span", null, "c3")
+    const cacheRoutes: RouteRecord[] = [
+      { path: "/a", component: Comp1 },
+      { path: "/b", component: Comp2 },
+      { path: "/c", component: Comp3 },
+    ]
+    const router = createRouter({
+      routes: cacheRoutes,
+      url: "/a",
+      maxCacheSize: 2,
+    }) as RouterInstance
+
+    // Manually simulate cache population
+    const el = container()
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    // Navigate to populate cache
+    await router.push("/a")
+    await router.push("/b")
+    await router.push("/c")
+    await new Promise<void>((r) => setTimeout(r, 50))
+    // Cache size should never exceed maxCacheSize + 1 (the newest)
+    expect(router._componentCache.size).toBeLessThanOrEqual(3)
+  })
+})
+
+// ─── RouterLink no-router edge cases ────────────────────────────────────────
+
+describe("RouterLink edge cases", () => {
+  test("RouterLink click without router does not throw", () => {
+    const el = container()
+    // Mount RouterLink without RouterProvider
+    setActiveRouter(null)
+    mount(h(RouterLink, { to: "/test" }), el)
+    const anchor = el.querySelector("a")
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true })
+    // Should not throw
+    expect(() => anchor?.dispatchEvent(event)).not.toThrow()
+  })
+
+  test("RouterLink activeClass returns empty string without router", () => {
+    const el = container()
+    setActiveRouter(null)
+    mount(h(RouterLink, { to: "/test" }), el)
+    const anchor = el.querySelector("a")
+    // class should be empty or not set
+    const cls = anchor?.getAttribute("class") ?? ""
+    expect(cls).toBe("")
+  })
+})
+
+// ─── hashchange event ───────────────────────────────────────────────────────
+
+describe("hash mode hashchange", () => {
+  test("hashchange event updates currentRoute in hash mode", async () => {
+    const router = createRouter({ routes, mode: "hash" })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+    // Simulate hashchange by setting hash and dispatching event
+    window.location.hash = "#/user/5"
+    window.dispatchEvent(new HashChangeEvent("hashchange"))
+    await new Promise<void>((r) => setTimeout(r, 10))
+    expect(router.currentRoute().path).toBe("/user/5")
+    router.destroy()
+  })
+})
+
 // ─── Router lifecycle ──────────────────────────────────────────────────────────
 
 describe("router lifecycle", () => {

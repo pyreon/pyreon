@@ -82,4 +82,39 @@ describe("signal", () => {
     unsub()
     unsub() // should not throw
   })
+
+  test("label getter returns name from options", () => {
+    const s = signal(0, { name: "counter" })
+    expect(s.label).toBe("counter")
+  })
+
+  test("label setter updates the name", () => {
+    const s = signal(0)
+    expect(s.label).toBeUndefined()
+    s.label = "renamed"
+    expect(s.label).toBe("renamed")
+  })
+
+  test("debug() returns signal info", () => {
+    const s = signal(42, { name: "test" })
+    const info = s.debug()
+    expect(info.name).toBe("test")
+    expect(info.value).toBe(42)
+    expect(info.subscriberCount).toBe(0)
+  })
+
+  test("debug() reports subscriber count", () => {
+    const s = signal(0)
+    s.subscribe(() => {})
+    s.subscribe(() => {})
+    const info = s.debug()
+    expect(info.subscriberCount).toBe(2)
+  })
+
+  test("signal without options has undefined name", () => {
+    const s = signal(0)
+    expect(s.label).toBeUndefined()
+    const info = s.debug()
+    expect(info.name).toBeUndefined()
+  })
 })

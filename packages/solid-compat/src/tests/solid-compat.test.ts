@@ -1,47 +1,68 @@
+import { h } from "@pyreon/core"
+import { mount } from "@pyreon/runtime-dom"
 import {
   batch,
+  children,
+  createComputed,
+  createContext,
   createEffect,
   createMemo,
+  createRenderEffect,
   createRoot,
   createSelector,
   createSignal,
+  ErrorBoundary,
+  For,
+  getOwner,
+  lazy,
+  Match,
   mergeProps,
   on,
   onCleanup,
   onMount,
+  runWithOwner,
+  Show,
   splitProps,
+  Suspense,
+  Switch,
   untrack,
+  useContext,
 } from "../index"
 
+function container(): HTMLElement {
+  const el = document.createElement("div")
+  document.body.appendChild(el)
+  return el
+}
+
 describe("@pyreon/solid-compat", () => {
-  // 1. createSignal returns [getter, setter] tuple
+  // ─── createSignal ─────────────────────────────────────────────────────
+
   it("createSignal returns [getter, setter] tuple", () => {
     const [count, setCount] = createSignal(0)
     expect(typeof count).toBe("function")
     expect(typeof setCount).toBe("function")
   })
 
-  // 2. getter returns current value
   it("getter returns current value", () => {
     const [count] = createSignal(42)
     expect(count()).toBe(42)
   })
 
-  // 3. setter updates value
   it("setter updates value", () => {
     const [count, setCount] = createSignal(0)
     setCount(5)
     expect(count()).toBe(5)
   })
 
-  // 4. setter with updater function
   it("setter with updater function", () => {
     const [count, setCount] = createSignal(10)
     setCount((prev) => prev + 5)
     expect(count()).toBe(15)
   })
 
-  // 5. createEffect tracks signal reads
+  // ─── createEffect ─────────────────────────────────────────────────────
+
   it("createEffect tracks signal reads", () => {
     let effectValue = 0
     createRoot((dispose) => {
@@ -56,7 +77,40 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // 6. createMemo derives computed value
+  // ─── createRenderEffect ────────────────────────────────────────────────
+
+  it("createRenderEffect tracks signal reads like createEffect", () => {
+    let effectValue = 0
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      createRenderEffect(() => {
+        effectValue = count()
+      })
+      expect(effectValue).toBe(0)
+      setCount(3)
+      expect(effectValue).toBe(3)
+      dispose()
+    })
+  })
+
+  // ─── createComputed (alias) ────────────────────────────────────────────
+
+  it("createComputed is an alias for createEffect", () => {
+    let effectValue = 0
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      createComputed(() => {
+        effectValue = count()
+      })
+      expect(effectValue).toBe(0)
+      setCount(5)
+      expect(effectValue).toBe(5)
+      dispose()
+    })
+  })
+
+  // ─── createMemo ───────────────────────────────────────────────────────
+
   it("createMemo derives computed value", () => {
     createRoot((dispose) => {
       const [count] = createSignal(3)
@@ -66,7 +120,6 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // 7. createMemo updates when dependency changes
   it("createMemo updates when dependency changes", () => {
     createRoot((dispose) => {
       const [count, setCount] = createSignal(3)
@@ -78,7 +131,37 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // 8. batch coalesces updates
+  // ─── createRoot ───────────────────────────────────────────────────────
+
+  it("createRoot provides cleanup", () => {
+    let effectRan = false
+    let disposed = false
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      createEffect(() => {
+        count()
+        effectRan = true
+      })
+      expect(effectRan).toBe(true)
+      effectRan = false
+      dispose()
+      disposed = true
+      setCount(1)
+      expect(effectRan).toBe(false)
+    })
+    expect(disposed).toBe(true)
+  })
+
+  it("createRoot returns value from fn", () => {
+    const result = createRoot((dispose) => {
+      dispose()
+      return 42
+    })
+    expect(result).toBe(42)
+  })
+
+  // ─── batch ────────────────────────────────────────────────────────────
+
   it("batch coalesces updates", () => {
     let runs = 0
     createRoot((dispose) => {
@@ -94,13 +177,13 @@ describe("@pyreon/solid-compat", () => {
         setA(10)
         setB(20)
       })
-      // Should have only run once more (not twice)
       expect(runs).toBe(2)
       dispose()
     })
   })
 
-  // 9. untrack prevents tracking
+  // ─── untrack ──────────────────────────────────────────────────────────
+
   it("untrack prevents tracking", () => {
     let runs = 0
     createRoot((dispose) => {
@@ -112,18 +195,17 @@ describe("@pyreon/solid-compat", () => {
         runs++
       })
       expect(runs).toBe(1)
-      // Updating untracked signal should not re-run effect
       setOther(5)
       expect(runs).toBe(1)
-      // Updating tracked signal should re-run
       setCount(1)
       expect(runs).toBe(2)
       dispose()
     })
   })
 
-  // 10. on() tracks specific dependencies
-  it("on() tracks specific dependencies", () => {
+  // ─── on ───────────────────────────────────────────────────────────────
+
+  it("on() tracks specific single dependency", () => {
     createRoot((dispose) => {
       const [count, setCount] = createSignal(0)
       const values: number[] = []
@@ -144,7 +226,57 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // 11. createSelector returns equality checker
+  it("on() tracks array of dependencies", () => {
+    createRoot((dispose) => {
+      const [a, setA] = createSignal(1)
+      const [b, setB] = createSignal(2)
+      const results: unknown[] = []
+
+      const tracker = on([a, b] as const, (input, prevInput, prevValue) => {
+        results.push({ input, prevInput, prevValue })
+        return input
+      })
+
+      createEffect(() => {
+        tracker()
+      })
+
+      expect(results).toHaveLength(1)
+      expect((results[0] as Record<string, unknown>).input).toEqual([1, 2])
+      expect((results[0] as Record<string, unknown>).prevInput).toBeUndefined()
+
+      setA(10)
+      expect(results).toHaveLength(2)
+      expect((results[1] as Record<string, unknown>).input).toEqual([10, 2])
+      expect((results[1] as Record<string, unknown>).prevInput).toEqual([1, 2])
+
+      dispose()
+    })
+  })
+
+  it("on() provides prevValue on subsequent calls", () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      const prevValues: unknown[] = []
+
+      const tracker = on(count, (input, _prevInput, prevValue) => {
+        prevValues.push(prevValue)
+        return (input as number) * 10
+      })
+
+      createEffect(() => {
+        tracker()
+      })
+
+      expect(prevValues).toEqual([undefined]) // first call
+      setCount(5)
+      expect(prevValues).toEqual([undefined, 0]) // prev value was 0*10 = 0
+      dispose()
+    })
+  })
+
+  // ─── createSelector ───────────────────────────────────────────────────
+
   it("createSelector returns equality checker", () => {
     createRoot((dispose) => {
       const [selected, setSelected] = createSignal(1)
@@ -160,7 +292,8 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
-  // 12. mergeProps combines objects
+  // ─── mergeProps ───────────────────────────────────────────────────────
+
   it("mergeProps combines objects", () => {
     const defaults = { color: "red", size: 10 }
     const overrides = { size: 20, weight: "bold" }
@@ -170,7 +303,22 @@ describe("@pyreon/solid-compat", () => {
     expect((merged as Record<string, unknown>).weight).toBe("bold")
   })
 
-  // 13. splitProps separates props
+  it("mergeProps preserves getters for reactivity", () => {
+    const [count, setCount] = createSignal(0)
+    const props = {}
+    Object.defineProperty(props, "count", {
+      get: count,
+      enumerable: true,
+      configurable: true,
+    })
+    const merged = mergeProps(props)
+    expect((merged as Record<string, unknown>).count).toBe(0)
+    setCount(5)
+    expect((merged as Record<string, unknown>).count).toBe(5)
+  })
+
+  // ─── splitProps ───────────────────────────────────────────────────────
+
   it("splitProps separates props", () => {
     const props = { name: "hello", class: "btn", onClick: () => {} }
     const [local, rest] = splitProps(props, "name")
@@ -180,30 +328,174 @@ describe("@pyreon/solid-compat", () => {
     expect((rest as Record<string, unknown>).onClick).toBeDefined()
   })
 
-  // 14. createRoot provides cleanup
-  it("createRoot provides cleanup", () => {
-    let effectRan = false
-    let disposed = false
-    createRoot((dispose) => {
-      const [count, setCount] = createSignal(0)
-      createEffect(() => {
-        count()
-        effectRan = true
-      })
-      expect(effectRan).toBe(true)
-      effectRan = false
-      dispose()
-      disposed = true
-      // After dispose, updating signal should not re-trigger effect
-      setCount(1)
-      expect(effectRan).toBe(false)
+  it("splitProps preserves getters", () => {
+    const [count, setCount] = createSignal(0)
+    const props = {} as Record<string, unknown>
+    Object.defineProperty(props, "count", {
+      get: count,
+      enumerable: true,
+      configurable: true,
     })
-    expect(disposed).toBe(true)
+    Object.defineProperty(props, "label", {
+      value: "test",
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+
+    const [local, rest] = splitProps(props as { count: number; label: string }, "count")
+    expect((local as Record<string, unknown>).count).toBe(0)
+    setCount(10)
+    expect((local as Record<string, unknown>).count).toBe(10)
+    expect((rest as Record<string, unknown>).label).toBe("test")
   })
 
-  // 15. onMount/onCleanup lifecycle hooks exist
+  // ─── children ─────────────────────────────────────────────────────────
+
+  it("children resolves static values", () => {
+    const resolved = children(() => "hello")
+    expect(resolved()).toBe("hello")
+  })
+
+  it("children resolves function children (reactive getters)", () => {
+    const resolved = children(() => (() => "dynamic") as unknown as ReturnType<typeof h>)
+    expect(resolved()).toBe("dynamic")
+  })
+
+  // ─── lazy ─────────────────────────────────────────────────────────────
+
+  it("lazy returns a component with preload", () => {
+    const Lazy = lazy(() => Promise.resolve({ default: () => h("div", null, "loaded") }))
+    expect(typeof Lazy).toBe("function")
+    expect(typeof Lazy.preload).toBe("function")
+  })
+
+  it("lazy component returns null before loaded", () => {
+    const Lazy = lazy(() => Promise.resolve({ default: () => h("div", null, "loaded") }))
+    const result = Lazy({})
+    expect(result).toBeNull()
+  })
+
+  it("lazy component renders after loading", async () => {
+    const MyComp = () => h("div", null, "loaded")
+    const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
+
+    // Trigger load
+    Lazy({})
+    await new Promise<void>((r) => setTimeout(r, 10))
+
+    const result = Lazy({})
+    expect(result).not.toBeNull()
+  })
+
+  it("lazy preload triggers loading", async () => {
+    const MyComp = () => h("div", null, "loaded")
+    const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
+
+    const promise = Lazy.preload()
+    expect(promise).toBeInstanceOf(Promise)
+
+    await promise
+    const result = Lazy({})
+    expect(result).not.toBeNull()
+  })
+
+  it("lazy preload only loads once", async () => {
+    let loadCount = 0
+    const MyComp = () => h("div", null, "loaded")
+    const Lazy = lazy(() => {
+      loadCount++
+      return Promise.resolve({ default: MyComp })
+    })
+
+    const p1 = Lazy.preload()
+    const p2 = Lazy.preload()
+    expect(p1).toBe(p2) // same promise
+    await p1
+    expect(loadCount).toBe(1)
+  })
+
+  // ─── getOwner / runWithOwner ──────────────────────────────────────────
+
+  it("getOwner returns current scope or null", () => {
+    // Outside any scope, may return null
+    const outerOwner = getOwner()
+
+    createRoot((dispose) => {
+      const owner = getOwner()
+      expect(owner).not.toBeNull()
+      dispose()
+    })
+  })
+
+  it("runWithOwner runs fn within the given scope", () => {
+    createRoot((dispose) => {
+      const owner = getOwner()
+      let ranInScope = false
+
+      runWithOwner(owner, () => {
+        ranInScope = true
+        return undefined
+      })
+
+      expect(ranInScope).toBe(true)
+      dispose()
+    })
+  })
+
+  it("runWithOwner with null owner", () => {
+    const result = runWithOwner(null, () => 42)
+    expect(result).toBe(42)
+  })
+
+  it("runWithOwner restores previous scope even on error", () => {
+    createRoot((dispose) => {
+      expect(() => {
+        runWithOwner(null, () => {
+          throw new Error("test error")
+        })
+      }).toThrow("test error")
+      dispose()
+    })
+  })
+
+  // ─── onMount / onCleanup ──────────────────────────────────────────────
+
   it("onMount and onCleanup are functions", () => {
     expect(typeof onMount).toBe("function")
     expect(typeof onCleanup).toBe("function")
+  })
+
+  // ─── createContext / useContext ────────────────────────────────────────
+
+  it("createContext creates context with default value", () => {
+    const Ctx = createContext("default-value")
+    expect(useContext(Ctx)).toBe("default-value")
+  })
+
+  // ─── Re-exports ───────────────────────────────────────────────────────
+
+  it("Show is exported", () => {
+    expect(typeof Show).toBe("function")
+  })
+
+  it("Switch is exported", () => {
+    expect(typeof Switch).toBe("function")
+  })
+
+  it("Match is exported", () => {
+    expect(typeof Match).toBe("function")
+  })
+
+  it("For is exported", () => {
+    expect(typeof For).toBe("function")
+  })
+
+  it("Suspense is exported", () => {
+    expect(typeof Suspense).toBe("function")
+  })
+
+  it("ErrorBoundary is exported", () => {
+    expect(typeof ErrorBoundary).toBe("function")
   })
 })

@@ -4,14 +4,27 @@ import { mount } from "@pyreon/runtime-dom"
 import { createRoot, render } from "../dom"
 import {
   batch,
+  createContext,
+  createElement,
   createPortal,
+  createSelector,
+  ErrorBoundary,
+  Fragment,
   lazy,
   memo,
+  onMount,
+  onUnmount,
+  onUpdate,
+  Suspense,
   useCallback,
+  useContext,
   useDeferredValue,
   useEffect,
+  useErrorBoundary,
   useId,
   useImperativeHandle,
+  useLayoutEffect,
+  useLayoutEffect_,
   useMemo,
   useReducer,
   useRef,
@@ -131,18 +144,52 @@ describe("useEffect", () => {
 
     const Comp = () => {
       useEffect(() => {
-        s() // read signal — but should NOT track because deps=[]
+        s()
         runs++
       }, [])
       return h("div", null, "test")
     }
 
     mount(h(Comp, null), el)
-    // onMount fires synchronously in happy-dom
     expect(runs).toBe(1)
     s.set(1)
-    // Should still be 1 — deps=[] means run once, no re-tracking
     expect(runs).toBe(1)
+  })
+
+  test("with empty deps [] and cleanup on unmount", () => {
+    const el = container()
+    let cleaned = false
+
+    const Comp = () => {
+      useEffect(() => {
+        return () => {
+          cleaned = true
+        }
+      }, [])
+      return h("div", null, "test")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(cleaned).toBe(false)
+    unmount()
+    expect(cleaned).toBe(true)
+  })
+
+  test("with empty deps [] and no cleanup return", () => {
+    const el = container()
+    let runs = 0
+
+    const Comp = () => {
+      useEffect(() => {
+        runs++
+        // no return
+      }, [])
+      return h("div", null, "test")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(runs).toBe(1)
+    unmount()
   })
 
   test("effect without deps re-runs and disposes on unmount", () => {
@@ -163,9 +210,53 @@ describe("useEffect", () => {
     s.set(10)
     expect(runs).toBe(2)
     unmount()
-    // After unmount, the effect is disposed — updating signal does not re-run
     s.set(20)
     expect(runs).toBe(2)
+  })
+
+  test("effect with cleanup function disposes on unmount", () => {
+    const el = container()
+    const s = signal(0)
+    let effectRuns = 0
+
+    const Comp = () => {
+      useEffect(() => {
+        s()
+        effectRuns++
+        return () => {
+          /* cleanup */
+        }
+      })
+      return h("div", null, "cleanup")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(effectRuns).toBe(1)
+    s.set(1)
+    expect(effectRuns).toBe(2)
+    unmount()
+    s.set(2)
+    expect(effectRuns).toBe(2)
+  })
+
+  test("non-function return from effect is handled", () => {
+    const el = container()
+    const s = signal(0)
+    let runs = 0
+
+    const Comp = () => {
+      useEffect(() => {
+        s()
+        runs++
+      })
+      return h("div", null, "no-cleanup")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(runs).toBe(1)
+    s.set(1)
+    expect(runs).toBe(2)
+    unmount()
   })
 })
 
@@ -269,9 +360,45 @@ describe("useId", () => {
     const id2 = useId()
     expect(typeof id1).toBe("string")
     expect(typeof id2).toBe("string")
-    // Both start with :r
     expect(id1.startsWith(":r")).toBe(true)
     expect(id2.startsWith(":r")).toBe(true)
+  })
+
+  test("returns deterministic IDs within a component", () => {
+    const el = container()
+    const ids: string[] = []
+
+    const Comp = () => {
+      ids.push(useId())
+      ids.push(useId())
+      return h("div", null, "id-test")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(ids).toHaveLength(2)
+    expect(ids[0]).toBe(":r0:")
+    expect(ids[1]).toBe(":r1:")
+    unmount()
+  })
+
+  test("different components get independent counters", () => {
+    const el = container()
+    const ids1: string[] = []
+    const ids2: string[] = []
+
+    const Comp1 = () => {
+      ids1.push(useId())
+      return h("div", null, "c1")
+    }
+    const Comp2 = () => {
+      ids2.push(useId())
+      return h("div", null, "c2")
+    }
+
+    const unmount = mount(h("div", null, h(Comp1, null), h(Comp2, null)), el)
+    expect(ids1[0]).toBe(":r0:")
+    expect(ids2[0]).toBe(":r0:")
+    unmount()
   })
 })
 
@@ -294,10 +421,8 @@ describe("lazy", () => {
     const MyComp = (props: { text: string }) => h("p", null, props.text)
     const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
 
-    // Initially the loaded signal is null, so wrapper returns null
     expect(Lazy({ text: "hello" })).toBeNull()
 
-    // After the promise resolves, the component should be loaded
     await new Promise<void>((r) => setTimeout(r, 10))
     const result = Lazy({ text: "hello" })
     expect(result).not.toBeNull()
@@ -329,7 +454,6 @@ describe("batch", () => {
       a.set(1)
       b.set(1)
     })
-    // Only one additional run despite two signal updates
     expect(runs).toBe(2)
   })
 })
@@ -367,7 +491,7 @@ describe("createRoot", () => {
     const root = createRoot(el)
     root.render(h("div", null, "x"))
     root.unmount()
-    root.unmount() // should not throw
+    root.unmount()
     expect(el.innerHTML).toBe("")
   })
 })
@@ -402,6 +526,22 @@ describe("useImperativeHandle", () => {
     unmount()
   })
 
+  test("clears ref.current on unmount", () => {
+    const el = container()
+    const ref = { current: null as { value: number } | null }
+
+    const Comp = () => {
+      useImperativeHandle(ref, () => ({ value: 42 }))
+      return h("div", null, "imp")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(ref.current).not.toBeNull()
+    expect(ref.current?.value).toBe(42)
+    unmount()
+    expect(ref.current).toBeNull()
+  })
+
   test("no-op when ref is null", () => {
     const el = container()
 
@@ -411,7 +551,6 @@ describe("useImperativeHandle", () => {
     }
 
     const unmount = mount(h(Comp, null), el)
-    // Should not throw
     unmount()
   })
 
@@ -428,98 +567,60 @@ describe("useImperativeHandle", () => {
   })
 })
 
-// ─── useId — within component scope ──────────────────────────────────────────
+// ─── Re-exports ───────────────────────────────────────────────────────────────
 
-describe("useId — within component scope", () => {
-  test("returns deterministic IDs within a component", () => {
-    const el = container()
-    const ids: string[] = []
-
-    const Comp = () => {
-      ids.push(useId())
-      ids.push(useId())
-      return h("div", null, "id-test")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(ids).toHaveLength(2)
-    // Within a scope, IDs should be sequential base-36 starting at 0
-    expect(ids[0]).toBe(":r0:")
-    expect(ids[1]).toBe(":r1:")
-    unmount()
+describe("re-exports", () => {
+  test("createElement is h", () => {
+    expect(createElement).toBe(h)
   })
 
-  test("different components get independent counters", () => {
-    const el = container()
-    const ids1: string[] = []
-    const ids2: string[] = []
-
-    const Comp1 = () => {
-      ids1.push(useId())
-      return h("div", null, "c1")
-    }
-    const Comp2 = () => {
-      ids2.push(useId())
-      return h("div", null, "c2")
-    }
-
-    const unmount = mount(h("div", null, h(Comp1, null), h(Comp2, null)), el)
-    // Both start at :r0: because they have different scopes
-    expect(ids1[0]).toBe(":r0:")
-    expect(ids2[0]).toBe(":r0:")
-    unmount()
-  })
-})
-
-// ─── useEffect — cleanup ─────────────────────────────────────────────────────
-
-describe("useEffect — cleanup from effect", () => {
-  test("effect with cleanup function disposes on unmount", () => {
-    const el = container()
-    const s = signal(0)
-    let effectRuns = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        effectRuns++
-        return () => {
-          /* cleanup */
-        }
-      })
-      return h("div", null, "cleanup")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(effectRuns).toBe(1)
-
-    s.set(1)
-    expect(effectRuns).toBe(2)
-
-    unmount()
-    // After unmount, effect no longer runs
-    s.set(2)
-    expect(effectRuns).toBe(2)
+  test("Fragment is exported", () => {
+    expect(typeof Fragment).toBe("symbol")
   })
 
-  test("non-function return from effect is handled", () => {
-    const el = container()
-    const s = signal(0)
-    let runs = 0
+  test("createContext creates context with default", () => {
+    const Ctx = createContext("default")
+    expect(useContext(Ctx)).toBe("default")
+  })
 
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        runs++
-        // No cleanup returned
-      })
-      return h("div", null, "no-cleanup")
-    }
+  test("useContext reads from context", () => {
+    const Ctx = createContext(42)
+    expect(useContext(Ctx)).toBe(42)
+  })
 
-    const unmount = mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(1)
-    expect(runs).toBe(2)
-    unmount()
+  test("Suspense is exported", () => {
+    expect(typeof Suspense).toBe("function")
+  })
+
+  test("ErrorBoundary is exported", () => {
+    expect(typeof ErrorBoundary).toBe("function")
+  })
+
+  test("useErrorBoundary is a function", () => {
+    expect(typeof useErrorBoundary).toBe("function")
+  })
+
+  test("createSelector is a function", () => {
+    expect(typeof createSelector).toBe("function")
+  })
+
+  test("onMount is a function", () => {
+    expect(typeof onMount).toBe("function")
+  })
+
+  test("onUnmount is a function", () => {
+    expect(typeof onUnmount).toBe("function")
+  })
+
+  test("onUpdate is a function", () => {
+    expect(typeof onUpdate).toBe("function")
+  })
+
+  test("useLayoutEffect is exported from core", () => {
+    expect(typeof useLayoutEffect).toBe("function")
+  })
+
+  test("useLayoutEffect_ is same as useEffect", () => {
+    expect(useLayoutEffect_).toBe(useEffect)
   })
 })

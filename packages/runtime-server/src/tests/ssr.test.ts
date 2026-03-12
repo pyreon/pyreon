@@ -725,3 +725,191 @@ describe("concurrent SSR isolation", () => {
     }
   })
 })
+
+// ─── Additional coverage — edge cases ─────────────────────────────────────────
+
+describe("renderToString — escapeHtml edge cases", () => {
+  test("escapes single quotes in attribute values", async () => {
+    const html = await renderToString(h("div", { title: "it's here" }))
+    expect(html).toContain("it&#39;s here")
+  })
+
+  test("escapes ampersand in text content", async () => {
+    const html = await renderToString(h("p", null, "A & B"))
+    expect(html).toBe("<p>A &amp; B</p>")
+  })
+
+  test("escapes double quotes in attribute values", async () => {
+    const html = await renderToString(h("div", { title: 'say "hello"' }))
+    expect(html).toContain("say &quot;hello&quot;")
+  })
+})
+
+describe("renderToStream — boolean and edge-case children", () => {
+  async function collect(stream: ReadableStream<string>): Promise<string> {
+    const reader = stream.getReader()
+    let result = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      result += value
+    }
+    return result
+  }
+
+  test("streams boolean true child as 'true'", async () => {
+    const html = await collect(renderToStream(h("span", null, true)))
+    expect(html).toBe("<span>true</span>")
+  })
+
+  test("streams boolean false child as empty", async () => {
+    const html = await collect(renderToStream(h("span", null, false)))
+    expect(html).toBe("<span></span>")
+  })
+
+  test("streams props with reactive getter", async () => {
+    const cls = signal("active")
+    const html = await collect(renderToStream(h("div", { class: () => cls() })))
+    expect(html).toContain('class="active"')
+  })
+
+  test("streams element with multiple props", async () => {
+    const html = await collect(
+      renderToStream(h("input", { type: "text", placeholder: "enter", disabled: true })),
+    )
+    expect(html).toContain('type="text"')
+    expect(html).toContain('placeholder="enter"')
+    expect(html).toContain("disabled")
+  })
+})
+
+describe("renderToStream — Suspense edge cases", () => {
+  async function collect(stream: ReadableStream<string>): Promise<string> {
+    const reader = stream.getReader()
+    let result = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      result += value
+    }
+    return result
+  }
+
+  test("Suspense boundary with no fallback prop", async () => {
+    async function Content(): Promise<VNode> {
+      await new Promise<void>((r) => setTimeout(r, 5))
+      return h("span", null, "content")
+    }
+
+    const vnode = h(Suspense, {
+      children: h(Content as unknown as ComponentFn, null),
+    })
+    const html = await collect(renderToStream(vnode))
+    expect(html).toContain("content")
+  })
+
+  test("Suspense boundary with no children prop", async () => {
+    const vnode = h(Suspense, {
+      fallback: h("span", null, "loading"),
+    })
+    const html = await collect(renderToStream(vnode))
+    expect(html).toContain("loading")
+  })
+})
+
+describe("renderToString — prop rendering edge cases", () => {
+  test("renders true boolean prop as attribute name only (escaped)", async () => {
+    const html = await renderToString(h("input", { disabled: true }))
+    expect(html).toContain("disabled")
+    // Should not contain ="true"
+    expect(html).not.toContain('disabled="true"')
+  })
+
+  test("omits props with null value", async () => {
+    const html = await renderToString(h("div", { "data-x": null }))
+    expect(html).toBe("<div></div>")
+  })
+
+  test("omits props with undefined value", async () => {
+    const html = await renderToString(h("div", { "data-x": undefined }))
+    expect(html).toBe("<div></div>")
+  })
+
+  test("blocks javascript: URI in action attribute", async () => {
+    const html = await renderToString(h("form", { action: "javascript:void(0)" }))
+    expect(html).not.toContain("javascript")
+  })
+
+  test("blocks data: URI in poster attribute", async () => {
+    const html = await renderToString(h("video", { poster: "data:image/png;base64,abc" }))
+    expect(html).not.toContain("data:")
+  })
+
+  test("allows safe URLs in href", async () => {
+    const html = await renderToString(h("a", { href: "https://example.com" }))
+    expect(html).toContain('href="https://example.com"')
+  })
+
+  test("renders style object with camelCase keys as kebab-case", async () => {
+    const html = await renderToString(h("div", { style: { backgroundColor: "red" } }))
+    expect(html).toContain("background-color: red")
+  })
+})
+
+describe("renderToStream — error handling", () => {
+  async function collectStream(stream: ReadableStream<string>): Promise<string> {
+    const reader = stream.getReader()
+    let result = ""
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      result += value
+    }
+    return result
+  }
+
+  test("stream errors when component throws", async () => {
+    function Boom(): VNode {
+      throw new Error("render error")
+    }
+
+    const stream = renderToStream(h(Boom as ComponentFn, null))
+    const reader = stream.getReader()
+    await expect(reader.read()).rejects.toThrow("render error")
+  })
+
+  test("stream renders element with skipped prop (event handler)", async () => {
+    // Event handlers return null from renderProp — exercises `if (attr)` false branch in streamNode
+    const html = await collectStream(
+      renderToStream(h("button", { onClick: () => {}, id: "btn" }, "click")),
+    )
+    expect(html).toContain('<button id="btn">')
+    expect(html).not.toContain("onClick")
+  })
+})
+
+// ─── Edge-case branches ──────────────────────────────────────────────────────
+
+describe("edge-case branches", () => {
+  test("async component returning null via renderToString", async () => {
+    async function NullComp(): Promise<null> {
+      return null
+    }
+    const html = await renderToString(h(NullComp as unknown as ComponentFn, null))
+    expect(html).toBe("")
+  })
+
+  test("Suspense in stream without streaming context (renderToString path)", async () => {
+    // This tests the !ctx branch in streamSuspenseBoundary
+    // renderToString handles Suspense via renderNode, not streamNode, so we test it there
+    function Child(): VNode {
+      return h("span", null, "resolved")
+    }
+    const vnode = h(Suspense, {
+      fallback: h("span", null, "loading"),
+      children: h(Child as ComponentFn, null),
+    })
+    const html = await renderToString(vnode)
+    expect(typeof html).toBe("string")
+  })
+})

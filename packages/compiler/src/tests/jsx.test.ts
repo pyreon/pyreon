@@ -628,4 +628,129 @@ describe("JSX transform — template emission", () => {
     expect(result).toContain("childNodes[")
     expect(result).toContain("createTextNode(label)")
   })
+
+  test("bakes static numeric literal attr into HTML", () => {
+    const result = t("<div tabindex={0}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain('tabindex=\\"0\\"')
+  })
+
+  test("bakes static true keyword attr into HTML", () => {
+    const result = t("<div hidden={true}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain(" hidden")
+  })
+
+  test("omits false keyword attr from HTML", () => {
+    const result = t("<div hidden={false}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).not.toContain("hidden")
+  })
+
+  test("omits null keyword attr from HTML", () => {
+    const result = t("<div hidden={null}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).not.toContain("hidden")
+  })
+
+  test("omits undefined keyword attr from HTML", () => {
+    const result = t("<div hidden={undefined}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).not.toContain("hidden")
+  })
+
+  test("one-time set for non-class static expression attribute", () => {
+    const result = t("<div title={someVar}><span /></div>")
+    expect(result).toContain('setAttribute("title", someVar)')
+    expect(result).not.toContain("_bind(")
+  })
+
+  test("reactive renderEffect for non-class dynamic attribute", () => {
+    const result = t("<div title={getTitle()}><span /></div>")
+    expect(result).toContain("_bind(() => {")
+    expect(result).toContain('setAttribute("title", getTitle())')
+  })
+
+  test("ref attribute in template binds .current", () => {
+    const result = t("<div ref={myRef}><span /></div>")
+    expect(result).toContain("myRef.current = __root")
+  })
+
+  test("handles non-void self-closing element as closing tag", () => {
+    const result = t("<div><span></span></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span></span>")
+  })
+
+  test("handles nested fragment with expression child", () => {
+    const result = t("<div><><span />{name()}</></div>")
+    // Fragment with expression is inlined, expression with JSX is not present
+    expect(result).toContain("_tpl(")
+  })
+
+  test("handles fragment with expression containing no JSX", () => {
+    const result = t("<div><><span />{count()}</></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain(".data = count()")
+  })
+
+  test("handles nested fragment with text children", () => {
+    const result = t("<div><>hello</></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("hello")
+  })
+
+  test("bails on fragment with non-element non-expression child", () => {
+    // Fragment containing a component should bail
+    const result = t("<div><><MyComp /></></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("empty expression inside template is handled", () => {
+    const result = t("<div><span />{/* comment */}</div>")
+    expect(result).toContain("_tpl(")
+  })
+
+  test("static expression with multi-expression context uses placeholder", () => {
+    const result = t("<div><span>{label}{other}</span></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("childNodes[0]")
+    expect(result).toContain("childNodes[1]")
+  })
+})
+
+// ─── Compiler warnings ─────────────────────────────────────────────────────
+
+describe("JSX transform — warnings", () => {
+  test("warns on <For> without by prop", () => {
+    const result = transformJSX('<For each={items}>{(item) => <li>{item}</li>}</For>')
+    expect(result.warnings).toHaveLength(1)
+    expect(result.warnings[0]!.code).toBe("missing-key-on-for")
+    expect(result.warnings[0]!.line).toBeGreaterThan(0)
+    expect(result.warnings[0]!.column).toBeGreaterThanOrEqual(0)
+  })
+
+  test("no warning on <For> with by prop", () => {
+    const result = transformJSX(
+      '<For each={items} by={(item) => item.id}>{(item) => <li>{item}</li>}</For>',
+    )
+    const forWarnings = result.warnings.filter((w) => w.code === "missing-key-on-for")
+    expect(forWarnings).toHaveLength(0)
+  })
+
+  test("no warning on non-For elements without by", () => {
+    const result = transformJSX("<div each={items}>{text()}</div>")
+    const forWarnings = result.warnings.filter((w) => w.code === "missing-key-on-for")
+    expect(forWarnings).toHaveLength(0)
+  })
+})
+
+// ─── Hoisting in prop position ──────────────────────────────────────────────
+
+describe("JSX transform — static JSX attribute hoisting", () => {
+  test("hoists static JSX in a DOM element prop", () => {
+    const result = t("<div icon={<span>icon</span>} />")
+    expect(result).toContain("const _$h0")
+    expect(result).toContain("<span>icon</span>")
+  })
 })

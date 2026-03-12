@@ -1030,6 +1030,177 @@ describe("lazy()", () => {
   })
 })
 
+// ─── setContextStackProvider ──────────────────────────────────────────────────
+
+describe("setContextStackProvider", () => {
+  test("allows overriding the context stack provider", async () => {
+    const { setContextStackProvider } = await import("../context")
+    const customStack: Map<symbol, unknown>[] = []
+    const ctx = createContext("custom-default")
+
+    // Override with custom stack
+    setContextStackProvider(() => customStack)
+
+    // Push onto custom stack
+    customStack.push(new Map([[ctx.id, "custom-value"]]))
+    expect(useContext(ctx)).toBe("custom-value")
+    customStack.pop()
+    expect(useContext(ctx)).toBe("custom-default")
+
+    // Fully restore to module-level default stack
+    const { setContextStackProvider: restore } = await import("../context")
+    const _defaultStack: Map<symbol, unknown>[] = []
+    restore(() => _defaultStack)
+  })
+})
+
+// ─── ErrorBoundary advanced ──────────────────────────────────────────────────
+
+describe("ErrorBoundary — advanced", () => {
+  test("handler returns false when already in error state (double error)", () => {
+    let result: VNodeChild = null
+
+    runWithHooks(() => {
+      result = ErrorBoundary({
+        fallback: (err) => `Error: ${err}`,
+        children: "child",
+      })
+      return null
+    }, {})
+
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe("child")
+
+    // First error should be handled
+    const handled1 = dispatchToErrorBoundary(new Error("first"))
+    expect(handled1).toBe(true)
+    expect(getter()).toBe("Error: Error: first")
+
+    // Second error while already in error state should NOT be handled
+    const handled2 = dispatchToErrorBoundary(new Error("second"))
+    expect(handled2).toBe(false)
+
+    // Clean up the boundary
+    const { popErrorBoundary: pop } = require("../component")
+    pop()
+  })
+
+  test("reset function clears error and re-renders children", () => {
+    let result: VNodeChild = null
+    let capturedReset: (() => void) | undefined
+
+    runWithHooks(() => {
+      result = ErrorBoundary({
+        fallback: (err, reset) => {
+          capturedReset = reset
+          return `Error: ${err}`
+        },
+        children: "child content",
+      })
+      return null
+    }, {})
+
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe("child content")
+
+    // Trigger error
+    dispatchToErrorBoundary(new Error("test error"))
+    expect(getter()).toBe("Error: Error: test error")
+    expect(capturedReset).toBeDefined()
+
+    // Reset
+    capturedReset!()
+    expect(getter()).toBe("child content")
+
+    // Clean up
+    const { popErrorBoundary: pop } = require("../component")
+    pop()
+  })
+})
+
+// ─── Suspense advanced ──────────────────────────────────────────────────────
+
+describe("Suspense — advanced", () => {
+  test("evaluates function fallback when child is loading", () => {
+    const fallbackVNode = h("div", null, "fb-content")
+    const lazyFn = (() => h("div", null)) as unknown as ComponentFn & { __loading: () => boolean }
+    lazyFn.__loading = () => true
+    const child = h(lazyFn, null)
+
+    const node = Suspense({ fallback: () => fallbackVNode, children: child })
+    const getter = node.children[0] as () => VNodeChild
+    expect(getter()).toBe(fallbackVNode)
+  })
+
+  test("handles null children", () => {
+    const node = Suspense({ fallback: h("span", null, "loading") })
+    const getter = node.children[0] as () => VNodeChild
+    expect(getter()).toBeNull()
+  })
+
+  test("handles array children (not loading)", () => {
+    const children = [h("div", null, "a"), h("div", null, "b")]
+    const node = Suspense({
+      fallback: h("span", null, "loading"),
+      children: children as unknown as VNodeChild,
+    })
+    const getter = node.children[0] as () => VNodeChild
+    // Array is not a VNode with a type, so isLoading check should be false
+    const result = getter()
+    expect(result).toBe(children)
+  })
+})
+
+// ─── Show edge cases ────────────────────────────────────────────────────────
+
+describe("Show — edge cases", () => {
+  test("returns null when condition truthy but children is undefined", () => {
+    const getter = Show({ when: () => true }) as unknown as () => VNodeChild
+    expect(getter()).toBeNull()
+  })
+
+  test("returns null when condition falsy and fallback is undefined", () => {
+    const getter = Show({ when: () => false }) as unknown as () => VNodeChild
+    expect(getter()).toBeNull()
+  })
+})
+
+// ─── Switch edge cases ──────────────────────────────────────────────────────
+
+describe("Switch — edge cases", () => {
+  test("skips non-Match VNode children", () => {
+    const result = Switch({
+      fallback: "default",
+      children: [h("div", null, "not-match"), h(Match, { when: () => true }, "match-child")],
+    })
+    const getter = result as unknown as () => VNodeChild
+    // Should skip the div and match the Match branch
+    expect(getter()).toBe("match-child")
+  })
+
+  test("skips null children in branches", () => {
+    const result = Switch({
+      fallback: "default",
+      children: [null as unknown as VNodeChild, h(Match, { when: () => true }, "found")],
+    })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe("found")
+  })
+
+  test("Match with children in props.children (not vnode.children)", () => {
+    // When using explicit props.children instead of h() rest args
+    const matchVNode = {
+      type: Match,
+      props: { when: () => true, children: "from-props" },
+      children: [],
+      key: null,
+    } as unknown as VNodeChild
+    const result = Switch({ children: [matchVNode] })
+    const getter = result as unknown as () => VNodeChild
+    expect(getter()).toBe("from-props")
+  })
+})
+
 // ─── Dynamic ──────────────────────────────────────────────────────────────────
 
 describe("Dynamic", () => {

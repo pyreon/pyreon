@@ -296,4 +296,215 @@ describe("useHead — CSR", () => {
     expect(meta2).toBe(meta1)
     expect(meta2?.getAttribute("content")).toBe("updated")
   })
+
+  test("titleTemplate function applies to document.title in CSR", () => {
+    function Layout() {
+      useHead({ titleTemplate: (t: string) => (t ? `${t} - App` : "App") })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead({ title: "CSR Page" })
+      return h("span", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Layout, null) }), container)
+    expect(document.title).toBe("CSR Page - App")
+  })
+
+  test("removes stale elements when tags change", () => {
+    const show = signal(true)
+    function Page() {
+      useHead(() => {
+        const tags: { name: string; content: string }[] = []
+        if (show()) tags.push({ name: "keywords", content: "pyreon" })
+        return { meta: tags }
+      })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.head.querySelector('meta[name="keywords"]')).not.toBeNull()
+    show.set(false)
+    expect(document.head.querySelector('meta[name="keywords"]')).toBeNull()
+  })
+
+  test("patchAttrs removes old attributes no longer in props", () => {
+    const attrs = signal<Record<string, string>>({ name: "test", content: "value" })
+    function Page() {
+      useHead(() => ({ meta: [attrs()] }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const el = document.head.querySelector('meta[name="test"]')
+    expect(el?.getAttribute("content")).toBe("value")
+    // Change attrs to remove 'content'
+    attrs.set({ name: "test" })
+    const el2 = document.head.querySelector('meta[name="test"]')
+    expect(el2?.getAttribute("content")).toBeNull()
+  })
+
+  test("syncElementAttrs removes previously managed attrs", () => {
+    const show = signal(true)
+    function Page() {
+      useHead(() => (show() ? { htmlAttrs: { lang: "en", dir: "ltr" } } : { htmlAttrs: {} }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.documentElement.getAttribute("lang")).toBe("en")
+    expect(document.documentElement.getAttribute("dir")).toBe("ltr")
+    show.set(false)
+    // Previously managed attrs should be removed
+    expect(document.documentElement.getAttribute("lang")).toBeNull()
+    expect(document.documentElement.getAttribute("dir")).toBeNull()
+  })
+
+  test("link tag key deduplication by rel when no href", async () => {
+    function Page() {
+      useHead({
+        link: [{ rel: "icon" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("rel=")
+  })
+
+  test("link tag key uses index when no href or rel", async () => {
+    function Page() {
+      useHead({
+        link: [{ crossorigin: "anonymous" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<link")
+  })
+
+  test("meta tag key uses property when name is absent", async () => {
+    function Page() {
+      useHead({
+        meta: [{ property: "og:title", content: "OG" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('property="og:title"')
+  })
+
+  test("meta tag key falls back to index when no name or property", async () => {
+    function Page() {
+      useHead({
+        meta: [{ charset: "utf-8" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('charset="utf-8"')
+  })
+
+  test("script tag with src uses src as key", async () => {
+    function Page() {
+      useHead({
+        script: [{ src: "/app.js" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('src="/app.js"')
+  })
+
+  test("script tag without src uses index as key", async () => {
+    function Page() {
+      useHead({
+        script: [{ children: "console.log('hi')" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("console.log('hi')")
+  })
+
+  test("base tag renders in SSR", async () => {
+    function Page() {
+      useHead({ base: { href: "/" } })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<base")
+    expect(head).toContain('href="/"')
+  })
+
+  test("noscript raw content escaping in SSR", async () => {
+    function Page() {
+      useHead({
+        noscript: [{ children: "<p>Enable JS</p>" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // noscript is a raw tag, content preserved
+    expect(head).toContain("<p>Enable JS</p>")
+  })
+
+  test("style content escaping in SSR prevents tag injection", async () => {
+    function Page() {
+      useHead({
+        style: [{ children: "body { color: red } </style><script>" }],
+      })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // Closing tag should be escaped
+    expect(head).toContain("<\\/style>")
+  })
+
+  test("unkeyed tags are all preserved in resolve", () => {
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [{ tag: "meta", props: { name: "a", content: "1" } }] })
+    ctx.add(id2, { tags: [{ tag: "meta", props: { name: "b", content: "2" } }] })
+    const tags = ctx.resolve()
+    expect(tags).toHaveLength(2)
+    ctx.remove(id1)
+    ctx.remove(id2)
+  })
+
+  test("title tag without children renders empty", async () => {
+    function Page() {
+      useHead({ title: "" })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<title></title>")
+  })
+
+  test("useHead with no context is a no-op", () => {
+    // Calling useHead outside of any HeadProvider should not throw
+    expect(() => {
+      useHead({ title: "No Provider" })
+    }).not.toThrow()
+  })
+
+  test("CSR sync creates new elements for unkeyed tags", () => {
+    function Page() {
+      useHead({ meta: [{ name: "viewport", content: "width=device-width" }] })
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const meta = document.head.querySelector('meta[name="viewport"]')
+    expect(meta).not.toBeNull()
+  })
+
+  test("CSR patchAttrs sets new attribute values", () => {
+    const val = signal("initial")
+    function Page() {
+      useHead(() => ({
+        meta: [{ name: "test-patch", content: val() }],
+      }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const el = document.head.querySelector('meta[name="test-patch"]')
+    expect(el?.getAttribute("content")).toBe("initial")
+    val.set("changed")
+    expect(el?.getAttribute("content")).toBe("changed")
+  })
 })

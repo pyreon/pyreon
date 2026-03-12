@@ -41,6 +41,24 @@ describe("HTML template", () => {
     expect(scripts).not.toContain("__PYREON_LOADER_DATA__")
     expect(scripts).toContain('src="/entry.js"')
   })
+
+  test("buildScripts with null loaderData only emits client entry", () => {
+    const scripts = buildScripts("/entry.js", null)
+    expect(scripts).not.toContain("__PYREON_LOADER_DATA__")
+    expect(scripts).toContain('src="/entry.js"')
+  })
+
+  test("processTemplate works with custom template string", () => {
+    const tpl = "<head><!--pyreon-head--></head><main><!--pyreon-app--></main><!--pyreon-scripts-->"
+    const result = processTemplate(tpl, { head: "<title>X</title>", app: "APP", scripts: "JS" })
+    expect(result).toBe("<head><title>X</title></head><main>APP</main>JS")
+  })
+
+  test("DEFAULT_TEMPLATE contains all three placeholders", () => {
+    expect(DEFAULT_TEMPLATE).toContain("<!--pyreon-head-->")
+    expect(DEFAULT_TEMPLATE).toContain("<!--pyreon-app-->")
+    expect(DEFAULT_TEMPLATE).toContain("<!--pyreon-scripts-->")
+  })
 })
 
 // ─── SSR Handler ─────────────────────────────────────────────────────────────
@@ -112,6 +130,89 @@ describe("createHandler", () => {
     const res = await handler(new Request("http://localhost/"))
     expect(res.status).toBe(500)
     expect(await res.text()).toBe("Internal Server Error")
+  })
+
+  test("handles URL with query string", async () => {
+    const handler = createHandler({ App: Home, routes })
+    const res = await handler(new Request("http://localhost/?foo=bar&baz=1"))
+    expect(res.status).toBe(200)
+    const html = await res.text()
+    expect(html).toContain("<h1>Home</h1>")
+  })
+})
+
+// ─── Stream mode ──────────────────────────────────────────────────────────────
+
+describe("createHandler — stream mode", () => {
+  const Home: ComponentFn = () => h("h1", null, "Streamed")
+  const routes = [{ path: "/", component: Home }]
+
+  test("returns a streaming response", async () => {
+    const handler = createHandler({ App: Home, routes, mode: "stream" })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.status).toBe(200)
+    expect(res.headers.get("Content-Type")).toContain("text/html")
+    const html = await res.text()
+    expect(html).toContain("<h1>Streamed</h1>")
+  })
+
+  test("stream mode uses default template placeholders", async () => {
+    const handler = createHandler({ App: Home, routes, mode: "stream" })
+    const res = await handler(new Request("http://localhost/"))
+    const html = await res.text()
+    // Should contain the template shell
+    expect(html).toContain("<!DOCTYPE html>")
+    expect(html).toContain("</html>")
+    // Script should be present
+    expect(html).toContain('src="/src/entry-client.ts"')
+  })
+
+  test("stream mode with custom template", async () => {
+    const template =
+      "<html><!--pyreon-head--><body><!--pyreon-app--><!--pyreon-scripts--></body></html>"
+    const handler = createHandler({ App: Home, routes, mode: "stream", template })
+    const res = await handler(new Request("http://localhost/"))
+    const html = await res.text()
+    expect(html).toContain("<h1>Streamed</h1>")
+    expect(html).toContain("</body></html>")
+  })
+
+  test("stream mode with custom client entry", async () => {
+    const handler = createHandler({
+      App: Home,
+      routes,
+      mode: "stream",
+      clientEntry: "/dist/app.js",
+    })
+    const res = await handler(new Request("http://localhost/"))
+    const html = await res.text()
+    expect(html).toContain('src="/dist/app.js"')
+  })
+
+  test("stream mode template without <!--pyreon-app--> throws", async () => {
+    const badTemplate = "<html><!--pyreon-head--><!--pyreon-scripts--></html>"
+    const handler = createHandler({ App: Home, routes, mode: "stream", template: badTemplate })
+    // The stream rendering should throw because template has no <!--pyreon-app-->
+    await expect(handler(new Request("http://localhost/"))).rejects.toThrow(
+      "Template must contain <!--pyreon-app-->",
+    )
+  })
+
+  test("stream mode includes middleware-set headers", async () => {
+    const mw: Middleware = (ctx) => {
+      ctx.headers.set("X-Custom", "test-value")
+    }
+    const handler = createHandler({ App: Home, routes, mode: "stream", middleware: [mw] })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.headers.get("X-Custom")).toBe("test-value")
+  })
+
+  test("stream mode middleware can short-circuit", async () => {
+    const mw: Middleware = () => new Response("blocked", { status: 403 })
+    const handler = createHandler({ App: Home, routes, mode: "stream", middleware: [mw] })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.status).toBe(403)
+    expect(await res.text()).toBe("blocked")
   })
 })
 
@@ -213,6 +314,73 @@ describe("island", () => {
     expect(parsedProps.sym).toBeUndefined()
     expect(parsedProps.nested).toEqual({ a: 1 })
   })
+
+  test("island() strips children prop from serialized props", async () => {
+    const Inner: ComponentFn = () => h("div", null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: "Widget" })
+
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      title: "test",
+      children: h("span", null, "child"),
+    })
+    const parsedProps = JSON.parse(vnode.props["data-props"] as string)
+    expect(parsedProps.title).toBe("test")
+    expect(parsedProps.children).toBeUndefined()
+  })
+
+  test("island() strips undefined values from serialized props", async () => {
+    const Inner: ComponentFn = () => h("div", null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: "Widget" })
+
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)({
+      present: "yes",
+      missing: undefined,
+    })
+    const parsedProps = JSON.parse(vnode.props["data-props"] as string)
+    expect(parsedProps.present).toBe("yes")
+    expect("missing" in parsedProps).toBe(false)
+  })
+
+  test("island() resolves direct function module (not { default })", async () => {
+    const Inner: ComponentFn = () => h("span", null, "direct")
+    const Widget = island(
+      () => Promise.resolve(Inner) as Promise<{ default: ComponentFn }>,
+      { name: "Direct" },
+    )
+
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    expect(vnode.type).toBe("pyreon-island")
+    expect(vnode.props["data-component"]).toBe("Direct")
+  })
+
+  test("island() defaults hydrate to 'load'", () => {
+    const Inner: ComponentFn = () => h("div", null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: "NoHydrate" })
+    expect((Widget as unknown as { hydrate: string }).hydrate).toBe("load")
+  })
+
+  test("island() metadata properties are non-writable", () => {
+    const Inner: ComponentFn = () => h("div", null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), {
+      name: "Frozen",
+      hydrate: "visible",
+    })
+    const meta = Widget as unknown as { __island: boolean; hydrate: string }
+    expect(meta.__island).toBe(true)
+    expect(meta.hydrate).toBe("visible")
+  })
+
+  test("island() serializes empty props as empty object", async () => {
+    const Inner: ComponentFn = () => h("div", null)
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: "Empty" })
+
+    const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
+      {},
+    )
+    expect(vnode.props["data-props"]).toBe("{}")
+  })
 })
 
 // ─── SSG ─────────────────────────────────────────────────────────────────────
@@ -284,6 +452,153 @@ describe("prerender", () => {
     })
 
     expect(result.pages).toBe(1)
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("records errors for non-ok responses", async () => {
+    // Handler that returns 404 for /missing
+    const handler = async (req: Request) => {
+      const url = new URL(req.url)
+      if (url.pathname === "/missing") {
+        return new Response("Not Found", { status: 404 })
+      }
+      return new Response("<html>OK</html>", { status: 200 })
+    }
+
+    const tmpDir = `/tmp/pyreon-ssg-errors-${Date.now()}`
+    const result = await prerender({
+      handler,
+      paths: ["/", "/missing"],
+      outDir: tmpDir,
+    })
+
+    expect(result.pages).toBe(1)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]?.path).toBe("/missing")
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("records errors when handler throws", async () => {
+    const handler = async (_req: Request) => {
+      throw new Error("handler exploded")
+    }
+
+    const tmpDir = `/tmp/pyreon-ssg-throw-${Date.now()}`
+    const result = await prerender({
+      handler,
+      paths: ["/"],
+      outDir: tmpDir,
+    })
+
+    expect(result.pages).toBe(0)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]?.path).toBe("/")
+    expect(result.errors[0]?.error).toBeInstanceOf(Error)
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+  })
+
+  test("handles .html path suffix", async () => {
+    const handler = async (_req: Request) =>
+      new Response("<html>page</html>", { status: 200 })
+
+    const tmpDir = `/tmp/pyreon-ssg-html-${Date.now()}`
+    const result = await prerender({
+      handler,
+      paths: ["/custom.html"],
+      outDir: tmpDir,
+    })
+
+    expect(result.pages).toBe(1)
+
+    const { readFile, rm } = await import("node:fs/promises")
+    const content = await readFile(`${tmpDir}/custom.html`, "utf-8")
+    expect(content).toBe("<html>page</html>")
+
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("onPage callback receives path and html", async () => {
+    const handler = async (_req: Request) =>
+      new Response("<html>content</html>", { status: 200 })
+
+    const received: Array<{ path: string; html: string }> = []
+    const tmpDir = `/tmp/pyreon-ssg-onpage-${Date.now()}`
+    await prerender({
+      handler,
+      paths: ["/", "/about"],
+      outDir: tmpDir,
+      onPage: (path, html) => {
+        received.push({ path, html })
+      },
+    })
+
+    expect(received).toHaveLength(2)
+    expect(received.some((r) => r.path === "/")).toBe(true)
+    expect(received.some((r) => r.path === "/about")).toBe(true)
+    expect(received[0]?.html).toBe("<html>content</html>")
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("uses custom origin", async () => {
+    let receivedUrl = ""
+    const handler = async (req: Request) => {
+      receivedUrl = req.url
+      return new Response("<html></html>", { status: 200 })
+    }
+
+    const tmpDir = `/tmp/pyreon-ssg-origin-${Date.now()}`
+    await prerender({
+      handler,
+      paths: ["/test"],
+      outDir: tmpDir,
+      origin: "https://example.com",
+    })
+
+    expect(receivedUrl).toBe("https://example.com/test")
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("paths as sync function", async () => {
+    const handler = async (_req: Request) =>
+      new Response("<html></html>", { status: 200 })
+
+    const tmpDir = `/tmp/pyreon-ssg-sync-fn-${Date.now()}`
+    const result = await prerender({
+      handler,
+      paths: () => ["/a", "/b"],
+      outDir: tmpDir,
+    })
+
+    expect(result.pages).toBe(2)
+
+    const { rm } = await import("node:fs/promises")
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test("batches more than 10 paths", async () => {
+    const handler = async (_req: Request) =>
+      new Response("<html>ok</html>", { status: 200 })
+
+    const paths = Array.from({ length: 15 }, (_, i) => `/page-${i}`)
+    const tmpDir = `/tmp/pyreon-ssg-batch-${Date.now()}`
+    const result = await prerender({
+      handler,
+      paths,
+      outDir: tmpDir,
+    })
+
+    expect(result.pages).toBe(15)
+    expect(result.errors).toHaveLength(0)
 
     const { rm } = await import("node:fs/promises")
     await rm(tmpDir, { recursive: true, force: true })

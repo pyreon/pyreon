@@ -1,4 +1,4 @@
-import { batch } from "../batch"
+import { batch, nextTick } from "../batch"
 import { effect } from "../effect"
 import { signal } from "../signal"
 
@@ -53,5 +53,17 @@ describe("batch", () => {
       s.set(3)
     })
     expect(runs).toBe(2)
+  })
+
+  test("nextTick resolves after microtasks flush", async () => {
+    const s = signal(0)
+    let seen = 0
+    effect(() => {
+      seen = s()
+    })
+
+    s.set(42)
+    await nextTick()
+    expect(seen).toBe(42)
   })
 })
