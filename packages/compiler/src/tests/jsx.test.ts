@@ -723,7 +723,7 @@ describe("JSX transform — template emission", () => {
 
 describe("JSX transform — warnings", () => {
   test("warns on <For> without by prop", () => {
-    const result = transformJSX('<For each={items}>{(item) => <li>{item}</li>}</For>')
+    const result = transformJSX("<For each={items}>{(item) => <li>{item}</li>}</For>")
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]!.code).toBe("missing-key-on-for")
     expect(result.warnings[0]!.line).toBeGreaterThan(0)
@@ -732,7 +732,7 @@ describe("JSX transform — warnings", () => {
 
   test("no warning on <For> with by prop", () => {
     const result = transformJSX(
-      '<For each={items} by={(item) => item.id}>{(item) => <li>{item}</li>}</For>',
+      "<For each={items} by={(item) => item.id}>{(item) => <li>{item}</li>}</For>",
     )
     const forWarnings = result.warnings.filter((w) => w.code === "missing-key-on-for")
     expect(forWarnings).toHaveLength(0)

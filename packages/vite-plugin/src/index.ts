@@ -175,8 +175,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
  * The arguments are extracted via balanced-paren matching in `injectHmr`
  * to handle arbitrary nesting like `signal(compute(getValue(x)))`.
  */
-const SIGNAL_PREFIX_RE =
-  /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
+const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
 
 /**
  * Detect whether the module exports any component-like functions
@@ -228,9 +227,15 @@ function injectHmr(code: string, moduleId: string): string {
   if (hasSignals) {
     const escapedId = JSON.stringify(moduleId)
     // Process matches in reverse order so indices stay valid after replacement
-    const matches: Array<{ start: number; end: number; prefix: string; name: string; args: string }> = []
-    let m: RegExpExecArray | null
-    while ((m = SIGNAL_PREFIX_RE.exec(code)) !== null) {
+    const matches: Array<{
+      start: number
+      end: number
+      prefix: string
+      name: string
+      args: string
+    }> = []
+    let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
+    while (m !== null) {
       const argsStart = m.index + m[0].length
       const args = extractBalancedArgs(code, argsStart)
       if (args === null) continue // unbalanced — skip
@@ -241,6 +246,7 @@ function injectHmr(code: string, moduleId: string): string {
         name: m[2]!,
         args,
       })
+      m = SIGNAL_PREFIX_RE.exec(code)
     }
     SIGNAL_PREFIX_RE.lastIndex = 0
 

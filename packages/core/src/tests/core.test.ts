@@ -1,9 +1,9 @@
 import {
   createContext,
   createRef,
+  Dynamic,
   defineComponent,
   dispatchToErrorBoundary,
-  Dynamic,
   ErrorBoundary,
   For,
   ForSymbol,

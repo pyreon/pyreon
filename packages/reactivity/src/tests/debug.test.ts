@@ -1,10 +1,4 @@
-import {
-  _notifyTraceListeners,
-  inspectSignal,
-  isTracing,
-  onSignalUpdate,
-  why,
-} from "../debug"
+import { _notifyTraceListeners, inspectSignal, isTracing, onSignalUpdate, why } from "../debug"
 import { signal } from "../signal"
 
 describe("debug", () => {
@@ -113,11 +107,11 @@ describe("debug", () => {
 
       await new Promise((r) => queueMicrotask(() => r(undefined)))
 
-      const noUpdateLog = logs.find((args) =>
-        typeof args[0] === "string" ? args[0].includes("No signal") : false,
-      ) || logs.find((args) =>
-        typeof args[1] === "string" ? args[1].includes("No signal") : false,
-      )
+      const noUpdateLog =
+        logs.find((args) =>
+          typeof args[0] === "string" ? args[0].includes("No signal") : false,
+        ) ||
+        logs.find((args) => (typeof args[1] === "string" ? args[1].includes("No signal") : false))
       expect(noUpdateLog).toBeDefined()
       console.log = origLog
     })

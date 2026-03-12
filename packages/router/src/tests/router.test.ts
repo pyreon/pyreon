@@ -2876,9 +2876,7 @@ describe("hydrateLoaderData partial data", () => {
         path: "/parent",
         component: Home,
         loader: async () => "parent",
-        children: [
-          { path: "child", component: About, loader: async () => "child" },
-        ],
+        children: [{ path: "child", component: About, loader: async () => "child" }],
       },
     ]
     const router = createRouter({ routes: loaderRoutes, url: "/parent/child" }) as RouterInstance
@@ -3064,29 +3062,71 @@ describe("parseQuery — edge cases for branch coverage", () => {
 describe("ScrollManager — branch coverage for scroll behaviors", () => {
   test("restore with 'none' behavior does nothing", async () => {
     const sm = new ScrollManager("none")
-    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    const route = {
+      path: "/test",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: {},
+    } as ResolvedRoute
     sm.restore(route, route)
   })
 
   test("restore with 'restore' behavior uses saved position", async () => {
     const sm = new ScrollManager("restore")
     sm.save("/test") // Save current scroll position
-    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    const route = {
+      path: "/test",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: {},
+    } as ResolvedRoute
     sm.restore(route, route)
   })
 
   test("restore with number behavior scrolls to number", async () => {
     const sm = new ScrollManager()
-    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: { scrollBehavior: 42 } } as unknown as ResolvedRoute
-    const from = { path: "/from", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    const route = {
+      path: "/test",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: { scrollBehavior: 42 },
+    } as unknown as ResolvedRoute
+    const from = {
+      path: "/from",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: {},
+    } as ResolvedRoute
     sm.restore(route, from)
   })
 
   test("restore with function behavior calls function and applies result", async () => {
     const sm = new ScrollManager()
     const fn = (_to: ResolvedRoute, _from: ResolvedRoute, _saved: number | null) => "none" as const
-    const route = { path: "/test", matched: [], params: {}, query: {}, hash: "", meta: { scrollBehavior: fn } } as unknown as ResolvedRoute
-    const from = { path: "/from", matched: [], params: {}, query: {}, hash: "", meta: {} } as ResolvedRoute
+    const route = {
+      path: "/test",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: { scrollBehavior: fn },
+    } as unknown as ResolvedRoute
+    const from = {
+      path: "/from",
+      matched: [],
+      params: {},
+      query: {},
+      hash: "",
+      meta: {},
+    } as ResolvedRoute
     sm.restore(route, from)
   })
 
@@ -3139,7 +3179,10 @@ describe("router — navigation cancellation by newer navigation", () => {
   })
 
   test("router.back() calls history.back (line 343)", () => {
-    const router = createRouter({ routes: [{ path: "/", component: () => h("div", null) }], mode: "hash" })
+    const router = createRouter({
+      routes: [{ path: "/", component: () => h("div", null) }],
+      mode: "hash",
+    })
     const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => {})
     router.back()
     expect(backSpy).toHaveBeenCalled()
@@ -3148,7 +3191,10 @@ describe("router — navigation cancellation by newer navigation", () => {
   })
 
   test("removeGuard and removeHook when already removed (lines 350, 358)", async () => {
-    const router = createRouter({ routes: [{ path: "/", component: () => h("div", null) }], mode: "hash" })
+    const router = createRouter({
+      routes: [{ path: "/", component: () => h("div", null) }],
+      mode: "hash",
+    })
     const removeGuard = router.beforeEach(() => true)
     const removeHook = router.afterEach(() => {})
     // Remove once

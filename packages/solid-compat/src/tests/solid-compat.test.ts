@@ -22,9 +22,9 @@ import {
   onMount,
   runWithOwner,
   Show,
-  splitProps,
   Suspense,
   Switch,
+  splitProps,
   untrack,
   useContext,
 } from "../index"

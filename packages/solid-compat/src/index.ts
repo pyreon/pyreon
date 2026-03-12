@@ -181,7 +181,7 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   for (const key of Reflect.ownKeys(descriptors)) {
     const desc = descriptors[key as string]
     if (!desc) continue
-    const target = (typeof key === "string" && keySet.has(key)) ? picked : rest
+    const target = typeof key === "string" && keySet.has(key) ? picked : rest
     if (desc.get) {
       Object.defineProperty(target, key, {
         get: desc.get,

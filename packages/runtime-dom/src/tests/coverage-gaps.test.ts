@@ -30,8 +30,7 @@ import {
   registerComponent,
   unregisterComponent,
 } from "../devtools"
-import type { Directive } from "../props"
-import { applyProp } from "../props"
+import { warnHydrationMismatch } from "../hydration-debug"
 import {
   KeepAlive as _KeepAlive,
   Transition as _Transition,
@@ -46,9 +45,8 @@ import {
   setSanitizer,
 } from "../index"
 import { mountChild } from "../mount"
-import {
-  warnHydrationMismatch,
-} from "../hydration-debug"
+import type { Directive } from "../props"
+import { applyProp } from "../props"
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
 const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>
@@ -76,9 +74,7 @@ describe("hydration-debug — disabled warnings branch", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     enableHydrationWarnings()
     warnHydrationMismatch("tag", "div", "span", "root > test")
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Hydration mismatch"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Hydration mismatch"))
     warnSpy.mockRestore()
   })
 })
@@ -254,10 +250,7 @@ describe("devtools — tooltip repositioning and click paths", () => {
 describe("KeepAlive — edge cases", () => {
   test("KeepAlive with no active prop defaults to visible", () => {
     const el = container()
-    const unmount = mount(
-      h(KeepAlive, {}, h("span", null, "always-visible")),
-      el,
-    )
+    const unmount = mount(h(KeepAlive, {}, h("span", null, "always-visible")), el)
     // Should render and be visible (active defaults to true)
     expect(el.querySelector("span")?.textContent).toBe("always-visible")
     unmount()
@@ -266,10 +259,7 @@ describe("KeepAlive — edge cases", () => {
   test("KeepAlive toggles visibility without remounting", () => {
     const el = container()
     const active = signal(true)
-    const unmount = mount(
-      h(KeepAlive, { active: () => active() }, h("span", null, "toggle")),
-      el,
-    )
+    const unmount = mount(h(KeepAlive, { active: () => active() }, h("span", null, "toggle")), el)
     expect(el.querySelector("span")?.textContent).toBe("toggle")
 
     // Hide
@@ -286,10 +276,7 @@ describe("KeepAlive — edge cases", () => {
 
   test("KeepAlive with no children mounts empty container", () => {
     const el = container()
-    const unmount = mount(
-      h(KeepAlive, { active: () => true }),
-      el,
-    )
+    const unmount = mount(h(KeepAlive, { active: () => true }), el)
     // Container div exists but no children
     expect(el.querySelector("div")).not.toBeNull()
     unmount()
@@ -306,7 +293,9 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal(initial)
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -332,7 +321,9 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal([{ id: 1 }, { id: 1 }]) // duplicate keys
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -342,9 +333,7 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
       el,
     )
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Duplicate key"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Duplicate key"))
     warnSpy.mockRestore()
     el.remove()
   })
@@ -356,7 +345,9 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal([{ id: 1 }, { id: 2 }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -369,9 +360,7 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     // Update with duplicate keys
     items.set([{ id: 3 }, { id: 3 }])
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Duplicate key"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Duplicate key"))
     warnSpy.mockRestore()
     el.remove()
   })
@@ -381,7 +370,9 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal([{ id: 1 }, { id: 2 }, { id: 3 }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -405,12 +396,16 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal([{ id: 1 }])
 
     const Comp = defineComponent(() => {
-      onUnmount(() => { cleanupCalled++ })
+      onUnmount(() => {
+        cleanupCalled++
+      })
       return h("span", null, "has-cleanup")
     })
 
     const unmount = mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -428,10 +423,15 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
 
   test("mountFor with NativeItem entries", () => {
     const el = container()
-    const items = signal([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    const items = signal([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -449,7 +449,11 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     expect(el.querySelectorAll("b").length).toBe(2)
 
     // Add a new NativeItem entry — step 3 mount new entries with NativeItem
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }, { id: 3, label: "c" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+      { id: 3, label: "c" },
+    ])
     expect(el.querySelectorAll("b").length).toBe(3)
 
     el.remove()
@@ -461,14 +465,18 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     const items = signal([{ id: 1, label: "a" }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => {
             const native = _tpl("<b></b>", (root) => {
               root.textContent = r.label
-              return () => { cleanupCount++ }
+              return () => {
+                cleanupCount++
+              }
             })
             return native as unknown as ReturnType<typeof h>
           },
@@ -478,7 +486,10 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
     )
 
     // Add new NativeItem with cleanup — exercises step 3 NativeItem cleanup path
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "new" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "new" },
+    ])
     expect(el.querySelectorAll("b").length).toBe(2)
 
     el.remove()
@@ -629,10 +640,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
     const el = container()
     el.innerHTML = "<p>existing</p>"
     const content = signal<VNodeChild>(null)
-    const cleanup = hydrateRoot(
-      el,
-      (() => content()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => content()) as unknown as VNodeChild)
     // Accessor returns null — comment marker inserted before existing <p>
     cleanup()
   })
@@ -641,10 +649,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
     const el = container()
     el.innerHTML = ""
     const content = signal<VNodeChild>(null)
-    const cleanup = hydrateRoot(
-      el,
-      (() => content()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => content()) as unknown as VNodeChild)
     cleanup()
   })
 
@@ -653,10 +658,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
     el.innerHTML = "<div>not text</div>" // Element instead of text node
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const text = signal("hello")
-    const cleanup = hydrateRoot(
-      el,
-      (() => text()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => text()) as unknown as VNodeChild)
     // Should hit the mismatch path (line 119)
     cleanup()
     warnSpy.mockRestore()
@@ -666,10 +668,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
     const el = container()
     el.innerHTML = ""
     const content = signal<VNodeChild>(h("span", null, "dynamic"))
-    const cleanup = hydrateRoot(
-      el,
-      (() => content()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => content()) as unknown as VNodeChild)
     cleanup()
   })
 
@@ -712,10 +711,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
   test("hydrate array of children", () => {
     const el = container()
     el.innerHTML = "<span>a</span><span>b</span>"
-    const cleanup = hydrateRoot(
-      el,
-      h(Fragment, null, h("span", null, "a"), h("span", null, "b")),
-    )
+    const cleanup = hydrateRoot(el, h(Fragment, null, h("span", null, "a"), h("span", null, "b")))
     cleanup()
   })
 
@@ -731,10 +727,7 @@ describe("hydrate.ts — For and reactive accessor branches", () => {
     const el = container()
     el.innerHTML = "<div>hello</div>"
     const text = signal("hello")
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, (() => text()) as unknown as VNodeChild),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, (() => text()) as unknown as VNodeChild))
     // Text should be reactive
     text.set("world")
     cleanup()
@@ -754,8 +747,12 @@ describe("Transition — leave cancel and re-enter", () => {
       h(Transition, {
         show: visible,
         name: "fade",
-        onBeforeEnter: () => { beforeEnterCount++ },
-        onBeforeLeave: () => { beforeLeaveCount++ },
+        onBeforeEnter: () => {
+          beforeEnterCount++
+        },
+        onBeforeLeave: () => {
+          beforeLeaveCount++
+        },
         children: h("div", { id: "reenter-test" }, "content"),
       }),
       el,
@@ -787,7 +784,9 @@ describe("Transition — leave cancel and re-enter", () => {
         show: () => true,
         name: "fade",
         appear: true,
-        onAfterEnter: () => { afterEnterCalled = true },
+        onAfterEnter: () => {
+          afterEnterCalled = true
+        },
         children: h("div", { id: "appear-test" }, "appear"),
       }),
       el,
@@ -848,7 +847,9 @@ describe("TransitionGroup — leave and enter edge cases", () => {
         keyFn: (item: { id: number }) => item.id,
         render: (item: { id: number; label: string }) =>
           h("span", { class: "tg-item" }, item.label),
-        onBeforeEnter: () => { enterCount++ },
+        onBeforeEnter: () => {
+          enterCount++
+        },
       }),
       el,
     )
@@ -867,9 +868,7 @@ describe("TransitionGroup — leave and enter edge cases", () => {
     ])
 
     // Use component type child so ref won't be injected (line 171)
-    const ItemComp = defineComponent((props: { label: string }) =>
-      h("span", null, props.label),
-    )
+    const ItemComp = defineComponent((props: { label: string }) => h("span", null, props.label))
 
     mount(
       h(TransitionGroup, {
@@ -908,8 +907,12 @@ describe("TransitionGroup — leave and enter edge cases", () => {
         keyFn: (item: { id: number }) => item.id,
         render: (item: { id: number; label: string }) =>
           h("span", { class: "leave-item" }, item.label),
-        onBeforeLeave: () => { beforeLeaveCalled = true },
-        onAfterLeave: () => { afterLeaveCalled = true },
+        onBeforeLeave: () => {
+          beforeLeaveCalled = true
+        },
+        onAfterLeave: () => {
+          afterLeaveCalled = true
+        },
       }),
       el,
     )
@@ -945,10 +948,7 @@ describe("mount.ts — nested element branches", () => {
     const ref = createRef<HTMLElement>()
 
     // Inner element has ref but no reactive props
-    const unmount = mount(
-      h("div", null, h("span", { ref }, "with-ref-only")),
-      el,
-    )
+    const unmount = mount(h("div", null, h("span", { ref }, "with-ref-only")), el)
 
     expect(ref.current).not.toBeNull()
     expect(ref.current?.textContent).toBe("with-ref-only")
@@ -964,7 +964,11 @@ describe("mount.ts — nested element branches", () => {
 
     // Inner element with reactive children but no ref, no propCleanup
     const unmount = mount(
-      h("div", null, h("span", null, () => text())),
+      h(
+        "div",
+        null,
+        h("span", null, () => text()),
+      ),
       el,
     )
 
@@ -1025,7 +1029,9 @@ describe("mount.ts — nested element branches", () => {
 
     const Comp = defineComponent(() => {
       onMount(() => {
-        return () => { mountCleanupCalled = true }
+        return () => {
+          mountCleanupCalled = true
+        }
       })
       return h("span", null, "with-mount-cleanup")
     })
@@ -1086,10 +1092,7 @@ describe("mount.ts — nested element branches", () => {
 describe("nodes.ts — mountKeyedList branches", () => {
   test("mountKeyedList fast clear path", () => {
     const el = container()
-    const items = signal([
-      h("span", { key: 1 }, "a"),
-      h("span", { key: 2 }, "b"),
-    ] as VNodeChild)
+    const items = signal([h("span", { key: 1 }, "a"), h("span", { key: 2 }, "b")] as VNodeChild)
 
     mount(h("div", null, (() => items()) as VNodeChild), el)
     expect(el.querySelectorAll("span").length).toBe(2)
@@ -1111,10 +1114,7 @@ describe("nodes.ts — mountKeyedList branches", () => {
     expect(el.querySelectorAll("span").length).toBe(3)
 
     // Remove middle item
-    items.set([
-      h("span", { key: 1 }, "a"),
-      h("span", { key: 3 }, "c"),
-    ] as unknown as VNodeChild)
+    items.set([h("span", { key: 1 }, "a"), h("span", { key: 3 }, "c")] as unknown as VNodeChild)
     expect(el.querySelectorAll("span").length).toBe(2)
   })
 
@@ -1154,7 +1154,9 @@ describe("nodes.ts — mountFor small-k and clearBetween paths", () => {
     ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1188,7 +1190,9 @@ describe("nodes.ts — mountFor small-k and clearBetween paths", () => {
     ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1245,7 +1249,9 @@ describe("nodes.ts — mountFor small-k and clearBetween paths", () => {
     const items = signal(initial)
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1301,7 +1307,9 @@ describe("nodes.ts — mountFor small-k and clearBetween paths", () => {
     ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1381,8 +1389,14 @@ describe("devtools — overlay paths with mocked elementFromPoint", () => {
     // Mock getBoundingClientRect to return rect.top < 35
     const origGetBCR = target.getBoundingClientRect.bind(target)
     target.getBoundingClientRect = () => ({
-      top: 10, left: 10, width: 100, height: 20,
-      bottom: 30, right: 110, x: 10, y: 10,
+      top: 10,
+      left: 10,
+      width: 100,
+      height: 20,
+      bottom: 30,
+      right: 110,
+      x: 10,
+      y: 10,
       toJSON: () => {},
     })
 
@@ -1614,8 +1628,14 @@ describe("devtools — direct handler calls", () => {
     registerComponent("direct-mm", "DirectMM", target, null)
 
     target.getBoundingClientRect = () => ({
-      top: 100, left: 50, width: 100, height: 50,
-      bottom: 150, right: 150, x: 50, y: 100,
+      top: 100,
+      left: 50,
+      width: 100,
+      height: 50,
+      bottom: 150,
+      right: 150,
+      x: 50,
+      y: 100,
       toJSON: () => {},
     })
 
@@ -1647,8 +1667,14 @@ describe("devtools — direct handler calls", () => {
     registerComponent("direct-mm2", "DirectMM2", target, null)
 
     target.getBoundingClientRect = () => ({
-      top: 10, left: 50, width: 100, height: 20,
-      bottom: 30, right: 150, x: 50, y: 10,
+      top: 10,
+      left: 50,
+      width: 100,
+      height: 20,
+      bottom: 30,
+      right: 150,
+      x: 50,
+      y: 10,
       toJSON: () => {},
     })
 
@@ -1720,7 +1746,9 @@ describe("hydrate.ts — additional reactive accessor branches", () => {
     const content = signal<VNodeChild>(null)
     const cleanup = hydrateRoot(
       el,
-      h(Fragment, null,
+      h(
+        Fragment,
+        null,
         (() => content()) as unknown as VNodeChild,
         h("span", null, "existing-content"),
       ),
@@ -1732,10 +1760,7 @@ describe("hydrate.ts — additional reactive accessor branches", () => {
     const el = container()
     el.innerHTML = "initial text"
     const text = signal("initial text")
-    const cleanup = hydrateRoot(
-      el,
-      (() => text()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => text()) as unknown as VNodeChild)
     // Should reuse the existing text node and attach effect
     text.set("updated text")
     expect(el.textContent).toContain("updated text")
@@ -1773,7 +1798,7 @@ describe("Transition — pendingLeaveCancel exercised in rAF callback (lines 110
   test("leave rAF sets pendingLeaveCancel then re-enter cancels it", async () => {
     const el = container()
     const visible = signal(true)
-    let removeListenerCalled = false
+    const removeListenerCalled = false
 
     mount(
       h(Transition, {
@@ -1814,7 +1839,9 @@ describe("mount.ts — additional nested element branch paths", () => {
     const text = signal("inner")
 
     const unmount = mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         h("span", { ref, class: () => cls() }, () => text()),
       ),
       el,
@@ -1839,7 +1866,11 @@ describe("mount.ts — additional nested element branch paths", () => {
     // span is nested (depth > 0), has reactive child (childCleanup !== noop)
     // but no ref and no propCleanup
     const unmount = mount(
-      h("div", null, h("span", null, () => text())),
+      h(
+        "div",
+        null,
+        h("span", null, () => text()),
+      ),
       el,
     )
 
@@ -1855,10 +1886,7 @@ describe("mount.ts — additional nested element branch paths", () => {
 
     // span nested, has reactive prop (propCleanup) but no ref
     // childCleanup is noop (static text child)
-    const unmount = mount(
-      h("div", null, h("span", { class: () => cls() }, "static-text")),
-      el,
-    )
+    const unmount = mount(h("div", null, h("span", { class: () => cls() }, "static-text")), el)
 
     expect(el.querySelector("span")?.className).toBe("cls-val")
     cls.set("new-cls")
@@ -1875,7 +1903,9 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
     const items = signal([{ id: 1, label: "a" }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1893,7 +1923,10 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
     )
 
     // Add new item — step 3 mounts NativeItem with null cleanup
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
     expect(el.querySelectorAll("b").length).toBe(2)
 
     el.remove()
@@ -1901,11 +1934,16 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
 
   test("mountFor step 2 removes stale entry with cleanup (cleanupCount--)", () => {
     const el = container()
-    let cleanupCalled = false
-    const items = signal([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    const cleanupCalled = false
+    const items = signal([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1925,17 +1963,24 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
   test("mountFor step 2 removes stale NativeItem entry with cleanup", () => {
     const el = container()
     let cleanupCount = 0
-    const items = signal([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    const items = signal([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
           children: (r: { id: number; label: string }) => {
             const native = _tpl("<b></b>", (root) => {
               root.textContent = r.label
-              return () => { cleanupCount++ }
+              return () => {
+                cleanupCount++
+              }
             })
             return native as unknown as ReturnType<typeof h>
           },
@@ -1957,7 +2002,9 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
 
     // Use NativeItem with null cleanup so cleanupCount stays 0
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -1985,7 +2032,9 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
     const items = signal([{ id: 1, label: "old" }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -2047,10 +2096,7 @@ describe("KeepAlive — container ref edge cases", () => {
       return h("span", null, () => String(count()))
     })
 
-    const unmount = mount(
-      h(KeepAlive, { active: () => active() }, h(Inner, null)),
-      el,
-    )
+    const unmount = mount(h(KeepAlive, { active: () => active() }, h(Inner, null)), el)
 
     expect(el.querySelector("span")?.textContent).toBe("0")
 
@@ -2089,8 +2135,7 @@ describe("nodes.ts — mountKeyedList LIS typed array reallocation", () => {
   test("mountKeyedList with >16 keyed items triggers LIS array growth", () => {
     const el = container()
     // Start with > 16 keyed VNodes to exceed initial Int32Array(16) size
-    const makeItems = (ids: number[]) =>
-      ids.map((id) => h("span", { key: id }, String(id)))
+    const makeItems = (ids: number[]) => ids.map((id) => h("span", { key: id }, String(id)))
 
     const ids = Array.from({ length: 20 }, (_, i) => i)
     const items = signal(makeItems(ids) as VNodeChild)
@@ -2116,10 +2161,7 @@ describe("Transition — rawChild undefined branch (line 164-165)", () => {
     const visible = signal(true)
 
     // No children prop at all — rawChild is undefined
-    mount(
-      h(Transition, { show: visible, name: "fade" }),
-      el,
-    )
+    mount(h(Transition, { show: visible, name: "fade" }), el)
 
     // Should not throw; renders nothing meaningful
     el.remove()
@@ -2133,10 +2175,7 @@ describe("mount.ts — anonymous component name fallback", () => {
     const el = container()
 
     // Arrow function has name: "" (empty string) — triggers || "Anonymous"
-    const unmount = mount(
-      h((() => h("span", null, "anon")) as unknown as ComponentFn, null),
-      el,
-    )
+    const unmount = mount(h((() => h("span", null, "anon")) as unknown as ComponentFn, null), el)
 
     expect(el.querySelector("span")?.textContent).toBe("anon")
     unmount()
@@ -2173,8 +2212,14 @@ describe("TransitionGroup — FLIP inner rAF with mocked getBoundingClientRect",
     for (const span of spans) {
       const idx = callCount++
       ;(span as HTMLElement).getBoundingClientRect = () => ({
-        top: idx * 30, left: 0, width: 100, height: 25,
-        bottom: idx * 30 + 25, right: 100, x: 0, y: idx * 30,
+        top: idx * 30,
+        left: 0,
+        width: 100,
+        height: 25,
+        bottom: idx * 30 + 25,
+        right: 100,
+        x: 0,
+        y: idx * 30,
         toJSON: () => {},
       })
     }
@@ -2192,8 +2237,14 @@ describe("TransitionGroup — FLIP inner rAF with mocked getBoundingClientRect",
     for (const span of newSpans) {
       const i = newIdx++
       ;(span as HTMLElement).getBoundingClientRect = () => ({
-        top: i * 30, left: 0, width: 100, height: 25,
-        bottom: i * 30 + 25, right: 100, x: 0, y: i * 30,
+        top: i * 30,
+        left: 0,
+        width: 100,
+        height: 25,
+        bottom: i * 30 + 25,
+        right: 100,
+        x: 0,
+        y: i * 30,
         toJSON: () => {},
       })
     }
@@ -2264,8 +2315,7 @@ describe("TransitionGroup — custom class overrides (transition-group.ts ?? bra
         name: "tg",
         items: () => items(),
         keyFn: (item: { id: number }) => item.id,
-        render: (item: { id: number; label: string }) =>
-          h("li", { class: "tg-item" }, item.label),
+        render: (item: { id: number; label: string }) => h("li", { class: "tg-item" }, item.label),
         enterFrom: "custom-ef",
         enterActive: "custom-ea",
         enterTo: "custom-et",
@@ -2279,7 +2329,10 @@ describe("TransitionGroup — custom class overrides (transition-group.ts ?? bra
     await new Promise<void>((r) => queueMicrotask(r))
 
     // Add item to trigger enter
-    items.set([{ id: 1, label: "a" }, { id: 2, label: "b" }])
+    items.set([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ])
     await new Promise<void>((r) => queueMicrotask(r))
 
     el.remove()
@@ -2310,9 +2363,7 @@ describe("transition.ts — component child warning", () => {
     )
     await new Promise<void>((r) => queueMicrotask(r))
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining("Transition child is a component"),
-    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Transition child is a component"))
     warn.mockRestore()
     el.remove()
   })
@@ -2341,14 +2392,20 @@ describe("transition.ts — component child warning", () => {
 describe("devtools.ts — $p console helper branches", () => {
   test("$p.highlight with unknown id does nothing", () => {
     installDevTools()
-    const p = (window as unknown as Record<string, unknown>).$p as Record<string, (...args: unknown[]) => unknown>
+    const p = (window as unknown as Record<string, unknown>).$p as Record<
+      string,
+      (...args: unknown[]) => unknown
+    >
     // Should not throw
     p.highlight!("nonexistent-id-12345")
   })
 
   test("$p.help prints usage (line 291+)", () => {
     installDevTools()
-    const p = (window as unknown as Record<string, unknown>).$p as Record<string, (...args: unknown[]) => unknown>
+    const p = (window as unknown as Record<string, unknown>).$p as Record<
+      string,
+      (...args: unknown[]) => unknown
+    >
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
     p.help!()
     expect(logSpy).toHaveBeenCalled()

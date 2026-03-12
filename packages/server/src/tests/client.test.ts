@@ -290,8 +290,7 @@ describe("hydrateIslands", () => {
   })
 
   test("uses default empty props when data-props is missing", async () => {
-    document.body.innerHTML =
-      '<pyreon-island data-component="NoProps"></pyreon-island>'
+    document.body.innerHTML = '<pyreon-island data-component="NoProps"></pyreon-island>'
 
     const NoProps: ComponentFn = () => h("div", null, "no-props")
 

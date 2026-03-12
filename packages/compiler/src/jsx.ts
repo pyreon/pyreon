@@ -468,7 +468,10 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         let exprCount = 0
         for (const child of flatChildren) {
           if (child.kind === "element") hasElemChild = true
-          if (child.kind === "expression") { hasNonElemChild = true; exprCount++ }
+          if (child.kind === "expression") {
+            hasNonElemChild = true
+            exprCount++
+          }
           if (child.kind === "text") hasNonElemChild = true
         }
         const useMixed = hasElemChild && hasNonElemChild
@@ -506,7 +509,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
                 const tVar = `__t${varIdx++}`
                 const d = nextDisp()
                 bindLines.push(`const ${tVar} = document.createTextNode("")`)
-                bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+                bindLines.push(
+                  `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+                )
                 bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
               } else {
                 // Single expression, no element siblings — use appendChild
@@ -523,7 +528,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
                 const parentRef = accessor === "__root" ? "__root" : varName
                 const tVar = `__t${varIdx++}`
                 bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-                bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
+                bindLines.push(
+                  `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+                )
               } else {
                 bindLines.push(`${varName}.textContent = ${expr}`)
               }
@@ -602,7 +609,6 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         if (ts.isJsxFragment(child)) {
           // Inline fragment children as if they were direct children
           addChildren(child.children)
-          continue
         }
       }
     }

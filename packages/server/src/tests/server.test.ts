@@ -379,10 +379,7 @@ describe("island", () => {
 
   test("island() resolves direct function module (not { default })", async () => {
     const Inner: ComponentFn = () => h("span", null, "direct")
-    const Widget = island(
-      () => Promise.resolve({ default: Inner }),
-      { name: "Direct" },
-    )
+    const Widget = island(() => Promise.resolve({ default: Inner }), { name: "Direct" })
 
     const vnode = await (Widget as unknown as (props: Record<string, unknown>) => Promise<VNode>)(
       {},
@@ -540,8 +537,7 @@ describe("prerender", () => {
   })
 
   test("handles .html path suffix", async () => {
-    const handler = async (_req: Request) =>
-      new Response("<html>page</html>", { status: 200 })
+    const handler = async (_req: Request) => new Response("<html>page</html>", { status: 200 })
 
     const tmpDir = `/tmp/pyreon-ssg-html-${Date.now()}`
     const result = await prerender({
@@ -560,8 +556,7 @@ describe("prerender", () => {
   })
 
   test("onPage callback receives path and html", async () => {
-    const handler = async (_req: Request) =>
-      new Response("<html>content</html>", { status: 200 })
+    const handler = async (_req: Request) => new Response("<html>content</html>", { status: 200 })
 
     const received: Array<{ path: string; html: string }> = []
     const tmpDir = `/tmp/pyreon-ssg-onpage-${Date.now()}`
@@ -605,8 +600,7 @@ describe("prerender", () => {
   })
 
   test("paths as sync function", async () => {
-    const handler = async (_req: Request) =>
-      new Response("<html></html>", { status: 200 })
+    const handler = async (_req: Request) => new Response("<html></html>", { status: 200 })
 
     const tmpDir = `/tmp/pyreon-ssg-sync-fn-${Date.now()}`
     const result = await prerender({
@@ -622,8 +616,7 @@ describe("prerender", () => {
   })
 
   test("batches more than 10 paths", async () => {
-    const handler = async (_req: Request) =>
-      new Response("<html>ok</html>", { status: 200 })
+    const handler = async (_req: Request) => new Response("<html>ok</html>", { status: 200 })
 
     const paths = Array.from({ length: 15 }, (_, i) => `/page-${i}`)
     const tmpDir = `/tmp/pyreon-ssg-batch-${Date.now()}`

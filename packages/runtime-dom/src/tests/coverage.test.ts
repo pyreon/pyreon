@@ -15,12 +15,7 @@ import {
   onUpdate,
 } from "@pyreon/core"
 import { effect, signal } from "@pyreon/reactivity"
-import {
-  installDevTools,
-  registerComponent,
-  unregisterComponent,
-} from "../devtools"
-import type { Directive } from "../props"
+import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
 import {
   KeepAlive as _KeepAlive,
   Transition as _Transition,
@@ -33,6 +28,7 @@ import {
   setSanitizer,
 } from "../index"
 import { mountChild } from "../mount"
+import type { Directive } from "../props"
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
 const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>
@@ -362,9 +358,7 @@ describe("mount.ts — uncovered branches", () => {
     const BadComp = (() => ({ weird: true })) as unknown as ComponentFn
     mount(h(BadComp, null), el)
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("returned an invalid value"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("returned an invalid value"))
     warnSpy.mockRestore()
   })
 
@@ -396,7 +390,13 @@ describe("mount.ts — uncovered branches", () => {
 
     // 3 reactive children will all have cleanups, hitting the map+cleanup path
     const unmount = mount(
-      h("div", null, () => s1(), () => s2(), () => s3()),
+      h(
+        "div",
+        null,
+        () => s1(),
+        () => s2(),
+        () => s3(),
+      ),
       el,
     )
 
@@ -413,10 +413,7 @@ describe("mount.ts — uncovered branches", () => {
     const cls = signal("foo")
 
     // Nested element with ref AND reactive prop — exercises the combined cleanup path
-    mount(
-      h("div", null, h("span", { ref, class: () => cls() }, "inner")),
-      el,
-    )
+    mount(h("div", null, h("span", { ref, class: () => cls() }, "inner")), el)
 
     expect(ref.current).not.toBeNull()
     expect(ref.current?.className).toBe("foo")
@@ -427,10 +424,7 @@ describe("mount.ts — uncovered branches", () => {
     const cls = signal("bar")
 
     // Nested element with reactive prop but no ref
-    const unmount = mount(
-      h("div", null, h("span", { class: () => cls() }, "inner")),
-      el,
-    )
+    const unmount = mount(h("div", null, h("span", { class: () => cls() }, "inner")), el)
 
     expect(el.querySelector("span")?.className).toBe("bar")
     cls.set("baz")
@@ -541,9 +535,7 @@ describe("Transition — uncovered branches", () => {
       el,
     )
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Transition child is a component"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Transition child is a component"))
     warnSpy.mockRestore()
   })
 
@@ -659,7 +651,9 @@ describe("hydrate.ts — uncovered branches", () => {
     ])
     const cleanup = hydrateRoot(
       el,
-      h(Fragment, null,
+      h(
+        Fragment,
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -728,10 +722,7 @@ describe("hydrate.ts — uncovered branches", () => {
     const Wrapper = defineComponent((props: { children?: VNodeChild }) =>
       h("div", null, props.children),
     )
-    const cleanup = hydrateRoot(
-      el,
-      h(Wrapper, null, h("b", null, "child")),
-    )
+    const cleanup = hydrateRoot(el, h(Wrapper, null, h("b", null, "child")))
     cleanup()
   })
 
@@ -740,10 +731,7 @@ describe("hydrate.ts — uncovered branches", () => {
     el.innerHTML = "<div><span>initial</span></div>"
     const content = signal<VNodeChild>(h("span", null, "initial"))
     // Reactive accessor returns a VNode — goes through the complex reactive path with marker
-    const cleanup = hydrateRoot(
-      el,
-      h("div", null, (() => content()) as unknown as VNodeChild),
-    )
+    const cleanup = hydrateRoot(el, h("div", null, (() => content()) as unknown as VNodeChild))
     cleanup()
   })
 })
@@ -812,7 +800,9 @@ describe("nodes.ts — placeholder comment paths", () => {
     const NullComp = defineComponent(() => null)
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -830,7 +820,9 @@ describe("nodes.ts — placeholder comment paths", () => {
     const NullComp = defineComponent(() => null)
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -851,7 +843,9 @@ describe("nodes.ts — placeholder comment paths", () => {
     const NullComp = defineComponent(() => null)
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r: { id: number }) => r.id,
@@ -873,14 +867,18 @@ describe("nodes.ts — placeholder comment paths", () => {
     const items = signal<R[]>([{ id: 1, label: "old" }])
 
     mount(
-      h("div", null,
+      h(
+        "div",
+        null,
         For({
           each: items,
           by: (r) => r.id,
           children: (r) => {
             const native = _tpl("<b></b>", (root) => {
               root.textContent = r.label
-              return () => { cleanupCount++ }
+              return () => {
+                cleanupCount++
+              }
             })
             return native as unknown as ReturnType<typeof h>
           },
@@ -904,10 +902,7 @@ describe("props.ts — uncovered branches", () => {
     const title = signal("t")
 
     // Two reactive props => two cleanups that chain
-    const unmount = mount(
-      h("div", { class: () => cls(), title: () => title() }),
-      el,
-    )
+    const unmount = mount(h("div", { class: () => cls(), title: () => title() }), el)
 
     const div = el.querySelector("div") as HTMLElement
     expect(div.className).toBe("a")
@@ -1004,9 +999,7 @@ describe("props.ts — uncovered branches", () => {
 
     mount(h("div", { dangerouslySetInnerHTML: { __html: "<em>raw</em>" } }), el)
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("dangerouslySetInnerHTML"),
-    )
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("dangerouslySetInnerHTML"))
     warnSpy.mockRestore()
   })
 
@@ -1024,10 +1017,7 @@ describe("mount.ts — additional edge cases", () => {
   test("mountElement no reactive work and no ref at depth > 0 returns noop", () => {
     const el = container()
     // Static nested element with no reactive props, no ref — returns noop at _elementDepth > 0
-    const unmount = mount(
-      h("div", null, h("span", null, "static")),
-      el,
-    )
+    const unmount = mount(h("div", null, h("span", null, "static")), el)
     expect(el.querySelector("span")?.textContent).toBe("static")
     unmount()
   })
@@ -1036,10 +1026,7 @@ describe("mount.ts — additional edge cases", () => {
     const el = container()
     // 2 children: one static (noop cleanup) and one with cleanup
     const cls = signal("x")
-    mount(
-      h("div", null, h("span", null, "static"), h("b", { class: () => cls() }, "reactive")),
-      el,
-    )
+    mount(h("div", null, h("span", null, "static"), h("b", { class: () => cls() }, "reactive")), el)
     expect(el.querySelectorAll("span").length).toBe(1)
     expect(el.querySelector("b")?.className).toBe("x")
   })
@@ -1047,10 +1034,7 @@ describe("mount.ts — additional edge cases", () => {
   test("mountChildren 2-child path where both cleanups are noop", () => {
     const el = container()
     // 2 static children — both noop cleanup
-    mount(
-      h("div", null, h("span", null, "a"), h("b", null, "b")),
-      el,
-    )
+    mount(h("div", null, h("span", null, "a"), h("b", null, "b")), el)
     expect(el.querySelector("span")?.textContent).toBe("a")
     expect(el.querySelector("b")?.textContent).toBe("b")
   })
@@ -1059,10 +1043,7 @@ describe("mount.ts — additional edge cases", () => {
     const el = container()
     const cls = signal("x")
     // First child static (noop), second child reactive
-    mount(
-      h("div", null, "text", h("b", { class: () => cls() }, "reactive")),
-      el,
-    )
+    mount(h("div", null, "text", h("b", { class: () => cls() }, "reactive")), el)
   })
 
   test("isKeyedArray returns false for empty array", () => {
@@ -1138,10 +1119,7 @@ describe("hydrate.ts — additional branches", () => {
     const el = container()
     el.innerHTML = "<span>existing</span>"
     const content = signal<VNodeChild>(h("b", null, "complex"))
-    const cleanup = hydrateRoot(
-      el,
-      (() => content()) as unknown as VNodeChild,
-    )
+    const cleanup = hydrateRoot(el, (() => content()) as unknown as VNodeChild)
     cleanup()
   })
 })

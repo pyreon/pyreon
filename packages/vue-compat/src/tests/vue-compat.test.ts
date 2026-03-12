@@ -1,4 +1,4 @@
-import { h as pyreonH, type ComponentFn } from "@pyreon/core"
+import { type ComponentFn, h as pyreonH } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
 import {
   batch,

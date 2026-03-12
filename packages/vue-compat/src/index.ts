@@ -25,10 +25,10 @@ import {
   onMount,
   onUnmount,
   onUpdate,
-  pushContext,
   popContext,
-  useContext,
+  pushContext,
   h as pyreonH,
+  useContext,
 } from "@pyreon/core"
 import {
   createStore,

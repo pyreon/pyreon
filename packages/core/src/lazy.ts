@@ -1,7 +1,7 @@
 import { signal } from "@pyreon/reactivity"
-import type { ComponentFn, Props, VNode } from "./types"
-import type { LazyComponent } from "./suspense"
 import { h } from "./h"
+import type { LazyComponent } from "./suspense"
+import type { ComponentFn, Props, VNode } from "./types"
 
 export function lazy<P extends Props>(
   load: () => Promise<{ default: ComponentFn<P> }>,

@@ -1,5 +1,5 @@
-import type { ComponentFn, Props, VNode } from "./types"
 import { h } from "./h"
+import type { ComponentFn, Props, VNode } from "./types"
 
 export interface DynamicProps extends Props {
   component: ComponentFn | string

@@ -77,9 +77,7 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
   // Escape sequences that could break out of script/style/noscript blocks:
   // 1. Closing tags like </script> — use Unicode escape in the slash
   // 2. HTML comment openers <!-- that could confuse parsers
-  const body = content
-    .replace(/<\/(script|style|noscript)/gi, "<\\/$1")
-    .replace(/<!--/g, "<\\!--")
+  const body = content.replace(/<\/(script|style|noscript)/gi, "<\\/$1").replace(/<!--/g, "<\\!--")
   return `${open}>${body}</${tag.tag}>`
 }
 

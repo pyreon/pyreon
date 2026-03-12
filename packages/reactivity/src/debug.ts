@@ -51,11 +51,7 @@ export function onSignalUpdate(listener: SignalUpdateListener): () => void {
 }
 
 /** @internal — called from signal.set() when tracing is active */
-export function _notifyTraceListeners(
-  sig: Signal<unknown>,
-  prev: unknown,
-  next: unknown,
-): void {
+export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next: unknown): void {
   if (!_traceListeners) return
   const event: SignalUpdateEvent = {
     signal: sig,
@@ -93,8 +89,7 @@ export function why(): void {
   _whyLog = []
 
   const dispose = onSignalUpdate((e) => {
-    const subCount =
-      (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
+    const subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
     const name = e.name ? `"${e.name}"` : "(anonymous signal)"
     console.log(
       `%c[pyreon:why]%c ${name}: %o → %o %c(${subCount} subscriber${subCount === 1 ? "" : "s"})`,

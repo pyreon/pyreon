@@ -699,7 +699,11 @@ describe("useHead — CSR", () => {
   })
 
   test("dom.ts: patchAttrs removes old attrs not in new props (line 67)", () => {
-    const val = signal<Record<string, string>>({ name: "desc", content: "old", "data-extra": "yes" })
+    const val = signal<Record<string, string>>({
+      name: "desc",
+      content: "old",
+      "data-extra": "yes",
+    })
     function Page() {
       useHead(() => ({ meta: [val()] }))
       return h("div", null)
