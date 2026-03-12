@@ -15,19 +15,34 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
 }
 
-export function effect(fn: () => void): Effect {
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — effects may return cleanup or nothing
+export function effect(fn: () => void | (() => void)): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
   let disposed = false
   let isFirstRun = true
+  let cleanup: (() => void) | void
+
+  const runCleanup = () => {
+    if (typeof cleanup === "function") {
+      try {
+        cleanup()
+      } catch (err) {
+        _errorHandler(err)
+      }
+      cleanup = undefined
+    }
+  }
 
   const run = () => {
     if (disposed) return
+    // Run previous cleanup before re-running
+    runCleanup()
     // Clean up previous subscriptions before re-running (dynamic dep tracking)
     cleanupEffect(run)
     try {
-      withTracking(run, fn)
+      cleanup = withTracking(run, fn)
     } catch (err) {
       _errorHandler(err)
     }
@@ -41,6 +56,7 @@ export function effect(fn: () => void): Effect {
 
   const e: Effect = {
     dispose() {
+      runCleanup()
       disposed = true
       cleanupEffect(run)
     },
@@ -79,7 +95,7 @@ export function effect(fn: () => void): Effect {
  * - Signal reads hit `if (activeEffect)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
-  const deps: Array<Set<() => void>> = []
+  const deps: Set<() => void>[] = []
   let disposed = false
 
   const run = () => {
@@ -101,7 +117,7 @@ export function _bind(fn: () => void): () => void {
 }
 
 export function renderEffect(fn: () => void): () => void {
-  const deps: Array<Set<() => void>> = []
+  const deps: Set<() => void>[] = []
   let disposed = false
 
   const run = () => {

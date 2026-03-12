@@ -77,9 +77,8 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
  */
 // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export function effect(fn: () => void | (() => void)): () => void {
-  const e: Effect = pyreonEffect(() => {
-    fn()
-  })
+  // Pyreon's effect() natively supports cleanup return values
+  const e: Effect = pyreonEffect(fn)
   return () => {
     e.dispose()
   }

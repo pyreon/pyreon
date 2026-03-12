@@ -364,9 +364,8 @@ describe("@pyreon/preact-compat", () => {
     const unmount = mount(pyreonH(Comp, null), el)
     expect(cleaned).toBe(false)
     unmount()
-    // The underlying pyreon effect() signature is () => void and does not
-    // support cleanup return values, so the cleanup function is never called.
-    expect(cleaned).toBe(false)
+    // effect() now supports cleanup return values — cleanup fires on dispose
+    expect(cleaned).toBe(true)
   })
 
   test("useEffect without deps and non-function return", () => {
@@ -470,11 +469,11 @@ describe("@pyreon/preact-compat", () => {
     })
     expect(cleanups).toBe(0)
     count.value = 1
-    // The underlying pyreon effect() signature is () => void and does not
-    // support cleanup return values, so cleanups never increment.
-    expect(cleanups).toBe(0)
+    // Cleanup runs before re-run
+    expect(cleanups).toBe(1)
     dispose()
-    expect(cleanups).toBe(0)
+    // Cleanup runs on dispose
+    expect(cleanups).toBe(2)
   })
 
   test("effect() with non-function return (no cleanup)", () => {

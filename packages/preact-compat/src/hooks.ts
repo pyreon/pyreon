@@ -40,9 +40,9 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
       if (typeof cleanup === "function") onUnmount(cleanup)
     })
   } else {
-    const e = effect(() => {
-      fn()
-    })
+    // effect() natively supports cleanup: if fn() returns a function,
+    // it's called before re-runs and on dispose.
+    const e = effect(fn)
     onUnmount(() => {
       e.dispose()
     })

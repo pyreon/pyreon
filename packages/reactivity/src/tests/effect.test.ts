@@ -84,6 +84,71 @@ describe("effect", () => {
     console.error = origError
   })
 
+  test("calls cleanup before re-run", () => {
+    const s = signal(0)
+    let cleanups = 0
+    effect(() => {
+      s()
+      return () => {
+        cleanups++
+      }
+    })
+    expect(cleanups).toBe(0)
+    s.set(1) // re-run: previous cleanup fires
+    expect(cleanups).toBe(1)
+    s.set(2)
+    expect(cleanups).toBe(2)
+  })
+
+  test("calls cleanup on dispose", () => {
+    const s = signal(0)
+    let cleanups = 0
+    const e = effect(() => {
+      s()
+      return () => {
+        cleanups++
+      }
+    })
+    expect(cleanups).toBe(0)
+    e.dispose()
+    expect(cleanups).toBe(1)
+    // Disposing again should not call cleanup again
+    e.dispose()
+    expect(cleanups).toBe(1)
+  })
+
+  test("cleanup errors are caught by error handler", () => {
+    const caught: unknown[] = []
+    setErrorHandler((err) => caught.push(err))
+
+    const s = signal(0)
+    effect(() => {
+      s()
+      return () => {
+        throw new Error("cleanup boom")
+      }
+    })
+    s.set(1) // triggers cleanup which throws
+    expect(caught.length).toBe(1)
+    expect((caught[0] as Error).message).toBe("cleanup boom")
+
+    // Restore default handler
+    setErrorHandler((err) => console.error("[pyreon] Unhandled effect error:", err))
+  })
+
+  test("works with no cleanup return (backwards compatible)", () => {
+    const s = signal(0)
+    let count = 0
+    effect(() => {
+      s()
+      count++
+      // no return
+    })
+    expect(count).toBe(1)
+    s.set(1)
+    expect(count).toBe(2)
+  })
+
   test("setErrorHandler replaces the error handler", () => {
     const caught: unknown[] = []
     setErrorHandler((err) => caught.push(err))
