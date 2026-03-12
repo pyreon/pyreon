@@ -99,11 +99,15 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
     })
   } else {
     // No deps or non-empty deps: run reactively (Pyreon auto-tracks)
+    let cleanup: CleanupFn | void
     const e = effect(() => {
-      const cleanup = fn()
-      if (typeof cleanup === "function") return cleanup
+      if (typeof cleanup === "function") cleanup()
+      cleanup = fn()
     })
-    onUnmount(() => e.dispose())
+    onUnmount(() => {
+      if (typeof cleanup === "function") cleanup()
+      e.dispose()
+    })
   }
 }
 

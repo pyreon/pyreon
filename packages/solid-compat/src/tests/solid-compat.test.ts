@@ -498,4 +498,165 @@ describe("@pyreon/solid-compat", () => {
   it("ErrorBoundary is exported", () => {
     expect(typeof ErrorBoundary).toBe("function")
   })
+
+  // ─── on() edge cases ──────────────────────────────────────────────────
+
+  it("on() with single accessor (non-array) tracks correctly", () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(10)
+      const results: unknown[] = []
+
+      const tracker = on(count, (input, prevInput, prevValue) => {
+        results.push({ input, prevInput, prevValue })
+        return (input as number) * 2
+      })
+
+      createEffect(() => {
+        tracker()
+      })
+
+      // First call: initialized
+      expect(results).toHaveLength(1)
+      expect((results[0] as Record<string, unknown>).input).toBe(10)
+      expect((results[0] as Record<string, unknown>).prevInput).toBeUndefined()
+      expect((results[0] as Record<string, unknown>).prevValue).toBeUndefined()
+
+      setCount(20)
+      expect(results).toHaveLength(2)
+      expect((results[1] as Record<string, unknown>).input).toBe(20)
+      expect((results[1] as Record<string, unknown>).prevInput).toBe(10)
+      expect((results[1] as Record<string, unknown>).prevValue).toBe(20) // 10*2
+
+      dispose()
+    })
+  })
+
+  // ─── mergeProps — falsy descriptor branch ─────────────────────────────
+
+  it("mergeProps skips keys whose descriptor is falsy", () => {
+    const original = Object.getOwnPropertyDescriptors
+    const source = { a: 1, b: 2 }
+    vi.spyOn(Object, "getOwnPropertyDescriptors").mockImplementation((obj) => {
+      const descs = original(obj)
+      // Inject a key with an undefined descriptor to hit the `if (!desc) continue` branch
+      ;(descs as Record<string, unknown>).phantom = undefined
+      return descs
+    })
+    try {
+      const merged = mergeProps(source) as Record<string, unknown>
+      expect(merged.a).toBe(1)
+      expect(merged.b).toBe(2)
+      expect(merged).not.toHaveProperty("phantom")
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  // ─── mergeProps edge cases ─────────────────────────────────────────────
+
+  it("mergeProps with multiple sources overrides in order", () => {
+    const a = { x: 1, y: 2 }
+    const b = { y: 3, z: 4 }
+    const c = { z: 5 }
+    const merged = mergeProps(a, b, c) as Record<string, number>
+    expect(merged.x).toBe(1)
+    expect(merged.y).toBe(3)
+    expect(merged.z).toBe(5)
+  })
+
+  it("mergeProps with empty source", () => {
+    const merged = mergeProps({}, { a: 1 }) as Record<string, number>
+    expect(merged.a).toBe(1)
+  })
+
+  // ─── splitProps — falsy descriptor branch ─────────────────────────────
+
+  it("splitProps skips keys whose descriptor is falsy", () => {
+    const original = Object.getOwnPropertyDescriptors
+    const source = { a: 1, b: 2, c: 3 }
+    vi.spyOn(Object, "getOwnPropertyDescriptors").mockImplementation((obj) => {
+      const descs = original(obj)
+      // Inject a key with an undefined descriptor to hit the `if (!desc) continue` branch
+      ;(descs as Record<string, unknown>).phantom = undefined
+      return descs
+    })
+    try {
+      const [local, rest] = splitProps(source, "a")
+      expect((local as Record<string, unknown>).a).toBe(1)
+      expect((rest as Record<string, unknown>).b).toBe(2)
+      expect((rest as Record<string, unknown>).c).toBe(3)
+      expect(local).not.toHaveProperty("phantom")
+      expect(rest).not.toHaveProperty("phantom")
+    } finally {
+      vi.restoreAllMocks()
+    }
+  })
+
+  // ─── splitProps edge cases ─────────────────────────────────────────────
+
+  it("splitProps with getter in rest", () => {
+    const [count, setCount] = createSignal(0)
+    const props = {} as Record<string, unknown>
+    Object.defineProperty(props, "count", {
+      get: count,
+      enumerable: true,
+      configurable: true,
+    })
+    Object.defineProperty(props, "name", {
+      value: "test",
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    })
+
+    const [local, rest] = splitProps(props as { count: number; name: string }, "name")
+    expect((local as Record<string, unknown>).name).toBe("test")
+    expect((rest as Record<string, unknown>).count).toBe(0)
+    setCount(42)
+    expect((rest as Record<string, unknown>).count).toBe(42)
+  })
+
+  // ─── children edge cases ───────────────────────────────────────────────
+
+  it("children resolves non-function values as-is", () => {
+    const resolved = children(() => 42 as unknown as ReturnType<typeof h>)
+    expect(resolved()).toBe(42)
+  })
+
+  it("children resolves null", () => {
+    const resolved = children(() => null)
+    expect(resolved()).toBeNull()
+  })
+
+  // ─── lazy edge: preload called multiple times ──────────────────────────
+
+  it("lazy component called after preload resolves renders correctly", async () => {
+    const MyComp = (props: { msg: string }) => h("span", null, props.msg)
+    const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
+
+    await Lazy.preload()
+    const result = Lazy({ msg: "loaded" })
+    expect(result).not.toBeNull()
+  })
+
+  // ─── createRoot restores scope ─────────────────────────────────────────
+
+  it("createRoot restores previous scope after fn completes", () => {
+    const outerOwner = getOwner()
+    createRoot((dispose) => {
+      const innerOwner = getOwner()
+      expect(innerOwner).not.toBeNull()
+      dispose()
+    })
+    // After createRoot, scope should be restored to outer
+    const afterOwner = getOwner()
+    expect(afterOwner).toBe(outerOwner)
+  })
+
+  // ─── runWithOwner restores scope ───────────────────────────────────────
+
+  it("runWithOwner returns value from fn", () => {
+    const result = runWithOwner(null, () => "hello")
+    expect(result).toBe("hello")
+  })
 })

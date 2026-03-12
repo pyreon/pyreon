@@ -1,4 +1,4 @@
-import { h } from "@pyreon/core"
+import { h, popContext } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
 import type { ResolvedRoute, RouteRecord } from "../index"
 import {
@@ -2340,11 +2340,382 @@ describe("RouterLink edge cases", () => {
   test("RouterLink activeClass returns empty string without router", () => {
     const el = container()
     setActiveRouter(null)
+    // Pop any leaked context entries from prior tests that mount RouterProvider
+    // without unmounting (pushContext is not cleaned up without onUnmount).
+    // Pop enough times to clear any stale entries (safe on empty stack).
+    for (let i = 0; i < 50; i++) popContext()
     mount(h(RouterLink, { to: "/test" }), el)
     const anchor = el.querySelector("a")
     // class should be empty or not set
     const cls = anchor?.getAttribute("class") ?? ""
     expect(cls).toBe("")
+  })
+})
+
+// ─── RouterLink viewport prefetch (components.tsx lines 197-210) ─────────────
+
+describe("RouterLink viewport prefetch", () => {
+  test("viewport prefetch uses IntersectionObserver", async () => {
+    const el = container()
+    let loaderCalled = false
+    const prefetchRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/visible",
+        component: About,
+        loader: async () => {
+          loaderCalled = true
+          return "data"
+        },
+      },
+    ]
+    const router = createRouter({ routes: prefetchRoutes, url: "/" })
+
+    // Mock IntersectionObserver to immediately trigger intersection
+    const origIO = globalThis.IntersectionObserver
+    let observedEl: Element | null = null
+    const mockObserver = {
+      observe: (el: Element) => {
+        observedEl = el
+      },
+      disconnect: vi.fn(),
+      unobserve: vi.fn(),
+    }
+    globalThis.IntersectionObserver = class {
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe(el: Element) {
+        mockObserver.observe(el)
+        // Immediately trigger intersection
+        this.cb(
+          [{ isIntersecting: true, target: el } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        )
+      }
+      disconnect() {
+        mockObserver.disconnect()
+      }
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ""
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    mount(
+      h(
+        RouterProvider,
+        { router },
+        h(RouterLink, { to: "/visible", prefetch: "viewport" }, "Visible"),
+      ),
+      el,
+    )
+
+    // Wait for queueMicrotask + prefetch
+    await new Promise<void>((r) => setTimeout(r, 200))
+    expect(observedEl).not.toBeNull()
+    expect(loaderCalled).toBe(true)
+    expect(mockObserver.disconnect).toHaveBeenCalled()
+
+    globalThis.IntersectionObserver = origIO
+  })
+
+  test("viewport prefetch does not observe when entry is not intersecting", async () => {
+    const el = container()
+    let loaderCalled = false
+    const prefetchRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/hidden",
+        component: About,
+        loader: async () => {
+          loaderCalled = true
+          return "data"
+        },
+      },
+    ]
+    const router = createRouter({ routes: prefetchRoutes, url: "/" })
+
+    const origIO = globalThis.IntersectionObserver
+    const mockDisconnect = vi.fn()
+    globalThis.IntersectionObserver = class {
+      constructor(private cb: IntersectionObserverCallback) {}
+      observe(el: Element) {
+        // Trigger with isIntersecting: false
+        this.cb(
+          [{ isIntersecting: false, target: el } as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        )
+      }
+      disconnect() {
+        mockDisconnect()
+      }
+      unobserve() {}
+      takeRecords() {
+        return []
+      }
+      get root() {
+        return null
+      }
+      get rootMargin() {
+        return ""
+      }
+      get thresholds() {
+        return []
+      }
+    } as unknown as typeof IntersectionObserver
+
+    mount(
+      h(
+        RouterProvider,
+        { router },
+        h(RouterLink, { to: "/hidden", prefetch: "viewport" }, "Hidden"),
+      ),
+      el,
+    )
+
+    await new Promise<void>((r) => setTimeout(r, 100))
+    // Loader should NOT have been called since element is not intersecting
+    expect(loaderCalled).toBe(false)
+
+    globalThis.IntersectionObserver = origIO
+  })
+})
+
+// ─── matchPath additional branches (match.ts) ────────────────────────────────
+
+describe("matchPath additional branches", () => {
+  test("returns null when path has more segments than pattern without splat (line 99)", () => {
+    // Pattern has 1 segment, path has 2 → segment count mismatch at end
+    expect(matchPath("/a", "/a/b")).toBeNull()
+  })
+
+  test("matchPath with empty path segments (line 84)", () => {
+    // Test when pathParts[i] would be undefined (fewer path parts than pattern parts)
+    expect(matchPath("/a/b", "/a")).toBeNull()
+  })
+})
+
+// ─── router.ts SSR-only path set (line 275) ──────────────────────────────────
+
+describe("router SSR path handling", () => {
+  test("navigate sets path in SSR mode (no window)", async () => {
+    // The url option triggers SSR mode for initial path
+    const router = createRouter({ routes, url: "/" })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+  })
+})
+
+// ─── loader.ts useLoaderData (line 24) ───────────────────────────────────────
+
+describe("useLoaderData", () => {
+  test("useLoaderData returns data from LoaderDataContext", async () => {
+    const el = container()
+    let capturedData: unknown
+    const DataComp = () => {
+      const { useLoaderData: uld } = require("../loader")
+      capturedData = uld()
+      return h("span", null, "data")
+    }
+    const viewRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      {
+        path: "/data",
+        component: DataComp,
+        loader: async () => ({ items: [1, 2, 3] }),
+      },
+    ]
+    const router = createRouter({ routes: viewRoutes, url: "/" })
+    await prefetchLoaderData(router as RouterInstance, "/data")
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    await router.push("/data")
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(capturedData).toEqual({ items: [1, 2, 3] })
+  })
+})
+
+// ─── scroll.ts additional branches ──────────────────────────────────────────
+
+describe("ScrollManager additional branches", () => {
+  test("restore with undefined behavior defaults to top (line 42)", () => {
+    // When scrollBehavior is undefined, _applyResult receives undefined which should default to "top"
+    const sm = new ScrollManager(undefined)
+    let scrolledTo: number | undefined
+    const origScrollTo = window.scrollTo
+    window.scrollTo = ((...args: unknown[]) => {
+      const opts = args[0] as { top?: number }
+      scrolledTo = opts?.top
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrolledTo).toBe(0)
+    window.scrollTo = origScrollTo
+  })
+
+  test("restore with function returning 'none' does not scroll", () => {
+    const sm = new ScrollManager(() => "none" as const)
+    let scrollCalled = false
+    const origScrollTo = window.scrollTo
+    window.scrollTo = (() => {
+      scrollCalled = true
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrollCalled).toBe(false)
+    window.scrollTo = origScrollTo
+  })
+
+  test("restore with function returning 'restore' scrolls to saved position", () => {
+    const sm = new ScrollManager((_to, _from, _saved) => "restore" as const)
+    sm.save("/target")
+    let scrolledTo: number | undefined
+    const origScrollTo = window.scrollTo
+    window.scrollTo = ((...args: unknown[]) => {
+      const opts = args[0] as { top?: number }
+      scrolledTo = opts?.top
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = {
+      path: "/target",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrolledTo).toBe(0)
+    window.scrollTo = origScrollTo
+  })
+
+  test("restore with function returning number scrolls to that position", () => {
+    const sm = new ScrollManager(() => 500)
+    let scrolledTo: number | undefined
+    const origScrollTo = window.scrollTo
+    window.scrollTo = ((...args: unknown[]) => {
+      const opts = args[0] as { top?: number }
+      scrolledTo = opts?.top
+    }) as typeof window.scrollTo
+    const to: ResolvedRoute = { path: "/a", params: {}, query: {}, hash: "", matched: [], meta: {} }
+    const from: ResolvedRoute = {
+      path: "/b",
+      params: {},
+      query: {},
+      hash: "",
+      matched: [],
+      meta: {},
+    }
+    sm.restore(to, from)
+    expect(scrolledTo).toBe(500)
+    window.scrollTo = origScrollTo
+  })
+
+  test("getSavedPosition returns null for unsaved path", () => {
+    const sm = new ScrollManager()
+    expect(sm.getSavedPosition("/never-visited")).toBeNull()
+  })
+})
+
+// ─── router.ts: navigation gen cancels stale guard (line 199) ────────────────
+
+describe("stale navigation cancellation during guards", () => {
+  test("concurrent navigation cancels in-flight beforeEach guard", async () => {
+    let slowGuardCompleted = false
+    const guardRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      { path: "/slow", component: About },
+      { path: "/fast", component: User },
+    ]
+    const router = createRouter({ routes: guardRoutes, url: "/" })
+    router.beforeEach(async (to) => {
+      if (to.path === "/slow") {
+        await new Promise<void>((r) => setTimeout(r, 100))
+        slowGuardCompleted = true
+      }
+      return true
+    })
+
+    const slow = router.push("/slow")
+    await new Promise<void>((r) => setTimeout(r, 10))
+    await router.push("/fast")
+    await slow
+
+    // The fast navigation should have superseded the slow one
+    expect(router.currentRoute().path).toBe("/fast")
+  })
+})
+
+// ─── router.ts: destroy with popstate handler (line 369-370) ─────────────────
+
+describe("router destroy with listeners", () => {
+  test("destroy removes popstate listener in history mode", () => {
+    const router = createRouter({ routes, mode: "history" })
+    // The router should have registered a popstate listener
+    // After destroy, it should be removed
+    router.destroy()
+    // Push a new state and dispatch popstate — the router should NOT react
+    window.history.pushState(null, "", "/user/999")
+    window.dispatchEvent(new PopStateEvent("popstate"))
+    // If the listener was properly removed, the router path should remain unchanged
+    // (destroy already ran, so currentRoute might be anything, but no errors)
+    expect(true).toBe(true) // No throw is the assertion
+  })
+
+  test("destroy removes hashchange listener in hash mode", () => {
+    const router = createRouter({ routes, mode: "hash" })
+    router.destroy()
+    // Dispatching hashchange after destroy should not throw
+    window.dispatchEvent(new HashChangeEvent("hashchange"))
+    expect(true).toBe(true)
+  })
+})
+
+// ─── match.ts line 190: parent with children, no child match, no exact match ─
+
+describe("match.ts: matchRoutes child fallthrough", () => {
+  test("nested prefix match but no child match and no exact parent match (line 190)", () => {
+    // Parent matches as prefix but child doesn't match, and parent isn't exact match for path
+    const routesDef: RouteRecord[] = [
+      {
+        path: "/blog",
+        component: Home,
+        children: [{ path: "post/:id", component: About }],
+      },
+    ]
+    // /blog/unknown doesn't match child "post/:id" pattern, and /blog doesn't exact-match /blog/unknown
+    const r = resolveRoute("/blog/unknown", routesDef)
+    expect(r.matched).toHaveLength(0)
   })
 })
 

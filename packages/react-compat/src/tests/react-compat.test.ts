@@ -628,3 +628,83 @@ describe("re-exports", () => {
     expect(useLayoutEffect_).toBe(useEffect)
   })
 })
+
+// ─── Additional coverage: useId outside scope ──────────────────────────────
+
+describe("useId — no scope fallback", () => {
+  test("returns random-ish id when called outside a component (no scope)", () => {
+    // getCurrentScope() returns null outside a component, hitting the fallback branch
+    const id = useId()
+    expect(typeof id).toBe("string")
+    expect(id.startsWith(":r")).toBe(true)
+    expect(id.endsWith(":")).toBe(true)
+    // Two calls should produce different IDs (random)
+    const id2 = useId()
+    expect(id).not.toBe(id2)
+  })
+})
+
+// ─── Additional coverage: useEffect with non-empty deps ─────────────────────
+
+describe("useEffect — non-empty deps array", () => {
+  test("with non-empty deps array, still runs reactively (deps ignored)", () => {
+    const el = container()
+    const s = signal(0)
+    let runs = 0
+
+    const Comp = () => {
+      useEffect(() => {
+        s()
+        runs++
+      }, [s])
+      return h("div", null, "non-empty-deps")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(runs).toBe(1)
+    s.set(1)
+    expect(runs).toBe(2)
+    unmount()
+  })
+
+  test("with non-empty deps and cleanup, cleanup runs on re-execution", () => {
+    const el = container()
+    const s = signal(0)
+    let cleanups = 0
+
+    const Comp = () => {
+      useEffect(() => {
+        s()
+        return () => {
+          cleanups++
+        }
+      }, [s])
+      return h("div", null, "cleanup-deps")
+    }
+
+    const unmount = mount(h(Comp, null), el)
+    expect(cleanups).toBe(0)
+    s.set(1) // re-runs effect, previous cleanup should fire
+    expect(cleanups).toBe(1)
+    unmount()
+  })
+})
+
+// ─── Additional coverage: useState with non-function initial ─────────────────
+
+describe("useState — edge cases", () => {
+  test("with function-valued non-initializer (explicit type)", () => {
+    // When T is not a function type, direct value is used
+    const [val] = useState("hello")
+    expect(val()).toBe("hello")
+  })
+})
+
+// ─── Additional coverage: useReducer with non-function initial ───────────────
+
+describe("useReducer — edge cases", () => {
+  test("with non-function initial value", () => {
+    const [state] = useReducer((s: string, a: string) => s + a, "start")
+    expect(state()).toBe("start")
+  })
+})

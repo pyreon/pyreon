@@ -754,3 +754,153 @@ describe("JSX transform — static JSX attribute hoisting", () => {
     expect(result).toContain("<span>icon</span>")
   })
 })
+
+// ─── Additional branch coverage tests ────────────────────────────────────────
+
+describe("JSX transform — child expression branches (non-template context)", () => {
+  test("wraps dynamic child expression inside a component (non-template path)", () => {
+    // Component elements skip template emission, so the child expression
+    // goes through the walk() JSX expression handler (lines 195-209)
+    const result = t("<MyComponent>{count()}</MyComponent>")
+    expect(result).toContain("() => count()")
+  })
+
+  test("does NOT wrap non-dynamic child expression inside a component", () => {
+    // Component context: child expression with no calls — shouldWrap returns false
+    // This hits the else branch where neither hoist nor wrap applies (lines 202-204)
+    const result = t("<MyComponent>{someVar}</MyComponent>")
+    expect(result).not.toContain("() =>")
+    expect(result).toContain("someVar")
+  })
+
+  test("empty expression in component child is left unchanged", () => {
+    // Empty expression (comment) inside component — expr is undefined, line 205-208
+    const result = t("<MyComponent>{/* comment */}</MyComponent>")
+    expect(result).not.toContain("() =>")
+  })
+})
+
+describe("JSX transform — nested fragment in templateFragmentCount", () => {
+  test("handles nested fragment inside fragment in template", () => {
+    // This triggers templateFragmentCount being called recursively for nested fragments
+    // (lines 318-323)
+    const result = t("<div><><><span>text</span></></></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span>text</span>")
+  })
+
+  test("bails on nested fragment with non-eligible child", () => {
+    // Nested fragment containing a component — hits line 325 (return -1)
+    const result = t("<div><><><MyComp /></></></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("nested fragment with expression child in templateFragmentCount", () => {
+    // Fragment in fragment with expression — templateFragmentCount handles expression
+    const result = t("<div><><>{count()}</></></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain(".data = count()")
+  })
+
+  test("nested fragment with expression containing JSX bails", () => {
+    // Fragment in fragment with JSX-containing expression — bails
+    const result = t("<div><><>{show() && <em />}</></></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("nested fragment with empty expression in templateFragmentCount", () => {
+    // Fragment in fragment with empty expression (comment)
+    const result = t("<div><><>{/* comment */}</></></div>")
+    expect(result).toContain("_tpl(")
+  })
+})
+
+describe("JSX transform — template attribute string expression", () => {
+  test("bakes string expression attribute into HTML in template", () => {
+    // class={"static"} — string literal in JSX expression → baked into HTML (line 427)
+    const result = t('<div class={"static-value"}><span /></div>')
+    expect(result).toContain("_tpl(")
+    expect(result).toContain('class=\\"static-value\\"')
+    expect(result).not.toContain("className")
+  })
+
+  test("bakes non-class string expression attribute into HTML", () => {
+    // title={"hello"} as expression — different attr name (line 427)
+    const result = t('<div title={"hello"}><span /></div>')
+    expect(result).toContain("_tpl(")
+    expect(result).toContain('title=\\"hello\\"')
+  })
+})
+
+describe("JSX transform — one-time className set in template", () => {
+  test("one-time className assignment for non-reactive class expression", () => {
+    // class={someVar} where someVar has no calls — one-time set (line 450)
+    const result = t("<div class={someVar}><span /></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("className = someVar")
+    expect(result).not.toContain("_bind(")
+  })
+})
+
+describe("JSX transform — isStaticAttrs edge cases", () => {
+  test("static JSX with boolean expression prop is static", () => {
+    // Boolean literal in expression: disabled={true} — isStatic returns true
+    const result = t("<div>{<input disabled={true} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("static JSX with false expression prop is static", () => {
+    const result = t("<div>{<input disabled={false} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("static JSX with null expression prop is static", () => {
+    const result = t("<div>{<input disabled={null} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("static JSX with numeric expression prop is static", () => {
+    const result = t("<div>{<input tabindex={0} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("static JSX with undefined expression prop is static", () => {
+    const result = t("<div>{<input disabled={undefined} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("static JSX with empty expression prop is static", () => {
+    // Empty expression in attribute: disabled={/* comment */} — expr is undefined
+    const result = t("<div>{<input disabled={/* comment */} />}</div>")
+    expect(result).toContain("const _$h0")
+  })
+})
+
+describe("JSX transform — isStaticChild edge cases", () => {
+  test("nested static fragment child is recognized as static", () => {
+    // Fragment as child of a JSX element being checked for staticness
+    const result = t("<div>{<div><>text</></div>}</div>")
+    expect(result).toContain("const _$h0")
+  })
+
+  test("nested fragment with dynamic child prevents hoisting", () => {
+    const result = t("<div>{<div><>{count()}</></div>}</div>")
+    expect(result).not.toContain("const _$h0")
+  })
+
+  test("expression child in static check — static literal", () => {
+    // Expression container with static value inside a JSX node being checked for staticness
+    const result = t('<div>{<div>{"hello"}</div>}</div>')
+    expect(result).toContain("const _$h0")
+  })
+
+  test("expression child in static check — dynamic call prevents hoisting", () => {
+    const result = t("<div>{<div>{count()}</div>}</div>")
+    expect(result).not.toContain("const _$h0")
+  })
+
+  test("expression child with empty expression is static", () => {
+    const result = t("<div>{<div>{/* comment */}</div>}</div>")
+    expect(result).toContain("const _$h0")
+  })
+})
