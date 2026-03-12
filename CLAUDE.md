@@ -108,7 +108,11 @@ Enabled in root tsconfig — optional properties need explicit `| undefined` whe
 
 ## Testing
 ```bash
-bun test                              # all tests
-cd packages/runtime-dom && bun test   # DOM tests (needs happy-dom preload)
-cd packages/router && bun test        # router tests (needs happy-dom preload)
+bun run test                          # all package tests (via workspace filter)
+cd packages/<name> && bun run test    # single package
+cd packages/<name> && bun run test -- --coverage  # with coverage
+bunx biome check --write .            # lint + format
+bunx tsc --noEmit                     # type check
 ```
+
+DOM-dependent packages (runtime-dom, router, head, compat layers) use `environment: "happy-dom"` in vitest config.
