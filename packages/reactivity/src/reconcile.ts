@@ -24,14 +24,20 @@ import { isStore } from "./store"
 type AnyObject = Record<PropertyKey, unknown>
 
 export function reconcile<T extends object>(source: T, target: T): void {
+  _reconcileInner(source, target, new WeakSet())
+}
+
+function _reconcileInner(source: object, target: object, seen: WeakSet<object>): void {
+  if (seen.has(source)) return // circular reference — stop recursion
+  seen.add(source)
   if (Array.isArray(source) && Array.isArray(target)) {
-    reconcileArray(source as unknown[], target as unknown[])
+    _reconcileArray(source as unknown[], target as unknown[], seen)
   } else {
-    reconcileObject(source as AnyObject, target as AnyObject)
+    _reconcileObject(source as AnyObject, target as AnyObject, seen)
   }
 }
 
-function reconcileArray(source: unknown[], target: unknown[]): void {
+function _reconcileArray(source: unknown[], target: unknown[], seen: WeakSet<object>): void {
   const targetLen = target.length
   const sourceLen = source.length
 
@@ -48,7 +54,7 @@ function reconcileArray(source: unknown[], target: unknown[]): void {
       typeof tv === "object"
     ) {
       // Both sides are objects — recurse
-      reconcile(sv as object, tv as object)
+      _reconcileInner(sv as object, tv as object, seen)
     } else {
       // Scalar or new entry — write directly (signal will skip if equal via Object.is)
       ;(target as unknown[])[i] = sv
@@ -61,7 +67,7 @@ function reconcileArray(source: unknown[], target: unknown[]): void {
   }
 }
 
-function reconcileObject(source: AnyObject, target: AnyObject): void {
+function _reconcileObject(source: AnyObject, target: AnyObject, seen: WeakSet<object>): void {
   const sourceKeys = Object.keys(source)
   const targetKeys = new Set(Object.keys(target))
 
@@ -72,7 +78,7 @@ function reconcileObject(source: AnyObject, target: AnyObject): void {
     if (sv !== null && typeof sv === "object" && tv !== null && typeof tv === "object") {
       if (isStore(tv)) {
         // Both objects — recurse into the store node
-        reconcile(sv as object, tv as object)
+        _reconcileInner(sv as object, tv as object, seen)
       } else {
         // Target is a raw object (not yet proxied) — just assign
         target[key] = sv

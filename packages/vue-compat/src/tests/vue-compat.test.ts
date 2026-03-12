@@ -165,13 +165,13 @@ describe("@pyreon/vue-compat", () => {
     }).toThrow("Cannot delete")
   })
 
-  it("readonly() allows symbol property set silently", () => {
+  it("readonly() throws on symbol property set", () => {
     const obj = readonly({ count: 0 })
     const sym = Symbol("test")
-    // symbol set returns true but doesn't actually set
+    // Only internal symbols (V_IS_READONLY, V_RAW) are allowed; all others throw
     expect(() => {
       ;(obj as Record<symbol, unknown>)[sym] = "value"
-    }).not.toThrow()
+    }).toThrow("readonly")
   })
 
   it("readonly() exposes V_IS_READONLY symbol", () => {

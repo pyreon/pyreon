@@ -228,12 +228,18 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const ctxStore = _contextAls.getStore() ?? []
 
   // Queue async resolution — runs in parallel, emits to main stream when done
+  // Errors are caught per-boundary so one failing Suspense doesn't abort the stream.
   ctx.pending.push(
     _contextAls.run(ctxStore, async () => {
-      const buf: string[] = []
-      await streamNode(children ?? null, (s) => buf.push(s))
-      mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
-      mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+      try {
+        const buf: string[] = []
+        await streamNode(children ?? null, (s) => buf.push(s))
+        mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
+        mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+      } catch (err) {
+        console.error(`[pyreon] Suspense boundary ${id} failed:`, err)
+        // Fallback stays visible — no swap script emitted
+      }
     }),
   )
 }

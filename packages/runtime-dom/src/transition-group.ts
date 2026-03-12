@@ -95,6 +95,8 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
       const done = () => {
+        el.removeEventListener("transitionend", done)
+        el.removeEventListener("animationend", done)
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
@@ -111,6 +113,8 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
       const done = () => {
+        el.removeEventListener("transitionend", done)
+        el.removeEventListener("animationend", done)
         el.classList.remove(cls.la, cls.lt)
         props.onAfterLeave?.(el)
         onDone()
@@ -213,7 +217,11 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
             el.classList.add(cls.mv)
             el.style.transform = ""
             el.style.transition = ""
-            const done = () => el.classList.remove(cls.mv)
+            const done = () => {
+              el.removeEventListener("transitionend", done)
+              el.removeEventListener("animationend", done)
+              el.classList.remove(cls.mv)
+            }
             el.addEventListener("transitionend", done, { once: true })
             el.addEventListener("animationend", done, { once: true })
           })

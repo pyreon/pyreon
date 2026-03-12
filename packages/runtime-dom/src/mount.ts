@@ -152,6 +152,10 @@ export function mountChild(
   // Portal — mount children into a different DOM target, outside the current tree
   if (vnode.type === (PortalSymbol as unknown as string)) {
     const { target, children } = vnode.props as unknown as PortalProps
+    if (__DEV__ && !target) {
+      console.warn("[pyreon] Portal target is null or undefined — children will not be rendered.")
+      return noop
+    }
     return mountChild(children, target, null)
   }
 

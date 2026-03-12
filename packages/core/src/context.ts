@@ -35,12 +35,19 @@ function getStack(): Map<symbol, unknown>[] {
   return _stackProvider()
 }
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 export function pushContext(values: Map<symbol, unknown>) {
   getStack().push(values)
 }
 
 export function popContext() {
-  getStack().pop()
+  const stack = getStack()
+  if (__DEV__ && stack.length === 0) {
+    console.warn("[pyreon] popContext() called on empty context stack — mismatched push/pop.")
+    return
+  }
+  stack.pop()
 }
 
 /**

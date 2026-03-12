@@ -131,5 +131,7 @@ function serializeIslandProps(props: Record<string, unknown>): string {
     if (value === undefined) continue
     clean[key] = value
   }
+  // The SSR renderer's renderProp() already applies escapeHtml() to attribute
+  // values, so the JSON is safe to embed in HTML attributes without double-escaping.
   return JSON.stringify(clean)
 }

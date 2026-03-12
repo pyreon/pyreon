@@ -41,10 +41,11 @@ export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
     })
   } else {
     const e = effect(() => {
-      const cleanup = fn()
-      if (typeof cleanup === "function") return cleanup
+      fn()
     })
-    onUnmount(() => e.dispose())
+    onUnmount(() => {
+      e.dispose()
+    })
   }
 }
 

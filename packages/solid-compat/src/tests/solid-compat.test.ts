@@ -370,19 +370,29 @@ describe("@pyreon/solid-compat", () => {
     expect(typeof Lazy.preload).toBe("function")
   })
 
-  it("lazy component returns null before loaded", () => {
+  it("lazy component throws promise before loaded (for Suspense)", () => {
     const Lazy = lazy(() => Promise.resolve({ default: () => h("div", null, "loaded") }))
-    const result = Lazy({})
-    expect(result).toBeNull()
+    let thrown: unknown
+    try {
+      Lazy({})
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeInstanceOf(Promise)
   })
 
   it("lazy component renders after loading", async () => {
     const MyComp = () => h("div", null, "loaded")
     const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
 
-    // Trigger load
-    Lazy({})
-    await new Promise<void>((r) => setTimeout(r, 10))
+    // Trigger load by catching the thrown promise, then await it
+    let thrown: unknown
+    try {
+      Lazy({})
+    } catch (e) {
+      thrown = e
+    }
+    await thrown
 
     const result = Lazy({})
     expect(result).not.toBeNull()

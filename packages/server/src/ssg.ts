@@ -29,7 +29,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { dirname, join, resolve } from "node:path"
 
 export interface PrerenderOptions {
   /** SSR handler created by createHandler() */
@@ -88,7 +88,12 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
         try {
           const url = new URL(path, origin)
           const req = new Request(url.href)
-          const res = await handler(req)
+          const res = await Promise.race([
+            handler(req),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`Prerender timeout for "${path}" (30s)`)), 30_000),
+            ),
+          ])
 
           if (!res.ok) {
             errors.push({ path, error: new Error(`HTTP ${res.status}`) })
@@ -110,6 +115,13 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
               : path.endsWith(".html")
                 ? join(outDir, path)
                 : join(outDir, path, "index.html")
+
+          // Prevent path traversal — resolved path must stay under outDir
+          const resolvedOut = resolve(outDir)
+          if (!resolve(filePath).startsWith(resolvedOut)) {
+            errors.push({ path, error: new Error(`Path traversal detected: "${path}"`) })
+            return
+          }
 
           await mkdir(dirname(filePath), { recursive: true })
           await writeFile(filePath, html, "utf-8")

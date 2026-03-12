@@ -19,7 +19,17 @@
  */
 
 import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { createContext, Fragment, onMount, onUnmount, onUpdate, h as pyreonH } from "@pyreon/core"
+import {
+  createContext,
+  Fragment,
+  onMount,
+  onUnmount,
+  onUpdate,
+  pushContext,
+  popContext,
+  useContext,
+  h as pyreonH,
+} from "@pyreon/core"
 import {
   createStore,
   effect,
@@ -111,20 +121,28 @@ export interface ComputedRef<T = unknown> extends Ref<T> {
 }
 
 /**
- * Creates a readonly computed ref.
- * Backed by Pyreon's `computed()`, wrapped in a `.value` accessor.
+ * Creates a computed ref. Supports both readonly and writable forms:
+ *   - `computed(() => value)` — readonly
+ *   - `computed({ get: () => value, set: (v) => ... })` — writable
  *
- * Difference from Vue: setter is not supported — throws if assigned.
+ * Backed by Pyreon's `computed()`, wrapped in a `.value` accessor.
  */
-export function computed<T>(fn: () => T): ComputedRef<T> {
-  const c = pyreonComputed(fn)
+export function computed<T>(
+  fnOrOptions: (() => T) | { get: () => T; set: (value: T) => void },
+): ComputedRef<T> {
+  const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
+  const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
+  const c = pyreonComputed(getter)
   const r = {
     [V_IS_REF]: true as const,
     get value(): T {
       return c()
     },
-    set value(_: T) {
-      throw new Error("Cannot set value of a computed ref — computed refs are readonly")
+    set value(v: T) {
+      if (!setter) {
+        throw new Error("Cannot set value of a computed ref — computed refs are readonly")
+      }
+      setter(v)
     },
   }
   return r as ComputedRef<T>
@@ -174,7 +192,8 @@ export function readonly<T extends object>(obj: T): Readonly<T> {
       return Reflect.get(target, key)
     },
     set(_target, key) {
-      if (typeof key === "symbol") return true
+      // Internal symbols used for identification are allowed
+      if (key === V_IS_READONLY || key === V_RAW) return true
       throw new Error(`Cannot set property "${String(key)}" on a readonly object`)
     },
     deleteProperty(_target, key) {
@@ -355,44 +374,39 @@ export function nextTick(): Promise<void> {
 
 // ─── Provide / Inject ─────────────────────────────────────────────────────────
 
-// Internal map of string keys to context objects
-const contextRegistry = new Map<string | symbol, ReturnType<typeof createContext>>()
+// Registry of string/symbol keys to Pyreon context objects (created lazily)
+const _contextRegistry = new Map<string | symbol, ReturnType<typeof createContext>>()
 
 function getOrCreateContext<T>(key: string | symbol, defaultValue?: T) {
-  if (!contextRegistry.has(key)) {
-    contextRegistry.set(key, createContext<T>(defaultValue as T))
+  if (!_contextRegistry.has(key)) {
+    _contextRegistry.set(key, createContext<T>(defaultValue as T))
   }
-  return contextRegistry.get(key) as ReturnType<typeof createContext<T>>
+  return _contextRegistry.get(key) as ReturnType<typeof createContext<T>>
 }
 
 /**
  * Provides a value to all descendant components.
  *
- * Difference from Vue: backed by Pyreon's `createContext`/`useContext`.
- * The key should be a string or symbol.
+ * Difference from Vue: backed by Pyreon's context stack (pushContext/popContext).
+ * Must be called during component setup. The value is scoped to the component
+ * tree — not globally shared.
  */
 export function provide<T>(key: string | symbol, value: T): void {
-  getOrCreateContext<T>(key, value)
-  // In Pyreon, context is set via the context stack during component rendering.
-  // Since provide() is called during setup, we store it for inject() to read.
-  // This uses a simple module-level store since Pyreon contexts work differently.
-  _provideStore.set(key, value)
+  const ctx = getOrCreateContext<T>(key)
+  pushContext(new Map([[ctx.id, value]]))
+  onUnmount(() => popContext())
 }
 
 /**
  * Injects a value provided by an ancestor component.
  *
- * Difference from Vue: backed by Pyreon's context system.
+ * Difference from Vue: backed by Pyreon's context system (useContext).
  */
 export function inject<T>(key: string | symbol, defaultValue?: T): T | undefined {
-  if (_provideStore.has(key)) {
-    return _provideStore.get(key) as T
-  }
-  return defaultValue
+  const ctx = getOrCreateContext<T>(key)
+  const value = useContext(ctx)
+  return value !== undefined ? value : defaultValue
 }
-
-// Simple provide/inject store (works within same component tree setup)
-const _provideStore = new Map<string | symbol, unknown>()
 
 // ─── defineComponent ──────────────────────────────────────────────────────────
 

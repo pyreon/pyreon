@@ -67,7 +67,6 @@ export class Component<
   props: P
   state: S
   private _stateSignal: ReturnType<typeof signal<S>>
-  private _mounted = false
 
   constructor(props: P) {
     this.props = props

@@ -171,22 +171,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
 // ── HMR injection ─────────────────────────────────────────────────────────────
 
 /**
- * Regex that matches top-level signal declarations:
- *   const foo = signal(...)
- *   let bar = signal(...)
- *   export const baz = signal(...)
- *
- * Captures:
- *   [1] Everything before `signal(` (e.g. "const count = ")
- *   [2] The variable name
- *   [3] The arguments to signal(...) — everything inside the parens
- *
- * This intentionally only matches simple single-line declarations where
- * signal() is called directly. Nested or multi-line patterns are left as-is
- * (they are typically inside functions and thus re-created on each call anyway).
+ * Regex that detects top-level signal declarations (prefix + variable name).
+ * The arguments are extracted via balanced-paren matching in `injectHmr`
+ * to handle arbitrary nesting like `signal(compute(getValue(x)))`.
  */
-const SIGNAL_DECL_RE =
-  /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(((?:[^)(]|\([^)]*\))*)\)/gm
+const SIGNAL_PREFIX_RE =
+  /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
 
 /**
  * Detect whether the module exports any component-like functions
@@ -195,10 +185,37 @@ const SIGNAL_DECL_RE =
 const EXPORT_COMPONENT_RE =
   /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/
 
+/** Extract balanced parentheses content starting at the given offset (after the opening paren). */
+function extractBalancedArgs(code: string, start: number): string | null {
+  let depth = 1
+  for (let i = start; i < code.length; i++) {
+    const ch = code[i]
+    if (ch === "(") depth++
+    else if (ch === ")") {
+      depth--
+      if (depth === 0) return code.slice(start, i)
+    }
+    // Skip string literals to avoid counting parens inside strings
+    else if (ch === '"' || ch === "'" || ch === "`") {
+      const quote = ch
+      let j = i + 1
+      while (j < code.length) {
+        if (code[j] === "\\") {
+          j += 2
+          continue
+        }
+        if (code[j] === quote) break
+        j++
+      }
+      i = j
+    }
+  }
+  return null // unbalanced — skip this declaration
+}
+
 function injectHmr(code: string, moduleId: string): string {
-  const hasSignals = SIGNAL_DECL_RE.test(code)
-  // Reset lastIndex after test
-  SIGNAL_DECL_RE.lastIndex = 0
+  const hasSignals = SIGNAL_PREFIX_RE.test(code)
+  SIGNAL_PREFIX_RE.lastIndex = 0
 
   const hasComponentExport = EXPORT_COMPONENT_RE.test(code)
 
@@ -210,11 +227,29 @@ function injectHmr(code: string, moduleId: string): string {
   // Rewrite top-level signal() calls to use __hmr_signal for state preservation
   if (hasSignals) {
     const escapedId = JSON.stringify(moduleId)
-    output = output.replace(
-      SIGNAL_DECL_RE,
-      (_match, prefix: string, name: string, args: string) =>
-        `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`,
-    )
+    // Process matches in reverse order so indices stay valid after replacement
+    const matches: Array<{ start: number; end: number; prefix: string; name: string; args: string }> = []
+    let m: RegExpExecArray | null
+    while ((m = SIGNAL_PREFIX_RE.exec(code)) !== null) {
+      const argsStart = m.index + m[0].length
+      const args = extractBalancedArgs(code, argsStart)
+      if (args === null) continue // unbalanced — skip
+      matches.push({
+        start: m.index,
+        end: argsStart + args.length + 1, // +1 for closing paren
+        prefix: m[1],
+        name: m[2],
+        args,
+      })
+    }
+    SIGNAL_PREFIX_RE.lastIndex = 0
+
+    // Replace in reverse to preserve offsets
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const { start, end, prefix, name, args } = matches[i]
+      const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
+      output = output.slice(0, start) + replacement + output.slice(end)
+    }
   }
 
   // Build the HMR footer

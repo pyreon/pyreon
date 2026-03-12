@@ -141,11 +141,11 @@ export { pyreonCreateSelector as createSelector }
 // ─── mergeProps ──────────────────────────────────────────────────────────────
 
 export function mergeProps<T extends object[]>(...sources: [...T]): T[number] {
-  const target = {} as Record<string, unknown>
+  const target = {} as Record<PropertyKey, unknown>
   for (const source of sources) {
     const descriptors = Object.getOwnPropertyDescriptors(source)
-    for (const key of Object.keys(descriptors)) {
-      const desc = descriptors[key]
+    for (const key of Reflect.ownKeys(descriptors)) {
+      const desc = descriptors[key as string]
       // desc is always defined — getOwnPropertyDescriptors returns valid descriptors
       // Preserve getters for reactivity
       if (desc.get) {
@@ -178,10 +178,10 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   const keySet = new Set<string>(keys.flat() as string[])
 
   const descriptors = Object.getOwnPropertyDescriptors(props)
-  for (const key of Object.keys(descriptors)) {
-    const desc = descriptors[key]
+  for (const key of Reflect.ownKeys(descriptors)) {
+    const desc = descriptors[key as string]
     // desc is always defined — getOwnPropertyDescriptors returns valid descriptors
-    const target = keySet.has(key) ? picked : rest
+    const target = (typeof key === "string" && keySet.has(key)) ? picked : rest
     if (desc.get) {
       Object.defineProperty(target, key, {
         get: desc.get,
@@ -219,25 +219,31 @@ export function lazy<P extends Props>(
   loader: () => Promise<{ default: ComponentFn<P> }>,
 ): ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
   let resolved: ComponentFn<P> | null = null
+  let error: Error | null = null
   let promise: Promise<{ default: ComponentFn<P> }> | null = null
-  const [loading, setLoading] = createSignal(false)
 
   const load = () => {
     if (!promise) {
-      setLoading(true)
-      promise = loader().then((mod) => {
-        resolved = mod.default
-        setLoading(false)
-        return mod
-      })
+      promise = loader()
+        .then((mod) => {
+          resolved = mod.default
+          return mod
+        })
+        .catch((err) => {
+          error = err instanceof Error ? err : new Error(String(err))
+          // Allow retry on next render by resetting the promise
+          promise = null
+          throw error
+        })
     }
     return promise
   }
 
   const LazyComponent = ((props: P) => {
+    if (error) throw error
     if (!resolved) {
-      load()
-      return null
+      // Throw the promise so Suspense can catch it
+      throw load()
     }
     return resolved(props)
   }) as ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }

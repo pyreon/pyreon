@@ -143,7 +143,9 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     // Evaluate redirect before guards (no guard needed for redirects)
     const leaf = to.matched[to.matched.length - 1]
     if (leaf?.redirect) {
-      const target = typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect
+      const target = sanitizePath(
+        typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect,
+      )
       loadingSignal.update((n) => n - 1)
       return navigate(target, replace, redirectDepth + 1)
     }
@@ -166,7 +168,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           }
           if (typeof result === "string") {
             loadingSignal.update((n) => n - 1)
-            return navigate(result, replace, redirectDepth + 1)
+            return navigate(sanitizePath(result), replace, redirectDepth + 1)
           }
         }
       }
@@ -190,7 +192,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
           }
           if (typeof result === "string") {
             loadingSignal.update((n) => n - 1)
-            return navigate(result, replace, redirectDepth + 1)
+            return navigate(sanitizePath(result), replace, redirectDepth + 1)
           }
         }
       }
@@ -423,10 +425,16 @@ function resolveNamedPath(
   return path
 }
 
-/** Block javascript: and data: URI injection in navigation targets. */
+/** Block unsafe navigation targets: javascript/data/vbscript URIs and absolute URLs. */
 function sanitizePath(path: string): string {
-  if (/^\s*(?:javascript|data):/i.test(path)) {
+  const trimmed = path.trim()
+  if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
     console.warn(`[pyreon-router] Blocked unsafe navigation target: "${path}"`)
+    return "/"
+  }
+  // Block absolute URLs and protocol-relative URLs — router only handles same-origin paths
+  if (/^\/\/|^https?:/i.test(trimmed)) {
+    console.warn(`[pyreon-router] Blocked external navigation target: "${path}"`)
     return "/"
   }
   return path

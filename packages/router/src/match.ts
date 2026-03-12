@@ -2,6 +2,10 @@ import type { ResolvedRoute, RouteMeta, RouteRecord } from "./types"
 
 // ─── Query string ─────────────────────────────────────────────────────────────
 
+/**
+ * Parse a query string into key-value pairs. Duplicate keys are overwritten
+ * (last value wins). Use `parseQueryMulti` to preserve duplicates as arrays.
+ */
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return {}
   const result: Record<string, string> = {}

@@ -17,7 +17,14 @@
  */
 
 import type { ComponentFn, Ref, VNode, VNodeChild } from "@pyreon/core"
-import { ForSymbol, Fragment, PortalSymbol, reportError, runWithHooks } from "@pyreon/core"
+import {
+  dispatchToErrorBoundary,
+  ForSymbol,
+  Fragment,
+  PortalSymbol,
+  reportError,
+  runWithHooks,
+} from "@pyreon/core"
 import { effect, effectScope, runUntracked, setCurrentScope } from "@pyreon/reactivity"
 import { warnHydrationMismatch } from "./hydration-debug"
 import { mountChild } from "./mount"
@@ -301,6 +308,7 @@ function hydrateComponent(
       timestamp: Date.now(),
       props: vnode.props as Record<string, unknown>,
     })
+    dispatchToErrorBoundary(err)
     return [noop, domNode]
   }
   setCurrentScope(null)
@@ -320,11 +328,16 @@ function hydrateComponent(
 
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
   for (const fn of hooks.mount) {
-    let c: (() => void) | undefined
-    scope.runInScope(() => {
-      c = fn()
-    })
-    if (c) mountCleanups.push(c)
+    try {
+      let c: (() => void) | undefined
+      scope.runInScope(() => {
+        c = fn()
+      })
+      if (c) mountCleanups.push(c)
+    } catch (err) {
+      console.error("[pyreon] Error in onMount hook during hydration:", err)
+      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
+    }
   }
 
   const cleanup: Cleanup = () => {

@@ -74,9 +74,12 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
   const open = attrs ? `<${tag.tag} ${attrs}` : `<${tag.tag}`
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
   const content = tag.children || ""
-  // All non-void non-title head tags (script, style, noscript) use raw content.
-  // Only escape closing tags to prevent injection.
-  const body = content.replace(/<\/(script|style|noscript)/gi, "<\\/$1")
+  // Escape sequences that could break out of script/style/noscript blocks:
+  // 1. Closing tags like </script> — use Unicode escape in the slash
+  // 2. HTML comment openers <!-- that could confuse parsers
+  const body = content
+    .replace(/<\/(script|style|noscript)/gi, "<\\/$1")
+    .replace(/<!--/g, "<\\!--")
   return `${open}>${body}</${tag.tag}>`
 }
 

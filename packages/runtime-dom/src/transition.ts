@@ -86,6 +86,9 @@ export function Transition(props: TransitionProps): VNodeChild {
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
       const done = () => {
+        // Remove both listeners — only one fires, so clean up the other
+        el.removeEventListener("transitionend", done)
+        el.removeEventListener("animationend", done)
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
@@ -102,6 +105,9 @@ export function Transition(props: TransitionProps): VNodeChild {
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
       const done = () => {
+        // Remove both listeners — only one fires, so clean up the other
+        el.removeEventListener("transitionend", done)
+        el.removeEventListener("animationend", done)
         el.classList.remove(cls.la, cls.lt)
         pendingLeaveCancel = null
         isMounted.set(false)
