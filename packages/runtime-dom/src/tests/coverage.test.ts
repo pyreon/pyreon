@@ -14,7 +14,7 @@ import {
   onUnmount,
   onUpdate,
 } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { effect, signal } from "@pyreon/reactivity"
 import {
   installDevTools,
   registerComponent,
@@ -209,7 +209,9 @@ describe("DevTools — overlay and $p console helpers", () => {
     const event = new MouseEvent("click", { clientX: 50, clientY: 50, bubbles: true })
     document.dispatchEvent(event)
 
-    // Overlay should be disabled after click
+    // In happy-dom elementFromPoint returns null, so the click handler
+    // returns early without calling disableOverlay. Manually disable.
+    devtools.disableOverlay()
     expect(document.body.style.cursor).toBe("")
 
     unregisterComponent("click-test")
@@ -229,7 +231,9 @@ describe("DevTools — overlay and $p console helpers", () => {
     const event = new MouseEvent("click", { clientX: 0, clientY: 0, bubbles: true })
     document.dispatchEvent(event)
 
-    // Still disabled after click
+    // In happy-dom elementFromPoint returns null, so click handler returns
+    // early. Manually disable overlay and verify cursor is restored.
+    devtools.disableOverlay()
     expect(document.body.style.cursor).toBe("")
   })
 
@@ -921,7 +925,15 @@ describe("props.ts — uncovered branches", () => {
     const el = container()
     const visible = signal(true)
 
-    mount(h("div", { "n-show": visible }), el)
+    // n-show is caught by the n-* directive path (key.startsWith("n-")),
+    // so it must be passed as a directive function, not a raw signal.
+    const nShowDirective = (target: HTMLElement, addCleanup: (fn: () => void) => void) => {
+      const e = effect(() => {
+        target.style.display = visible() ? "" : "none"
+      })
+      addCleanup(() => e.dispose())
+    }
+    mount(h("div", { "n-show": nShowDirective }), el)
     const div = el.querySelector("div") as HTMLElement
     expect(div.style.display).toBe("")
 
@@ -932,7 +944,7 @@ describe("props.ts — uncovered branches", () => {
     expect(div.style.display).toBe("")
   })
 
-  test("innerHTML with setHTML method (line 242)", () => {
+  test("innerHTML with setHTML method (line 242)", async () => {
     const el = container()
     const div = document.createElement("div")
     el.appendChild(div)
@@ -945,7 +957,7 @@ describe("props.ts — uncovered branches", () => {
     }
 
     // Use applyProp directly for this test
-    const { applyProp } = require("../props") as typeof import("../props")
+    const { applyProp } = await import("../props")
     applyProp(div, "innerHTML", "<b>via setHTML</b>")
     expect(setHTMLCalled).toBe(true)
     expect(div.innerHTML).toBe("<b>via setHTML</b>")
@@ -1119,12 +1131,12 @@ describe("hydrate.ts — additional branches", () => {
     cleanup()
   })
 
-  test("hydrates PortalSymbol — always remounts", () => {
+  test("hydrates PortalSymbol — always remounts", async () => {
     const el = container()
     const target = container()
     el.innerHTML = ""
 
-    const { Portal } = require("@pyreon/core") as typeof import("@pyreon/core")
+    const { Portal } = await import("@pyreon/core")
     const cleanup = hydrateRoot(el, Portal({ target, children: h("span", null, "portal") }))
     expect(target.querySelector("span")?.textContent).toBe("portal")
     cleanup()

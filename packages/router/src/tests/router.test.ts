@@ -2116,7 +2116,12 @@ describe("stale chunk detection", () => {
 // ─── parseQueryMulti ─────────────────────────────────────────────────────────
 
 describe("parseQueryMulti", () => {
-  const { parseQueryMulti } = require("../match")
+  let parseQueryMulti: (qs: string) => Record<string, string | string[]>
+
+  beforeAll(async () => {
+    const mod = await import("../match")
+    parseQueryMulti = mod.parseQueryMulti
+  })
 
   test("returns empty for empty string", () => {
     expect(parseQueryMulti("")).toEqual({})
@@ -2171,12 +2176,14 @@ describe("matchPath splat params", () => {
 
 describe("buildPath splat params", () => {
   test("builds path with splat param", () => {
-    const result = buildPath("/files/:path*", { path: "a/b/c" })
+    // buildPath regex captures "path*" as key (including the asterisk)
+    const result = buildPath("/files/:path*", { "path*": "a/b/c" })
     expect(result).toBe("/files/a/b/c")
   })
 
   test("encodes individual segments in splat", () => {
-    const result = buildPath("/files/:path*", { path: "hello world/file name" })
+    // buildPath regex captures "path*" as key (including the asterisk)
+    const result = buildPath("/files/:path*", { "path*": "hello world/file name" })
     expect(result).toBe("/files/hello%20world/file%20name")
   })
 

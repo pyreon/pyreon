@@ -18,8 +18,10 @@ describe("Cell listener promotion", () => {
     const calls: number[] = []
     c.listen(() => calls.push(1))
     c.listen(() => calls.push(2))
+    // Third listen: _s already exists (false branch of `if (!this._s)`)
+    c.listen(() => calls.push(3))
     c.set(1)
-    expect(calls).toEqual([1, 2])
+    expect(calls).toEqual([1, 2, 3])
   })
 
   test("subscribe unsubscribes single listener", () => {
@@ -298,6 +300,15 @@ describe("reconcile branches", () => {
     // Access nested to ensure it's proxied as store
     const _val = store.nested.x
     expect(isStore(store.nested)).toBe(true)
+    reconcile({ nested: { x: 99 } }, store)
+    expect(store.nested.x).toBe(99)
+  })
+
+  test("reconcile object where target has raw (non-store) nested object", () => {
+    // Don't access nested, so it stays as raw object (not proxied)
+    const store = createStore<Record<string, Record<string, number>>>({ nested: { x: 1 } })
+    // nested has not been accessed via proxy, so isStore(target.nested) is false
+    // This should hit the `else { target[key] = sv }` branch at line 78
     reconcile({ nested: { x: 99 } }, store)
     expect(store.nested.x).toBe(99)
   })

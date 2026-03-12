@@ -194,8 +194,10 @@ describe("hydrateIslands", () => {
   })
 
   test("handles 'media(...)' hydration strategy — deferred match", async () => {
+    // Use double parens so slice(6, -1) produces "(min-width: 99999px)" —
+    // a valid media query that happy-dom correctly evaluates as non-matching.
     document.body.innerHTML =
-      '<pyreon-island data-component="Responsive" data-hydrate="media(min-width: 99999px)" data-props="{}"></pyreon-island>'
+      '<pyreon-island data-component="Responsive" data-hydrate="media((min-width: 99999px))" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const Responsive: ComponentFn = () => {

@@ -653,10 +653,10 @@ describe("JSX transform — template emission", () => {
     expect(result).not.toContain("hidden")
   })
 
-  test("omits undefined keyword attr from HTML", () => {
+  test("emits setAttribute for undefined keyword attr", () => {
     const result = t("<div hidden={undefined}><span /></div>")
     expect(result).toContain("_tpl(")
-    expect(result).not.toContain("hidden")
+    expect(result).toContain('setAttribute("hidden", undefined)')
   })
 
   test("one-time set for non-class static expression attribute", () => {

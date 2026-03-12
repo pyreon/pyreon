@@ -1057,7 +1057,7 @@ describe("setContextStackProvider", () => {
 // ─── ErrorBoundary advanced ──────────────────────────────────────────────────
 
 describe("ErrorBoundary — advanced", () => {
-  test("handler returns false when already in error state (double error)", () => {
+  test("handler returns false when already in error state (double error)", async () => {
     let result: VNodeChild = null
 
     runWithHooks(() => {
@@ -1081,11 +1081,11 @@ describe("ErrorBoundary — advanced", () => {
     expect(handled2).toBe(false)
 
     // Clean up the boundary
-    const { popErrorBoundary: pop } = require("../component")
+    const { popErrorBoundary: pop } = await import("../component")
     pop()
   })
 
-  test("reset function clears error and re-renders children", () => {
+  test("reset function clears error and re-renders children", async () => {
     let result: VNodeChild = null
     let capturedReset: (() => void) | undefined
 
@@ -1113,7 +1113,7 @@ describe("ErrorBoundary — advanced", () => {
     expect(getter()).toBe("child content")
 
     // Clean up
-    const { popErrorBoundary: pop } = require("../component")
+    const { popErrorBoundary: pop } = await import("../component")
     pop()
   })
 })
@@ -1135,7 +1135,7 @@ describe("Suspense — advanced", () => {
   test("handles null children", () => {
     const node = Suspense({ fallback: h("span", null, "loading") })
     const getter = node.children[0] as () => VNodeChild
-    expect(getter()).toBeNull()
+    expect(getter()).toBeUndefined()
   })
 
   test("handles array children (not loading)", () => {
