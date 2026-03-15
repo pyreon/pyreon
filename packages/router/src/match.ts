@@ -184,29 +184,36 @@ function matchRoutes(
   parentParams: Record<string, string> = {},
 ): MatchResult | null {
   for (const route of routes) {
-    if (route.children && route.children.length > 0) {
-      // Try matching this route as a prefix
-      const prefix = matchPrefix(route.path, path)
-      if (prefix !== null) {
-        const allParams = { ...parentParams, ...prefix.params }
-        const matched = [...parentMatched, route]
-        // Try to match children against the remaining path
-        const childMatch = matchRoutes(prefix.rest, route.children, matched, allParams)
-        if (childMatch) return childMatch
-        // No child matched — if this route has a component, it's the match itself
-        const exactParams = matchPath(route.path, path)
-        if (exactParams !== null) {
-          return { params: { ...parentParams, ...exactParams }, matched }
-        }
-      }
-    } else {
-      const params = matchPath(route.path, path)
-      if (params !== null) {
-        return { params: { ...parentParams, ...params }, matched: [...parentMatched, route] }
-      }
-    }
+    const result = matchSingleRoute(path, route, parentMatched, parentParams)
+    if (result) return result
   }
   return null
+}
+
+function matchSingleRoute(
+  path: string,
+  route: RouteRecord,
+  parentMatched: RouteRecord[],
+  parentParams: Record<string, string>,
+): MatchResult | null {
+  if (!route.children || route.children.length === 0) {
+    const params = matchPath(route.path, path)
+    if (params === null) return null
+    return { params: { ...parentParams, ...params }, matched: [...parentMatched, route] }
+  }
+
+  const prefix = matchPrefix(route.path, path)
+  if (prefix === null) return null
+
+  const allParams = { ...parentParams, ...prefix.params }
+  const matched = [...parentMatched, route]
+
+  const childMatch = matchRoutes(prefix.rest, route.children, matched, allParams)
+  if (childMatch) return childMatch
+
+  const exactParams = matchPath(route.path, path)
+  if (exactParams === null) return null
+  return { params: { ...parentParams, ...exactParams }, matched }
 }
 
 /** Merge meta from matched routes (leaf takes precedence) */

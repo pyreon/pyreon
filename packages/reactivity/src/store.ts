@@ -38,7 +38,8 @@ export function createStore<T extends object>(initial: T): T {
 }
 
 function wrap(raw: object): object {
-  if (proxyCache.has(raw)) return proxyCache.get(raw)!
+  const cached = proxyCache.get(raw)
+  if (cached) return cached
 
   // Per-property signals. Lazily created on first access.
   const propSignals = new Map<PropertyKey, Signal<unknown>>()
@@ -50,7 +51,7 @@ function wrap(raw: object): object {
     if (!propSignals.has(key)) {
       propSignals.set(key, signal((raw as Record<PropertyKey, unknown>)[key]))
     }
-    return propSignals.get(key)!
+    return propSignals.get(key) as Signal<unknown>
   }
 
   const proxy = new Proxy(raw, {

@@ -53,9 +53,9 @@ export interface NativeItem {
 }
 
 export interface LifecycleHooks {
-  mount: Array<() => CleanupFn | undefined>
-  unmount: Array<() => void>
-  update: Array<() => void>
+  mount: (() => CleanupFn | undefined)[]
+  unmount: (() => void)[]
+  update: (() => void)[]
   /** Error handlers — return true to mark the error as handled (stops propagation). */
-  error: Array<(err: unknown) => boolean | undefined>
+  error: ((err: unknown) => boolean | undefined)[]
 }

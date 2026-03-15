@@ -239,7 +239,7 @@ describe("propagateError()", () => {
       mount: [],
       unmount: [],
       update: [],
-      error: [] as Array<(err: unknown) => boolean | undefined>,
+      error: [] as ((err: unknown) => boolean | undefined)[],
     }
     expect(propagateError(new Error("test"), hooks)).toBe(false)
   })

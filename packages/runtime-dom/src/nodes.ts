@@ -1,4 +1,4 @@
-import type { NativeItem, VNode, VNodeChild } from "@pyreon/core"
+import type { VNode, VNodeChild } from "@pyreon/core"
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -41,20 +41,28 @@ export function mountReactive(
   accessor: () => VNodeChild,
   parent: Node,
   anchor: Node | null,
-  mount: (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup,
+  mount: (child: VNodeChild, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
   const marker = document.createComment("pyreon")
   parent.insertBefore(marker, anchor)
 
-  let currentCleanup: Cleanup = () => {}
+  let currentCleanup: Cleanup = () => {
+    /* noop */
+  }
   let generation = 0
 
   const e = effect(() => {
     const myGen = ++generation
     currentCleanup()
-    currentCleanup = () => {}
+    currentCleanup = () => {
+      /* noop */
+    }
     const value = accessor()
     if (__DEV__ && typeof value === "function") {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.warn(
+        "[Pyreon] Reactive accessor returned a function instead of a value. Did you forget to call the signal?",
+      )
     }
     if (value != null && value !== false) {
       const cleanup = mount(value, parent, marker)
@@ -97,11 +105,107 @@ interface KeyedEntry {
 // Entries use their first DOM node as anchor (element for simple vnodes, comment fallback for empty).
 const _keyedAnchors = new WeakSet<Node>()
 
+/** LIS-based reorder state — shared across keyed list instances, grown as needed */
+interface LisState {
+  tails: Int32Array
+  tailIdx: Int32Array
+  pred: Int32Array
+  stay: Uint8Array
+}
+
+function growLisArrays(lis: LisState, n: number): LisState {
+  if (n <= lis.pred.length) return lis
+  return {
+    tails: new Int32Array(n + 16),
+    tailIdx: new Int32Array(n + 16),
+    pred: new Int32Array(n + 16),
+    stay: new Uint8Array(n + 16),
+  }
+}
+
+function computeKeyedLis(
+  lis: LisState,
+  n: number,
+  newKeyOrder: (string | number)[],
+  curPos: Map<string | number, number>,
+): number {
+  const { tails, tailIdx, pred } = lis
+  let lisLen = 0
+  for (let i = 0; i < n; i++) {
+    const key = newKeyOrder[i]
+    if (key === undefined) continue
+    const v = curPos.get(key) ?? -1
+    if (v < 0) continue
+
+    let lo = 0
+    let hi = lisLen
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if ((tails[mid] as number) < v) lo = mid + 1
+      else hi = mid
+    }
+    tails[lo] = v
+    tailIdx[lo] = i
+    if (lo > 0) pred[i] = tailIdx[lo - 1] as number
+    if (lo === lisLen) lisLen++
+  }
+  return lisLen
+}
+
+function markStayingEntries(lis: LisState, lisLen: number): void {
+  const { tailIdx, pred, stay } = lis
+  let cur: number = lisLen > 0 ? (tailIdx[lisLen - 1] as number) : -1
+  while (cur !== -1) {
+    stay[cur] = 1
+    cur = pred[cur] as number
+  }
+}
+
+function applyKeyedMoves(
+  n: number,
+  newKeyOrder: (string | number)[],
+  stay: Uint8Array,
+  cache: Map<string | number, KeyedEntry>,
+  parent: Node,
+  tailMarker: Comment,
+): void {
+  let cursor: Node = tailMarker
+  for (let i = n - 1; i >= 0; i--) {
+    const key = newKeyOrder[i]
+    if (key === undefined) continue
+    const entry = cache.get(key)
+    if (!entry) continue
+    if (!stay[i]) moveEntryBefore(parent, entry.anchor, cursor)
+    cursor = entry.anchor
+  }
+}
+
+/** Grow LIS typed arrays if needed, then compute and apply reorder. */
+function keyedListReorder(
+  lis: LisState,
+  n: number,
+  newKeyOrder: (string | number)[],
+  curPos: Map<string | number, number>,
+  cache: Map<string | number, KeyedEntry>,
+  parent: Node,
+  tailMarker: Comment,
+): LisState {
+  const grown = growLisArrays(lis, n)
+  grown.pred.fill(-1, 0, n)
+  grown.stay.fill(0, 0, n)
+
+  const lisLen = computeKeyedLis(grown, n, newKeyOrder, curPos)
+  markStayingEntries(grown, lisLen)
+  applyKeyedMoves(n, newKeyOrder, grown.stay, cache, parent, tailMarker)
+
+  return grown
+}
+
 export function mountKeyedList(
   accessor: () => VNode[],
   parent: Node,
   listAnchor: Node | null,
-  mountVNode: (vnode: VNode, parent: Node, anchor: Node | null) => Cleanup,
+  mountVNode: (vnode: VNode, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
   const startMarker = document.createComment("")
   const tailMarker = document.createComment("")
@@ -112,27 +216,16 @@ export function mountKeyedList(
   const curPos = new Map<string | number, number>()
   let currentKeyOrder: (string | number)[] = []
 
-  // Reusable typed arrays for LIS — grown as needed, never shrunk
-  let lisTails = new Int32Array(16)
-  let lisTailIdx = new Int32Array(16)
-  let lisPred = new Int32Array(16)
-  let lisStay = new Uint8Array(16)
+  let lis: LisState = {
+    tails: new Int32Array(16),
+    tailIdx: new Int32Array(16),
+    pred: new Int32Array(16),
+    stay: new Uint8Array(16),
+  }
 
-  const e = effect(() => {
-    const newList = accessor()
-    const n = newList.length
-
-    // Fast clear path: bulk DOM removal
-    if (n === 0 && cache.size > 0) {
-      for (const entry of cache.values()) entry.cleanup()
-      cache.clear()
-      curPos.clear()
-      currentKeyOrder = []
-      clearBetween(startMarker, tailMarker)
-      return
-    }
-
-    // Step 1: collect new key set + order
+  const collectKeyOrder = (
+    newList: VNode[],
+  ): { newKeyOrder: (string | number)[]; newKeySet: Set<string | number> } => {
     const newKeyOrder: (string | number)[] = []
     const newKeySet = new Set<string | number>()
     for (const vnode of newList) {
@@ -142,78 +235,51 @@ export function mountKeyedList(
         newKeySet.add(key)
       }
     }
+    return { newKeyOrder, newKeySet }
+  }
 
-    // Step 2: remove stale entries
+  const removeStaleEntries = (newKeySet: Set<string | number>) => {
     for (const [key, entry] of cache) {
-      if (!newKeySet.has(key)) {
-        entry.cleanup()
-        entry.anchor.parentNode?.removeChild(entry.anchor)
-        cache.delete(key)
-        curPos.delete(key)
-      }
+      if (newKeySet.has(key)) continue
+      entry.cleanup()
+      entry.anchor.parentNode?.removeChild(entry.anchor)
+      cache.delete(key)
+      curPos.delete(key)
     }
+  }
 
-    // Step 3: mount new entries (appended before tailMarker; reorder fixes position)
+  const mountNewEntries = (newList: VNode[]) => {
     for (const vnode of newList) {
       const key = vnode.key
       if (key === null || key === undefined) continue
-      if (!cache.has(key)) {
-        const anchor = document.createComment("")
-        _keyedAnchors.add(anchor)
-        parent.insertBefore(anchor, tailMarker)
-        const cleanup = mountVNode(vnode, parent, tailMarker)
-        cache.set(key, { anchor, cleanup })
-      }
+      if (cache.has(key)) continue
+      const anchor = document.createComment("")
+      _keyedAnchors.add(anchor)
+      parent.insertBefore(anchor, tailMarker)
+      const cleanup = mountVNode(vnode, parent, tailMarker)
+      cache.set(key, { anchor, cleanup })
+    }
+  }
+
+  const e = effect(() => {
+    const newList = accessor()
+    const n = newList.length
+
+    if (n === 0 && cache.size > 0) {
+      for (const entry of cache.values()) entry.cleanup()
+      cache.clear()
+      curPos.clear()
+      currentKeyOrder = []
+      clearBetween(startMarker, tailMarker)
+      return
     }
 
-    // Step 4: reorder using inline LIS with typed arrays.
+    const { newKeyOrder, newKeySet } = collectKeyOrder(newList)
+    removeStaleEntries(newKeySet)
+    mountNewEntries(newList)
+
     if (currentKeyOrder.length > 0 && n > 0) {
-      if (n > lisPred.length) {
-        lisTails = new Int32Array(n + 16)
-        lisTailIdx = new Int32Array(n + 16)
-        lisPred = new Int32Array(n + 16)
-        lisStay = new Uint8Array(n + 16)
-      }
-      lisPred.fill(-1, 0, n)
-      lisStay.fill(0, 0, n)
-
-      let lisLen = 0
-
-      for (let i = 0; i < n; i++) {
-        const key = newKeyOrder[i]
-        if (key === undefined) continue
-        const v = curPos.get(key) ?? -1
-        if (v < 0) continue
-
-        let lo = 0
-        let hi = lisLen
-        while (lo < hi) {
-          const mid = (lo + hi) >> 1
-          // Typed array access always returns a number; cast avoids uncoverable ?? branch
-          if ((lisTails[mid] as number) < v) lo = mid + 1
-          else hi = mid
-        }
-        lisTails[lo] = v
-        lisTailIdx[lo] = i
-        if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] as number
-        if (lo === lisLen) lisLen++
-      }
-
-      let cur: number = lisLen > 0 ? (lisTailIdx[lisLen - 1] as number) : -1
-      while (cur !== -1) {
-        lisStay[cur] = 1
-        cur = lisPred[cur] as number
-      }
-
-      let cursor: Node = tailMarker
-      for (let i = n - 1; i >= 0; i--) {
-        const key = newKeyOrder[i]
-        if (key === undefined) continue
-        const entry = cache.get(key)
-        if (!entry) continue
-        if (!lisStay[i]) moveEntryBefore(parent, entry.anchor, cursor)
-        cursor = entry.anchor
-      }
+      lis = keyedListReorder(lis, n, newKeyOrder, curPos, cache, parent, tailMarker)
     }
 
     curPos.clear()
@@ -244,19 +310,182 @@ const SMALL_K = 8
 // WeakSet to identify anchor nodes belonging to mountFor entries.
 const _forAnchors = new WeakSet<Node>()
 
+// anchor is the first DOM node of the entry (element for normal vnodes, comment fallback for empty).
+// Using the element itself saves 1 createComment + 1 DOM node per entry.
+// pos is merged here (instead of a separate Map) to halve Map operations.
+// cleanup is null when the entry has no teardown work (saves function call overhead on clear).
+interface ForEntry {
+  anchor: Node
+  cleanup: Cleanup | null
+  pos: number
+}
+
+/** Render a single item into a container (fragment or live parent), returning cleanupCount delta. */
+function renderForEntry<T>(
+  item: T,
+  key: string | number,
+  pos: number,
+  renderItem: (i: T) => import("@pyreon/core").VNode | import("@pyreon/core").NativeItem,
+  mountChild: MountFn,
+  container: Node,
+  beforeNode: Node | null,
+  cache: Map<string | number, ForEntry>,
+  registerAnchor: ((node: Node) => void) | null,
+): number {
+  const result = renderItem(item)
+  if ((result as import("@pyreon/core").NativeItem).__isNative) {
+    const { el, cleanup: entryCleanup } = result as import("@pyreon/core").NativeItem
+    container.insertBefore(el, beforeNode)
+    if (registerAnchor) registerAnchor(el)
+    cache.set(key, { anchor: el, cleanup: entryCleanup, pos })
+    return entryCleanup ? 1 : 0
+  }
+  const priorLast = beforeNode ? beforeNode.previousSibling : container.lastChild
+  const cleanup = mountChild(result as import("@pyreon/core").VNode, container, beforeNode)
+  const candidate = priorLast ? priorLast.nextSibling : container.firstChild
+  const firstMounted = candidate !== beforeNode ? candidate : null
+  if (firstMounted) {
+    if (registerAnchor) registerAnchor(firstMounted)
+    cache.set(key, { anchor: firstMounted, cleanup, pos })
+  } else {
+    const ph = document.createComment("")
+    if (registerAnchor) registerAnchor(ph)
+    container.insertBefore(ph, beforeNode)
+    cache.set(key, { anchor: ph, cleanup, pos })
+  }
+  return 1
+}
+
+/** Parent-swap: detach all children by replacing the parent with a fresh clone. */
+function parentSwapClear(liveParent: Node, startMarker: Comment, tailMarker: Comment): void {
+  const parentParent = liveParent.parentNode
+  if (
+    parentParent &&
+    liveParent.firstChild === startMarker &&
+    liveParent.lastChild === tailMarker
+  ) {
+    const fresh = liveParent.cloneNode(false) as Node
+    fresh.appendChild(startMarker)
+    fresh.appendChild(tailMarker)
+    parentParent.replaceChild(fresh, liveParent)
+  } else {
+    clearBetween(startMarker, tailMarker)
+  }
+}
+
+/** Flush all entry cleanups when cleanupCount > 0. */
+function flushForCleanups(cache: Map<string | number, ForEntry>, cleanupCount: number): void {
+  if (cleanupCount > 0) {
+    for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
+  }
+}
+
+/** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
+function trySmallKReorder(
+  n: number,
+  newKeys: (string | number)[],
+  currentKeys: (string | number)[],
+  cache: Map<string | number, ForEntry>,
+  liveParent: Node,
+  tailMarker: Comment,
+): boolean {
+  if (n !== currentKeys.length) return false
+  const diffs: number[] = []
+  for (let i = 0; i < n; i++) {
+    if (newKeys[i] !== currentKeys[i]) {
+      diffs.push(i)
+      if (diffs.length > SMALL_K) return false
+    }
+  }
+  if (diffs.length > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
+  for (const i of diffs) {
+    const cached = cache.get(newKeys[i] as string | number)
+    if (cached) cached.pos = i
+  }
+  return true
+}
+
+function computeForLis(
+  lis: LisState,
+  n: number,
+  newKeys: (string | number)[],
+  cache: Map<string | number, ForEntry>,
+): number {
+  const { tails, tailIdx, pred } = lis
+  let lisLen = 0
+  for (let i = 0; i < n; i++) {
+    const key = newKeys[i] as string | number
+    const v = cache.get(key)?.pos
+    let lo = 0
+    let hi = lisLen
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if ((tails[mid] as number) < v) lo = mid + 1
+      else hi = mid
+    }
+    tails[lo] = v
+    tailIdx[lo] = i
+    if (lo > 0) pred[i] = tailIdx[lo - 1] as number
+    if (lo === lisLen) lisLen++
+  }
+  return lisLen
+}
+
+function applyForMoves(
+  n: number,
+  newKeys: (string | number)[],
+  stay: Uint8Array,
+  cache: Map<string | number, ForEntry>,
+  liveParent: Node,
+  tailMarker: Comment,
+): void {
+  let cursor: Node = tailMarker
+  for (let i = n - 1; i >= 0; i--) {
+    const entry = cache.get(newKeys[i] as string | number)
+    if (!entry) continue
+    if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
+    cursor = entry.anchor
+  }
+}
+
+/** LIS-based reorder for mountFor. */
+function forLisReorder(
+  lis: LisState,
+  n: number,
+  newKeys: (string | number)[],
+  cache: Map<string | number, ForEntry>,
+  liveParent: Node,
+  tailMarker: Comment,
+): LisState {
+  const grown = growLisArrays(lis, n)
+  grown.pred.fill(-1, 0, n)
+  grown.stay.fill(0, 0, n)
+
+  const lisLen = computeForLis(grown, n, newKeys, cache)
+  markStayingEntries(grown, lisLen)
+  applyForMoves(n, newKeys, grown.stay, cache, liveParent, tailMarker)
+
+  for (let i = 0; i < n; i++) {
+    const cached = cache.get(newKeys[i] as string | number)
+    if (cached) cached.pos = i
+  }
+
+  return grown
+}
+
 /**
  * Keyed reconciler that works directly on the source item array.
  *
  * Optimizations:
  *  - Calls renderItem() only for NEW keys — 0 VNode allocations for reorders
- *  - Small-k fast path: if ≤ SMALL_K positions changed, skips LIS
+ *  - Small-k fast path: if <= SMALL_K positions changed, skips LIS
  *  - Fast clear path: moves nodes to DocumentFragment for O(n) bulk detach
  *  - Fresh render fast path: skips stale-check and reorder on first render
  */
 export function mountFor<T>(
   source: () => T[],
   getKey: (item: T) => string | number,
-  renderItem: (item: T) => VNode | NativeItem,
+  renderItem: (item: T) => import("@pyreon/core").VNode | import("@pyreon/core").NativeItem,
   parent: Node,
   anchor: Node | null,
   mountChild: MountFn,
@@ -266,310 +495,195 @@ export function mountFor<T>(
   parent.insertBefore(startMarker, anchor)
   parent.insertBefore(tailMarker, anchor)
 
-  // anchor is the first DOM node of the entry (element for normal vnodes, comment fallback for empty).
-  // Using the element itself saves 1 createComment + 1 DOM node per entry.
-  // pos is merged here (instead of a separate Map) to halve Map operations.
-  // cleanup is null when the entry has no teardown work (saves function call overhead on clear).
-  interface ForEntry {
-    anchor: Node
-    cleanup: Cleanup | null
-    pos: number
-  }
   let cache = new Map<string | number, ForEntry>()
   let currentKeys: (string | number)[] = []
-  let cleanupCount = 0 // track entries with non-null cleanup to skip iteration when 0
-  let anchorsRegistered = false // lazy _forAnchors population — only needed for reorder
+  let cleanupCount = 0
+  let anchorsRegistered = false
 
-  let lisTails = new Int32Array(16)
-  let lisTailIdx = new Int32Array(16)
-  let lisPred = new Int32Array(16)
-  let lisStay = new Uint8Array(16)
+  let lis: LisState = {
+    tails: new Int32Array(16),
+    tailIdx: new Int32Array(16),
+    pred: new Int32Array(16),
+    stay: new Uint8Array(16),
+  }
 
-  const e = effect(() => {
-    // Use startMarker.parentNode as the live parent so that if this For was
-    // initially mounted into a DocumentFragment (by a parent For/component),
-    // subsequent re-runs after fragment insertion see the real DOM parent.
-    const liveParent = startMarker.parentNode as Node
-    const items = source()
-    const n = items.length
-
-    // ── Fast clear path ───────────────────────────────────────────────────
-    if (n === 0) {
-      if (cache.size > 0) {
-        if (cleanupCount > 0) {
-          for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
-        }
-        const parentParent = liveParent.parentNode
-        // Parent-swap: clone empty parent, move markers into it, replace in one shot.
-        // This is O(1) DOM ops regardless of how many children existed — the old parent
-        // with all its children is detached wholesale instead of removing nodes one by one.
-        if (
-          parentParent &&
-          liveParent.firstChild === startMarker &&
-          liveParent.lastChild === tailMarker
-        ) {
-          const fresh = liveParent.cloneNode(false) as Node
-          fresh.appendChild(startMarker)
-          fresh.appendChild(tailMarker)
-          parentParent.replaceChild(fresh, liveParent)
-        } else {
-          clearBetween(startMarker, tailMarker)
-        }
-        cache = new Map()
-        cleanupCount = 0
-        currentKeys = []
-      }
-      return
+  const warnDuplicateKeys = (seen: Set<string | number> | null, key: string | number) => {
+    if (!__DEV__ || !seen) return
+    if (seen.has(key)) {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
     }
+    seen.add(key)
+  }
 
-    // ── Fresh render fast path (initial mount) ────────────────────────────
-    // Compute keys inline — avoids a separate O(n) loop to build newKeys array.
-    // Use DocumentFragment: all entries built off-screen, then inserted in one DOM op.
-    if (currentKeys.length === 0) {
-      const frag = document.createDocumentFragment()
-      const keys = new Array<string | number>(n)
-      if (__DEV__) {
-        const seen = new Set<string | number>()
-        for (let i = 0; i < n; i++) {
-          const k = getKey(items[i] as T)
-          if (seen.has(k)) {
-          }
-          seen.add(k)
-        }
-      }
-      for (let i = 0; i < n; i++) {
-        const item = items[i] as T
-        const key = getKey(item)
-        keys[i] = key
-        const result = renderItem(item)
-        if ((result as NativeItem).__isNative) {
-          const { el, cleanup } = result as NativeItem
-          frag.appendChild(el)
-          cache.set(key, { anchor: el, cleanup, pos: i })
-          if (cleanup) cleanupCount++
-        } else {
-          const priorLast = frag.lastChild
-          const cleanup = mountChild(result as VNode, frag as Node, null)
-          cleanupCount++
-          const firstMounted = priorLast ? priorLast.nextSibling : frag.firstChild
-          if (firstMounted) {
-            cache.set(key, { anchor: firstMounted, cleanup, pos: i })
-          } else {
-            const ph = document.createComment("")
-            frag.appendChild(ph)
-            cache.set(key, { anchor: ph, cleanup, pos: i })
-          }
-        }
-      }
-      liveParent.insertBefore(frag, tailMarker)
-      anchorsRegistered = false
-      currentKeys = keys
-      return
+  const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
+    const frag = document.createDocumentFragment()
+    const keys = new Array<string | number>(n)
+    const _seenKeys = __DEV__ ? new Set<string | number>() : null
+    for (let i = 0; i < n; i++) {
+      const item = items[i] as T
+      const key = getKey(item)
+      warnDuplicateKeys(_seenKeys, key)
+      keys[i] = key
+      cleanupCount += renderForEntry(item, key, i, renderItem, mountChild, frag, null, cache, null)
     }
+    liveParent.insertBefore(frag, tailMarker)
+    anchorsRegistered = false
+    currentKeys = keys
+  }
 
-    // ── Step 1: collect new key order ─────────────────────────────────────
+  const collectNewKeys = (items: T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
+    const _seenUpdate = __DEV__ ? new Set<string | number>() : null
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
+      warnDuplicateKeys(_seenUpdate, newKeys[i] as string | number)
     }
-    if (__DEV__) {
-      const seen = new Set<string | number>()
-      for (let i = 0; i < n; i++) {
-        const k = newKeys[i] as string | number
-        if (seen.has(k)) {
-        }
-        seen.add(k)
-      }
-    }
+    return newKeys
+  }
 
-    // ── Replace-all fast path ─────────────────────────────────────────────
-    // Check if any current entry survives by scanning new keys against cache.
-    // Uses Map.has (O(1)) per key — avoids O(n) Set construction for replace-all.
-    let anyKept = false
-    for (let i = 0; i < n; i++) {
-      if (cache.has(newKeys[i] as string | number)) {
-        anyKept = true
-        break
-      }
-    }
+  const handleReplaceAll = (
+    items: T[],
+    n: number,
+    newKeys: (string | number)[],
+    liveParent: Node,
+  ) => {
+    flushForCleanups(cache, cleanupCount)
+    cache = new Map()
+    cleanupCount = 0
 
-    if (!anyKept) {
-      if (cleanupCount > 0) {
-        for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
-      }
-      cache = new Map()
-      cleanupCount = 0
+    const parentParent = liveParent.parentNode
+    const canSwap =
+      parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
 
-      const parentParent = liveParent.parentNode
-      const canSwap =
-        parentParent && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker
-
-      // Build all new entries into a fragment
-      const frag = document.createDocumentFragment()
-      for (let i = 0; i < n; i++) {
-        const key = newKeys[i] as string | number
-        const result = renderItem(items[i] as T)
-        if ((result as NativeItem).__isNative) {
-          const { el, cleanup } = result as NativeItem
-          frag.appendChild(el)
-          cache.set(key, { anchor: el, cleanup, pos: i })
-          if (cleanup) cleanupCount++
-        } else {
-          const priorLast = frag.lastChild
-          const cleanup = mountChild(result as VNode, frag as Node, null)
-          cleanupCount++
-          const firstMounted = priorLast ? priorLast.nextSibling : frag.firstChild
-          if (firstMounted) {
-            cache.set(key, { anchor: firstMounted, cleanup, pos: i })
-          } else {
-            const ph = document.createComment("")
-            frag.appendChild(ph)
-            cache.set(key, { anchor: ph, cleanup, pos: i })
-          }
-        }
-      }
-      anchorsRegistered = false
-
-      // Parent-swap: clone empty parent, insert startMarker + new content + tailMarker,
-      // then replace old parent in one shot. Old parent with all stale children is detached
-      // wholesale — O(1) instead of O(n) individual node removals.
-      if (canSwap) {
-        const fresh = liveParent.cloneNode(false) as Node
-        fresh.appendChild(startMarker)
-        fresh.appendChild(frag)
-        fresh.appendChild(tailMarker)
-        parentParent.replaceChild(fresh, liveParent)
-      } else {
-        clearBetween(startMarker, tailMarker)
-        liveParent.insertBefore(frag, tailMarker)
-      }
-      currentKeys = newKeys
-      return
-    }
-
-    // ── Step 2: remove stale entries ─────────────────────────────────────
-    // Build newKeySet lazily — only when some entries are kept (skipped on replace-all)
-    const newKeySet = new Set<string | number>(newKeys)
-    for (const [key, entry] of cache) {
-      if (!newKeySet.has(key)) {
-        if (entry.cleanup) {
-          entry.cleanup()
-          cleanupCount--
-        }
-        entry.anchor.parentNode?.removeChild(entry.anchor)
-        cache.delete(key)
-      }
-    }
-
-    // ── Step 3: mount new entries ─────────────────────────────────────────
+    const frag = document.createDocumentFragment()
     for (let i = 0; i < n; i++) {
       const key = newKeys[i] as string | number
-      if (!cache.has(key)) {
-        const result = renderItem(items[i] as T)
-        if ((result as NativeItem).__isNative) {
-          const { el, cleanup } = result as NativeItem
-          liveParent.insertBefore(el, tailMarker)
-          _forAnchors.add(el)
-          cache.set(key, { anchor: el, cleanup, pos: i })
-          if (cleanup) cleanupCount++
-        } else {
-          const priorLast = tailMarker.previousSibling
-          const cleanup = mountChild(result as VNode, liveParent, tailMarker)
-          cleanupCount++
-          const candidate = priorLast ? priorLast.nextSibling : liveParent.firstChild
-          const firstMounted = candidate !== tailMarker ? candidate : null
-          if (firstMounted) {
-            _forAnchors.add(firstMounted)
-            cache.set(key, { anchor: firstMounted, cleanup, pos: i })
-          } else {
-            const ph = document.createComment("")
-            _forAnchors.add(ph)
-            liveParent.insertBefore(ph, tailMarker)
-            cache.set(key, { anchor: ph, cleanup, pos: i })
-          }
-        }
-      }
+      cleanupCount += renderForEntry(
+        items[i] as T,
+        key,
+        i,
+        renderItem,
+        mountChild,
+        frag,
+        null,
+        cache,
+        null,
+      )
     }
+    anchorsRegistered = false
 
-    // ── Step 4: reorder ───────────────────────────────────────────────────
-    // Lazy anchor registration — only needed when moveEntryBefore runs
+    if (canSwap) {
+      const fresh = liveParent.cloneNode(false) as Node
+      fresh.appendChild(startMarker)
+      fresh.appendChild(frag)
+      fresh.appendChild(tailMarker)
+      parentParent.replaceChild(fresh, liveParent)
+    } else {
+      clearBetween(startMarker, tailMarker)
+      liveParent.insertBefore(frag, tailMarker)
+    }
+    currentKeys = newKeys
+  }
+
+  const removeStaleForEntries = (newKeySet: Set<string | number>) => {
+    for (const [key, entry] of cache) {
+      if (newKeySet.has(key)) continue
+      if (entry.cleanup) {
+        entry.cleanup()
+        cleanupCount--
+      }
+      entry.anchor.parentNode?.removeChild(entry.anchor)
+      cache.delete(key)
+    }
+  }
+
+  const mountNewForEntries = (
+    items: T[],
+    n: number,
+    newKeys: (string | number)[],
+    liveParent: Node,
+  ) => {
+    const addForAnchor = (node: Node) => _forAnchors.add(node)
+    for (let i = 0; i < n; i++) {
+      const key = newKeys[i] as string | number
+      if (cache.has(key)) continue
+      cleanupCount += renderForEntry(
+        items[i] as T,
+        key,
+        i,
+        renderItem,
+        mountChild,
+        liveParent,
+        tailMarker,
+        cache,
+        addForAnchor,
+      )
+    }
+  }
+
+  const handleFastClear = (liveParent: Node) => {
+    if (cache.size === 0) return
+    flushForCleanups(cache, cleanupCount)
+    parentSwapClear(liveParent, startMarker, tailMarker)
+    cache = new Map()
+    cleanupCount = 0
+    currentKeys = []
+  }
+
+  const hasAnyKeptKey = (n: number, newKeys: (string | number)[]): boolean => {
+    for (let i = 0; i < n; i++) {
+      if (cache.has(newKeys[i] as string | number)) return true
+    }
+    return false
+  }
+
+  const handleIncrementalUpdate = (
+    items: T[],
+    n: number,
+    newKeys: (string | number)[],
+    liveParent: Node,
+  ) => {
+    removeStaleForEntries(new Set<string | number>(newKeys))
+    mountNewForEntries(items, n, newKeys, liveParent)
+
     if (!anchorsRegistered) {
       for (const entry of cache.values()) _forAnchors.add(entry.anchor)
       anchorsRegistered = true
     }
-    if (n === currentKeys.length) {
-      const diffs: number[] = []
-      let exceeded = false
-      for (let i = 0; i < n; i++) {
-        if (newKeys[i] !== currentKeys[i]) {
-          diffs.push(i)
-          if (diffs.length > SMALL_K) {
-            exceeded = true
-            break
-          }
-        }
-      }
 
-      if (!exceeded) {
-        if (diffs.length > 0) smallKPlace(liveParent, diffs, newKeys, cache, tailMarker)
-        for (const i of diffs) {
-          cache.get(newKeys[i] as string | number)!.pos = i
-        }
-        currentKeys = newKeys
-        return
-      }
+    if (trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
+      currentKeys = newKeys
+      return
     }
 
-    // ── LIS fallback ──────────────────────────────────────────────────────
-    if (n > lisPred.length) {
-      lisTails = new Int32Array(n + 16)
-      lisTailIdx = new Int32Array(n + 16)
-      lisPred = new Int32Array(n + 16)
-      lisStay = new Uint8Array(n + 16)
-    }
-    lisPred.fill(-1, 0, n)
-    lisStay.fill(0, 0, n)
-
-    let lisLen = 0
-    for (let i = 0; i < n; i++) {
-      // newKeys[i] is always defined (by() returns string | number);
-      // cache always has the entry after step 3 with pos ≥ 0.
-      const key = newKeys[i] as string | number
-      const v = cache.get(key)?.pos
-      let lo = 0
-      let hi = lisLen
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1
-        // Typed array access always returns a number; cast avoids uncoverable ?? branch
-        if ((lisTails[mid] as number) < v) lo = mid + 1
-        else hi = mid
-      }
-      lisTails[lo] = v
-      lisTailIdx[lo] = i
-      if (lo > 0) lisPred[i] = lisTailIdx[lo - 1] as number
-      if (lo === lisLen) lisLen++
-    }
-
-    // At least one entry is kept (otherwise replace-all fast path fires),
-    // so lisLen > 0 is guaranteed here.
-    let cur = lisTailIdx[lisLen - 1] as number
-    while (cur !== -1) {
-      lisStay[cur] = 1
-      cur = lisPred[cur] as number
-    }
-
-    let cursor: Node = tailMarker
-    for (let i = n - 1; i >= 0; i--) {
-      const entry = cache.get(newKeys[i] as string | number)!
-      if (!lisStay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
-      cursor = entry.anchor
-    }
-
-    // Update pos for all entries
-    for (let i = 0; i < n; i++) {
-      cache.get(newKeys[i] as string | number)!.pos = i
-    }
+    lis = forLisReorder(lis, n, newKeys, cache, liveParent, tailMarker)
     currentKeys = newKeys
+  }
+
+  const e = effect(() => {
+    const liveParent = startMarker.parentNode as Node
+    const items = source()
+    const n = items.length
+
+    if (n === 0) {
+      handleFastClear(liveParent)
+      return
+    }
+
+    if (currentKeys.length === 0) {
+      handleFreshRender(items, n, liveParent)
+      return
+    }
+
+    const newKeys = collectNewKeys(items, n)
+
+    if (!hasAnyKeptKey(n, newKeys)) {
+      handleReplaceAll(items, n, newKeys, liveParent)
+      return
+    }
+
+    handleIncrementalUpdate(items, n, newKeys, liveParent)
   })
 
   return () => {
@@ -615,7 +729,10 @@ function smallKPlace(
       cursor = nc
     }
 
-    const entry = cache.get(newKeys[i] as string | number)!
+    const entry = cache.get(newKeys[i] as string | number) as {
+      anchor: Node
+      cleanup: Cleanup | null
+    }
     moveEntryBefore(parent, entry.anchor, cursor)
     cursor = entry.anchor
     prevDiffIdx = i

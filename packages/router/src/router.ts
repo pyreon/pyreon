@@ -128,180 +128,195 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
-  async function navigate(path: string, replace: boolean, redirectDepth = 0): Promise<void> {
-    if (redirectDepth > 10) {
-      return
+  type GuardOutcome =
+    | { action: "continue" }
+    | { action: "cancel" }
+    | { action: "redirect"; target: string }
+
+  async function evaluateGuard(
+    guard: NavigationGuard,
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<GuardOutcome> {
+    const result = await runGuard(guard, to, from)
+    if (gen !== _navGen) return { action: "cancel" }
+    if (result === false) return { action: "cancel" }
+    if (typeof result === "string") return { action: "redirect", target: result }
+    return { action: "continue" }
+  }
+
+  async function runRouteGuards(
+    records: RouteRecord[],
+    guardKey: "beforeLeave" | "beforeEnter",
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<GuardOutcome> {
+    for (const record of records) {
+      const raw = record[guardKey]
+      if (!raw) continue
+      const routeGuards = Array.isArray(raw) ? raw : [raw]
+      for (const guard of routeGuards) {
+        const outcome = await evaluateGuard(guard, to, from, gen)
+        if (outcome.action !== "continue") return outcome
+      }
     }
+    return { action: "continue" }
+  }
 
-    const gen = ++_navGen // claim this navigation generation
-    loadingSignal.update((n) => n + 1)
+  async function runGlobalGuards(
+    globalGuards: NavigationGuard[],
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<GuardOutcome> {
+    for (const guard of globalGuards) {
+      const outcome = await evaluateGuard(guard, to, from, gen)
+      if (outcome.action !== "continue") return outcome
+    }
+    return { action: "continue" }
+  }
 
-    const to = resolveRoute(path, routes)
-    const from = currentRoute()
+  function processLoaderResult(
+    result: PromiseSettledResult<unknown>,
+    record: RouteRecord,
+    ac: AbortController,
+    to: ResolvedRoute,
+  ): boolean {
+    if (result.status === "fulfilled") {
+      router._loaderData.set(record, result.value)
+      return true
+    }
+    if (ac.signal.aborted) return true
+    if (router._onError) {
+      const cancel = router._onError(result.reason, to)
+      if (cancel === false) return false
+    }
+    router._loaderData.set(record, undefined)
+    return true
+  }
 
-    // Evaluate redirect before guards (no guard needed for redirects)
+  function syncBrowserUrl(path: string, replace: boolean): void {
+    if (!_isBrowser) return
+    const url = mode === "history" ? path : `#${path}`
+    if (replace) {
+      window.history.replaceState(null, "", url)
+    } else {
+      window.history.pushState(null, "", url)
+    }
+  }
+
+  function resolveRedirect(to: ResolvedRoute): string | null {
     const leaf = to.matched[to.matched.length - 1]
-    if (leaf?.redirect) {
-      const target = sanitizePath(
-        typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect,
-      )
-      loadingSignal.update((n) => n - 1)
-      return navigate(target, replace, redirectDepth + 1)
-    }
+    if (!leaf?.redirect) return null
+    return sanitizePath(typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect)
+  }
 
-    // Per-route beforeLeave guards (run on the FROM route's records)
-    for (const record of from.matched) {
-      if (record.beforeLeave) {
-        const routeGuards = Array.isArray(record.beforeLeave)
-          ? record.beforeLeave
-          : [record.beforeLeave]
-        for (const guard of routeGuards) {
-          const result = await runGuard(guard, to, from)
-          if (gen !== _navGen) {
-            loadingSignal.update((n) => n - 1)
-            return
-          }
-          if (result === false) {
-            loadingSignal.update((n) => n - 1)
-            return
-          }
-          if (typeof result === "string") {
-            loadingSignal.update((n) => n - 1)
-            return navigate(sanitizePath(result), replace, redirectDepth + 1)
-          }
-        }
-      }
-    }
+  async function runAllGuards(
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<GuardOutcome> {
+    const leaveOutcome = await runRouteGuards(from.matched, "beforeLeave", to, from, gen)
+    if (leaveOutcome.action !== "continue") return leaveOutcome
 
-    // Per-route beforeEnter guards
-    for (const record of to.matched) {
-      if (record.beforeEnter) {
-        const routeGuards = Array.isArray(record.beforeEnter)
-          ? record.beforeEnter
-          : [record.beforeEnter]
-        for (const guard of routeGuards) {
-          const result = await runGuard(guard, to, from)
-          if (gen !== _navGen) {
-            loadingSignal.update((n) => n - 1)
-            return
-          }
-          if (result === false) {
-            loadingSignal.update((n) => n - 1)
-            return
-          }
-          if (typeof result === "string") {
-            loadingSignal.update((n) => n - 1)
-            return navigate(sanitizePath(result), replace, redirectDepth + 1)
-          }
-        }
-      }
-    }
+    const enterOutcome = await runRouteGuards(to.matched, "beforeEnter", to, from, gen)
+    if (enterOutcome.action !== "continue") return enterOutcome
 
-    // Global beforeEach guards
-    for (const guard of guards) {
-      const result = await runGuard(guard, to, from)
-      if (gen !== _navGen) {
-        loadingSignal.update((n) => n - 1)
-        return
-      }
-      if (result === false) {
-        loadingSignal.update((n) => n - 1)
-        return
-      }
-      if (typeof result === "string") {
-        loadingSignal.update((n) => n - 1)
-        return navigate(result, replace, redirectDepth + 1)
-      }
-    }
+    return runGlobalGuards(guards, to, from, gen)
+  }
 
-    // Cancel any in-flight loaders from the previous navigation
-    router._abortController?.abort()
-    const ac = new AbortController()
-    router._abortController = ac
-
-    // Run loaders for all matched records in parallel before committing
+  async function runLoaders(to: ResolvedRoute, gen: number, ac: AbortController): Promise<boolean> {
     const loadableRecords = to.matched.filter((r) => r.loader)
-    if (loadableRecords.length > 0) {
-      const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
-      const results = await Promise.allSettled(
-        loadableRecords.map((r) => {
-          if (!r.loader) return Promise.resolve(undefined)
-          return r.loader(loaderCtx)
-        }),
-      )
-      if (gen !== _navGen) return // superseded while loaders were running
+    if (loadableRecords.length === 0) return true
 
-      for (let i = 0; i < loadableRecords.length; i++) {
-        const result = results[i]
-        const record = loadableRecords[i]
-        if (!result || !record) continue
-        if (result.status === "fulfilled") {
-          router._loaderData.set(record, result.value)
-        } else {
-          if (ac.signal.aborted) continue
-          const err = result.reason
+    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
+    const results = await Promise.allSettled(
+      loadableRecords.map((r) => {
+        if (!r.loader) return Promise.resolve(undefined)
+        return r.loader(loaderCtx)
+      }),
+    )
+    if (gen !== _navGen) return false
 
-          if (router._onError) {
-            const cancel = router._onError(err, to)
-            if (cancel === false) {
-              loadingSignal.update((n) => n - 1)
-              return
-            }
-          }
-          // Store the error so errorComponent can render it
-          router._loaderData.set(record, undefined)
-        }
-      }
+    for (let i = 0; i < loadableRecords.length; i++) {
+      const result = results[i]
+      const record = loadableRecords[i]
+      if (!result || !record) continue
+      if (!processLoaderResult(result, record, ac, to)) return false
     }
+    return true
+  }
 
-    // Save scroll position before leaving
+  function commitNavigation(
+    path: string,
+    replace: boolean,
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+  ): void {
     scrollManager.save(from.path)
-
-    // Commit navigation — always update the signal, then sync browser URL if available
     currentPath.set(path)
-    if (_isBrowser) {
-      if (mode === "history") {
-        if (replace) {
-          window.history.replaceState(null, "", path)
-        } else {
-          window.history.pushState(null, "", path)
-        }
-      } else {
-        // Use history.pushState/replaceState instead of window.location.hash
-        // to avoid firing hashchange (which would redundantly set currentPath again).
-        const hashUrl = `#${path}`
-        if (replace) {
-          window.history.replaceState(null, "", hashUrl)
-        } else {
-          window.history.pushState(null, "", hashUrl)
-        }
-      }
-    }
+    syncBrowserUrl(path, replace)
 
-    // Apply document title from route meta
     if (_isBrowser && to.meta.title) {
       document.title = to.meta.title
     }
 
-    // Prune loader data for routes no longer in the matched stack
     for (const record of router._loaderData.keys()) {
       if (!to.matched.includes(record)) {
         router._loaderData.delete(record)
       }
     }
 
-    // Run afterEach hooks
     for (const hook of afterHooks) {
       try {
         hook(to, from)
-      } catch (_err) {}
+      } catch (_err) {
+        /* hook errors silently ignored */
+      }
     }
 
-    // Restore scroll after DOM has updated
     if (_isBrowser) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
+  }
 
+  async function navigate(path: string, replace: boolean, redirectDepth = 0): Promise<void> {
+    if (redirectDepth > 10) return
+
+    const gen = ++_navGen
+    loadingSignal.update((n) => n + 1)
+
+    const to = resolveRoute(path, routes)
+    const from = currentRoute()
+
+    const redirectTarget = resolveRedirect(to)
+    if (redirectTarget !== null) {
+      loadingSignal.update((n) => n - 1)
+      return navigate(redirectTarget, replace, redirectDepth + 1)
+    }
+
+    const guardOutcome = await runAllGuards(to, from, gen)
+    if (guardOutcome.action !== "continue") {
+      loadingSignal.update((n) => n - 1)
+      if (guardOutcome.action === "redirect") {
+        return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1)
+      }
+      return
+    }
+
+    router._abortController?.abort()
+    const ac = new AbortController()
+    router._abortController = ac
+
+    const loadersOk = await runLoaders(to, gen, ac)
+    if (!loadersOk) {
+      loadingSignal.update((n) => n - 1)
+      return
+    }
+
+    commitNavigation(path, replace, to, from)
     loadingSignal.update((n) => n - 1)
   }
 

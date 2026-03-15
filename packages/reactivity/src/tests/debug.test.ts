@@ -15,7 +15,7 @@ describe("debug", () => {
     })
 
     test("listener receives signal update events", () => {
-      const events: Array<{ name: string | undefined; prev: unknown; next: unknown }> = []
+      const events: { name: string | undefined; prev: unknown; next: unknown }[] = []
       const dispose = onSignalUpdate((e) => {
         events.push({ name: e.name, prev: e.prev, next: e.next })
       })

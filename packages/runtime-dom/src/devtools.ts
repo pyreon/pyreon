@@ -38,8 +38,8 @@ export interface PyreonDevtools {
 // ─── Internal registry ────────────────────────────────────────────────────────
 
 const _components = new Map<string, DevtoolsComponentEntry>()
-const _mountListeners: Array<(entry: DevtoolsComponentEntry) => void> = []
-const _unmountListeners: Array<(id: string) => void> = []
+const _mountListeners: ((entry: DevtoolsComponentEntry) => void)[] = []
+const _unmountListeners: ((id: string) => void)[] = []
 
 export function registerComponent(
   id: string,
@@ -102,6 +102,35 @@ function createOverlayElements(): void {
   document.body.appendChild(_tooltipEl)
 }
 
+function positionOverlay(rect: DOMRect): void {
+  if (!_overlayEl) return
+  _overlayEl.style.display = "block"
+  _overlayEl.style.top = `${rect.top}px`
+  _overlayEl.style.left = `${rect.left}px`
+  _overlayEl.style.width = `${rect.width}px`
+  _overlayEl.style.height = `${rect.height}px`
+}
+
+function positionTooltip(entry: DevtoolsComponentEntry, rect: DOMRect): void {
+  if (!_tooltipEl) return
+  const childCount = entry.childIds.length
+  let info = `<${entry.name}>`
+  if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? "" : "s"}`
+  _tooltipEl.textContent = info
+  _tooltipEl.style.display = "block"
+  _tooltipEl.style.top = `${rect.top - 30}px`
+  _tooltipEl.style.left = `${rect.left}px`
+  if (rect.top < 35) {
+    _tooltipEl.style.top = `${rect.bottom + 4}px`
+  }
+}
+
+function hideOverlayElements(): void {
+  if (_overlayEl) _overlayEl.style.display = "none"
+  if (_tooltipEl) _tooltipEl.style.display = "none"
+  _currentHighlight = null
+}
+
 /** @internal — exported for testing only */
 export function onOverlayMouseMove(e: MouseEvent): void {
   const target = document.elementFromPoint(e.clientX, e.clientY)
@@ -109,9 +138,7 @@ export function onOverlayMouseMove(e: MouseEvent): void {
 
   const entry = findComponentForElement(target)
   if (!entry?.el) {
-    _overlayEl?.style.display = "none"
-    _tooltipEl?.style.display = "none"
-    _currentHighlight = null
+    hideOverlayElements()
     return
   }
 
@@ -119,23 +146,8 @@ export function onOverlayMouseMove(e: MouseEvent): void {
   _currentHighlight = entry.el
 
   const rect = entry.el.getBoundingClientRect()
-  _overlayEl?.style.display = "block"
-  _overlayEl?.style.top = `${rect.top}px`
-  _overlayEl?.style.left = `${rect.left}px`
-  _overlayEl?.style.width = `${rect.width}px`
-  _overlayEl?.style.height = `${rect.height}px`
-
-  const childCount = entry.childIds.length
-  let info = `<${entry.name}>`
-  if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? "" : "s"}`
-  _tooltipEl!.textContent = info
-  _tooltipEl?.style.display = "block"
-  _tooltipEl?.style.top = `${rect.top - 30}px`
-  _tooltipEl?.style.left = `${rect.left}px`
-  // Keep tooltip on screen
-  if (rect.top < 35) {
-    _tooltipEl?.style.top = `${rect.bottom + 4}px`
-  }
+  positionOverlay(rect)
+  positionTooltip(entry, rect)
 }
 
 /** @internal — exported for testing only */
@@ -146,10 +158,21 @@ export function onOverlayClick(e: MouseEvent): void {
   if (!target) return
   const entry = findComponentForElement(target)
   if (entry) {
+    // biome-ignore lint/suspicious/noConsole: intentional dev warning
+    console.group(`[Pyreon] <${entry.name}>`)
+    // biome-ignore lint/suspicious/noConsole: intentional dev warning
+    console.log("element:", entry.el)
+    // biome-ignore lint/suspicious/noConsole: intentional dev warning
+    console.log("children:", entry.childIds.length)
     if (entry.parentId) {
       const parent = _components.get(entry.parentId)
-      if (parent)
+      if (parent) {
+        // biome-ignore lint/suspicious/noConsole: intentional dev warning
+        console.log("parent:", `<${parent.name}>`)
+      }
     }
+    // biome-ignore lint/suspicious/noConsole: intentional dev warning
+    console.groupEnd()
   }
   disableOverlay()
 }
@@ -177,8 +200,8 @@ function disableOverlay(): void {
   document.removeEventListener("click", onOverlayClick, true)
   document.removeEventListener("keydown", onOverlayKeydown, true)
   document.body.style.cursor = ""
-  _overlayEl?.style.display = "none"
-  _tooltipEl?.style.display = "none"
+  if (_overlayEl) _overlayEl.style.display = "none"
+  if (_tooltipEl) _tooltipEl.style.display = "none"
   _currentHighlight = null
 }
 
@@ -265,10 +288,24 @@ export function installDevTools(): void {
     stats: () => {
       const all = devtools.getAllComponents()
       const roots = devtools.getComponentTree()
-
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.log(
+        `[Pyreon] ${all.length} component${all.length === 1 ? "" : "s"}, ${roots.length} root${roots.length === 1 ? "" : "s"}`,
+      )
       return { total: all.length, roots: roots.length }
     },
     /** Quick help */
-    help: () => {},
+    help: () => {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.log(
+        "[Pyreon] $p commands:\n" +
+          "  $p.components() — list all mounted components\n" +
+          "  $p.tree()       — component tree (roots only)\n" +
+          "  $p.highlight(id)— outline a component\n" +
+          "  $p.inspect()    — toggle component inspector\n" +
+          "  $p.stats()      — print component count\n" +
+          "  $p.help()       — this message",
+      )
+    },
   }
 }

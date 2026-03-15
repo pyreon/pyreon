@@ -7,20 +7,20 @@ import { syncDom } from "./dom"
 function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
   if (o.title != null) tags.push({ tag: "title", key: "title", children: o.title })
-  o.meta?.forEach((m, i) =>
+  o.meta?.forEach((m, i) => {
     tags.push({
       tag: "meta",
       key: m.name ?? m.property ?? `meta-${i}`,
       props: m,
-    }),
-  )
-  o.link?.forEach((l, i) =>
+    })
+  })
+  o.link?.forEach((l, i) => {
     tags.push({
       tag: "link",
       key: l.href ? `link-${l.rel || ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
       props: l,
-    }),
-  )
+    })
+  })
   o.script?.forEach((s, i) => {
     const { children, ...rest } = s
     tags.push({

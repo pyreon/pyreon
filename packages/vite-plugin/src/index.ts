@@ -119,50 +119,58 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // (static files, HMR, etc.) — only handle requests that Vite doesn't serve.
       return () => {
         server.middlewares.use(async (req, res, next) => {
-          // Skip non-GET requests and asset requests
           if (req.method !== "GET") return next()
           const url = req.url ?? "/"
           if (isAssetRequest(url)) return next()
 
           try {
-            // Load the server entry through Vite's module graph (HMR-aware)
-            const mod = await server.ssrLoadModule(ssrConfig.entry)
-            const handler = mod.handler ?? mod.default
-
-            if (typeof handler !== "function") {
-              return next()
-            }
-
-            // Construct a Web-standard Request from the Node.js IncomingMessage
-            const origin = `http://${req.headers.host ?? "localhost"}`
-            const fullUrl = new URL(url, origin)
-            const request = new Request(fullUrl.href, {
-              method: req.method,
-              headers: Object.entries(req.headers).reduce((h, [k, v]) => {
-                if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v)
-                return h
-              }, new Headers()),
-            })
-
-            const response: Response = await handler(request)
-            let html = await response.text()
-
-            // Inject Vite's HMR client + dev transforms
-            html = await server.transformIndexHtml(url, html)
-
-            res.statusCode = response.status
-            response.headers.forEach((v, k) => res.setHeader(k, v))
-            res.end(html)
+            await handleSsrRequest(server, ssrConfig.entry, url, req, res, next)
           } catch (err) {
-            // Let Vite handle the error overlay
             server.ssrFixStacktrace(err as Error)
-
             next(err)
           }
         })
       }
     },
   }
+}
+
+async function handleSsrRequest(
+  server: ViteDevServer,
+  entry: string,
+  url: string,
+  req: import("node:http").IncomingMessage,
+  res: import("node:http").ServerResponse,
+  next: (err?: unknown) => void,
+): Promise<void> {
+  const mod = await server.ssrLoadModule(entry)
+  const handler = mod.handler ?? mod.default
+
+  if (typeof handler !== "function") {
+    next()
+    return
+  }
+
+  const origin = `http://${req.headers.host ?? "localhost"}`
+  const fullUrl = new URL(url, origin)
+  const request = new Request(fullUrl.href, {
+    method: req.method,
+    headers: Object.entries(req.headers).reduce((h, [k, v]) => {
+      if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v)
+      return h
+    }, new Headers()),
+  })
+
+  const response: Response = await handler(request)
+  let html = await response.text()
+
+  html = await server.transformIndexHtml(url, html)
+
+  res.statusCode = response.status
+  response.headers.forEach((v, k) => {
+    res.setHeader(k, v)
+  })
+  res.end(html)
 }
 
 // ── HMR injection ─────────────────────────────────────────────────────────────
@@ -181,7 +189,19 @@ const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/
 const EXPORT_COMPONENT_RE =
   /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/
 
-/** Extract balanced parentheses content starting at the given offset (after the opening paren). */
+function skipStringLiteral(code: string, start: number, quote: string): number {
+  let j = start + 1
+  while (j < code.length) {
+    if (code[j] === "\\") {
+      j += 2
+      continue
+    }
+    if (code[j] === quote) break
+    j++
+  }
+  return j
+}
+
 function extractBalancedArgs(code: string, start: number): string | null {
   let depth = 1
   for (let i = start; i < code.length; i++) {
@@ -190,23 +210,11 @@ function extractBalancedArgs(code: string, start: number): string | null {
     else if (ch === ")") {
       depth--
       if (depth === 0) return code.slice(start, i)
-    }
-    // Skip string literals to avoid counting parens inside strings
-    else if (ch === '"' || ch === "'" || ch === "`") {
-      const quote = ch
-      let j = i + 1
-      while (j < code.length) {
-        if (code[j] === "\\") {
-          j += 2
-          continue
-        }
-        if (code[j] === quote) break
-        j++
-      }
-      i = j
+    } else if (ch === '"' || ch === "'" || ch === "`") {
+      i = skipStringLiteral(code, i, ch)
     }
   }
-  return null // unbalanced — skip this declaration
+  return null
 }
 
 function injectHmr(code: string, moduleId: string): string {
@@ -224,13 +232,13 @@ function injectHmr(code: string, moduleId: string): string {
   if (hasSignals) {
     const escapedId = JSON.stringify(moduleId)
     // Process matches in reverse order so indices stay valid after replacement
-    const matches: Array<{
+    const matches: {
       start: number
       end: number
       prefix: string
       name: string
       args: string
-    }> = []
+    }[] = []
     let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
     while (m !== null) {
       const argsStart = m.index + m[0].length
@@ -239,8 +247,8 @@ function injectHmr(code: string, moduleId: string): string {
       matches.push({
         start: m.index,
         end: argsStart + args.length + 1, // +1 for closing paren
-        prefix: m[1]!,
-        name: m[2]!,
+        prefix: m[1] ?? "",
+        name: m[2] ?? "",
         args,
       })
       m = SIGNAL_PREFIX_RE.exec(code)
@@ -249,7 +257,7 @@ function injectHmr(code: string, moduleId: string): string {
 
     // Replace in reverse to preserve offsets
     for (let i = matches.length - 1; i >= 0; i--) {
-      const { start, end, prefix, name, args } = matches[i]!
+      const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
       const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
       output = output.slice(0, start) + replacement + output.slice(end)
     }

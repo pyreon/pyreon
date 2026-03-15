@@ -46,7 +46,7 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // ErrorBoundary pushes during its own setup (before children mount) so that
 // any child mountComponent error can dispatch up to the nearest boundary.
 
-const _errorBoundaryStack: Array<(err: unknown) => boolean> = []
+const _errorBoundaryStack: ((err: unknown) => boolean)[] = []
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
   _errorBoundaryStack.push(handler)

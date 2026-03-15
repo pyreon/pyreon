@@ -110,6 +110,8 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const loader = registry[componentId]
     if (!loader) {
+      // biome-ignore lint/suspicious/noConsole: intentional warning for missing island loaders
+      console.warn(`No loader registered for island "${componentId}"`)
       continue
     }
 
@@ -193,6 +195,7 @@ async function hydrateIsland(
   loader: IslandLoader,
   propsJson: string,
 ): Promise<void> {
+  const name = el.getAttribute("data-component") ?? "unknown"
   try {
     let props: Record<string, unknown>
     try {
@@ -200,14 +203,19 @@ async function hydrateIsland(
       if (typeof props !== "object" || props === null || Array.isArray(props)) {
         throw new TypeError("Expected object")
       }
-    } catch (_parseErr) {
+    } catch (parseErr) {
+      // biome-ignore lint/suspicious/noConsole: intentional error logging for invalid island props
+      console.error(`Invalid island props JSON for "${name}"`, parseErr)
       return
     }
 
     const mod = await loader()
     const Comp = typeof mod === "function" ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
-  } catch (_err) {}
+  } catch (err) {
+    // biome-ignore lint/suspicious/noConsole: intentional error logging for hydration failures
+    console.error(`Failed to hydrate island "${name}"`, err)
+  }
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {

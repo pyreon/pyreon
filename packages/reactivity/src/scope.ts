@@ -2,9 +2,9 @@
 // and disposes them all at once when the component unmounts.
 
 export class EffectScope {
-  private _effects: Array<{ dispose(): void }> = []
+  private _effects: { dispose(): void }[] = []
   private _active = true
-  private _updateHooks: Array<() => void> = []
+  private _updateHooks: (() => void)[] = []
   private _updatePending = false
 
   /** Register an effect/computed to be disposed when this scope stops. */
@@ -46,7 +46,10 @@ export class EffectScope {
       for (const fn of this._updateHooks) {
         try {
           fn()
-        } catch (_err) {}
+        } catch (err) {
+          // biome-ignore lint/suspicious/noConsole: intentional debug output
+          console.error("[pyreon] onUpdate hook error:", err)
+        }
       }
     })
   }

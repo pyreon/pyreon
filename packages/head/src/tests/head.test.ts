@@ -882,7 +882,7 @@ describe("useHead — SSR paths (document undefined)", () => {
 
   test("useHead static input registers synchronously in SSR (use-head.ts line 88-92)", async () => {
     // In SSR (no document), static input doesn't trigger syncDom
-    const { useHead: uh } = await import("../use-head")
+    const { useHead: _uh } = await import("../use-head")
     // This just verifies the code path doesn't error when document is undefined
     // The actual registration happens via the context
     expect(typeof document).toBe("undefined")

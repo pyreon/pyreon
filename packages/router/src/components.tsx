@@ -2,7 +2,7 @@ import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
 import { createRef, h, onUnmount, popContext, pushContext, useContext } from "@pyreon/core"
 import { LoaderDataContext, prefetchLoaderData } from "./loader"
 import { isLazy, RouterContext, setActiveRouter } from "./router"
-import type { ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
+import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
 
 // Track prefetched paths per router to avoid duplicate fetches
 const _prefetched = new WeakMap<RouterInstance, Set<string>>()
@@ -94,42 +94,12 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
 
     const raw = record.component
 
-    if (isLazy(raw)) {
-      // Show error UI if all retries have already failed
-      if (router._erroredChunks.has(record)) {
-        return raw.errorComponent ? h(raw.errorComponent, {}) : null
-      }
-
-      const tryLoad = (attempt: number): Promise<void> =>
-        raw
-          .loader()
-          .then((mod) => {
-            const resolved = typeof mod === "function" ? mod : mod.default
-            cacheSet(router, record, resolved)
-            router._loadingSignal.update((n) => n + 1)
-          })
-          .catch((err: unknown) => {
-            if (attempt < 3) {
-              return new Promise<void>((res) => setTimeout(res, 500 * 2 ** attempt)).then(() =>
-                tryLoad(attempt + 1),
-              )
-            }
-            // All retries failed — check for stale chunk (post-deploy 404 / parse error)
-            if (typeof window !== "undefined" && isStaleChunk(err)) {
-              window.location.reload()
-              return
-            }
-
-            router._erroredChunks.add(record)
-            router._loadingSignal.update((n) => n + 1) // re-render to show error UI
-          })
-
-      tryLoad(0)
-      return raw.loadingComponent ? h(raw.loadingComponent, {}) : null
+    if (!isLazy(raw)) {
+      cacheSet(router, record, raw)
+      return renderWithLoader(router, record, raw, route)
     }
 
-    cacheSet(router, record, raw)
-    return renderWithLoader(router, record, raw, route)
+    return renderLazyRoute(router, record, raw)
   }
 
   return h("div", { "data-pyreon-router-view": true }, child as unknown as VNodeChild)
@@ -230,6 +200,42 @@ function prefetchRoute(router: RouterInstance, path: string): void {
     // Silently ignore — prefetch is best-effort
     set?.delete(path)
   })
+}
+
+function renderLazyRoute(
+  router: RouterInstance,
+  record: RouteRecord,
+  raw: LazyComponent,
+): VNodeChild {
+  if (router._erroredChunks.has(record)) {
+    return raw.errorComponent ? h(raw.errorComponent, {}) : null
+  }
+
+  const tryLoad = (attempt: number): Promise<void> =>
+    raw
+      .loader()
+      .then((mod) => {
+        const resolved = typeof mod === "function" ? mod : mod.default
+        cacheSet(router, record, resolved)
+        router._loadingSignal.update((n) => n + 1)
+      })
+      .catch((err: unknown) => {
+        if (attempt < 3) {
+          return new Promise<void>((res) => setTimeout(res, 500 * 2 ** attempt)).then(() =>
+            tryLoad(attempt + 1),
+          )
+        }
+        if (typeof window !== "undefined" && isStaleChunk(err)) {
+          window.location.reload()
+          return
+        }
+
+        router._erroredChunks.add(record)
+        router._loadingSignal.update((n) => n + 1)
+      })
+
+  tryLoad(0)
+  return raw.loadingComponent ? h(raw.loadingComponent, {}) : null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

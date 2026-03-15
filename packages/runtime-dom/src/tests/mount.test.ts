@@ -2500,13 +2500,13 @@ describe("DevTools", () => {
 
   test("registerComponent and getAllComponents", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
-      getAllComponents: () => Array<{
+      getAllComponents: () => {
         id: string
         name: string
         parentId: string | null
         childIds: string[]
-      }>
-      getComponentTree: () => Array<{ id: string; name: string; parentId: string | null }>
+      }[]
+      getComponentTree: () => { id: string; name: string; parentId: string | null }[]
       highlight: (id: string) => void
       onComponentMount: (cb: (entry: { id: string }) => void) => () => void
       onComponentUnmount: (cb: (id: string) => void) => () => void
@@ -2524,12 +2524,12 @@ describe("DevTools", () => {
 
   test("registerComponent with parentId creates parent-child relationship", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
-      getAllComponents: () => Array<{
+      getAllComponents: () => {
         id: string
         name: string
         parentId: string | null
         childIds: string[]
-      }>
+      }[]
     }
 
     registerComponent("parent-1", "Parent", null, null)
@@ -2547,7 +2547,7 @@ describe("DevTools", () => {
 
   test("getComponentTree returns only root components", async () => {
     const devtools = (window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ as {
-      getComponentTree: () => Array<{ id: string; parentId: string | null }>
+      getComponentTree: () => { id: string; parentId: string | null }[]
     }
 
     registerComponent("root-1", "Root", null, null)
@@ -2822,7 +2822,7 @@ describe("TransitionGroup", () => {
   test("onAfterEnter callback fires after enter transition", async () => {
     const el = container()
     let afterEnterCalled = false
-    const items = signal<Array<{ id: number }>>([])
+    const items = signal<{ id: number }[]>([])
     mount(
       h(TransitionGroup, {
         tag: "div",

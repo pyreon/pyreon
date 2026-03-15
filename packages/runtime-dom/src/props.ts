@@ -137,30 +137,31 @@ function fallbackSanitize(html: string): string {
   return doc.body.innerHTML
 }
 
+/** Strip unsafe attributes from a single element. */
+function stripUnsafeAttrs(el: Element): void {
+  const attrs = Array.from(el.attributes)
+  for (const attr of attrs) {
+    if (UNSAFE_ATTR_RE.test(attr.name)) {
+      el.removeAttribute(attr.name)
+    } else if (URL_ATTRS.has(attr.name) && UNSAFE_URL_RE.test(attr.value)) {
+      el.removeAttribute(attr.name)
+    }
+  }
+}
+
 function sanitizeNode(node: Node): void {
   const children = Array.from(node.childNodes)
   for (const child of children) {
-    if (child.nodeType === 1) {
-      // Element
-      const el = child as Element
-      const tag = el.tagName.toLowerCase()
-      if (!SAFE_TAGS.has(tag)) {
-        // Replace unsafe element with its text content
-        const text = document.createTextNode(el.textContent as string)
-        node.replaceChild(text, el)
-        continue
-      }
-      // Strip unsafe attributes
-      const attrs = Array.from(el.attributes)
-      for (const attr of attrs) {
-        if (UNSAFE_ATTR_RE.test(attr.name)) {
-          el.removeAttribute(attr.name)
-        } else if (URL_ATTRS.has(attr.name) && UNSAFE_URL_RE.test(attr.value)) {
-          el.removeAttribute(attr.name)
-        }
-      }
-      sanitizeNode(el)
+    if (child.nodeType !== 1) continue
+    const el = child as Element
+    const tag = el.tagName.toLowerCase()
+    if (!SAFE_TAGS.has(tag)) {
+      const text = document.createTextNode(el.textContent as string)
+      node.replaceChild(text, el)
+      continue
     }
+    stripUnsafeAttrs(el)
+    sanitizeNode(el)
   }
 }
 
@@ -234,6 +235,10 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
   if (key === "dangerouslySetInnerHTML") {
     if (__DEV__) {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.warn(
+        "[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.",
+      )
     }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
@@ -276,42 +281,46 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 const URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"])
 const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
+/** Apply a style prop (string or object). */
+function applyStyleProp(el: HTMLElement, value: unknown): void {
+  if (typeof value === "string") {
+    el.style.cssText = value
+  } else if (value != null && typeof value === "object") {
+    Object.assign(el.style, value)
+  }
+}
+
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
-    if (__DEV__) return
+    if (__DEV__) {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
+    }
+    return
   }
 
-  // class / className → always via setAttribute for consistency
   if (key === "class" || key === "className") {
     el.setAttribute("class", value == null ? "" : String(value))
     return
   }
 
-  // style — accept string or object
   if (key === "style") {
-    if (typeof value === "string") {
-      ;(el as HTMLElement).style.cssText = value
-    } else if (value != null && typeof value === "object") {
-      Object.assign((el as HTMLElement).style, value)
-    }
+    applyStyleProp(el as HTMLElement, value)
     return
   }
 
-  // Null / undefined → remove
   if (value == null) {
     el.removeAttribute(key)
     return
   }
 
-  // Boolean attributes (disabled, checked, readonly, …)
   if (typeof value === "boolean") {
     if (value) el.setAttribute(key, "")
     else el.removeAttribute(key)
     return
   }
 
-  // DOM property (value, checked, selected, …) — prefer property over attribute
   if (key in el) {
     ;(el as unknown as Record<string, unknown>)[key] = value
     return

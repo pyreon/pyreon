@@ -124,6 +124,111 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     })
   }
 
+  /** Start leave animation for removed items. */
+  const processLeaves = (newKeys: Set<string | number>) => {
+    for (const [key, entry] of entries) {
+      if (newKeys.has(key) || entry.leaving) continue
+      entry.leaving = true
+      const el = entry.ref.current
+      if (el) {
+        applyLeave(el, () => {
+          entry.cleanup()
+          entries.delete(key)
+        })
+      } else {
+        entry.cleanup()
+        entries.delete(key)
+      }
+    }
+  }
+
+  /** Mount new items and return the list of newly created entries. */
+  const mountNewItems = (items: T[], container: HTMLElement): ItemEntry[] => {
+    const newEntries: ItemEntry[] = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i] as T
+      const key = props.keyFn(item, i)
+      if (entries.has(key)) continue
+      const itemRef = createRef<HTMLElement>()
+      const rawVNode = runUntracked(() => props.render(item, i))
+      const vnode: VNode =
+        typeof rawVNode.type === "string"
+          ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
+          : rawVNode
+      const cleanup = mountChild(vnode, container, null)
+      const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false }
+      entries.set(key, entry)
+      newEntries.push(entry)
+    }
+    return newEntries
+  }
+
+  const startMoveAnimation = (el: HTMLElement) => {
+    requestAnimationFrame(() => {
+      el.classList.add(cls.mv)
+      el.style.transform = ""
+      el.style.transition = ""
+      const done = () => {
+        el.removeEventListener("transitionend", done)
+        el.removeEventListener("animationend", done)
+        el.classList.remove(cls.mv)
+      }
+      el.addEventListener("transitionend", done, { once: true })
+      el.addEventListener("animationend", done, { once: true })
+    })
+  }
+
+  const flipEntry = (entry: ItemEntry, oldPos: DOMRect) => {
+    if (!entry.ref.current) return
+    const newPos = entry.ref.current.getBoundingClientRect()
+    const dx = oldPos.left - newPos.left
+    const dy = oldPos.top - newPos.top
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+    const el = entry.ref.current
+    el.style.transform = `translate(${dx}px, ${dy}px)`
+    el.style.transition = "none"
+    startMoveAnimation(el)
+  }
+
+  /** Apply FLIP move animations for items that shifted position. */
+  const applyFlipMoves = (oldPositions: Map<string | number, DOMRect>) => {
+    requestAnimationFrame(() => {
+      for (const [key, entry] of entries) {
+        if (entry.leaving) continue
+        const oldPos = oldPositions.get(key)
+        if (!oldPos) continue
+        flipEntry(entry, oldPos)
+      }
+    })
+  }
+
+  const recordOldPositions = (): Map<string | number, DOMRect> => {
+    const oldPositions = new Map<string | number, DOMRect>()
+    for (const [key, entry] of entries) {
+      if (!entry.leaving && entry.ref.current) {
+        oldPositions.set(key, entry.ref.current.getBoundingClientRect())
+      }
+    }
+    return oldPositions
+  }
+
+  const reorderEntries = (items: T[], container: HTMLElement) => {
+    for (let i = 0; i < items.length; i++) {
+      const key = props.keyFn(items[i] as T, i)
+      const entry = entries.get(key)
+      if (!entry || entry.leaving || !entry.ref.current) continue
+      container.appendChild(entry.ref.current)
+    }
+  }
+
+  const animateNewEntries = (newEntries: ItemEntry[]) => {
+    for (const entry of newEntries) {
+      queueMicrotask(() => {
+        if (entry.ref.current) applyEnter(entry.ref.current)
+      })
+    }
+  }
+
   const e = effect(() => {
     if (!ready()) return
     const container = containerRef.current
@@ -134,100 +239,13 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     const isFirst = firstRun
     firstRun = false
 
-    // 1. Record old positions for FLIP (before any DOM mutations)
-    const oldPositions = new Map<string | number, DOMRect>()
-    for (const [key, entry] of entries) {
-      if (!entry.leaving && entry.ref.current) {
-        oldPositions.set(key, entry.ref.current.getBoundingClientRect())
-      }
-    }
+    const oldPositions = recordOldPositions()
+    processLeaves(newKeys)
+    const newEntries = mountNewItems(items, container)
+    reorderEntries(items, container)
 
-    // 2. Start leave animation for removed items
-    for (const [key, entry] of entries) {
-      if (!newKeys.has(key) && !entry.leaving) {
-        entry.leaving = true
-        const el = entry.ref.current
-        if (el) {
-          applyLeave(el, () => {
-            entry.cleanup()
-            entries.delete(key)
-          })
-        } else {
-          entry.cleanup()
-          entries.delete(key)
-        }
-      }
-    }
-
-    // 3. Mount new items (appended to container; re-ordered in step 4)
-    const newEntries: ItemEntry[] = []
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i] as T
-      const key = props.keyFn(item, i)
-      if (!entries.has(key)) {
-        const itemRef = createRef<HTMLElement>()
-        // Use runUntracked so item-level signals don't re-trigger this effect
-        const rawVNode = runUntracked(() => props.render(item, i))
-        // Inject ref only into DOM-element VNodes
-        const vnode: VNode =
-          typeof rawVNode.type === "string"
-            ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
-            : rawVNode
-        const cleanup = mountChild(vnode, container, null)
-        const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false }
-        entries.set(key, entry)
-        newEntries.push(entry)
-      }
-    }
-
-    // 4. Re-order all non-leaving elements to match new items order
-    //    appendChild on an existing node moves it — no clone needed
-    for (let i = 0; i < items.length; i++) {
-      const key = props.keyFn(items[i] as T, i)
-      const entry = entries.get(key)
-      if (!entry || entry.leaving || !entry.ref.current) continue
-      container.appendChild(entry.ref.current)
-    }
-
-    // 5. Enter animations for new items (skip on first render unless `appear`)
-    if (!isFirst || props.appear) {
-      for (const entry of newEntries) {
-        queueMicrotask(() => {
-          if (entry.ref.current) applyEnter(entry.ref.current)
-        })
-      }
-    }
-
-    // 6. FLIP move animations for existing items that shifted position
-    if (!isFirst && oldPositions.size > 0) {
-      requestAnimationFrame(() => {
-        for (const [key, entry] of entries) {
-          if (entry.leaving || !entry.ref.current) continue
-          const oldPos = oldPositions.get(key)
-          if (!oldPos) continue // new item — enter animation handles it
-          const newPos = entry.ref.current.getBoundingClientRect()
-          const dx = oldPos.left - newPos.left
-          const dy = oldPos.top - newPos.top
-          if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue
-          // Apply inverse transform instantly (no transition), then animate to zero
-          const el = entry.ref.current
-          el.style.transform = `translate(${dx}px, ${dy}px)`
-          el.style.transition = "none"
-          requestAnimationFrame(() => {
-            el.classList.add(cls.mv)
-            el.style.transform = ""
-            el.style.transition = ""
-            const done = () => {
-              el.removeEventListener("transitionend", done)
-              el.removeEventListener("animationend", done)
-              el.classList.remove(cls.mv)
-            }
-            el.addEventListener("transitionend", done, { once: true })
-            el.addEventListener("animationend", done, { once: true })
-          })
-        }
-      })
-    }
+    if (!isFirst || props.appear) animateNewEntries(newEntries)
+    if (!isFirst && oldPositions.size > 0) applyFlipMoves(oldPositions)
   })
 
   // Fire the effect once the container is in the DOM

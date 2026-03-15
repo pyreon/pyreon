@@ -1046,7 +1046,7 @@ describe("mount.ts — additional edge cases", () => {
 
   test("isKeyedArray returns false for empty array", () => {
     const el = container()
-    const items = signal<Array<{ id: number }>>([])
+    const items = signal<{ id: number }[]>([])
     // Reactive accessor returning empty array — should not use keyed reconciler
     mount(
       h("div", null, () => items().map((it) => h("span", { key: it.id }))),

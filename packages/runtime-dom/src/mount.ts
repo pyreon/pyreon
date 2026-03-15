@@ -3,6 +3,7 @@ import type {
   ForProps,
   NativeItem,
   PortalProps,
+  Props,
   Ref,
   VNode,
   VNodeChild,
@@ -25,7 +26,9 @@ import { applyProps } from "./props"
 const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
 type Cleanup = () => void
-const noop: Cleanup = () => {}
+const noop: Cleanup = () => {
+  /* noop */
+}
 
 // When > 0, we're mounting children inside an element — child cleanups can skip
 // DOM removal (parent element removal handles it). This avoids allocating a
@@ -48,100 +51,79 @@ const _mountingStack: string[] = []
  *  - VNode with function type  → component
  *  - VNode with Fragment symbol → transparent wrapper
  */
-export function mountChild(
-  child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
+/** Mount a reactive accessor (function child) */
+function mountReactiveChild(
+  child: () => VNodeChild | VNodeChild[],
   parent: Node,
-  anchor: Node | null = null,
+  anchor: Node | null,
 ): Cleanup {
-  // Reactive accessor — function that reads signals
-  if (typeof child === "function") {
-    // Peek at the initial return value (inside a temporary tracking context).
-    // If it's an array of keyed VNodes, use the efficient keyed reconciler.
-    // We call the function once here; the reconciler's effect will call it again,
-    // so this peek is just for routing — not wasteful in practice.
-    const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
-    if (isKeyedArray(sample)) {
-      // Reactive boundary — children manage their own DOM lifecycle
-      const prevDepth = _elementDepth
-      _elementDepth = 0
-      const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (vnode, p, a) =>
-        mountChild(vnode, p, a),
-      )
-      _elementDepth = prevDepth
-      return cleanup
-    }
-    // Text fast path: reactive string/number/boolean — update text.data in-place
-    // instead of mountReactive (which creates a comment marker + teardown/rebuild).
-    // Saves 1 comment node per binding and reduces DOM ops from 3 to 1 per update.
-    // NOTE: null/undefined are excluded — they may later become VNodes (e.g. Show
-    // starting hidden), so they must go through mountReactive for correct transitions.
-    if (typeof sample === "string" || typeof sample === "number" || typeof sample === "boolean") {
-      const text = document.createTextNode(sample == null || sample === false ? "" : String(sample))
-      parent.insertBefore(text, anchor)
-      const dispose = renderEffect(() => {
-        const v = (child as () => unknown)()
-        text.data = v == null || v === false ? "" : String(v as string | number)
-      })
-      // Inside an element, parent removal handles text node removal — just dispose the effect
-      if (_elementDepth > 0) return dispose
-      return () => {
-        dispose()
-        const p = text.parentNode
-        if (p && (p as Element).isConnected !== false) p.removeChild(text)
-      }
-    }
-    // Reactive boundary — content manages its own DOM lifecycle
+  const sample = runUntracked(() => child())
+  if (isKeyedArray(sample)) {
     const prevDepth = _elementDepth
     _elementDepth = 0
-    const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+    const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (v, p, a) =>
+      mountChild(v, p, a),
+    )
     _elementDepth = prevDepth
     return cleanup
   }
-
-  // Array of children (e.g. from .map())
-  if (Array.isArray(child)) {
-    return mountChildren(child, parent, anchor)
+  if (typeof sample === "string" || typeof sample === "number" || typeof sample === "boolean") {
+    return mountReactiveText(child as () => unknown, sample, parent, anchor)
   }
+  const prevDepth = _elementDepth
+  _elementDepth = 0
+  const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+  _elementDepth = prevDepth
+  return cleanup
+}
 
-  // Nothing to render
-  if (child == null || child === false) return noop
-
-  // Primitive — text node (static, no reactive effects to tear down).
-  // DOM removal is handled by the parent element's cleanup, so return noop.
-  if (typeof child !== "object") {
-    parent.insertBefore(document.createTextNode(String(child)), anchor)
-    return noop
+/** Mount a reactive text binding (string/number/boolean accessor) */
+function mountReactiveText(
+  child: () => unknown,
+  sample: string | number | boolean,
+  parent: Node,
+  anchor: Node | null,
+): Cleanup {
+  const text = document.createTextNode(sample == null || sample === false ? "" : String(sample))
+  parent.insertBefore(text, anchor)
+  const dispose = renderEffect(() => {
+    const v = child()
+    text.data = v == null || v === false ? "" : String(v as string | number)
+  })
+  if (_elementDepth > 0) return dispose
+  return () => {
+    dispose()
+    const p = text.parentNode
+    if (p && (p as Element).isConnected !== false) p.removeChild(text)
   }
+}
 
-  // NativeItem — pre-built DOM element from _tpl() or createTemplate().
-  // Insert directly, bypassing VNode reconciliation entirely.
-  if ((child as unknown as NativeItem).__isNative) {
-    const native = child as unknown as NativeItem
-    parent.insertBefore(native.el, anchor)
-    if (!native.cleanup) {
-      if (_elementDepth > 0) return noop
-      return () => {
-        const p = native.el.parentNode
-        if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
-      }
-    }
-    if (_elementDepth > 0) return native.cleanup
+/** Mount a NativeItem (pre-built DOM element from _tpl() or createTemplate()) */
+function mountNativeItem(native: NativeItem, parent: Node, anchor: Node | null): Cleanup {
+  parent.insertBefore(native.el, anchor)
+  if (!native.cleanup) {
+    if (_elementDepth > 0) return noop
     return () => {
-      native.cleanup?.()
       const p = native.el.parentNode
       if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
     }
   }
+  if (_elementDepth > 0) return native.cleanup
+  return () => {
+    native.cleanup?.()
+    const p = native.el.parentNode
+    if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+  }
+}
 
-  const vnode = child as VNode
-
+/** Mount a VNode (element, component, fragment, For, Portal) */
+function mountVNode(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   if (vnode.type === Fragment) {
     return mountChildren(vnode.children, parent, anchor)
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, by, children } = vnode.props as unknown as ForProps<unknown>
-    // Reactive boundary — For manages its own DOM lifecycle
     const prevDepth = _elementDepth
     _elementDepth = 0
     const cleanup = mountFor(each, by, children, parent, anchor, mountChild)
@@ -149,7 +131,6 @@ export function mountChild(
     return cleanup
   }
 
-  // Portal — mount children into a different DOM target, outside the current tree
   if (vnode.type === (PortalSymbol as unknown as string)) {
     const { target, children } = vnode.props as unknown as PortalProps
     if (__DEV__ && !target) {
@@ -163,6 +144,38 @@ export function mountChild(
   }
 
   return mountElement(vnode, parent, anchor)
+}
+
+export function mountChild(
+  child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
+  parent: Node,
+  anchor: Node | null = null,
+): Cleanup {
+  // Reactive accessor — function that reads signals
+  if (typeof child === "function") {
+    return mountReactiveChild(child as () => VNodeChild | VNodeChild[], parent, anchor)
+  }
+
+  // Array of children (e.g. from .map())
+  if (Array.isArray(child)) {
+    return mountChildren(child, parent, anchor)
+  }
+
+  // Nothing to render
+  if (child == null || child === false) return noop
+
+  // Primitive — text node (static, no reactive effects to tear down).
+  if (typeof child !== "object") {
+    parent.insertBefore(document.createTextNode(String(child)), anchor)
+    return noop
+  }
+
+  // NativeItem — pre-built DOM element from _tpl() or createTemplate().
+  if ((child as unknown as NativeItem).__isNative) {
+    return mountNativeItem(child as unknown as NativeItem, parent, anchor)
+  }
+
+  return mountVNode(child as VNode, parent, anchor)
 }
 
 // ─── Element ─────────────────────────────────────────────────────────────────
@@ -221,37 +234,91 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/** Merge vnode.children into props.children if not already set. */
+function mergeChildrenIntoProps(vnode: VNode): Props {
+  if (
+    vnode.children.length > 0 &&
+    (vnode.props as Record<string, unknown>).children === undefined
+  ) {
+    return {
+      ...vnode.props,
+      children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+    }
+  }
+  return vnode.props
+}
+
+/** Fire onMount hooks and collect their cleanups. */
+function fireOnMountHooks(
+  hooks: ReturnType<typeof runWithHooks>["hooks"],
+  scope: ReturnType<typeof effectScope>,
+  componentName: string,
+): Cleanup[] {
+  const mountCleanups: Cleanup[] = []
+  for (const fn of hooks.mount) {
+    try {
+      let cleanup: (() => void) | undefined
+      scope.runInScope(() => {
+        cleanup = fn()
+      })
+      if (cleanup) mountCleanups.push(cleanup)
+    } catch (err) {
+      // biome-ignore lint/suspicious/noConsole: intentional dev warning
+      console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
+      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
+    }
+  }
+  return mountCleanups
+}
+
+/** Build the component cleanup function. */
+function buildComponentCleanup(
+  compId: string,
+  scope: ReturnType<typeof effectScope>,
+  subtreeCleanup: Cleanup,
+  hooks: ReturnType<typeof runWithHooks>["hooks"],
+  mountCleanups: Cleanup[],
+  componentName: string,
+): Cleanup {
+  return () => {
+    unregisterComponent(compId)
+    scope.stop()
+    subtreeCleanup()
+    for (const fn of hooks.unmount) {
+      try {
+        fn()
+      } catch (err) {
+        // biome-ignore lint/suspicious/noConsole: intentional dev warning
+        console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
+        reportError({
+          component: componentName,
+          phase: "unmount",
+          error: err,
+          timestamp: Date.now(),
+        })
+      }
+    }
+    for (const fn of mountCleanups) fn()
+  }
+}
+
 function mountComponent(
   vnode: VNode & { type: ComponentFn },
   parent: Node,
   anchor: Node | null,
 ): Cleanup {
-  // Create an EffectScope so all effects/computeds created during setup
-  // are automatically disposed when the component unmounts.
   const scope = effectScope()
   setCurrentScope(scope)
 
   let hooks: ReturnType<typeof runWithHooks>["hooks"]
   let output: VNode | null
 
-  // Function.name is always a string per spec; cast avoids an uncoverable ?? branch
   const componentName = (vnode.type.name || "Anonymous") as string
-
-  // DevTools: generate a stable ID, register under current parent
   const compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
   const parentId = _mountingStack[_mountingStack.length - 1] ?? null
   _mountingStack.push(compId)
 
-  // Merge vnode.children into props.children if not already set.
-  // This makes `h(Comp, props, child)` equivalent to `h(Comp, { ...props, children: child })`
-  // and matches JSX expectations: <Comp>child</Comp> → children in props.
-  const mergedProps =
-    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
-      ? {
-          ...vnode.props,
-          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
-        }
-      : vnode.props
+  const mergedProps = mergeChildrenIntoProps(vnode)
 
   try {
     const result = runWithHooks(vnode.type, mergedProps)
@@ -261,7 +328,6 @@ function mountComponent(
     _mountingStack.pop()
     setCurrentScope(null)
     scope.stop()
-
     reportError({
       component: componentName,
       phase: "setup",
@@ -275,19 +341,13 @@ function mountComponent(
     setCurrentScope(null)
   }
 
-  // Validate component return value in dev mode
-  if (__DEV__ && output != null) {
-    const t = typeof output
-    if (
-      t !== "string" &&
-      t !== "number" &&
-      t !== "function" &&
-      !(typeof output === "object" && "type" in (output as object))
-    ) {
-    }
+  if (__DEV__ && output != null && typeof output === "object" && !("type" in output)) {
+    // biome-ignore lint/suspicious/noConsole: intentional dev warning
+    console.warn(
+      `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, or function.`,
+    )
   }
 
-  // Register onUpdate hooks with the scope so they fire after reactive re-runs
   for (const fn of hooks.update) {
     scope.addUpdateHook(fn)
   }
@@ -312,74 +372,59 @@ function mountComponent(
 
   _mountingStack.pop()
 
-  // Register with DevTools after subtree is mounted (first child el may now exist)
   const firstEl = parent instanceof Element ? parent.firstElementChild : null
   registerComponent(compId, componentName, firstEl, parentId)
 
-  // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
-  const mountCleanups: Cleanup[] = []
-  for (const fn of hooks.mount) {
-    try {
-      let cleanup: (() => void) | undefined
-      scope.runInScope(() => {
-        cleanup = fn()
-      })
-      if (cleanup) mountCleanups.push(cleanup)
-    } catch (err) {
-      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
-    }
-  }
+  const mountCleanups = fireOnMountHooks(hooks, scope, componentName)
 
-  return () => {
-    unregisterComponent(compId)
-    scope.stop()
-    subtreeCleanup()
-    for (const fn of hooks.unmount) {
-      try {
-        fn()
-      } catch (err) {
-        reportError({
-          component: componentName,
-          phase: "unmount",
-          error: err,
-          timestamp: Date.now(),
-        })
-      }
-    }
-    for (const fn of mountCleanups) fn()
-  }
+  return buildComponentCleanup(compId, scope, subtreeCleanup, hooks, mountCleanups, componentName)
 }
 
 // ─── Children ────────────────────────────────────────────────────────────────
 
+/** 1-child fast path for mountChildren */
+function mountSingleChild(child: VNodeChild, parent: Node, anchor: Node | null): Cleanup | null {
+  if (child === undefined) return null
+  if (anchor === null && (typeof child === "string" || typeof child === "number")) {
+    ;(parent as HTMLElement).textContent = String(child)
+    return noop
+  }
+  return mountChild(child, parent, anchor)
+}
+
+/** 2-child fast path — avoids .map() array allocation (covers <tr><td/><td/></tr>) */
+function mountTwoChildren(
+  c0: VNodeChild,
+  c1: VNodeChild,
+  parent: Node,
+  anchor: Node | null,
+): Cleanup | null {
+  if (c0 === undefined || c1 === undefined) return null
+  const d0 = mountChild(c0, parent, anchor)
+  const d1 = mountChild(c1, parent, anchor)
+  if (d0 === noop && d1 === noop) return noop
+  if (d0 === noop) return d1
+  if (d1 === noop) return d0
+  return () => {
+    d0()
+    d1()
+  }
+}
+
 function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null): Cleanup {
   if (children.length === 0) return noop
   if (children.length === 1) {
-    const child = children[0]
-    if (child !== undefined) {
-      // Static text fast path: textContent is 1 DOM op vs createTextNode + insertBefore (2 ops)
-      if (anchor === null && (typeof child === "string" || typeof child === "number")) {
-        ;(parent as HTMLElement).textContent = String(child)
-        return noop
-      }
-      return mountChild(child, parent, anchor)
-    }
+    const result = mountSingleChild(children[0] as VNodeChild, parent, anchor)
+    if (result !== null) return result
   }
-  // 2-child fast path — avoids .map() array allocation (covers <tr><td/><td/></tr>)
   if (children.length === 2) {
-    const c0 = children[0]
-    const c1 = children[1]
-    if (c0 !== undefined && c1 !== undefined) {
-      const d0 = mountChild(c0, parent, anchor)
-      const d1 = mountChild(c1, parent, anchor)
-      if (d0 === noop && d1 === noop) return noop
-      if (d0 === noop) return d1
-      if (d1 === noop) return d0
-      return () => {
-        d0()
-        d1()
-      }
-    }
+    const result = mountTwoChildren(
+      children[0] as VNodeChild,
+      children[1] as VNodeChild,
+      parent,
+      anchor,
+    )
+    if (result !== null) return result
   }
   const cleanups = children.map((c) => mountChild(c, parent, anchor))
   return () => {

@@ -9,6 +9,32 @@ const ATTR = "data-pyreon-head"
  * Also syncs htmlAttrs, bodyAttrs, and applies titleTemplate.
  * No-op on the server (typeof document === "undefined").
  */
+function patchExistingTag(
+  found: Element,
+  tag: { props: Record<string, unknown>; children: string },
+  kept: Set<Element>,
+): void {
+  kept.add(found)
+  patchAttrs(found, tag.props as Record<string, string>)
+  const content = String(tag.children)
+  if (found.textContent !== content) found.textContent = content
+}
+
+function createNewTag(tag: {
+  tag: string
+  props: Record<string, unknown>
+  children: string
+  key: unknown
+}): void {
+  const el = document.createElement(tag.tag)
+  el.setAttribute(ATTR, tag.key as string)
+  for (const [k, v] of Object.entries(tag.props as Record<string, string>)) {
+    el.setAttribute(k, v)
+  }
+  if (tag.children) el.textContent = tag.children
+  document.head.appendChild(el)
+}
+
 export function syncDom(ctx: HeadContextValue): void {
   if (typeof document === "undefined") return
 
@@ -17,8 +43,6 @@ export function syncDom(ctx: HeadContextValue): void {
   const existing = document.head.querySelectorAll(`[${ATTR}]`)
   const byKey = new Map<string, Element>()
   for (const el of existing) {
-    // ATTR is always set (we selected [${ATTR}]), so getAttribute always returns string.
-    // Key is always non-empty because we set it from tag.key which is always truthy.
     byKey.set(el.getAttribute(ATTR) as string, el)
   }
 
@@ -34,27 +58,18 @@ export function syncDom(ctx: HeadContextValue): void {
     const found = byKey.get(key)
 
     if (found && found.tagName.toLowerCase() === tag.tag) {
-      kept.add(found)
-      patchAttrs(found, tag.props as Record<string, string>)
-      const content = String(tag.children)
-      if (found.textContent !== content) found.textContent = content
+      patchExistingTag(found, tag as { props: Record<string, unknown>; children: string }, kept)
     } else {
-      const el = document.createElement(tag.tag)
-      el.setAttribute(ATTR, key)
-      for (const [k, v] of Object.entries(tag.props as Record<string, string>)) {
-        el.setAttribute(k, v)
-      }
-      if (tag.children) el.textContent = tag.children
-      document.head.appendChild(el)
+      createNewTag(
+        tag as { tag: string; props: Record<string, unknown>; children: string; key: unknown },
+      )
     }
   }
 
-  // Remove stale elements
   for (const el of existing) {
     if (!kept.has(el)) el.remove()
   }
 
-  // Sync html/body attributes
   syncElementAttrs(document.documentElement, ctx.resolveHtmlAttrs())
   syncElementAttrs(document.body, ctx.resolveBodyAttrs())
 }
@@ -73,7 +88,7 @@ function patchAttrs(el: Element, props: Record<string, string>): void {
 
 function applyTitleTemplate(
   title: string,
-  template: string | ((title: string) => string) | undefined,
+  template: string | ((t: string) => string) | undefined,
 ): string {
   if (!template) return title
   if (typeof template === "function") return template(title)

@@ -2,6 +2,8 @@ import type { Props, VNode, VNodeChild } from "@pyreon/core"
 import { createRef, Fragment, h, onUnmount } from "@pyreon/core"
 import { effect, runUntracked, signal } from "@pyreon/reactivity"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 export interface TransitionProps {
   /**
    * CSS class name prefix.
@@ -123,29 +125,31 @@ export function Transition(props: TransitionProps): VNodeChild {
     })
   }
 
+  const handleVisibilityChange = (visible: boolean) => {
+    if (visible) {
+      if (!isMounted.peek()) isMounted.set(true)
+      queueMicrotask(() => applyEnter(ref.current as HTMLElement))
+      return
+    }
+    if (!isMounted.peek()) return
+    const el = ref.current
+    if (!el) {
+      isMounted.set(false)
+      return
+    }
+    applyLeave(el)
+  }
+
   effect(() => {
     const visible = props.show()
     if (!initialized) {
       initialized = true
-      // On initial mount: animate only if `appear` is set
       if (visible && props.appear) {
-        // ref.current is set synchronously by mountChild before microtask fires
         queueMicrotask(() => applyEnter(ref.current as HTMLElement))
       }
       return
     }
-    if (visible) {
-      if (!isMounted.peek()) isMounted.set(true)
-      // Enter: queueMicrotask ensures the element is in the DOM before we touch it
-      queueMicrotask(() => applyEnter(ref.current as HTMLElement))
-    } else if (isMounted.peek()) {
-      const el = ref.current
-      if (!el) {
-        isMounted.set(false)
-        return
-      }
-      applyLeave(el)
-    }
+    handleVisibilityChange(visible)
   })
 
   onUnmount(() => {
@@ -168,7 +172,11 @@ export function Transition(props: TransitionProps): VNodeChild {
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
     if (typeof vnode.type !== "string") {
-      if (typeof vnode.type === "function") {
+      if (__DEV__) {
+        // biome-ignore lint/suspicious/noConsole: intentional dev warning
+        console.warn(
+          "[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.",
+        )
       }
       return vnode
     }

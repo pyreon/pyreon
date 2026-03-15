@@ -72,7 +72,7 @@ export function isTracing(): boolean {
 // ─── why() — trace which signal caused a re-run ──────────────────────────────
 
 let _whyActive = false
-let _whyLog: Array<{ name: string | undefined; prev: unknown; next: unknown }> = []
+let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = []
 
 /**
  * Trace the next signal update. Logs which signals fire and what changed.
@@ -92,6 +92,10 @@ export function why(): void {
     const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
     const _name = e.name ? `"${e.name}"` : "(anonymous signal)"
 
+    // biome-ignore lint/suspicious/noConsole: intentional debug output
+    console.log(
+      `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? "" : "s"})`,
+    )
     _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
   })
 
@@ -99,6 +103,8 @@ export function why(): void {
   queueMicrotask(() => {
     dispose()
     if (_whyLog.length === 0) {
+      // biome-ignore lint/suspicious/noConsole: intentional debug output
+      console.log("[pyreon:why] No signal updates detected")
     }
     _whyActive = false
     _whyLog = []
@@ -120,6 +126,15 @@ export function why(): void {
  */
 export function inspectSignal<T>(sig: Signal<T>): SignalDebugInfo<T> {
   const info = sig.debug()
+
+  // biome-ignore lint/suspicious/noConsole: intentional debug output
+  console.group(`🔍 Signal ${info.name ? `"${info.name}"` : "(anonymous)"}`)
+  // biome-ignore lint/suspicious/noConsole: intentional debug output
+  console.log("value:", info.value)
+  // biome-ignore lint/suspicious/noConsole: intentional debug output
+  console.log("subscribers:", info.subscriberCount)
+  // biome-ignore lint/suspicious/noConsole: intentional debug output
+  console.groupEnd()
 
   return info
 }

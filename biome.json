@@ -63,5 +63,25 @@
         "useConsistentArrayType": "warn"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off",
+            "noEmptyBlockStatements": "off",
+            "noTemplateCurlyInString": "off"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
+          },
+          "nursery": {
+            "noShadow": "off"
+          }
+        }
+      }
+    }
+  ]
 }

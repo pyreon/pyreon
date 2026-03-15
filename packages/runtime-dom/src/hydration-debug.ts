@@ -33,4 +33,8 @@ export function warnHydrationMismatch(
   _path: string,
 ): void {
   if (!_enabled) return
+  // biome-ignore lint/suspicious/noConsole: intentional dev warning
+  console.warn(
+    `[Pyreon] Hydration mismatch (${_type}): expected ${String(_expected)}, got ${String(_actual)} at ${_path}`,
+  )
 }

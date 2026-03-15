@@ -27,9 +27,9 @@ export interface UseHeadInput {
   titleTemplate?: string | ((title: string) => string)
   meta?: Record<string, string>[]
   link?: Record<string, string>[]
-  script?: Array<{ src?: string; children?: string } & Record<string, string | undefined>>
-  style?: Array<{ children: string } & Record<string, string | undefined>>
-  noscript?: Array<{ children: string }>
+  script?: ({ src?: string; children?: string } & Record<string, string | undefined>)[]
+  style?: ({ children: string } & Record<string, string | undefined>)[]
+  noscript?: { children: string }[]
   /** Convenience: emits a <script type="application/ld+json"> tag with JSON.stringify'd content */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
   base?: Record<string, string>

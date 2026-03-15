@@ -126,6 +126,54 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
 
 // ─── Streaming renderer ───────────────────────────────────────────────────────
 
+async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+  if (vnode.type === Fragment) {
+    for (const child of vnode.children) await streamNode(child, enqueue)
+    return
+  }
+
+  if (vnode.type === (ForSymbol as unknown as string)) {
+    const { each, children } = vnode.props as unknown as ForProps<unknown>
+    enqueue("<!--pyreon-for-->")
+    for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
+    enqueue("<!--/pyreon-for-->")
+    return
+  }
+
+  if (typeof vnode.type === "function") {
+    await streamComponentNode(vnode, enqueue)
+    return
+  }
+
+  await streamElementNode(vnode, enqueue)
+}
+
+async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+  if (vnode.type === Suspense) {
+    await streamSuspenseBoundary(vnode, enqueue)
+    return
+  }
+  const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
+  const resolved = output instanceof Promise ? await output : output
+  if (resolved !== null) await streamNode(resolved, enqueue)
+}
+
+async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+  const tag = vnode.type as string
+  let open = `<${tag}`
+  for (const [key, value] of Object.entries(vnode.props)) {
+    const attr = renderProp(key, value)
+    if (attr) open += ` ${attr}`
+  }
+  if (isVoidElement(tag)) {
+    enqueue(`${open} />`)
+    return
+  }
+  enqueue(`${open}>`)
+  for (const child of vnode.children) await streamNode(child, enqueue)
+  enqueue(`</${tag}>`)
+}
+
 async function streamNode(
   node: VNodeChild | null | (() => VNodeChild),
   enqueue: (s: string) => void,
@@ -147,47 +195,7 @@ async function streamNode(
     return
   }
 
-  const vnode = node as VNode
-
-  if (vnode.type === Fragment) {
-    for (const child of vnode.children) await streamNode(child, enqueue)
-    return
-  }
-
-  if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, children } = vnode.props as unknown as ForProps<unknown>
-    enqueue("<!--pyreon-for-->")
-    for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
-    enqueue("<!--/pyreon-for-->")
-    return
-  }
-
-  if (typeof vnode.type === "function") {
-    // Suspense boundary — stream fallback immediately, resolve children async
-    if (vnode.type === Suspense) {
-      await streamSuspenseBoundary(vnode, enqueue)
-      return
-    }
-    const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
-    const resolved = output instanceof Promise ? await output : output
-    if (resolved !== null) await streamNode(resolved, enqueue)
-    return
-  }
-
-  // HTML element — flush opening tag immediately, then stream children, then close
-  const tag = vnode.type as string
-  let open = `<${tag}`
-  for (const [key, value] of Object.entries(vnode.props)) {
-    const attr = renderProp(key, value)
-    if (attr) open += ` ${attr}`
-  }
-  if (isVoidElement(tag)) {
-    enqueue(`${open} />`)
-    return
-  }
-  enqueue(`${open}>`)
-  for (const child of vnode.children) await streamNode(child, enqueue)
-  enqueue(`</${tag}>`)
+  await streamVNode(node as VNode, enqueue)
 }
 
 // Inline swap helper emitted once per stream, before the first <template>
@@ -327,25 +335,14 @@ async function renderElement(vnode: VNode): Promise<string> {
 const SSR_URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
-function renderProp(key: string, value: unknown): string | null {
-  if (key === "key" || key === "ref" || key === "n-show") return null
+function renderPropSkipped(key: string): boolean {
+  if (key === "key" || key === "ref" || key === "n-show") return true
+  if (key.startsWith("n-")) return true
+  if (/^on[A-Z]/.test(key)) return true
+  return false
+}
 
-  // Custom directives — not emitted as HTML attributes
-  if (key.startsWith("n-")) return null
-
-  // Event handlers — not emitted in SSR HTML
-  if (/^on[A-Z]/.test(key)) return null
-
-  // Reactive getter — snapshot it
-  if (typeof value === "function") {
-    return renderProp(key, (value as () => unknown)())
-  }
-
-  // Block javascript:/data: URI injection in URL-bearing attributes.
-  if (SSR_URL_ATTRS.has(key) && typeof value === "string" && SSR_UNSAFE_URL_RE.test(value)) {
-    return null
-  }
-
+function renderPropValue(key: string, value: unknown): string | null {
   if (value === null || value === undefined || value === false) return null
   if (value === true) return escapeHtml(toAttrName(key))
 
@@ -360,6 +357,20 @@ function renderProp(key: string, value: unknown): string | null {
   }
 
   return `${escapeHtml(toAttrName(key))}="${escapeHtml(String(value))}"`
+}
+
+function renderProp(key: string, value: unknown): string | null {
+  if (renderPropSkipped(key)) return null
+
+  if (typeof value === "function") {
+    return renderProp(key, (value as () => unknown)())
+  }
+
+  if (SSR_URL_ATTRS.has(key) && typeof value === "string" && SSR_UNSAFE_URL_RE.test(value)) {
+    return null
+  }
+
+  return renderPropValue(key, value)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

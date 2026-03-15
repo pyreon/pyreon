@@ -74,7 +74,7 @@ describe("createResource", () => {
 
   test("ignores stale responses (race condition)", async () => {
     const userId = signal(1)
-    const resolvers: Array<(v: string) => void> = []
+    const resolvers: ((v: string) => void)[] = []
 
     const resource = createResource(
       () => userId(),
@@ -104,8 +104,8 @@ describe("createResource", () => {
 
   test("ignores stale errors (race condition)", async () => {
     const userId = signal(1)
-    const rejecters: Array<(e: Error) => void> = []
-    const resolvers: Array<(v: string) => void> = []
+    const rejecters: ((e: Error) => void)[] = []
+    const resolvers: ((v: string) => void)[] = []
 
     const resource = createResource(
       () => userId(),

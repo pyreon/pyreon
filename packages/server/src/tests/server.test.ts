@@ -558,7 +558,7 @@ describe("prerender", () => {
   test("onPage callback receives path and html", async () => {
     const handler = async (_req: Request) => new Response("<html>content</html>", { status: 200 })
 
-    const received: Array<{ path: string; html: string }> = []
+    const received: { path: string; html: string }[] = []
     const tmpDir = `/tmp/pyreon-ssg-onpage-${Date.now()}`
     await prerender({
       handler,
