@@ -9,7 +9,7 @@ import { serve } from "bun"
  */
 import { chromium } from "playwright"
 
-const DIST = join(import.meta.dir, "../apps/benchmark/dist")
+const DIST = join(import.meta.dir, "../examples/benchmark/dist")
 const PORT = 4173
 
 // Static file server for the benchmark dist

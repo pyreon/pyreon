@@ -319,66 +319,6 @@ interface ForEntry {
   pos: number
 }
 
-/** Render a single item into a container (fragment or live parent), returning cleanupCount delta. */
-function renderForEntry<T>(
-  item: T,
-  key: string | number,
-  pos: number,
-  renderItem: (i: T) => import("@pyreon/core").VNode | import("@pyreon/core").NativeItem,
-  mountChild: MountFn,
-  container: Node,
-  beforeNode: Node | null,
-  cache: Map<string | number, ForEntry>,
-  registerAnchor: ((node: Node) => void) | null,
-): number {
-  const result = renderItem(item)
-  if ((result as import("@pyreon/core").NativeItem).__isNative) {
-    const { el, cleanup: entryCleanup } = result as import("@pyreon/core").NativeItem
-    container.insertBefore(el, beforeNode)
-    if (registerAnchor) registerAnchor(el)
-    cache.set(key, { anchor: el, cleanup: entryCleanup, pos })
-    return entryCleanup ? 1 : 0
-  }
-  const priorLast = beforeNode ? beforeNode.previousSibling : container.lastChild
-  const cleanup = mountChild(result as import("@pyreon/core").VNode, container, beforeNode)
-  const candidate = priorLast ? priorLast.nextSibling : container.firstChild
-  const firstMounted = candidate !== beforeNode ? candidate : null
-  if (firstMounted) {
-    if (registerAnchor) registerAnchor(firstMounted)
-    cache.set(key, { anchor: firstMounted, cleanup, pos })
-  } else {
-    const ph = document.createComment("")
-    if (registerAnchor) registerAnchor(ph)
-    container.insertBefore(ph, beforeNode)
-    cache.set(key, { anchor: ph, cleanup, pos })
-  }
-  return 1
-}
-
-/** Parent-swap: detach all children by replacing the parent with a fresh clone. */
-function parentSwapClear(liveParent: Node, startMarker: Comment, tailMarker: Comment): void {
-  const parentParent = liveParent.parentNode
-  if (
-    parentParent &&
-    liveParent.firstChild === startMarker &&
-    liveParent.lastChild === tailMarker
-  ) {
-    const fresh = liveParent.cloneNode(false)
-    fresh.appendChild(startMarker)
-    fresh.appendChild(tailMarker)
-    parentParent.replaceChild(fresh, liveParent)
-  } else {
-    clearBetween(startMarker, tailMarker)
-  }
-}
-
-/** Flush all entry cleanups when cleanupCount > 0. */
-function flushForCleanups(cache: Map<string | number, ForEntry>, cleanupCount: number): void {
-  if (cleanupCount > 0) {
-    for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
-  }
-}
-
 /** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
 function trySmallKReorder(
   n: number,
@@ -514,6 +454,35 @@ export function mountFor<T>(
     seen.add(key)
   }
 
+  /** Render item into container, update cache+cleanupCount. No anchor registration. */
+  const renderInto = (
+    item: T,
+    key: string | number,
+    pos: number,
+    container: Node,
+    before: Node | null,
+  ) => {
+    const result = renderItem(item)
+    if ((result as import("@pyreon/core").NativeItem).__isNative) {
+      const native = result as import("@pyreon/core").NativeItem
+      container.insertBefore(native.el, before)
+      cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos })
+      if (native.cleanup) cleanupCount++
+      return
+    }
+    const priorLast = before ? before.previousSibling : container.lastChild
+    const cl = mountChild(result as import("@pyreon/core").VNode, container, before)
+    const firstMounted = priorLast ? priorLast.nextSibling : container.firstChild
+    if (!firstMounted || firstMounted === before) {
+      const ph = document.createComment("")
+      container.insertBefore(ph, before)
+      cache.set(key, { anchor: ph, cleanup: cl, pos })
+    } else {
+      cache.set(key, { anchor: firstMounted, cleanup: cl, pos })
+    }
+    cleanupCount++
+  }
+
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
     const frag = document.createDocumentFragment()
     const keys = new Array<string | number>(n)
@@ -523,7 +492,7 @@ export function mountFor<T>(
       const key = getKey(item)
       warnDuplicateKeys(_seenKeys, key)
       keys[i] = key
-      cleanupCount += renderForEntry(item, key, i, renderItem, mountChild, frag, null, cache, null)
+      renderInto(item, key, i, frag, null)
     }
     liveParent.insertBefore(frag, tailMarker)
     anchorsRegistered = false
@@ -546,7 +515,9 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ) => {
-    flushForCleanups(cache, cleanupCount)
+    if (cleanupCount > 0) {
+      for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
+    }
     cache = new Map()
     cleanupCount = 0
 
@@ -556,18 +527,7 @@ export function mountFor<T>(
 
     const frag = document.createDocumentFragment()
     for (let i = 0; i < n; i++) {
-      const key = newKeys[i] as string | number
-      cleanupCount += renderForEntry(
-        items[i] as T,
-        key,
-        i,
-        renderItem,
-        mountChild,
-        frag,
-        null,
-        cache,
-        null,
-      )
+      renderInto(items[i] as T, newKeys[i] as string | number, i, frag, null)
     }
     anchorsRegistered = false
 
@@ -602,28 +562,29 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ) => {
-    const addForAnchor = (node: Node) => _forAnchors.add(node)
     for (let i = 0; i < n; i++) {
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue
-      cleanupCount += renderForEntry(
-        items[i] as T,
-        key,
-        i,
-        renderItem,
-        mountChild,
-        liveParent,
-        tailMarker,
-        cache,
-        addForAnchor,
-      )
+      renderInto(items[i] as T, key, i, liveParent, tailMarker)
+      const entry = cache.get(key)
+      if (entry) _forAnchors.add(entry.anchor)
     }
   }
 
   const handleFastClear = (liveParent: Node) => {
     if (cache.size === 0) return
-    flushForCleanups(cache, cleanupCount)
-    parentSwapClear(liveParent, startMarker, tailMarker)
+    if (cleanupCount > 0) {
+      for (const entry of cache.values()) if (entry.cleanup) entry.cleanup()
+    }
+    const pp = liveParent.parentNode
+    if (pp && liveParent.firstChild === startMarker && liveParent.lastChild === tailMarker) {
+      const fresh = liveParent.cloneNode(false)
+      fresh.appendChild(startMarker)
+      fresh.appendChild(tailMarker)
+      pp.replaceChild(fresh, liveParent)
+    } else {
+      clearBetween(startMarker, tailMarker)
+    }
     cache = new Map()
     cleanupCount = 0
     currentKeys = []
