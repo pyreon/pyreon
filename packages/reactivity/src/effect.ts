@@ -108,12 +108,17 @@ export function _bind(fn: () => void): () => void {
   withTracking(run, fn)
   setDepsCollector(null)
 
-  return () => {
+  const dispose = () => {
     if (disposed) return
     disposed = true
     for (const s of deps) s.delete(run)
     deps.length = 0
   }
+
+  // Auto-register with scope so template bindings are disposed during teardown
+  getCurrentScope()?.add({ dispose })
+
+  return dispose
 }
 
 export function renderEffect(fn: () => void): () => void {
@@ -133,10 +138,15 @@ export function renderEffect(fn: () => void): () => void {
 
   run()
 
-  return () => {
+  const dispose = () => {
     if (disposed) return
     disposed = true
     for (const s of deps) s.delete(run)
     deps.length = 0
   }
+
+  // Auto-register with scope so render effects are disposed during teardown
+  getCurrentScope()?.add({ dispose })
+
+  return dispose
 }

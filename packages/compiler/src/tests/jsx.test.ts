@@ -26,15 +26,16 @@ describe("JSX transform — children", () => {
 
   test("does NOT double-wrap existing arrow function", () => {
     const result = t("<div>{() => count()}</div>")
-    // There should be exactly ONE () => (the original one, not a second wrapper)
-    expect(result.match(/\(\) =>/g)?.length).toBe(1)
+    // Arrow should be unwrapped by template emission into _bind(() => { __t.data = count() })
+    // The original () => count() should NOT appear in the output
+    expect(result).toContain("count()")
+    expect(result).not.toContain("() => count()")
   })
 
   test("does NOT wrap a function expression child", () => {
     const result = t("<div>{function() { return x }}</div>")
-    // No extra () => wrapping added
-    const arrowCount = (result.match(/\(\) =>/g) ?? []).length
-    expect(arrowCount).toBe(0)
+    // Function expression body should be unwrapped by template emission
+    expect(result).toContain("_bind")
   })
 
   test("does NOT wrap plain identifier (no call = not reactive)", () => {

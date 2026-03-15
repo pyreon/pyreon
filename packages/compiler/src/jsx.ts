@@ -332,14 +332,27 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       return "" // false/null/undefined → omit
     }
 
+    /** Unwrap a reactive accessor expression for use inside _bind(). */
+    function unwrapAccessor(exprNode: ts.Expression): { expr: string; isReactive: boolean } {
+      // Concise arrow: () => value() → unwrap to "value()"
+      if (ts.isArrowFunction(exprNode) && !ts.isBlock(exprNode.body)) {
+        return { expr: sliceExpr(exprNode.body as ts.Expression), isReactive: true }
+      }
+      // Block-body arrow/function: invoke it
+      if (ts.isArrowFunction(exprNode) || ts.isFunctionExpression(exprNode)) {
+        return { expr: `(${sliceExpr(exprNode)})()`, isReactive: true }
+      }
+      return { expr: sliceExpr(exprNode), isReactive: containsCall(exprNode) }
+    }
+
     /** Emit bind line for a dynamic (non-static) attribute. */
     function emitDynamicAttr(
-      expr: string,
+      _expr: string,
       exprNode: ts.Expression,
       htmlAttrName: string,
       varName: string,
     ): void {
-      const isReactive = containsCall(exprNode)
+      const { expr, isReactive } = unwrapAccessor(exprNode)
       const setter =
         htmlAttrName === "class"
           ? `${varName}.className = ${expr}`
@@ -467,9 +480,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         return processElement(child.node, childAccessor)
       }
       // expression
-      const expr = sliceExpr(child.expression)
       const needsPlaceholder = useMixed || useMultiExpr
-      if (containsCall(child.expression)) {
+      const { expr, isReactive } = unwrapAccessor(child.expression)
+      if (isReactive) {
         return emitReactiveTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
       }
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
@@ -672,7 +685,6 @@ function isLowerCase(s: string): boolean {
 function containsJSXInExpr(node: ts.Node): boolean {
   if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node))
     return true
-  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
   return ts.forEachChild(node, containsJSXInExpr) ?? false
 }
 
