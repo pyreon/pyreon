@@ -48,6 +48,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",

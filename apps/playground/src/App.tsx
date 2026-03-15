@@ -1,27 +1,33 @@
 import { RouterLink, RouterProvider, RouterView, createRouter } from "@pyreon/router"
+import { HeadProvider } from "@pyreon/head/provider"
 import { About } from "./pages/About"
 import { Home } from "./pages/Home"
+import { Showcase } from "./pages/Showcase"
 
 const router = createRouter([
   { path: "/", component: Home, name: "home" },
+  { path: "/showcase", component: Showcase, name: "showcase" },
   { path: "/about", component: About, name: "about" },
 ])
 
 export function App() {
   return (
-    <RouterProvider router={router}>
-      <div id="layout">
-        <header>
-          <h1>Pyreon Playground</h1>
-          <nav>
-            <RouterLink to="/">Home</RouterLink>
-            <RouterLink to="/about">About</RouterLink>
-          </nav>
-        </header>
-        <main>
-          <RouterView />
-        </main>
-      </div>
-    </RouterProvider>
+    <HeadProvider>
+      <RouterProvider router={router}>
+        <div id="layout">
+          <header>
+            <h1>Pyreon Playground</h1>
+            <nav>
+              <RouterLink to="/">Home</RouterLink>
+              <RouterLink to="/showcase">Showcase</RouterLink>
+              <RouterLink to="/about">About</RouterLink>
+            </nav>
+          </header>
+          <main>
+            <RouterView />
+          </main>
+        </div>
+      </RouterProvider>
+    </HeadProvider>
   )
 }

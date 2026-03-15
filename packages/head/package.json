@@ -28,6 +28,21 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./provider": {
+      "bun": "./src/provider.tsx",
+      "import": "./lib/provider.js",
+      "types": "./lib/types/provider.d.ts"
+    },
+    "./use-head": {
+      "bun": "./src/use-head.ts",
+      "import": "./lib/use-head.js",
+      "types": "./lib/types/use-head.d.ts"
+    },
+    "./ssr": {
+      "bun": "./src/ssr.ts",
+      "import": "./lib/ssr.js",
+      "types": "./lib/types/ssr.d.ts"
     }
   },
   "scripts": {
