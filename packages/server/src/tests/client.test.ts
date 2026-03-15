@@ -11,7 +11,6 @@ import { hydrateIslands, startClient } from "../client"
 describe("startClient", () => {
   beforeEach(() => {
     document.body.innerHTML = ""
-    // biome-ignore lint/performance/noDelete: cleaning up test globals
     delete (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   })
 
@@ -375,7 +374,6 @@ describe("hydrateIslands", () => {
 
     // Remove IntersectionObserver to trigger fallback
     const origIO = (window as unknown as Record<string, unknown>).IntersectionObserver
-    // biome-ignore lint/performance/noDelete: test cleanup
     delete (window as unknown as Record<string, unknown>).IntersectionObserver
 
     const cleanup = hydrateIslands({

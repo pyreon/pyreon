@@ -346,9 +346,212 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       return name
     }
 
+    /** Process attributes on an element, returning the HTML attribute string. */
+    function processAttrs(el: ts.JsxElement | ts.JsxSelfClosingElement, varName: string): string {
+      let htmlAttrs = ""
+      const attrs = jsxAttrs(el)
+
+      for (const attr of attrs) {
+        if (!ts.isJsxAttribute(attr)) continue
+        const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
+        if (attrName === "key") continue
+
+        const htmlAttrName = JSX_TO_HTML_ATTR[attrName] ?? attrName
+
+        if (attrName === "ref") {
+          emitRef(attr, varName)
+          continue
+        }
+
+        if (EVENT_RE.test(attrName)) {
+          emitEventListener(attr, attrName, varName)
+          continue
+        }
+
+        if (!attr.initializer) {
+          htmlAttrs += ` ${htmlAttrName}`
+          continue
+        }
+
+        if (ts.isStringLiteral(attr.initializer)) {
+          htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
+          continue
+        }
+
+        if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+          htmlAttrs += emitAttrExpression(attr.initializer.expression, htmlAttrName, varName)
+        }
+      }
+
+      return htmlAttrs
+    }
+
+    /** Emit bind line for a ref attribute. */
+    function emitRef(attr: ts.JsxAttribute, varName: string): void {
+      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+        bindLines.push(`${sliceExpr(attr.initializer.expression)}.current = ${varName}`)
+      }
+    }
+
+    /** Emit addEventListener bind line for an event handler attribute. */
+    function emitEventListener(attr: ts.JsxAttribute, attrName: string, varName: string): void {
+      const eventName = (attrName[2] ?? "").toLowerCase() + attrName.slice(3)
+      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
+        bindLines.push(
+          `${varName}.addEventListener("${eventName}", ${sliceExpr(attr.initializer.expression)})`,
+        )
+      }
+    }
+
+    /** Emit bind line or HTML for an expression attribute value. Returns HTML to append. */
+    function emitAttrExpression(
+      exprNode: ts.Expression,
+      htmlAttrName: string,
+      varName: string,
+    ): string {
+      const expr = sliceExpr(exprNode)
+
+      // Static literal → bake into HTML
+      if (isStatic(exprNode)) {
+        if (ts.isStringLiteral(exprNode))
+          return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
+        if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
+        if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
+        return "" // false/null/undefined → omit
+      }
+
+      // Reactive (contains calls) → _bind
+      if (containsCall(exprNode)) {
+        const d = nextDisp()
+        if (htmlAttrName === "class") {
+          bindLines.push(`const ${d} = _bind(() => { ${varName}.className = ${expr} })`)
+        } else {
+          bindLines.push(
+            `const ${d} = _bind(() => { ${varName}.setAttribute("${htmlAttrName}", ${expr}) })`,
+          )
+        }
+      } else {
+        // One-time set (no calls = not reactive)
+        if (htmlAttrName === "class") {
+          bindLines.push(`${varName}.className = ${expr}`)
+        } else {
+          bindLines.push(`${varName}.setAttribute("${htmlAttrName}", ${expr})`)
+        }
+      }
+
+      return ""
+    }
+
+    /** Analyze flat children to determine indexing strategy. */
+    function analyzeChildren(flatChildren: FlatChild[]): {
+      useMixed: boolean
+      useMultiExpr: boolean
+    } {
+      let hasElemChild = false
+      let hasNonElemChild = false
+      let exprCount = 0
+      for (const child of flatChildren) {
+        if (child.kind === "element") hasElemChild = true
+        if (child.kind === "expression") {
+          hasNonElemChild = true
+          exprCount++
+        }
+        if (child.kind === "text") hasNonElemChild = true
+      }
+      return {
+        useMixed: hasElemChild && hasNonElemChild,
+        useMultiExpr: exprCount > 1,
+      }
+    }
+
+    /** Emit bind lines for a reactive text expression child. */
+    function emitReactiveTextChild(
+      expr: string,
+      varName: string,
+      parentRef: string,
+      childNodeIdx: number,
+      needsPlaceholder: boolean,
+    ): string {
+      const tVar = `__t${varIdx++}`
+      const d = nextDisp()
+      bindLines.push(`const ${tVar} = document.createTextNode("")`)
+      if (needsPlaceholder) {
+        bindLines.push(
+          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+        )
+      } else {
+        bindLines.push(`${varName}.appendChild(${tVar})`)
+      }
+      bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+      return needsPlaceholder ? "<!>" : ""
+    }
+
+    /** Emit bind lines for a static text expression child. */
+    function emitStaticTextChild(
+      expr: string,
+      varName: string,
+      parentRef: string,
+      childNodeIdx: number,
+      needsPlaceholder: boolean,
+    ): string {
+      if (needsPlaceholder) {
+        const tVar = `__t${varIdx++}`
+        bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
+        bindLines.push(
+          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
+        )
+        return "<!>"
+      }
+      bindLines.push(`${varName}.textContent = ${expr}`)
+      return ""
+    }
+
+    /** Process children of a JsxElement, returning the children HTML. */
+    function processChildren(el: ts.JsxElement, varName: string, accessor: string): string | null {
+      const flatChildren = flattenChildren(el.children)
+      const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
+      const parentRef = accessor === "__root" ? "__root" : varName
+
+      let html = ""
+      let childNodeIdx = 0
+
+      for (const child of flatChildren) {
+        if (child.kind === "text") {
+          html += escapeHtmlText(child.text)
+          childNodeIdx++
+          continue
+        }
+
+        if (child.kind === "element") {
+          const childAccessor = useMixed
+            ? `${parentRef}.childNodes[${childNodeIdx}]`
+            : `${parentRef}.children[${child.elemIdx}]`
+          const childHtml = processElement(child.node, childAccessor)
+          if (childHtml === null) return null
+          html += childHtml
+          childNodeIdx++
+          continue
+        }
+
+        if (child.kind === "expression") {
+          const expr = sliceExpr(child.expression)
+          const needsPlaceholder = useMixed || useMultiExpr
+          if (containsCall(child.expression)) {
+            html += emitReactiveTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
+          } else {
+            html += emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
+          }
+          childNodeIdx++
+        }
+      }
+
+      return html
+    }
+
+    /** Process a single DOM element for template emission. Returns the HTML string or null. */
     function processElement(
       el: ts.JsxElement | ts.JsxSelfClosingElement,
-      accessor: string, // how to reach this element, e.g. "__root" or "__root.children[0]"
+      accessor: string,
     ): string | null {
       const tag = jsxTagName(el)
       if (!tag) return null
@@ -362,191 +565,20 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         varName = nextVar()
         bindLines.push(`const ${varName} = ${accessor}`)
       } else {
-        varName = accessor // not referenced, but keep for child access paths
+        varName = accessor
       }
 
-      // ── Attributes ──────────────────────────────────────────────────────────
-      let htmlAttrs = ""
-      const attrs = jsxAttrs(el)
-
-      for (const attr of attrs) {
-        if (!ts.isJsxAttribute(attr)) continue
-        const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
-        if (attrName === "key") continue
-
-        // Map JSX attr names to HTML
-        const htmlAttrName = JSX_TO_HTML_ATTR[attrName] ?? attrName
-
-        // ref
-        if (attrName === "ref") {
-          if (
-            attr.initializer &&
-            ts.isJsxExpression(attr.initializer) &&
-            attr.initializer.expression
-          ) {
-            const expr = sliceExpr(attr.initializer.expression)
-            bindLines.push(`${expr}.current = ${varName}`)
-          }
-          continue
-        }
-
-        // Event handler: onClick → addEventListener("click", fn)
-        if (EVENT_RE.test(attrName)) {
-          const eventName = attrName[2]!.toLowerCase() + attrName.slice(3)
-          if (
-            attr.initializer &&
-            ts.isJsxExpression(attr.initializer) &&
-            attr.initializer.expression
-          ) {
-            const expr = sliceExpr(attr.initializer.expression)
-            bindLines.push(`${varName}.addEventListener("${eventName}", ${expr})`)
-          }
-          continue
-        }
-
-        // Boolean shorthand: <input disabled />
-        if (!attr.initializer) {
-          htmlAttrs += ` ${htmlAttrName}`
-          continue
-        }
-
-        // String literal: class="foo"
-        if (ts.isStringLiteral(attr.initializer)) {
-          htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
-          continue
-        }
-
-        // Expression value: class={expr}
-        if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
-          const exprNode = attr.initializer.expression
-          const expr = sliceExpr(exprNode)
-
-          // Static literal value → bake into HTML
-          if (isStatic(exprNode)) {
-            if (ts.isStringLiteral(exprNode)) {
-              htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
-            } else if (ts.isNumericLiteral(exprNode)) {
-              htmlAttrs += ` ${htmlAttrName}="${exprNode.text}"`
-            } else if (exprNode.kind === ts.SyntaxKind.TrueKeyword) {
-              htmlAttrs += ` ${htmlAttrName}`
-            }
-            // false/null/undefined → omit
-            continue
-          }
-
-          // Reactive (contains calls) → renderEffect
-          if (containsCall(exprNode)) {
-            const d = nextDisp()
-            if (htmlAttrName === "class") {
-              bindLines.push(`const ${d} = _bind(() => { ${varName}.className = ${expr} })`)
-            } else {
-              bindLines.push(
-                `const ${d} = _bind(() => { ${varName}.setAttribute("${htmlAttrName}", ${expr}) })`,
-              )
-            }
-          } else {
-            // One-time set (no calls = not reactive)
-            if (htmlAttrName === "class") {
-              bindLines.push(`${varName}.className = ${expr}`)
-            } else {
-              bindLines.push(`${varName}.setAttribute("${htmlAttrName}", ${expr})`)
-            }
-          }
-        }
-      }
-
+      const htmlAttrs = processAttrs(el, varName)
       let html = `<${tag}${htmlAttrs}>`
 
-      // ── Children ──────────────────────────────────────────────────────────
       if (ts.isJsxElement(el)) {
-        // Flatten children (inline fragments) into a flat list
-        const flatChildren = flattenChildren(el.children)
+        const childHtml = processChildren(el, varName, accessor)
+        if (childHtml === null) return null
+        html += childHtml
+      }
 
-        // Determine if we need childNodes indexing (mixed element + non-element children)
-        let hasElemChild = false
-        let hasNonElemChild = false
-        let exprCount = 0
-        for (const child of flatChildren) {
-          if (child.kind === "element") hasElemChild = true
-          if (child.kind === "expression") {
-            hasNonElemChild = true
-            exprCount++
-          }
-          if (child.kind === "text") hasNonElemChild = true
-        }
-        const useMixed = hasElemChild && hasNonElemChild
-        // Multiple expressions need individual TextNode placeholders
-        const useMultiExpr = exprCount > 1
-
-        let childNodeIdx = 0
-
-        for (const child of flatChildren) {
-          if (child.kind === "text") {
-            html += escapeHtmlText(child.text)
-            childNodeIdx++
-            continue
-          }
-
-          if (child.kind === "element") {
-            const parentRef = accessor === "__root" ? "__root" : varName
-            const childAccessor = useMixed
-              ? `${parentRef}.childNodes[${childNodeIdx}]`
-              : `${parentRef}.children[${child.elemIdx}]`
-            const childHtml = processElement(child.node, childAccessor)
-            if (childHtml === null) return null
-            html += childHtml
-            childNodeIdx++
-            continue
-          }
-
-          if (child.kind === "expression") {
-            const expr = sliceExpr(child.expression)
-            if (containsCall(child.expression)) {
-              if (useMixed || useMultiExpr) {
-                // Insert a comment placeholder in the HTML, replace with TextNode in bind
-                html += "<!>"
-                const parentRef = accessor === "__root" ? "__root" : varName
-                const tVar = `__t${varIdx++}`
-                const d = nextDisp()
-                bindLines.push(`const ${tVar} = document.createTextNode("")`)
-                bindLines.push(
-                  `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
-                )
-                bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
-              } else {
-                // Single expression, no element siblings — use appendChild
-                const tVar = `__t${varIdx++}`
-                const d = nextDisp()
-                bindLines.push(`const ${tVar} = document.createTextNode("")`)
-                bindLines.push(`${varName}.appendChild(${tVar})`)
-                bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
-              }
-            } else {
-              if (useMixed || useMultiExpr) {
-                // Static expression with mixed/multi content — replace comment placeholder
-                html += "<!>"
-                const parentRef = accessor === "__root" ? "__root" : varName
-                const tVar = `__t${varIdx++}`
-                bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-                bindLines.push(
-                  `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
-                )
-              } else {
-                bindLines.push(`${varName}.textContent = ${expr}`)
-              }
-            }
-            childNodeIdx++
-          }
-        }
-
-        if (!VOID_ELEMENTS.has(tag)) {
-          html += `</${tag}>`
-        }
-      } else {
-        // Self-closing
-        if (!VOID_ELEMENTS.has(tag)) {
-          html += `</${tag}>`
-        }
+      if (!VOID_ELEMENTS.has(tag)) {
+        html += `</${tag}>`
       }
 
       return html

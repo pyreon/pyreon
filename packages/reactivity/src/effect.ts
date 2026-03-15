@@ -15,8 +15,7 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
 }
 
-// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — effects may return cleanup or nothing
-export function effect(fn: () => void | (() => void)): Effect {
+export function effect(fn: () => any): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
