@@ -4,9 +4,10 @@
  *
  * Usage: bun run scripts/publish.ts [--otp=CODE]
  */
-import { readFileSync, writeFileSync, existsSync } from "node:fs"
-import { join } from "node:path"
+
 import { execSync } from "node:child_process"
+import { existsSync, readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 
 const root = join(import.meta.dirname, "..")
 const packagesDir = join(root, "packages")
