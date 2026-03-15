@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/head",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Head tag management for Pyreon — works in SSR and CSR",
   "license": "MIT",
   "repository": {
@@ -60,5 +60,8 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "*",
     "@pyreon/runtime-dom": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/server",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
+  "description": "SSR handler, SSG prerender, and island architecture for Pyreon",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -12,20 +12,35 @@
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
   "type": "module",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
   "exports": {
     ".": {
       "bun": "./src/index.ts",
-      "import": "./src/index.ts"
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
     },
     "./client": {
       "bun": "./src/client.ts",
-      "import": "./src/client.ts"
+      "import": "./lib/client.js",
+      "types": "./lib/types/client.d.ts"
     }
   },
   "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
@@ -34,5 +49,8 @@
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

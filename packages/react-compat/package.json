@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/react-compat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
@@ -50,5 +50,8 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "happy-dom": "^20.8.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

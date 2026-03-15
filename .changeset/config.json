@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.3/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    { "repo": "pyreon/pyreon" }
+  ],
+  "commit": false,
+  "fixed": [
+    [
+      "@pyreon/reactivity",
+      "@pyreon/core",
+      "@pyreon/compiler",
+      "@pyreon/runtime-dom",
+      "@pyreon/runtime-server",
+      "@pyreon/router",
+      "@pyreon/head",
+      "@pyreon/server",
+      "@pyreon/vite-plugin",
+      "@pyreon/react-compat",
+      "@pyreon/preact-compat",
+      "@pyreon/solid-compat",
+      "@pyreon/vue-compat"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["@pyreon/benchmark", "@pyreon/playground"]
+}

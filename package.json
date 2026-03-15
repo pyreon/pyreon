@@ -14,10 +14,15 @@
     "format": "biome format --write .",
     "check": "biome check --write .",
     "typecheck": "bun run --filter='*' typecheck",
-    "size": "bun run scripts/bundle-size.ts"
+    "size": "bun run scripts/bundle-size.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "bun run build && bun run scripts/publish.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.6",
+    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/cli": "^2.30.0",
     "@playwright/test": "^1.58.2",
     "@types/bun": "^1.3.10",
     "@types/node": "^25.4.0",

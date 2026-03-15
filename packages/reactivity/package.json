@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/reactivity",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Signals-based reactivity system for Pyreon",
   "license": "MIT",
   "repository": {
@@ -36,5 +36,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
