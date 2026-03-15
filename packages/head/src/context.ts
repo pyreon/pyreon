@@ -25,8 +25,8 @@ export interface UseHeadInput {
    * @example useHead({ titleTemplate: "%s | My App" })
    */
   titleTemplate?: string | ((title: string) => string)
-  meta?: Array<Record<string, string>>
-  link?: Array<Record<string, string>>
+  meta?: Record<string, string>[]
+  link?: Record<string, string>[]
   script?: Array<{ src?: string; children?: string } & Record<string, string | undefined>>
   style?: Array<{ children: string } & Record<string, string | undefined>>
   noscript?: Array<{ children: string }>

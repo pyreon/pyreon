@@ -127,7 +127,7 @@ export function mountChild(
     }
     if (_elementDepth > 0) return native.cleanup
     return () => {
-      native.cleanup!()
+      native.cleanup?.()
       const p = native.el.parentNode
       if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
     }
@@ -153,7 +153,6 @@ export function mountChild(
   if (vnode.type === (PortalSymbol as unknown as string)) {
     const { target, children } = vnode.props as unknown as PortalProps
     if (__DEV__ && !target) {
-      console.warn("[pyreon] Portal target is null or undefined — children will not be rendered.")
       return noop
     }
     return mountChild(children, target, null)
@@ -262,7 +261,7 @@ function mountComponent(
     _mountingStack.pop()
     setCurrentScope(null)
     scope.stop()
-    console.error(`[pyreon] Error in component <${componentName}>:`, err)
+
     reportError({
       component: componentName,
       phase: "setup",
@@ -285,9 +284,6 @@ function mountComponent(
       t !== "function" &&
       !(typeof output === "object" && "type" in (output as object))
     ) {
-      console.warn(
-        `[pyreon] Component "${componentName}" returned an invalid value. Components must return JSX, null, a string, or a number.`,
-      )
     }
   }
 
@@ -303,14 +299,14 @@ function mountComponent(
     _mountingStack.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
-    if (!handled) console.error("[pyreon] Error mounting component subtree:", err)
-    reportError({
-      component: componentName,
-      phase: "render",
-      error: err,
-      timestamp: Date.now(),
-      props: vnode.props as Record<string, unknown>,
-    })
+    if (!handled)
+      reportError({
+        component: componentName,
+        phase: "render",
+        error: err,
+        timestamp: Date.now(),
+        props: vnode.props as Record<string, unknown>,
+      })
     return noop
   }
 
@@ -330,7 +326,6 @@ function mountComponent(
       })
       if (cleanup) mountCleanups.push(cleanup)
     } catch (err) {
-      console.error("[pyreon] Error in onMount hook:", err)
       reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
     }
   }
@@ -343,7 +338,6 @@ function mountComponent(
       try {
         fn()
       } catch (err) {
-        console.error("[pyreon] Error in onUnmount hook:", err)
         reportError({
           component: componentName,
           phase: "unmount",

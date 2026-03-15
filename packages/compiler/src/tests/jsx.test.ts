@@ -725,9 +725,9 @@ describe("JSX transform — warnings", () => {
   test("warns on <For> without by prop", () => {
     const result = transformJSX("<For each={items}>{(item) => <li>{item}</li>}</For>")
     expect(result.warnings).toHaveLength(1)
-    expect(result.warnings[0]!.code).toBe("missing-key-on-for")
-    expect(result.warnings[0]!.line).toBeGreaterThan(0)
-    expect(result.warnings[0]!.column).toBeGreaterThanOrEqual(0)
+    expect(result.warnings[0]?.code).toBe("missing-key-on-for")
+    expect(result.warnings[0]?.line).toBeGreaterThan(0)
+    expect(result.warnings[0]?.column).toBeGreaterThanOrEqual(0)
   })
 
   test("no warning on <For> with by prop", () => {

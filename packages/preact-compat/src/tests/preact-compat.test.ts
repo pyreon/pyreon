@@ -1,6 +1,6 @@
 import type { VNodeChild } from "@pyreon/core"
 import { h as pyreonH } from "@pyreon/core"
-import { effect as pyreonEffect, signal as pyreonSignal } from "@pyreon/reactivity"
+import { signal as pyreonSignal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import {
   useCallback,

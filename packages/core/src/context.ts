@@ -44,7 +44,6 @@ export function pushContext(values: Map<symbol, unknown>) {
 export function popContext() {
   const stack = getStack()
   if (__DEV__ && stack.length === 0) {
-    console.warn("[pyreon] popContext() called on empty context stack — mismatched push/pop.")
     return
   }
   stack.pop()

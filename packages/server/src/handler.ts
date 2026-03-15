@@ -114,8 +114,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const fullHtml = processTemplate(template, { head, app: appHtml, scripts })
 
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
-      } catch (err) {
-        console.error("[pyreon/server] Render error:", err)
+      } catch (_err) {
         return new Response("Internal Server Error", {
           status: 500,
           headers: { "Content-Type": "text/plain" },
@@ -171,8 +170,7 @@ async function renderStreamResponse(
         }
 
         push(shellTail)
-      } catch (err) {
-        console.error("[pyreon/server] Stream render error:", err)
+      } catch (_err) {
         // Emit an inline error indicator — status code is already sent (200)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
         push(shellTail)

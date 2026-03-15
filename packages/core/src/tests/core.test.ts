@@ -1109,7 +1109,7 @@ describe("ErrorBoundary — advanced", () => {
     expect(capturedReset).toBeDefined()
 
     // Reset
-    capturedReset!()
+    capturedReset?.()
     expect(getter()).toBe("child content")
 
     // Clean up

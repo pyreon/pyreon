@@ -1,5 +1,4 @@
 import { h } from "@pyreon/core"
-import { mount } from "@pyreon/runtime-dom"
 import {
   batch,
   children,
@@ -29,7 +28,7 @@ import {
   useContext,
 } from "../index"
 
-function container(): HTMLElement {
+function _container(): HTMLElement {
   const el = document.createElement("div")
   document.body.appendChild(el)
   return el
@@ -229,7 +228,7 @@ describe("@pyreon/solid-compat", () => {
   it("on() tracks array of dependencies", () => {
     createRoot((dispose) => {
       const [a, setA] = createSignal(1)
-      const [b, setB] = createSignal(2)
+      const [b, _setB] = createSignal(2)
       const results: unknown[] = []
 
       const tracker = on([a, b] as const, (input, prevInput, prevValue) => {
@@ -429,7 +428,7 @@ describe("@pyreon/solid-compat", () => {
 
   it("getOwner returns current scope or null", () => {
     // Outside any scope, may return null
-    const outerOwner = getOwner()
+    const _outerOwner = getOwner()
 
     createRoot((dispose) => {
       const owner = getOwner()

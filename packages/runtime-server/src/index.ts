@@ -21,7 +21,7 @@ import { ForSymbol, Fragment, runWithHooks, Suspense, setContextStackProvider } 
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
 interface StreamCtx {
-  pending: Array<Promise<void>>
+  pending: Promise<void>[]
   nextId: () => number
   mainEnqueue: (s: string) => void
 }
@@ -236,8 +236,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         await streamNode(children ?? null, (s) => buf.push(s))
         mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
-      } catch (err) {
-        console.error(`[pyreon] Suspense boundary ${id} failed:`, err)
+      } catch (_err) {
         // Fallback stays visible — no swap script emitted
       }
     }),

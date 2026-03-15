@@ -130,7 +130,6 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   async function navigate(path: string, replace: boolean, redirectDepth = 0): Promise<void> {
     if (redirectDepth > 10) {
-      console.error("[pyreon-router] Circular redirect detected, aborting navigation to:", path)
       return
     }
 
@@ -241,7 +240,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         } else {
           if (ac.signal.aborted) continue
           const err = result.reason
-          console.error("[pyreon-router] loader failed:", err)
+
           if (router._onError) {
             const cancel = router._onError(err, to)
             if (cancel === false) {
@@ -295,9 +294,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     for (const hook of afterHooks) {
       try {
         hook(to, from)
-      } catch (err) {
-        console.error("[pyreon-router] afterEach hook threw:", err)
-      }
+      } catch (_err) {}
     }
 
     // Restore scroll after DOM has updated
@@ -400,8 +397,7 @@ async function runGuard(
 ): Promise<NavigationGuardResult> {
   try {
     return await guard(to, from)
-  } catch (err) {
-    console.error("[pyreon-router] Navigation guard threw:", err)
+  } catch (_err) {
     return false
   }
 }
@@ -414,7 +410,6 @@ function resolveNamedPath(
 ): string {
   const record = index.get(name)
   if (!record) {
-    console.warn(`[pyreon-router] No route named "${name}"`)
     return "/"
   }
   let path = buildPath(record.path, params)
@@ -429,12 +424,10 @@ function resolveNamedPath(
 function sanitizePath(path: string): string {
   const trimmed = path.trim()
   if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
-    console.warn(`[pyreon-router] Blocked unsafe navigation target: "${path}"`)
     return "/"
   }
   // Block absolute URLs and protocol-relative URLs — router only handles same-origin paths
   if (/^\/\/|^https?:/i.test(trimmed)) {
-    console.warn(`[pyreon-router] Blocked external navigation target: "${path}"`)
     return "/"
   }
   return path

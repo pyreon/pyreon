@@ -24,7 +24,7 @@ export type { Props, VNode as ReactNode, VNodeChild } from "@pyreon/core"
 // Lifecycle
 export { Fragment, h as createElement, h, onMount as useLayoutEffect } from "@pyreon/core"
 
-import type { CleanupFn, ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import type { CleanupFn, VNodeChild } from "@pyreon/core"
 import {
   createContext,
   createRef,

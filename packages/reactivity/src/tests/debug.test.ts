@@ -73,8 +73,8 @@ describe("debug", () => {
       s.set(1)
 
       expect(event).toBeDefined()
-      expect(typeof event!.stack).toBe("string")
-      expect(typeof event!.timestamp).toBe("number")
+      expect(typeof event?.stack).toBe("string")
+      expect(typeof event?.timestamp).toBe("number")
 
       dispose()
     })

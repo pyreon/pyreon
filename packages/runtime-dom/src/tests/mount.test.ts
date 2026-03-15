@@ -14,7 +14,7 @@ import {
   Show,
   Switch,
 } from "@pyreon/core"
-import { cell, effect, signal } from "@pyreon/reactivity"
+import { cell, signal } from "@pyreon/reactivity"
 import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
 import type { Directive } from "../index"
 import {

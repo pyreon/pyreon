@@ -12,17 +12,8 @@
  *   - hydration-debug.ts (line 35)
  */
 import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import {
-  createRef,
-  defineComponent,
-  For,
-  Fragment,
-  h,
-  onMount,
-  onUnmount,
-  onUpdate,
-} from "@pyreon/core"
-import { effect, signal } from "@pyreon/reactivity"
+import { createRef, defineComponent, For, Fragment, h, onMount, onUnmount } from "@pyreon/core"
+import { signal } from "@pyreon/reactivity"
 import {
   installDevTools,
   onOverlayClick,
@@ -36,7 +27,6 @@ import {
   Transition as _Transition,
   TransitionGroup as _TransitionGroup,
   _tpl,
-  createTemplate,
   disableHydrationWarnings,
   enableHydrationWarnings,
   hydrateRoot,
@@ -45,7 +35,6 @@ import {
   setSanitizer,
 } from "../index"
 import { mountChild } from "../mount"
-import type { Directive } from "../props"
 import { applyProp } from "../props"
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
@@ -461,7 +450,7 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
 
   test("mountFor step 3 NativeItem with cleanup", () => {
     const el = container()
-    let cleanupCount = 0
+    let _cleanupCount = 0
     const items = signal([{ id: 1, label: "a" }])
 
     mount(
@@ -475,7 +464,7 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
             const native = _tpl("<b></b>", (root) => {
               root.textContent = r.label
               return () => {
-                cleanupCount++
+                _cleanupCount++
               }
             })
             return native as unknown as ReturnType<typeof h>
@@ -1798,7 +1787,7 @@ describe("Transition — pendingLeaveCancel exercised in rAF callback (lines 110
   test("leave rAF sets pendingLeaveCancel then re-enter cancels it", async () => {
     const el = container()
     const visible = signal(true)
-    const removeListenerCalled = false
+    const _removeListenerCalled = false
 
     mount(
       h(Transition, {
@@ -1934,7 +1923,7 @@ describe("nodes.ts — mountFor NativeItem edge cases in step 3", () => {
 
   test("mountFor step 2 removes stale entry with cleanup (cleanupCount--)", () => {
     const el = container()
-    const cleanupCalled = false
+    const _cleanupCalled = false
     const items = signal([
       { id: 1, label: "a" },
       { id: 2, label: "b" },
@@ -2397,7 +2386,7 @@ describe("devtools.ts — $p console helper branches", () => {
       (...args: unknown[]) => unknown
     >
     // Should not throw
-    p.highlight!("nonexistent-id-12345")
+    p.highlight?.("nonexistent-id-12345")
   })
 
   test("$p.help prints usage (line 291+)", () => {
@@ -2407,7 +2396,7 @@ describe("devtools.ts — $p console helper branches", () => {
       (...args: unknown[]) => unknown
     >
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
-    p.help!()
+    p.help?.()
     expect(logSpy).toHaveBeenCalled()
     logSpy.mockRestore()
   })

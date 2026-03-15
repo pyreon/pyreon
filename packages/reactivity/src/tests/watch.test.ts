@@ -4,7 +4,7 @@ import { watch } from "../watch"
 describe("watch", () => {
   test("calls callback when source changes", () => {
     const s = signal(1)
-    const calls: Array<[number, number | undefined]> = []
+    const calls: [number, number | undefined][] = []
 
     watch(
       () => s(),
@@ -27,7 +27,7 @@ describe("watch", () => {
 
   test("immediate option calls callback on first run", () => {
     const s = signal(1)
-    const calls: Array<[number, number | undefined]> = []
+    const calls: [number, number | undefined][] = []
 
     watch(
       () => s(),

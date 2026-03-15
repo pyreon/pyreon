@@ -110,7 +110,6 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const loader = registry[componentId]
     if (!loader) {
-      console.warn(`[pyreon/client] No loader registered for island "${componentId}"`)
       continue
     }
 
@@ -201,20 +200,14 @@ async function hydrateIsland(
       if (typeof props !== "object" || props === null || Array.isArray(props)) {
         throw new TypeError("Expected object")
       }
-    } catch (parseErr) {
-      console.error("[pyreon/client] Invalid island props JSON:", parseErr)
+    } catch (_parseErr) {
       return
     }
 
     const mod = await loader()
     const Comp = typeof mod === "function" ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
-  } catch (err) {
-    console.error(
-      `[pyreon/client] Failed to hydrate island "${el.getAttribute("data-component") ?? "unknown"}":`,
-      err,
-    )
-  }
+  } catch (_err) {}
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {

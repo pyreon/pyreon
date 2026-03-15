@@ -119,7 +119,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
               window.location.reload()
               return
             }
-            console.error("[pyreon-router] Chunk failed to load after 3 retries:", err)
+
             router._erroredChunks.add(record)
             router._loadingSignal.update((n) => n + 1) // re-render to show error UI
           })

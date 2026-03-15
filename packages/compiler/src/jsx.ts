@@ -110,104 +110,81 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     replacements.push({ start, end, text: `() => ${code.slice(start, end)}` })
   }
 
+  /** Try to hoist or wrap an expression, pushing a replacement if needed. */
+  function hoistOrWrap(expr: ts.Expression): void {
+    const hoistName = maybeHoist(expr)
+    if (hoistName) {
+      replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+    } else if (shouldWrap(expr)) {
+      wrap(expr)
+    }
+  }
+
+  // ── walk sub-handlers ───────────────────────────────────────────────────────
+
+  /** Try to emit a template for a JsxElement. Returns true if handled. */
+  function tryTemplateEmit(node: ts.JsxElement): boolean {
+    const elemCount = templateElementCount(node)
+    if (elemCount < 1) return false
+    const tplCall = buildTemplateCall(node)
+    if (!tplCall) return false
+    const start = node.getStart(sf)
+    const end = node.getEnd()
+    const parent = node.parent
+    const needsBraces = parent && (ts.isJsxElement(parent) || ts.isJsxFragment(parent))
+    replacements.push({ start, end, text: needsBraces ? `{${tplCall}}` : tplCall })
+    needsTplImport = true
+    return true
+  }
+
+  /** Emit warnings for common JSX mistakes (e.g. <For> without by). */
+  function checkForWarnings(node: ts.JsxElement | ts.JsxSelfClosingElement): void {
+    const opening = ts.isJsxElement(node) ? node.openingElement : node
+    const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ""
+    if (tagName !== "For") return
+    const hasBy = opening.attributes.properties.some(
+      (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === "by",
+    )
+    if (!hasBy) {
+      warn(
+        opening.tagName,
+        `<For> without a "by" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.`,
+        "missing-key-on-for",
+      )
+    }
+  }
+
+  /** Handle a JSX attribute node — wrap or hoist its value if needed. */
+  function handleJsxAttribute(node: ts.JsxAttribute): void {
+    const name = ts.isIdentifier(node.name) ? node.name.text : ""
+    const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
+    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ""
+    const isComponentElement =
+      tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+    if (isComponentElement) return
+    if (SKIP_PROPS.has(name) || EVENT_RE.test(name)) return
+    if (!node.initializer || !ts.isJsxExpression(node.initializer)) return
+    const expr = node.initializer.expression
+    if (expr) hoistOrWrap(expr)
+  }
+
+  /** Handle a JSX expression in child position — wrap or hoist. */
+  function handleJsxExpression(node: ts.JsxExpression): void {
+    const expr = node.expression
+    if (expr) hoistOrWrap(expr)
+  }
+
   function walk(node: ts.Node): void {
-    // ── Template emission ──────────────────────────────────────────────────────
-    // Try to convert JSX element trees (≥ 1 DOM elements) to _tpl() calls.
-    // Must be checked before attribute/expression handling to avoid double-processing.
-    if (ts.isJsxElement(node)) {
-      const elemCount = templateElementCount(node)
-      if (elemCount >= 1) {
-        const tplCall = buildTemplateCall(node)
-        if (tplCall) {
-          const start = node.getStart(sf)
-          const end = node.getEnd()
-          // If child of another JSX element/fragment, wrap in expression container
-          const parent = node.parent
-          const needsBraces = parent && (ts.isJsxElement(parent) || ts.isJsxFragment(parent))
-          replacements.push({
-            start,
-            end,
-            text: needsBraces ? `{${tplCall}}` : tplCall,
-          })
-          needsTplImport = true
-          return // skip children — template handles everything
-        }
-      }
-    }
-
-    // ── Warnings for common mistakes ────────────────────────────────────────────
-    if (ts.isJsxSelfClosingElement(node) || ts.isJsxElement(node)) {
-      const opening = ts.isJsxElement(node) ? node.openingElement : node
-      const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ""
-
-      // Warn: <For each={...}> without a by prop
-      if (tagName === "For") {
-        const hasBy = opening.attributes.properties.some(
-          (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === "by",
-        )
-        if (!hasBy) {
-          warn(
-            opening.tagName,
-            `<For> without a "by" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.`,
-            "missing-key-on-for",
-          )
-        }
-      }
-    }
-
-    // ── JSX attribute ──────────────────────────────────────────────────────────
+    if (ts.isJsxElement(node) && tryTemplateEmit(node)) return
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxElement(node)) checkForWarnings(node)
     if (ts.isJsxAttribute(node)) {
-      const name = ts.isIdentifier(node.name) ? node.name.text : ""
-
-      // Component elements (uppercase tag) receive plain values — don't wrap their props.
-      // DOM elements (lowercase tag) use applyProps which expects reactive functions.
-      // AST: JsxAttribute → JsxAttributes → JsxOpeningElement | JsxSelfClosingElement
-      const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
-      const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ""
-      const isComponentElement =
-        tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-
-      if (
-        !isComponentElement &&
-        !SKIP_PROPS.has(name) &&
-        !EVENT_RE.test(name) &&
-        node.initializer &&
-        ts.isJsxExpression(node.initializer)
-      ) {
-        const expr = node.initializer.expression
-        if (expr) {
-          // Try to hoist static JSX attribute values
-          const hoistName = maybeHoist(expr)
-          if (hoistName) {
-            replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
-          } else if (shouldWrap(expr)) {
-            wrap(expr)
-          }
-        }
-      }
-
-      // Do NOT recurse deeper — the value is fully handled above.
+      handleJsxAttribute(node)
       return
     }
-
-    // ── JSX expression in child position ───────────────────────────────────────
-    // At this point we know it's NOT inside a JsxAttribute (those return early).
     if (ts.isJsxExpression(node)) {
-      const expr = node.expression
-      if (expr) {
-        // Try to hoist static JSX children (e.g. {<span>Hello</span>} → {_$h0})
-        const hoistName = maybeHoist(expr)
-        if (hoistName) {
-          replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
-        } else if (shouldWrap(expr)) {
-          wrap(expr)
-        }
-      }
-
-      // Do NOT recurse into the expression — see "Known limitation" above.
+      handleJsxExpression(node)
       return
     }
-
     ts.forEachChild(node, walk)
   }
 
@@ -240,89 +217,58 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   // ── Template emission helpers (closures over sf, code) ──────────────────────
 
+  /** Check if a single attribute would prevent template emission. */
+  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
+    for (const attr of jsxAttrs(node)) {
+      if (ts.isJsxSpreadAttribute(attr)) return true
+      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === "key")
+        return true
+    }
+    return false
+  }
+
+  /**
+   * Count template-eligible elements for a single JSX child.
+   * Returns 0 for skippable children, -1 for bail, positive for element count.
+   */
+  function countChildForTemplate(child: ts.JsxChild): number {
+    if (ts.isJsxText(child)) return 0
+    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child))
+      return templateElementCount(child)
+    if (ts.isJsxExpression(child)) {
+      if (!child.expression) return 0
+      return containsJSXInExpr(child.expression) ? -1 : 0
+    }
+    if (ts.isJsxFragment(child)) return templateFragmentCount(child)
+    return -1
+  }
+
   /**
    * Count DOM elements in a JSX subtree. Returns -1 if the tree is not
-   * eligible for template emission (contains components, spread attrs,
-   * fragments, or unsupported child patterns).
+   * eligible for template emission.
    */
   function templateElementCount(node: ts.JsxElement | ts.JsxSelfClosingElement): number {
     const tag = jsxTagName(node)
     if (!tag || !isLowerCase(tag)) return -1
-
-    // Bail on spread attributes or key prop
-    const attrs = jsxAttrs(node)
-    for (const attr of attrs) {
-      if (ts.isJsxSpreadAttribute(attr)) return -1
-      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === "key")
-        return -1
-    }
+    if (hasBailAttr(node)) return -1
+    if (!ts.isJsxElement(node)) return 1
 
     let count = 1
-
-    if (ts.isJsxElement(node)) {
-      for (const child of node.children) {
-        if (ts.isJsxText(child)) continue
-
-        if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-          const childCount = templateElementCount(child)
-          if (childCount === -1) return -1
-          count += childCount
-          continue
-        }
-
-        if (ts.isJsxExpression(child)) {
-          if (!child.expression) continue // empty expression (comment)
-          // Expression containing nested JSX → bail (too complex)
-          if (containsJSXInExpr(child.expression)) return -1
-          continue
-        }
-
-        if (ts.isJsxFragment(child)) {
-          // Inline fragment children if all are template-eligible
-          const fragCount = templateFragmentCount(child)
-          if (fragCount === -1) return -1
-          count += fragCount
-          continue
-        }
-
-        // Unknown → bail
-        return -1
-      }
+    for (const child of node.children) {
+      const c = countChildForTemplate(child)
+      if (c === -1) return -1
+      count += c
     }
-
     return count
   }
 
-  /**
-   * Count template-eligible elements inside a fragment.
-   * Returns -1 if any child is not template-eligible.
-   */
+  /** Count template-eligible elements inside a fragment. */
   function templateFragmentCount(frag: ts.JsxFragment): number {
     let count = 0
     for (const child of frag.children) {
-      if (ts.isJsxText(child)) continue
-
-      if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-        const childCount = templateElementCount(child)
-        if (childCount === -1) return -1
-        count += childCount
-        continue
-      }
-
-      if (ts.isJsxExpression(child)) {
-        if (!child.expression) continue
-        if (containsJSXInExpr(child.expression)) return -1
-        continue
-      }
-
-      if (ts.isJsxFragment(child)) {
-        const fragCount = templateFragmentCount(child)
-        if (fragCount === -1) return -1
-        count += fragCount
-        continue
-      }
-
-      return -1
+      const c = countChildForTemplate(child)
+      if (c === -1) return -1
+      count += c
     }
     return count
   }
@@ -345,123 +291,121 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       disposerNames.push(name)
       return name
     }
+    function nextTextVar(): string {
+      return `__t${varIdx++}`
+    }
 
-    /** Process attributes on an element, returning the HTML attribute string. */
-    function processAttrs(el: ts.JsxElement | ts.JsxSelfClosingElement, varName: string): string {
-      let htmlAttrs = ""
-      const attrs = jsxAttrs(el)
-
-      for (const attr of attrs) {
-        if (!ts.isJsxAttribute(attr)) continue
-        const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
-        if (attrName === "key") continue
-
-        const htmlAttrName = JSX_TO_HTML_ATTR[attrName] ?? attrName
-
-        if (attrName === "ref") {
-          emitRef(attr, varName)
-          continue
-        }
-
-        if (EVENT_RE.test(attrName)) {
-          emitEventListener(attr, attrName, varName)
-          continue
-        }
-
-        if (!attr.initializer) {
-          htmlAttrs += ` ${htmlAttrName}`
-          continue
-        }
-
-        if (ts.isStringLiteral(attr.initializer)) {
-          htmlAttrs += ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
-          continue
-        }
-
-        if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
-          htmlAttrs += emitAttrExpression(attr.initializer.expression, htmlAttrName, varName)
-        }
+    /** Resolve the variable name for an element given its accessor path. */
+    function resolveElementVar(accessor: string, hasDynamic: boolean): string {
+      if (accessor === "__root") return "__root"
+      if (hasDynamic) {
+        const v = nextVar()
+        bindLines.push(`const ${v} = ${accessor}`)
+        return v
       }
-
-      return htmlAttrs
+      return accessor
     }
 
     /** Emit bind line for a ref attribute. */
     function emitRef(attr: ts.JsxAttribute, varName: string): void {
-      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
-        bindLines.push(`${sliceExpr(attr.initializer.expression)}.current = ${varName}`)
-      }
+      if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
+      if (!attr.initializer.expression) return
+      bindLines.push(`${sliceExpr(attr.initializer.expression)}.current = ${varName}`)
     }
 
     /** Emit addEventListener bind line for an event handler attribute. */
     function emitEventListener(attr: ts.JsxAttribute, attrName: string, varName: string): void {
       const eventName = (attrName[2] ?? "").toLowerCase() + attrName.slice(3)
-      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
-        bindLines.push(
-          `${varName}.addEventListener("${eventName}", ${sliceExpr(attr.initializer.expression)})`,
-        )
+      if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
+      if (!attr.initializer.expression) return
+      bindLines.push(
+        `${varName}.addEventListener("${eventName}", ${sliceExpr(attr.initializer.expression)})`,
+      )
+    }
+
+    /** Return HTML string for a static attribute expression, or null if not static. */
+    function staticAttrToHtml(exprNode: ts.Expression, htmlAttrName: string): string | null {
+      if (!isStatic(exprNode)) return null
+      if (ts.isStringLiteral(exprNode)) return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
+      if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
+      if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
+      return "" // false/null/undefined → omit
+    }
+
+    /** Emit bind line for a dynamic (non-static) attribute. */
+    function emitDynamicAttr(
+      expr: string,
+      exprNode: ts.Expression,
+      htmlAttrName: string,
+      varName: string,
+    ): void {
+      const isReactive = containsCall(exprNode)
+      const setter =
+        htmlAttrName === "class"
+          ? `${varName}.className = ${expr}`
+          : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
+
+      if (isReactive) {
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _bind(() => { ${setter} })`)
+      } else {
+        bindLines.push(setter)
       }
     }
 
-    /** Emit bind line or HTML for an expression attribute value. Returns HTML to append. */
+    /** Emit bind line or HTML for an expression attribute value. */
     function emitAttrExpression(
       exprNode: ts.Expression,
       htmlAttrName: string,
       varName: string,
     ): string {
-      const expr = sliceExpr(exprNode)
-
-      // Static literal → bake into HTML
-      if (isStatic(exprNode)) {
-        if (ts.isStringLiteral(exprNode))
-          return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
-        if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
-        if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
-        return "" // false/null/undefined → omit
-      }
-
-      // Reactive (contains calls) → _bind
-      if (containsCall(exprNode)) {
-        const d = nextDisp()
-        if (htmlAttrName === "class") {
-          bindLines.push(`const ${d} = _bind(() => { ${varName}.className = ${expr} })`)
-        } else {
-          bindLines.push(
-            `const ${d} = _bind(() => { ${varName}.setAttribute("${htmlAttrName}", ${expr}) })`,
-          )
-        }
-      } else {
-        // One-time set (no calls = not reactive)
-        if (htmlAttrName === "class") {
-          bindLines.push(`${varName}.className = ${expr}`)
-        } else {
-          bindLines.push(`${varName}.setAttribute("${htmlAttrName}", ${expr})`)
-        }
-      }
-
+      const staticHtml = staticAttrToHtml(exprNode, htmlAttrName)
+      if (staticHtml !== null) return staticHtml
+      emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
       return ""
     }
 
-    /** Analyze flat children to determine indexing strategy. */
-    function analyzeChildren(flatChildren: FlatChild[]): {
-      useMixed: boolean
-      useMultiExpr: boolean
-    } {
-      let hasElemChild = false
-      let hasNonElemChild = false
-      let exprCount = 0
-      for (const child of flatChildren) {
-        if (child.kind === "element") hasElemChild = true
-        if (child.kind === "expression") {
-          hasNonElemChild = true
-          exprCount++
-        }
-        if (child.kind === "text") hasNonElemChild = true
+    /** Emit side-effects for special attrs (ref, event). Returns true if handled. */
+    function tryEmitSpecialAttr(attr: ts.JsxAttribute, attrName: string, varName: string): boolean {
+      if (attrName === "ref") {
+        emitRef(attr, varName)
+        return true
       }
-      return {
-        useMixed: hasElemChild && hasNonElemChild,
-        useMultiExpr: exprCount > 1,
+      if (EVENT_RE.test(attrName)) {
+        emitEventListener(attr, attrName, varName)
+        return true
       }
+      return false
+    }
+
+    /** Convert an attribute initializer to HTML. Returns empty string for side-effect-only attrs. */
+    function attrInitializerToHtml(
+      attr: ts.JsxAttribute,
+      htmlAttrName: string,
+      varName: string,
+    ): string {
+      if (!attr.initializer) return ` ${htmlAttrName}`
+      if (ts.isStringLiteral(attr.initializer))
+        return ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
+      if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression)
+        return emitAttrExpression(attr.initializer.expression, htmlAttrName, varName)
+      return ""
+    }
+
+    /** Process a single attribute, returning HTML to append. */
+    function processOneAttr(attr: ts.JsxAttributeLike, varName: string): string {
+      if (!ts.isJsxAttribute(attr)) return ""
+      const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
+      if (attrName === "key") return ""
+      if (tryEmitSpecialAttr(attr, attrName, varName)) return ""
+      return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName)
+    }
+
+    /** Process all attributes on an element, returning the HTML attribute string. */
+    function processAttrs(el: ts.JsxElement | ts.JsxSelfClosingElement, varName: string): string {
+      let htmlAttrs = ""
+      for (const attr of jsxAttrs(el)) htmlAttrs += processOneAttr(attr, varName)
+      return htmlAttrs
     }
 
     /** Emit bind lines for a reactive text expression child. */
@@ -472,7 +416,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       childNodeIdx: number,
       needsPlaceholder: boolean,
     ): string {
-      const tVar = `__t${varIdx++}`
+      const tVar = nextTextVar()
       const d = nextDisp()
       bindLines.push(`const ${tVar} = document.createTextNode("")`)
       if (needsPlaceholder) {
@@ -495,7 +439,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       needsPlaceholder: boolean,
     ): string {
       if (needsPlaceholder) {
-        const tVar = `__t${varIdx++}`
+        const tVar = nextTextVar()
         bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
         bindLines.push(
           `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
@@ -504,6 +448,31 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       }
       bindLines.push(`${varName}.textContent = ${expr}`)
       return ""
+    }
+
+    /** Process a single flat child, returning the HTML contribution or null on failure. */
+    function processOneChild(
+      child: FlatChild,
+      varName: string,
+      parentRef: string,
+      useMixed: boolean,
+      useMultiExpr: boolean,
+      childNodeIdx: number,
+    ): string | null {
+      if (child.kind === "text") return escapeHtmlText(child.text)
+      if (child.kind === "element") {
+        const childAccessor = useMixed
+          ? `${parentRef}.childNodes[${childNodeIdx}]`
+          : `${parentRef}.children[${child.elemIdx}]`
+        return processElement(child.node, childAccessor)
+      }
+      // expression
+      const expr = sliceExpr(child.expression)
+      const needsPlaceholder = useMixed || useMultiExpr
+      if (containsCall(child.expression)) {
+        return emitReactiveTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
+      }
+      return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
 
     /** Process children of a JsxElement, returning the children HTML. */
@@ -516,33 +485,17 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       let childNodeIdx = 0
 
       for (const child of flatChildren) {
-        if (child.kind === "text") {
-          html += escapeHtmlText(child.text)
-          childNodeIdx++
-          continue
-        }
-
-        if (child.kind === "element") {
-          const childAccessor = useMixed
-            ? `${parentRef}.childNodes[${childNodeIdx}]`
-            : `${parentRef}.children[${child.elemIdx}]`
-          const childHtml = processElement(child.node, childAccessor)
-          if (childHtml === null) return null
-          html += childHtml
-          childNodeIdx++
-          continue
-        }
-
-        if (child.kind === "expression") {
-          const expr = sliceExpr(child.expression)
-          const needsPlaceholder = useMixed || useMultiExpr
-          if (containsCall(child.expression)) {
-            html += emitReactiveTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
-          } else {
-            html += emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
-          }
-          childNodeIdx++
-        }
+        const childHtml = processOneChild(
+          child,
+          varName,
+          parentRef,
+          useMixed,
+          useMultiExpr,
+          childNodeIdx,
+        )
+        if (childHtml === null) return null
+        html += childHtml
+        childNodeIdx++
       }
 
       return html
@@ -556,18 +509,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       const tag = jsxTagName(el)
       if (!tag) return null
 
-      // Assign a variable if this element has dynamic parts
-      const hasDynamic = elementHasDynamic(el)
-      let varName: string
-      if (accessor === "__root") {
-        varName = "__root"
-      } else if (hasDynamic) {
-        varName = nextVar()
-        bindLines.push(`const ${varName} = ${accessor}`)
-      } else {
-        varName = accessor
-      }
-
+      const varName = resolveElementVar(accessor, elementHasDynamic(el))
       const htmlAttrs = processAttrs(el, varName)
       let html = `<${tag}${htmlAttrs}>`
 
@@ -577,10 +519,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         html += childHtml
       }
 
-      if (!VOID_ELEMENTS.has(tag)) {
-        html += `</${tag}>`
-      }
-
+      if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
       return html
     }
 
@@ -610,61 +549,72 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     | { kind: "element"; node: ts.JsxElement | ts.JsxSelfClosingElement; elemIdx: number }
     | { kind: "expression"; expression: ts.Expression }
 
+  /** Classify a single JSX child into a FlatChild descriptor. */
+  function classifyJsxChild(
+    child: ts.JsxChild,
+    out: FlatChild[],
+    elemIdxRef: { value: number },
+    recurse: (kids: ts.NodeArray<ts.JsxChild>) => void,
+  ): void {
+    if (ts.isJsxText(child)) {
+      const trimmed = child.text.replace(/\n\s*/g, "").trim()
+      if (trimmed) out.push({ kind: "text", text: trimmed })
+      return
+    }
+    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
+      out.push({ kind: "element", node: child, elemIdx: elemIdxRef.value++ })
+      return
+    }
+    if (ts.isJsxExpression(child)) {
+      if (child.expression) out.push({ kind: "expression", expression: child.expression })
+      return
+    }
+    if (ts.isJsxFragment(child)) recurse(child.children)
+  }
+
   /**
    * Flatten JSX children, inlining fragment children and stripping whitespace-only text.
    * Returns a flat array of child descriptors with element indices pre-computed.
    */
   function flattenChildren(children: ts.NodeArray<ts.JsxChild>): FlatChild[] {
-    const result: FlatChild[] = []
-    let elemIdx = 0
+    const flatList: FlatChild[] = []
+    const elemIdxRef = { value: 0 }
 
     function addChildren(kids: ts.NodeArray<ts.JsxChild>): void {
-      for (const child of kids) {
-        if (ts.isJsxText(child)) {
-          const trimmed = child.text.replace(/\n\s*/g, "").trim()
-          if (trimmed) result.push({ kind: "text", text: trimmed })
-          continue
-        }
-
-        if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-          result.push({ kind: "element", node: child, elemIdx })
-          elemIdx++
-          continue
-        }
-
-        if (ts.isJsxExpression(child)) {
-          if (!child.expression) continue // empty expression (comment)
-          result.push({ kind: "expression", expression: child.expression })
-          continue
-        }
-
-        if (ts.isJsxFragment(child)) {
-          // Inline fragment children as if they were direct children
-          addChildren(child.children)
-        }
-      }
+      for (const child of kids) classifyJsxChild(child, flatList, elemIdxRef, addChildren)
     }
 
     addChildren(children)
-    return result
+    return flatList
+  }
+
+  /** Analyze flat children to determine indexing strategy. */
+  function analyzeChildren(flatChildren: FlatChild[]): {
+    useMixed: boolean
+    useMultiExpr: boolean
+  } {
+    const hasElem = flatChildren.some((c) => c.kind === "element")
+    const hasNonElem = flatChildren.some((c) => c.kind !== "element")
+    const exprCount = flatChildren.filter((c) => c.kind === "expression").length
+    return { useMixed: hasElem && hasNonElem, useMultiExpr: exprCount > 1 }
+  }
+
+  /** Check if a single attribute is dynamic (has ref, event, or non-static expression). */
+  function attrIsDynamic(attr: ts.JsxAttributeLike): boolean {
+    if (!ts.isJsxAttribute(attr)) return false
+    const name = ts.isIdentifier(attr.name) ? attr.name.text : ""
+    if (name === "ref") return true
+    if (EVENT_RE.test(name)) return true
+    if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return false
+    const expr = attr.initializer.expression
+    return expr ? !isStatic(expr) : false
   }
 
   /** Check if an element has any dynamic attributes, events, ref, or expression children */
   function elementHasDynamic(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
-    const attrs = jsxAttrs(node)
-    for (const attr of attrs) {
-      if (!ts.isJsxAttribute(attr)) continue
-      const name = ts.isIdentifier(attr.name) ? attr.name.text : ""
-      if (name === "ref") return true
-      if (EVENT_RE.test(name)) return true
-      if (attr.initializer && ts.isJsxExpression(attr.initializer) && attr.initializer.expression) {
-        if (!isStatic(attr.initializer.expression)) return true
-      }
-    }
+    if (jsxAttrs(node).some(attrIsDynamic)) return true
     if (ts.isJsxElement(node)) {
-      for (const child of node.children) {
-        if (ts.isJsxExpression(child) && child.expression) return true
-      }
+      return node.children.some((c) => ts.isJsxExpression(c) && c.expression !== undefined)
     }
     return false
   }
@@ -715,7 +665,7 @@ const JSX_TO_HTML_ATTR: Record<string, string> = {
 }
 
 function isLowerCase(s: string): boolean {
-  return s.length > 0 && s[0] === s[0]!.toLowerCase()
+  return s.length > 0 && s[0] === s[0]?.toLowerCase()
 }
 
 /** Check if an expression subtree contains JSX nodes */

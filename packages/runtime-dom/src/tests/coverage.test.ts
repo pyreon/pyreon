@@ -14,14 +14,12 @@ import {
   onUnmount,
   onUpdate,
 } from "@pyreon/core"
-import { effect, signal } from "@pyreon/reactivity"
+import { signal } from "@pyreon/reactivity"
 import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
 import {
-  KeepAlive as _KeepAlive,
   Transition as _Transition,
   TransitionGroup as _TransitionGroup,
   _tpl,
-  createTemplate,
   hydrateRoot,
   mount,
   sanitizeHtml,
@@ -79,7 +77,7 @@ describe("_tpl — compiler-facing template API", () => {
       }
     })
     expect(native.cleanup).not.toBeNull()
-    native.cleanup!()
+    native.cleanup?.()
     expect(cleaned).toBe(true)
   })
 
@@ -459,9 +457,9 @@ describe("mount.ts — uncovered branches", () => {
 
   test("NativeItem with cleanup at _elementDepth > 0", () => {
     const el = container()
-    let cleaned = false
+    let _cleaned = false
     const native = _tpl("<b>native2</b>", () => () => {
-      cleaned = true
+      _cleaned = true
     })
 
     mount(h("div", null, native as unknown as VNodeChild), el)
@@ -668,11 +666,11 @@ describe("hydrate.ts — uncovered branches", () => {
   test("component with onUpdate hooks during hydration (line 338)", () => {
     const el = container()
     el.innerHTML = "<span>update-test</span>"
-    let updateCalled = false
+    let _updateCalled = false
 
     const Comp = defineComponent(() => {
       onUpdate(() => {
-        updateCalled = true
+        _updateCalled = true
       })
       return h("span", null, "update-test")
     })

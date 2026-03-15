@@ -1,4 +1,4 @@
-import { type ComponentFn, h as pyreonH } from "@pyreon/core"
+import type { ComponentFn } from "@pyreon/core"
 import { mount } from "@pyreon/runtime-dom"
 import {
   batch,
@@ -252,7 +252,7 @@ describe("@pyreon/vue-compat", () => {
 
   it("watch() provides old and new values", () => {
     const count = ref(10)
-    const history: Array<[number, number | undefined]> = []
+    const history: [number, number | undefined][] = []
 
     const stop = watch(count, (newVal, oldVal) => {
       history.push([newVal, oldVal])
@@ -270,7 +270,7 @@ describe("@pyreon/vue-compat", () => {
 
   it("watch() with immediate fires synchronously", () => {
     const count = ref(5)
-    const calls: Array<[number, number | undefined]> = []
+    const calls: [number, number | undefined][] = []
 
     const stop = watch(
       count,
@@ -593,7 +593,7 @@ describe("@pyreon/vue-compat", () => {
     const obj = readonly({ count: 0 })
     // Access the internal V_IS_READONLY symbol via a known property read
     // The proxy get trap handles this symbol
-    const V_IS_READONLY = Symbol("__v_isReadonly")
+    const _V_IS_READONLY = Symbol("__v_isReadonly")
     // We can't access the private symbol directly, but we can verify it doesn't throw
     // when accessing regular properties
     expect(obj.count).toBe(0)
@@ -612,7 +612,7 @@ describe("@pyreon/vue-compat", () => {
 
   it("watch with immediate tracks subsequent changes too", () => {
     const count = ref(0)
-    const calls: Array<[number, number | undefined]> = []
+    const calls: [number, number | undefined][] = []
 
     const stop = watch(
       count,
@@ -637,7 +637,7 @@ describe("@pyreon/vue-compat", () => {
 
   it("watch with getter function and immediate", () => {
     const count = ref(5)
-    const calls: Array<[number, number | undefined]> = []
+    const calls: [number, number | undefined][] = []
 
     const stop = watch(
       () => count.value * 2,

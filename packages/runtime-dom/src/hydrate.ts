@@ -300,7 +300,7 @@ function hydrateComponent(
   } catch (err) {
     setCurrentScope(null)
     scope.stop()
-    console.error(`[pyreon] Error hydrating component <${componentName}>:`, err)
+
     reportError({
       component: componentName,
       phase: "setup",
@@ -335,7 +335,6 @@ function hydrateComponent(
       })
       if (c) mountCleanups.push(c)
     } catch (err) {
-      console.error("[pyreon] Error in onMount hook during hydration:", err)
       reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
     }
   }

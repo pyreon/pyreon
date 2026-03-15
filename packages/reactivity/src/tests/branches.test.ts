@@ -4,7 +4,7 @@
 import { Cell } from "../cell"
 import { computed } from "../computed"
 import { createSelector } from "../createSelector"
-import { _notifyTraceListeners, onSignalUpdate, why } from "../debug"
+import { why } from "../debug"
 import { _bind, effect, renderEffect } from "../effect"
 import { reconcile } from "../reconcile"
 import { signal } from "../signal"
@@ -291,17 +291,17 @@ describe("reconcile branches", () => {
   test("reconcile array with both source and target as objects (recursive)", () => {
     const store = createStore([{ a: 1 }, { b: 2 }])
     reconcile([{ a: 10 }, { b: 20 }], store)
-    expect(store[0]!.a).toBe(10)
-    expect(store[1]!.b).toBe(20)
+    expect(store[0]?.a).toBe(10)
+    expect(store[1]?.b).toBe(20)
   })
 
   test("reconcile object where target has store-proxied nested object", () => {
     const store = createStore<Record<string, Record<string, number>>>({ nested: { x: 1 } })
     // Access nested to ensure it's proxied as store
-    const _val = store.nested!.x
+    const _val = store.nested?.x
     expect(isStore(store.nested!)).toBe(true)
     reconcile({ nested: { x: 99 } }, store)
-    expect(store.nested!.x).toBe(99)
+    expect(store.nested?.x).toBe(99)
   })
 
   test("reconcile object where target has raw (non-store) nested object", () => {
@@ -310,7 +310,7 @@ describe("reconcile branches", () => {
     // nested has not been accessed via proxy, so isStore(target.nested) is false
     // This should hit the `else { target[key] = sv }` branch at line 78
     reconcile({ nested: { x: 99 } }, store)
-    expect(store.nested!.x).toBe(99)
+    expect(store.nested?.x).toBe(99)
   })
 })
 

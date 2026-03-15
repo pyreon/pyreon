@@ -75,7 +75,7 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     tpl.innerHTML = html
     _tplCache.set(html, tpl)
   }
-  const el = tpl.content.firstElementChild!.cloneNode(true) as HTMLElement
+  const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }
 }

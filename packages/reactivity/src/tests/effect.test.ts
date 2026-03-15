@@ -133,7 +133,7 @@ describe("effect", () => {
     expect((caught[0] as Error).message).toBe("cleanup boom")
 
     // Restore default handler
-    setErrorHandler((err) => console.error("[pyreon] Unhandled effect error:", err))
+    setErrorHandler((_err) => {})
   })
 
   test("works with no cleanup return (backwards compatible)", () => {
@@ -163,7 +163,7 @@ describe("effect", () => {
     expect((caught[0] as Error).message).toBe("custom")
 
     // Restore default handler
-    setErrorHandler((err) => console.error("[pyreon] Unhandled effect error:", err))
+    setErrorHandler((_err) => {})
   })
 
   test("effect notifies scope on re-run (not first run)", async () => {

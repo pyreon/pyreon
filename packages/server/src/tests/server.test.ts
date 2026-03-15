@@ -282,7 +282,7 @@ describe("createHandler — stream mode error in rendering", () => {
     // or return a response depending on when the error occurs
     try {
       const res = await handler(new Request("http://localhost/"))
-      const html = await res.text()
+      const _html = await res.text()
       // If it returns a response, check it's still a valid response
       expect(res.status).toBeDefined()
     } catch {
@@ -428,7 +428,7 @@ describe("prerender", () => {
     ]
     const handler = createHandler({ App: Home, routes })
 
-    const written: Record<string, string> = {}
+    const _written: Record<string, string> = {}
     const tmpDir = `/tmp/pyreon-ssg-test-${Date.now()}`
 
     const result = await prerender({

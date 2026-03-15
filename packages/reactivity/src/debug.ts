@@ -89,16 +89,9 @@ export function why(): void {
   _whyLog = []
 
   const dispose = onSignalUpdate((e) => {
-    const subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
-    const name = e.name ? `"${e.name}"` : "(anonymous signal)"
-    console.log(
-      `%c[pyreon:why]%c ${name}: %o → %o %c(${subCount} subscriber${subCount === 1 ? "" : "s"})`,
-      "color: #00b4d8; font-weight: bold",
-      "color: inherit",
-      e.prev,
-      e.next,
-      "color: #888",
-    )
+    const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
+    const _name = e.name ? `"${e.name}"` : "(anonymous signal)"
+
     _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
   })
 
@@ -106,11 +99,6 @@ export function why(): void {
   queueMicrotask(() => {
     dispose()
     if (_whyLog.length === 0) {
-      console.log(
-        "%c[pyreon:why]%c No signal updates detected.",
-        "color: #00b4d8; font-weight: bold",
-        "color: inherit",
-      )
     }
     _whyActive = false
     _whyLog = []
@@ -132,13 +120,6 @@ export function why(): void {
  */
 export function inspectSignal<T>(sig: Signal<T>): SignalDebugInfo<T> {
   const info = sig.debug()
-  console.group(
-    `%c🔍 Signal %c${info.name ? `"${info.name}"` : "(anonymous)"}`,
-    "color: #00b4d8",
-    "color: #e8a838; font-weight: bold",
-  )
-  console.log("value:", info.value)
-  console.log("subscribers:", info.subscriberCount)
-  console.groupEnd()
+
   return info
 }

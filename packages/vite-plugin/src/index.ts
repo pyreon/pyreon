@@ -130,9 +130,6 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
             const handler = mod.handler ?? mod.default
 
             if (typeof handler !== "function") {
-              console.error(
-                `[pyreon/vite] SSR entry "${ssrConfig.entry}" must export a \`handler\` or default export: (Request) => Promise<Response>`,
-              )
               return next()
             }
 
@@ -159,7 +156,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
           } catch (err) {
             // Let Vite handle the error overlay
             server.ssrFixStacktrace(err as Error)
-            console.error("[pyreon/vite] SSR error:", err)
+
             next(err)
           }
         })
@@ -275,7 +272,7 @@ function injectHmr(code: string, moduleId: string): string {
   lines.push(`  import.meta.hot.accept();`)
   lines.push(`}`)
 
-  output = output + "\n\n" + lines.join("\n") + "\n"
+  output = `${output}\n\n${lines.join("\n")}\n`
 
   return output
 }

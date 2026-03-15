@@ -10,9 +10,9 @@ const effectDeps = new WeakMap<() => void, Set<Set<() => void>>>()
 
 // Fast deps collector for renderEffect — avoids WeakMap overhead entirely.
 // When set, trackSubscriber pushes subscriber sets here instead of effectDeps.
-let _depsCollector: Array<Set<() => void>> | null = null
+let _depsCollector: Set<() => void>[] | null = null
 
-export function setDepsCollector(collector: Array<Set<() => void>> | null): void {
+export function setDepsCollector(collector: Set<() => void>[] | null): void {
   _depsCollector = collector
 }
 

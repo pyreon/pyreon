@@ -173,7 +173,7 @@ describe("renderWithHead — SSR", () => {
     // With the HeadTag union type, there's no such tag... So this is dead code.
     // Let me focus on line 60 (title with no children = undefined) and line 76 (noscript raw path).
     // Line 60: tag.children ?? "" when children is undefined
-    function Page() {
+    function _Page() {
       // title with undefined children — manually add to context
       return h("div", null)
     }
@@ -208,7 +208,7 @@ describe("renderWithHead — SSR", () => {
     const ctx2 = createHeadContext()
     ctx2.add(Symbol(), { tags: [{ tag: "title", key: "title" }] })
     // Use renderWithHead with a component that adds title tag without children
-    function Page() {
+    function _Page() {
       return h("div", null)
     }
     // We need to test serializeTag with title where children is undefined

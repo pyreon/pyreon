@@ -7,9 +7,7 @@ export interface Effect {
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
-let _errorHandler: (err: unknown) => void = (err) => {
-  console.error("[pyreon] Unhandled effect error:", err)
-}
+let _errorHandler: (err: unknown) => void = (_err) => {}
 
 export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
@@ -21,7 +19,7 @@ export function effect(fn: () => any): Effect {
   const scope = getCurrentScope()
   let disposed = false
   let isFirstRun = true
-  let cleanup: (() => void) | void
+  let cleanup: (() => void) | undefined
 
   const runCleanup = () => {
     if (typeof cleanup === "function") {

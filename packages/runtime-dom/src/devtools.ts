@@ -109,8 +109,8 @@ export function onOverlayMouseMove(e: MouseEvent): void {
 
   const entry = findComponentForElement(target)
   if (!entry?.el) {
-    _overlayEl!.style.display = "none"
-    _tooltipEl!.style.display = "none"
+    _overlayEl?.style.display = "none"
+    _tooltipEl?.style.display = "none"
     _currentHighlight = null
     return
   }
@@ -119,22 +119,22 @@ export function onOverlayMouseMove(e: MouseEvent): void {
   _currentHighlight = entry.el
 
   const rect = entry.el.getBoundingClientRect()
-  _overlayEl!.style.display = "block"
-  _overlayEl!.style.top = `${rect.top}px`
-  _overlayEl!.style.left = `${rect.left}px`
-  _overlayEl!.style.width = `${rect.width}px`
-  _overlayEl!.style.height = `${rect.height}px`
+  _overlayEl?.style.display = "block"
+  _overlayEl?.style.top = `${rect.top}px`
+  _overlayEl?.style.left = `${rect.left}px`
+  _overlayEl?.style.width = `${rect.width}px`
+  _overlayEl?.style.height = `${rect.height}px`
 
   const childCount = entry.childIds.length
   let info = `<${entry.name}>`
   if (childCount > 0) info += `\n  ${childCount} child component${childCount === 1 ? "" : "s"}`
   _tooltipEl!.textContent = info
-  _tooltipEl!.style.display = "block"
-  _tooltipEl!.style.top = `${rect.top - 30}px`
-  _tooltipEl!.style.left = `${rect.left}px`
+  _tooltipEl?.style.display = "block"
+  _tooltipEl?.style.top = `${rect.top - 30}px`
+  _tooltipEl?.style.left = `${rect.left}px`
   // Keep tooltip on screen
   if (rect.top < 35) {
-    _tooltipEl!.style.top = `${rect.bottom + 4}px`
+    _tooltipEl?.style.top = `${rect.bottom + 4}px`
   }
 }
 
@@ -146,19 +146,10 @@ export function onOverlayClick(e: MouseEvent): void {
   if (!target) return
   const entry = findComponentForElement(target)
   if (entry) {
-    // Log the component to console for inspection
-    console.group(
-      `%c<${entry.name}>%c  id: ${entry.id}`,
-      "color: #00b4d8; font-weight: bold; font-size: 13px",
-      "color: #888; font-size: 11px",
-    )
-    console.log("element:", entry.el)
-    console.log("children:", entry.childIds.length)
     if (entry.parentId) {
       const parent = _components.get(entry.parentId)
-      if (parent) console.log("parent:", `<${parent.name}>`)
+      if (parent)
     }
-    console.groupEnd()
   }
   disableOverlay()
 }
@@ -177,10 +168,6 @@ function enableOverlay(): void {
   document.addEventListener("click", onOverlayClick, true)
   document.addEventListener("keydown", onOverlayKeydown, true)
   document.body.style.cursor = "crosshair"
-  console.log(
-    "%c[pyreon] Component inspector enabled — hover to inspect, click to log, Esc to exit",
-    "color: #00b4d8; font-weight: bold",
-  )
 }
 
 function disableOverlay(): void {
@@ -190,8 +177,8 @@ function disableOverlay(): void {
   document.removeEventListener("click", onOverlayClick, true)
   document.removeEventListener("keydown", onOverlayKeydown, true)
   document.body.style.cursor = ""
-  _overlayEl!.style.display = "none"
-  _tooltipEl!.style.display = "none"
+  _overlayEl?.style.display = "none"
+  _tooltipEl?.style.display = "none"
   _currentHighlight = null
 }
 
@@ -278,30 +265,10 @@ export function installDevTools(): void {
     stats: () => {
       const all = devtools.getAllComponents()
       const roots = devtools.getComponentTree()
-      console.log(
-        `%c[pyreon]%c ${all.length} components mounted (${roots.length} root${roots.length === 1 ? "" : "s"})`,
-        "color: #00b4d8; font-weight: bold",
-        "color: inherit",
-      )
+
       return { total: all.length, roots: roots.length }
     },
     /** Quick help */
-    help: () => {
-      console.log(
-        `%c[pyreon] Console helpers%c
-  $p.components()  — list all mounted components
-  $p.tree()        — component tree (roots)
-  $p.highlight(id) — flash-outline a component
-  $p.inspect()     — toggle component inspector (or Ctrl+Shift+P)
-  $p.stats()       — component count
-
-  Import from @pyreon/reactivity:
-    why()              — trace next signal update
-    inspectSignal(sig) — log signal debug info
-    onSignalUpdate(cb) — subscribe to all signal writes`,
-        "color: #00b4d8; font-weight: bold",
-        "color: inherit; font: 12px ui-monospace, monospace",
-      )
-    },
+    help: () => {},
   }
 }

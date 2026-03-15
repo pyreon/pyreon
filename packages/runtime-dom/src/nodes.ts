@@ -55,9 +55,6 @@ export function mountReactive(
     currentCleanup = () => {}
     const value = accessor()
     if (__DEV__ && typeof value === "function") {
-      console.warn(
-        "[pyreon] A reactive child returned a function instead of a value. Did you mean {count()} instead of {count}?",
-      )
     }
     if (value != null && value !== false) {
       const cleanup = mount(value, parent, marker)
@@ -336,9 +333,6 @@ export function mountFor<T>(
         for (let i = 0; i < n; i++) {
           const k = getKey(items[i] as T)
           if (seen.has(k)) {
-            console.warn(
-              `[pyreon] Duplicate key "${k}" in <For>. Keys must be unique for correct reconciliation.`,
-            )
           }
           seen.add(k)
         }
@@ -383,9 +377,6 @@ export function mountFor<T>(
       for (let i = 0; i < n; i++) {
         const k = newKeys[i] as string | number
         if (seen.has(k)) {
-          console.warn(
-            `[pyreon] Duplicate key "${k}" in <For>. Keys must be unique for correct reconciliation.`,
-          )
         }
         seen.add(k)
       }
@@ -544,7 +535,7 @@ export function mountFor<T>(
       // newKeys[i] is always defined (by() returns string | number);
       // cache always has the entry after step 3 with pos ≥ 0.
       const key = newKeys[i] as string | number
-      const v = cache.get(key)!.pos
+      const v = cache.get(key)?.pos
       let lo = 0
       let hi = lisLen
       while (lo < hi) {
@@ -620,7 +611,7 @@ function smallKPlace(
     }
 
     if (nextNonDiff >= 0) {
-      const nc = cache.get(newKeys[nextNonDiff] as string | number)!.anchor
+      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor
       cursor = nc
     }
 

@@ -60,7 +60,7 @@ function wrap(raw: object): object {
       if (typeof key === "symbol") return (target as Record<symbol, unknown>)[key]
 
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
-      if (isArray && key === "length") return lengthSig!()
+      if (isArray && key === "length") return lengthSig?.()
 
       // Non-own properties: prototype methods (forEach, map, push, …)
       // These must be returned untracked so array methods work normally.
@@ -91,20 +91,20 @@ function wrap(raw: object): object {
 
       // Array length set directly (e.g. arr.length = 0)
       if (isArray && key === "length") {
-        lengthSig!.set(value as number)
+        lengthSig?.set(value as number)
         return true
       }
 
       // Update or create signal for this property
       if (propSignals.has(key)) {
-        propSignals.get(key)!.set(value)
+        propSignals.get(key)?.set(value)
       } else {
         propSignals.set(key, signal(value))
       }
 
       // If array length changed (e.g. via push/splice index assignment), update it
       if (isArray && (target as unknown[]).length !== prevLength) {
-        lengthSig!.set((target as unknown[]).length)
+        lengthSig?.set((target as unknown[]).length)
       }
 
       return true
@@ -113,10 +113,10 @@ function wrap(raw: object): object {
     deleteProperty(target, key) {
       delete (target as Record<PropertyKey, unknown>)[key]
       if (typeof key !== "symbol" && propSignals.has(key)) {
-        propSignals.get(key)!.set(undefined)
+        propSignals.get(key)?.set(undefined)
         propSignals.delete(key)
       }
-      if (isArray) lengthSig!.set((target as unknown[]).length)
+      if (isArray) lengthSig?.set((target as unknown[]).length)
       return true
     },
 

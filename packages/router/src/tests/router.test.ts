@@ -2163,13 +2163,13 @@ describe("matchPath splat params", () => {
   test("captures rest of path with splat param", () => {
     const result = matchPath("/files/:path*", "/files/a/b/c")
     expect(result).not.toBeNull()
-    expect(result!.path).toBe("a/b/c")
+    expect(result?.path).toBe("a/b/c")
   })
 
   test("captures single segment with splat param", () => {
     const result = matchPath("/files/:path*", "/files/readme.md")
     expect(result).not.toBeNull()
-    expect(result!.path).toBe("readme.md")
+    expect(result?.path).toBe("readme.md")
   })
 })
 
@@ -2651,7 +2651,7 @@ describe("ScrollManager additional branches", () => {
 
 describe("stale navigation cancellation during guards", () => {
   test("concurrent navigation cancels in-flight beforeEach guard", async () => {
-    let slowGuardCompleted = false
+    let _slowGuardCompleted = false
     const guardRoutes: RouteRecord[] = [
       { path: "/", component: Home },
       { path: "/slow", component: About },
@@ -2661,7 +2661,7 @@ describe("stale navigation cancellation during guards", () => {
     router.beforeEach(async (to) => {
       if (to.path === "/slow") {
         await new Promise<void>((r) => setTimeout(r, 100))
-        slowGuardCompleted = true
+        _slowGuardCompleted = true
       }
       return true
     })
@@ -2812,14 +2812,14 @@ describe("router lifecycle", () => {
 
 describe("stale navigation cancellation during beforeLeave guard", () => {
   test("concurrent navigation cancels in-flight beforeLeave guard", async () => {
-    let slowLeaveCompleted = false
+    let _slowLeaveCompleted = false
     const guardRoutes: RouteRecord[] = [
       {
         path: "/a",
         component: Home,
         beforeLeave: async () => {
           await new Promise<void>((r) => setTimeout(r, 100))
-          slowLeaveCompleted = true
+          _slowLeaveCompleted = true
           return true
         },
       },
@@ -3140,7 +3140,7 @@ describe("ScrollManager — branch coverage for scroll behaviors", () => {
 
 describe("router — navigation cancellation by newer navigation", () => {
   test("rapid sequential navigations cancel earlier ones (lines 155-156)", async () => {
-    let guardCallCount = 0
+    let _guardCallCount = 0
     const el = document.createElement("div")
     document.body.appendChild(el)
     const router = createRouter({
@@ -3149,7 +3149,7 @@ describe("router — navigation cancellation by newer navigation", () => {
           path: "/",
           component: () => h("div", null, "home"),
           beforeLeave: async () => {
-            guardCallCount++
+            _guardCallCount++
             await new Promise((r) => setTimeout(r, 50))
             return true
           },
