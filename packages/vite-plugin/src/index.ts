@@ -154,7 +154,7 @@ async function handleSsrRequest(
   const origin = `http://${req.headers.host ?? "localhost"}`
   const fullUrl = new URL(url, origin)
   const request = new Request(fullUrl.href, {
-    method: req.method,
+    method: req.method ?? "GET",
     headers: Object.entries(req.headers).reduce((h, [k, v]) => {
       if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v)
       return h

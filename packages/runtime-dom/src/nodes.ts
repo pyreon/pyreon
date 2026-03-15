@@ -415,7 +415,7 @@ function computeForLis(
   let lisLen = 0
   for (let i = 0; i < n; i++) {
     const key = newKeys[i] as string | number
-    const v = cache.get(key)?.pos
+    const v = cache.get(key)?.pos ?? 0
     let lo = 0
     let hi = lisLen
     while (lo < hi) {
@@ -725,8 +725,8 @@ function smallKPlace(
     }
 
     if (nextNonDiff >= 0) {
-      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor
-      cursor = nc
+      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor as Node | undefined
+      if (nc) cursor = nc
     }
 
     const entry = cache.get(newKeys[i] as string | number) as {
