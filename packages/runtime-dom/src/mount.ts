@@ -3,7 +3,6 @@ import type {
   ForProps,
   NativeItem,
   PortalProps,
-  Props,
   Ref,
   VNode,
   VNodeChild,
@@ -43,109 +42,9 @@ const _mountingStack: string[] = []
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
  * Returns a cleanup that removes the node(s) and disposes all reactive effects.
  *
- * Accepts:
- *  - `() => VNodeChild`   → reactive: re-mounts whenever the accessor changes
- *  - `null | undefined | false` → nothing
- *  - `string | number`    → text node
- *  - VNode with string type    → DOM element
- *  - VNode with function type  → component
- *  - VNode with Fragment symbol → transparent wrapper
+ * This function is the hot path — all child types are handled inline to avoid
+ * function call overhead in tight render loops (1000+ calls per list render).
  */
-/** Mount a reactive accessor (function child) */
-function mountReactiveChild(
-  child: () => VNodeChild | VNodeChild[],
-  parent: Node,
-  anchor: Node | null,
-): Cleanup {
-  const sample = runUntracked(() => child())
-  if (isKeyedArray(sample)) {
-    const prevDepth = _elementDepth
-    _elementDepth = 0
-    const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (v, p, a) =>
-      mountChild(v, p, a),
-    )
-    _elementDepth = prevDepth
-    return cleanup
-  }
-  if (typeof sample === "string" || typeof sample === "number" || typeof sample === "boolean") {
-    return mountReactiveText(child as () => unknown, sample, parent, anchor)
-  }
-  const prevDepth = _elementDepth
-  _elementDepth = 0
-  const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
-  _elementDepth = prevDepth
-  return cleanup
-}
-
-/** Mount a reactive text binding (string/number/boolean accessor) */
-function mountReactiveText(
-  child: () => unknown,
-  sample: string | number | boolean,
-  parent: Node,
-  anchor: Node | null,
-): Cleanup {
-  const text = document.createTextNode(sample == null || sample === false ? "" : String(sample))
-  parent.insertBefore(text, anchor)
-  const dispose = renderEffect(() => {
-    const v = child()
-    text.data = v == null || v === false ? "" : String(v as string | number)
-  })
-  if (_elementDepth > 0) return dispose
-  return () => {
-    dispose()
-    const p = text.parentNode
-    if (p && (p as Element).isConnected !== false) p.removeChild(text)
-  }
-}
-
-/** Mount a NativeItem (pre-built DOM element from _tpl() or createTemplate()) */
-function mountNativeItem(native: NativeItem, parent: Node, anchor: Node | null): Cleanup {
-  parent.insertBefore(native.el, anchor)
-  if (!native.cleanup) {
-    if (_elementDepth > 0) return noop
-    return () => {
-      const p = native.el.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
-    }
-  }
-  if (_elementDepth > 0) return native.cleanup
-  return () => {
-    native.cleanup?.()
-    const p = native.el.parentNode
-    if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
-  }
-}
-
-/** Mount a VNode (element, component, fragment, For, Portal) */
-function mountVNode(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
-  if (vnode.type === Fragment) {
-    return mountChildren(vnode.children, parent, anchor)
-  }
-
-  if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, by, children } = vnode.props as unknown as ForProps<unknown>
-    const prevDepth = _elementDepth
-    _elementDepth = 0
-    const cleanup = mountFor(each, by, children, parent, anchor, mountChild)
-    _elementDepth = prevDepth
-    return cleanup
-  }
-
-  if (vnode.type === (PortalSymbol as unknown as string)) {
-    const { target, children } = vnode.props as unknown as PortalProps
-    if (__DEV__ && !target) {
-      return noop
-    }
-    return mountChild(children, target, null)
-  }
-
-  if (typeof vnode.type === "function") {
-    return mountComponent(vnode as VNode & { type: ComponentFn }, parent, anchor)
-  }
-
-  return mountElement(vnode, parent, anchor)
-}
-
 export function mountChild(
   child: VNodeChild | VNodeChild[] | (() => VNodeChild | VNodeChild[]),
   parent: Node,
@@ -153,13 +52,40 @@ export function mountChild(
 ): Cleanup {
   // Reactive accessor — function that reads signals
   if (typeof child === "function") {
-    return mountReactiveChild(child as () => VNodeChild | VNodeChild[], parent, anchor)
+    const sample = runUntracked(() => (child as () => VNodeChild | VNodeChild[])())
+    if (isKeyedArray(sample)) {
+      const prevDepth = _elementDepth
+      _elementDepth = 0
+      const cleanup = mountKeyedList(child as () => VNode[], parent, anchor, (v, p, a) =>
+        mountChild(v, p, a),
+      )
+      _elementDepth = prevDepth
+      return cleanup
+    }
+    // Text fast path: reactive string/number/boolean — update text.data in-place
+    if (typeof sample === "string" || typeof sample === "number" || typeof sample === "boolean") {
+      const text = document.createTextNode(sample == null || sample === false ? "" : String(sample))
+      parent.insertBefore(text, anchor)
+      const dispose = renderEffect(() => {
+        const v = (child as () => unknown)()
+        text.data = v == null || v === false ? "" : String(v as string | number)
+      })
+      if (_elementDepth > 0) return dispose
+      return () => {
+        dispose()
+        const p = text.parentNode
+        if (p && (p as Element).isConnected !== false) p.removeChild(text)
+      }
+    }
+    const prevDepth = _elementDepth
+    _elementDepth = 0
+    const cleanup = mountReactive(child as () => VNodeChild, parent, anchor, mountChild)
+    _elementDepth = prevDepth
+    return cleanup
   }
 
   // Array of children (e.g. from .map())
-  if (Array.isArray(child)) {
-    return mountChildren(child, parent, anchor)
-  }
+  if (Array.isArray(child)) return mountChildren(child, parent, anchor)
 
   // Nothing to render
   if (child == null || child === false) return noop
@@ -172,10 +98,48 @@ export function mountChild(
 
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
   if ((child as unknown as NativeItem).__isNative) {
-    return mountNativeItem(child as unknown as NativeItem, parent, anchor)
+    const native = child as unknown as NativeItem
+    parent.insertBefore(native.el, anchor)
+    if (!native.cleanup) {
+      if (_elementDepth > 0) return noop
+      return () => {
+        const p = native.el.parentNode
+        if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+      }
+    }
+    if (_elementDepth > 0) return native.cleanup
+    return () => {
+      native.cleanup?.()
+      const p = native.el.parentNode
+      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+    }
   }
 
-  return mountVNode(child as VNode, parent, anchor)
+  // VNode — element, component, fragment, For, Portal
+  const vnode = child as VNode
+
+  if (vnode.type === Fragment) return mountChildren(vnode.children, parent, anchor)
+
+  if (vnode.type === (ForSymbol as unknown as string)) {
+    const { each, by, children } = vnode.props as unknown as ForProps<unknown>
+    const prevDepth = _elementDepth
+    _elementDepth = 0
+    const cleanup = mountFor(each, by, children, parent, anchor, mountChild)
+    _elementDepth = prevDepth
+    return cleanup
+  }
+
+  if (vnode.type === (PortalSymbol as unknown as string)) {
+    const { target, children } = vnode.props as unknown as PortalProps
+    if (__DEV__ && !target) return noop
+    return mountChild(children, target, null)
+  }
+
+  if (typeof vnode.type === "function") {
+    return mountComponent(vnode as VNode & { type: ComponentFn }, parent, anchor)
+  }
+
+  return mountElement(vnode, parent, anchor)
 }
 
 // ─── Element ─────────────────────────────────────────────────────────────────
@@ -199,7 +163,6 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   if (ref && typeof ref === "object") ref.current = el
 
   if (!propCleanup && childCleanup === noop && !ref) {
-    // No reactive work — if nested inside another element, parent removal handles us
     if (_elementDepth > 0) return noop
     return () => {
       const p = el.parentNode
@@ -207,7 +170,6 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     }
   }
 
-  // Nested elements: parent removal handles DOM, cleanup only disposes reactive work
   if (_elementDepth > 0) {
     if (!ref && !propCleanup) return childCleanup
     if (!ref && propCleanup)
@@ -234,72 +196,6 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-/** Merge vnode.children into props.children if not already set. */
-function mergeChildrenIntoProps(vnode: VNode): Props {
-  if (
-    vnode.children.length > 0 &&
-    (vnode.props as Record<string, unknown>).children === undefined
-  ) {
-    return {
-      ...vnode.props,
-      children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
-    }
-  }
-  return vnode.props
-}
-
-/** Fire onMount hooks and collect their cleanups. */
-function fireOnMountHooks(
-  hooks: ReturnType<typeof runWithHooks>["hooks"],
-  scope: ReturnType<typeof effectScope>,
-  componentName: string,
-): Cleanup[] {
-  const mountCleanups: Cleanup[] = []
-  for (const fn of hooks.mount) {
-    try {
-      let cleanup: (() => void) | undefined
-      scope.runInScope(() => {
-        cleanup = fn()
-      })
-      if (cleanup) mountCleanups.push(cleanup)
-    } catch (err) {
-      console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
-      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
-    }
-  }
-  return mountCleanups
-}
-
-/** Build the component cleanup function. */
-function buildComponentCleanup(
-  compId: string,
-  scope: ReturnType<typeof effectScope>,
-  subtreeCleanup: Cleanup,
-  hooks: ReturnType<typeof runWithHooks>["hooks"],
-  mountCleanups: Cleanup[],
-  componentName: string,
-): Cleanup {
-  return () => {
-    unregisterComponent(compId)
-    scope.stop()
-    subtreeCleanup()
-    for (const fn of hooks.unmount) {
-      try {
-        fn()
-      } catch (err) {
-        console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
-        reportError({
-          component: componentName,
-          phase: "unmount",
-          error: err,
-          timestamp: Date.now(),
-        })
-      }
-    }
-    for (const fn of mountCleanups) fn()
-  }
-}
-
 function mountComponent(
   vnode: VNode & { type: ComponentFn },
   parent: Node,
@@ -316,7 +212,14 @@ function mountComponent(
   const parentId = _mountingStack[_mountingStack.length - 1] ?? null
   _mountingStack.push(compId)
 
-  const mergedProps = mergeChildrenIntoProps(vnode)
+  // Merge vnode.children into props.children if not already set
+  const mergedProps =
+    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
+      ? {
+          ...vnode.props,
+          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+        }
+      : vnode.props
 
   try {
     const result = runWithHooks(vnode.type, mergedProps)
@@ -372,57 +275,76 @@ function mountComponent(
   const firstEl = parent instanceof Element ? parent.firstElementChild : null
   registerComponent(compId, componentName, firstEl, parentId)
 
-  const mountCleanups = fireOnMountHooks(hooks, scope, componentName)
+  // Fire onMount hooks inline — effects created inside are tracked by the scope
+  const mountCleanups: Cleanup[] = []
+  for (const fn of hooks.mount) {
+    try {
+      let cleanup: (() => void) | undefined
+      scope.runInScope(() => {
+        cleanup = fn()
+      })
+      if (cleanup) mountCleanups.push(cleanup)
+    } catch (err) {
+      console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
+      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
+    }
+  }
 
-  return buildComponentCleanup(compId, scope, subtreeCleanup, hooks, mountCleanups, componentName)
+  return () => {
+    unregisterComponent(compId)
+    scope.stop()
+    subtreeCleanup()
+    for (const fn of hooks.unmount) {
+      try {
+        fn()
+      } catch (err) {
+        console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
+        reportError({
+          component: componentName,
+          phase: "unmount",
+          error: err,
+          timestamp: Date.now(),
+        })
+      }
+    }
+    for (const fn of mountCleanups) fn()
+  }
 }
 
 // ─── Children ────────────────────────────────────────────────────────────────
 
-/** 1-child fast path for mountChildren */
-function mountSingleChild(child: VNodeChild, parent: Node, anchor: Node | null): Cleanup | null {
-  if (child === undefined) return null
-  if (anchor === null && (typeof child === "string" || typeof child === "number")) {
-    ;(parent as HTMLElement).textContent = String(child)
-    return noop
-  }
-  return mountChild(child, parent, anchor)
-}
-
-/** 2-child fast path — avoids .map() array allocation (covers <tr><td/><td/></tr>) */
-function mountTwoChildren(
-  c0: VNodeChild,
-  c1: VNodeChild,
-  parent: Node,
-  anchor: Node | null,
-): Cleanup | null {
-  if (c0 === undefined || c1 === undefined) return null
-  const d0 = mountChild(c0, parent, anchor)
-  const d1 = mountChild(c1, parent, anchor)
-  if (d0 === noop && d1 === noop) return noop
-  if (d0 === noop) return d1
-  if (d1 === noop) return d0
-  return () => {
-    d0()
-    d1()
-  }
-}
-
 function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null): Cleanup {
   if (children.length === 0) return noop
+
+  // 1-child fast path
   if (children.length === 1) {
-    const result = mountSingleChild(children[0] as VNodeChild, parent, anchor)
-    if (result !== null) return result
+    const c = children[0] as VNodeChild
+    if (c !== undefined) {
+      if (anchor === null && (typeof c === "string" || typeof c === "number")) {
+        ;(parent as HTMLElement).textContent = String(c)
+        return noop
+      }
+      return mountChild(c, parent, anchor)
+    }
   }
+
+  // 2-child fast path — avoids .map() allocation (covers <tr><td/><td/></tr>)
   if (children.length === 2) {
-    const result = mountTwoChildren(
-      children[0] as VNodeChild,
-      children[1] as VNodeChild,
-      parent,
-      anchor,
-    )
-    if (result !== null) return result
+    const c0 = children[0] as VNodeChild
+    const c1 = children[1] as VNodeChild
+    if (c0 !== undefined && c1 !== undefined) {
+      const d0 = mountChild(c0, parent, anchor)
+      const d1 = mountChild(c1, parent, anchor)
+      if (d0 === noop && d1 === noop) return noop
+      if (d0 === noop) return d1
+      if (d1 === noop) return d0
+      return () => {
+        d0()
+        d1()
+      }
+    }
   }
+
   const cleanups = children.map((c) => mountChild(c, parent, anchor))
   return () => {
     for (const fn of cleanups) fn()

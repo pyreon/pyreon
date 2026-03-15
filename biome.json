@@ -113,6 +113,19 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/runtime-dom/src/mount.ts", "packages/runtime-dom/src/nodes.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": {
+              "level": "warn",
+              "options": { "maxAllowedComplexity": 35 }
+            }
+          }
+        }
+      }
     }
   ]
 }
