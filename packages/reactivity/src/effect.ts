@@ -8,7 +8,6 @@ export interface Effect {
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
 let _errorHandler: (err: unknown) => void = (err) => {
-  // biome-ignore lint/suspicious/noConsole: intentional default error handler
   console.error("[pyreon] Unhandled effect error:", err)
 }
 
@@ -16,7 +15,8 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
 }
 
-export function effect(fn: () => any): Effect {
+// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callbacks that return nothing must be assignable
+export function effect(fn: () => (() => void) | void): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
@@ -42,7 +42,7 @@ export function effect(fn: () => any): Effect {
     // Clean up previous subscriptions before re-running (dynamic dep tracking)
     cleanupEffect(run)
     try {
-      cleanup = withTracking(run, fn)
+      cleanup = withTracking(run, fn) || undefined
     } catch (err) {
       _errorHandler(err)
     }

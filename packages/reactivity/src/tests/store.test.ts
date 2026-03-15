@@ -6,7 +6,9 @@ describe("createStore", () => {
   test("reads primitive properties reactively", () => {
     const state = createStore({ count: 0 })
     const calls: number[] = []
-    effect(() => calls.push(state.count))
+    effect(() => {
+      calls.push(state.count)
+    })
     expect(calls).toEqual([0])
     state.count = 1
     expect(calls).toEqual([0, 1])
@@ -17,7 +19,9 @@ describe("createStore", () => {
   test("deep reactive — nested object", () => {
     const state = createStore({ user: { name: "Alice", age: 30 } })
     const names: string[] = []
-    effect(() => names.push(state.user.name))
+    effect(() => {
+      names.push(state.user.name)
+    })
     expect(names).toEqual(["Alice"])
     state.user.name = "Bob"
     expect(names).toEqual(["Alice", "Bob"])
@@ -31,7 +35,9 @@ describe("createStore", () => {
       userCalls.push(1)
       void state.user
     }) // tracks user object
-    effect(() => nameCalls.push(state.user.name)) // tracks name only
+    effect(() => {
+      nameCalls.push(state.user.name)
+    }) // tracks name only
     expect(userCalls.length).toBe(1)
     state.user.age = 31
     // Only the age signal fires — user object didn't change, name didn't change
@@ -41,7 +47,9 @@ describe("createStore", () => {
   test("array — tracks length on push", () => {
     const state = createStore({ items: [1, 2, 3] })
     const lengths: number[] = []
-    effect(() => lengths.push(state.items.length))
+    effect(() => {
+      lengths.push(state.items.length)
+    })
     expect(lengths).toEqual([3])
     state.items.push(4)
     expect(lengths).toEqual([3, 4])
@@ -50,7 +58,9 @@ describe("createStore", () => {
   test("array — tracks index access", () => {
     const state = createStore({ items: ["a", "b"] })
     const values: string[] = []
-    effect(() => values.push(state.items[0] as string))
+    effect(() => {
+      values.push(state.items[0] as string)
+    })
     expect(values).toEqual(["a"])
     state.items[0] = "x"
     expect(values).toEqual(["a", "x"])
@@ -80,8 +90,12 @@ describe("reconcile", () => {
     const state = createStore({ name: "Alice", age: 30 })
     const nameCalls: string[] = []
     const ageCalls: number[] = []
-    effect(() => nameCalls.push(state.name))
-    effect(() => ageCalls.push(state.age))
+    effect(() => {
+      nameCalls.push(state.name)
+    })
+    effect(() => {
+      ageCalls.push(state.age)
+    })
     reconcile({ name: "Alice", age: 31 }, state)
     expect(nameCalls).toEqual(["Alice"]) // unchanged — no re-run
     expect(ageCalls).toEqual([30, 31]) // changed — re-ran
@@ -90,7 +104,9 @@ describe("reconcile", () => {
   test("reconciles nested objects recursively", () => {
     const state = createStore({ user: { name: "Alice", age: 30 } })
     const nameCalls: string[] = []
-    effect(() => nameCalls.push(state.user.name))
+    effect(() => {
+      nameCalls.push(state.user.name)
+    })
     reconcile({ user: { name: "Bob", age: 30 } }, state)
     expect(nameCalls).toEqual(["Alice", "Bob"])
   })
@@ -98,7 +114,9 @@ describe("reconcile", () => {
   test("reconciles arrays by index", () => {
     const state = createStore({ items: ["a", "b", "c"] })
     const calls: string[][] = []
-    effect(() => calls.push([...state.items]))
+    effect(() => {
+      calls.push([...state.items])
+    })
     reconcile({ items: ["a", "X", "c"] }, state)
     expect(state.items[1]).toBe("X")
     expect(calls.length).toBe(2) // initial + after reconcile

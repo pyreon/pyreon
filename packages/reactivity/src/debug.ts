@@ -92,7 +92,6 @@ export function why(): void {
     const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
     const _name = e.name ? `"${e.name}"` : "(anonymous signal)"
 
-    // biome-ignore lint/suspicious/noConsole: intentional debug output
     console.log(
       `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? "" : "s"})`,
     )
@@ -103,7 +102,6 @@ export function why(): void {
   queueMicrotask(() => {
     dispose()
     if (_whyLog.length === 0) {
-      // biome-ignore lint/suspicious/noConsole: intentional debug output
       console.log("[pyreon:why] No signal updates detected")
     }
     _whyActive = false
@@ -127,13 +125,9 @@ export function why(): void {
 export function inspectSignal<T>(sig: Signal<T>): SignalDebugInfo<T> {
   const info = sig.debug()
 
-  // biome-ignore lint/suspicious/noConsole: intentional debug output
   console.group(`🔍 Signal ${info.name ? `"${info.name}"` : "(anonymous)"}`)
-  // biome-ignore lint/suspicious/noConsole: intentional debug output
   console.log("value:", info.value)
-  // biome-ignore lint/suspicious/noConsole: intentional debug output
   console.log("subscribers:", info.subscriberCount)
-  // biome-ignore lint/suspicious/noConsole: intentional debug output
   console.groupEnd()
 
   return info

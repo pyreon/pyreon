@@ -158,20 +158,15 @@ export function onOverlayClick(e: MouseEvent): void {
   if (!target) return
   const entry = findComponentForElement(target)
   if (entry) {
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.group(`[Pyreon] <${entry.name}>`)
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.log("element:", entry.el)
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.log("children:", entry.childIds.length)
     if (entry.parentId) {
       const parent = _components.get(entry.parentId)
       if (parent) {
-        // biome-ignore lint/suspicious/noConsole: intentional dev warning
         console.log("parent:", `<${parent.name}>`)
       }
     }
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.groupEnd()
   }
   disableOverlay()
@@ -288,7 +283,6 @@ export function installDevTools(): void {
     stats: () => {
       const all = devtools.getAllComponents()
       const roots = devtools.getComponentTree()
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.log(
         `[Pyreon] ${all.length} component${all.length === 1 ? "" : "s"}, ${roots.length} root${roots.length === 1 ? "" : "s"}`,
       )
@@ -296,7 +290,6 @@ export function installDevTools(): void {
     },
     /** Quick help */
     help: () => {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.log(
         "[Pyreon] $p commands:\n" +
           "  $p.components() — list all mounted components\n" +

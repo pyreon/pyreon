@@ -235,7 +235,6 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
   if (key === "dangerouslySetInnerHTML") {
     if (__DEV__) {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.warn(
         "[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.",
       )
@@ -294,7 +293,6 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
     if (__DEV__) {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
     }
     return

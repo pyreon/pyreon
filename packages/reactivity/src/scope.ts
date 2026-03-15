@@ -47,7 +47,6 @@ export class EffectScope {
         try {
           fn()
         } catch (err) {
-          // biome-ignore lint/suspicious/noConsole: intentional debug output
           console.error("[pyreon] onUpdate hook error:", err)
         }
       }

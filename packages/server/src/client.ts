@@ -110,7 +110,6 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
 
     const loader = registry[componentId]
     if (!loader) {
-      // biome-ignore lint/suspicious/noConsole: intentional warning for missing island loaders
       console.warn(`No loader registered for island "${componentId}"`)
       continue
     }
@@ -204,7 +203,6 @@ async function hydrateIsland(
         throw new TypeError("Expected object")
       }
     } catch (parseErr) {
-      // biome-ignore lint/suspicious/noConsole: intentional error logging for invalid island props
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       return
     }
@@ -213,7 +211,6 @@ async function hydrateIsland(
     const Comp = typeof mod === "function" ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
-    // biome-ignore lint/suspicious/noConsole: intentional error logging for hydration failures
     console.error(`Failed to hydrate island "${name}"`, err)
   }
 }

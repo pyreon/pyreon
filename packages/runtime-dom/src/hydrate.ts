@@ -313,7 +313,6 @@ function hydrateComponent(
     setCurrentScope(null)
     scope.stop()
 
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.error(`[Pyreon] Error hydrating component <${componentName}>:`, err)
     reportError({
       component: componentName,

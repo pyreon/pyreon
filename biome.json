@@ -82,6 +82,28 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "packages/reactivity/src/debug.ts",
+        "packages/reactivity/src/effect.ts",
+        "packages/reactivity/src/scope.ts",
+        "packages/runtime-dom/src/devtools.ts",
+        "packages/runtime-dom/src/hydrate.ts",
+        "packages/runtime-dom/src/hydration-debug.ts",
+        "packages/runtime-dom/src/mount.ts",
+        "packages/runtime-dom/src/nodes.ts",
+        "packages/runtime-dom/src/props.ts",
+        "packages/runtime-dom/src/transition.ts",
+        "packages/server/src/client.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
     }
   ]
 }

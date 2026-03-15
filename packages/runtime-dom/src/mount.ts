@@ -263,7 +263,6 @@ function fireOnMountHooks(
       })
       if (cleanup) mountCleanups.push(cleanup)
     } catch (err) {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
       reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
     }
@@ -288,7 +287,6 @@ function buildComponentCleanup(
       try {
         fn()
       } catch (err) {
-        // biome-ignore lint/suspicious/noConsole: intentional dev warning
         console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
         reportError({
           component: componentName,
@@ -342,7 +340,6 @@ function mountComponent(
   }
 
   if (__DEV__ && output != null && typeof output === "object" && !("type" in output)) {
-    // biome-ignore lint/suspicious/noConsole: intentional dev warning
     console.warn(
       `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, or function.`,
     )

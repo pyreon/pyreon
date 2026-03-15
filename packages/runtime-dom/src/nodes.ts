@@ -59,7 +59,6 @@ export function mountReactive(
     }
     const value = accessor()
     if (__DEV__ && typeof value === "function") {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.warn(
         "[Pyreon] Reactive accessor returned a function instead of a value. Did you forget to call the signal?",
       )
@@ -364,7 +363,7 @@ function parentSwapClear(liveParent: Node, startMarker: Comment, tailMarker: Com
     liveParent.firstChild === startMarker &&
     liveParent.lastChild === tailMarker
   ) {
-    const fresh = liveParent.cloneNode(false) as Node
+    const fresh = liveParent.cloneNode(false)
     fresh.appendChild(startMarker)
     fresh.appendChild(tailMarker)
     parentParent.replaceChild(fresh, liveParent)
@@ -510,7 +509,6 @@ export function mountFor<T>(
   const warnDuplicateKeys = (seen: Set<string | number> | null, key: string | number) => {
     if (!__DEV__ || !seen) return
     if (seen.has(key)) {
-      // biome-ignore lint/suspicious/noConsole: intentional dev warning
       console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
     }
     seen.add(key)
@@ -574,7 +572,7 @@ export function mountFor<T>(
     anchorsRegistered = false
 
     if (canSwap) {
-      const fresh = liveParent.cloneNode(false) as Node
+      const fresh = liveParent.cloneNode(false)
       fresh.appendChild(startMarker)
       fresh.appendChild(frag)
       fresh.appendChild(tailMarker)
@@ -662,7 +660,8 @@ export function mountFor<T>(
   }
 
   const e = effect(() => {
-    const liveParent = startMarker.parentNode as Node
+    const liveParent = startMarker.parentNode
+    if (!liveParent) return
     const items = source()
     const n = items.length
 
@@ -725,13 +724,14 @@ function smallKPlace(
     }
 
     if (nextNonDiff >= 0) {
-      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor as Node | undefined
+      const nc = cache.get(newKeys[nextNonDiff] as string | number)?.anchor
       if (nc) cursor = nc
     }
 
-    const entry = cache.get(newKeys[i] as string | number) as {
-      anchor: Node
-      cleanup: Cleanup | null
+    const entry = cache.get(newKeys[i] as string | number)
+    if (!entry) {
+      prevDiffIdx = i
+      continue
     }
     moveEntryBefore(parent, entry.anchor, cursor)
     cursor = entry.anchor

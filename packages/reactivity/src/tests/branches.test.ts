@@ -320,7 +320,9 @@ describe("debug branches", () => {
   test("why with exactly 1 subscriber shows singular", async () => {
     const s = signal(0, { name: "single" })
     // Add exactly 1 subscriber
-    effect(() => s())
+    effect(() => {
+      s()
+    })
     const logs: string[] = []
     const origLog = console.log
     console.log = (...args: unknown[]) => logs.push(args.join(" "))

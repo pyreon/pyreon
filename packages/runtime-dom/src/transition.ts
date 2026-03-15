@@ -173,7 +173,6 @@ export function Transition(props: TransitionProps): VNodeChild {
     // Only inject ref into DOM element children — component children need ref forwarding
     if (typeof vnode.type !== "string") {
       if (__DEV__) {
-        // biome-ignore lint/suspicious/noConsole: intentional dev warning
         console.warn(
           "[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.",
         )
