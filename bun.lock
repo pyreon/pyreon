@@ -21,7 +21,7 @@
         "vitest": "^4.0.18",
       },
     },
-    "apps/benchmark": {
+    "examples/benchmark": {
       "name": "@pyreon/benchmark",
       "version": "0.0.1",
       "dependencies": {
@@ -43,7 +43,7 @@
         "vite": "^7.3.1",
       },
     },
-    "apps/playground": {
+    "examples/playground": {
       "name": "@pyreon/playground",
       "version": "0.0.1",
       "dependencies": {
@@ -330,7 +330,7 @@
 
     "@playwright/test": ["@playwright/test@1.58.2", "", { "dependencies": { "playwright": "1.58.2" }, "bin": { "playwright": "cli.js" } }, "sha512-akea+6bHYBBfA9uQqSYmlJXn61cTa+jbO87xVLCWbTqbWadRVmhxlXATaOjOgcBaWU4ePo0wB41KMFv3o35IXA=="],
 
-    "@pyreon/benchmark": ["@pyreon/benchmark@workspace:apps/benchmark"],
+    "@pyreon/benchmark": ["@pyreon/benchmark@workspace:examples/benchmark"],
 
     "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/compiler"],
 
@@ -338,7 +338,7 @@
 
     "@pyreon/head": ["@pyreon/head@workspace:packages/head"],
 
-    "@pyreon/playground": ["@pyreon/playground@workspace:apps/playground"],
+    "@pyreon/playground": ["@pyreon/playground@workspace:examples/playground"],
 
     "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/preact-compat"],
 
