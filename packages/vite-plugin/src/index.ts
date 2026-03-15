@@ -176,9 +176,10 @@ async function handleSsrRequest(
 // ── HMR injection ─────────────────────────────────────────────────────────────
 
 /**
- * Regex that detects top-level signal declarations (prefix + variable name).
- * The arguments are extracted via balanced-paren matching in `injectHmr`
- * to handle arbitrary nesting like `signal(compute(getValue(x)))`.
+ * Regex that detects signal declarations (prefix + variable name).
+ * The arguments are extracted via balanced-paren matching in `injectHmr`.
+ * A brace-depth check filters out matches inside functions/blocks — only
+ * module-scope (depth 0) signals are rewritten for HMR state preservation.
  */
 const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
 
@@ -217,6 +218,23 @@ function extractBalancedArgs(code: string, start: number): string | null {
   return null
 }
 
+/**
+ * Compute brace depth at position `pos` — returns 0 for module scope.
+ * Skips string literals to avoid counting braces inside strings.
+ */
+function braceDepthAt(code: string, pos: number): number {
+  let depth = 0
+  for (let i = 0; i < pos; i++) {
+    const ch = code[i]
+    if (ch === "{") depth++
+    else if (ch === "}") depth--
+    else if (ch === '"' || ch === "'" || ch === "`") {
+      i = skipStringLiteral(code, i, ch)
+    }
+  }
+  return depth
+}
+
 function injectHmr(code: string, moduleId: string): string {
   const hasSignals = SIGNAL_PREFIX_RE.test(code)
   SIGNAL_PREFIX_RE.lastIndex = 0
@@ -243,14 +261,21 @@ function injectHmr(code: string, moduleId: string): string {
     while (m !== null) {
       const argsStart = m.index + m[0].length
       const args = extractBalancedArgs(code, argsStart)
-      if (args === null) continue // unbalanced — skip
-      matches.push({
-        start: m.index,
-        end: argsStart + args.length + 1, // +1 for closing paren
-        prefix: m[1] ?? "",
-        name: m[2] ?? "",
-        args,
-      })
+      if (args === null) {
+        m = SIGNAL_PREFIX_RE.exec(code)
+        continue // unbalanced — skip
+      }
+      // Only rewrite module-scope signals (brace depth 0).
+      // esbuild may strip indentation, so we can't rely on column position.
+      if (braceDepthAt(code, m.index) === 0) {
+        matches.push({
+          start: m.index,
+          end: argsStart + args.length + 1, // +1 for closing paren
+          prefix: m[1] ?? "",
+          name: m[2] ?? "",
+          args,
+        })
+      }
       m = SIGNAL_PREFIX_RE.exec(code)
     }
     SIGNAL_PREFIX_RE.lastIndex = 0

@@ -2,6 +2,23 @@ import { createContext, createRef, For, onMount, onUnmount, Show, useContext } f
 import { useHead } from "@pyreon/head/use-head"
 import { batch, computed, createSelector, effect, signal } from "@pyreon/reactivity"
 
+// ─── Code Block ──────────────────────────────────────────────────────────────
+
+function CodeBlock(props: { code: string }) {
+  const open = signal(false)
+
+  return (
+    <>
+      <button type="button" class="code-toggle" onClick={() => open.update((v) => !v)}>
+        {() => (open() ? "▾ Hide Source" : "▸ View Source")}
+      </button>
+      <Show when={() => open()}>
+        <pre class="code-block">{props.code}</pre>
+      </Show>
+    </>
+  )
+}
+
 // ─── Theme Context ────────────────────────────────────────────────────────────
 // Demonstrates context API — any descendant can read the theme without prop drilling.
 
@@ -61,6 +78,20 @@ function SignalsDemo() {
       </div>
       <p class="demo-meta">doubled: {() => doubled()}</p>
       <p class="demo-meta">history: {() => history().join(" → ")}</p>
+      <CodeBlock
+        code={`const count = signal(0)
+const doubled = computed(() => count() * 2)
+const history = signal<number[]>([])
+
+// effect() auto-tracks dependencies
+effect(() => {
+  history.update((h) => [...h.slice(-9), count()])
+})
+
+// Read: count()  Write: count.set(5)  Update: count.update(n => n + 1)
+// In JSX, wrap reads in arrow functions for reactivity:
+<span>{() => count()}</span>`}
+      />
     </div>
   )
 }
@@ -109,6 +140,21 @@ function BatchDemo() {
           Swap (unbatched)
         </button>
       </div>
+      <CodeBlock
+        code={`const first = signal("Jane")
+const last = signal("Doe")
+const fullName = computed(() => \`\${first()} \${last()}\`)
+
+// Batched: computed runs once
+batch(() => {
+  first.set("Doe")
+  last.set("Jane")
+})  // fullName recomputes 1x
+
+// Unbatched: computed runs twice
+first.set("Doe")   // fullName recomputes → "Doe Doe"
+last.set("Jane")   // fullName recomputes → "Doe Jane"`}
+      />
     </div>
   )
 }
@@ -150,6 +196,23 @@ function ShowDemo() {
           </button>
         </div>
       </Show>
+      <CodeBlock
+        code={`const loggedIn = signal(false)
+const username = signal("pyreon_user")
+
+<Show
+  when={() => loggedIn()}
+  fallback={<div><p>Not logged in</p></div>}
+>
+  <div>
+    <p>Welcome, <strong>{() => username()}</strong></p>
+    <input
+      value={() => username()}
+      onInput={(e) => username.set(e.target.value)}
+    />
+  </div>
+</Show>`}
+      />
     </div>
   )
 }
@@ -242,6 +305,25 @@ function ForDemo() {
           )}
         </For>
       </ul>
+      <CodeBlock
+        code={`const users = signal<User[]>([...])
+const selectedId = signal<number | null>(null)
+
+// O(1) selection — only 2 rows re-render on change
+const isSelected = createSelector(selectedId)
+
+// \`by\` extracts unique key (not \`key\` — JSX reserves that)
+<For each={() => users()} by={(u) => u.id}>
+  {(user) => (
+    <li class={() =>
+      isSelected(user.id) ? "selected" : ""
+    }>
+      <span>{user.name}</span>
+      <span>{user.score}</span>
+    </li>
+  )}
+</For>`}
+      />
     </div>
   )
 }
@@ -304,6 +386,34 @@ function LifecycleDemo() {
         <TimerWidget />
       </Show>
       <pre class="log-output">{() => log().join("\n")}</pre>
+      <CodeBlock
+        code={`function TimerWidget() {
+  const elapsed = signal(0)
+  const canvasRef = createRef<HTMLCanvasElement>()
+
+  onMount(() => {
+    const id = setInterval(
+      () => elapsed.update((n) => n + 1), 1000
+    )
+
+    // Access DOM via ref
+    const ctx = canvasRef.current?.getContext("2d")
+    ctx?.fillText("ref works!", 10, 25)
+
+    // Return cleanup — auto-called on unmount
+    return () => clearInterval(id)
+  })
+
+  onUnmount(() => console.log("unmounted"))
+
+  return (
+    <div>
+      <p>Elapsed: {() => elapsed()}s</p>
+      <canvas ref={canvasRef} width={120} height={40} />
+    </div>
+  )
+}`}
+      />
     </div>
   )
 }
@@ -331,6 +441,19 @@ function HeadDemo() {
         placeholder="Page title"
       />
       <p class="demo-meta">Tab title: {() => title()}</p>
+      <CodeBlock
+        code={`const title = signal("Pyreon Showcase")
+
+useHead(() => ({
+  title: title(),
+  meta: [
+    { name: "description", content: description() }
+  ],
+}))
+
+// That's it! Title and meta tags update reactively.
+// Works with SSR via renderWithHead().`}
+      />
     </div>
   )
 }

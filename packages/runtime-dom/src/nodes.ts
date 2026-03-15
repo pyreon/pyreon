@@ -2,7 +2,7 @@ import type { VNode, VNodeChild } from "@pyreon/core"
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect } from "@pyreon/reactivity"
+import { effect, runUntracked } from "@pyreon/reactivity"
 
 const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
@@ -53,7 +53,10 @@ export function mountReactive(
 
   const e = effect(() => {
     const myGen = ++generation
-    currentCleanup()
+    // Run cleanup outside tracking context — cleanup may write to signals
+    // (e.g. onUnmount hooks), and those writes must not accidentally register
+    // as dependencies of this effect, which would cause infinite recursion.
+    runUntracked(() => currentCleanup())
     currentCleanup = () => {
       /* noop */
     }
