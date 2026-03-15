@@ -1,5 +1,5 @@
 import "./style.css"
-import { Fragment, Show, h } from "@pyreon/core"
+import { Fragment, h, Show } from "@pyreon/core"
 import { batch, computed, effect, signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import { App } from "./App"

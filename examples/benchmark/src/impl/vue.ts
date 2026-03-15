@@ -87,8 +87,8 @@ export async function runVue(container: HTMLElement): Promise<BenchSuite> {
   await bench("swap rows", suite, async () => {
     const updated = [...currentRows]
     if (updated.length >= 999) {
-      const tmp = updated[1]!
-      updated[1] = updated[998]!
+      const tmp = updated[1] as Row
+      updated[1] = updated[998] as Row
       updated[998] = tmp
     }
     rows.value = currentRows = updated

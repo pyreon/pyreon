@@ -14,9 +14,15 @@ export function Counter() {
       <p class="value">{() => count()}</p>
       <p class="doubled">doubled: {() => doubled()}</p>
       <div class="actions">
-        <button onClick={decrement}>−</button>
-        <button onClick={reset}>Reset</button>
-        <button onClick={increment}>+</button>
+        <button type="button" onClick={decrement}>
+          −
+        </button>
+        <button type="button" onClick={reset}>
+          Reset
+        </button>
+        <button type="button" onClick={increment}>
+          +
+        </button>
       </div>
     </div>
   )

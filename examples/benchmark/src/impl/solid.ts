@@ -12,8 +12,7 @@
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createComponent, createEffect, createSelector, createSignal } from "solid-js"
-import { For } from "solid-js"
+import { createComponent, createEffect, createSelector, createSignal, For } from "solid-js"
 import { insert, render, template } from "solid-js/web"
 import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"

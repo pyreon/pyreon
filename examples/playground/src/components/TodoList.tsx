@@ -48,7 +48,9 @@ export function TodoList() {
           onInput={(e: InputEvent) => input.set((e.target as HTMLInputElement).value)}
           onKeydown={handleKey}
         />
-        <button onClick={addTodo}>Add</button>
+        <button type="button" onClick={addTodo}>
+          Add
+        </button>
       </div>
 
       <ul class="todo-list">
@@ -57,7 +59,7 @@ export function TodoList() {
             <li class={todo.done ? "done" : ""} key={todo.id}>
               <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />
               <span>{todo.text}</span>
-              <button class="remove" onClick={() => remove(todo.id)}>
+              <button type="button" class="remove" onClick={() => remove(todo.id)}>
                 ×
               </button>
             </li>

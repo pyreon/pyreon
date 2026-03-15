@@ -20,7 +20,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.6;
   min-height: 100vh;
@@ -78,13 +78,12 @@ main {
 }
 
 .card h2 {
-  font-size: 1rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin-bottom: 1rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 0.75rem;
 }
 
 /* Counter */
@@ -118,7 +117,9 @@ button {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 button:hover {
@@ -139,7 +140,7 @@ button:hover {
   margin-bottom: 1rem;
 }
 
-input[type="text"] {
+input[type='text'] {
   flex: 1;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -151,10 +152,10 @@ input[type="text"] {
   transition: border-color 0.15s;
 }
 
-input[type="text"]:focus {
+input[type='text']:focus {
   border-color: var(--accent);
 }
-input[type="text"]::placeholder {
+input[type='text']::placeholder {
   color: var(--muted);
 }
 
@@ -176,15 +177,15 @@ input[type="text"]::placeholder {
   transition: opacity 0.2s;
 }
 
+.todo-list span {
+  flex: 1;
+}
+
 .todo-list li.done {
   opacity: 0.45;
 }
 .todo-list li.done span {
   text-decoration: line-through;
-}
-
-.todo-list span {
-  flex: 1;
 }
 
 button.remove {
@@ -269,7 +270,7 @@ button.remove:hover {
   gap: 0.5rem;
 }
 
-.demo-box input[type="text"] {
+.demo-box input[type='text'] {
   flex: initial;
 }
 
@@ -290,7 +291,9 @@ button.remove:hover {
   border: 1px solid var(--border);
   background: var(--bg);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .user-row:hover {

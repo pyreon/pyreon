@@ -1,5 +1,5 @@
-import { RouterLink, RouterProvider, RouterView, createRouter } from "@pyreon/router"
 import { HeadProvider } from "@pyreon/head/provider"
+import { createRouter, RouterLink, RouterProvider, RouterView } from "@pyreon/router"
 import { About } from "./pages/About"
 import { Home } from "./pages/Home"
 import { Showcase } from "./pages/Showcase"

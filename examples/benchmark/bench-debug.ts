@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
+
 GlobalRegistrator.register()
 
 const { h, For } = await import("@pyreon/core")
@@ -11,7 +12,7 @@ document.body.appendChild(el)
 const rowsSig = signal<{ id: number; label: ReturnType<typeof signal<string>> }[]>([])
 const selId = signal<number | null>(null)
 const toR = (row: { id: number; label: string }) => ({ id: row.id, label: signal(row.label) })
-const makeRows = (n: number) => Array.from({ length: n }, () => ({ id: _id++, label: "row" + _id }))
+const makeRows = (n: number) => Array.from({ length: n }, () => ({ id: _id++, label: `row${_id}` }))
 
 console.log("Mounting...")
 mount(
@@ -53,7 +54,7 @@ console.log(`replaceAll: ${(performance.now() - t1).toFixed(1)}ms`)
 console.log("partialUpd...")
 const t2 = performance.now()
 rowsSig().forEach((row, i) => {
-  if (i % 10 === 0) row.label.update((l) => l + " !!!")
+  if (i % 10 === 0) row.label.update((l) => `${l} !!!`)
 })
 console.log(`partialUpd: ${(performance.now() - t2).toFixed(1)}ms`)
 
@@ -65,8 +66,8 @@ console.log(`selectRow: ${(performance.now() - t3).toFixed(1)}ms`)
 console.log("swapRows...")
 const t4 = performance.now()
 const c = [...rowsSig()]
-const tmp = c[1]!
-c[1] = c[998]!
+const tmp = c[1] as (typeof c)[0]
+c[1] = c[998] as (typeof c)[0]
 c[998] = tmp
 rowsSig.set(c)
 console.log(`swapRows: ${(performance.now() - t4).toFixed(1)}ms`)

@@ -9,8 +9,8 @@ import type { BenchSuite } from "./runner"
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
-const statusEl = document.getElementById("status")!
-const tableEl = document.getElementById("results")!
+const statusEl = document.getElementById("status") as HTMLElement
+const tableEl = document.getElementById("results") as HTMLElement
 const runBtn = document.getElementById("run") as HTMLButtonElement
 
 function setStatus(msg: string) {
@@ -27,11 +27,48 @@ function score(ms: number): string {
   return `<span class="${cls}">${fmt(ms)}</span>`
 }
 
+function ratioCell(mean: number, best: number): string {
+  const ratio = mean / best
+  const cls = ratio < 1.5 ? "fast" : ratio < 3 ? "ok" : "slow"
+  return `<td><span class="${cls}">${ratio.toFixed(2)}\u00d7</span></td>`
+}
+
+function buildSlowdownRow(name: string, subset: BenchSuite[], best: number): string {
+  let row = `<tr><td class="test-name">${name}</td>`
+  for (const suite of subset) {
+    const r = suite.results.find((x) => x.name === name)
+    row += r ? ratioCell(r.mean, best) : "<td>\u2014</td>"
+  }
+  row += "</tr>"
+  return row
+}
+
+function bestMean(name: string, subset: BenchSuite[]): number {
+  const means = subset.map(
+    (s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY,
+  )
+  return Math.min(...means)
+}
+
+function buildSlowdownTable(label: string, subset: BenchSuite[], testNames: string[]): string {
+  let t = `<p class="note">${label} (lower = better, 1.00\u00d7 = fastest)</p>`
+  t += "<table><thead><tr><th>Test</th>"
+  for (const s of subset) {
+    t += `<th>${s.framework}</th>`
+  }
+  t += "</tr></thead><tbody>"
+  for (const name of testNames) {
+    t += buildSlowdownRow(name, subset, bestMean(name, subset))
+  }
+  t += "</tbody></table>"
+  return t
+}
+
 function buildTable(suites: BenchSuite[]) {
   if (suites.length === 0) return
 
   // Collect all unique test names in order
-  const testNames = suites[0]!.results.map((r) => r.name)
+  const testNames = (suites[0] as BenchSuite).results.map((r) => r.name)
 
   // Header
   let html = `<table><thead><tr><th>Test</th>`
@@ -53,41 +90,12 @@ function buildTable(suites: BenchSuite[]) {
 
   // Slowdown ratio tables
   if (suites.length > 1) {
-    const buildSlowdownTable = (label: string, subset: BenchSuite[]): string => {
-      let t = `<p class="note">${label} (lower = better, 1.00\u00d7 = fastest)</p>`
-      t += "<table><thead><tr><th>Test</th>"
-      for (const s of subset) {
-        t += `<th>${s.framework}</th>`
-      }
-      t += "</tr></thead><tbody>"
-      for (const name of testNames) {
-        const means = subset.map(
-          (s) => s.results.find((x) => x.name === name)?.mean ?? Number.POSITIVE_INFINITY,
-        )
-        const best = Math.min(...means)
-        t += `<tr><td class="test-name">${name}</td>`
-        for (const suite of subset) {
-          const r = suite.results.find((x) => x.name === name)
-          if (r) {
-            const ratio = r.mean / best
-            const cls = ratio < 1.5 ? "fast" : ratio < 3 ? "ok" : "slow"
-            t += `<td><span class="${cls}">${ratio.toFixed(2)}\u00d7</span></td>`
-          } else {
-            t += "<td>\u2014</td>"
-          }
-        }
-        t += "</tr>"
-      }
-      t += "</tbody></table>"
-      return t
-    }
-
-    html += buildSlowdownTable("Slowdown vs best (all)", suites)
+    html += buildSlowdownTable("Slowdown vs best (all)", suites, testNames)
 
     // Framework-only comparison (excludes vanilla raw DOM baseline)
     const frameworkOnly = suites.filter((s) => s.framework !== "Vanilla JS")
     if (frameworkOnly.length > 1) {
-      html += buildSlowdownTable("Slowdown vs best framework", frameworkOnly)
+      html += buildSlowdownTable("Slowdown vs best framework", frameworkOnly, testNames)
     }
   }
 

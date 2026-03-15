@@ -12,7 +12,7 @@
  *   3. Optionally compares against a saved baseline (scripts/bundle-baseline.json)
  */
 
-import { readFile, readdir, writeFile } from "node:fs/promises"
+import { readdir, readFile, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { gzipSync } from "node:zlib"
 
@@ -145,7 +145,7 @@ async function main() {
   console.log(
     `  ${"Package".padEnd(25)} ${"Raw".padStart(10)} ${"Gzip".padStart(10)} ${"Brotli".padStart(10)}`,
   )
-  console.log("  " + "─".repeat(63))
+  console.log(`  ${"─".repeat(63)}`)
 
   let totalRaw = 0
   let totalGzip = 0
@@ -163,7 +163,7 @@ async function main() {
     totalBrotli += pkg.brotli
   }
 
-  console.log("  " + "─".repeat(63))
+  console.log(`  ${"─".repeat(63)}`)
   console.log(
     `  ${"TOTAL".padEnd(25)} ${formatBytes(totalRaw).padStart(10)} ${formatBytes(totalGzip).padStart(10)} ${formatBytes(totalBrotli).padStart(10)}`,
   )

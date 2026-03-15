@@ -8,6 +8,7 @@
  * - Framework execution order randomized to avoid GC pressure bias
  */
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
+
 GlobalRegistrator.register()
 
 const [
@@ -271,7 +272,7 @@ async function runPyreon(): Promise<Record<string, number>> {
         null,
         For<RR>({
           each: rowsSig,
-          by: (r) => r.id,
+          by: (item) => item.id,
           children: (row) =>
             h(
               "tr",
@@ -333,12 +334,10 @@ async function runPyreon(): Promise<Record<string, number>> {
 
 async function runPyreonTpl(): Promise<Record<string, number>> {
   // _tpl and _bind are exported from src but not yet in built types
-  // biome-ignore lint: benchmark file, cast is fine
   const _tpl = (runtimeDomRest as any)._tpl as (
     html: string,
-    bind: (el: HTMLElement) => (() => void) | null,
+    bind: (node: HTMLElement) => (() => void) | null,
   ) => { __isNative: true; el: HTMLElement; cleanup: (() => void) | null }
-  // biome-ignore lint: benchmark file, cast is fine
   const _bind = (reactivityRest as any)._bind as (fn: () => void) => () => void
 
   const el = makeEl()
@@ -366,7 +365,7 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
         null,
         For<RR>({
           each: rowsSig,
-          by: (r) => r.id,
+          by: (item) => item.id,
           children: (row) =>
             _tpl("<tr><td></td><td></td></tr>", (__root) => {
               const __e0 = __root.children[0] as HTMLElement
@@ -736,10 +735,10 @@ async function runPreact(): Promise<Record<string, number>> {
 
 // ─── Solid ────────────────────────────────────────────────────────────────────
 
-async function runSolid(): Promise<Record<string, number>> {
+async function _runSolid(): Promise<Record<string, number>> {
   const el = makeEl()
   const { createSignal, createSelector: solidCreateSelector, createEffect, createComponent } = Solid
-  const { For } = Solid
+  const { For: SolidFor } = Solid
   const { render: sr, insert, template: solidTemplate } = SolidWeb
 
   // Pre-compiled template — same as what Solid's JSX compiler emits
@@ -766,7 +765,7 @@ async function runSolid(): Promise<Record<string, number>> {
     insert(
       tbody,
       createComponent(
-        For as unknown as (props: {
+        SolidFor as unknown as (props: {
           each: SRow[]
           children: (row: SRow) => HTMLElement
         }) => HTMLElement[],
@@ -860,7 +859,7 @@ async function runSolid(): Promise<Record<string, number>> {
 
 // ─── Output ───────────────────────────────────────────────────────────────────
 
-const TESTS: Array<[string, string]> = [
+const TESTS: [string, string][] = [
   ["create1k", "create 1k rows  "],
   ["replaceAll", "replace all rows "],
   ["partialUpd", "partial update   "],
@@ -936,7 +935,7 @@ const frameworks: Array<{ name: string; run: () => Promise<Record<string, number
   { name: "React 19", run: runReact },
   { name: "Vue 3", run: runVue },
   // SolidJS excluded — renders 0 DOM rows in happy-dom (lazy/deferred rendering)
-  // { name: "SolidJS", run: runSolid },
+  // { name: "SolidJS", run: _runSolid },
 ]
 
 for (let i = frameworks.length - 1; i > 0; i--) {

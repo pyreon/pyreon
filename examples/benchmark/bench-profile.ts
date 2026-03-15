@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
+
 GlobalRegistrator.register()
 
 const { h, For } = await import("@pyreon/core")
@@ -10,7 +11,7 @@ const el = document.createElement("div")
 document.body.appendChild(el)
 const rowsSig = signal<{ id: number; label: ReturnType<typeof signal<string>> }[]>([])
 const toR = (row: { id: number; label: string }) => ({ id: row.id, label: signal(row.label) })
-const makeRows = (n: number) => Array.from({ length: n }, () => ({ id: _id++, label: "row" + _id }))
+const makeRows = (n: number) => Array.from({ length: n }, () => ({ id: _id++, label: `row${_id}` }))
 
 mount(
   h(
@@ -58,7 +59,7 @@ document.body.appendChild(tbody2)
 const rows2: HTMLElement[] = []
 for (let i = 0; i < 1000; i++) {
   const tr = document.createElement("tr")
-  tr.appendChild(document.createTextNode("row" + i))
+  tr.appendChild(document.createTextNode(`row${i}`))
   tbody2.appendChild(tr)
   rows2.push(tr)
 }

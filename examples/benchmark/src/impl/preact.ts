@@ -19,13 +19,7 @@ interface Setters {
   setSelected: (id: number | null) => void
 }
 
-const RowItem = memo(function RowItem({
-  row,
-  selected,
-}: {
-  row: Row
-  selected: boolean
-}) {
+const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
   return h(
     "tr",
     { className: selected ? "selected" : undefined },
@@ -40,7 +34,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
 
   useEffect(() => {
     onMounted({ setRows, setSelected })
-  }, [])
+  }, [onMounted])
 
   return h(
     "table",

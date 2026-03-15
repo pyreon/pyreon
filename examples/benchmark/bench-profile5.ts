@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
+
 GlobalRegistrator.register()
 
 // Profile: different ways to bulk-remove 1000 tr>td+td from connected DOM
@@ -12,7 +13,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
     td1.textContent = String(i)
     tr.appendChild(td1)
     const td2 = document.createElement("td")
-    td2.textContent = "label" + i
+    td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)
   }
@@ -101,7 +102,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
     td1.textContent = String(i)
     tr.appendChild(td1)
     const td2 = document.createElement("td")
-    td2.textContent = "label" + i
+    td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)
   }
@@ -129,7 +130,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
     td1.textContent = String(i)
     tr.appendChild(td1)
     const td2 = document.createElement("td")
-    td2.textContent = "label" + i
+    td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)
   }

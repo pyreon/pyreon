@@ -23,7 +23,7 @@ interface Setters {
   setSelected: (id: number | null) => void
 }
 
-const RowItem = memo(function RowItem({
+const RowItem = memo(function RowItemInner({
   row,
   selected,
   onSelect,
@@ -41,11 +41,7 @@ const RowItem = memo(function RowItem({
   )
 })
 
-function App({
-  onMounted,
-}: {
-  onMounted: (setters: Setters) => void
-}) {
+function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   const [rows, setRows] = useState<Row[]>([])
   const [selectedId, setSelected] = useState<number | null>(null)
 
@@ -105,7 +101,7 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
     await setRows(currentRows)
   })
 
-  let originalLabels: string[] = currentRows.map((r) => r.label)
+  let originalLabels: string[] = currentRows.map((row) => row.label)
   await bench(
     "partial update (every 10th)",
     suite,
@@ -131,7 +127,7 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   // Re-create clean rows for remaining tests
   currentRows = buildRows(1_000)
   await setRows(currentRows)
-  originalLabels = currentRows.map((r) => r.label)
+  originalLabels = currentRows.map((row) => row.label)
 
   await bench("select row", suite, async () => {
     await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)

@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator"
+
 GlobalRegistrator.register()
 
 // Test 1: how fast is isConnected on detached nodes?

@@ -1,6 +1,6 @@
-import { Show, For, createContext, useContext, onMount, onUnmount, createRef } from "@pyreon/core"
-import { signal, computed, effect, batch, createSelector } from "@pyreon/reactivity"
+import { createContext, createRef, For, onMount, onUnmount, Show, useContext } from "@pyreon/core"
 import { useHead } from "@pyreon/head/use-head"
+import { batch, computed, createSelector, effect, signal } from "@pyreon/reactivity"
 
 // ─── Theme Context ────────────────────────────────────────────────────────────
 // Demonstrates context API — any descendant can read the theme without prop drilling.
@@ -13,17 +13,14 @@ function ThemeProvider(props: { children: unknown }) {
   const accent = computed(() => colors[index() % colors.length] as string)
   const toggle = () => index.update((i) => i + 1)
 
-  return (
-    <ThemeContext.Provider value={{ accent, toggle }}>
-      {props.children}
-    </ThemeContext.Provider>
-  )
+  return <ThemeContext.Provider value={{ accent, toggle }}>{props.children}</ThemeContext.Provider>
 }
 
 function ThemeSwatch() {
   const theme = useContext(ThemeContext)
   return (
     <button
+      type="button"
       onClick={theme.toggle}
       style={() => `background:${theme.accent()};color:#000;border:none;font-weight:600`}
     >
@@ -50,12 +47,17 @@ function SignalsDemo() {
     <div class="demo-section">
       <h3>Signals + Computed + Effects</h3>
       <p class="demo-desc">
-        Fine-grained reactivity — only the exact DOM nodes that read a signal update when it changes.
+        Fine-grained reactivity — only the exact DOM nodes that read a signal update when it
+        changes.
       </p>
       <div class="demo-row">
-        <button onClick={() => count.update((n) => n - 1)}>-</button>
+        <button type="button" onClick={() => count.update((n) => n - 1)}>
+          -
+        </button>
         <span class="demo-value">{() => count()}</span>
-        <button onClick={() => count.update((n) => n + 1)}>+</button>
+        <button type="button" onClick={() => count.update((n) => n + 1)}>
+          +
+        </button>
       </div>
       <p class="demo-meta">doubled: {() => doubled()}</p>
       <p class="demo-meta">history: {() => history().join(" → ")}</p>
@@ -100,8 +102,12 @@ function BatchDemo() {
       <p class="demo-value">{() => fullName()}</p>
       <p class="demo-meta">computed evaluations: {() => renderCount()}</p>
       <div class="demo-row">
-        <button onClick={swapBatched}>Swap (batched)</button>
-        <button onClick={swapUnbatched}>Swap (unbatched)</button>
+        <button type="button" onClick={swapBatched}>
+          Swap (batched)
+        </button>
+        <button type="button" onClick={swapUnbatched}>
+          Swap (unbatched)
+        </button>
       </div>
     </div>
   )
@@ -118,26 +124,30 @@ function ShowDemo() {
   return (
     <div class="demo-section">
       <h3>{"<Show>"} — Conditional Rendering</h3>
-      <p class="demo-desc">
-        Efficiently swaps DOM branches. No virtual DOM diffing needed.
-      </p>
+      <p class="demo-desc">Efficiently swaps DOM branches. No virtual DOM diffing needed.</p>
       <Show
         when={() => loggedIn()}
         fallback={
           <div class="demo-box">
             <p>Not logged in</p>
-            <button onClick={() => loggedIn.set(true)}>Log in</button>
+            <button type="button" onClick={() => loggedIn.set(true)}>
+              Log in
+            </button>
           </div>
         }
       >
         <div class="demo-box">
-          <p>Welcome, <strong>{() => username()}</strong></p>
+          <p>
+            Welcome, <strong>{() => username()}</strong>
+          </p>
           <input
             type="text"
             value={() => username()}
             onInput={(e: InputEvent) => username.set((e.target as HTMLInputElement).value)}
           />
-          <button onClick={() => loggedIn.set(false)}>Log out</button>
+          <button type="button" onClick={() => loggedIn.set(false)}>
+            Log out
+          </button>
         </div>
       </Show>
     </div>
@@ -162,8 +172,7 @@ function ForDemo() {
     { id: 4, name: "Dave", score: 78 },
   ])
 
-  const sortByScore = () =>
-    users.update((list) => [...list].sort((a, b) => b.score - a.score))
+  const sortByScore = () => users.update((list) => [...list].sort((a, b) => b.score - a.score))
 
   const sortByName = () =>
     users.update((list) => [...list].sort((a, b) => a.name.localeCompare(b.name)))
@@ -187,8 +196,7 @@ function ForDemo() {
     ])
   }
 
-  const removeUser = (id: number) =>
-    users.update((list) => list.filter((u) => u.id !== id))
+  const removeUser = (id: number) => users.update((list) => list.filter((u) => u.id !== id))
 
   // createSelector — O(1) selection tracking (only old + new row re-render on change)
   const selectedId = signal<number | null>(null)
@@ -201,10 +209,18 @@ function ForDemo() {
         LIS-based reconciler moves DOM nodes minimally. createSelector gives O(1) row selection.
       </p>
       <div class="demo-row">
-        <button onClick={sortByScore}>Sort by Score</button>
-        <button onClick={sortByName}>Sort by Name</button>
-        <button onClick={shuffle}>Shuffle</button>
-        <button onClick={addUser}>Add</button>
+        <button type="button" onClick={sortByScore}>
+          Sort by Score
+        </button>
+        <button type="button" onClick={sortByName}>
+          Sort by Name
+        </button>
+        <button type="button" onClick={shuffle}>
+          Shuffle
+        </button>
+        <button type="button" onClick={addUser}>
+          Add
+        </button>
       </div>
       <ul class="user-list">
         <For each={() => users()} by={(u) => u.id}>
@@ -212,10 +228,16 @@ function ForDemo() {
             <li
               class={() => (isSelected(user.id) ? "user-row selected" : "user-row")}
               onClick={() => selectedId.set(user.id === selectedId() ? null : user.id)}
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ")
+                  selectedId.set(user.id === selectedId() ? null : user.id)
+              }}
             >
               <span class="user-name">{user.name}</span>
               <span class="user-score">{user.score}</span>
-              <button class="remove" onClick={() => removeUser(user.id)}>×</button>
+              <button type="button" class="remove" onClick={() => removeUser(user.id)}>
+                ×
+              </button>
             </li>
           )}
         </For>
@@ -275,7 +297,7 @@ function LifecycleDemo() {
       <p class="demo-desc">
         onMount returns a cleanup function. createRef provides typed DOM access.
       </p>
-      <button onClick={() => visible.update((v) => !v)}>
+      <button type="button" onClick={() => visible.update((v) => !v)}>
         {() => (visible() ? "Unmount widget" : "Mount widget")}
       </button>
       <Show when={() => visible()}>
@@ -301,9 +323,7 @@ function HeadDemo() {
   return (
     <div class="demo-section">
       <h3>useHead — Document Head</h3>
-      <p class="demo-desc">
-        Reactive document title and meta tags. Check your browser tab!
-      </p>
+      <p class="demo-desc">Reactive document title and meta tags. Check your browser tab!</p>
       <input
         type="text"
         value={() => title()}
