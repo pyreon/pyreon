@@ -66,6 +66,14 @@
         border-radius: var(--radius);
         margin-bottom: 1rem;
         overflow: hidden;
+        padding-bottom: 1rem;
+      }
+      .demo > p,
+      .demo > button,
+      .demo > div:not(.demo-header),
+      .demo > ul {
+        margin-left: 1.25rem;
+        margin-right: 1.25rem;
       }
       .demo-header {
         display: flex;
@@ -111,8 +119,7 @@
         white-space: pre;
       }
 
-      .demo-body { padding: 1rem 1.25rem; }
-      .demo-body p { margin: 0.25rem 0; }
+      .demo > p { margin: 0.25rem 0; }
 
       button {
         font-family: inherit;

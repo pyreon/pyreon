@@ -46,7 +46,7 @@ function Demo(props: { title: string; apis: string; code: string; children?: any
       <Show when={showCode}>
         <pre class="code-preview"><code>{props.code}</code></pre>
       </Show>
-      <div class="demo-body">{(() => props.children)()}</div>
+      {props.children}
     </section>
   )
 }
