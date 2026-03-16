@@ -2,8 +2,15 @@
 
 ## Monorepo Structure
 - All packages under `packages/` with `@pyreon/*` scope
+- Examples under `examples/` — also part of the workspace
 - Workspace resolution via `"bun"` condition — no build step for dev
 - Dependencies between packages use workspace protocol
+
+## CI Requirements
+- Every package and example must have `"lint": "biome check ."` and `"typecheck": "tsc --noEmit"` scripts
+- Root `lint` and `typecheck` run via `bun run --filter='*'` to cover all workspaces
+- Always verify `bun run lint` and `bun run typecheck` pass before committing
+- Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts
 
 ## Package Layers (dependency order)
 1. `@pyreon/reactivity` — standalone, no framework deps

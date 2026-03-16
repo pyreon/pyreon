@@ -111,8 +111,17 @@ Enabled in root tsconfig — optional properties need explicit `| undefined` whe
 bun run test                          # all package tests (via workspace filter)
 cd packages/<name> && bun run test    # single package
 cd packages/<name> && bun run test -- --coverage  # with coverage
-bunx biome check --write .            # lint + format
-bunx tsc --noEmit                     # type check
 ```
 
 DOM-dependent packages (runtime-dom, router, head, compat layers) use `environment: "happy-dom"` in vitest config.
+
+## CI / Lint / Typecheck
+
+```bash
+bun run lint                          # lint all packages + examples (via workspace filter)
+bun run typecheck                     # typecheck all packages + examples (via workspace filter)
+bunx biome check --write .            # auto-fix lint + format
+```
+
+Every package and example must have `"lint": "biome check ."` and `"typecheck": "tsc --noEmit"` in scripts.
+Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts.
