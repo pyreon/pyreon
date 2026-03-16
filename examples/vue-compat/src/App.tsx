@@ -407,22 +407,29 @@ stop() // dispose the effect`}
 function LifecycleDemo() {
   const visible = ref(true)
   const log = ref("")
+  // Use a local string to avoid reading log.value inside hooks
+  // (reading inside a reactive tracking scope would create an infinite loop)
+  let logStr = ""
+  function appendLog(msg: string) {
+    logStr += msg
+    log.value = logStr
+  }
 
   function LifecycleChild() {
     onBeforeMount(() => {
-      log.value += "[beforeMount] "
+      appendLog("[beforeMount] ")
     })
     onMounted(() => {
-      log.value += "[mounted] "
+      appendLog("[mounted] ")
     })
     onUpdated(() => {
-      log.value += "[updated] "
+      appendLog("[updated] ")
     })
     onBeforeUnmount(() => {
-      log.value += "[beforeUnmount] "
+      appendLog("[beforeUnmount] ")
     })
     onUnmounted(() => {
-      log.value += "[unmounted] "
+      appendLog("[unmounted] ")
     })
     return <p class="highlight">Child is mounted</p>
   }
@@ -441,7 +448,13 @@ onUnmounted(() => log += "[unmounted] ")`}
         <button type="button" onClick={() => (visible.value = !visible.value)}>
           {() => (visible.value ? "Unmount child" : "Mount child")}
         </button>
-        <button type="button" onClick={() => (log.value = "")}>
+        <button
+          type="button"
+          onClick={() => {
+            logStr = ""
+            log.value = ""
+          }}
+        >
           Clear log
         </button>
       </div>
