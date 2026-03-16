@@ -71,7 +71,7 @@ setCount(5);
 // Update with function
 setCount(prev => prev + 1);`}
     >
-      <p>Count: <strong>{count}</strong></p>
+      <p>Count: <strong>{() => count()}</strong></p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
       <button type="button" onClick={() => setCount((c) => c - 1)}>Decrement</button>
       <button type="button" onClick={() => setCount(0)}>Reset</button>
@@ -100,7 +100,7 @@ createEffect(() => {
   console.log("count is", count());
 });`}
     >
-      <p>Count: <strong>{count}</strong></p>
+      <p>Count: <strong>{() => count()}</strong></p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
       <p class="muted">Log: {() => log().join(" | ")}</p>
     </Demo>
@@ -126,9 +126,9 @@ const quadrupled = createMemo(() => doubled() * 2);
 <span>{doubled()} / {quadrupled()}</span>`}
     >
       <p>
-        Count: <strong>{count}</strong> |
-        Doubled: <strong>{doubled}</strong> |
-        Quadrupled: <strong>{quadrupled}</strong>
+        Count: <strong>{() => count()}</strong> |
+        Doubled: <strong>{() => doubled()}</strong> |
+        Quadrupled: <strong>{() => quadrupled()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
     </Demo>
@@ -162,8 +162,8 @@ batch(() => {
   setLast("Smith");
 });`}
     >
-      <p>Name: <strong>{first}</strong> <strong>{last}</strong></p>
-      <p class="muted">Effect runs: {renderCount}</p>
+      <p>Name: <strong>{() => first()}</strong> <strong>{() => last()}</strong></p>
+      <p class="muted">Effect runs: {() => renderCount()}</p>
       <button
         type="button"
         onClick={() => {
@@ -183,12 +183,12 @@ batch(() => {
 
 function UntrackDemo() {
   const [tracked, setTracked] = createSignal(0)
-  const [untracked_val, setUntrackedVal] = createSignal(0)
+  const [untrackedVal, setUntrackedVal] = createSignal(0)
   const [log, setLog] = createSignal("")
 
   createEffect(() => {
     const t = tracked()
-    const u = untrack(() => untracked_val())
+    const u = untrack(() => untrackedVal())
     setLog(`Effect: tracked=${t}, untracked=${u}`)
   })
 
@@ -206,12 +206,12 @@ createEffect(() => {
 });`}
     >
       <button type="button" onClick={() => setTracked((v) => v + 1)}>
-        tracked++ ({tracked}) — triggers effect
+        tracked++ ({() => tracked()}) — triggers effect
       </button>
       <button type="button" onClick={() => setUntrackedVal((v) => v + 1)}>
-        untracked++ ({untracked_val}) — silent
+        untracked++ ({() => untrackedVal()}) — silent
       </button>
-      <p class="muted">{log}</p>
+      <p class="muted">{() => log()}</p>
     </Demo>
   )
 }
@@ -246,9 +246,9 @@ createEffect(on(
   }
 ));`}
     >
-      <button type="button" onClick={() => setA((v) => v + 1)}>a++ ({a}) — triggers</button>
-      <button type="button" onClick={() => setB((v) => v + 1)}>b++ ({b}) — silent</button>
-      <p class="muted">{result}</p>
+      <button type="button" onClick={() => setA((v) => v + 1)}>a++ ({() => a()}) — triggers</button>
+      <button type="button" onClick={() => setB((v) => v + 1)}>b++ ({() => b()}) — silent</button>
+      <p class="muted">{() => result()}</p>
     </Demo>
   )
 }
@@ -277,7 +277,7 @@ createComputed(() => {
   console.log("computed:", count());
 });`}
     >
-      <p>Count: <strong>{count}</strong></p>
+      <p>Count: <strong>{() => count()}</strong></p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
       <p class="muted">Log: {() => log().join(" | ")}</p>
     </Demo>
@@ -424,7 +424,7 @@ const isSelected = createSelector(selected);
           </button>
         ))}
       </div>
-      <p class="muted">Selected: {selected}</p>
+      <p class="muted">Selected: {() => selected()}</p>
     </Demo>
   )
 }
@@ -679,7 +679,7 @@ function RootDemo() {
 });`}
     >
       <button type="button" onClick={run}>Run createRoot</button>
-      <p class="muted">{result}</p>
+      <p class="muted">{() => result()}</p>
     </Demo>
   )
 }
@@ -718,7 +718,7 @@ setTimeout(() => {
 }, 1000);`}
     >
       <button type="button" onClick={run}>Capture & Run</button>
-      <p class="muted">{result}</p>
+      <p class="muted">{() => result()}</p>
     </Demo>
   )
 }
