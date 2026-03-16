@@ -3,7 +3,8 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "@pyreon/core",
-    "types": ["vite/client"]
+    "noEmit": true,
+    "types": ["vite/client", "node"]
   },
   "include": ["src"]
 }

@@ -35,6 +35,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "echo 'no tests yet'",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

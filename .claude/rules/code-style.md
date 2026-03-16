@@ -4,7 +4,10 @@
 - Biome v2 for linting and formatting
 - Config in root `biome.jsonc`
 - Biome v2 uses `files.includes` with `!` prefixes (not `files.ignore`)
-- Run: `bunx biome check --write .`
+- Every package and example has its own `"lint": "biome check ."` script
+- Run all: `bun run lint` (uses `--filter='*'` to run per-workspace)
+- Run single: `cd packages/<name> && bun run lint`
+- Auto-fix: `bunx biome check --write .`
 
 ## TypeScript
 - `exactOptionalPropertyTypes` enabled — optional properties need explicit `| undefined`

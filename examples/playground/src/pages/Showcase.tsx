@@ -1,4 +1,15 @@
-import { createContext, createRef, For, onMount, onUnmount, Show, useContext } from "@pyreon/core"
+import type { VNode } from "@pyreon/core"
+import {
+  createContext,
+  createRef,
+  For,
+  onMount,
+  onUnmount,
+  popContext,
+  pushContext,
+  Show,
+  useContext,
+} from "@pyreon/core"
 import { useHead } from "@pyreon/head/use-head"
 import { batch, computed, createSelector, effect, signal } from "@pyreon/reactivity"
 
@@ -24,13 +35,15 @@ function CodeBlock(props: { code: string }) {
 
 const ThemeContext = createContext<{ accent: () => string; toggle: () => void }>(null as never)
 
-function ThemeProvider(props: { children: unknown }) {
+function ThemeProvider(props: { children?: unknown }) {
   const colors = ["#7c6af7", "#f06060", "#4ecdc4", "#ffe66d"] as const
   const index = signal(0)
   const accent = computed(() => colors[index() % colors.length] as string)
   const toggle = () => index.update((i) => i + 1)
 
-  return <ThemeContext.Provider value={{ accent, toggle }}>{props.children}</ThemeContext.Provider>
+  pushContext(new Map([[ThemeContext.id, { accent, toggle }]]))
+  onUnmount(() => popContext())
+  return props.children as VNode | null
 }
 
 function ThemeSwatch() {
@@ -286,8 +299,10 @@ function ForDemo() {
         </button>
       </div>
       <ul class="user-list">
-        <For each={() => users()} by={(u) => u.id}>
-          {(user) => (
+        <For
+          each={() => users()}
+          by={(u) => u.id}
+          children={(user) => (
             <li
               class={() => (isSelected(user.id) ? "user-row selected" : "user-row")}
               onClick={() => selectedId.set(user.id === selectedId() ? null : user.id)}
@@ -303,7 +318,7 @@ function ForDemo() {
               </button>
             </li>
           )}
-        </For>
+        />
       </ul>
       <CodeBlock
         code={`const users = signal<User[]>([...])
