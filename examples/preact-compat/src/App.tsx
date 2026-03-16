@@ -174,7 +174,9 @@ function UseMemoDemo() {
   const [a, setA] = useState(3)
   const [b, setB] = useState(7)
   const sum = useMemo(() => a() + b())
-  const multiply = useCallback((x: number, y: number) => x * y)
+  const multiply = useCallback(
+    ((x: number, y: number) => x * y) as unknown as (...args: unknown[]) => unknown,
+  ) as unknown as (x: number, y: number) => number
 
   return (
     <Demo
@@ -332,7 +334,8 @@ function ThemeConsumer() {
   const theme = useContext(ThemeCtx)
   return (
     <p>
-      Current theme: <strong>{() => (typeof theme === "function" ? theme() : theme)}</strong>
+      Current theme:{" "}
+      <strong>{() => (typeof theme === "function" ? (theme as () => string)() : theme)}</strong>
     </p>
   )
 }
@@ -354,7 +357,7 @@ function ContextDemo() {
 // Consumer
 const theme = useContext(ThemeCtx)`}
     >
-      <ThemeCtx.Provider value={theme}>
+      <ThemeCtx.Provider value={theme as unknown as string}>
         <ThemeConsumer />
       </ThemeCtx.Provider>
       <div class="row">
@@ -417,7 +420,7 @@ function UtilsDemo() {
   const original = h("p", { class: "highlight" }, "Original element")
   const cloned = cloneElement(original, { class: "muted" })
   const nested = [["a", [null, "b"]], "c", false, undefined]
-  const flattened = toChildArray(nested)
+  const flattened = toChildArray(nested as import("@pyreon/core").VNodeChild[])
 
   return (
     <Demo

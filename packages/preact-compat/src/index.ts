@@ -11,8 +11,17 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, createRef, Fragment, h as pyreonH, useContext } from "@pyreon/core"
+import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
+import {
+  createRef,
+  Fragment,
+  onUnmount,
+  popContext,
+  pushContext,
+  createContext as pyreonCreateContext,
+  h as pyreonH,
+  useContext,
+} from "@pyreon/core"
 import { batch, signal } from "@pyreon/reactivity"
 import { hydrateRoot, mount } from "@pyreon/runtime-dom"
 
@@ -46,7 +55,26 @@ export function hydrate(vnode: VNodeChild, container: Element): void {
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
-export { createContext, useContext }
+export interface PreactContext<T> {
+  readonly id: symbol
+  readonly defaultValue: T
+  Provider: ComponentFn<{ value: T; children?: VNodeChild }>
+}
+
+/**
+ * Preact-compatible createContext — returns a context with a `.Provider` component.
+ */
+export function createContext<T>(defaultValue: T): PreactContext<T> {
+  const ctx = pyreonCreateContext<T>(defaultValue)
+  const Provider = ((props: { value: T; children?: VNodeChild }) => {
+    pushContext(new Map([[ctx.id, props.value]]))
+    onUnmount(() => popContext())
+    return props.children as VNode | null
+  }) as ComponentFn<{ value: T; children?: VNodeChild }>
+  return { ...ctx, Provider }
+}
+
+export { useContext }
 
 // ─── Refs ────────────────────────────────────────────────────────────────────
 

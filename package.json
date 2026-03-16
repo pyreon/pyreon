@@ -20,7 +20,7 @@
     "release": "bun run build && bun run scripts/publish.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.6",
+    "@biomejs/biome": "^2.4.7",
     "@changesets/changelog-github": "^0.6.0",
     "@changesets/cli": "^2.30.0",
     "@playwright/test": "^1.58.2",
@@ -34,7 +34,7 @@
     "happy-dom": "^20.8.4",
     "playwright": "^1.58.2",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^8.0.0",
     "vitest": "^4.1.0"
   }
 }

@@ -60,6 +60,34 @@
         color: var(--accent);
       }
 
+      button {
+        font-family: inherit;
+        font-size: 0.85rem;
+        background: var(--surface-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 14px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      button:hover { background: var(--border); border-color: var(--accent-dim); }
+      button.selected {
+        background: var(--accent-dim);
+        border-color: var(--accent);
+        color: white;
+      }
+
+      ul { list-style: none; padding-left: 0; }
+      li {
+        padding: 4px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.9rem;
+      }
+      li::before { content: "\2192 "; color: var(--accent); }
+
+      .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 0.5rem 0; }
+
       .demo {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -75,6 +103,7 @@
         margin-left: 1.25rem;
         margin-right: 1.25rem;
       }
+      .demo > p { margin: 0.25rem 0; }
       .demo-header {
         display: flex;
         justify-content: space-between;
@@ -118,36 +147,6 @@
         color: #a1a1aa;
         white-space: pre;
       }
-
-      .demo > p { margin: 0.25rem 0; }
-
-      button {
-        font-family: inherit;
-        font-size: 0.85rem;
-        background: var(--surface-2);
-        color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 6px 14px;
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
-      }
-      button:hover { background: var(--border); border-color: var(--accent-dim); }
-      button.selected {
-        background: var(--accent-dim);
-        border-color: var(--accent);
-        color: white;
-      }
-
-      .row { display: flex; gap: 6px; flex-wrap: wrap; margin: 0.5rem 0; }
-
-      ul { list-style: none; padding-left: 0; }
-      li {
-        padding: 4px 0;
-        border-bottom: 1px solid var(--border);
-        font-size: 0.9rem;
-      }
-      li::before { content: "\2192 "; color: var(--accent); }
 
       input {
         font-family: inherit;

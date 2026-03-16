@@ -35,7 +35,7 @@ function CodeBlock(props: { code: string }) {
 // ─── Suspense + Lazy Loading ─────────────────────────────────────────────────
 // Suspense shows a fallback while async content loads.
 
-function SuspenseDemo() {
+function _SuspenseDemo() {
   const shouldLoad = signal(false)
 
   function AsyncContent() {
@@ -169,7 +169,6 @@ function PortalDemo() {
       </button>
       <Show when={() => showModal()}>
         <Portal target={document.body}>
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal overlay dismiss */}
           <div
             class="modal-overlay"
             role="dialog"

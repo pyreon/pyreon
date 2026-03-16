@@ -1,4 +1,5 @@
 import { mount } from "@pyreon/runtime-dom"
 import App from "./App"
 
-mount(App, document.getElementById("app")!)
+const el = document.getElementById("app")
+if (el) mount(App, el)

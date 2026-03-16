@@ -441,9 +441,7 @@ function ForDemo() {
         </button>
       </div>
       <ul>
-        <For each={items} by={(item) => item.id}>
-          {(item) => <li>{item.text}</li>}
-        </For>
+        <For each={items} by={(item) => item.id} children={(item) => <li>{item.text}</li>} />
       </ul>
     </Demo>
   )
@@ -487,8 +485,12 @@ const isSelected = createSelector(selected);
 // ─── 12. mergeProps / splitProps ─────────────────────────────────────────────
 
 function Greeting(props: { greeting?: string; name: string; class?: string }) {
-  const merged = mergeProps({ greeting: "Hello" }, props)
-  const [local, rest] = splitProps(merged, ["greeting", "name"])
+  const merged = mergeProps({ greeting: "Hello" }, props) as {
+    greeting: string
+    name: string
+    class?: string
+  }
+  const [local, rest] = splitProps(merged, "greeting", "name")
 
   return (
     <p {...rest}>
@@ -669,7 +671,11 @@ function ErrorDemo() {
       <button type="button" onClick={() => setExplode(false)}>
         Reset
       </button>
-      <ErrorBoundary fallback={(err: Error) => <p class="error-msg">Caught: {err.message}</p>}>
+      <ErrorBoundary
+        fallback={(err: unknown, _reset: () => void) => (
+          <p class="error-msg">Caught: {(err as Error).message}</p>
+        )}
+      >
         <Show when={explode}>
           <Bomb />
         </Show>
