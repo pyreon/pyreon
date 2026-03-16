@@ -61,6 +61,21 @@
         "vite": "^7.3.1",
       },
     },
+    "examples/preact-compat": {
+      "name": "@pyreon/example-preact-compat",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/preact-compat": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.1",
+      },
+    },
     "examples/react-compat": {
       "name": "@pyreon/example-react-compat",
       "version": "0.0.1",
@@ -432,6 +447,8 @@
     "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/compiler"],
 
     "@pyreon/core": ["@pyreon/core@workspace:packages/core"],
+
+    "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
 
     "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/react-compat"],
 
