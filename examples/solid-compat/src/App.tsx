@@ -46,7 +46,7 @@ function Demo(props: { title: string; apis: string; code: string; children?: any
       <Show when={showCode}>
         <pre class="code-preview"><code>{props.code}</code></pre>
       </Show>
-      <div class="demo-body">{props.children}</div>
+      <div class="demo-body">{(() => props.children)()}</div>
     </section>
   )
 }
@@ -521,7 +521,7 @@ function ColoredBox(props: { color: string; children?: any }) {
   const resolved = children(() => props.children)
   return (
     <div style={`border: 2px solid ${props.color}; padding: 8px; margin: 4px 0; border-radius: 6px;`}>
-      {resolved}
+      {resolved()}
     </div>
   )
 }
