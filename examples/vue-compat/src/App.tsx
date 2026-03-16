@@ -407,12 +407,14 @@ stop() // dispose the effect`}
 function LifecycleDemo() {
   const visible = ref(true)
   const log = ref("")
-  // Use a local string to avoid reading log.value inside hooks
-  // (reading inside a reactive tracking scope would create an infinite loop)
+  // Defer signal writes out of the reactive tracking scope to avoid
+  // infinite mount/unmount cycles (hooks fire inside an effect)
   let logStr = ""
   function appendLog(msg: string) {
     logStr += msg
-    log.value = logStr
+    queueMicrotask(() => {
+      log.value = logStr
+    })
   }
 
   function LifecycleChild() {
