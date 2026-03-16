@@ -10,7 +10,7 @@ bun add @pyreon/react-compat
 
 ## Quick Start
 
-```ts
+```tsx
 // Replace:
 // import { useState, useEffect } from "react"
 // With:
@@ -22,6 +22,76 @@ function Counter() {
     console.log("count changed:", count())
   })
   return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+}
+```
+
+### Using Refs and Context
+
+```tsx
+import { useRef, useEffect, createContext, useContext } from "@pyreon/react-compat"
+
+const ThemeContext = createContext("light")
+
+function ThemeDisplay() {
+  const theme = useContext(ThemeContext)
+  const divRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    console.log("mounted, div is:", divRef.current)
+    return () => console.log("unmounted")
+  }, [])
+
+  return <div ref={divRef}>Current theme: {theme}</div>
+}
+
+function App() {
+  return (
+    <ThemeContext.Provider value="dark">
+      <ThemeDisplay />
+    </ThemeContext.Provider>
+  )
+}
+```
+
+### Reducer Pattern
+
+```tsx
+import { useReducer } from "@pyreon/react-compat"
+
+type Action = { type: "increment" } | { type: "decrement" }
+
+function reducer(state: number, action: Action) {
+  switch (action.type) {
+    case "increment": return state + 1
+    case "decrement": return state - 1
+  }
+}
+
+function Counter() {
+  const [count, dispatch] = useReducer(reducer, 0)
+  return (
+    <div>
+      <span>{count}</span>
+      <button onClick={() => dispatch({ type: "increment" })}>+</button>
+      <button onClick={() => dispatch({ type: "decrement" })}>-</button>
+    </div>
+  )
+}
+```
+
+### Lazy Loading
+
+```tsx
+import { lazy, Suspense } from "@pyreon/react-compat"
+
+const HeavyChart = lazy(() => import("./HeavyChart"))
+
+function Dashboard() {
+  return (
+    <Suspense fallback={<p>Loading chart...</p>}>
+      <HeavyChart data={[1, 2, 3]} />
+    </Suspense>
+  )
 }
 ```
 

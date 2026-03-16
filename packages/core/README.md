@@ -10,8 +10,8 @@ bun add @pyreon/core
 
 ## Quick Start
 
-```ts
-import { h, Fragment, onMount, onUnmount, createContext, useContext } from "@pyreon/core"
+```tsx
+import { onMount, onUnmount, createContext, useContext } from "@pyreon/core"
 
 function Counter() {
   onMount(() => {
@@ -19,7 +19,7 @@ function Counter() {
     return undefined
   })
 
-  return h("div", null, "Hello Pyreon")
+  return <div>Hello Pyreon</div>
 }
 ```
 

@@ -10,11 +10,12 @@ bun add @pyreon/preact-compat
 
 ## Quick Start
 
-```ts
+```tsx
 // Replace:
-// import { h, render, useState } from "preact/compat"
+// import { render } from "preact"
+// import { useState, useEffect } from "preact/hooks"
 // With:
-import { h, render } from "@pyreon/preact-compat"
+import { render } from "@pyreon/preact-compat"
 import { useState, useEffect } from "@pyreon/preact-compat/hooks"
 
 function Counter() {
@@ -22,10 +23,57 @@ function Counter() {
   useEffect(() => {
     console.log("count changed:", count())
   })
-  return h("button", { onClick: () => setCount((c) => c + 1) }, count)
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
 }
 
-render(h(Counter, null), document.getElementById("app")!)
+render(<Counter />, document.getElementById("app")!)
+```
+
+### Signals
+
+```tsx
+import { signal, computed, effect } from "@pyreon/preact-compat/signals"
+
+const count = signal(0)
+const doubled = computed(() => count.value * 2)
+
+function Display() {
+  effect(() => console.log("doubled:", doubled.value))
+  return (
+    <div>
+      <span>{doubled.value}</span>
+      <button onClick={() => count.value++}>+</button>
+    </div>
+  )
+}
+```
+
+### Class Components
+
+```tsx
+import { Component } from "@pyreon/preact-compat"
+
+interface Props { name: string }
+interface State { clicked: boolean }
+
+class Greeting extends Component<Props, State> {
+  state = { clicked: false }
+
+  handleClick = () => {
+    this.setState({ clicked: true })
+  }
+
+  render() {
+    return (
+      <div>
+        <p>Hello, {this.props.name}!</p>
+        <button onClick={this.handleClick}>
+          {this.state.clicked ? "Clicked" : "Click me"}
+        </button>
+      </div>
+    )
+  }
+}
 ```
 
 ## Key Differences from Preact

@@ -10,8 +10,7 @@ bun add @pyreon/head
 
 ## Quick Start
 
-```ts
-import { h } from "@pyreon/core"
+```tsx
 import { HeadProvider, useHead } from "@pyreon/head"
 
 const App = () => {
@@ -26,21 +25,25 @@ const App = () => {
     ],
   })
 
-  return h("div", null, "Hello")
+  return <div>Hello</div>
 }
 
 // Wrap your app with HeadProvider
-const Root = () => h(HeadProvider, null, h(App, null))
+const Root = () => (
+  <HeadProvider>
+    <App />
+  </HeadProvider>
+)
 ```
 
 ## SSR
 
 Use `renderWithHead` to capture head tags during server-side rendering:
 
-```ts
+```tsx
 import { renderWithHead } from "@pyreon/head"
 
-const { html, head } = renderWithHead(h(App, null))
+const { html, head } = renderWithHead(<App />)
 // `head` contains the serialized <title>, <meta>, <link>, etc.
 ```
 

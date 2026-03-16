@@ -36,14 +36,13 @@ export default defineConfig({
 
 Your server entry must export a `handler` (or default export) with the signature `(req: Request) => Promise<Response>`:
 
-```ts
+```tsx
 // src/entry-server.ts
 import { renderToString } from "@pyreon/runtime-server"
-import { h } from "@pyreon/core"
 import App from "./App"
 
 export async function handler(req: Request): Promise<Response> {
-  const html = await renderToString(h(App, null))
+  const html = await renderToString(<App />)
   return new Response(html, {
     headers: { "Content-Type": "text/html" },
   })

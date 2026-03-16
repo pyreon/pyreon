@@ -10,15 +10,14 @@ bun add @pyreon/runtime-server
 
 ## Quick Start
 
-```ts
+```tsx
 import { renderToString } from "@pyreon/runtime-server"
-import { h } from "@pyreon/core"
 
 function App() {
-  return h("h1", null, "Hello from SSR")
+  return <h1>Hello from SSR</h1>
 }
 
-const html = await renderToString(h(App, null))
+const html = await renderToString(<App />)
 // "<h1>Hello from SSR</h1>"
 ```
 
@@ -32,10 +31,10 @@ Render a VNode tree to a complete HTML string. Returns `Promise<string>`. Async 
 
 Render a VNode tree to a `ReadableStream<string>` for progressive HTML streaming. Synchronous subtrees are flushed immediately. Suspense boundaries are streamed out-of-order: the fallback is emitted first, then resolved children are sent as `<template>` elements with inline swap scripts.
 
-```ts
+```tsx
 import { renderToStream } from "@pyreon/runtime-server"
 
-const stream = renderToStream(h(App, null))
+const stream = renderToStream(<App />)
 return new Response(stream, {
   headers: { "Content-Type": "text/html" },
 })

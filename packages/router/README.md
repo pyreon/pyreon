@@ -10,9 +10,8 @@ bun add @pyreon/router
 
 ## Quick Start
 
-```ts
+```tsx
 import { createRouter, RouterProvider, RouterView, RouterLink } from "@pyreon/router"
-import { h } from "@pyreon/core"
 
 const router = createRouter({
   routes: [
@@ -27,30 +26,39 @@ const router = createRouter({
   ],
 })
 
-const App = () =>
-  h(RouterProvider, { router },
-    h(RouterView, null))
+const App = () => (
+  <RouterProvider router={router}>
+    <RouterView />
+  </RouterProvider>
+)
 ```
 
 ## Typed Params
 
 Route parameters are inferred from path strings:
 
-```ts
+```tsx
 const route = useRoute<"/user/:id">()
 route().params.id // string
 ```
 
 ## Named Navigation
 
-```ts
+```tsx
 const router = useRouter()
 router.push({ name: "user", params: { id: "42" } })
 ```
 
+## RouterLink
+
+```tsx
+<RouterLink to="/user/42">Profile</RouterLink>
+<RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+```
+
 ## Data Loaders
 
-```ts
+```tsx
 import { useLoaderData, prefetchLoaderData } from "@pyreon/router"
 
 const data = useLoaderData<typeof loader>()
