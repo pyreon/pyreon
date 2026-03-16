@@ -17,7 +17,7 @@
     "size": "bun run scripts/bundle-size.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "bun run build && bun run scripts/publish.ts"
+    "release": "bun run build && changeset publish"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
