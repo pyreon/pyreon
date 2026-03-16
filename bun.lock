@@ -91,6 +91,21 @@
         "vite": "^7.3.1",
       },
     },
+    "examples/vue-compat": {
+      "name": "@pyreon/example-vue-compat",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/vue-compat": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "typescript": "^5.9.3",
+        "vite": "^7.3.1",
+      },
+    },
     "packages/compiler": {
       "name": "@pyreon/compiler",
       "version": "0.1.1",
@@ -421,6 +436,8 @@
     "@pyreon/example-react-compat": ["@pyreon/example-react-compat@workspace:examples/react-compat"],
 
     "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/solid-compat"],
+
+    "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
 
     "@pyreon/head": ["@pyreon/head@workspace:packages/head"],
 
