@@ -50,6 +50,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

@@ -10,7 +10,7 @@
     "dev": "bun run --filter='*' dev",
     "test": "bun run --filter='*' test",
     "test:watch": "vitest",
-    "lint": "biome check .",
+    "lint": "bun run --filter='*' lint",
     "format": "biome format --write .",
     "check": "biome check --write .",
     "typecheck": "bun run --filter='*' typecheck",

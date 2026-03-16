@@ -1,3 +1,4 @@
+import type { VNode } from "@pyreon/core"
 import {
   createContext,
   createRef,
@@ -7,6 +8,8 @@ import {
   onUnmount,
   onUpdate,
   Portal,
+  popContext,
+  pushContext,
   Show,
   Suspense,
   useContext,
@@ -168,26 +171,29 @@ function PortalDemo() {
         Open Modal
       </button>
       <Show when={() => showModal()}>
-        <Portal target={document.body}>
-          <div
-            class="modal-overlay"
-            role="dialog"
-            onClick={() => showModal.set(false)}
-            onKeyDown={(e: KeyboardEvent) => {
-              if (e.key === "Escape") showModal.set(false)
-            }}
-          >
-            {/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation */}
-            {/* biome-ignore lint/a11y/useKeyWithClickEvents: overlay handles keyboard */}
-            <div class="modal-content" onClick={(e: MouseEvent) => e.stopPropagation()}>
-              <h4>Portal Modal</h4>
-              <p>This is rendered into document.body via Portal!</p>
-              <button type="button" onClick={() => showModal.set(false)}>
-                Close
-              </button>
+        <Portal
+          target={document.body}
+          children={
+            <div
+              class="modal-overlay"
+              role="dialog"
+              onClick={() => showModal.set(false)}
+              onKeyDown={(e: KeyboardEvent) => {
+                if (e.key === "Escape") showModal.set(false)
+              }}
+            >
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation */}
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: overlay handles keyboard */}
+              <div class="modal-content" onClick={(e: MouseEvent) => e.stopPropagation()}>
+                <h4>Portal Modal</h4>
+                <p>This is rendered into document.body via Portal!</p>
+                <button type="button" onClick={() => showModal.set(false)}>
+                  Close
+                </button>
+              </div>
             </div>
-          </div>
-        </Portal>
+          }
+        />
       </Show>
       <CodeBlock
         code={`const showModal = signal(false)
@@ -223,16 +229,14 @@ interface NotificationCtx {
 
 const NotificationContext = createContext<NotificationCtx>(null as never)
 
-function NotificationProvider(props: { children: unknown }) {
+function NotificationProvider(props: { children?: unknown }) {
   const notifications = signal<string[]>([])
   const add = (msg: string) => notifications.update((list) => [...list.slice(-4), msg])
   const clear = () => notifications.set([])
 
-  return (
-    <NotificationContext.Provider value={{ notifications, add, clear }}>
-      {props.children}
-    </NotificationContext.Provider>
-  )
+  pushContext(new Map([[NotificationContext.id, { notifications, add, clear }]]))
+  onUnmount(() => popContext())
+  return props.children as VNode | null
 }
 
 function NotificationBell() {
@@ -588,8 +592,10 @@ function DynamicListDemo() {
         </button>
       </div>
       <ul class="user-list">
-        <For each={() => items()} by={(item) => item.id}>
-          {(item) => (
+        <For
+          each={() => items()}
+          by={(item) => item.id}
+          children={(item) => (
             <li class="user-row">
               <span class="user-name">{item.label}</span>
               <span class="user-score">#{item.id}</span>
@@ -602,7 +608,7 @@ function DynamicListDemo() {
               </button>
             </li>
           )}
-        </For>
+        />
       </ul>
       <p class="demo-meta">Count: {() => items().length}</p>
       <pre class="log-output">{() => opLog().join("\n")}</pre>
@@ -822,14 +828,16 @@ function DataPanel() {
         Toggle Sort
       </button>
       <ul class="user-list" style="max-height: 200px; overflow-y: auto">
-        <For each={() => sorted()} by={(r) => r.id}>
-          {(row) => (
+        <For
+          each={() => sorted()}
+          by={(r) => r.id}
+          children={(row) => (
             <li class="user-row">
               <span class="user-name">{row.name}</span>
               <span class="user-score">{row.value}</span>
             </li>
           )}
-        </For>
+        />
       </ul>
     </div>
   )
