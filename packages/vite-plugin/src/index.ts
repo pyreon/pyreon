@@ -63,9 +63,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         resolve: {
           conditions: ["bun"],
         },
-        esbuild: {
-          jsx: "automatic",
-          jsxImportSource: "@pyreon/core",
+        oxc: {
+          jsx: {
+            runtime: "automatic",
+            importSource: "@pyreon/core",
+          },
         },
         // In SSR build mode, configure the entry
         ...(env.isSsrBuild && ssrConfig
