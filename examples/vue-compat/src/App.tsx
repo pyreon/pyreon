@@ -193,7 +193,7 @@ const doubled = computed({
         writable computed: <strong>{() => writable.value}</strong> (raw: {() => raw.value})
       </p>
       <div class="row">
-        <button type="button" onClick={() => ((writable as { value: number }).value = 20)}>
+        <button type="button" onClick={() => (writable.value = 20)}>
           Set to 20
         </button>
         <button type="button" onClick={() => raw.value++}>

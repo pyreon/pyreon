@@ -1,4 +1,5 @@
 import type { ComponentFn } from "@pyreon/core"
+
 export type { ComponentFn }
 
 // ─── Path param extraction ────────────────────────────────────────────────────

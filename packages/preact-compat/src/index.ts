@@ -154,20 +154,22 @@ export function cloneElement(vnode: VNode, props?: Props, ...children: VNodeChil
  * Flatten children into a flat array, filtering out null/undefined/boolean.
  * Matches Preact's `toChildArray` utility.
  */
-export function toChildArray(children: VNodeChild | VNodeChild[]): VNodeChild[] {
+type NestedChildren = VNodeChild | NestedChildren[]
+
+export function toChildArray(children: NestedChildren): VNodeChild[] {
   const result: VNodeChild[] = []
   flatten(children, result)
   return result
 }
 
-function flatten(value: VNodeChild | VNodeChild[], out: VNodeChild[]): void {
+function flatten(value: NestedChildren, out: VNodeChild[]): void {
   if (value == null || typeof value === "boolean") return
   if (Array.isArray(value)) {
     for (const child of value) {
-      flatten(child as VNodeChild, out)
+      flatten(child, out)
     }
   } else {
-    out.push(value)
+    out.push(value as VNodeChild)
   }
 }
 

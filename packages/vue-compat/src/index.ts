@@ -120,16 +120,25 @@ export interface ComputedRef<T = unknown> extends Ref<T> {
   readonly value: T
 }
 
+export interface WritableComputedRef<T = unknown> extends Ref<T> {
+  value: T
+}
+
 /**
  * Creates a computed ref. Supports both readonly and writable forms:
- *   - `computed(() => value)` — readonly
- *   - `computed({ get: () => value, set: (v) => ... })` — writable
+ *   - `computed(() => value)` — readonly ComputedRef
+ *   - `computed({ get, set })` — writable WritableComputedRef
  *
  * Backed by Pyreon's `computed()`, wrapped in a `.value` accessor.
  */
+export function computed<T>(getter: () => T): ComputedRef<T>
+export function computed<T>(options: {
+  get: () => T
+  set: (value: T) => void
+}): WritableComputedRef<T>
 export function computed<T>(
   fnOrOptions: (() => T) | { get: () => T; set: (value: T) => void },
-): ComputedRef<T> {
+): ComputedRef<T> | WritableComputedRef<T> {
   const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
   const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
   const c = pyreonComputed(getter)
@@ -448,7 +457,7 @@ export function defineComponent<P extends Props = Props>(
 /**
  * Re-export of Pyreon's `h()` function for creating VNodes.
  */
-export { pyreonH as h, Fragment }
+export { Fragment, pyreonH as h }
 
 // ─── createApp ────────────────────────────────────────────────────────────────
 

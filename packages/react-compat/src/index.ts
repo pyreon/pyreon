@@ -129,10 +129,8 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
  * Drop-in for React's `useCallback`.
  * In Pyreon, components run once so callbacks are never recreated — returns `fn` as-is.
  */
-export function useCallback<T extends (...args: unknown[]) => unknown>(
-  fn: T,
-  _deps?: unknown[],
-): T {
+// biome-ignore lint/suspicious/noExplicitAny: any is needed for contravariant function params
+export function useCallback<T extends (...args: any[]) => any>(fn: T, _deps?: unknown[]): T {
   return fn
 }
 
@@ -273,4 +271,4 @@ export { lazy } from "@pyreon/core"
  * Drop-in for React's `<Suspense>`.
  * Shows `fallback` while a `lazy()` child is still loading.
  */
-export { Suspense, ErrorBoundary }
+export { ErrorBoundary, Suspense }
