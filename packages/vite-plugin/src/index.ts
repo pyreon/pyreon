@@ -9,6 +9,14 @@
  *   import pyreon from "@pyreon/vite-plugin"
  *   export default { plugins: [pyreon()] }
  *
+ * ## Drop-in compat mode (zero code changes)
+ *
+ *   import pyreon from "@pyreon/vite-plugin"
+ *   export default { plugins: [pyreon({ compat: "react" })] }
+ *
+ * Aliases `react`, `react-dom`, `vue`, `solid-js`, or `preact` imports to
+ * Pyreon's compat packages — existing code works without changing imports.
+ *
  * ## SSR mode
  *
  *   import pyreon from "@pyreon/vite-plugin"
@@ -31,7 +39,23 @@ import type { Plugin, ViteDevServer } from "vite"
 const HMR_RUNTIME_ID = "\0pyreon/hmr-runtime"
 const HMR_RUNTIME_IMPORT = "virtual:pyreon/hmr-runtime"
 
+export type CompatFramework = "react" | "preact" | "vue" | "solid"
+
 export interface PyreonPluginOptions {
+  /**
+   * Alias imports from an existing framework to Pyreon's compat layer.
+   *
+   * This lets you drop Pyreon into an existing project with zero code changes —
+   * `import { useState } from "react"` will resolve to `@pyreon/react-compat`.
+   *
+   * @example
+   * pyreon({ compat: "react" })   // react + react-dom → @pyreon/react-compat
+   * pyreon({ compat: "vue" })     // vue → @pyreon/vue-compat
+   * pyreon({ compat: "solid" })   // solid-js → @pyreon/solid-compat
+   * pyreon({ compat: "preact" })  // preact + hooks + signals → @pyreon/preact-compat
+   */
+  compat?: CompatFramework
+
   /**
    * Enable SSR dev middleware.
    *
@@ -48,8 +72,32 @@ export interface PyreonPluginOptions {
   }
 }
 
+// ── Compat alias maps ─────────────────────────────────────────────────────────
+
+const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
+  react: {
+    react: "@pyreon/react-compat",
+    "react/jsx-runtime": "@pyreon/core/jsx-runtime",
+    "react/jsx-dev-runtime": "@pyreon/core/jsx-runtime",
+    "react-dom": "@pyreon/react-compat/dom",
+    "react-dom/client": "@pyreon/react-compat/dom",
+  },
+  preact: {
+    preact: "@pyreon/preact-compat",
+    "preact/hooks": "@pyreon/preact-compat/hooks",
+    "@preact/signals": "@pyreon/preact-compat/signals",
+  },
+  vue: {
+    vue: "@pyreon/vue-compat",
+  },
+  solid: {
+    "solid-js": "@pyreon/solid-compat",
+  },
+}
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
+  const compat = options?.compat
   let isBuild = false
 
   return {
@@ -59,8 +107,16 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     config(_, env) {
       isBuild = env.command === "build"
 
+      const aliases = compat
+        ? Object.entries(COMPAT_ALIASES[compat]).map(([find, replacement]) => ({
+            find,
+            replacement,
+          }))
+        : []
+
       return {
         resolve: {
+          alias: aliases,
           conditions: ["bun"],
         },
         oxc: {

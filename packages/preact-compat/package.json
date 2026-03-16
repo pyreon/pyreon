@@ -49,9 +49,9 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:*",
-    "@pyreon/reactivity": "workspace:*",
-    "@pyreon/runtime-dom": "workspace:*"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
