@@ -326,13 +326,13 @@ function UseIdDemo() {
 
 // ─── 7. Context ─────────────────────────────────────────────────────────────
 
-const ThemeCtx = createContext("dark")
+const ThemeCtx = createContext<() => string>(() => "dark")
 
 function ThemeConsumer() {
   const theme = useContext(ThemeCtx)
   return (
     <p>
-      Current theme: <strong>{() => (typeof theme === "function" ? theme() : theme)}</strong>
+      Current theme: <strong>{() => theme()}</strong>
     </p>
   )
 }
@@ -344,15 +344,16 @@ function ContextDemo() {
     <Demo
       title="Context"
       apis="createContext, useContext"
-      code={`const ThemeCtx = createContext("dark")
+      code={`const ThemeCtx = createContext<() => string>(() => "dark")
 
-// Provider
+// Provider — pass the signal getter
 <ThemeCtx.Provider value={theme}>
   <ThemeConsumer />
 </ThemeCtx.Provider>
 
 // Consumer
-const theme = useContext(ThemeCtx)`}
+const theme = useContext(ThemeCtx)
+theme() // read the value`}
     >
       <ThemeCtx.Provider value={theme}>
         <ThemeConsumer />

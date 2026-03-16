@@ -513,7 +513,11 @@ function ErrorDemo() {
           Reset
         </button>
       </div>
-      <ErrorBoundary fallback={(err: Error) => <p class="error-msg">Caught: {err.message}</p>}>
+      <ErrorBoundary
+        fallback={(err: unknown, _reset: () => void) => (
+          <p class="error-msg">Caught: {(err as Error).message}</p>
+        )}
+      >
         {() => (explode() ? <Bomb /> : <p class="muted">No errors yet</p>)}
       </ErrorBoundary>
     </Demo>

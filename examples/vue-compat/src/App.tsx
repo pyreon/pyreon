@@ -597,7 +597,7 @@ function DefineComponentDemo() {
   },
 })`}
     >
-      <Greeting name={() => name.value} />
+      <Greeting name={name.value} />
       <div class="row">
         <button type="button" onClick={() => (name.value = "Pyreon")}>
           name = "Pyreon"
