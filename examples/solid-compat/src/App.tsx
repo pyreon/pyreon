@@ -1,30 +1,30 @@
 import {
-  For,
-  Show,
-  Switch,
-  Match,
-  ErrorBoundary,
-  Suspense,
-  createSignal,
+  batch,
+  children,
+  createComputed,
+  createContext,
   createEffect,
   createMemo,
-  createRoot,
-  createContext,
-  useContext,
-  createSelector,
-  on,
-  batch,
-  untrack,
-  onMount,
-  onCleanup,
-  mergeProps,
-  splitProps,
-  children,
-  lazy,
-  getOwner,
-  runWithOwner,
   createRenderEffect,
-  createComputed,
+  createRoot,
+  createSelector,
+  createSignal,
+  ErrorBoundary,
+  For,
+  getOwner,
+  lazy,
+  Match,
+  mergeProps,
+  on,
+  onCleanup,
+  onMount,
+  runWithOwner,
+  Show,
+  Suspense,
+  Switch,
+  splitProps,
+  untrack,
+  useContext,
 } from "@pyreon/solid-compat"
 
 // ─── Code Preview Component ─────────────────────────────────────────────────
@@ -44,7 +44,9 @@ function Demo(props: { title: string; apis: string; code: string; children?: any
         </div>
       </div>
       <Show when={showCode}>
-        <pre class="code-preview"><code>{props.code}</code></pre>
+        <pre class="code-preview">
+          <code>{props.code}</code>
+        </pre>
       </Show>
       {props.children}
     </section>
@@ -71,10 +73,18 @@ setCount(5);
 // Update with function
 setCount(prev => prev + 1);`}
     >
-      <p>Count: <strong>{() => count()}</strong></p>
-      <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
-      <button type="button" onClick={() => setCount((c) => c - 1)}>Decrement</button>
-      <button type="button" onClick={() => setCount(0)}>Reset</button>
+      <p>
+        Count: <strong>{() => count()}</strong>
+      </p>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
+        Increment
+      </button>
+      <button type="button" onClick={() => setCount((c) => c - 1)}>
+        Decrement
+      </button>
+      <button type="button" onClick={() => setCount(0)}>
+        Reset
+      </button>
     </Demo>
   )
 }
@@ -100,8 +110,12 @@ createEffect(() => {
   console.log("count is", count());
 });`}
     >
-      <p>Count: <strong>{() => count()}</strong></p>
-      <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
+      <p>
+        Count: <strong>{() => count()}</strong>
+      </p>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
+        Increment
+      </button>
       <p class="muted">Log: {() => log().join(" | ")}</p>
     </Demo>
   )
@@ -126,11 +140,12 @@ const quadrupled = createMemo(() => doubled() * 2);
 <span>{doubled()} / {quadrupled()}</span>`}
     >
       <p>
-        Count: <strong>{() => count()}</strong> |
-        Doubled: <strong>{() => doubled()}</strong> |
+        Count: <strong>{() => count()}</strong> | Doubled: <strong>{() => doubled()}</strong> |
         Quadrupled: <strong>{() => quadrupled()}</strong>
       </p>
-      <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
+        Increment
+      </button>
     </Demo>
   )
 }
@@ -162,7 +177,9 @@ batch(() => {
   setLast("Smith");
 });`}
     >
-      <p>Name: <strong>{() => first()}</strong> <strong>{() => last()}</strong></p>
+      <p>
+        Name: <strong>{() => first()}</strong> <strong>{() => last()}</strong>
+      </p>
       <p class="muted">Effect runs: {() => renderCount()}</p>
       <button
         type="button"
@@ -246,8 +263,12 @@ createEffect(on(
   }
 ));`}
     >
-      <button type="button" onClick={() => setA((v) => v + 1)}>a++ ({() => a()}) — triggers</button>
-      <button type="button" onClick={() => setB((v) => v + 1)}>b++ ({() => b()}) — silent</button>
+      <button type="button" onClick={() => setA((v) => v + 1)}>
+        a++ ({() => a()}) — triggers
+      </button>
+      <button type="button" onClick={() => setB((v) => v + 1)}>
+        b++ ({() => b()}) — silent
+      </button>
       <p class="muted">{() => result()}</p>
     </Demo>
   )
@@ -282,8 +303,12 @@ createComputed(() => {
   console.log("computed:", count());
 });`}
     >
-      <p>Count: <strong>{() => count()}</strong></p>
-      <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
+      <p>
+        Count: <strong>{() => count()}</strong>
+      </p>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
+        Increment
+      </button>
       <p class="muted">renderEffect: {() => renderLog().join(" | ")}</p>
       <p class="muted">createComputed: {() => computedLog().join(" | ")}</p>
     </Demo>
@@ -339,9 +364,27 @@ function SwitchDemo() {
 </Switch>`}
     >
       <div class="row">
-        <button type="button" class={() => (tab() === "home" ? "selected" : "")} onClick={() => setTab("home")}>Home</button>
-        <button type="button" class={() => (tab() === "about" ? "selected" : "")} onClick={() => setTab("about")}>About</button>
-        <button type="button" class={() => (tab() === "contact" ? "selected" : "")} onClick={() => setTab("contact")}>Contact</button>
+        <button
+          type="button"
+          class={() => (tab() === "home" ? "selected" : "")}
+          onClick={() => setTab("home")}
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          class={() => (tab() === "about" ? "selected" : "")}
+          onClick={() => setTab("about")}
+        >
+          About
+        </button>
+        <button
+          type="button"
+          class={() => (tab() === "contact" ? "selected" : "")}
+          onClick={() => setTab("contact")}
+        >
+          Contact
+        </button>
       </div>
       <Switch>
         <Match when={() => tab() === "home"}>
@@ -384,12 +427,18 @@ function ForDemo() {
       <div class="row">
         <button
           type="button"
-          onClick={() => setItems((prev) => [...prev, { id: nextId++, text: `Task ${nextId - 1}` }])}
+          onClick={() =>
+            setItems((prev) => [...prev, { id: nextId++, text: `Task ${nextId - 1}` }])
+          }
         >
           Add
         </button>
-        <button type="button" onClick={() => setItems((prev) => prev.slice(0, -1))}>Remove Last</button>
-        <button type="button" onClick={() => setItems([])}>Clear</button>
+        <button type="button" onClick={() => setItems((prev) => prev.slice(0, -1))}>
+          Remove Last
+        </button>
+        <button type="button" onClick={() => setItems([])}>
+          Clear
+        </button>
       </div>
       <ul>
         <For each={items} by={(item) => item.id}>
@@ -526,7 +575,9 @@ function LifecycleDemo() {
 function ColoredBox(props: { color: string; children?: any }) {
   const resolved = children(() => props.children)
   return (
-    <div style={`border: 2px solid ${props.color}; padding: 8px; margin: 4px 0; border-radius: 6px;`}>
+    <div
+      style={`border: 2px solid ${props.color}; padding: 8px; margin: 4px 0; border-radius: 6px;`}
+    >
       {resolved()}
     </div>
   )
@@ -564,7 +615,11 @@ const ThemeContext = createContext<"light" | "dark">("light")
 
 function ThemeDisplay() {
   const theme = useContext(ThemeContext)
-  return <span class="badge">Theme: <strong>{theme}</strong></span>
+  return (
+    <span class="badge">
+      Theme: <strong>{theme}</strong>
+    </span>
+  )
 }
 
 function ContextDemo() {
@@ -582,7 +637,9 @@ function ThemeDisplay() {
 // Default value: "light"
 <ThemeDisplay />`}
     >
-      <p>Default context: <ThemeDisplay /></p>
+      <p>
+        Default context: <ThemeDisplay />
+      </p>
     </Demo>
   )
 }
@@ -606,8 +663,12 @@ function ErrorDemo() {
   <RiskyComponent />
 </ErrorBoundary>`}
     >
-      <button type="button" onClick={() => setExplode(true)}>Trigger Error</button>
-      <button type="button" onClick={() => setExplode(false)}>Reset</button>
+      <button type="button" onClick={() => setExplode(true)}>
+        Trigger Error
+      </button>
+      <button type="button" onClick={() => setExplode(false)}>
+        Reset
+      </button>
       <ErrorBoundary fallback={(err: Error) => <p class="error-msg">Caught: {err.message}</p>}>
         <Show when={explode}>
           <Bomb />
@@ -624,7 +685,7 @@ function ErrorDemo() {
 
 const LazyHeavy = lazy(
   () =>
-    new Promise<{ default: (props: {}) => any }>((resolve) => {
+    new Promise<{ default: (props: Record<string, never>) => any }>((resolve) => {
       setTimeout(() => {
         resolve({
           default: () => <p>Lazy component loaded!</p>,
@@ -648,7 +709,9 @@ function LazyDemo() {
   <LazyComponent />
 </Suspense>`}
     >
-      <button type="button" onClick={() => setShow(true)}>Load Component (1s delay)</button>
+      <button type="button" onClick={() => setShow(true)}>
+        Load Component (1s delay)
+      </button>
       <Show when={show}>
         <Suspense fallback={<p class="muted">Loading...</p>}>
           <LazyHeavy />
@@ -684,7 +747,9 @@ function RootDemo() {
   dispose();
 });`}
     >
-      <button type="button" onClick={run}>Run createRoot</button>
+      <button type="button" onClick={run}>
+        Run createRoot
+      </button>
       <p class="muted">{() => result()}</p>
     </Demo>
   )
@@ -723,7 +788,9 @@ setTimeout(() => {
   });
 }, 1000);`}
     >
-      <button type="button" onClick={run}>Capture & Run</button>
+      <button type="button" onClick={run}>
+        Capture & Run
+      </button>
       <p class="muted">{() => result()}</p>
     </Demo>
   )
@@ -737,8 +804,8 @@ export default function App() {
       <header>
         <h1>Pyreon — Solid Compat</h1>
         <p class="subtitle">
-          Complete SolidJS-compatible API running on Pyreon's reactive engine.
-          Every API below is a drop-in replacement — same signatures, same patterns.
+          Complete SolidJS-compatible API running on Pyreon's reactive engine. Every API below is a
+          drop-in replacement — same signatures, same patterns.
         </p>
         <p class="api-count">
           <strong>24 APIs</strong> demonstrated across <strong>19 interactive examples</strong>
