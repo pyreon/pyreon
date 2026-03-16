@@ -73,10 +73,8 @@ export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
  * Drop-in for Preact's `useCallback`.
  * Components run once in Pyreon — returns `fn` as-is.
  */
-export function useCallback<T extends (...args: unknown[]) => unknown>(
-  fn: T,
-  _deps?: unknown[],
-): T {
+// biome-ignore lint/suspicious/noExplicitAny: any is needed for contravariant function params
+export function useCallback<T extends (...args: any[]) => any>(fn: T, _deps?: unknown[]): T {
   return fn
 }
 

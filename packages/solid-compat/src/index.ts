@@ -131,8 +131,7 @@ export { runUntracked as untrack }
 
 // ─── onMount / onCleanup ─────────────────────────────────────────────────────
 
-export { pyreonOnMount as onMount }
-export { pyreonOnUnmount as onCleanup }
+export { pyreonOnMount as onMount, pyreonOnUnmount as onCleanup }
 
 // ─── createSelector ──────────────────────────────────────────────────────────
 
@@ -140,7 +139,15 @@ export { pyreonCreateSelector as createSelector }
 
 // ─── mergeProps ──────────────────────────────────────────────────────────────
 
-export function mergeProps<T extends object[]>(...sources: [...T]): T[number] {
+type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (
+  k: infer I,
+) => void
+  ? I
+  : never
+
+type MergeProps<T extends object[]> = UnionToIntersection<T[number]>
+
+export function mergeProps<T extends object[]>(...sources: [...T]): MergeProps<T> {
   const target = {} as Record<PropertyKey, unknown>
   for (const source of sources) {
     const descriptors = Object.getOwnPropertyDescriptors(source)
@@ -164,7 +171,7 @@ export function mergeProps<T extends object[]>(...sources: [...T]): T[number] {
       }
     }
   }
-  return target as T[number]
+  return target as MergeProps<T>
 }
 
 // ─── splitProps ──────────────────────────────────────────────────────────────
@@ -255,8 +262,7 @@ export function lazy<P extends Props>(
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 
-export { pyreonCreateContext as createContext }
-export { pyreonUseContext as useContext }
+export { pyreonCreateContext as createContext, pyreonUseContext as useContext }
 
 // ─── getOwner / runWithOwner ─────────────────────────────────────────────────
 
@@ -276,4 +282,4 @@ export function runWithOwner<T>(owner: EffectScope | null, fn: () => T): T {
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────
 
-export { Show, Switch, Match, For, Suspense, ErrorBoundary }
+export { ErrorBoundary, For, Match, Show, Suspense, Switch }

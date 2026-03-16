@@ -485,11 +485,7 @@ const isSelected = createSelector(selected);
 // ─── 12. mergeProps / splitProps ─────────────────────────────────────────────
 
 function Greeting(props: { greeting?: string; name: string; class?: string }) {
-  const merged = mergeProps({ greeting: "Hello" }, props) as {
-    greeting: string
-    name: string
-    class?: string
-  }
+  const merged = mergeProps({ greeting: "Hello" }, props)
   const [local, rest] = splitProps(merged, "greeting", "name")
 
   return (
