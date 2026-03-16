@@ -257,10 +257,15 @@ createEffect(on(
 
 function RenderEffectDemo() {
   const [count, setCount] = createSignal(0)
-  const [log, setLog] = createSignal<string[]>([])
+  const [renderLog, setRenderLog] = createSignal<string[]>([])
+  const [computedLog, setComputedLog] = createSignal<string[]>([])
 
   createRenderEffect(() => {
-    setLog((prev) => [...prev.slice(-3), `renderEffect: ${count()}`])
+    setRenderLog((prev) => [...prev.slice(-3), `render: ${count()}`])
+  })
+
+  createComputed(() => {
+    setComputedLog((prev) => [...prev.slice(-3), `computed: ${count()}`])
   })
 
   return (
@@ -279,7 +284,8 @@ createComputed(() => {
     >
       <p>Count: <strong>{() => count()}</strong></p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>Increment</button>
-      <p class="muted">Log: {() => log().join(" | ")}</p>
+      <p class="muted">renderEffect: {() => renderLog().join(" | ")}</p>
+      <p class="muted">createComputed: {() => computedLog().join(" | ")}</p>
     </Demo>
   )
 }
