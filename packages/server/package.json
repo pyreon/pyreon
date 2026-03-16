@@ -44,12 +44,12 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:*",
-    "@pyreon/head": "workspace:*",
-    "@pyreon/reactivity": "workspace:*",
-    "@pyreon/router": "workspace:*",
-    "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/runtime-server": "workspace:*"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/head": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

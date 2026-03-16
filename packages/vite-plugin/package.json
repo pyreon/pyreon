@@ -39,7 +39,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/compiler": "workspace:*"
+    "@pyreon/compiler": "workspace:^"
   },
   "peerDependencies": {
     "vite": ">=8.0.0"
