@@ -104,7 +104,8 @@
         "examples/benchmark/bench-profile5.ts",
         "examples/benchmark/src/main.ts",
         "scripts/bench.ts",
-        "scripts/bundle-size.ts"
+        "scripts/bundle-size.ts",
+        "scripts/publish.ts"
       ],
       "linter": {
         "rules": {

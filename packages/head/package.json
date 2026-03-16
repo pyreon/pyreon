@@ -54,13 +54,13 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "^0.2.0",
-    "@pyreon/reactivity": "^0.2.0",
-    "@pyreon/runtime-server": "^0.2.0"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "*",
-    "@pyreon/runtime-dom": "^0.2.0"
+    "@pyreon/runtime-dom": "workspace:^"
   },
   "publishConfig": {
     "access": "public"
