@@ -1,4 +1,4 @@
-import { reactive, readonly, ref, shallowReactive, toRaw } from "@pyreon/vue-compat"
+import { reactive, readonly, ref, shallowReactive, toRaw } from "vue"
 import Demo from "./Demo"
 
 export default function ReactiveDemo() {
@@ -22,7 +22,7 @@ toRaw(state) // original plain object
 try { frozen.secret = 0 } catch (e) { ... }`}
     >
       <p>
-        reactive: x=<strong>{() => state.x}</strong>, y=<strong>{() => state.y}</strong>
+        reactive: x=<strong>{state.x}</strong>, y=<strong>{state.y}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => state.x++}>
@@ -33,13 +33,13 @@ try { frozen.secret = 0 } catch (e) { ... }`}
         </button>
       </div>
       <p>
-        shallowReactive: <strong>{() => shallow.label}</strong>
+        shallowReactive: <strong>{shallow.label}</strong>
       </p>
       <button type="button" onClick={() => (shallow.label = `updated ${Date.now()}`)}>
         Update label
       </button>
       <p>
-        readonly.secret: <strong>{() => frozen.secret}</strong>
+        readonly.secret: <strong>{frozen.secret}</strong>
       </p>
       <button
         type="button"
@@ -53,10 +53,9 @@ try { frozen.secret = 0 } catch (e) { ... }`}
       >
         Try mutate readonly
       </button>
-      <p class="muted">{() => (errorMsg.value ? `Error: ${errorMsg.value}` : "")}</p>
+      <p class="muted">{errorMsg.value ? `Error: ${errorMsg.value}` : ""}</p>
       <p class="muted">
-        toRaw(state) === state: <strong>{() => String(toRaw(state) !== state)}</strong> (unwraps
-        proxy)
+        toRaw(state) === state: <strong>{String(toRaw(state) !== state)}</strong> (unwraps proxy)
       </p>
     </Demo>
   )

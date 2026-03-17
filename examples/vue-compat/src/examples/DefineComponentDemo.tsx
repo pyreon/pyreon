@@ -1,4 +1,4 @@
-import { defineComponent, ref } from "@pyreon/vue-compat"
+import { defineComponent, ref } from "vue"
 import Demo from "./Demo"
 
 const Greeting = defineComponent({
@@ -7,8 +7,8 @@ const Greeting = defineComponent({
     const exclaim = ref(false)
     return () => (
       <p>
-        Hello, <strong>{() => props.name}</strong>
-        {() => (exclaim.value ? "!" : ".")}
+        Hello, <strong>{props.name}</strong>
+        {exclaim.value ? "!" : "."}
         <button
           type="button"
           onClick={() => (exclaim.value = !exclaim.value)}

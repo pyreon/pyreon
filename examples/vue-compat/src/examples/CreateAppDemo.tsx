@@ -1,4 +1,4 @@
-import { createApp, ref } from "@pyreon/vue-compat"
+import { createApp, ref } from "vue"
 import Demo from "./Demo"
 
 export default function CreateAppDemo() {
@@ -47,7 +47,7 @@ unmount() // cleanup`}
           Unmount
         </button>
       </div>
-      <p class="muted">{() => (mounted.value ? "Mini app is mounted" : "Not mounted")}</p>
+      <p class="muted">{mounted.value ? "Mini app is mounted" : "Not mounted"}</p>
     </Demo>
   )
 }

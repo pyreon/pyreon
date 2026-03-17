@@ -93,6 +93,8 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   },
   vue: {
     vue: "@pyreon/vue-compat",
+    "vue/jsx-runtime": "@pyreon/vue-compat/jsx-runtime",
+    "vue/jsx-dev-runtime": "@pyreon/vue-compat/jsx-runtime",
   },
   solid: {
     "solid-js": "@pyreon/solid-compat",
@@ -149,6 +151,7 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
   if (id === "@pyreon/core/jsx-runtime" || id === "@pyreon/core/jsx-dev-runtime") {
     if (compat === "react") return "@pyreon/react-compat/jsx-runtime"
     if (compat === "preact") return "@pyreon/preact-compat/jsx-runtime"
+    if (compat === "vue") return "@pyreon/vue-compat/jsx-runtime"
   }
   return undefined
 }
@@ -189,7 +192,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
                 ? "@pyreon/react-compat"
                 : compat === "preact"
                   ? "@pyreon/preact-compat"
-                  : "@pyreon/core",
+                  : compat === "vue"
+                    ? "@pyreon/vue-compat"
+                    : "@pyreon/core",
           },
         },
         // In SSR build mode, configure the entry
@@ -234,7 +239,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // In compat mode, skip Pyreon's reactive JSX transform.
       // OXC's built-in JSX transform handles jsx() calls; the compat
       // JSX runtime wraps components for re-render support.
-      if (compat === "react" || compat === "preact") return
+      if (compat === "react" || compat === "preact" || compat === "vue") return
 
       const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal

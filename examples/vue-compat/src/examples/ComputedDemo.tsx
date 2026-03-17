@@ -1,4 +1,4 @@
-import { computed, ref } from "@pyreon/vue-compat"
+import { computed, ref } from "vue"
 import Demo from "./Demo"
 
 export default function ComputedDemo() {
@@ -30,7 +30,7 @@ const doubled = computed({
 })`}
     >
       <p>
-        fullName: <strong>{() => fullName.value}</strong>
+        fullName: <strong>{fullName.value}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => (firstName.value = "Pyreon")}>
@@ -41,7 +41,7 @@ const doubled = computed({
         </button>
       </div>
       <p>
-        writable computed: <strong>{() => writable.value}</strong> (raw: {() => raw.value})
+        writable computed: <strong>{writable.value}</strong> (raw: {raw.value})
       </p>
       <div class="row">
         <button type="button" onClick={() => (writable.value = 20)}>

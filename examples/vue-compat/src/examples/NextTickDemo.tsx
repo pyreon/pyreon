@@ -1,4 +1,4 @@
-import { nextTick, ref } from "@pyreon/vue-compat"
+import { nextTick, ref } from "vue"
 import Demo from "./Demo"
 
 export default function NextTickDemo() {
@@ -15,7 +15,7 @@ await nextTick()
 // DOM is now updated`}
     >
       <p>
-        count: <strong>{() => count.value}</strong>
+        count: <strong>{count.value}</strong>
       </p>
       <button
         type="button"
@@ -28,7 +28,7 @@ await nextTick()
       >
         Increment + nextTick
       </button>
-      <p class="muted">{() => message.value}</p>
+      <p class="muted">{message.value}</p>
     </Demo>
   )
 }

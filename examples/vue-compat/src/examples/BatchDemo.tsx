@@ -1,4 +1,4 @@
-import { batch, ref, watchEffect } from "@pyreon/vue-compat"
+import { batch, ref, watchEffect } from "vue"
 import Demo from "./Demo"
 
 export default function BatchDemo() {
@@ -29,8 +29,8 @@ batch(() => {
 })`}
     >
       <p>
-        a: <strong>{() => a.value}</strong> | b: <strong>{() => b.value}</strong> | effects ran:{" "}
-        <strong>{() => renderCount.value}</strong>
+        a: <strong>{a.value}</strong> | b: <strong>{b.value}</strong> | effects ran:{" "}
+        <strong>{renderCount.value}</strong>
       </p>
       <div class="row">
         <button

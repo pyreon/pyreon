@@ -1,4 +1,4 @@
-import { ref, watch } from "@pyreon/vue-compat"
+import { ref, watch } from "vue"
 import Demo from "./Demo"
 
 export default function WatchDemo() {
@@ -21,13 +21,13 @@ watch(source, (newVal, oldVal) => {
 })`}
     >
       <p>
-        source: <strong>{() => source.value}</strong>
+        source: <strong>{source.value}</strong>
       </p>
       <button type="button" onClick={() => source.value++}>
         Increment
       </button>
       <p class="muted">
-        watch log: <strong>{() => log.value || "(no changes yet)"}</strong>
+        watch log: <strong>{log.value || "(no changes yet)"}</strong>
       </p>
     </Demo>
   )

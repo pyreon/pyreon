@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "vue": ["../../packages/vue-compat/src/index.ts"],
+      "vue/*": ["../../packages/vue-compat/src/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

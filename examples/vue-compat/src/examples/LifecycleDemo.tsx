@@ -1,44 +1,49 @@
-import {
-  onBeforeMount,
-  onBeforeUnmount,
-  onMounted,
-  onUnmounted,
-  onUpdated,
-  ref,
-} from "@pyreon/vue-compat"
+import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref } from "vue"
 import Demo from "./Demo"
+
+/**
+ * Child component at module scope (stable function reference).
+ *
+ * Lifecycle hooks accumulate events synchronously in a plain variable.
+ * Only onMounted writes to the ref (one-shot). onUpdated cannot safely
+ * write to refs in the re-render model (it fires every re-render, so any
+ * ref write → scheduleRerender → re-render → onUpdated → infinite loop).
+ */
+function LifecycleChild() {
+  const events = ref("")
+  let eventStr = ""
+
+  onBeforeMount(() => {
+    eventStr += "[beforeMount] "
+  })
+  onMounted(() => {
+    eventStr += "[mounted] "
+    events.value = eventStr
+  })
+  onUpdated(() => {
+    // Cannot write to refs here — would cause infinite re-render loop.
+    // In the re-render model, onUpdated fires on every re-render.
+    console.log("[updated]")
+  })
+  onBeforeUnmount(() => {
+    eventStr += "[beforeUnmount] "
+  })
+  onUnmounted(() => {
+    eventStr += "[unmounted] "
+  })
+
+  return (
+    <>
+      <p class="highlight">Child is mounted</p>
+      <p class="muted">
+        events: <strong>{events.value || "(none)"}</strong>
+      </p>
+    </>
+  )
+}
 
 export default function LifecycleDemo() {
   const visible = ref(true)
-  const log = ref("")
-  // Defer signal writes out of the reactive tracking scope to avoid
-  // infinite mount/unmount cycles (hooks fire inside an effect)
-  let logStr = ""
-  function appendLog(msg: string) {
-    logStr += msg
-    queueMicrotask(() => {
-      log.value = logStr
-    })
-  }
-
-  function LifecycleChild() {
-    onBeforeMount(() => {
-      appendLog("[beforeMount] ")
-    })
-    onMounted(() => {
-      appendLog("[mounted] ")
-    })
-    onUpdated(() => {
-      appendLog("[updated] ")
-    })
-    onBeforeUnmount(() => {
-      appendLog("[beforeUnmount] ")
-    })
-    onUnmounted(() => {
-      appendLog("[unmounted] ")
-    })
-    return <p class="highlight">Child is mounted</p>
-  }
 
   return (
     <Demo
@@ -46,28 +51,16 @@ export default function LifecycleDemo() {
       apis="onMounted, onUnmounted, onUpdated, onBeforeMount, onBeforeUnmount"
       code={`onBeforeMount(() => log += "[beforeMount] ")
 onMounted(() => log += "[mounted] ")
-onUpdated(() => log += "[updated] ")
+onUpdated(() => console.log("[updated]"))
 onBeforeUnmount(() => log += "[beforeUnmount] ")
 onUnmounted(() => log += "[unmounted] ")`}
     >
       <div class="row">
         <button type="button" onClick={() => (visible.value = !visible.value)}>
-          {() => (visible.value ? "Unmount child" : "Mount child")}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            logStr = ""
-            log.value = ""
-          }}
-        >
-          Clear log
+          {visible.value ? "Unmount child" : "Mount child"}
         </button>
       </div>
-      {() => (visible.value ? <LifecycleChild /> : null)}
-      <p class="muted">
-        log: <strong>{() => log.value || "(none)"}</strong>
-      </p>
+      {visible.value ? <LifecycleChild /> : null}
     </Demo>
   )
 }
