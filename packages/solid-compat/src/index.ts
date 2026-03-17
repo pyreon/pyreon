@@ -1,6 +1,19 @@
-// @pyreon/solid-compat — SolidJS-compatible API shims running on Pyreon's reactive engine
+/**
+ * @pyreon/solid-compat
+ *
+ * Fully SolidJS-compatible API powered by Pyreon's reactive engine.
+ *
+ * Components re-render on state change via the compat JSX runtime wrapper.
+ * Signals use Pyreon's native signal system internally (enabling auto-tracking
+ * for createEffect/createMemo), while the component body runs inside
+ * `runUntracked` to prevent signal reads from being tracked by the reactive
+ * accessor. Only the version signal triggers re-renders.
+ *
+ * USAGE:
+ *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
+ */
 
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
 import {
   ErrorBoundary,
   For,
@@ -25,6 +38,7 @@ import {
   runUntracked,
   setCurrentScope,
 } from "@pyreon/reactivity"
+import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
 
 // ─── createSignal ────────────────────────────────────────────────────────────
 
@@ -32,10 +46,30 @@ export type SignalGetter<T> = () => T
 export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
 
 export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter<T>] {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = pyreonSignal<T>(initialValue)
+    }
+    const s = ctx.hooks[idx] as ReturnType<typeof pyreonSignal<T>>
+    const { scheduleRerender } = ctx
+
+    const getter: SignalGetter<T> = () => s()
+    const setter: SignalSetter<T> = (v) => {
+      if (typeof v === "function") {
+        s.update(v as (prev: T) => T)
+      } else {
+        s.set(v)
+      }
+      scheduleRerender()
+    }
+    return [getter, setter]
+  }
+
+  // Outside component — plain Pyreon signal
   const s = pyreonSignal<T>(initialValue)
-
   const getter: SignalGetter<T> = () => s()
-
   const setter: SignalSetter<T> = (v) => {
     if (typeof v === "function") {
       s.update(v as (prev: T) => T)
@@ -43,20 +77,53 @@ export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter
       s.set(v)
     }
   }
-
   return [getter, setter]
 }
 
 // ─── createEffect ────────────────────────────────────────────────────────────
 
+/**
+ * Solid-compatible `createEffect` — creates a reactive side effect.
+ *
+ * In component context: hook-indexed, only created on first render. The effect
+ * uses Pyreon's native tracking so signal reads are automatically tracked.
+ * A re-entrance guard prevents infinite loops from signal writes inside
+ * the effect.
+ */
 export function createEffect(fn: () => void): void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return // Already registered on first render
+
+    let running = false
+    const e = pyreonEffect(() => {
+      if (running) return
+      running = true
+      try {
+        fn()
+      } finally {
+        running = false
+      }
+    })
+    const stop = () => e.dispose()
+    ctx.hooks[idx] = stop
+    ctx.unmountCallbacks.push(stop)
+    return
+  }
+
+  // Outside component
   pyreonEffect(fn)
 }
 
 // ─── createRenderEffect ──────────────────────────────────────────────────────
 
+/**
+ * Solid-compatible `createRenderEffect` — same as createEffect.
+ * In Solid, this runs during the render phase; here it runs as a Pyreon effect.
+ */
 export function createRenderEffect(fn: () => void): void {
-  pyreonEffect(fn)
+  createEffect(fn)
 }
 
 // ─── createComputed (legacy Solid API) ───────────────────────────────────────
@@ -65,7 +132,24 @@ export { createEffect as createComputed }
 
 // ─── createMemo ──────────────────────────────────────────────────────────────
 
+/**
+ * Solid-compatible `createMemo` — derives a value from reactive sources.
+ *
+ * In component context: hook-indexed, only created on first render.
+ * Uses Pyreon's native computed for auto-tracking.
+ */
 export function createMemo<T>(fn: () => T): () => T {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = pyreonComputed(fn)
+    }
+    const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>
+    return () => c()
+  }
+
+  // Outside component
   const c = pyreonComputed(fn)
   return () => c()
 }
@@ -131,11 +215,64 @@ export { runUntracked as untrack }
 
 // ─── onMount / onCleanup ─────────────────────────────────────────────────────
 
-export { pyreonOnMount as onMount, pyreonOnUnmount as onCleanup }
+/**
+ * Solid-compatible `onMount` — runs once after the component's first render.
+ */
+type CleanupFn = () => void
+export function onMount(fn: () => CleanupFn | undefined): void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = true
+      ctx.pendingEffects.push({
+        fn: () => {
+          fn()
+          return undefined
+        },
+        deps: undefined,
+        cleanup: undefined,
+      })
+    }
+    return
+  }
+
+  // Outside component
+  pyreonOnMount(fn)
+}
+
+/**
+ * Solid-compatible `onCleanup` — registers a callback to run when the component unmounts.
+ */
+export function onCleanup(fn: () => void): void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = true
+      ctx.unmountCallbacks.push(fn)
+    }
+    return
+  }
+
+  // Outside component
+  pyreonOnUnmount(fn)
+}
 
 // ─── createSelector ──────────────────────────────────────────────────────────
 
-export { pyreonCreateSelector as createSelector }
+export function createSelector<T>(source: () => T): (key: T) => boolean {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx >= ctx.hooks.length) {
+      ctx.hooks[idx] = pyreonCreateSelector(source)
+    }
+    return ctx.hooks[idx] as (key: T) => boolean
+  }
+
+  return pyreonCreateSelector(source)
+}
 
 // ─── mergeProps ──────────────────────────────────────────────────────────────
 
@@ -224,37 +361,44 @@ export function children(fn: () => VNodeChild): () => VNodeChild {
 
 export function lazy<P extends Props>(
   loader: () => Promise<{ default: ComponentFn<P> }>,
-): ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
-  let resolved: ComponentFn<P> | null = null
-  let error: Error | null = null
+): LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
+  const loaded = pyreonSignal<ComponentFn<P> | null>(null)
+  const error = pyreonSignal<Error | null>(null)
   let promise: Promise<{ default: ComponentFn<P> }> | null = null
 
   const load = () => {
     if (!promise) {
       promise = loader()
         .then((mod) => {
-          resolved = mod.default
+          loaded.set(mod.default)
           return mod
         })
         .catch((err) => {
-          error = err instanceof Error ? err : new Error(String(err))
-          // Allow retry on next render by resetting the promise
+          const e = err instanceof Error ? err : new Error(String(err))
+          error.set(e)
           promise = null
-          throw error
+          throw e
         })
     }
     return promise
   }
 
+  // Uses Pyreon's __loading protocol — Suspense checks this to show fallback.
+  // __loading() triggers load() on first call so loading starts when Suspense
+  // first encounters the component (not at module load time, not on first render).
   const LazyComponent = ((props: P) => {
-    if (error) throw error
-    if (!resolved) {
-      // Throw the promise so Suspense can catch it
-      throw load()
-    }
-    return resolved(props)
-  }) as ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
+    const err = error()
+    if (err) throw err
+    const comp = loaded()
+    if (!comp) return null
+    return comp(props)
+  }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
 
+  LazyComponent.__loading = () => {
+    const isLoading = loaded() === null && error() === null
+    if (isLoading) load()
+    return isLoading
+  }
   LazyComponent.preload = load
 
   return LazyComponent

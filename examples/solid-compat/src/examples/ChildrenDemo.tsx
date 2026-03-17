@@ -1,4 +1,4 @@
-import { children } from "@pyreon/solid-compat"
+import { children } from "solid-js"
 import Demo from "./Demo"
 
 function ColoredBox(props: { color: string; children?: any }) {

@@ -74,6 +74,15 @@ export interface PyreonPluginOptions {
   }
 }
 
+// ── Compat JSX import sources ─────────────────────────────────────────────────
+
+const COMPAT_JSX_SOURCE: Record<CompatFramework, string> = {
+  react: "@pyreon/react-compat",
+  preact: "@pyreon/preact-compat",
+  vue: "@pyreon/vue-compat",
+  solid: "@pyreon/solid-compat",
+}
+
 // ── Compat alias maps ─────────────────────────────────────────────────────────
 
 const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
@@ -98,6 +107,8 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   },
   solid: {
     "solid-js": "@pyreon/solid-compat",
+    "solid-js/jsx-runtime": "@pyreon/solid-compat/jsx-runtime",
+    "solid-js/jsx-dev-runtime": "@pyreon/solid-compat/jsx-runtime",
   },
 }
 
@@ -152,6 +163,7 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
     if (compat === "react") return "@pyreon/react-compat/jsx-runtime"
     if (compat === "preact") return "@pyreon/preact-compat/jsx-runtime"
     if (compat === "vue") return "@pyreon/vue-compat/jsx-runtime"
+    if (compat === "solid") return "@pyreon/solid-compat/jsx-runtime"
   }
   return undefined
 }
@@ -187,14 +199,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         oxc: {
           jsx: {
             runtime: "automatic",
-            importSource:
-              compat === "react"
-                ? "@pyreon/react-compat"
-                : compat === "preact"
-                  ? "@pyreon/preact-compat"
-                  : compat === "vue"
-                    ? "@pyreon/vue-compat"
-                    : "@pyreon/core",
+            importSource: compat ? COMPAT_JSX_SOURCE[compat] : "@pyreon/core",
           },
         },
         // In SSR build mode, configure the entry
@@ -239,7 +244,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // In compat mode, skip Pyreon's reactive JSX transform.
       // OXC's built-in JSX transform handles jsx() calls; the compat
       // JSX runtime wraps components for re-render support.
-      if (compat === "react" || compat === "preact" || compat === "vue") return
+      if (compat === "react" || compat === "preact" || compat === "vue" || compat === "solid")
+        return
 
       const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal

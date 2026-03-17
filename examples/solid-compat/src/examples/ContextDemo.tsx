@@ -1,4 +1,4 @@
-import { createContext, useContext } from "@pyreon/solid-compat"
+import { createContext, useContext } from "solid-js"
 import Demo from "./Demo"
 
 const ThemeContext = createContext<"light" | "dark">("light")

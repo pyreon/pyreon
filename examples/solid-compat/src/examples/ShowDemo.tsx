@@ -1,4 +1,4 @@
-import { createSignal, Show } from "@pyreon/solid-compat"
+import { createSignal, Show } from "solid-js"
 import Demo from "./Demo"
 
 export default function ShowDemo() {
@@ -18,7 +18,7 @@ export default function ShowDemo() {
 </Show>`}
     >
       <button type="button" onClick={() => setVisible((v) => !v)}>
-        Toggle ({() => (visible() ? "visible" : "hidden")})
+        Toggle ({visible() ? "visible" : "hidden"})
       </button>
       <Show when={visible} fallback={<p class="muted">Nothing to see here</p>}>
         <p>Hello, I'm visible!</p>

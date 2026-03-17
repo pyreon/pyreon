@@ -1,4 +1,4 @@
-import { createSignal, ErrorBoundary, Show } from "@pyreon/solid-compat"
+import { createSignal, ErrorBoundary, Show } from "solid-js"
 import Demo from "./Demo"
 
 function Bomb() {

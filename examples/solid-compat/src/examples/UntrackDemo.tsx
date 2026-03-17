@@ -1,4 +1,4 @@
-import { createEffect, createSignal, untrack } from "@pyreon/solid-compat"
+import { createEffect, createSignal, untrack } from "solid-js"
 import Demo from "./Demo"
 
 export default function UntrackDemo() {
@@ -26,12 +26,12 @@ createEffect(() => {
 });`}
     >
       <button type="button" onClick={() => setTracked((v) => v + 1)}>
-        tracked++ ({() => tracked()}) — triggers effect
+        tracked++ ({tracked()}) — triggers effect
       </button>
       <button type="button" onClick={() => setUntrackedVal((v) => v + 1)}>
-        untracked++ ({() => untrackedVal()}) — silent
+        untracked++ ({untrackedVal()}) — silent
       </button>
-      <p class="muted">{() => log()}</p>
+      <p class="muted">{log()}</p>
     </Demo>
   )
 }

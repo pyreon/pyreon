@@ -1,4 +1,4 @@
-import { createRoot, createSignal } from "@pyreon/solid-compat"
+import { createRoot, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function RootDemo() {
@@ -28,7 +28,7 @@ export default function RootDemo() {
       <button type="button" onClick={run}>
         Run createRoot
       </button>
-      <p class="muted">{() => result()}</p>
+      <p class="muted">{result()}</p>
     </Demo>
   )
 }

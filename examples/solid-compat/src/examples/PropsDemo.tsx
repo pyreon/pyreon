@@ -1,4 +1,4 @@
-import { mergeProps, splitProps } from "@pyreon/solid-compat"
+import { mergeProps, splitProps } from "solid-js"
 import Demo from "./Demo"
 
 function Greeting(props: { greeting?: string; name: string; class?: string }) {

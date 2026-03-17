@@ -1,4 +1,4 @@
-import { createSignal, Match, Switch } from "@pyreon/solid-compat"
+import { createSignal, Match, Switch } from "solid-js"
 import Demo from "./Demo"
 
 export default function SwitchDemo() {
@@ -22,21 +22,21 @@ export default function SwitchDemo() {
       <div class="row">
         <button
           type="button"
-          class={() => (tab() === "home" ? "selected" : "")}
+          class={tab() === "home" ? "selected" : ""}
           onClick={() => setTab("home")}
         >
           Home
         </button>
         <button
           type="button"
-          class={() => (tab() === "about" ? "selected" : "")}
+          class={tab() === "about" ? "selected" : ""}
           onClick={() => setTab("about")}
         >
           About
         </button>
         <button
           type="button"
-          class={() => (tab() === "contact" ? "selected" : "")}
+          class={tab() === "contact" ? "selected" : ""}
           onClick={() => setTab("contact")}
         >
           Contact

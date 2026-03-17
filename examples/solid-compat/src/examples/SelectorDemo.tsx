@@ -1,4 +1,4 @@
-import { createSelector, createSignal } from "@pyreon/solid-compat"
+import { createSelector, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function SelectorDemo() {
@@ -22,14 +22,14 @@ const isSelected = createSelector(selected);
         {ids.map((id) => (
           <button
             type="button"
-            class={() => (isSelected(id) ? "selected" : "")}
+            class={isSelected(id) ? "selected" : ""}
             onClick={() => setSelected(id)}
           >
             Item {id}
           </button>
         ))}
       </div>
-      <p class="muted">Selected: {() => selected()}</p>
+      <p class="muted">Selected: {selected()}</p>
     </Demo>
   )
 }

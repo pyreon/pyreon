@@ -27,11 +27,30 @@ import {
   untrack,
   useContext,
 } from "../index"
+import type { RenderContext } from "../jsx-runtime"
+import { beginRender, endRender } from "../jsx-runtime"
 
-function _container(): HTMLElement {
-  const el = document.createElement("div")
-  document.body.appendChild(el)
-  return el
+// ─── Test helpers ─────────────────────────────────────────────────────────────
+
+/** Re-render helper: calls fn with the same ctx to simulate re-render */
+function createHookRunner() {
+  const ctx: RenderContext = {
+    hooks: [],
+    scheduleRerender: () => {},
+    pendingEffects: [],
+    pendingLayoutEffects: [],
+    unmounted: false,
+    unmountCallbacks: [],
+  }
+  return {
+    ctx,
+    run<T>(fn: () => T): T {
+      beginRender(ctx)
+      const result = fn()
+      endRender()
+      return result
+    },
+  }
 }
 
 describe("@pyreon/solid-compat", () => {
@@ -60,6 +79,36 @@ describe("@pyreon/solid-compat", () => {
     expect(count()).toBe(15)
   })
 
+  // ─── createSignal in component context ─────────────────────────────────
+
+  it("createSignal in component context stores in hooks", () => {
+    const runner = createHookRunner()
+    const [count] = runner.run(() => createSignal(42))
+    expect(count()).toBe(42)
+    // Re-render returns same signal from hooks
+    const [count2] = runner.run(() => createSignal(42))
+    expect(count2()).toBe(42)
+  })
+
+  it("createSignal setter in component context triggers scheduleRerender", () => {
+    const runner = createHookRunner()
+    let rerenders = 0
+    runner.ctx.scheduleRerender = () => {
+      rerenders++
+    }
+    const [, setCount] = runner.run(() => createSignal(0))
+    setCount(5)
+    expect(rerenders).toBe(1)
+  })
+
+  it("createSignal setter persists across re-renders", () => {
+    const runner = createHookRunner()
+    const [, setCount] = runner.run(() => createSignal(0))
+    setCount(99)
+    const [count2] = runner.run(() => createSignal(0))
+    expect(count2()).toBe(99)
+  })
+
   // ─── createEffect ─────────────────────────────────────────────────────
 
   it("createEffect tracks signal reads", () => {
@@ -74,6 +123,45 @@ describe("@pyreon/solid-compat", () => {
       expect(effectValue).toBe(7)
       dispose()
     })
+  })
+
+  it("createEffect in component context is hook-indexed", () => {
+    const runner = createHookRunner()
+    let effectRuns = 0
+    runner.run(() => {
+      const [count] = createSignal(0)
+      createEffect(() => {
+        count() // track
+        effectRuns++
+      })
+    })
+    expect(effectRuns).toBe(1)
+    // Re-render — effect should NOT be created again
+    runner.run(() => {
+      createSignal(0) // consume hook index
+      createEffect(() => {
+        effectRuns += 100 // should never run
+      })
+    })
+    expect(effectRuns).toBe(1) // still 1, not re-created
+  })
+
+  it("createEffect in component context is disposed on unmount", () => {
+    const runner = createHookRunner()
+    let effectRuns = 0
+    const [, setCount] = runner.run(() => {
+      const sig = createSignal(0)
+      createEffect(() => {
+        sig[0]()
+        effectRuns++
+      })
+      return sig
+    })
+    expect(effectRuns).toBe(1)
+    // Simulate unmount
+    for (const cb of runner.ctx.unmountCallbacks) cb()
+    setCount(5)
+    expect(effectRuns).toBe(1) // effect was disposed
   })
 
   // ─── createRenderEffect ────────────────────────────────────────────────
@@ -128,6 +216,21 @@ describe("@pyreon/solid-compat", () => {
       expect(doubled()).toBe(20)
       dispose()
     })
+  })
+
+  it("createMemo in component context is hook-indexed", () => {
+    const runner = createHookRunner()
+    const doubled = runner.run(() => {
+      const [count] = createSignal(5)
+      return createMemo(() => count() * 2)
+    })
+    expect(doubled()).toBe(10)
+    // Re-render returns same computed from hooks
+    const doubled2 = runner.run(() => {
+      createSignal(5) // consume hook index
+      return createMemo(() => 999) // fn ignored on re-render
+    })
+    expect(doubled2()).toBe(10) // still uses original computed
   })
 
   // ─── createRoot ───────────────────────────────────────────────────────
@@ -291,6 +394,21 @@ describe("@pyreon/solid-compat", () => {
     })
   })
 
+  it("createSelector in component context is hook-indexed", () => {
+    const runner = createHookRunner()
+    const isSelected = runner.run(() => {
+      const [selected] = createSignal(1)
+      return createSelector(selected)
+    })
+    expect(isSelected(1)).toBe(true)
+    // Re-render returns same selector
+    const isSelected2 = runner.run(() => {
+      createSignal(1) // consume hook index
+      return createSelector(() => 999) // fn ignored on re-render
+    })
+    expect(isSelected2).toBe(isSelected) // same instance
+  })
+
   // ─── mergeProps ───────────────────────────────────────────────────────
 
   it("mergeProps combines objects", () => {
@@ -369,30 +487,24 @@ describe("@pyreon/solid-compat", () => {
     expect(typeof Lazy.preload).toBe("function")
   })
 
-  it("lazy component throws promise before loaded (for Suspense)", () => {
+  it("lazy component uses __loading protocol before loaded (for Suspense)", () => {
     const Lazy = lazy(() => Promise.resolve({ default: () => h("div", null, "loaded") }))
-    let thrown: unknown
-    try {
-      Lazy({})
-    } catch (e) {
-      thrown = e
-    }
-    expect(thrown).toBeInstanceOf(Promise)
+    // Before resolved, __loading returns true and component returns null
+    expect(Lazy.__loading()).toBe(true)
+    const result = Lazy({})
+    expect(result).toBeNull()
   })
 
   it("lazy component renders after loading", async () => {
     const MyComp = () => h("div", null, "loaded")
     const Lazy = lazy(() => Promise.resolve({ default: MyComp }))
 
-    // Trigger load by catching the thrown promise, then await it
-    let thrown: unknown
-    try {
-      Lazy({})
-    } catch (e) {
-      thrown = e
-    }
-    await thrown
+    // Trigger load
+    Lazy({})
+    // Wait for promise to resolve
+    await Lazy.preload()
 
+    expect(Lazy.__loading()).toBe(false)
     const result = Lazy({})
     expect(result).not.toBeNull()
   })
@@ -473,6 +585,32 @@ describe("@pyreon/solid-compat", () => {
   it("onMount and onCleanup are functions", () => {
     expect(typeof onMount).toBe("function")
     expect(typeof onCleanup).toBe("function")
+  })
+
+  it("onMount in component context only runs on first render", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      onMount(() => undefined)
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
+    // Re-render — should NOT add another effect
+    runner.run(() => {
+      onMount(() => undefined)
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(0) // cleared by beginRender
+  })
+
+  it("onCleanup in component context registers unmount callback", () => {
+    const runner = createHookRunner()
+    let cleaned = false
+    runner.run(() => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    expect(cleaned).toBe(false)
+    for (const cb of runner.ctx.unmountCallbacks) cb()
+    expect(cleaned).toBe(true)
   })
 
   // ─── createContext / useContext ────────────────────────────────────────
@@ -643,5 +781,14 @@ describe("@pyreon/solid-compat", () => {
   it("runWithOwner returns value from fn", () => {
     const result = runWithOwner(null, () => "hello")
     expect(result).toBe("hello")
+  })
+
+  // ─── JSX runtime ───────────────────────────────────────────────────────
+
+  it("jsx-runtime exports are available", async () => {
+    const jsxRuntime = await import("../jsx-runtime")
+    expect(typeof jsxRuntime.jsx).toBe("function")
+    expect(typeof jsxRuntime.jsxs).toBe("function")
+    expect(typeof jsxRuntime.Fragment).toBe("symbol")
   })
 })

@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "solid-js": ["../../packages/solid-compat/src/index.ts"],
+      "solid-js/*": ["../../packages/solid-compat/src/*"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

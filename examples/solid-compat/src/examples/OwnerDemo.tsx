@@ -1,4 +1,4 @@
-import { createSignal, getOwner, runWithOwner } from "@pyreon/solid-compat"
+import { createSignal, getOwner, runWithOwner } from "solid-js"
 import Demo from "./Demo"
 
 export default function OwnerDemo() {
@@ -35,7 +35,7 @@ setTimeout(() => {
       <button type="button" onClick={run}>
         Capture & Run
       </button>
-      <p class="muted">{() => result()}</p>
+      <p class="muted">{result()}</p>
     </Demo>
   )
 }
