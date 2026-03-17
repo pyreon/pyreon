@@ -1,6 +1,7 @@
 /**
- * Publish all @pyreon/* packages using `bun publish`.
- * Resolves workspace:^ automatically. Skips already-published versions.
+ * Publish all @pyreon/* packages via `npm publish --provenance`.
+ * Resolves workspace:^ → ^X.Y.Z before publish, restores after.
+ * Skips already-published versions.
  *
  * Usage: bun run scripts/publish.ts [--dry-run]
  */
@@ -10,10 +11,8 @@ import { join } from "node:path"
 
 const PACKAGES_DIR = join(import.meta.dirname, "..", "packages")
 const dryRun = process.argv.includes("--dry-run")
-const isCI = !!process.env.CI
 const dirs = await readdir(PACKAGES_DIR, { withFileTypes: true })
 
-// Build version map for workspace resolution in CI
 const versionMap = new Map<string, string>()
 for (const dir of dirs.filter((d) => d.isDirectory())) {
   const pkg = JSON.parse(await readFile(join(PACKAGES_DIR, dir.name, "package.json"), "utf-8"))
@@ -56,32 +55,23 @@ for (const dir of dirs.filter((d) => d.isDirectory())) {
 
   console.log(`📦 ${pkg.name}@${pkg.version}`)
 
-  if (isCI) {
-    // CI: use npm publish with --provenance (OIDC auth), resolve workspace deps manually
-    const resolved = {
-      ...pkg,
-      dependencies: resolveWorkspaceDeps(pkg.dependencies),
-      peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies),
-    }
-    await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
-    try {
-      const args = ["npm", "publish", "--access", "public", "--provenance", "--ignore-scripts"]
-      if (dryRun) args.push("--dry-run")
-      const result = Bun.spawnSync(args, {
-        cwd: join(PACKAGES_DIR, dir.name),
-        stdout: "inherit",
-        stderr: "inherit",
-      })
-      if (result.exitCode !== 0) {
-        console.error(`Failed to publish ${pkg.name}`)
-        process.exit(1)
-      }
-    } finally {
-      await writeFile(pkgPath, raw)
-    }
-  } else {
-    // Local: bun publish handles workspace resolution natively
-    const args = ["bun", "publish", "--access", "public", "--ignore-scripts"]
+  const resolved = {
+    ...pkg,
+    dependencies: resolveWorkspaceDeps(pkg.dependencies),
+    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies),
+  }
+  await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
+
+  try {
+    const args = [
+      "bunx",
+      "npm",
+      "publish",
+      "--access",
+      "public",
+      "--provenance",
+      "--ignore-scripts",
+    ]
     if (dryRun) args.push("--dry-run")
     const result = Bun.spawnSync(args, {
       cwd: join(PACKAGES_DIR, dir.name),
@@ -92,6 +82,8 @@ for (const dir of dirs.filter((d) => d.isDirectory())) {
       console.error(`Failed to publish ${pkg.name}`)
       process.exit(1)
     }
+  } finally {
+    await writeFile(pkgPath, raw)
   }
 }
 
