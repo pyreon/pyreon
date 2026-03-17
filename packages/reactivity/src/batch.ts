@@ -3,7 +3,13 @@
 // even if multiple signals it depends on change within the same batch.
 
 let batchDepth = 0
-let pendingNotifications = new Set<() => void>()
+
+// Two pre-allocated Sets swapped on each flush — avoids allocating a new Set()
+// on every batch exit. The "active" set collects enqueued notifications; on flush
+// we swap to the other set and iterate the captured one, then clear it for reuse.
+let setA = new Set<() => void>()
+let setB = new Set<() => void>()
+let pendingNotifications = setA
 
 export function batch(fn: () => void): void {
   batchDepth++
@@ -12,12 +18,13 @@ export function batch(fn: () => void): void {
   } finally {
     batchDepth--
     if (batchDepth === 0) {
-      // Swap to a fresh Set before flushing so new enqueues during notification
-      // (e.g. from nested batch() calls) land in the new Set and are handled in
-      // the next flush pass, not mixed into the current iteration.
+      // Swap to the other pre-allocated Set before flushing so new enqueues
+      // during notification land in the alternate Set, not mixed into the
+      // current iteration.
       const flush = pendingNotifications
-      pendingNotifications = new Set()
+      pendingNotifications = flush === setA ? setB : setA
       for (const notify of flush) notify()
+      flush.clear()
     }
   }
 }

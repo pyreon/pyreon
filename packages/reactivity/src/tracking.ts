@@ -77,8 +77,19 @@ export function notifySubscribers(subscribers: Set<() => void>) {
     for (const sub of subscribers) enqueuePendingNotification(sub)
   } else {
     // Effects run inline and may call cleanupEffect (removes) + trackSubscriber (re-adds).
-    // Snapshot first to prevent the iterator from visiting re-inserted entries → infinite loop.
-    for (const sub of [...subscribers]) sub()
+    // Instead of snapshotting with [...subscribers] (allocates an array), we iterate the
+    // live Set but cap iterations at the original size to prevent infinite loops from
+    // re-inserted entries. This is safe because:
+    //   - cleanupEffect removes the effect from the Set (no double-fire)
+    //   - trackSubscriber may re-add it (but we stop after originalSize iterations)
+    //   - Any effects re-added during this pass are already up-to-date (just ran)
+    const originalSize = subscribers.size
+    let i = 0
+    for (const sub of subscribers) {
+      if (i >= originalSize) break
+      sub()
+      i++
+    }
   }
 }
 
