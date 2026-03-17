@@ -414,13 +414,20 @@ export function watch<T>(
       initialized = true
     }
 
+    let running = false
     const e = effect(() => {
-      const newValue = getter()
-      if (initialized) {
-        cb(newValue, oldValue)
+      if (running) return
+      running = true
+      try {
+        const newValue = getter()
+        if (initialized) {
+          cb(newValue, oldValue)
+        }
+        oldValue = newValue
+        initialized = true
+      } finally {
+        running = false
       }
-      oldValue = newValue
-      initialized = true
     })
 
     const stop = () => e.dispose()
@@ -442,13 +449,20 @@ export function watch<T>(
     initialized = true
   }
 
+  let running = false
   const e = effect(() => {
-    const newValue = getter()
-    if (initialized) {
-      cb(newValue, oldValue)
+    if (running) return
+    running = true
+    try {
+      const newValue = getter()
+      if (initialized) {
+        cb(newValue, oldValue)
+      }
+      oldValue = newValue
+      initialized = true
+    } finally {
+      running = false
     }
-    oldValue = newValue
-    initialized = true
   })
 
   return () => e.dispose()
@@ -466,14 +480,32 @@ export function watchEffect(fn: () => void): () => void {
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
 
-    const e = effect(fn)
+    let running = false
+    const e = effect(() => {
+      if (running) return
+      running = true
+      try {
+        fn()
+      } finally {
+        running = false
+      }
+    })
     const stop = () => e.dispose()
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
   }
 
-  const e = effect(fn)
+  let running = false
+  const e = effect(() => {
+    if (running) return
+    running = true
+    try {
+      fn()
+    } finally {
+      running = false
+    }
+  })
   return () => e.dispose()
 }
 
