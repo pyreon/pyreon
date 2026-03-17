@@ -1,11 +1,4 @@
-import {
-  onBeforeMount,
-  onBeforeUnmount,
-  onMounted,
-  onUnmounted,
-  onUpdated,
-  ref,
-} from "@pyreon/vue-compat"
+import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref } from "vue"
 import Demo from "./Demo"
 
 export default function LifecycleDemo() {
@@ -52,7 +45,7 @@ onUnmounted(() => log += "[unmounted] ")`}
     >
       <div class="row">
         <button type="button" onClick={() => (visible.value = !visible.value)}>
-          {() => (visible.value ? "Unmount child" : "Mount child")}
+          {visible.value ? "Unmount child" : "Mount child"}
         </button>
         <button
           type="button"
@@ -64,9 +57,9 @@ onUnmounted(() => log += "[unmounted] ")`}
           Clear log
         </button>
       </div>
-      {() => (visible.value ? <LifecycleChild /> : null)}
+      {visible.value ? <LifecycleChild /> : null}
       <p class="muted">
-        log: <strong>{() => log.value || "(none)"}</strong>
+        log: <strong>{log.value || "(none)"}</strong>
       </p>
     </Demo>
   )

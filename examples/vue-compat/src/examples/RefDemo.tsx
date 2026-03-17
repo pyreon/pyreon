@@ -1,4 +1,4 @@
-import { isRef, ref, shallowRef, triggerRef, unref } from "@pyreon/vue-compat"
+import { isRef, ref, shallowRef, triggerRef, unref } from "vue"
 import Demo from "./Demo"
 
 export default function RefDemo() {
@@ -23,7 +23,7 @@ isRef(count)    // true
 unref(count)    // 0 (unwrapped)`}
     >
       <p>
-        count: <strong>{() => count.value}</strong>
+        count: <strong>{count.value}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => count.value++}>
@@ -34,7 +34,7 @@ unref(count)    // 0 (unwrapped)`}
         </button>
       </div>
       <p>
-        shallowRef.n: <strong>{() => shallow.value.n}</strong> (mutate + triggerRef)
+        shallowRef.n: <strong>{shallow.value.n}</strong> (mutate + triggerRef)
       </p>
       <button
         type="button"
@@ -44,11 +44,11 @@ unref(count)    // 0 (unwrapped)`}
           triggerCount.value++
         }}
       >
-        Mutate & Trigger ({() => triggerCount.value}x)
+        Mutate & Trigger ({triggerCount.value}x)
       </button>
       <p class="muted">
-        isRef(count): <strong>{() => String(isRef(checkTarget))}</strong> | unref(count):{" "}
-        <strong>{() => unref(count)}</strong>
+        isRef(count): <strong>{String(isRef(checkTarget))}</strong> | unref(count):{" "}
+        <strong>{unref(count)}</strong>
       </p>
     </Demo>
   )

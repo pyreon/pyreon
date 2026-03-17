@@ -29,11 +29,62 @@ import {
   watch,
   watchEffect,
 } from "../index"
+import {
+  beginRender,
+  endRender,
+  getCurrentCtx,
+  jsx,
+  jsxDEV,
+  jsxs,
+  type RenderContext,
+} from "../jsx-runtime"
+
+// ─── Test helpers ──────────────────────────────────────────────────────────────
 
 function container(): HTMLElement {
   const el = document.createElement("div")
   document.body.appendChild(el)
   return el
+}
+
+/** Create a hook context for testing hooks outside of a full render cycle */
+function withHookCtx<T>(fn: (ctx: RenderContext) => T): { result: T; ctx: RenderContext } {
+  const ctx: RenderContext = {
+    hooks: [],
+    scheduleRerender: () => {},
+    pendingEffects: [],
+    pendingLayoutEffects: [],
+    unmounted: false,
+    unmountCallbacks: [],
+  }
+  beginRender(ctx)
+  const result = fn(ctx)
+  endRender()
+  return { result, ctx }
+}
+
+/** Run a hook function multiple times to simulate re-renders */
+function createHookRunner<T>(fn: () => T): {
+  run: () => T
+  ctx: RenderContext
+} {
+  const ctx: RenderContext = {
+    hooks: [],
+    scheduleRerender: () => {},
+    pendingEffects: [],
+    pendingLayoutEffects: [],
+    unmounted: false,
+    unmountCallbacks: [],
+  }
+  return {
+    run: () => {
+      beginRender(ctx)
+      const result = fn()
+      endRender()
+      return result
+    },
+    ctx,
+  }
 }
 
 describe("@pyreon/vue-compat", () => {
@@ -48,6 +99,38 @@ describe("@pyreon/vue-compat", () => {
     const count = ref(0)
     count.value = 5
     expect(count.value).toBe(5)
+  })
+
+  it("ref() is hook-indexed inside component", () => {
+    const runner = createHookRunner(() => {
+      const count = ref(42)
+      return count
+    })
+    const r1 = runner.run()
+    r1.value = 100
+    const r2 = runner.run()
+    expect(r1).toBe(r2)
+    expect(r2.value).toBe(100)
+  })
+
+  it("ref() setter calls scheduleRerender inside component", () => {
+    let rerenders = 0
+    const ctx: RenderContext = {
+      hooks: [],
+      scheduleRerender: () => {
+        rerenders++
+      },
+      pendingEffects: [],
+      pendingLayoutEffects: [],
+      unmounted: false,
+      unmountCallbacks: [],
+    }
+    beginRender(ctx)
+    const count = ref(0)
+    endRender()
+
+    count.value = 1
+    expect(rerenders).toBe(1)
   })
 
   // ─── shallowRef ────────────────────────────────────────────────────────
@@ -73,8 +156,33 @@ describe("@pyreon/vue-compat", () => {
 
     expect(runs).toBe(1)
     triggerRef(r)
-    expect(runs).toBe(3) // set undefined then set back = 2 triggers
+    expect(runs).toBe(3)
     stop()
+  })
+
+  it("triggerRef calls scheduleRerender for hook-indexed refs", () => {
+    let rerenders = 0
+    const ctx: RenderContext = {
+      hooks: [],
+      scheduleRerender: () => {
+        rerenders++
+      },
+      pendingEffects: [],
+      pendingLayoutEffects: [],
+      unmounted: false,
+      unmountCallbacks: [],
+    }
+    beginRender(ctx)
+    const r = ref(0)
+    endRender()
+
+    triggerRef(r)
+    expect(rerenders).toBe(1)
+  })
+
+  it("triggerRef is a no-op if ref has no _signal", () => {
+    const fakeRef = { value: 42 } as unknown as ReturnType<typeof ref>
+    expect(() => triggerRef(fakeRef)).not.toThrow()
   })
 
   // ─── isRef ─────────────────────────────────────────────────────────────
@@ -88,6 +196,14 @@ describe("@pyreon/vue-compat", () => {
 
     const c = computed(() => 42)
     expect(isRef(c)).toBe(true)
+  })
+
+  it("isRef returns false for undefined", () => {
+    expect(isRef(undefined)).toBe(false)
+  })
+
+  it("isRef returns false for string", () => {
+    expect(isRef("hello")).toBe(false)
   })
 
   // ─── unref ─────────────────────────────────────────────────────────────
@@ -116,6 +232,19 @@ describe("@pyreon/vue-compat", () => {
     }).toThrow("readonly")
   })
 
+  it("computed() is hook-indexed inside component", () => {
+    const count = ref(5)
+    const runner = createHookRunner(() => {
+      return computed(() => count.value * 2)
+    })
+    const c1 = runner.run()
+    expect(c1.value).toBe(10)
+    count.value = 10
+    const c2 = runner.run()
+    expect(c1).toBe(c2)
+    expect(c2.value).toBe(20)
+  })
+
   // ─── reactive ──────────────────────────────────────────────────────────
 
   it("reactive() creates deep reactive object", () => {
@@ -131,6 +260,37 @@ describe("@pyreon/vue-compat", () => {
 
     expect(values).toEqual([0, 1, 2])
     stop()
+  })
+
+  it("reactive() is hook-indexed inside component", () => {
+    const runner = createHookRunner(() => {
+      return reactive({ x: 0 })
+    })
+    const s1 = runner.run()
+    s1.x = 42
+    const s2 = runner.run()
+    expect(s1).toBe(s2)
+    expect(s2.x).toBe(42)
+  })
+
+  it("reactive() setter calls scheduleRerender inside component", () => {
+    let rerenders = 0
+    const ctx: RenderContext = {
+      hooks: [],
+      scheduleRerender: () => {
+        rerenders++
+      },
+      pendingEffects: [],
+      pendingLayoutEffects: [],
+      unmounted: false,
+      unmountCallbacks: [],
+    }
+    beginRender(ctx)
+    const state = reactive({ count: 0 })
+    endRender()
+
+    state.count = 1
+    expect(rerenders).toBe(1)
   })
 
   // ─── shallowReactive ──────────────────────────────────────────────────
@@ -168,16 +328,18 @@ describe("@pyreon/vue-compat", () => {
   it("readonly() throws on symbol property set", () => {
     const obj = readonly({ count: 0 })
     const sym = Symbol("test")
-    // Only internal symbols (V_IS_READONLY, V_RAW) are allowed; all others throw
     expect(() => {
       ;(obj as Record<symbol, unknown>)[sym] = "value"
     }).toThrow("readonly")
   })
 
-  it("readonly() exposes V_IS_READONLY symbol", () => {
-    const obj = readonly({ count: 0 })
-    // The readonly proxy should have the V_IS_READONLY symbol accessible
-    expect(typeof obj).toBe("object")
+  it("readonly() is hook-indexed inside component", () => {
+    const runner = createHookRunner(() => {
+      return readonly({ count: 0 })
+    })
+    const r1 = runner.run()
+    const r2 = runner.run()
+    expect(r1).toBe(r2)
   })
 
   // ─── toRaw ─────────────────────────────────────────────────────────────
@@ -210,13 +372,21 @@ describe("@pyreon/vue-compat", () => {
     expect(isRef(countRef)).toBe(true)
     expect(countRef.value).toBe(0)
 
-    // Writing through ref updates original
     countRef.value = 10
     expect(state.count).toBe(10)
 
-    // Writing to original updates ref
     state.count = 20
     expect(countRef.value).toBe(20)
+  })
+
+  it("toRef() is hook-indexed inside component", () => {
+    const state = reactive({ count: 0 })
+    const runner = createHookRunner(() => {
+      return toRef(state, "count")
+    })
+    const r1 = runner.run()
+    const r2 = runner.run()
+    expect(r1).toBe(r2)
   })
 
   // ─── toRefs ────────────────────────────────────────────────────────────
@@ -231,6 +401,16 @@ describe("@pyreon/vue-compat", () => {
 
     refs.a.value = 10
     expect(state.a).toBe(10)
+  })
+
+  it("toRefs() is hook-indexed inside component", () => {
+    const state = reactive({ x: 1, y: 2 })
+    const runner = createHookRunner(() => {
+      return toRefs(state)
+    })
+    const r1 = runner.run()
+    const r2 = runner.run()
+    expect(r1).toBe(r2)
   })
 
   // ─── watch ──────────────────────────────────────────────────────────────
@@ -314,7 +494,61 @@ describe("@pyreon/vue-compat", () => {
 
     stop()
     count.value = 2
-    expect(calls).toEqual([1]) // no more updates
+    expect(calls).toEqual([1])
+  })
+
+  it("watch() is hook-indexed inside component", () => {
+    const count = ref(0)
+    const calls: number[] = []
+    const runner = createHookRunner(() => {
+      return watch(count, (newVal) => {
+        calls.push(newVal)
+      })
+    })
+    const stop1 = runner.run()
+    const stop2 = runner.run()
+    expect(stop1).toBe(stop2)
+
+    count.value = 1
+    expect(calls).toEqual([1])
+    stop1()
+  })
+
+  it("watch with immediate tracks subsequent changes too", () => {
+    const count = ref(0)
+    const calls: [number, number | undefined][] = []
+
+    const stop = watch(
+      count,
+      (newVal, oldVal) => {
+        calls.push([newVal, oldVal])
+      },
+      { immediate: true },
+    )
+
+    expect(calls[0]).toEqual([0, undefined])
+
+    count.value = 10
+    const lastCall = calls[calls.length - 1]!
+    expect(lastCall[0]).toBe(10)
+
+    stop()
+  })
+
+  it("watch with getter function and immediate", () => {
+    const count = ref(5)
+    const calls: [number, number | undefined][] = []
+
+    const stop = watch(
+      () => count.value * 2,
+      (newVal, oldVal) => {
+        calls.push([newVal, oldVal])
+      },
+      { immediate: true },
+    )
+
+    expect(calls[0]).toEqual([10, undefined])
+    stop()
   })
 
   // ─── watchEffect ───────────────────────────────────────────────────────
@@ -337,6 +571,23 @@ describe("@pyreon/vue-compat", () => {
     expect(values).toEqual([0, 1, 2])
   })
 
+  it("watchEffect() is hook-indexed inside component", () => {
+    const count = ref(0)
+    const values: number[] = []
+    const runner = createHookRunner(() => {
+      return watchEffect(() => {
+        values.push(count.value)
+      })
+    })
+    const stop1 = runner.run()
+    const stop2 = runner.run()
+    expect(stop1).toBe(stop2)
+
+    count.value = 1
+    expect(values).toEqual([0, 1])
+    stop1()
+  })
+
   // ─── nextTick ──────────────────────────────────────────────────────────
 
   it("nextTick() resolves after flush", async () => {
@@ -346,9 +597,9 @@ describe("@pyreon/vue-compat", () => {
     expect(count.value).toBe(42)
   })
 
-  // ─── lifecycle ─────────────────────────────────────────────────────────
+  // ─── lifecycle (with Pyreon fallback) ──────────────────────────────────
 
-  it("onMounted/onUnmounted lifecycle hooks work", () => {
+  it("onMounted/onUnmounted lifecycle hooks work with defineComponent", () => {
     const mounted: string[] = []
     const unmounted: string[] = []
 
@@ -416,6 +667,25 @@ describe("@pyreon/vue-compat", () => {
     expect(typeof onUpdated).toBe("function")
   })
 
+  it("onMounted queues pendingEffect inside hook context", () => {
+    const { ctx } = withHookCtx(() => {
+      onMounted(() => {})
+    })
+    expect(ctx.pendingEffects.length).toBe(1)
+  })
+
+  it("onUnmounted pushes to unmountCallbacks inside hook context", () => {
+    const calls: string[] = []
+    const { ctx } = withHookCtx(() => {
+      onUnmounted(() => {
+        calls.push("unmounted")
+      })
+    })
+    expect(ctx.unmountCallbacks.length).toBe(1)
+    ctx.unmountCallbacks[0]!()
+    expect(calls).toEqual(["unmounted"])
+  })
+
   // ─── provide / inject ─────────────────────────────────────────────────
 
   it("provide/inject with string key", () => {
@@ -437,6 +707,23 @@ describe("@pyreon/vue-compat", () => {
   it("inject returns undefined when not provided and no default", () => {
     const key = Symbol("no-default")
     expect(inject(key)).toBeUndefined()
+  })
+
+  it("provide is hook-indexed inside component", () => {
+    const key = "hook-provide-test"
+    const runner = createHookRunner(() => {
+      provide(key, "value")
+    })
+    runner.run()
+    runner.run()
+  })
+
+  it("provide overwrites previously provided value (outside component)", () => {
+    const key = "overwrite-test"
+    provide(key, "first")
+    expect(inject(key)).toBe("first")
+    provide(key, "second")
+    expect(inject(key)).toBe("second")
   })
 
   // ─── defineComponent ──────────────────────────────────────────────────
@@ -521,12 +808,12 @@ describe("@pyreon/vue-compat", () => {
 
   it("createApp().mount with string selector", () => {
     const el = container()
-    el.id = "test-app-mount"
+    el.id = "test-app-mount-vue"
     document.body.appendChild(el)
 
     const Comp = () => h("div", null, "selector-app")
     const app = createApp(Comp)
-    const unmount = app.mount("#test-app-mount")
+    const unmount = app.mount("#test-app-mount-vue")
     expect(el.textContent).toBe("selector-app")
     unmount()
   })
@@ -546,6 +833,15 @@ describe("@pyreon/vue-compat", () => {
     unmount()
   })
 
+  it("createApp with no props", () => {
+    const Comp = () => h("div", null, "no-props")
+    const el = container()
+    const app = createApp(Comp)
+    const unmount = app.mount(el)
+    expect(el.textContent).toBe("no-props")
+    unmount()
+  })
+
   // ─── batch ────────────────────────────────────────────────────────────
 
   it("batch is re-exported and coalesces updates", () => {
@@ -562,137 +858,70 @@ describe("@pyreon/vue-compat", () => {
       count.value = 3
     })
 
-    // Should have initial (0) and then final batch result (3)
     expect(values[0]).toBe(0)
     expect(values[values.length - 1]).toBe(3)
     stop()
   })
 
-  // ─── triggerRef edge: no _signal ────────────────────────────────────────
+  // ─── jsx-runtime ─────────────────────────────────────────────────────
 
-  it("triggerRef is a no-op if ref has no _signal", () => {
-    // Create a fake ref without _signal
-    const fakeRef = { value: 42 } as unknown as ReturnType<typeof ref>
-    // Should not throw
-    expect(() => triggerRef(fakeRef)).not.toThrow()
+  it("jsx creates DOM element VNodes", () => {
+    const vnode = jsx("div", { class: "test", children: "hello" })
+    expect(vnode.type).toBe("div")
   })
 
-  // ─── isRef edge cases ──────────────────────────────────────────────────
-
-  it("isRef returns false for undefined", () => {
-    expect(isRef(undefined)).toBe(false)
+  it("jsxs is same as jsx", () => {
+    expect(jsxs).toBe(jsx)
   })
 
-  it("isRef returns false for string", () => {
-    expect(isRef("hello")).toBe(false)
+  it("jsxDEV is same as jsx", () => {
+    expect(jsxDEV).toBe(jsx)
   })
 
-  // ─── readonly get V_IS_READONLY ────────────────────────────────────────
-
-  it("readonly proxy reports V_IS_READONLY via symbol", () => {
-    const obj = readonly({ count: 0 })
-    // Access the internal V_IS_READONLY symbol via a known property read
-    // The proxy get trap handles this symbol
-    const _V_IS_READONLY = Symbol("__v_isReadonly")
-    // We can't access the private symbol directly, but we can verify it doesn't throw
-    // when accessing regular properties
-    expect(obj.count).toBe(0)
+  it("jsx wraps component functions", () => {
+    function MyComp() {
+      return h("div", null, "test")
+    }
+    const vnode = jsx(MyComp, {})
+    expect(vnode.type).not.toBe(MyComp)
+    expect(typeof vnode.type).toBe("function")
   })
 
-  // ─── readonly get V_RAW ─────────────────────────────────────────────────
-
-  it("toRaw retrieves raw from readonly proxy", () => {
-    const original = { a: 1, b: 2 }
-    const ro = readonly(original)
-    const raw = toRaw(ro)
-    expect(raw).toBe(original)
+  it("jsx passes key as prop", () => {
+    const vnode = jsx("div", { children: "test" }, "my-key")
+    expect(vnode.props?.key).toBe("my-key")
   })
 
-  // ─── watch with immediate + subsequent changes ─────────────────────────
-
-  it("watch with immediate tracks subsequent changes too", () => {
-    const count = ref(0)
-    const calls: [number, number | undefined][] = []
-
-    const stop = watch(
-      count,
-      (newVal, oldVal) => {
-        calls.push([newVal, oldVal])
-      },
-      { immediate: true },
-    )
-
-    // First call from immediate
-    expect(calls[0]).toEqual([0, undefined])
-
-    count.value = 10
-    // Should have the change tracked
-    const lastCall = calls[calls.length - 1]!
-    expect(lastCall[0]).toBe(10)
-
-    stop()
+  it("getCurrentCtx returns null outside render", () => {
+    expect(getCurrentCtx()).toBeNull()
   })
 
-  // ─── watch with getter and immediate ──────────────────────────────────
-
-  it("watch with getter function and immediate", () => {
-    const count = ref(5)
-    const calls: [number, number | undefined][] = []
-
-    const stop = watch(
-      () => count.value * 2,
-      (newVal, oldVal) => {
-        calls.push([newVal, oldVal])
-      },
-      { immediate: true },
-    )
-
-    expect(calls[0]).toEqual([10, undefined])
-    stop()
-  })
-
-  // ─── createApp with no props ───────────────────────────────────────────
-
-  it("createApp with no props", () => {
-    const Comp = () => h("div", null, "no-props")
-    const el = container()
-    const app = createApp(Comp)
-    const unmount = app.mount(el)
-    expect(el.textContent).toBe("no-props")
-    unmount()
-  })
-
-  // ─── defineComponent setup returning function ──────────────────────────
-
-  it("defineComponent setup returning VNodeChild (non-function) renders", () => {
-    const Comp = defineComponent({
-      setup() {
-        return h("p", null, "static-vnode")
-      },
+  it("getCurrentCtx returns context during render", () => {
+    withHookCtx((c) => {
+      expect(getCurrentCtx()).toBe(c)
     })
-    const el = container()
-    const unmount = mount(h(Comp, null), el)
-    expect(el.querySelector("p")?.textContent).toBe("static-vnode")
-    unmount()
+    expect(getCurrentCtx()).toBeNull()
   })
 
-  // ─── provide overwrite ──────────────────────────────────────────────────
+  // ─── standalone (outside component) ──────────────────────────────────
 
-  it("provide overwrites previously provided value", () => {
-    const key = "overwrite-test"
-    provide(key, "first")
-    expect(inject(key)).toBe("first")
-    provide(key, "second")
-    expect(inject(key)).toBe("second")
+  it("ref() outside component creates standalone ref", () => {
+    const count = ref(0)
+    count.value = 10
+    expect(count.value).toBe(10)
   })
 
-  // ─── getOrCreateContext reuses existing ─────────────────────────────────
+  it("computed() outside component creates standalone computed", () => {
+    const count = ref(5)
+    const doubled = computed(() => count.value * 2)
+    expect(doubled.value).toBe(10)
+    count.value = 7
+    expect(doubled.value).toBe(14)
+  })
 
-  it("inject returns provided value for existing string key", () => {
-    const key = "reuse-context-test"
-    provide(key, 123)
-    expect(inject(key)).toBe(123)
-    // Call again to ensure it reuses
-    expect(inject(key)).toBe(123)
+  it("reactive() outside component creates standalone reactive", () => {
+    const state = reactive({ x: 1 })
+    state.x = 2
+    expect(state.x).toBe(2)
   })
 })

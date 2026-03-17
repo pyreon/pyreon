@@ -1,4 +1,4 @@
-import { ref, watchEffect } from "@pyreon/vue-compat"
+import { ref, watchEffect } from "vue"
 import Demo from "./Demo"
 
 export default function WatchEffectDemo() {
@@ -26,7 +26,7 @@ const stop = watchEffect(() => {
 stop() // dispose the effect`}
     >
       <p>
-        x: <strong>{() => x.value}</strong> | y: <strong>{() => y.value}</strong>
+        x: <strong>{x.value}</strong> | y: <strong>{y.value}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => x.value++}>
@@ -46,8 +46,8 @@ stop() // dispose the effect`}
         </button>
       </div>
       <p class="muted">
-        effect: <strong>{() => effectLog.value}</strong>
-        {() => (stopped.value ? " (stopped)" : "")}
+        effect: <strong>{effectLog.value}</strong>
+        {stopped.value ? " (stopped)" : ""}
       </p>
     </Demo>
   )

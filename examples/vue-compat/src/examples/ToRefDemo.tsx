@@ -1,4 +1,4 @@
-import { reactive, toRef, toRefs } from "@pyreon/vue-compat"
+import { reactive, toRef, toRefs } from "vue"
 import Demo from "./Demo"
 
 export default function ToRefDemo() {
@@ -19,8 +19,8 @@ widthRef.value = 300  // also updates state.width
 height.value = 400    // also updates state.height`}
     >
       <p>
-        widthRef.value: <strong>{() => widthRef.value}</strong> | state.width:{" "}
-        <strong>{() => state.width}</strong>
+        widthRef.value: <strong>{widthRef.value}</strong> | state.width:{" "}
+        <strong>{state.width}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => (widthRef.value += 50)}>
@@ -31,8 +31,8 @@ height.value = 400    // also updates state.height`}
         </button>
       </div>
       <p>
-        height.value: <strong>{() => height.value}</strong> | state.height:{" "}
-        <strong>{() => state.height}</strong>
+        height.value: <strong>{height.value}</strong> | state.height:{" "}
+        <strong>{state.height}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => (height.value += 50)}>

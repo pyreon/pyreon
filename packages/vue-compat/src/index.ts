@@ -1,17 +1,20 @@
 /**
  * @pyreon/vue-compat
  *
- * Vue 3-compatible Composition API that runs on Pyreon's reactive engine.
+ * Vue 3-compatible Composition API that runs on Pyreon's reactive engine,
+ * using a hook-indexed re-render model.
  *
- * Allows you to write familiar Vue 3 Composition API code while getting Pyreon's
- * fine-grained reactivity and superior performance.
+ * All stateful APIs (ref, computed, reactive, watch, lifecycle hooks, etc.)
+ * use hook-indexing to persist state across re-renders. The component body
+ * re-executes when state changes (driven by a version signal in the JSX
+ * runtime), and hook-indexed calls return the same objects across renders.
  *
  * DIFFERENCES FROM VUE 3:
  *  - `deep` option in watch() is ignored — Pyreon tracks dependencies automatically.
  *  - `shallowReactive` uses per-property signals (still shallow, but Pyreon-flavored).
  *  - `readonly` returns a Proxy that throws on set (not Vue's readonly proxy).
  *  - `defineComponent` only supports Composition API (setup function), not Options API.
- *  - Components run ONCE (setup phase), not on every render.
+ *  - Components re-execute their body on state change (hook-indexed re-render model).
  *
  * USAGE:
  *   Replace `import { ref, computed, watch } from "vue"` with
@@ -39,6 +42,7 @@ import {
   signal,
 } from "@pyreon/reactivity"
 import { mount as pyreonMount } from "@pyreon/runtime-dom"
+import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
@@ -57,18 +61,43 @@ export interface Ref<T = unknown> {
  * Creates a reactive ref wrapping the given value.
  * Access via `.value` — reads track, writes trigger.
  *
- * Difference from Vue: backed by a Pyreon signal. No `__v_isShallow` distinction
- * at runtime since Pyreon signals are always shallow (deep reactivity is via stores).
+ * Inside a component: hook-indexed. The setter also calls `scheduleRerender()`.
+ * Outside a component: creates a standalone reactive ref.
  */
 export function ref<T>(value: T): Ref<T> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as Ref<T>
+
+    const s = signal(value)
+    const { scheduleRerender } = ctx
+    const r = {
+      [V_IS_REF]: true as const,
+      get value(): T {
+        return s()
+      },
+      set value(v: T) {
+        s.set(v)
+        scheduleRerender()
+      },
+      /** @internal — access underlying signal for triggerRef */
+      _signal: s,
+      _scheduleRerender: scheduleRerender,
+    }
+    ctx.hooks[idx] = r
+    return r as Ref<T>
+  }
+
+  // Outside component
   const s = signal(value)
   const r = {
     [V_IS_REF]: true as const,
     get value(): T {
       return s()
     },
-    set value(newValue: T) {
-      s.set(newValue)
+    set value(v: T) {
+      s.set(v)
     },
     /** @internal — access underlying signal for triggerRef */
     _signal: s,
@@ -78,8 +107,6 @@ export function ref<T>(value: T): Ref<T> {
 
 /**
  * Creates a shallow ref — same as `ref()` in Pyreon since signals are inherently shallow.
- *
- * Difference from Vue: identical to `ref()` — Pyreon signals don't perform deep conversion.
  */
 export function shallowRef<T>(value: T): Ref<T> {
   return ref(value)
@@ -89,12 +116,15 @@ export function shallowRef<T>(value: T): Ref<T> {
  * Force trigger a ref's subscribers, even if the value hasn't changed.
  */
 export function triggerRef<T>(r: Ref<T>): void {
-  const internal = r as Ref<T> & { _signal: Signal<T> }
+  const internal = r as Ref<T> & { _signal: Signal<T>; _scheduleRerender?: () => void }
   if (internal._signal) {
     // Force notify by setting the same value with Object.is bypass
     const current = internal._signal.peek()
     internal._signal.set(undefined as T)
     internal._signal.set(current)
+  }
+  if (internal._scheduleRerender) {
+    internal._scheduleRerender()
   }
 }
 
@@ -125,11 +155,9 @@ export interface WritableComputedRef<T = unknown> extends Ref<T> {
 }
 
 /**
- * Creates a computed ref. Supports both readonly and writable forms:
- *   - `computed(() => value)` — readonly ComputedRef
- *   - `computed({ get, set })` — writable WritableComputedRef
+ * Creates a computed ref. Supports both readonly and writable forms.
  *
- * Backed by Pyreon's `computed()`, wrapped in a `.value` accessor.
+ * Inside a component: hook-indexed.
  */
 export function computed<T>(getter: () => T): ComputedRef<T>
 export function computed<T>(options: {
@@ -139,6 +167,33 @@ export function computed<T>(options: {
 export function computed<T>(
   fnOrOptions: (() => T) | { get: () => T; set: (value: T) => void },
 ): ComputedRef<T> | WritableComputedRef<T> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as ComputedRef<T>
+
+    const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
+    const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
+    const c = pyreonComputed(getter)
+    const { scheduleRerender } = ctx
+    const r = {
+      [V_IS_REF]: true as const,
+      get value(): T {
+        return c()
+      },
+      set value(v: T) {
+        if (!setter) {
+          throw new Error("Cannot set value of a computed ref — computed refs are readonly")
+        }
+        setter(v)
+        scheduleRerender()
+      },
+    }
+    ctx.hooks[idx] = r
+    return r as ComputedRef<T>
+  }
+
+  // Outside component
   const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
   const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
   const c = pyreonComputed(getter)
@@ -159,41 +214,75 @@ export function computed<T>(
 
 // ─── Reactive / Readonly ──────────────────────────────────────────────────────
 
+// WeakMap to track raw objects behind reactive proxies
+const rawMap = new WeakMap<object, object>()
+
 /**
  * Creates a deeply reactive proxy from a plain object.
  * Backed by Pyreon's `createStore()`.
  *
- * Difference from Vue: uses Pyreon's fine-grained per-property signals.
- * Direct mutation triggers only affected signals.
+ * Inside a component: hook-indexed. Proxy wrapper intercepts sets to
+ * call `scheduleRerender()`.
  */
 export function reactive<T extends object>(obj: T): T {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as T
+
+    const proxy = createStore(obj)
+    rawMap.set(proxy as object, obj)
+    const { scheduleRerender } = ctx
+    const wrapped = new Proxy(proxy, {
+      set(target, key, value, receiver) {
+        const result = Reflect.set(target, key, value, receiver)
+        scheduleRerender()
+        return result
+      },
+      deleteProperty(target, key) {
+        const result = Reflect.deleteProperty(target, key)
+        scheduleRerender()
+        return result
+      },
+    })
+    rawMap.set(wrapped as object, obj)
+    ctx.hooks[idx] = wrapped
+    return wrapped as T
+  }
+
+  // Outside component
   const proxy = createStore(obj)
-  // Store raw reference for toRaw()
   rawMap.set(proxy as object, obj)
   return proxy
 }
 
 /**
- * Creates a shallow reactive proxy.
- * In Pyreon, `createStore` is already per-property (not deeply recursive for primitives),
- * but nested objects will be wrapped. For truly shallow behavior, use individual refs.
- *
- * Difference from Vue: backed by `createStore()` — same as `reactive()` in practice.
+ * Creates a shallow reactive proxy — same as `reactive()` in Pyreon.
  */
 export function shallowReactive<T extends object>(obj: T): T {
   return reactive(obj)
 }
 
-// WeakMap to track raw objects behind reactive proxies
-const rawMap = new WeakMap<object, object>()
-
 /**
  * Returns a readonly proxy that throws on mutation attempts.
  *
- * Difference from Vue: uses a simple Proxy with a set trap that throws,
- * rather than Vue's full readonly reactive system.
+ * Inside a component: hook-indexed.
  */
 export function readonly<T extends object>(obj: T): Readonly<T> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as Readonly<T>
+
+    const proxy = _createReadonlyProxy(obj)
+    ctx.hooks[idx] = proxy
+    return proxy
+  }
+
+  return _createReadonlyProxy(obj)
+}
+
+function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
   const proxy = new Proxy(obj, {
     get(target, key) {
       if (key === V_IS_READONLY) return true
@@ -214,8 +303,6 @@ export function readonly<T extends object>(obj: T): Readonly<T> {
 
 /**
  * Returns the raw (unwrapped) object behind a reactive or readonly proxy.
- *
- * Difference from Vue: only works for objects created via `reactive()` or `readonly()`.
  */
 export function toRaw<T extends object>(proxy: T): T {
   // Check readonly first
@@ -231,8 +318,24 @@ export function toRaw<T extends object>(proxy: T): T {
 /**
  * Creates a ref linked to a property of a reactive object.
  * Reading/writing the ref's `.value` reads/writes the original property.
+ *
+ * Inside a component: hook-indexed.
  */
 export function toRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<T[K]> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as Ref<T[K]>
+
+    const r = _createToRef(obj, key)
+    ctx.hooks[idx] = r
+    return r
+  }
+
+  return _createToRef(obj, key)
+}
+
+function _createToRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<T[K]> {
   const r = {
     [V_IS_REF]: true as const,
     get value(): T[K] {
@@ -248,11 +351,27 @@ export function toRef<T extends object, K extends keyof T>(obj: T, key: K): Ref<
 /**
  * Converts all properties of a reactive object into individual refs.
  * Each ref is linked to the original property (not a copy).
+ *
+ * Inside a component: hook-indexed (the entire result, not individual refs).
  */
 export function toRefs<T extends object>(obj: T): { [K in keyof T]: Ref<T[K]> } {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as { [K in keyof T]: Ref<T[K]> }
+
+    const result = {} as { [K in keyof T]: Ref<T[K]> }
+    for (const key of Object.keys(obj) as (keyof T)[]) {
+      // Create refs directly (not via exported toRef) to avoid extra hook index consumption
+      result[key] = _createToRef(obj, key)
+    }
+    ctx.hooks[idx] = result
+    return result
+  }
+
   const result = {} as { [K in keyof T]: Ref<T[K]> }
   for (const key of Object.keys(obj) as (keyof T)[]) {
-    result[key] = toRef(obj, key)
+    result[key] = _createToRef(obj, key)
   }
   return result
 }
@@ -270,16 +389,47 @@ type WatchSource<T> = Ref<T> | (() => T)
 
 /**
  * Watches a reactive source and calls `cb` when it changes.
- * Tracks old and new values.
  *
- * Difference from Vue: `deep` option is ignored — Pyreon tracks dependencies automatically.
- * Returns a stop function to dispose the watcher.
+ * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
 export function watch<T>(
   source: WatchSource<T>,
   cb: (newValue: T, oldValue: T | undefined) => void,
   options?: WatchOptions,
 ): () => void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
+
+    const getter = isRef(source) ? () => source.value : (source as () => T)
+    let oldValue: T | undefined
+    let initialized = false
+
+    if (options?.immediate) {
+      oldValue = undefined
+      const current = getter()
+      cb(current, oldValue)
+      oldValue = current
+      initialized = true
+    }
+
+    const e = effect(() => {
+      const newValue = getter()
+      if (initialized) {
+        cb(newValue, oldValue)
+      }
+      oldValue = newValue
+      initialized = true
+    })
+
+    const stop = () => e.dispose()
+    ctx.hooks[idx] = stop
+    ctx.unmountCallbacks.push(stop)
+    return stop
+  }
+
+  // Outside component
   const getter = isRef(source) ? () => source.value : (source as () => T)
   let oldValue: T | undefined
   let initialized = false
@@ -295,7 +445,6 @@ export function watch<T>(
   const e = effect(() => {
     const newValue = getter()
     if (initialized) {
-      // Only call cb if value actually changed (or on first tracked run)
       cb(newValue, oldValue)
     }
     oldValue = newValue
@@ -309,10 +458,21 @@ export function watch<T>(
  * Runs the given function reactively — re-executes whenever its tracked
  * dependencies change.
  *
- * Difference from Vue: identical to Pyreon's `effect()`.
- * Returns a stop function.
+ * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
 export function watchEffect(fn: () => void): () => void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
+
+    const e = effect(fn)
+    const stop = () => e.dispose()
+    ctx.hooks[idx] = stop
+    ctx.unmountCallbacks.push(stop)
+    return stop
+  }
+
   const e = effect(fn)
   return () => e.dispose()
 }
@@ -321,61 +481,95 @@ export function watchEffect(fn: () => void): () => void {
 
 /**
  * Registers a callback to run after the component is mounted.
- *
- * Difference from Vue: maps directly to Pyreon's `onMount()`.
- * In Pyreon there is no distinction between beforeMount and mounted.
+ * Hook-indexed: only registered on first render.
  */
 export function onMounted(fn: () => void): void {
-  onMount(() => {
-    fn()
-    return undefined
+  const ctx = getCurrentCtx()
+  if (!ctx) {
+    // Fallback: use Pyreon's lifecycle directly (e.g., inside defineComponent without jsx-runtime)
+    onMount(() => {
+      fn()
+      return undefined
+    })
+    return
+  }
+  const idx = getHookIndex()
+  if (idx < ctx.hooks.length) return // Already registered
+  ctx.hooks[idx] = true
+  // Schedule to run after render via microtask
+  ctx.pendingEffects.push({
+    fn: () => {
+      fn()
+      return undefined
+    },
+    deps: [],
+    cleanup: undefined,
   })
 }
 
 /**
- * Registers a callback to run before the component is unmounted.
- *
- * Difference from Vue: maps to Pyreon's `onUnmount()`.
- * In Pyreon there is no distinction between beforeUnmount and unmounted.
+ * Registers a callback to run when the component is unmounted.
+ * Hook-indexed: only registered on first render.
  */
 export function onUnmounted(fn: () => void): void {
-  onUnmount(fn)
+  const ctx = getCurrentCtx()
+  if (!ctx) {
+    onUnmount(fn)
+    return
+  }
+  const idx = getHookIndex()
+  if (idx < ctx.hooks.length) return // Already registered
+  ctx.hooks[idx] = true
+  ctx.unmountCallbacks.push(fn)
 }
 
 /**
- * Registers a callback to run after a reactive update.
- *
- * Difference from Vue: maps to Pyreon's `onUpdate()`.
+ * Registers a callback to run after a reactive update (not on initial mount).
+ * Hook-indexed: registered once, fires on each re-render.
  */
 export function onUpdated(fn: () => void): void {
-  onUpdate(fn)
+  const ctx = getCurrentCtx()
+  if (!ctx) {
+    onUpdate(fn)
+    return
+  }
+  const idx = getHookIndex()
+  if (idx >= ctx.hooks.length) {
+    // First render — just mark as registered, don't fire
+    ctx.hooks[idx] = true
+    return
+  }
+  // Re-render — schedule the callback
+  ctx.pendingEffects.push({
+    fn: () => {
+      fn()
+      return undefined
+    },
+    deps: undefined,
+    cleanup: undefined,
+  })
 }
 
 /**
  * Registers a callback to run before mount.
- * In Pyreon there is no pre-mount phase — maps to `onMount()`.
+ * In Pyreon there is no pre-mount phase — maps to `onMounted()`.
  */
 export function onBeforeMount(fn: () => void): void {
-  onMount(() => {
-    fn()
-    return undefined
-  })
+  onMounted(fn)
 }
 
 /**
  * Registers a callback to run before unmount.
- * In Pyreon there is no pre-unmount phase — maps to `onUnmount()`.
+ * In Pyreon there is no pre-unmount phase — maps to `onUnmounted()`.
  */
 export function onBeforeUnmount(fn: () => void): void {
-  onUnmount(fn)
+  onUnmounted(fn)
 }
 
 // ─── nextTick ─────────────────────────────────────────────────────────────────
 
 /**
  * Returns a Promise that resolves after all pending reactive updates have flushed.
- *
- * Difference from Vue: identical to Pyreon's `nextTick()`.
  */
 export function nextTick(): Promise<void> {
   return pyreonNextTick()
@@ -396,20 +590,26 @@ function getOrCreateContext<T>(key: string | symbol, defaultValue?: T) {
 /**
  * Provides a value to all descendant components.
  *
- * Difference from Vue: backed by Pyreon's context stack (pushContext/popContext).
- * Must be called during component setup. The value is scoped to the component
- * tree — not globally shared.
+ * Inside a component: hook-indexed, pushed once. Popped on unmount.
  */
 export function provide<T>(key: string | symbol, value: T): void {
-  const ctx = getOrCreateContext<T>(key)
-  pushContext(new Map([[ctx.id, value]]))
-  onUnmount(() => popContext())
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return // Already provided
+    ctx.hooks[idx] = true
+    const vueCtx = getOrCreateContext<T>(key)
+    pushContext(new Map([[vueCtx.id, value]]))
+    ctx.unmountCallbacks.push(() => popContext())
+    return
+  }
+  // Outside component — use Pyreon's provide directly
+  const vueCtx = getOrCreateContext<T>(key)
+  pushContext(new Map([[vueCtx.id, value]]))
 }
 
 /**
  * Injects a value provided by an ancestor component.
- *
- * Difference from Vue: backed by Pyreon's context system (useContext).
  */
 export function inject<T>(key: string | symbol, defaultValue?: T): T | undefined {
   const ctx = getOrCreateContext<T>(key)
@@ -429,9 +629,6 @@ interface ComponentOptions<P extends Props = Props> {
 /**
  * Defines a component using Vue 3 Composition API style.
  * Only supports the `setup()` function — Options API is not supported.
- *
- * Difference from Vue: returns a Pyreon `ComponentFn`. No template/render option —
- * the setup function should return a render function or VNode directly.
  */
 export function defineComponent<P extends Props = Props>(
   options: ComponentOptions<P> | ((props: P) => VNodeChild),
@@ -468,9 +665,6 @@ interface App {
 
 /**
  * Creates a Pyreon application instance — Vue 3 `createApp()` compatible.
- *
- * Difference from Vue: does not support plugins, directives, or global config.
- * The component receives `props` if provided.
  */
 export function createApp(component: ComponentFn, props?: Props): App {
   return {

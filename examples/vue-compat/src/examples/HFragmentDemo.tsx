@@ -1,4 +1,4 @@
-import { Fragment, h, ref } from "@pyreon/vue-compat"
+import { Fragment, h, ref } from "vue"
 import Demo from "./Demo"
 
 export default function HFragmentDemo() {
@@ -25,7 +25,7 @@ h(Fragment, null,
         h("p", { class: "muted" }, "Fragment child 2"),
       )}
       <p>
-        Items: <strong>{() => items.value.join(", ")}</strong>
+        Items: <strong>{items.value.join(", ")}</strong>
       </p>
       <button
         type="button"

@@ -28,6 +28,16 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./jsx-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
     }
   },
   "scripts": {

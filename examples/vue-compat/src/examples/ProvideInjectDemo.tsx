@@ -1,4 +1,4 @@
-import { inject, provide, ref } from "@pyreon/vue-compat"
+import { inject, provide, ref } from "vue"
 import Demo from "./Demo"
 
 const THEME_KEY = Symbol("theme")
@@ -28,7 +28,7 @@ function ThemeConsumer() {
   const theme = inject<{ value: string }>(THEME_KEY)
   return (
     <p>
-      Injected theme: <strong>{() => (theme ? theme.value : "none")}</strong>
+      Injected theme: <strong>{theme ? theme.value : "none"}</strong>
     </p>
   )
 }
