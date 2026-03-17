@@ -1,37 +1,40 @@
 import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref } from "vue"
 import Demo from "./Demo"
 
-export default function LifecycleDemo() {
-  const visible = ref(true)
-  const log = ref("")
-  // Defer signal writes out of the reactive tracking scope to avoid
-  // infinite mount/unmount cycles (hooks fire inside an effect)
-  let logStr = ""
-  function appendLog(msg: string) {
-    logStr += msg
+/**
+ * Child component defined at module scope so its function reference is stable
+ * across parent re-renders. Owns its own log ref to avoid writing to the
+ * parent's state from lifecycle hooks (which would cause infinite re-renders
+ * in the mountReactive full-unmount/remount model).
+ */
+function LifecycleChild() {
+  const events = ref("")
+  let eventStr = ""
+  function append(msg: string) {
+    eventStr += msg
     queueMicrotask(() => {
-      log.value = logStr
+      events.value = eventStr
     })
   }
 
-  function LifecycleChild() {
-    onBeforeMount(() => {
-      appendLog("[beforeMount] ")
-    })
-    onMounted(() => {
-      appendLog("[mounted] ")
-    })
-    onUpdated(() => {
-      appendLog("[updated] ")
-    })
-    onBeforeUnmount(() => {
-      appendLog("[beforeUnmount] ")
-    })
-    onUnmounted(() => {
-      appendLog("[unmounted] ")
-    })
-    return <p class="highlight">Child is mounted</p>
-  }
+  onBeforeMount(() => append("[beforeMount] "))
+  onMounted(() => append("[mounted] "))
+  onUpdated(() => append("[updated] "))
+  onBeforeUnmount(() => append("[beforeUnmount] "))
+  onUnmounted(() => append("[unmounted] "))
+
+  return (
+    <>
+      <p class="highlight">Child is mounted</p>
+      <p class="muted">
+        events: <strong>{events.value || "(none)"}</strong>
+      </p>
+    </>
+  )
+}
+
+export default function LifecycleDemo() {
+  const visible = ref(true)
 
   return (
     <Demo
@@ -47,20 +50,8 @@ onUnmounted(() => log += "[unmounted] ")`}
         <button type="button" onClick={() => (visible.value = !visible.value)}>
           {visible.value ? "Unmount child" : "Mount child"}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            logStr = ""
-            log.value = ""
-          }}
-        >
-          Clear log
-        </button>
       </div>
       {visible.value ? <LifecycleChild /> : null}
-      <p class="muted">
-        log: <strong>{log.value || "(none)"}</strong>
-      </p>
     </Demo>
   )
 }
