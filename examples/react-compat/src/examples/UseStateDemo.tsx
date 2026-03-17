@@ -1,4 +1,4 @@
-import { useState } from "@pyreon/react-compat"
+import { useState } from "react"
 import Demo from "./Demo"
 
 export default function UseStateDemo() {
@@ -12,15 +12,15 @@ export default function UseStateDemo() {
       code={`const [count, setCount] = useState(0);
 const [name, setName] = useState("World");
 
-// Read with getter
-<span>Count: {count()}</span>
+// Read as plain value
+<span>Count: {count}</span>
 
 // Set directly or with updater
 setCount(5);
 setCount(prev => prev + 1);`}
     >
       <p>
-        Count: <strong>{() => count()}</strong> | Name: <strong>{() => name()}</strong>
+        Count: <strong>{count}</strong> | Name: <strong>{name}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => setCount((c) => c + 1)}>

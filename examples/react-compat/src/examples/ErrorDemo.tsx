@@ -1,4 +1,4 @@
-import { ErrorBoundary, useState } from "@pyreon/react-compat"
+import { ErrorBoundary, useState } from "react"
 import Demo from "./Demo"
 
 function Bomb() {
@@ -31,7 +31,7 @@ export default function ErrorDemo() {
           <p class="error-msg">Caught: {(err as Error).message}</p>
         )}
       >
-        {() => (explode() ? <Bomb /> : <p class="muted">No errors yet</p>)}
+        {explode ? <Bomb /> : <p class="muted">No errors yet</p>}
       </ErrorBoundary>
     </Demo>
   )

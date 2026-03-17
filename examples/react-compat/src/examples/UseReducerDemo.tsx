@@ -1,4 +1,4 @@
-import { useReducer } from "@pyreon/react-compat"
+import { useReducer } from "react"
 import Demo from "./Demo"
 
 type CounterAction = { type: "increment" } | { type: "decrement" } | { type: "reset" }
@@ -33,7 +33,7 @@ const [count, dispatch] = useReducer(reducer, 0);
 dispatch({ type: "increment" });`}
     >
       <p>
-        Count: <strong>{() => count()}</strong>
+        Count: <strong>{count}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => dispatch({ type: "increment" })}>

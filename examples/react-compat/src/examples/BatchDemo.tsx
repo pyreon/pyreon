@@ -1,4 +1,4 @@
-import { batch, useEffect, useState } from "@pyreon/react-compat"
+import { batch, useEffect, useState } from "react"
 import Demo from "./Demo"
 
 export default function BatchDemo() {
@@ -7,10 +7,8 @@ export default function BatchDemo() {
   const [effectRuns, setEffectRuns] = useState(0)
 
   useEffect(() => {
-    first()
-    last()
     setEffectRuns((c) => c + 1)
-  })
+  }, [first, last])
 
   return (
     <Demo
@@ -26,9 +24,9 @@ batch(() => {
 });`}
     >
       <p>
-        Name: <strong>{() => first()}</strong> <strong>{() => last()}</strong>
+        Name: <strong>{first}</strong> <strong>{last}</strong>
       </p>
-      <p class="muted">Effect runs: {() => effectRuns()}</p>
+      <p class="muted">Effect runs: {effectRuns}</p>
       <button
         type="button"
         onClick={() => {

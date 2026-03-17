@@ -1,4 +1,4 @@
-import { useId } from "@pyreon/react-compat"
+import { useId } from "react"
 import Demo from "./Demo"
 
 export default function UseIdDemo() {

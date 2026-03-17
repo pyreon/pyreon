@@ -1,4 +1,4 @@
-import { useEffect, useState } from "@pyreon/react-compat"
+import { useEffect, useState } from "react"
 import Demo from "./Demo"
 
 export default function UseEffectDemo() {
@@ -6,10 +6,10 @@ export default function UseEffectDemo() {
   const [log, setLog] = useState<string[]>([])
   const [mountMsg, setMountMsg] = useState("")
 
-  // Reactive effect — deps auto-tracked (no deps array needed!)
+  // Runs when count changes
   useEffect(() => {
-    setLog((prev) => [...prev.slice(-4), `effect: count = ${count()}`])
-  })
+    setLog((prev) => [...prev.slice(-4), `effect: count = ${count}`])
+  }, [count])
 
   // Mount-only effect (empty deps)
   useEffect(() => {
@@ -22,23 +22,23 @@ export default function UseEffectDemo() {
       apis="useEffect"
       code={`const [count, setCount] = useState(0);
 
-// Auto-tracked — no deps array needed!
+// Runs when deps change
 useEffect(() => {
-  console.log("count is", count());
-});
+  console.log("count is", count);
+}, [count]);
 
-// Mount-only ([] deps still works)
+// Mount-only ([] deps)
 useEffect(() => {
   console.log("mounted!");
 }, []);`}
     >
       <p>
-        Count: <strong>{() => count()}</strong> | Mount: <strong>{() => mountMsg()}</strong>
+        Count: <strong>{count}</strong> | Mount: <strong>{mountMsg}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">Log: {() => log().join(" | ")}</p>
+      <p class="muted">Log: {log.join(" | ")}</p>
     </Demo>
   )
 }

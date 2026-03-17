@@ -33,6 +33,16 @@
       "bun": "./src/dom.ts",
       "import": "./lib/dom.js",
       "types": "./lib/types/dom.d.ts"
+    },
+    "./jsx-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
     }
   },
   "scripts": {

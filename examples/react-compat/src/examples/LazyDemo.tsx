@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "@pyreon/react-compat"
+import { lazy, Suspense, useState } from "react"
 import Demo from "./Demo"
 
 const LazyHeavy = lazy(
@@ -30,13 +30,11 @@ export default function LazyDemo() {
       <button type="button" onClick={() => setShow(true)}>
         Load Component (1s delay)
       </button>
-      {() =>
-        show() ? (
-          <Suspense fallback={<p class="muted">Loading...</p>}>
-            <LazyHeavy />
-          </Suspense>
-        ) : null
-      }
+      {show ? (
+        <Suspense fallback={<p class="muted">Loading...</p>}>
+          <LazyHeavy />
+        </Suspense>
+      ) : null}
     </Demo>
   )
 }

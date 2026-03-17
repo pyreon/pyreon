@@ -1,4 +1,4 @@
-import { memo, useState } from "@pyreon/react-compat"
+import { memo, useState } from "react"
 import Demo from "./Demo"
 
 const ExpensiveChild = memo(function _ExpensiveChild(props: { value: number }) {
@@ -24,7 +24,7 @@ const Expensive = memo(function Expensive({ value }) {
     >
       <ExpensiveChild value={42} />
       <button type="button" onClick={() => setCount((c) => c + 1)}>
-        Parent re-render ({() => count()})
+        Parent re-render ({count})
       </button>
       <p class="muted">memo is a no-op — Pyreon components run once</p>
     </Demo>

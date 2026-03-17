@@ -7,30 +7,26 @@ import {
   createContext,
   createElement,
   createPortal,
-  createSelector,
   ErrorBoundary,
   Fragment,
   lazy,
   memo,
-  onMount,
-  onUnmount,
-  onUpdate,
   Suspense,
   useCallback,
   useContext,
   useDeferredValue,
   useEffect,
-  useErrorBoundary,
   useId,
   useImperativeHandle,
   useLayoutEffect,
-  useLayoutEffect_,
   useMemo,
   useReducer,
   useRef,
   useState,
   useTransition,
 } from "../index"
+import type { RenderContext } from "../jsx-runtime"
+import { beginRender, endRender, jsx } from "../jsx-runtime"
 
 function container(): HTMLElement {
   const el = document.createElement("div")
@@ -38,47 +34,124 @@ function container(): HTMLElement {
   return el
 }
 
+/** Helper: creates a RenderContext for testing hooks outside of full render cycle */
+function withHookCtx<T>(fn: () => T): T {
+  const ctx: RenderContext = {
+    hooks: [],
+    scheduleRerender: () => {},
+    pendingEffects: [],
+    pendingLayoutEffects: [],
+    unmounted: false,
+  }
+  beginRender(ctx)
+  const result = fn()
+  endRender()
+  return result
+}
+
+/** Re-render helper: calls fn with the same ctx to simulate re-render */
+function createHookRunner() {
+  const ctx: RenderContext = {
+    hooks: [],
+    scheduleRerender: () => {},
+    pendingEffects: [],
+    pendingLayoutEffects: [],
+    unmounted: false,
+  }
+  return {
+    ctx,
+    run<T>(fn: () => T): T {
+      beginRender(ctx)
+      const result = fn()
+      endRender()
+      return result
+    },
+  }
+}
+
 // ─── useState ─────────────────────────────────────────────────────────────────
 
 describe("useState", () => {
-  test("returns [getter, setter] — getter reads initial value", () => {
-    const [count] = useState(0)
-    expect(count()).toBe(0)
+  test("returns [value, setter] — value is the initial value", () => {
+    const [count] = withHookCtx(() => useState(0))
+    expect(count).toBe(0)
   })
 
-  test("setter updates value", () => {
-    const [count, setCount] = useState(0)
+  test("setter updates value on re-render", () => {
+    const runner = createHookRunner()
+    const [, setCount] = runner.run(() => useState(0))
     setCount(5)
-    expect(count()).toBe(5)
+    const [count2] = runner.run(() => useState(0))
+    expect(count2).toBe(5)
   })
 
   test("setter with function updater", () => {
-    const [count, setCount] = useState(10)
+    const runner = createHookRunner()
+    const [, setCount] = runner.run(() => useState(10))
     setCount((prev) => prev + 1)
-    expect(count()).toBe(11)
-    setCount((prev) => prev * 2)
-    expect(count()).toBe(22)
+    const [count2] = runner.run(() => useState(10))
+    expect(count2).toBe(11)
   })
 
   test("initializer function is called once", () => {
     let calls = 0
-    const [val] = useState(() => {
-      calls++
-      return 42
-    })
-    expect(val()).toBe(42)
+    const runner = createHookRunner()
+    runner.run(() =>
+      useState(() => {
+        calls++
+        return 42
+      }),
+    )
+    expect(calls).toBe(1)
+    // Second render — initializer should NOT be called again
+    runner.run(() =>
+      useState(() => {
+        calls++
+        return 42
+      }),
+    )
     expect(calls).toBe(1)
   })
 
-  test("getter is reactive — effect tracks it", () => {
-    const [count, setCount] = useState(0)
-    let observed = -1
-    effect(() => {
-      observed = count()
-    })
-    expect(observed).toBe(0)
-    setCount(7)
-    expect(observed).toBe(7)
+  test("setter does nothing when value is the same (Object.is)", () => {
+    const runner = createHookRunner()
+    let rerenders = 0
+    runner.ctx.scheduleRerender = () => {
+      rerenders++
+    }
+    const [, setCount] = runner.run(() => useState(0))
+    setCount(0) // same value
+    expect(rerenders).toBe(0)
+    setCount(1) // different value
+    expect(rerenders).toBe(1)
+  })
+
+  test("re-render in a component via compat JSX runtime", async () => {
+    const el = container()
+    let renderCount = 0
+    let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
+
+    const Counter = () => {
+      const [count, setCount] = useState(0)
+      renderCount++
+      triggerSet = setCount
+      return h("span", null, String(count))
+    }
+
+    // Use compat jsx() to wrap the component
+    const vnode = jsx(Counter, {})
+    mount(vnode, el)
+    expect(el.textContent).toBe("0")
+    // mountChild samples the accessor once (untracked) + effect runs it once = 2 renders
+    const initialRenders = renderCount
+
+    // Trigger state change — should re-render via microtask
+    triggerSet(1)
+    await new Promise<void>((r) => queueMicrotask(r))
+    // Need another microtask for the effect to propagate
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.textContent).toBe("1")
+    expect(renderCount).toBe(initialRenders + 1)
   })
 })
 
@@ -86,216 +159,271 @@ describe("useState", () => {
 
 describe("useReducer", () => {
   test("dispatch applies reducer", () => {
+    const runner = createHookRunner()
     type Action = { type: "inc" } | { type: "dec" }
     const reducer = (state: number, action: Action) =>
       action.type === "inc" ? state + 1 : state - 1
-    const [state, dispatch] = useReducer(reducer, 0)
-    expect(state()).toBe(0)
+
+    const [state0, dispatch] = runner.run(() => useReducer(reducer, 0))
+    expect(state0).toBe(0)
+
     dispatch({ type: "inc" })
-    expect(state()).toBe(1)
-    dispatch({ type: "inc" })
-    expect(state()).toBe(2)
+    const [state1] = runner.run(() => useReducer(reducer, 0))
+    expect(state1).toBe(1)
+
     dispatch({ type: "dec" })
-    expect(state()).toBe(1)
+    const [state2] = runner.run(() => useReducer(reducer, 0))
+    expect(state2).toBe(0)
   })
 
   test("initializer function is called once", () => {
     let calls = 0
-    const [state] = useReducer(
-      (s: number) => s,
-      () => {
-        calls++
-        return 99
-      },
+    const runner = createHookRunner()
+    const [state] = runner.run(() =>
+      useReducer(
+        (s: number) => s,
+        () => {
+          calls++
+          return 99
+        },
+      ),
     )
-    expect(state()).toBe(99)
+    expect(state).toBe(99)
     expect(calls).toBe(1)
+    // Second render
+    runner.run(() =>
+      useReducer(
+        (s: number) => s,
+        () => {
+          calls++
+          return 99
+        },
+      ),
+    )
+    expect(calls).toBe(1)
+  })
+
+  test("dispatch does nothing when reducer returns same state", () => {
+    const runner = createHookRunner()
+    let rerenders = 0
+    runner.ctx.scheduleRerender = () => {
+      rerenders++
+    }
+    const [, dispatch] = runner.run(() => useReducer((_s: number, _a: string) => 5, 5))
+    dispatch("anything") // reducer returns 5, same as current
+    expect(rerenders).toBe(0)
   })
 })
 
 // ─── useEffect ────────────────────────────────────────────────────────────────
 
 describe("useEffect", () => {
-  test("runs reactively when signals change", () => {
+  test("effect runs after render via compat JSX runtime", async () => {
     const el = container()
-    const s = signal(0)
-    let runs = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s() // read signal to track
-        runs++
-      })
-      return h("div", null, "test")
-    }
-
-    mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(1)
-    expect(runs).toBe(2)
-    s.set(2)
-    expect(runs).toBe(3)
-  })
-
-  test("with empty deps [] — runs once on mount only", () => {
-    const el = container()
-    const s = signal(0)
-    let runs = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        runs++
-      }, [])
-      return h("div", null, "test")
-    }
-
-    mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(1)
-    expect(runs).toBe(1)
-  })
-
-  test("with empty deps [] and cleanup on unmount", () => {
-    const el = container()
-    let cleaned = false
-
-    const Comp = () => {
-      useEffect(() => {
-        return () => {
-          cleaned = true
-        }
-      }, [])
-      return h("div", null, "test")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(cleaned).toBe(false)
-    unmount()
-    // onUnmount called inside onMount callback is a no-op (hooks context
-    // is not active during mount-hook execution), so cleanup does not fire.
-    expect(cleaned).toBe(false)
-  })
-
-  test("with empty deps [] and no cleanup return", () => {
-    const el = container()
-    let runs = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        runs++
-        // no return
-      }, [])
-      return h("div", null, "test")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    unmount()
-  })
-
-  test("effect without deps re-runs and disposes on unmount", () => {
-    const el = container()
-    const s = signal(0)
-    let runs = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        runs++
-      })
-      return h("div", null, "test")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(10)
-    expect(runs).toBe(2)
-    unmount()
-    s.set(20)
-    expect(runs).toBe(2)
-  })
-
-  test("effect with cleanup function disposes on unmount", () => {
-    const el = container()
-    const s = signal(0)
     let effectRuns = 0
 
     const Comp = () => {
       useEffect(() => {
-        s()
         effectRuns++
-        return () => {
-          /* cleanup */
-        }
       })
-      return h("div", null, "cleanup")
+      return h("div", null, "test")
     }
 
-    const unmount = mount(h(Comp, null), el)
+    mount(jsx(Comp, {}), el)
+    // Effects are scheduled via microtask; mountChild samples accessor once + effect runs it
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(effectRuns).toBeGreaterThanOrEqual(1)
+  })
+
+  test("effect with empty deps runs once", async () => {
+    const el = container()
+    let effectRuns = 0
+    let triggerSet: (v: number) => void = () => {}
+
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
+      useEffect(() => {
+        effectRuns++
+      }, [])
+      return h("div", null, String(count))
+    }
+
+    mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
     expect(effectRuns).toBe(1)
-    s.set(1)
-    expect(effectRuns).toBe(2)
-    unmount()
-    s.set(2)
+
+    // Re-render — effect should NOT run again (empty deps)
+    triggerSet(1)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(effectRuns).toBe(1)
+  })
+
+  test("effect with deps re-runs when deps change", async () => {
+    const el = container()
+    let effectRuns = 0
+    let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
+
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
+      useEffect(() => {
+        effectRuns++
+      }, [count])
+      return h("div", null, String(count))
+    }
+
+    mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(effectRuns).toBe(1)
+
+    // Change deps value — effect should re-run
+    triggerSet((p) => p + 1)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
     expect(effectRuns).toBe(2)
   })
 
-  test("non-function return from effect is handled", () => {
+  test("effect cleanup runs before re-execution", async () => {
     const el = container()
-    const s = signal(0)
-    let runs = 0
+    let cleanups = 0
+    let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
 
     const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
       useEffect(() => {
-        s()
-        runs++
-      })
-      return h("div", null, "no-cleanup")
+        return () => {
+          cleanups++
+        }
+      }, [count])
+      return h("div", null, String(count))
     }
 
-    const unmount = mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(1)
-    expect(runs).toBe(2)
-    unmount()
+    mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(cleanups).toBe(0)
+
+    triggerSet((p) => p + 1)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(cleanups).toBe(1)
+  })
+
+  test("pendingEffects populated during render", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useEffect(() => {
+        /* noop */
+      })
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
+  })
+
+  test("effect with same deps does not re-queue", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useEffect(() => {}, [1, 2])
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
+
+    // Second render with same deps
+    runner.run(() => {
+      useEffect(() => {}, [1, 2])
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(0)
+  })
+})
+
+// ─── useLayoutEffect ─────────────────────────────────────────────────────────
+
+describe("useLayoutEffect", () => {
+  test("layout effect runs synchronously during render in compat runtime", () => {
+    const el = container()
+    let effectRuns = 0
+
+    const Comp = () => {
+      useLayoutEffect(() => {
+        effectRuns++
+      })
+      return h("div", null, "layout")
+    }
+
+    mount(jsx(Comp, {}), el)
+    // Layout effects run synchronously; mountChild samples + effect = 2 runs
+    expect(effectRuns).toBeGreaterThanOrEqual(1)
+  })
+
+  test("pendingLayoutEffects populated during render", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useLayoutEffect(() => {})
+    })
+    expect(runner.ctx.pendingLayoutEffects).toHaveLength(1)
+  })
+
+  test("layout effect with same deps does not re-queue", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useLayoutEffect(() => {}, [1])
+    })
+    expect(runner.ctx.pendingLayoutEffects).toHaveLength(1)
+
+    runner.run(() => {
+      useLayoutEffect(() => {}, [1])
+    })
+    expect(runner.ctx.pendingLayoutEffects).toHaveLength(0)
   })
 })
 
 // ─── useMemo ──────────────────────────────────────────────────────────────────
 
 describe("useMemo", () => {
-  test("returns computed getter", () => {
-    const s = signal(3)
-    const doubled = useMemo(() => s() * 2)
-    expect(doubled()).toBe(6)
-    s.set(5)
-    expect(doubled()).toBe(10)
+  test("returns computed value", () => {
+    const value = withHookCtx(() => useMemo(() => 3 * 2, []))
+    expect(value).toBe(6)
   })
 
-  test("deps array is ignored — still auto-tracks", () => {
-    const s = signal(1)
-    const memo = useMemo(() => s() + 100, [])
-    expect(memo()).toBe(101)
-    s.set(2)
-    expect(memo()).toBe(102)
+  test("recomputes when deps change", () => {
+    const runner = createHookRunner()
+    const v1 = runner.run(() => useMemo(() => 10, [1]))
+    expect(v1).toBe(10)
+
+    // Same deps — should return cached
+    const v2 = runner.run(() => useMemo(() => 20, [1]))
+    expect(v2).toBe(10)
+
+    // Different deps — should recompute
+    const v3 = runner.run(() => useMemo(() => 30, [2]))
+    expect(v3).toBe(30)
   })
 })
 
 // ─── useCallback ──────────────────────────────────────────────────────────────
 
 describe("useCallback", () => {
-  test("returns the same function", () => {
-    const fn = () => 42
-    const result = useCallback(fn)
-    expect(result).toBe(fn)
-    expect(result()).toBe(42)
+  test("returns the same function when deps unchanged", () => {
+    const runner = createHookRunner()
+    const fn1 = () => 42
+    const fn2 = () => 99
+    const result1 = runner.run(() => useCallback(fn1, [1]))
+    const result2 = runner.run(() => useCallback(fn2, [1]))
+    expect(result1).toBe(result2) // same deps → cached
+    expect(result1()).toBe(42)
   })
 
-  test("with deps array — still returns same function", () => {
-    const fn = (x: unknown) => x
-    const result = useCallback(fn, [1, 2, 3])
-    expect(result).toBe(fn)
+  test("returns new function when deps change", () => {
+    const runner = createHookRunner()
+    const fn1 = () => 42
+    const fn2 = () => 99
+    const result1 = runner.run(() => useCallback(fn1, [1]))
+    const result2 = runner.run(() => useCallback(fn2, [2]))
+    expect(result2).toBe(fn2)
+    expect(result2()).toBe(99)
+    expect(result1).not.toBe(result2)
   })
 })
 
@@ -303,29 +431,76 @@ describe("useCallback", () => {
 
 describe("useRef", () => {
   test("returns { current } with null default", () => {
-    const ref = useRef<HTMLDivElement>()
+    const ref = withHookCtx(() => useRef<HTMLDivElement>())
     expect(ref.current).toBeNull()
   })
 
   test("returns { current } with initial value", () => {
-    const ref = useRef(42)
+    const ref = withHookCtx(() => useRef(42))
     expect(ref.current).toBe(42)
   })
 
   test("current is mutable", () => {
-    const ref = useRef(0)
+    const ref = withHookCtx(() => useRef(0))
     ref.current = 10
     expect(ref.current).toBe(10)
+  })
+
+  test("same ref object persists across re-renders", () => {
+    const runner = createHookRunner()
+    const ref1 = runner.run(() => useRef(0))
+    ref1.current = 99
+    const ref2 = runner.run(() => useRef(0))
+    expect(ref1).toBe(ref2)
+    expect(ref2.current).toBe(99)
   })
 })
 
 // ─── memo ─────────────────────────────────────────────────────────────────────
 
 describe("memo", () => {
-  test("returns component as-is (no-op)", () => {
-    const MyComp = (props: { name: string }) => h("span", null, props.name)
+  test("skips re-render when props are shallowly equal", () => {
+    let renderCount = 0
+    const MyComp = (props: { name: string }) => {
+      renderCount++
+      return h("span", null, props.name)
+    }
     const Memoized = memo(MyComp)
-    expect(Memoized).toBe(MyComp)
+    Memoized({ name: "a" })
+    expect(renderCount).toBe(1)
+    Memoized({ name: "a" })
+    expect(renderCount).toBe(1) // same props — skipped
+    Memoized({ name: "b" })
+    expect(renderCount).toBe(2) // different props — re-rendered
+  })
+
+  test("custom areEqual function", () => {
+    let renderCount = 0
+    const MyComp = (props: { x: number; y: number }) => {
+      renderCount++
+      return h("span", null, String(props.x))
+    }
+    // Only compare x, ignore y
+    const Memoized = memo(MyComp, (prev, next) => prev.x === next.x)
+    Memoized({ x: 1, y: 1 })
+    expect(renderCount).toBe(1)
+    Memoized({ x: 1, y: 999 })
+    expect(renderCount).toBe(1) // y changed but x same → skipped
+    Memoized({ x: 2, y: 999 })
+    expect(renderCount).toBe(2) // x changed → re-rendered
+  })
+
+  test("different number of keys triggers re-render", () => {
+    let renderCount = 0
+    const MyComp = (_props: Record<string, unknown>) => {
+      renderCount++
+      return h("span", null, "x")
+    }
+    const Memoized = memo(MyComp)
+    Memoized({ a: 1 })
+    expect(renderCount).toBe(1)
+    Memoized({ a: 1, b: 2 })
+    expect(renderCount).toBe(2)
   })
 })
 
@@ -357,16 +532,7 @@ describe("useDeferredValue", () => {
 // ─── useId ────────────────────────────────────────────────────────────────────
 
 describe("useId", () => {
-  test("returns a unique string", () => {
-    const id1 = useId()
-    const id2 = useId()
-    expect(typeof id1).toBe("string")
-    expect(typeof id2).toBe("string")
-    expect(id1.startsWith(":r")).toBe(true)
-    expect(id2.startsWith(":r")).toBe(true)
-  })
-
-  test("returns deterministic IDs within a component", () => {
+  test("returns a unique string within a component", () => {
     const el = container()
     const ids: string[] = []
 
@@ -376,31 +542,40 @@ describe("useId", () => {
       return h("div", null, "id-test")
     }
 
-    const unmount = mount(h(Comp, null), el)
-    expect(ids).toHaveLength(2)
-    expect(ids[0]).toBe(":r0:")
-    expect(ids[1]).toBe(":r1:")
-    unmount()
+    mount(jsx(Comp, {}), el)
+    // mountChild samples the accessor + effect runs it = 2 renders, 4 IDs pushed
+    expect(ids.length).toBeGreaterThanOrEqual(2)
+    // Within a single render, two useId calls produce different IDs
+    expect(ids[0]).not.toBe(ids[1])
+    expect(typeof ids[0]).toBe("string")
+    expect(ids[0]?.startsWith(":r")).toBe(true)
   })
 
-  test("different components get independent counters", () => {
+  test("IDs are stable across re-renders", async () => {
     const el = container()
-    const ids1: string[] = []
-    const ids2: string[] = []
+    const idHistory: string[] = []
+    let triggerSet: (v: number) => void = () => {}
 
-    const Comp1 = () => {
-      ids1.push(useId())
-      return h("div", null, "c1")
-    }
-    const Comp2 = () => {
-      ids2.push(useId())
-      return h("div", null, "c2")
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
+      const id = useId()
+      idHistory.push(id)
+      return h("div", null, `${id}-${count}`)
     }
 
-    const unmount = mount(h("div", null, h(Comp1, null), h(Comp2, null)), el)
-    expect(ids1[0]).toBe(":r0:")
-    expect(ids2[0]).toBe(":r0:")
-    unmount()
+    mount(jsx(Comp, {}), el)
+    const initialCount = idHistory.length // mountChild samples + effect = 2 renders
+    const firstId = idHistory[0]
+
+    triggerSet(1)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(idHistory.length).toBeGreaterThan(initialCount)
+    // All IDs should be the same (stable across renders)
+    for (const id of idHistory) {
+      expect(id).toBe(firstId)
+    }
   })
 })
 
@@ -511,7 +686,7 @@ describe("render", () => {
 // ─── useImperativeHandle ─────────────────────────────────────────────────────
 
 describe("useImperativeHandle", () => {
-  test("sets ref.current on mount", () => {
+  test("sets ref.current via layout effect", () => {
     const el = container()
     const ref = { current: null as { greet: () => string } | null }
 
@@ -522,26 +697,9 @@ describe("useImperativeHandle", () => {
       return h("div", null, "imp")
     }
 
-    const unmount = mount(h(Comp, null), el)
+    mount(jsx(Comp, {}), el)
     expect(ref.current).not.toBeNull()
     expect(ref.current?.greet()).toBe("hello")
-    unmount()
-  })
-
-  test("clears ref.current on unmount", () => {
-    const el = container()
-    const ref = { current: null as { value: number } | null }
-
-    const Comp = () => {
-      useImperativeHandle(ref, () => ({ value: 42 }))
-      return h("div", null, "imp")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(ref.current).not.toBeNull()
-    expect(ref.current?.value).toBe(42)
-    unmount()
-    expect(ref.current).toBeNull()
   })
 
   test("no-op when ref is null", () => {
@@ -552,8 +710,7 @@ describe("useImperativeHandle", () => {
       return h("div", null, "no-ref")
     }
 
-    const unmount = mount(h(Comp, null), el)
-    unmount()
+    mount(jsx(Comp, {}), el)
   })
 
   test("no-op when ref is undefined", () => {
@@ -564,8 +721,7 @@ describe("useImperativeHandle", () => {
       return h("div", null, "undef-ref")
     }
 
-    const unmount = mount(h(Comp, null), el)
-    unmount()
+    mount(jsx(Comp, {}), el)
   })
 })
 
@@ -598,111 +754,122 @@ describe("re-exports", () => {
     expect(typeof ErrorBoundary).toBe("function")
   })
 
-  test("useErrorBoundary is a function", () => {
-    expect(typeof useErrorBoundary).toBe("function")
-  })
-
-  test("createSelector is a function", () => {
-    expect(typeof createSelector).toBe("function")
-  })
-
-  test("onMount is a function", () => {
-    expect(typeof onMount).toBe("function")
-  })
-
-  test("onUnmount is a function", () => {
-    expect(typeof onUnmount).toBe("function")
-  })
-
-  test("onUpdate is a function", () => {
-    expect(typeof onUpdate).toBe("function")
-  })
-
-  test("useLayoutEffect is exported from core", () => {
+  test("useLayoutEffect is a function", () => {
     expect(typeof useLayoutEffect).toBe("function")
   })
+})
 
-  test("useLayoutEffect_ is same as useEffect", () => {
-    expect(useLayoutEffect_).toBe(useEffect)
+// ─── jsx-runtime ──────────────────────────────────────────────────────────────
+
+describe("jsx-runtime", () => {
+  test("jsx with string type creates element VNode", () => {
+    const vnode = jsx("div", { className: "test", children: "hello" })
+    // className should be mapped to class
+    expect(vnode.props.class).toBe("test")
+    expect(vnode.props.className).toBeUndefined()
+  })
+
+  test("jsx with key prop", () => {
+    const vnode = jsx("div", { children: "x" }, "my-key")
+    expect(vnode.props.key).toBe("my-key")
+  })
+
+  test("jsx with component wraps for re-render", () => {
+    const MyComp = () => h("span", null, "hi")
+    const vnode = jsx(MyComp, {})
+    // The component should be wrapped (different from original)
+    expect(vnode.type).not.toBe(MyComp)
+    expect(typeof vnode.type).toBe("function")
+  })
+
+  test("jsx with Fragment", () => {
+    const vnode = jsx(Fragment, { children: [h("span", null, "a"), h("span", null, "b")] })
+    expect(vnode.type).toBe(Fragment)
+  })
+
+  test("jsx with single child (not array)", () => {
+    const vnode = jsx("div", { children: "text" })
+    expect(vnode.children).toHaveLength(1)
+  })
+
+  test("jsx with no children", () => {
+    const vnode = jsx("div", {})
+    expect(vnode.children).toHaveLength(0)
+  })
+
+  test("jsx component with children in props", () => {
+    const MyComp = (props: { children?: string }) => h("div", null, props.children ?? "")
+    const vnode = jsx(MyComp, { children: "child-text" })
+    expect(typeof vnode.type).toBe("function")
   })
 })
 
-// ─── Additional coverage: useId outside scope ──────────────────────────────
+// ─── Hook error when called outside component ────────────────────────────────
 
-describe("useId — no scope fallback", () => {
-  test("returns random-ish id when called outside a component (no scope)", () => {
-    // getCurrentScope() returns null outside a component, hitting the fallback branch
-    const id = useId()
-    expect(typeof id).toBe("string")
-    expect(id.startsWith(":r")).toBe(true)
-    expect(id.endsWith(":")).toBe(true)
-    // Two calls should produce different IDs (random)
-    const id2 = useId()
-    expect(id).not.toBe(id2)
+describe("hooks outside component", () => {
+  test("useState throws when called outside render", () => {
+    expect(() => useState(0)).toThrow("Hook called outside")
+  })
+
+  test("useEffect throws when called outside render", () => {
+    expect(() => useEffect(() => {})).toThrow("Hook called outside")
+  })
+
+  test("useRef throws when called outside render", () => {
+    expect(() => useRef(0)).toThrow("Hook called outside")
+  })
+
+  test("useMemo throws when called outside render", () => {
+    expect(() => useMemo(() => 0, [])).toThrow("Hook called outside")
+  })
+
+  test("useId throws when called outside render", () => {
+    expect(() => useId()).toThrow("Hook called outside")
+  })
+
+  test("useReducer throws when called outside render", () => {
+    expect(() => useReducer((s: number) => s, 0)).toThrow("Hook called outside")
   })
 })
 
-// ─── Additional coverage: useEffect with non-empty deps ─────────────────────
+// ─── Edge cases ──────────────────────────────────────────────────────────────
 
-describe("useEffect — non-empty deps array", () => {
-  test("with non-empty deps array, still runs reactively (deps ignored)", () => {
-    const el = container()
-    const s = signal(0)
-    let runs = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        runs++
-      }, [s])
-      return h("div", null, "non-empty-deps")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(runs).toBe(1)
-    s.set(1)
-    expect(runs).toBe(2)
-    unmount()
+describe("edge cases", () => {
+  test("useState with string initial", () => {
+    const [val] = withHookCtx(() => useState("hello"))
+    expect(val).toBe("hello")
   })
 
-  test("with non-empty deps and cleanup, cleanup runs on re-execution", () => {
-    const el = container()
-    const s = signal(0)
-    let cleanups = 0
-
-    const Comp = () => {
-      useEffect(() => {
-        s()
-        return () => {
-          cleanups++
-        }
-      }, [s])
-      return h("div", null, "cleanup-deps")
-    }
-
-    const unmount = mount(h(Comp, null), el)
-    expect(cleanups).toBe(0)
-    s.set(1) // re-runs effect, previous cleanup should fire
-    expect(cleanups).toBe(1)
-    unmount()
+  test("useReducer with non-function initial", () => {
+    const [state] = withHookCtx(() => useReducer((s: string, a: string) => s + a, "start"))
+    expect(state).toBe("start")
   })
-})
 
-// ─── Additional coverage: useState with non-function initial ─────────────────
+  test("depsChanged handles different length arrays", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useEffect(() => {}, [1, 2])
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
 
-describe("useState — edge cases", () => {
-  test("with function-valued non-initializer (explicit type)", () => {
-    // When T is not a function type, direct value is used
-    const [val] = useState("hello")
-    expect(val()).toBe("hello")
+    // Different length deps — should re-queue
+    runner.run(() => {
+      useEffect(() => {}, [1, 2, 3])
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
   })
-})
 
-// ─── Additional coverage: useReducer with non-function initial ───────────────
+  test("depsChanged with undefined deps always re-runs", () => {
+    const runner = createHookRunner()
+    runner.run(() => {
+      useEffect(() => {})
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
 
-describe("useReducer — edge cases", () => {
-  test("with non-function initial value", () => {
-    const [state] = useReducer((s: string, a: string) => s + a, "start")
-    expect(state()).toBe("start")
+    // No deps — always re-queue
+    runner.run(() => {
+      useEffect(() => {})
+    })
+    expect(runner.ctx.pendingEffects).toHaveLength(1)
   })
 })

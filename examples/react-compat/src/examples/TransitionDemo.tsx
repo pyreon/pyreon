@@ -1,4 +1,4 @@
-import { useDeferredValue, useState, useTransition } from "@pyreon/react-compat"
+import { useDeferredValue, useState, useTransition } from "react"
 import Demo from "./Demo"
 
 export default function TransitionDemo() {
@@ -25,7 +25,7 @@ const deferred = useDeferredValue(value);
         isPending: <strong>{String(isPending)}</strong> | Deferred: <strong>{deferred}</strong>
       </p>
       <button type="button" onClick={() => startTransition(() => setCount((c) => c + 1))}>
-        startTransition ({() => count()})
+        startTransition ({count})
       </button>
       <p class="muted">Both are no-ops — Pyreon has no concurrent mode</p>
     </Demo>

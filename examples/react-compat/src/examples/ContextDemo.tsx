@@ -1,4 +1,4 @@
-import { createContext, useContext } from "@pyreon/react-compat"
+import { createContext, useContext } from "react"
 import Demo from "./Demo"
 
 const ThemeContext = createContext<"light" | "dark">("light")

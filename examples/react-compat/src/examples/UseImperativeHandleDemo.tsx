@@ -1,4 +1,4 @@
-import { useImperativeHandle, useRef, useState } from "@pyreon/react-compat"
+import { useImperativeHandle, useRef, useState } from "react"
 import Demo from "./Demo"
 
 export default function UseImperativeHandleDemo() {
@@ -40,7 +40,7 @@ ref.current?.focus();`}
       <button type="button" onClick={() => ref.current?.focus()}>
         Focus via Handle
       </button>
-      <p class="muted">{() => msg()}</p>
+      <p class="muted">{msg}</p>
     </Demo>
   )
 }

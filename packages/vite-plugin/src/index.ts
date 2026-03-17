@@ -32,6 +32,8 @@
  *   vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
  */
 
+import { readFileSync } from "node:fs"
+import { resolve as pathResolve } from "node:path"
 import { transformJSX } from "@pyreon/compiler"
 import type { Plugin, ViteDevServer } from "vite"
 
@@ -77,8 +79,8 @@ export interface PyreonPluginOptions {
 const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   react: {
     react: "@pyreon/react-compat",
-    "react/jsx-runtime": "@pyreon/core/jsx-runtime",
-    "react/jsx-dev-runtime": "@pyreon/core/jsx-runtime",
+    "react/jsx-runtime": "@pyreon/react-compat/jsx-runtime",
+    "react/jsx-dev-runtime": "@pyreon/react-compat/jsx-runtime",
     "react-dom": "@pyreon/react-compat/dom",
     "react-dom/client": "@pyreon/react-compat/dom",
   },
@@ -95,34 +97,94 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   },
 }
 
+/**
+ * Resolve a package specifier to an absolute source path, respecting the "bun"
+ * export condition. Falls back to the "import" condition.
+ *
+ * This is needed because Vite 8's resolve pipeline doesn't consistently apply
+ * custom conditions from `resolve.conditions` during the `vite:import-analysis`
+ * phase for aliased workspace packages.
+ */
+function resolveWithBunCondition(specifier: string, projectRoot: string): string | undefined {
+  // Split specifier: "@pyreon/react-compat/dom" → pkg="@pyreon/react-compat", subpath="./dom"
+  const parts = specifier.startsWith("@")
+    ? specifier.split("/").slice(0, 2)
+    : specifier.split("/").slice(0, 1)
+  const pkgName = parts.join("/")
+  const subpath = specifier.slice(pkgName.length) || "."
+  const exportKey = subpath === "." ? "." : `.${subpath}`
+
+  try {
+    // Walk up from project root to find node_modules containing the package
+    const pkgDir = pathResolve(projectRoot, "node_modules", pkgName)
+    const pkgJsonPath = pathResolve(pkgDir, "package.json")
+    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as {
+      exports?: Record<string, Record<string, string> | string>
+    }
+
+    const exp = pkgJson.exports?.[exportKey]
+    if (!exp) return undefined
+
+    if (typeof exp === "string") return pathResolve(pkgDir, exp)
+    // Prefer bun → import → default
+    const target = exp.bun ?? exp.import ?? exp.default
+    return target ? pathResolve(pkgDir, target) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Return the Pyreon compat target for an import specifier, or undefined if
+ * the import should not be redirected.
+ */
+function getCompatTarget(compat: CompatFramework | undefined, id: string): string | undefined {
+  if (!compat) return undefined
+  const aliased = COMPAT_ALIASES[compat][id]
+  if (aliased) return aliased
+  // OXC's JSX transform reads jsxImportSource from tsconfig (@pyreon/core),
+  // not from our plugin config. Redirect JSX runtime imports in compat mode.
+  if (
+    compat === "react" &&
+    (id === "@pyreon/core/jsx-runtime" || id === "@pyreon/core/jsx-dev-runtime")
+  ) {
+    return "@pyreon/react-compat/jsx-runtime"
+  }
+  return undefined
+}
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
   let isBuild = false
+  let projectRoot = ""
+  // Cache resolved absolute paths for compat aliases
+  const resolvedAliases = new Map<string, string>()
 
   return {
     name: "pyreon",
     enforce: "pre",
 
-    config(_, env) {
+    config(userConfig, env) {
       isBuild = env.command === "build"
+      // Capture the project root for package resolution in resolveId
+      projectRoot = userConfig.root ?? process.cwd()
 
-      const aliases = compat
-        ? Object.entries(COMPAT_ALIASES[compat]).map(([find, replacement]) => ({
-            find,
-            replacement,
-          }))
-        : []
+      // Tell Vite's dep scanner not to pre-bundle the aliased framework imports —
+      // they resolve to workspace packages via our resolveId hook, not node_modules.
+      const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
 
       return {
         resolve: {
-          alias: aliases,
           conditions: ["bun"],
+        },
+        optimizeDeps: {
+          exclude: optimizeDepsExclude,
         },
         oxc: {
           jsx: {
             runtime: "automatic",
-            importSource: "@pyreon/core",
+            importSource: compat === "react" ? "@pyreon/react-compat" : "@pyreon/core",
           },
         },
         // In SSR build mode, configure the entry
@@ -139,9 +201,19 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
-    // ── Virtual module: HMR runtime ─────────────────────────────────────────
+    // ── Virtual module + compat alias resolution ─────────────────────────────
     resolveId(id) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
+      const target = getCompatTarget(compat, id)
+      if (!target) return
+
+      // Use cached resolution or resolve with bun condition
+      let resolved = resolvedAliases.get(target)
+      if (!resolved) {
+        resolved = resolveWithBunCondition(target, projectRoot)
+        if (resolved) resolvedAliases.set(target, resolved)
+      }
+      return resolved
     },
 
     load(id) {
@@ -153,6 +225,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     transform(code, id) {
       const ext = getExt(id)
       if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".pyreon") return
+
+      // In react compat mode, skip Pyreon's reactive JSX transform.
+      // OXC's built-in JSX transform handles jsx() calls; the compat
+      // JSX runtime wraps components for re-render support.
+      if (compat === "react") return
+
       const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
@@ -293,6 +371,48 @@ function braceDepthAt(code: string, pos: number): number {
   return depth
 }
 
+/** Rewrite module-scope `signal()` calls to `__hmr_signal()` for state preservation. */
+function rewriteSignals(code: string, moduleId: string): string {
+  const escapedId = JSON.stringify(moduleId)
+  const matches: {
+    start: number
+    end: number
+    prefix: string
+    name: string
+    args: string
+  }[] = []
+  let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
+  while (m !== null) {
+    const argsStart = m.index + m[0].length
+    const args = extractBalancedArgs(code, argsStart)
+    if (args === null) {
+      m = SIGNAL_PREFIX_RE.exec(code)
+      continue // unbalanced — skip
+    }
+    // Only rewrite module-scope signals (brace depth 0).
+    if (braceDepthAt(code, m.index) === 0) {
+      matches.push({
+        start: m.index,
+        end: argsStart + args.length + 1, // +1 for closing paren
+        prefix: m[1] ?? "",
+        name: m[2] ?? "",
+        args,
+      })
+    }
+    m = SIGNAL_PREFIX_RE.exec(code)
+  }
+  SIGNAL_PREFIX_RE.lastIndex = 0
+
+  // Replace in reverse to preserve offsets
+  let output = code
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
+    const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
+    output = output.slice(0, start) + replacement + output.slice(end)
+  }
+  return output
+}
+
 function injectHmr(code: string, moduleId: string): string {
   const hasSignals = SIGNAL_PREFIX_RE.test(code)
   SIGNAL_PREFIX_RE.lastIndex = 0
@@ -302,48 +422,7 @@ function injectHmr(code: string, moduleId: string): string {
   // Only inject HMR if the module exports components or has module-scope signals
   if (!hasComponentExport && !hasSignals) return code
 
-  let output = code
-
-  // Rewrite top-level signal() calls to use __hmr_signal for state preservation
-  if (hasSignals) {
-    const escapedId = JSON.stringify(moduleId)
-    // Process matches in reverse order so indices stay valid after replacement
-    const matches: {
-      start: number
-      end: number
-      prefix: string
-      name: string
-      args: string
-    }[] = []
-    let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
-    while (m !== null) {
-      const argsStart = m.index + m[0].length
-      const args = extractBalancedArgs(code, argsStart)
-      if (args === null) {
-        m = SIGNAL_PREFIX_RE.exec(code)
-        continue // unbalanced — skip
-      }
-      // Only rewrite module-scope signals (brace depth 0).
-      if (braceDepthAt(code, m.index) === 0) {
-        matches.push({
-          start: m.index,
-          end: argsStart + args.length + 1, // +1 for closing paren
-          prefix: m[1] ?? "",
-          name: m[2] ?? "",
-          args,
-        })
-      }
-      m = SIGNAL_PREFIX_RE.exec(code)
-    }
-    SIGNAL_PREFIX_RE.lastIndex = 0
-
-    // Replace in reverse to preserve offsets
-    for (let i = matches.length - 1; i >= 0; i--) {
-      const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
-      const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
-      output = output.slice(0, start) + replacement + output.slice(end)
-    }
-  }
+  let output = hasSignals ? rewriteSignals(code, moduleId) : code
 
   // Build the HMR footer
   const escapedId = JSON.stringify(moduleId)

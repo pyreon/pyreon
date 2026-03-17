@@ -1,7 +1,11 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "react": ["../../packages/react-compat/src/index.ts"],
+      "react-dom/client": ["../../packages/react-compat/src/dom.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

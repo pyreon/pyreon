@@ -1,4 +1,4 @@
-import { createRoot } from "@pyreon/react-compat/dom"
+import { createRoot } from "react-dom/client"
 import App from "./App"
 
 const el = document.getElementById("app")
