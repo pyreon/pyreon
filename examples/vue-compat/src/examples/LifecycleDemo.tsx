@@ -2,32 +2,46 @@ import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref 
 import Demo from "./Demo"
 
 /**
- * Child component defined at module scope so its function reference is stable
- * across parent re-renders. Owns its own log ref to avoid writing to the
- * parent's state from lifecycle hooks (which would cause infinite re-renders
- * in the mountReactive full-unmount/remount model).
+ * Child component at module scope (stable function reference).
+ *
+ * Lifecycle hooks accumulate events in a plain variable. Only onMounted
+ * triggers a single ref write to display the log. onUpdated uses a guard
+ * to avoid infinite re-render loops (writing to a ref inside onUpdated
+ * would cause: re-render → onUpdated → write → re-render → …).
  */
 function LifecycleChild() {
-  const events = ref("")
+  const events = ref("(pending)")
   let eventStr = ""
-  function append(msg: string) {
-    eventStr += msg
-    queueMicrotask(() => {
-      events.value = eventStr
-    })
-  }
+  let updatedOnce = false
 
-  onBeforeMount(() => append("[beforeMount] "))
-  onMounted(() => append("[mounted] "))
-  onUpdated(() => append("[updated] "))
-  onBeforeUnmount(() => append("[beforeUnmount] "))
-  onUnmounted(() => append("[unmounted] "))
+  onBeforeMount(() => {
+    eventStr += "[beforeMount] "
+  })
+  onMounted(() => {
+    eventStr += "[mounted] "
+    events.value = eventStr
+  })
+  onUpdated(() => {
+    if (!updatedOnce) {
+      updatedOnce = true
+      eventStr += "[updated] "
+      queueMicrotask(() => {
+        events.value = eventStr
+      })
+    }
+  })
+  onBeforeUnmount(() => {
+    eventStr += "[beforeUnmount] "
+  })
+  onUnmounted(() => {
+    eventStr += "[unmounted] "
+  })
 
   return (
     <>
       <p class="highlight">Child is mounted</p>
       <p class="muted">
-        events: <strong>{events.value || "(none)"}</strong>
+        events: <strong>{events.value}</strong>
       </p>
     </>
   )
