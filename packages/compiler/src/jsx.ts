@@ -59,6 +59,32 @@ export interface TransformResult {
 const SKIP_PROPS = new Set(["key", "ref"])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
+// Events delegated to the container — must match runtime DELEGATED_EVENTS set
+const DELEGATED_EVENTS = new Set([
+  "click",
+  "dblclick",
+  "contextmenu",
+  "focusin",
+  "focusout",
+  "input",
+  "change",
+  "keydown",
+  "keyup",
+  "mousedown",
+  "mouseup",
+  "mousemove",
+  "mouseover",
+  "mouseout",
+  "pointerdown",
+  "pointerup",
+  "pointermove",
+  "pointerover",
+  "pointerout",
+  "touchstart",
+  "touchend",
+  "touchmove",
+  "submit",
+])
 
 export function transformJSX(code: string, filename = "input.tsx"): TransformResult {
   const scriptKind =
@@ -86,6 +112,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   const hoists: Hoist[] = []
   let hoistIdx = 0
   let needsTplImport = false
+  let needsBindTextImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -208,8 +235,10 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   // Prepend template imports if _tpl() was emitted
   if (needsTplImport) {
+    const runtimeDomImports = ["_tpl"]
+    if (needsBindTextImportGlobal) runtimeDomImports.push("_bindText")
     result =
-      `import { _tpl } from "@pyreon/runtime-dom";\nimport { _bind } from "@pyreon/reactivity";\n` +
+      `import { ${runtimeDomImports.join(", ")} } from "@pyreon/runtime-dom";\nimport { _bind } from "@pyreon/reactivity";\n` +
       result
   }
 
@@ -282,6 +311,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     const disposerNames: string[] = []
     let varIdx = 0
     let dispIdx = 0
+    // Reactive expressions that will be combined into a single _bind call
+    const reactiveBindExprs: string[] = []
+    let needsBindTextImport = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -313,14 +345,18 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       bindLines.push(`${sliceExpr(attr.initializer.expression)}.current = ${varName}`)
     }
 
-    /** Emit addEventListener bind line for an event handler attribute. */
+    /** Emit event handler bind line — delegated (expando) or addEventListener. */
     function emitEventListener(attr: ts.JsxAttribute, attrName: string, varName: string): void {
       const eventName = (attrName[2] ?? "").toLowerCase() + attrName.slice(3)
       if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
       if (!attr.initializer.expression) return
-      bindLines.push(
-        `${varName}.addEventListener("${eventName}", ${sliceExpr(attr.initializer.expression)})`,
-      )
+      const handler = sliceExpr(attr.initializer.expression)
+      if (DELEGATED_EVENTS.has(eventName)) {
+        // Delegated: store handler as expando property — container listener picks it up
+        bindLines.push(`${varName}.__ev_${eventName} = ${handler}`)
+      } else {
+        bindLines.push(`${varName}.addEventListener("${eventName}", ${handler})`)
+      }
     }
 
     /** Return HTML string for a static attribute expression, or null if not static. */
@@ -330,6 +366,26 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
       if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
       return "" // false/null/undefined → omit
+    }
+
+    /**
+     * Try to extract a direct signal reference from an expression.
+     * Returns the callee text (e.g. "count" or "row.label") if the expression
+     * is a single call with no arguments, otherwise null.
+     */
+    function tryDirectSignalRef(exprNode: ts.Expression): string | null {
+      let inner = exprNode
+      // Unwrap concise arrow: () => expr
+      if (ts.isArrowFunction(inner) && !ts.isBlock(inner.body)) {
+        inner = inner.body as ts.Expression
+      }
+      if (!ts.isCallExpression(inner)) return null
+      if (inner.arguments.length > 0) return null
+      const callee = inner.expression
+      if (ts.isIdentifier(callee) || ts.isPropertyAccessExpression(callee)) {
+        return sliceExpr(callee)
+      }
+      return null
     }
 
     /** Unwrap a reactive accessor expression for use inside _bind(). */
@@ -359,8 +415,8 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
           : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
 
       if (isReactive) {
-        const d = nextDisp()
-        bindLines.push(`const ${d} = _bind(() => { ${setter} })`)
+        // Collected into a single combined _bind at the end of template processing
+        reactiveBindExprs.push(setter)
       } else {
         bindLines.push(setter)
       }
@@ -424,13 +480,13 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     /** Emit bind lines for a reactive text expression child. */
     function emitReactiveTextChild(
       expr: string,
+      exprNode: ts.Expression,
       varName: string,
       parentRef: string,
       childNodeIdx: number,
       needsPlaceholder: boolean,
     ): string {
       const tVar = nextTextVar()
-      const d = nextDisp()
       bindLines.push(`const ${tVar} = document.createTextNode("")`)
       if (needsPlaceholder) {
         bindLines.push(
@@ -439,7 +495,16 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       } else {
         bindLines.push(`${varName}.appendChild(${tVar})`)
       }
-      bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+      // Direct signal binding: bypass effect system entirely
+      const directRef = tryDirectSignalRef(exprNode)
+      if (directRef) {
+        needsBindTextImport = true
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
+      } else {
+        // Collected into the combined _bind at the end
+        reactiveBindExprs.push(`${tVar}.data = ${expr}`)
+      }
       return needsPlaceholder ? "<!>" : ""
     }
 
@@ -483,7 +548,14 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       const needsPlaceholder = useMixed || useMultiExpr
       const { expr, isReactive } = unwrapAccessor(child.expression)
       if (isReactive) {
-        return emitReactiveTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
+        return emitReactiveTextChild(
+          expr,
+          child.expression,
+          varName,
+          parentRef,
+          childNodeIdx,
+          needsPlaceholder,
+        )
       }
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
@@ -539,8 +611,22 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     const html = processElement(node, "__root")
     if (html === null) return null
 
+    if (needsBindTextImport) needsBindTextImportGlobal = true
+
     // Build bind function body
     const escaped = html.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+
+    // Emit combined _bind for reactive attribute/text expressions that
+    // weren't handled by _bindText. This merges N separate _bind calls into
+    // one — saving N-1 closures + deps arrays per template instance.
+    // Emit a single combined _bind for all reactive attribute/text expressions
+    // that weren't handled by _bindText. Merges N separate _bind calls into one —
+    // saving N-1 closures + deps arrays per template instance.
+    if (reactiveBindExprs.length > 0) {
+      const combinedName = nextDisp()
+      const combinedBody = reactiveBindExprs.join("; ")
+      bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
+    }
 
     if (bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null)`

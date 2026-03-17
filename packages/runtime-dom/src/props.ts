@@ -1,5 +1,6 @@
 import type { Props } from "@pyreon/core"
 import { batch, renderEffect } from "@pyreon/reactivity"
+import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
 
 type Cleanup = () => void
 
@@ -214,10 +215,21 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  */
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
   // Event listener: onClick → "click"
-  // Wrapped in batch() so multiple signal writes from one handler coalesce into one DOM update.
+  // Delegated events use expando properties (picked up by the container's delegated listener).
+  // Non-delegated events use addEventListener directly.
+  // Both paths wrap in batch() so multiple signal writes coalesce into one DOM update.
   if (EVENT_RE.test(key)) {
     const eventName = key[2]?.toLowerCase() + key.slice(3)
     const handler = value as EventListener
+
+    if (DELEGATED_EVENTS.has(eventName)) {
+      const prop = delegatedPropName(eventName)
+      ;(el as unknown as Record<string, unknown>)[prop] = (e: Event) => batch(() => handler(e))
+      return () => {
+        ;(el as unknown as Record<string, unknown>)[prop] = undefined
+      }
+    }
+
     const batched: EventListener = (e) => batch(() => handler(e))
     el.addEventListener(eventName, batched)
     return () => el.removeEventListener(eventName, batched)

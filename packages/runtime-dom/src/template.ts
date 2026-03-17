@@ -40,6 +40,36 @@ export function createTemplate<T>(
   }
 }
 
+// ─── Direct text binding (bypasses effect system) ────────────────────────────
+
+/**
+ * Compiler-emitted direct text binding for single-signal text nodes.
+ *
+ * When the compiler detects `{signal()}` as the only reactive expression
+ * in a text binding, it emits `_bindText(signal, textNode)` instead of
+ * `_bind(() => { textNode.data = signal() })`.
+ *
+ * This bypasses the effect system entirely:
+ * - No deps array allocation
+ * - No withTracking / setDepsCollector overhead
+ * - No `run` closure
+ * - Signal.subscribe is used directly (O(1) subscribe + unsubscribe)
+ *
+ * @param source - A signal or computed (anything with `._v` and `.subscribe`)
+ * @param node - The Text node to update
+ */
+export function _bindText(
+  source: { _v: unknown; subscribe: (fn: () => void) => () => void },
+  node: Text,
+): () => void {
+  const update = () => {
+    const v = source._v
+    node.data = v == null || v === false ? "" : String(v as string | number)
+  }
+  update()
+  return source.subscribe(update)
+}
+
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
