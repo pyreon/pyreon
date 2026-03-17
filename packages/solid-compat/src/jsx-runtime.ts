@@ -14,7 +14,17 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { Fragment, h, onUnmount } from "@pyreon/core"
+import {
+  ErrorBoundary,
+  For,
+  Fragment,
+  h,
+  Match,
+  onUnmount,
+  Show,
+  Suspense,
+  Switch,
+} from "@pyreon/core"
 import { runUntracked, signal } from "@pyreon/reactivity"
 
 export { Fragment }
@@ -91,8 +101,21 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
 // biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 const _wrapperCache = new WeakMap<Function, ComponentFn>()
 
+// Pyreon core components that must NOT be wrapped — they rely on internal reactivity
+// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component set
+const _nativeComponents: Set<Function> = new Set([
+  Show,
+  For,
+  Switch,
+  Match,
+  Suspense,
+  ErrorBoundary,
+])
+
 // biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 function wrapCompatComponent(solidComponent: Function): ComponentFn {
+  if (_nativeComponents.has(solidComponent)) return solidComponent as ComponentFn
+
   let wrapped = _wrapperCache.get(solidComponent)
   if (wrapped) return wrapped
 
