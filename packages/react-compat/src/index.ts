@@ -1,274 +1,295 @@
 /**
  * @pyreon/react-compat
  *
- * React-compatible hook API that runs on Pyreon's reactive engine.
+ * Fully React-compatible hook API powered by Pyreon's reactive engine.
  *
- * Allows you to write familiar React-style code while getting Pyreon's
- * fine-grained reactivity, built-in router/store, and superior performance.
- *
- * DIFFERENCES FROM REACT:
- *  - No hooks rules: call these anywhere in a component, in loops, conditions, etc.
- *  - useEffect deps array is IGNORED — Pyreon tracks dependencies automatically.
- *  - useCallback/memo are identity functions — no re-renders means no stale closures.
- *  - Components run ONCE (setup), not on every render.
+ * Components re-render on state change — just like React. Hooks return plain
+ * values and use deps arrays for memoization. Existing React code works
+ * unchanged when paired with `pyreon({ compat: "react" })` in your vite config.
  *
  * USAGE:
- *   Replace `import { useState, useEffect } from "react"` with
- *             `import { useState, useEffect } from "@pyreon/react-compat"`
- *   Replace `import { createRoot } from "react-dom/client"` with
- *             `import { createRoot } from "@pyreon/react-compat/dom"`
+ *   import { useState, useEffect } from "react"          // aliased by vite plugin
+ *   import { createRoot } from "react-dom/client"         // aliased by vite plugin
  */
 
 export type { Props, VNode as ReactNode, VNodeChild } from "@pyreon/core"
-// Re-export Pyreon's JSX runtime so JSX transforms work the same way
-// Lifecycle
-export { Fragment, h as createElement, h, onMount as useLayoutEffect } from "@pyreon/core"
+export { Fragment, h as createElement, h } from "@pyreon/core"
 
-import type { CleanupFn, VNodeChild } from "@pyreon/core"
-import {
-  createContext,
-  createRef,
-  ErrorBoundary,
-  onErrorCaptured,
-  onMount,
-  onUnmount,
-  onUpdate,
-  Portal,
-  Suspense,
-  useContext,
-} from "@pyreon/core"
-import {
-  batch,
-  computed,
-  createSelector,
-  effect,
-  getCurrentScope,
-  runUntracked,
-  signal,
-} from "@pyreon/reactivity"
+import type { VNodeChild } from "@pyreon/core"
+import { createContext, ErrorBoundary, Portal, Suspense, useContext } from "@pyreon/core"
+import { batch } from "@pyreon/reactivity"
+import type { EffectEntry } from "./jsx-runtime"
+import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
 
-// ─── State ────────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function requireCtx() {
+  const ctx = getCurrentCtx()
+  if (!ctx) throw new Error("Hook called outside of a component render")
+  return ctx
+}
+
+function depsChanged(a: unknown[] | undefined, b: unknown[] | undefined): boolean {
+  if (a === undefined || b === undefined) return true
+  if (a.length !== b.length) return true
+  for (let i = 0; i < a.length; i++) {
+    if (!Object.is(a[i], b[i])) return true
+  }
+  return false
+}
+
+// ─── State ───────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `useState`.
- * Returns `[getter, setter]` — call `getter()` to read, `setter(v)` to write.
- *
- * Unlike React: the getter is a signal, so any component or effect that reads
- * it will re-run automatically. No dep arrays needed.
+ * React-compatible `useState` — returns `[value, setter]`.
+ * Triggers a component re-render when the setter is called.
  */
-export function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void] {
-  const s = signal<T>(typeof initial === "function" ? (initial as () => T)() : initial)
-  const setter = (v: T | ((prev: T) => T)) => {
-    if (typeof v === "function") s.update(v as (prev: T) => T)
-    else s.set(v)
+export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void] {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(typeof initial === "function" ? (initial as () => T)() : initial)
   }
-  return [s, setter]
+
+  const value = ctx.hooks[idx] as T
+  const setter = (v: T | ((prev: T) => T)) => {
+    const current = ctx.hooks[idx] as T
+    const next = typeof v === "function" ? (v as (prev: T) => T)(current) : v
+    if (Object.is(current, next)) return
+    ctx.hooks[idx] = next
+    ctx.scheduleRerender()
+  }
+
+  return [value, setter]
 }
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `useReducer`.
+ * React-compatible `useReducer` — returns `[state, dispatch]`.
  */
 export function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
   initial: S | (() => S),
-): [() => S, (action: A) => void] {
-  const s = signal<S>(typeof initial === "function" ? (initial as () => S)() : initial)
-  const dispatch = (action: A) => s.update((prev) => reducer(prev, action))
-  return [s, dispatch]
+): [S, (action: A) => void] {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(typeof initial === "function" ? (initial as () => S)() : initial)
+  }
+
+  const state = ctx.hooks[idx] as S
+  const dispatch = (action: A) => {
+    const current = ctx.hooks[idx] as S
+    const next = reducer(current, action)
+    if (Object.is(current, next)) return
+    ctx.hooks[idx] = next
+    ctx.scheduleRerender()
+  }
+
+  return [state, dispatch]
 }
 
 // ─── Effects ─────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `useEffect`.
- *
- * The `deps` array is IGNORED — Pyreon tracks reactive dependencies automatically.
- * If `deps` is `[]` (mount-only), wrap the body in `runUntracked(() => ...)`.
- *
- * Returns a cleanup the same way React does (return a function from `fn`).
+ * React-compatible `useEffect` — runs after render when deps change.
+ * Returns cleanup on unmount and before re-running.
  */
-// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
-export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
-  if (deps !== undefined && deps.length === 0) {
-    // [] means "run once on mount" — use onMount instead of a tracking effect
-    onMount((): undefined => {
-      const cleanup = runUntracked(fn)
-      if (typeof cleanup === "function") onUnmount(cleanup)
-    })
+// biome-ignore lint/suspicious/noConfusingVoidType: matches React's useEffect signature
+export function useEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    // First render — always run
+    const entry: EffectEntry = { fn, deps, cleanup: undefined }
+    ctx.hooks.push(entry)
+    ctx.pendingEffects.push(entry)
   } else {
-    // No deps or non-empty deps: run reactively (Pyreon auto-tracks).
-    // effect() natively supports cleanup: if fn() returns a function,
-    // it's called before re-runs and on dispose.
-    const e = effect(fn)
-    onUnmount(() => {
-      e.dispose()
-    })
+    const entry = ctx.hooks[idx] as EffectEntry
+    if (depsChanged(entry.deps, deps)) {
+      entry.fn = fn
+      entry.deps = deps
+      ctx.pendingEffects.push(entry)
+    }
   }
 }
 
 /**
- * Drop-in for React's `useLayoutEffect`.
- * In Pyreon there is no paint distinction — maps to `onMount` (same as useEffect).
+ * React-compatible `useLayoutEffect` — runs synchronously after DOM mutations.
  */
-export { useEffect as useLayoutEffect_ }
+// biome-ignore lint/suspicious/noConfusingVoidType: matches React's useLayoutEffect signature
+export function useLayoutEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const entry: EffectEntry = { fn, deps, cleanup: undefined }
+    ctx.hooks.push(entry)
+    ctx.pendingLayoutEffects.push(entry)
+  } else {
+    const entry = ctx.hooks[idx] as EffectEntry
+    if (depsChanged(entry.deps, deps)) {
+      entry.fn = fn
+      entry.deps = deps
+      ctx.pendingLayoutEffects.push(entry)
+    }
+  }
+}
 
 // ─── Memoization ─────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `useMemo`.
- * The `deps` array is IGNORED — Pyreon's `computed` tracks dependencies automatically.
- * Returns a getter: call `value()` to read the memoized result.
+ * React-compatible `useMemo` — returns the cached value, recomputed when deps change.
  */
-export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
-  return computed(fn)
+export function useMemo<T>(fn: () => T, deps: unknown[]): T {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const value = fn()
+    ctx.hooks.push({ value, deps })
+    return value
+  }
+
+  const entry = ctx.hooks[idx] as { value: T; deps: unknown[] }
+  if (depsChanged(entry.deps, deps)) {
+    entry.value = fn()
+    entry.deps = deps
+  }
+  return entry.value
 }
 
 /**
- * Drop-in for React's `useCallback`.
- * In Pyreon, components run once so callbacks are never recreated — returns `fn` as-is.
+ * React-compatible `useCallback` — returns the cached function when deps haven't changed.
  */
-// biome-ignore lint/suspicious/noExplicitAny: any is needed for contravariant function params
-export function useCallback<T extends (...args: any[]) => any>(fn: T, _deps?: unknown[]): T {
-  return fn
+export function useCallback<T extends (...args: never[]) => unknown>(fn: T, deps: unknown[]): T {
+  return useMemo(() => fn, deps)
 }
 
-// ─── Refs ─────────────────────────────────────────────────────────────────────
+// ─── Refs ────────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `useRef`.
- * Returns `{ current: T }` — same shape as React's ref object.
+ * React-compatible `useRef` — returns `{ current }` persisted across re-renders.
  */
 export function useRef<T>(initial?: T): { current: T | null } {
-  const ref = createRef<T>()
-  if (initial !== undefined) ref.current = initial as T
-  return ref
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const ref = { current: initial !== undefined ? (initial as T) : null }
+    ctx.hooks.push(ref)
+  }
+
+  return ctx.hooks[idx] as { current: T | null }
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
-/**
- * Drop-in for React's `createContext` + `useContext`.
- * Usage mirrors React: `const Ctx = createContext(defaultValue)`.
- */
 export { createContext, useContext }
 
-// ─── ID ───────────────────────────────────────────────────────────────────────
+// ─── ID ──────────────────────────────────────────────────────────────────────
+
+let _idCounter = 0
 
 /**
- * Drop-in for React's `useId` — returns a stable unique string per component instance.
- *
- * Uses the component's effectScope as the key so the counter starts at 0 for every
- * component on both server and client — IDs are deterministic and hydration-safe.
+ * React-compatible `useId` — returns a stable unique string per hook call.
  */
-const _idCounters = new WeakMap<object, number>()
-
 export function useId(): string {
-  const scope = getCurrentScope()
-  if (!scope) return `:r${Math.random().toString(36).slice(2, 9)}:`
-  const count = _idCounters.get(scope) ?? 0
-  _idCounters.set(scope, count + 1)
-  return `:r${count.toString(36)}:`
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(`:r${(_idCounter++).toString(36)}:`)
+  }
+
+  return ctx.hooks[idx] as string
 }
 
-// ─── Optimization ─────────────────────────────────────────────────────────────
+// ─── Optimization ────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `memo` — wraps a component.
- * In Pyreon, components run once (no re-renders), so memoization is a no-op.
- * Kept for API compatibility when migrating React code.
+ * React-compatible `memo` — wraps a component to skip re-render when props
+ * are shallowly equal.
  */
 export function memo<P extends Record<string, unknown>>(
   component: (props: P) => VNodeChild,
+  areEqual?: (prevProps: P, nextProps: P) => boolean,
 ): (props: P) => VNodeChild {
-  return component
+  const compare =
+    areEqual ??
+    ((a: P, b: P) => {
+      const keysA = Object.keys(a)
+      const keysB = Object.keys(b)
+      if (keysA.length !== keysB.length) return false
+      for (const k of keysA) {
+        if (!Object.is(a[k], b[k])) return false
+      }
+      return true
+    })
+
+  let prevProps: P | null = null
+  let prevResult: VNodeChild = null
+
+  return (props: P) => {
+    if (prevProps !== null && compare(prevProps, props)) {
+      return prevResult
+    }
+    prevProps = props
+    prevResult = (component as (p: P) => VNodeChild)(props)
+    return prevResult
+  }
 }
 
 /**
- * Drop-in for React's `useTransition` — no-op in Pyreon (no concurrent mode).
- * Returns `[false, (fn) => fn()]` to keep code runnable without changes.
+ * React-compatible `useTransition` — no concurrent mode in Pyreon.
  */
 export function useTransition(): [boolean, (fn: () => void) => void] {
   return [false, (fn) => fn()]
 }
 
 /**
- * Drop-in for React's `useDeferredValue` — returns the value as-is in Pyreon.
+ * React-compatible `useDeferredValue` — returns the value as-is.
  */
 export function useDeferredValue<T>(value: T): T {
   return value
 }
 
-// ─── Batching ─────────────────────────────────────────────────────────────────
+// ─── Imperative handle ───────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `unstable_batchedUpdates` / React 18's automatic batching.
- * Pyreon's `batch()` does the same thing.
+ * React-compatible `useImperativeHandle`.
  */
+export function useImperativeHandle<T>(
+  ref: { current: T | null } | null | undefined,
+  init: () => T,
+  deps?: unknown[],
+): void {
+  useLayoutEffect(() => {
+    if (ref) ref.current = init()
+    return () => {
+      if (ref) ref.current = null
+    }
+  }, deps)
+}
+
+// ─── Batching ────────────────────────────────────────────────────────────────
+
 export { batch }
-
-// ─── Error boundaries ─────────────────────────────────────────────────────────
-
-/**
- * Drop-in for React's error boundary pattern.
- * Return `true` from `handler` to prevent error propagation (like `componentDidCatch`).
- */
-export { onErrorCaptured as useErrorBoundary }
 
 // ─── Portals ─────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for React's `createPortal(children, target)`.
+ * React-compatible `createPortal(children, target)`.
  */
 export function createPortal(children: VNodeChild, target: Element): VNodeChild {
   return Portal({ target, children })
 }
 
-// ─── Imperative handle ────────────────────────────────────────────────────────
+// ─── Suspense / lazy / ErrorBoundary ─────────────────────────────────────────
 
-/**
- * Drop-in for React's `useImperativeHandle`.
- * In Pyreon, expose methods via a ref prop directly — this is a compatibility shim.
- */
-export function useImperativeHandle<T>(
-  ref: { current: T | null } | null | undefined,
-  init: () => T,
-  _deps?: unknown[],
-): void {
-  onMount((): undefined => {
-    if (ref) ref.current = init()
-  })
-  onUnmount(() => {
-    if (ref) ref.current = null
-  })
-}
-
-// ─── Selector ─────────────────────────────────────────────────────────────────
-
-/**
- * Pyreon-specific: O(1) equality selector (no React equivalent).
- * Useful for large lists where only the selected item should re-render.
- * @see createSelector in @pyreon/reactivity
- */
-export { createSelector }
-
-// ─── onUpdate ─────────────────────────────────────────────────────────────────
-
-/** Pyreon-specific lifecycle hook — runs after each reactive update. */
-export { onMount, onUnmount, onUpdate }
-
-// ─── Suspense / lazy ──────────────────────────────────────────────────────────
-
-/**
- * Drop-in for React's `lazy()`.
- * Re-exported from `@pyreon/core` — wraps a dynamic import, renders null until
- * the module resolves. Pair with `<Suspense>` to show a fallback during loading.
- */
 export { lazy } from "@pyreon/core"
-
-/**
- * Drop-in for React's `<Suspense>`.
- * Shows `fallback` while a `lazy()` child is still loading.
- */
 export { ErrorBoundary, Suspense }

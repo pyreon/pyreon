@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "@pyreon/react-compat"
+import { useEffect, useRef, useState } from "react"
 import Demo from "./Demo"
 
 export default function UseRefDemo() {
@@ -7,7 +7,6 @@ export default function UseRefDemo() {
   const [value, setValue] = useState("")
 
   useEffect(() => {
-    value()
     renderCount.current = (renderCount.current ?? 0) + 1
   })
 
@@ -36,7 +35,7 @@ renderCount.current++;`}
         </button>
       </div>
       <p class="muted">
-        Value: {() => value()} | Effect runs: {() => renderCount.current}
+        Value: {value} | Effect runs: {renderCount.current}
       </p>
     </Demo>
   )
