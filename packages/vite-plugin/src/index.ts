@@ -324,7 +324,6 @@ function injectHmr(code: string, moduleId: string): string {
         continue // unbalanced — skip
       }
       // Only rewrite module-scope signals (brace depth 0).
-      // esbuild may strip indentation, so we can't rely on column position.
       if (braceDepthAt(code, m.index) === 0) {
         matches.push({
           start: m.index,
