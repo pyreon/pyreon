@@ -1010,8 +1010,8 @@ describe("mount — props (extended)", () => {
       el,
     )
     const div = el.querySelector("div") as HTMLElement
-    div.dispatchEvent(new MouseEvent("mousedown"))
-    div.dispatchEvent(new MouseEvent("mouseup"))
+    div.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+    div.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }))
     expect(mouseDown).toBe(true)
     expect(mouseUp).toBe(true)
   })

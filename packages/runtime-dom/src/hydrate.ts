@@ -26,6 +26,7 @@ import {
   runWithHooks,
 } from "@pyreon/core"
 import { effect, effectScope, runUntracked, setCurrentScope } from "@pyreon/reactivity"
+import { setupDelegation } from "./delegate"
 import { warnHydrationMismatch } from "./hydration-debug"
 import { mountChild } from "./mount"
 import { mountReactive } from "./nodes"
@@ -379,6 +380,7 @@ function hydrateComponent(
  * const unmount = hydrateRoot(document.getElementById("app")!, h(App, null))
  */
 export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
+  setupDelegation(container)
   const firstChild = firstReal(container.firstChild as ChildNode | null)
   const [cleanup] = hydrateChild(vnode, firstChild, container, null)
   return cleanup
