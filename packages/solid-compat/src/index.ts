@@ -13,7 +13,7 @@
  *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
  */
 
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
 import {
   ErrorBoundary,
   For,
@@ -361,37 +361,44 @@ export function children(fn: () => VNodeChild): () => VNodeChild {
 
 export function lazy<P extends Props>(
   loader: () => Promise<{ default: ComponentFn<P> }>,
-): ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
-  let resolved: ComponentFn<P> | null = null
-  let error: Error | null = null
+): LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
+  const loaded = pyreonSignal<ComponentFn<P> | null>(null)
+  const error = pyreonSignal<Error | null>(null)
   let promise: Promise<{ default: ComponentFn<P> }> | null = null
 
   const load = () => {
     if (!promise) {
       promise = loader()
         .then((mod) => {
-          resolved = mod.default
+          loaded.set(mod.default)
           return mod
         })
         .catch((err) => {
-          error = err instanceof Error ? err : new Error(String(err))
-          // Allow retry on next render by resetting the promise
+          const e = err instanceof Error ? err : new Error(String(err))
+          error.set(e)
           promise = null
-          throw error
+          throw e
         })
     }
     return promise
   }
 
+  // Uses Pyreon's __loading protocol — Suspense checks this to show fallback.
+  // __loading() triggers load() on first call so loading starts when Suspense
+  // first encounters the component (not at module load time, not on first render).
   const LazyComponent = ((props: P) => {
-    if (error) throw error
-    if (!resolved) {
-      // Throw the promise so Suspense can catch it
-      throw load()
-    }
-    return resolved(props)
-  }) as ComponentFn<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
+    const err = error()
+    if (err) throw err
+    const comp = loaded()
+    if (!comp) return null
+    return comp(props)
+  }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
 
+  LazyComponent.__loading = () => {
+    const isLoading = loaded() === null && error() === null
+    if (isLoading) load()
+    return isLoading
+  }
   LazyComponent.preload = load
 
   return LazyComponent

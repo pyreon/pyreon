@@ -11,6 +11,19 @@
  * The component body runs inside `runUntracked` to prevent signal reads (from
  * createSignal getters) from being tracked by the reactive accessor. Only the
  * version signal triggers re-renders.
+ *
+ * ## Child instance preservation
+ *
+ * When a parent component re-renders, mountReactive does a full teardown+rebuild
+ * of the DOM tree. Without preservation, child components get brand new
+ * RenderContexts with empty hooks arrays — causing `onMount` and `onCleanup`
+ * to fire again, which can trigger infinite re-render loops.
+ *
+ * To fix this, we store child RenderContexts in the parent's hooks array (indexed
+ * by the parent's hook counter). When the child wrapper is called again after a
+ * parent re-render, it reuses the existing ctx (preserving hooks state), so
+ * hook-indexed guards like `if (idx >= ctx.hooks.length) return` work correctly
+ * and lifecycle hooks don't re-fire.
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
@@ -96,6 +109,21 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
   })
 }
 
+// ─── Child instance preservation ─────────────────────────────────────────────
+
+/** Stored in the parent's hooks array to preserve child state across re-renders */
+interface ChildInstance {
+  ctx: RenderContext
+  version: ReturnType<typeof signal<number>>
+  updateScheduled: boolean
+}
+
+// Internal prop keys for passing parent context info to child wrappers
+const _CHILD_INSTANCE = Symbol.for("pyreon.childInstance")
+const noop = () => {
+  /* noop */
+}
+
 // ─── Component wrapping ──────────────────────────────────────────────────────
 
 // biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
@@ -122,7 +150,12 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.
   wrapped = ((props: Props) => {
-    const ctx: RenderContext = {
+    // Check for a preserved child instance from the parent's hooks
+    const existing = (props as Record<symbol, unknown>)[_CHILD_INSTANCE] as
+      | ChildInstance
+      | undefined
+
+    const ctx: RenderContext = existing?.ctx ?? {
       hooks: [],
       scheduleRerender: () => {
         // Will be replaced below after version signal is created
@@ -133,8 +166,17 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
       unmountCallbacks: [],
     }
 
-    const version = signal(0)
-    let updateScheduled = false
+    // When reusing an existing ctx after parent re-render, reset unmounted flag
+    // and clear stale unmount callbacks (they belong to the previous mount cycle)
+    if (existing) {
+      ctx.unmounted = false
+      ctx.unmountCallbacks = []
+    }
+
+    const version = existing?.version ?? signal(0)
+
+    // Use a shared updateScheduled flag (preserved across parent re-renders)
+    let updateScheduled = existing?.updateScheduled ?? false
 
     ctx.scheduleRerender = () => {
       if (ctx.unmounted || updateScheduled) return
@@ -151,13 +193,19 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
       for (const cb of ctx.unmountCallbacks) cb()
     })
 
+    // Strip the internal prop before passing to the component
+    const { [_CHILD_INSTANCE]: _stripped, ...cleanProps } = props as Record<
+      string | symbol,
+      unknown
+    >
+
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
       version() // tracked read — triggers re-execution when state changes
       beginRender(ctx)
       // runUntracked prevents signal reads (from createSignal getters) from
       // being tracked by this accessor — only the version signal should trigger re-renders
-      const result = runUntracked(() => (solidComponent as ComponentFn)(props))
+      const result = runUntracked(() => (solidComponent as ComponentFn)(cleanProps as Props))
       const layoutEffects = ctx.pendingLayoutEffects
       const effects = ctx.pendingEffects
       endRender()
@@ -169,8 +217,49 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
     }
   }) as unknown as ComponentFn
 
+  // Forward __loading from lazy components so Pyreon's Suspense can detect them
+  if ("__loading" in solidComponent) {
+    ;(wrapped as unknown as Record<string, unknown>).__loading = (
+      solidComponent as unknown as Record<string, unknown>
+    ).__loading
+  }
+
   _wrapperCache.set(solidComponent, wrapped)
   return wrapped
+}
+
+// ─── Child instance lookup ───────────────────────────────────────────────────
+
+function createChildInstance(): ChildInstance {
+  return {
+    ctx: {
+      hooks: [],
+      scheduleRerender: noop,
+      pendingEffects: [],
+      pendingLayoutEffects: [],
+      unmounted: false,
+      unmountCallbacks: [],
+    },
+    version: signal(0),
+    updateScheduled: false,
+  }
+}
+
+/**
+ * During a parent component render, get or create the child instance at the
+ * current hook index. Returns undefined when called outside a component render.
+ */
+function resolveChildInstance(): ChildInstance | undefined {
+  const parentCtx = _currentCtx
+  if (!parentCtx) return undefined
+
+  const idx = _hookIndex++
+  if (idx < parentCtx.hooks.length) {
+    return parentCtx.hooks[idx] as ChildInstance
+  }
+  const instance = createChildInstance()
+  parentCtx.hooks[idx] = instance
+  return instance
 }
 
 // ─── JSX functions ───────────────────────────────────────────────────────────
@@ -184,9 +273,20 @@ export function jsx(
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
   if (typeof type === "function") {
-    // Wrap Solid-style component for re-render support
+    if (_nativeComponents.has(type)) {
+      const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+      return h(type as ComponentFn, componentProps)
+    }
+
     const wrapped = wrapCompatComponent(type)
-    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+    const componentProps =
+      children !== undefined ? { ...propsWithKey, children } : { ...propsWithKey }
+
+    const childInstance = resolveChildInstance()
+    if (childInstance) {
+      ;(componentProps as Record<symbol, unknown>)[_CHILD_INSTANCE] = childInstance
+    }
+
     return h(wrapped, componentProps)
   }
 
