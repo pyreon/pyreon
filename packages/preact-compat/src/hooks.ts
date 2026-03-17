@@ -1,129 +1,247 @@
 /**
  * @pyreon/preact-compat/hooks
  *
- * Preact hooks — separate import like `preact/hooks`.
- * All hooks run on Pyreon's reactive engine under the hood.
+ * Preact-compatible hooks — separate import like `preact/hooks`.
+ *
+ * Components re-render on state change — just like Preact. Hooks return plain
+ * values and use deps arrays for memoization. Existing Preact code works
+ * unchanged when paired with `pyreon({ compat: "preact" })` in your vite config.
  */
 
-import type { CleanupFn } from "@pyreon/core"
-import { createRef, onErrorCaptured, onMount, onUnmount, useContext } from "@pyreon/core"
-import { computed, effect, getCurrentScope, runUntracked, signal } from "@pyreon/reactivity"
+import type { VNodeChild } from "@pyreon/core"
+import { onErrorCaptured, useContext } from "@pyreon/core"
+import type { EffectEntry } from "./jsx-runtime"
+import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
 
 export { useContext }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function requireCtx() {
+  const ctx = getCurrentCtx()
+  if (!ctx) throw new Error("Hook called outside of a component render")
+  return ctx
+}
+
+function depsChanged(a: unknown[] | undefined, b: unknown[] | undefined): boolean {
+  if (a === undefined || b === undefined) return true
+  if (a.length !== b.length) return true
+  for (let i = 0; i < a.length; i++) {
+    if (!Object.is(a[i], b[i])) return true
+  }
+  return false
+}
 
 // ─── useState ────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useState`.
- * Returns `[getter, setter]` — call `getter()` to read, `setter(v)` to write.
+ * Preact-compatible `useState` — returns `[value, setter]`.
+ * Triggers a component re-render when the setter is called.
  */
-export function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void] {
-  const s = signal<T>(typeof initial === "function" ? (initial as () => T)() : initial)
-  const setter = (v: T | ((prev: T) => T)) => {
-    if (typeof v === "function") s.update(v as (prev: T) => T)
-    else s.set(v)
+export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void] {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(typeof initial === "function" ? (initial as () => T)() : initial)
   }
-  return [s, setter]
+
+  const value = ctx.hooks[idx] as T
+  const setter = (v: T | ((prev: T) => T)) => {
+    const current = ctx.hooks[idx] as T
+    const next = typeof v === "function" ? (v as (prev: T) => T)(current) : v
+    if (Object.is(current, next)) return
+    ctx.hooks[idx] = next
+    ctx.scheduleRerender()
+  }
+
+  return [value, setter]
 }
 
 // ─── useEffect ───────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useEffect`.
- * The `deps` array is IGNORED — Pyreon tracks dependencies automatically.
+ * Preact-compatible `useEffect` — runs after render when deps change.
+ * Returns cleanup on unmount and before re-running.
  */
-// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
-export function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void {
-  if (deps !== undefined && deps.length === 0) {
-    onMount((): undefined => {
-      const cleanup = runUntracked(fn)
-      if (typeof cleanup === "function") onUnmount(cleanup)
-    })
+// biome-ignore lint/suspicious/noConfusingVoidType: matches Preact's useEffect signature
+export function useEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    // First render — always run
+    const entry: EffectEntry = { fn, deps, cleanup: undefined }
+    ctx.hooks.push(entry)
+    ctx.pendingEffects.push(entry)
   } else {
-    // effect() natively supports cleanup: if fn() returns a function,
-    // it's called before re-runs and on dispose.
-    const e = effect(fn)
-    onUnmount(() => {
-      e.dispose()
-    })
+    const entry = ctx.hooks[idx] as EffectEntry
+    if (depsChanged(entry.deps, deps)) {
+      entry.fn = fn
+      entry.deps = deps
+      ctx.pendingEffects.push(entry)
+    }
   }
 }
 
 // ─── useLayoutEffect ─────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useLayoutEffect`.
- * No distinction from useEffect in Pyreon — same implementation.
+ * Preact-compatible `useLayoutEffect` — runs synchronously after DOM mutations.
  */
-export const useLayoutEffect = useEffect
+// biome-ignore lint/suspicious/noConfusingVoidType: matches Preact's useLayoutEffect signature
+export function useLayoutEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const entry: EffectEntry = { fn, deps, cleanup: undefined }
+    ctx.hooks.push(entry)
+    ctx.pendingLayoutEffects.push(entry)
+  } else {
+    const entry = ctx.hooks[idx] as EffectEntry
+    if (depsChanged(entry.deps, deps)) {
+      entry.fn = fn
+      entry.deps = deps
+      ctx.pendingLayoutEffects.push(entry)
+    }
+  }
+}
 
 // ─── useMemo ─────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useMemo`.
- * Returns a getter — call `value()` to read.
+ * Preact-compatible `useMemo` — returns the cached value, recomputed when deps change.
  */
-export function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T {
-  return computed(fn)
+export function useMemo<T>(fn: () => T, deps: unknown[]): T {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const value = fn()
+    ctx.hooks.push({ value, deps })
+    return value
+  }
+
+  const entry = ctx.hooks[idx] as { value: T; deps: unknown[] }
+  if (depsChanged(entry.deps, deps)) {
+    entry.value = fn()
+    entry.deps = deps
+  }
+  return entry.value
 }
 
 // ─── useCallback ─────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useCallback`.
- * Components run once in Pyreon — returns `fn` as-is.
+ * Preact-compatible `useCallback` — returns the cached function when deps haven't changed.
  */
-// biome-ignore lint/suspicious/noExplicitAny: any is needed for contravariant function params
-export function useCallback<T extends (...args: any[]) => any>(fn: T, _deps?: unknown[]): T {
-  return fn
+export function useCallback<T extends (...args: never[]) => unknown>(fn: T, deps: unknown[]): T {
+  return useMemo(() => fn, deps)
 }
 
 // ─── useRef ──────────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useRef`.
- * Returns `{ current: T }`.
+ * Preact-compatible `useRef` — returns `{ current }` persisted across re-renders.
  */
 export function useRef<T>(initial?: T): { current: T | null } {
-  const ref = createRef<T>()
-  if (initial !== undefined) ref.current = initial as T
-  return ref
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const ref = { current: initial !== undefined ? (initial as T) : null }
+    ctx.hooks.push(ref)
+  }
+
+  return ctx.hooks[idx] as { current: T | null }
 }
 
 // ─── useReducer ──────────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useReducer`.
+ * Preact-compatible `useReducer` — returns `[state, dispatch]`.
  */
 export function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
   initial: S | (() => S),
-): [() => S, (action: A) => void] {
-  const s = signal<S>(typeof initial === "function" ? (initial as () => S)() : initial)
-  const dispatch = (action: A) => s.update((prev) => reducer(prev, action))
-  return [s, dispatch]
+): [S, (action: A) => void] {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(typeof initial === "function" ? (initial as () => S)() : initial)
+  }
+
+  const state = ctx.hooks[idx] as S
+  const dispatch = (action: A) => {
+    const current = ctx.hooks[idx] as S
+    const next = reducer(current, action)
+    if (Object.is(current, next)) return
+    ctx.hooks[idx] = next
+    ctx.scheduleRerender()
+  }
+
+  return [state, dispatch]
 }
 
 // ─── useId ───────────────────────────────────────────────────────────────────
 
-const _idCounters = new WeakMap<object, number>()
+let _idCounter = 0
 
 /**
- * Drop-in for Preact's `useId`.
- * Returns a stable unique string per component instance.
+ * Preact-compatible `useId` — returns a stable unique string per hook call.
  */
 export function useId(): string {
-  const scope = getCurrentScope()
-  if (!scope) return `:r${Math.random().toString(36).slice(2, 9)}:`
-  const count = _idCounters.get(scope) ?? 0
-  _idCounters.set(scope, count + 1)
-  return `:r${count.toString(36)}:`
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    ctx.hooks.push(`:r${(_idCounter++).toString(36)}:`)
+  }
+
+  return ctx.hooks[idx] as string
+}
+
+// ─── Optimization ────────────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `memo` — wraps a component to skip re-render when props
+ * are shallowly equal.
+ */
+export function memo<P extends Record<string, unknown>>(
+  component: (props: P) => VNodeChild,
+  areEqual?: (prevProps: P, nextProps: P) => boolean,
+): (props: P) => VNodeChild {
+  const compare =
+    areEqual ??
+    ((a: P, b: P) => {
+      const keysA = Object.keys(a)
+      const keysB = Object.keys(b)
+      if (keysA.length !== keysB.length) return false
+      for (const k of keysA) {
+        if (!Object.is(a[k], b[k])) return false
+      }
+      return true
+    })
+
+  let prevProps: P | null = null
+  let prevResult: VNodeChild = null
+
+  return (props: P) => {
+    if (prevProps !== null && compare(prevProps, props)) {
+      return prevResult
+    }
+    prevProps = props
+    prevResult = (component as (p: P) => VNodeChild)(props)
+    return prevResult
+  }
 }
 
 // ─── useErrorBoundary ────────────────────────────────────────────────────────
 
 /**
- * Drop-in for Preact's `useErrorBoundary`.
+ * Preact-compatible `useErrorBoundary`.
  * Wraps Pyreon's `onErrorCaptured`.
  */
 export { onErrorCaptured as useErrorBoundary }

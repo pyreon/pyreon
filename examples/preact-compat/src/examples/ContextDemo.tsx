@@ -1,14 +1,14 @@
-import { createContext, useContext } from "@pyreon/preact-compat"
-import { useState } from "@pyreon/preact-compat/hooks"
+import { createContext, useContext } from "preact"
+import { useState } from "preact/hooks"
 import Demo from "./Demo"
 
-const ThemeCtx = createContext<() => string>(() => "dark")
+const ThemeCtx = createContext("dark")
 
 function ThemeConsumer() {
   const theme = useContext(ThemeCtx)
   return (
     <p>
-      Current theme: <strong>{() => theme()}</strong>
+      Current theme: <strong>{theme}</strong>
     </p>
   )
 }
@@ -20,16 +20,15 @@ export default function ContextDemo() {
     <Demo
       title="Context"
       apis="createContext, useContext"
-      code={`const ThemeCtx = createContext<() => string>(() => "dark")
+      code={`const ThemeCtx = createContext("dark")
 
-// Provider — pass the signal getter
+// Provider — pass the value
 <ThemeCtx.Provider value={theme}>
   <ThemeConsumer />
 </ThemeCtx.Provider>
 
 // Consumer
-const theme = useContext(ThemeCtx)
-theme() // read the value`}
+const theme = useContext(ThemeCtx)`}
     >
       <ThemeCtx.Provider value={theme}>
         <ThemeConsumer />

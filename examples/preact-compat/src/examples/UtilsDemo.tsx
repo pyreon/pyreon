@@ -1,4 +1,4 @@
-import { cloneElement, h, isValidElement, options, toChildArray } from "@pyreon/preact-compat"
+import { cloneElement, h, isValidElement, options, toChildArray } from "preact"
 import Demo from "./Demo"
 
 export default function UtilsDemo() {
