@@ -87,6 +87,8 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   preact: {
     preact: "@pyreon/preact-compat",
     "preact/hooks": "@pyreon/preact-compat/hooks",
+    "preact/jsx-runtime": "@pyreon/preact-compat/jsx-runtime",
+    "preact/jsx-dev-runtime": "@pyreon/preact-compat/jsx-runtime",
     "@preact/signals": "@pyreon/preact-compat/signals",
   },
   vue: {
@@ -144,11 +146,9 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
   if (aliased) return aliased
   // OXC's JSX transform reads jsxImportSource from tsconfig (@pyreon/core),
   // not from our plugin config. Redirect JSX runtime imports in compat mode.
-  if (
-    compat === "react" &&
-    (id === "@pyreon/core/jsx-runtime" || id === "@pyreon/core/jsx-dev-runtime")
-  ) {
-    return "@pyreon/react-compat/jsx-runtime"
+  if (id === "@pyreon/core/jsx-runtime" || id === "@pyreon/core/jsx-dev-runtime") {
+    if (compat === "react") return "@pyreon/react-compat/jsx-runtime"
+    if (compat === "preact") return "@pyreon/preact-compat/jsx-runtime"
   }
   return undefined
 }
@@ -184,7 +184,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         oxc: {
           jsx: {
             runtime: "automatic",
-            importSource: compat === "react" ? "@pyreon/react-compat" : "@pyreon/core",
+            importSource:
+              compat === "react"
+                ? "@pyreon/react-compat"
+                : compat === "preact"
+                  ? "@pyreon/preact-compat"
+                  : "@pyreon/core",
           },
         },
         // In SSR build mode, configure the entry
@@ -226,10 +231,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       const ext = getExt(id)
       if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".pyreon") return
 
-      // In react compat mode, skip Pyreon's reactive JSX transform.
+      // In compat mode, skip Pyreon's reactive JSX transform.
       // OXC's built-in JSX transform handles jsx() calls; the compat
       // JSX runtime wraps components for re-render support.
-      if (compat === "react") return
+      if (compat === "react" || compat === "preact") return
 
       const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal

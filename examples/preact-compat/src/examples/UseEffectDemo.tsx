@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "@pyreon/preact-compat/hooks"
+import { useEffect, useLayoutEffect, useState } from "preact/hooks"
 import Demo from "./Demo"
 
 export default function UseEffectDemo() {
@@ -7,39 +7,33 @@ export default function UseEffectDemo() {
   const [layoutLog, setLayoutLog] = useState("waiting...")
 
   useEffect(() => {
-    const c = count()
-    queueMicrotask(() => {
-      setEffectLog(`useEffect ran, count = ${c}`)
-    })
-  })
+    setEffectLog(`useEffect ran, count = ${count}`)
+  }, [count])
 
   useLayoutEffect(() => {
-    const c = count()
-    queueMicrotask(() => {
-      setLayoutLog(`useLayoutEffect ran, count = ${c}`)
-    })
-  })
+    setLayoutLog(`useLayoutEffect ran, count = ${count}`)
+  }, [count])
 
   return (
     <Demo
       title="useEffect & useLayoutEffect"
       apis="useEffect, useLayoutEffect"
       code={`useEffect(() => {
-  console.log("count is", count())
-})
+  console.log("count is", count)
+}, [count])
 
 useLayoutEffect(() => {
   // same API, runs synchronously
-})`}
+}, [count])`}
     >
       <p>
-        count: <strong>{() => count()}</strong>
+        count: <strong>{count}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">{() => effectLog()}</p>
-      <p class="muted">{() => layoutLog()}</p>
+      <p class="muted">{effectLog}</p>
+      <p class="muted">{layoutLog}</p>
     </Demo>
   )
 }

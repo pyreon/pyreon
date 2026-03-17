@@ -1,5 +1,5 @@
-import { useState } from "@pyreon/preact-compat/hooks"
-import { batch, computed, effect, signal } from "@pyreon/preact-compat/signals"
+import { batch, computed, effect, signal } from "@preact/signals"
+import { useState } from "preact/hooks"
 import Demo from "./Demo"
 
 export default function SignalsDemo() {
@@ -21,7 +21,7 @@ export default function SignalsDemo() {
       title="Signals"
       apis="signal, computed, effect, batch"
       code={`import { signal, computed, effect, batch }
-  from "@pyreon/preact-compat/signals"
+  from "@preact/signals"
 
 const count = signal(0)
 const doubled = computed(() => count.value * 2)
@@ -36,11 +36,10 @@ batch(() => {
 }) // single notification`}
     >
       <p>
-        signal: <strong>{() => count.value}</strong> | computed doubled:{" "}
-        <strong>{() => doubled.value}</strong>
+        signal: <strong>{count.value}</strong> | computed doubled: <strong>{doubled.value}</strong>
       </p>
       <p>
-        peek (untracked): <strong>{() => count.peek()}</strong>
+        peek (untracked): <strong>{count.peek()}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => count.value++}>
@@ -68,8 +67,8 @@ batch(() => {
         </button>
       </div>
       <p class="muted">
-        {() => effectLog()}
-        {() => (disposed() ? " (disposed)" : "")}
+        {effectLog}
+        {disposed ? " (disposed)" : ""}
       </p>
     </Demo>
   )

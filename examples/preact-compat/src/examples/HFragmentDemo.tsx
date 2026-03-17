@@ -1,5 +1,5 @@
-import { createElement, Fragment, h } from "@pyreon/preact-compat"
-import { useState } from "@pyreon/preact-compat/hooks"
+import { createElement, Fragment, h } from "preact"
+import { useState } from "preact/hooks"
 import Demo from "./Demo"
 
 export default function HFragmentDemo() {
@@ -27,7 +27,7 @@ h(Fragment, null, h("span", null, "A"), h("span", null, "B"))`}
         h("p", { class: "muted" }, "Fragment child 2"),
       )}
       <p>
-        Items: <strong>{() => items().join(", ")}</strong>
+        Items: <strong>{items.join(", ")}</strong>
       </p>
       <button
         type="button"

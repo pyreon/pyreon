@@ -1,4 +1,4 @@
-import { useReducer } from "@pyreon/preact-compat/hooks"
+import { useReducer } from "preact/hooks"
 import Demo from "./Demo"
 
 type CounterAction = { type: "inc" } | { type: "dec" } | { type: "reset" }
@@ -25,7 +25,7 @@ export default function UseReducerDemo() {
 dispatch({ type: "inc" })`}
     >
       <p>
-        count: <strong>{() => count()}</strong>
+        count: <strong>{count}</strong>
       </p>
       <div class="row">
         <button type="button" onClick={() => dispatch({ type: "inc" })}>

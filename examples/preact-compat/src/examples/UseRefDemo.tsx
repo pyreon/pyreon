@@ -1,5 +1,5 @@
-import { createRef } from "@pyreon/preact-compat"
-import { useRef, useState } from "@pyreon/preact-compat/hooks"
+import { createRef } from "preact"
+import { useRef, useState } from "preact/hooks"
 import Demo from "./Demo"
 
 export default function UseRefDemo() {
@@ -45,7 +45,7 @@ const classRef = createRef<HTMLInputElement>()
           Focus createRef
         </button>
       </div>
-      <p class="muted">{() => msg() || "Click a button to focus an input"}</p>
+      <p class="muted">{msg || "Click a button to focus an input"}</p>
     </Demo>
   )
 }

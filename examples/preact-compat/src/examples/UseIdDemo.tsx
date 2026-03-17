@@ -1,4 +1,4 @@
-import { useId } from "@pyreon/preact-compat/hooks"
+import { useId } from "preact/hooks"
 import Demo from "./Demo"
 
 export default function UseIdDemo() {

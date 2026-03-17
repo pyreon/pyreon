@@ -1,7 +1,12 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "preact": ["../../packages/preact-compat/src/index.ts"],
+      "preact/hooks": ["../../packages/preact-compat/src/hooks.ts"],
+      "@preact/signals": ["../../packages/preact-compat/src/signals.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }
