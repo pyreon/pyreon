@@ -4,15 +4,14 @@ import Demo from "./Demo"
 /**
  * Child component at module scope (stable function reference).
  *
- * Lifecycle hooks accumulate events in a plain variable. Only onMounted
- * triggers a single ref write to display the log. onUpdated uses a guard
- * to avoid infinite re-render loops (writing to a ref inside onUpdated
- * would cause: re-render → onUpdated → write → re-render → …).
+ * Lifecycle hooks accumulate events synchronously in a plain variable.
+ * Only onMounted writes to the ref (one-shot). onUpdated cannot safely
+ * write to refs in the re-render model (it fires every re-render, so any
+ * ref write → scheduleRerender → re-render → onUpdated → infinite loop).
  */
 function LifecycleChild() {
-  const events = ref("(pending)")
+  const events = ref("")
   let eventStr = ""
-  let updatedOnce = false
 
   onBeforeMount(() => {
     eventStr += "[beforeMount] "
@@ -22,13 +21,9 @@ function LifecycleChild() {
     events.value = eventStr
   })
   onUpdated(() => {
-    if (!updatedOnce) {
-      updatedOnce = true
-      eventStr += "[updated] "
-      queueMicrotask(() => {
-        events.value = eventStr
-      })
-    }
+    // Cannot write to refs here — would cause infinite re-render loop.
+    // In the re-render model, onUpdated fires on every re-render.
+    console.log("[updated]")
   })
   onBeforeUnmount(() => {
     eventStr += "[beforeUnmount] "
@@ -41,7 +36,7 @@ function LifecycleChild() {
     <>
       <p class="highlight">Child is mounted</p>
       <p class="muted">
-        events: <strong>{events.value}</strong>
+        events: <strong>{events.value || "(none)"}</strong>
       </p>
     </>
   )
@@ -56,7 +51,7 @@ export default function LifecycleDemo() {
       apis="onMounted, onUnmounted, onUpdated, onBeforeMount, onBeforeUnmount"
       code={`onBeforeMount(() => log += "[beforeMount] ")
 onMounted(() => log += "[mounted] ")
-onUpdated(() => log += "[updated] ")
+onUpdated(() => console.log("[updated]"))
 onBeforeUnmount(() => log += "[beforeUnmount] ")
 onUnmounted(() => log += "[unmounted] ")`}
     >
