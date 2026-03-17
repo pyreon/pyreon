@@ -1,4 +1,4 @@
-import { createEffect, createSignal } from "@pyreon/solid-compat"
+import { createEffect, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function EffectDemo() {
@@ -21,12 +21,12 @@ createEffect(() => {
 });`}
     >
       <p>
-        Count: <strong>{() => count()}</strong>
+        Count: <strong>{count()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">Log: {() => log().join(" | ")}</p>
+      <p class="muted">Log: {log().join(" | ")}</p>
     </Demo>
   )
 }

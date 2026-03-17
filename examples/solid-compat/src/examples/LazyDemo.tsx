@@ -1,4 +1,4 @@
-import { createSignal, lazy, Show, Suspense } from "@pyreon/solid-compat"
+import { createSignal, lazy, Show, Suspense } from "solid-js"
 import Demo from "./Demo"
 
 const LazyHeavy = lazy(

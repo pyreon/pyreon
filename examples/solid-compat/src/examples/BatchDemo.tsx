@@ -1,4 +1,4 @@
-import { batch, createEffect, createSignal } from "@pyreon/solid-compat"
+import { batch, createEffect, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function BatchDemo() {
@@ -27,9 +27,9 @@ batch(() => {
 });`}
     >
       <p>
-        Name: <strong>{() => first()}</strong> <strong>{() => last()}</strong>
+        Name: <strong>{first()}</strong> <strong>{last()}</strong>
       </p>
-      <p class="muted">Effect runs: {() => renderCount()}</p>
+      <p class="muted">Effect runs: {renderCount()}</p>
       <button
         type="button"
         onClick={() => {

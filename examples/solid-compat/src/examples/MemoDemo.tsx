@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from "@pyreon/solid-compat"
+import { createMemo, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function MemoDemo() {
@@ -18,8 +18,8 @@ const quadrupled = createMemo(() => doubled() * 2);
 <span>{doubled()} / {quadrupled()}</span>`}
     >
       <p>
-        Count: <strong>{() => count()}</strong> | Doubled: <strong>{() => doubled()}</strong> |
-        Quadrupled: <strong>{() => quadrupled()}</strong>
+        Count: <strong>{count()}</strong> | Doubled: <strong>{doubled()}</strong> | Quadrupled:{" "}
+        <strong>{quadrupled()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment

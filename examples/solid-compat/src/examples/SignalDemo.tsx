@@ -1,4 +1,4 @@
-import { createSignal } from "@pyreon/solid-compat"
+import { createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function SignalDemo() {
@@ -20,7 +20,7 @@ setCount(5);
 setCount(prev => prev + 1);`}
     >
       <p>
-        Count: <strong>{() => count()}</strong>
+        Count: <strong>{count()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment

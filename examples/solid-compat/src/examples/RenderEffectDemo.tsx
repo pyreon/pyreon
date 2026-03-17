@@ -1,4 +1,4 @@
-import { createComputed, createRenderEffect, createSignal } from "@pyreon/solid-compat"
+import { createComputed, createRenderEffect, createSignal } from "solid-js"
 import Demo from "./Demo"
 
 export default function RenderEffectDemo() {
@@ -29,13 +29,13 @@ createComputed(() => {
 });`}
     >
       <p>
-        Count: <strong>{() => count()}</strong>
+        Count: <strong>{count()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">renderEffect: {() => renderLog().join(" | ")}</p>
-      <p class="muted">createComputed: {() => computedLog().join(" | ")}</p>
+      <p class="muted">renderEffect: {renderLog().join(" | ")}</p>
+      <p class="muted">createComputed: {computedLog().join(" | ")}</p>
     </Demo>
   )
 }

@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "@pyreon/solid-compat"
+import { createSignal, onCleanup, onMount, Show } from "solid-js"
 import Demo from "./Demo"
 
 export default function LifecycleDemo() {
@@ -36,12 +36,12 @@ export default function LifecycleDemo() {
 }`}
     >
       <button type="button" onClick={() => setShow((v) => !v)}>
-        {() => (show() ? "Unmount" : "Mount")}
+        {show() ? "Unmount" : "Mount"}
       </button>
       <Show when={show}>
         <Inner />
       </Show>
-      <p class="muted">Events: {() => events().join(" → ")}</p>
+      <p class="muted">Events: {events().join(" → ")}</p>
     </Demo>
   )
 }

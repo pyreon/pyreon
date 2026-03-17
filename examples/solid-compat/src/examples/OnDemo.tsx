@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, untrack } from "@pyreon/solid-compat"
+import { createEffect, createSignal, on, untrack } from "solid-js"
 import Demo from "./Demo"
 
 export default function OnDemo() {
@@ -30,12 +30,12 @@ createEffect(on(
 ));`}
     >
       <button type="button" onClick={() => setA((v) => v + 1)}>
-        a++ ({() => a()}) — triggers
+        a++ ({a()}) — triggers
       </button>
       <button type="button" onClick={() => setB((v) => v + 1)}>
-        b++ ({() => b()}) — silent
+        b++ ({b()}) — silent
       </button>
-      <p class="muted">{() => result()}</p>
+      <p class="muted">{result()}</p>
     </Demo>
   )
 }

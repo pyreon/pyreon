@@ -1,4 +1,4 @@
-import { createSignal, For } from "@pyreon/solid-compat"
+import { createSignal, For } from "solid-js"
 import Demo from "./Demo"
 
 export default function ForDemo() {
