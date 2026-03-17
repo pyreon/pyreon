@@ -1,5 +1,21 @@
 # @pyreon/head
 
+## 0.2.1
+
+### Patch Changes
+
+- Release 0.2.1
+
+  - feat(vite-plugin): add `compat` option for zero-change framework migration
+  - fix: resolve `workspace:^` dependencies correctly during publish
+  - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option
+  - fix(vite-plugin): bump vite peer dependency to `>=8.0.0`
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.2.1
+  - @pyreon/core@0.2.1
+  - @pyreon/runtime-server@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
