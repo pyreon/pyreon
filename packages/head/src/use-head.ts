@@ -89,7 +89,6 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
     }
   } else {
     ctx.add(id, buildEntry(input))
-    // onMount is a no-op in SSR; syncDom has its own typeof document guard
     onMount(() => {
       syncDom(ctx)
       return undefined
@@ -98,7 +97,6 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
 
   onUnmount(() => {
     ctx.remove(id)
-    // syncDom has its own typeof document guard — no need to check here
     syncDom(ctx)
   })
 }

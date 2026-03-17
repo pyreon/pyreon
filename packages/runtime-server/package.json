@@ -39,8 +39,8 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/core": "workspace:*",
-    "@pyreon/reactivity": "workspace:*"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   },
   "publishConfig": {
     "access": "public"
