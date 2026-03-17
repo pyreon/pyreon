@@ -12,7 +12,7 @@
  */
 import { For, h } from "@pyreon/core"
 import { _bind, createSelector, signal } from "@pyreon/reactivity"
-import { _tpl, mount } from "@pyreon/runtime-dom"
+import { _bindText, _tpl, mount } from "@pyreon/runtime-dom"
 import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"
 
@@ -41,15 +41,14 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
             _tpl("<tr><td></td><td></td></tr>", (__root) => {
               const __e0 = __root.children[0] as HTMLElement
               const __e1 = __root.children[1] as HTMLElement
-              const __d0 = _bind(() => {
-                __root.className = isSelected(row.id) ? "selected" : ""
-              })
               __e0.textContent = String(row.id)
-              // Use persistent TextNode + .data for reactive updates
+              // _bindText: direct signal→TextNode subscription (no effect overhead)
               const __t0 = document.createTextNode("")
               __e1.appendChild(__t0)
+              const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
+              // Combined _bind: one closure for all remaining reactive attrs
               const __d1 = _bind(() => {
-                __t0.data = row.label()
+                __root.className = isSelected(row.id) ? "selected" : ""
               })
               return () => {
                 __d0()
