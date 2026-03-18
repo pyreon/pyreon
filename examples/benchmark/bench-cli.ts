@@ -111,6 +111,9 @@ function makeRows(n: number): Row[] {
 const WARMUP = 5
 const RUNS = 20
 
+// Shared container ref — set per-framework, used by bench() for layout flush
+let _benchContainer: HTMLElement | null = null
+
 async function bench(
   fn: () => void | Promise<void>,
   resetFn?: () => void | Promise<void>,
@@ -120,6 +123,9 @@ async function bench(
     if (resetFn) await resetFn()
     const t = performance.now()
     await fn()
+    // Force layout flush — same as browser benchmark (runner.ts).
+    // No-op in happy-dom (no layout engine), but keeps methodology correct.
+    _benchContainer?.getBoundingClientRect()
     const elapsed = performance.now() - t
     if (i >= WARMUP) s.push(elapsed)
   }
@@ -132,6 +138,7 @@ function tick() {
 function makeEl(): HTMLElement {
   const e = document.createElement("div")
   document.body.appendChild(e)
+  _benchContainer = e
   return e
 }
 function append(label: string) {
