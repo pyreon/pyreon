@@ -3463,6 +3463,20 @@ describe("navigation blockers (useBlocker)", () => {
     expect(router._blockers.size).toBe(0)
     router.destroy()
   })
+
+  it("auto-removes blocker on component unmount via destroy()", () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    const container = document.createElement("div")
+    const TestComp = () => {
+      useBlocker(() => true)
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    expect(router._blockers.size).toBe(1)
+    // destroy() triggers onUnmount callbacks which should auto-remove the blocker
+    router.destroy()
+    expect(router._blockers.size).toBe(0)
+  })
 })
 
 // ─── Feature 3: Relative navigation ──────────────────────────────────────────
@@ -3569,7 +3583,7 @@ describe("useSearchParams", () => {
     const container = document.createElement("div")
     let result: Record<string, string> | undefined
     const TestComp = () => {
-      const params = useSearchParams()
+      const [params] = useSearchParams()
       result = params()
       return null
     }
@@ -3584,7 +3598,7 @@ describe("useSearchParams", () => {
     const container = document.createElement("div")
     let result: Record<string, string> | undefined
     const TestComp = () => {
-      const params = useSearchParams({ q: "", page: "1", sort: "name" })
+      const [params] = useSearchParams({ q: "", page: "1", sort: "name" })
       result = params()
       return null
     }
@@ -3600,12 +3614,28 @@ describe("useSearchParams", () => {
     const container = document.createElement("div")
     let result: Record<string, string> | undefined
     const TestComp = () => {
-      const params = useSearchParams({ page: "1" })
+      const [params] = useSearchParams({ page: "1" })
       result = params()
       return null
     }
     mount(h(RouterProvider, { router }, h(TestComp, {})), container)
     expect(result!.page).toBe("5")
+    router.destroy()
+  })
+
+  it("setSearchParams updates query and navigates", async () => {
+    const router = createRouter({ routes: spRoutes, url: "/search?page=1" })
+    const container = document.createElement("div")
+    let setter: ((updates: Partial<Record<string, string>>) => Promise<void>) | undefined
+    const TestComp = () => {
+      const [, setParams] = useSearchParams({ page: "1", sort: "name" })
+      setter = setParams
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    await setter!({ page: "3" })
+    expect(router.currentRoute().query.page).toBe("3")
+    expect(router.currentRoute().query.sort).toBe("name")
     router.destroy()
   })
 })

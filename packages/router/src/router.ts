@@ -1,6 +1,6 @@
-import { createContext, useContext } from "@pyreon/core"
+import { createContext, onUnmount, useContext } from "@pyreon/core"
 import { computed, signal } from "@pyreon/reactivity"
-import { buildNameIndex, buildPath, resolveRoute } from "./match"
+import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from "./match"
 import { ScrollManager } from "./scroll"
 import {
   type AfterEachHook,
@@ -72,6 +72,8 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
  * navigation — return `true` (or resolve to `true`) to block it.
  *
  * Automatically removed on component unmount if called during component setup.
+ * Also installs a `beforeunload` handler so the browser shows a confirmation
+ * dialog when the user tries to close the tab while a blocker is active.
  *
  * @example
  * const blocker = useBlocker((to, from) => {
@@ -86,33 +88,60 @@ export function useBlocker(fn: BlockerFn): Blocker {
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
     )
   router._blockers.add(fn)
+
+  // Warn before tab/window close while this blocker is registered
+  const beforeUnloadHandler = _isBrowser
+    ? (e: BeforeUnloadEvent) => {
+        e.preventDefault()
+      }
+    : null
+  if (beforeUnloadHandler) {
+    window.addEventListener("beforeunload", beforeUnloadHandler)
+  }
+
   const remove = () => {
     router._blockers.delete(fn)
+    if (beforeUnloadHandler) {
+      window.removeEventListener("beforeunload", beforeUnloadHandler)
+    }
   }
+
+  // Auto-remove when the component that called useBlocker unmounts
+  onUnmount(() => remove())
+
   return { remove }
 }
 
 /**
- * Reactive access to the current route's query parameters.
- * Returns a signal that produces the query `Record<string, string>`.
+ * Reactive read/write access to the current route's query parameters.
  *
- * Optionally accepts a `defaults` object — missing keys are filled from defaults.
+ * Returns `[get, set]` where `get` is a reactive signal producing the merged
+ * query object and `set` navigates to the current path with updated params.
  *
  * @example
- * const query = useSearchParams({ page: "1", sort: "name" })
- * query().page  // "1" if not in URL
+ * const [params, setParams] = useSearchParams({ page: "1", sort: "name" })
+ * params().page  // "1" if not in URL
+ * setParams({ page: "2" })  // navigates to ?page=2&sort=name
  */
-export function useSearchParams<T extends Record<string, string>>(defaults?: T): () => T {
+export function useSearchParams<T extends Record<string, string>>(
+  defaults?: T,
+): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
     )
-  return () => {
+  const get = (): T => {
     const query = router.currentRoute().query
     if (!defaults) return query as T
     return { ...defaults, ...query } as T
   }
+  const set = (updates: Partial<T>): Promise<void> => {
+    const merged = { ...get(), ...updates }
+    const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>)
+    return router.replace(path)
+  }
+  return [get, set]
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
