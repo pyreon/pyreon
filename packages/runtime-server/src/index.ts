@@ -161,8 +161,9 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
 async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
   const tag = vnode.type as string
   let open = `<${tag}`
-  for (const [key, value] of Object.entries(vnode.props)) {
-    const attr = renderProp(key, value)
+  const props = vnode.props as Record<string, unknown>
+  for (const key in props) {
+    const attr = renderProp(key, props[key])
     if (attr) open += ` ${attr}`
   }
   if (isVoidElement(tag)) {
@@ -265,8 +266,9 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   if (typeof node === "number" || typeof node === "boolean") return String(node)
 
   if (Array.isArray(node)) {
-    const parts = await Promise.all(node.map((n) => renderNode(n)))
-    return parts.join("")
+    let html = ""
+    for (const child of node) html += await renderNode(child)
+    return html
   }
 
   const vnode = node as VNode
@@ -277,9 +279,10 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children } = vnode.props as unknown as ForProps<unknown>
-    const parts = await Promise.all(each().map((item) => renderNode(children(item) as VNodeChild)))
-    // Hydration markers so the client can claim existing For-rendered children
-    return `<!--pyreon-for-->${parts.join("")}<!--/pyreon-for-->`
+    let forHtml = "<!--pyreon-for-->"
+    for (const item of each()) forHtml += await renderNode(children(item) as VNodeChild)
+    forHtml += "<!--/pyreon-for-->"
+    return forHtml
   }
 
   if (typeof vnode.type === "function") {
@@ -290,8 +293,9 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
 }
 
 async function renderChildren(children: VNodeChild[]): Promise<string> {
-  const parts = await Promise.all(children.map((c) => renderNode(c)))
-  return parts.join("")
+  let html = ""
+  for (const child of children) html += await renderNode(child)
+  return html
 }
 
 async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<string> {
@@ -312,8 +316,9 @@ async function renderElement(vnode: VNode): Promise<string> {
   const tag = vnode.type as string
   let html = `<${tag}`
 
-  for (const [key, value] of Object.entries(vnode.props)) {
-    const attr = renderProp(key, value)
+  const props = vnode.props as Record<string, unknown>
+  for (const key in props) {
+    const attr = renderProp(key, props[key])
     if (attr) html += ` ${attr}`
   }
 
@@ -437,7 +442,11 @@ const ESCAPE_MAP: Record<string, string> = {
   "'": "&#39;",
 }
 
+// Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
+const NEEDS_ESCAPE_RE = /[&<>"']/
+
 function escapeHtml(str: string): string {
+  if (!NEEDS_ESCAPE_RE.test(str)) return str
   return str.replace(/[&<>"']/g, (c) => ESCAPE_MAP[c] ?? c)
 }
 
