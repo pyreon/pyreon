@@ -114,6 +114,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   let needsTplImport = false
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
+  let needsBindImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -239,8 +240,11 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     const runtimeDomImports = ["_tpl"]
     if (needsBindDirectImportGlobal) runtimeDomImports.push("_bindDirect")
     if (needsBindTextImportGlobal) runtimeDomImports.push("_bindText")
+    const reactivityImports = needsBindImportGlobal
+      ? `\nimport { _bind } from "@pyreon/reactivity";`
+      : ""
     result =
-      `import { ${runtimeDomImports.join(", ")} } from "@pyreon/runtime-dom";\nimport { _bind } from "@pyreon/reactivity";\n` +
+      `import { ${runtimeDomImports.join(", ")} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
       result
   }
 
@@ -404,6 +408,13 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       return { expr: sliceExpr(exprNode), isReactive: containsCall(exprNode) }
     }
 
+    /** Build a setter expression for an attribute. */
+    function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
+      return htmlAttrName === "class"
+        ? `${varName}.className = ${expr}`
+        : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
+    }
+
     /** Emit bind line for a dynamic (non-static) attribute. */
     function emitDynamicAttr(
       _expr: string,
@@ -414,16 +425,11 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       const { expr, isReactive } = unwrapAccessor(exprNode)
 
       if (!isReactive) {
-        const setter =
-          htmlAttrName === "class"
-            ? `${varName}.className = ${expr}`
-            : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
-        bindLines.push(setter)
+        bindLines.push(attrSetter(htmlAttrName, varName, expr))
         return
       }
 
       // Direct signal binding for bare signal calls (e.g. class={() => active()})
-      // bypasses the effect system entirely — same as _bindText but for attributes.
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
         needsBindDirectImport = true
@@ -436,12 +442,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         return
       }
 
-      // Collected into a single combined _bind at the end of template processing
-      const setter =
-        htmlAttrName === "class"
-          ? `${varName}.className = ${expr}`
-          : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
-      reactiveBindExprs.push(setter)
+      reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr))
     }
 
     /** Emit bind line or HTML for an expression attribute value. */
@@ -646,6 +647,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     // that weren't handled by _bindText. Merges N separate _bind calls into one —
     // saving N-1 closures + deps arrays per template instance.
     if (reactiveBindExprs.length > 0) {
+      needsBindImportGlobal = true
       const combinedName = nextDisp()
       const combinedBody = reactiveBindExprs.join("; ")
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)

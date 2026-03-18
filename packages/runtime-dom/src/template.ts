@@ -55,11 +55,11 @@ export function createTemplate<T>(
  * - No `run` closure
  * - Signal.subscribe is used directly (O(1) subscribe + unsubscribe)
  *
- * @param source - A signal or computed (anything with `._v` and `.subscribe`)
+ * @param source - A signal (anything with `._v` and `.direct`)
  * @param node - The Text node to update
  */
 export function _bindText(
-  source: { _v: unknown; subscribe: (fn: () => void) => () => void },
+  source: { _v: unknown; direct: (fn: () => void) => () => void },
   node: Text,
 ): () => void {
   const update = () => {
@@ -67,7 +67,7 @@ export function _bindText(
     node.data = v == null || v === false ? "" : String(v as string | number)
   }
   update()
-  return source.subscribe(update)
+  return source.direct(update)
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
@@ -80,21 +80,20 @@ export function _bindText(
  * signal call, it emits `_bindDirect(signal, updater)` instead of
  * `_bind(() => { updater() })`.
  *
- * Same benefits as _bindText:
- * - No deps array allocation
- * - No withTracking / setDepsCollector overhead
- * - No `run` closure
- * - Signal.subscribe is used directly
+ * Uses signal.direct() for zero-overhead registration:
+ * - Flat array instead of Set (no hashing)
+ * - Index-based disposal (no Set.delete)
+ * - No deps array, no withTracking, no run closure
  *
- * @param source - A signal or computed (anything with `._v` and `.subscribe`)
+ * @param source - A signal (anything with `._v` and `.direct`)
  * @param updater - Function that reads `source._v` and applies the DOM update
  */
 export function _bindDirect(
-  source: { _v: unknown; subscribe: (fn: () => void) => () => void },
+  source: { _v: unknown; direct: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
 ): () => void {
   updater(source._v)
-  return source.subscribe(() => updater(source._v))
+  return source.direct(() => updater(source._v))
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
