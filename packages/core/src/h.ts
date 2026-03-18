@@ -13,6 +13,24 @@ export const Fragment: unique symbol = Symbol("Pyreon.Fragment")
 /** Shared empty props sentinel — identity-checked in mountElement to skip applyProps. */
 export const EMPTY_PROPS: Props = {} as Props
 
+/** Makes `children` optional in P (if present) so it can be passed as rest args to h(). */
+type PropsWithOptionalChildren<P extends Props> = Omit<P, "children"> &
+  ("children" extends keyof P ? { children?: P["children"] } : unknown)
+
+// Overload: component with typed props — children is optional in the props object
+// because it can be passed as rest args. Extra keys are allowed via `& Props`.
+export function h<P extends Props>(
+  type: ComponentFn<P>,
+  props: (PropsWithOptionalChildren<P> & Props) | null,
+  ...children: VNodeChild[]
+): VNode
+// Overload: intrinsic element, symbol, generic/dynamic component, or mixed union
+// biome-ignore lint/suspicious/noExplicitAny: accepts any component function for generic components like For<T>
+export function h(
+  type: string | ((props: any) => VNode | null) | symbol,
+  props: Props | null,
+  ...children: VNodeChild[]
+): VNode
 export function h<P extends Props>(
   type: string | ComponentFn<P> | symbol,
   props: P | null,

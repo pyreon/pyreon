@@ -9,7 +9,9 @@
  * enableHydrationWarnings()
  */
 
-let _enabled = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
+let _enabled = __DEV__
 
 export function enableHydrationWarnings(): void {
   _enabled = true

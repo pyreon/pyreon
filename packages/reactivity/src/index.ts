@@ -9,7 +9,13 @@ export { _bind, type Effect, effect, renderEffect, setErrorHandler } from "./eff
 export { reconcile } from "./reconcile"
 export { createResource, type Resource } from "./resource"
 export { EffectScope, effectScope, getCurrentScope, setCurrentScope } from "./scope"
-export { type Signal, type SignalDebugInfo, type SignalOptions, signal } from "./signal"
+export {
+  type ReadonlySignal,
+  type Signal,
+  type SignalDebugInfo,
+  type SignalOptions,
+  signal,
+} from "./signal"
 export { createStore, isStore } from "./store"
 export { runUntracked } from "./tracking"
 export { type WatchOptions, watch } from "./watch"
