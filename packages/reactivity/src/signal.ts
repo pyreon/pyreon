@@ -1,3 +1,4 @@
+import { enqueuePendingNotification, isBatching } from "./batch"
 import { _notifyTraceListeners, isTracing } from "./debug"
 import { notifySubscribers, trackSubscriber } from "./tracking"
 
@@ -23,6 +24,13 @@ export interface Signal<T> {
    * Returns a disposer that removes the subscription.
    */
   subscribe(listener: () => void): () => void
+  /**
+   * Register a direct updater — even lighter than subscribe().
+   * Uses a flat array instead of Set. Disposal nulls the slot (no Set.delete).
+   * Intended for compiler-emitted DOM bindings (_bindText, _bindDirect).
+   * Returns a disposer that nulls the slot.
+   */
+  direct(updater: () => void): () => void
   /** Debug name — useful for devtools and logging. */
   label: string | undefined
   /** Returns a snapshot of the signal's debug info (value, name, subscriber count). */
@@ -42,12 +50,16 @@ interface SignalFn<T> {
   _v: T
   /** @internal subscriber set (lazily allocated by trackSubscriber) */
   _s: Set<() => void> | null
+  /** @internal direct updaters array — compiler-emitted DOM updaters (lazily allocated) */
+  _d: ((() => void) | null)[] | null
   /** @internal debug name */
   _n: string | undefined
   peek(): T
   set(value: T): void
   update(fn: (current: T) => T): void
   subscribe(listener: () => void): () => void
+  /** Register a direct updater — lighter than subscribe, uses array index disposal. */
+  direct(updater: () => void): () => void
   label: string | undefined
   debug(): SignalDebugInfo<T>
 }
@@ -63,6 +75,8 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   const prev = this._v
   this._v = newValue
   if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
+  // Direct updaters — flat array, no Set overhead, batch-aware
+  if (this._d) notifyDirect(this._d)
   if (this._s) notifySubscribers(this._s)
 }
 
@@ -74,6 +88,38 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
   if (!this._s) this._s = new Set()
   this._s.add(listener)
   return () => this._s?.delete(listener)
+}
+
+/**
+ * Register a direct updater — lighter than subscribe().
+ * Uses a flat array instead of Set. Disposal nulls the slot (no Set.delete overhead).
+ * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
+ */
+function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
+  if (!this._d) this._d = []
+  const arr = this._d
+  const idx = arr.length
+  arr.push(updater)
+  return () => {
+    arr[idx] = null
+  }
+}
+
+/**
+ * Notify direct updaters — flat array iteration, batch-aware.
+ * Null slots (from disposed updaters) are skipped.
+ */
+function notifyDirect(updaters: ((() => void) | null)[]): void {
+  if (isBatching()) {
+    for (let i = 0; i < updaters.length; i++) {
+      const fn = updaters[i]
+      if (fn) enqueuePendingNotification(fn)
+    }
+  } else {
+    for (let i = 0; i < updaters.length; i++) {
+      updaters[i]?.()
+    }
+  }
 }
 
 function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
@@ -113,11 +159,13 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
 
   read._v = initialValue
   read._s = null
+  read._d = null
   read._n = options?.name
   read.peek = _peek as () => T
   read.set = _set as (value: T) => void
   read.update = _update as (fn: (current: T) => T) => void
   read.subscribe = _subscribe as (listener: () => void) => () => void
+  read.direct = _directFn as (updater: () => void) => () => void
   read.debug = _debug as () => SignalDebugInfo<T>
   Object.defineProperty(read, "label", _labelDescriptor)
 
