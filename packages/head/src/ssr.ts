@@ -81,10 +81,9 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
   return `${open}>${body}</${tag.tag}>`
 }
 
+const ESC_RE = /[&<>"]/g
+const ESC_MAP: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }
+
 function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+  return ESC_RE.test(s) ? s.replace(ESC_RE, (ch) => ESC_MAP[ch] as string) : s
 }

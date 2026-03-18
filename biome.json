@@ -106,6 +106,8 @@
         "scripts/bench.ts",
         "scripts/bench-router.ts",
         "scripts/bench-ssr.ts",
+        "scripts/bench-head.ts",
+        "scripts/bench-server.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts"
       ],

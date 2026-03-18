@@ -35,7 +35,14 @@ import {
   serializeLoaderData,
 } from "@pyreon/router"
 import { renderToStream, runWithRequestContext } from "@pyreon/runtime-server"
-import { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "./html"
+import {
+  buildClientEntryTag,
+  buildScriptsFast,
+  type CompiledTemplate,
+  compileTemplate,
+  DEFAULT_TEMPLATE,
+  processCompiledTemplate,
+} from "./html"
 import type { Middleware, MiddlewareContext } from "./middleware"
 
 export interface HandlerOptions {
@@ -74,6 +81,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     mode = "string",
   } = options
 
+  // Pre-compile once at handler creation — avoids 3x string scan per request
+  const compiled = compileTemplate(template)
+  const clientEntryTag = buildClientEntryTag(clientEntry)
+
   return async function handler(req: Request): Promise<Response> {
     const url = new URL(req.url)
     const path = url.pathname + url.search
@@ -104,14 +115,14 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const app = h(RouterProvider, { router }, h(App, null))
 
         if (mode === "stream") {
-          return renderStreamResponse(app, router, template, clientEntry, ctx.headers)
+          return renderStreamResponse(app, router, compiled, clientEntryTag, ctx.headers)
         }
 
         // ── String mode (default) ─────────────────────────────────────────────
         const { html: appHtml, head } = await renderWithHead(app)
         const loaderData = serializeLoaderData(router as never)
-        const scripts = buildScripts(clientEntry, loaderData)
-        const fullHtml = processTemplate(template, { head, app: appHtml, scripts })
+        const scripts = buildScriptsFast(clientEntryTag, loaderData)
+        const fullHtml = processCompiledTemplate(compiled, { head, app: appHtml, scripts })
 
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
       } catch (_err) {
@@ -133,22 +144,17 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
 async function renderStreamResponse(
   app: ReturnType<typeof h>,
   router: ReturnType<typeof createRouter>,
-  template: string,
-  clientEntry: string,
+  compiled: CompiledTemplate,
+  clientEntryTag: string,
   extraHeaders: Headers,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
-  const scripts = buildScripts(clientEntry, loaderData)
+  const scripts = buildScriptsFast(clientEntryTag, loaderData)
 
-  // Split template around <!--pyreon-app-->
-  const [beforeApp, afterApp] = template.split("<!--pyreon-app-->")
-  if (!beforeApp || afterApp === undefined) {
-    throw new Error("[pyreon/server] Template must contain <!--pyreon-app--> placeholder")
-  }
-
-  // Replace other placeholders in shell parts
-  const shellHead = beforeApp.replace("<!--pyreon-head-->", "")
-  const shellTail = afterApp.replace("<!--pyreon-scripts-->", scripts)
+  // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
+  const [p0, p1, p2, p3] = compiled.parts
+  const shellHead = p0 + p1
+  const shellTail = p2 + scripts + p3
 
   const appStream = renderToStream(app)
   const reader = appStream.getReader()

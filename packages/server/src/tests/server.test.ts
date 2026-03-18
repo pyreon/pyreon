@@ -189,13 +189,12 @@ describe("createHandler — stream mode", () => {
     expect(html).toContain('src="/dist/app.js"')
   })
 
-  test("stream mode template without <!--pyreon-app--> throws", async () => {
+  test("stream mode template without <!--pyreon-app--> throws", () => {
     const badTemplate = "<html><!--pyreon-head--><!--pyreon-scripts--></html>"
-    const handler = createHandler({ App: Home, routes, mode: "stream", template: badTemplate })
-    // The stream rendering should throw because template has no <!--pyreon-app-->
-    await expect(handler(new Request("http://localhost/"))).rejects.toThrow(
-      "Template must contain <!--pyreon-app-->",
-    )
+    // Template validation happens at createHandler time (compile-time, not per-request)
+    expect(() =>
+      createHandler({ App: Home, routes, mode: "stream", template: badTemplate }),
+    ).toThrow("Template must contain <!--pyreon-app-->")
   })
 
   test("stream mode includes middleware-set headers", async () => {

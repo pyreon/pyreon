@@ -55,9 +55,15 @@
 export type { HandlerOptions } from "./handler"
 // SSR handler
 export { createHandler } from "./handler"
-export type { TemplateData } from "./html"
+export type { CompiledTemplate, TemplateData } from "./html"
 // HTML template
-export { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "./html"
+export {
+  buildScripts,
+  compileTemplate,
+  DEFAULT_TEMPLATE,
+  processCompiledTemplate,
+  processTemplate,
+} from "./html"
 export type { HydrationStrategy, IslandMeta, IslandOptions } from "./island"
 // Islands
 export { island } from "./island"

@@ -63,44 +63,64 @@ export interface HeadContextValue {
 
 export function createHeadContext(): HeadContextValue {
   const map = new Map<symbol, HeadEntry>()
+
+  // ── Cached resolve ───────────────────────────────────────────────────────
+  let dirty = true
+  let cachedTags: HeadTag[] = []
+  let cachedTitleTemplate: (string | ((title: string) => string)) | undefined
+  let cachedHtmlAttrs: Record<string, string> = {}
+  let cachedBodyAttrs: Record<string, string> = {}
+
+  function rebuild(): void {
+    if (!dirty) return
+    dirty = false
+
+    const keyed = new Map<string, HeadTag>()
+    const unkeyed: HeadTag[] = []
+    let titleTemplate: (string | ((title: string) => string)) | undefined
+    const htmlAttrs: Record<string, string> = {}
+    const bodyAttrs: Record<string, string> = {}
+
+    for (const entry of map.values()) {
+      for (const tag of entry.tags) {
+        if (tag.key) keyed.set(tag.key, tag)
+        else unkeyed.push(tag)
+      }
+      if (entry.titleTemplate !== undefined) titleTemplate = entry.titleTemplate
+      if (entry.htmlAttrs) Object.assign(htmlAttrs, entry.htmlAttrs)
+      if (entry.bodyAttrs) Object.assign(bodyAttrs, entry.bodyAttrs)
+    }
+
+    cachedTags = [...keyed.values(), ...unkeyed]
+    cachedTitleTemplate = titleTemplate
+    cachedHtmlAttrs = htmlAttrs
+    cachedBodyAttrs = bodyAttrs
+  }
+
   return {
     add(id, entry) {
       map.set(id, entry)
+      dirty = true
     },
     remove(id) {
       map.delete(id)
+      dirty = true
     },
     resolve() {
-      const keyed = new Map<string, HeadTag>()
-      const unkeyed: HeadTag[] = []
-      for (const entry of map.values()) {
-        for (const tag of entry.tags) {
-          if (tag.key) keyed.set(tag.key, tag)
-          else unkeyed.push(tag)
-        }
-      }
-      return [...keyed.values(), ...unkeyed]
+      rebuild()
+      return cachedTags
     },
     resolveTitleTemplate() {
-      let template: (string | ((title: string) => string)) | undefined
-      for (const entry of map.values()) {
-        if (entry.titleTemplate !== undefined) template = entry.titleTemplate
-      }
-      return template
+      rebuild()
+      return cachedTitleTemplate
     },
     resolveHtmlAttrs() {
-      const attrs: Record<string, string> = {}
-      for (const entry of map.values()) {
-        if (entry.htmlAttrs) Object.assign(attrs, entry.htmlAttrs)
-      }
-      return attrs
+      rebuild()
+      return cachedHtmlAttrs
     },
     resolveBodyAttrs() {
-      const attrs: Record<string, string> = {}
-      for (const entry of map.values()) {
-        if (entry.bodyAttrs) Object.assign(attrs, entry.bodyAttrs)
-      }
-      return attrs
+      rebuild()
+      return cachedBodyAttrs
     },
   }
 }

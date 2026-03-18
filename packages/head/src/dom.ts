@@ -2,6 +2,9 @@ import type { HeadContextValue } from "./context"
 
 const ATTR = "data-pyreon-head"
 
+/** Tracks managed elements by key — avoids querySelectorAll on every sync */
+const managedElements = new Map<string, Element>()
+
 /**
  * Sync the resolved head tags to the real DOM <head>.
  * Uses incremental diffing: matches existing elements by key, patches attributes
@@ -12,9 +15,9 @@ const ATTR = "data-pyreon-head"
 function patchExistingTag(
   found: Element,
   tag: { props: Record<string, unknown>; children: string },
-  kept: Set<Element>,
+  kept: Set<string>,
 ): void {
-  kept.add(found)
+  kept.add(found.getAttribute(ATTR) as string)
   patchAttrs(found, tag.props as Record<string, string>)
   const content = String(tag.children)
   if (found.textContent !== content) found.textContent = content
@@ -27,12 +30,14 @@ function createNewTag(tag: {
   key: unknown
 }): void {
   const el = document.createElement(tag.tag)
-  el.setAttribute(ATTR, tag.key as string)
+  const key = tag.key as string
+  el.setAttribute(ATTR, key)
   for (const [k, v] of Object.entries(tag.props as Record<string, string>)) {
     el.setAttribute(k, v)
   }
   if (tag.children) el.textContent = tag.children
   document.head.appendChild(el)
+  managedElements.set(key, el)
 }
 
 export function syncDom(ctx: HeadContextValue): void {
@@ -40,13 +45,25 @@ export function syncDom(ctx: HeadContextValue): void {
 
   const tags = ctx.resolve()
   const titleTemplate = ctx.resolveTitleTemplate()
-  const existing = document.head.querySelectorAll(`[${ATTR}]`)
-  const byKey = new Map<string, Element>()
-  for (const el of existing) {
-    byKey.set(el.getAttribute(ATTR) as string, el)
+
+  // Seed from DOM on first sync, or re-seed if DOM was reset (e.g. between tests)
+  let needsSeed = managedElements.size === 0
+  if (!needsSeed) {
+    // Check if a tracked element is still in the DOM
+    const sample = managedElements.values().next().value
+    if (sample && !sample.isConnected) {
+      managedElements.clear()
+      needsSeed = true
+    }
+  }
+  if (needsSeed) {
+    const existing = document.head.querySelectorAll(`[${ATTR}]`)
+    for (const el of existing) {
+      managedElements.set(el.getAttribute(ATTR) as string, el)
+    }
   }
 
-  const kept = new Set<Element>()
+  const kept = new Set<string>()
 
   for (const tag of tags) {
     if (tag.tag === "title") {
@@ -55,19 +72,28 @@ export function syncDom(ctx: HeadContextValue): void {
     }
 
     const key = tag.key as string
-    const found = byKey.get(key)
+    const found = managedElements.get(key)
 
     if (found && found.tagName.toLowerCase() === tag.tag) {
       patchExistingTag(found, tag as { props: Record<string, unknown>; children: string }, kept)
     } else {
+      if (found) {
+        found.remove()
+        managedElements.delete(key)
+      }
       createNewTag(
         tag as { tag: string; props: Record<string, unknown>; children: string; key: unknown },
       )
+      kept.add(key)
     }
   }
 
-  for (const el of existing) {
-    if (!kept.has(el)) el.remove()
+  // Remove stale elements
+  for (const [key, el] of managedElements) {
+    if (!kept.has(key)) {
+      el.remove()
+      managedElements.delete(key)
+    }
   }
 
   syncElementAttrs(document.documentElement, ctx.resolveHtmlAttrs())
