@@ -52,8 +52,6 @@ interface SignalFn<T> {
   _s: Set<() => void> | null
   /** @internal direct updaters array — compiler-emitted DOM updaters (lazily allocated) */
   _d: ((() => void) | null)[] | null
-  /** @internal debug name */
-  _n: string | undefined
   peek(): T
   set(value: T): void
   update(fn: (current: T) => T): void
@@ -124,22 +122,10 @@ function notifyDirect(updaters: ((() => void) | null)[]): void {
 
 function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
   return {
-    name: this._n,
+    name: this.label,
     value: this._v,
     subscriberCount: this._s?.size ?? 0,
   }
-}
-
-// label getter/setter — maps to _n for devtools-friendly access
-const _labelDescriptor: PropertyDescriptor = {
-  get(this: SignalFn<unknown>) {
-    return this._n
-  },
-  set(this: SignalFn<unknown>, v: string | undefined) {
-    this._n = v
-  },
-  enumerable: false,
-  configurable: true,
 }
 
 /**
@@ -160,14 +146,13 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read._v = initialValue
   read._s = null
   read._d = null
-  read._n = options?.name
   read.peek = _peek as () => T
   read.set = _set as (value: T) => void
   read.update = _update as (fn: (current: T) => T) => void
   read.subscribe = _subscribe as (listener: () => void) => () => void
   read.direct = _directFn as (updater: () => void) => () => void
   read.debug = _debug as () => SignalDebugInfo<T>
-  Object.defineProperty(read, "label", _labelDescriptor)
+  read.label = options?.name
 
   return read as unknown as Signal<T>
 }
