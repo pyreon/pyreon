@@ -1,14 +1,5 @@
 # @pyreon/react-compat
 
-## 0.4.0
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @pyreon/reactivity@0.4.0
-  - @pyreon/core@0.4.0
-  - @pyreon/runtime-dom@0.4.0
-
 ## 0.3.1
 
 ### Patch Changes

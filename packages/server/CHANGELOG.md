@@ -1,49 +1,5 @@
 # @pyreon/server
 
-## 0.4.0
-
-### Minor Changes
-
-- ### @pyreon/router
-
-  - `go(n)` and `forward()` for history navigation
-  - Named `replace()` — navigate by route name
-  - Optional params (`:id?`) with compile-time type inference
-  - `isReady()` promise for initial navigation
-  - `onBeforeRouteLeave` / `onBeforeRouteUpdate` in-component guard composables
-  - Route aliases — render same component from multiple paths
-  - Base path support for sub-path deployments
-  - Navigation blockers (`useBlocker`)
-  - Relative navigation from current route
-  - Trailing slash normalization (strip/add/ignore)
-  - Typed search params (`useSearchParams`)
-  - Stale-while-revalidate loaders
-
-  ### @pyreon/head
-
-  - Cached resolve with dirty flag (30M+ ops/sec cached path)
-  - Single-pass HTML escaping (regex + lookup table)
-  - DOM element tracking via Map (avoids querySelectorAll per sync)
-  - 7-9.5x faster SSR serialization than Unhead (Vue/Nuxt)
-
-  ### @pyreon/server
-
-  - Pre-compiled template splits at handler creation (17x faster on real templates)
-  - Pre-built client entry tag avoids per-request string construction
-  - `buildScriptsFast` skips array allocation
-  - Template validation moved to `createHandler` time
-  - New exports: `compileTemplate`, `processCompiledTemplate`, `CompiledTemplate`
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @pyreon/router@0.4.0
-  - @pyreon/head@0.4.0
-  - @pyreon/reactivity@0.4.0
-  - @pyreon/core@0.4.0
-  - @pyreon/runtime-dom@0.4.0
-  - @pyreon/runtime-server@0.4.0
-
 ## 0.3.1
 
 ### Patch Changes
