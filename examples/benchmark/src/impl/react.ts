@@ -11,7 +11,7 @@ import * as ReactDOM from "react-dom/client"
 import type { BenchSuite, Row } from "../runner"
 import { bench, buildRows } from "../runner"
 
-const { createElement: r, useState, useCallback, useEffect, memo } = React
+const { createElement: r, useState, useEffect, memo } = React
 
 /** Wait for React's DefaultLane commit: MessageChannel fires before rAF fires */
 function afterCommit(): Promise<void> {
@@ -23,29 +23,18 @@ interface Setters {
   setSelected: (id: number | null) => void
 }
 
-const RowItem = memo(function RowItemInner({
-  row,
-  selected,
-  onSelect,
-}: {
-  row: Row
-  selected: boolean
-  onSelect: (id: number) => void
-}) {
+const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
   return r(
     "tr",
     { className: selected ? "selected" : undefined },
     r("td", null, row.id),
     r("td", null, row.label),
-    r("td", null, r("button", { onClick: () => onSelect(row.id) }, "×")),
   )
 })
 
 function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   const [rows, setRows] = useState<Row[]>([])
   const [selectedId, setSelected] = useState<number | null>(null)
-
-  const onSelect = useCallback((id: number) => setSelected(id), [])
 
   // useEffect fires after React commits — pass setters out so the caller knows React is ready
   useEffect(() => {
@@ -58,9 +47,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
     r(
       "tbody",
       null,
-      ...rows.map((row) =>
-        r(RowItem, { key: row.id, row, selected: row.id === selectedId, onSelect }),
-      ),
+      ...rows.map((row) => r(RowItem, { key: row.id, row, selected: row.id === selectedId })),
     ),
   )
 }

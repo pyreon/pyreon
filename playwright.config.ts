@@ -14,13 +14,13 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "cd apps/playground && bun run dev",
+      command: "cd examples/playground && bun run dev",
       port: 5173,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
     {
-      command: "cd apps/benchmark && bun run dev -- --port 5174",
+      command: "cd examples/benchmark && bun run dev -- --port 5174",
       port: 5174,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

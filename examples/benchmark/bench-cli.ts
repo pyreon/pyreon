@@ -111,6 +111,9 @@ function makeRows(n: number): Row[] {
 const WARMUP = 5
 const RUNS = 20
 
+// Shared container ref — set per-framework, used by bench() for layout flush
+let _benchContainer: HTMLElement | null = null
+
 async function bench(
   fn: () => void | Promise<void>,
   resetFn?: () => void | Promise<void>,
@@ -120,6 +123,9 @@ async function bench(
     if (resetFn) await resetFn()
     const t = performance.now()
     await fn()
+    // Force layout flush — same as browser benchmark (runner.ts).
+    // No-op in happy-dom (no layout engine), but keeps methodology correct.
+    _benchContainer?.getBoundingClientRect()
     const elapsed = performance.now() - t
     if (i >= WARMUP) s.push(elapsed)
   }
@@ -132,6 +138,7 @@ function tick() {
 function makeEl(): HTMLElement {
   const e = document.createElement("div")
   document.body.appendChild(e)
+  _benchContainer = e
   return e
 }
 function append(label: string) {
@@ -370,43 +377,28 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
           each: rowsSig,
           by: (item) => item.id,
           children: (row) =>
-            _tpl(
-              '<tr><td class="id"></td><td><a></a></td><td><a class="remove"><span class="glyphicon glyphicon-remove"></span></a></td></tr>',
-              (__root) => {
-                const __e0 = __root.children[0] as HTMLElement
-                const __e1 = (__root.children[1] as HTMLElement).children[0] as HTMLElement
-                const __e2 = (__root.children[2] as HTMLElement).children[0] as HTMLElement
+            _tpl("<tr><td></td><td></td></tr>", (__root) => {
+              const __e0 = __root.children[0] as HTMLElement
+              const __e1 = __root.children[1] as HTMLElement
 
-                // Static text
-                __e0.textContent = String(row.id)
+              // Static text
+              __e0.textContent = String(row.id)
 
-                // _bindText: direct signal→TextNode subscription (no effect)
-                const __t0 = document.createTextNode("")
-                __e1.appendChild(__t0)
-                const __d0 = _bindText(
-                  row.label as unknown as Parameters<typeof _bindText>[0],
-                  __t0,
-                )
+              // _bindText: direct signal→TextNode subscription (no effect)
+              const __t0 = document.createTextNode("")
+              __e1.appendChild(__t0)
+              const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
 
-                // _bind: single renderEffect for className (selector dependency)
-                const __d1 = _bind(() => {
-                  __root.className = isSelected(row.id) ? "danger" : ""
-                })
+              // _bind: single renderEffect for className (selector dependency)
+              const __d1 = _bind(() => {
+                __root.className = isSelected(row.id) ? "selected" : ""
+              })
 
-                // Event delegation: expandos instead of addEventListener
-                const tr = __root as HTMLElement & Record<string, unknown>
-                tr.__ev_click = () => selId.set(row.id)
-                ;(__e2 as HTMLElement & Record<string, unknown>).__ev_click = (e: Event) => {
-                  e.stopPropagation()
-                  rowsSig.update((r) => r.filter((item) => item.id !== row.id))
-                }
-
-                return () => {
-                  __d0()
-                  __d1()
-                }
-              },
-            ),
+              return () => {
+                __d0()
+                __d1()
+              }
+            }),
         }),
       ),
     ),
