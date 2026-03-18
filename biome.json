@@ -104,6 +104,8 @@
         "examples/benchmark/bench-profile5.ts",
         "examples/benchmark/src/main.ts",
         "scripts/bench.ts",
+        "scripts/bench-router.ts",
+        "scripts/bench-ssr.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts"
       ],
