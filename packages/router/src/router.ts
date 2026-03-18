@@ -56,7 +56,7 @@ export function useRouter(): Router {
 }
 
 export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
-  import("./types").ExtractParams<TPath>,
+  import("./types").ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
   const router = useContext(RouterContext) ?? _activeRouter
@@ -65,6 +65,63 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
     )
   return router.currentRoute as never
+}
+
+/**
+ * In-component guard: called before the component's route is left.
+ * Return `false` to cancel, a string to redirect, or `undefined`/`true` to proceed.
+ * Automatically removed on component unmount.
+ *
+ * @example
+ * onBeforeRouteLeave((to, from) => {
+ *   if (hasUnsavedChanges()) return false
+ * })
+ */
+export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  // Register as a global guard that only fires when leaving the current route
+  const currentMatched = router.currentRoute().matched
+  const wrappedGuard: NavigationGuard = (to, from) => {
+    // Only fire if we're actually leaving one of the matched routes
+    const isLeaving = from.matched.some((r) => currentMatched.includes(r))
+    if (!isLeaving) return undefined
+    return guard(to, from)
+  }
+  const remove = router.beforeEach(wrappedGuard)
+  onUnmount(() => remove())
+  return remove
+}
+
+/**
+ * In-component guard: called when the route changes but the component is reused
+ * (e.g. `/user/1` → `/user/2`). Useful for reacting to param changes.
+ * Automatically removed on component unmount.
+ *
+ * @example
+ * onBeforeRouteUpdate((to, from) => {
+ *   if (!isValidId(to.params.id)) return false
+ * })
+ */
+export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  const currentMatched = router.currentRoute().matched
+  const wrappedGuard: NavigationGuard = (to, from) => {
+    // Only fire when the same component is reused (matched routes overlap)
+    const isReused = to.matched.some((r) => currentMatched.includes(r))
+    if (!isReused) return undefined
+    return guard(to, from)
+  }
+  const remove = router.beforeEach(wrappedGuard)
+  onUnmount(() => remove())
+  return remove
 }
 
 /**
@@ -468,6 +525,14 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     loadingSignal.update((n) => n - 1)
   }
 
+  // ── isReady promise ─────────────────────────────────────────────────────
+  // Resolves after the first navigation (including guards + loaders) completes.
+
+  let _readyResolve: (() => void) | null = null
+  const _readyPromise = new Promise<void>((resolve) => {
+    _readyResolve = resolve
+  })
+
   // ── Public router object ──────────────────────────────────────────────────
 
   const router: RouterInstance = {
@@ -486,6 +551,8 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     _loaderData: new Map(),
     _abortController: null,
     _blockers: new Set(),
+    _readyResolve,
+    _readyPromise,
     _onError: onError,
     _maxCacheSize: maxCacheSize,
 
@@ -507,13 +574,34 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       return navigate(path, false)
     },
 
-    async replace(path: string) {
-      const resolved = resolveRelativePath(path, currentPath())
-      return navigate(sanitizePath(resolved), true)
+    async replace(
+      location:
+        | string
+        | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+    ) {
+      if (typeof location === "string") {
+        const resolved = resolveRelativePath(location, currentPath())
+        return navigate(sanitizePath(resolved), true)
+      }
+      const path = resolveNamedPath(
+        location.name,
+        location.params ?? {},
+        location.query ?? {},
+        nameIndex,
+      )
+      return navigate(path, true)
     },
 
     back() {
       if (_isBrowser) window.history.back()
+    },
+
+    forward() {
+      if (_isBrowser) window.history.forward()
+    },
+
+    go(delta: number) {
+      if (_isBrowser) window.history.go(delta)
     },
 
     beforeEach(guard: NavigationGuard) {
@@ -533,6 +621,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     },
 
     loading: () => loadingSignal() > 0,
+
+    isReady() {
+      return router._readyPromise
+    },
 
     destroy() {
       if (_popstateHandler) {
@@ -554,6 +646,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),
   }
+
+  // Initial route is resolved synchronously — mark ready on next microtask
+  // so consumers can await isReady() before the first render.
+  queueMicrotask(() => {
+    if (router._readyResolve) {
+      router._readyResolve()
+      router._readyResolve = null
+    }
+  })
 
   return router
 }

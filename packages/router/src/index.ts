@@ -57,6 +57,8 @@ export {
 // Router factory + hooks
 export {
   createRouter,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
   RouterContext,
   useBlocker,
   useRoute,

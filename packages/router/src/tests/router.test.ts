@@ -5,6 +5,8 @@ import {
   createRouter,
   hydrateLoaderData,
   lazy,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
   prefetchLoaderData,
   RouterLink,
   RouterProvider,
@@ -1459,9 +1461,9 @@ describe("RouterLink", () => {
     const router = createRouter({ routes, url: "/" })
     let replaceCalled = false
     const origReplace = router.replace.bind(router)
-    router.replace = async (path: string) => {
+    router.replace = async (location: string | { name: string }) => {
       replaceCalled = true
-      return origReplace(path)
+      return origReplace(location as string)
     }
     mount(
       h(RouterProvider, { router }, h(RouterLink, { to: "/about", replace: true }, "About")),
@@ -3697,5 +3699,223 @@ describe("stale-while-revalidate loaders", () => {
     const router = createRouter({ routes: mixedRoutes, url: "/" })
     await router.push("/blocking")
     expect(loaded).toBe(true)
+  })
+})
+
+// ─── go(n), forward() ────────────────────────────────────────────────────────
+
+describe("go() and forward()", () => {
+  test("go() calls window.history.go", () => {
+    const spy = vi.spyOn(window.history, "go").mockImplementation(() => {})
+    const router = createRouter({ routes, url: "/" })
+    router.go(-2)
+    expect(spy).toHaveBeenCalledWith(-2)
+    router.go(3)
+    expect(spy).toHaveBeenCalledWith(3)
+    spy.mockRestore()
+    router.destroy()
+  })
+
+  test("forward() calls window.history.forward", () => {
+    const spy = vi.spyOn(window.history, "forward").mockImplementation(() => {})
+    const router = createRouter({ routes, url: "/" })
+    router.forward()
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+    router.destroy()
+  })
+})
+
+// ─── Named replace() ──────────────────────────────────────────────────────────
+
+describe("named replace()", () => {
+  const namedRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/user/:id", component: User, name: "user" },
+    { path: "/about", component: About, name: "about" },
+  ]
+
+  test("replace with named route navigates correctly", async () => {
+    const router = createRouter({ routes: namedRoutes, url: "/" })
+    await router.replace({ name: "user", params: { id: "42" } })
+    expect(router.currentRoute().path).toBe("/user/42")
+    router.destroy()
+  })
+
+  test("replace with named route and query", async () => {
+    const router = createRouter({ routes: namedRoutes, url: "/" })
+    await router.replace({ name: "about", query: { ref: "home" } })
+    expect(router.currentRoute().path).toBe("/about")
+    expect(router.currentRoute().query.ref).toBe("home")
+    router.destroy()
+  })
+})
+
+// ─── Optional params ──────────────────────────────────────────────────────────
+
+describe("optional params", () => {
+  const optRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/lang/:locale?/about", component: About },
+    { path: "/user/:id/:tab?", component: User },
+  ]
+
+  test("matches with optional param present", () => {
+    const r = resolveOn(optRoutes, "/user/42/settings") as {
+      params: Record<string, string>
+    }
+    expect(r.params.id).toBe("42")
+    expect(r.params.tab).toBe("settings")
+  })
+
+  test("matches with optional param absent", () => {
+    const r = resolveOn(optRoutes, "/user/42") as {
+      params: Record<string, string>
+      matched: unknown[]
+    }
+    expect(r.params.id).toBe("42")
+    expect(r.params.tab).toBeUndefined()
+    expect(r.matched.length).toBeGreaterThan(0)
+  })
+
+  test("matches mid-path optional param present", () => {
+    const r = resolveOn(optRoutes, "/lang/en/about") as {
+      params: Record<string, string>
+    }
+    expect(r.params.locale).toBe("en")
+  })
+
+  test("matchPath supports optional params", () => {
+    expect(matchPath("/user/:id/:tab?", "/user/42")).toEqual({ id: "42" })
+    expect(matchPath("/user/:id/:tab?", "/user/42/settings")).toEqual({
+      id: "42",
+      tab: "settings",
+    })
+  })
+
+  test("buildPath omits optional segment when param is missing", () => {
+    expect(buildPath("/user/:id/:tab?", { id: "42" })).toBe("/user/42")
+    expect(buildPath("/user/:id/:tab?", { id: "42", tab: "settings" })).toBe("/user/42/settings")
+  })
+})
+
+// ─── isReady() ───────────────────────────────────────────────────────────────
+
+describe("isReady()", () => {
+  test("resolves after router is created", async () => {
+    const router = createRouter({ routes, url: "/" })
+    await router.isReady()
+    expect(router.currentRoute().path).toBe("/")
+    router.destroy()
+  })
+
+  test("calling isReady() multiple times returns the same promise", () => {
+    const router = createRouter({ routes, url: "/" })
+    const p1 = router.isReady()
+    const p2 = router.isReady()
+    expect(p1).toBe(p2)
+    router.destroy()
+  })
+})
+
+// ─── Route aliases ───────────────────────────────────────────────────────────
+
+describe("route aliases", () => {
+  const aliasRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/user/:id", alias: "/profile/:id", component: User, name: "user" },
+    {
+      path: "/about",
+      alias: ["/about-us", "/info"],
+      component: About,
+      meta: { title: "About" },
+    },
+  ]
+
+  test("alias path matches same component as primary", () => {
+    const r1 = resolveOn(aliasRoutes, "/user/42") as {
+      params: Record<string, string>
+      matched: { component: unknown }[]
+    }
+    const r2 = resolveOn(aliasRoutes, "/profile/42") as {
+      params: Record<string, string>
+      matched: { component: unknown }[]
+    }
+    expect(r1.matched[0]?.component).toBe(User)
+    expect(r2.matched[0]?.component).toBe(User)
+    expect(r2.params.id).toBe("42")
+  })
+
+  test("multiple aliases all match", () => {
+    const r1 = resolveOn(aliasRoutes, "/about") as { matched: { component: unknown }[] }
+    const r2 = resolveOn(aliasRoutes, "/about-us") as { matched: { component: unknown }[] }
+    const r3 = resolveOn(aliasRoutes, "/info") as { matched: { component: unknown }[] }
+    expect(r1.matched[0]?.component).toBe(About)
+    expect(r2.matched[0]?.component).toBe(About)
+    expect(r3.matched[0]?.component).toBe(About)
+  })
+
+  test("alias shares meta with primary route", () => {
+    const r = resolveOn(aliasRoutes, "/about-us") as { meta: { title?: string } }
+    expect(r.meta.title).toBe("About")
+  })
+})
+
+// ─── In-component guards ─────────────────────────────────────────────────────
+
+describe("onBeforeRouteLeave", () => {
+  test("blocks navigation when returning false", async () => {
+    const guardRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      { path: "/about", component: About },
+    ]
+    const router = createRouter({ routes: guardRoutes, url: "/" })
+    const el = container()
+    let leaveCalled = false
+
+    const App = () => {
+      onBeforeRouteLeave(() => {
+        leaveCalled = true
+        return false
+      })
+      return h(RouterView, { router })
+    }
+
+    mount(h(RouterProvider, { router }, h(App, {})), el)
+    await router.push("/about")
+    expect(leaveCalled).toBe(true)
+    expect(router.currentRoute().path).toBe("/")
+    router.destroy()
+  })
+})
+
+describe("onBeforeRouteUpdate", () => {
+  test("fires when params change on the same route", async () => {
+    const guardRoutes: RouteRecord[] = [
+      { path: "/", component: Home },
+      { path: "/user/:id", component: User },
+    ]
+    const router = createRouter({ routes: guardRoutes, url: "/user/1" })
+    const el = container()
+    let updateCalled = false
+
+    const App = () => {
+      onBeforeRouteUpdate((to) => {
+        updateCalled = true
+        if (to.params.id === "blocked") return false
+        return undefined
+      })
+      return h(RouterView, { router })
+    }
+
+    mount(h(RouterProvider, { router }, h(App, {})), el)
+    await router.push("/user/2")
+    expect(updateCalled).toBe(true)
+    expect(router.currentRoute().path).toBe("/user/2")
+
+    // Should block navigation to /user/blocked
+    await router.push("/user/blocked")
+    expect(router.currentRoute().path).toBe("/user/2")
+    router.destroy()
   })
 })

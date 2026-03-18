@@ -78,7 +78,9 @@ interface CompiledSegment {
   isParam: boolean
   /** true if this segment is a `:param*` splat */
   isSplat: boolean
-  /** Param name (without leading `:` and trailing `*`) — empty for static segments */
+  /** true if this segment is a `:param?` optional */
+  isOptional: boolean
+  /** Param name (without leading `:` and trailing `*`/`?`) — empty for static segments */
   paramName: string
 }
 
@@ -122,6 +124,10 @@ interface FlattenedRoute {
   hasSplat: boolean
   /** true if this is a wildcard catch-all route (`*` or `(.*)`) */
   isWildcard: boolean
+  /** true if any segment is optional (`:param?`) */
+  hasOptional: boolean
+  /** Minimum number of segments that must be present (excluding trailing optionals) */
+  minSegments: number
 }
 
 /** WeakMap cache: compile each RouteRecord[] once */
@@ -129,12 +135,15 @@ const _compiledCache = new WeakMap<RouteRecord[], CompiledRoute[]>()
 
 function compileSegment(raw: string): CompiledSegment {
   if (raw.endsWith("*") && raw.startsWith(":")) {
-    return { raw, isParam: true, isSplat: true, paramName: raw.slice(1, -1) }
+    return { raw, isParam: true, isSplat: true, isOptional: false, paramName: raw.slice(1, -1) }
+  }
+  if (raw.endsWith("?") && raw.startsWith(":")) {
+    return { raw, isParam: true, isSplat: false, isOptional: true, paramName: raw.slice(1, -1) }
   }
   if (raw.startsWith(":")) {
-    return { raw, isParam: true, isSplat: false, paramName: raw.slice(1) }
+    return { raw, isParam: true, isSplat: false, isOptional: false, paramName: raw.slice(1) }
   }
-  return { raw, isParam: false, isSplat: false, paramName: "" }
+  return { raw, isParam: false, isSplat: false, isOptional: false, paramName: "" }
 }
 
 function compileRoute(route: RouteRecord): CompiledRoute {
@@ -172,17 +181,32 @@ function compileRoute(route: RouteRecord): CompiledRoute {
   }
 }
 
+/** Expand alias paths into additional compiled entries sharing the original RouteRecord */
+function expandAliases(r: RouteRecord, c: CompiledRoute): CompiledRoute[] {
+  if (!r.alias) return []
+  const aliases = Array.isArray(r.alias) ? r.alias : [r.alias]
+  return aliases.map((aliasPath) => {
+    const { alias: _, ...withoutAlias } = r
+    const ac = compileRoute({ ...withoutAlias, path: aliasPath })
+    ac.children = c.children
+    ac.route = r
+    return ac
+  })
+}
+
 function compileRoutes(routes: RouteRecord[]): CompiledRoute[] {
   const cached = _compiledCache.get(routes)
   if (cached) return cached
 
-  const compiled = routes.map((r) => {
+  const compiled: CompiledRoute[] = []
+  for (const r of routes) {
     const c = compileRoute(r)
     if (r.children && r.children.length > 0) {
       c.children = compileRoutes(r.children)
     }
-    return c
-  })
+    compiled.push(c)
+    compiled.push(...expandAliases(r, c))
+  }
   _compiledCache.set(routes, compiled)
   return compiled
 }
@@ -204,6 +228,12 @@ function makeFlatEntry(
   isWildcard: boolean,
 ): FlattenedRoute {
   const isStatic = !isWildcard && segments.every((s) => !s.isParam)
+  const hasOptional = segments.some((s) => s.isOptional)
+  // minSegments: count of segments up to and not including trailing optionals
+  let minSegs = segments.length
+  if (hasOptional) {
+    while (minSegs > 0 && segments[minSegs - 1]?.isOptional) minSegs--
+  }
   return {
     segments,
     segmentCount: segments.length,
@@ -214,6 +244,8 @@ function makeFlatEntry(
     firstSegment: getFirstSegment(segments),
     hasSplat: segments.some((s) => s.isSplat),
     isWildcard,
+    hasOptional,
+    minSegments: minSegs,
   }
 }
 
@@ -372,8 +404,31 @@ function decodeSafe(s: string): string {
  *   - Param segments: "/user/:id"
  *   - Wildcard: "(.*)" matches everything
  */
+/** Match a single pattern segment against a path segment, extracting params. Returns false on mismatch. */
+function matchPatternSegment(
+  pp: string,
+  pt: string | undefined,
+  params: Record<string, string>,
+  pathParts: string[],
+  i: number,
+): "splat" | "continue" | "fail" {
+  if (pp.endsWith("*") && pp.startsWith(":")) {
+    params[pp.slice(1, -1)] = pathParts.slice(i).map(decodeURIComponent).join("/")
+    return "splat"
+  }
+  if (pp.endsWith("?") && pp.startsWith(":")) {
+    if (pt !== undefined) params[pp.slice(1, -1)] = decodeURIComponent(pt)
+    return "continue"
+  }
+  if (pt === undefined) return "fail"
+  if (pp.startsWith(":")) {
+    params[pp.slice(1)] = decodeURIComponent(pt)
+    return "continue"
+  }
+  return pp === pt ? "continue" : "fail"
+}
+
 export function matchPath(pattern: string, path: string): Record<string, string> | null {
-  // Wildcard pattern
   if (pattern === "(.*)" || pattern === "*") return {}
 
   const patternParts = pattern.split("/").filter(Boolean)
@@ -381,22 +436,18 @@ export function matchPath(pattern: string, path: string): Record<string, string>
 
   const params: Record<string, string> = {}
   for (let i = 0; i < patternParts.length; i++) {
-    const pp = patternParts[i] as string
-    const pt = pathParts[i] as string
-    // Splat param — captures the rest of the path (e.g. ":path*")
-    if (pp.endsWith("*") && pp.startsWith(":")) {
-      const paramName = pp.slice(1, -1)
-      params[paramName] = pathParts.slice(i).map(decodeURIComponent).join("/")
-      return params
-    }
-    if (pp.startsWith(":")) {
-      params[pp.slice(1)] = decodeURIComponent(pt)
-    } else if (pp !== pt) {
-      return null
-    }
+    const result = matchPatternSegment(
+      patternParts[i] as string,
+      pathParts[i],
+      params,
+      pathParts,
+      i,
+    )
+    if (result === "splat") return params
+    if (result === "fail") return null
   }
 
-  if (patternParts.length !== pathParts.length) return null
+  if (pathParts.length > patternParts.length) return null
   return params
 }
 
@@ -414,16 +465,21 @@ function captureSplat(pathParts: string[], from: number, pathLen: number): strin
 
 // ─── Flattened route matching ─────────────────────────────────────────────────
 
+/** Check whether a flattened route's segment count is compatible with the path length */
+function isSegmentCountCompatible(f: FlattenedRoute, pathLen: number): boolean {
+  if (f.segmentCount === pathLen) return true
+  if (f.hasSplat && pathLen >= f.segmentCount) return true
+  if (f.hasOptional && pathLen >= f.minSegments && pathLen <= f.segmentCount) return true
+  return false
+}
+
 /** Try to match a flattened route against path parts */
 function matchFlattened(
   f: FlattenedRoute,
   pathParts: string[],
   pathLen: number,
 ): Record<string, string> | null {
-  if (f.segmentCount !== pathLen) {
-    // Could still match if route has a splat
-    if (!f.hasSplat || pathLen < f.segmentCount) return null
-  }
+  if (!isSegmentCountCompatible(f, pathLen)) return null
 
   const params: Record<string, string> = {}
   const segments = f.segments
@@ -431,10 +487,14 @@ function matchFlattened(
   for (let i = 0; i < count; i++) {
     const seg = segments[i]
     const pt = pathParts[i]
-    if (!seg || pt === undefined) return null
+    if (!seg) return null
     if (seg.isSplat) {
       params[seg.paramName] = captureSplat(pathParts, i, pathLen)
       return params
+    }
+    if (pt === undefined) {
+      if (!seg.isOptional) return null
+      continue
     }
     if (seg.isParam) {
       params[seg.paramName] = decodeSafe(pt)
@@ -564,7 +624,13 @@ function mergeMeta(matched: RouteRecord[]): RouteMeta {
 
 /** Build a path string from a named route's pattern and params */
 export function buildPath(pattern: string, params: Record<string, string>): string {
-  return pattern.replace(/:([^/]+)\*?/g, (match, key) => {
+  const built = pattern.replace(/\/:([^/]+)\?/g, (_match, key) => {
+    const val = params[key]
+    // Optional param — omit the entire segment if no value provided
+    if (!val) return ""
+    return `/${encodeURIComponent(val)}`
+  })
+  return built.replace(/:([^/]+)\*?/g, (match, key) => {
     const val = params[key] ?? ""
     // Splat params contain slashes — don't encode them
     if (match.endsWith("*")) return val.split("/").map(encodeURIComponent).join("/")

@@ -6,20 +6,28 @@ export type { ComponentFn }
 
 /**
  * Extracts typed params from a path string at compile time.
+ * Supports optional params via `:param?` — their type is `string | undefined`.
  *
  * @example
  * ExtractParams<'/user/:id/posts/:postId'>
  * // → { id: string; postId: string }
+ *
+ * ExtractParams<'/user/:id?'>
+ * // → { id?: string | undefined }
  */
 export type ExtractParams<T extends string> = T extends `${string}:${infer Param}*/${infer Rest}`
   ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
   : T extends `${string}:${infer Param}*`
     ? { [K in Param]: string }
-    : T extends `${string}:${infer Param}/${infer Rest}`
-      ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
-      : T extends `${string}:${infer Param}`
-        ? { [K in Param]: string }
-        : Record<never, never>
+    : T extends `${string}:${infer Param}?/${infer Rest}`
+      ? { [K in Param]?: string | undefined } & ExtractParams<`/${Rest}`>
+      : T extends `${string}:${infer Param}?`
+        ? { [K in Param]?: string | undefined }
+        : T extends `${string}:${infer Param}/${infer Rest}`
+          ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
+          : T extends `${string}:${infer Param}`
+            ? { [K in Param]: string }
+            : Record<never, never>
 
 // ─── Route meta ───────────────────────────────────────────────────────────────
 
@@ -49,7 +57,7 @@ export interface RouteMeta {
 // ─── Resolved route ───────────────────────────────────────────────────────────
 
 export interface ResolvedRoute<
-  P extends Record<string, string> = Record<string, string>,
+  P extends Record<string, string | undefined> = Record<string, string>,
   Q extends Record<string, string> = Record<string, string>,
 > {
   path: string
@@ -146,6 +154,14 @@ export interface RouteRecord<TPath extends string = string> {
   beforeEnter?: NavigationGuard | NavigationGuard[]
   /** Guard(s) run before leaving this route. Return false to cancel. */
   beforeLeave?: NavigationGuard | NavigationGuard[]
+  /**
+   * Alternative path(s) for this route. Alias paths render the same component
+   * and share guards, loaders, and metadata with the primary path.
+   *
+   * @example
+   * { path: "/user/:id", alias: ["/profile/:id"], component: UserPage }
+   */
+  alias?: string | string[]
   /** Child routes rendered inside this route's component via <RouterView /> */
   children?: RouteRecord[]
   /**
@@ -231,8 +247,18 @@ export interface Router {
   }): Promise<void>
   /** Replace current history entry */
   replace(path: string): Promise<void>
-  /** Go back */
+  /** Replace current history entry using a named route */
+  replace(location: {
+    name: string
+    params?: Record<string, string>
+    query?: Record<string, string>
+  }): Promise<void>
+  /** Go back one step in history */
   back(): void
+  /** Go forward one step in history */
+  forward(): void
+  /** Navigate forward or backward by `delta` steps in the history stack */
+  go(delta: number): void
   /** Register a global before-navigation guard. Returns an unregister function. */
   beforeEach(guard: NavigationGuard): () => void
   /** Register a global after-navigation hook. Returns an unregister function. */
@@ -241,6 +267,11 @@ export interface Router {
   readonly currentRoute: () => ResolvedRoute
   /** True while a navigation (guards + loaders) is in flight */
   readonly loading: () => boolean
+  /**
+   * Promise that resolves once the initial navigation is complete.
+   * Useful for SSR and for delaying rendering until the first route is resolved.
+   */
+  isReady(): Promise<void>
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
   destroy(): void
 }
@@ -277,4 +308,8 @@ export interface RouterInstance extends Router {
   _abortController: AbortController | null
   /** Registered navigation blockers */
   _blockers: Set<BlockerFn>
+  /** Resolves the isReady() promise after initial navigation completes */
+  _readyResolve: (() => void) | null
+  /** The isReady() promise instance */
+  _readyPromise: Promise<void>
 }
