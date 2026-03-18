@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/core",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Core component model and lifecycle for Pyreon",
   "license": "MIT",
   "repository": {

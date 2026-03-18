@@ -1,5 +1,14 @@
 # @pyreon/core
 
+## 0.3.1
+
+### Patch Changes
+
+- Router performance: flattened route matching with first-segment dispatch index (39% faster at 200 routes). Core type fixes: export `ReadonlySignal<T>` from reactivity, widen `h()` component overloads to support optional children and generic components, add minimal `process` type declaration so consumers don't need `@types/node`.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
