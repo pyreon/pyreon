@@ -302,8 +302,8 @@ describe("JSX transform — mixed", () => {
   test("wraps props and children independently", () => {
     const result = t("<div class={cls()}>{text()}</div>")
     expect(result).toContain("_tpl(")
-    // className goes into combined _bind, text uses _bindText
-    expect(result).toContain("className = cls()")
+    // className uses _bindDirect (single-signal), text uses _bindText
+    expect(result).toContain("_bindDirect(cls,")
     expect(result).toContain("_bindText(text,")
   })
 
@@ -469,10 +469,10 @@ describe("JSX transform — template emission", () => {
     expect(result).toContain("_tpl(")
   })
 
-  test("generates renderEffect for reactive class", () => {
+  test("generates _bindDirect for reactive class with single signal", () => {
     const result = t("<div class={cls()}><span /></div>")
-    expect(result).toContain("_bind(() => {")
-    expect(result).toContain("className = cls()")
+    expect(result).toContain("_bindDirect(cls,")
+    expect(result).toContain("className")
   })
 
   test("generates _bindText for reactive text child with single signal", () => {
@@ -592,8 +592,8 @@ describe("JSX transform — template emission", () => {
     )
     expect(result).toContain("_tpl(")
     expect(result).toContain('<td class=\\"id\\"></td><td></td>')
-    // className goes into combined _bind with String(row.id) (multi-signal)
-    expect(result).toContain("className = cls()")
+    // className uses _bindDirect (single-signal cls())
+    expect(result).toContain("_bindDirect(cls,")
     // String(row.id) has args → combined _bind; row.label() is single-signal → _bindText
     expect(result).toContain(".data = String(row.id)")
     expect(result).toContain("_bindText(row.label,")
@@ -672,10 +672,10 @@ describe("JSX transform — template emission", () => {
     expect(result).not.toContain("_bind(")
   })
 
-  test("reactive renderEffect for non-class dynamic attribute", () => {
+  test("_bindDirect for non-class single-signal dynamic attribute", () => {
     const result = t("<div title={getTitle()}><span /></div>")
-    expect(result).toContain("_bind(() => {")
-    expect(result).toContain('setAttribute("title", getTitle())')
+    expect(result).toContain("_bindDirect(getTitle,")
+    expect(result).toContain('setAttribute("title"')
   })
 
   test("ref attribute in template binds .current", () => {

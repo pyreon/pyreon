@@ -113,6 +113,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   let hoistIdx = 0
   let needsTplImport = false
   let needsBindTextImportGlobal = false
+  let needsBindDirectImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -236,6 +237,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   // Prepend template imports if _tpl() was emitted
   if (needsTplImport) {
     const runtimeDomImports = ["_tpl"]
+    if (needsBindDirectImportGlobal) runtimeDomImports.push("_bindDirect")
     if (needsBindTextImportGlobal) runtimeDomImports.push("_bindText")
     result =
       `import { ${runtimeDomImports.join(", ")} } from "@pyreon/runtime-dom";\nimport { _bind } from "@pyreon/reactivity";\n` +
@@ -314,6 +316,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     // Reactive expressions that will be combined into a single _bind call
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
+    let needsBindDirectImport = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -409,17 +412,36 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       varName: string,
     ): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
+
+      if (!isReactive) {
+        const setter =
+          htmlAttrName === "class"
+            ? `${varName}.className = ${expr}`
+            : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
+        bindLines.push(setter)
+        return
+      }
+
+      // Direct signal binding for bare signal calls (e.g. class={() => active()})
+      // bypasses the effect system entirely — same as _bindText but for attributes.
+      const directRef = tryDirectSignalRef(exprNode)
+      if (directRef) {
+        needsBindDirectImport = true
+        const d = nextDisp()
+        const updater =
+          htmlAttrName === "class"
+            ? `(v) => { ${varName}.className = v == null ? "" : String(v) }`
+            : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
+        bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
+        return
+      }
+
+      // Collected into a single combined _bind at the end of template processing
       const setter =
         htmlAttrName === "class"
           ? `${varName}.className = ${expr}`
           : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
-
-      if (isReactive) {
-        // Collected into a single combined _bind at the end of template processing
-        reactiveBindExprs.push(setter)
-      } else {
-        bindLines.push(setter)
-      }
+      reactiveBindExprs.push(setter)
     }
 
     /** Emit bind line or HTML for an expression attribute value. */
@@ -612,6 +634,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     if (html === null) return null
 
     if (needsBindTextImport) needsBindTextImportGlobal = true
+    if (needsBindDirectImport) needsBindDirectImportGlobal = true
 
     // Build bind function body
     const escaped = html.replace(/\\/g, "\\\\").replace(/"/g, '\\"')

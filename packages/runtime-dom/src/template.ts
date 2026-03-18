@@ -70,6 +70,33 @@ export function _bindText(
   return source.subscribe(update)
 }
 
+// ─── Direct signal binding (bypasses effect system) ──────────────────────────
+
+/**
+ * Compiler-emitted direct binding for single-signal reactive expressions.
+ *
+ * Like _bindText but for arbitrary DOM updates (attributes, className, style).
+ * When the compiler detects that a reactive expression depends on exactly one
+ * signal call, it emits `_bindDirect(signal, updater)` instead of
+ * `_bind(() => { updater() })`.
+ *
+ * Same benefits as _bindText:
+ * - No deps array allocation
+ * - No withTracking / setDepsCollector overhead
+ * - No `run` closure
+ * - Signal.subscribe is used directly
+ *
+ * @param source - A signal or computed (anything with `._v` and `.subscribe`)
+ * @param updater - Function that reads `source._v` and applies the DOM update
+ */
+export function _bindDirect(
+  source: { _v: unknown; subscribe: (fn: () => void) => () => void },
+  updater: (value: unknown) => void,
+): () => void {
+  updater(source._v)
+  return source.subscribe(() => updater(source._v))
+}
+
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
