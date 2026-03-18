@@ -13,6 +13,19 @@ export const Fragment: unique symbol = Symbol("Pyreon.Fragment")
 /** Shared empty props sentinel — identity-checked in mountElement to skip applyProps. */
 export const EMPTY_PROPS: Props = {} as Props
 
+// Overload: component with typed props — infers P from the component and checks
+// that the provided props satisfy it, while allowing extra keys (structural compat).
+export function h<P extends Props>(
+  type: ComponentFn<P>,
+  props: (P & Props) | null,
+  ...children: VNodeChild[]
+): VNode
+// Overload: intrinsic element, symbol, or mixed union (e.g. Dynamic's `string | ComponentFn`)
+export function h(
+  type: string | ComponentFn | symbol,
+  props: Props | null,
+  ...children: VNodeChild[]
+): VNode
 export function h<P extends Props>(
   type: string | ComponentFn<P> | symbol,
   props: P | null,
