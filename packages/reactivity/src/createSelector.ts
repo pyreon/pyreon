@@ -2,6 +2,26 @@ import { effect } from "./effect"
 import { trackSubscriber } from "./tracking"
 
 /**
+ * Notify a subscriber bucket without snapshot allocation.
+ * Caps iteration at the original size to avoid infinite loops from
+ * re-inserted entries (same pattern as notifySubscribers in tracking.ts).
+ */
+function notifyBucket(bucket: Set<() => void>): void {
+  if (bucket.size === 0) return
+  if (bucket.size === 1) {
+    ;(bucket.values().next().value as () => void)()
+    return
+  }
+  const originalSize = bucket.size
+  let i = 0
+  for (const fn of bucket) {
+    if (i >= originalSize) break
+    fn()
+    i++
+  }
+}
+
+/**
  * Create an equality selector — returns a reactive predicate that is true
  * only for the currently selected value.
  *
@@ -29,11 +49,12 @@ export function createSelector<T>(source: () => T): (value: T) => boolean {
     if (Object.is(next, current)) return
     const old = current
     current = next
-    // Only notify the two affected buckets — O(1) regardless of list size
+    // Only notify the two affected buckets — O(1) regardless of list size.
+    // Iteration-capped loop avoids [...bucket] snapshot allocation.
     const oldBucket = subs.get(old)
     const newBucket = subs.get(next)
-    if (oldBucket) for (const fn of [...oldBucket]) fn()
-    if (newBucket) for (const fn of [...newBucket]) fn()
+    if (oldBucket) notifyBucket(oldBucket)
+    if (newBucket) notifyBucket(newBucket)
   })
 
   // Reusable hosts per value — avoids allocating a closure per trackSubscriber call

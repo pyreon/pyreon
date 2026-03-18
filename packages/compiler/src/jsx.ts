@@ -197,10 +197,23 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     if (expr) hoistOrWrap(expr)
   }
 
-  /** Handle a JSX expression in child position — wrap or hoist. */
+  /** Handle a JSX expression in child position — wrap, hoist, or recurse. */
   function handleJsxExpression(node: ts.JsxExpression): void {
     const expr = node.expression
-    if (expr) hoistOrWrap(expr)
+    if (!expr) return
+    const hoistName = maybeHoist(expr)
+    if (hoistName) {
+      replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+      return
+    }
+    if (shouldWrap(expr)) {
+      wrap(expr)
+      return
+    }
+    // Not hoisted, not wrapped (e.g., arrow function in For callback).
+    // Recurse into the expression body to find nested JSX elements
+    // that should be compiled to _tpl() calls.
+    ts.forEachChild(expr, walk)
   }
 
   function walk(node: ts.Node): void {
