@@ -38,44 +38,29 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
           each: rows,
           by: (row) => row.id,
           children: (row: ReactiveRow) =>
-            // Fully compiled row — _tpl + _bindText + _bind + event delegation
-            _tpl(
-              '<tr><td class="id"></td><td><a></a></td><td><a class="remove"><span class="glyphicon glyphicon-remove"></span></a></td></tr>',
-              (__root) => {
-                const __e0 = __root.children[0] as HTMLElement // td.id
-                const __e1 = (__root.children[1] as HTMLElement).children[0] as HTMLElement // td > a
-                const __e2 = (__root.children[2] as HTMLElement).children[0] as HTMLElement // td > a.remove
+            // Fully compiled row — _tpl + _bindText + _bind (same 2-column DOM as other frameworks)
+            _tpl("<tr><td></td><td></td></tr>", (__root) => {
+              const __e0 = __root.children[0] as HTMLElement
+              const __e1 = __root.children[1] as HTMLElement
 
-                // Static text — id never changes
-                __e0.textContent = String(row.id)
+              // Static text — id never changes
+              __e0.textContent = String(row.id)
 
-                // _bindText: direct signal→TextNode subscription (no effect)
-                const __t0 = document.createTextNode("")
-                __e1.appendChild(__t0)
-                const __d0 = _bindText(
-                  row.label as unknown as Parameters<typeof _bindText>[0],
-                  __t0,
-                )
+              // _bindText: direct signal→TextNode subscription (no effect)
+              const __t0 = document.createTextNode("")
+              __e1.appendChild(__t0)
+              const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
 
-                // _bind: single renderEffect for className (selector dependency)
-                const __d1 = _bind(() => {
-                  __root.className = isSelected(row.id) ? "danger" : ""
-                })
+              // _bind: single renderEffect for className (selector dependency)
+              const __d1 = _bind(() => {
+                __root.className = isSelected(row.id) ? "selected" : ""
+              })
 
-                // Event delegation: expandos instead of addEventListener
-                const tr = __root as HTMLElement & Record<string, unknown>
-                tr.__ev_click = () => selectedId.set(row.id)
-                ;(__e2 as HTMLElement & Record<string, unknown>).__ev_click = (e: Event) => {
-                  e.stopPropagation()
-                  rows.update((r) => r.filter((item) => item.id !== row.id))
-                }
-
-                return () => {
-                  __d0()
-                  __d1()
-                }
-              },
-            ),
+              return () => {
+                __d0()
+                __d1()
+              }
+            }),
         }),
       ),
     ),
