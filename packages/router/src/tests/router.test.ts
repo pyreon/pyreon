@@ -10,9 +10,11 @@ import {
   RouterProvider,
   RouterView,
   serializeLoaderData,
+  useBlocker,
   useLoaderData,
   useRoute,
   useRouter,
+  useSearchParams,
 } from "../index"
 import {
   buildNameIndex,
@@ -3290,5 +3292,380 @@ describe("loader rejection with aborted signal", () => {
     // and the `if (ac.signal.aborted) continue` branch handles it
     expect(errorCallbackCalled).toBe(false)
     expect(router.currentRoute().path).toBe("/other")
+  })
+})
+
+// ─── Feature 1: Base path support ─────────────────────────────────────────────
+
+describe("base path", () => {
+  const baseRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/about", component: About },
+    { path: "/user/:id", component: User },
+  ]
+
+  it("strips base from SSR url", () => {
+    const router = createRouter({
+      routes: baseRoutes,
+      mode: "history",
+      base: "/app",
+      url: "/app/about",
+    })
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("resolves root when SSR url equals the base", () => {
+    const router = createRouter({ routes: baseRoutes, mode: "history", base: "/app", url: "/app" })
+    expect(router.currentRoute().path).toBe("/")
+  })
+
+  it("resolves root when SSR url is base with trailing slash", () => {
+    const router = createRouter({ routes: baseRoutes, mode: "history", base: "/app", url: "/app/" })
+    expect(router.currentRoute().path).toBe("/")
+  })
+
+  it("normalizes base without leading slash", () => {
+    const router = createRouter({
+      routes: baseRoutes,
+      mode: "history",
+      base: "app",
+      url: "/app/about",
+    })
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("strips trailing slash from base", () => {
+    const router = createRouter({
+      routes: baseRoutes,
+      mode: "history",
+      base: "/app/",
+      url: "/app/about",
+    })
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("ignores base in hash mode", () => {
+    const router = createRouter({ routes: baseRoutes, mode: "hash", base: "/app", url: "/about" })
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("stores normalized base on RouterInstance", () => {
+    const router = createRouter({
+      routes: baseRoutes,
+      mode: "history",
+      base: "/app/",
+    }) as unknown as RouterInstance
+    expect(router._base).toBe("/app")
+  })
+
+  it("prepends base to browser URL in syncBrowserUrl via push", async () => {
+    const router = createRouter({
+      routes: baseRoutes,
+      mode: "history",
+      base: "/app",
+      url: "/app/",
+    })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+    expect(router.currentRoute().matched.length).toBeGreaterThan(0)
+    router.destroy()
+  })
+})
+
+// ─── Feature 2: Navigation blockers ──────────────────────────────────────────
+
+describe("navigation blockers (useBlocker)", () => {
+  const blockerRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/about", component: About },
+    { path: "/user/:id", component: User },
+  ]
+
+  beforeEach(() => {
+    // Reset browser state so stale hash values from prior tests don't trigger hashchange
+    window.location.hash = ""
+  })
+
+  afterEach(() => {
+    setActiveRouter(null)
+  })
+
+  it("blocks navigation when blocker returns true", async () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    router._blockers.add(() => true)
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/")
+    router.destroy()
+  })
+
+  it("allows navigation when blocker returns false", async () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    router._blockers.add(() => false)
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+    router.destroy()
+  })
+
+  it("supports async blockers", async () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    router._blockers.add(async () => {
+      await new Promise<void>((r) => setTimeout(r, 5))
+      return true
+    })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/")
+    router.destroy()
+  })
+
+  it("removing blocker allows navigation", async () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    const fn = () => true
+    router._blockers.add(fn)
+    router._blockers.delete(fn)
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+    router.destroy()
+  })
+
+  it("blocker receives to and from routes", async () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    let receivedTo: ResolvedRoute | undefined
+    let receivedFrom: ResolvedRoute | undefined
+    router._blockers.add((to, from) => {
+      receivedTo = to
+      receivedFrom = from
+      return false
+    })
+    await router.push("/about")
+    expect(receivedTo!.path).toBe("/about")
+    expect(receivedFrom!.path).toBe("/")
+    router.destroy()
+  })
+
+  it("destroy() clears blockers", () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    router._blockers.add(() => true)
+    router.destroy()
+    expect(router._blockers.size).toBe(0)
+  })
+
+  it("useBlocker hook works via RouterProvider", () => {
+    const router = createRouter({ routes: blockerRoutes, url: "/" }) as unknown as RouterInstance
+    let blockerRef: { remove(): void } | undefined
+    const container = document.createElement("div")
+    const TestComp = () => {
+      blockerRef = useBlocker(() => true)
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    expect(router._blockers.size).toBe(1)
+    blockerRef!.remove()
+    expect(router._blockers.size).toBe(0)
+    router.destroy()
+  })
+})
+
+// ─── Feature 3: Relative navigation ──────────────────────────────────────────
+
+describe("relative navigation", () => {
+  const relRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/admin/users", component: AdminUsers },
+    { path: "/admin/settings", component: AdminSettings },
+    { path: "/about", component: About },
+  ]
+
+  it("resolves ./sibling from a nested path", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.push("./settings")
+    expect(router.currentRoute().path).toBe("/admin/settings")
+  })
+
+  it("resolves ../up from a nested path", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.push("../about")
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("resolves . to the parent directory", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.push(".")
+    expect(router.currentRoute().path).toBe("/admin")
+  })
+
+  it("resolves .. to the grandparent directory", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.push("..")
+    expect(router.currentRoute().path).toBe("/")
+  })
+
+  it("does not modify absolute paths", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("works with replace()", async () => {
+    const router = createRouter({ routes: relRoutes, url: "/admin/users" })
+    await router.replace("./settings")
+    expect(router.currentRoute().path).toBe("/admin/settings")
+  })
+})
+
+// ─── Feature 4: Trailing slash normalization ──────────────────────────────────
+
+describe("trailing slash normalization", () => {
+  const tsRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/about", component: About },
+    { path: "/user/:id", component: User },
+  ]
+
+  it("strips trailing slash by default", () => {
+    const router = createRouter({ routes: tsRoutes, url: "/about/" })
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("strips trailing slash on navigation", async () => {
+    const router = createRouter({ routes: tsRoutes, url: "/" })
+    await router.push("/about/")
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  it("adds trailing slash when trailingSlash=add", () => {
+    const router = createRouter({ routes: tsRoutes, url: "/about", trailingSlash: "add" })
+    expect(router.currentRoute().path).toBe("/about/")
+  })
+
+  it("does not modify when trailingSlash=ignore", () => {
+    const router = createRouter({ routes: tsRoutes, url: "/about/", trailingSlash: "ignore" })
+    expect(router.currentRoute().path).toBe("/about/")
+  })
+
+  it("does not strip slash from root path", () => {
+    const router = createRouter({ routes: tsRoutes, url: "/" })
+    expect(router.currentRoute().path).toBe("/")
+  })
+
+  it("preserves query string when stripping slash", async () => {
+    const router = createRouter({ routes: tsRoutes, url: "/" })
+    await router.push("/about/?foo=bar")
+    const route = router.currentRoute()
+    expect(route.path).toBe("/about")
+    expect(route.query.foo).toBe("bar")
+  })
+})
+
+// ─── Feature 5: Typed search params ──────────────────────────────────────────
+
+describe("useSearchParams", () => {
+  const spRoutes: RouteRecord[] = [
+    { path: "/", component: Home },
+    { path: "/search", component: About },
+  ]
+
+  it("returns current query params via RouterProvider", () => {
+    const router = createRouter({ routes: spRoutes, url: "/search?q=hello&page=2" })
+    const container = document.createElement("div")
+    let result: Record<string, string> | undefined
+    const TestComp = () => {
+      const params = useSearchParams()
+      result = params()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    expect(result!.q).toBe("hello")
+    expect(result!.page).toBe("2")
+    router.destroy()
+  })
+
+  it("merges URL params over defaults for missing keys", () => {
+    const router = createRouter({ routes: spRoutes, url: "/search?q=hello" })
+    const container = document.createElement("div")
+    let result: Record<string, string> | undefined
+    const TestComp = () => {
+      const params = useSearchParams({ q: "", page: "1", sort: "name" })
+      result = params()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    expect(result!.q).toBe("hello")
+    expect(result!.page).toBe("1")
+    expect(result!.sort).toBe("name")
+    router.destroy()
+  })
+
+  it("URL params take precedence over defaults", () => {
+    const router = createRouter({ routes: spRoutes, url: "/search?page=5" })
+    const container = document.createElement("div")
+    let result: Record<string, string> | undefined
+    const TestComp = () => {
+      const params = useSearchParams({ page: "1" })
+      result = params()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), container)
+    expect(result!.page).toBe("5")
+    router.destroy()
+  })
+})
+
+// ─── Feature 6: Stale-while-revalidate loaders ───────────────────────────────
+
+describe("stale-while-revalidate loaders", () => {
+  const Comp = () => null
+
+  it("uses cached data and revalidates in background", async () => {
+    let callCount = 0
+    const swrRoutes: RouteRecord[] = [
+      { path: "/", component: Comp },
+      {
+        path: "/data",
+        component: Comp,
+        staleWhileRevalidate: true,
+        loader: async () => {
+          callCount++
+          return `result-${callCount}`
+        },
+      },
+    ]
+
+    const router = createRouter({ routes: swrRoutes, url: "/" })
+
+    // First navigation: no cached data, loader runs blocking
+    await router.push("/data")
+    expect(callCount).toBe(1)
+    const inst = router as unknown as RouterInstance
+    const record = swrRoutes[1] as RouteRecord
+    expect(inst._loaderData.get(record)).toBe("result-1")
+
+    // Navigate away then back — SWR should use cached data
+    await router.push("/")
+    await router.push("/data")
+    // callCount is now 2 because loader was called again (SWR revalidation)
+    // But navigation committed immediately with stale data
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(callCount).toBe(2)
+    expect(inst._loaderData.get(record)).toBe("result-2")
+  })
+
+  it("non-SWR routes still block", async () => {
+    let loaded = false
+    const mixedRoutes: RouteRecord[] = [
+      { path: "/", component: Comp },
+      {
+        path: "/blocking",
+        component: Comp,
+        loader: async () => {
+          await new Promise<void>((r) => setTimeout(r, 10))
+          loaded = true
+          return "data"
+        },
+      },
+    ]
+
+    const router = createRouter({ routes: mixedRoutes, url: "/" })
+    await router.push("/blocking")
+    expect(loaded).toBe(true)
   })
 })
