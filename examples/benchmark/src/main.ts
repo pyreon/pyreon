@@ -130,7 +130,7 @@ runBtn.addEventListener("click", async () => {
     { name: "Vue 3", run: runVue },
     { name: "SolidJS", run: runSolid },
     { name: "Pyreon", run: runPyreon },
-    { name: "Pyreon (tpl)", run: runPyreonTpl },
+    { name: "Pyreon (compiled)", run: runPyreonTpl },
   ]
 
   // Randomize execution order to avoid GC pressure bias
