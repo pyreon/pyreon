@@ -96,6 +96,32 @@ interface CompiledRoute {
   staticPath: string | null
   /** Compiled children (lazily populated) */
   children: CompiledRoute[] | null
+  /** First static segment (for dispatch index), null if first segment is dynamic or route is wildcard */
+  firstSegment: string | null
+}
+
+/**
+ * A flattened route entry — pre-joins parent+child segments at compile time
+ * so nested routes can be matched in a single pass without recursion.
+ */
+interface FlattenedRoute {
+  /** All segments from root to leaf, concatenated */
+  segments: CompiledSegment[]
+  segmentCount: number
+  /** The full matched chain from root to leaf (e.g. [adminLayout, usersPage]) */
+  matchedChain: RouteRecord[]
+  /** true if all segments are static */
+  isStatic: boolean
+  /** For static flattened routes: the full joined path */
+  staticPath: string | null
+  /** Pre-merged meta from all routes in the chain */
+  meta: RouteMeta
+  /** First static segment for dispatch index */
+  firstSegment: string | null
+  /** true if any segment is a splat */
+  hasSplat: boolean
+  /** true if this is a wildcard catch-all route (`*` or `(.*)`) */
+  isWildcard: boolean
 }
 
 /** WeakMap cache: compile each RouteRecord[] once */
@@ -124,12 +150,15 @@ function compileRoute(route: RouteRecord): CompiledRoute {
       isStatic: false,
       staticPath: null,
       children: null,
+      firstSegment: null,
     }
   }
 
   const segments = pattern.split("/").filter(Boolean).map(compileSegment)
   const isStatic = segments.every((s) => !s.isParam)
   const staticPath = isStatic ? `/${segments.map((s) => s.raw).join("/")}` : null
+  const first = segments.length > 0 ? segments[0] : undefined
+  const firstSegment = first && !first.isParam ? first.raw : null
 
   return {
     route,
@@ -139,6 +168,7 @@ function compileRoute(route: RouteRecord): CompiledRoute {
     isStatic,
     staticPath,
     children: null,
+    firstSegment,
   }
 }
 
@@ -157,25 +187,148 @@ function compileRoutes(routes: RouteRecord[]): CompiledRoute[] {
   return compiled
 }
 
-// ─── Static route index ──────────────────────────────────────────────────────
+// ─── Route flattening ────────────────────────────────────────────────────────
 
-/** WeakMap cache: build static index once per route array */
-const _staticIndexCache = new WeakMap<RouteRecord[], Map<string, CompiledRoute>>()
+/** Extract first static segment from a segment list, or null if dynamic/empty */
+function getFirstSegment(segments: CompiledSegment[]): string | null {
+  const first = segments[0]
+  if (first && !first.isParam) return first.raw
+  return null
+}
 
-function buildStaticIndex(
-  routes: RouteRecord[],
-  compiled: CompiledRoute[],
-): Map<string, CompiledRoute> {
-  const cached = _staticIndexCache.get(routes)
+/** Build a FlattenedRoute from segments + metadata */
+function makeFlatEntry(
+  segments: CompiledSegment[],
+  chain: RouteRecord[],
+  meta: RouteMeta,
+  isWildcard: boolean,
+): FlattenedRoute {
+  const isStatic = !isWildcard && segments.every((s) => !s.isParam)
+  return {
+    segments,
+    segmentCount: segments.length,
+    matchedChain: chain,
+    isStatic,
+    staticPath: isStatic ? `/${segments.map((s) => s.raw).join("/")}` : null,
+    meta,
+    firstSegment: getFirstSegment(segments),
+    hasSplat: segments.some((s) => s.isSplat),
+    isWildcard,
+  }
+}
+
+/**
+ * Flatten nested routes into leaf entries with pre-joined segments.
+ * This eliminates recursion during matching for the common case.
+ */
+function flattenRoutes(compiled: CompiledRoute[]): FlattenedRoute[] {
+  const result: FlattenedRoute[] = []
+  flattenWalk(result, compiled, [], [], {})
+  return result
+}
+
+function flattenWalk(
+  result: FlattenedRoute[],
+  routes: CompiledRoute[],
+  parentSegments: CompiledSegment[],
+  parentChain: RouteRecord[],
+  parentMeta: RouteMeta,
+): void {
+  for (const c of routes) {
+    const chain = [...parentChain, c.route]
+    const meta = c.route.meta ? { ...parentMeta, ...c.route.meta } : { ...parentMeta }
+    flattenOne(result, c, parentSegments, chain, meta)
+  }
+}
+
+function flattenOne(
+  result: FlattenedRoute[],
+  c: CompiledRoute,
+  parentSegments: CompiledSegment[],
+  chain: RouteRecord[],
+  meta: RouteMeta,
+): void {
+  if (c.isWildcard) {
+    result.push(makeFlatEntry(parentSegments, chain, meta, true))
+    if (c.children && c.children.length > 0) {
+      flattenWalk(result, c.children, parentSegments, chain, meta)
+    }
+    return
+  }
+
+  const joined = [...parentSegments, ...c.segments]
+  if (c.children && c.children.length > 0) {
+    flattenWalk(result, c.children, joined, chain, meta)
+  }
+  result.push(makeFlatEntry(joined, chain, meta, false))
+}
+
+// ─── Combined index ─────────────────────────────────────────────────────────
+
+interface RouteIndex {
+  /** O(1) lookup for fully static paths (including nested) */
+  staticMap: Map<string, FlattenedRoute>
+  /** First-segment dispatch: maps first path segment → candidate routes */
+  segmentMap: Map<string, FlattenedRoute[]>
+  /** Routes whose first segment is dynamic (fallback) */
+  dynamicFirst: FlattenedRoute[]
+  /** Wildcard/catch-all routes */
+  wildcards: FlattenedRoute[]
+}
+
+const _indexCache = new WeakMap<RouteRecord[], RouteIndex>()
+
+/** Classify a single flattened route into the appropriate index bucket */
+function indexFlatRoute(
+  f: FlattenedRoute,
+  staticMap: Map<string, FlattenedRoute>,
+  segmentMap: Map<string, FlattenedRoute[]>,
+  dynamicFirst: FlattenedRoute[],
+  wildcards: FlattenedRoute[],
+): void {
+  // Static map: first static entry wins (preserves definition order)
+  if (f.isStatic && f.staticPath && !staticMap.has(f.staticPath)) {
+    staticMap.set(f.staticPath, f)
+  }
+
+  if (f.isWildcard) {
+    wildcards.push(f)
+    return
+  }
+
+  // Root route "/" has 0 segments — already in static map
+  if (f.segmentCount === 0) return
+
+  // First-segment dispatch
+  if (f.firstSegment) {
+    let bucket = segmentMap.get(f.firstSegment)
+    if (!bucket) {
+      bucket = []
+      segmentMap.set(f.firstSegment, bucket)
+    }
+    bucket.push(f)
+  } else {
+    dynamicFirst.push(f)
+  }
+}
+
+function buildRouteIndex(routes: RouteRecord[], compiled: CompiledRoute[]): RouteIndex {
+  const cached = _indexCache.get(routes)
   if (cached) return cached
 
-  const index = new Map<string, CompiledRoute>()
-  for (const c of compiled) {
-    if (c.isStatic && !c.route.children?.length && c.staticPath) {
-      index.set(c.staticPath, c)
-    }
+  const flattened = flattenRoutes(compiled)
+
+  const staticMap = new Map<string, FlattenedRoute>()
+  const segmentMap = new Map<string, FlattenedRoute[]>()
+  const dynamicFirst: FlattenedRoute[] = []
+  const wildcards: FlattenedRoute[] = []
+
+  for (const f of flattened) {
+    indexFlatRoute(f, staticMap, segmentMap, dynamicFirst, wildcards)
   }
-  _staticIndexCache.set(routes, index)
+
+  const index: RouteIndex = { staticMap, segmentMap, dynamicFirst, wildcards }
+  _indexCache.set(routes, index)
   return index
 }
 
@@ -247,7 +400,7 @@ export function matchPath(pattern: string, path: string): Record<string, string>
   return params
 }
 
-// ─── Compiled matching (internal) ────────────────────────────────────────────
+// ─── Compiled matching helpers ────────────────────────────────────────────────
 
 /** Collect remaining path segments as a decoded splat value */
 function captureSplat(pathParts: string[], from: number, pathLen: number): string {
@@ -259,62 +412,29 @@ function captureSplat(pathParts: string[], from: number, pathLen: number): strin
   return remaining.join("/")
 }
 
-/** Walk compiled segments against path parts, populating params. */
-function walkSegments(
-  segments: CompiledSegment[],
-  segmentCount: number,
+// ─── Flattened route matching ─────────────────────────────────────────────────
+
+/** Try to match a flattened route against path parts */
+function matchFlattened(
+  f: FlattenedRoute,
   pathParts: string[],
   pathLen: number,
-  params: Record<string, string>,
-): boolean {
-  for (let i = 0; i < segmentCount; i++) {
-    const seg = segments[i]
-    const pt = pathParts[i]
-    if (!seg || pt === undefined) return false
-    if (seg.isSplat) {
-      params[seg.paramName] = captureSplat(pathParts, i, pathLen)
-      return true
-    }
-    if (seg.isParam) {
-      params[seg.paramName] = decodeSafe(pt)
-    } else if (seg.raw !== pt) {
-      return false
-    }
+): Record<string, string> | null {
+  if (f.segmentCount !== pathLen) {
+    // Could still match if route has a splat
+    if (!f.hasSplat || pathLen < f.segmentCount) return null
   }
-  return true
-}
 
-function matchCompiled(
-  segments: CompiledSegment[],
-  segmentCount: number,
-  pathParts: string[],
-  pathLen: number,
-  params: Record<string, string>,
-): boolean {
-  if (segmentCount !== pathLen) {
-    // Could still match if last segment is a splat
-    const last = segmentCount > 0 ? segments[segmentCount - 1] : undefined
-    if (!last?.isSplat || pathLen < segmentCount) return false
-  }
-  return walkSegments(segments, segmentCount, pathParts, pathLen, params)
-}
-
-function matchPrefixCompiled(
-  segments: CompiledSegment[],
-  segmentCount: number,
-  pathParts: string[],
-  pathLen: number,
-  params: Record<string, string>,
-): string | null {
-  if (pathLen < segmentCount) return null
-
-  for (let i = 0; i < segmentCount; i++) {
+  const params: Record<string, string> = {}
+  const segments = f.segments
+  const count = f.segmentCount
+  for (let i = 0; i < count; i++) {
     const seg = segments[i]
     const pt = pathParts[i]
     if (!seg || pt === undefined) return null
     if (seg.isSplat) {
       params[seg.paramName] = captureSplat(pathParts, i, pathLen)
-      return "/"
+      return params
     }
     if (seg.isParam) {
       params[seg.paramName] = decodeSafe(pt)
@@ -322,25 +442,36 @@ function matchPrefixCompiled(
       return null
     }
   }
+  return params
+}
 
-  // Build rest path from remaining segments
-  if (segmentCount === pathLen) return "/"
-  let rest = ""
-  for (let i = segmentCount; i < pathLen; i++) {
-    const p = pathParts[i]
-    if (p !== undefined) {
-      rest += "/"
-      rest += p
+/** Search a list of flattened candidates for a match */
+function searchCandidates(
+  candidates: FlattenedRoute[],
+  pathParts: string[],
+  pathLen: number,
+): MatchResult | null {
+  for (let i = 0; i < candidates.length; i++) {
+    const f = candidates[i]
+    if (!f) continue
+    const params = matchFlattened(f, pathParts, pathLen)
+    if (params) {
+      return { params, matched: f.matchedChain }
     }
   }
-  return rest
+  return null
 }
 
 // ─── Route resolution ─────────────────────────────────────────────────────────
 
+interface MatchResult {
+  params: Record<string, string>
+  matched: RouteRecord[]
+}
+
 /**
  * Resolve a raw path (including query string and hash) against the route tree.
- * Handles nested routes recursively.
+ * Uses flattened index for O(1) static lookup and first-segment dispatch.
  */
 export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
   const qIdx = rawPath.indexOf("?")
@@ -353,148 +484,73 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
 
   const query = parseQuery(queryPart)
 
-  // Compile routes (cached after first call)
+  // Build index (cached after first call)
   const compiled = compileRoutes(routes)
-  const staticIndex = buildStaticIndex(routes, compiled)
+  const index = buildRouteIndex(routes, compiled)
 
-  // Fast path: try static Map lookup first (O(1) for pure static routes)
-  const staticMatch = staticIndex.get(cleanPath)
+  // Fast path 1: O(1) static Map lookup (covers nested static too)
+  const staticMatch = index.staticMap.get(cleanPath)
   if (staticMatch) {
     return {
       path: cleanPath,
       params: {},
       query,
       hash,
-      matched: [staticMatch.route],
-      meta: staticMatch.route.meta ? { ...staticMatch.route.meta } : {},
+      matched: staticMatch.matchedChain,
+      meta: staticMatch.meta,
     }
   }
 
-  // Full compiled matching
+  // Split path for segment-based matching
   const pathParts = splitPath(cleanPath)
-  const match = matchRoutesCompiled(pathParts, pathParts.length, compiled, [], {})
-  if (match) {
+  const pathLen = pathParts.length
+
+  // Fast path 2: first-segment dispatch (O(1) bucket lookup + small scan)
+  if (pathLen > 0) {
+    const first = pathParts[0] as string
+    const bucket = index.segmentMap.get(first)
+    if (bucket) {
+      const match = searchCandidates(bucket, pathParts, pathLen)
+      if (match) {
+        return {
+          path: cleanPath,
+          params: match.params,
+          query,
+          hash,
+          matched: match.matched,
+          meta: mergeMeta(match.matched),
+        }
+      }
+    }
+  }
+
+  // Fallback: dynamic-first-segment routes
+  const dynMatch = searchCandidates(index.dynamicFirst, pathParts, pathLen)
+  if (dynMatch) {
     return {
       path: cleanPath,
-      params: match.params,
+      params: dynMatch.params,
       query,
       hash,
-      matched: match.matched,
-      meta: mergeMeta(match.matched),
+      matched: dynMatch.matched,
+      meta: mergeMeta(dynMatch.matched),
+    }
+  }
+
+  // Fallback: wildcard/catch-all routes
+  const w = index.wildcards[0]
+  if (w) {
+    return {
+      path: cleanPath,
+      params: {},
+      query,
+      hash,
+      matched: w.matchedChain,
+      meta: w.meta,
     }
   }
 
   return { path: cleanPath, params: {}, query, hash, matched: [], meta: {} }
-}
-
-interface MatchResult {
-  params: Record<string, string>
-  matched: RouteRecord[]
-}
-
-function matchRoutesCompiled(
-  pathParts: string[],
-  pathLen: number,
-  compiled: CompiledRoute[],
-  parentMatched: RouteRecord[],
-  parentParams: Record<string, string>,
-): MatchResult | null {
-  for (let i = 0; i < compiled.length; i++) {
-    const c = compiled[i]
-    if (!c) continue
-    const result = matchSingleCompiled(pathParts, pathLen, c, parentMatched, parentParams)
-    if (result) return result
-  }
-  return null
-}
-
-/** Merge parentParams into target (mutates target) */
-function mergeParams(target: Record<string, string>, source: Record<string, string>): void {
-  for (const k in source) {
-    const v = source[k]
-    if (v !== undefined) target[k] = v
-  }
-}
-
-/** Match a leaf route (no children) */
-function matchLeafCompiled(
-  pathParts: string[],
-  pathLen: number,
-  c: CompiledRoute,
-  parentMatched: RouteRecord[],
-  parentParams: Record<string, string>,
-): MatchResult | null {
-  if (c.isWildcard) {
-    return { params: { ...parentParams }, matched: [...parentMatched, c.route] }
-  }
-
-  const params: Record<string, string> = {}
-  if (!matchCompiled(c.segments, c.segmentCount, pathParts, pathLen, params)) return null
-
-  mergeParams(params, parentParams)
-  return { params, matched: [...parentMatched, c.route] }
-}
-
-/** Match a route with children — prefix match then recurse */
-function matchBranchCompiled(
-  pathParts: string[],
-  pathLen: number,
-  c: CompiledRoute,
-  parentMatched: RouteRecord[],
-  parentParams: Record<string, string>,
-): MatchResult | null {
-  if (c.isWildcard) {
-    const matched = [...parentMatched, c.route]
-    // children is guaranteed non-null here (caller checks)
-    const childMatch = matchRoutesCompiled(
-      pathParts,
-      pathLen,
-      c.children as CompiledRoute[],
-      matched,
-      parentParams,
-    )
-    if (childMatch) return childMatch
-    return { params: { ...parentParams }, matched }
-  }
-
-  const prefixParams: Record<string, string> = {}
-  const rest = matchPrefixCompiled(c.segments, c.segmentCount, pathParts, pathLen, prefixParams)
-  if (rest === null) return null
-
-  const allParams: Record<string, string> = { ...parentParams, ...prefixParams }
-  const matched = [...parentMatched, c.route]
-
-  const restParts = rest === "/" ? [] : splitPath(rest)
-  const childMatch = matchRoutesCompiled(
-    restParts,
-    restParts.length,
-    c.children as CompiledRoute[],
-    matched,
-    allParams,
-  )
-  if (childMatch) return childMatch
-
-  // Fallback: try exact match on parent
-  const exactParams: Record<string, string> = {}
-  if (matchCompiled(c.segments, c.segmentCount, pathParts, pathLen, exactParams)) {
-    mergeParams(exactParams, parentParams)
-    return { params: exactParams, matched }
-  }
-
-  return null
-}
-
-function matchSingleCompiled(
-  pathParts: string[],
-  pathLen: number,
-  c: CompiledRoute,
-  parentMatched: RouteRecord[],
-  parentParams: Record<string, string>,
-): MatchResult | null {
-  if (!c.children || c.children.length === 0) {
-    return matchLeafCompiled(pathParts, pathLen, c, parentMatched, parentParams)
-  }
-  return matchBranchCompiled(pathParts, pathLen, c, parentMatched, parentParams)
 }
 
 /** Merge meta from matched routes (leaf takes precedence) */
