@@ -1,5 +1,15 @@
 # @pyreon/example-solid-compat
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.3.0
+  - @pyreon/core@0.3.0
+  - @pyreon/runtime-dom@0.3.0
+  - @pyreon/solid-compat@0.3.0
+
 ## 0.0.4
 
 ### Patch Changes
