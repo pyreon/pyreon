@@ -146,7 +146,8 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     prefetchRoute(router as RouterInstance, props.to)
   }
 
-  const href = router?.mode === "history" ? props.to : `#${props.to}`
+  const inst = router as RouterInstance | null
+  const href = inst?.mode === "history" ? `${inst._base}${props.to}` : `#${props.to}`
 
   const activeClass = (): string => {
     if (!router) return ""

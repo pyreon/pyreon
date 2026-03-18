@@ -55,11 +55,22 @@ export {
   stringifyQuery,
 } from "./match"
 // Router factory + hooks
-export { createRouter, RouterContext, useRoute, useRouter } from "./router"
+export {
+  createRouter,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+  RouterContext,
+  useBlocker,
+  useRoute,
+  useRouter,
+  useSearchParams,
+} from "./router"
 // Types
 // Data loaders
 export type {
   AfterEachHook,
+  Blocker,
+  BlockerFn,
   ExtractParams,
   LazyComponent,
   LoaderContext,

@@ -1,9 +1,11 @@
-import { createContext, useContext } from "@pyreon/core"
+import { createContext, onUnmount, useContext } from "@pyreon/core"
 import { computed, signal } from "@pyreon/reactivity"
-import { buildNameIndex, buildPath, resolveRoute } from "./match"
+import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from "./match"
 import { ScrollManager } from "./scroll"
 import {
   type AfterEachHook,
+  type Blocker,
+  type BlockerFn,
   type ComponentFn,
   isLazy,
   type LoaderContext,
@@ -54,7 +56,7 @@ export function useRouter(): Router {
 }
 
 export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
-  import("./types").ExtractParams<TPath>,
+  import("./types").ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
   const router = useContext(RouterContext) ?? _activeRouter
@@ -65,11 +67,155 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   return router.currentRoute as never
 }
 
+/**
+ * In-component guard: called before the component's route is left.
+ * Return `false` to cancel, a string to redirect, or `undefined`/`true` to proceed.
+ * Automatically removed on component unmount.
+ *
+ * @example
+ * onBeforeRouteLeave((to, from) => {
+ *   if (hasUnsavedChanges()) return false
+ * })
+ */
+export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  // Register as a global guard that only fires when leaving the current route
+  const currentMatched = router.currentRoute().matched
+  const wrappedGuard: NavigationGuard = (to, from) => {
+    // Only fire if we're actually leaving one of the matched routes
+    const isLeaving = from.matched.some((r) => currentMatched.includes(r))
+    if (!isLeaving) return undefined
+    return guard(to, from)
+  }
+  const remove = router.beforeEach(wrappedGuard)
+  onUnmount(() => remove())
+  return remove
+}
+
+/**
+ * In-component guard: called when the route changes but the component is reused
+ * (e.g. `/user/1` → `/user/2`). Useful for reacting to param changes.
+ * Automatically removed on component unmount.
+ *
+ * @example
+ * onBeforeRouteUpdate((to, from) => {
+ *   if (!isValidId(to.params.id)) return false
+ * })
+ */
+export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  const currentMatched = router.currentRoute().matched
+  const wrappedGuard: NavigationGuard = (to, from) => {
+    // Only fire when the same component is reused (matched routes overlap)
+    const isReused = to.matched.some((r) => currentMatched.includes(r))
+    if (!isReused) return undefined
+    return guard(to, from)
+  }
+  const remove = router.beforeEach(wrappedGuard)
+  onUnmount(() => remove())
+  return remove
+}
+
+/**
+ * Register a navigation blocker. The `fn` callback is called before each
+ * navigation — return `true` (or resolve to `true`) to block it.
+ *
+ * Automatically removed on component unmount if called during component setup.
+ * Also installs a `beforeunload` handler so the browser shows a confirmation
+ * dialog when the user tries to close the tab while a blocker is active.
+ *
+ * @example
+ * const blocker = useBlocker((to, from) => {
+ *   return hasUnsavedChanges() && !confirm("Discard changes?")
+ * })
+ * // later: blocker.remove()
+ */
+export function useBlocker(fn: BlockerFn): Blocker {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  router._blockers.add(fn)
+
+  // Warn before tab/window close while this blocker is registered
+  const beforeUnloadHandler = _isBrowser
+    ? (e: BeforeUnloadEvent) => {
+        e.preventDefault()
+      }
+    : null
+  if (beforeUnloadHandler) {
+    window.addEventListener("beforeunload", beforeUnloadHandler)
+  }
+
+  const remove = () => {
+    router._blockers.delete(fn)
+    if (beforeUnloadHandler) {
+      window.removeEventListener("beforeunload", beforeUnloadHandler)
+    }
+  }
+
+  // Auto-remove when the component that called useBlocker unmounts
+  onUnmount(() => remove())
+
+  return { remove }
+}
+
+/**
+ * Reactive read/write access to the current route's query parameters.
+ *
+ * Returns `[get, set]` where `get` is a reactive signal producing the merged
+ * query object and `set` navigates to the current path with updated params.
+ *
+ * @example
+ * const [params, setParams] = useSearchParams({ page: "1", sort: "name" })
+ * params().page  // "1" if not in URL
+ * setParams({ page: "2" })  // navigates to ?page=2&sort=name
+ */
+export function useSearchParams<T extends Record<string, string>>(
+  defaults?: T,
+): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  const get = (): T => {
+    const query = router.currentRoute().query
+    if (!defaults) return query as T
+    return { ...defaults, ...query } as T
+  }
+  const set = (updates: Partial<T>): Promise<void> => {
+    const merged = { ...get(), ...updates }
+    const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>)
+    return router.replace(path)
+  }
+  return [get, set]
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
-  const { routes, mode = "hash", scrollBehavior, onError, maxCacheSize = 100 } = opts
+  const {
+    routes,
+    mode = "hash",
+    scrollBehavior,
+    onError,
+    maxCacheSize = 100,
+    trailingSlash = "strip",
+  } = opts
+
+  // Base path only applies to history mode — hash-based routing already namespaces via #
+  const base = mode === "history" ? normalizeBase(opts.base ?? "") : ""
 
   // Pre-built O(1) name → record index. Computed once at startup.
   const nameIndex = buildNameIndex(routes)
@@ -85,11 +231,11 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   // ── Initial location ──────────────────────────────────────────────────────
 
   const getInitialLocation = (): string => {
-    // SSR: use explicitly provided url
-    if (opts.url) return opts.url
+    // SSR: use explicitly provided url (strip base if present)
+    if (opts.url) return stripBase(opts.url, base)
     if (!_isBrowser) return "/"
     if (mode === "history") {
-      return window.location.pathname + window.location.search
+      return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
     return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
@@ -98,7 +244,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const getCurrentLocation = (): string => {
     if (!_isBrowser) return currentPath()
     if (mode === "history") {
-      return window.location.pathname + window.location.search
+      return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
     return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
@@ -106,7 +252,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   // ── Signals ───────────────────────────────────────────────────────────────
 
-  const currentPath = signal(getInitialLocation())
+  const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
   // Browser event listeners — stored so destroy() can remove them
@@ -199,7 +345,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   function syncBrowserUrl(path: string, replace: boolean): void {
     if (!_isBrowser) return
-    const url = mode === "history" ? path : `#${path}`
+    const url = mode === "history" ? `${base}${path}` : `#${path}`
     if (replace) {
       window.history.replaceState(null, "", url)
     } else {
@@ -227,25 +373,65 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     return runGlobalGuards(guards, to, from, gen)
   }
 
+  async function runBlockingLoaders(
+    records: RouteRecord[],
+    to: ResolvedRoute,
+    gen: number,
+    ac: AbortController,
+  ): Promise<boolean> {
+    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
+    const results = await Promise.allSettled(
+      records.map((r) => (r.loader ? r.loader(loaderCtx) : Promise.resolve(undefined))),
+    )
+    if (gen !== _navGen) return false
+    for (let i = 0; i < records.length; i++) {
+      const result = results[i]
+      const record = records[i]
+      if (!result || !record) continue
+      if (!processLoaderResult(result, record, ac, to)) return false
+    }
+    return true
+  }
+
+  /** Fire-and-forget background revalidation for stale-while-revalidate routes. */
+  function revalidateSwrLoaders(records: RouteRecord[], to: ResolvedRoute, ac: AbortController) {
+    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
+    for (const r of records) {
+      if (!r.loader) continue
+      r.loader(loaderCtx)
+        .then((data) => {
+          if (!ac.signal.aborted) {
+            router._loaderData.set(r, data)
+            // Bump loadingSignal to trigger reactive re-render with fresh data
+            loadingSignal.update((n) => n + 1)
+            loadingSignal.update((n) => n - 1)
+          }
+        })
+        .catch(() => {
+          /* Background revalidation failure — stale data remains valid */
+        })
+    }
+  }
+
   async function runLoaders(to: ResolvedRoute, gen: number, ac: AbortController): Promise<boolean> {
     const loadableRecords = to.matched.filter((r) => r.loader)
     if (loadableRecords.length === 0) return true
 
-    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
-    const results = await Promise.allSettled(
-      loadableRecords.map((r) => {
-        if (!r.loader) return Promise.resolve(undefined)
-        return r.loader(loaderCtx)
-      }),
-    )
-    if (gen !== _navGen) return false
-
-    for (let i = 0; i < loadableRecords.length; i++) {
-      const result = results[i]
-      const record = loadableRecords[i]
-      if (!result || !record) continue
-      if (!processLoaderResult(result, record, ac, to)) return false
+    const blocking: RouteRecord[] = []
+    const swr: RouteRecord[] = []
+    for (const r of loadableRecords) {
+      if (r.staleWhileRevalidate && router._loaderData.has(r)) {
+        swr.push(r)
+      } else {
+        blocking.push(r)
+      }
     }
+
+    if (blocking.length > 0) {
+      const ok = await runBlockingLoaders(blocking, to, gen, ac)
+      if (!ok) return false
+    }
+    if (swr.length > 0) revalidateSwrLoaders(swr, to, ac)
     return true
   }
 
@@ -282,9 +468,22 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     }
   }
 
-  async function navigate(path: string, replace: boolean, redirectDepth = 0): Promise<void> {
+  async function checkBlockers(
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<"continue" | "cancel"> {
+    for (const blocker of router._blockers) {
+      const blocked = await blocker(to, from)
+      if (gen !== _navGen || blocked) return "cancel"
+    }
+    return "continue"
+  }
+
+  async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
     if (redirectDepth > 10) return
 
+    const path = normalizeTrailingSlash(rawPath, trailingSlash)
     const gen = ++_navGen
     loadingSignal.update((n) => n + 1)
 
@@ -295,6 +494,12 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     if (redirectTarget !== null) {
       loadingSignal.update((n) => n - 1)
       return navigate(redirectTarget, replace, redirectDepth + 1)
+    }
+
+    const blockerResult = await checkBlockers(to, from, gen)
+    if (blockerResult !== "continue") {
+      loadingSignal.update((n) => n - 1)
+      return
     }
 
     const guardOutcome = await runAllGuards(to, from, gen)
@@ -320,11 +525,20 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     loadingSignal.update((n) => n - 1)
   }
 
+  // ── isReady promise ─────────────────────────────────────────────────────
+  // Resolves after the first navigation (including guards + loaders) completes.
+
+  let _readyResolve: (() => void) | null = null
+  const _readyPromise = new Promise<void>((resolve) => {
+    _readyResolve = resolve
+  })
+
   // ── Public router object ──────────────────────────────────────────────────
 
   const router: RouterInstance = {
     routes,
     mode,
+    _base: base,
     currentRoute,
     _currentPath: currentPath,
     _currentRoute: currentRoute,
@@ -336,6 +550,9 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     _erroredChunks: new Set(),
     _loaderData: new Map(),
     _abortController: null,
+    _blockers: new Set(),
+    _readyResolve,
+    _readyPromise,
     _onError: onError,
     _maxCacheSize: maxCacheSize,
 
@@ -344,7 +561,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
     ) {
-      if (typeof location === "string") return navigate(sanitizePath(location), false)
+      if (typeof location === "string") {
+        const resolved = resolveRelativePath(location, currentPath())
+        return navigate(sanitizePath(resolved), false)
+      }
       const path = resolveNamedPath(
         location.name,
         location.params ?? {},
@@ -354,12 +574,34 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       return navigate(path, false)
     },
 
-    async replace(path: string) {
-      return navigate(sanitizePath(path), true)
+    async replace(
+      location:
+        | string
+        | { name: string; params?: Record<string, string>; query?: Record<string, string> },
+    ) {
+      if (typeof location === "string") {
+        const resolved = resolveRelativePath(location, currentPath())
+        return navigate(sanitizePath(resolved), true)
+      }
+      const path = resolveNamedPath(
+        location.name,
+        location.params ?? {},
+        location.query ?? {},
+        nameIndex,
+      )
+      return navigate(path, true)
     },
 
     back() {
       if (_isBrowser) window.history.back()
+    },
+
+    forward() {
+      if (_isBrowser) window.history.forward()
+    },
+
+    go(delta: number) {
+      if (_isBrowser) window.history.go(delta)
     },
 
     beforeEach(guard: NavigationGuard) {
@@ -380,6 +622,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     loading: () => loadingSignal() > 0,
 
+    isReady() {
+      return router._readyPromise
+    },
+
     destroy() {
       if (_popstateHandler) {
         window.removeEventListener("popstate", _popstateHandler)
@@ -391,6 +637,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       }
       guards.length = 0
       afterHooks.length = 0
+      router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()
       router._abortController?.abort()
@@ -399,6 +646,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),
   }
+
+  // Initial route is resolved synchronously — mark ready on next microtask
+  // so consumers can await isReady() before the first render.
+  queueMicrotask(() => {
+    if (router._readyResolve) {
+      router._readyResolve()
+      router._readyResolve = null
+    }
+  })
 
   return router
 }
@@ -433,6 +689,61 @@ function resolveNamedPath(
     .join("&")
   if (qs) path += `?${qs}`
   return path
+}
+
+/** Normalize a base path: ensure leading `/`, strip trailing `/`. */
+function normalizeBase(raw: string): string {
+  if (!raw) return ""
+  let b = raw
+  if (!b.startsWith("/")) b = `/${b}`
+  if (b.endsWith("/")) b = b.slice(0, -1)
+  return b
+}
+
+/** Strip the base prefix from a full URL path. Returns the app-relative path. */
+function stripBase(path: string, base: string): string {
+  if (!base) return path
+  if (path === base || path === `${base}/`) return "/"
+  if (path.startsWith(`${base}/`)) return path.slice(base.length)
+  return path
+}
+
+/** Normalize trailing slash on a path according to the configured strategy. */
+function normalizeTrailingSlash(path: string, strategy: "strip" | "add" | "ignore"): string {
+  if (strategy === "ignore" || path === "/") return path
+  // Split off query string + hash so we only touch the path portion
+  const qIdx = path.indexOf("?")
+  const hIdx = path.indexOf("#")
+  const endIdx = qIdx >= 0 ? qIdx : hIdx >= 0 ? hIdx : path.length
+  const pathPart = path.slice(0, endIdx)
+  const suffix = path.slice(endIdx)
+  if (strategy === "strip") {
+    return pathPart.length > 1 && pathPart.endsWith("/") ? pathPart.slice(0, -1) + suffix : path
+  }
+  // strategy === "add"
+  return !pathPart.endsWith("/") ? `${pathPart}/${suffix}` : path
+}
+
+/**
+ * Resolve a relative path (starting with `.` or `..`) against the current path.
+ * Non-relative paths are returned as-is.
+ */
+function resolveRelativePath(to: string, from: string): string {
+  if (!to.startsWith("./") && !to.startsWith("../") && to !== "." && to !== "..") return to
+
+  // Split current path into segments, drop the last segment (file-like resolution)
+  const fromSegments = from.split("/").filter(Boolean)
+  fromSegments.pop()
+
+  const toSegments = to.split("/").filter(Boolean)
+  for (const seg of toSegments) {
+    if (seg === "..") {
+      fromSegments.pop()
+    } else if (seg !== ".") {
+      fromSegments.push(seg)
+    }
+  }
+  return `/${fromSegments.join("/")}`
 }
 
 /** Block unsafe navigation targets: javascript/data/vbscript URIs and absolute URLs. */
