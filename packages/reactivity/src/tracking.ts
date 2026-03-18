@@ -103,6 +103,19 @@ export function withTracking<T>(fn: () => void, compute: () => T): T {
   }
 }
 
+// Stack for inlined tracking in renderEffect — avoids withTracking function call overhead.
+let _prevEffect: (() => void) | null = null
+
+export function _setActiveEffect(fn: () => void): void {
+  _prevEffect = activeEffect
+  activeEffect = fn
+}
+
+export function _restoreActiveEffect(): void {
+  activeEffect = _prevEffect
+  _prevEffect = null
+}
+
 export function runUntracked<T>(fn: () => T): T {
   const prev = activeEffect
   activeEffect = null

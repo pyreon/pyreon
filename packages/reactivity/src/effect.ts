@@ -1,5 +1,11 @@
 import { getCurrentScope } from "./scope"
-import { cleanupEffect, setDepsCollector, withTracking } from "./tracking"
+import {
+  _restoreActiveEffect,
+  _setActiveEffect,
+  cleanupEffect,
+  setDepsCollector,
+  withTracking,
+} from "./tracking"
 
 export interface Effect {
   dispose(): void
@@ -127,13 +133,24 @@ export function renderEffect(fn: () => void): () => void {
 
   const run = () => {
     if (disposed) return
-    // Clean up old subscriptions
-    for (const s of deps) s.delete(run)
-    deps.length = 0
-    // Track with fast collector — pushes to our local deps array
+    // Single-dep fast path — most render effects track exactly 1 signal.
+    // Avoids for-of iterator creation + deps.length check on every re-run.
+    if (deps.length === 1) {
+      ;(deps[0] as Set<() => void>).delete(run)
+      deps.length = 0
+    } else if (deps.length > 1) {
+      for (const s of deps) s.delete(run)
+      deps.length = 0
+    }
+    // Inline tracking setup — avoids setDepsCollector + withTracking function call overhead
     setDepsCollector(deps)
-    withTracking(run, fn)
-    setDepsCollector(null)
+    _setActiveEffect(run)
+    try {
+      fn()
+    } finally {
+      _restoreActiveEffect()
+      setDepsCollector(null)
+    }
   }
 
   run()
@@ -141,7 +158,11 @@ export function renderEffect(fn: () => void): () => void {
   const dispose = () => {
     if (disposed) return
     disposed = true
-    for (const s of deps) s.delete(run)
+    if (deps.length === 1) {
+      ;(deps[0] as Set<() => void>).delete(run)
+    } else {
+      for (const s of deps) s.delete(run)
+    }
     deps.length = 0
   }
 

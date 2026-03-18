@@ -25,7 +25,7 @@ import {
   reportError,
   runWithHooks,
 } from "@pyreon/core"
-import { effect, effectScope, runUntracked, setCurrentScope } from "@pyreon/reactivity"
+import { effectScope, renderEffect, runUntracked, setCurrentScope } from "@pyreon/reactivity"
 import { setupDelegation } from "./delegate"
 import { warnHydrationMismatch } from "./hydration-debug"
 import { mountChild } from "./mount"
@@ -47,13 +47,23 @@ function firstReal(initialNode: ChildNode | null): ChildNode | null {
       node = node.nextSibling
       continue
     }
-    if (node.nodeType === Node.TEXT_NODE && (node as Text).data.trim() === "") {
+    if (node.nodeType === Node.TEXT_NODE && isWhitespaceOnly((node as Text).data)) {
       node = node.nextSibling
       continue
     }
     return node
   }
   return null
+}
+
+/** Check if a string is whitespace-only without allocating a trimmed copy. */
+function isWhitespaceOnly(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    // space, tab, newline, carriage return, form feed
+    if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) return false
+  }
+  return true
 }
 
 /** Advance past a node, skipping whitespace-only text and comments */
@@ -120,11 +130,11 @@ function hydrateReactiveText(
 ): [Cleanup, ChildNode | null] {
   if (domNode?.nodeType === Node.TEXT_NODE) {
     const textNode = domNode as Text
-    const e = effect(() => {
+    const dispose = renderEffect(() => {
       const v = child()
       textNode.data = v == null ? "" : String(v)
     })
-    return [() => e.dispose(), nextReal(domNode)]
+    return [dispose, nextReal(domNode)]
   }
   warnHydrationMismatch("text", "TextNode", domNode?.nodeType ?? "null", `${path} > reactive`)
   const cleanup = mountChild(child, parent, anchor)
@@ -266,6 +276,13 @@ function hydrateChildren(
   anchor: Node | null,
   path = "root",
 ): [Cleanup, ChildNode | null] {
+  if (children.length === 0) return [noop, domNode]
+
+  // Single-child fast path — avoids cleanups array allocation
+  if (children.length === 1) {
+    return hydrateChild(children[0] as VNodeChild, domNode, parent, anchor, path)
+  }
+
   const cleanups: Cleanup[] = []
   let cursor = domNode
   for (const child of children) {
