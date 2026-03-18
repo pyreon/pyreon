@@ -330,15 +330,18 @@ async function runPyreon(): Promise<Record<string, number>> {
   return r
 }
 
-// ─── Pyreon (tpl) ────────────────────────────────────────────────────────────
+// ─── Pyreon (compiled) ───────────────────────────────────────────────────────
 
 async function runPyreonTpl(): Promise<Record<string, number>> {
-  // _tpl and _bind are exported from src but not yet in built types
   const _tpl = (runtimeDomRest as any)._tpl as (
     html: string,
     bind: (node: HTMLElement) => (() => void) | null,
   ) => { __isNative: true; el: HTMLElement; cleanup: (() => void) | null }
   const _bind = (reactivityRest as any)._bind as (fn: () => void) => () => void
+  const _bindText = (runtimeDomRest as any)._bindText as (
+    source: { _v: unknown; direct: (fn: () => void) => () => void },
+    node: Text,
+  ) => () => void
 
   const el = makeEl()
   type RR = { id: number; label: ReturnType<typeof signal<string>> }
@@ -367,25 +370,43 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
           each: rowsSig,
           by: (item) => item.id,
           children: (row) =>
-            _tpl("<tr><td></td><td></td></tr>", (__root) => {
-              const __e0 = __root.children[0] as HTMLElement
-              const __e1 = __root.children[1] as HTMLElement
-              const __d0 = _bind(() => {
-                __root.className = isSelected(row.id) ? "selected" : ""
-              })
-              __e0.textContent = String(row.id)
-              // Use persistent TextNode + .data for reactive text updates
-              // (.textContent destroys/recreates child nodes on every update)
-              const __t0 = document.createTextNode("")
-              __e1.appendChild(__t0)
-              const __d1 = _bind(() => {
-                __t0.data = row.label()
-              })
-              return () => {
-                __d0()
-                __d1()
-              }
-            }),
+            _tpl(
+              '<tr><td class="id"></td><td><a></a></td><td><a class="remove"><span class="glyphicon glyphicon-remove"></span></a></td></tr>',
+              (__root) => {
+                const __e0 = __root.children[0] as HTMLElement
+                const __e1 = (__root.children[1] as HTMLElement).children[0] as HTMLElement
+                const __e2 = (__root.children[2] as HTMLElement).children[0] as HTMLElement
+
+                // Static text
+                __e0.textContent = String(row.id)
+
+                // _bindText: direct signal→TextNode subscription (no effect)
+                const __t0 = document.createTextNode("")
+                __e1.appendChild(__t0)
+                const __d0 = _bindText(
+                  row.label as unknown as Parameters<typeof _bindText>[0],
+                  __t0,
+                )
+
+                // _bind: single renderEffect for className (selector dependency)
+                const __d1 = _bind(() => {
+                  __root.className = isSelected(row.id) ? "danger" : ""
+                })
+
+                // Event delegation: expandos instead of addEventListener
+                const tr = __root as HTMLElement & Record<string, unknown>
+                tr.__ev_click = () => selId.set(row.id)
+                ;(__e2 as HTMLElement & Record<string, unknown>).__ev_click = (e: Event) => {
+                  e.stopPropagation()
+                  rowsSig.update((r) => r.filter((item) => item.id !== row.id))
+                }
+
+                return () => {
+                  __d0()
+                  __d1()
+                }
+              },
+            ),
         }),
       ),
     ),
@@ -930,7 +951,7 @@ function printResults(all: Record<string, Record<string, number>>) {
 const frameworks: Array<{ name: string; run: () => Promise<Record<string, number>> }> = [
   { name: "Vanilla JS", run: runVanilla },
   { name: "Pyreon", run: runPyreon },
-  { name: "Pyreon (tpl)", run: runPyreonTpl },
+  { name: "Pyreon (compiled)", run: runPyreonTpl },
   { name: "Preact", run: runPreact },
   { name: "React 19", run: runReact },
   { name: "Vue 3", run: runVue },

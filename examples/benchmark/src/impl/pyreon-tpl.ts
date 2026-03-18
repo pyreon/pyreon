@@ -1,14 +1,15 @@
 /**
- * Pyreon benchmark — template-optimised variant.
+ * Pyreon benchmark — fully compiled variant.
  *
- * Same benchmark as pyreon.ts but uses _tpl() for row rendering instead of
- * h() calls. This is what the compiler would emit for JSX element trees with
- * ≥ 2 DOM elements.
+ * Represents what the Pyreon compiler would emit for the standard
+ * js-framework-benchmark row template, using every available optimisation:
  *
- * Benefits vs h() path:
- * - cloneNode(true) instead of 4× createElement + setAttribute
+ * - `_tpl()` — cloneNode(true) instead of N × createElement + setAttribute
+ * - `_bindText` — direct signal→TextNode subscription (no effect overhead)
+ * - `_bind` — single renderEffect for className (createSelector dependency)
+ * - Event delegation — `el.__ev_click = handler` instead of addEventListener
  * - Zero VNode / props-object / children-array allocations per row
- * - Static attributes baked into HTML string (no runtime prop application)
+ * - Static attributes baked into the HTML string
  */
 import { For, h } from "@pyreon/core"
 import { _bind, createSelector, signal } from "@pyreon/reactivity"
@@ -17,7 +18,7 @@ import type { BenchSuite } from "../runner"
 import { bench, buildRowsWith, tick } from "../runner"
 
 export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "Pyreon (tpl)", container, results: [] }
+  const suite: BenchSuite = { framework: "Pyreon (compiled)", container, results: [] }
 
   type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
   const rows = signal<ReactiveRow[]>([])
@@ -37,24 +38,44 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
           each: rows,
           by: (row) => row.id,
           children: (row: ReactiveRow) =>
-            // Template-optimised row — same output the compiler would emit
-            _tpl("<tr><td></td><td></td></tr>", (__root) => {
-              const __e0 = __root.children[0] as HTMLElement
-              const __e1 = __root.children[1] as HTMLElement
-              __e0.textContent = String(row.id)
-              // _bindText: direct signal→TextNode subscription (no effect overhead)
-              const __t0 = document.createTextNode("")
-              __e1.appendChild(__t0)
-              const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
-              // Combined _bind: one closure for all remaining reactive attrs
-              const __d1 = _bind(() => {
-                __root.className = isSelected(row.id) ? "selected" : ""
-              })
-              return () => {
-                __d0()
-                __d1()
-              }
-            }),
+            // Fully compiled row — _tpl + _bindText + _bind + event delegation
+            _tpl(
+              '<tr><td class="id"></td><td><a></a></td><td><a class="remove"><span class="glyphicon glyphicon-remove"></span></a></td></tr>',
+              (__root) => {
+                const __e0 = __root.children[0] as HTMLElement // td.id
+                const __e1 = (__root.children[1] as HTMLElement).children[0] as HTMLElement // td > a
+                const __e2 = (__root.children[2] as HTMLElement).children[0] as HTMLElement // td > a.remove
+
+                // Static text — id never changes
+                __e0.textContent = String(row.id)
+
+                // _bindText: direct signal→TextNode subscription (no effect)
+                const __t0 = document.createTextNode("")
+                __e1.appendChild(__t0)
+                const __d0 = _bindText(
+                  row.label as unknown as Parameters<typeof _bindText>[0],
+                  __t0,
+                )
+
+                // _bind: single renderEffect for className (selector dependency)
+                const __d1 = _bind(() => {
+                  __root.className = isSelected(row.id) ? "danger" : ""
+                })
+
+                // Event delegation: expandos instead of addEventListener
+                const tr = __root as HTMLElement & Record<string, unknown>
+                tr.__ev_click = () => selectedId.set(row.id)
+                ;(__e2 as HTMLElement & Record<string, unknown>).__ev_click = (e: Event) => {
+                  e.stopPropagation()
+                  rows.update((r) => r.filter((item) => item.id !== row.id))
+                }
+
+                return () => {
+                  __d0()
+                  __d1()
+                }
+              },
+            ),
         }),
       ),
     ),
