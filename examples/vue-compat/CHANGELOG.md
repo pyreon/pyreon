@@ -1,5 +1,15 @@
 # @pyreon/example-vue-compat
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.5.2
+  - @pyreon/reactivity@0.5.2
+  - @pyreon/runtime-dom@0.5.2
+  - @pyreon/vue-compat@0.5.2
+
 ## 0.0.9
 
 ### Patch Changes
