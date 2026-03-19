@@ -16,7 +16,9 @@
       "@pyreon/react-compat",
       "@pyreon/preact-compat",
       "@pyreon/solid-compat",
-      "@pyreon/vue-compat"
+      "@pyreon/vue-compat",
+      "@pyreon/cli",
+      "@pyreon/mcp"
     ]
   ],
   "linked": [],
