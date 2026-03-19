@@ -16,7 +16,7 @@
         "@unhead/vue": "^2.1.12",
         "@vitest/coverage-v8": "^4.1.0",
         "@vitus-labs/tools-lint": "^1.15.0",
-        "@vitus-labs/tools-rolldown": "^1.15.0",
+        "@vitus-labs/tools-rolldown": "^1.15.3",
         "@vitus-labs/tools-typescript": "^1.15.0",
         "@vitus-labs/tools-vitest": "^1.15.0",
         "find-my-way": "^9.5.0",
@@ -35,7 +35,7 @@
     },
     "examples/ai-reference": {
       "name": "@pyreon/ai-reference",
-      "version": "0.0.2",
+      "version": "0.0.4",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/head": "workspace:*",
@@ -89,7 +89,7 @@
     },
     "examples/preact-compat": {
       "name": "@pyreon/example-preact-compat",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/preact-compat": "workspace:*",
@@ -104,7 +104,7 @@
     },
     "examples/react-compat": {
       "name": "@pyreon/example-react-compat",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/react-compat": "workspace:*",
@@ -119,7 +119,7 @@
     },
     "examples/solid-compat": {
       "name": "@pyreon/example-solid-compat",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -134,7 +134,7 @@
     },
     "examples/vue-compat": {
       "name": "@pyreon/example-vue-compat",
-      "version": "0.0.8",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -149,7 +149,7 @@
     },
     "packages/cli": {
       "name": "@pyreon/cli",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "bin": {
         "pyreon": "./lib/index.js",
       },
@@ -162,21 +162,21 @@
     },
     "packages/compiler": {
       "name": "@pyreon/compiler",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
     },
     "packages/core": {
       "name": "@pyreon/core",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
       },
     },
     "packages/head": {
       "name": "@pyreon/head",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -189,7 +189,7 @@
     },
     "packages/mcp": {
       "name": "@pyreon/mcp",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "bin": {
         "pyreon-mcp": "./lib/index.js",
       },
@@ -204,7 +204,7 @@
     },
     "packages/preact-compat": {
       "name": "@pyreon/preact-compat",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -217,7 +217,7 @@
     },
     "packages/react-compat": {
       "name": "@pyreon/react-compat",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -230,11 +230,11 @@
     },
     "packages/reactivity": {
       "name": "@pyreon/reactivity",
-      "version": "0.5.0",
+      "version": "0.5.2",
     },
     "packages/router": {
       "name": "@pyreon/router",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -247,7 +247,7 @@
     },
     "packages/runtime-dom": {
       "name": "@pyreon/runtime-dom",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -259,7 +259,7 @@
     },
     "packages/runtime-server": {
       "name": "@pyreon/runtime-server",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -267,7 +267,7 @@
     },
     "packages/server": {
       "name": "@pyreon/server",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/head": "workspace:^",
@@ -279,7 +279,7 @@
     },
     "packages/solid-compat": {
       "name": "@pyreon/solid-compat",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -292,7 +292,7 @@
     },
     "packages/vite-plugin": {
       "name": "@pyreon/vite-plugin",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
       },
@@ -305,7 +305,7 @@
     },
     "packages/vue-compat": {
       "name": "@pyreon/vue-compat",
-      "version": "0.5.0",
+      "version": "0.5.2",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -770,7 +770,7 @@
 
     "@vitus-labs/tools-lint": ["@vitus-labs/tools-lint@1.15.0", "", { "dependencies": { "@biomejs/biome": "^2.4.7" } }, "sha512-gA+xBFmiOoADxUqN6+xE5AnICVML9RyvfdFLnGom8TECuNzcPvF/aG1q/keMbfy+kWc7gyd+MLmA/rNWrp0M2A=="],
 
-    "@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@1.15.0", "", { "dependencies": { "@vitus-labs/tools-core": "^1.14.0", "chalk": "^5.6.2", "rimraf": "^6.1.3", "rolldown": "^1.0.0-rc.9", "rolldown-plugin-dts": "^0.22.5", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-JH13noy72vkqu7lxMQEhSB2u3xMjuZ5Fb4KHZxQrUNAJbXXFTuV2fMf14doFMpOCNNXq08RZuE4JLNBa7HM7PA=="],
+    "@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@1.15.3", "", { "dependencies": { "@vitus-labs/tools-core": "^1.14.0", "chalk": "^5.6.2", "rimraf": "^6.1.3", "rolldown": "^1.0.0-rc.9", "rolldown-plugin-dts": "^0.22.5", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-FWyJ0Cqu9Wu8NE4eY9MUI//82x0TEj3NsBfBx/PjEzT0hN+Z8L3Us11bobQr4UoIL53Img+fPlGY3u8zYT1P3Q=="],
 
     "@vitus-labs/tools-typescript": ["@vitus-labs/tools-typescript@1.15.0", "", { "peerDependencies": { "typescript": ">=5" } }, "sha512-LERU+gjg3yaer0IvpwcX+20UarctLzObqkg7n4D9lD+rSTEO578EFntrCkDs8kp4lqlEGFQn9GObDKxKO7N7MA=="],
 
