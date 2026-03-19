@@ -194,9 +194,9 @@
         "pyreon-mcp": "./lib/index.js",
       },
       "dependencies": {
-        "@modelcontextprotocol/sdk": "^1.12.1",
+        "@modelcontextprotocol/sdk": "^1.27.1",
         "@pyreon/compiler": "workspace:*",
-        "zod": "^3.25.67",
+        "zod": "^3.25.76",
       },
       "peerDependencies": {
         "typescript": ">=5.0.0",
