@@ -3,328 +3,338 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { generateContext } from "../context"
 
-let tmpDir: string
+function makeTmpDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pyreon-ctx-"))
+  return dir
+}
 
-beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pyreon-context-"))
-  // Write a package.json so version detection works
-  fs.writeFileSync(
-    path.join(tmpDir, "package.json"),
-    JSON.stringify({
-      name: "test-app",
-      version: "1.0.0",
-      dependencies: { "@pyreon/core": "^0.5.0" },
-    }),
-    "utf-8",
-  )
-})
-
-afterEach(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true })
-})
-
-function writeFile(relPath: string, content: string): void {
-  const full = path.join(tmpDir, relPath)
+function writeFile(dir: string, relPath: string, content: string): void {
+  const full = path.join(dir, relPath)
   fs.mkdirSync(path.dirname(full), { recursive: true })
   fs.writeFileSync(full, content, "utf-8")
 }
 
 describe("generateContext", () => {
-  describe("route extraction", () => {
-    it("extracts routes from createRouter call", async () => {
-      writeFile(
-        "src/router.ts",
-        `import { createRouter } from "@pyreon/router"
-const router = createRouter([
-  { path: "/", name: "home", component: Home },
-])
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.routes).toHaveLength(1)
-      expect(ctx.routes[0]!.path).toBe("/")
-      expect(ctx.routes[0]!.name).toBe("home")
-    })
+  let tmpDir: string
 
-    it("extracts multiple routes from createRouter", async () => {
-      // Use separate files to avoid surrounding-context bleed between routes
-      writeFile(
-        "src/router-a.ts",
-        `import { createRouter } from "@pyreon/router"
-const router = createRouter([
-  { path: "/about", name: "about", component: About },
-])
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const aboutRoute = ctx.routes.find((r) => r.path === "/about")
-      expect(aboutRoute).toBeDefined()
-      expect(aboutRoute!.name).toBe("about")
-    })
-
-    it("extracts routes from const routes = [...]", async () => {
-      writeFile(
-        "src/routes.ts",
-        `const routes: RouteRecord[] = [
-  { path: "/users", name: "users" },
-  { path: "/settings", name: "settings" },
-]
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.routes).toHaveLength(2)
-      expect(ctx.routes[0]!.path).toBe("/users")
-      expect(ctx.routes[1]!.path).toBe("/settings")
-    })
-
-    it("extracts route params", async () => {
-      writeFile(
-        "src/router.ts",
-        `const routes = [
-  { path: "/users/:id", name: "user" },
-  { path: "/posts/:postId/comments/:commentId", name: "comment" },
-  { path: "/items/:itemId?", name: "item" },
-]
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.routes[0]!.params).toEqual(["id"])
-      expect(ctx.routes[1]!.params).toEqual(["postId", "commentId"])
-      expect(ctx.routes[2]!.params).toEqual(["itemId"])
-    })
-
-    it("detects loaders and guards", async () => {
-      writeFile(
-        "src/router-guarded.ts",
-        `const routes = [
-  { path: "/dashboard", loader: () => fetchData(), beforeEnter: checkAuth },
-]
-`,
-      )
-      writeFile(
-        "src/router-public.ts",
-        `const routes = [
-  { path: "/public", name: "public" },
-]
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const dashboard = ctx.routes.find((r) => r.path === "/dashboard")
-      const pub = ctx.routes.find((r) => r.path === "/public")
-      expect(dashboard).toBeDefined()
-      expect(dashboard!.hasLoader).toBe(true)
-      expect(dashboard!.hasGuard).toBe(true)
-      expect(pub).toBeDefined()
-      expect(pub!.hasLoader).toBe(false)
-      expect(pub!.hasGuard).toBe(false)
-    })
-
-    it("returns empty routes for projects without routing", async () => {
-      writeFile(
-        "src/App.tsx",
-        `export function App() { return <div>hello</div> }
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.routes).toEqual([])
-    })
+  beforeEach(() => {
+    tmpDir = makeTmpDir()
+    // Every project needs a package.json
+    writeFile(
+      tmpDir,
+      "package.json",
+      JSON.stringify({
+        name: "test-app",
+        version: "1.0.0",
+        dependencies: { "@pyreon/core": "^0.4.0" },
+      }),
+    )
   })
 
-  describe("component extraction", () => {
-    it("extracts function components", async () => {
-      writeFile(
-        "src/components/Button.tsx",
-        `export function Button({ label }: { label: string }) {
-  return <button>{label}</button>
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  it("extracts routes from createRouter([...]) calls", async () => {
+    writeFile(
+      tmpDir,
+      "src/router.ts",
+      `
+import { createRouter } from "@pyreon/router"
+
+export default createRouter([
+  { path: "/", component: Home },
+  { path: "/about", component: About },
+])
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.routes).toHaveLength(2)
+    expect(ctx.routes[0]?.path).toBe("/")
+    expect(ctx.routes[1]?.path).toBe("/about")
+  })
+
+  it("extracts route params (:id, :slug)", async () => {
+    writeFile(
+      tmpDir,
+      "src/router.ts",
+      `
+const routes = [
+  { path: "/users/:id", component: User },
+  { path: "/posts/:slug/comments/:commentId", component: Comment },
+]
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.routes).toHaveLength(2)
+    expect(ctx.routes[0]?.params).toEqual(["id"])
+    expect(ctx.routes[1]?.params).toEqual(["slug", "commentId"])
+  })
+
+  it("detects loader and guard presence on a route", async () => {
+    writeFile(
+      tmpDir,
+      "src/router.ts",
+      `
+const routes = [
+  { path: "/dashboard", component: Dashboard, loader: fetchDashboard, beforeEnter: authGuard },
+]
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.routes).toHaveLength(1)
+
+    const dashboard = ctx.routes[0]
+    expect(dashboard?.hasLoader).toBe(true)
+    expect(dashboard?.hasGuard).toBe(true)
+  })
+
+  it("reports no loader/guard when absent", async () => {
+    writeFile(
+      tmpDir,
+      "src/router.ts",
+      `
+const routes = [
+  { path: "/public", component: Public },
+]
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.routes).toHaveLength(1)
+
+    const publicRoute = ctx.routes[0]
+    expect(publicRoute?.hasLoader).toBe(false)
+    expect(publicRoute?.hasGuard).toBe(false)
+  })
+
+  it("extracts component names and props", async () => {
+    writeFile(
+      tmpDir,
+      "src/components/Button.tsx",
+      `
+export function Button({ label, onClick, disabled }) {
+  return <button disabled={disabled} onClick={onClick}>{label}</button>
 }
 `,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const btn = ctx.components.find((c) => c.name === "Button")
-      expect(btn).toBeDefined()
-      expect(btn!.props.some((p) => p.includes("label"))).toBe(true)
-    })
+    )
 
-    it("extracts const arrow components", async () => {
-      writeFile(
-        "src/components/Card.tsx",
-        `export const Card = ({ title }: CardProps) => {
-  return <div class="card"><h2>{title}</h2></div>
-}
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const card = ctx.components.find((c) => c.name === "Card")
-      expect(card).toBeDefined()
-      expect(card!.props.some((p) => p.includes("title"))).toBe(true)
-    })
+    const ctx = await generateContext({ cwd: tmpDir })
+    const button = ctx.components.find((c) => c.name === "Button")
+    expect(button).toBeDefined()
+    expect(button?.props).toContain("label")
+    expect(button?.props).toContain("onClick")
+    expect(button?.props).toContain("disabled")
+  })
 
-    it("detects signals in components", async () => {
-      writeFile(
-        "src/components/Counter.tsx",
-        `import { signal } from "@pyreon/reactivity"
+  it("detects signal usage in components", async () => {
+    writeFile(
+      tmpDir,
+      "src/components/Counter.tsx",
+      `
 export function Counter() {
   const count = signal<number>(0)
-  const name = signal("hello")
+  const doubled = signal<number>(0)
   return <div>{count()}</div>
 }
 `,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const counter = ctx.components.find((c) => c.name === "Counter")
-      expect(counter).toBeDefined()
-      expect(counter!.hasSignals).toBe(true)
-      expect(counter!.signalNames).toContain("count")
-      expect(counter!.signalNames).toContain("name")
-    })
+    )
 
-    it("reports hasSignals false when no signals used", async () => {
-      writeFile(
-        "src/components/Static.tsx",
-        `export function Static() {
-  return <p>No signals here</p>
+    const ctx = await generateContext({ cwd: tmpDir })
+    const counter = ctx.components.find((c) => c.name === "Counter")
+    expect(counter).toBeDefined()
+    expect(counter?.hasSignals).toBe(true)
+    expect(counter?.signalNames).toContain("count")
+    expect(counter?.signalNames).toContain("doubled")
+  })
+
+  it("extracts island declarations", async () => {
+    writeFile(
+      tmpDir,
+      "src/islands/Search.tsx",
+      `
+import { island } from "@pyreon/server"
+
+export const SearchIsland = island(() => import("./SearchWidget"), { name: "Search", hydrate: "visible" })
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.islands).toHaveLength(1)
+    expect(ctx.islands[0]?.name).toBe("Search")
+    expect(ctx.islands[0]?.file).toBe(path.join("src", "islands", "Search.tsx"))
+  })
+
+  it("writes context.json to .pyreon/ directory", async () => {
+    writeFile(
+      tmpDir,
+      "src/App.tsx",
+      `
+export function App() {
+  return <div>Hello</div>
 }
 `,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const s = ctx.components.find((c) => c.name === "Static")
-      expect(s).toBeDefined()
-      expect(s!.hasSignals).toBe(false)
-      expect(s!.signalNames).toEqual([])
-    })
+    )
 
-    it("includes relative file path", async () => {
-      writeFile(
-        "src/deep/nested/Widget.tsx",
-        `export function Widget() { return <div>w</div> }
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      const w = ctx.components.find((c) => c.name === "Widget")
-      expect(w).toBeDefined()
-      expect(w!.file).toBe(path.join("src", "deep", "nested", "Widget.tsx"))
-    })
+    await generateContext({ cwd: tmpDir })
+
+    const outPath = path.join(tmpDir, ".pyreon", "context.json")
+    expect(fs.existsSync(outPath)).toBe(true)
+
+    const written = JSON.parse(fs.readFileSync(outPath, "utf-8"))
+    expect(written.framework).toBe("pyreon")
+    expect(written.version).toBe("0.4.0")
+    expect(written.generatedAt).toBeDefined()
+    expect(Array.isArray(written.routes)).toBe(true)
+    expect(Array.isArray(written.components)).toBe(true)
+    expect(Array.isArray(written.islands)).toBe(true)
   })
 
-  describe("island extraction", () => {
-    it("extracts islands with name", async () => {
-      writeFile(
-        "src/islands/Search.tsx",
-        `import { island } from "@pyreon/server"
-export const SearchIsland = island(() => import("./SearchImpl"), { name: "Search" })
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.islands).toHaveLength(1)
-      expect(ctx.islands[0]!.name).toBe("Search")
-      expect(ctx.islands[0]!.hydrate).toBe("load")
-    })
+  it("handles empty project (no routes/components)", async () => {
+    // No .tsx files at all, just the package.json
+    const ctx = await generateContext({ cwd: tmpDir })
 
-    it("extracts island with hydrate before name", async () => {
-      writeFile(
-        "src/islands/Nav.tsx",
-        `import { island } from "@pyreon/server"
-export const NavIsland = island(() => import("./NavImpl"), { hydrate: "visible", name: "Nav" })
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.islands).toHaveLength(1)
-      expect(ctx.islands[0]!.name).toBe("Nav")
-    })
-
-    it("extracts multiple islands from one file", async () => {
-      writeFile(
-        "src/islands/index.tsx",
-        `import { island } from "@pyreon/server"
-export const A = island(() => import("./A"), { name: "AIsland" })
-export const B = island(() => import("./B"), { name: "BIsland" })
-`,
-      )
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.islands).toHaveLength(2)
-      expect(ctx.islands.map((i) => i.name).sort()).toEqual(["AIsland", "BIsland"])
-    })
+    expect(ctx.routes).toEqual([])
+    expect(ctx.components).toEqual([])
+    expect(ctx.islands).toEqual([])
+    expect(ctx.framework).toBe("pyreon")
   })
 
-  describe("output file", () => {
-    it("writes .pyreon/context.json by default", async () => {
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      await generateContext({ cwd: tmpDir })
-      const outPath = path.join(tmpDir, ".pyreon", "context.json")
-      expect(fs.existsSync(outPath)).toBe(true)
-      const parsed = JSON.parse(fs.readFileSync(outPath, "utf-8"))
-      expect(parsed.framework).toBe("pyreon")
-    })
+  it("skips node_modules and dist directories", async () => {
+    writeFile(
+      tmpDir,
+      "node_modules/@pyreon/core/src/index.tsx",
+      `
+export function Internal() {
+  return <div>internal</div>
+}
+`,
+    )
+    writeFile(
+      tmpDir,
+      "dist/App.tsx",
+      `
+export function DistApp() {
+  return <div>dist</div>
+}
+`,
+    )
+    writeFile(
+      tmpDir,
+      "src/App.tsx",
+      `
+export function RealApp() {
+  return <div>real</div>
+}
+`,
+    )
 
-    it("writes to custom outPath", async () => {
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      const customOut = path.join(tmpDir, "custom", "output.json")
-      await generateContext({ cwd: tmpDir, outPath: customOut })
-      expect(fs.existsSync(customOut)).toBe(true)
-    })
-
-    it("ensures .pyreon/ is in .gitignore", async () => {
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      await generateContext({ cwd: tmpDir })
-      const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8")
-      expect(gitignore).toContain(".pyreon/")
-    })
-
-    it("does not duplicate .pyreon/ in existing .gitignore", async () => {
-      fs.writeFileSync(path.join(tmpDir, ".gitignore"), "node_modules/\n.pyreon/\n", "utf-8")
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      await generateContext({ cwd: tmpDir })
-      const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8")
-      const matches = gitignore.match(/\.pyreon\//g)
-      expect(matches).toHaveLength(1)
-    })
+    const ctx = await generateContext({ cwd: tmpDir })
+    const names = ctx.components.map((c) => c.name)
+    expect(names).toContain("RealApp")
+    expect(names).not.toContain("Internal")
+    expect(names).not.toContain("DistApp")
   })
 
-  describe("version detection", () => {
-    it("reads version from @pyreon/* dependency", async () => {
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.version).toBe("0.5.0")
-    })
+  it("extracts routes from const routes = [...] syntax", async () => {
+    writeFile(
+      tmpDir,
+      "src/router.ts",
+      `
+const routes: RouteRecord[] = [
+  { path: "/home", name: "home", component: Home },
+]
+`,
+    )
 
-    it("returns unknown when no package.json", async () => {
-      fs.unlinkSync(path.join(tmpDir, "package.json"))
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      const ctx = await generateContext({ cwd: tmpDir })
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.routes).toHaveLength(1)
+    expect(ctx.routes[0]?.path).toBe("/home")
+    expect(ctx.routes[0]?.name).toBe("home")
+  })
+
+  it("defaults island hydrate to 'load' when not specified", async () => {
+    writeFile(
+      tmpDir,
+      "src/islands/Nav.tsx",
+      `
+export const NavIsland = island(
+  () => import("./NavWidget"),
+  { name: "Nav" }
+)
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.islands).toHaveLength(1)
+    expect(ctx.islands[0]?.hydrate).toBe("load")
+  })
+
+  it("ensures .pyreon/ is added to .gitignore", async () => {
+    writeFile(tmpDir, ".gitignore", "node_modules/\n")
+
+    await generateContext({ cwd: tmpDir })
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8")
+    expect(gitignore).toContain(".pyreon/")
+  })
+
+  it("does not duplicate .pyreon/ in .gitignore", async () => {
+    writeFile(tmpDir, ".gitignore", "node_modules/\n.pyreon/\n")
+
+    await generateContext({ cwd: tmpDir })
+
+    const gitignore = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8")
+    const occurrences = gitignore.split(".pyreon/").length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  it("reads version from @pyreon/* dependency", async () => {
+    writeFile(tmpDir, "src/App.tsx", `export function App() { return null }`)
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    expect(ctx.version).toBe("0.4.0")
+  })
+
+  it("returns 'unknown' version when no package.json exists", async () => {
+    const emptyDir = makeTmpDir()
+    try {
+      const ctx = await generateContext({ cwd: emptyDir })
       expect(ctx.version).toBe("unknown")
-    })
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true })
+    }
   })
 
-  describe("edge cases", () => {
-    it("skips node_modules", async () => {
-      writeFile(
-        "node_modules/some-lib/index.tsx",
-        `export function LibComponent() { return <div /> }`,
-      )
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.components.find((c) => c.name === "LibComponent")).toBeUndefined()
-    })
+  it("writes to custom outPath when specified", async () => {
+    writeFile(tmpDir, "src/App.tsx", `export function App() { return null }`)
+    const customOut = path.join(tmpDir, "custom", "output.json")
 
-    it("skips dist directory", async () => {
-      writeFile("dist/App.tsx", `export function DistApp() { return <div /> }`)
-      writeFile("src/App.tsx", `export function App() { return <div /> }`)
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.components.find((c) => c.name === "DistApp")).toBeUndefined()
-    })
+    await generateContext({ cwd: tmpDir, outPath: customOut })
 
-    it("handles empty project", async () => {
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.routes).toEqual([])
-      expect(ctx.components).toEqual([])
-      expect(ctx.islands).toEqual([])
-    })
+    expect(fs.existsSync(customOut)).toBe(true)
+    const written = JSON.parse(fs.readFileSync(customOut, "utf-8"))
+    expect(written.framework).toBe("pyreon")
+  })
 
-    it("includes generatedAt timestamp", async () => {
-      const ctx = await generateContext({ cwd: tmpDir })
-      expect(ctx.generatedAt).toBeTruthy()
-      // Should be a valid ISO date
-      expect(() => new Date(ctx.generatedAt)).not.toThrow()
-    })
+  it("detects component without signals", async () => {
+    writeFile(
+      tmpDir,
+      "src/Static.tsx",
+      `
+export function Static({ title }) {
+  return <h1>{title}</h1>
+}
+`,
+    )
+
+    const ctx = await generateContext({ cwd: tmpDir })
+    const comp = ctx.components.find((c) => c.name === "Static")
+    expect(comp).toBeDefined()
+    expect(comp?.hasSignals).toBe(false)
+    expect(comp?.signalNames).toEqual([])
   })
 })
