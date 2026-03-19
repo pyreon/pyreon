@@ -1,5 +1,14 @@
 # @pyreon/mcp
 
+## 0.5.1
+
+### Patch Changes
+
+- Unify project scanner into @pyreon/compiler, fix JSX type declarations for published packages, update dependencies, and resolve build compatibility with rolldown 1.15.0.
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes

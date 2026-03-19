@@ -1,5 +1,16 @@
 # @pyreon/preact-compat
 
+## 0.5.1
+
+### Patch Changes
+
+- Unify project scanner into @pyreon/compiler, fix JSX type declarations for published packages, update dependencies, and resolve build compatibility with rolldown 1.15.0.
+
+- Updated dependencies []:
+  - @pyreon/core@0.5.1
+  - @pyreon/reactivity@0.5.1
+  - @pyreon/runtime-dom@0.5.1
+
 ## 0.5.0
 
 ### Patch Changes
