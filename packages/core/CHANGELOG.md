@@ -1,5 +1,14 @@
 # @pyreon/core
 
+## 0.5.2
+
+### Patch Changes
+
+- Add children prop to PyreonHTMLAttributes so standard JSX patterns like {condition && <div/>} type-check correctly.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.5.2
+
 ## 0.5.1
 
 ### Patch Changes
