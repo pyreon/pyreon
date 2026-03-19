@@ -2,7 +2,13 @@
 
 export type { CompilerWarning, TransformResult } from "./jsx"
 export { transformJSX } from "./jsx"
-
+export type {
+  ComponentInfo,
+  IslandInfo,
+  ProjectContext,
+  RouteInfo,
+} from "./project-scanner"
+export { generateContext } from "./project-scanner"
 export type {
   ErrorDiagnosis,
   MigrationChange,
