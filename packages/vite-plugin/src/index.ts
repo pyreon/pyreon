@@ -32,9 +32,9 @@
  *   vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
  */
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
-import { extname, join as pathJoin, resolve as pathResolve, relative } from "node:path"
-import { transformJSX } from "@pyreon/compiler"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { join as pathJoin, resolve as pathResolve } from "node:path"
+import { generateContext, transformJSX } from "@pyreon/compiler"
 import type { Plugin, ViteDevServer } from "vite"
 
 // Virtual module ID for the HMR runtime
@@ -341,147 +341,16 @@ async function handleSsrRequest(
 
 /**
  * Generate .pyreon/context.json — project map for AI coding assistants.
- * Extracts routes, components (with props/signals), and island declarations.
+ * Delegates to @pyreon/compiler's unified project scanner.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: single-pass file scanner, splitting hurts perf
 function generateProjectContext(root: string): void {
   try {
-    const srcDir = pathResolve(root, "src")
-    if (!existsSync(srcDir)) return
-
-    const files = collectTsxFiles(srcDir)
-    const routes: Array<{
-      path: string
-      name?: string | undefined
-      hasLoader: boolean
-      params: string[]
-    }> = []
-    const components: Array<{
-      name: string
-      file: string
-      signals: string[]
-      props: string[]
-    }> = []
-    const islands: Array<{ name: string; file: string; hydrate: string }> = []
-
-    for (const file of files) {
-      let code: string
-      try {
-        code = readFileSync(file, "utf-8")
-      } catch {
-        continue
-      }
-      const relFile = relative(root, file)
-
-      // Extract routes
-      const routeRe = /path\s*:\s*["']([^"']+)["']/g
-      let m: RegExpExecArray | null
-      for (m = routeRe.exec(code); m; m = routeRe.exec(code)) {
-        const routePath = m[1] ?? ""
-        const ctx = code.slice(Math.max(0, m.index - 50), Math.min(code.length, m.index + 200))
-        routes.push({
-          path: routePath,
-          name: ctx.match(/name\s*:\s*["']([^"']+)["']/)?.[1],
-          hasLoader: /loader\s*:/.test(ctx),
-          params: [...routePath.matchAll(/:(\w+)\??/g)].map((p) => p[1] ?? ""),
-        })
-      }
-
-      // Extract components
-      const compRe =
-        /(?:export\s+)?(?:const|function)\s+([A-Z]\w*)\s*(?::\s*\w+<[^>]*>\s*)?=?\s*\(?\s*\{?\s*([^)]*?)\s*\}?\s*\)?\s*(?:=>|{)/g
-      for (m = compRe.exec(code); m; m = compRe.exec(code)) {
-        const name = m[1] ?? "Unknown"
-        const propsStr = m[2] ?? ""
-        const props = propsStr
-          .split(",")
-          .map((p) => p.trim().split(":")[0]?.split("=")[0]?.trim() ?? "")
-          .filter((p) => p && p !== "props" && !p.startsWith("{"))
-
-        const body = code.slice(
-          m.index + m[0].length,
-          Math.min(code.length, m.index + m[0].length + 2000),
-        )
-        const signals: string[] = []
-        const sigRe = /(?:const|let)\s+(\w+)\s*=\s*signal\s*[<(]/g
-        let sm: RegExpExecArray | null
-        for (sm = sigRe.exec(body); sm; sm = sigRe.exec(body)) {
-          if (sm[1]) signals.push(sm[1])
-        }
-
-        components.push({ name, file: relFile, signals, props })
-      }
-
-      // Extract islands
-      const islandRe =
-        /island\s*\([^,]+,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*?(?:hydrate\s*:\s*["']([^"']+)["'])?[^}]*\}/g
-      for (m = islandRe.exec(code); m; m = islandRe.exec(code)) {
-        if (m[1]) {
-          islands.push({ name: m[1], file: relFile, hydrate: m[2] ?? "load" })
-        }
-      }
-    }
-
-    const context = {
-      framework: "pyreon",
-      version: readProjectVersion(root),
-      generatedAt: new Date().toISOString(),
-      routes,
-      components,
-      islands,
-    }
-
+    const context = generateContext(root)
     const outDir = pathJoin(root, ".pyreon")
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
     writeFileSync(pathJoin(outDir, "context.json"), JSON.stringify(context, null, 2), "utf-8")
   } catch {
     // Silently fail — context generation is best-effort
-  }
-}
-
-function collectTsxFiles(dir: string): string[] {
-  const results: string[] = []
-  const exts = new Set([".tsx", ".jsx", ".ts", ".js"])
-  const skip = new Set(["node_modules", "dist", "lib", ".pyreon", ".git"])
-
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: simple recursive walker
-  function walk(d: string): void {
-    let entries: string[]
-    try {
-      entries = readdirSync(d)
-    } catch {
-      return
-    }
-    for (const name of entries) {
-      if (skip.has(name)) continue
-      const full = pathJoin(d, name)
-      try {
-        const stat = lstatSync(full)
-        if (stat.isDirectory()) {
-          walk(full)
-        } else if (stat.isFile() && exts.has(extname(name))) {
-          results.push(full)
-        }
-      } catch {
-        // skip inaccessible files
-      }
-    }
-  }
-
-  walk(dir)
-  return results
-}
-
-function readProjectVersion(root: string): string {
-  try {
-    const pkg = JSON.parse(readFileSync(pathJoin(root, "package.json"), "utf-8"))
-    const deps: Record<string, unknown> = { ...pkg.dependencies, ...pkg.devDependencies }
-    for (const [name, ver] of Object.entries(deps)) {
-      if (name.startsWith("@pyreon/") && typeof ver === "string") return ver.replace(/^[\^~]/, "")
-    }
-    return pkg.version || "unknown"
-  } catch {
-    return "unknown"
   }
 }
 

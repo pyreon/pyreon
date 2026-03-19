@@ -30,7 +30,7 @@
       "types": "./lib/types/index.d.ts"
     },
     "./provider": {
-      "bun": "./src/provider.tsx",
+      "bun": "./src/provider.ts",
       "import": "./lib/provider.js",
       "types": "./lib/types/provider.d.ts"
     },
