@@ -72,7 +72,7 @@ describe("doctor", () => {
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(false)
@@ -110,7 +110,7 @@ describe("doctor", () => {
     const opts: DoctorOptions = { fix: true, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result.summary.totalFixed).toBeGreaterThan(0)
@@ -124,7 +124,7 @@ describe("doctor", () => {
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result).toHaveProperty("passed")
@@ -169,7 +169,7 @@ describe("doctor", () => {
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(true)
@@ -193,7 +193,7 @@ describe("doctor", () => {
 
     await doctor(defaultOptions(tmpDir))
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("\n")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n")
     expect(output).toContain("No issues found")
   })
 
@@ -217,7 +217,7 @@ export function App() {
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(true)
@@ -248,7 +248,7 @@ export function B() { const [x, setX] = useState(0); return <div>{x}</div> }
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
     const result = JSON.parse(output)
 
     expect(result.summary.filesScanned).toBe(3)
