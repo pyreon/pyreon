@@ -1,5 +1,14 @@
 # @pyreon/core
 
+## 0.5.4
+
+### Patch Changes
+
+- fix: ref callback type accepts `Element | null` parameter
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.5.4
+
 ## 0.5.3
 
 ### Patch Changes
