@@ -1,0 +1,25 @@
+{
+  "name": "@pyreon/ai-reference",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/router": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/vite-plugin": "workspace:*",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  }
+}

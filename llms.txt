@@ -1,0 +1,144 @@
+# Pyreon Framework
+
+> Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA. Standard JSX + TypeScript.
+> Fastest framework on all JS Framework Benchmark tests.
+
+## Signals (reactivity)
+
+```typescript
+import { signal, computed, effect, batch } from "@pyreon/reactivity"
+
+const count = signal(0)       // create
+count()                        // read (subscribes)
+count.set(5)                   // write
+count.update(n => n + 1)       // update
+count.peek()                   // read without subscribing
+
+const doubled = computed(() => count() * 2)  // auto-tracks deps
+effect(() => console.log(count()))           // runs when count changes
+batch(() => { a.set(1); b.set(2) })          // single notification
+```
+
+## Components
+
+```typescript
+// Components are plain functions that run ONCE
+const Counter = (props: { initial: number }) => {
+  const count = signal(props.initial)
+  return <button onClick={() => count.update(n => n + 1)}>{count()}</button>
+}
+```
+
+## Conditional Rendering
+
+```typescript
+import { Show, Switch, Match } from "@pyreon/core"
+
+<Show when={isLoggedIn()} fallback={<Login />}>
+  <Dashboard />
+</Show>
+```
+
+## List Rendering
+
+```typescript
+import { For } from "@pyreon/core"
+
+// Use "by" not "key" (JSX reserves "key" for VNode reconciliation)
+<For each={items()} by={item => item.id}>
+  {item => <li>{item.name}</li>}
+</For>
+```
+
+## Lifecycle
+
+```typescript
+import { onMount, onUnmount } from "@pyreon/core"
+
+onMount(() => {
+  const id = setInterval(tick, 1000)
+  return () => clearInterval(id)  // cleanup (must return undefined or CleanupFn)
+})
+```
+
+## Context
+
+```typescript
+import { createContext, useContext } from "@pyreon/core"
+
+const Theme = createContext<"light" | "dark">("light")
+const theme = useContext(Theme)
+```
+
+## Routing
+
+```typescript
+import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute } from "@pyreon/router"
+
+const router = createRouter([
+  { path: "/", component: Home },
+  { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
+])
+
+<RouterProvider router={router}>
+  <RouterLink to="/">Home</RouterLink>
+  <RouterView />
+</RouterProvider>
+
+// Navigation:
+const router = useRouter()
+router.push("/settings")
+router.back()
+```
+
+## Head Management
+
+```typescript
+import { useHead } from "@pyreon/head"
+
+useHead({ title: "Page Title", meta: [{ name: "description", content: "..." }] })
+useHead(() => ({ title: `${name()} — Profile` }))  // reactive
+```
+
+## SSR
+
+```typescript
+import { createHandler } from "@pyreon/server"
+
+export default createHandler({ App, routes, mode: "stream" })
+```
+
+## Islands (Partial Hydration)
+
+```typescript
+import { island } from "@pyreon/server"
+
+const SearchBar = island(() => import("./SearchBar"), { name: "SearchBar", hydrate: "visible" })
+```
+
+## Mount (Client)
+
+```typescript
+import { mount } from "@pyreon/runtime-dom"
+
+mount(<App />, document.getElementById("app")!)
+```
+
+## Common Mistakes
+
+- `{count}` → `{count()}` — signals are functions, call them to read
+- `key={...}` on `<For>` → use `by={...}` prop instead
+- `.value` → signals are callable, not `.value` getters (that's Vue)
+- `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
+- `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
+- `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
+- `onMount(() => { doStuff() })` → must return `undefined` explicitly or a cleanup function
+- `memo(Component)` → not needed, components run once in Pyreon
+- `.map()` in JSX → use `<For>` for reactive list rendering
+
+## AI Tools
+
+- `pyreon doctor --json` — scan project for React patterns, get structured fix suggestions
+- `pyreon doctor --fix` — auto-fix React patterns to Pyreon equivalents
+- `pyreon context` — generate .pyreon/context.json with routes, components, islands
+- MCP server: `bunx @pyreon/mcp` — live API lookup, validation, migration, diagnostics

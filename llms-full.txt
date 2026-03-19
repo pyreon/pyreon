@@ -1,0 +1,584 @@
+# Pyreon Framework — Complete AI Reference
+
+> Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
+> Standard JSX + TypeScript. Fastest framework on all JS Framework Benchmark tests.
+> All packages under @pyreon/* scope.
+
+## Package Map
+
+| Package | Import | Purpose |
+|---|---|---|
+| @pyreon/reactivity | signal, computed, effect, batch, createStore, createResource | Reactive primitives |
+| @pyreon/core | h, Fragment, For, Show, Switch, Match, Suspense, ErrorBoundary, lazy, Dynamic, Portal, onMount, onUnmount, onUpdate, createContext, useContext, createRef | Component model |
+| @pyreon/runtime-dom | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive | DOM renderer |
+| @pyreon/runtime-server | renderToString, renderToStream, runWithRequestContext | SSR renderer |
+| @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
+| @pyreon/head | useHead, HeadProvider, renderWithHead | Document head |
+| @pyreon/server | createHandler, prerender, island, compileTemplate | SSR/SSG server |
+| @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode | Build tools |
+| @pyreon/cli | doctor, context | Developer CLI |
+| @pyreon/mcp | MCP server | AI tool integration |
+| @pyreon/vite-plugin | pyreon() | Vite integration |
+
+## @pyreon/reactivity — Complete API
+
+### signal<T>(initialValue, options?)
+```typescript
+const count = signal(0)
+count()                        // read (subscribes current effect/component)
+count.peek()                   // read without subscribing
+count.set(5)                   // set to value
+count.update(n => n + 1)       // update with function
+count.subscribe(fn)            // manual subscription, returns unsubscribe
+count.direct(updater)          // compiler-generated DOM updater
+```
+
+### computed<T>(fn, options?)
+```typescript
+const doubled = computed(() => count() * 2)
+doubled()    // auto-memoized, recomputes only when deps change
+```
+
+### effect(fn)
+```typescript
+const dispose = effect(() => {
+  console.log(count())   // auto-tracks
+  return () => { /* cleanup */ }
+})
+dispose()  // stop effect
+```
+
+### renderEffect(fn)
+```typescript
+// Lightweight effect for DOM binding (used by compiled templates)
+const dispose = renderEffect(() => el.textContent = String(count()))
+```
+
+### batch(fn)
+```typescript
+batch(() => { a.set(1); b.set(2) })  // single notification
+```
+
+### nextTick()
+```typescript
+await nextTick()  // wait for current batch to complete
+```
+
+### createStore<T>(initialValue)
+```typescript
+const store = createStore({ user: { name: "Alice" }, items: [] })
+store.user.name = "Bob"     // granular update
+store.items.push("new")     // array methods work
+```
+
+### createResource<T>(fetcher, options?)
+```typescript
+const users = createResource(async () => {
+  const res = await fetch("/api/users")
+  return res.json()
+})
+users()           // data (or undefined while loading)
+users.loading()   // boolean
+users.error()     // Error | null
+users.refetch()   // re-run fetcher
+```
+
+### createSelector(source, fn?)
+```typescript
+const isSelected = createSelector(selectedId)
+// In list item:
+const active = isSelected(item.id)  // reactive boolean
+```
+
+### watch(source, callback, options?)
+```typescript
+watch(count, (newVal, oldVal) => {
+  console.log(`Changed from ${oldVal} to ${newVal}`)
+})
+```
+
+### runUntracked(fn)
+```typescript
+// Read signals without subscribing:
+const val = runUntracked(() => count())
+```
+
+## @pyreon/core — Complete API
+
+### h(type, props, ...children)
+```typescript
+h("div", { class: "box" }, h("span", null, "Hello"))
+h(MyComponent, { name: "world" })
+h(Fragment, null, child1, child2)
+```
+
+### Components
+```typescript
+// Components are plain functions, run ONCE per lifetime
+const Greeting = (props: { name: string }) => {
+  return <h1>Hello, {props.name}</h1>
+}
+
+// With signals (reactive state):
+const Counter = (props: { initial: number }) => {
+  const count = signal(props.initial)
+  const increment = () => count.update(n => n + 1)
+  return <button onClick={increment}>Count: {count()}</button>
+}
+
+// Children:
+const Layout = (props: { children: VNodeChild }) => {
+  return <div class="layout">{props.children}</div>
+}
+```
+
+### For
+```typescript
+// MUST use "by" (not "key") — JSX extracts key for VNode reconciliation
+<For each={items()} by={item => item.id}>
+  {(item, index) => <li>{index()}: {item.name}</li>}
+</For>
+```
+
+### Show
+```typescript
+<Show when={condition()} fallback={<FallbackUI />}>
+  <MainContent />
+</Show>
+```
+
+### Switch / Match
+```typescript
+<Switch>
+  <Match when={status() === "loading"}><Spinner /></Match>
+  <Match when={status() === "error"}><ErrorDisplay /></Match>
+  <Match when={status() === "ready"}><Content /></Match>
+</Switch>
+```
+
+### Suspense
+```typescript
+<Suspense fallback={<div>Loading...</div>}>
+  <LazyComponent />
+</Suspense>
+```
+
+### lazy(loader, options?)
+```typescript
+const HeavyPage = lazy(() => import("./HeavyPage"))
+const WithLoading = lazy(() => import("./Page"), {
+  loading: () => <Spinner />,
+  error: (err) => <ErrorView error={err} />,
+})
+```
+
+### Dynamic
+```typescript
+<Dynamic component={currentComponent()} someProp="value" />
+<Dynamic component="div" class="dynamic-tag" />
+```
+
+### Portal
+```typescript
+<Portal element={document.body}>
+  <Modal>Content</Modal>
+</Portal>
+```
+
+### ErrorBoundary
+```typescript
+<ErrorBoundary
+  onCatch={(err) => logError(err)}
+  fallback={(err, reset) => (
+    <div>
+      <p>Error: {err.message}</p>
+      <button onClick={reset}>Retry</button>
+    </div>
+  )}
+>
+  <App />
+</ErrorBoundary>
+```
+
+### Lifecycle Hooks
+```typescript
+// MUST return CleanupFn | undefined (not void)
+onMount(() => {
+  const id = setInterval(tick, 1000)
+  return () => clearInterval(id)
+})
+
+onUnmount(() => {
+  console.log("Removed from DOM")
+})
+
+onUpdate(() => {
+  console.log("Component updated")
+})
+
+onErrorCaptured((err) => {
+  console.error(err)
+  return true  // stop propagation
+})
+```
+
+### Context
+```typescript
+const ThemeCtx = createContext<"light" | "dark">("light")
+
+// Provide (in component):
+pushContext(new Map([[ThemeCtx.id, "dark"]]))
+onUnmount(() => popContext())
+
+// Consume:
+const theme = useContext(ThemeCtx)
+```
+
+### createRef
+```typescript
+const inputRef = createRef<HTMLInputElement>()
+<input ref={inputRef} />
+// After mount: inputRef.current.focus()
+```
+
+## @pyreon/router — Complete API
+
+### Route Definition
+```typescript
+interface RouteRecord {
+  path: string                            // "/user/:id", "/file/(.*)", ":param?"
+  component: ComponentFn | LazyComponent
+  name?: string                           // for named navigation
+  meta?: { title?: string; requiresAuth?: boolean; [key: string]: unknown }
+  redirect?: string | ((route) => string)
+  beforeEnter?: NavigationGuard | NavigationGuard[]
+  beforeLeave?: NavigationGuard | NavigationGuard[]
+  alias?: string | string[]               // alternative paths
+  children?: RouteRecord[]                // nested routes
+  loader?: (ctx: LoaderContext) => Promise<unknown>
+  staleWhileRevalidate?: boolean          // show stale data while reloading
+  errorComponent?: ComponentFn            // error UI for this route
+}
+```
+
+### createRouter
+```typescript
+const router = createRouter({
+  routes: [
+    { path: "/", component: Home, name: "home" },
+    { path: "/user/:id", component: User, name: "user",
+      loader: async ({ params }) => {
+        const res = await fetch(`/api/user/${params.id}`)
+        return res.json()
+      }
+    },
+    { path: "/admin", component: AdminLayout, beforeEnter: requireAuth, children: [
+      { path: "", component: AdminDashboard },
+      { path: "users", component: AdminUsers },
+      { path: "settings", component: AdminSettings },
+    ]},
+  ],
+  mode: "history",  // or "hash"
+})
+```
+
+### Navigation
+```typescript
+const router = useRouter()
+
+// Push (adds to history):
+router.push("/settings")
+router.push({ name: "user", params: { id: "42" } })
+router.push({ path: "/search", query: { q: "hello" } })
+
+// Replace (no history entry):
+router.replace("/login")
+
+// History navigation:
+router.back()
+router.forward()
+router.go(-2)
+
+// Wait for initial route resolution:
+await router.isReady()
+```
+
+### Route Access
+```typescript
+const route = useRoute<"/user/:id">()
+route().path          // "/user/42"
+route().params.id     // "42" (typed!)
+route().query         // { key: "value" }
+route().meta          // { title: "User Profile" }
+route().name          // "user"
+```
+
+### Search Params
+```typescript
+const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
+search().page          // "1"
+await setSearch({ page: "2" })  // updates URL query string
+```
+
+### Navigation Guards
+```typescript
+// Global:
+router.beforeEach(async (to, from) => {
+  if (to.meta.requiresAuth && !isAuthenticated()) return "/login"
+})
+router.afterEach((to, from) => {
+  document.title = to.meta.title ?? "App"
+})
+
+// In-component:
+onBeforeRouteLeave(async (to, from) => {
+  if (hasUnsavedChanges()) return confirm("Discard changes?")
+})
+onBeforeRouteUpdate(async (to, from) => {
+  // params changed, same component
+  await refetchData(to.params.id)
+})
+```
+
+### Navigation Blocking
+```typescript
+const { isBlocked, proceed, cancel } = useBlocker(
+  () => formDirty()  // block when form has unsaved changes
+)
+
+<Show when={isBlocked()}>
+  <dialog open>
+    <p>You have unsaved changes.</p>
+    <button onClick={proceed}>Leave</button>
+    <button onClick={cancel}>Stay</button>
+  </dialog>
+</Show>
+```
+
+### Loader Data
+```typescript
+// Route:
+{ path: "/posts", component: Posts,
+  loader: async () => {
+    const res = await fetch("/api/posts")
+    return res.json()
+  },
+  staleWhileRevalidate: true  // show cached while refetching
+}
+
+// Component:
+const Posts = () => {
+  const posts = useLoaderData<Post[]>()
+  return <For each={posts} by={p => p.id}>{p => <PostCard post={p} />}</For>
+}
+```
+
+### Type-Safe Params
+```typescript
+type UserParams = ExtractParams<"/user/:id">  // { id: string }
+type PostParams = ExtractParams<"/blog/:slug/comment/:commentId">  // { slug: string; commentId: string }
+const path = buildPath("/user/:id", { id: "42" })  // "/user/42"
+```
+
+## @pyreon/head — Complete API
+
+```typescript
+useHead({
+  title: "Page Title",
+  titleTemplate: "{0} — My App",
+  meta: [
+    { name: "description", content: "Page description" },
+    { property: "og:title", content: "Open Graph Title" },
+  ],
+  link: [
+    { rel: "canonical", href: "https://example.com/page" },
+    { rel: "stylesheet", href: "/styles.css" },
+  ],
+  script: [
+    { src: "/analytics.js", async: true },
+    { children: "console.log('inline')" },
+  ],
+  style: [{ children: "body { margin: 0 }" }],
+  htmlAttrs: { lang: "en" },
+  bodyAttrs: { class: "dark" },
+  jsonLd: { "@type": "WebPage", name: "My Page" },
+})
+```
+
+## @pyreon/server — Complete API
+
+### createHandler
+```typescript
+const handler = createHandler({
+  App: RootApp,
+  routes: routeConfig,
+  clientEntry: "/src/entry-client.ts",
+  mode: "stream",
+  middleware: [
+    async (ctx, next) => {
+      ctx.locals.user = await getUser(ctx.req)
+      await next()
+    }
+  ],
+})
+
+// Use with any server:
+Bun.serve({ fetch: handler })
+```
+
+### Island Architecture
+```typescript
+// Server component (SSR only):
+const Page = () => (
+  <div>
+    <h1>Static content (SSR)</h1>
+    <SearchBar query="initial" />  {/* hydrated island */}
+  </div>
+)
+
+// Island definition:
+const SearchBar = island(
+  () => import("./components/SearchBar"),
+  { name: "SearchBar", hydrate: "visible" }
+)
+
+// Client entry:
+import { hydrateIslands } from "@pyreon/server/client"
+hydrateIslands({
+  SearchBar: () => import("./components/SearchBar"),
+})
+```
+
+### Pre-rendering (SSG)
+```typescript
+import { prerender } from "@pyreon/server"
+
+await prerender({
+  handler,
+  paths: ["/", "/about", "/blog/1", "/blog/2"],
+  outDir: "./dist",
+})
+```
+
+### Template Compilation (Performance)
+```typescript
+import { compileTemplate, processCompiledTemplate, buildClientEntryTag } from "@pyreon/server"
+
+const compiled = compileTemplate(htmlTemplate)  // parse once
+const html = processCompiledTemplate(compiled, {
+  head: headTags,
+  body: renderedApp,
+  scripts: buildClientEntryTag("/src/entry-client.ts"),
+})
+```
+
+## @pyreon/runtime-dom — Key APIs
+
+### mount / hydrateRoot
+```typescript
+import { mount, hydrateRoot } from "@pyreon/runtime-dom"
+
+// Client SPA:
+mount(<App />, document.getElementById("app")!)
+
+// Client hydration (after SSR):
+hydrateRoot(<App />, document.getElementById("app")!)
+```
+
+### Transitions
+```typescript
+<Transition name="fade" mode="out-in"
+  onBeforeEnter={el => { /* */ }}
+  onAfterLeave={el => { /* */ }}
+>
+  <Show when={visible()}><div>Content</div></Show>
+</Transition>
+
+<TransitionGroup name="list" tag="ul">
+  <For each={items()} by={i => i.id}>
+    {item => <li>{item.name}</li>}
+  </For>
+</TransitionGroup>
+```
+
+### KeepAlive
+```typescript
+<KeepAlive>
+  <Dynamic component={currentTab()} />
+</KeepAlive>
+```
+
+## Vite Plugin Setup
+
+```typescript
+// vite.config.ts
+import { defineConfig } from "vite"
+import { pyreon } from "@pyreon/vite-plugin"
+
+export default defineConfig({
+  plugins: [
+    pyreon({
+      // SSR dev server:
+      ssr: { entry: "./src/entry-server.ts" },
+      // React compat mode (optional):
+      // compat: "react",
+    }),
+  ],
+})
+```
+
+## React → Pyreon Migration Cheat Sheet
+
+| React | Pyreon | Notes |
+|---|---|---|
+| `useState(0)` | `signal(0)` | Callable function, not destructured |
+| `useEffect(fn, [])` | `onMount(fn)` | Must return undefined or cleanup |
+| `useEffect(fn, [dep])` | `effect(fn)` | Auto-tracks, no dep array |
+| `useMemo(fn, [deps])` | `computed(fn)` | Auto-tracks deps |
+| `useCallback(fn, [deps])` | `fn` | Not needed, components run once |
+| `useRef(null)` | `createRef()` | For DOM refs |
+| `useRef(value)` | `signal(value)` | For mutable values |
+| `useReducer` | `signal` + `update` | Pattern with update function |
+| `useContext` | `useContext` | Same name, different import |
+| `memo(Comp)` | `Comp` | Not needed, signals handle updates |
+| `forwardRef(fn)` | `fn` | Pass ref as normal prop |
+| `className` | `class` | Standard HTML |
+| `htmlFor` | `for` | Standard HTML |
+| `onChange` on input | `onInput` | Native DOM events |
+| `dangerouslySetInnerHTML` | `innerHTML` | Direct prop |
+| `items.map(...)` in JSX | `<For each={...} by={...}>` | Reactive list |
+| `cond ? <A/> : <B/>` | `<Show when={cond}><A/></Show>` | Reactive conditional |
+| `import from "react"` | `import from "@pyreon/core"` | Different package |
+| `import from "react-dom"` | `import from "@pyreon/runtime-dom"` | Different package |
+| `createRoot(el).render()` | `mount(<App/>, el)` | Simpler API |
+
+## AI Developer Tools
+
+### pyreon doctor
+```bash
+pyreon doctor              # scan for issues (human-readable)
+pyreon doctor --json       # structured output for AI agents
+pyreon doctor --fix        # auto-fix React patterns
+pyreon doctor --ci         # exit code 1 on errors
+```
+
+### pyreon context
+```bash
+pyreon context             # generates .pyreon/context.json
+```
+
+Output: routes, components (with props/signals), islands, framework version.
+
+### MCP Server
+```json
+{
+  "mcpServers": {
+    "pyreon": {
+      "command": "bunx",
+      "args": ["@pyreon/mcp"]
+    }
+  }
+}
+```
+
+Tools: get_api, validate, migrate_react, diagnose, get_routes, get_components

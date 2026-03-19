@@ -92,8 +92,8 @@ interface PyreonHTMLAttributes {
   "aria-rowcount"?: number
   "aria-rowindex"?: number
   "aria-rowspan"?: number
-  // DOM lifecycle ref
-  ref?: { current: unknown }
+  // DOM lifecycle ref — object ref or callback ref
+  ref?: { current: unknown } | ((el: Element) => void)
   // Key for list reconciliation
   key?: string | number
   // innerHTML
@@ -425,6 +425,21 @@ interface SvgAttributes extends PyreonHTMLAttributes {
 
 declare global {
   namespace JSX {
+    /** The type that JSX expressions evaluate to */
+    type Element = import("./types").VNode
+
+    /**
+     * Valid JSX tag types — intrinsic strings + component functions.
+     * Components may return VNode, null, strings, functions (reactive getters), etc.
+     * (TS 5.1+ feature)
+     */
+    type ElementType = keyof IntrinsicElements | ((props: any) => import("./types").VNodeChild)
+
+    /** Tells TS which prop name carries children in component calls */
+    interface ElementChildrenAttribute {
+      children: {}
+    }
+
     interface IntrinsicElements {
       // Document structure
       html: PyreonHTMLAttributes
