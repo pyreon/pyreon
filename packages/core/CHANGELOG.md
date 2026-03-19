@@ -1,5 +1,14 @@
 # @pyreon/core
 
+## 0.5.3
+
+### Patch Changes
+
+- fix: remove .d.ts post-build workaround — upstream tools-rolldown 1.15.3 fixes DTS code-split collision
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.5.3
+
 ## 0.5.2
 
 ### Patch Changes
