@@ -38,6 +38,10 @@ function resolveWorkspaceDeps(
   return resolved
 }
 
+const failed: string[] = []
+const published: string[] = []
+const skipped: string[] = []
+
 for (const dir of dirs.filter((d) => d.isDirectory())) {
   const pkgPath = join(PACKAGES_DIR, dir.name, "package.json")
   const raw = await readFile(pkgPath, "utf-8")
@@ -50,6 +54,7 @@ for (const dir of dirs.filter((d) => d.isDirectory())) {
   })
   if (check.stdout.toString().trim() === pkg.version) {
     console.log(`⏭️  ${pkg.name}@${pkg.version} — already published`)
+    skipped.push(pkg.name)
     continue
   }
 
@@ -79,12 +84,19 @@ for (const dir of dirs.filter((d) => d.isDirectory())) {
       stderr: "inherit",
     })
     if (result.exitCode !== 0) {
-      console.error(`Failed to publish ${pkg.name}`)
-      process.exit(1)
+      console.error(`❌ Failed to publish ${pkg.name}`)
+      failed.push(pkg.name)
+    } else {
+      published.push(pkg.name)
     }
   } finally {
     await writeFile(pkgPath, raw)
   }
 }
 
-console.log("\n✅ Done")
+console.log(`\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}`)
+if (failed.length > 0) {
+  console.error(`\n❌ Failed packages: ${failed.join(", ")}`)
+  process.exit(1)
+}
+console.log("✅ Done")
