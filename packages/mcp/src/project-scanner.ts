@@ -137,8 +137,8 @@ function extractComponents(files: string[], cwd: string): ComponentInfo[] {
       const name = match[1] ?? "Unknown"
       const propsStr = match[2] ?? ""
       const props = propsStr
-        .split(",")
-        .map((p) => p.trim().split(":")[0]?.split("=")[0]?.trim() ?? "")
+        .split(/[,;]/)
+        .map((p) => p.trim().replace(/[{}]/g, "").trim().split(":")[0]?.split("=")[0]?.trim() ?? "")
         .filter((p) => p && p !== "props")
 
       const bodyStart = match.index + match[0].length
@@ -175,7 +175,7 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
     }
 
     const islandRe =
-      /island\s*\(\s*\(\)\s*=>\s*import\(.+?\)\s*,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*(?:hydrate\s*:\s*["']([^"']+)["'])?/g
+      /island\s*\(\s*\(\)\s*=>\s*import\(.+?\)\s*,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*?(?:hydrate\s*:\s*["']([^"']+)["'])?[^}]*\}/g
     let match: RegExpExecArray | null
     for (match = islandRe.exec(code); match; match = islandRe.exec(code)) {
       if (match[1]) {
