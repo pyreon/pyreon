@@ -93,7 +93,7 @@ interface PyreonHTMLAttributes {
   "aria-rowindex"?: number
   "aria-rowspan"?: number
   // DOM lifecycle ref — object ref or callback ref
-  ref?: { current: unknown } | ((el: Element) => void)
+  ref?: { current: unknown } | ((el: Element | null) => void)
   // Key for list reconciliation
   key?: string | number
   // Children — allows null, undefined, boolean in JSX children positions
