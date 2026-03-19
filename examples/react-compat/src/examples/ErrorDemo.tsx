@@ -1,7 +1,7 @@
 import { ErrorBoundary, useState } from "react"
 import Demo from "./Demo"
 
-function Bomb() {
+function Bomb(): JSX.Element {
   throw new Error("Boom!")
 }
 

@@ -205,6 +205,37 @@ describe("mount — refs", () => {
     expect(ref.current).toBeNull()
   })
 
+  test("callback ref is called with element after mount", () => {
+    const el = container()
+    let refEl: Element | null = null
+    mount(
+      h("div", {
+        ref: (e: Element) => {
+          refEl = e
+        },
+      }),
+      el,
+    )
+    expect(refEl).toBeInstanceOf(HTMLDivElement)
+  })
+
+  test("callback ref element is not nulled on unmount", () => {
+    const el = container()
+    let refEl: Element | null = null
+    const unmount = mount(
+      h("div", {
+        ref: (e: Element) => {
+          refEl = e
+        },
+      }),
+      el,
+    )
+    expect(refEl).not.toBeNull()
+    unmount()
+    // Callback refs don't get called with null on cleanup
+    expect(refEl).toBeInstanceOf(HTMLDivElement)
+  })
+
   test("ref is not emitted as an HTML attribute", () => {
     const el = container()
     const ref = createRef<HTMLDivElement>()

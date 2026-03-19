@@ -159,8 +159,11 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   parent.insertBefore(el, anchor)
 
   // Populate ref after the element is in the DOM
-  const ref = props.ref as Ref<Element> | null | undefined
-  if (ref && typeof ref === "object") ref.current = el
+  const ref = props.ref as Ref<Element> | ((el: Element) => void) | null | undefined
+  if (ref) {
+    if (typeof ref === "function") ref(el)
+    else ref.current = el
+  }
 
   if (!propCleanup && childCleanup === noop && !ref) {
     if (_elementDepth > 0) return noop

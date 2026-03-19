@@ -245,8 +245,11 @@ function hydrateElement(
     cleanups.push(childCleanup)
 
     // Set ref
-    const ref = vnode.props.ref as Ref<Element> | undefined
-    if (ref && typeof ref === "object") ref.current = el
+    const ref = vnode.props.ref as Ref<Element> | ((el: Element) => void) | undefined
+    if (ref) {
+      if (typeof ref === "function") ref(el)
+      else ref.current = el
+    }
 
     const cleanup = () => {
       if (ref && typeof ref === "object") ref.current = null

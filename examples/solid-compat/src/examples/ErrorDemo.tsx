@@ -1,7 +1,7 @@
 import { createSignal, ErrorBoundary, Show } from "solid-js"
 import Demo from "./Demo"
 
-function Bomb() {
+function Bomb(): JSX.Element {
   throw new Error("Boom!")
 }
 
