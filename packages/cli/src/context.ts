@@ -229,7 +229,7 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
     }
 
     const islandRe =
-      /island\s*\(\s*\(\)\s*=>\s*import\(.+?\)\s*,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*(?:hydrate\s*:\s*["']([^"']+)["'])?/g
+      /island\s*\(\s*\(\)\s*=>\s*import\(.+?\)\s*,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*?(?:hydrate\s*:\s*["']([^"']+)["'])?[^}]*\}/g
     let match: RegExpExecArray | null
     while (true) {
       match = islandRe.exec(code)

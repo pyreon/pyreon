@@ -414,7 +414,7 @@ function generateProjectContext(root: string): void {
 
       // Extract islands
       const islandRe =
-        /island\s*\([^,]+,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*(?:hydrate\s*:\s*["']([^"']+)["'])?/g
+        /island\s*\([^,]+,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*?(?:hydrate\s*:\s*["']([^"']+)["'])?[^}]*\}/g
       for (m = islandRe.exec(code); m; m = islandRe.exec(code)) {
         if (m[1]) {
           islands.push({ name: m[1], file: relFile, hydrate: m[2] ?? "load" })
