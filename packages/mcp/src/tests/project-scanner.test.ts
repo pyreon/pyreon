@@ -253,16 +253,8 @@ const Widget = island(() => import("./Widget"), { name: "Widget" })
       "node_modules/@pyreon/core/src/index.ts",
       `function Internal() { return null }`,
     )
-    writeFile(
-      tmpDir,
-      "dist/bundle.ts",
-      `function Bundled() { return null }`,
-    )
-    writeFile(
-      tmpDir,
-      "src/App.tsx",
-      `function App() { return <div /> }`,
-    )
+    writeFile(tmpDir, "dist/bundle.ts", `function Bundled() { return null }`)
+    writeFile(tmpDir, "src/App.tsx", `function App() { return <div /> }`)
     const ctx = generateContext(tmpDir)
     expect(ctx.components).toHaveLength(1)
     expect(ctx.components[0]?.name).toBe("App")
