@@ -35,7 +35,7 @@
     "@unhead/vue": "^2.1.12",
     "@vitest/coverage-v8": "^4.1.0",
     "@vitus-labs/tools-lint": "^1.15.0",
-    "@vitus-labs/tools-rolldown": "^1.15.0",
+    "@vitus-labs/tools-rolldown": "^1.15.3",
     "@vitus-labs/tools-typescript": "^1.15.0",
     "@vitus-labs/tools-vitest": "^1.15.0",
     "find-my-way": "^9.5.0",
