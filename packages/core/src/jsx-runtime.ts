@@ -96,6 +96,8 @@ interface PyreonHTMLAttributes {
   ref?: { current: unknown } | ((el: Element) => void)
   // Key for list reconciliation
   key?: string | number
+  // Children — allows null, undefined, boolean in JSX children positions
+  children?: VNodeChild | VNodeChild[]
   // innerHTML
   innerHTML?: string
   dangerouslySetInnerHTML?: { __html: string }
