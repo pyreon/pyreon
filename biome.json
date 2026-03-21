@@ -108,6 +108,8 @@
         "scripts/bench-ssr.ts",
         "scripts/bench-head.ts",
         "scripts/bench-server.ts",
+        "scripts/bench-reactivity.ts",
+        "scripts/bench-compiler.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts",
         "packages/cli/src/index.ts",
