@@ -14,24 +14,25 @@ import { describe, expect, it } from "vitest"
 import type { PyreonPluginOptions } from "../index"
 import pyreonPlugin from "../index"
 
+type ConfigHook = (
+  userConfig: Record<string, unknown>,
+  env: { command: string; isSsrBuild?: boolean },
+) => Record<string, unknown>
+
+function getConfigHook(plugin: ReturnType<typeof pyreonPlugin>): ConfigHook {
+  return plugin.config as unknown as ConfigHook
+}
+
 function createPlugin(opts?: PyreonPluginOptions) {
   const plugin = pyreonPlugin(opts)
   // Simulate Vite calling config() so isBuild / projectRoot are set
-  const configHook = plugin.config as (
-    userConfig: Record<string, unknown>,
-    env: { command: string; isSsrBuild?: boolean },
-  ) => Record<string, unknown>
-  configHook({}, { command: "serve" })
+  getConfigHook(plugin)({}, { command: "serve" })
   return plugin
 }
 
 function createBuildPlugin(opts?: PyreonPluginOptions) {
   const plugin = pyreonPlugin(opts)
-  const configHook = plugin.config as (
-    userConfig: Record<string, unknown>,
-    env: { command: string; isSsrBuild?: boolean },
-  ) => Record<string, unknown>
-  configHook({}, { command: "build" })
+  getConfigHook(plugin)({}, { command: "build" })
   return plugin
 }
 
@@ -260,11 +261,7 @@ export function App() { const [x] = useState(0); return null }
 describe("plugin config", () => {
   it("sets resolve conditions to ['bun']", () => {
     const plugin = pyreonPlugin()
-    const configHook = plugin.config as (
-      userConfig: Record<string, unknown>,
-      env: { command: string },
-    ) => Record<string, unknown>
-    const config = configHook({}, { command: "serve" }) as {
+    const config = getConfigHook(plugin)({}, { command: "serve" }) as {
       resolve: { conditions: string[] }
     }
     expect(config.resolve.conditions).toContain("bun")
@@ -272,11 +269,7 @@ describe("plugin config", () => {
 
   it("sets JSX import source to @pyreon/core by default", () => {
     const plugin = pyreonPlugin()
-    const configHook = plugin.config as (
-      userConfig: Record<string, unknown>,
-      env: { command: string },
-    ) => Record<string, unknown>
-    const config = configHook({}, { command: "serve" }) as {
+    const config = getConfigHook(plugin)({}, { command: "serve" }) as {
       oxc: { jsx: { importSource: string } }
     }
     expect(config.oxc.jsx.importSource).toBe("@pyreon/core")
@@ -284,11 +277,7 @@ describe("plugin config", () => {
 
   it("sets JSX import source to compat package in compat mode", () => {
     const plugin = pyreonPlugin({ compat: "react" })
-    const configHook = plugin.config as (
-      userConfig: Record<string, unknown>,
-      env: { command: string },
-    ) => Record<string, unknown>
-    const config = configHook({}, { command: "serve" }) as {
+    const config = getConfigHook(plugin)({}, { command: "serve" }) as {
       oxc: { jsx: { importSource: string } }
     }
     expect(config.oxc.jsx.importSource).toBe("@pyreon/react-compat")
@@ -296,11 +285,7 @@ describe("plugin config", () => {
 
   it("excludes compat packages from optimizeDeps", () => {
     const plugin = pyreonPlugin({ compat: "react" })
-    const configHook = plugin.config as (
-      userConfig: Record<string, unknown>,
-      env: { command: string },
-    ) => Record<string, unknown>
-    const config = configHook({}, { command: "serve" }) as {
+    const config = getConfigHook(plugin)({}, { command: "serve" }) as {
       optimizeDeps: { exclude: string[] }
     }
     expect(config.optimizeDeps.exclude).toContain("react")
@@ -309,11 +294,7 @@ describe("plugin config", () => {
 
   it("adds SSR build config when isSsrBuild", () => {
     const plugin = pyreonPlugin({ ssr: { entry: "./src/entry-server.ts" } })
-    const configHook = plugin.config as (
-      userConfig: Record<string, unknown>,
-      env: { command: string; isSsrBuild?: boolean },
-    ) => Record<string, unknown>
-    const config = configHook({}, { command: "build", isSsrBuild: true }) as {
+    const config = getConfigHook(plugin)({}, { command: "build", isSsrBuild: true }) as {
       build: { ssr: boolean; rollupOptions: { input: string } }
     }
     expect(config.build.ssr).toBe(true)
