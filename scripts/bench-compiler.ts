@@ -1,15 +1,32 @@
 /**
  * Compiler benchmark — measures JSX transform throughput.
  *
- * Tests transformJSX() at varying input sizes and complexity levels,
- * compared to raw Babel JSX transform (automatic runtime).
+ * Compares:
+ *   - @pyreon/compiler  — Pyreon's reactive JSX transform (Babel-based + smart wrapping)
+ *   - esbuild           — Go-based bundler/transformer (used by Vite 5, tsup)
+ *   - @swc/core         — Rust-based transformer (used by Next.js, Turbopack)
+ *   - oxc-transform     — Rust-based transformer (used by Vite 6+, Rolldown)
+ *   - @babel/core       — JS-based transformer (legacy baseline)
+ *
+ * All configured with automatic JSX runtime targeting @pyreon/core.
  *
  * Usage: bun scripts/bench-compiler.ts
  */
 
 import * as babel from "@babel/core"
 import babelJsx from "@babel/plugin-transform-react-jsx"
+import { transformSync as swcTransform } from "@swc/core"
+import * as esbuild from "esbuild"
 import { transformJSX } from "../packages/compiler/src/index"
+
+// oxc-transform uses CJS exports
+const oxc = require("oxc-transform") as {
+  transformSync: (
+    filename: string,
+    code: string,
+    opts: { jsx: { runtime: string; importSource: string } },
+  ) => { code: string }
+}
 
 // ─── Benchmark harness ───────────────────────────────────────────────────────
 
@@ -37,14 +54,15 @@ function bench(label: string, fn: () => void, durationMs = 2000): BenchResult {
 }
 
 function printSection(title: string, results: BenchResult[]) {
-  console.log(`\n── ${title} ${"─".repeat(Math.max(0, 64 - title.length - 4))}`)
-  console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
-  console.log("-".repeat(64))
-  for (const r of results) {
-    console.log(
-      `${r.label.padEnd(36)}${r.opsPerSec.toLocaleString().padStart(14)}${r.avgNs.toLocaleString().padStart(14)}`,
-    )
-  }
+  const COL = 16
+  const labels = ["Pyreon", "esbuild", "SWC", "OXC", "Babel"]
+  console.log(`\n── ${title} ${"─".repeat(Math.max(0, 96 - title.length - 4))}`)
+  console.log(`  ${labels.map((l) => l.padStart(COL)).join("")}`)
+  console.log(`  ${"-".repeat(COL * labels.length)}`)
+
+  // Results should be in order: Pyreon, esbuild, SWC, OXC, Babel
+  const values = results.map((r) => r.opsPerSec.toLocaleString().padStart(COL)).join("")
+  console.log(`  ${values}`)
 }
 
 // ─── Test inputs ─────────────────────────────────────────────────────────────
@@ -140,7 +158,7 @@ const LARGE_10 = generateLarge(10)
 const LARGE_50 = generateLarge(50)
 const LARGE_100 = generateLarge(100)
 
-// ─── Babel config ────────────────────────────────────────────────────────────
+// ─── Transform configs ──────────────────────────────────────────────────────
 
 const BABEL_OPTS: babel.TransformOptions = {
   plugins: [[babelJsx, { runtime: "automatic", importSource: "@pyreon/core" }]],
@@ -150,48 +168,49 @@ const BABEL_OPTS: babel.TransformOptions = {
   babelrc: false,
 }
 
-function babelTransform(code: string): void {
-  babel.transformSync(code, BABEL_OPTS)
+const SWC_OPTS = {
+  jsc: {
+    parser: { syntax: "typescript" as const, tsx: true },
+    transform: { react: { runtime: "automatic" as const, importSource: "@pyreon/core" } },
+  },
+  filename: "bench.tsx",
 }
+
+const OXC_OPTS = { jsx: { runtime: "automatic", importSource: "@pyreon/core" } }
 
 function pyreonTransform(code: string): void {
   transformJSX(code, "bench.tsx")
 }
 
+function esbuildTransform(code: string): void {
+  esbuild.transformSync(code, {
+    loader: "tsx",
+    jsx: "automatic",
+    jsxImportSource: "@pyreon/core",
+  })
+}
+
+function swcDoTransform(code: string): void {
+  swcTransform(code, SWC_OPTS)
+}
+
+function oxcTransform(code: string): void {
+  oxc.transformSync("bench.tsx", code, OXC_OPTS)
+}
+
+function babelTransform(code: string): void {
+  babel.transformSync(code, BABEL_OPTS)
+}
+
 // ─── Benchmarks ──────────────────────────────────────────────────────────────
 
-function benchSmall(): BenchResult[] {
+function benchSize(code: string): BenchResult[] {
   return [
-    bench("Pyreon small", () => pyreonTransform(SMALL)),
-    bench("Babel small", () => babelTransform(SMALL)),
-  ]
-}
-
-function benchMedium(): BenchResult[] {
-  return [
-    bench("Pyreon medium (todo app)", () => pyreonTransform(MEDIUM)),
-    bench("Babel medium (todo app)", () => babelTransform(MEDIUM)),
-  ]
-}
-
-function benchLarge10(): BenchResult[] {
-  return [
-    bench("Pyreon large (10 rows)", () => pyreonTransform(LARGE_10)),
-    bench("Babel large (10 rows)", () => babelTransform(LARGE_10)),
-  ]
-}
-
-function benchLarge50(): BenchResult[] {
-  return [
-    bench("Pyreon large (50 rows)", () => pyreonTransform(LARGE_50)),
-    bench("Babel large (50 rows)", () => babelTransform(LARGE_50)),
-  ]
-}
-
-function benchLarge100(): BenchResult[] {
-  return [
-    bench("Pyreon large (100 rows)", () => pyreonTransform(LARGE_100)),
-    bench("Babel large (100 rows)", () => babelTransform(LARGE_100)),
+    bench("Pyreon", () => pyreonTransform(code)),
+    bench("esbuild", () => esbuildTransform(code)),
+    bench("SWC", () => swcDoTransform(code)),
+    bench("OXC", () => oxcTransform(code)),
+    bench("Babel", () => babelTransform(code)),
   ]
 }
 
@@ -220,14 +239,14 @@ function printStats() {
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
 console.log("Compiler Benchmark (Bun)")
-console.log("Pyreon JSX Transform vs Babel JSX Transform")
-console.log(`${"=".repeat(70)}`)
+console.log("Pyreon · esbuild · SWC · OXC · Babel")
+console.log(`${"=".repeat(96)}`)
 
 printStats()
-printSection("Small Component (1 element)", benchSmall())
-printSection("Medium Component (todo app)", benchMedium())
-printSection("Large Component (10 rows)", benchLarge10())
-printSection("Large Component (50 rows)", benchLarge50())
-printSection("Large Component (100 rows)", benchLarge100())
+printSection("Small (1 element)", benchSize(SMALL))
+printSection("Medium (todo app)", benchSize(MEDIUM))
+printSection("Large (10 rows)", benchSize(LARGE_10))
+printSection("Large (50 rows)", benchSize(LARGE_50))
+printSection("Large (100 rows)", benchSize(LARGE_100))
 
 console.log()
