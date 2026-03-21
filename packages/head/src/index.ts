@@ -1,4 +1,14 @@
-export type { HeadContextValue, HeadEntry, HeadTag, UseHeadInput } from "./context"
+export type {
+  BaseTag,
+  HeadContextValue,
+  HeadEntry,
+  HeadTag,
+  LinkTag,
+  MetaTag,
+  ScriptTag,
+  StyleTag,
+  UseHeadInput,
+} from "./context"
 export { createHeadContext, HeadContext } from "./context"
 export type { HeadProviderProps } from "./provider"
 export { HeadProvider } from "./provider"
