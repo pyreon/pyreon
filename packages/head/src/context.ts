@@ -17,6 +17,108 @@ export interface HeadTag {
   children?: string
 }
 
+// ─── Strict tag types ────────────────────────────────────────────────────────
+
+/** Standard `<meta>` tag attributes. Catches typos like `{ naem: "description" }`. */
+export interface MetaTag {
+  /** Standard meta name (e.g. "description", "viewport", "robots") */
+  name?: string
+  /** Open Graph / social property (e.g. "og:title", "twitter:card") */
+  property?: string
+  /** HTTP equivalent header (e.g. "refresh", "content-type") */
+  "http-equiv"?: string
+  /** Value associated with name, property, or http-equiv */
+  content?: string
+  /** Document character encoding (e.g. "utf-8") */
+  charset?: string
+  /** Schema.org itemprop */
+  itemprop?: string
+  /** Media condition for applicability (e.g. "(prefers-color-scheme: dark)") */
+  media?: string
+}
+
+/** Standard `<link>` tag attributes. */
+export interface LinkTag {
+  /** Relationship to the current document (e.g. "stylesheet", "icon", "canonical") */
+  rel?: string
+  /** URL of the linked resource */
+  href?: string
+  /** Resource type hint for preloading (e.g. "style", "script", "font") */
+  as?: string
+  /** MIME type (e.g. "text/css", "image/png") */
+  type?: string
+  /** Media query for conditional loading */
+  media?: string
+  /** CORS mode */
+  crossorigin?: string
+  /** Subresource integrity hash */
+  integrity?: string
+  /** Icon sizes (e.g. "32x32", "any") */
+  sizes?: string
+  /** Language of the linked resource */
+  hreflang?: string
+  /** Title for the link (used for alternate stylesheets) */
+  title?: string
+  /** Fetch priority hint */
+  fetchpriority?: "high" | "low" | "auto"
+  /** Referrer policy */
+  referrerpolicy?: string
+  /** Image source set for preloading responsive images */
+  imagesrcset?: string
+  /** Image sizes for preloading responsive images */
+  imagesizes?: string
+  /** Disable the resource (for stylesheets) */
+  disabled?: string
+  /** Color for mask-icon */
+  color?: string
+}
+
+/** Standard `<script>` tag attributes. */
+export interface ScriptTag {
+  /** External script URL */
+  src?: string
+  /** Script MIME type or module type (e.g. "module", "importmap") */
+  type?: string
+  /** Load asynchronously */
+  async?: string
+  /** Defer execution until document is parsed */
+  defer?: string
+  /** CORS mode */
+  crossorigin?: string
+  /** Subresource integrity hash */
+  integrity?: string
+  /** Exclude from module-supporting browsers */
+  nomodule?: string
+  /** Referrer policy */
+  referrerpolicy?: string
+  /** Fetch priority hint */
+  fetchpriority?: string
+  /** Inline script content */
+  children?: string
+}
+
+/** Standard `<style>` tag attributes. */
+export interface StyleTag {
+  /** Inline CSS content (required) */
+  children: string
+  /** Media query for conditional styles */
+  media?: string
+  /** Nonce for CSP */
+  nonce?: string
+  /** Title for alternate stylesheets */
+  title?: string
+  /** Render-blocking behavior */
+  blocking?: string
+}
+
+/** Standard `<base>` tag attributes. */
+export interface BaseTag {
+  /** Base URL for relative URLs in the document */
+  href?: string
+  /** Default target for links and forms */
+  target?: "_blank" | "_self" | "_parent" | "_top"
+}
+
 export interface UseHeadInput {
   title?: string
   /**
@@ -25,14 +127,14 @@ export interface UseHeadInput {
    * @example useHead({ titleTemplate: "%s | My App" })
    */
   titleTemplate?: string | ((title: string) => string)
-  meta?: Record<string, string>[]
-  link?: Record<string, string>[]
-  script?: ({ src?: string; children?: string } & Record<string, string | undefined>)[]
-  style?: ({ children: string } & Record<string, string | undefined>)[]
+  meta?: MetaTag[]
+  link?: LinkTag[]
+  script?: ScriptTag[]
+  style?: StyleTag[]
   noscript?: { children: string }[]
   /** Convenience: emits a <script type="application/ld+json"> tag with JSON.stringify'd content */
   jsonLd?: Record<string, unknown> | Record<string, unknown>[]
-  base?: Record<string, string>
+  base?: BaseTag
   /** Attributes to set on the <html> element (e.g. { lang: "en", dir: "ltr" }) */
   htmlAttrs?: Record<string, string>
   /** Attributes to set on the <body> element (e.g. { class: "dark" }) */

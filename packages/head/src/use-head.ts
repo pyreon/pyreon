@@ -4,6 +4,15 @@ import type { HeadEntry, HeadTag, UseHeadInput } from "./context"
 import { HeadContext } from "./context"
 import { syncDom } from "./dom"
 
+/** Cast a strict tag interface to the internal props format, stripping undefined values */
+function toProps(obj: Record<string, string | undefined>): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) result[k] = v
+  }
+  return result
+}
+
 function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
   if (o.title != null) tags.push({ tag: "title", key: "title", children: o.title })
@@ -11,14 +20,14 @@ function buildEntry(o: UseHeadInput): HeadEntry {
     tags.push({
       tag: "meta",
       key: m.name ?? m.property ?? `meta-${i}`,
-      props: m,
+      props: toProps(m as Record<string, string | undefined>),
     })
   })
   o.link?.forEach((l, i) => {
     tags.push({
       tag: "link",
       key: l.href ? `link-${l.rel || ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
-      props: l,
+      props: toProps(l as Record<string, string | undefined>),
     })
   })
   o.script?.forEach((s, i) => {
@@ -26,7 +35,7 @@ function buildEntry(o: UseHeadInput): HeadEntry {
     tags.push({
       tag: "script",
       key: s.src ?? `script-${i}`,
-      props: rest as Record<string, string>,
+      props: toProps(rest as Record<string, string | undefined>),
       ...(children != null ? { children } : {}),
     })
   })
@@ -35,7 +44,7 @@ function buildEntry(o: UseHeadInput): HeadEntry {
     tags.push({
       tag: "style",
       key: `style-${i}`,
-      props: rest as Record<string, string>,
+      props: toProps(rest as Record<string, string | undefined>),
       children,
     })
   })
@@ -50,7 +59,12 @@ function buildEntry(o: UseHeadInput): HeadEntry {
       children: JSON.stringify(o.jsonLd),
     })
   }
-  if (o.base) tags.push({ tag: "base", key: "base", props: o.base })
+  if (o.base)
+    tags.push({
+      tag: "base",
+      key: "base",
+      props: toProps(o.base as Record<string, string | undefined>),
+    })
   return {
     tags,
     titleTemplate: o.titleTemplate,
