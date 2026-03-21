@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/runtime-dom",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "DOM renderer for Pyreon",
   "license": "MIT",
   "repository": {
