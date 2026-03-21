@@ -1,15 +1,37 @@
 /**
- * Compiler benchmark — measures JSX transform throughput.
+ * Compiler benchmark — measures the real Vite 8 transform pipeline.
  *
- * Tests transformJSX() at varying input sizes and complexity levels,
- * compared to raw Babel JSX transform (automatic runtime).
+ * In Vite 8, the actual flow for a .tsx file is:
+ *   1. Pyreon plugin (enforce: "pre") — reactive wrapping + static hoisting
+ *   2. OXC (Vite built-in)           — JSX → jsx() function calls
+ *
+ * This benchmark measures:
+ *   - OXC only            — baseline (what React/Preact pay on Vite 8)
+ *   - Pyreon + OXC        — full pipeline (what Pyreon pays on Vite 8)
+ *   - Pyreon overhead     — the extra cost of reactive analysis
+ *
+ * Also compares other bundler transforms for reference:
+ *   - esbuild  — Go-based (Vite 5, tsup)
+ *   - SWC      — Rust-based (Next.js, Turbopack)
+ *   - Babel    — JS-based (legacy, Solid's compiler)
  *
  * Usage: bun scripts/bench-compiler.ts
  */
 
 import * as babel from "@babel/core"
 import babelJsx from "@babel/plugin-transform-react-jsx"
+import { transformSync as swcTransform } from "@swc/core"
+import * as esbuild from "esbuild"
 import { transformJSX } from "../packages/compiler/src/index"
+
+// oxc-transform uses CJS exports
+const oxc = require("oxc-transform") as {
+  transformSync: (
+    filename: string,
+    code: string,
+    opts: { jsx: { runtime: string; importSource: string } },
+  ) => { code: string }
+}
 
 // ─── Benchmark harness ───────────────────────────────────────────────────────
 
@@ -36,9 +58,9 @@ function bench(label: string, fn: () => void, durationMs = 2000): BenchResult {
   }
 }
 
-function printSection(title: string, results: BenchResult[]) {
-  console.log(`\n── ${title} ${"─".repeat(Math.max(0, 64 - title.length - 4))}`)
-  console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
+function printTable(title: string, results: BenchResult[]) {
+  console.log(`\n── ${title} ${"─".repeat(Math.max(0, 72 - title.length - 4))}`)
+  console.log(`${"transform".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
   console.log("-".repeat(64))
   for (const r of results) {
     console.log(
@@ -140,7 +162,7 @@ const LARGE_10 = generateLarge(10)
 const LARGE_50 = generateLarge(50)
 const LARGE_100 = generateLarge(100)
 
-// ─── Babel config ────────────────────────────────────────────────────────────
+// ─── Transform configs ──────────────────────────────────────────────────────
 
 const BABEL_OPTS: babel.TransformOptions = {
   plugins: [[babelJsx, { runtime: "automatic", importSource: "@pyreon/core" }]],
@@ -150,48 +172,59 @@ const BABEL_OPTS: babel.TransformOptions = {
   babelrc: false,
 }
 
-function babelTransform(code: string): void {
-  babel.transformSync(code, BABEL_OPTS)
+const SWC_OPTS = {
+  jsc: {
+    parser: { syntax: "typescript" as const, tsx: true },
+    transform: { react: { runtime: "automatic" as const, importSource: "@pyreon/core" } },
+  },
+  filename: "bench.tsx",
 }
 
-function pyreonTransform(code: string): void {
-  transformJSX(code, "bench.tsx")
+const OXC_OPTS = { jsx: { runtime: "automatic", importSource: "@pyreon/core" } }
+
+// ─── Transform functions ─────────────────────────────────────────────────────
+
+function pyreonReactivePass(code: string): string {
+  return transformJSX(code, "bench.tsx").code
+}
+
+function oxcJsxPass(code: string): string {
+  return oxc.transformSync("bench.tsx", code, OXC_OPTS).code
 }
 
 // ─── Benchmarks ──────────────────────────────────────────────────────────────
 
-function benchSmall(): BenchResult[] {
-  return [
-    bench("Pyreon small", () => pyreonTransform(SMALL)),
-    bench("Babel small", () => babelTransform(SMALL)),
-  ]
+function benchVitePipeline(code: string): BenchResult[] {
+  const results: BenchResult[] = []
+
+  // What React/Preact pay on Vite 8 — just OXC
+  results.push(bench("OXC only (React on Vite 8)", () => oxcJsxPass(code)))
+
+  // What Pyreon pays — reactive pass then OXC
+  results.push(
+    bench("Pyreon + OXC (Pyreon on Vite 8)", () => {
+      const reactiveCode = pyreonReactivePass(code)
+      oxcJsxPass(reactiveCode)
+    }),
+  )
+
+  // Just the reactive pass (to show the overhead)
+  results.push(bench("  └─ Pyreon reactive pass only", () => pyreonReactivePass(code)))
+
+  return results
 }
 
-function benchMedium(): BenchResult[] {
+function benchAlternatives(code: string): BenchResult[] {
   return [
-    bench("Pyreon medium (todo app)", () => pyreonTransform(MEDIUM)),
-    bench("Babel medium (todo app)", () => babelTransform(MEDIUM)),
-  ]
-}
-
-function benchLarge10(): BenchResult[] {
-  return [
-    bench("Pyreon large (10 rows)", () => pyreonTransform(LARGE_10)),
-    bench("Babel large (10 rows)", () => babelTransform(LARGE_10)),
-  ]
-}
-
-function benchLarge50(): BenchResult[] {
-  return [
-    bench("Pyreon large (50 rows)", () => pyreonTransform(LARGE_50)),
-    bench("Babel large (50 rows)", () => babelTransform(LARGE_50)),
-  ]
-}
-
-function benchLarge100(): BenchResult[] {
-  return [
-    bench("Pyreon large (100 rows)", () => pyreonTransform(LARGE_100)),
-    bench("Babel large (100 rows)", () => babelTransform(LARGE_100)),
+    bench("esbuild (Vite 5)", () =>
+      esbuild.transformSync(code, {
+        loader: "tsx",
+        jsx: "automatic",
+        jsxImportSource: "@pyreon/core",
+      }),
+    ),
+    bench("SWC (Next.js)", () => swcTransform(code, SWC_OPTS)),
+    bench("Babel (Solid, legacy)", () => babel.transformSync(code, BABEL_OPTS)),
   ]
 }
 
@@ -219,15 +252,35 @@ function printStats() {
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-console.log("Compiler Benchmark (Bun)")
-console.log("Pyreon JSX Transform vs Babel JSX Transform")
-console.log(`${"=".repeat(70)}`)
+console.log("Compiler Benchmark — Vite 8 Pipeline")
+console.log(`${"=".repeat(72)}`)
+console.log()
+console.log("Pipeline: Pyreon plugin (enforce: pre) → OXC (Vite built-in)")
+console.log("React/Preact on Vite 8 = OXC only (no reactive pass)")
+console.log("Pyreon on Vite 8 = Pyreon reactive pass + OXC JSX transform")
 
 printStats()
-printSection("Small Component (1 element)", benchSmall())
-printSection("Medium Component (todo app)", benchMedium())
-printSection("Large Component (10 rows)", benchLarge10())
-printSection("Large Component (50 rows)", benchLarge50())
-printSection("Large Component (100 rows)", benchLarge100())
+
+const sizes = [
+  ["Small (1 element)", SMALL],
+  ["Medium (todo app)", MEDIUM],
+  ["Large (10 rows)", LARGE_10],
+  ["Large (50 rows)", LARGE_50],
+  ["Large (100 rows)", LARGE_100],
+] as const
+
+// Vite 8 pipeline comparison
+console.log("\n\n▸ Vite 8 Pipeline (Pyreon vs React/Preact)")
+console.log("─".repeat(72))
+for (const [label, code] of sizes) {
+  printTable(label, benchVitePipeline(code))
+}
+
+// Other bundler transforms for reference
+console.log("\n\n▸ Other Bundler Transforms (reference)")
+console.log("─".repeat(72))
+for (const [label, code] of sizes) {
+  printTable(label, benchAlternatives(code))
+}
 
 console.log()
