@@ -1,11 +1,5 @@
 import { getCurrentScope } from "./scope"
-import {
-  _restoreActiveEffect,
-  _setActiveEffect,
-  cleanupEffect,
-  setDepsCollector,
-  withTracking,
-} from "./tracking"
+import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from "./tracking"
 
 export interface Effect {
   dispose(): void
@@ -21,6 +15,17 @@ export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
 }
 
+/** Remove an effect from all dependency subscriber sets (local deps array). */
+function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
+  if (deps.length === 1) {
+    ;(deps[0] as Set<() => void>).delete(fn)
+    deps.length = 0
+  } else if (deps.length > 1) {
+    for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
+    deps.length = 0
+  }
+}
+
 // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callbacks that return nothing must be assignable
 export function effect(fn: () => (() => void) | void): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
@@ -29,6 +34,8 @@ export function effect(fn: () => (() => void) | void): Effect {
   let disposed = false
   let isFirstRun = true
   let cleanup: (() => void) | undefined
+  // Local deps array — avoids WeakMap overhead (like renderEffect)
+  const deps: Set<() => void>[] = []
 
   const runCleanup = () => {
     if (typeof cleanup === "function") {
@@ -46,10 +53,13 @@ export function effect(fn: () => (() => void) | void): Effect {
     // Run previous cleanup before re-running
     runCleanup()
     // Clean up previous subscriptions before re-running (dynamic dep tracking)
-    cleanupEffect(run)
+    cleanupLocalDeps(deps, run)
     try {
+      setDepsCollector(deps)
       cleanup = withTracking(run, fn) || undefined
+      setDepsCollector(null)
     } catch (err) {
+      setDepsCollector(null)
       _errorHandler(err)
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
@@ -64,7 +74,7 @@ export function effect(fn: () => (() => void) | void): Effect {
     dispose() {
       runCleanup()
       disposed = true
-      cleanupEffect(run)
+      cleanupLocalDeps(deps, run)
     },
   }
 
