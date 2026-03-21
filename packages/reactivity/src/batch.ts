@@ -17,7 +17,7 @@ export function batch(fn: () => void): void {
     fn()
   } finally {
     batchDepth--
-    if (batchDepth === 0) {
+    if (batchDepth === 0 && pendingNotifications.size > 0) {
       // Swap to the other pre-allocated Set before flushing so new enqueues
       // during notification land in the alternate Set, not mixed into the
       // current iteration.

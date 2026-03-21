@@ -234,13 +234,18 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   if (replacements.length === 0 && hoists.length === 0) return { code, warnings }
 
-  // Apply replacements from right to left so earlier positions stay valid
-  replacements.sort((a, b) => b.start - a.start)
+  // Apply replacements left-to-right via string builder — O(n) single join
+  replacements.sort((a, b) => a.start - b.start)
 
-  let result = code
+  const parts: string[] = []
+  let lastPos = 0
   for (const r of replacements) {
-    result = result.slice(0, r.start) + r.text + result.slice(r.end)
+    parts.push(code.slice(lastPos, r.start))
+    parts.push(r.text)
+    lastPos = r.end
   }
+  parts.push(code.slice(lastPos))
+  let result = parts.join("")
 
   // Prepend module-scope hoisted static VNode declarations
   if (hoists.length > 0) {

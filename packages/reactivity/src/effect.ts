@@ -52,9 +52,8 @@ export function effect(fn: () => (() => void) | void): Effect {
     if (disposed) return
     // Run previous cleanup before re-running
     runCleanup()
-    // Clean up previous subscriptions before re-running (dynamic dep tracking)
-    cleanupLocalDeps(deps, run)
     try {
+      cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
       cleanup = withTracking(run, fn) || undefined
       setDepsCollector(null)
@@ -137,30 +136,32 @@ export function _bind(fn: () => void): () => void {
   return dispose
 }
 
+/** Full re-track path for renderEffect: cleanup old deps, evaluate with tracking. */
+function renderEffectFullTrack(deps: Set<() => void>[], run: () => void, fn: () => void): void {
+  if (deps.length === 1) {
+    ;(deps[0] as Set<() => void>).delete(run)
+    deps.length = 0
+  } else if (deps.length > 1) {
+    for (const s of deps) s.delete(run)
+    deps.length = 0
+  }
+  setDepsCollector(deps)
+  _setActiveEffect(run)
+  try {
+    fn()
+  } finally {
+    _restoreActiveEffect()
+    setDepsCollector(null)
+  }
+}
+
 export function renderEffect(fn: () => void): () => void {
   const deps: Set<() => void>[] = []
   let disposed = false
 
   const run = () => {
     if (disposed) return
-    // Single-dep fast path — most render effects track exactly 1 signal.
-    // Avoids for-of iterator creation + deps.length check on every re-run.
-    if (deps.length === 1) {
-      ;(deps[0] as Set<() => void>).delete(run)
-      deps.length = 0
-    } else if (deps.length > 1) {
-      for (const s of deps) s.delete(run)
-      deps.length = 0
-    }
-    // Inline tracking setup — avoids setDepsCollector + withTracking function call overhead
-    setDepsCollector(deps)
-    _setActiveEffect(run)
-    try {
-      fn()
-    } finally {
-      _restoreActiveEffect()
-      setDepsCollector(null)
-    }
+    renderEffectFullTrack(deps, run, fn)
   }
 
   run()

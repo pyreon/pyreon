@@ -12,8 +12,17 @@ const effectDeps = new WeakMap<() => void, Set<Set<() => void>>>()
 // When set, trackSubscriber pushes subscriber sets here instead of effectDeps.
 let _depsCollector: Set<() => void>[] | null = null
 
+// Skip deps collection mode — for re-evaluating computeds/effects with static deps.
+// When true, trackSubscriber only does Set.add (no-op if already subscribed) and skips
+// the _depsCollector.push / WeakMap work entirely.
+let _skipDepsCollection = false
+
 export function setDepsCollector(collector: Set<() => void>[] | null): void {
   _depsCollector = collector
+}
+
+export function setSkipDepsCollection(skip: boolean): void {
+  _skipDepsCollection = skip
 }
 
 /**
@@ -34,11 +43,13 @@ export interface SubscriberHost {
 export function trackSubscriber(host: SubscriberHost) {
   if (activeEffect) {
     if (!host._s) host._s = new Set()
-    const subscribers = host._s
-    subscribers.add(activeEffect)
+    host._s.add(activeEffect)
+    // Skip collection mode: we're already subscribed (Set.add is no-op),
+    // just need activeEffect set for nested computed reads to work.
+    if (_skipDepsCollection) return
     if (_depsCollector) {
       // Fast path: renderEffect stores deps inline, no WeakMap
-      _depsCollector.push(subscribers)
+      _depsCollector.push(host._s)
     } else {
       // Record this dep so we can remove it on cleanup
       let deps = effectDeps.get(activeEffect)
@@ -46,7 +57,7 @@ export function trackSubscriber(host: SubscriberHost) {
         deps = new Set()
         effectDeps.set(activeEffect, deps)
       }
-      deps.add(subscribers)
+      deps.add(host._s)
     }
   }
 }
