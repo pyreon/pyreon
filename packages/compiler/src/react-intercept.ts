@@ -877,7 +877,7 @@ function applyReplacements(code: string, ctx: MigrateContext): string {
     })
   }
 
-  // Sort replacements by position (descending) so we can apply from end to start
+  // Sort descending for dedup (outermost replacements win over inner overlapping ones)
   ctx.replacements.sort((a, b) => b.start - a.start)
 
   // Deduplicate overlapping replacements (keep the outermost / first added)
@@ -898,11 +898,17 @@ function applyReplacements(code: string, ctx: MigrateContext): string {
     }
   }
 
-  let result = code
+  // Re-sort ascending for string builder — O(n) single join
+  deduped.sort((a, b) => a.start - b.start)
+  const parts: string[] = []
+  let lastPos = 0
   for (const r of deduped) {
-    result = result.slice(0, r.start) + r.text + result.slice(r.end)
+    parts.push(code.slice(lastPos, r.start))
+    parts.push(r.text)
+    lastPos = r.end
   }
-  return result
+  parts.push(code.slice(lastPos))
+  return parts.join("")
 }
 
 function insertPyreonImports(code: string, pyreonImports: Map<string, Set<string>>): string {

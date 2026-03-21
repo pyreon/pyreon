@@ -187,23 +187,26 @@ const EVENT_RE = /^on[A-Z]/
  * Uses for-in instead of Object.keys() to avoid allocating a keys array.
  */
 export function applyProps(el: Element, props: Props): Cleanup | null {
-  let cleanup: Cleanup | null = null
+  let first: Cleanup | null = null
+  let cleanups: Cleanup[] | null = null
   for (const key in props) {
     if (key === "key" || key === "ref") continue
     const c = applyProp(el, key, props[key])
     if (c) {
-      if (!cleanup) {
-        cleanup = c
+      if (!first) {
+        first = c
+      } else if (!cleanups) {
+        cleanups = [first, c]
       } else {
-        const prev = cleanup
-        cleanup = () => {
-          prev()
-          c()
-        }
+        cleanups.push(c)
       }
     }
   }
-  return cleanup
+  if (cleanups)
+    return () => {
+      for (const c of cleanups) c()
+    }
+  return first
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   cleanupEffect,
   notifySubscribers,
   setDepsCollector,
+  setSkipDepsCollection,
   trackSubscriber,
   withTracking,
 } from "./tracking"
@@ -59,6 +60,7 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   let value: T
   let dirty = true
   let disposed = false
+  let tracked = false
   const deps: Set<() => void>[] = []
   const host: { _s: Set<() => void> | null } = { _s: null }
 
@@ -71,8 +73,18 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
-      cleanupLocalDeps(deps, recompute)
-      value = trackWithLocalDeps(deps, recompute, fn)
+      if (tracked) {
+        // Static deps fast path: already subscribed to our deps from first run.
+        // Set.add in trackSubscriber is a no-op for existing members.
+        // Skip cleanup (Set.delete) and collection (array.push) entirely.
+        setSkipDepsCollection(true)
+        value = withTracking(recompute, fn)
+        setSkipDepsCollection(false)
+      } else {
+        // First evaluation — full tracking to record deps for dispose
+        value = trackWithLocalDeps(deps, recompute, fn)
+        tracked = true
+      }
       dirty = false
     }
     return value as T
