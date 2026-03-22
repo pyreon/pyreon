@@ -242,7 +242,7 @@ function mountComponent(
   setCurrentScope(scope)
 
   let hooks: ReturnType<typeof runWithHooks>["hooks"]
-  let output: VNode | null
+  let output: VNodeChild
 
   const componentName = (vnode.type.name || "Anonymous") as string
   const compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`

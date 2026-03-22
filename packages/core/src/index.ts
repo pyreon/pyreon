@@ -35,6 +35,8 @@ export type {
   CleanupFn,
   ComponentFn,
   ComponentInstance,
+  ExtractProps,
+  HigherOrderComponent,
   LifecycleHooks,
   NativeItem,
   Props,

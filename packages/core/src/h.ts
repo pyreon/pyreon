@@ -26,7 +26,7 @@ export function h<P extends Props>(
 ): VNode
 // Overload: intrinsic element, symbol, generic/dynamic component, or mixed union
 export function h(
-  type: string | ((p: any) => VNode | null) | symbol,
+  type: string | ((p: any) => VNodeChild) | symbol,
   props: Props | null,
   ...children: VNodeChild[]
 ): VNode
