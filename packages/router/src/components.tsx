@@ -1,5 +1,5 @@
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { createRef, h, onUnmount, popContext, pushContext, useContext } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import { createRef, h, onUnmount, provide, useContext } from "@pyreon/core"
 import { LoaderDataContext, prefetchLoaderData } from "./loader"
 import { isLazy, RouterContext, setActiveRouter } from "./router"
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
@@ -11,17 +11,15 @@ const _prefetched = new WeakMap<RouterInstance, Set<string>>()
 
 export interface RouterProviderProps extends Props {
   router: Router
-  children?: VNode | VNodeChild | null
+  children?: VNodeChild
 }
 
 export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   const router = props.router as RouterInstance
   // Push router into the context stack — isolated per request in SSR via ALS,
   // isolated per component tree in CSR.
-  const frame = new Map([[RouterContext.id, router]])
-  pushContext(frame)
+  provide(RouterContext, router)
   onUnmount(() => {
-    popContext()
     // Clean up event listeners, caches, abort in-flight navigations.
     // Safe to call multiple times (destroy is idempotent).
     router.destroy()
@@ -30,7 +28,7 @@ export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   // Also set the module fallback so programmatic useRouter() outside a component
   // tree (e.g. navigation guards in event handlers) still works in CSR.
   setActiveRouter(router)
-  return (props.children ?? null) as VNode | null
+  return props.children ?? null
 }
 
 // ─── RouterView ───────────────────────────────────────────────────────────────
@@ -267,10 +265,8 @@ function renderWithLoader(
  * Thin provider component that pushes LoaderDataContext before children mount.
  * Uses Pyreon's context stack so useLoaderData() reads it during child setup.
  */
-function LoaderDataProvider(props: { data: unknown; children: VNode | null }): VNode | null {
-  const frame = new Map([[LoaderDataContext.id, props.data]])
-  pushContext(frame)
-  onUnmount(() => popContext())
+function LoaderDataProvider(props: { data: unknown; children: VNodeChild }): VNodeChild {
+  provide(LoaderDataContext, props.data)
   return props.children
 }
 

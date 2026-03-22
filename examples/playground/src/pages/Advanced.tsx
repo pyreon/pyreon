@@ -1,4 +1,4 @@
-import type { VNode } from "@pyreon/core"
+import type { VNodeChild } from "@pyreon/core"
 import {
   createContext,
   createRef,
@@ -8,8 +8,7 @@ import {
   onUnmount,
   onUpdate,
   Portal,
-  popContext,
-  pushContext,
+  provide,
   Show,
   Suspense,
   useContext,
@@ -229,14 +228,13 @@ interface NotificationCtx {
 
 const NotificationContext = createContext<NotificationCtx>(null as never)
 
-function NotificationProvider(props: { children?: unknown }) {
+function NotificationProvider(props: { children?: VNodeChild }) {
   const notifications = signal<string[]>([])
   const add = (msg: string) => notifications.update((list) => [...list.slice(-4), msg])
   const clear = () => notifications.set([])
 
-  pushContext(new Map([[NotificationContext.id, { notifications, add, clear }]]))
-  onUnmount(() => popContext())
-  return props.children as VNode | null
+  provide(NotificationContext, { notifications, add, clear })
+  return props.children
 }
 
 function NotificationBell() {

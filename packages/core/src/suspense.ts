@@ -4,7 +4,7 @@ import type { Props, VNode, VNodeChild } from "./types"
 const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
 /** Internal marker attached to lazy()-wrapped components */
-export type LazyComponent<P extends Props = Props> = ((props: P) => VNode | null) & {
+export type LazyComponent<P extends Props = Props> = ((props: P) => VNodeChild) & {
   __loading: () => boolean
 }
 

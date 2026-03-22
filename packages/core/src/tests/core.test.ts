@@ -21,6 +21,7 @@ import {
   PortalSymbol,
   popContext,
   propagateError,
+  provide,
   pushContext,
   registerErrorHandler,
   reportError,
@@ -334,6 +335,22 @@ describe("createContext / useContext", () => {
     pushContext(frame)
     expect(useContext(ctx)).toBe("pushed")
     popContext()
+    expect(useContext(ctx)).toBe("default")
+  })
+
+  test("provide() pushes context and registers cleanup on unmount", () => {
+    const ctx = createContext("default")
+    const { hooks } = runWithHooks(
+      (() => {
+        provide(ctx, "provided")
+        return null
+      }) as ComponentFn,
+      {} as Props,
+    )
+    // Context is available after provide()
+    expect(useContext(ctx)).toBe("provided")
+    // Running unmount hooks should pop the context
+    for (const fn of hooks.unmount) fn()
     expect(useContext(ctx)).toBe("default")
   })
 })

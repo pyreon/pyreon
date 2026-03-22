@@ -46,7 +46,7 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 - JSX automatic runtime: `@pyreon/core/jsx-runtime` (jsx, jsxs, Fragment)
 - `h<P extends Props>(type, props, ...children)` — lower-level API, children stored in `vnode.children`
 - Components must merge: `props.children = vnode.children.length === 1 ? vnode.children[0] : vnode.children`
-- `ComponentFn<P> = (props: P) => VNode | null`
+- `ComponentFn<P> = (props: P) => VNodeChild`
 - `<For each={items} by={r => r.id}>{r => <li>...</li>}</For>` — keyed list rendering
   - Prop is `by` (not `key`) because JSX extracts `key` as a special VNode reconciliation prop
 
@@ -72,7 +72,8 @@ Supports mixed element+expression children (via `childNodes[]` indexing), multip
 Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 
 ### Context providing pattern
-Uses `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
+`provide(ctx, value)` — pushes context and auto-cleans up on unmount.
+Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
 
 ### onMount signature
 `onMount(fn: () => CleanupFn | void)` — callbacks can return nothing or a cleanup function.

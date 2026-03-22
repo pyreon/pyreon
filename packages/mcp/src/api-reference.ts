@@ -173,8 +173,7 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
 
 // Provide:
 const App = () => {
-  pushContext(new Map([[ThemeContext.id, "dark"]]))
-  onUnmount(() => popContext())
+  provide(ThemeContext, "dark")
   return <Child />
 }
 

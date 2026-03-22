@@ -1,5 +1,5 @@
 import { setCurrentHooks } from "./lifecycle"
-import type { ComponentFn, LifecycleHooks, Props, VNode } from "./types"
+import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from "./types"
 
 /**
  * Identity wrapper — marks a function as a Pyreon component and preserves its type.
@@ -18,10 +18,10 @@ export function defineComponent<P extends Props>(fn: ComponentFn<P>): ComponentF
 export function runWithHooks<P extends Props>(
   fn: ComponentFn<P>,
   props: P,
-): { vnode: VNode | null; hooks: LifecycleHooks } {
+): { vnode: VNodeChild; hooks: LifecycleHooks } {
   const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
   setCurrentHooks(hooks)
-  let vnode: VNode | null = null
+  let vnode: VNodeChild = null
   try {
     vnode = fn(props)
   } finally {

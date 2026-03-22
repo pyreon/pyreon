@@ -5,6 +5,7 @@ export type { Context } from "./context"
 export {
   createContext,
   popContext,
+  provide,
   pushContext,
   setContextStackProvider,
   useContext,
@@ -34,6 +35,8 @@ export type {
   CleanupFn,
   ComponentFn,
   ComponentInstance,
+  ExtractProps,
+  HigherOrderComponent,
   LifecycleHooks,
   NativeItem,
   Props,
