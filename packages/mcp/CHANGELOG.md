@@ -1,5 +1,12 @@
 # @pyreon/mcp
 
+## 0.5.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.5.7
+
 ## 0.5.6
 
 ### Patch Changes

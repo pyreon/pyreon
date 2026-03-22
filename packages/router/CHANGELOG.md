@@ -1,5 +1,14 @@
 # @pyreon/router
 
+## 0.5.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.5.7
+  - @pyreon/core@0.5.7
+  - @pyreon/runtime-dom@0.5.7
+
 ## 0.5.6
 
 ### Patch Changes

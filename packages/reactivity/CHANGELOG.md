@@ -1,5 +1,11 @@
 # @pyreon/reactivity
 
+## 0.5.7
+
+### Patch Changes
+
+- fix: update build tooling to produce correct .d.ts type declarations instead of JS implementation code
+
 ## 0.5.6
 
 ## 0.5.4
