@@ -21,6 +21,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { detectReactPatterns, diagnoseError, migrateReactCode } from "@pyreon/compiler"
 import { z } from "zod"
+import packageJson from "../package.json" with { type: "json" }
 import { API_REFERENCE } from "./api-reference"
 import { generateContext, type ProjectContext } from "./project-scanner"
 
@@ -30,7 +31,7 @@ import { generateContext, type ProjectContext } from "./project-scanner"
 
 const server = new McpServer({
   name: "pyreon",
-  version: "0.4.0",
+  version: packageJson.version,
 })
 
 // Cache project context (regenerated on demand)
