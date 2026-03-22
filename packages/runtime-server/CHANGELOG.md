@@ -1,5 +1,17 @@
 # @pyreon/runtime-server
 
+## 0.5.6
+
+### Patch Changes
+
+- feat(dx): comprehensive `__DEV__` warnings across core and runtime-dom
+
+  feat(style): auto-append `px` to numeric style values (e.g. `{ height: 100 }` → `"100px"`), with shared `CSS_UNITLESS` set for hydration consistency
+
+- Updated dependencies []:
+  - @pyreon/core@0.5.6
+  - @pyreon/reactivity@0.5.6
+
 ## 0.5.4
 
 ### Patch Changes

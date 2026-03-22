@@ -1,5 +1,16 @@
 # @pyreon/ai-reference
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.5.6
+  - @pyreon/runtime-dom@0.5.6
+  - @pyreon/reactivity@0.5.6
+  - @pyreon/router@0.5.6
+  - @pyreon/head@0.5.6
+
 ## 0.0.6
 
 ### Patch Changes
