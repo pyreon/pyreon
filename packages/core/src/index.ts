@@ -5,6 +5,7 @@ export type { Context } from "./context"
 export {
   createContext,
   popContext,
+  provide,
   pushContext,
   setContextStackProvider,
   useContext,

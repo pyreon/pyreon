@@ -5,6 +5,8 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
+import { onUnmount } from "./lifecycle"
+
 export interface Context<T> {
   readonly id: symbol
   readonly defaultValue: T
@@ -66,6 +68,22 @@ export function useContext<T>(context: Context<T>): T {
     }
   }
   return context.defaultValue
+}
+
+/**
+ * Provide a context value for the current component's subtree.
+ * Must be called during component setup (like onMount/onUnmount).
+ * Automatically cleaned up when the component unmounts.
+ *
+ * @example
+ * const ThemeProvider = ({ children }: { children: VNodeChild }) => {
+ *   provide(ThemeContext, { color: "blue" })
+ *   return children
+ * }
+ */
+export function provide<T>(context: Context<T>, value: T): void {
+  pushContext(new Map<symbol, unknown>([[context.id, value]]))
+  onUnmount(() => popContext())
 }
 
 /**
