@@ -53,7 +53,8 @@ export interface NativeItem {
 }
 
 export interface LifecycleHooks {
-  mount: (() => CleanupFn | undefined)[]
+  // biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
+  mount: (() => CleanupFn | void | undefined)[]
   unmount: (() => void)[]
   update: (() => void)[]
   /** Error handlers — return true to mark the error as handled (stops propagation). */

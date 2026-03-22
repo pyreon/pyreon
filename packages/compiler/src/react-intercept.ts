@@ -301,7 +301,7 @@ function detectUseEffect(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       hasCleanup
         ? "onMount(() => {\n  // setup...\n  return () => { /* cleanup */ }\n})"
-        : "onMount(() => {\n  // setup...\n  return undefined\n})",
+        : "onMount(() => {\n  // setup...\n})",
       true,
     )
   } else if (depsArg && ts.isArrayLiteralExpression(depsArg)) {
@@ -1114,9 +1114,9 @@ const ERROR_PATTERNS: ErrorPattern[] = [
   {
     pattern: /onMount callback must return/,
     diagnose: () => ({
-      cause: "onMount expects a return of CleanupFn | undefined, not void.",
-      fix: "Return undefined explicitly, or return a cleanup function.",
-      fixCode: "onMount(() => {\n  // setup code\n  return undefined\n})",
+      cause: "onMount expects a callback that optionally returns a CleanupFn.",
+      fix: "Return a cleanup function, or return nothing.",
+      fixCode: "onMount(() => {\n  // setup code\n})",
     }),
   },
   {

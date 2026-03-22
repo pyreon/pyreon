@@ -1841,7 +1841,6 @@ describe("hydrateRoot — extended", () => {
     const Comp = defineComponent(() => {
       onMount(() => {
         mountCalled = true
-        return undefined
       })
       return h("span", null, "mounted")
     })

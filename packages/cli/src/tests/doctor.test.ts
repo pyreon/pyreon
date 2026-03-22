@@ -208,7 +208,7 @@ export function App() {
   const count = signal(0)
   const doubled = computed(() => count() * 2)
   effect(() => console.log(doubled()))
-  onMount(() => { return undefined })
+  onMount(() => { console.log("mounted") })
   return <div class="app">{count()}</div>
 }
 `

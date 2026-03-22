@@ -365,7 +365,7 @@ function hydrateComponent(
     try {
       let c: (() => void) | undefined
       scope.runInScope(() => {
-        c = fn()
+        c = fn() as (() => void) | undefined
       })
       if (c) mountCleanups.push(c)
     } catch (err) {

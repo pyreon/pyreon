@@ -151,7 +151,7 @@ describe("detectReactPatterns", () => {
     const d = diags.find((d) => d.code === "use-effect-mount")
     expect(d).toBeDefined()
     expect(d!.message).toContain("onMount")
-    expect(d!.suggested).toContain("return undefined")
+    expect(d!.suggested).toContain("onMount")
     expect(d!.fixable).toBe(true)
   })
 
@@ -670,7 +670,7 @@ describe("diagnoseError", () => {
     const result = diagnoseError("onMount callback must return")
     expect(result).not.toBeNull()
     expect(result!.cause).toContain("CleanupFn")
-    expect(result!.fixCode).toContain("return undefined")
+    expect(result!.fixCode).toContain("onMount")
   })
 
   test("diagnoses missing by prop on For", () => {

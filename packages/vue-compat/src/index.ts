@@ -521,7 +521,6 @@ export function onMounted(fn: () => void): void {
     // Fallback: use Pyreon's lifecycle directly (e.g., inside defineComponent without jsx-runtime)
     onMount(() => {
       fn()
-      return undefined
     })
     return
   }

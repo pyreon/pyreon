@@ -251,7 +251,6 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   // Fire the effect once the container is in the DOM
   onMount(() => {
     ready.set(true)
-    return undefined
   })
 
   onUnmount(() => {

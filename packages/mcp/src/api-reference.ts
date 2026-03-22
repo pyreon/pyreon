@@ -145,7 +145,7 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
   },
 
   "core/onMount": {
-    signature: "onMount(fn: () => CleanupFn | undefined): void",
+    signature: "onMount(fn: () => CleanupFn | void): void",
     example: `const Timer = () => {
   const count = signal(0)
 
@@ -156,9 +156,8 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
 
   return <div>{count()}</div>
 }`,
-    notes: "Must return undefined or a cleanup function. Do NOT return void.",
-    mistakes: `- \`onMount(() => { doStuff() })\` → Must return undefined: \`onMount(() => { doStuff(); return undefined })\`
-- Or return cleanup: \`onMount(() => { const id = setInterval(...); return () => clearInterval(id) })\``,
+    notes: "Optionally return a cleanup function that runs on unmount.",
+    mistakes: `- Forgetting cleanup: \`onMount(() => { const id = setInterval(...) })\` → Return cleanup: \`onMount(() => { const id = setInterval(...); return () => clearInterval(id) })\``,
   },
 
   "core/onUnmount": {

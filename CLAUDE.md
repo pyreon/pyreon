@@ -75,7 +75,7 @@ Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 Uses `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
 
 ### onMount signature
-`onMount(fn: () => CleanupFn | undefined)` — callbacks must return `undefined`, not `void`.
+`onMount(fn: () => CleanupFn | void)` — callbacks can return nothing or a cleanup function.
 
 ### Code Splitting & Dynamic Components
 - `lazy(loader)` — wraps dynamic import with Suspense `__loading` integration
