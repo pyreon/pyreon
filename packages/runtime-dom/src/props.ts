@@ -1,4 +1,6 @@
 import type { Props } from "@pyreon/core"
+import { normalizeStyleValue, toKebabCase } from "@pyreon/core"
+
 import { batch, renderEffect } from "@pyreon/reactivity"
 import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
 
@@ -309,7 +311,11 @@ function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === "string") {
     el.style.cssText = value
   } else if (value != null && typeof value === "object") {
-    Object.assign(el.style, value)
+    const obj = value as Record<string, unknown>
+    for (const k in obj) {
+      const css = normalizeStyleValue(k, obj[k])
+      el.style.setProperty(k.startsWith("--") ? k : toKebabCase(k), css)
+    }
   }
 }
 

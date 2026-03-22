@@ -36,7 +36,8 @@ export const jsxs = jsx
 // ─── JSX types ────────────────────────────────────────────────────────────────
 
 type Booleanish = boolean | "true" | "false"
-type StyleValue = string | Partial<CSSStyleDeclaration>
+type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
+type StyleValue = string | CSSProperties
 
 /** Common HTML attributes accepted by all Pyreon elements */
 interface PyreonHTMLAttributes {
