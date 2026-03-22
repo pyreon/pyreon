@@ -13,6 +13,7 @@ import {
   onMount,
   onUnmount,
   onUpdate,
+  Portal,
 } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
 import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
@@ -385,7 +386,6 @@ describe("mount.ts — uncovered branches", () => {
     const el = container()
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
 
-    const { Portal } = require("@pyreon/core")
     mount(h(Portal, { target: null }), el)
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Portal"))

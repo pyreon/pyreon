@@ -30,7 +30,9 @@ export const TodoDetail = () => {
 
   return (
     <div>
-      <button onClick={() => router.back()}>← Back</button>
+      <button type="button" onClick={() => router.back()}>
+        ← Back
+      </button>
       <h1>{todo.title}</h1>
       <p>Status: {todo.completed ? "Done" : "Active"}</p>
       <p>{todo.description ?? "No description."}</p>

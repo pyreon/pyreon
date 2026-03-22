@@ -44,9 +44,15 @@ export const TodoList = () => {
       <h1>Todos</h1>
 
       <div>
-        <button onClick={() => filter.set("all")}>All</button>
-        <button onClick={() => filter.set("active")}>Active</button>
-        <button onClick={() => filter.set("done")}>Done</button>
+        <button type="button" onClick={() => filter.set("all")}>
+          All
+        </button>
+        <button type="button" onClick={() => filter.set("active")}>
+          Active
+        </button>
+        <button type="button" onClick={() => filter.set("done")}>
+          Done
+        </button>
       </div>
 
       <Show when={() => filtered().length > 0} fallback={<p>No todos match filter.</p>}>

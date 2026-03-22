@@ -25,9 +25,8 @@ export function h<P extends Props>(
   ...children: VNodeChild[]
 ): VNode
 // Overload: intrinsic element, symbol, generic/dynamic component, or mixed union
-// biome-ignore lint/suspicious/noExplicitAny: accepts any component function for generic components like For<T>
 export function h(
-  type: string | ((props: any) => VNode | null) | symbol,
+  type: string | ((p: any) => VNode | null) | symbol,
   props: Props | null,
   ...children: VNodeChild[]
 ): VNode

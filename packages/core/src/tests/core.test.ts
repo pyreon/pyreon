@@ -927,21 +927,27 @@ describe("lifecycle hooks", () => {
   test("onMount outside component warns and is a no-op", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onMount(() => {})).not.toThrow()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onMount() called outside component setup"))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("onMount() called outside component setup"),
+    )
     warnSpy.mockRestore()
   })
 
   test("onUnmount outside component warns and is a no-op", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onUnmount(() => {})).not.toThrow()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onUnmount() called outside component setup"))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("onUnmount() called outside component setup"),
+    )
     warnSpy.mockRestore()
   })
 
   test("onUpdate outside component warns and is a no-op", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onUpdate(() => {})).not.toThrow()
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onUpdate() called outside component setup"))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("onUpdate() called outside component setup"),
+    )
     warnSpy.mockRestore()
   })
 
