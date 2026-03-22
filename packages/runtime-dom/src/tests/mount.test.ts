@@ -975,6 +975,23 @@ describe("mount — props (extended)", () => {
     expect(div.style.marginTop).toBe("10px")
   })
 
+  test("style object auto-appends px to numeric values", () => {
+    const el = container()
+    mount(h("div", { style: { height: 100, marginTop: 20, opacity: 0.5, zIndex: 10 } }), el)
+    const div = el.querySelector("div") as HTMLElement
+    expect(div.style.height).toBe("100px")
+    expect(div.style.marginTop).toBe("20px")
+    expect(div.style.opacity).toBe("0.5")
+    expect(div.style.zIndex).toBe("10")
+  })
+
+  test("style object handles CSS custom properties", () => {
+    const el = container()
+    mount(h("div", { style: { "--my-color": "red" } }), el)
+    const div = el.querySelector("div") as HTMLElement
+    expect(div.style.getPropertyValue("--my-color")).toBe("red")
+  })
+
   test("className sets class attribute", () => {
     const el = container()
     mount(h("div", { className: "my-class" }), el)

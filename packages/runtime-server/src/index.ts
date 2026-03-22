@@ -15,7 +15,14 @@
 
 import { AsyncLocalStorage } from "node:async_hooks"
 import type { ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
-import { ForSymbol, Fragment, runWithHooks, Suspense, setContextStackProvider } from "@pyreon/core"
+import {
+  ForSymbol,
+  Fragment,
+  normalizeStyleValue,
+  runWithHooks,
+  Suspense,
+  setContextStackProvider,
+} from "@pyreon/core"
 
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
@@ -424,7 +431,7 @@ function normalizeStyle(value: unknown): string {
   if (typeof value === "string") return value
   if (typeof value === "object" && value !== null) {
     return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${toKebab(k)}: ${v}`)
+      .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
       .join("; ")
   }
   return ""

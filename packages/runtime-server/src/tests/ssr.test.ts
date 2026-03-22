@@ -855,6 +855,16 @@ describe("renderToString — prop rendering edge cases", () => {
     const html = await renderToString(h("div", { style: { backgroundColor: "red" } }))
     expect(html).toContain("background-color: red")
   })
+
+  test("renders style object with auto-px for numeric values", async () => {
+    const html = await renderToString(
+      h("div", { style: { height: 100, marginTop: 20, opacity: 0.5, zIndex: 10 } }),
+    )
+    expect(html).toContain("height: 100px")
+    expect(html).toContain("margin-top: 20px")
+    expect(html).toContain("opacity: 0.5")
+    expect(html).toContain("z-index: 10")
+  })
 })
 
 describe("renderToStream — error handling", () => {
