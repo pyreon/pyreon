@@ -48,6 +48,7 @@ function Counter() {
 
 - **`createContext<T>(defaultValue?): Context<T>`** -- Creates a context with an optional default.
 - **`useContext(ctx): T`** -- Reads the nearest provided context value.
+- **`provide(ctx, value)`** -- Provides a context value for the current component's subtree (auto-cleans up on unmount).
 - **`withContext(ctx, value, fn)`** -- Runs `fn` with the given context value.
 - **`pushContext(map)` / `popContext()`** -- Low-level context stack manipulation.
 
@@ -71,7 +72,7 @@ function Counter() {
 
 ### Types
 
-`VNode`, `VNodeChild`, `VNodeChildAtom`, `Props`, `ComponentFn`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`
+`VNode`, `VNodeChild`, `VNodeChildAtom`, `Props`, `ComponentFn`, `ExtractProps`, `HigherOrderComponent`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`
 
 ## License
 

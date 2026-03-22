@@ -17,11 +17,13 @@
 
 ## Conventions
 - Prefer `signal<T>()` callable pattern (not `.value` getter/setter)
-- Components are plain functions: `ComponentFn<P> = (props: P) => VNode | null`
+- Components are plain functions: `ComponentFn<P> = (props: P) => VNodeChild`
 - `onMount` returns `CleanupFn | undefined` (not `void`)
 - Use `h()` or JSX — both produce VNodes
 - `<For>` uses `by` prop (not `key`) because JSX extracts `key` specially
-- Context: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`
+- Context: `provide(ctx, value)` — pushes context and auto-cleans up on unmount
+- `ExtractProps<T>` extracts props from a ComponentFn or passes through
+- `HigherOrderComponent<HOP, P>` for typed HOC patterns
 
 ## Dead Code
 - Remove dead code rather than commenting it out

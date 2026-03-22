@@ -1,12 +1,11 @@
-import type { VNode } from "@pyreon/core"
+import type { VNodeChild } from "@pyreon/core"
 import {
   createContext,
   createRef,
   For,
   onMount,
   onUnmount,
-  popContext,
-  pushContext,
+  provide,
   Show,
   useContext,
 } from "@pyreon/core"
@@ -35,15 +34,14 @@ function CodeBlock(props: { code: string }) {
 
 const ThemeContext = createContext<{ accent: () => string; toggle: () => void }>(null as never)
 
-function ThemeProvider(props: { children?: unknown }) {
+function ThemeProvider(props: { children?: VNodeChild }) {
   const colors = ["#7c6af7", "#f06060", "#4ecdc4", "#ffe66d"] as const
   const index = signal(0)
   const accent = computed(() => colors[index() % colors.length] as string)
   const toggle = () => index.update((i) => i + 1)
 
-  pushContext(new Map([[ThemeContext.id, { accent, toggle }]]))
-  onUnmount(() => popContext())
-  return props.children as VNode | null
+  provide(ThemeContext, { accent, toggle })
+  return props.children
 }
 
 function ThemeSwatch() {

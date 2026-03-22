@@ -15,9 +15,7 @@ import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
 import {
   createRef,
   Fragment,
-  onUnmount,
-  popContext,
-  pushContext,
+  provide,
   createContext as pyreonCreateContext,
   h as pyreonH,
   useContext,
@@ -67,9 +65,8 @@ export interface PreactContext<T> {
 export function createContext<T>(defaultValue: T): PreactContext<T> {
   const ctx = pyreonCreateContext<T>(defaultValue)
   const Provider = ((props: { value: T; children?: VNodeChild }) => {
-    pushContext(new Map([[ctx.id, props.value]]))
-    onUnmount(() => popContext())
-    return props.children as VNode | null
+    provide(ctx, props.value)
+    return props.children
   }) as ComponentFn<{ value: T; children?: VNodeChild }>
   return { ...ctx, Provider }
 }

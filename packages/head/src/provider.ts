@@ -1,5 +1,5 @@
 import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { onUnmount, popContext, pushContext } from "@pyreon/core"
+import { provide } from "@pyreon/core"
 import type { HeadContextValue } from "./context"
 import { createHeadContext, HeadContext } from "./context"
 
@@ -24,12 +24,8 @@ export interface HeadProviderProps extends Props {
  */
 export const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
   const ctx = props.context ?? createHeadContext()
-  // Push context frame synchronously (before children mount) so all descendants
-  // can read HeadContext via useContext(). Pop on unmount for correct cleanup.
-  const frame = new Map([[HeadContext.id, ctx]])
-  pushContext(frame)
-  onUnmount(() => popContext())
+  provide(HeadContext, ctx)
 
   const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as ReturnType<ComponentFn>
+  return typeof ch === "function" ? (ch as () => VNodeChild)() : ch
 }
