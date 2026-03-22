@@ -16,7 +16,6 @@ import { onMount, onUnmount, createContext, useContext } from "@pyreon/core"
 function Counter() {
   onMount(() => {
     console.log("mounted")
-    return undefined
   })
 
   return <div>Hello Pyreon</div>
@@ -40,7 +39,7 @@ function Counter() {
 
 ### Lifecycle Hooks
 
-- **`onMount(fn: () => CleanupFn | undefined)`** -- Runs after the component mounts. Return a cleanup function or `undefined`.
+- **`onMount(fn: () => CleanupFn | void)`** -- Runs after the component mounts. Optionally return a cleanup function.
 - **`onUnmount(fn)`** -- Runs when the component is removed.
 - **`onUpdate(fn)`** -- Runs after each reactive update.
 - **`onErrorCaptured(fn)`** -- Captures errors thrown by descendant components.

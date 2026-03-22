@@ -245,10 +245,18 @@ function mountComponent(
     setCurrentScope(null)
   }
 
-  if (__DEV__ && output != null && typeof output === "object" && !("type" in output)) {
-    console.warn(
-      `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, or function.`,
-    )
+  if (__DEV__ && output != null && typeof output === "object") {
+    if (output instanceof Promise) {
+      console.warn(
+        `[Pyreon] Component <${componentName}> returned a Promise. ` +
+          "Components must be synchronous — use lazy() + Suspense for async loading, " +
+          "or fetch data in onMount and store it in a signal.",
+      )
+    } else if (!("type" in output)) {
+      console.warn(
+        `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, or function.`,
+      )
+    }
   }
 
   for (const fn of hooks.update) {
@@ -284,7 +292,7 @@ function mountComponent(
     try {
       let cleanup: (() => void) | undefined
       scope.runInScope(() => {
-        cleanup = fn()
+        cleanup = fn() as (() => void) | undefined
       })
       if (cleanup) mountCleanups.push(cleanup)
     } catch (err) {

@@ -111,7 +111,6 @@ describe("child instance preservation - no infinite re-render", () => {
       onMount(() => {
         mountCount++
         props.onEvent("mounted")
-        return undefined
       })
       return jsx("p", { children: "alive" })
     }

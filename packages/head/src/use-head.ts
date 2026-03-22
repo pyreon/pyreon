@@ -105,7 +105,6 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
     ctx.add(id, buildEntry(input))
     onMount(() => {
       syncDom(ctx)
-      return undefined
     })
   }
 
