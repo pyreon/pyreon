@@ -13,12 +13,12 @@ describe("JSX type compat (via h)", () => {
   })
 
   test("callback ref", () => {
-    let captured: Element | null = null
+    let _captured: Element | null = null
     const el = h(
       "div",
       {
         ref: (e: Element) => {
-          captured = e
+          _captured = e
         },
       },
       "test",

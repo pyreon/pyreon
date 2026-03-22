@@ -449,8 +449,14 @@ export function mountFor<T>(
     stay: new Uint8Array(16),
   }
 
-  const warnDuplicateKeys = (seen: Set<string | number> | null, key: string | number) => {
+  const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
     if (!__DEV__ || !seen) return
+    if (key == null) {
+      console.warn(
+        "[Pyreon] <For> `by` function returned null/undefined. " +
+          "Keys must be strings or numbers. Check your `by` prop.",
+      )
+    }
     if (seen.has(key)) {
       console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
     }
@@ -493,7 +499,7 @@ export function mountFor<T>(
     for (let i = 0; i < n; i++) {
       const item = items[i] as T
       const key = getKey(item)
-      warnDuplicateKeys(_seenKeys, key)
+      warnForKey(_seenKeys, key)
       keys[i] = key
       renderInto(item, key, i, frag, null)
     }
@@ -507,7 +513,7 @@ export function mountFor<T>(
     const _seenUpdate = __DEV__ ? new Set<string | number>() : null
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
-      warnDuplicateKeys(_seenUpdate, newKeys[i] as string | number)
+      warnForKey(_seenUpdate, newKeys[i] as string | number)
     }
     return newKeys
   }

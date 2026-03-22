@@ -53,4 +53,5 @@ const App = () => (
   </HeadProvider>
 )
 
-mount(<App />, document.getElementById("app")!)
+const root = document.getElementById("app")
+if (root) mount(<App />, root)

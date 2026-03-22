@@ -1,6 +1,8 @@
 import { Fragment, h } from "./h"
 import type { Props, VNode, VNodeChild } from "./types"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 /** Internal marker attached to lazy()-wrapped components */
 export type LazyComponent<P extends Props = Props> = ((props: P) => VNode | null) & {
   __loading: () => boolean
@@ -20,6 +22,13 @@ export type LazyComponent<P extends Props = Props> = ((props: P) => VNode | null
  *   <Suspense fallback={<Spinner />}><Page /></Suspense>
  */
 export function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode {
+  if (__DEV__ && props.fallback === undefined) {
+    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    console.warn(
+      "[Pyreon] <Suspense> is missing a `fallback` prop. Provide fallback UI to show while loading.",
+    )
+  }
+
   return h(Fragment, null, () => {
     const ch = props.children
     const childNode = typeof ch === "function" ? ch() : ch
