@@ -1,5 +1,18 @@
 # @pyreon/preact-compat
 
+## 0.6.0
+
+### Patch Changes
+
+- feat(core): add `provide()` helper, widen `ComponentFn` return to `VNodeChild`, add `ExtractProps` and `HigherOrderComponent` utility types
+
+  Migrate router, head, preact-compat to use `provide()` instead of manual `pushContext`/`popContext`
+
+- Updated dependencies []:
+  - @pyreon/core@0.6.0
+  - @pyreon/runtime-dom@0.6.0
+  - @pyreon/reactivity@0.6.0
+
 ## 0.5.7
 
 ### Patch Changes

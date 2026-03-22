@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/mcp",
-  "version": "0.5.7",
+  "version": "0.6.0",
   "description": "MCP server for Pyreon — AI-powered framework assistance",
   "license": "MIT",
   "repository": {

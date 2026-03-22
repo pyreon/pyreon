@@ -1,5 +1,7 @@
 # @pyreon/reactivity
 
+## 0.6.0
+
 ## 0.5.7
 
 ### Patch Changes

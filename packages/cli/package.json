@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/cli",
-  "version": "0.5.7",
+  "version": "0.6.0",
   "description": "CLI tools for Pyreon — doctor, generate, context",
   "license": "MIT",
   "repository": {

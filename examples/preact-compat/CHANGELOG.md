@@ -1,5 +1,15 @@
 # @pyreon/example-preact-compat
 
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.6.0
+  - @pyreon/preact-compat@0.6.0
+  - @pyreon/runtime-dom@0.6.0
+  - @pyreon/reactivity@0.6.0
+
 ## 0.0.14
 
 ### Patch Changes
