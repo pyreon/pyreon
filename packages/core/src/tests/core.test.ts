@@ -603,6 +603,13 @@ describe("Suspense", () => {
     // The getter should unwrap the function child
     expect(getter()).toBe(child)
   })
+
+  test("warns when fallback prop is missing", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    Suspense({ fallback: undefined as unknown as VNodeChild, children: h("div", null) })
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("<Suspense>"))
+    warnSpy.mockRestore()
+  })
 })
 
 // ─── ErrorBoundary ───────────────────────────────────────────────────────────
@@ -610,6 +617,19 @@ describe("Suspense", () => {
 describe("ErrorBoundary", () => {
   test("is a component function", () => {
     expect(typeof ErrorBoundary).toBe("function")
+  })
+
+  test("warns when fallback is not a function", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    runWithHooks(() => {
+      ErrorBoundary({
+        fallback: "not a function" as unknown as (err: unknown, reset: () => void) => VNodeChild,
+        children: "child",
+      })
+      return null
+    }, {})
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("<ErrorBoundary>"))
+    warnSpy.mockRestore()
   })
 
   test("returns a reactive getter", () => {
@@ -904,20 +924,34 @@ describe("jsx / jsxs / jsxDEV", () => {
 // ─── Lifecycle hooks outside component ───────────────────────────────────────
 
 describe("lifecycle hooks", () => {
-  test("onMount outside component is a no-op", () => {
-    expect(() => onMount(() => undefined)).not.toThrow()
+  test("onMount outside component warns and is a no-op", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    expect(() => onMount(() => {})).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onMount() called outside component setup"))
+    warnSpy.mockRestore()
   })
 
-  test("onUnmount outside component is a no-op", () => {
+  test("onUnmount outside component warns and is a no-op", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onUnmount(() => {})).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onUnmount() called outside component setup"))
+    warnSpy.mockRestore()
   })
 
-  test("onUpdate outside component is a no-op", () => {
+  test("onUpdate outside component warns and is a no-op", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onUpdate(() => {})).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("onUpdate() called outside component setup"))
+    warnSpy.mockRestore()
   })
 
-  test("onErrorCaptured outside component is a no-op", () => {
+  test("onErrorCaptured outside component warns and is a no-op", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     expect(() => onErrorCaptured(() => true)).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("onErrorCaptured() called outside component setup"),
+    )
+    warnSpy.mockRestore()
   })
 })
 
@@ -1222,5 +1256,12 @@ describe("Dynamic", () => {
   test("returns null when component is falsy", () => {
     const result = Dynamic({ component: "" })
     expect(result).toBeNull()
+  })
+
+  test("warns when component prop is falsy", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    Dynamic({ component: "" })
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("<Dynamic>"))
+    warnSpy.mockRestore()
   })
 })

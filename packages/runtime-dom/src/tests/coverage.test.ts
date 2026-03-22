@@ -360,6 +360,38 @@ describe("mount.ts — uncovered branches", () => {
     warnSpy.mockRestore()
   })
 
+  test("component returning Promise triggers dev warning", () => {
+    const el = container()
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const AsyncComp = (() => Promise.resolve(null)) as unknown as ComponentFn
+    mount(h(AsyncComp, null), el)
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("returned a Promise"))
+    warnSpy.mockRestore()
+  })
+
+  test("void element with children triggers dev warning", () => {
+    const el = container()
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    mount(h("img", null, "child text"), el)
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("void element"))
+    warnSpy.mockRestore()
+  })
+
+  test("Portal with falsy target warns", () => {
+    const el = container()
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { Portal } = require("@pyreon/core")
+    mount(h(Portal, { target: null }), el)
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Portal"))
+    warnSpy.mockRestore()
+  })
+
   test("component subtree mount error with propagateError (lines 298-309)", () => {
     const el = container()
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -912,6 +944,16 @@ describe("props.ts — uncovered branches", () => {
     expect(div.title).toBe("u")
 
     unmount()
+  })
+
+  test("non-function event handler triggers dev warning", () => {
+    const el = container()
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    mount(h("button", { onClick: "not a function" }), el)
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("non-function value"))
+    warnSpy.mockRestore()
   })
 
   test("n-show prop toggles display (lines 273-277)", () => {

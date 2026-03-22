@@ -131,7 +131,16 @@ export function mountChild(
 
   if (vnode.type === (PortalSymbol as unknown as string)) {
     const { target, children } = vnode.props as unknown as PortalProps
-    if (__DEV__ && !target) return noop
+    if (__DEV__ && !target) {
+      console.warn("[Pyreon] <Portal> received a falsy `target`. Provide a valid DOM element.")
+      return noop
+    }
+    if (__DEV__ && !(target instanceof Node)) {
+      console.warn(
+        `[Pyreon] <Portal> target must be a DOM node. Received ${typeof target}. ` +
+          "Use document.getElementById() or a ref to get the target element.",
+      )
+    }
     return mountChild(children, target, null)
   }
 
@@ -144,8 +153,33 @@ export function mountChild(
 
 // ─── Element ─────────────────────────────────────────────────────────────────
 
+// Void elements that cannot have children
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
+])
+
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   const el = document.createElement(vnode.type as string)
+
+  if (__DEV__ && vnode.children.length > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
+    console.warn(
+      `[Pyreon] <${vnode.type as string}> is a void element and cannot have children. ` +
+        "Children passed to void elements will be ignored by the browser.",
+    )
+  }
 
   // Skip applyProps entirely when props is the shared empty sentinel (identity check — no allocation)
   const props = vnode.props

@@ -4,6 +4,8 @@ import { onUnmount } from "./lifecycle"
 import { reportError } from "./telemetry"
 import type { VNodeChild, VNodeChildAtom } from "./types"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 /**
  * ErrorBoundary — catches errors thrown by child components and renders a
  * fallback UI instead of crashing the whole tree.
@@ -35,6 +37,14 @@ export function ErrorBoundary(props: {
   fallback: (err: unknown, reset: () => void) => VNodeChild
   children?: VNodeChild
 }): VNodeChild {
+  if (__DEV__ && typeof props.fallback !== "function") {
+    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    console.warn(
+      "[Pyreon] <ErrorBoundary> expects `fallback` to be a function: (err, reset) => VNode. " +
+        `Received ${typeof props.fallback}.`,
+    )
+  }
+
   const error = signal<unknown>(null)
   const reset = () => error.set(null)
 
