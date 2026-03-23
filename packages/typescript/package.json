@@ -1,0 +1,34 @@
+{
+  "name": "@pyreon/typescript",
+  "version": "0.7.0",
+  "description": "TypeScript configuration presets for Pyreon projects",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/typescript"
+  },
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/typescript#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "files": [
+    "base.json",
+    "app.json",
+    "lib.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./base.json",
+    "./app": "./app.json",
+    "./lib": "./lib.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "typecheck": "echo 'no ts to check'"
+  }
+}
