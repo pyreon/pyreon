@@ -17,7 +17,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 ## Package Overview
 | Package | Description |
 |---|---|
-| `@pyreon/reactivity` | signal, computed, effect, batch, createSelector, createStore |
+| `@pyreon/reactivity` | signal, computed, effect, onCleanup, batch, createSelector, createStore |
 | `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic |
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive |
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |

@@ -5,6 +5,34 @@ export interface Effect {
   dispose(): void
 }
 
+// ─── onCleanup ───────────────────────────────────────────────────────────────
+// Thread-local collector for cleanup functions registered via onCleanup()
+// during effect execution. Pushed/popped around the user callback in effect().
+let _cleanupCollector: (() => void)[] | null = null
+
+/**
+ * Register a cleanup function inside an effect. The cleanup runs:
+ * - Before the effect re-runs (when dependencies change)
+ * - When the effect is disposed
+ *
+ * Can be called multiple times — all cleanups run in registration order.
+ * Must be called synchronously during effect setup (like onMount/onUnmount).
+ *
+ * @example
+ * effect(() => {
+ *   const controller = new AbortController()
+ *   onCleanup(() => controller.abort())
+ *   fetch(`/api/user/${userId()}`, { signal: controller.signal })
+ *     .then(r => r.json())
+ *     .then(data => user.set(data))
+ * })
+ */
+export function onCleanup(fn: () => void): void {
+  if (_cleanupCollector) {
+    _cleanupCollector.push(fn)
+  }
+}
+
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
 let _errorHandler: (err: unknown) => void = (err) => {
@@ -37,7 +65,19 @@ export function effect(fn: () => (() => void) | void): Effect {
   // Local deps array — avoids WeakMap overhead (like renderEffect)
   const deps: Set<() => void>[] = []
 
+  let cleanups: (() => void)[] | undefined
+
   const runCleanup = () => {
+    if (cleanups) {
+      for (const c of cleanups) {
+        try {
+          c()
+        } catch (err) {
+          _errorHandler(err)
+        }
+      }
+      cleanups = undefined
+    }
     if (typeof cleanup === "function") {
       try {
         cleanup()
@@ -55,9 +95,15 @@ export function effect(fn: () => (() => void) | void): Effect {
     try {
       cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
+      // Collect onCleanup() registrations during execution
+      const collected: (() => void)[] = []
+      _cleanupCollector = collected
       cleanup = withTracking(run, fn) || undefined
+      _cleanupCollector = null
+      if (collected.length > 0) cleanups = collected
       setDepsCollector(null)
     } catch (err) {
+      _cleanupCollector = null
       setDepsCollector(null)
       _errorHandler(err)
     }
