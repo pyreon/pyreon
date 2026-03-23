@@ -258,8 +258,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // ── Dev-only transforms ────────────────────────────────────────────
       if (!isBuild) {
         output = injectHmr(output, id)
-        // Inject debug names for any remaining signal() calls not handled by HMR
-        output = injectSignalNames(output, false)
+        // Inject debug names for signal() calls not rewritten by HMR
+        output = injectSignalNames(output)
       }
 
       return { code: output, map: null }
@@ -477,9 +477,10 @@ function hasMultipleArgs(args: string): boolean {
  *
  * `const count = signal(0)` → `const count = signal(0, { name: "count" })`
  *
- * Module-scope signals are skipped when HMR is active (they get names via __hmr_signal).
+ * Module-scope signals rewritten to __hmr_signal() are naturally skipped
+ * because the regex matches `signal(` not `__hmr_signal(`.
  */
-function injectSignalNames(code: string, skipModuleScope: boolean): string {
+function injectSignalNames(code: string): string {
   const re = /(?:const|let)\s+(\w+)\s*=\s*signal\(/gm
   const matches: { start: number; end: number; name: string; args: string }[] = []
 
@@ -487,11 +488,7 @@ function injectSignalNames(code: string, skipModuleScope: boolean): string {
   while (m !== null) {
     const argsStart = m.index + m[0].length
     const args = extractBalancedArgs(code, argsStart)
-    if (
-      args !== null &&
-      !(skipModuleScope && braceDepthAt(code, m.index) === 0) &&
-      !hasMultipleArgs(args)
-    ) {
+    if (args !== null && !hasMultipleArgs(args)) {
       matches.push({ start: argsStart, end: argsStart + args.length, name: m[1] ?? "", args })
     }
     m = re.exec(code)
