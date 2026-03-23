@@ -63,14 +63,21 @@ const dispose = effect(() => {
   console.log("Count is:", count())
 })
 
-// With cleanup:
+// With onCleanup:
+effect(() => {
+  const handler = () => console.log(count())
+  window.addEventListener("resize", handler)
+  onCleanup(() => window.removeEventListener("resize", handler))
+})
+
+// Or return cleanup (also works):
 effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   return () => window.removeEventListener("resize", handler)
 })`,
     notes:
-      "Returns a dispose function. Dependencies auto-tracked on each run. For DOM-specific effects, use renderEffect().",
+      "Returns a dispose function. Dependencies auto-tracked on each run. Use onCleanup() inside to register cleanup that runs before re-execution. For DOM-specific effects, use renderEffect().",
     mistakes: `- Don't pass a dependency array — Pyreon auto-tracks
 - \`effect(() => { count })\` → Must call: \`effect(() => { count() })\``,
   },

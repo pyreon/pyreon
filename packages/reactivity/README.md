@@ -38,6 +38,7 @@ batch(() => {
 ### Effects
 
 - **`effect(fn): Effect`** -- Runs `fn` and re-runs it whenever its tracked dependencies change.
+- **`onCleanup(fn)`** -- Registers a cleanup function inside an effect. Runs before re-execution and on disposal.
 - **`renderEffect(fn): Effect`** -- Like `effect`, but scheduled for render timing.
 - **`watch(source, callback, options?): WatchOptions`** -- Watches a reactive source and calls back on change.
 - **`setErrorHandler(handler)`** -- Sets a global error handler for effect errors.
