@@ -300,6 +300,9 @@
     "packages/typescript": {
       "name": "@pyreon/typescript",
       "version": "0.7.0",
+      "peerDependencies": {
+        "@pyreon/core": ">=0.6.0",
+      },
     },
     "packages/vite-plugin": {
       "name": "@pyreon/vite-plugin",
