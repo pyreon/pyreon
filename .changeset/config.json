@@ -18,7 +18,8 @@
       "@pyreon/solid-compat",
       "@pyreon/vue-compat",
       "@pyreon/cli",
-      "@pyreon/mcp"
+      "@pyreon/mcp",
+      "@pyreon/typescript"
     ]
   ],
   "linked": [],

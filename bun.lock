@@ -42,7 +42,7 @@
     },
     "examples/ai-reference": {
       "name": "@pyreon/ai-reference",
-      "version": "0.0.7",
+      "version": "0.0.10",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/head": "workspace:*",
@@ -96,7 +96,7 @@
     },
     "examples/preact-compat": {
       "name": "@pyreon/example-preact-compat",
-      "version": "0.0.13",
+      "version": "0.0.16",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/preact-compat": "workspace:*",
@@ -111,7 +111,7 @@
     },
     "examples/react-compat": {
       "name": "@pyreon/example-react-compat",
-      "version": "0.0.13",
+      "version": "0.0.16",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/react-compat": "workspace:*",
@@ -126,7 +126,7 @@
     },
     "examples/solid-compat": {
       "name": "@pyreon/example-solid-compat",
-      "version": "0.0.13",
+      "version": "0.0.16",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -141,7 +141,7 @@
     },
     "examples/vue-compat": {
       "name": "@pyreon/example-vue-compat",
-      "version": "0.0.13",
+      "version": "0.0.16",
       "dependencies": {
         "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
@@ -156,7 +156,7 @@
     },
     "packages/cli": {
       "name": "@pyreon/cli",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "bin": {
         "pyreon": "./lib/index.js",
       },
@@ -169,21 +169,21 @@
     },
     "packages/compiler": {
       "name": "@pyreon/compiler",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
     },
     "packages/core": {
       "name": "@pyreon/core",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
       },
     },
     "packages/head": {
       "name": "@pyreon/head",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -196,7 +196,7 @@
     },
     "packages/mcp": {
       "name": "@pyreon/mcp",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "bin": {
         "pyreon-mcp": "./lib/index.js",
       },
@@ -211,7 +211,7 @@
     },
     "packages/preact-compat": {
       "name": "@pyreon/preact-compat",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -224,7 +224,7 @@
     },
     "packages/react-compat": {
       "name": "@pyreon/react-compat",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -237,11 +237,11 @@
     },
     "packages/reactivity": {
       "name": "@pyreon/reactivity",
-      "version": "0.5.6",
+      "version": "0.7.0",
     },
     "packages/router": {
       "name": "@pyreon/router",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -254,7 +254,7 @@
     },
     "packages/runtime-dom": {
       "name": "@pyreon/runtime-dom",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -266,7 +266,7 @@
     },
     "packages/runtime-server": {
       "name": "@pyreon/runtime-server",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -274,7 +274,7 @@
     },
     "packages/server": {
       "name": "@pyreon/server",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/head": "workspace:^",
@@ -286,7 +286,7 @@
     },
     "packages/solid-compat": {
       "name": "@pyreon/solid-compat",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -297,9 +297,16 @@
         "happy-dom": "^20.8.3",
       },
     },
+    "packages/typescript": {
+      "name": "@pyreon/typescript",
+      "version": "0.7.0",
+      "peerDependencies": {
+        "@pyreon/core": ">=0.6.0",
+      },
+    },
     "packages/vite-plugin": {
       "name": "@pyreon/vite-plugin",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/compiler": "workspace:^",
       },
@@ -312,7 +319,7 @@
     },
     "packages/vue-compat": {
       "name": "@pyreon/vue-compat",
-      "version": "0.5.6",
+      "version": "0.7.0",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -688,6 +695,8 @@
     "@pyreon/server": ["@pyreon/server@workspace:packages/server"],
 
     "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/solid-compat"],
+
+    "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/typescript"],
 
     "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/vite-plugin"],
 
