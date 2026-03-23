@@ -1,5 +1,14 @@
 # @pyreon/vite-plugin
 
+## 0.7.2
+
+### Patch Changes
+
+- feat(vite-plugin): auto-inject signal debug names in dev mode
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.7.2
+
 ## 0.7.1
 
 ### Patch Changes
