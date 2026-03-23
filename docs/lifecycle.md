@@ -225,3 +225,26 @@ function AfterUpdate() {
 ```
 
 **Effects vs lifecycle hooks.** For reactive side effects (e.g., logging whenever a signal changes), use `effect` rather than `onUpdate`. `onUpdate` is for post-DOM-update measurements and third-party integrations.
+
+**Effect cleanup vs lifecycle cleanup.** For cleanup that should happen when a reactive dependency changes (not just on unmount), use `onCleanup` inside an `effect`:
+
+```tsx
+import { effect, onCleanup } from "@pyreon/reactivity"
+
+function LiveSearch({ query }: { query: () => string }) {
+  const results = signal([])
+
+  effect(() => {
+    const controller = new AbortController()
+    onCleanup(() => controller.abort())
+
+    fetch(`/api/search?q=${query()}`, { signal: controller.signal })
+      .then(r => r.json())
+      .then(data => results.set(data))
+  })
+
+  return <ul>{() => results().map(r => <li>{r.name}</li>)}</ul>
+}
+```
+
+When `query()` changes, the previous fetch is aborted before the new one starts. This is different from `onMount`/`onUnmount` cleanup, which only runs once at component boundaries.

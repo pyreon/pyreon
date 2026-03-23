@@ -108,7 +108,7 @@ function Display() {
 ## Key Differences from SolidJS
 
 - **Same mental model.** Pyreon's reactivity is signal-based, just like Solid.
-- **`createEffect` cleanup is not supported.** Pyreon's `effect()` does not use return values as cleanup functions.
+- **`createEffect` cleanup is supported.** Pyreon's `effect()` supports both return-value cleanup and `onCleanup()` for registering cleanup functions imperatively.
 - **`lazy` throws promises for Suspense.** Works with `<Suspense>` boundaries.
 
 ## API

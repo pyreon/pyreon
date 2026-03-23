@@ -26,6 +26,7 @@ b.set(20)  // logs "sum = 32"
 | `signal` | `signal<T>(initial: T): Signal<T>` | Creates a reactive value |
 | `computed` | `computed<T>(fn: () => T): ReadonlySignal<T>` | Derived value, lazy and memoized |
 | `effect` | `effect(fn: () => void \| Cleanup): EffectHandle` | Runs `fn` immediately and on dependency changes |
+| `onCleanup` | `onCleanup(fn: () => void): void` | Registers cleanup inside an effect (runs before re-run and on dispose) |
 | `batch` | `batch(fn: () => void): void` | Defers all signal notifications until `fn` returns |
 | `createSelector` | `createSelector<T>(source: () => T): (v: T) => boolean` | O(1) active-item selection |
 | `runUntracked` | `runUntracked<T>(fn: () => T): T` | Reads signals without tracking them |
@@ -109,17 +110,30 @@ stop.dispose()
 - `effect` runs the function immediately on creation.
 - It re-runs whenever any signal read inside it changes.
 - If the function returns a cleanup function, Pyreon calls it before the next run and when `dispose()` is called.
+- You can also use `onCleanup()` inside the effect to register cleanup functions imperatively — useful for multiple cleanups or conditional cleanup.
 
 ```ts
+import { effect, onCleanup } from "@pyreon/reactivity"
+
 const url = signal("/api/users")
 
-const stop = effect(() => {
+// Using onCleanup (recommended):
+effect(() => {
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+
+  fetch(url(), { signal: controller.signal })
+    .then(r => r.json())
+    .then(data => console.log(data))
+})
+
+// Using return cleanup (also works):
+effect(() => {
   const controller = new AbortController()
   fetch(url(), { signal: controller.signal })
     .then(r => r.json())
     .then(data => console.log(data))
 
-  // cleanup cancels the in-flight request before next fetch
   return () => controller.abort()
 })
 ```
