@@ -70,6 +70,17 @@ interface Signal<T> {
 }
 ```
 
+### Debug names
+
+You can pass a `name` option for debugging:
+
+```ts
+const count = signal(0, { name: "count" })
+count.debug()  // { name: "count", value: 0, subscriberCount: ... }
+```
+
+When using `@pyreon/vite-plugin`, names are injected automatically in dev mode — `const count = signal(0)` becomes `signal(0, { name: "count" })`. No manual naming needed.
+
 ## computed
 
 ```ts
