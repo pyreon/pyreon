@@ -1,4 +1,4 @@
-import { effect, renderEffect, setErrorHandler } from "../effect"
+import { effect, onCleanup, renderEffect, setErrorHandler } from "../effect"
 import { effectScope, setCurrentScope } from "../scope"
 import { signal } from "../signal"
 
@@ -252,5 +252,63 @@ describe("renderEffect", () => {
     dispose()
     s.set(5)
     expect(count).toBe(1)
+  })
+})
+
+describe("onCleanup", () => {
+  test("runs cleanup before effect re-runs", () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      const val = s()
+      onCleanup(() => log.push(`cleanup-${val}`))
+      log.push(`run-${val}`)
+    })
+    expect(log).toEqual(["run-0"])
+    s.set(1)
+    expect(log).toEqual(["run-0", "cleanup-0", "run-1"])
+    s.set(2)
+    expect(log).toEqual(["run-0", "cleanup-0", "run-1", "cleanup-1", "run-2"])
+  })
+
+  test("runs cleanup on dispose", () => {
+    let cleaned = false
+    const e = effect(() => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    expect(cleaned).toBe(false)
+    e.dispose()
+    expect(cleaned).toBe(true)
+  })
+
+  test("supports multiple onCleanup calls", () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      s()
+      onCleanup(() => log.push("a"))
+      onCleanup(() => log.push("b"))
+    })
+    s.set(1)
+    expect(log).toEqual(["a", "b"])
+  })
+
+  test("works alongside return cleanup", () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      s()
+      onCleanup(() => log.push("onCleanup"))
+      return () => log.push("return")
+    })
+    s.set(1)
+    expect(log).toEqual(["onCleanup", "return"])
+  })
+
+  test("no-ops outside effect", () => {
+    // Should not throw
+    onCleanup(() => {})
   })
 })
