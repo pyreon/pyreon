@@ -31,7 +31,8 @@
     "access": "public"
   },
   "scripts": {
+    "build": "echo 'nothing to build'",
     "lint": "biome check .",
-    "typecheck": "echo 'no ts to check'"
+    "typecheck": "echo 'nothing to typecheck'"
   }
 }
