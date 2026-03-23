@@ -90,6 +90,13 @@ Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popConte
 - On hot reload, signals restore their previous values instead of reinitializing
 - Virtual module `virtual:pyreon/hmr-runtime` serves the HMR helpers
 
+### Auto Signal Naming (Vite plugin, dev only)
+- `const count = signal(0)` → `const count = signal(0, { name: "count" })`
+- Applies to all signal() calls (module-scope and function-scope)
+- Module-scope signals get names via `__hmr_signal`; function-scope via injected options
+- Skips signals that already have an options argument
+- Not applied in production builds (tree-shaken)
+
 ### Dev-Mode Warnings (`__DEV__`)
 - `mount()` validates container is not null/undefined
 - Component output validation (must return VNode, string, null, or function)

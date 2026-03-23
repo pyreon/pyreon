@@ -126,7 +126,7 @@ export function App() { return null }
     expect(result!.code).toContain('__hmr_signal("/src/theme.tsx", "theme", signal, "light")')
   })
 
-  it("does not rewrite signal() inside functions (non-module scope)", () => {
+  it("does not rewrite signal() inside functions to __hmr_signal (but injects name)", () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -138,8 +138,10 @@ export function Counter() {
 `
     const result = transform(plugin, code, "/src/Counter.tsx")
     expect(result).toBeDefined()
-    // The signal inside the function body should NOT be rewritten
-    expect(result!.code).toContain("const local = signal(0)")
+    // The signal inside the function body should NOT be rewritten to __hmr_signal
+    expect(result!.code).not.toContain("__hmr_signal")
+    // But should get a debug name injected
+    expect(result!.code).toContain('signal(0, { name: "local" })')
   })
 
   it("rewrites multiple module-scope signals", () => {
@@ -181,7 +183,24 @@ export function App() { return null }
     const result = transform(plugin, code, "/src/App.tsx")
     expect(result).toBeDefined()
     expect(result!.code).not.toContain("__hmr_signal")
+    // No signal names in production builds
     expect(result!.code).toContain("signal(0)")
+    expect(result!.code).not.toContain("{ name:")
+  })
+
+  it("skips signal naming when options already provided", () => {
+    const plugin = createPlugin()
+    const code = `
+import { signal } from "@pyreon/reactivity"
+export function App() {
+  const count = signal(0, { name: "custom" })
+  return null
+}
+`
+    const result = transform(plugin, code, "/src/App.tsx")
+    expect(result).toBeDefined()
+    // Should not double-inject name
+    expect(result!.code).toContain('signal(0, { name: "custom" })')
   })
 })
 

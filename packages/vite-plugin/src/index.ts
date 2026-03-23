@@ -255,9 +255,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
 
       let output = result.code
 
-      // ── HMR injection (dev only) ────────────────────────────────────────
+      // ── Dev-only transforms ────────────────────────────────────────────
       if (!isBuild) {
         output = injectHmr(output, id)
+        // Inject debug names for any remaining signal() calls not handled by HMR
+        output = injectSignalNames(output, false)
       }
 
       return { code: output, map: null }
@@ -454,6 +456,52 @@ function rewriteSignals(code: string, moduleId: string): string {
     const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
     const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
     output = output.slice(0, start) + replacement + output.slice(end)
+  }
+  return output
+}
+
+/** Check if an argument string contains a top-level comma (i.e. has multiple arguments). */
+function hasMultipleArgs(args: string): boolean {
+  let depth = 0
+  for (const ch of args) {
+    if (ch === "(" || ch === "[" || ch === "{") depth++
+    else if (ch === ")" || ch === "]" || ch === "}") depth--
+    else if (ch === "," && depth === 0) return true
+  }
+  return false
+}
+
+/**
+ * Inject `{ name: "varName" }` into signal() calls that don't already have
+ * an options argument. Only runs in dev mode for debugging/devtools.
+ *
+ * `const count = signal(0)` → `const count = signal(0, { name: "count" })`
+ *
+ * Module-scope signals are skipped when HMR is active (they get names via __hmr_signal).
+ */
+function injectSignalNames(code: string, skipModuleScope: boolean): string {
+  const re = /(?:const|let)\s+(\w+)\s*=\s*signal\(/gm
+  const matches: { start: number; end: number; name: string; args: string }[] = []
+
+  let m: RegExpExecArray | null = re.exec(code)
+  while (m !== null) {
+    const argsStart = m.index + m[0].length
+    const args = extractBalancedArgs(code, argsStart)
+    if (
+      args !== null &&
+      !(skipModuleScope && braceDepthAt(code, m.index) === 0) &&
+      !hasMultipleArgs(args)
+    ) {
+      matches.push({ start: argsStart, end: argsStart + args.length, name: m[1] ?? "", args })
+    }
+    m = re.exec(code)
+  }
+  re.lastIndex = 0
+
+  let output = code
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { start, end, name, args } = matches[i] as (typeof matches)[number]
+    output = `${output.slice(0, start)}${args}, { name: ${JSON.stringify(name)} }${output.slice(end)}`
   }
   return output
 }
