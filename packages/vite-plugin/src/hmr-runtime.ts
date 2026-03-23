@@ -50,7 +50,7 @@ const moduleSignals = new Map<string, ModuleSignals>()
 export function __hmr_signal<T>(
   moduleId: string,
   name: string,
-  signalFn: (value: T) => SignalLike,
+  signalFn: (value: T, options?: { name?: string }) => SignalLike,
   initialValue: T,
 ): ReturnType<typeof signalFn> {
   const registry = getRegistry()
@@ -59,7 +59,7 @@ export function __hmr_signal<T>(
   // Use saved value if available (hot reload), otherwise use initial
   const value = saved?.has(name) ? (saved.get(name) as T) : initialValue
 
-  const s = signalFn(value)
+  const s = signalFn(value, { name })
 
   // Track this signal for future disposal
   let mod = moduleSignals.get(moduleId)
