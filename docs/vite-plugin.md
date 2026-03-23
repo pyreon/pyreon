@@ -138,6 +138,20 @@ function Counter() {
 
 Store-level state also persists across HMR updates.
 
+### Automatic Signal Debug Names
+
+In dev mode, the plugin automatically injects debug names into `signal()` calls:
+
+```tsx
+// You write:
+const count = signal(0)
+
+// Plugin transforms to:
+const count = signal(0, { name: "count" })
+```
+
+This means `signal.debug()`, `why()`, and devtools show `"count"` instead of `"anonymous"` — with zero effort from the developer. Names are not injected in production builds.
+
 ## Project Structure
 
 A typical Vite + Pyreon project:

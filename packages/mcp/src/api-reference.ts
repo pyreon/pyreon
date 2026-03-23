@@ -33,7 +33,7 @@ count.update(n => n + 1)  // 6
 // Read without subscribing:
 count.peek()     // 6`,
     notes:
-      "Signals are callable functions, NOT .value getters. Components run once — signal reads in JSX auto-subscribe.",
+      "Signals are callable functions, NOT .value getters. Components run once — signal reads in JSX auto-subscribe. Optional { name } for debugging — auto-injected by @pyreon/vite-plugin in dev mode.",
     mistakes: `- \`count.value\` → Use \`count()\` to read
 - \`{count}\` in JSX → Use \`{count()}\` to read (or let the compiler wrap it)
 - \`const [val, setVal] = signal(0)\` → Not destructurable. Use \`const val = signal(0)\``,

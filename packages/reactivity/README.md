@@ -31,7 +31,7 @@ batch(() => {
 
 ### Signals
 
-- **`signal<T>(initial: T): Signal<T>`** -- Callable getter with `.set(value)` and `.update(fn)` methods.
+- **`signal<T>(initial: T, options?): Signal<T>`** -- Callable getter with `.set(value)` and `.update(fn)` methods. Pass `{ name }` for debug labels (auto-injected by `@pyreon/vite-plugin` in dev mode).
 - **`computed<T>(fn, options?): Computed<T>`** -- Derived signal that recomputes lazily when dependencies change.
 - **`cell<T>(initial: T): Cell<T>`** -- Lightweight reactive cell.
 

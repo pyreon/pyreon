@@ -73,4 +73,5 @@ Default export. Returns a Vite `Plugin`.
 - Configures `resolve.conditions: ["bun"]` so Vite resolves Pyreon workspace source files.
 - Sets `esbuild.jsx` to `automatic` with `@pyreon/core` as the JSX import source.
 - Transforms `.tsx`, `.jsx`, and `.pyreon` files through `@pyreon/compiler` for reactive JSX optimizations.
+- In dev mode, auto-injects debug names into `signal()` calls so devtools show meaningful labels instead of "anonymous".
 - In SSR mode, adds a catch-all middleware that renders pages through your server entry with full HMR support.
