@@ -1,5 +1,11 @@
 # @pyreon/reactivity
 
+## 0.7.0
+
+### Minor Changes
+
+- feat(reactivity): add `onCleanup()` for registering cleanup functions inside effects
+
 ## 0.6.0
 
 ## 0.5.7

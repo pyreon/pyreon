@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "SSR handler, SSG prerender, and island architecture for Pyreon",
   "license": "MIT",
   "repository": {
