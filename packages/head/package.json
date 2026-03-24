@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/head",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "Head tag management for Pyreon — works in SSR and CSR",
   "license": "MIT",
   "repository": {
