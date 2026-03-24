@@ -407,7 +407,10 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       if (!ts.isCallExpression(inner)) return null
       if (inner.arguments.length > 0) return null
       const callee = inner.expression
-      if (ts.isIdentifier(callee) || ts.isPropertyAccessExpression(callee)) {
+      // Only match simple identifiers: count() → _bindText(count, node)
+      // Property access like obj.method() is NOT safe — detaching the method
+      // loses `this` context (e.g. value.toLocaleString becomes unbound).
+      if (ts.isIdentifier(callee)) {
         return sliceExpr(callee)
       }
       return null
