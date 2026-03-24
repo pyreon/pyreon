@@ -40,7 +40,7 @@ type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
 type StyleValue = string | CSSProperties
 
 /** Common HTML attributes accepted by all Pyreon elements */
-interface PyreonHTMLAttributes {
+interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Identity
   id?: string | undefined
   class?: string | (() => string) | undefined
@@ -92,7 +92,7 @@ interface PyreonHTMLAttributes {
   "aria-rowindex"?: number | undefined
   "aria-rowspan"?: number | undefined
   // DOM lifecycle ref — object ref or callback ref
-  ref?: { current: unknown } | ((el: Element | null) => void) | undefined
+  ref?: { current: E | null } | ((el: E | null) => void) | undefined
   // Key for list reconciliation
   key?: string | number | undefined
   // Children — allows null, undefined, boolean in JSX children positions
@@ -155,7 +155,7 @@ interface PyreonHTMLAttributes {
 }
 
 /** Attributes specific to form inputs */
-interface InputAttributes extends PyreonHTMLAttributes {
+interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> {
   type?: string | (() => string) | undefined
   value?: string | number | (() => string | number) | undefined
   defaultValue?: string | number | undefined
@@ -185,14 +185,14 @@ interface InputAttributes extends PyreonHTMLAttributes {
   height?: number | string | undefined
 }
 
-interface AnchorAttributes extends PyreonHTMLAttributes {
+interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement> {
   href?: string | (() => string) | undefined
   target?: "_blank" | "_self" | "_parent" | "_top" | string | undefined
   rel?: string | undefined
   download?: string | boolean | undefined
 }
 
-interface ButtonAttributes extends PyreonHTMLAttributes {
+interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
   type?: "button" | "submit" | "reset" | undefined
   disabled?: boolean | (() => boolean) | undefined
   name?: string | undefined
@@ -205,7 +205,7 @@ interface ButtonAttributes extends PyreonHTMLAttributes {
   formTarget?: string | undefined
 }
 
-interface TextareaAttributes extends PyreonHTMLAttributes {
+interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaElement> {
   value?: string | (() => string) | undefined
   defaultValue?: string | undefined
   placeholder?: string | (() => string) | undefined
@@ -222,7 +222,7 @@ interface TextareaAttributes extends PyreonHTMLAttributes {
   wrap?: "hard" | "soft" | undefined
 }
 
-interface SelectAttributes extends PyreonHTMLAttributes {
+interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement> {
   value?: string | string[] | (() => string | string[]) | undefined
   defaultValue?: string | string[] | undefined
   disabled?: boolean | (() => boolean) | undefined
@@ -234,14 +234,14 @@ interface SelectAttributes extends PyreonHTMLAttributes {
   autoFocus?: boolean | undefined
 }
 
-interface OptionAttributes extends PyreonHTMLAttributes {
+interface OptionAttributes extends PyreonHTMLAttributes<HTMLOptionElement> {
   value?: string | number | (() => string | number) | undefined
   disabled?: boolean | (() => boolean) | undefined
   selected?: boolean | (() => boolean) | undefined
   label?: string | undefined
 }
 
-interface FormAttributes extends PyreonHTMLAttributes {
+interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
   action?: string | undefined
   method?: "get" | "post" | undefined
   encType?: string | undefined
@@ -251,7 +251,7 @@ interface FormAttributes extends PyreonHTMLAttributes {
   autoComplete?: string | undefined
 }
 
-interface ImgAttributes extends PyreonHTMLAttributes {
+interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   src?: string | (() => string) | undefined
   alt?: string | (() => string) | undefined
   width?: number | string | (() => number | string) | undefined
@@ -264,7 +264,7 @@ interface ImgAttributes extends PyreonHTMLAttributes {
   sizes?: string | undefined
 }
 
-interface VideoAttributes extends PyreonHTMLAttributes {
+interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
   src?: string | (() => string) | undefined
   width?: number | string | undefined
   height?: number | string | undefined
@@ -278,7 +278,7 @@ interface VideoAttributes extends PyreonHTMLAttributes {
   crossOrigin?: "anonymous" | "use-credentials" | undefined
 }
 
-interface AudioAttributes extends PyreonHTMLAttributes {
+interface AudioAttributes extends PyreonHTMLAttributes<HTMLAudioElement> {
   src?: string | (() => string) | undefined
   controls?: boolean | undefined
   autoPlay?: boolean | undefined
@@ -288,13 +288,13 @@ interface AudioAttributes extends PyreonHTMLAttributes {
   crossOrigin?: "anonymous" | "use-credentials" | undefined
 }
 
-interface LabelAttributes extends PyreonHTMLAttributes {
+interface LabelAttributes extends PyreonHTMLAttributes<HTMLLabelElement> {
   htmlFor?: string | undefined
   for?: string | undefined
   form?: string | undefined
 }
 
-interface ThAttributes extends PyreonHTMLAttributes {
+interface ThAttributes extends PyreonHTMLAttributes<HTMLTableCellElement> {
   colSpan?: number | undefined
   rowSpan?: number | undefined
   scope?: "col" | "row" | "colgroup" | "rowgroup" | undefined
@@ -302,17 +302,17 @@ interface ThAttributes extends PyreonHTMLAttributes {
   headers?: string | undefined
 }
 
-interface TdAttributes extends PyreonHTMLAttributes {
+interface TdAttributes extends PyreonHTMLAttributes<HTMLTableCellElement> {
   colSpan?: number | undefined
   rowSpan?: number | undefined
   headers?: string | undefined
 }
 
-interface ColAttributes extends PyreonHTMLAttributes {
+interface ColAttributes extends PyreonHTMLAttributes<HTMLTableColElement> {
   span?: number | undefined
 }
 
-interface IframeAttributes extends PyreonHTMLAttributes {
+interface IframeAttributes extends PyreonHTMLAttributes<HTMLIFrameElement> {
   src?: string | (() => string) | undefined
   width?: number | string | undefined
   height?: number | string | undefined
@@ -325,7 +325,7 @@ interface IframeAttributes extends PyreonHTMLAttributes {
   title?: string | undefined
 }
 
-interface LinkAttributes extends PyreonHTMLAttributes {
+interface LinkAttributes extends PyreonHTMLAttributes<HTMLLinkElement> {
   href?: string | (() => string) | undefined
   rel?: string | undefined
   type?: string | undefined
@@ -336,7 +336,7 @@ interface LinkAttributes extends PyreonHTMLAttributes {
   referrerPolicy?: string | undefined
 }
 
-interface MetaAttributes extends PyreonHTMLAttributes {
+interface MetaAttributes extends PyreonHTMLAttributes<HTMLMetaElement> {
   name?: string | undefined
   content?: string | (() => string) | undefined
   httpEquiv?: string | undefined
@@ -344,7 +344,7 @@ interface MetaAttributes extends PyreonHTMLAttributes {
   property?: string | undefined
 }
 
-interface ScriptAttributes extends PyreonHTMLAttributes {
+interface ScriptAttributes extends PyreonHTMLAttributes<HTMLScriptElement> {
   src?: string | (() => string) | undefined
   type?: string | undefined
   async?: boolean | undefined
@@ -355,7 +355,7 @@ interface ScriptAttributes extends PyreonHTMLAttributes {
   referrerPolicy?: string | undefined
 }
 
-interface SourceAttributes extends PyreonHTMLAttributes {
+interface SourceAttributes extends PyreonHTMLAttributes<HTMLSourceElement> {
   src?: string | (() => string) | undefined
   type?: string | undefined
   srcSet?: string | undefined
@@ -363,12 +363,12 @@ interface SourceAttributes extends PyreonHTMLAttributes {
   media?: string | undefined
 }
 
-interface ProgressAttributes extends PyreonHTMLAttributes {
+interface ProgressAttributes extends PyreonHTMLAttributes<HTMLProgressElement> {
   value?: number | (() => number) | undefined
   max?: number | undefined
 }
 
-interface MeterAttributes extends PyreonHTMLAttributes {
+interface MeterAttributes extends PyreonHTMLAttributes<HTMLMeterElement> {
   value?: number | (() => number) | undefined
   min?: number | undefined
   max?: number | undefined
@@ -377,21 +377,21 @@ interface MeterAttributes extends PyreonHTMLAttributes {
   optimum?: number | undefined
 }
 
-interface DetailsAttributes extends PyreonHTMLAttributes {
+interface DetailsAttributes extends PyreonHTMLAttributes<HTMLDetailsElement> {
   open?: boolean | (() => boolean) | undefined
 }
 
-interface DialogAttributes extends PyreonHTMLAttributes {
+interface DialogAttributes extends PyreonHTMLAttributes<HTMLDialogElement> {
   open?: boolean | (() => boolean) | undefined
 }
 
-interface OlAttributes extends PyreonHTMLAttributes {
+interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {
   start?: number | undefined
   reversed?: boolean | undefined
   type?: "1" | "a" | "A" | "i" | "I" | undefined
 }
 
-interface SvgAttributes extends PyreonHTMLAttributes {
+interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   viewBox?: string | undefined
   xmlns?: string | undefined
   fill?: string | (() => string) | undefined
@@ -587,7 +587,7 @@ declare global {
       slot: PyreonHTMLAttributes
       portal: PyreonHTMLAttributes
       // Catch-all for custom elements and data-* attrs
-      [tagName: string]: PyreonHTMLAttributes
+      [tagName: string]: PyreonHTMLAttributes<any>
     }
   }
 }
