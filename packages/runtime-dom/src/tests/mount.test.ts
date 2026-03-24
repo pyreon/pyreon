@@ -1536,6 +1536,35 @@ describe("mount — edge cases", () => {
     expect(el.querySelector("#toggle")).toBeNull()
   })
 
+  test("reactive child returning component renders content", () => {
+    const el = container()
+    const Dashboard = () => h("div", { id: "dashboard" }, "Dashboard content")
+    const Store = () => h("div", { id: "store" }, "Store content")
+    const activeTab = signal("dashboard")
+    const tabs = [
+      { id: "dashboard", component: Dashboard },
+      { id: "store", component: Store },
+    ]
+
+    mount(
+      h("div", null, () => {
+        const tab = tabs.find((t) => t.id === activeTab())
+        if (!tab) return null
+        const Component = tab.component
+        return h(Component, null)
+      }),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")).not.toBeNull()
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Dashboard content")
+
+    activeTab.set("store")
+    expect(el.querySelector("#store")).not.toBeNull()
+    expect(el.querySelector("#store")?.textContent).toBe("Store content")
+    expect(el.querySelector("#dashboard")).toBeNull()
+  })
+
   test("boolean false renders nothing", () => {
     const el = container()
     mount(h("div", null, false), el)
