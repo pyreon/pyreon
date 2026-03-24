@@ -17,6 +17,19 @@ export { ErrorBoundary } from "./error-boundary"
 export type { ForProps } from "./for"
 export { For, ForSymbol } from "./for"
 export { EMPTY_PROPS, Fragment, h } from "./h"
+export type {
+  AnchorAttributes,
+  ButtonAttributes,
+  CSSProperties,
+  FormAttributes,
+  ImgAttributes,
+  InputAttributes,
+  PyreonHTMLAttributes,
+  SelectAttributes,
+  StyleValue,
+  SvgAttributes,
+  TextareaAttributes,
+} from "./jsx-runtime"
 export { lazy } from "./lazy"
 export { onErrorCaptured, onMount, onUnmount, onUpdate } from "./lifecycle"
 export { mapArray } from "./map-array"
