@@ -302,6 +302,7 @@
       "version": "0.7.2",
       "peerDependencies": {
         "@pyreon/core": ">=0.7.2",
+        "typescript": ">=5.9.0",
       },
     },
     "packages/vite-plugin": {
