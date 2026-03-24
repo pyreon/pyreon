@@ -49,6 +49,48 @@ export const CSS_UNITLESS = new Set([
   "strokeWidth",
 ])
 
+// ─── Class utilities ─────────────────────────────────────────────────────────
+
+/** Value accepted by the `class` prop — string, array, object, or nested mix. */
+export type ClassValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | ClassValue[]
+  | Record<string, boolean | null | undefined | (() => boolean)>
+
+function cxObject(obj: Record<string, boolean | null | undefined | (() => boolean)>): string {
+  let result = ""
+  for (const key in obj) {
+    const v = obj[key]
+    const truthy = typeof v === "function" ? v() : v
+    if (truthy) result = result ? `${result} ${key}` : key
+  }
+  return result
+}
+
+function cxArray(arr: ClassValue[]): string {
+  let result = ""
+  for (const item of arr) {
+    const resolved = cx(item)
+    if (resolved) result = result ? `${result} ${resolved}` : resolved
+  }
+  return result
+}
+
+/** Resolve a ClassValue into a flat class string (like clsx/cx). */
+export function cx(value: ClassValue): string {
+  if (value == null || value === false || value === true) return ""
+  if (typeof value === "string") return value
+  if (typeof value === "number") return String(value)
+  if (Array.isArray(value)) return cxArray(value)
+  return cxObject(value)
+}
+
+// ─── Style utilities ─────────────────────────────────────────────────────────
+
 /** Convert a camelCase CSS property name to kebab-case. */
 export function toKebabCase(str: string): string {
   return str.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)

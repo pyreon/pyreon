@@ -6,6 +6,7 @@
  *   <div class="x" />  →  jsx("div", { class: "x" })
  */
 import { Fragment, h } from "./h"
+import type { ClassValue } from "./style"
 import type { ComponentFn, Props, VNode, VNodeChild } from "./types"
 
 export { Fragment }
@@ -39,12 +40,17 @@ type Booleanish = boolean | "true" | "false"
 export type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
 export type StyleValue = string | CSSProperties
 
+/** Event with typed currentTarget — used in element-specific event handlers. */
+export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
+  readonly currentTarget: T
+}
+
 /** Common HTML attributes accepted by all Pyreon elements */
 export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Identity
   id?: string | undefined
-  class?: string | (() => string) | undefined
-  className?: string | (() => string) | undefined
+  class?: ClassValue | (() => ClassValue) | undefined
+  className?: ClassValue | (() => ClassValue) | undefined
   style?: StyleValue | (() => StyleValue) | undefined
   // Accessible
   role?: string | undefined
@@ -100,56 +106,60 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // innerHTML
   innerHTML?: string | undefined
   dangerouslySetInnerHTML?: { __html: string } | undefined
-  // Events
-  onClick?: ((e: MouseEvent) => void) | undefined
-  onDblClick?: ((e: MouseEvent) => void) | undefined
-  onMouseDown?: ((e: MouseEvent) => void) | undefined
-  onMouseUp?: ((e: MouseEvent) => void) | undefined
-  onMouseEnter?: ((e: MouseEvent) => void) | undefined
-  onMouseLeave?: ((e: MouseEvent) => void) | undefined
-  onMouseMove?: ((e: MouseEvent) => void) | undefined
-  onMouseOver?: ((e: MouseEvent) => void) | undefined
-  onMouseOut?: ((e: MouseEvent) => void) | undefined
-  onContextMenu?: ((e: MouseEvent) => void) | undefined
-  onKeyDown?: ((e: KeyboardEvent) => void) | undefined
-  onKeyUp?: ((e: KeyboardEvent) => void) | undefined
-  onKeyPress?: ((e: KeyboardEvent) => void) | undefined
-  onFocus?: ((e: FocusEvent) => void) | undefined
-  onBlur?: ((e: FocusEvent) => void) | undefined
-  onChange?: ((e: Event) => void) | undefined
-  onInput?: ((e: InputEvent) => void) | undefined
-  onSubmit?: ((e: SubmitEvent) => void) | undefined
-  onReset?: ((e: Event) => void) | undefined
-  onScroll?: ((e: Event) => void) | undefined
-  onWheel?: ((e: WheelEvent) => void) | undefined
-  onDragStart?: ((e: DragEvent) => void) | undefined
-  onDragEnd?: ((e: DragEvent) => void) | undefined
-  onDragOver?: ((e: DragEvent) => void) | undefined
-  onDragEnter?: ((e: DragEvent) => void) | undefined
-  onDragLeave?: ((e: DragEvent) => void) | undefined
-  onDrop?: ((e: DragEvent) => void) | undefined
-  onTouchStart?: ((e: TouchEvent) => void) | undefined
-  onTouchEnd?: ((e: TouchEvent) => void) | undefined
-  onTouchMove?: ((e: TouchEvent) => void) | undefined
-  onPointerDown?: ((e: PointerEvent) => void) | undefined
-  onPointerUp?: ((e: PointerEvent) => void) | undefined
-  onPointerMove?: ((e: PointerEvent) => void) | undefined
-  onPointerEnter?: ((e: PointerEvent) => void) | undefined
-  onPointerLeave?: ((e: PointerEvent) => void) | undefined
-  onPointerCancel?: ((e: PointerEvent) => void) | undefined
-  onPointerOver?: ((e: PointerEvent) => void) | undefined
-  onPointerOut?: ((e: PointerEvent) => void) | undefined
-  onTransitionEnd?: ((e: TransitionEvent) => void) | undefined
-  onAnimationStart?: ((e: AnimationEvent) => void) | undefined
-  onAnimationEnd?: ((e: AnimationEvent) => void) | undefined
-  onAnimationIteration?: ((e: AnimationEvent) => void) | undefined
-  onLoad?: ((e: Event) => void) | undefined
-  onError?: ((e: Event | string) => void) | undefined
-  onAbort?: ((e: Event) => void) | undefined
-  onSelect?: ((e: Event) => void) | undefined
-  onCopy?: ((e: ClipboardEvent) => void) | undefined
-  onCut?: ((e: ClipboardEvent) => void) | undefined
-  onPaste?: ((e: ClipboardEvent) => void) | undefined
+  // Events — typed currentTarget via generic E
+  onClick?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onDblClick?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseDown?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseUp?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseEnter?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseLeave?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseMove?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseOver?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onMouseOut?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onContextMenu?: ((e: TargetedEvent<E, MouseEvent>) => void) | undefined
+  onKeyDown?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
+  onKeyUp?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
+  onKeyPress?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
+  onFocus?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
+  onBlur?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
+  onChange?: ((e: TargetedEvent<E>) => void) | undefined
+  onInput?: ((e: TargetedEvent<E, InputEvent>) => void) | undefined
+  onBeforeInput?: ((e: TargetedEvent<E, InputEvent>) => void) | undefined
+  onSubmit?: ((e: TargetedEvent<E, SubmitEvent>) => void) | undefined
+  onReset?: ((e: TargetedEvent<E>) => void) | undefined
+  onInvalid?: ((e: TargetedEvent<E>) => void) | undefined
+  onScroll?: ((e: TargetedEvent<E>) => void) | undefined
+  onWheel?: ((e: TargetedEvent<E, WheelEvent>) => void) | undefined
+  onResize?: ((e: TargetedEvent<E>) => void) | undefined
+  onDragStart?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onDragEnd?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onDragOver?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onDragEnter?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onDragLeave?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onDrop?: ((e: TargetedEvent<E, DragEvent>) => void) | undefined
+  onTouchStart?: ((e: TargetedEvent<E, TouchEvent>) => void) | undefined
+  onTouchEnd?: ((e: TargetedEvent<E, TouchEvent>) => void) | undefined
+  onTouchMove?: ((e: TargetedEvent<E, TouchEvent>) => void) | undefined
+  onPointerDown?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerUp?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerMove?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerEnter?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerLeave?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerCancel?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerOver?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onPointerOut?: ((e: TargetedEvent<E, PointerEvent>) => void) | undefined
+  onTransitionEnd?: ((e: TargetedEvent<E, TransitionEvent>) => void) | undefined
+  onAnimationStart?: ((e: TargetedEvent<E, AnimationEvent>) => void) | undefined
+  onAnimationEnd?: ((e: TargetedEvent<E, AnimationEvent>) => void) | undefined
+  onAnimationIteration?: ((e: TargetedEvent<E, AnimationEvent>) => void) | undefined
+  onToggle?: ((e: TargetedEvent<E>) => void) | undefined
+  onLoad?: ((e: TargetedEvent<E>) => void) | undefined
+  onError?: ((e: TargetedEvent<E> | string) => void) | undefined
+  onAbort?: ((e: TargetedEvent<E>) => void) | undefined
+  onSelect?: ((e: TargetedEvent<E>) => void) | undefined
+  onCopy?: ((e: TargetedEvent<E, ClipboardEvent>) => void) | undefined
+  onCut?: ((e: TargetedEvent<E, ClipboardEvent>) => void) | undefined
+  onPaste?: ((e: TargetedEvent<E, ClipboardEvent>) => void) | undefined
   // data-* and aria-* catch-all (typed attributes above catch typos)
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown

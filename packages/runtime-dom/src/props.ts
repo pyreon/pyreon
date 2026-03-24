@@ -1,5 +1,5 @@
-import type { Props } from "@pyreon/core"
-import { normalizeStyleValue, toKebabCase } from "@pyreon/core"
+import type { ClassValue, Props } from "@pyreon/core"
+import { cx, normalizeStyleValue, toKebabCase } from "@pyreon/core"
 
 import { batch, renderEffect } from "@pyreon/reactivity"
 import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
@@ -279,6 +279,11 @@ function applyStyleProp(el: HTMLElement, value: unknown): void {
   }
 }
 
+function applyClassProp(el: Element, value: unknown): void {
+  const resolved = typeof value === "string" ? value : cx(value as ClassValue)
+  el.setAttribute("class", resolved || "")
+}
+
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
@@ -289,7 +294,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   if (key === "class" || key === "className") {
-    el.setAttribute("class", value == null ? "" : String(value))
+    applyClassProp(el, value)
     return
   }
 

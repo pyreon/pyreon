@@ -2,6 +2,7 @@ import type { ComponentFn, VNodeChild } from "@pyreon/core"
 import {
   ErrorBoundary as _ErrorBoundary,
   createRef,
+  Dynamic,
   defineComponent,
   For,
   Fragment,
@@ -1534,6 +1535,88 @@ describe("mount — edge cases", () => {
     expect(el.querySelector("#toggle")).not.toBeNull()
     show.set(false)
     expect(el.querySelector("#toggle")).toBeNull()
+  })
+
+  test("reactive child returning component renders content", () => {
+    const el = container()
+    const Dashboard = () => h("div", { id: "dashboard" }, "Dashboard content")
+    const Store = () => h("div", { id: "store" }, "Store content")
+    const activeTab = signal("dashboard")
+    const tabs = [
+      { id: "dashboard", component: Dashboard },
+      { id: "store", component: Store },
+    ]
+
+    mount(
+      h("div", null, () => {
+        const tab = tabs.find((t) => t.id === activeTab())
+        if (!tab) return null
+        const Component = tab.component
+        return h(Component, null)
+      }),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")).not.toBeNull()
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Dashboard content")
+
+    activeTab.set("store")
+    expect(el.querySelector("#store")).not.toBeNull()
+    expect(el.querySelector("#store")?.textContent).toBe("Store content")
+    expect(el.querySelector("#dashboard")).toBeNull()
+  })
+
+  test("reactive child returning component with internal signals", () => {
+    const el = container()
+    const Dashboard = () => {
+      const count = signal(0)
+      return h("div", { id: "dashboard" }, () => `Count: ${count()}`)
+    }
+    const Settings = () => {
+      return h("div", { id: "settings" }, h("span", null, "Settings page"))
+    }
+    const activeTab = signal<string>("dashboard")
+
+    mount(
+      h("div", null, () => {
+        const tab = activeTab()
+        if (tab === "dashboard") return h(Dashboard, null)
+        if (tab === "settings") return h(Settings, null)
+        return null
+      }),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")).not.toBeNull()
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Count: 0")
+
+    activeTab.set("settings")
+    expect(el.querySelector("#settings")).not.toBeNull()
+    expect(el.querySelector("#settings")?.textContent).toBe("Settings page")
+    expect(el.querySelector("#dashboard")).toBeNull()
+
+    activeTab.set("none")
+    expect(el.querySelector("#settings")).toBeNull()
+    expect(el.querySelector("#dashboard")).toBeNull()
+  })
+
+  test("reactive Dynamic component switching", () => {
+    const el = container()
+    const Dashboard = () => h("div", { id: "dashboard" }, "Dashboard")
+    const Settings = () => h("div", { id: "settings" }, "Settings")
+    const activeTab = signal<string>("dashboard")
+    const components: Record<string, ComponentFn> = { dashboard: Dashboard, settings: Settings }
+
+    mount(
+      h("div", null, () => h(Dynamic, { component: components[activeTab()] })),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Dashboard")
+
+    activeTab.set("settings")
+    expect(el.querySelector("#settings")?.textContent).toBe("Settings")
+    expect(el.querySelector("#dashboard")).toBeNull()
   })
 
   test("boolean false renders nothing", () => {

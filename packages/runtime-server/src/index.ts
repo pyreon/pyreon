@@ -14,8 +14,9 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks"
-import type { ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
+import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
 import {
+  cx,
   ForSymbol,
   Fragment,
   normalizeStyleValue,
@@ -358,7 +359,7 @@ function renderPropValue(key: string, value: unknown): string | null {
   if (value === true) return escapeHtml(toAttrName(key))
 
   if (key === "class") {
-    const cls = normalizeClass(value)
+    const cls = cx(value as ClassValue)
     return cls ? `class="${escapeHtml(cls)}"` : null
   }
 
@@ -412,18 +413,6 @@ function toAttrName(key: string): string {
   if (key === "className") return "class"
   if (key === "htmlFor") return "for"
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
-}
-
-function normalizeClass(value: unknown): string {
-  if (typeof value === "string") return value
-  if (Array.isArray(value)) return value.filter(Boolean).join(" ")
-  if (typeof value === "object" && value !== null) {
-    return Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v)
-      .map(([k]) => k)
-      .join(" ")
-  }
-  return ""
 }
 
 function normalizeStyle(value: unknown): string {

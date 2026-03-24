@@ -127,6 +127,7 @@ export function _restoreActiveEffect(): void {
   _prevEffect = null
 }
 
+/** Read signals without subscribing. Alias: `untrack`. */
 export function runUntracked<T>(fn: () => T): T {
   const prev = activeEffect
   activeEffect = null

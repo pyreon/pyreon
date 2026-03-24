@@ -200,7 +200,7 @@ function ShowDemo() {
           <input
             type="text"
             value={() => username()}
-            onInput={(e: InputEvent) => username.set((e.target as HTMLInputElement).value)}
+            onInput={(e) => username.set(e.currentTarget.value)}
           />
           <button type="button" onClick={() => loggedIn.set(false)}>
             Log out
@@ -450,7 +450,7 @@ function HeadDemo() {
       <input
         type="text"
         value={() => title()}
-        onInput={(e: InputEvent) => title.set((e.target as HTMLInputElement).value)}
+        onInput={(e) => title.set(e.currentTarget.value)}
         placeholder="Page title"
       />
       <p class="demo-meta">Tab title: {() => title()}</p>

@@ -795,7 +795,7 @@ function SettingsPanel() {
             min="12"
             max="24"
             value={() => fontSize()}
-            onInput={(e: InputEvent) => fontSize.set(Number((e.target as HTMLInputElement).value))}
+            onInput={(e) => fontSize.set(Number(e.currentTarget.value))}
           />
         </label>
       </div>
