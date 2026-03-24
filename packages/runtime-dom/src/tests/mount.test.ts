@@ -16,7 +16,6 @@ import {
 } from "@pyreon/core"
 import { cell, signal } from "@pyreon/reactivity"
 import { installDevTools, registerComponent, unregisterComponent } from "../devtools"
-import type { Directive } from "../index"
 import {
   KeepAlive as _KeepAlive,
   Transition as _Transition,
@@ -771,44 +770,6 @@ describe("ErrorBoundary", () => {
     expect(el.querySelector("#fix")).not.toBeNull()
     ;(el.querySelector("#fix") as HTMLButtonElement).click()
     expect(el.querySelector("#signal-ok")?.textContent).toBe("fixed")
-  })
-})
-
-// ─── Directive system ─────────────────────────────────────────────────────────
-
-describe("n-* directives", () => {
-  test("directive function is called with the element", () => {
-    const el = container()
-    let capturedEl: HTMLElement | null = null
-    const nCapture: Directive = (el) => {
-      capturedEl = el
-    }
-    mount(h("div", { "n-capture": nCapture }), el)
-    expect(capturedEl).not.toBeNull()
-    expect((capturedEl as unknown as HTMLElement).tagName).toBe("DIV")
-  })
-
-  test("directive cleanup is called on unmount", () => {
-    const el = container()
-    let cleaned = false
-    const nTracked: Directive = (_el, addCleanup) => {
-      addCleanup(() => {
-        cleaned = true
-      })
-    }
-    const unmount = mount(h("div", { "n-tracked": nTracked }), el)
-    expect(cleaned).toBe(false)
-    unmount()
-    expect(cleaned).toBe(true)
-  })
-
-  test("directive can set element property", () => {
-    const el = container()
-    const nTitle: Directive = (el) => {
-      el.title = "hello"
-    }
-    mount(h("span", { "n-title": nTitle }), el)
-    expect((el.querySelector("span") as HTMLElement).title).toBe("hello")
   })
 })
 
@@ -2405,18 +2366,6 @@ describe("mount — component branches", () => {
 // ─── props.ts — additional coverage ──────────────────────────────────────────
 
 describe("props — additional coverage", () => {
-  test("n-show prop toggles display reactively", () => {
-    const el = container()
-    const visible = signal(true)
-    mount(h("div", { "n-show": () => visible() }), el)
-    const div = el.querySelector("div") as HTMLElement
-    expect(div.style.display).toBe("")
-    visible.set(false)
-    expect(div.style.display).toBe("none")
-    visible.set(true)
-    expect(div.style.display).toBe("")
-  })
-
   test("reactive prop via function", () => {
     const el = container()
     const title = signal("hello")

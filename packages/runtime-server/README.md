@@ -70,4 +70,4 @@ configureStoreIsolation(provider => {
 - Signal accessors are called synchronously to snapshot their current value. No effects are created on the server.
 - Async component functions (`async function Component()`) are fully supported.
 - Context isolation uses `AsyncLocalStorage` internally. Each `renderToString` and `renderToStream` call gets its own context stack.
-- HTML output is escaped. Event handlers and custom directives (`on*`, `n-*`) are omitted. URL attributes are sanitized against `javascript:` and `data:` URIs.
+- HTML output is escaped. Event handlers (`on*`) are omitted. URL attributes are sanitized against `javascript:` and `data:` URIs.
