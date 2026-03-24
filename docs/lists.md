@@ -40,7 +40,7 @@ function UserList() {
     <ul>
       <For
         each={rows}
-        key={r => r.id}
+        by={r => r.id}
         children={r => <li>{r.name}</li>}
       />
     </ul>
@@ -53,7 +53,7 @@ function UserList() {
 | Prop | Type | Description |
 |---|---|---|
 | `each` | `Signal<T[]>` or `() => T[]` | The reactive array |
-| `key` | `(item: T) => string \| number` | Returns a stable, unique key per item |
+| `by` | `(item: T) => string \| number` | Returns a stable, unique key per item |
 | `children` | `(item: T, index: () => number) => VNodeChild` | Renders one item. `index` is a reactive getter. |
 | `fallback` | `VNodeChild` | Rendered when the list is empty |
 
@@ -64,7 +64,7 @@ import { For, h } from "@pyreon/core"
 
 h(For, {
   each: rows,
-  key: r => r.id,
+  by: r => r.id,
   children: r => h("li", null, r.name),
 })
 ```
@@ -87,7 +87,7 @@ function TodoList() {
     <ul>
       <For
         each={todos}
-        key={t => t.id}
+        by={t => t.id}
         children={t => (
           <li>
             <input
@@ -113,7 +113,7 @@ When `t.done` changes, only the checkbox and span for that specific item update.
 ```tsx
 <For
   each={items}
-  key={i => i.id}
+  by={i => i.id}
   fallback={<p>No items yet.</p>}
   children={i => <Card item={i} />}
 />
@@ -128,7 +128,7 @@ The `index` argument to `children` is `() => number` — a reactive getter. Use 
 ```tsx
 <For
   each={items}
-  key={i => i.id}
+  by={i => i.id}
   children={(item, index) => (
     <li>
       {() => index() + 1}. {item.name}
@@ -162,7 +162,7 @@ Then use `RowTemplate` as a component inside `For`:
 ```tsx
 <For
   each={tableRows}
-  key={r => r.id}
+  by={r => r.id}
   children={r => <RowTemplate name={r.name} score={r.score} />}
 />
 ```
@@ -194,7 +194,7 @@ function RawChart({ canvas }: { canvas: HTMLCanvasElement }) {
 
 ## Gotchas
 
-**The `key` function must return a unique, stable value per item.** If two items return the same key, behavior is undefined. If an item's key changes between renders, Pyreon treats it as a destroy + create.
+**The `by` function must return a unique, stable value per item.** If two items return the same key, behavior is undefined. If an item's key changes between renders, Pyreon treats it as a destroy + create.
 
 **Do not mutate the array in place.** Signals use reference equality. Calling `push` on the underlying array will not trigger `For` to update.
 

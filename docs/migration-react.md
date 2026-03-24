@@ -209,7 +209,7 @@ function TodoList() {
     <ul>
       <For
         each={items}
-        key={t => t.id}
+        by={t => t.id}
         children={t => <li>{t.text}</li>}
       />
     </ul>
@@ -377,7 +377,7 @@ Components from React ecosystem libraries (Radix UI, react-table, react-spring, 
 | `useEffect(fn, [deps])` | `useEffect(fn)` or `effect(fn)` |
 | `useMemo(fn, [deps])` | `useMemo(fn)` or `computed(fn)` |
 | `className="box"` | `class="box"` |
-| `items.map(i => <Li key={i.id} />)` | `<For each={items} key={i => i.id} children={i => <Li />} />` |
+| `items.map(i => <Li key={i.id} />)` | `<For each={items} by={i => i.id} children={i => <Li />} />` |
 | `ReactDOM.createRoot(el).render(<App />)` | `mount(el, <App />)` |
 | Component re-renders on state change | Component runs once; signals update DOM |
 | Deps arrays required | No deps arrays |
