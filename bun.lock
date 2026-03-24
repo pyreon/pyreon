@@ -161,7 +161,7 @@
         "pyreon": "./lib/index.js",
       },
       "dependencies": {
-        "@pyreon/compiler": "workspace:*",
+        "@pyreon/compiler": "workspace:^",
       },
       "peerDependencies": {
         "typescript": ">=5.0.0",
@@ -190,7 +190,7 @@
         "@pyreon/runtime-server": "workspace:^",
       },
       "devDependencies": {
-        "@happy-dom/global-registrator": "*",
+        "@happy-dom/global-registrator": "^20.8.3",
         "@pyreon/runtime-dom": "workspace:^",
       },
     },
@@ -202,7 +202,7 @@
       },
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.27.1",
-        "@pyreon/compiler": "workspace:*",
+        "@pyreon/compiler": "workspace:^",
         "zod": "^3.25.76",
       },
       "peerDependencies": {
