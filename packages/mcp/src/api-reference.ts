@@ -137,6 +137,19 @@ store.items.push(4)      // only items subscribers fire`,
       "Integrates with Suspense. Access .loading(), .error(), and call resource() for the value.",
   },
 
+  "reactivity/untrack": {
+    signature: "untrack<T>(fn: () => T): T",
+    example: `import { untrack } from "@pyreon/reactivity"
+
+// Read signals without subscribing:
+effect(() => {
+  const name = untrack(() => userName())
+  console.log("Count changed:", count(), "user is", name)
+})`,
+    notes:
+      "Alias for runUntracked. Reads signals inside fn without adding them as dependencies of the current effect/computed.",
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/core
   // ═══════════════════════════════════════════════════════════════════════════
@@ -304,6 +317,67 @@ const current = signal("home")
 >
   <App />
 </ErrorBoundary>`,
+  },
+
+  "core/cx": {
+    signature: "cx(...values: ClassValue[]): string",
+    example: `import { cx } from "@pyreon/core"
+
+cx("foo", "bar")                         // "foo bar"
+cx("base", isActive && "active")         // conditional
+cx({ base: true, active: isActive() })   // object syntax
+cx(["a", ["b", { c: true }]])            // nested arrays
+
+// class prop accepts ClassValue directly:
+<div class={["base", cond && "active"]} />
+<div class={{ base: true, active: isActive() }} />`,
+    notes:
+      "Combines class values into a single string. Accepts strings, booleans, objects, arrays (nested). Falsy values are ignored. ClassValue type is also exported from @pyreon/core.",
+    mistakes: `- \`class={cx(...)}\` works but is redundant — class prop already accepts ClassValue
+- \`class={condition ? "a" : undefined}\` → Use \`class={[condition && "a"]}\` or \`class={{ a: condition }}\``,
+  },
+
+  "core/splitProps": {
+    signature: "splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]",
+    example: `import { splitProps } from "@pyreon/core"
+
+const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
+  const [local, rest] = splitProps(props, ["class"])
+  return <button {...rest} class={cx("btn", local.class)} />
+}`,
+    notes:
+      "Splits a props object into two: picked keys and the rest. Preserves signal reactivity on both halves.",
+    mistakes: `- Destructuring props directly breaks reactivity — use splitProps instead
+- \`const { class: cls, ...rest } = props\` → \`const [local, rest] = splitProps(props, ["class"])\``,
+  },
+
+  "core/mergeProps": {
+    signature: "mergeProps<T extends object[]>(...sources: T): MergedProps<T>",
+    example: `import { mergeProps } from "@pyreon/core"
+
+const Button = (props: { size?: string; variant?: string }) => {
+  const merged = mergeProps({ size: "md", variant: "primary" }, props)
+  return <button class={\`btn-\${merged.size} btn-\${merged.variant}\`} />
+}`,
+    notes:
+      "Merges multiple props objects. Last source wins for each key. Preserves reactivity — reads are lazy.",
+  },
+
+  "core/createUniqueId": {
+    signature: "createUniqueId(): string",
+    example: `import { createUniqueId } from "@pyreon/core"
+
+const LabeledInput = (props: { label: string }) => {
+  const id = createUniqueId()
+  return (
+    <>
+      <label for={id}>{props.label}</label>
+      <input id={id} />
+    </>
+  )
+}`,
+    notes:
+      'Returns a unique string ID ("pyreon-1", "pyreon-2", etc.). SSR-safe — IDs are consistent between server and client when called in the same order.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

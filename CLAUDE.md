@@ -17,8 +17,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 ## Package Overview
 | Package | Description |
 |---|---|
-| `@pyreon/reactivity` | signal, computed, effect, onCleanup, batch, createSelector, createStore |
-| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic |
+| `@pyreon/reactivity` | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack |
+| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId |
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive |
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |
 | `@pyreon/runtime-server` | renderToString, renderToStream |
@@ -50,6 +50,22 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 - `ComponentFn<P> = (props: P) => VNodeChild`
 - `<For each={items} by={r => r.id}>{r => <li>...</li>}</For>` — keyed list rendering
   - Prop is `by` (not `key`) because JSX extracts `key` as a special VNode reconciliation prop
+- `class` prop accepts strings, arrays, objects, or nested mix — processed by `cx()` at runtime
+- JSX index signature narrowed to `[key: \`data-${string}\`]` and `[key: \`aria-${string}\`]` only (catches typos)
+- `TargetedEvent<E>` types `currentTarget` per element — no manual `as HTMLInputElement` casts
+- New events: `onBeforeInput`, `onInvalid`, `onResize`, `onToggle`
+
+### Props Utilities
+
+- `splitProps(props, keys)` — split props object preserving signal reactivity
+- `mergeProps(...sources)` — merge default props with component props, last source wins
+- `createUniqueId()` — SSR-safe unique ID generation
+- `untrack(fn)` — alias for `runUntracked`, reads signals without subscribing
+
+### JSX Types
+
+- `cx(…values: ClassValue[]): string` and `ClassValue` exported from `@pyreon/core`
+- `PyreonHTMLAttributes`, `CSSProperties`, `StyleValue`, `CanvasAttributes` (typed `Ref<HTMLCanvasElement>`) exported from `@pyreon/core`
 
 ### Router
 Context-based: `RouterContext = createContext<RouterInstance | null>(null)`.

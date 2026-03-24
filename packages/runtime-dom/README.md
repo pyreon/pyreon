@@ -99,7 +99,7 @@ const App = () => (
 
 ### Props and Sanitization
 
-- **`applyProp(el, key, value)`** -- Applies a single prop to a DOM element.
+- **`applyProp(el, key, value)`** -- Applies a single prop to a DOM element. The `class` prop accepts strings, arrays, objects, or nested mix (processed via `cx()` from `@pyreon/core`).
 - **`applyProps(el, props)`** -- Applies all props to a DOM element.
 - **`sanitizeHtml(html): string`** -- Sanitizes an HTML string using the active sanitizer.
 - **`setSanitizer(fn: SanitizeFn)`** -- Replaces the default HTML sanitizer.

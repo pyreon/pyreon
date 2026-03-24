@@ -65,6 +65,16 @@ function Counter() {
 - **`Suspense`** -- Shows fallback content while async children resolve.
 - **`ErrorBoundary`** -- Catches errors in descendant components and renders a fallback.
 
+### Props Utilities
+
+- **`splitProps(props, keys)`** -- Splits a props object into `[picked, rest]`, preserving signal reactivity.
+- **`mergeProps(...sources)`** -- Merges multiple props objects; last source wins. Preserves reactivity.
+- **`createUniqueId(): string`** -- Returns an SSR-safe unique ID (`"pyreon-1"`, `"pyreon-2"`, etc.).
+
+### Class Utility
+
+- **`cx(...values: ClassValue[]): string`** -- Combines class values (strings, arrays, objects, nested mix) into a single class string.
+
 ### Utilities
 
 - **`mapArray(source, mapFn)`** -- Reactively maps over an array source.
@@ -72,7 +82,7 @@ function Counter() {
 
 ### Types
 
-`VNode`, `VNodeChild`, `VNodeChildAtom`, `Props`, `ComponentFn`, `ExtractProps`, `HigherOrderComponent`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`
+`VNode`, `VNodeChild`, `VNodeChildAtom`, `Props`, `ComponentFn`, `ExtractProps`, `HigherOrderComponent`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`, `ClassValue`, `TargetedEvent`, `PyreonHTMLAttributes`, `CSSProperties`, `StyleValue`, `CanvasAttributes`
 
 ## License
 

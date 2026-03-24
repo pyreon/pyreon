@@ -51,6 +51,7 @@ batch(() => {
 ### Tracking
 
 - **`runUntracked(fn)`** -- Runs `fn` without tracking any signal reads.
+- **`untrack(fn)`** -- Alias for `runUntracked`.
 
 ### Scopes
 

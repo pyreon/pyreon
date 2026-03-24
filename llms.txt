@@ -76,6 +76,42 @@ provide(Theme, "dark")
 const theme = useContext(Theme)
 ```
 
+## Smart `class` with `cx()`
+
+```typescript
+import { cx } from "@pyreon/core"
+
+// Strings, arrays, objects, nested mix — all work:
+<div class="base active" />
+<div class={["base", isActive() && "active"]} />
+<div class={{ base: true, active: isActive() }} />
+<div class={cx("base", isActive() && "active", { bold: isBold() })} />
+```
+
+## Props Utilities
+
+```typescript
+import { splitProps, mergeProps, createUniqueId } from "@pyreon/core"
+
+// Split props preserving reactivity:
+const [local, rest] = splitProps(props, ["class", "style"])
+
+// Merge default props:
+const merged = mergeProps({ size: "md", variant: "primary" }, props)
+
+// SSR-safe unique IDs:
+const id = createUniqueId()  // "pyreon-1", "pyreon-2", etc.
+```
+
+## Typed Events
+
+```typescript
+// TargetedEvent types currentTarget per element — no casts needed:
+<input onInput={(e: TargetedEvent<HTMLInputElement>) => {
+  console.log(e.currentTarget.value)  // typed!
+}} />
+```
+
 ## Effect Cleanup
 
 ```typescript
@@ -149,6 +185,8 @@ mount(<App />, document.getElementById("app")!)
 - `.value` → signals are callable, not `.value` getters (that's Vue)
 - `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
 - `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
+- `class="a b"` works, but for conditional classes use `class={["a", cond && "b"]}` or `cx()`
+- `(e.target as HTMLInputElement)` → use `TargetedEvent<HTMLInputElement>` for typed `currentTarget`
 - `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
 - `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `memo(Component)` → not needed, components run once in Pyreon
