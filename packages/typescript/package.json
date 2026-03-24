@@ -33,6 +33,7 @@
   },
   "scripts": {
     "build": "echo 'nothing to build'",
+    "test": "echo 'nothing to test'",
     "lint": "biome check .",
     "typecheck": "echo 'nothing to typecheck'"
   }

@@ -53,21 +53,39 @@ import { For } from "@pyreon/core"
 ## Lifecycle
 
 ```typescript
-import { onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount, provide } from "@pyreon/core"
+import { onCleanup } from "@pyreon/reactivity"
 
 onMount(() => {
   const id = setInterval(tick, 1000)
-  return () => clearInterval(id)  // cleanup (must return undefined or CleanupFn)
+  return () => clearInterval(id)  // optional cleanup
 })
 ```
 
 ## Context
 
 ```typescript
-import { createContext, useContext } from "@pyreon/core"
+import { createContext, useContext, provide } from "@pyreon/core"
 
 const Theme = createContext<"light" | "dark">("light")
+
+// Provide (auto-cleans up on unmount):
+provide(Theme, "dark")
+
+// Consume:
 const theme = useContext(Theme)
+```
+
+## Effect Cleanup
+
+```typescript
+import { effect, onCleanup } from "@pyreon/reactivity"
+
+effect(() => {
+  const handler = () => console.log(count())
+  window.addEventListener("resize", handler)
+  onCleanup(() => window.removeEventListener("resize", handler))
+})
 ```
 
 ## Routing
@@ -132,7 +150,7 @@ mount(<App />, document.getElementById("app")!)
 - `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
 - `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
 - `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
-- `onMount(() => { doStuff() })` → must return `undefined` explicitly or a cleanup function
+- `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `memo(Component)` → not needed, components run once in Pyreon
 - `.map()` in JSX → use `<For>` for reactive list rendering
 

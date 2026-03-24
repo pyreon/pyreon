@@ -82,6 +82,19 @@ effect(() => {
 - \`effect(() => { count })\` → Must call: \`effect(() => { count() })\``,
   },
 
+  "reactivity/onCleanup": {
+    signature: "onCleanup(fn: () => void): void",
+    example: `effect(() => {
+  const handler = () => console.log(count())
+  window.addEventListener("resize", handler)
+  onCleanup(() => window.removeEventListener("resize", handler))
+})`,
+    notes:
+      "Registers a cleanup function inside an effect. Runs between re-executions (before the effect re-runs) and when the effect is disposed.",
+    mistakes: `- Using onCleanup outside an effect — it only works inside effect() or renderEffect()
+- Confusing with onUnmount — onCleanup is for effects, onUnmount is for components`,
+  },
+
   "reactivity/batch": {
     signature: "batch(fn: () => void): void",
     example: `const a = signal(1)
@@ -194,6 +207,40 @@ const Child = () => {
   "core/useContext": {
     signature: "useContext<T>(ctx: Context<T>): T",
     example: `const theme = useContext(ThemeContext)  // returns provided value or default`,
+  },
+
+  "core/provide": {
+    signature: "provide<T>(ctx: Context<T>, value: T): void",
+    example: `const ThemeCtx = createContext<"light" | "dark">("light")
+
+function App() {
+  provide(ThemeCtx, "dark")
+  return <Child />
+}`,
+    notes:
+      "Pushes a context value and auto-cleans up on unmount. Preferred over manual pushContext/popContext. Must be called during component setup.",
+  },
+
+  "core/ExtractProps": {
+    signature: "type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T",
+    example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
+
+type Props = ExtractProps<typeof Greet>
+// { name: string }`,
+    notes:
+      "Extracts the props type from a ComponentFn. Passes through unchanged if T is not a ComponentFn.",
+  },
+
+  "core/HigherOrderComponent": {
+    signature: "type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>",
+    example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
+  return (props) => {
+    console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)
+    return <Wrapped {...props} />
+  }
+}`,
+    notes:
+      "Typed HOC pattern — HOP is the props the HOC adds, P is the wrapped component's own props.",
   },
 
   "core/For": {

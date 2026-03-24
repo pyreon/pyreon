@@ -42,15 +42,15 @@ type StyleValue = string | CSSProperties
 /** Common HTML attributes accepted by all Pyreon elements */
 interface PyreonHTMLAttributes {
   // Identity
-  id?: string
-  class?: string | (() => string)
-  className?: string | (() => string)
-  style?: StyleValue | (() => StyleValue)
+  id?: string | undefined
+  class?: string | (() => string) | undefined
+  className?: string | (() => string) | undefined
+  style?: StyleValue | (() => StyleValue) | undefined
   // pyreon-specific directives
   "n-show"?: boolean | (() => boolean)
   // Accessible
   role?: string
-  tabIndex?: number | (() => number)
+  tabIndex?: number | (() => number) | undefined
   title?: string
   lang?: string
   dir?: "ltr" | "rtl" | "auto"
@@ -94,9 +94,9 @@ interface PyreonHTMLAttributes {
   "aria-rowindex"?: number
   "aria-rowspan"?: number
   // DOM lifecycle ref — object ref or callback ref
-  ref?: { current: unknown } | ((el: Element | null) => void)
+  ref?: { current: unknown } | ((el: Element | null) => void) | undefined
   // Key for list reconciliation
-  key?: string | number
+  key?: string | number | undefined
   // Children — allows null, undefined, boolean in JSX children positions
   children?: VNodeChild | VNodeChild[]
   // innerHTML

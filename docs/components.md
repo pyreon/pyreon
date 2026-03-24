@@ -48,7 +48,7 @@ const Greet: ComponentFn<GreetProps> = ({ name, age }) => {
 **Key rules:**
 
 1. A component function runs once per mount. There are no re-renders.
-2. Return a `VNode`, `null`, or a reactive getter `() => VNode | null`.
+2. Return a `VNodeChild` — any of `VNode`, `string`, `number`, `null`, `undefined`, an array of these, or a reactive getter `() => VNodeChild`.
 3. Props are plain values (or signal getters) passed at call time. Pyreon does not proxy them.
 
 ## defineComponent
@@ -63,6 +63,46 @@ const Card = defineComponent(<P extends { title: string }>(props: P) => (
     <h2>{props.title}</h2>
   </div>
 ))
+```
+
+## Type Utilities
+
+### ExtractProps\<T\>
+
+`ExtractProps` extracts the props type from a `ComponentFn`. This is useful when you need to reference a component's props without importing the interface directly.
+
+```ts
+import type { ExtractProps } from "@pyreon/core"
+
+const Greet: ComponentFn<{ name: string; age?: number }> = ({ name, age }) => (
+  <div>{name} {age}</div>
+)
+
+type GreetProps = ExtractProps<typeof Greet>
+// { name: string; age?: number }
+```
+
+If `T` is not a `ComponentFn`, `ExtractProps` passes the type through unchanged.
+
+### HigherOrderComponent\<HOP, P\>
+
+`HigherOrderComponent` provides a typed pattern for higher-order components (HOCs) that wrap a component and inject additional props.
+
+```ts
+import type { HigherOrderComponent, ComponentFn } from "@pyreon/core"
+
+// HOP = props the HOC adds, P = the wrapped component's own props
+function withLogger<P>(
+  Wrapped: ComponentFn<P>
+): HigherOrderComponent<{ logLevel?: string }, P> {
+  return (props) => {
+    console.log(`[${props.logLevel ?? "info"}] Rendering ${Wrapped.name}`)
+    return <Wrapped {...props} />
+  }
+}
+
+const LoggedGreet = withLogger(Greet)
+// Accepts { name: string; age?: number; logLevel?: string }
 ```
 
 ## VNode Structure
