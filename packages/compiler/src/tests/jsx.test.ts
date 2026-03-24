@@ -362,6 +362,13 @@ describe("JSX transform — edge cases", () => {
     expect(t("<div>{items().map(x => x)}</div>")).toContain("() =>")
   })
 
+  test("emits _bindText for method calls (runtime handles fallback)", () => {
+    // value.toLocaleString() — compiler emits _bindText, runtime falls back
+    // to renderEffect if source lacks .direct()
+    const result = t("<div><p>{value.toLocaleString()}</p></div>")
+    expect(result).toContain("_bindText(value.toLocaleString,")
+  })
+
   test("wraps nested call in array expression", () => {
     expect(t("<div>{[getItem()]}</div>")).toContain("() =>")
   })
