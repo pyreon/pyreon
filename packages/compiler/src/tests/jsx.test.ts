@@ -92,8 +92,8 @@ describe("JSX transform — children", () => {
   test("wraps member access with call", () => {
     const result = t("<div>{obj.getValue()}</div>")
     expect(result).toContain("_tpl(")
-    // Single-signal: uses _bindText with member expression
-    expect(result).toContain("_bindText(obj.getValue,")
+    // Property access calls use _bind (not _bindText) to preserve this context
+    expect(result).toContain("_bind")
   })
 
   test("does NOT wrap member access without call", () => {
@@ -362,11 +362,20 @@ describe("JSX transform — edge cases", () => {
     expect(t("<div>{items().map(x => x)}</div>")).toContain("() =>")
   })
 
-  test("emits _bindText for method calls (runtime handles fallback)", () => {
-    // value.toLocaleString() — compiler emits _bindText, runtime falls back
-    // to renderEffect if source lacks .direct()
+  test("does not emit _bindText for method calls (preserves this context)", () => {
+    // value.toLocaleString() — property access must NOT use _bindText
+    // because detaching the method loses `this` context
     const result = t("<div><p>{value.toLocaleString()}</p></div>")
-    expect(result).toContain("_bindText(value.toLocaleString,")
+    expect(result).not.toContain("_bindText(value.toLocaleString,")
+    expect(result).toContain("_bind")
+  })
+
+  test("toLocaleString on signal read preserves this context", () => {
+    // {() => count().toLocaleString()} should NOT detach .toLocaleString
+    const result = t("<div>{() => count().toLocaleString()}</div>")
+    expect(result).not.toContain("_bindText(count,")
+    // The arrow wraps a chained call — it should use _bind, not _bindText
+    expect(result).toContain("_bind")
   })
 
   test("wraps nested call in array expression", () => {
@@ -601,9 +610,9 @@ describe("JSX transform — template emission", () => {
     expect(result).toContain('<td class=\\"id\\"></td><td></td>')
     // className uses _bindDirect (single-signal cls())
     expect(result).toContain("_bindDirect(cls,")
-    // String(row.id) has args → combined _bind; row.label() is single-signal → _bindText
+    // String(row.id) has args → combined _bind; row.label() is property access → _bind
     expect(result).toContain(".data = String(row.id)")
-    expect(result).toContain("_bindText(row.label,")
+    expect(result).toContain("row.label()")
   })
 
   test("handles multiple expression children", () => {

@@ -61,6 +61,28 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   dir?: "ltr" | "rtl" | "auto" | undefined
   hidden?: boolean | (() => boolean) | undefined
   draggable?: Booleanish | undefined
+  contentEditable?: Booleanish | "inherit" | "plaintext-only" | undefined
+  spellCheck?: Booleanish | undefined
+  autoCapitalize?: "off" | "on" | "sentences" | "words" | "characters" | undefined
+  translate?: "yes" | "no" | undefined
+  enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | undefined
+  inputMode?:
+    | "none"
+    | "text"
+    | "decimal"
+    | "numeric"
+    | "tel"
+    | "search"
+    | "email"
+    | "url"
+    | undefined
+  is?: string | undefined
+  slot?: string | undefined
+  part?: string | undefined
+  popover?: "auto" | "manual" | undefined
+  popoverTarget?: string | undefined
+  popoverTargetAction?: "toggle" | "show" | "hide" | undefined
+  inert?: boolean | undefined
   // ARIA
   "aria-label"?: string | (() => string) | undefined
   "aria-hidden"?: Booleanish | (() => Booleanish) | undefined
@@ -188,7 +210,9 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   accept?: string | undefined
   autoComplete?: string | undefined
   autoFocus?: boolean | undefined
+  capture?: "user" | "environment" | string | undefined
   form?: string | undefined
+  formNoValidate?: boolean | undefined
   list?: string | undefined
   size?: number | undefined
   src?: string | (() => string) | undefined
@@ -199,6 +223,9 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
 
 export interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement> {
   href?: string | (() => string) | undefined
+  hreflang?: string | undefined
+  ping?: string | undefined
+  referrerPolicy?: string | undefined
   target?: "_blank" | "_self" | "_parent" | "_top" | string | undefined
   rel?: string | undefined
   download?: string | boolean | undefined
@@ -261,6 +288,8 @@ export interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
   target?: string | undefined
   name?: string | undefined
   autoComplete?: string | undefined
+  acceptCharset?: string | undefined
+  rel?: string | undefined
 }
 
 export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
@@ -274,6 +303,7 @@ export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   referrerPolicy?: string | undefined
   srcSet?: string | undefined
   sizes?: string | undefined
+  fetchPriority?: "high" | "low" | "auto" | undefined
 }
 
 interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
@@ -288,6 +318,8 @@ interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
   preload?: "none" | "metadata" | "auto" | undefined
   playsInline?: boolean | undefined
   crossOrigin?: "anonymous" | "use-credentials" | undefined
+  disablePictureInPicture?: boolean | undefined
+  disableRemotePlayback?: boolean | undefined
 }
 
 interface AudioAttributes extends PyreonHTMLAttributes<HTMLAudioElement> {
@@ -439,6 +471,51 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   "font-size"?: string | number | undefined
   "text-anchor"?: "start" | "middle" | "end" | undefined
   "dominant-baseline"?: string | undefined
+  // Gradient & pattern
+  gradientUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  gradientTransform?: string | undefined
+  patternUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  patternContentUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  patternTransform?: string | undefined
+  spreadMethod?: "pad" | "reflect" | "repeat" | undefined
+  // Marker
+  markerWidth?: string | number | undefined
+  markerHeight?: string | number | undefined
+  markerUnits?: "strokeWidth" | "userSpaceOnUse" | undefined
+  orient?: string | number | undefined
+  refX?: string | number | undefined
+  refY?: string | number | undefined
+  // Clipping & masking
+  maskUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  maskContentUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  clipPathUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  // Filter
+  filterUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  primitiveUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  // Presentation
+  preserveAspectRatio?: string | undefined
+  "color-interpolation"?: string | undefined
+  "color-interpolation-filters"?: string | undefined
+  "shape-rendering"?: string | undefined
+  "image-rendering"?: string | undefined
+  "text-rendering"?: string | undefined
+  "pointer-events"?: string | undefined
+  visibility?: string | undefined
+  display?: string | undefined
+  overflow?: string | undefined
+  cursor?: string | undefined
+  // Text
+  dx?: string | number | undefined
+  dy?: string | number | undefined
+  textLength?: string | number | undefined
+  lengthAdjust?: "spacing" | "spacingAndGlyphs" | undefined
+  "writing-mode"?: string | undefined
+  "letter-spacing"?: string | number | undefined
+  "word-spacing"?: string | number | undefined
+  // Path
+  pathLength?: number | undefined
+  // Use/href
+  href?: string | undefined
 }
 
 declare global {
