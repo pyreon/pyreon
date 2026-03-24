@@ -1565,6 +1565,40 @@ describe("mount — edge cases", () => {
     expect(el.querySelector("#dashboard")).toBeNull()
   })
 
+  test("reactive child returning component with internal signals", () => {
+    const el = container()
+    const Dashboard = () => {
+      const count = signal(0)
+      return h("div", { id: "dashboard" }, () => `Count: ${count()}`)
+    }
+    const Settings = () => {
+      return h("div", { id: "settings" }, h("span", null, "Settings page"))
+    }
+    const activeTab = signal<string>("dashboard")
+
+    mount(
+      h("div", null, () => {
+        const tab = activeTab()
+        if (tab === "dashboard") return h(Dashboard, null)
+        if (tab === "settings") return h(Settings, null)
+        return null
+      }),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")).not.toBeNull()
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Count: 0")
+
+    activeTab.set("settings")
+    expect(el.querySelector("#settings")).not.toBeNull()
+    expect(el.querySelector("#settings")?.textContent).toBe("Settings page")
+    expect(el.querySelector("#dashboard")).toBeNull()
+
+    activeTab.set("none")
+    expect(el.querySelector("#settings")).toBeNull()
+    expect(el.querySelector("#dashboard")).toBeNull()
+  })
+
   test("boolean false renders nothing", () => {
     const el = container()
     mount(h("div", null, false), el)
