@@ -6,6 +6,7 @@
  *   <div class="x" />  →  jsx("div", { class: "x" })
  */
 import { Fragment, h } from "./h"
+import type { RefProp } from "./ref"
 import type { ClassValue } from "./style"
 import type { ComponentFn, Props, VNode, VNodeChild } from "./types"
 
@@ -98,7 +99,7 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   "aria-rowindex"?: number | undefined
   "aria-rowspan"?: number | undefined
   // DOM lifecycle ref — object ref or callback ref
-  ref?: { current: E | null } | ((el: E | null) => void) | undefined
+  ref?: RefProp<E> | undefined
   // Key for list reconciliation
   key?: string | number | undefined
   // Children — allows null, undefined, boolean in JSX children positions

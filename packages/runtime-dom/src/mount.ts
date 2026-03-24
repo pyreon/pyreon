@@ -3,7 +3,7 @@ import type {
   ForProps,
   NativeItem,
   PortalProps,
-  Ref,
+  RefProp,
   VNode,
   VNodeChild,
 } from "@pyreon/core"
@@ -193,7 +193,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   parent.insertBefore(el, anchor)
 
   // Populate ref after the element is in the DOM
-  const ref = props.ref as Ref<Element> | ((el: Element) => void) | null | undefined
+  const ref = props.ref as RefProp<Element> | null | undefined
   if (ref) {
     if (typeof ref === "function") ref(el)
     else ref.current = el
