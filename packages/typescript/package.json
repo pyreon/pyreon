@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/typescript",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "TypeScript configuration presets for Pyreon projects",
   "license": "MIT",
   "repository": {

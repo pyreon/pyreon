@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/vite-plugin",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "description": "Vite plugin for Pyreon — .pyreon SFC support, HMR, compiler integration",
   "license": "MIT",
   "repository": {
