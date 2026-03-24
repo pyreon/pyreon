@@ -46,53 +46,51 @@ interface PyreonHTMLAttributes {
   class?: string | (() => string) | undefined
   className?: string | (() => string) | undefined
   style?: StyleValue | (() => StyleValue) | undefined
-  // pyreon-specific directives
-  "n-show"?: boolean | (() => boolean)
   // Accessible
-  role?: string
+  role?: string | undefined
   tabIndex?: number | (() => number) | undefined
-  title?: string
-  lang?: string
-  dir?: "ltr" | "rtl" | "auto"
-  hidden?: boolean | (() => boolean)
-  draggable?: Booleanish
+  title?: string | undefined
+  lang?: string | undefined
+  dir?: "ltr" | "rtl" | "auto" | undefined
+  hidden?: boolean | (() => boolean) | undefined
+  draggable?: Booleanish | undefined
   // ARIA
-  "aria-label"?: string | (() => string)
-  "aria-hidden"?: Booleanish | (() => Booleanish)
-  "aria-disabled"?: Booleanish | (() => Booleanish)
-  "aria-expanded"?: Booleanish | (() => Booleanish)
-  "aria-selected"?: Booleanish | (() => Booleanish)
-  "aria-checked"?: Booleanish | "mixed" | (() => Booleanish | "mixed")
-  "aria-current"?: Booleanish | "page" | "step" | "location" | "date" | "time"
-  "aria-live"?: "off" | "assertive" | "polite"
-  "aria-atomic"?: Booleanish
-  "aria-busy"?: Booleanish
-  "aria-controls"?: string
-  "aria-describedby"?: string
-  "aria-labelledby"?: string
-  "aria-placeholder"?: string
-  "aria-required"?: Booleanish | (() => Booleanish)
-  "aria-invalid"?: Booleanish | "grammar" | "spelling"
-  "aria-valuemin"?: number
-  "aria-valuemax"?: number
-  "aria-valuenow"?: number
-  "aria-valuetext"?: string
-  "aria-haspopup"?: Booleanish | "menu" | "listbox" | "tree" | "grid" | "dialog"
-  "aria-posinset"?: number
-  "aria-setsize"?: number
-  "aria-level"?: number
-  "aria-multiline"?: Booleanish
-  "aria-multiselectable"?: Booleanish
-  "aria-orientation"?: "horizontal" | "vertical"
-  "aria-readonly"?: Booleanish | (() => Booleanish)
-  "aria-sort"?: "none" | "ascending" | "descending" | "other"
-  "aria-autocomplete"?: "none" | "inline" | "list" | "both"
-  "aria-colcount"?: number
-  "aria-colindex"?: number
-  "aria-colspan"?: number
-  "aria-rowcount"?: number
-  "aria-rowindex"?: number
-  "aria-rowspan"?: number
+  "aria-label"?: string | (() => string) | undefined
+  "aria-hidden"?: Booleanish | (() => Booleanish) | undefined
+  "aria-disabled"?: Booleanish | (() => Booleanish) | undefined
+  "aria-expanded"?: Booleanish | (() => Booleanish) | undefined
+  "aria-selected"?: Booleanish | (() => Booleanish) | undefined
+  "aria-checked"?: Booleanish | "mixed" | (() => Booleanish | "mixed") | undefined
+  "aria-current"?: Booleanish | "page" | "step" | "location" | "date" | "time" | undefined
+  "aria-live"?: "off" | "assertive" | "polite" | undefined
+  "aria-atomic"?: Booleanish | undefined
+  "aria-busy"?: Booleanish | undefined
+  "aria-controls"?: string | undefined
+  "aria-describedby"?: string | undefined
+  "aria-labelledby"?: string | undefined
+  "aria-placeholder"?: string | undefined
+  "aria-required"?: Booleanish | (() => Booleanish) | undefined
+  "aria-invalid"?: Booleanish | "grammar" | "spelling" | undefined
+  "aria-valuemin"?: number | undefined
+  "aria-valuemax"?: number | undefined
+  "aria-valuenow"?: number | undefined
+  "aria-valuetext"?: string | undefined
+  "aria-haspopup"?: Booleanish | "menu" | "listbox" | "tree" | "grid" | "dialog" | undefined
+  "aria-posinset"?: number | undefined
+  "aria-setsize"?: number | undefined
+  "aria-level"?: number | undefined
+  "aria-multiline"?: Booleanish | undefined
+  "aria-multiselectable"?: Booleanish | undefined
+  "aria-orientation"?: "horizontal" | "vertical" | undefined
+  "aria-readonly"?: Booleanish | (() => Booleanish) | undefined
+  "aria-sort"?: "none" | "ascending" | "descending" | "other" | undefined
+  "aria-autocomplete"?: "none" | "inline" | "list" | "both" | undefined
+  "aria-colcount"?: number | undefined
+  "aria-colindex"?: number | undefined
+  "aria-colspan"?: number | undefined
+  "aria-rowcount"?: number | undefined
+  "aria-rowindex"?: number | undefined
+  "aria-rowspan"?: number | undefined
   // DOM lifecycle ref — object ref or callback ref
   ref?: { current: unknown } | ((el: Element | null) => void) | undefined
   // Key for list reconciliation
@@ -100,330 +98,330 @@ interface PyreonHTMLAttributes {
   // Children — allows null, undefined, boolean in JSX children positions
   children?: VNodeChild | VNodeChild[]
   // innerHTML
-  innerHTML?: string
-  dangerouslySetInnerHTML?: { __html: string }
+  innerHTML?: string | undefined
+  dangerouslySetInnerHTML?: { __html: string } | undefined
   // Events
-  onClick?: (e: MouseEvent) => void
-  onDblClick?: (e: MouseEvent) => void
-  onMouseDown?: (e: MouseEvent) => void
-  onMouseUp?: (e: MouseEvent) => void
-  onMouseEnter?: (e: MouseEvent) => void
-  onMouseLeave?: (e: MouseEvent) => void
-  onMouseMove?: (e: MouseEvent) => void
-  onMouseOver?: (e: MouseEvent) => void
-  onMouseOut?: (e: MouseEvent) => void
-  onContextMenu?: (e: MouseEvent) => void
-  onKeyDown?: (e: KeyboardEvent) => void
-  onKeyUp?: (e: KeyboardEvent) => void
-  onKeyPress?: (e: KeyboardEvent) => void
-  onFocus?: (e: FocusEvent) => void
-  onBlur?: (e: FocusEvent) => void
-  onChange?: (e: Event) => void
-  onInput?: (e: InputEvent) => void
-  onSubmit?: (e: SubmitEvent) => void
-  onReset?: (e: Event) => void
-  onScroll?: (e: Event) => void
-  onWheel?: (e: WheelEvent) => void
-  onDragStart?: (e: DragEvent) => void
-  onDragEnd?: (e: DragEvent) => void
-  onDragOver?: (e: DragEvent) => void
-  onDragEnter?: (e: DragEvent) => void
-  onDragLeave?: (e: DragEvent) => void
-  onDrop?: (e: DragEvent) => void
-  onTouchStart?: (e: TouchEvent) => void
-  onTouchEnd?: (e: TouchEvent) => void
-  onTouchMove?: (e: TouchEvent) => void
-  onPointerDown?: (e: PointerEvent) => void
-  onPointerUp?: (e: PointerEvent) => void
-  onPointerMove?: (e: PointerEvent) => void
-  onPointerEnter?: (e: PointerEvent) => void
-  onPointerLeave?: (e: PointerEvent) => void
-  onPointerCancel?: (e: PointerEvent) => void
-  onPointerOver?: (e: PointerEvent) => void
-  onPointerOut?: (e: PointerEvent) => void
-  onTransitionEnd?: (e: TransitionEvent) => void
-  onAnimationStart?: (e: AnimationEvent) => void
-  onAnimationEnd?: (e: AnimationEvent) => void
-  onAnimationIteration?: (e: AnimationEvent) => void
-  onLoad?: (e: Event) => void
-  onError?: (e: Event | string) => void
-  onAbort?: (e: Event) => void
-  onSelect?: (e: Event) => void
-  onCopy?: (e: ClipboardEvent) => void
-  onCut?: (e: ClipboardEvent) => void
-  onPaste?: (e: ClipboardEvent) => void
+  onClick?: ((e: MouseEvent) => void) | undefined
+  onDblClick?: ((e: MouseEvent) => void) | undefined
+  onMouseDown?: ((e: MouseEvent) => void) | undefined
+  onMouseUp?: ((e: MouseEvent) => void) | undefined
+  onMouseEnter?: ((e: MouseEvent) => void) | undefined
+  onMouseLeave?: ((e: MouseEvent) => void) | undefined
+  onMouseMove?: ((e: MouseEvent) => void) | undefined
+  onMouseOver?: ((e: MouseEvent) => void) | undefined
+  onMouseOut?: ((e: MouseEvent) => void) | undefined
+  onContextMenu?: ((e: MouseEvent) => void) | undefined
+  onKeyDown?: ((e: KeyboardEvent) => void) | undefined
+  onKeyUp?: ((e: KeyboardEvent) => void) | undefined
+  onKeyPress?: ((e: KeyboardEvent) => void) | undefined
+  onFocus?: ((e: FocusEvent) => void) | undefined
+  onBlur?: ((e: FocusEvent) => void) | undefined
+  onChange?: ((e: Event) => void) | undefined
+  onInput?: ((e: InputEvent) => void) | undefined
+  onSubmit?: ((e: SubmitEvent) => void) | undefined
+  onReset?: ((e: Event) => void) | undefined
+  onScroll?: ((e: Event) => void) | undefined
+  onWheel?: ((e: WheelEvent) => void) | undefined
+  onDragStart?: ((e: DragEvent) => void) | undefined
+  onDragEnd?: ((e: DragEvent) => void) | undefined
+  onDragOver?: ((e: DragEvent) => void) | undefined
+  onDragEnter?: ((e: DragEvent) => void) | undefined
+  onDragLeave?: ((e: DragEvent) => void) | undefined
+  onDrop?: ((e: DragEvent) => void) | undefined
+  onTouchStart?: ((e: TouchEvent) => void) | undefined
+  onTouchEnd?: ((e: TouchEvent) => void) | undefined
+  onTouchMove?: ((e: TouchEvent) => void) | undefined
+  onPointerDown?: ((e: PointerEvent) => void) | undefined
+  onPointerUp?: ((e: PointerEvent) => void) | undefined
+  onPointerMove?: ((e: PointerEvent) => void) | undefined
+  onPointerEnter?: ((e: PointerEvent) => void) | undefined
+  onPointerLeave?: ((e: PointerEvent) => void) | undefined
+  onPointerCancel?: ((e: PointerEvent) => void) | undefined
+  onPointerOver?: ((e: PointerEvent) => void) | undefined
+  onPointerOut?: ((e: PointerEvent) => void) | undefined
+  onTransitionEnd?: ((e: TransitionEvent) => void) | undefined
+  onAnimationStart?: ((e: AnimationEvent) => void) | undefined
+  onAnimationEnd?: ((e: AnimationEvent) => void) | undefined
+  onAnimationIteration?: ((e: AnimationEvent) => void) | undefined
+  onLoad?: ((e: Event) => void) | undefined
+  onError?: ((e: Event | string) => void) | undefined
+  onAbort?: ((e: Event) => void) | undefined
+  onSelect?: ((e: Event) => void) | undefined
+  onCopy?: ((e: ClipboardEvent) => void) | undefined
+  onCut?: ((e: ClipboardEvent) => void) | undefined
+  onPaste?: ((e: ClipboardEvent) => void) | undefined
   // Catch-all for data-* and other arbitrary attributes
   [key: string]: unknown
 }
 
 /** Attributes specific to form inputs */
 interface InputAttributes extends PyreonHTMLAttributes {
-  type?: string | (() => string)
-  value?: string | number | (() => string | number)
-  defaultValue?: string | number
-  checked?: boolean | (() => boolean)
-  defaultChecked?: boolean
-  placeholder?: string | (() => string)
-  disabled?: boolean | (() => boolean)
-  readOnly?: boolean
-  required?: boolean | (() => boolean)
-  min?: string | number
-  max?: string | number
-  step?: string | number
-  minLength?: number
-  maxLength?: number
-  pattern?: string
-  multiple?: boolean
-  name?: string
-  accept?: string
-  autoComplete?: string
-  autoFocus?: boolean
-  form?: string
-  list?: string
-  size?: number
-  src?: string | (() => string)
-  alt?: string
-  width?: number | string
-  height?: number | string
+  type?: string | (() => string) | undefined
+  value?: string | number | (() => string | number) | undefined
+  defaultValue?: string | number | undefined
+  checked?: boolean | (() => boolean) | undefined
+  defaultChecked?: boolean | undefined
+  placeholder?: string | (() => string) | undefined
+  disabled?: boolean | (() => boolean) | undefined
+  readOnly?: boolean | undefined
+  required?: boolean | (() => boolean) | undefined
+  min?: string | number | undefined
+  max?: string | number | undefined
+  step?: string | number | undefined
+  minLength?: number | undefined
+  maxLength?: number | undefined
+  pattern?: string | undefined
+  multiple?: boolean | undefined
+  name?: string | undefined
+  accept?: string | undefined
+  autoComplete?: string | undefined
+  autoFocus?: boolean | undefined
+  form?: string | undefined
+  list?: string | undefined
+  size?: number | undefined
+  src?: string | (() => string) | undefined
+  alt?: string | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
 }
 
 interface AnchorAttributes extends PyreonHTMLAttributes {
-  href?: string | (() => string)
-  target?: "_blank" | "_self" | "_parent" | "_top" | string
-  rel?: string
-  download?: string | boolean
+  href?: string | (() => string) | undefined
+  target?: "_blank" | "_self" | "_parent" | "_top" | string | undefined
+  rel?: string | undefined
+  download?: string | boolean | undefined
 }
 
 interface ButtonAttributes extends PyreonHTMLAttributes {
-  type?: "button" | "submit" | "reset"
-  disabled?: boolean | (() => boolean)
-  name?: string
-  value?: string
-  form?: string
-  formAction?: string
-  formMethod?: string
-  formEncType?: string
-  formNoValidate?: boolean
-  formTarget?: string
+  type?: "button" | "submit" | "reset" | undefined
+  disabled?: boolean | (() => boolean) | undefined
+  name?: string | undefined
+  value?: string | undefined
+  form?: string | undefined
+  formAction?: string | undefined
+  formMethod?: string | undefined
+  formEncType?: string | undefined
+  formNoValidate?: boolean | undefined
+  formTarget?: string | undefined
 }
 
 interface TextareaAttributes extends PyreonHTMLAttributes {
-  value?: string | (() => string)
-  defaultValue?: string
-  placeholder?: string | (() => string)
-  disabled?: boolean | (() => boolean)
-  readOnly?: boolean
-  required?: boolean | (() => boolean)
-  rows?: number
-  cols?: number
-  minLength?: number
-  maxLength?: number
-  name?: string
-  autoFocus?: boolean
-  form?: string
-  wrap?: "hard" | "soft"
+  value?: string | (() => string) | undefined
+  defaultValue?: string | undefined
+  placeholder?: string | (() => string) | undefined
+  disabled?: boolean | (() => boolean) | undefined
+  readOnly?: boolean | undefined
+  required?: boolean | (() => boolean) | undefined
+  rows?: number | undefined
+  cols?: number | undefined
+  minLength?: number | undefined
+  maxLength?: number | undefined
+  name?: string | undefined
+  autoFocus?: boolean | undefined
+  form?: string | undefined
+  wrap?: "hard" | "soft" | undefined
 }
 
 interface SelectAttributes extends PyreonHTMLAttributes {
-  value?: string | string[] | (() => string | string[])
-  defaultValue?: string | string[]
-  disabled?: boolean | (() => boolean)
-  required?: boolean | (() => boolean)
-  multiple?: boolean
-  name?: string
-  size?: number
-  form?: string
-  autoFocus?: boolean
+  value?: string | string[] | (() => string | string[]) | undefined
+  defaultValue?: string | string[] | undefined
+  disabled?: boolean | (() => boolean) | undefined
+  required?: boolean | (() => boolean) | undefined
+  multiple?: boolean | undefined
+  name?: string | undefined
+  size?: number | undefined
+  form?: string | undefined
+  autoFocus?: boolean | undefined
 }
 
 interface OptionAttributes extends PyreonHTMLAttributes {
-  value?: string | number | (() => string | number)
-  disabled?: boolean | (() => boolean)
-  selected?: boolean | (() => boolean)
-  label?: string
+  value?: string | number | (() => string | number) | undefined
+  disabled?: boolean | (() => boolean) | undefined
+  selected?: boolean | (() => boolean) | undefined
+  label?: string | undefined
 }
 
 interface FormAttributes extends PyreonHTMLAttributes {
-  action?: string
-  method?: "get" | "post"
-  encType?: string
-  noValidate?: boolean
-  target?: string
-  name?: string
-  autoComplete?: string
+  action?: string | undefined
+  method?: "get" | "post" | undefined
+  encType?: string | undefined
+  noValidate?: boolean | undefined
+  target?: string | undefined
+  name?: string | undefined
+  autoComplete?: string | undefined
 }
 
 interface ImgAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  alt?: string | (() => string)
-  width?: number | string | (() => number | string)
-  height?: number | string | (() => number | string)
-  loading?: "lazy" | "eager"
-  decoding?: "auto" | "async" | "sync"
-  crossOrigin?: "anonymous" | "use-credentials"
-  referrerPolicy?: string
-  srcSet?: string
-  sizes?: string
+  src?: string | (() => string) | undefined
+  alt?: string | (() => string) | undefined
+  width?: number | string | (() => number | string) | undefined
+  height?: number | string | (() => number | string) | undefined
+  loading?: "lazy" | "eager" | undefined
+  decoding?: "auto" | "async" | "sync" | undefined
+  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  referrerPolicy?: string | undefined
+  srcSet?: string | undefined
+  sizes?: string | undefined
 }
 
 interface VideoAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  width?: number | string
-  height?: number | string
-  controls?: boolean
-  autoPlay?: boolean
-  muted?: boolean
-  loop?: boolean
-  poster?: string
-  preload?: "none" | "metadata" | "auto"
-  playsInline?: boolean
-  crossOrigin?: "anonymous" | "use-credentials"
+  src?: string | (() => string) | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
+  controls?: boolean | undefined
+  autoPlay?: boolean | undefined
+  muted?: boolean | undefined
+  loop?: boolean | undefined
+  poster?: string | undefined
+  preload?: "none" | "metadata" | "auto" | undefined
+  playsInline?: boolean | undefined
+  crossOrigin?: "anonymous" | "use-credentials" | undefined
 }
 
 interface AudioAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  controls?: boolean
-  autoPlay?: boolean
-  muted?: boolean
-  loop?: boolean
-  preload?: "none" | "metadata" | "auto"
-  crossOrigin?: "anonymous" | "use-credentials"
+  src?: string | (() => string) | undefined
+  controls?: boolean | undefined
+  autoPlay?: boolean | undefined
+  muted?: boolean | undefined
+  loop?: boolean | undefined
+  preload?: "none" | "metadata" | "auto" | undefined
+  crossOrigin?: "anonymous" | "use-credentials" | undefined
 }
 
 interface LabelAttributes extends PyreonHTMLAttributes {
-  htmlFor?: string
-  for?: string
-  form?: string
+  htmlFor?: string | undefined
+  for?: string | undefined
+  form?: string | undefined
 }
 
 interface ThAttributes extends PyreonHTMLAttributes {
-  colSpan?: number
-  rowSpan?: number
-  scope?: "col" | "row" | "colgroup" | "rowgroup"
-  abbr?: string
-  headers?: string
+  colSpan?: number | undefined
+  rowSpan?: number | undefined
+  scope?: "col" | "row" | "colgroup" | "rowgroup" | undefined
+  abbr?: string | undefined
+  headers?: string | undefined
 }
 
 interface TdAttributes extends PyreonHTMLAttributes {
-  colSpan?: number
-  rowSpan?: number
-  headers?: string
+  colSpan?: number | undefined
+  rowSpan?: number | undefined
+  headers?: string | undefined
 }
 
 interface ColAttributes extends PyreonHTMLAttributes {
-  span?: number
+  span?: number | undefined
 }
 
 interface IframeAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  width?: number | string
-  height?: number | string
-  allow?: string
-  allowFullScreen?: boolean
-  loading?: "lazy" | "eager"
-  name?: string
-  sandbox?: string
-  referrerPolicy?: string
-  title?: string
+  src?: string | (() => string) | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
+  allow?: string | undefined
+  allowFullScreen?: boolean | undefined
+  loading?: "lazy" | "eager" | undefined
+  name?: string | undefined
+  sandbox?: string | undefined
+  referrerPolicy?: string | undefined
+  title?: string | undefined
 }
 
 interface LinkAttributes extends PyreonHTMLAttributes {
-  href?: string | (() => string)
-  rel?: string
-  type?: string
-  as?: string
-  media?: string
-  crossOrigin?: "anonymous" | "use-credentials"
-  integrity?: string
-  referrerPolicy?: string
+  href?: string | (() => string) | undefined
+  rel?: string | undefined
+  type?: string | undefined
+  as?: string | undefined
+  media?: string | undefined
+  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  integrity?: string | undefined
+  referrerPolicy?: string | undefined
 }
 
 interface MetaAttributes extends PyreonHTMLAttributes {
-  name?: string
-  content?: string | (() => string)
-  httpEquiv?: string
-  charset?: string
-  property?: string
+  name?: string | undefined
+  content?: string | (() => string) | undefined
+  httpEquiv?: string | undefined
+  charset?: string | undefined
+  property?: string | undefined
 }
 
 interface ScriptAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  type?: string
-  async?: boolean
-  defer?: boolean
-  crossOrigin?: "anonymous" | "use-credentials"
-  integrity?: string
-  noModule?: boolean
-  referrerPolicy?: string
+  src?: string | (() => string) | undefined
+  type?: string | undefined
+  async?: boolean | undefined
+  defer?: boolean | undefined
+  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  integrity?: string | undefined
+  noModule?: boolean | undefined
+  referrerPolicy?: string | undefined
 }
 
 interface SourceAttributes extends PyreonHTMLAttributes {
-  src?: string | (() => string)
-  type?: string
-  srcSet?: string
-  sizes?: string
-  media?: string
+  src?: string | (() => string) | undefined
+  type?: string | undefined
+  srcSet?: string | undefined
+  sizes?: string | undefined
+  media?: string | undefined
 }
 
 interface ProgressAttributes extends PyreonHTMLAttributes {
-  value?: number | (() => number)
-  max?: number
+  value?: number | (() => number) | undefined
+  max?: number | undefined
 }
 
 interface MeterAttributes extends PyreonHTMLAttributes {
-  value?: number | (() => number)
-  min?: number
-  max?: number
-  low?: number
-  high?: number
-  optimum?: number
+  value?: number | (() => number) | undefined
+  min?: number | undefined
+  max?: number | undefined
+  low?: number | undefined
+  high?: number | undefined
+  optimum?: number | undefined
 }
 
 interface DetailsAttributes extends PyreonHTMLAttributes {
-  open?: boolean | (() => boolean)
+  open?: boolean | (() => boolean) | undefined
 }
 
 interface DialogAttributes extends PyreonHTMLAttributes {
-  open?: boolean | (() => boolean)
+  open?: boolean | (() => boolean) | undefined
 }
 
 interface OlAttributes extends PyreonHTMLAttributes {
-  start?: number
-  reversed?: boolean
-  type?: "1" | "a" | "A" | "i" | "I"
+  start?: number | undefined
+  reversed?: boolean | undefined
+  type?: "1" | "a" | "A" | "i" | "I" | undefined
 }
 
 interface SvgAttributes extends PyreonHTMLAttributes {
-  viewBox?: string
-  xmlns?: string
-  fill?: string | (() => string)
-  stroke?: string | (() => string)
-  "stroke-width"?: string | number
-  "stroke-linecap"?: "butt" | "round" | "square"
-  "stroke-linejoin"?: "miter" | "round" | "bevel"
-  "fill-rule"?: "nonzero" | "evenodd"
-  "clip-rule"?: "nonzero" | "evenodd"
-  "clip-path"?: string
-  d?: string
-  cx?: string | number
-  cy?: string | number
-  r?: string | number
-  rx?: string | number
-  ry?: string | number
-  x?: string | number
-  y?: string | number
-  x1?: string | number
-  y1?: string | number
-  x2?: string | number
-  y2?: string | number
-  width?: string | number
-  height?: string | number
-  transform?: string | (() => string)
-  opacity?: string | number | (() => string | number)
-  points?: string
-  "font-size"?: string | number
-  "text-anchor"?: "start" | "middle" | "end"
-  "dominant-baseline"?: string
+  viewBox?: string | undefined
+  xmlns?: string | undefined
+  fill?: string | (() => string) | undefined
+  stroke?: string | (() => string) | undefined
+  "stroke-width"?: string | number | undefined
+  "stroke-linecap"?: "butt" | "round" | "square" | undefined
+  "stroke-linejoin"?: "miter" | "round" | "bevel" | undefined
+  "fill-rule"?: "nonzero" | "evenodd" | undefined
+  "clip-rule"?: "nonzero" | "evenodd" | undefined
+  "clip-path"?: string | undefined
+  d?: string | undefined
+  cx?: string | number | undefined
+  cy?: string | number | undefined
+  r?: string | number | undefined
+  rx?: string | number | undefined
+  ry?: string | number | undefined
+  x?: string | number | undefined
+  y?: string | number | undefined
+  x1?: string | number | undefined
+  y1?: string | number | undefined
+  x2?: string | number | undefined
+  y2?: string | number | undefined
+  width?: string | number | undefined
+  height?: string | number | undefined
+  transform?: string | (() => string) | undefined
+  opacity?: string | number | (() => string | number) | undefined
+  points?: string | undefined
+  "font-size"?: string | number | undefined
+  "text-anchor"?: "start" | "middle" | "end" | undefined
+  "dominant-baseline"?: string | undefined
 }
 
 declare global {

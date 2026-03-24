@@ -109,19 +109,6 @@ Event handlers passed via `onXxx` props are wrapped in `batch()` automatically. 
 </button>
 ```
 
-## Custom Directives
-
-Custom directives (`n-*` props) receive the element and a cleanup registration function. They should not bypass DOM APIs in unsafe ways:
-
-```tsx
-// Safe directive pattern
-const nAutoFocus: Directive = (el) => {
-  el.focus()
-}
-
-<input n-autoFocus={nAutoFocus} />
-```
-
 ## Best Practices
 
 1. **Prefer `innerHTML` over `dangerouslySetInnerHTML`.** The `innerHTML` prop is sanitized automatically.

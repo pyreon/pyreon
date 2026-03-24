@@ -6,25 +6,6 @@ import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
 
 type Cleanup = () => void
 
-/**
- * Directive function signature.
- * Receives the element and an `addCleanup` callback to register teardown logic.
- *
- * @example
- * const nFocus: Directive = (el) => { el.focus() }
- *
- * // With reactive value (via closure):
- * const nTooltip = (text: () => string): Directive => (el, addCleanup) => {
- *   const e = effect(() => { el.title = text() })
- *   addCleanup(() => e.dispose())
- * }
- *
- * // Usage:
- * h("input", { "n-focus": nFocus })
- * h("div",   { "n-tooltip": nTooltip(() => label()) })
- */
-export type Directive = (el: HTMLElement, addCleanup: (fn: Cleanup) => void) => void
-
 const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
 // ─── Configurable sanitizer ──────────────────────────────────────────────────
@@ -267,27 +248,6 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
-  }
-
-  // n-show: toggle display based on a reactive boolean
-  if (key === "n-show") {
-    const dispose = renderEffect(() => {
-      const visible = (value as () => boolean)()
-      ;(el as HTMLElement).style.display = visible ? "" : "none"
-    })
-    return dispose
-  }
-
-  // Custom directive: n-* keys call the directive function with (el, addCleanup)
-  if (key.startsWith("n-")) {
-    const directive = value as Directive
-    const cleanups: Cleanup[] = []
-    directive(el as HTMLElement, (fn) => cleanups.push(fn))
-    return cleanups.length > 0
-      ? () => {
-          for (const fn of cleanups) fn()
-        }
-      : null
   }
 
   // Reactive prop — function that returns the actual value

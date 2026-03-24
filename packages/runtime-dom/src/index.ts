@@ -7,7 +7,7 @@ export { disableHydrationWarnings, enableHydrationWarnings } from "./hydration-d
 export type { KeepAliveProps } from "./keep-alive"
 export { KeepAlive } from "./keep-alive"
 export { mountChild } from "./mount"
-export type { Directive, SanitizeFn } from "./props"
+export type { SanitizeFn } from "./props"
 export { applyProp, applyProps, sanitizeHtml, setSanitizer } from "./props"
 export { _bindDirect, _bindText, _tpl, createTemplate } from "./template"
 export type { TransitionProps } from "./transition"

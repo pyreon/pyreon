@@ -348,8 +348,7 @@ const SSR_URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", 
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 function renderPropSkipped(key: string): boolean {
-  if (key === "key" || key === "ref" || key === "n-show") return true
-  if (key.startsWith("n-")) return true
+  if (key === "key" || key === "ref") return true
   if (/^on[A-Z]/.test(key)) return true
   return false
 }

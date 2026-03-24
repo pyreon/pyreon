@@ -27,7 +27,6 @@ import {
   setSanitizer,
 } from "../index"
 import { mountChild } from "../mount"
-import type { Directive } from "../props"
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
 const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>
@@ -956,21 +955,6 @@ describe("props.ts — uncovered branches", () => {
     warnSpy.mockRestore()
   })
 
-  test("n-show prop toggles display (lines 273-277)", () => {
-    const el = container()
-    const visible = signal(true)
-
-    mount(h("div", { "n-show": () => visible() }), el)
-    const div = el.querySelector("div") as HTMLElement
-    expect(div.style.display).toBe("")
-
-    visible.set(false)
-    expect(div.style.display).toBe("none")
-
-    visible.set(true)
-    expect(div.style.display).toBe("")
-  })
-
   test("innerHTML with setHTML method (line 242)", async () => {
     const el = container()
     const div = document.createElement("div")
@@ -1011,17 +995,6 @@ describe("props.ts — uncovered branches", () => {
     expect(div.getAttribute("data-x")).toBe("c")
 
     unmount()
-  })
-
-  test("directive without cleanup returns null", () => {
-    const el = container()
-    let called = false
-    const nSimple: Directive = () => {
-      called = true
-      // No addCleanup call
-    }
-    mount(h("div", { "n-simple": nSimple }), el)
-    expect(called).toBe(true)
   })
 
   test("sanitizeHtml with no DOMParser or Sanitizer falls back to tag stripping", () => {

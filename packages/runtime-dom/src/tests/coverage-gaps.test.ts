@@ -500,9 +500,9 @@ describe("nodes.ts — LIS array growth and dev warnings", () => {
   })
 })
 
-// ─── props.ts — lines 182 (Sanitizer API), 190 (no DOMParser), 273-277 (n-show) ─────
+// ─── props.ts — lines 182 (Sanitizer API), 190 (no DOMParser) ─────
 
-describe("props.ts — Sanitizer API branch and n-show", () => {
+describe("props.ts — Sanitizer API branch", () => {
   test("sanitizeHtml fallback — strips unsafe tags via DOMParser", () => {
     setSanitizer(null)
     // _nativeSanitizer is undefined (happy-dom has no Sanitizer API)
@@ -523,23 +523,6 @@ describe("props.ts — Sanitizer API branch and n-show", () => {
     setSanitizer(null)
     const result = sanitizeHtml('<a href="javascript:alert(1)">click</a>')
     expect(result).not.toContain("javascript:")
-  })
-
-  test("n-show prop toggles display via renderEffect (lines 273-277)", () => {
-    const el = container()
-    const visible = signal(true)
-
-    mount(h("div", { "n-show": () => visible() }), el)
-    const div = el.querySelector("div") as HTMLElement
-    expect(div.style.display).toBe("")
-
-    visible.set(false)
-    expect(div.style.display).toBe("none")
-
-    visible.set(true)
-    expect(div.style.display).toBe("")
-
-    el.remove()
   })
 
   test("blocked unsafe URL in href attribute", () => {

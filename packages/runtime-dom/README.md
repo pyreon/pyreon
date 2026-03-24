@@ -119,7 +119,7 @@ const App = () => (
 
 ### Types
 
-`TransitionProps`, `TransitionGroupProps`, `KeepAliveProps`, `Directive`, `SanitizeFn`, `DevtoolsComponentEntry`, `PyreonDevtools`
+`TransitionProps`, `TransitionGroupProps`, `KeepAliveProps`, `SanitizeFn`, `DevtoolsComponentEntry`, `PyreonDevtools`
 
 ## License
 

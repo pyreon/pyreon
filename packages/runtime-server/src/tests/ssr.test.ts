@@ -523,14 +523,6 @@ describe("renderToString — null/undefined/boolean prop values", () => {
   })
 })
 
-describe("renderToString — n- directives", () => {
-  test("omits n-show and custom n- directives", async () => {
-    const html = await renderToString(h("div", { "n-show": true, "n-custom": () => {} }))
-    expect(html).not.toContain("n-show")
-    expect(html).not.toContain("n-custom")
-  })
-})
-
 describe("renderToString — component with children via h()", () => {
   test("mergeChildrenIntoProps passes children to component", async () => {
     const Wrapper: ComponentFn = (props: Record<string, unknown>) => {
