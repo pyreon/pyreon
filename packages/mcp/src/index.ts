@@ -54,7 +54,6 @@ function textResult(text: string) {
 // Tool: get_api
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// @ts-expect-error — MCP SDK + Zod generic inference is excessively deep
 server.tool(
   "get_api",
   {

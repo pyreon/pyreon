@@ -7,7 +7,6 @@
     "moduleDetection": "force",
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
 
     "jsx": "preserve",
     "jsxImportSource": "@pyreon/core",
@@ -20,7 +19,6 @@
     "noImplicitOverride": true,
     "forceConsistentCasingInFileNames": true,
 
-    "esModuleInterop": true,
     "skipLibCheck": true,
 
     "sourceMap": true

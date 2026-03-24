@@ -25,13 +25,15 @@
     "./lib": "./lib.json"
   },
   "peerDependencies": {
-    "@pyreon/core": ">=0.7.2"
+    "@pyreon/core": ">=0.7.2",
+    "typescript": ">=5.9.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "echo 'nothing to build'",
+    "test": "echo 'nothing to test'",
     "lint": "biome check .",
     "typecheck": "echo 'nothing to typecheck'"
   }

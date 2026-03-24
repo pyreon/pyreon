@@ -42,7 +42,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/compiler": "workspace:*"
+    "@pyreon/compiler": "workspace:^"
   },
   "peerDependencies": {
     "typescript": ">=5.0.0"

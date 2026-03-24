@@ -8,8 +8,8 @@
 
 | Package | Import | Purpose |
 |---|---|---|
-| @pyreon/reactivity | signal, computed, effect, batch, createStore, createResource | Reactive primitives |
-| @pyreon/core | h, Fragment, For, Show, Switch, Match, Suspense, ErrorBoundary, lazy, Dynamic, Portal, onMount, onUnmount, onUpdate, createContext, useContext, createRef | Component model |
+| @pyreon/reactivity | signal, computed, effect, onCleanup, batch, createStore, createResource | Reactive primitives |
+| @pyreon/core | h, Fragment, For, Show, Switch, Match, Suspense, ErrorBoundary, lazy, Dynamic, Portal, onMount, onUnmount, onUpdate, createContext, useContext, provide, createRef, ExtractProps, HigherOrderComponent | Component model |
 | @pyreon/runtime-dom | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive | DOM renderer |
 | @pyreon/runtime-server | renderToString, renderToStream, runWithRequestContext | SSR renderer |
 | @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
@@ -18,6 +18,7 @@
 | @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode | Build tools |
 | @pyreon/cli | doctor, context | Developer CLI |
 | @pyreon/mcp | MCP server | AI tool integration |
+| @pyreon/typescript | base, app, lib | TypeScript config presets |
 | @pyreon/vite-plugin | pyreon() | Vite integration |
 
 ## @pyreon/reactivity — Complete API
@@ -46,6 +47,16 @@ const dispose = effect(() => {
   return () => { /* cleanup */ }
 })
 dispose()  // stop effect
+```
+
+### onCleanup(fn)
+```typescript
+// Register cleanup inside an effect (runs between re-executions):
+effect(() => {
+  const handler = () => console.log(count())
+  window.addEventListener("resize", handler)
+  onCleanup(() => window.removeEventListener("resize", handler))
+})
 ```
 
 ### renderEffect(fn)
@@ -202,7 +213,7 @@ const WithLoading = lazy(() => import("./Page"), {
 
 ### Lifecycle Hooks
 ```typescript
-// MUST return CleanupFn | undefined (not void)
+// Optionally return a cleanup function (void is fine too):
 onMount(() => {
   const id = setInterval(tick, 1000)
   return () => clearInterval(id)
@@ -226,12 +237,26 @@ onErrorCaptured((err) => {
 ```typescript
 const ThemeCtx = createContext<"light" | "dark">("light")
 
-// Provide (in component):
+// Provide (recommended — auto-cleans up on unmount):
+provide(ThemeCtx, "dark")
+
+// Low-level (manual cleanup):
 pushContext(new Map([[ThemeCtx.id, "dark"]]))
 onUnmount(() => popContext())
 
 // Consume:
 const theme = useContext(ThemeCtx)
+```
+
+### ExtractProps / HigherOrderComponent
+```typescript
+// Extract props type from a ComponentFn:
+type Props = ExtractProps<typeof MyComponent>
+
+// Typed HOC pattern (HOP = injected props, P = wrapped props):
+function withTheme<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ theme?: string }, P> {
+  return (props) => <Wrapped {...props} />
+}
 ```
 
 ### createRef

@@ -8,6 +8,7 @@ Pyreon's context system provides dependency injection for component trees. It le
 |---|---|---|
 | `createContext` | `createContext<T>(defaultValue?: T): Context<T>` | Creates a context object with an optional default value |
 | `useContext` | `useContext<T>(ctx: Context<T>): T` | Reads the nearest provided value, or the default |
+| `provide` | `provide<T>(ctx: Context<T>, value: T): void` | Pushes a context value and auto-cleans up on unmount |
 | `withContext` | `withContext<T>(ctx: Context<T>, value: T, fn: () => R): R` | Provides a value programmatically (without JSX) |
 
 ## Creating a Context
@@ -47,6 +48,27 @@ function App() {
   )
 }
 ```
+
+### With provide() (recommended)
+
+`provide` pushes a context value during component setup and automatically cleans it up when the component unmounts. This is the simplest way to provide context in a component.
+
+```tsx
+import { provide, useContext } from "@pyreon/core"
+
+function App() {
+  const theme: Theme = {
+    primary: "#6200ee",
+    background: "#121212",
+  }
+
+  provide(ThemeContext, theme)
+
+  return <Layout />
+}
+```
+
+`provide` is equivalent to calling `pushContext` + registering `popContext` on unmount, but without the boilerplate.
 
 ### With withContext (without JSX)
 
