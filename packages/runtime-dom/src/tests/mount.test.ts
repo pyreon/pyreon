@@ -2,6 +2,7 @@ import type { ComponentFn, VNodeChild } from "@pyreon/core"
 import {
   ErrorBoundary as _ErrorBoundary,
   createRef,
+  Dynamic,
   defineComponent,
   For,
   Fragment,
@@ -1596,6 +1597,25 @@ describe("mount — edge cases", () => {
 
     activeTab.set("none")
     expect(el.querySelector("#settings")).toBeNull()
+    expect(el.querySelector("#dashboard")).toBeNull()
+  })
+
+  test("reactive Dynamic component switching", () => {
+    const el = container()
+    const Dashboard = () => h("div", { id: "dashboard" }, "Dashboard")
+    const Settings = () => h("div", { id: "settings" }, "Settings")
+    const activeTab = signal<string>("dashboard")
+    const components: Record<string, ComponentFn> = { dashboard: Dashboard, settings: Settings }
+
+    mount(
+      h("div", null, () => h(Dynamic, { component: components[activeTab()] })),
+      el,
+    )
+
+    expect(el.querySelector("#dashboard")?.textContent).toBe("Dashboard")
+
+    activeTab.set("settings")
+    expect(el.querySelector("#settings")?.textContent).toBe("Settings")
     expect(el.querySelector("#dashboard")).toBeNull()
   })
 
