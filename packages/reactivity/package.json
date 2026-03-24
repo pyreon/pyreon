@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/reactivity",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "description": "Signals-based reactivity system for Pyreon",
   "license": "MIT",
   "repository": {
