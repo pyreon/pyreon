@@ -15,9 +15,7 @@ export interface SignalDebugInfo<T> {
  * Read-only reactive value — the common interface that both Signal and Computed satisfy.
  * Use this as the parameter type when a function only needs to read a reactive value.
  */
-export interface ReadonlySignal<T> {
-  (): T
-}
+export type ReadonlySignal<T> = () => T
 
 export interface Signal<T> {
   (): T

@@ -160,7 +160,9 @@ describe("computed", () => {
     doubled() // initialize
 
     let called = 0
-    const dispose = doubled.direct(() => { called++ })
+    const dispose = doubled.direct(() => {
+      called++
+    })
 
     s.set(2)
     expect(called).toBe(1)
@@ -182,7 +184,9 @@ describe("computed", () => {
     clamped() // initialize
 
     let called = 0
-    clamped.direct(() => { called++ })
+    clamped.direct(() => {
+      called++
+    })
 
     s.set(5)
     expect(called).toBe(1)
