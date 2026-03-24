@@ -150,8 +150,9 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   onCopy?: ((e: ClipboardEvent) => void) | undefined
   onCut?: ((e: ClipboardEvent) => void) | undefined
   onPaste?: ((e: ClipboardEvent) => void) | undefined
-  // Catch-all for data-* and other arbitrary attributes
-  [key: string]: unknown
+  // data-* and aria-* catch-all (typed attributes above catch typos)
+  [key: `data-${string}`]: unknown
+  [key: `aria-${string}`]: unknown
 }
 
 /** Attributes specific to form inputs */
@@ -391,6 +392,11 @@ interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {
   type?: "1" | "a" | "A" | "i" | "I" | undefined
 }
 
+interface CanvasAttributes extends PyreonHTMLAttributes<HTMLCanvasElement> {
+  width?: number | string | undefined
+  height?: number | string | undefined
+}
+
 export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   viewBox?: string | undefined
   xmlns?: string | undefined
@@ -546,7 +552,7 @@ declare global {
       source: SourceAttributes
       track: PyreonHTMLAttributes
       picture: PyreonHTMLAttributes
-      canvas: PyreonHTMLAttributes
+      canvas: CanvasAttributes
       svg: SvgAttributes
       path: SvgAttributes
       circle: SvgAttributes

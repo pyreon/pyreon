@@ -46,7 +46,7 @@ export function TodoList() {
           placeholder="Add a todo…"
           value={() => input()}
           onInput={(e: InputEvent) => input.set((e.target as HTMLInputElement).value)}
-          onKeydown={handleKey}
+          onKeyDown={handleKey}
         />
         <button type="button" onClick={addTodo}>
           Add
