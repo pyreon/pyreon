@@ -36,11 +36,11 @@ export const jsxs = jsx
 // ─── JSX types ────────────────────────────────────────────────────────────────
 
 type Booleanish = boolean | "true" | "false"
-type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
-type StyleValue = string | CSSProperties
+export type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
+export type StyleValue = string | CSSProperties
 
 /** Common HTML attributes accepted by all Pyreon elements */
-interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
+export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Identity
   id?: string | undefined
   class?: string | (() => string) | undefined
@@ -155,7 +155,7 @@ interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
 }
 
 /** Attributes specific to form inputs */
-interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> {
+export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> {
   type?: string | (() => string) | undefined
   value?: string | number | (() => string | number) | undefined
   defaultValue?: string | number | undefined
@@ -185,14 +185,14 @@ interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> {
   height?: number | string | undefined
 }
 
-interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement> {
+export interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement> {
   href?: string | (() => string) | undefined
   target?: "_blank" | "_self" | "_parent" | "_top" | string | undefined
   rel?: string | undefined
   download?: string | boolean | undefined
 }
 
-interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
+export interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
   type?: "button" | "submit" | "reset" | undefined
   disabled?: boolean | (() => boolean) | undefined
   name?: string | undefined
@@ -205,7 +205,7 @@ interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
   formTarget?: string | undefined
 }
 
-interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaElement> {
+export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaElement> {
   value?: string | (() => string) | undefined
   defaultValue?: string | undefined
   placeholder?: string | (() => string) | undefined
@@ -222,7 +222,7 @@ interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaElement> {
   wrap?: "hard" | "soft" | undefined
 }
 
-interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement> {
+export interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement> {
   value?: string | string[] | (() => string | string[]) | undefined
   defaultValue?: string | string[] | undefined
   disabled?: boolean | (() => boolean) | undefined
@@ -241,7 +241,7 @@ interface OptionAttributes extends PyreonHTMLAttributes<HTMLOptionElement> {
   label?: string | undefined
 }
 
-interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
+export interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
   action?: string | undefined
   method?: "get" | "post" | undefined
   encType?: string | undefined
@@ -251,7 +251,7 @@ interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
   autoComplete?: string | undefined
 }
 
-interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
+export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   src?: string | (() => string) | undefined
   alt?: string | (() => string) | undefined
   width?: number | string | (() => number | string) | undefined
@@ -391,7 +391,7 @@ interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {
   type?: "1" | "a" | "A" | "i" | "I" | undefined
 }
 
-interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
+export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   viewBox?: string | undefined
   xmlns?: string | undefined
   fill?: string | (() => string) | undefined
