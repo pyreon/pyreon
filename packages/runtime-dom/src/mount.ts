@@ -273,7 +273,10 @@ function mountComponent(
       timestamp: Date.now(),
       props: vnode.props as Record<string, unknown>,
     })
-    dispatchToErrorBoundary(err)
+    const handled = dispatchToErrorBoundary(err)
+    if (!handled) {
+      console.error(`[Pyreon] <${componentName}> threw during setup:`, err)
+    }
     return noop
   } finally {
     setCurrentScope(null)
@@ -304,7 +307,7 @@ function mountComponent(
     _mountingStack.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
-    if (!handled)
+    if (!handled) {
       reportError({
         component: componentName,
         phase: "render",
@@ -312,6 +315,8 @@ function mountComponent(
         timestamp: Date.now(),
         props: vnode.props as Record<string, unknown>,
       })
+      console.error(`[Pyreon] <${componentName}> threw during render:`, err)
+    }
     return noop
   }
 

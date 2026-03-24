@@ -1,4 +1,5 @@
 import type { NativeItem } from "@pyreon/core"
+import { renderEffect } from "@pyreon/reactivity"
 
 /**
  * Creates a row/item factory backed by HTML template cloning.
@@ -59,15 +60,24 @@ export function createTemplate<T>(
  * @param node - The Text node to update
  */
 export function _bindText(
-  source: { _v: unknown; direct: (fn: () => void) => () => void },
+  source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   node: Text,
 ): () => void {
-  const update = () => {
-    const v = source._v
-    node.data = v == null || v === false ? "" : String(v as string | number)
+  // Fast path: source has .direct() (signal or computed)
+  if (source.direct) {
+    const textUpdate = () => {
+      const v = source._v
+      node.data = v == null || v === false ? "" : String(v as string | number)
+    }
+    textUpdate()
+    return source.direct(textUpdate)
   }
-  update()
-  return source.direct(update)
+  // Fallback: source is a plain callable (e.g. store getter, createMachine) — use renderEffect
+  const fn = source as unknown as () => unknown
+  return renderEffect(() => {
+    const v = fn()
+    node.data = v == null || v === false ? "" : String(v as string | number)
+  })
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
@@ -89,11 +99,17 @@ export function _bindText(
  * @param updater - Function that reads `source._v` and applies the DOM update
  */
 export function _bindDirect(
-  source: { _v: unknown; direct: (fn: () => void) => () => void },
+  source: { _v?: unknown; direct?: (fn: () => void) => () => void },
   updater: (value: unknown) => void,
 ): () => void {
-  updater(source._v)
-  return source.direct(() => updater(source._v))
+  // Fast path: source has .direct() (signal or computed)
+  if (source.direct) {
+    updater(source._v)
+    return source.direct(() => updater(source._v))
+  }
+  // Fallback: plain callable — use renderEffect
+  const fn = source as unknown as () => unknown
+  return renderEffect(() => updater(fn()))
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
