@@ -79,7 +79,7 @@ For reactive lists with frequent mutations, `For` is significantly faster than `
 {() => items().map(item => <Row key={item.id} item={item} />)}
 
 // Fast — only changed items update
-<For each={items} key={i => i.id} children={i => <Row item={i} />} />
+<For each={items} by={i => i.id} children={i => <Row item={i} />} />
 ```
 
 ## createSelector — O(1) Active Item
@@ -95,7 +95,7 @@ const isSelected = createSelector(selectedId)
 // Each row's effect only fires when THIS row's selection status changes
 <For
   each={rows}
-  key={r => r.id}
+  by={r => r.id}
   children={row => (
     <li class={() => isSelected(row.id) ? "selected" : ""}>
       {row.name}
