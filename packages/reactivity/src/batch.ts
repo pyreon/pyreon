@@ -7,8 +7,8 @@ let batchDepth = 0
 // Two pre-allocated Sets swapped on each flush — avoids allocating a new Set()
 // on every batch exit. The "active" set collects enqueued notifications; on flush
 // we swap to the other set and iterate the captured one, then clear it for reuse.
-let setA = new Set<() => void>()
-let setB = new Set<() => void>()
+const setA = new Set<() => void>()
+const setB = new Set<() => void>()
 let pendingNotifications = setA
 
 export function batch(fn: () => void): void {

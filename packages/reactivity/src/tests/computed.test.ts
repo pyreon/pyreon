@@ -143,4 +143,58 @@ describe("computed", () => {
     s.set(20)
     expect(result).toBe(21)
   })
+
+  test("._v returns cached value", () => {
+    const s = signal(5)
+    const doubled = computed(() => s() * 2)
+    // First access triggers computation
+    expect(doubled._v).toBe(10)
+    s.set(7)
+    // _v triggers recompute when dirty
+    expect(doubled._v).toBe(14)
+  })
+
+  test(".direct() fires updater on recompute", () => {
+    const s = signal(1)
+    const doubled = computed(() => s() * 2)
+    doubled() // initialize
+
+    let called = 0
+    const dispose = doubled.direct(() => {
+      called++
+    })
+
+    s.set(2)
+    expect(called).toBe(1)
+    expect(doubled._v).toBe(4)
+
+    s.set(3)
+    expect(called).toBe(2)
+
+    dispose()
+    s.set(4)
+    expect(called).toBe(2) // disposed, no more calls
+  })
+
+  test(".direct() works with equals option", () => {
+    const s = signal(1)
+    const clamped = computed(() => Math.min(s(), 10), {
+      equals: (a, b) => a === b,
+    })
+    clamped() // initialize
+
+    let called = 0
+    clamped.direct(() => {
+      called++
+    })
+
+    s.set(5)
+    expect(called).toBe(1)
+
+    // Same clamped result — equals returns true, no notification
+    s.set(10)
+    expect(called).toBe(2)
+    s.set(11) // clamped to 10, same as before
+    expect(called).toBe(2) // equals suppresses
+  })
 })

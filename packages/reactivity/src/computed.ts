@@ -12,6 +12,10 @@ export interface Computed<T> {
   (): T
   /** Remove this computed from all its reactive dependencies. */
   dispose(): void
+  /** Cached value for compiler-emitted direct bindings (_bindText, _bindDirect). */
+  _v: T
+  /** Register a direct updater — used by compiler-emitted _bindText/_bindDirect. */
+  direct(updater: () => void): () => void
 }
 
 export interface ComputedOptions<T> {
@@ -63,25 +67,23 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   let tracked = false
   const deps: Set<() => void>[] = []
   const host: { _s: Set<() => void> | null } = { _s: null }
+  let directFns: ((() => void) | null)[] | null = null
 
   const recompute = () => {
     if (disposed || dirty) return
     dirty = true
     if (host._s) notifySubscribers(host._s)
+    if (directFns) for (const f of directFns) f?.()
   }
 
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
       if (tracked) {
-        // Static deps fast path: already subscribed to our deps from first run.
-        // Set.add in trackSubscriber is a no-op for existing members.
-        // Skip cleanup (Set.delete) and collection (array.push) entirely.
         setSkipDepsCollection(true)
         value = withTracking(recompute, fn)
         setSkipDepsCollection(false)
       } else {
-        // First evaluation — full tracking to record deps for dispose
         value = trackWithLocalDeps(deps, recompute, fn)
         tracked = true
       }
@@ -95,8 +97,26 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     cleanupLocalDeps(deps, recompute)
   }
 
+  Object.defineProperty(read, "_v", {
+    get: () => {
+      if (dirty) read() // ensure value is fresh
+      return value
+    },
+    enumerable: false,
+  })
+
+  read.direct = (updater: () => void): (() => void) => {
+    if (!directFns) directFns = []
+    const arr = directFns
+    const idx = arr.length
+    arr.push(updater)
+    return () => {
+      arr[idx] = null
+    }
+  }
+
   getCurrentScope()?.add({ dispose: read.dispose })
-  return read
+  return read as Computed<T>
 }
 
 /**
@@ -112,6 +132,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   let disposed = false
   const deps: Set<() => void>[] = []
   const host: { _s: Set<() => void> | null } = { _s: null }
+  let directFns: ((() => void) | null)[] | null = null
 
   const recompute = () => {
     if (disposed) return
@@ -122,6 +143,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     dirty = false
     initialized = true
     if (host._s) notifySubscribers(host._s)
+    if (directFns) for (const f of directFns) f?.()
   }
 
   const read = (): T => {
@@ -141,6 +163,24 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     cleanupEffect(recompute)
   }
 
+  Object.defineProperty(read, "_v", {
+    get: () => {
+      if (dirty) read()
+      return value
+    },
+    enumerable: false,
+  })
+
+  read.direct = (updater: () => void): (() => void) => {
+    if (!directFns) directFns = []
+    const arr = directFns
+    const idx = arr.length
+    arr.push(updater)
+    return () => {
+      arr[idx] = null
+    }
+  }
+
   getCurrentScope()?.add({ dispose: read.dispose })
-  return read
+  return read as Computed<T>
 }
