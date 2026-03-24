@@ -17,5 +17,5 @@ export {
   signal,
 } from "./signal"
 export { createStore, isStore } from "./store"
-export { runUntracked } from "./tracking"
+export { runUntracked, runUntracked as untrack } from "./tracking"
 export { type WatchOptions, watch } from "./watch"
