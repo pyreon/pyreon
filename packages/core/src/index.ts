@@ -28,6 +28,7 @@ export type {
   SelectAttributes,
   StyleValue,
   SvgAttributes,
+  TargetedEvent,
   TextareaAttributes,
 } from "./jsx-runtime"
 export { lazy } from "./lazy"
@@ -39,7 +40,8 @@ export type { Ref } from "./ref"
 export { createRef } from "./ref"
 export type { MatchProps, ShowProps, SwitchProps } from "./show"
 export { Match, MatchSymbol, Show, Switch } from "./show"
-export { CSS_UNITLESS, normalizeStyleValue, toKebabCase } from "./style"
+export type { ClassValue } from "./style"
+export { CSS_UNITLESS, cx, normalizeStyleValue, toKebabCase } from "./style"
 export type { LazyComponent } from "./suspense"
 export { Suspense } from "./suspense"
 export type { ErrorContext, ErrorHandler } from "./telemetry"

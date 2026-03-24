@@ -64,20 +64,12 @@ export const UserProfile = () => {
       <form onSubmit={handleSubmit}>
         <label>
           Name:
-          <input
-            type="text"
-            value={name()}
-            onInput={(e) => name.set((e.target as HTMLInputElement).value)}
-          />
+          <input type="text" value={name()} onInput={(e) => name.set(e.currentTarget.value)} />
         </label>
 
         <label>
           Email:
-          <input
-            type="email"
-            value={email()}
-            onInput={(e) => email.set((e.target as HTMLInputElement).value)}
-          />
+          <input type="email" value={email()} onInput={(e) => email.set(e.currentTarget.value)} />
         </label>
 
         <Show when={() => !isValid()}>

@@ -459,10 +459,27 @@ describe("renderToString — class and style edge cases", () => {
     expect(html).toBe("<div></div>")
   })
 
-  test("renders non-standard class value (number) as no attribute", async () => {
-    // normalizeClass falls through to return "" for non-string/array/object
+  test("renders numeric class value as string", async () => {
+    // cx() converts numbers to strings — class="42" is valid HTML
     const html = await renderToString(h("div", { class: 42 }))
-    expect(html).toBe("<div></div>")
+    expect(html).toBe('<div class="42"></div>')
+  })
+
+  test("renders class from array", async () => {
+    const html = await renderToString(h("div", { class: ["foo", false, "bar"] }))
+    expect(html).toBe('<div class="foo bar"></div>')
+  })
+
+  test("renders class from object", async () => {
+    const html = await renderToString(
+      h("div", { class: { active: true, hidden: false, bold: true } }),
+    )
+    expect(html).toBe('<div class="active bold"></div>')
+  })
+
+  test("renders class from nested array/object", async () => {
+    const html = await renderToString(h("div", { class: ["base", { active: true }, ["nested"]] }))
+    expect(html).toBe('<div class="base active nested"></div>')
   })
 
   test("renders style as string", async () => {
