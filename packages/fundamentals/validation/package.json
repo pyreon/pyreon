@@ -1,0 +1,82 @@
+{
+  "name": "@pyreon/validation",
+  "version": "0.10.0",
+  "description": "Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/validation"
+  },
+  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/validation#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./zod": {
+      "bun": "./src/zod.ts",
+      "import": "./lib/zod.js",
+      "types": "./lib/types/zod.d.ts"
+    },
+    "./valibot": {
+      "bun": "./src/valibot.ts",
+      "import": "./lib/valibot.js",
+      "types": "./lib/types/valibot.d.ts"
+    },
+    "./arktype": {
+      "bun": "./src/arktype.ts",
+      "import": "./lib/arktype.js",
+      "types": "./lib/types/arktype.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "peerDependencies": {
+    "@pyreon/form": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    },
+    "valibot": {
+      "optional": true
+    },
+    "arktype": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/form": "workspace:*",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "zod": "^4.3.6",
+    "valibot": "^1.2.0",
+    "arktype": "^2.2.0"
+  }
+}

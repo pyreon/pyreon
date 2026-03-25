@@ -1,0 +1,60 @@
+{
+  "name": "@pyreon/storybook",
+  "version": "0.10.0",
+  "description": "Storybook renderer for Pyreon \u2014 mount, render, and interact with Pyreon components in Storybook",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/storybook"
+  },
+  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/storybook#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./preset": {
+      "bun": "./src/preset.ts",
+      "import": "./lib/preset.js",
+      "types": "./lib/types/preset.d.ts"
+    },
+    "./preview": {
+      "bun": "./src/preview.ts",
+      "import": "./lib/preview.js",
+      "types": "./lib/types/preview.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "storybook": ">=8.0.0"
+  }
+}

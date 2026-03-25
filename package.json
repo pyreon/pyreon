@@ -22,6 +22,7 @@
     "bench:head": "bun scripts/bench/core/head.ts",
     "bench:server": "bun scripts/bench/core/server.ts",
     "bench:dom": "bun scripts/bench/dom.ts",
+    "test:e2e": "bunx playwright test",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && bun run scripts/publish.ts"

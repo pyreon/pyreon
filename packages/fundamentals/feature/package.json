@@ -1,0 +1,61 @@
+{
+  "name": "@pyreon/feature",
+  "version": "0.10.0",
+  "description": "Schema-driven feature primitives \u2014 define once, get CRUD hooks, forms, tables, and stores",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/feature"
+  },
+  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/feature#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "dependencies": {
+    "@pyreon/form": "workspace:^",
+    "@pyreon/query": "workspace:^",
+    "@pyreon/store": "workspace:^",
+    "@pyreon/table": "workspace:^",
+    "@pyreon/validation": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "zod": "^4.3.6"
+  }
+}

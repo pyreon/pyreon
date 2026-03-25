@@ -570,4 +570,307 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/store
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "store/defineStore": {
+    signature: "defineStore<T>(id: string, setup: () => T): () => StoreApi<T>",
+    example: `const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const increment = () => count.update(n => n + 1)
+  return { count, increment }
+})
+
+const { store } = useCounter()
+store.count()      // 0
+store.increment()  // reactive update`,
+    notes:
+      "Composition-style stores. Singleton by ID. Returns StoreApi with .store, .patch(), .subscribe(), .onAction(), .reset(), .dispose().",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/form
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "form/useForm": {
+    signature:
+      "useForm<T>(options: { initialValues: T, onSubmit: (values: T) => void | Promise<void>, schema?, validateOn?, debounceMs? }): FormInstance<T>",
+    example: `const form = useForm({
+  initialValues: { name: '', email: '' },
+  onSubmit: async (values) => await api.save(values),
+  validateOn: 'blur',
+})
+
+form.handleSubmit()  // triggers validation + onSubmit
+form.reset()         // reset to initial values`,
+    notes:
+      "Signal-based form state. Use useField() for individual field binding, useFieldArray() for dynamic arrays.",
+  },
+
+  "form/useField": {
+    signature: "useField<T>(form: FormInstance<T>, name: keyof T): FieldInstance",
+    example: `const name = useField(form, 'name')
+
+<input {...name.register()} />
+// name.value(), name.error(), name.hasError(), name.showError()`,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/query
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "query/useQuery": {
+    signature:
+      "useQuery<T>(options: { queryKey: unknown[], queryFn: () => Promise<T>, ... }): { data: Signal<T>, error: Signal<Error>, isFetching: Signal<boolean>, ... }",
+    example: `const { data, error, isFetching } = useQuery({
+  queryKey: ['users'],
+  queryFn: () => fetch('/api/users').then(r => r.json()),
+})`,
+    notes:
+      "TanStack Query adapter. Fine-grained signals per field. Reactive options via function getter. Also: useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription (WebSocket).",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/permissions
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "permissions/createPermissions": {
+    signature: "createPermissions<T extends PermissionMap>(initial?: T): PermissionsInstance",
+    example: `const can = createPermissions({
+  'posts.read': true,
+  'posts.delete': (post) => post.authorId === userId,
+  'admin.*': false,
+})
+
+can('posts.read')         // true (reactive)
+can('posts.delete', post) // evaluates predicate
+can.not('admin.dashboard')
+can.all('posts.read', 'posts.create')
+can.any('admin.users', 'posts.read')`,
+    notes:
+      "Reactive permissions. Supports RBAC, ABAC, feature flags, subscription tiers. Wildcard matching with '*'. PermissionsProvider/usePermissions for context.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/machine
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "machine/createMachine": {
+    signature: "createMachine<S, E>(config: MachineConfig<S, E>): Machine<S, E>",
+    example: `const traffic = createMachine({
+  initial: 'red',
+  states: {
+    red:    { on: { NEXT: 'green' } },
+    green:  { on: { NEXT: 'yellow' } },
+    yellow: { on: { NEXT: 'red' } },
+  },
+})
+
+traffic()            // 'red' (reactive)
+traffic.send('NEXT') // 'green'
+traffic.matches('green') // true
+traffic.can('NEXT')  // true`,
+    notes:
+      "Constrained signal with type-safe transitions. Guards: { target, guard: (payload?) => boolean }. No context — use signals alongside.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/storage
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "storage/useStorage": {
+    signature:
+      "useStorage<T>(key: string, defaultValue: T, options?: StorageOptions<T>): StorageSignal<T>",
+    example: `const theme = useStorage('theme', 'light')
+theme()           // 'light'
+theme.set('dark') // persists + cross-tab sync
+theme.remove()    // delete from storage`,
+    notes:
+      "localStorage by default. Also: useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage(backend). All return StorageSignal<T> extending Signal<T> with .remove().",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/i18n
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "i18n/createI18n": {
+    signature:
+      "createI18n(options: { locale: string, messages: Record<string, Record<string, string>>, loader?, fallbackLocale?, pluralRules? }): I18nInstance",
+    example: `const i18n = createI18n({
+  locale: 'en',
+  messages: { en: { greeting: 'Hello, {{name}}!' } },
+  loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+})
+
+const { t, locale } = useI18n()
+t('greeting', { name: 'World' }) // "Hello, World!"
+locale.set('fr')                  // switch reactively`,
+    notes:
+      "Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/document
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "document/createDocument": {
+    signature: "createDocument(props?: DocumentProps): DocumentBuilder",
+    example: `const doc = createDocument({ title: 'Report' })
+  .heading('Sales Report')
+  .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
+
+await doc.toPdf()      // PDF
+await doc.toEmail()    // Outlook-safe HTML
+await doc.toDocx()     // Word document
+await doc.toSlack()    // Slack Block Kit JSON
+await doc.toNotion()   // Notion blocks`,
+    notes:
+      "14+ output formats. JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, etc. Heavy renderers lazy-loaded.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/flow
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "flow/createFlow": {
+    signature: "createFlow(config: { nodes: FlowNode[], edges: FlowEdge[], ... }): FlowInstance",
+    example: `const flow = createFlow({
+  nodes: [
+    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },
+  ],
+  edges: [{ id: 'e1', source: '1', target: '2' }],
+})
+
+flow.addNode({ id: '3', position: { x: 100, y: 200 }, data: { label: 'New' } })
+await flow.layout('layered')  // auto-layout via elkjs
+
+<Flow instance={flow}><Background /><Controls /><MiniMap /></Flow>`,
+    notes:
+      "Signal-native nodes/edges. Auto-layout via elkjs (lazy-loaded). Pan/zoom via pointer events + CSS transforms. No D3.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/code
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "code/createEditor": {
+    signature:
+      "createEditor(config: { value?: string, language?: string, theme?: string, minimap?: boolean, ... }): EditorInstance",
+    example: `const editor = createEditor({
+  value: '// hello',
+  language: 'typescript',
+  theme: 'dark',
+  minimap: true,
+})
+
+editor.value()       // reactive Signal<string>
+editor.goToLine(42)
+editor.insert('new code')
+
+<CodeEditor instance={editor} />
+<DiffEditor original="old" modified="new" />`,
+    notes:
+      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). loadLanguage() for lazy grammars. TabbedEditor for multi-file.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/hotkeys
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "hotkeys/useHotkey": {
+    signature:
+      "useHotkey(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions): void",
+    example: `useHotkey('mod+s', (e) => {
+  e.preventDefault()
+  save()
+})
+
+useHotkey('mod+k', () => openSearch(), { scope: 'global' })
+useHotkeyScope('editor')  // activate scope for component lifetime`,
+    notes:
+      "Component-scoped, auto-unregisters on unmount. 'mod' = ⌘ on Mac, Ctrl elsewhere. Scope-based activation for context-aware shortcuts.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/table
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "table/useTable": {
+    signature: "useTable<T>(options: TableOptions<T>): Table<T>",
+    example: `const table = useTable({
+  data: () => users(),
+  columns: [
+    { accessorKey: 'name', header: 'Name' },
+    { accessorKey: 'email', header: 'Email' },
+  ],
+})
+
+// flexRender for column templates:
+flexRender(cell.column.columnDef.cell, cell.getContext())`,
+    notes: "TanStack Table adapter with reactive options and auto state sync.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/virtual
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "virtual/useVirtualizer": {
+    signature:
+      "useVirtualizer(options: VirtualizerOptions): { virtualItems: Signal, totalSize: Signal, scrollToIndex: (i) => void, ... }",
+    example: `const { virtualItems, totalSize } = useVirtualizer({
+  count: 10000,
+  getScrollElement: () => scrollRef.current,
+  estimateSize: () => 35,
+})`,
+    notes: "TanStack Virtual adapter. Also: useWindowVirtualizer for window-scoped virtualization.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/feature
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "feature/defineFeature": {
+    signature:
+      "defineFeature<T>(config: { name: string, schema: FeatureSchema<T>, api: FeatureApi<T> }): Feature<T>",
+    example: `const Posts = defineFeature({
+  name: 'posts',
+  schema: { title: 'string', body: 'string', author: reference('users') },
+  api: { baseUrl: '/api/posts' },
+})
+
+// Auto-generated hooks:
+Posts.useList()    // paginated query
+Posts.useById(id)  // single item query
+Posts.useCreate()  // mutation
+Posts.useForm(id)  // edit form with validation
+Posts.useTable()   // TanStack Table config`,
+    notes:
+      "Schema-driven CRUD. Composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/storybook
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "storybook/renderToCanvas": {
+    signature: "renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void",
+    example: `// .storybook/main.ts:
+export default { framework: '@pyreon/storybook' }
+
+// Story file:
+import type { Meta, StoryObj } from '@pyreon/storybook'
+import { Button } from './Button'
+
+const meta: Meta<typeof Button> = { component: Button }
+export default meta
+
+export const Primary: StoryObj<typeof meta> = {
+  args: { variant: 'primary', label: 'Click me' },
+}`,
+    notes:
+      "Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.",
+  },
 }
