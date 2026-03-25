@@ -79,13 +79,15 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     if (!moved) return
 
     // Determine insert position based on closest edge
-    let insertAt = dropIndex
-    if (edge === "bottom" || edge === "right") {
-      insertAt = dropIndex >= dragIndex ? dropIndex : dropIndex + 1
-    } else {
-      insertAt = dropIndex <= dragIndex ? dropIndex : dropIndex - 1
-    }
-    insertAt = Math.max(0, Math.min(insertAt, reordered.length))
+    const rawInsert =
+      edge === "bottom" || edge === "right"
+        ? dropIndex >= dragIndex
+          ? dropIndex
+          : dropIndex + 1
+        : dropIndex <= dragIndex
+          ? dropIndex
+          : dropIndex - 1
+    const insertAt = Math.max(0, Math.min(rawInsert, reordered.length))
 
     reordered.splice(insertAt, 0, moved)
     options.onReorder(reordered)
