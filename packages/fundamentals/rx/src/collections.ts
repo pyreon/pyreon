@@ -71,8 +71,12 @@ export function groupBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): an
     const result: Record<string, T[]> = {}
     for (const item of arr) {
       const k = String(getKey(item))
-      if (!result[k]) result[k] = []
-      result[k]!.push(item)
+      let group = result[k]
+      if (!group) {
+        group = []
+        result[k] = group
+      }
+      group.push(item)
     }
     return result
   })
