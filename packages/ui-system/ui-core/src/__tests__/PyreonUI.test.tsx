@@ -5,6 +5,9 @@ import { PyreonUI } from "../PyreonUI"
 // Spy on provide to verify context provision
 const provideSpy = vi.spyOn(await import("@pyreon/core"), "provide")
 
+/** Get the value argument (2nd arg) from a provide() call by index. */
+const getProvideValue = (callIndex: number): any => provideSpy.mock.calls[callIndex]![1]
+
 describe("PyreonUI", () => {
   const theme = {
     rootSize: 16,
@@ -35,49 +38,37 @@ describe("PyreonUI", () => {
   it("defaults mode to light", () => {
     PyreonUI({ theme, children: null })
 
-    // Core context (2nd call) should have mode: "light"
-    const coreCtxCall = provideSpy.mock.calls[1]!
-    expect(coreCtxCall[1].mode).toBe("light")
-    expect(coreCtxCall[1].isLight).toBe(true)
-    expect(coreCtxCall[1].isDark).toBe(false)
-
-    // Mode context (3rd call)
-    const modeCall = provideSpy.mock.calls[2]!
-    expect(modeCall[1]).toBe("light")
+    const coreCtx = getProvideValue(1)
+    expect(coreCtx.mode).toBe("light")
+    expect(coreCtx.isLight).toBe(true)
+    expect(coreCtx.isDark).toBe(false)
+    expect(getProvideValue(2)).toBe("light")
   })
 
   it("provides dark mode", () => {
     PyreonUI({ theme, mode: "dark", children: null })
 
-    const coreCtxCall = provideSpy.mock.calls[1]!
-    expect(coreCtxCall[1].mode).toBe("dark")
-    expect(coreCtxCall[1].isDark).toBe(true)
-    expect(coreCtxCall[1].isLight).toBe(false)
-
-    const modeCall = provideSpy.mock.calls[2]!
-    expect(modeCall[1]).toBe("dark")
+    const coreCtx = getProvideValue(1)
+    expect(coreCtx.mode).toBe("dark")
+    expect(coreCtx.isDark).toBe(true)
+    expect(coreCtx.isLight).toBe(false)
+    expect(getProvideValue(2)).toBe("dark")
   })
 
   it("inverts mode when inversed=true", () => {
     PyreonUI({ theme, mode: "light", inversed: true, children: null })
-
-    const modeCall = provideSpy.mock.calls[2]!
-    expect(modeCall[1]).toBe("dark")
+    expect(getProvideValue(2)).toBe("dark")
   })
 
   it("inverts dark to light", () => {
     PyreonUI({ theme, mode: "dark", inversed: true, children: null })
-
-    const modeCall = provideSpy.mock.calls[2]!
-    expect(modeCall[1]).toBe("light")
+    expect(getProvideValue(2)).toBe("light")
   })
 
   it("enriches theme with __PYREON__ before providing", () => {
     PyreonUI({ theme, children: null })
 
-    // ThemeContext (1st call) should have enriched theme
-    const themeCall = provideSpy.mock.calls[0]!
-    const providedTheme = themeCall[1]
+    const providedTheme = getProvideValue(0)
     expect(providedTheme.__PYREON__).toBeDefined()
     expect(providedTheme.__PYREON__.sortedBreakpoints).toEqual(["xs", "sm", "md"])
     expect(providedTheme.colors).toEqual({ primary: "#228be6" })
@@ -85,9 +76,6 @@ describe("PyreonUI", () => {
 
   it("works with system mode (resolves to light in happy-dom)", () => {
     PyreonUI({ theme, mode: "system", children: null })
-
-    // happy-dom matchMedia returns false for dark → resolves to "light"
-    const modeCall = provideSpy.mock.calls[2]!
-    expect(modeCall[1]).toBe("light")
+    expect(getProvideValue(2)).toBe("light")
   })
 })
