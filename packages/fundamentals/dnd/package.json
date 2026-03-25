@@ -1,0 +1,49 @@
+{
+  "name": "@pyreon/dnd",
+  "version": "0.10.0",
+  "description": "Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/dnd"
+  },
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@atlaskit/pragmatic-drag-and-drop": "^1.7.0"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:^"
+  }
+}

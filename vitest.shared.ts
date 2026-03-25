@@ -28,6 +28,7 @@ const toolsPackages = [
 const fundamentalsPackages = [
   "charts",
   "code",
+  "dnd",
   "document",
   "feature",
   "flow",
