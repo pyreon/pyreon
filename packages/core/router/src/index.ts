@@ -61,6 +61,7 @@ export {
   onBeforeRouteUpdate,
   RouterContext,
   useBlocker,
+  useIsActive,
   useRoute,
   useRouter,
   useSearchParams,

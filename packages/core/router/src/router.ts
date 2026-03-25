@@ -181,6 +181,41 @@ export function useBlocker(fn: BlockerFn): Blocker {
  * params().page  // "1" if not in URL
  * setParams({ page: "2" })  // navigates to ?page=2&sort=name
  */
+/**
+ * Check if a path is active (matches the current route).
+ * Returns a reactive boolean signal.
+ *
+ * - Exact mode: `/admin` matches only `/admin`
+ * - Partial mode (default): `/admin` matches `/admin`, `/admin/users`, `/admin/settings`
+ *   Uses segment-aware prefix matching — `/admin` does NOT match `/admin-panel`
+ *
+ * @example
+ * ```tsx
+ * const isAdmin = useIsActive("/admin")           // partial — matches /admin/*
+ * const isExact = useIsActive("/admin", true)     // exact — only /admin
+ *
+ * <div class={isAdmin() ? "active" : ""}>Admin</div>
+ * <Show when={isAdmin()}><Badge>Active</Badge></Show>
+ * ```
+ */
+export function useIsActive(path: string, exact = false): () => boolean {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+    )
+  return () => {
+    const current = router.currentRoute().path
+    if (exact) return current === path
+    if (path === "/") return current === "/"
+    // Segment-aware prefix: /admin matches /admin/users but NOT /admin-panel
+    const cs = current.split("/").filter(Boolean)
+    const ts = path.split("/").filter(Boolean)
+    if (ts.length > cs.length) return false
+    return ts.every((seg, i) => seg === cs[i])
+  }
+}
+
 export function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
 ): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {

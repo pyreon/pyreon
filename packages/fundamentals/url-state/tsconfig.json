@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./lib",
+    "rootDir": "./src",
+    "types": ["vitest/globals", "node"],
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
