@@ -45,6 +45,21 @@ const fundamentalsPackages = [
   "virtual",
 ] as const
 
+const uiPackages = [
+  "attrs",
+  "connector-document",
+  "coolgrid",
+  "document-primitives",
+  "elements",
+  "hooks",
+  "kinetic",
+  "kinetic-presets",
+  "rocketstyle",
+  "styler",
+  "ui-core",
+  "unistyle",
+] as const
+
 const alias: Record<string, string> = {}
 for (const pkg of corePackages) {
   alias[`@pyreon/${pkg}`] = resolve(root, `packages/core/${pkg}/src/index.ts`)
@@ -54,6 +69,9 @@ for (const pkg of toolsPackages) {
 }
 for (const pkg of fundamentalsPackages) {
   alias[`@pyreon/${pkg}`] = resolve(root, `packages/fundamentals/${pkg}/src/index.ts`)
+}
+for (const pkg of uiPackages) {
+  alias[`@pyreon/${pkg}`] = resolve(root, `packages/ui-system/${pkg}/src/index.ts`)
 }
 
 // Also map subpath exports

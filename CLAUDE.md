@@ -30,7 +30,21 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/storybook` | Storybook renderer — mount, render, and interact with Pyreon components |
 | `@pyreon/typescript` | TypeScript config presets: base, app (noEmit), lib (declarations) |
 
-UI component packages (`@pyreon/styler`, `@pyreon/hooks`, `@pyreon/elements`, etc.) live in a separate repo: `pyreon/ui-system`.
+### UI System (Component Library)
+| Package | Description |
+|---|---|
+| `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags |
+| `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
+| `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
+| `@pyreon/hooks` | 27+ signal-based hooks (useHover, useFocus, useBreakpoint, etc.) |
+| `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
+| `@pyreon/attrs` | Chainable HOC factory (.attrs(), .config(), .statics()) |
+| `@pyreon/rocketstyle` | Multi-state styling (states, sizes, variants, themes, dark mode) |
+| `@pyreon/coolgrid` | 12-column responsive grid (Container, Row, Col) |
+| `@pyreon/kinetic` | CSS-transition animations (Transition, Stagger, Collapse) |
+| `@pyreon/kinetic-presets` | 120+ animation presets |
+| `@pyreon/connector-document` | Bridge between ui-system components and @pyreon/document |
+| `@pyreon/document-primitives` | Rocketstyle-based document export components |
 
 ### Fundamentals (Ecosystem Libraries)
 | Package | Description |

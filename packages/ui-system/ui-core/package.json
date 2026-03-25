@@ -1,0 +1,49 @@
+{
+  "name": "@pyreon/ui-core",
+  "version": "0.3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/ui-system",
+    "directory": "packages/ui-system/ui-core"
+  },
+  "description": "Core utilities, config, and context for Pyreon UI System",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "bun": "./src/index.ts",
+    "source": "./src/index.ts",
+    "import": "./lib/index.js",
+    "types": "./lib/index.d.ts"
+  },
+  "types": "./lib/index.d.ts",
+  "main": "./lib/index.js",
+  "files": [
+    "lib",
+    "!lib/**/*.map",
+    "!lib/analysis",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">= 22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run vl_rolldown_build",
+    "lint": "biome check src/",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/styler": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@vitus-labs/tools-rolldown": "^1.15.3",
+    "@pyreon/typescript": "workspace:^"
+  }
+}
