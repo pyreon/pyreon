@@ -38,6 +38,18 @@
 | @pyreon/flow | createFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
 | @pyreon/code | createEditor, CodeEditor, DiffEditor, TabbedEditor | Code editor (CodeMirror 6) |
 | @pyreon/document | render, createDocument, Document, Page, Heading, Text, Table | Universal document rendering |
+| @pyreon/ui-core | config, init, Provider, get, set, merge, omit, pick, compose | UI config engine |
+| @pyreon/styler | styled, css, keyframes, createGlobalStyle, ThemeContext, useTheme | CSS-in-JS |
+| @pyreon/unistyle | responsive breakpoints, CSS property mappings, unit utilities | CSS utilities |
+| @pyreon/hooks | useHover, useFocus, useBreakpoint, useElementSize, useFocusTrap, useMediaQuery, useScrollLock, 20+ more | Signal-based hooks |
+| @pyreon/elements | Element, Text, List, Overlay, Portal | Base UI primitives |
+| @pyreon/attrs | attrs() | Chainable HOC factory |
+| @pyreon/rocketstyle | rocketstyle() | Multi-state styling system |
+| @pyreon/coolgrid | Container, Row, Col | Responsive grid |
+| @pyreon/kinetic | kinetic(), .preset(), .enter(), .leave(), .collapse(), .stagger() | CSS-transition animations |
+| @pyreon/kinetic-presets | fade, slideUp, slideDown, scaleIn, 120+ presets | Animation presets |
+| @pyreon/connector-document | Document bridge utilities | UI ↔ document bridge |
+| @pyreon/document-primitives | Document export components | Rocketstyle document components |
 
 ## @pyreon/reactivity — Complete API
 

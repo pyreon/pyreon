@@ -530,6 +530,11 @@ declare global {
      */
     type ElementType = keyof IntrinsicElements | ((props: any) => import("./types").VNodeChild)
 
+    /** Props that can be passed to any JSX element (intrinsic or component) */
+    interface IntrinsicAttributes {
+      key?: string | number | undefined
+    }
+
     /** Tells TS which prop name carries children in component calls */
     interface ElementChildrenAttribute {
       // biome-ignore lint/complexity/noBannedTypes: JSX spec requires {} for ElementChildrenAttribute

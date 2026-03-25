@@ -1,0 +1,33 @@
+export const lightTheme: Record<string, string> = {
+  "--bg": "#f8f9fa",
+  "--bg-card": "#ffffff",
+  "--bg-surface": "#f1f3f5",
+  "--text": "#212529",
+  "--text-muted": "#868e96",
+  "--border": "#dee2e6",
+  "--primary": "#228be6",
+  "--primary-hover": "#1c7ed6",
+  "--success": "#40c057",
+  "--danger": "#fa5252",
+  "--warning": "#fab005",
+  "--shadow": "0 1px 3px rgba(0,0,0,0.08)",
+  "--shadow-lg": "0 8px 24px rgba(0,0,0,0.12)",
+  "--radius": "8px",
+}
+
+export const darkTheme: Record<string, string> = {
+  "--bg": "#1a1b1e",
+  "--bg-card": "#25262b",
+  "--bg-surface": "#2c2e33",
+  "--text": "#c1c2c5",
+  "--text-muted": "#909296",
+  "--border": "#373a40",
+  "--primary": "#4dabf7",
+  "--primary-hover": "#74c0fc",
+  "--success": "#69db7c",
+  "--danger": "#ff6b6b",
+  "--warning": "#ffd43b",
+  "--shadow": "0 1px 3px rgba(0,0,0,0.3)",
+  "--shadow-lg": "0 8px 24px rgba(0,0,0,0.5)",
+  "--radius": "8px",
+}

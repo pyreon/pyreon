@@ -1,0 +1,54 @@
+{
+  "name": "@pyreon/elements",
+  "version": "0.3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/ui-system",
+    "directory": "packages/ui-system/elements"
+  },
+  "description": "Foundational UI components for Pyreon",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "bun": "./src/index.ts",
+    "source": "./src/index.ts",
+    "import": "./lib/index.js",
+    "types": "./lib/index.d.ts"
+  },
+  "types": "./lib/index.d.ts",
+  "main": "./lib/index.js",
+  "files": [
+    "lib",
+    "!lib/**/*.map",
+    "!lib/analysis",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">= 22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepublish": "bun run build",
+    "build": "bun run vl_rolldown_build",
+    "build:watch": "bun run vl_rolldown_build-watch",
+    "lint": "biome check src/",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
+    "@pyreon/unistyle": "workspace:^"
+  },
+  "devDependencies": {
+    "@vitus-labs/tools-rolldown": "^1.15.3",
+    "@pyreon/typescript": "workspace:^"
+  }
+}
