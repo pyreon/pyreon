@@ -46,6 +46,59 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/connector-document` | Bridge between ui-system components and @pyreon/document |
 | `@pyreon/document-primitives` | Rocketstyle-based document export components |
 
+### UI System — Key Technical Details
+
+#### @pyreon/styler (CSS-in-JS)
+- `styled('div')\`color: red\`` → returns `ComponentFn`
+- `css\`...\`` → lazy `CSSResult`, resolved on use
+- `keyframes\`...\`` → returns animation name string
+- Theme: `ThemeContext` (Context object) + `useTheme()` helper
+- `createGlobalStyle\`...\`` → inject global CSS
+- Singleton `StyleSheet` with FNV-1a hashing, dedup cache, SSR support
+- `createSheet()` for isolated sheet instances
+
+#### @pyreon/unistyle (Responsive Props)
+- Single value, mobile-first array `[xs, sm, md, lg]`, or breakpoint object `{ xs: ..., md: ... }`
+- 170+ CSS property mappings for responsive shorthand
+- Unit utilities for consistent spacing/sizing
+
+#### @pyreon/attrs (HOC Factory)
+- `attrs(component)` → chainable builder
+- `.attrs({ prop: value })` → inject default props
+- `.config({ dimensions: {...} })` → rocketstyle config
+- `.statics({ method: fn })` → attach static methods
+- `.compose(enhancer)` → apply HOC wrapper
+
+#### @pyreon/rocketstyle (Multi-State Styling)
+- `rocketstyle(component)` → multi-dimensional styling engine
+- Dimensions: `state`, `size`, `variant`, `theme`, + custom
+- Dark/light mode via `useDarkMode` dimension
+- Each dimension maps prop values to CSS via `styled()` templates
+
+#### @pyreon/kinetic (Animations)
+- `kinetic(component)` → animation-enabled wrapper
+- `.preset(fadeIn)` → apply preset from `@pyreon/kinetic-presets`
+- `.enter({ opacity: 0 })` / `.enterTo({ opacity: 1 })` — enter animation
+- `.leave({ opacity: 1 })` / `.leaveTo({ opacity: 0 })` — leave animation
+- `.collapse()` — height-based collapse/expand
+- `.stagger({ delay: 50 })` — staggered children
+- `.group()` — TransitionGroup wrapper
+- 4 modes: transition, collapse, stagger, group
+
+#### @pyreon/kinetic-presets (120+ Presets)
+- Framework-agnostic CSS transition objects
+- `fade`, `slideUp`, `slideDown`, `slideLeft`, `slideRight`, `scaleIn`, + 100 more
+- `compose(preset1, preset2)` — merge presets
+- `withDuration(preset, ms)` — override duration
+- Factory functions for custom parameterized presets
+
+#### @pyreon/elements (Base Primitives)
+- `Element` — base block with responsive style props
+- `Text` — inline text with typography props
+- `List` — list container (ul/ol/dl)
+- `Overlay` — positioned overlay with backdrop
+- `Portal` — renders children outside DOM hierarchy
+
 ### Fundamentals (Ecosystem Libraries)
 | Package | Description |
 |---|---|
