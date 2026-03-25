@@ -1,16 +1,16 @@
 <script setup lang="ts">
 interface Prop {
-	name: string;
-	type: string;
-	default?: string;
-	required?: boolean;
-	description: string;
+  name: string
+  type: string
+  default?: string
+  required?: boolean
+  description: string
 }
 
 defineProps<{
-	title?: string;
-	props: Prop[];
-}>();
+  title?: string
+  props: Prop[]
+}>()
 </script>
 
 <template>
