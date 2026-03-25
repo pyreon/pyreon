@@ -37,7 +37,9 @@
     "lint": "biome check ."
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.7.0"
+    "@atlaskit/pragmatic-drag-and-drop": "^1.7.0",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",

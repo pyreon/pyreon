@@ -78,4 +78,6 @@ export interface UseSortableResult {
   activeId: () => string | number | null
   /** The key of the item being hovered over. */
   overId: () => string | number | null
+  /** The closest edge of the hovered item ("top"/"bottom" or "left"/"right"). */
+  overEdge: () => DropEdge | null
 }
