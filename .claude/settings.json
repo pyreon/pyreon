@@ -1,15 +1,33 @@
 {
   "permissions": {
     "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(bun run:*)",
       "Bash(bun run test*)",
-      "Bash(bun test*)",
-      "Bash(bun run --filter=* test*)",
+      "Bash(bun run --filter=*)",
+      "Bash(bun install:*)",
       "Bash(bunx biome*)",
       "Bash(bunx tsc*)",
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
-      "Bash(ls *)"
+      "Bash(git branch*)",
+      "Bash(git fetch*)",
+      "Bash(git checkout*)",
+      "Bash(git stash*)",
+      "Bash(ls *)",
+      "Bash(wc *)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr view*)",
+      "Bash(gh api*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean:*)"
     ]
   }
 }
