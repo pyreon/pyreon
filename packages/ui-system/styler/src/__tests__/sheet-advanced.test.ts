@@ -151,7 +151,7 @@ describe("StyleSheet -- advanced features", () => {
 
     it("inserts global CSS with @media into CSSOM", () => {
       const s = createSheet()
-      s.insertGlobal("body{margin:0}@media(min-width:768px){body{font-size:18px}}")
+      s.insertGlobal("body{margin:0}@media (min-width:768px){body{font-size:18px}}")
 
       const styleEl = document.querySelector("style[data-pyreon-styler]") as HTMLStyleElement
       const cssSheet = styleEl.sheet as CSSStyleSheet

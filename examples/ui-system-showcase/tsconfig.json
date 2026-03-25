@@ -1,17 +1,15 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ESNext",
     "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
-    "customConditions": ["bun"],
-
-    "strict": true,
-    "jsx": "react-jsx",
+    "jsx": "preserve",
     "jsxImportSource": "@pyreon/core",
-    "esModuleInterop": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "customConditions": ["bun"],
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "strict": true,
+    "noEmit": true
   },
   "include": ["src"]
 }
