@@ -3919,3 +3919,108 @@ describe("onBeforeRouteUpdate", () => {
     router.destroy()
   })
 })
+
+// ─── beforeEach guard edge cases ──────────────────────────────────────────────
+
+describe("beforeEach guard edge cases", () => {
+  test("returning false prevents navigation and doesn't mutate state", async () => {
+    const router = createRouter({ routes, url: "/" })
+    const guardCalls: Array<{ to: string; from: string }> = []
+    router.beforeEach((to, from) => {
+      guardCalls.push({ to: to.path, from: from.path })
+      return false
+    })
+    const initialRoute = router.currentRoute()
+    await router.push("/about")
+    // Route should not have changed
+    expect(router.currentRoute().path).toBe("/")
+    expect(router.currentRoute()).toBe(initialRoute)
+    // Guard was called with correct args
+    expect(guardCalls).toEqual([{ to: "/about", from: "/" }])
+  })
+
+  test("throwing error doesn't break router state", async () => {
+    const router = createRouter({ routes, url: "/" })
+    router.beforeEach(() => {
+      throw new Error("guard explosion")
+    })
+    await router.push("/about")
+    // Navigation should be blocked but router still functional
+    expect(router.currentRoute().path).toBe("/")
+    // Subsequent navigation with a non-throwing guard should work
+    // Remove the throwing guard by adding a new one that allows
+    // (guards run in order; the throwing one still runs first, so replace via fresh router)
+  })
+
+  test("throwing error doesn't prevent subsequent navigations", async () => {
+    const router = createRouter({ routes, url: "/" })
+    let shouldThrow = true
+    router.beforeEach(() => {
+      if (shouldThrow) throw new Error("guard error")
+      return true
+    })
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/")
+
+    // Disable throwing and navigate again — router should still work
+    shouldThrow = false
+    await router.push("/about")
+    expect(router.currentRoute().path).toBe("/about")
+  })
+
+  test("navigation to same route keeps state stable", async () => {
+    const router = createRouter({ routes, url: "/about" })
+    const guardCalls: string[] = []
+    router.beforeEach((to) => {
+      guardCalls.push(to.path)
+      return true
+    })
+    await router.push("/about")
+    // State should remain at /about regardless of whether guards ran
+    expect(router.currentRoute().path).toBe("/about")
+    // Guard was invoked (router does not short-circuit same-route navigation)
+    expect(guardCalls).toEqual(["/about"])
+  })
+})
+
+// ─── Optional params & trailing slash ─────────────────────────────────────────
+
+describe("matchPath — optional params", () => {
+  test("optional param matches path without the param", () => {
+    const result = matchPath("/users/:id?", "/users")
+    expect(result).not.toBeNull()
+    expect(result).toEqual({})
+  })
+
+  test("optional param matches path with the param", () => {
+    const result = matchPath("/users/:id?", "/users/42")
+    expect(result).not.toBeNull()
+    expect(result).toEqual({ id: "42" })
+  })
+
+  test("optional param at end doesn't match extra segments", () => {
+    const result = matchPath("/users/:id?", "/users/42/extra")
+    expect(result).toBeNull()
+  })
+})
+
+describe("resolveRoute — trailing slash normalization", () => {
+  test("trailing slash on static path resolves the same route", () => {
+    // resolveRoute uses split("/").filter(Boolean), so "/about/" and "/about" produce same segments
+    const withSlash = resolveRoute("/about/", routes)
+    const withoutSlash = resolveRoute("/about", routes)
+    expect(withSlash.matched.length).toBe(withoutSlash.matched.length)
+    if (withSlash.matched.length > 0 && withoutSlash.matched.length > 0) {
+      expect(withSlash.matched[withSlash.matched.length - 1]?.component).toBe(
+        withoutSlash.matched[withoutSlash.matched.length - 1]?.component,
+      )
+    }
+  })
+
+  test("trailing slash on dynamic path resolves the same route", () => {
+    const withSlash = resolveRoute("/user/42/", routes)
+    const withoutSlash = resolveRoute("/user/42", routes)
+    expect(withSlash.params).toEqual(withoutSlash.params)
+    expect(withSlash.matched.length).toBe(withoutSlash.matched.length)
+  })
+})

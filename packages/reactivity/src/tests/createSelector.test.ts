@@ -116,4 +116,117 @@ describe("createSelector", () => {
     expect(isSelected(1)).toBe(true)
     expect(isSelected(2)).toBe(false)
   })
+
+  describe("large subscriber sets", () => {
+    test("many subscribers (20+), only affected buckets notified", () => {
+      const selected = signal(0)
+      const isSelected = createSelector(() => selected())
+
+      const runCounts: number[] = []
+      for (let i = 0; i < 25; i++) {
+        const idx = i
+        runCounts.push(0)
+        effect(() => {
+          isSelected(idx)
+          runCounts[idx] = (runCounts[idx] ?? 0) + 1
+        })
+      }
+
+      // All effects ran once
+      const allOnes = runCounts.every((c) => c === 1)
+      expect(allOnes).toBe(true)
+
+      // Change from 0 to 5: only buckets 0 and 5 should re-run
+      selected.set(5)
+      expect(runCounts[0]).toBe(2) // deselected
+      expect(runCounts[5]).toBe(2) // newly selected
+      const unaffectedAfterFirst = runCounts.every((c, i) => i === 0 || i === 5 || c === 1)
+      expect(unaffectedAfterFirst).toBe(true)
+
+      // Change from 5 to 24: only buckets 5 and 24 re-run
+      selected.set(24)
+      expect(runCounts[5]).toBe(3)
+      expect(runCounts[24]).toBe(2)
+      const unaffectedAfterSecond = runCounts.every((c, i) => [0, 5, 24].includes(i) || c === 1)
+      expect(unaffectedAfterSecond).toBe(true)
+    })
+
+    test("selector with undefined and null values", () => {
+      const selected = signal<string | null | undefined>("a")
+      const isSelected = createSelector(() => selected())
+
+      let nullRuns = 0
+      let undefRuns = 0
+      let aRuns = 0
+
+      effect(() => {
+        isSelected(null)
+        nullRuns++
+      })
+      effect(() => {
+        isSelected(undefined)
+        undefRuns++
+      })
+      effect(() => {
+        isSelected("a")
+        aRuns++
+      })
+
+      expect(nullRuns).toBe(1)
+      expect(undefRuns).toBe(1)
+      expect(aRuns).toBe(1)
+
+      // Switch to null
+      selected.set(null)
+      expect(aRuns).toBe(2) // deselected
+      expect(nullRuns).toBe(2) // newly selected
+      expect(undefRuns).toBe(1) // unaffected
+
+      // Switch to undefined
+      selected.set(undefined)
+      expect(nullRuns).toBe(3) // deselected
+      expect(undefRuns).toBe(2) // newly selected
+      expect(aRuns).toBe(2) // unaffected
+    })
+
+    test("rapid selector changes", () => {
+      const selected = signal(0)
+      const isSelected = createSelector(() => selected())
+
+      let runs0 = 0
+      let runs1 = 0
+      let runs2 = 0
+
+      effect(() => {
+        isSelected(0)
+        runs0++
+      })
+      effect(() => {
+        isSelected(1)
+        runs1++
+      })
+      effect(() => {
+        isSelected(2)
+        runs2++
+      })
+
+      // Rapid changes: 0 -> 1 -> 2 -> 0
+      selected.set(1)
+      selected.set(2)
+      selected.set(0)
+
+      // Each affected bucket should have been notified for each change
+      // 0->1: runs0+1, runs1+1
+      // 1->2: runs1+1, runs2+1
+      // 2->0: runs2+1, runs0+1
+      expect(runs0).toBe(3) // initial + deselected + reselected
+      expect(runs1).toBe(3) // initial + selected + deselected
+      expect(runs2).toBe(3) // initial + selected + deselected
+
+      // Final state
+      expect(isSelected(0)).toBe(true)
+      expect(isSelected(1)).toBe(false)
+      expect(isSelected(2)).toBe(false)
+    })
+  })
 })

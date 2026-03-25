@@ -117,4 +117,62 @@ describe("signal", () => {
     const info = s.debug()
     expect(info.name).toBeUndefined()
   })
+
+  describe("direct updater disposal", () => {
+    test("disposed direct updater is not called on subsequent updates", () => {
+      const s = signal(0)
+      let called = 0
+      const dispose = s.direct(() => {
+        called++
+      })
+
+      s.set(1)
+      expect(called).toBe(1)
+
+      dispose()
+      s.set(2)
+      expect(called).toBe(1) // not called after disposal
+    })
+
+    test("multiple direct updaters, dispose one, others still fire", () => {
+      const s = signal(0)
+      let calls1 = 0
+      let calls2 = 0
+      let calls3 = 0
+
+      const dispose1 = s.direct(() => {
+        calls1++
+      })
+      s.direct(() => {
+        calls2++
+      })
+      s.direct(() => {
+        calls3++
+      })
+
+      s.set(1)
+      expect(calls1).toBe(1)
+      expect(calls2).toBe(1)
+      expect(calls3).toBe(1)
+
+      dispose1()
+      s.set(2)
+      expect(calls1).toBe(1) // disposed — not called
+      expect(calls2).toBe(2) // still active
+      expect(calls3).toBe(2) // still active
+    })
+
+    test("direct updater slot is null after disposal", () => {
+      const s = signal(0)
+      const dispose = s.direct(() => {})
+
+      // Access internal _d array via cast
+      const internal = s as unknown as { _d: ((() => void) | null)[] | null }
+      expect(internal._d).not.toBeNull()
+      expect(internal._d![0]).toBeTypeOf("function")
+
+      dispose()
+      expect(internal._d![0]).toBeNull()
+    })
+  })
 })
