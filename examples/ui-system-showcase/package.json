@@ -1,5 +1,5 @@
 {
-  "name": "@pyreon/example-vite-styler",
+  "name": "@pyreon/example-ui-system-showcase",
   "private": true,
   "version": "0.3.0",
   "type": "module",
@@ -21,7 +21,9 @@
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/attrs": "workspace:*",
-    "@pyreon/hooks": "workspace:*"
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
+    "@pyreon/kinetic-presets": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/vite-plugin": "workspace:*",

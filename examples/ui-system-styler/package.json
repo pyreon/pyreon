@@ -1,5 +1,5 @@
 {
-  "name": "@pyreon/example-vite-kinetic",
+  "name": "@pyreon/example-ui-system-styler",
   "private": true,
   "version": "0.3.0",
   "type": "module",
@@ -14,11 +14,14 @@
     "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/kinetic": "workspace:*",
-    "@pyreon/kinetic-presets": "workspace:*",
-    "@pyreon/hooks": "workspace:*",
     "@pyreon/styler": "workspace:*",
-    "@pyreon/ui-core": "workspace:*"
+    "@pyreon/ui-core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
+    "@pyreon/coolgrid": "workspace:*",
+    "@pyreon/unistyle": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*",
+    "@pyreon/attrs": "workspace:*",
+    "@pyreon/hooks": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/vite-plugin": "workspace:*",
