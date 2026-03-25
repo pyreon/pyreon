@@ -192,6 +192,59 @@ mount(<App />, document.getElementById("app")!)
 - `memo(Component)` → not needed, components run once in Pyreon
 - `.map()` in JSX → use `<For>` for reactive list rendering
 
+## Ecosystem Packages (18)
+
+- @pyreon/store — Global state management with composition stores (`defineStore`)
+- @pyreon/state-tree — Structured reactive models with snapshots and patches
+- @pyreon/form — Signal-based form management with fields, validation, arrays
+- @pyreon/validation — Schema adapters (Zod, Valibot, ArkType)
+- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions
+- @pyreon/table — TanStack Table adapter with reactive options
+- @pyreon/virtual — TanStack Virtual adapter for element and window virtualization
+- @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation
+- @pyreon/feature — Schema-driven CRUD primitives (`defineFeature` → queries, forms, tables, store)
+- @pyreon/charts — Reactive ECharts bridge with lazy loading and auto module detection
+- @pyreon/storage — Reactive client storage (localStorage, sessionStorage, cookies, IndexedDB)
+- @pyreon/hotkeys — Keyboard shortcut management with scopes and conflict detection
+- @pyreon/permissions — Reactive permissions (RBAC, ABAC, feature flags, subscription tiers)
+- @pyreon/machine — Reactive state machines — constrained signals with type-safe transitions
+- @pyreon/flow — Reactive flow diagrams with signal-native nodes, edges, auto-layout via elkjs
+- @pyreon/code — Reactive code editor with CodeMirror 6, minimap, diff editor, tabbed editor
+- @pyreon/document — Universal document rendering — one template, 14+ output formats
+- @pyreon/storybook — Storybook renderer for Pyreon components
+
+## Key Ecosystem Patterns
+
+```typescript
+// State management
+import { defineStore } from '@pyreon/store'
+const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const increment = () => count.update(n => n + 1)
+  return { count, increment }
+})
+
+// Forms
+import { useForm, useField } from '@pyreon/form'
+const form = useForm({ initialValues: { name: '' }, onSubmit: (v) => save(v) })
+const name = useField(form, 'name')
+
+// Permissions
+import { createPermissions } from '@pyreon/permissions'
+const can = createPermissions({ 'posts.read': true, 'posts.delete': (post) => post.authorId === userId })
+
+// State machines
+import { createMachine } from '@pyreon/machine'
+const light = createMachine({ initial: 'red', states: { red: { on: { NEXT: 'green' } }, green: { on: { NEXT: 'yellow' } }, yellow: { on: { NEXT: 'red' } } } })
+
+// Document rendering
+import { createDocument } from '@pyreon/document'
+const doc = createDocument({ title: 'Report' }).heading('Sales').table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
+await doc.toPdf()   // PDF
+await doc.toEmail() // Outlook-safe HTML
+await doc.toSlack() // Slack Block Kit JSON
+```
+
 ## AI Tools
 
 - `pyreon doctor --json` — scan project for React patterns, get structured fix suggestions

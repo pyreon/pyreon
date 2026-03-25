@@ -31,6 +31,140 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 UI component packages (`@pyreon/styler`, `@pyreon/hooks`, `@pyreon/elements`, etc.) live in a separate repo: `pyreon/ui-system`.
 
+### Fundamentals (Ecosystem Libraries)
+| Package | Description |
+|---|---|
+| `@pyreon/store` | Global state management — composition stores returning `StoreApi<T>` |
+| `@pyreon/state-tree` | Structured reactive state tree — models, snapshots, patches, middleware |
+| `@pyreon/form` | Signal-based form management — fields, validation, submission, arrays, context |
+| `@pyreon/validation` | Schema adapters for forms (Zod, Valibot, ArkType) |
+| `@pyreon/query` | Pyreon adapter for TanStack Query |
+| `@pyreon/table` | Pyreon adapter for TanStack Table |
+| `@pyreon/virtual` | Pyreon adapter for TanStack Virtual |
+| `@pyreon/i18n` | Reactive i18n with async namespace loading, plurals, interpolation |
+| `@pyreon/feature` | Schema-driven CRUD primitives — auto-generated queries, forms, tables, stores |
+| `@pyreon/charts` | Reactive ECharts bridge with lazy loading, auto-detection, typed options |
+| `@pyreon/storage` | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB |
+| `@pyreon/hotkeys` | Keyboard shortcut management — scope-aware, modifier keys, conflict detection |
+| `@pyreon/permissions` | Reactive permissions — RBAC, ABAC, feature flags, subscription tiers |
+| `@pyreon/machine` | Reactive state machines — constrained signals with type-safe transitions |
+| `@pyreon/flow` | Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs |
+| `@pyreon/code` | Reactive code editor — CodeMirror 6 with signals, minimap, diff editor |
+| `@pyreon/document` | Universal document rendering — 18 primitives, 14+ output formats |
+| `@pyreon/storybook` | Storybook renderer for Pyreon components |
+
+## Fundamentals — Key Technical Details
+
+### @pyreon/store
+- `defineStore(id, setup)` — composition stores, singleton by ID, returns `StoreApi<T>`
+- `StoreApi<T>`: `.store` (user state/actions), `.id`, `.state` (snapshot), `patch()`, `subscribe()`, `onAction()`, `reset()`, `dispose()`
+- Auto-classifies setup returns: signals → state tracking, functions → wrapped actions
+- `addStorePlugin(plugin)`, `setStoreRegistryProvider()` for SSR, `resetStore(id)` / `resetAllStores()`
+
+### @pyreon/state-tree
+- `model({ state, views, actions })` — structured reactive models with nested composition
+- `ModelDefinition.create(initial?)` / `.asHook(id)` — instances or singleton hooks
+- `getSnapshot(instance)` / `applySnapshot(instance, snapshot)` — typed recursive serialization
+- `onPatch(instance, listener)` / `applyPatch(instance, patch|patches)` — JSON patch record/replay
+- `addMiddleware(instance, fn)` — action interception chain
+
+### @pyreon/form
+- `useForm({ initialValues, onSubmit, validators?, schema?, validateOn?, debounceMs? })` — reactive form state
+- `useField(form, name)` — single-field hook with `hasError`, `showError`, `register()`
+- `useFieldArray(initial?)` — dynamic array fields with stable keys, append/remove/move/swap
+- `useWatch(form, name?)` — reactive field watcher (single, multiple, or all fields)
+- `useFormState(form, selector?)` — computed form state summary
+- `FormProvider` / `useFormContext()` — context pattern for nested components
+
+### @pyreon/i18n
+- `createI18n({ locale, messages, loader?, fallbackLocale?, pluralRules?, onMissingKey? })`
+- `t(key, values?)` — interpolation with `{{name}}`, pluralization with `_one`/`_other` suffixes
+- Namespace lazy loading with deduplication, `addMessages()` for runtime additions
+- `I18nProvider` / `useI18n()` context, `<Trans>` component for rich JSX interpolation
+
+### @pyreon/query
+- Full TanStack Query adapter: `useQuery`, `useMutation`, `useInfiniteQuery`, `useQueries`
+- Suspense: `useSuspenseQuery`, `useSuspenseInfiniteQuery`, `QuerySuspense` boundary
+- `useSubscription(options)` — reactive WebSocket with auto-reconnect, integrates with QueryClient for cache invalidation
+- Fine-grained signals per field (data, error, isFetching independent)
+
+### @pyreon/table
+- `useTable(options)` — reactive TanStack Table with signal-driven options, auto state sync
+- `flexRender(component, props)` — renders column def templates (strings, functions, VNodes)
+
+### @pyreon/virtual
+- `useVirtualizer(options)` — element-scoped with reactive `virtualItems`, `totalSize`, `isScrolling`
+- `useWindowVirtualizer(options)` — window-scoped variant with SSR-safe checks
+
+### @pyreon/validation
+- `zodSchema()` / `zodField()` — duck-typed Zod adapter (works with v3 and v4)
+- `valibotSchema(schema, safeParseFn)` / `valibotField()` — Valibot standalone-function style
+- `arktypeSchema()` / `arktypeField()` — ArkType sync adapter
+
+### @pyreon/feature
+- `defineFeature({ name, schema, api })` — schema-driven CRUD primitives
+- Auto-generates: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`
+- Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, `@pyreon/table`
+
+### @pyreon/charts
+- `useChart<TOption>(optionsFn, config?)` — reactive ECharts bridge with lazy loading
+- `<Chart />` component with event binding, auto-detects chart types and dynamically imports
+- `@pyreon/charts/manual` entry for tree-shaking control
+
+### @pyreon/storage
+- `useStorage(key, default, options?)` — reactive signal backed by localStorage, cross-tab synced
+- `useSessionStorage`, `useCookie`, `useIndexedDB`, `useMemoryStorage` — backend variants
+- `createStorage(backend)` — factory for custom backends (encrypted, remote, etc.)
+- All return `StorageSignal<T>` — extends `Signal<T>` with `.remove()`
+
+### @pyreon/hotkeys
+- `useHotkey(shortcut, handler, options?)` — component-scoped, auto-unregisters on unmount
+- `useHotkeyScope(scope)` — activate a scope for a component's lifetime
+- Supports `mod` (⌘ on Mac, Ctrl elsewhere), scope-based activation
+
+### @pyreon/permissions
+- `createPermissions(initial?)` — reactive permissions instance, callable as `can(key, context?)`
+- `can.not(key)` / `can.all(...keys)` / `can.any(...keys)` — inverse and multi-checks
+- `can.set(map)` / `can.patch(map)` — replace or merge permissions reactively
+- Wildcard matching: `'posts.*'` matches any `posts.X`
+- `PermissionsProvider` / `usePermissions()` — context pattern for SSR/testing
+
+### @pyreon/machine
+- `createMachine({ initial, states })` — constrained signal with type-safe transitions
+- `machine()` — read state, `machine.send(event)` — trigger transition
+- `machine.matches(...states)`, `machine.can(event)`, `machine.nextEvents()`
+- Guards: `{ target: 'state', guard: (payload?) => boolean }` for conditional transitions
+
+### @pyreon/flow
+- `createFlow({ nodes, edges, ...config })` — reactive flow instance with signal-based state
+- Node/edge CRUD, selection, viewport (zoom/pan/fitView), auto-layout via elkjs (lazy-loaded)
+- Components: `<Flow>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`
+- Edge paths: `getBezierPath()`, `getSmoothStepPath()`, `getStraightPath()`, `getStepPath()`
+- No D3 — pan/zoom via pointer events + CSS transforms
+
+### @pyreon/code
+- `createEditor({ value, language, theme, minimap, ... })` — reactive editor instance
+- `editor.value` — reactive Signal<string>, two-way sync with CodeMirror
+- `<CodeEditor>`, `<DiffEditor>`, `<TabbedEditor>` — mount components
+- `minimapExtension()` — canvas-based code overview
+- `loadLanguage(lang)` — lazy-load 17+ language grammars
+- Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB)
+
+### @pyreon/document
+- `render(node, format, options?)` — render document node tree to any format
+- `createDocument(props?)` — builder: `.heading()`, `.text()`, `.table()`, `.toPdf()`, `.toEmail()`, etc.
+- JSX primitives: `Document`, `Page`, `Heading`, `Text`, `Table`, `Image`, `List`, `Code`, `Divider`, etc.
+- 14+ output formats: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat
+- Heavy renderers lazy-loaded (PDF ~300KB, DOCX ~100KB, XLSX ~500KB, PPTX ~200KB)
+
+### @pyreon/storybook
+- `renderToCanvas(context, canvasElement)` — core renderer for Storybook
+- `Meta<TComponent>` / `StoryObj<TMeta>` — typed story definitions
+- Preset: `framework: "@pyreon/storybook"` in `.storybook/main.ts`
+
+### Devtools
+Stateful packages expose `./devtools` subpath exports with WeakRef-based registries for introspection. Tree-shakeable — zero cost unless imported. Available for: store, state-tree, form, i18n.
+
 ## Key Architectural Patterns
 
 ### Workspace resolution (no build needed)
