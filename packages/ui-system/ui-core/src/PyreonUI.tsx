@@ -4,7 +4,6 @@ import { signal } from "@pyreon/reactivity"
 import { ThemeContext } from "@pyreon/styler"
 import type { PyreonTheme } from "@pyreon/unistyle"
 import { enrichTheme } from "@pyreon/unistyle"
-import config from "./config"
 import { context as coreContext } from "./context"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
