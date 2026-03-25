@@ -1,0 +1,53 @@
+{
+  "name": "@pyreon/vite-plugin",
+  "version": "0.7.14",
+  "description": "Vite plugin for Pyreon — .pyreon SFC support, HMR, compiler integration",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/vite-plugin"
+  },
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vite-plugin#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@pyreon/compiler": "workspace:^"
+  },
+  "peerDependencies": {
+    "vite": ">=8.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

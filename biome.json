@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.8/schema.json",
   "extends": ["@vitus-labs/tools-lint/biome"],
   "vcs": {
     "enabled": true,
@@ -84,19 +84,19 @@
     },
     {
       "includes": [
-        "packages/reactivity/src/debug.ts",
-        "packages/reactivity/src/effect.ts",
-        "packages/reactivity/src/scope.ts",
-        "packages/runtime-dom/src/devtools.ts",
-        "packages/runtime-dom/src/hydrate.ts",
-        "packages/runtime-dom/src/hydration-debug.ts",
-        "packages/runtime-dom/src/mount.ts",
-        "packages/runtime-dom/src/nodes.ts",
-        "packages/runtime-dom/src/props.ts",
-        "packages/runtime-dom/src/transition.ts",
-        "packages/runtime-server/src/index.ts",
-        "packages/server/src/handler.ts",
-        "packages/server/src/client.ts",
+        "packages/core/reactivity/src/debug.ts",
+        "packages/core/reactivity/src/effect.ts",
+        "packages/core/reactivity/src/scope.ts",
+        "packages/core/runtime-dom/src/devtools.ts",
+        "packages/core/runtime-dom/src/hydrate.ts",
+        "packages/core/runtime-dom/src/hydration-debug.ts",
+        "packages/core/runtime-dom/src/mount.ts",
+        "packages/core/runtime-dom/src/nodes.ts",
+        "packages/core/runtime-dom/src/props.ts",
+        "packages/core/runtime-dom/src/transition.ts",
+        "packages/core/runtime-server/src/index.ts",
+        "packages/core/server/src/handler.ts",
+        "packages/core/server/src/client.ts",
         "examples/benchmark/bench-cli.ts",
         "examples/benchmark/bench-debug.ts",
         "examples/benchmark/bench-profile.ts",
@@ -114,10 +114,10 @@
         "scripts/bench-compiler.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts",
-        "packages/cli/src/index.ts",
-        "packages/cli/src/doctor.ts",
-        "packages/cli/src/context.ts",
-        "packages/mcp/src/index.ts"
+        "packages/tools/cli/src/index.ts",
+        "packages/tools/cli/src/doctor.ts",
+        "packages/tools/cli/src/context.ts",
+        "packages/tools/mcp/src/index.ts"
       ],
       "linter": {
         "rules": {
@@ -128,7 +128,7 @@
       }
     },
     {
-      "includes": ["packages/runtime-dom/src/mount.ts", "packages/runtime-dom/src/nodes.ts"],
+      "includes": ["packages/core/runtime-dom/src/mount.ts", "packages/core/runtime-dom/src/nodes.ts"],
       "linter": {
         "rules": {
           "complexity": {

@@ -3,8 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "react": ["../../packages/react-compat/src/index.ts"],
-      "react-dom/client": ["../../packages/react-compat/src/dom.ts"]
+      "react": ["../../packages/tools/react-compat/src/index.ts"],
+      "react-dom/client": ["../../packages/tools/react-compat/src/dom.ts"]
     }
   },
   "include": ["src", "vite.config.ts"]
