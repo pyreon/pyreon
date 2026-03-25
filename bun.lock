@@ -154,9 +154,9 @@
         "vite": "^8.0.0",
       },
     },
-    "packages/cli": {
+    "packages/core/cli": {
       "name": "@pyreon/cli",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "bin": {
         "pyreon": "./lib/index.js",
       },
@@ -167,23 +167,23 @@
         "typescript": ">=5.0.0",
       },
     },
-    "packages/compiler": {
+    "packages/core/compiler": {
       "name": "@pyreon/compiler",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },
     },
-    "packages/core": {
+    "packages/core/core": {
       "name": "@pyreon/core",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
       },
     },
-    "packages/head": {
+    "packages/core/head": {
       "name": "@pyreon/head",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
@@ -194,9 +194,123 @@
         "@pyreon/runtime-dom": "workspace:^",
       },
     },
-    "packages/mcp": {
+    "packages/core/preact-compat": {
+      "name": "@pyreon/preact-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/core/react-compat": {
+      "name": "@pyreon/react-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/core/reactivity": {
+      "name": "@pyreon/reactivity",
+      "version": "0.7.14",
+    },
+    "packages/core/router": {
+      "name": "@pyreon/router",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/core/runtime-dom": {
+      "name": "@pyreon/runtime-dom",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/core/runtime-server": {
+      "name": "@pyreon/runtime-server",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/core/server": {
+      "name": "@pyreon/server",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/head": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/router": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/runtime-server": "workspace:^",
+      },
+    },
+    "packages/core/solid-compat": {
+      "name": "@pyreon/solid-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/core/vite-plugin": {
+      "name": "@pyreon/vite-plugin",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/compiler": "workspace:^",
+      },
+      "devDependencies": {
+        "vite": "^8.0.0",
+      },
+      "peerDependencies": {
+        "vite": ">=8.0.0",
+      },
+    },
+    "packages/core/vue-compat": {
+      "name": "@pyreon/vue-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/tools/mcp": {
       "name": "@pyreon/mcp",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "bin": {
         "pyreon-mcp": "./lib/index.js",
       },
@@ -209,126 +323,12 @@
         "typescript": ">=5.0.0",
       },
     },
-    "packages/preact-compat": {
-      "name": "@pyreon/preact-compat",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/react-compat": {
-      "name": "@pyreon/react-compat",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/reactivity": {
-      "name": "@pyreon/reactivity",
-      "version": "0.7.2",
-    },
-    "packages/router": {
-      "name": "@pyreon/router",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/runtime-dom": {
-      "name": "@pyreon/runtime-dom",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/runtime-server": {
-      "name": "@pyreon/runtime-server",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-      },
-    },
-    "packages/server": {
-      "name": "@pyreon/server",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/head": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/router": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-        "@pyreon/runtime-server": "workspace:^",
-      },
-    },
-    "packages/solid-compat": {
-      "name": "@pyreon/solid-compat",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/typescript": {
+    "packages/tools/typescript": {
       "name": "@pyreon/typescript",
-      "version": "0.7.2",
+      "version": "0.7.14",
       "peerDependencies": {
         "@pyreon/core": ">=0.7.2",
         "typescript": ">=5.9.0",
-      },
-    },
-    "packages/vite-plugin": {
-      "name": "@pyreon/vite-plugin",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/compiler": "workspace:^",
-      },
-      "devDependencies": {
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "vite": ">=8.0.0",
-      },
-    },
-    "packages/vue-compat": {
-      "name": "@pyreon/vue-compat",
-      "version": "0.7.2",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
       },
     },
   },
@@ -493,7 +493,7 @@
 
     "@gar/promisify": ["@gar/promisify@1.1.3", "", {}, "sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw=="],
 
-    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.8.7", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.8.7" } }, "sha512-fOmQ7AQG1xAYmyYeneq5jWSsgHb8YFHY5aDeW2bKIv1gQBYXiEdMvgkoPGs4Q8o2G5UVDKUNyQxuqYuTuXlZMw=="],
+    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.8.8", "", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.8.8" } }, "sha512-2NE+gfUX092su6oZYw6yOfgPYAfx9NBLFdMLNdZZtkupCP9oZfz6qFRYf1o8la2Le7Tyb94O5TONzcozENx2xg=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.11", "", { "peerDependencies": { "hono": "^4" } }, "sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g=="],
 
@@ -661,11 +661,11 @@
 
     "@pyreon/benchmark": ["@pyreon/benchmark@workspace:examples/benchmark"],
 
-    "@pyreon/cli": ["@pyreon/cli@workspace:packages/cli"],
+    "@pyreon/cli": ["@pyreon/cli@workspace:packages/core/cli"],
 
-    "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/compiler"],
+    "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/core/compiler"],
 
-    "@pyreon/core": ["@pyreon/core@workspace:packages/core"],
+    "@pyreon/core": ["@pyreon/core@workspace:packages/core/core"],
 
     "@pyreon/example-preact-compat": ["@pyreon/example-preact-compat@workspace:examples/preact-compat"],
 
@@ -675,33 +675,33 @@
 
     "@pyreon/example-vue-compat": ["@pyreon/example-vue-compat@workspace:examples/vue-compat"],
 
-    "@pyreon/head": ["@pyreon/head@workspace:packages/head"],
+    "@pyreon/head": ["@pyreon/head@workspace:packages/core/head"],
 
-    "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/mcp"],
+    "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
 
     "@pyreon/playground": ["@pyreon/playground@workspace:examples/playground"],
 
-    "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/preact-compat"],
+    "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/core/preact-compat"],
 
-    "@pyreon/react-compat": ["@pyreon/react-compat@workspace:packages/react-compat"],
+    "@pyreon/react-compat": ["@pyreon/react-compat@workspace:packages/core/react-compat"],
 
-    "@pyreon/reactivity": ["@pyreon/reactivity@workspace:packages/reactivity"],
+    "@pyreon/reactivity": ["@pyreon/reactivity@workspace:packages/core/reactivity"],
 
-    "@pyreon/router": ["@pyreon/router@workspace:packages/router"],
+    "@pyreon/router": ["@pyreon/router@workspace:packages/core/router"],
 
-    "@pyreon/runtime-dom": ["@pyreon/runtime-dom@workspace:packages/runtime-dom"],
+    "@pyreon/runtime-dom": ["@pyreon/runtime-dom@workspace:packages/core/runtime-dom"],
 
-    "@pyreon/runtime-server": ["@pyreon/runtime-server@workspace:packages/runtime-server"],
+    "@pyreon/runtime-server": ["@pyreon/runtime-server@workspace:packages/core/runtime-server"],
 
-    "@pyreon/server": ["@pyreon/server@workspace:packages/server"],
+    "@pyreon/server": ["@pyreon/server@workspace:packages/core/server"],
 
-    "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/solid-compat"],
+    "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/core/solid-compat"],
 
-    "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/typescript"],
+    "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 
-    "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/vite-plugin"],
+    "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/core/vite-plugin"],
 
-    "@pyreon/vue-compat": ["@pyreon/vue-compat@workspace:packages/vue-compat"],
+    "@pyreon/vue-compat": ["@pyreon/vue-compat@workspace:packages/core/vue-compat"],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.0.0-rc.11", "", { "os": "android", "cpu": "arm64" }, "sha512-SJ+/g+xNnOh6NqYxD0V3uVN4W3VfnrGsC9/hoglicgTNfABFG9JjISvkkU0dNY84MNHLWyOgxP9v9Y9pX4S7+A=="],
 
@@ -847,13 +847,13 @@
 
     "@vue-macros/common": ["@vue-macros/common@3.1.2", "", { "dependencies": { "@vue/compiler-sfc": "^3.5.22", "ast-kit": "^2.1.2", "local-pkg": "^1.1.2", "magic-string-ast": "^1.0.2", "unplugin-utils": "^0.3.0" }, "peerDependencies": { "vue": "^2.7.0 || ^3.2.25" }, "optionalPeers": ["vue"] }, "sha512-h9t4ArDdniO9ekYHAD95t9AZcAbb19lEGK+26iAjUODOIJKmObDNBSe4+6ELQAA3vtYiFPPBtHh7+cQCKi3Dng=="],
 
-    "@vue/compiler-core": ["@vue/compiler-core@3.5.30", "", { "dependencies": { "@babel/parser": "^7.29.0", "@vue/shared": "3.5.30", "entities": "^7.0.1", "estree-walker": "^2.0.2", "source-map-js": "^1.2.1" } }, "sha512-s3DfdZkcu/qExZ+td75015ljzHc6vE+30cFMGRPROYjqkroYI5NV2X1yAMX9UeyBNWB9MxCfPcsjpLS11nzkkw=="],
+    "@vue/compiler-core": ["@vue/compiler-core@3.5.31", "", { "dependencies": { "@babel/parser": "^7.29.2", "@vue/shared": "3.5.31", "entities": "^7.0.1", "estree-walker": "^2.0.2", "source-map-js": "^1.2.1" } }, "sha512-k/ueL14aNIEy5Onf0OVzR8kiqF/WThgLdFhxwa4e/KF/0qe38IwIdofoSWBTvvxQOesaz6riAFAUaYjoF9fLLQ=="],
 
-    "@vue/compiler-dom": ["@vue/compiler-dom@3.5.30", "", { "dependencies": { "@vue/compiler-core": "3.5.30", "@vue/shared": "3.5.30" } }, "sha512-eCFYESUEVYHhiMuK4SQTldO3RYxyMR/UQL4KdGD1Yrkfdx4m/HYuZ9jSfPdA+nWJY34VWndiYdW/wZXyiPEB9g=="],
+    "@vue/compiler-dom": ["@vue/compiler-dom@3.5.31", "", { "dependencies": { "@vue/compiler-core": "3.5.31", "@vue/shared": "3.5.31" } }, "sha512-BMY/ozS/xxjYqRFL+tKdRpATJYDTTgWSo0+AJvJNg4ig+Hgb0dOsHPXvloHQ5hmlivUqw1Yt2pPIqp4e0v1GUw=="],
 
-    "@vue/compiler-sfc": ["@vue/compiler-sfc@3.5.30", "", { "dependencies": { "@babel/parser": "^7.29.0", "@vue/compiler-core": "3.5.30", "@vue/compiler-dom": "3.5.30", "@vue/compiler-ssr": "3.5.30", "@vue/shared": "3.5.30", "estree-walker": "^2.0.2", "magic-string": "^0.30.21", "postcss": "^8.5.8", "source-map-js": "^1.2.1" } }, "sha512-LqmFPDn89dtU9vI3wHJnwaV6GfTRD87AjWpTWpyrdVOObVtjIuSeZr181z5C4PmVx/V3j2p+0f7edFKGRMpQ5A=="],
+    "@vue/compiler-sfc": ["@vue/compiler-sfc@3.5.31", "", { "dependencies": { "@babel/parser": "^7.29.2", "@vue/compiler-core": "3.5.31", "@vue/compiler-dom": "3.5.31", "@vue/compiler-ssr": "3.5.31", "@vue/shared": "3.5.31", "estree-walker": "^2.0.2", "magic-string": "^0.30.21", "postcss": "^8.5.8", "source-map-js": "^1.2.1" } }, "sha512-M8wpPgR9UJ8MiRGjppvx9uWJfLV7A/T+/rL8s/y3QG3u0c2/YZgff3d6SuimKRIhcYnWg5fTfDMlz2E6seUW8Q=="],
 
-    "@vue/compiler-ssr": ["@vue/compiler-ssr@3.5.30", "", { "dependencies": { "@vue/compiler-dom": "3.5.30", "@vue/shared": "3.5.30" } }, "sha512-NsYK6OMTnx109PSL2IAyf62JP6EUdk4Dmj6AkWcJGBvN0dQoMYtVekAmdqgTtWQgEJo+Okstbf/1p7qZr5H+bA=="],
+    "@vue/compiler-ssr": ["@vue/compiler-ssr@3.5.31", "", { "dependencies": { "@vue/compiler-dom": "3.5.31", "@vue/shared": "3.5.31" } }, "sha512-h0xIMxrt/LHOvJKMri+vdYT92BrK3HFLtDqq9Pr/lVVfE4IyKZKvWf0vJFW10Yr6nX02OR4MkJwI0c1HDa1hog=="],
 
     "@vue/devtools-api": ["@vue/devtools-api@8.1.1", "", { "dependencies": { "@vue/devtools-kit": "^8.1.1" } }, "sha512-bsDMJ07b3GN1puVwJb/fyFnj/U2imyswK5UQVLZwVl7O05jDrt6BHxeG5XffmOOdasOj/bOmIjxJvGPxU7pcqw=="],
 
@@ -861,15 +861,15 @@
 
     "@vue/devtools-shared": ["@vue/devtools-shared@8.1.1", "", {}, "sha512-+h4ttmJYl/txpxHKaoZcaKpC+pvckgLzIDiSQlaQ7kKthKh8KuwoLW2D8hPJEnqKzXOvu15UHEoGyngAXCz0EQ=="],
 
-    "@vue/reactivity": ["@vue/reactivity@3.5.30", "", { "dependencies": { "@vue/shared": "3.5.30" } }, "sha512-179YNgKATuwj9gB+66snskRDOitDiuOZqkYia7mHKJaidOMo/WJxHKF8DuGc4V4XbYTJANlfEKb0yxTQotnx4Q=="],
+    "@vue/reactivity": ["@vue/reactivity@3.5.31", "", { "dependencies": { "@vue/shared": "3.5.31" } }, "sha512-DtKXxk9E/KuVvt8VxWu+6Luc9I9ETNcqR1T1oW1gf02nXaZ1kuAx58oVu7uX9XxJR0iJCro6fqBLw9oSBELo5g=="],
 
-    "@vue/runtime-core": ["@vue/runtime-core@3.5.30", "", { "dependencies": { "@vue/reactivity": "3.5.30", "@vue/shared": "3.5.30" } }, "sha512-e0Z+8PQsUTdwV8TtEsLzUM7SzC7lQwYKePydb7K2ZnmS6jjND+WJXkmmfh/swYzRyfP1EY3fpdesyYoymCzYfg=="],
+    "@vue/runtime-core": ["@vue/runtime-core@3.5.31", "", { "dependencies": { "@vue/reactivity": "3.5.31", "@vue/shared": "3.5.31" } }, "sha512-AZPmIHXEAyhpkmN7aWlqjSfYynmkWlluDNPHMCZKFHH+lLtxP/30UJmoVhXmbDoP1Ng0jG0fyY2zCj1PnSSA6Q=="],
 
-    "@vue/runtime-dom": ["@vue/runtime-dom@3.5.30", "", { "dependencies": { "@vue/reactivity": "3.5.30", "@vue/runtime-core": "3.5.30", "@vue/shared": "3.5.30", "csstype": "^3.2.3" } }, "sha512-2UIGakjU4WSQ0T4iwDEW0W7vQj6n7AFn7taqZ9Cvm0Q/RA2FFOziLESrDL4GmtI1wV3jXg5nMoJSYO66egDUBw=="],
+    "@vue/runtime-dom": ["@vue/runtime-dom@3.5.31", "", { "dependencies": { "@vue/reactivity": "3.5.31", "@vue/runtime-core": "3.5.31", "@vue/shared": "3.5.31", "csstype": "^3.2.3" } }, "sha512-xQJsNRmGPeDCJq/u813tyonNgWBFjzfVkBwDREdEWndBnGdHLHgkwNBQxLtg4zDrzKTEcnikUy1UUNecb3lJ6g=="],
 
-    "@vue/server-renderer": ["@vue/server-renderer@3.5.30", "", { "dependencies": { "@vue/compiler-ssr": "3.5.30", "@vue/shared": "3.5.30" }, "peerDependencies": { "vue": "3.5.30" } }, "sha512-v+R34icapydRwbZRD0sXwtHqrQJv38JuMB4JxbOxd8NEpGLny7cncMp53W9UH/zo4j8eDHjQ1dEJXwzFQknjtQ=="],
+    "@vue/server-renderer": ["@vue/server-renderer@3.5.31", "", { "dependencies": { "@vue/compiler-ssr": "3.5.31", "@vue/shared": "3.5.31" }, "peerDependencies": { "vue": "3.5.31" } }, "sha512-GJuwRvMcdZX/CriUnyIIOGkx3rMV3H6sOu0JhdKbduaeCji6zb60iOGMY7tFoN24NfsUYoFBhshZtGxGpxO4iA=="],
 
-    "@vue/shared": ["@vue/shared@3.5.30", "", {}, "sha512-YXgQ7JjaO18NeK2K9VTbDHaFy62WrObMa6XERNfNOkAhD1F1oDSf3ZJ7K6GqabZ0BvSDHajp8qfS5Sa2I9n8uQ=="],
+    "@vue/shared": ["@vue/shared@3.5.31", "", {}, "sha512-nBxuiuS9Lj5bPkPbWogPUnjxxWpkRniX7e5UBQDWl6Fsf4roq9wwV+cR7ezQ4zXswNvPIlsdj1slcLB7XCsRAw=="],
 
     "abbrev": ["abbrev@1.1.1", "", {}, "sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q=="],
 
@@ -923,7 +923,7 @@
 
     "boxen": ["boxen@5.1.2", "", { "dependencies": { "ansi-align": "^3.0.0", "camelcase": "^6.2.0", "chalk": "^4.1.0", "cli-boxes": "^2.2.1", "string-width": "^4.2.2", "type-fest": "^0.20.2", "widest-line": "^3.1.0", "wrap-ansi": "^7.0.0" } }, "sha512-9gYgQKXx+1nP8mP7CzFyaUARhg7D3n1dF/FnErWmu9l6JvGpNUN278h0aSb+QjoiKSWG+iZ3uHrcqk0qrY9RQQ=="],
 
-    "brace-expansion": ["brace-expansion@5.0.4", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-h+DEnpVvxmfVefa4jFbCf5HdH5YMDXRsmKflpf1pILZWRFlTbJpxeU55nJl4Smt5HQaGzg1o6RHFPJaOqnmBDg=="],
+    "brace-expansion": ["brace-expansion@5.0.5", "", { "dependencies": { "balanced-match": "^4.0.2" } }, "sha512-VZznLgtwhn+Mact9tfiwx64fA9erHH/MCXEUfB/0bX/6Fz6ny5EGTXYltMocqg4xFAQZtnO3DHWWXi8RiuN7cQ=="],
 
     "braces": ["braces@3.0.3", "", { "dependencies": { "fill-range": "^7.1.1" } }, "sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA=="],
 
@@ -1033,7 +1033,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "electron-to-chromium": ["electron-to-chromium@1.5.322", "", {}, "sha512-vFU34OcrvMcH66T+dYC3G4nURmgfDVewMIu6Q2urXpumAPSMmzvcn04KVVV8Opikq8Vs5nUbO/8laNhNRqSzYw=="],
+    "electron-to-chromium": ["electron-to-chromium@1.5.325", "", {}, "sha512-PwfIw7WQSt3xX7yOf5OE/unLzsK9CaN2f/FvV3WjPR1Knoc1T9vePRVV4W1EM301JzzysK51K7FNKcusCr0zYA=="],
 
     "emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
@@ -1151,7 +1151,7 @@
 
     "gzip-size": ["gzip-size@6.0.0", "", { "dependencies": { "duplexer": "^0.1.2" } }, "sha512-ax7ZYomf6jqPTQ4+XCpUGyXKHk5WweS+e05MBO4/y3WJ5RkmPXNKvX+bx1behVILVwr6JSQvZAku021CHPXG3Q=="],
 
-    "happy-dom": ["happy-dom@20.8.7", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.18.3" } }, "sha512-7wfBi+UqulQlyLcis+9a+hTK0A/fMO4QKP6w6J9HnadXVkRdOvGf/N5G4XVpfgCYfnY7oKazlOSdWmsfatNSLQ=="],
+    "happy-dom": ["happy-dom@20.8.8", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.18.3" } }, "sha512-5/F8wxkNxYtsN0bXfMwIyNLZ9WYsoOYPbmoluqVJqv8KBUbcyKZawJ7uYK4WTX8IHBLYv+VXIwfeNDPy1oKMwQ=="],
 
     "has-flag": ["has-flag@4.0.0", "", {}, "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ=="],
 
@@ -1565,7 +1565,7 @@
 
     "socks-proxy-agent": ["socks-proxy-agent@7.0.0", "", { "dependencies": { "agent-base": "^6.0.2", "debug": "^4.3.3", "socks": "^2.6.2" } }, "sha512-Fgl0YPZ902wEsAyiQ+idGd1A7rSFx/ayC1CQVMw5P+EQx2V0SgpGtf6OKFhVjPflPUl9YMmEOnmfjCdMUsygww=="],
 
-    "solid-js": ["solid-js@1.9.11", "", { "dependencies": { "csstype": "^3.1.0", "seroval": "~1.5.0", "seroval-plugins": "~1.5.0" } }, "sha512-WEJtcc5mkh/BnHA6Yrg4whlF8g6QwpmXXRg4P2ztPmcKeHHlH4+djYecBLhSpecZY2RRECXYUwIc/C2r3yzQ4Q=="],
+    "solid-js": ["solid-js@1.9.12", "", { "dependencies": { "csstype": "^3.1.0", "seroval": "~1.5.0", "seroval-plugins": "~1.5.0" } }, "sha512-QzKaSJq2/iDrWR1As6MHZQ8fQkdOBf8GReYb7L5iKwMGceg7HxDcaOHk0at66tNgn9U2U7dXo8ZZpLIAmGMzgw=="],
 
     "source-map": ["source-map@0.7.6", "", {}, "sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ=="],
 
@@ -1673,7 +1673,7 @@
 
     "vitest": ["vitest@4.1.1", "", { "dependencies": { "@vitest/expect": "4.1.1", "@vitest/mocker": "4.1.1", "@vitest/pretty-format": "4.1.1", "@vitest/runner": "4.1.1", "@vitest/snapshot": "4.1.1", "@vitest/spy": "4.1.1", "@vitest/utils": "4.1.1", "es-module-lexer": "^2.0.0", "expect-type": "^1.3.0", "magic-string": "^0.30.21", "obug": "^2.1.1", "pathe": "^2.0.3", "picomatch": "^4.0.3", "std-env": "^4.0.0-rc.1", "tinybench": "^2.9.0", "tinyexec": "^1.0.2", "tinyglobby": "^0.2.15", "tinyrainbow": "^3.0.3", "vite": "^6.0.0 || ^7.0.0 || ^8.0.0", "why-is-node-running": "^2.3.0" }, "peerDependencies": { "@edge-runtime/vm": "*", "@opentelemetry/api": "^1.9.0", "@types/node": "^20.0.0 || ^22.0.0 || >=24.0.0", "@vitest/browser-playwright": "4.1.1", "@vitest/browser-preview": "4.1.1", "@vitest/browser-webdriverio": "4.1.1", "@vitest/ui": "4.1.1", "happy-dom": "*", "jsdom": "*" }, "optionalPeers": ["@edge-runtime/vm", "@opentelemetry/api", "@types/node", "@vitest/browser-playwright", "@vitest/browser-preview", "@vitest/browser-webdriverio", "@vitest/ui", "happy-dom", "jsdom"], "bin": { "vitest": "vitest.mjs" } }, "sha512-yF+o4POL41rpAzj5KVILUxm1GCjKnELvaqmU9TLLUbMfDzuN0UpUR9uaDs+mCtjPe+uYPksXDRLQGGPvj1cTmA=="],
 
-    "vue": ["vue@3.5.30", "", { "dependencies": { "@vue/compiler-dom": "3.5.30", "@vue/compiler-sfc": "3.5.30", "@vue/runtime-dom": "3.5.30", "@vue/server-renderer": "3.5.30", "@vue/shared": "3.5.30" }, "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"] }, "sha512-hTHLc6VNZyzzEH/l7PFGjpcTvUgiaPK5mdLkbjrTeWSRcEfxFrv56g/XckIYlE9ckuobsdwqd5mk2g1sBkMewg=="],
+    "vue": ["vue@3.5.31", "", { "dependencies": { "@vue/compiler-dom": "3.5.31", "@vue/compiler-sfc": "3.5.31", "@vue/runtime-dom": "3.5.31", "@vue/server-renderer": "3.5.31", "@vue/shared": "3.5.31" }, "peerDependencies": { "typescript": "*" }, "optionalPeers": ["typescript"] }, "sha512-iV/sU9SzOlmA/0tygSmjkEN6Jbs3nPoIPFhCMLD2STrjgOU8DX7ZtzMhg4ahVwf5Rp9KoFzcXeB1ZrVbLBp5/Q=="],
 
     "vue-router": ["vue-router@5.0.4", "", { "dependencies": { "@babel/generator": "^7.28.6", "@vue-macros/common": "^3.1.1", "@vue/devtools-api": "^8.0.6", "ast-walker-scope": "^0.8.3", "chokidar": "^5.0.0", "json5": "^2.2.3", "local-pkg": "^1.1.2", "magic-string": "^0.30.21", "mlly": "^1.8.0", "muggle-string": "^0.4.1", "pathe": "^2.0.3", "picomatch": "^4.0.3", "scule": "^1.3.0", "tinyglobby": "^0.2.15", "unplugin": "^3.0.0", "unplugin-utils": "^0.3.1", "yaml": "^2.8.2" }, "peerDependencies": { "@pinia/colada": ">=0.21.2", "@vue/compiler-sfc": "^3.5.17", "pinia": "^3.0.4", "vue": "^3.5.0" }, "optionalPeers": ["@pinia/colada", "@vue/compiler-sfc", "pinia"] }, "sha512-lCqDLCI2+fKVRl2OzXuzdSWmxXFLQRxQbmHugnRpTMyYiT+hNaycV0faqG5FBHDXoYrZ6MQcX87BvbY8mQ20Bg=="],
 
