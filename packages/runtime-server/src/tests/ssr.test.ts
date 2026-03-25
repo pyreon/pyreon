@@ -888,14 +888,13 @@ describe("renderToStream — error handling", () => {
     return result
   }
 
-  test("stream errors when component throws", async () => {
+  test("stream emits error comment when component throws outside Suspense", async () => {
     function Boom(): VNode {
       throw new Error("render error")
     }
 
-    const stream = renderToStream(h(Boom as ComponentFn, null))
-    const reader = stream.getReader()
-    await expect(reader.read()).rejects.toThrow("render error")
+    const html = await collectStream(renderToStream(h(Boom as ComponentFn, null)))
+    expect(html).toContain("<!--pyreon-error-->")
   })
 
   test("stream renders element with skipped prop (event handler)", async () => {

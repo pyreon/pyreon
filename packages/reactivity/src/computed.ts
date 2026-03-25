@@ -1,3 +1,4 @@
+import { _errorHandler } from "./effect"
 import { getCurrentScope } from "./scope"
 import {
   cleanupEffect,
@@ -79,13 +80,18 @@ function computedLazy<T>(fn: () => T): Computed<T> {
   const read = (): T => {
     trackSubscriber(host)
     if (dirty) {
-      if (tracked) {
-        setSkipDepsCollection(true)
-        value = withTracking(recompute, fn)
+      try {
+        if (tracked) {
+          setSkipDepsCollection(true)
+          value = withTracking(recompute, fn)
+          setSkipDepsCollection(false)
+        } else {
+          value = trackWithLocalDeps(deps, recompute, fn)
+          tracked = true
+        }
+      } catch (err) {
         setSkipDepsCollection(false)
-      } else {
-        value = trackWithLocalDeps(deps, recompute, fn)
-        tracked = true
+        _errorHandler(err)
       }
       dirty = false
     }
@@ -137,11 +143,16 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
   const recompute = () => {
     if (disposed) return
     cleanupLocalDeps(deps, recompute)
-    const next = trackWithLocalDeps(deps, recompute, fn)
-    if (initialized && equals(value as T, next)) return
-    value = next
-    dirty = false
-    initialized = true
+    try {
+      const next = trackWithLocalDeps(deps, recompute, fn)
+      if (initialized && equals(value as T, next)) return
+      value = next
+      dirty = false
+      initialized = true
+    } catch (err) {
+      _errorHandler(err)
+      return
+    }
     if (host._s) notifySubscribers(host._s)
     if (directFns) for (const f of directFns) f?.()
   }
@@ -150,7 +161,11 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     trackSubscriber(host)
     if (dirty) {
       cleanupLocalDeps(deps, recompute)
-      value = trackWithLocalDeps(deps, recompute, fn)
+      try {
+        value = trackWithLocalDeps(deps, recompute, fn)
+      } catch (err) {
+        _errorHandler(err)
+      }
       dirty = false
       initialized = true
     }

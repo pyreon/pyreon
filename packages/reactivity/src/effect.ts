@@ -35,7 +35,7 @@ export function onCleanup(fn: () => void): void {
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
-let _errorHandler: (err: unknown) => void = (err) => {
+export let _errorHandler: (err: unknown) => void = (err) => {
   console.error("[pyreon] Unhandled effect error:", err)
 }
 

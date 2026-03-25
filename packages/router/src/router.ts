@@ -22,6 +22,7 @@ import {
 // `false` on the server. Using a constant avoids per-call `typeof` branches
 // that are uncoverable in test environments.
 const _isBrowser = typeof window !== "undefined"
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
 
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
@@ -458,8 +459,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     for (const hook of afterHooks) {
       try {
         hook(to, from)
-      } catch (_err) {
-        /* hook errors silently ignored */
+      } catch (err) {
+        if (__DEV__) {
+          console.warn(`[Pyreon Router] afterEach hook threw an error:`, err)
+        }
       }
     }
 
@@ -668,7 +671,10 @@ async function runGuard(
 ): Promise<NavigationGuardResult> {
   try {
     return await guard(to, from)
-  } catch (_err) {
+  } catch (err) {
+    if (__DEV__) {
+      console.warn(`[Pyreon Router] Navigation guard threw an error — navigation cancelled:`, err)
+    }
     return false
   }
 }

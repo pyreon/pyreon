@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { computed, signal } from "@pyreon/reactivity"
 
 interface Todo {
@@ -54,17 +55,17 @@ export function TodoList() {
       </div>
 
       <ul class="todo-list">
-        {() =>
-          todos().map((todo) => (
-            <li class={todo.done ? "done" : ""} key={todo.id}>
+        <For each={todos} by={(todo) => todo.id}>
+          {(todo) => (
+            <li class={todo.done ? "done" : ""}>
               <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />
               <span>{todo.text}</span>
               <button type="button" class="remove" onClick={() => remove(todo.id)}>
                 ×
               </button>
             </li>
-          ))
-        }
+          )}
+        </For>
       </ul>
     </div>
   )

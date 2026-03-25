@@ -387,7 +387,7 @@ export function lazy<P extends Props>(
   // Uses Pyreon's __loading protocol — Suspense checks this to show fallback.
   // __loading() triggers load() on first call so loading starts when Suspense
   // first encounters the component (not at module load time, not on first render).
-  const LazyComponent = ((props: P) => {
+  const LazyComp = ((props: P) => {
     const err = error()
     if (err) throw err
     const comp = loaded()
@@ -395,14 +395,14 @@ export function lazy<P extends Props>(
     return comp(props)
   }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
 
-  LazyComponent.__loading = () => {
+  LazyComp.__loading = () => {
     const isLoading = loaded() === null && error() === null
     if (isLoading) load()
     return isLoading
   }
-  LazyComponent.preload = load
+  LazyComp.preload = load
 
-  return LazyComponent
+  return LazyComp
 }
 
 // ─── createContext / useContext ───────────────────────────────────────────────

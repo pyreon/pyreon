@@ -94,6 +94,8 @@
         "packages/runtime-dom/src/nodes.ts",
         "packages/runtime-dom/src/props.ts",
         "packages/runtime-dom/src/transition.ts",
+        "packages/runtime-server/src/index.ts",
+        "packages/server/src/handler.ts",
         "packages/server/src/client.ts",
         "examples/benchmark/bench-cli.ts",
         "examples/benchmark/bench-debug.ts",
