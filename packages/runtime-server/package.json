@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/runtime-server",
-  "version": "0.7.12",
+  "version": "0.7.13",
   "description": "SSR/SSG renderer for Pyreon — streaming HTML + static generation",
   "license": "MIT",
   "repository": {
