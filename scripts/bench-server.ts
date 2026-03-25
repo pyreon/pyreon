@@ -11,8 +11,7 @@
 
 import type { ComponentFn, VNode } from "../packages/core/core/src/index"
 import { h } from "../packages/core/core/src/index"
-import { RouterProvider, RouterView } from "../packages/core/router/src/components"
-import { createRouter } from "../packages/core/router/src/router"
+import { RouterView } from "../packages/core/router/src/components"
 import type { RouteRecord } from "../packages/core/router/src/types"
 import {
   buildClientEntryTag,
