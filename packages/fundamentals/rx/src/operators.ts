@@ -1,6 +1,5 @@
 import { computed, effect, signal } from "@pyreon/reactivity"
 import type { ReadableSignal } from "./types"
-import { isSignal } from "./types"
 
 /**
  * Distinct — skip consecutive duplicate values from a signal.

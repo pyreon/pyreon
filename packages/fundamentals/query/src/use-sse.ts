@@ -27,6 +27,8 @@ export interface UseSSEOptions<T = string> {
   withCredentials?: boolean
   /** Called when a message is received — use queryClient to invalidate or update cache */
   onMessage?: (data: T, queryClient: QueryClient) => void
+  /** Called when the EventSource connection opens */
+  onOpen?: (event: Event) => void
   /** Called when a connection error occurs */
   onError?: (event: Event) => void
 }
@@ -38,6 +40,10 @@ export interface UseSSEResult<T> {
   status: Signal<SSEStatus>
   /** Last error event */
   error: Signal<Event | null>
+  /** Last `id` field received from the server (per SSE spec) */
+  lastEventId: () => string
+  /** EventSource readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED */
+  readyState: () => number
   /** Manually close the connection */
   close: () => void
   /** Manually reconnect */
@@ -74,6 +80,8 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const data = signal<T | null>(null)
   const status = signal<SSEStatus>("disconnected")
   const error = signal<Event | null>(null)
+  const lastEventId = signal("")
+  const readyState = signal<number>(2) // Start as CLOSED until connected
 
   let es: EventSource | null = null
   let reconnectAttempts = 0
@@ -100,6 +108,10 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
 
   function handleMessage(event: MessageEvent): void {
     try {
+      // Track lastEventId from the SSE spec
+      if (event.lastEventId !== undefined && event.lastEventId !== "") {
+        lastEventId.set(event.lastEventId)
+      }
       const parsed = options.parse ? options.parse(event.data as string) : (event.data as T)
       batch(() => {
         data.set(parsed)
@@ -136,6 +148,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   function handleError(event: Event): void {
     status.set("error")
     error.set(event)
+    readyState.set(es?.readyState ?? EventSource.CLOSED)
     options.onError?.(event)
 
     // EventSource auto-reconnects for transient errors, but if readyState is CLOSED
@@ -169,18 +182,22 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
       es = new EventSource(getUrl(), {
         withCredentials: options.withCredentials ?? false,
       })
+      readyState.set(EventSource.CONNECTING)
     } catch {
       status.set("error")
+      readyState.set(EventSource.CLOSED)
       scheduleReconnect()
       return
     }
 
-    es.onopen = () => {
+    es.onopen = (event: Event) => {
       batch(() => {
         status.set("connected")
         error.set(null)
+        readyState.set(EventSource.OPEN)
         reconnectAttempts = 0
       })
+      options.onOpen?.(event)
     }
 
     attachListeners(es)
@@ -214,6 +231,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
       es = null
     }
     status.set("disconnected")
+    readyState.set(EventSource.CLOSED)
   }
 
   function manualReconnect(): void {
@@ -240,6 +258,8 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     data,
     status,
     error,
+    lastEventId: () => lastEventId(),
+    readyState: () => readyState(),
     close,
     reconnect: manualReconnect,
   }

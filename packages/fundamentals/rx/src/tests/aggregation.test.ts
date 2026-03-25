@@ -1,6 +1,6 @@
 import { signal } from "@pyreon/reactivity"
 import { describe, expect, it } from "vitest"
-import { count, max, min, sum } from "../aggregation"
+import { average, count, max, min, sum } from "../aggregation"
 
 describe("aggregation — plain values", () => {
   it("count", () => {
@@ -31,6 +31,19 @@ describe("aggregation — plain values", () => {
     expect(min([])).toBeUndefined()
     expect(max([])).toBeUndefined()
   })
+
+  it("average", () => {
+    expect(average([2, 4, 6])).toBe(4)
+  })
+
+  it("average with key", () => {
+    const items = [{ v: 10 }, { v: 20 }, { v: 30 }]
+    expect(average(items, "v")).toBe(20)
+  })
+
+  it("average empty array returns 0", () => {
+    expect(average([])).toBe(0)
+  })
 })
 
 describe("aggregation — signal values", () => {
@@ -48,5 +61,23 @@ describe("aggregation — signal values", () => {
     expect(s()).toBe(6)
     src.set([10, 20])
     expect(s()).toBe(30)
+  })
+
+  it("average returns computed", () => {
+    const src = signal([2, 4, 6])
+    const avg = average(src)
+    expect(avg()).toBe(4)
+
+    src.set([10, 20])
+    expect(avg()).toBe(15)
+  })
+
+  it("average with key returns computed", () => {
+    const src = signal([{ v: 10 }, { v: 20 }, { v: 30 }])
+    const avg = average(src, "v")
+    expect(avg()).toBe(20)
+
+    src.set([{ v: 100 }])
+    expect(avg()).toBe(100)
   })
 })

@@ -206,14 +206,25 @@ export function useIsActive(path: string, exact = false): () => boolean {
     )
   return () => {
     const current = router.currentRoute().path
-    if (exact) return current === path
+    if (exact) {
+      return matchSegments(current, path, true)
+    }
     if (path === "/") return current === "/"
     // Segment-aware prefix: /admin matches /admin/users but NOT /admin-panel
-    const cs = current.split("/").filter(Boolean)
-    const ts = path.split("/").filter(Boolean)
-    if (ts.length > cs.length) return false
-    return ts.every((seg, i) => seg === cs[i])
+    return matchSegments(current, path, false)
   }
+}
+
+/** Match current path segments against a pattern that may contain `:param` segments. */
+function matchSegments(current: string, pattern: string, exact: boolean): boolean {
+  const cs = current.split("/").filter(Boolean)
+  const ps = pattern.split("/").filter(Boolean)
+  if (exact) {
+    if (cs.length !== ps.length) return false
+    return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
+  }
+  if (ps.length > cs.length) return false
+  return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
 }
 
 export function useSearchParams<T extends Record<string, string>>(

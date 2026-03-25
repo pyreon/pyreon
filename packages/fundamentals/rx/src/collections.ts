@@ -4,10 +4,6 @@ import { isSignal, resolveKey } from "./types"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function resolve<T>(source: ReadableSignal<T> | T): T {
-  return isSignal(source) ? (source as ReadableSignal<T>)() : source
-}
-
 function reactive<TIn, TOut>(
   source: TIn,
   fn: (val: any) => TOut,

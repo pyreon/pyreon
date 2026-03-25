@@ -6,7 +6,16 @@ export interface UrlStateSignal<T> {
   set(value: T): void
   /** Reset to the default value and update the URL. */
   reset(): void
+  /** Remove the parameter from the URL entirely and reset signal to default. */
+  remove(): void
 }
+
+/** Encoding strategy for array values in the URL. */
+export type ArrayFormat =
+  /** Comma-separated: `?tags=a,b` */
+  | "comma"
+  /** Repeated keys: `?tags=a&tags=b` */
+  | "repeat"
 
 /** Options for `useUrlState`. */
 export interface UrlStateOptions<T = unknown> {
@@ -24,6 +33,18 @@ export interface UrlStateOptions<T = unknown> {
    * @default 0
    */
   debounce?: number
+  /**
+   * Encoding strategy for array values.
+   * - `"comma"` — comma-separated: `?tags=a,b` (default)
+   * - `"repeat"` — repeated keys: `?tags=a&tags=b`
+   * @default "comma"
+   */
+  arrayFormat?: ArrayFormat
+  /**
+   * Called when the URL param changes externally (popstate or another
+   * `useUrlState` call updating the same param).
+   */
+  onChange?: (value: T) => void
 }
 
 /** Serializer pair for a given type. */

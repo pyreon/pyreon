@@ -13,6 +13,7 @@ import {
   RouterView,
   serializeLoaderData,
   useBlocker,
+  useIsActive,
   useLoaderData,
   useRoute,
   useRouter,
@@ -4022,5 +4023,113 @@ describe("resolveRoute — trailing slash normalization", () => {
     const withoutSlash = resolveRoute("/user/42", routes)
     expect(withSlash.params).toEqual(withoutSlash.params)
     expect(withSlash.matched.length).toBe(withoutSlash.matched.length)
+  })
+})
+
+// ─── useIsActive ───────────────────────────────────────────────────────────
+
+describe("useIsActive", () => {
+  function setupRouter(initialPath: string) {
+    const router = createRouter({
+      routes: [
+        { path: "/", component: Home },
+        { path: "/admin", component: About },
+        { path: "/admin/users", component: About },
+        { path: "/user/:id", component: User },
+        { path: "/user/:id/posts", component: User },
+        { path: "/org/:orgId/team/:teamId", component: User },
+      ],
+      url: initialPath,
+    })
+    setActiveRouter(router as unknown as RouterInstance)
+    return router
+  }
+
+  beforeEach(() => {
+    // Clear any leaked context entries from prior tests that mount RouterProvider
+    // without unmounting (pushContext is not cleaned up without onUnmount).
+    for (let i = 0; i < 50; i++) popContext()
+    setActiveRouter(null)
+  })
+
+  afterEach(() => {
+    setActiveRouter(null)
+  })
+
+  // ── Static paths (existing behavior) ────────────────────────────────────
+
+  test("exact match on static path", () => {
+    setupRouter("/admin")
+    const isActive = useIsActive("/admin", true)
+    expect(isActive()).toBe(true)
+  })
+
+  test("exact match rejects different path", () => {
+    setupRouter("/admin/users")
+    const isActive = useIsActive("/admin", true)
+    expect(isActive()).toBe(false)
+  })
+
+  test("partial match on static prefix", () => {
+    setupRouter("/admin/users")
+    const isActive = useIsActive("/admin")
+    expect(isActive()).toBe(true)
+  })
+
+  // ── Pattern matching with :params ───────────────────────────────────────
+
+  test("partial match with :param pattern", () => {
+    setupRouter("/user/42")
+    const isActive = useIsActive("/user/:id")
+    expect(isActive()).toBe(true)
+  })
+
+  test("exact match with :param pattern", () => {
+    setupRouter("/user/42")
+    const isActive = useIsActive("/user/:id", true)
+    expect(isActive()).toBe(true)
+  })
+
+  test("exact :param pattern rejects extra segments", () => {
+    setupRouter("/user/42/posts")
+    const isActive = useIsActive("/user/:id", true)
+    expect(isActive()).toBe(false)
+  })
+
+  test("partial :param pattern matches nested paths", () => {
+    setupRouter("/user/42/posts")
+    const isActive = useIsActive("/user/:id")
+    expect(isActive()).toBe(true)
+  })
+
+  test(":param matches any value in that segment position", () => {
+    setupRouter("/user/abc")
+    const isActive = useIsActive("/user/:id", true)
+    expect(isActive()).toBe(true)
+  })
+
+  test("multiple :param segments match", () => {
+    setupRouter("/org/acme/team/frontend")
+    const isActive = useIsActive("/org/:orgId/team/:teamId", true)
+    expect(isActive()).toBe(true)
+  })
+
+  test(":param pattern does not match when static segments differ", () => {
+    setupRouter("/org/acme/group/frontend")
+    const isActive = useIsActive("/org/:orgId/team/:teamId", true)
+    expect(isActive()).toBe(false)
+  })
+
+  test("root path with partial only matches root", () => {
+    setupRouter("/admin")
+    const isActive = useIsActive("/")
+    // "/" in partial mode only matches exactly "/" (special case)
+    expect(isActive()).toBe(false)
+  })
+
+  test(":param pattern with too few current segments rejects", () => {
+    setupRouter("/user")
+    const isActive = useIsActive("/user/:id", true)
+    expect(isActive()).toBe(false)
   })
 })

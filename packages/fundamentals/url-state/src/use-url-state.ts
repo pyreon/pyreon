@@ -1,7 +1,7 @@
 import { effect, onCleanup, signal } from "@pyreon/reactivity"
 import { inferSerializer } from "./serializers"
 import type { Serializer, UrlStateOptions, UrlStateSignal } from "./types"
-import { _isBrowser, getParam, setParams } from "./url"
+import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from "./url"
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -14,6 +14,7 @@ import { _isBrowser, getParam, setParams } from "./url"
  * page()        // read reactively (number)
  * page.set(2)   // updates signal + URL
  * page.reset()  // back to 1
+ * page.remove() // removes ?page entirely
  * ```
  */
 export function useUrlState<T>(
@@ -75,15 +76,24 @@ function createUrlSignal<T>(
 ): UrlStateSignal<T> {
   const replace = options?.replace !== false
   const debounceMs = options?.debounce ?? 0
+  const arrayFormat = options?.arrayFormat ?? "comma"
+  const isArray = Array.isArray(defaultValue)
+  const isRepeat = isArray && arrayFormat === "repeat"
 
   const { serialize, deserialize }: Serializer<T> =
     options?.serialize && options?.deserialize
       ? { serialize: options.serialize, deserialize: options.deserialize }
-      : inferSerializer(defaultValue)
+      : inferSerializer(defaultValue, arrayFormat)
 
   // Read initial value from URL (falls back to default when missing or in SSR)
-  const raw = getParam(key)
-  const initial = raw !== null ? deserialize(raw) : defaultValue
+  let initial: T
+  if (isRepeat) {
+    const values = getParamAll(key)
+    initial = values.length > 0 ? (values as T) : defaultValue
+  } else {
+    const raw = getParam(key)
+    initial = raw !== null ? deserialize(raw) : defaultValue
+  }
 
   const state = signal<T>(initial)
 
@@ -92,6 +102,18 @@ function createUrlSignal<T>(
 
   // Write URL when signal changes
   const writeUrl = (value: T) => {
+    if (isRepeat) {
+      const arr = value as string[]
+      const defaultArr = defaultValue as string[]
+      // Remove param when value equals default to keep URLs clean
+      if (arr.length === defaultArr.length && arr.every((v, i) => v === defaultArr[i])) {
+        setParamRepeated(key, null, replace)
+      } else {
+        setParamRepeated(key, arr, replace)
+      }
+      return
+    }
+
     const serialized = serialize(value)
     const defaultSerialized = serialize(defaultValue)
 
@@ -100,6 +122,15 @@ function createUrlSignal<T>(
       setParams({ [key]: null }, replace)
     } else {
       setParams({ [key]: serialized }, replace)
+    }
+  }
+
+  /** Force-remove the param from URL regardless of value. */
+  const removeFromUrl = () => {
+    if (isRepeat) {
+      setParamRepeated(key, null, replace)
+    } else {
+      setParams({ [key]: null }, replace)
     }
   }
 
@@ -118,9 +149,16 @@ function createUrlSignal<T>(
   // Listen for popstate (back/forward navigation)
   if (_isBrowser) {
     const onPopState = () => {
-      const current = getParam(key)
-      const value = current !== null ? deserialize(current) : defaultValue
+      let value: T
+      if (isRepeat) {
+        const values = getParamAll(key)
+        value = values.length > 0 ? (values as T) : defaultValue
+      } else {
+        const current = getParam(key)
+        value = current !== null ? deserialize(current) : defaultValue
+      }
       state.set(value)
+      options?.onChange?.(value)
     }
 
     effect(() => {
@@ -143,6 +181,12 @@ function createUrlSignal<T>(
   accessor.reset = () => {
     state.set(defaultValue)
     scheduleWrite(defaultValue)
+  }
+
+  accessor.remove = () => {
+    state.set(defaultValue)
+    if (timer !== undefined) clearTimeout(timer)
+    removeFromUrl()
   }
 
   return accessor

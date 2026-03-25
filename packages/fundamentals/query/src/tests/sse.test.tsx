@@ -19,7 +19,7 @@ interface MockEventSource {
   removeEventListener: ReturnType<typeof vi.fn>
   // Test helpers
   _simulateOpen: () => void
-  _simulateMessage: (data: string) => void
+  _simulateMessage: (data: string, lastEventId?: string) => void
   _simulateNamedEvent: (name: string, data: string) => void
   _simulateError: (closed?: boolean) => void
   _namedListeners: Map<string, EventListener[]>
@@ -69,8 +69,8 @@ class MockEventSourceClass {
     this.onopen?.({ type: "open" })
   }
 
-  _simulateMessage(data: string) {
-    this.onmessage?.({ type: "message", data } as unknown as MessageEvent)
+  _simulateMessage(data: string, lastEventId = "") {
+    this.onmessage?.({ type: "message", data, lastEventId } as unknown as MessageEvent)
   }
 
   _simulateNamedEvent(name: string, data: string) {
@@ -635,6 +635,170 @@ describe("useSSE", () => {
 
     expect(sse!.error()).toBeNull()
     expect(sse!.status()).toBe("connected")
+
+    unmount()
+  })
+
+  // ── lastEventId ──────────────────────────────────────────────────────────
+
+  it("lastEventId starts as empty string", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events" })
+    })
+
+    expect(sse!.lastEventId()).toBe("")
+    unmount()
+  })
+
+  it("lastEventId is updated from message events", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events" })
+    })
+
+    lastMockES()._simulateOpen()
+    lastMockES()._simulateMessage("hello", "evt-1")
+
+    expect(sse!.lastEventId()).toBe("evt-1")
+
+    lastMockES()._simulateMessage("world", "evt-2")
+    expect(sse!.lastEventId()).toBe("evt-2")
+
+    unmount()
+  })
+
+  it("lastEventId is not updated when lastEventId is empty", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events" })
+    })
+
+    lastMockES()._simulateOpen()
+    lastMockES()._simulateMessage("hello", "evt-1")
+    expect(sse!.lastEventId()).toBe("evt-1")
+
+    // Message with empty lastEventId should not overwrite
+    lastMockES()._simulateMessage("world", "")
+    expect(sse!.lastEventId()).toBe("evt-1")
+
+    unmount()
+  })
+
+  // ── onOpen callback ──────────────────────────────────────────────────────
+
+  it("calls onOpen when connection opens", () => {
+    const client = makeClient()
+    const openEvents: Event[] = []
+
+    const unmount = withProvider(client, () => {
+      useSSE({
+        url: "http://example.com/events",
+        onOpen: (event) => openEvents.push(event),
+      })
+    })
+
+    lastMockES()._simulateOpen()
+    expect(openEvents).toHaveLength(1)
+    expect(openEvents[0]!.type).toBe("open")
+
+    unmount()
+  })
+
+  it("onOpen is called on each reconnection open", async () => {
+    const client = makeClient()
+    const openEvents: Event[] = []
+
+    const unmount = withProvider(client, () => {
+      useSSE({
+        url: "http://example.com/events",
+        reconnect: true,
+        reconnectDelay: 10,
+        onOpen: (event) => openEvents.push(event),
+      })
+    })
+
+    lastMockES()._simulateOpen()
+    expect(openEvents).toHaveLength(1)
+
+    // Trigger reconnect
+    lastMockES()._simulateError(true)
+    await new Promise((r) => setTimeout(r, 30))
+
+    lastMockES()._simulateOpen()
+    expect(openEvents).toHaveLength(2)
+
+    unmount()
+  })
+
+  // ── readyState ───────────────────────────────────────────────────────────
+
+  it("readyState starts as CLOSED (2)", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events", enabled: false })
+    })
+
+    expect(sse!.readyState()).toBe(2)
+    unmount()
+  })
+
+  it("readyState transitions to CONNECTING (0) then OPEN (1)", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events" })
+    })
+
+    // After connect() but before open, readyState should be CONNECTING
+    expect(sse!.readyState()).toBe(0)
+
+    lastMockES()._simulateOpen()
+    expect(sse!.readyState()).toBe(1)
+
+    unmount()
+  })
+
+  it("readyState becomes CLOSED (2) after close()", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({ url: "http://example.com/events" })
+    })
+
+    lastMockES()._simulateOpen()
+    expect(sse!.readyState()).toBe(1)
+
+    sse!.close()
+    expect(sse!.readyState()).toBe(2)
+
+    unmount()
+  })
+
+  it("readyState reflects CLOSED on terminal error", () => {
+    const client = makeClient()
+    let sse: UseSSEResult<string> | null = null
+
+    const unmount = withProvider(client, () => {
+      sse = useSSE({
+        url: "http://example.com/events",
+        reconnect: false,
+      })
+    })
+
+    lastMockES()._simulateOpen()
+    lastMockES()._simulateError(true)
+    expect(sse!.readyState()).toBe(2)
 
     unmount()
   })

@@ -7,7 +7,10 @@ import {
   flatten,
   groupBy,
   keyBy,
+  last,
   map,
+  mapValues,
+  skip,
   sortBy,
   take,
   uniqBy,
@@ -78,6 +81,32 @@ describe("collections — plain values", () => {
     expect(find(users, (u) => u.name === "Bob")?.id).toBe(2)
     expect(find(users, (u) => u.name === "Nobody")).toBeUndefined()
   })
+
+  it("skip", () => {
+    const result = skip(users, 2)
+    expect(result).toHaveLength(2)
+    expect(result[0]!.name).toBe("Charlie")
+    expect(result[1]!.name).toBe("Diana")
+  })
+
+  it("last", () => {
+    const result = last(users, 2)
+    expect(result).toHaveLength(2)
+    expect(result[0]!.name).toBe("Charlie")
+    expect(result[1]!.name).toBe("Diana")
+  })
+
+  it("mapValues", () => {
+    const record: Record<string, number> = { a: 1, b: 2, c: 3 }
+    const result = mapValues(record, (v) => v * 10)
+    expect(result).toEqual({ a: 10, b: 20, c: 30 })
+  })
+
+  it("mapValues with key argument", () => {
+    const record: Record<string, number> = { x: 1, y: 2 }
+    const result = mapValues(record, (v, k) => `${k}=${v}`)
+    expect(result).toEqual({ x: "x=1", y: "y=2" })
+  })
 })
 
 describe("collections — signal values (reactive)", () => {
@@ -123,5 +152,35 @@ describe("collections — signal values (reactive)", () => {
     const src = signal(original)
     sortBy(src, "n")()
     expect(original[0]!.n).toBe("B") // original untouched
+  })
+
+  it("skip returns computed", () => {
+    const src = signal(users)
+    const skipped = skip(src, 3)
+    expect(skipped()).toHaveLength(1)
+    expect(skipped()[0]!.name).toBe("Diana")
+
+    src.set([...users, { id: 5, name: "Eve", role: "admin", active: true }])
+    expect(skipped()).toHaveLength(2)
+  })
+
+  it("last returns computed", () => {
+    const src = signal(users)
+    const lastTwo = last(src, 2)
+    expect(lastTwo()).toHaveLength(2)
+    expect(lastTwo()[0]!.name).toBe("Charlie")
+
+    src.set([users[0]!])
+    expect(lastTwo()).toHaveLength(1)
+    expect(lastTwo()[0]!.name).toBe("Alice")
+  })
+
+  it("mapValues returns computed", () => {
+    const src = signal<Record<string, number>>({ a: 1, b: 2 })
+    const doubled = mapValues(src, (v) => v * 2)
+    expect(doubled()).toEqual({ a: 2, b: 4 })
+
+    src.set({ x: 10 })
+    expect(doubled()).toEqual({ x: 20 })
   })
 })
