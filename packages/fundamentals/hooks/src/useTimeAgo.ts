@@ -102,9 +102,16 @@ export function useTimeAgo(
   const resolveDate = typeof date === "function" ? date : () => date
 
   const result = signal(computeTimeAgo(resolveDate(), formatter))
+
+  // Disposed flag prevents timer chain from continuing after cleanup.
+  // Without this, the setTimeout callback could fire after the component
+  // unmounts, scheduling yet another timer indefinitely.
   let timer: ReturnType<typeof setTimeout> | undefined
+  let disposed = false
 
   function tick() {
+    if (disposed) return
+
     const d = resolveDate()
     result.set(computeTimeAgo(d, formatter))
 
@@ -115,10 +122,11 @@ export function useTimeAgo(
     timer = setTimeout(tick, interval)
   }
 
-  // Initial tick schedules the chain
-  tick()
+  // Schedule first tick (don't call synchronously — let cleanup register first)
+  timer = setTimeout(tick, 0)
 
   onCleanup(() => {
+    disposed = true
     if (timer) clearTimeout(timer)
   })
 

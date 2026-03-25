@@ -1,6 +1,6 @@
 import type { VNodeChild } from "@pyreon/core"
-import { h, Portal } from "@pyreon/core"
-import { effect, onCleanup } from "@pyreon/reactivity"
+import { For, h, Portal } from "@pyreon/core"
+import { computed, effect, onCleanup } from "@pyreon/reactivity"
 import { toastStyles } from "./styles"
 import { _pauseAll, _resumeAll, _toasts, toast } from "./toast"
 import type { Toast, ToasterProps, ToastPosition } from "./types"
@@ -67,11 +67,12 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   injectStyles()
 
-  // Promote "entering" toasts to "visible" on next frame
+  // Promote "entering" toasts to "visible" on next frame.
+  // Only runs when there are actually entering toasts (early return guard).
   effect(() => {
     const toasts = _toasts()
-    const entering = toasts.filter((t) => t.state === "entering")
-    if (entering.length === 0) return
+    const hasEntering = toasts.some((t) => t.state === "entering")
+    if (!hasEntering) return
 
     const raf = requestAnimationFrame(() => {
       const current = _toasts()
@@ -89,6 +90,9 @@ export function Toaster(props?: ToasterProps): VNodeChild {
     onCleanup(() => cancelAnimationFrame(raf))
   })
 
+  // Computed visible toasts — only the most recent `max` items
+  const visibleToasts = computed(() => _toasts().slice(-max))
+
   const containerStyle = getContainerStyle(position, gap, offset)
 
   return h(Portal, {
@@ -104,11 +108,11 @@ export function Toaster(props?: ToasterProps): VNodeChild {
         onMouseEnter: _pauseAll,
         onMouseLeave: _resumeAll,
       },
-      ...(() => {
-        const toasts = _toasts()
-        const visible = toasts.slice(-max)
-        return visible.map((t) => renderToast(t))
-      })(),
+      h(For, {
+        each: visibleToasts,
+        by: (t: Toast) => t.id,
+        children: (t: Toast) => renderToast(t),
+      }),
     ),
   })
 }
@@ -125,7 +129,6 @@ function renderToast(t: Toast): VNodeChild {
     "div",
     {
       class: `pyreon-toast pyreon-toast--${t.type}${stateClass}`,
-      key: t.id,
       role: "alert",
       "aria-atomic": "true",
       "data-toast-id": t.id,
