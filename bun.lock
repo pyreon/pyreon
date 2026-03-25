@@ -479,6 +479,20 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/fundamentals/hooks": {
+      "name": "@pyreon/hooks",
+      "version": "0.3.0",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+        "@vitus-labs/tools-rolldown": "^1.15.3",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/styler": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+      },
+    },
     "packages/fundamentals/hotkeys": {
       "name": "@pyreon/hotkeys",
       "version": "0.10.0",
@@ -860,20 +874,6 @@
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
-      },
-    },
-    "packages/ui-system/hooks": {
-      "name": "@pyreon/hooks",
-      "version": "0.3.0",
-      "devDependencies": {
-        "@pyreon/typescript": "workspace:^",
-        "@vitus-labs/tools-rolldown": "^1.15.3",
-      },
-      "peerDependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
       },
     },
     "packages/ui-system/kinetic": {
@@ -1466,7 +1466,7 @@
 
     "@pyreon/head": ["@pyreon/head@workspace:packages/core/head"],
 
-    "@pyreon/hooks": ["@pyreon/hooks@workspace:packages/ui-system/hooks"],
+    "@pyreon/hooks": ["@pyreon/hooks@workspace:packages/fundamentals/hooks"],
 
     "@pyreon/hotkeys": ["@pyreon/hotkeys@workspace:packages/fundamentals/hotkeys"],
 

@@ -36,7 +36,6 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags |
 | `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
 | `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
-| `@pyreon/hooks` | 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
 | `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
 | `@pyreon/attrs` | Chainable HOC factory (.attrs(), .config(), .statics()) |
 | `@pyreon/rocketstyle` | Multi-state styling (states, sizes, variants, themes, dark mode) |
@@ -121,6 +120,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/feature` | Schema-driven CRUD primitives — auto-generated queries, forms, tables, stores |
 | `@pyreon/charts` | Reactive ECharts bridge with lazy loading, auto-detection, typed options |
 | `@pyreon/storage` | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB |
+| `@pyreon/hooks` | 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
 | `@pyreon/hotkeys` | Keyboard shortcut management — scope-aware, modifier keys, conflict detection |
 | `@pyreon/permissions` | Reactive permissions — RBAC, ABAC, feature flags, subscription tiers |
 | `@pyreon/machine` | Reactive state machines — constrained signals with type-safe transitions |
@@ -397,9 +397,9 @@ cd docs && bun run preview   # preview production build
 
 49 packages across 4 categories under `packages/`:
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
-- `packages/fundamentals/` — 20 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
+- `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
 - `packages/tools/` — 9 packages: cli, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
-- `packages/ui-system/` — 12 packages: ui-core, styler, unistyle, hooks, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
+- `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 
