@@ -3,8 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "vue": ["../../packages/vue-compat/src/index.ts"],
-      "vue/*": ["../../packages/vue-compat/src/*"]
+      "vue": ["../../packages/tools/vue-compat/src/index.ts"],
+      "vue/*": ["../../packages/tools/vue-compat/src/*"]
     }
   },
   "include": ["src", "vite.config.ts"]
