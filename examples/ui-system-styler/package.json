@@ -7,7 +7,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "lint": "biome check .",
-    "typecheck": "echo \"Skipped \u2014 PyreonElement/ElementType compatibility fix tracked separately\""
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",

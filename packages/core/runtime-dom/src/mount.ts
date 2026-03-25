@@ -148,6 +148,15 @@ export function mountChild(
     return mountComponent(vnode as VNode & { type: ComponentFn }, parent, anchor)
   }
 
+  if (__DEV__ && typeof vnode.type !== "string") {
+    console.warn(
+      `[Pyreon] Invalid VNode type: expected a string tag or component function, ` +
+        `received ${typeof vnode.type} (${String(vnode.type)}). ` +
+        `This usually means you passed an object or class instead of a component function.`,
+    )
+    return noop
+  }
+
   return mountElement(vnode, parent, anchor)
 }
 

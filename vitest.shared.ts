@@ -60,36 +60,44 @@ const uiPackages = [
   "unistyle",
 ] as const
 
-const alias: Record<string, string> = {}
+// Subpath exports must come BEFORE their parent package to avoid prefix matching.
+// Vite resolves aliases in array order — first match wins.
+type AliasEntry = { find: string | RegExp; replacement: string }
+const alias: AliasEntry[] = []
+
+// Subpath exports (must be first — exact match before prefix match on parent)
+const subpaths: [string, string][] = [
+  ["@pyreon/core/jsx-runtime", "packages/core/core/src/jsx-runtime.ts"],
+  ["@pyreon/core/jsx-dev-runtime", "packages/core/core/src/jsx-dev-runtime.ts"],
+  ["@pyreon/head/ssr", "packages/core/head/src/ssr.ts"],
+  ["@pyreon/server/client", "packages/core/server/src/client.ts"],
+  ["@pyreon/preact-compat/hooks", "packages/tools/preact-compat/src/hooks.ts"],
+  ["@pyreon/preact-compat/signals", "packages/tools/preact-compat/src/signals.ts"],
+  ["@pyreon/react-compat/dom", "packages/tools/react-compat/src/dom.ts"],
+  ["@pyreon/storybook/preset", "packages/tools/storybook/src/preset.ts"],
+  ["@pyreon/storybook/preview", "packages/tools/storybook/src/preview.ts"],
+  ["@pyreon/validation/zod", "packages/fundamentals/validation/src/zod.ts"],
+  ["@pyreon/validation/valibot", "packages/fundamentals/validation/src/valibot.ts"],
+  ["@pyreon/validation/arktype", "packages/fundamentals/validation/src/arktype.ts"],
+  ["@pyreon/charts/manual", "packages/fundamentals/charts/src/manual.ts"],
+]
+for (const [find, replacement] of subpaths) {
+  alias.push({ find, replacement: resolve(root, replacement) })
+}
+
+// Package-level aliases (index.ts)
 for (const pkg of corePackages) {
-  alias[`@pyreon/${pkg}`] = resolve(root, `packages/core/${pkg}/src/index.ts`)
+  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/core/${pkg}/src/index.ts`) })
 }
 for (const pkg of toolsPackages) {
-  alias[`@pyreon/${pkg}`] = resolve(root, `packages/tools/${pkg}/src/index.ts`)
+  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/tools/${pkg}/src/index.ts`) })
 }
 for (const pkg of fundamentalsPackages) {
-  alias[`@pyreon/${pkg}`] = resolve(root, `packages/fundamentals/${pkg}/src/index.ts`)
+  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/fundamentals/${pkg}/src/index.ts`) })
 }
 for (const pkg of uiPackages) {
-  alias[`@pyreon/${pkg}`] = resolve(root, `packages/ui-system/${pkg}/src/index.ts`)
+  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/ui-system/${pkg}/src/index.ts`) })
 }
-
-// Also map subpath exports
-alias["@pyreon/core/jsx-runtime"] = resolve(root, "packages/core/core/src/jsx-runtime.ts")
-alias["@pyreon/core/jsx-dev-runtime"] = resolve(root, "packages/core/core/src/jsx-dev-runtime.ts")
-
-alias["@pyreon/preact-compat/hooks"] = resolve(root, "packages/tools/preact-compat/src/hooks.ts")
-alias["@pyreon/preact-compat/signals"] = resolve(root, "packages/tools/preact-compat/src/signals.ts")
-alias["@pyreon/react-compat/dom"] = resolve(root, "packages/tools/react-compat/src/dom.ts")
-alias["@pyreon/server/client"] = resolve(root, "packages/core/server/src/client.ts")
-
-// Fundamentals subpath exports
-alias["@pyreon/validation/zod"] = resolve(root, "packages/fundamentals/validation/src/zod.ts")
-alias["@pyreon/validation/valibot"] = resolve(root, "packages/fundamentals/validation/src/valibot.ts")
-alias["@pyreon/validation/arktype"] = resolve(root, "packages/fundamentals/validation/src/arktype.ts")
-alias["@pyreon/charts/manual"] = resolve(root, "packages/fundamentals/charts/src/manual.ts")
-alias["@pyreon/storybook/preset"] = resolve(root, "packages/tools/storybook/src/preset.ts")
-alias["@pyreon/storybook/preview"] = resolve(root, "packages/tools/storybook/src/preview.ts")
 
 export const sharedConfig: UserConfig = {
   resolve: { alias, conditions: ["bun"] },

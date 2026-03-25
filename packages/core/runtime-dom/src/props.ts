@@ -173,7 +173,7 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
   let first: Cleanup | null = null
   let cleanups: Cleanup[] | null = null
   for (const key in props) {
-    if (key === "key" || key === "ref") continue
+    if (key === "key" || key === "ref" || key === "children") continue
     const c = applyProp(el, key, props[key])
     if (c) {
       if (!first) {

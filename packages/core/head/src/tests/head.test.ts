@@ -2,7 +2,8 @@ import { h } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import type { HeadContextValue } from "../index"
-import { createHeadContext, HeadProvider, renderWithHead, useHead } from "../index"
+import { createHeadContext, HeadProvider, useHead } from "../index"
+import { renderWithHead } from "../ssr"
 
 // ─── SSR tests ────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,6 @@
 import type { VNode } from "@pyreon/core"
+import { provide } from "@pyreon/core"
+import { ThemeContext } from "@pyreon/styler"
 import { Provider as CoreProvider, config, context, isEmpty } from "@pyreon/ui-core"
 import { createMediaQueries, sortBreakpoints } from "./responsive"
 
@@ -41,6 +43,12 @@ function Provider(props: TProvider): VNode | null {
       media,
     },
   }
+
+  // Provide enriched theme to both the ui-core context (for rocketstyle/elements)
+  // AND the styler ThemeContext (for styled() components and makeItResponsive).
+  // Without this, styled() components receive an empty theme and all responsive
+  // styles are skipped (@media queries produce NaN values).
+  provide(ThemeContext, enrichedTheme)
 
   return CoreProvider({ theme: enrichedTheme, children }) as VNode | null
 }

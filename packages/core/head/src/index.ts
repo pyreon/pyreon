@@ -12,6 +12,4 @@ export type {
 export { createHeadContext, HeadContext } from "./context"
 export type { HeadProviderProps } from "./provider"
 export { HeadProvider } from "./provider"
-export type { RenderWithHeadResult } from "./ssr"
-export { renderWithHead } from "./ssr"
 export { useHead } from "./use-head"

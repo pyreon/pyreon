@@ -1,4 +1,4 @@
-import type { VNode } from "@pyreon/core"
+import type { VNodeChild } from "@pyreon/core"
 
 // ─── Base Types ───────────────────────────────────────────────
 
@@ -9,9 +9,10 @@ export type DisplayName = string
 
 /**
  * A Pyreon component function that accepts additional static properties.
- * In Pyreon, components are plain functions: (props: P) => VNode | null.
+ * Aligned with @pyreon/core's ComponentFn — returns VNodeChild (not just VNode | null)
+ * to support components returning strings, numbers, undefined, etc.
  */
-export type ComponentFn<P = any> = ((props: P) => VNode | null) & Partial<Record<string, any>>
+export type ComponentFn<P = any> = ((props: P) => VNodeChild) & Partial<Record<string, any>>
 
 /**
  * An element type — either a Pyreon component function or an intrinsic tag string.

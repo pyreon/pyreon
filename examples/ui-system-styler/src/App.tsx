@@ -1096,10 +1096,7 @@ function KeyboardDemo() {
 function IntervalDemo() {
   const ticks = signal(0)
   const running = signal(true)
-  useInterval(
-    () => ticks.update((n) => n + 1),
-    () => (running() ? 1000 : null),
-  )
+  useInterval(() => ticks.update((n) => n + 1), running() ? 1000 : null)
   return (
     <HookBox>
       <Code>useInterval()</Code> — 1s ticks
