@@ -529,8 +529,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Find word boundaries
     let start = col
     let end = col
-    while (start > 0 && /\w/.test(text[start - 1]!)) start--
-    while (end < text.length && /\w/.test(text[end]!)) end++
+    while (start > 0 && /\w/.test(text.charAt(start - 1))) start--
+    while (end < text.length && /\w/.test(text.charAt(end))) end++
 
     return text.slice(start, end)
   }

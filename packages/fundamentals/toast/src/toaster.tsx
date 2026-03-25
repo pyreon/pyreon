@@ -1,6 +1,6 @@
 import type { VNodeChild } from "@pyreon/core"
-import { h, Portal } from "@pyreon/core"
-import { effect, onCleanup } from "@pyreon/reactivity"
+import { For, Portal } from "@pyreon/core"
+import { computed, effect, onCleanup } from "@pyreon/reactivity"
 import { toastStyles } from "./styles"
 import { _pauseAll, _resumeAll, _toasts, toast } from "./toast"
 import type { Toast, ToasterProps, ToastPosition } from "./types"
@@ -50,6 +50,7 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  * Render component for toast notifications. Place once at your app root.
  *
  * @example
+ * ```tsx
  * function App() {
  *   return (
  *     <>
@@ -58,6 +59,7 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  *     </>
  *   )
  * }
+ * ```
  */
 export function Toaster(props?: ToasterProps): VNodeChild {
   const position = props?.position ?? "top-right"
@@ -67,11 +69,12 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   injectStyles()
 
-  // Promote "entering" toasts to "visible" on next frame
+  // Promote "entering" toasts to "visible" on next frame.
+  // Only runs when there are actually entering toasts (early return guard).
   effect(() => {
     const toasts = _toasts()
-    const entering = toasts.filter((t) => t.state === "entering")
-    if (entering.length === 0) return
+    const hasEntering = toasts.some((t) => t.state === "entering")
+    if (!hasEntering) return
 
     const raf = requestAnimationFrame(() => {
       const current = _toasts()
@@ -89,31 +92,32 @@ export function Toaster(props?: ToasterProps): VNodeChild {
     onCleanup(() => cancelAnimationFrame(raf))
   })
 
+  // Computed visible toasts — only the most recent `max` items
+  const visibleToasts = computed(() => _toasts().slice(-max))
+
   const containerStyle = getContainerStyle(position, gap, offset)
 
-  return h(Portal, {
-    target: document.body,
-    children: h(
-      "div",
-      {
-        class: "pyreon-toast-container",
-        style: containerStyle,
-        role: "region",
-        "aria-label": "Notifications",
-        "aria-live": "polite",
-        onMouseEnter: _pauseAll,
-        onMouseLeave: _resumeAll,
-      },
-      ...(() => {
-        const toasts = _toasts()
-        const visible = toasts.slice(-max)
-        return visible.map((t) => renderToast(t))
-      })(),
-    ),
-  })
+  return (
+    <Portal target={document.body}>
+      <section
+        class="pyreon-toast-container"
+        style={containerStyle}
+        aria-label="Notifications"
+        aria-live="polite"
+        onMouseEnter={_pauseAll}
+        onMouseLeave={_resumeAll}
+      >
+        <For each={visibleToasts} by={(t: Toast) => t.id}>
+          {(t: Toast) => <ToastItem toast={t} />}
+        </For>
+      </section>
+    </Portal>
+  )
 }
 
-function renderToast(t: Toast): VNodeChild {
+// ─── Toast item ─────────────────────────────────────────────────────────────
+
+function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
   const stateClass =
     t.state === "entering"
       ? " pyreon-toast--entering"
@@ -121,44 +125,31 @@ function renderToast(t: Toast): VNodeChild {
         ? " pyreon-toast--exiting"
         : ""
 
-  return h(
-    "div",
-    {
-      class: `pyreon-toast pyreon-toast--${t.type}${stateClass}`,
-      key: t.id,
-      role: "alert",
-      "aria-atomic": "true",
-      "data-toast-id": t.id,
-    },
-    h(
-      "div",
-      { class: "pyreon-toast__message" },
-      typeof t.message === "string" ? t.message : t.message,
-    ),
-    ...(t.action
-      ? [
-          h(
-            "button",
-            {
-              class: "pyreon-toast__action",
-              onClick: t.action.onClick,
-            },
-            t.action.label,
-          ),
-        ]
-      : []),
-    ...(t.dismissible
-      ? [
-          h(
-            "button",
-            {
-              class: "pyreon-toast__dismiss",
-              onClick: () => toast.dismiss(t.id),
-              "aria-label": "Dismiss",
-            },
-            "\u00d7",
-          ),
-        ]
-      : []),
+  return (
+    <div
+      class={`pyreon-toast pyreon-toast--${t.type}${stateClass}`}
+      role="alert"
+      aria-atomic="true"
+      data-toast-id={t.id}
+    >
+      <div class="pyreon-toast__message">
+        {typeof t.message === "string" ? t.message : t.message}
+      </div>
+      {t.action && (
+        <button type="button" class="pyreon-toast__action" onClick={t.action.onClick}>
+          {t.action.label}
+        </button>
+      )}
+      {t.dismissible && (
+        <button
+          type="button"
+          class="pyreon-toast__dismiss"
+          onClick={() => toast.dismiss(t.id)}
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
+      )}
+    </div>
   )
 }

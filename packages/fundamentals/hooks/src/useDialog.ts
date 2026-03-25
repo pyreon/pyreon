@@ -1,5 +1,4 @@
-import { onMount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onCleanup, signal } from "@pyreon/reactivity"
 
 export interface UseDialogResult {
   /** Whether the dialog is currently open. */
@@ -33,10 +32,7 @@ export interface UseDialogResult {
 export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
   const open = signal(false)
   let dialogEl: HTMLDialogElement | null = null
-
-  const ref = (el: HTMLDialogElement) => {
-    dialogEl = el
-  }
+  let closeHandler: (() => void) | null = null
 
   const show = () => {
     dialogEl?.show()
@@ -58,14 +54,29 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
     else showModal()
   }
 
-  // Sync `open` signal when dialog is closed via Escape key or form submission
-  onMount(() => {
-    const handler = () => {
+  // Attach the close listener in the ref callback — guaranteed to have
+  // the element. onMount fires at the same time as ref in Pyreon, but
+  // ref is more reliable since it's called with the actual element.
+  const ref = (el: HTMLDialogElement) => {
+    // Clean up previous element if ref is called again
+    if (dialogEl && closeHandler) {
+      dialogEl.removeEventListener("close", closeHandler)
+    }
+
+    dialogEl = el
+
+    closeHandler = () => {
       open.set(false)
       options?.onClose?.()
     }
-    dialogEl?.addEventListener("close", handler)
-    return () => dialogEl?.removeEventListener("close", handler)
+
+    el.addEventListener("close", closeHandler)
+  }
+
+  onCleanup(() => {
+    if (dialogEl && closeHandler) {
+      dialogEl.removeEventListener("close", closeHandler)
+    }
   })
 
   return { open, show, showModal, close, toggle, ref }
