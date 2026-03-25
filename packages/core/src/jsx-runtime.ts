@@ -49,14 +49,14 @@ export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
 /** Common HTML attributes accepted by all Pyreon elements */
 export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   // Identity
-  id?: string | undefined
+  id?: string | (() => string) | undefined
   class?: ClassValue | (() => ClassValue) | undefined
   className?: ClassValue | (() => ClassValue) | undefined
   style?: StyleValue | (() => StyleValue) | undefined
   // Accessible
-  role?: string | undefined
+  role?: string | (() => string) | undefined
   tabIndex?: number | (() => number) | undefined
-  title?: string | undefined
+  title?: string | (() => string) | undefined
   lang?: string | undefined
   dir?: "ltr" | "rtl" | "auto" | undefined
   hidden?: boolean | (() => boolean) | undefined
@@ -216,7 +216,7 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   list?: string | undefined
   size?: number | undefined
   src?: string | (() => string) | undefined
-  alt?: string | undefined
+  alt?: string | (() => string) | undefined
   width?: number | string | undefined
   height?: number | string | undefined
 }
@@ -301,8 +301,8 @@ export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   decoding?: "auto" | "async" | "sync" | undefined
   crossOrigin?: "anonymous" | "use-credentials" | undefined
   referrerPolicy?: string | undefined
-  srcSet?: string | undefined
-  sizes?: string | undefined
+  srcSet?: string | (() => string) | undefined
+  sizes?: string | (() => string) | undefined
   fetchPriority?: "high" | "low" | "auto" | undefined
 }
 
@@ -314,7 +314,7 @@ interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
   autoPlay?: boolean | undefined
   muted?: boolean | undefined
   loop?: boolean | undefined
-  poster?: string | undefined
+  poster?: string | (() => string) | undefined
   preload?: "none" | "metadata" | "auto" | undefined
   playsInline?: boolean | undefined
   crossOrigin?: "anonymous" | "use-credentials" | undefined
@@ -402,8 +402,8 @@ interface ScriptAttributes extends PyreonHTMLAttributes<HTMLScriptElement> {
 interface SourceAttributes extends PyreonHTMLAttributes<HTMLSourceElement> {
   src?: string | (() => string) | undefined
   type?: string | undefined
-  srcSet?: string | undefined
-  sizes?: string | undefined
+  srcSet?: string | (() => string) | undefined
+  sizes?: string | (() => string) | undefined
   media?: string | undefined
 }
 
