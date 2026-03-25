@@ -263,6 +263,10 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 - JSX index signature narrowed to `[key: \`data-${string}\`]` and `[key: \`aria-${string}\`]` only (catches typos)
 - `TargetedEvent<E>` types `currentTarget` per element — no manual `as HTMLInputElement` casts
 - New events: `onBeforeInput`, `onInvalid`, `onResize`, `onToggle`
+- `style` prop accepts both string (`style="color: red"`) and object (`style={{ color: "red", fontSize: "14px" }}`)
+  - String: inlined as HTML attribute by compiler
+  - Object: applied via `Object.assign(el.style, obj)` by compiler
+  - Reactive: `style={() => dynamicStyle()}` tracked via `_bind()`
 
 ### Props Utilities
 

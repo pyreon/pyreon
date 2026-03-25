@@ -1082,3 +1082,29 @@ describe("JSX transform — template emission edge cases", () => {
     expect(result).toContain("_bindText(name,")
   })
 })
+
+// ─── Style attribute handling in templates ───────────────────────────────────
+
+describe("JSX transform — style attribute in templates", () => {
+  test("style object literal uses Object.assign in _bind", () => {
+    const result = t('<div style={{ overflow: "hidden" }}>text</div>')
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("Object.assign(__root.style,")
+    expect(result).toContain('overflow: "hidden"')
+  })
+
+  test("style string literal inlines as HTML attribute", () => {
+    const result = t('<div style="color: red">text</div>')
+    expect(result).toContain("_tpl(")
+    expect(result).toContain('style=\\"color: red\\"')
+    // Static string should NOT go through _bind
+    expect(result).not.toContain("Object.assign")
+    expect(result).not.toContain("cssText")
+  })
+
+  test("reactive style uses cssText in _bind", () => {
+    const result = t("<div style={() => getStyle()}>text</div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("style.cssText")
+  })
+})

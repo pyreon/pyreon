@@ -2827,3 +2827,46 @@ describe("builder toSlack", () => {
     expect(parsed.blocks[1].type).toBe("section")
   })
 })
+
+// ─── Builder .add() and .section() ──────────────────────────────────────────
+
+describe("builder .add() and .section()", () => {
+  // build() wraps sections in Document({ children: [Page({ children: sections })] })
+  // so actual content nodes are inside the page's children
+  function getPageChildren(doc: ReturnType<typeof createDocument>) {
+    const node = doc.build()
+    expect(node.type).toBe("document")
+    const page = node.children[0]!
+    expect(typeof page !== "string" && page.type).toBe("page")
+    return typeof page !== "string" ? page.children : []
+  }
+
+  it("add() with a single node adds it to the document", () => {
+    const doc = createDocument().add(Text({ children: "hello" }))
+    const children = getPageChildren(doc)
+    expect(children).toHaveLength(1)
+    const child = children[0]!
+    expect(typeof child !== "string" && child.type).toBe("text")
+  })
+
+  it("add() with an array adds multiple nodes", () => {
+    const doc = createDocument().add([Heading({ children: "a" }), Text({ children: "b" })])
+    const children = getPageChildren(doc)
+    expect(children).toHaveLength(2)
+    const first = children[0]!
+    const second = children[1]!
+    expect(typeof first !== "string" && first.type).toBe("heading")
+    expect(typeof second !== "string" && second.type).toBe("text")
+  })
+
+  it("section() wraps children in a Section node", () => {
+    const doc = createDocument().section([Text({ children: "a" }), Text({ children: "b" })])
+    const children = getPageChildren(doc)
+    expect(children).toHaveLength(1)
+    const section = children[0]!
+    expect(typeof section !== "string" && section.type).toBe("section")
+    if (typeof section !== "string") {
+      expect(section.children).toHaveLength(2)
+    }
+  })
+})

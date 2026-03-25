@@ -832,3 +832,36 @@ describe("Trans", () => {
     expect(vnode.children[2]).toBe(" items")
   })
 })
+
+// ─── addMessages flat keys ──────────────────────────────────────────────────
+
+describe("addMessages flat dot-notation keys", () => {
+  it("flat key makes t() resolve via dot notation", () => {
+    const i18n = createI18n({ locale: "en", messages: { en: {} } })
+    i18n.addMessages("en", { "section.title": "Report" })
+    expect(i18n.t("section.title")).toBe("Report")
+  })
+
+  it("nested keys still work", () => {
+    const i18n = createI18n({ locale: "en", messages: { en: {} } })
+    i18n.addMessages("en", { section: { title: "Report" } })
+    expect(i18n.t("section.title")).toBe("Report")
+  })
+
+  it("mixed flat and nested keys", () => {
+    const i18n = createI18n({ locale: "en", messages: { en: {} } })
+    i18n.addMessages("en", { "a.b": "flat", c: { d: "nested" } })
+    expect(i18n.t("a.b")).toBe("flat")
+    expect(i18n.t("c.d")).toBe("nested")
+  })
+})
+
+// ─── core subpath ───────────────────────────────────────────────────────────
+
+describe("i18n core subpath", () => {
+  it("exports createI18n and interpolate without @pyreon/core dependency", async () => {
+    const mod = await import("../core")
+    expect(mod.createI18n).toBeDefined()
+    expect(mod.interpolate).toBeDefined()
+  })
+})
