@@ -16,6 +16,7 @@ const corePackages = [
 
 const toolsPackages = [
   "cli",
+  "lint",
   "mcp",
   "preact-compat",
   "react-compat",
@@ -28,6 +29,7 @@ const toolsPackages = [
 const fundamentalsPackages = [
   "charts",
   "code",
+  "dnd",
   "document",
   "feature",
   "flow",
