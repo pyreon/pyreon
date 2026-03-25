@@ -12,7 +12,7 @@
 | @pyreon/core | h, Fragment, For, Show, Switch, Match, Suspense, ErrorBoundary, lazy, Dynamic, Portal, onMount, onUnmount, onUpdate, createContext, useContext, provide, createRef, cx, splitProps, mergeProps, createUniqueId, TargetedEvent, ExtractProps, HigherOrderComponent | Component model |
 | @pyreon/runtime-dom | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive | DOM renderer |
 | @pyreon/runtime-server | renderToString, renderToStream, runWithRequestContext | SSR renderer |
-| @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
+| @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, useIsActive, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
 | @pyreon/head | useHead, HeadProvider, renderWithHead | Document head |
 | @pyreon/server | createHandler, prerender, island, compileTemplate | SSR/SSG server |
 | @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode | Build tools |
@@ -25,7 +25,7 @@
 | @pyreon/state-tree | model, getSnapshot, applySnapshot, onPatch, applyPatch | Structured reactive state tree |
 | @pyreon/form | useForm, useField, useFieldArray, useWatch, FormProvider | Signal-based forms |
 | @pyreon/validation | zodSchema, valibotSchema, arktypeSchema | Schema adapters for forms |
-| @pyreon/query | useQuery, useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription | TanStack Query adapter |
+| @pyreon/query | useQuery, useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription, useSSE | TanStack Query adapter |
 | @pyreon/table | useTable, flexRender | TanStack Table adapter |
 | @pyreon/virtual | useVirtualizer, useWindowVirtualizer | TanStack Virtual adapter |
 | @pyreon/i18n | createI18n, I18nProvider, useI18n, Trans | Reactive i18n |
@@ -38,10 +38,13 @@
 | @pyreon/flow | createFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
 | @pyreon/code | createEditor, CodeEditor, DiffEditor, TabbedEditor | Code editor (CodeMirror 6) |
 | @pyreon/document | render, createDocument, Document, Page, Heading, Text, Table | Universal document rendering |
+| @pyreon/rx | filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search, pipe | Signal-aware reactive transforms |
+| @pyreon/toast | toast, toast.success, toast.error, toast.warning, toast.info, toast.loading, toast.update, toast.dismiss, toast.promise, Toaster | Toast notifications |
+| @pyreon/url-state | useUrlState | URL-synced reactive state |
 | @pyreon/ui-core | config, init, PyreonUI, useMode, Provider, get, set, merge, omit, pick, compose | UI config engine + unified provider |
 | @pyreon/styler | styled, css, keyframes, createGlobalStyle, ThemeContext, useTheme | CSS-in-JS |
 | @pyreon/unistyle | responsive breakpoints, CSS property mappings, unit utilities, enrichTheme | CSS utilities |
-| @pyreon/hooks | useHover, useFocus, useBreakpoint, useElementSize, useFocusTrap, useMediaQuery, useScrollLock, 20+ more | Signal-based hooks |
+| @pyreon/hooks | useHover, useFocus, useBreakpoint, useElementSize, useFocusTrap, useMediaQuery, useScrollLock, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, 26+ more | Signal-based hooks |
 | @pyreon/elements | Element, Text, List, Overlay, Portal | Base UI primitives |
 | @pyreon/attrs | attrs() | Chainable HOC factory |
 | @pyreon/rocketstyle | rocketstyle() | Multi-state styling system |
@@ -888,6 +891,133 @@ editor.insert('new code')
 
 <CodeEditor instance={editor} />
 <DiffEditor original="old code" modified="new code" />
+```
+
+## @pyreon/rx — Reactive Transforms
+
+```typescript
+import { filter, map, sortBy, groupBy, pipe, debounce, throttle, search, sum, count } from '@pyreon/rx'
+
+const items = signal([
+  { name: 'Alice', age: 30 },
+  { name: 'Bob', age: 25 },
+  { name: 'Charlie', age: 35 },
+])
+
+// Signal input → Computed output (auto-tracks):
+const adults = filter(items, i => i.age >= 30)       // Computed<Item[]>
+const sorted = sortBy(items, 'name')                  // Computed<Item[]>
+const grouped = groupBy(items, i => i.age > 30 ? 'senior' : 'junior')  // Computed<Record<string, Item[]>>
+const total = sum(items, i => i.age)                   // Computed<number>
+const n = count(items)                                 // Computed<number>
+
+// Plain input → plain output:
+const plainFiltered = filter([1, 2, 3], n => n > 1)   // [2, 3]
+
+// Pipe — compose transforms left-to-right:
+const result = pipe(
+  items,
+  filter(i => i.age >= 25),
+  sortBy('name'),
+  map(i => i.name),
+)  // Computed<string[]>
+
+// Time-based:
+const debouncedSearch = debounce(searchQuery, 300)
+const throttledPos = throttle(mousePos, 16)
+
+// Text search:
+const matches = search(items, query, { keys: ['name'] })
+```
+
+## @pyreon/toast — Toast Notifications
+
+```typescript
+import { toast, Toaster } from '@pyreon/toast'
+
+// Imperative API — returns toast ID:
+const id = toast('Hello!')
+toast.success('Saved successfully')
+toast.error('Something went wrong')
+toast.warning('Check your input')
+toast.info('New version available')
+
+// Loading → success/error pattern:
+const loadingId = toast.loading('Saving...')
+toast.update(loadingId, { type: 'success', message: 'Done!' })
+
+// Promise helper — auto-transitions:
+toast.promise(saveData(), {
+  loading: 'Saving...',
+  success: 'Saved!',
+  error: 'Failed to save',
+})
+
+// Dismiss:
+toast.dismiss(id)    // dismiss one
+toast.dismiss()      // dismiss all
+
+// Render in your app (once):
+const App = () => (
+  <>
+    <Toaster />  {/* Portal, a11y: role="alert" aria-live="polite" */}
+    <MyApp />
+  </>
+)
+```
+
+## @pyreon/url-state — URL-Synced State
+
+```typescript
+import { useUrlState } from '@pyreon/url-state'
+
+// Single param — synced to ?page=:
+const page = useUrlState('page', 1)
+page()       // 1 (auto-coerced from URL string to number)
+page.set(2)  // updates URL to ?page=2 via replaceState
+
+// Schema mode — multiple params:
+const filters = useUrlState({ page: 1, sort: 'name', desc: false })
+filters.page()   // 1
+filters.sort()   // "name"
+filters.desc()   // false (auto-coerced boolean)
+filters.set({ page: 2, sort: 'date' })  // updates ?page=2&sort=date&desc=false
+
+// SSR-safe — reads from request URL on server, window.location on client
+```
+
+## @pyreon/query — useSSE (Server-Sent Events)
+
+```typescript
+import { useSSE } from '@pyreon/query'
+
+// SSE hook with QueryClient integration:
+const { data, error, status } = useSSE({
+  queryKey: ['events'],
+  url: '/api/events',
+  // Optional: transform incoming events
+  transform: (event) => JSON.parse(event.data),
+})
+
+// Same pattern as useSubscription but read-only (no send)
+// Auto-reconnects on disconnect, integrates with QueryClient cache
+```
+
+## @pyreon/router — useIsActive
+
+```typescript
+import { useIsActive } from '@pyreon/router'
+
+// Reactive boolean for active route matching:
+const isHome = useIsActive('/')
+const isAdmin = useIsActive('/admin')          // matches /admin, /admin/users, etc.
+const isExactAdmin = useIsActive('/admin', true)  // exact match only
+
+// Use in templates:
+<nav>
+  <a class={{ active: isHome() }} href="/">Home</a>
+  <a class={{ active: isAdmin() }} href="/admin">Admin</a>
+</nav>
 ```
 
 ## @pyreon/ui-core — PyreonUI Provider

@@ -98,6 +98,9 @@ export function Toaster(props?: ToasterProps): VNodeChild {
       {
         class: "pyreon-toast-container",
         style: containerStyle,
+        role: "region",
+        "aria-label": "Notifications",
+        "aria-live": "polite",
         onMouseEnter: _pauseAll,
         onMouseLeave: _resumeAll,
       },
@@ -123,6 +126,8 @@ function renderToast(t: Toast): VNodeChild {
     {
       class: `pyreon-toast pyreon-toast--${t.type}${stateClass}`,
       key: t.id,
+      role: "alert",
+      "aria-atomic": "true",
       "data-toast-id": t.id,
     },
     h(

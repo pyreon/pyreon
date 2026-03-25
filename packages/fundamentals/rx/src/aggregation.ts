@@ -70,3 +70,17 @@ export function max<T>(source: ReadableSignal<T[]> | T[], key?: KeyOf<T>): any {
     return result
   })
 }
+
+/** Average of numeric values. Optionally by key. */
+export function average<T>(
+  source: ReadableSignal<T[]>,
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<number>>
+export function average<T>(source: T[], key?: KeyOf<T>): number
+export function average<T>(source: ReadableSignal<T[]> | T[], key?: KeyOf<T>): any {
+  const getVal = key ? resolveKey(key) : (item: T) => item as unknown as number
+  return reactive(source, (arr: T[]) => {
+    if (arr.length === 0) return 0
+    return arr.reduce((acc, item) => acc + Number(getVal(item)), 0) / arr.length
+  })
+}

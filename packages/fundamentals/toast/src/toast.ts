@@ -152,6 +152,18 @@ toast.warning = shortcut("warning")
 /** Show an info toast. */
 toast.info = shortcut("info")
 
+/** Show a persistent loading toast. Returns id for later update/dismiss. */
+toast.loading = (
+  message: string | VNodeChild,
+  options?: Omit<ToastOptions, "type" | "duration">,
+): string => addToast(message, { ...options, type: "info", duration: 0 })
+
+/** Update an existing toast (message, type, duration). */
+toast.update = (
+  id: string,
+  updates: Partial<Pick<ToastOptions, "type" | "duration">> & { message?: string | VNodeChild },
+): void => updateToast(id, updates)
+
 /** Dismiss a specific toast by id, or all toasts if no id is given. */
 toast.dismiss = dismiss
 

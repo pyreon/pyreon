@@ -1,4 +1,4 @@
-import { count, max, min, sum } from "./aggregation"
+import { average, count, max, min, sum } from "./aggregation"
 import {
   chunk,
   filter,
@@ -6,11 +6,15 @@ import {
   flatten,
   groupBy,
   keyBy,
+  last,
   map,
+  mapValues,
+  skip,
   sortBy,
   take,
   uniqBy,
 } from "./collections"
+import { combine, distinct, scan } from "./operators"
 import { pipe } from "./pipe"
 import { search } from "./search"
 import { debounce, throttle } from "./timing"
@@ -50,15 +54,24 @@ export const rx = {
   keyBy,
   uniqBy,
   take,
+  skip,
+  last,
   chunk,
   flatten,
   find,
+  mapValues,
 
   // Aggregation
   count,
   sum,
   min,
   max,
+  average,
+
+  // Operators
+  distinct,
+  scan,
+  combine,
 
   // Timing
   debounce,
@@ -73,19 +86,26 @@ export const rx = {
 
 // Also export individual functions for tree-shaking
 export {
+  average,
   chunk,
+  combine,
   count,
   debounce,
+  distinct,
   filter,
   find,
   flatten,
   groupBy,
   keyBy,
+  last,
   map,
+  mapValues,
   max,
   min,
   pipe,
+  scan,
   search,
+  skip,
   sortBy,
   sum,
   take,

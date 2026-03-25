@@ -153,3 +153,37 @@ export function find<T>(source: T[], predicate: (item: T) => boolean): T | undef
 export function find<T>(source: ReadableSignal<T[]> | T[], predicate: (item: T) => boolean): any {
   return reactive(source, (arr: T[]) => arr.find(predicate))
 }
+
+/** Skip the first n items. */
+export function skip<T>(source: ReadableSignal<T[]>, n: number): ReturnType<typeof computed<T[]>>
+export function skip<T>(source: T[], n: number): T[]
+export function skip<T>(source: ReadableSignal<T[]> | T[], n: number): any {
+  return reactive(source, (arr: T[]) => arr.slice(n))
+}
+
+/** Take the last n items. */
+export function last<T>(source: ReadableSignal<T[]>, n: number): ReturnType<typeof computed<T[]>>
+export function last<T>(source: T[], n: number): T[]
+export function last<T>(source: ReadableSignal<T[]> | T[], n: number): any {
+  return reactive(source, (arr: T[]) => arr.slice(-n))
+}
+
+/** Map over values of a Record. Useful after groupBy. */
+export function mapValues<T, U>(
+  source: ReadableSignal<Record<string, T>>,
+  fn: (value: T, key: string) => U,
+): ReturnType<typeof computed<Record<string, U>>>
+export function mapValues<T, U>(
+  source: Record<string, T>,
+  fn: (value: T, key: string) => U,
+): Record<string, U>
+export function mapValues<T, U>(
+  source: ReadableSignal<Record<string, T>> | Record<string, T>,
+  fn: (value: T, key: string) => U,
+): any {
+  return reactive(source, (obj: Record<string, T>) => {
+    const result: Record<string, U> = {}
+    for (const key of Object.keys(obj)) result[key] = fn(obj[key] as T, key)
+    return result
+  })
+}

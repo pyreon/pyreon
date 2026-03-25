@@ -1,37 +1,50 @@
-import { effect, onCleanup, signal } from "@pyreon/reactivity"
+import { effect, signal } from "@pyreon/reactivity"
 import type { ReadableSignal } from "./types"
 
 /**
  * Debounce a signal — emits the latest value after `ms` of silence.
  * Returns a new signal that updates only after the source stops changing.
+ *
+ * Works both inside and outside component context.
+ * The returned signal has a `.dispose()` method to stop tracking.
  */
-export function debounce<T>(source: ReadableSignal<T>, ms: number): ReadableSignal<T> {
+export function debounce<T>(
+  source: ReadableSignal<T>,
+  ms: number,
+): ReadableSignal<T> & { dispose: () => void } {
   const debounced = signal(source())
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  effect(() => {
+  const fx = effect(() => {
     const val = source()
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => debounced.set(val), ms)
   })
 
-  onCleanup(() => {
+  const dispose = () => {
     if (timer) clearTimeout(timer)
-  })
+    fx.dispose()
+  }
 
-  return debounced
+  return Object.assign(debounced as ReadableSignal<T>, { dispose })
 }
 
 /**
  * Throttle a signal — emits at most once every `ms` milliseconds.
  * Immediately emits on first change, then waits for the interval.
+ *
+ * Works both inside and outside component context.
+ * The returned signal has a `.dispose()` method to stop tracking.
  */
-export function throttle<T>(source: ReadableSignal<T>, ms: number): ReadableSignal<T> {
+export function throttle<T>(
+  source: ReadableSignal<T>,
+  ms: number,
+): ReadableSignal<T> & { dispose: () => void } {
   const throttled = signal(source())
   let lastEmit = 0
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  effect(() => {
+  const fx = effect(() => {
     const val = source()
     const now = Date.now()
     const elapsed = now - lastEmit
@@ -48,9 +61,10 @@ export function throttle<T>(source: ReadableSignal<T>, ms: number): ReadableSign
     }
   })
 
-  onCleanup(() => {
+  const dispose = () => {
     if (timer) clearTimeout(timer)
-  })
+    fx.dispose()
+  }
 
-  return throttled
+  return Object.assign(throttled as ReadableSignal<T>, { dispose })
 }

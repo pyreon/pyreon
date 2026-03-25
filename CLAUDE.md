@@ -22,7 +22,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive |
 | `@pyreon/compiler` | JSX transform with smart `shouldWrap`, static hoisting |
 | `@pyreon/runtime-server` | renderToString, renderToStream |
-| `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders |
+| `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive |
 | `@pyreon/head` | useHead, HeadProvider, renderWithHead |
 | `@pyreon/server` | createHandler (SSR), prerender (SSG), island(), middleware |
 | `@pyreon/vite-plugin` | JSX transform + SSR dev middleware + signal-preserving HMR |
@@ -36,7 +36,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags |
 | `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
 | `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
-| `@pyreon/hooks` | 27+ signal-based hooks (useHover, useFocus, useBreakpoint, etc.) |
+| `@pyreon/hooks` | 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
 | `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
 | `@pyreon/attrs` | Chainable HOC factory (.attrs(), .config(), .statics()) |
 | `@pyreon/rocketstyle` | Multi-state styling (states, sizes, variants, themes, dark mode) |
@@ -127,6 +127,9 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/flow` | Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs |
 | `@pyreon/code` | Reactive code editor — CodeMirror 6 with signals, minimap, diff editor |
 | `@pyreon/document` | Universal document rendering — 18 primitives, 14+ output formats |
+| `@pyreon/rx` | Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions |
+| `@pyreon/toast` | Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y |
+| `@pyreon/url-state` | URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe |
 
 ## Fundamentals — Key Technical Details
 
@@ -161,6 +164,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Full TanStack Query adapter: `useQuery`, `useMutation`, `useInfiniteQuery`, `useQueries`
 - Suspense: `useSuspenseQuery`, `useSuspenseInfiniteQuery`, `QuerySuspense` boundary
 - `useSubscription(options)` — reactive WebSocket with auto-reconnect, integrates with QueryClient for cache invalidation
+- `useSSE(options)` — Server-Sent Events hook with QueryClient integration, same pattern as useSubscription but read-only
 - Fine-grained signals per field (data, error, isFetching independent)
 
 ### @pyreon/table
@@ -236,6 +240,44 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `renderToCanvas(context, canvasElement)` — core renderer for Storybook
 - `Meta<TComponent>` / `StoryObj<TMeta>` — typed story definitions
 - Preset: `framework: "@pyreon/storybook"` in `.storybook/main.ts`
+
+### @pyreon/rx
+
+- Signal-aware reactive transforms — every function overloaded: `Signal<T[]> → Computed`, `T[] → plain`
+- 24 functions: `filter`, `map`, `sortBy`, `groupBy`, `keyBy`, `uniqBy`, `take`, `skip`, `last`, `chunk`, `flatten`, `find`, `mapValues`, `count`, `sum`, `min`, `max`, `average`, `distinct`, `scan`, `combine`, `debounce`, `throttle`, `search`
+- `pipe(source, op1, op2, ...)` — compose transforms left-to-right
+- Signal inputs produce `Computed` outputs that auto-track and re-derive when the source signal changes
+
+### @pyreon/toast
+
+- `toast(message)` — imperative toast creation, returns toast ID
+- `toast.success(msg)`, `toast.error(msg)`, `toast.warning(msg)`, `toast.info(msg)`, `toast.loading(msg)` — preset variants
+- `toast.update(id, options)` — update an existing toast (e.g., loading → success)
+- `toast.dismiss(id?)` — dismiss one or all toasts
+- `toast.promise(promise, { loading, success, error })` — auto-transitions through states
+- `<Toaster />` — render component with Portal, CSS transitions, auto-dismiss, pause on hover
+- Accessibility: `role="alert"`, `aria-live="polite"` on toast elements
+
+### @pyreon/url-state
+
+- `useUrlState(key, defaultValue)` — returns `UrlStateSignal` synced to URL search params
+- Schema mode: `useUrlState({ page: 1, sort: "name" })` — multiple params from a single call
+- Auto type coercion (numbers, booleans, arrays), uses `replaceState` (no history spam)
+- Configurable debounce for high-frequency updates, SSR-safe (reads from request URL on server)
+
+### @pyreon/router — useIsActive
+
+- `useIsActive(path, exact?)` — returns reactive boolean for whether a path matches the current route
+- Segment-aware prefix matching: `/admin` matches `/admin/users` when `exact` is false
+
+### @pyreon/hooks — New Hooks
+
+- `useClipboard()` — copy text to clipboard + `copied` reactive state with auto-reset
+- `useDialog()` — native `<dialog>` management (open, close, return value)
+- `useTimeAgo(date)` — reactive relative time string ("5 minutes ago"), auto-updates
+- `useOnline()` — reactive `navigator.onLine` signal
+- `useEventListener(target, event, handler, options?)` — auto-cleanup on unmount
+- `useInfiniteScroll(onLoadMore, options)` — IntersectionObserver-based infinite loading
 
 ### Devtools
 Stateful packages expose `./devtools` subpath exports with WeakRef-based registries for introspection. Tree-shakeable — zero cost unless imported. Available for: store, state-tree, form, i18n.
