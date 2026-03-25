@@ -49,13 +49,18 @@
 3. `bun run test` — all tests pass
 4. If API surface changed: update CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference
 
-## Before Considering Work Complete
-1. All validation steps pass
+## Before Considering Work Complete — MANDATORY
+1. All validation steps pass (lint, typecheck, test)
 2. Exports updated in `src/index.ts`
-3. CLAUDE.md updated if API surface changed
-4. All docs updated (docs/, README, llms.txt, llms-full.txt, MCP)
-5. No breaking changes without discussion
-6. Honest quality assessment
+3. **All documentation surfaces updated** (every PR, not just API changes):
+   - `CLAUDE.md` — project knowledge base
+   - `docs/*.md` — in-repo documentation
+   - `../docs/` — docs website repo (if applicable)
+   - Package `README.md` files
+   - `llms.txt` / `llms-full.txt` — AI reference files
+   - `packages/mcp/src/api-reference.ts` — MCP tool reference
+4. No breaking changes without discussion
+5. Honest quality assessment
 
 ## Debugging
 - Check dependency versions + module resolution FIRST
