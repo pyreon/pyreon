@@ -889,6 +889,7 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/styler": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
       },
     },
     "packages/ui-system/unistyle": {

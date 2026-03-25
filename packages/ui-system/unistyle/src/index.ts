@@ -1,5 +1,7 @@
 import type { TProvider } from "./context"
 import Provider, { context } from "./context"
+import type { PyreonTheme } from "./enrichTheme"
+import { enrichTheme } from "./enrichTheme"
 import type {
   Breakpoints,
   CreateMediaQueries,
@@ -53,6 +55,7 @@ export type {
   MakeItResponsiveStyles,
   NormalizeTheme,
   PropertyValue,
+  PyreonTheme,
   SortBreakpoints,
   StripUnit,
   Styles,
@@ -72,6 +75,7 @@ export {
   breakpoints,
   context,
   createMediaQueries,
+  enrichTheme,
   extendCss,
   makeItResponsive,
   normalizeTheme,
