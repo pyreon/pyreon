@@ -25,6 +25,8 @@ import {
   setContextStackProvider,
 } from "@pyreon/core"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
 
@@ -32,6 +34,8 @@ interface StreamCtx {
   pending: Promise<void>[]
   nextId: () => number
   mainEnqueue: (s: string) => void
+  /** Depth counter — non-zero when rendering inside a Suspense child resolution. */
+  suspenseDepth: number
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -113,6 +117,7 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
         pending: [],
         nextId: () => bid++,
         mainEnqueue: enqueue,
+        suspenseDepth: 0,
       }
       return withStoreContext(() =>
         _contextAls.run([], () =>
@@ -161,9 +166,22 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     await streamSuspenseBoundary(vnode, enqueue)
     return
   }
-  const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
-  const resolved = output instanceof Promise ? await output : output
-  if (resolved !== null) await streamNode(resolved, enqueue)
+  try {
+    const { vnode: output } = runWithHooks(vnode.type as ComponentFn, mergeChildrenIntoProps(vnode))
+    const resolved = output instanceof Promise ? await output : output
+    if (resolved !== null) await streamNode(resolved, enqueue)
+  } catch (err) {
+    if (__DEV__) {
+      const name = (vnode.type as ComponentFn).name || "Anonymous"
+      console.error(`[Pyreon SSR] Error rendering <${name}>:`, err)
+    }
+    // Inside a Suspense child resolution, re-throw so the boundary can catch and
+    // suppress the swap (fallback stays visible). Outside Suspense, swallow the
+    // error and emit a marker so the stream can continue.
+    const ctx = _streamCtxAls.getStore()
+    if (ctx && ctx.suspenseDepth > 0) throw err
+    enqueue("<!--pyreon-error-->")
+  }
 }
 
 async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
@@ -249,12 +267,21 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   ctx.pending.push(
     _contextAls.run(ctxStore, async () => {
       try {
+        ctx.suspenseDepth++
         const buf: string[] = []
         await streamNode(children ?? null, (s) => buf.push(s))
         mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
-      } catch (_err) {
+      } catch (err) {
+        if (__DEV__) {
+          console.error(
+            `[Pyreon SSR] Suspense boundary caught an error — fallback will remain:`,
+            err,
+          )
+        }
         // Fallback stays visible — no swap script emitted
+      } finally {
+        ctx.suspenseDepth--
       }
     }),
   )

@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import { createSelector, createSignal } from "solid-js"
 import Demo from "./Demo"
 
@@ -19,15 +20,17 @@ const isSelected = createSelector(selected);
 </button>`}
     >
       <div class="row">
-        {ids.map((id) => (
-          <button
-            type="button"
-            class={isSelected(id) ? "selected" : ""}
-            onClick={() => setSelected(id)}
-          >
-            Item {id}
-          </button>
-        ))}
+        <For each={() => ids} by={(id) => id}>
+          {(id) => (
+            <button
+              type="button"
+              class={isSelected(id) ? "selected" : ""}
+              onClick={() => setSelected(id)}
+            >
+              Item {id}
+            </button>
+          )}
+        </For>
       </div>
       <p class="muted">Selected: {selected()}</p>
     </Demo>

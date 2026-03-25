@@ -29,6 +29,62 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   return [picked, rest]
 }
 
+/** Merge a getter-backed source property with an existing getter or value. */
+function mergeGetterWithExisting(
+  result: Record<string, unknown>,
+  key: string,
+  desc: PropertyDescriptor,
+  existing: PropertyDescriptor,
+): void {
+  const prevGet = existing.get ?? (() => existing.value)
+  const nextGet = desc.get as () => unknown
+  Object.defineProperty(result, key, {
+    get: () => {
+      const v = nextGet()
+      return v !== undefined ? v : prevGet()
+    },
+    enumerable: true,
+    configurable: true,
+  })
+}
+
+/** Merge a static source property when the existing property has a getter. */
+function mergeStaticWithGetter(
+  result: Record<string, unknown>,
+  key: string,
+  desc: PropertyDescriptor,
+  existingGet: () => unknown,
+): void {
+  if (desc.value !== undefined) {
+    Object.defineProperty(result, key, desc)
+  } else {
+    Object.defineProperty(result, key, {
+      get: existingGet,
+      enumerable: true,
+      configurable: true,
+    })
+  }
+}
+
+/** Apply a single source property onto the result object, handling getter/static combos. */
+function mergeProperty(
+  result: Record<string, unknown>,
+  key: string,
+  desc: PropertyDescriptor,
+): void {
+  const existing = Object.getOwnPropertyDescriptor(result, key)
+  if (desc.get && existing) {
+    mergeGetterWithExisting(result, key, desc, existing)
+  } else if (desc.get) {
+    Object.defineProperty(result, key, desc)
+  } else if (existing?.get) {
+    mergeStaticWithGetter(result, key, desc, existing.get)
+  } else if (desc.value !== undefined || !existing) {
+    // Both static — later value wins if defined
+    Object.defineProperty(result, key, desc)
+  }
+}
+
 /**
  * Merge default values with component props. Defaults are used when
  * the prop is `undefined`. Preserves getter reactivity.
@@ -43,41 +99,7 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
     for (const key of Object.keys(source)) {
       const desc = Object.getOwnPropertyDescriptor(source, key)
       if (!desc) continue
-      // If the source has a getter, wrap it to check if the value is undefined
-      // and fall back to the previously defined value
-      const existing = Object.getOwnPropertyDescriptor(result, key)
-      if (desc.get && existing) {
-        const prevGet = existing.get ?? (() => existing.value)
-        const nextGet = desc.get
-        Object.defineProperty(result, key, {
-          get: () => {
-            const v = nextGet()
-            return v !== undefined ? v : prevGet()
-          },
-          enumerable: true,
-          configurable: true,
-        })
-      } else if (desc.get) {
-        Object.defineProperty(result, key, desc)
-      } else if (existing?.get) {
-        // New source has a static value, previous had a getter
-        const prevGet = existing.get
-        const staticVal = desc.value
-        if (staticVal !== undefined) {
-          Object.defineProperty(result, key, desc)
-        } else {
-          Object.defineProperty(result, key, {
-            get: prevGet,
-            enumerable: true,
-            configurable: true,
-          })
-        }
-      } else {
-        // Both static — later value wins if defined
-        if (desc.value !== undefined || !existing) {
-          Object.defineProperty(result, key, desc)
-        }
-      }
+      mergeProperty(result, key, desc)
     }
   }
   return result

@@ -1,3 +1,4 @@
+import { For } from "@pyreon/core"
 import ContextDemo from "./examples/ContextDemo"
 import HFragmentDemo from "./examples/HFragmentDemo"
 import RenderDemo from "./examples/RenderDemo"
@@ -55,9 +56,9 @@ export default function App() {
       <nav>
         <h3>API Index</h3>
         <div class="api-index">
-          {ALL_APIS.map((api) => (
-            <span class="tag">{api}</span>
-          ))}
+          <For each={() => ALL_APIS} by={(api) => api}>
+            {(api) => <span class="tag">{api}</span>}
+          </For>
         </div>
       </nav>
 

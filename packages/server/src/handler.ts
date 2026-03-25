@@ -45,6 +45,8 @@ import {
 } from "./html"
 import type { Middleware, MiddlewareContext } from "./middleware"
 
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+
 export interface HandlerOptions {
   /** Root application component */
   App: ComponentFn
@@ -125,7 +127,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         const fullHtml = processCompiledTemplate(compiled, { head, app: appHtml, scripts })
 
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
-      } catch (_err) {
+      } catch (err) {
+        if (__DEV__) {
+          console.error("[Pyreon Server] SSR render failed:", err)
+        }
         return new Response("Internal Server Error", {
           status: 500,
           headers: { "Content-Type": "text/plain" },
@@ -176,7 +181,10 @@ async function renderStreamResponse(
         }
 
         push(shellTail)
-      } catch (_err) {
+      } catch (err) {
+        if (__DEV__) {
+          console.error("[Pyreon Server] Stream render failed:", err)
+        }
         // Emit an inline error indicator — status code is already sent (200)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
         push(shellTail)
