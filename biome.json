@@ -114,9 +114,9 @@
         "scripts/bench-compiler.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts",
-        "packages/core/cli/src/index.ts",
-        "packages/core/cli/src/doctor.ts",
-        "packages/core/cli/src/context.ts",
+        "packages/tools/cli/src/index.ts",
+        "packages/tools/cli/src/doctor.ts",
+        "packages/tools/cli/src/context.ts",
         "packages/tools/mcp/src/index.ts"
       ],
       "linter": {

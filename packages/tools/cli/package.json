@@ -6,7 +6,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
-    "directory": "packages/core/cli"
+    "directory": "packages/tools/cli"
   },
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/cli#readme",
   "bugs": {

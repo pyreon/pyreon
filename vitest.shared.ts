@@ -4,7 +4,6 @@ import type { UserConfig } from "vite"
 const root = import.meta.dirname
 
 const corePackages = [
-  "cli",
   "compiler",
   "core",
   "head",
@@ -16,6 +15,7 @@ const corePackages = [
 ] as const
 
 const toolsPackages = [
+  "cli",
   "mcp",
   "preact-compat",
   "react-compat",

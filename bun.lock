@@ -154,19 +154,6 @@
         "vite": "^8.0.0",
       },
     },
-    "packages/core/cli": {
-      "name": "@pyreon/cli",
-      "version": "0.7.14",
-      "bin": {
-        "pyreon": "./lib/index.js",
-      },
-      "dependencies": {
-        "@pyreon/compiler": "workspace:^",
-      },
-      "peerDependencies": {
-        "typescript": ">=5.0.0",
-      },
-    },
     "packages/core/compiler": {
       "name": "@pyreon/compiler",
       "version": "0.7.14",
@@ -241,6 +228,19 @@
         "@pyreon/router": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
+      },
+    },
+    "packages/tools/cli": {
+      "name": "@pyreon/cli",
+      "version": "0.7.14",
+      "bin": {
+        "pyreon": "./lib/index.js",
+      },
+      "dependencies": {
+        "@pyreon/compiler": "workspace:^",
+      },
+      "peerDependencies": {
+        "typescript": ">=5.0.0",
       },
     },
     "packages/tools/mcp": {
@@ -661,7 +661,7 @@
 
     "@pyreon/benchmark": ["@pyreon/benchmark@workspace:examples/benchmark"],
 
-    "@pyreon/cli": ["@pyreon/cli@workspace:packages/core/cli"],
+    "@pyreon/cli": ["@pyreon/cli@workspace:packages/tools/cli"],
 
     "@pyreon/compiler": ["@pyreon/compiler@workspace:packages/core/compiler"],
 
