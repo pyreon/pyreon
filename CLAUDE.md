@@ -99,6 +99,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `Overlay` — positioned overlay with backdrop
 - `Portal` — renders children outside DOM hierarchy
 
+#### @pyreon/ui-core — PyreonUI (Unified Provider)
+- `PyreonUI` — single provider replacing 3 separate providers (theme, mode, config)
+- Props: `theme` (theme object), `mode` (`"light"` | `"dark"` | `"system"`), `inversed` (boolean, flips mode)
+- `mode="system"` — auto-detects OS dark mode via `prefers-color-scheme` media query
+- `useMode()` — hook returning current resolved mode as a signal (`"light"` or `"dark"`)
+- `enrichTheme(theme)` — utility from `@pyreon/unistyle` that merges user theme with default breakpoints/spacing
+- `init()` is preserved for custom environments — `PyreonUI` calls it internally but apps can still call `init()` directly
+
 ### Fundamentals (Ecosystem Libraries)
 | Package | Description |
 |---|---|
