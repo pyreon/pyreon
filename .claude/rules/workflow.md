@@ -64,14 +64,24 @@
 - If workaround needed, document WHY and create follow-up
 - Never blame upstream without reproducing in isolation
 
-## Learning & Memory
-- After every PR, reflect on what was learned and save to memory:
-  - **Patterns that worked** → save as feedback memory (validated approaches)
-  - **Patterns that failed** → save as feedback memory (what to avoid and why)
-  - **New project knowledge** → update project memories (architecture decisions, API changes)
-  - **Bug root causes** → save for future debugging (e.g. "compiler _bindText detaches this on property access")
-- Keep CLAUDE.md, docs, llms.txt, MCP api-reference in sync with every API change
-- Update anti-patterns.md when new anti-patterns are discovered
+## Continuous Learning — MANDATORY
+
+Every PR must include updates to rules and docs alongside the code changes. Don't submit code-only PRs when something was learned — update the rules in the SAME PR:
+
+- **New anti-pattern discovered?** Add it to `anti-patterns.md` in the same commit.
+- **New development pattern established?** Add it to `workflow.md` or `code-style.md` in the same PR.
+- **API surface changed?** Update `CLAUDE.md`, `docs/`, `README`, `llms.txt`, `llms-full.txt`, MCP `api-reference.ts` as part of the same PR.
+- **TypeScript/Bun/Biome quirk found?** Document it in the relevant rules file immediately.
+- **Workaround added?** Document WHY in a code comment AND add to anti-patterns in the same commit.
+- **Bug root cause identified?** Save to memory for future debugging AND document in anti-patterns if it's a recurring risk.
+
+The rules files are your institutional memory. Update them as you work, not as a separate follow-up. A PR that changes behavior without updating docs is incomplete.
+
+Also save learnings to persistent memory after each PR:
+- **Patterns that worked** → feedback memory (validated approaches)
+- **Patterns that failed** → feedback memory (what to avoid and why)
+- **New project knowledge** → project memory (architecture decisions, API changes)
+- **Bug root causes** → feedback memory (e.g. "compiler _bindText detaches this on property access")
 
 ## Context Management
 - Use `/compact` at ~50% context for long sessions
