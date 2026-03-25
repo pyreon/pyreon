@@ -52,14 +52,14 @@
 ## Before Considering Work Complete — MANDATORY
 1. All validation steps pass (lint, typecheck, test)
 2. Exports updated in `src/index.ts`
-3. **All documentation surfaces updated** (every PR, not just API changes):
+3. **Every package MUST have** `LICENSE` (MIT) and `README.md` — no exceptions
+4. **All documentation surfaces updated** (every PR, not just API changes):
    - `CLAUDE.md` — project knowledge base
-   - `docs/*.md` — in-repo documentation
-   - `../docs/` — docs website repo (if applicable)
+   - `docs/` — VitePress documentation website
    - Package `README.md` files
    - `llms.txt` / `llms-full.txt` — AI reference files
-   - `packages/mcp/src/api-reference.ts` — MCP tool reference
-4. No breaking changes without discussion
+   - `packages/tools/mcp/src/api-reference.ts` — MCP tool reference
+5. No breaking changes without discussion
 5. Honest quality assessment
 
 ## Debugging

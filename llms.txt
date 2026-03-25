@@ -304,6 +304,10 @@ import { useIsActive } from '@pyreon/router'
 const isAdmin = useIsActive('/admin')  // reactive boolean
 ```
 
+## Documentation
+
+Full docs at `docs/` (VitePress site, 52 pages): `cd docs && bun run dev`
+
 ## AI Tools
 
 - `pyreon doctor --json` — scan project for React patterns, get structured fix suggestions
