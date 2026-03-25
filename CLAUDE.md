@@ -378,6 +378,31 @@ Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popConte
 ### exactOptionalPropertyTypes
 Enabled in root tsconfig — optional properties need explicit `| undefined` when assigned from functions that may return undefined.
 
+## Docs Website
+
+VitePress documentation site at `docs/` — part of the monorepo workspace. 52 doc pages covering all packages.
+
+```bash
+cd docs && bun run dev       # local dev server
+cd docs && bun run build     # production build
+cd docs && bun run preview   # preview production build
+```
+
+- VitePress v1, Vue 3 components for custom UI
+- Deployed via GitHub Pages
+- Workspace member: `"docs"` in root `package.json` workspaces
+- Has `lint` script (biome), no typecheck (VitePress/Vue)
+
+## Monorepo Structure
+
+49 packages across 4 categories under `packages/`:
+- `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
+- `packages/fundamentals/` — 20 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
+- `packages/tools/` — 9 packages: cli, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
+- `packages/ui-system/` — 12 packages: ui-core, styler, unistyle, hooks, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
+
+Plus: `docs/` (VitePress site), `examples/` (example apps).
+
 ## Common Issues & Fixes
 - `ComponentFn<{ name: string }>` not assignable → solved by generic h()
 - `@pyreon/reactivity` missing from deps → add to package.json + `bun install`

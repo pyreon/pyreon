@@ -65,6 +65,17 @@
   },
   "overrides": [
     {
+      "includes": ["docs/.vitepress/**/*.vue"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedVariables": "off",
+            "noUnusedImports": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {
