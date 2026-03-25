@@ -105,13 +105,7 @@
         "examples/benchmark/bench-profile4.ts",
         "examples/benchmark/bench-profile5.ts",
         "examples/benchmark/src/main.ts",
-        "scripts/bench.ts",
-        "scripts/bench-router.ts",
-        "scripts/bench-ssr.ts",
-        "scripts/bench-head.ts",
-        "scripts/bench-server.ts",
-        "scripts/bench-reactivity.ts",
-        "scripts/bench-compiler.ts",
+        "scripts/bench/**/*.ts",
         "scripts/bundle-size.ts",
         "scripts/publish.ts",
         "packages/tools/cli/src/index.ts",
@@ -123,6 +117,22 @@
         "rules": {
           "suspicious": {
             "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/fundamentals/flow/src/**",
+        "packages/fundamentals/code/src/**"
+      ],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noSvgWithoutTitle": "off",
+            "noStaticElementInteractions": "off",
+            "useKeyWithClickEvents": "off",
+            "noNoninteractiveTabindex": "off"
           }
         }
       }

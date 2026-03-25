@@ -1,0 +1,56 @@
+{
+  "name": "@pyreon/store",
+  "version": "0.10.0",
+  "description": "Global state management for Pyreon \u2014 Pinia-inspired composition stores",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/store"
+  },
+  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/store#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./devtools": {
+      "bun": "./src/devtools.ts",
+      "import": "./lib/devtools.js",
+      "types": "./lib/types/devtools.d.ts"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "@pyreon/reactivity": "workspace:^",
+    "@vitus-labs/tools-lint": "^1.11.0"
+  }
+}
