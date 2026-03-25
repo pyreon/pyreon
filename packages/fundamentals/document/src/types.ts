@@ -252,6 +252,10 @@ export interface DocumentBuilder {
   button(text: string, props: Omit<ButtonProps, "children">): DocumentBuilder
   link(text: string, props: Omit<LinkProps, "children">): DocumentBuilder
   pageBreak(): DocumentBuilder
+  /** Add an arbitrary DocNode (or fragment returned by a helper function). */
+  add(node: DocNode | DocNode[]): DocumentBuilder
+  /** Add a group of nodes as a logical section. */
+  section(children: DocNode[]): DocumentBuilder
   /** Add a chart snapshot from a @pyreon/charts instance. */
   chart(
     instance: unknown,

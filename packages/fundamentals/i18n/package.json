@@ -32,6 +32,11 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
     "./devtools": {
       "bun": "./src/devtools.ts",
       "import": "./lib/devtools.js",

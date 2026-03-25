@@ -431,9 +431,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
     /** Build a setter expression for an attribute. */
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
-      return htmlAttrName === "class"
-        ? `${varName}.className = ${expr}`
-        : `${varName}.setAttribute("${htmlAttrName}", ${expr})`
+      if (htmlAttrName === "class") return `${varName}.className = ${expr}`
+      if (htmlAttrName === "style") return `${varName}.style.cssText = ${expr}`
+      return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
 
     /** Emit bind line for a dynamic (non-static) attribute. */
@@ -458,7 +458,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         const updater =
           htmlAttrName === "class"
             ? `(v) => { ${varName}.className = v == null ? "" : String(v) }`
-            : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
+            : htmlAttrName === "style"
+              ? `(v) => { if (typeof v === "string") ${varName}.style.cssText = v; else if (v) Object.assign(${varName}.style, v) }`
+              : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
         bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
         return
       }
@@ -474,6 +476,13 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     ): string {
       const staticHtml = staticAttrToHtml(exprNode, htmlAttrName)
       if (staticHtml !== null) return staticHtml
+
+      // style={{...}} → Object.assign(el.style, {...}) for object expressions
+      if (htmlAttrName === "style" && ts.isObjectLiteralExpression(exprNode)) {
+        bindLines.push(`Object.assign(${varName}.style, ${sliceExpr(exprNode)})`)
+        return ""
+      }
+
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
       return ""
     }

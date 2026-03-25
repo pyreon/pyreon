@@ -80,6 +80,7 @@ const subpaths: [string, string][] = [
   ["@pyreon/validation/valibot", "packages/fundamentals/validation/src/valibot.ts"],
   ["@pyreon/validation/arktype", "packages/fundamentals/validation/src/arktype.ts"],
   ["@pyreon/charts/manual", "packages/fundamentals/charts/src/manual.ts"],
+  ["@pyreon/i18n/core", "packages/fundamentals/i18n/src/core.ts"],
 ]
 for (const [find, replacement] of subpaths) {
   alias.push({ find, replacement: resolve(root, replacement) })

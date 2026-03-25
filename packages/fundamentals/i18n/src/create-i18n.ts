@@ -20,6 +20,38 @@ function resolveKey(dict: TranslationDictionary, keyPath: string): string | unde
 }
 
 /**
+ * Convert flat dotted keys into nested objects.
+ * `{ 'section.title': 'Report' }` → `{ section: { title: 'Report' } }`
+ * Keys that don't contain dots are passed through as-is.
+ * Already-nested objects are preserved — only string values with dotted keys are expanded.
+ */
+function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
+  const result: TranslationDictionary = {}
+  let hasFlatKeys = false
+
+  for (const key of Object.keys(messages)) {
+    const value = messages[key]
+    if (key.includes(".") && typeof value === "string") {
+      hasFlatKeys = true
+      const parts = key.split(".")
+      let current: TranslationDictionary = result
+      for (let i = 0; i < parts.length - 1; i++) {
+        const part = parts[i] as string
+        if (!(part in current) || typeof current[part] !== "object") {
+          current[part] = {}
+        }
+        current = current[part] as TranslationDictionary
+      }
+      current[parts[parts.length - 1] as string] = value
+    } else if (value !== undefined) {
+      result[key] = value
+    }
+  }
+
+  return hasFlatKeys ? result : messages
+}
+
+/**
  * Deep-merge source into target (mutates target).
  */
 function deepMerge(target: TranslationDictionary, source: TranslationDictionary): void {
@@ -240,14 +272,15 @@ export function createI18n(options: I18nOptions): I18nInstance {
   const addMessages = (loc: string, messages: TranslationDictionary, namespace?: string): void => {
     const ns = namespace ?? defaultNamespace
     const nsMap = getNamespaceMap(loc)
+    const nested = nestFlatKeys(messages)
     const existing = nsMap.get(ns)
 
     if (existing) {
-      deepMerge(existing, messages)
+      deepMerge(existing, nested)
     } else {
       // Deep-clone to prevent external mutation from corrupting the store
       const cloned: TranslationDictionary = {}
-      deepMerge(cloned, messages)
+      deepMerge(cloned, nested)
       nsMap.set(ns, cloned)
     }
 

@@ -12,6 +12,7 @@ import {
   Page,
   PageBreak,
   Quote,
+  Section,
   Spacer,
   Table,
   Text,
@@ -122,6 +123,20 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
 
     pageBreak() {
       sections.push(PageBreak())
+      return builder
+    },
+
+    add(node) {
+      if (Array.isArray(node)) {
+        sections.push(...node)
+      } else {
+        sections.push(node)
+      }
+      return builder
+    },
+
+    section(children) {
+      sections.push(Section({ children }))
       return builder
     },
 
