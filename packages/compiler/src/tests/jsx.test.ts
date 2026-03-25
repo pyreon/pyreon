@@ -1029,3 +1029,56 @@ describe("JSX transform — member expression tag names", () => {
     expect(result).not.toContain("_tpl(")
   })
 })
+
+// ─── Template emission edge cases ─────────────────────────────────────────────
+
+describe("JSX transform — template emission edge cases", () => {
+  test("non-delegated event (onMouseEnter) uses addEventListener not delegation", () => {
+    const result = t("<div onMouseEnter={handler}><span /></div>")
+    expect(result).toContain("_tpl(")
+    // mouseenter is NOT in DELEGATED_EVENTS → must use addEventListener
+    // onMouseEnter → eventName = "m" + "ouseEnter" = "mouseEnter"
+    expect(result).toContain("addEventListener(")
+    expect(result).toContain("mouseEnter")
+    expect(result).not.toContain("__ev_")
+  })
+
+  test("template with both dynamic attribute AND dynamic child text", () => {
+    const result = t("<div title={getTitle()}>{count()}</div>")
+    expect(result).toContain("_tpl(")
+    // Dynamic attribute binding
+    expect(result).toContain("_bindDirect(getTitle,")
+    // Dynamic child text binding
+    expect(result).toContain("_bindText(count,")
+  })
+
+  test("template with multiple dynamic attributes on same element", () => {
+    const result = t("<div class={cls()} title={getTitle()}><span /></div>")
+    expect(result).toContain("_tpl(")
+    // Both attributes should get _bindDirect bindings
+    expect(result).toContain("_bindDirect(cls,")
+    expect(result).toContain("_bindDirect(getTitle,")
+  })
+
+  test("template with static + dynamic children mixed", () => {
+    const result = t("<div><span>static text</span>{count()}</div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("static text")
+    expect(result).toContain("_bindText(count,")
+    // Mixed children use childNodes indexing
+    expect(result).toContain("childNodes[")
+  })
+
+  test("template with nested component inside DOM elements bails", () => {
+    // Component child inside a DOM element prevents template emission
+    const result = t("<div><span><MyComponent /></span></div>")
+    expect(result).not.toContain("_tpl(")
+  })
+
+  test("fragment with template-eligible children inside template", () => {
+    const result = t("<div><><span>a</span>{name()}</></div>")
+    expect(result).toContain("_tpl(")
+    expect(result).toContain("<span>a</span>")
+    expect(result).toContain("_bindText(name,")
+  })
+})

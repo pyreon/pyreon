@@ -38,4 +38,33 @@ describe("cx", () => {
     expect(cx([])).toBe("")
     expect(cx({})).toBe("")
   })
+
+  test("object where ALL values are functions returning booleans", () => {
+    expect(
+      cx({
+        active: () => true,
+        hidden: () => false,
+        bold: () => true,
+        italic: () => false,
+      }),
+    ).toBe("active bold")
+  })
+
+  test("deeply nested arrays (3+ levels)", () => {
+    expect(cx([[["level3", [["level5"]]]]])).toBe("level3 level5")
+  })
+
+  test("mixed: string, object with function, deeply nested array", () => {
+    expect(cx(["base", { active: () => true }, [["deeply-nested"]]])).toBe(
+      "base active deeply-nested",
+    )
+  })
+
+  test("empty string values are filtered", () => {
+    expect(cx(["foo", "", "bar", ""])).toBe("foo bar")
+  })
+
+  test("number 0 is a valid class name as string", () => {
+    expect(cx(0)).toBe("0")
+  })
 })

@@ -197,4 +197,123 @@ describe("computed", () => {
     s.set(11) // clamped to 10, same as before
     expect(called).toBe(2) // equals suppresses
   })
+
+  describe("_v with equals after disposal", () => {
+    test("_v returns last cached value after dispose()", () => {
+      const s = signal(5)
+      const doubled = computed(() => s() * 2)
+      expect(doubled._v).toBe(10) // triggers initial computation
+
+      s.set(7)
+      expect(doubled._v).toBe(14) // recomputes
+
+      doubled.dispose()
+      s.set(100)
+      // After dispose, _v returns the last cached value (14)
+      // because dirty flag is not set (no subscription) and the
+      // disposed guard prevents recomputation
+      expect(doubled._v).toBe(14)
+    })
+
+    test("computed with equals: _v only updates when equality check fails", () => {
+      const s = signal(3)
+      const floored = computed(() => Math.floor(s() / 10), {
+        equals: (a, b) => a === b,
+      })
+
+      expect(floored._v).toBe(0) // Math.floor(3/10) = 0
+
+      s.set(5) // Math.floor(5/10) = 0, same
+      expect(floored._v).toBe(0)
+
+      s.set(15) // Math.floor(15/10) = 1, different
+      expect(floored._v).toBe(1)
+
+      s.set(19) // Math.floor(19/10) = 1, same
+      expect(floored._v).toBe(1)
+    })
+
+    test("multiple .direct() updaters on computed, dispose one", () => {
+      const s = signal(1)
+      const doubled = computed(() => s() * 2)
+      doubled() // initialize
+
+      let calls1 = 0
+      let calls2 = 0
+      let calls3 = 0
+
+      const dispose1 = doubled.direct(() => {
+        calls1++
+      })
+      doubled.direct(() => {
+        calls2++
+      })
+      doubled.direct(() => {
+        calls3++
+      })
+
+      s.set(2)
+      expect(calls1).toBe(1)
+      expect(calls2).toBe(1)
+      expect(calls3).toBe(1)
+
+      dispose1()
+      // Read to reset dirty flag so next change triggers recompute notification
+      doubled()
+      s.set(3)
+      expect(calls1).toBe(1) // disposed
+      expect(calls2).toBe(2) // still active
+      expect(calls3).toBe(2) // still active
+    })
+  })
+
+  describe("diamond pattern cleanup", () => {
+    test("a -> b, c -> d diamond: d only recomputes once per a change", () => {
+      const a = signal(1)
+      const b = computed(() => a() + 1)
+      const c = computed(() => a() + 2)
+
+      let dComputations = 0
+      const d = computed(() => {
+        dComputations++
+        return b() + c()
+      })
+
+      expect(d()).toBe(5) // b=2 + c=3
+      expect(dComputations).toBe(1)
+
+      a.set(2) // b=3, c=4
+      expect(d()).toBe(7)
+      // d should only recompute once (lazy evaluation avoids double recompute)
+      expect(dComputations).toBe(2)
+    })
+
+    test("dispose middle node in diamond, verify no stale subscriptions", () => {
+      const a = signal(1)
+      const b = computed(() => a() * 2)
+      const c = computed(() => a() * 3)
+
+      let dRuns = 0
+      const d = computed(() => {
+        dRuns++
+        return b() + c()
+      })
+
+      expect(d()).toBe(5) // b=2 + c=3
+      expect(dRuns).toBe(1)
+
+      // Dispose b — it will no longer recompute from a
+      b.dispose()
+
+      a.set(2)
+      // d still recomputes because c changed, but b returns stale value (2)
+      expect(d()).toBe(8) // b=2 (stale) + c=6
+      expect(dRuns).toBe(2)
+
+      // Verify a no longer notifies b's subscribers
+      a.set(3)
+      expect(d()).toBe(11) // b=2 (still stale) + c=9
+      expect(dRuns).toBe(3)
+    })
+  })
 })

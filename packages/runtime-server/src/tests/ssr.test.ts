@@ -933,3 +933,59 @@ describe("edge-case branches", () => {
     expect(typeof html).toBe("string")
   })
 })
+
+// ─── renderToString — Suspense with async components ─────────────────────────
+
+describe("renderToString — Suspense async paths", () => {
+  test("renderToString with Suspense waits for async component and renders inline", async () => {
+    async function AsyncData(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 5))
+      return h("p", { id: "content" }, "loaded data")
+    }
+
+    const vnode = h(Suspense, {
+      fallback: h("span", null, "loading..."),
+      children: h(AsyncData as unknown as ComponentFn, null),
+    })
+
+    const html = await renderToString(vnode)
+    // The async content should be present (renderToString awaits async components)
+    expect(html).toContain("loaded data")
+  })
+
+  test("renderToString with Suspense where async component throws propagates error", async () => {
+    async function FailingComponent(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 1))
+      throw new Error("SSR component failure")
+    }
+
+    const vnode = h(Suspense, {
+      fallback: h("span", null, "fallback"),
+      children: h(FailingComponent as unknown as ComponentFn, null),
+    })
+
+    // renderToString does not catch per-boundary — the error propagates
+    await expect(renderToString(vnode)).rejects.toThrow("SSR component failure")
+  })
+})
+
+describe("renderToStream — Suspense error fallback", () => {
+  test("renderToStream keeps fallback visible when async component throws", async () => {
+    async function ThrowingChild(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 5))
+      throw new Error("stream component error")
+    }
+
+    const vnode = h(Suspense, {
+      fallback: h("span", { id: "fb" }, "fallback content"),
+      children: h(ThrowingChild as unknown as ComponentFn, null),
+    })
+
+    const html = await collectStream(renderToStream(vnode))
+    // Fallback should be present
+    expect(html).toContain("fallback content")
+    // No swap script invocation should be emitted (error was caught, no template + swap)
+    expect(html).not.toContain("pyreon-t-")
+    expect(html).not.toContain('__NS("pyreon-s-')
+  })
+})

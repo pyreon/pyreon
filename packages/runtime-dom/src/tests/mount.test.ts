@@ -3175,3 +3175,38 @@ describe("TransitionGroup — cleanup", () => {
     expect(el.innerHTML).toBe("")
   })
 })
+
+// ─── Error paths (no ErrorBoundary) ──────────────────────────────────────────
+
+describe("mount — error paths", () => {
+  test("component that throws during setup fires console.error", () => {
+    const el = container()
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const Broken: ComponentFn = () => {
+      throw new Error("setup boom")
+    }
+    mount(h(Broken, null), el)
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("threw during setup"),
+      expect.any(Error),
+    )
+    spy.mockRestore()
+  })
+
+  test("component that throws during render fires console.error", () => {
+    const el = container()
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const BrokenChild: ComponentFn = () => {
+      throw new Error("render boom")
+    }
+    // Parent returns a child that throws when mounted (render phase)
+    const Parent: ComponentFn = () => h(BrokenChild, null)
+    mount(h(Parent, null), el)
+
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("threw during"), expect.any(Error))
+    spy.mockRestore()
+  })
+})
