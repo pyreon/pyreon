@@ -542,6 +542,16 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/fundamentals/rx": {
+      "name": "@pyreon/rx",
+      "version": "0.10.0",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/state-tree": {
       "name": "@pyreon/state-tree",
       "version": "0.10.0",
@@ -591,6 +601,32 @@
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/fundamentals/toast": {
+      "name": "@pyreon/toast",
+      "version": "0.10.0",
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@vitus-labs/tools-lint": "^1.11.0",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/fundamentals/url-state": {
+      "name": "@pyreon/url-state",
+      "version": "0.10.0",
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "@pyreon/reactivity": "workspace:^",
+        "@vitus-labs/tools-lint": "^1.11.0",
+      },
+      "peerDependencies": {
         "@pyreon/reactivity": "workspace:^",
       },
     },
@@ -1408,6 +1444,8 @@
 
     "@pyreon/runtime-server": ["@pyreon/runtime-server@workspace:packages/core/runtime-server"],
 
+    "@pyreon/rx": ["@pyreon/rx@workspace:packages/fundamentals/rx"],
+
     "@pyreon/server": ["@pyreon/server@workspace:packages/core/server"],
 
     "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/tools/solid-compat"],
@@ -1424,11 +1462,15 @@
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 
+    "@pyreon/toast": ["@pyreon/toast@workspace:packages/fundamentals/toast"],
+
     "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 
     "@pyreon/ui-core": ["@pyreon/ui-core@workspace:packages/ui-system/ui-core"],
 
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
+
+    "@pyreon/url-state": ["@pyreon/url-state@workspace:packages/fundamentals/url-state"],
 
     "@pyreon/validation": ["@pyreon/validation@workspace:packages/fundamentals/validation"],
 

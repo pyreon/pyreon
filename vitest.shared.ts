@@ -37,11 +37,14 @@ const fundamentalsPackages = [
   "machine",
   "permissions",
   "query",
+  "rx",
   "state-tree",
   "storage",
   "store",
   "table",
+  "toast",
   "validation",
+  "url-state",
   "virtual",
 ] as const
 

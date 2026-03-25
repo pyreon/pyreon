@@ -197,7 +197,7 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/ui-core — Config engine, init(), PyreonUI provider, useMode(), utilities
 - @pyreon/styler — CSS-in-JS: styled(), css, keyframes, theming
 - @pyreon/unistyle — Responsive breakpoints, CSS property mappings, enrichTheme()
-- @pyreon/hooks — 27+ signal-based hooks (useHover, useFocus, useBreakpoint, etc.)
+- @pyreon/hooks — 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.)
 - @pyreon/elements — Foundational primitives (Element, Text, List, Overlay, Portal)
 - @pyreon/attrs — Chainable HOC factory (.attrs(), .config())
 - @pyreon/rocketstyle — Multi-state styling (states, sizes, variants, themes, dark mode)
@@ -224,13 +224,13 @@ const App = () => (
 const mode = useMode()  // "light" | "dark" (reactive signal)
 ```
 
-## Ecosystem Packages (17)
+## Ecosystem Packages (20)
 
 - @pyreon/store — Global state management with composition stores (`defineStore`)
 - @pyreon/state-tree — Structured reactive models with snapshots and patches
 - @pyreon/form — Signal-based form management with fields, validation, arrays
 - @pyreon/validation — Schema adapters (Zod, Valibot, ArkType)
-- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions
+- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE)
 - @pyreon/table — TanStack Table adapter with reactive options
 - @pyreon/virtual — TanStack Virtual adapter for element and window virtualization
 - @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation
@@ -243,6 +243,9 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/flow — Reactive flow diagrams with signal-native nodes, edges, auto-layout via elkjs
 - @pyreon/code — Reactive code editor with CodeMirror 6, minimap, diff editor, tabbed editor
 - @pyreon/document — Universal document rendering — one template, 14+ output formats
+- @pyreon/rx — Signal-aware reactive transforms (filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions)
+- @pyreon/toast — Toast notifications (toast(), toast.success/error/warning/info/loading, Toaster component, a11y)
+- @pyreon/url-state — URL-synced state (useUrlState with auto type coercion, schema mode, SSR-safe)
 - @pyreon/storybook — Storybook renderer for Pyreon components
 
 ## Key Ecosystem Patterns
@@ -275,6 +278,30 @@ const doc = createDocument({ title: 'Report' }).heading('Sales').table({ columns
 await doc.toPdf()   // PDF
 await doc.toEmail() // Outlook-safe HTML
 await doc.toSlack() // Slack Block Kit JSON
+
+// Reactive transforms
+import { filter, pipe, sortBy } from '@pyreon/rx'
+const items = signal([{ name: 'B', age: 30 }, { name: 'A', age: 25 }])
+const adults = filter(items, i => i.age >= 18)  // Computed<Item[]>
+const sorted = pipe(items, sortBy('name'), filter(i => i.age > 20))
+
+// Toast notifications
+import { toast, Toaster } from '@pyreon/toast'
+toast.success('Saved!')
+toast.promise(saveData(), { loading: 'Saving...', success: 'Done!', error: 'Failed' })
+
+// URL-synced state
+import { useUrlState } from '@pyreon/url-state'
+const page = useUrlState('page', 1)     // synced to ?page=
+const filters = useUrlState({ page: 1, sort: 'name' })  // schema mode
+
+// SSE subscription
+import { useSSE } from '@pyreon/query'
+const { data } = useSSE({ queryKey: ['events'], url: '/api/events' })
+
+// Active route detection
+import { useIsActive } from '@pyreon/router'
+const isAdmin = useIsActive('/admin')  // reactive boolean
 ```
 
 ## AI Tools

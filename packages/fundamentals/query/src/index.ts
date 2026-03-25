@@ -50,6 +50,12 @@ export {
   useQueryErrorResetBoundary,
 } from "./use-query-error-reset-boundary"
 export type {
+  SSEStatus,
+  UseSSEOptions,
+  UseSSEResult,
+} from "./use-sse"
+export { useSSE } from "./use-sse"
+export type {
   SubscriptionStatus,
   UseSubscriptionOptions,
   UseSubscriptionResult,

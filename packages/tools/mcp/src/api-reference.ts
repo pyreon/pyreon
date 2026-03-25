@@ -912,6 +912,147 @@ const theme = enrichTheme({
   // @pyreon/storybook
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/rx
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "rx/filter": {
+    signature:
+      "filter<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean): Computed<T[]> | T[]",
+    example: `import { filter } from '@pyreon/rx'
+
+// Signal input → Computed output (auto-tracks):
+const items = signal([1, 2, 3, 4, 5])
+const evens = filter(items, n => n % 2 === 0)  // Computed<number[]>
+evens()  // [2, 4]
+
+// Plain input → plain output:
+const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
+    notes:
+      "Every @pyreon/rx function is overloaded: Signal<T[]> input produces Computed<T[]>, plain T[] input produces plain T[]. 24 functions total: filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search.",
+  },
+
+  "rx/pipe": {
+    signature: "pipe<T>(source: Signal<T[]> | T[], ...operators: Operator[]): Computed<T[]> | T[]",
+    example: `import { pipe, filter, sortBy, map } from '@pyreon/rx'
+
+const users = signal([
+  { name: 'Charlie', age: 35 },
+  { name: 'Alice', age: 25 },
+  { name: 'Bob', age: 30 },
+])
+
+// Compose transforms left-to-right:
+const result = pipe(
+  users,
+  filter(u => u.age >= 30),
+  sortBy('name'),
+  map(u => u.name),
+)
+// Computed<string[]> → ["Bob", "Charlie"]`,
+    notes:
+      "Pipe composes operators left-to-right. Signal source produces reactive Computed that re-derives when source changes.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/toast
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "toast/toast": {
+    signature:
+      "toast(message: string, options?: ToastOptions): string\ntoast.success/error/warning/info/loading(message): string\ntoast.update(id, options): void\ntoast.dismiss(id?): void\ntoast.promise(promise, { loading, success, error }): string",
+    example: `import { toast, Toaster } from '@pyreon/toast'
+
+// Basic:
+toast('Hello!')
+toast.success('Saved!')
+toast.error('Failed!')
+
+// Loading → success pattern:
+const id = toast.loading('Saving...')
+await save()
+toast.update(id, { type: 'success', message: 'Done!' })
+
+// Promise helper:
+toast.promise(fetchData(), {
+  loading: 'Loading...',
+  success: 'Loaded!',
+  error: 'Failed to load',
+})
+
+// Dismiss:
+toast.dismiss(id)  // one
+toast.dismiss()    // all
+
+// Mount Toaster once in your app:
+<Toaster />`,
+    notes:
+      "Imperative API — call from anywhere, no context needed. <Toaster /> renders via Portal with CSS transitions, auto-dismiss, pause on hover. Accessible: role='alert', aria-live='polite'.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/url-state
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "url-state/useUrlState": {
+    signature:
+      "useUrlState<T>(key: string, defaultValue: T): UrlStateSignal<T>\nuseUrlState<T extends Record<string, unknown>>(schema: T): UrlStateSchema<T>",
+    example: `import { useUrlState } from '@pyreon/url-state'
+
+// Single param — synced to ?page=:
+const page = useUrlState('page', 1)
+page()       // 1 (auto-coerced number)
+page.set(2)  // URL → ?page=2
+
+// Schema mode — multiple params:
+const filters = useUrlState({ page: 1, sort: 'name', desc: false })
+filters.page()   // 1
+filters.sort()   // "name"
+filters.set({ page: 2, sort: 'date' })`,
+    notes:
+      "Auto type coercion (numbers, booleans, arrays). Uses replaceState (no history spam). Configurable debounce. SSR-safe — reads request URL on server.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/query — useSSE
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "query/useSSE": {
+    signature:
+      "useSSE<T>(options: { queryKey: unknown[], url: string, transform?: (event: MessageEvent) => T, ... }): { data: Signal<T>, error: Signal<Error>, status: Signal<string> }",
+    example: `import { useSSE } from '@pyreon/query'
+
+const { data, error, status } = useSSE({
+  queryKey: ['events'],
+  url: '/api/events',
+  transform: (event) => JSON.parse(event.data),
+})
+
+// data() reactively updates on each SSE message
+// Auto-reconnects on disconnect
+// Integrates with QueryClient for cache invalidation`,
+    notes:
+      "Server-Sent Events hook. Same pattern as useSubscription but read-only (no send). Integrates with QueryClient cache.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/router — useIsActive
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "router/useIsActive": {
+    signature: "useIsActive(path: string, exact?: boolean): () => boolean",
+    example: `import { useIsActive } from '@pyreon/router'
+
+const isHome = useIsActive('/')
+const isAdmin = useIsActive('/admin')          // prefix match
+const isExactAdmin = useIsActive('/admin', true)  // exact only
+
+// Reactive — updates when route changes:
+<a class={{ active: isAdmin() }} href="/admin">Admin</a>`,
+    notes:
+      "Returns a reactive boolean. Segment-aware prefix matching: /admin matches /admin/users but not /admin-panel. Pass exact=true for exact-only matching.",
+  },
+
   "storybook/renderToCanvas": {
     signature: "renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void",
     example: `// .storybook/main.ts:
