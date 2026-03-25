@@ -8,15 +8,19 @@
  *   - links-100:          100 RouterLinks to stress link rendering
  *   - layouts-26-params:  26 nested layouts with params
  *
- * Usage: bun scripts/bench-ssr.ts
+ * Usage: bun scripts/bench/core/runtime-server.ts
  */
 
-import type { ComponentFn, VNode } from "../packages/core/core/src/index"
-import { h } from "../packages/core/core/src/index"
-import { RouterLink, RouterProvider, RouterView } from "../packages/core/router/src/components"
-import { createRouter } from "../packages/core/router/src/router"
-import type { RouteRecord } from "../packages/core/router/src/types"
-import { renderToString } from "../packages/core/runtime-server/src/index"
+import type { ComponentFn, VNode } from "../../../packages/core/core/src/index"
+import { h } from "../../../packages/core/core/src/index"
+import {
+  RouterLink,
+  RouterProvider,
+  RouterView,
+} from "../../../packages/core/router/src/components"
+import { createRouter } from "../../../packages/core/router/src/router"
+import type { RouteRecord } from "../../../packages/core/router/src/types"
+import { renderToString } from "../../../packages/core/runtime-server/src/index"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

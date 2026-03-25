@@ -2,14 +2,14 @@ import { join } from "node:path"
 import { serve } from "bun"
 /**
  * Headless benchmark runner using Playwright.
- * Usage: bun scripts/bench.ts
+ * Usage: bun scripts/bench/dom.ts
  *
  * Starts a local static server, runs the benchmark in headless Chromium,
  * prints results, and exits.
  */
 import { chromium } from "playwright"
 
-const DIST = join(import.meta.dir, "../examples/benchmark/dist")
+const DIST = join(import.meta.dir, "../../examples/benchmark/dist")
 const PORT = 4173
 
 // Static file server for the benchmark dist

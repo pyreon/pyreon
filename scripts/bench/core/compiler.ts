@@ -15,14 +15,14 @@
  *   - SWC      — Rust-based (Next.js, Turbopack)
  *   - Babel    — JS-based (legacy, Solid's compiler)
  *
- * Usage: bun scripts/bench-compiler.ts
+ * Usage: bun scripts/bench/core/compiler.ts
  */
 
 import * as babel from "@babel/core"
 import babelJsx from "@babel/plugin-transform-react-jsx"
 import { transformSync as swcTransform } from "@swc/core"
 import * as esbuild from "esbuild"
-import { transformJSX } from "../packages/core/compiler/src/index"
+import { transformJSX } from "../../../packages/core/compiler/src/index"
 
 // oxc-transform uses CJS exports
 const oxc = require("oxc-transform") as {

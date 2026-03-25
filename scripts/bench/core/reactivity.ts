@@ -7,16 +7,8 @@
  *   - @preact/signals-core — Preact Signals (widely used baseline)
  *   - solid-js             — Solid's fine-grained reactivity
  *
- * Usage: bun scripts/bench-reactivity.ts
+ * Usage: bun scripts/bench/core/reactivity.ts
  */
-
-import {
-  batch as pyreonBatch,
-  computed as pyreonComputed,
-  effect as pyreonEffect,
-  signal as pyreonSignal,
-  createStore as pyreonStore,
-} from "../packages/core/reactivity/src/index"
 
 import {
   batch as preactBatch,
@@ -24,7 +16,6 @@ import {
   effect as preactEffect,
   signal as preactSignal,
 } from "@preact/signals-core"
-
 import {
   batch as solidBatch,
   createEffect as solidEffect,
@@ -32,6 +23,13 @@ import {
   createRoot as solidRoot,
   createSignal as solidSignal,
 } from "solid-js"
+import {
+  batch as pyreonBatch,
+  computed as pyreonComputed,
+  effect as pyreonEffect,
+  signal as pyreonSignal,
+  createStore as pyreonStore,
+} from "../../../packages/core/reactivity/src/index"
 
 // ─── Benchmark harness ───────────────────────────────────────────────────────
 
@@ -144,25 +142,21 @@ function benchComputed() {
       }),
     )
   }
-
-  // Solid
-  {
-    solidRoot((dispose) => {
-      const [a, setA] = solidSignal(0)
-      const b = solidMemo(() => a() * 2)
-      const c = solidMemo(() => a() * 3)
-      const d = solidMemo(() => b() + c())
-      results.push(
-        bench("Solid computed diamond", () => {
-          for (let i = 0; i < 100; i++) {
-            setA(i)
-            d()
-          }
-        }),
-      )
-      dispose()
-    })
-  }
+  solidRoot((dispose) => {
+    const [a, setA] = solidSignal(0)
+    const b = solidMemo(() => a() * 2)
+    const c = solidMemo(() => a() * 3)
+    const d = solidMemo(() => b() + c())
+    results.push(
+      bench("Solid computed diamond", () => {
+        for (let i = 0; i < 100; i++) {
+          setA(i)
+          d()
+        }
+      }),
+    )
+    dispose()
+  })
 
   return results
 }
@@ -197,30 +191,26 @@ function benchEffect() {
     })
     results.push(
       bench("Preact effect propagation", () => {
-        for (let i = 0; i < 100; i++) (s.value = i)
+        for (let i = 0; i < 100; i++) s.value = i
       }),
     )
     dispose()
     void sink
   }
-
-  // Solid
-  {
-    solidRoot((dispose) => {
-      const [s, setS] = solidSignal(0)
-      let sink = 0
-      solidEffect(() => {
-        sink = s()
-      })
-      results.push(
-        bench("Solid effect propagation", () => {
-          for (let i = 0; i < 100; i++) setS(i)
-        }),
-      )
-      dispose()
-      void sink
+  solidRoot((dispose) => {
+    const [s, setS] = solidSignal(0)
+    let sink = 0
+    solidEffect(() => {
+      sink = s()
     })
-  }
+    results.push(
+      bench("Solid effect propagation", () => {
+        for (let i = 0; i < 100; i++) setS(i)
+      }),
+    )
+    dispose()
+    void sink
+  })
 
   return results
 }
@@ -258,33 +248,29 @@ function benchBatch() {
     results.push(
       bench("Preact batch 50 signals", () => {
         preactBatch(() => {
-          for (let i = 0; i < 50; i++) (signals[i]!.value = i + Math.random())
+          for (let i = 0; i < 50; i++) signals[i]!.value = i + Math.random()
         })
       }),
     )
     dispose()
     void sink
   }
-
-  // Solid
-  {
-    solidRoot((dispose) => {
-      const signals = Array.from({ length: 50 }, (_, i) => solidSignal(i))
-      let sink = 0
-      solidEffect(() => {
-        sink = signals.reduce((sum, [get]) => sum + get(), 0)
-      })
-      results.push(
-        bench("Solid batch 50 signals", () => {
-          solidBatch(() => {
-            for (let i = 0; i < 50; i++) signals[i]![1](i + Math.random())
-          })
-        }),
-      )
-      dispose()
-      void sink
+  solidRoot((dispose) => {
+    const signals = Array.from({ length: 50 }, (_, i) => solidSignal(i))
+    let sink = 0
+    solidEffect(() => {
+      sink = signals.reduce((sum, [get]) => sum + get(), 0)
     })
-  }
+    results.push(
+      bench("Solid batch 50 signals", () => {
+        solidBatch(() => {
+          for (let i = 0; i < 50; i++) signals[i]![1](i + Math.random())
+        })
+      }),
+    )
+    dispose()
+    void sink
+  })
 
   return results
 }
@@ -332,28 +318,24 @@ function benchDeepChain() {
       }),
     )
   }
-
-  // Solid
-  {
-    solidRoot((dispose) => {
-      const [source, setSource] = solidSignal(0)
-      let current: () => number = source
-      for (let i = 0; i < DEPTH; i++) {
-        const prev = current
-        current = solidMemo(() => prev() + 1)
-      }
-      const tail = current
-      results.push(
-        bench(`Solid chain depth ${DEPTH}`, () => {
-          for (let i = 0; i < 100; i++) {
-            setSource(i)
-            tail()
-          }
-        }),
-      )
-      dispose()
-    })
-  }
+  solidRoot((dispose) => {
+    const [source, setSource] = solidSignal(0)
+    let current: () => number = source
+    for (let i = 0; i < DEPTH; i++) {
+      const prev = current
+      current = solidMemo(() => prev() + 1)
+    }
+    const tail = current
+    results.push(
+      bench(`Solid chain depth ${DEPTH}`, () => {
+        for (let i = 0; i < 100; i++) {
+          setSource(i)
+          tail()
+        }
+      }),
+    )
+    dispose()
+  })
 
   return results
 }
@@ -387,7 +369,11 @@ function benchWide() {
     let sink = 0
     const effects: { dispose(): void }[] = []
     for (let i = 0; i < WIDTH; i++) {
-      effects.push(pyreonEffect(() => { sink += s() }))
+      effects.push(
+        pyreonEffect(() => {
+          sink += s()
+        }),
+      )
     }
     results.push(
       bench(`Pyreon 1→${WIDTH} effects`, () => {
@@ -404,7 +390,11 @@ function benchWide() {
     let sink = 0
     const disposers: (() => void)[] = []
     for (let i = 0; i < WIDTH; i++) {
-      disposers.push(preactEffect(() => { sink += s.value }))
+      disposers.push(
+        preactEffect(() => {
+          sink += s.value
+        }),
+      )
     }
     results.push(
       bench(`Preact 1→${WIDTH} effects`, () => {
@@ -414,24 +404,22 @@ function benchWide() {
     for (const d of disposers) d()
     void sink
   }
-
-  // Solid
-  {
-    solidRoot((dispose) => {
-      const [s, setS] = solidSignal(0)
-      let sink = 0
-      for (let i = 0; i < WIDTH; i++) {
-        solidEffect(() => { sink += s() })
-      }
-      results.push(
-        bench(`Solid 1→${WIDTH} effects`, () => {
-          setS((v) => v + 1)
-        }),
-      )
-      dispose()
-      void sink
-    })
-  }
+  solidRoot((dispose) => {
+    const [s, setS] = solidSignal(0)
+    let sink = 0
+    for (let i = 0; i < WIDTH; i++) {
+      solidEffect(() => {
+        sink += s()
+      })
+    }
+    results.push(
+      bench(`Solid 1→${WIDTH} effects`, () => {
+        setS((v) => v + 1)
+      }),
+    )
+    dispose()
+    void sink
+  })
 
   return results
 }

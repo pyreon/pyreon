@@ -10,15 +10,15 @@
  *   - renderWithHead()    — full SSR pipeline including renderToString
  *   - renderSSRHead()     — head-only serialization (both frameworks)
  *
- * Usage: bun scripts/bench-head.ts
+ * Usage: bun scripts/bench/core/head.ts
  */
 
-import type { VNode } from "../packages/core/core/src/index"
-import { h } from "../packages/core/core/src/index"
-import type { HeadEntry, HeadTag } from "../packages/core/head/src/context"
-import { createHeadContext } from "../packages/core/head/src/context"
-import { renderWithHead } from "../packages/core/head/src/ssr"
 import { createHead, renderSSRHead } from "unhead/server"
+import type { VNode } from "../../../packages/core/core/src/index"
+import { h } from "../../../packages/core/core/src/index"
+import type { HeadEntry, HeadTag } from "../../../packages/core/head/src/context"
+import { createHeadContext } from "../../../packages/core/head/src/context"
+import { renderWithHead } from "../../../packages/core/head/src/ssr"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -32,7 +32,10 @@ function makePyreonTags(count: number): HeadTag[] {
     tags.push({
       tag: "meta",
       key: `meta-${i}`,
-      props: { name: `description-${i}`, content: `Content for meta tag ${i} with <special> & "chars"` },
+      props: {
+        name: `description-${i}`,
+        content: `Content for meta tag ${i} with <special> & "chars"`,
+      },
     })
   }
   return tags
@@ -165,9 +168,7 @@ const tagCounts = [5, 20, 50]
 
 // Section 1: Pyreon resolve (cached vs dirty)
 console.log("── Pyreon Context Resolve ──────────────────────────────────────────")
-console.log(
-  `${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
 console.log("-".repeat(64))
 
 for (const count of tagCounts) {
@@ -180,9 +181,7 @@ for (const count of tagCounts) {
 
 // Section 2: Head-only SSR serialization (both)
 console.log("\n── Head SSR Serialization (head-only, no app render) ─────────────")
-console.log(
-  `${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
 console.log("-".repeat(64))
 
 for (const count of tagCounts) {
@@ -197,9 +196,7 @@ for (const count of tagCounts) {
 
 // Section 3: Full renderWithHead (Pyreon only — includes renderToString)
 console.log("\n── Full SSR (renderToString + head) ────────────────────────────────")
-console.log(
-  `${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
 console.log("-".repeat(64))
 
 for (const count of tagCounts) {

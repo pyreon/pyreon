@@ -6,13 +6,14 @@
  *   - buildScripts vs buildScriptsFast
  *   - Full handler throughput (requests/sec at various complexities)
  *
- * Usage: bun scripts/bench-server.ts
+ * Usage: bun scripts/bench/core/server.ts
  */
 
-import type { ComponentFn, VNode } from "../packages/core/core/src/index"
-import { h } from "../packages/core/core/src/index"
-import { RouterView } from "../packages/core/router/src/components"
-import type { RouteRecord } from "../packages/core/router/src/types"
+import type { ComponentFn, VNode } from "../../../packages/core/core/src/index"
+import { h } from "../../../packages/core/core/src/index"
+import { RouterView } from "../../../packages/core/router/src/components"
+import type { RouteRecord } from "../../../packages/core/router/src/types"
+import { createHandler } from "../../../packages/core/server/src/handler"
 import {
   buildClientEntryTag,
   buildScripts,
@@ -21,8 +22,7 @@ import {
   DEFAULT_TEMPLATE,
   processCompiledTemplate,
   processTemplate,
-} from "../packages/core/server/src/html"
-import { createHandler } from "../packages/core/server/src/handler"
+} from "../../../packages/core/server/src/html"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,12 +93,17 @@ const TEMPLATE = `<!DOCTYPE html>
 
 const SAMPLE_DATA = {
   head: '<title>Test</title>\n  <meta name="description" content="A test page">',
-  app: '<div><h1>Hello World</h1><p>This is a test page with some content.</p></div>',
+  app: "<div><h1>Hello World</h1><p>This is a test page with some content.</p></div>",
   scripts: '<script type="module" src="/src/entry-client.ts"></script>',
 }
 
 const SAMPLE_LOADER_DATA = {
-  "/": { posts: [{ id: 1, title: "Hello" }, { id: 2, title: "World" }] },
+  "/": {
+    posts: [
+      { id: 1, title: "Hello" },
+      { id: 2, title: "World" },
+    ],
+  },
   "/about": { team: ["Alice", "Bob", "Charlie"] },
 }
 
@@ -167,9 +172,7 @@ console.log(`${"=".repeat(70)}\n`)
 
 // Section 1: Template processing
 console.log("── Template Processing ─────────────────────────────────────────────")
-console.log(
-  `${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
 console.log("-".repeat(64))
 
 for (const r of benchTemplateProcessing()) {
@@ -180,9 +183,7 @@ for (const r of benchTemplateProcessing()) {
 
 // Section 2: buildScripts
 console.log("\n── Script Building ─────────────────────────────────────────────────")
-console.log(
-  `${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
 console.log("-".repeat(64))
 
 for (const r of benchBuildScripts()) {
@@ -193,9 +194,7 @@ for (const r of benchBuildScripts()) {
 
 // Section 3: Full handler throughput
 console.log("\n── Full Handler Throughput (req/sec) ────────────────────────────────")
-console.log(
-  `${"test".padEnd(36)}${"req/sec".padStart(14)}${"avg ms/req".padStart(14)}`,
-)
+console.log(`${"test".padEnd(36)}${"req/sec".padStart(14)}${"avg ms/req".padStart(14)}`)
 console.log("-".repeat(64))
 
 // Simple: 1 route, minimal component
@@ -226,8 +225,7 @@ const nestedRoutes: RouteRecord[] = [
             children: [
               {
                 path: "c",
-                component: (() =>
-                  h("div", { class: "l3" }, h(RouterView, null))) as ComponentFn,
+                component: (() => h("div", { class: "l3" }, h(RouterView, null))) as ComponentFn,
                 children: [{ path: "d", component: Text("Deep leaf") }],
               },
             ],
