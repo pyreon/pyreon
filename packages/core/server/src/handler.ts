@@ -26,7 +26,7 @@
 
 import type { ComponentFn } from "@pyreon/core"
 import { h } from "@pyreon/core"
-import { renderWithHead } from "@pyreon/head"
+import { renderWithHead } from "@pyreon/head/ssr"
 import {
   createRouter,
   prefetchLoaderData,

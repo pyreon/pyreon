@@ -7,7 +7,6 @@
 // Common HTML attributes, event handlers, and ARIA/data attributes
 const HTML_PROPS = new Set([
   // Core props
-  "children",
   "className",
   "class",
   "dangerouslySetInnerHTML",

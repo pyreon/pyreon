@@ -55,12 +55,20 @@
   },
   "dependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependencies": {
     "@pyreon/runtime-server": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/runtime-server": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^"
   },
   "publishConfig": {
     "access": "public"
