@@ -20,6 +20,24 @@
 | @pyreon/mcp | MCP server | AI tool integration |
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
 | @pyreon/vite-plugin | pyreon() | Vite integration |
+| @pyreon/storybook | renderToCanvas, Meta, StoryObj | Storybook renderer |
+| @pyreon/store | defineStore, resetStore, addStorePlugin | Global state management |
+| @pyreon/state-tree | model, getSnapshot, applySnapshot, onPatch, applyPatch | Structured reactive state tree |
+| @pyreon/form | useForm, useField, useFieldArray, useWatch, FormProvider | Signal-based forms |
+| @pyreon/validation | zodSchema, valibotSchema, arktypeSchema | Schema adapters for forms |
+| @pyreon/query | useQuery, useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription | TanStack Query adapter |
+| @pyreon/table | useTable, flexRender | TanStack Table adapter |
+| @pyreon/virtual | useVirtualizer, useWindowVirtualizer | TanStack Virtual adapter |
+| @pyreon/i18n | createI18n, I18nProvider, useI18n, Trans | Reactive i18n |
+| @pyreon/feature | defineFeature, reference, extractFields | Schema-driven CRUD primitives |
+| @pyreon/charts | useChart, Chart | Reactive ECharts bridge |
+| @pyreon/storage | useStorage, useSessionStorage, useCookie, useIndexedDB | Reactive client storage |
+| @pyreon/hotkeys | useHotkey, useHotkeyScope, registerHotkey | Keyboard shortcuts |
+| @pyreon/permissions | createPermissions, PermissionsProvider, usePermissions | Reactive permissions |
+| @pyreon/machine | createMachine | Reactive state machines |
+| @pyreon/flow | createFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
+| @pyreon/code | createEditor, CodeEditor, DiffEditor, TabbedEditor | Code editor (CodeMirror 6) |
+| @pyreon/document | render, createDocument, Document, Page, Heading, Text, Table | Universal document rendering |
 
 ## @pyreon/reactivity — Complete API
 
@@ -653,6 +671,212 @@ export default defineConfig({
 | `import from "react"` | `import from "@pyreon/core"` | Different package |
 | `import from "react-dom"` | `import from "@pyreon/runtime-dom"` | Different package |
 | `createRoot(el).render()` | `mount(<App/>, el)` | Simpler API |
+
+## @pyreon/store — State Management
+
+```typescript
+import { defineStore } from '@pyreon/store'
+
+const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const doubled = computed(() => count() * 2)
+  const increment = () => count.update(n => n + 1)
+  return { count, doubled, increment }
+})
+
+// Usage:
+const { store } = useCounter()
+store.count()       // 0
+store.increment()   // triggers reactive updates
+store.doubled()     // 2
+
+// Store API:
+const api = useCounter()
+api.patch({ count: 10 })       // partial update
+api.subscribe((mutation) => {}) // watch changes
+api.reset()                     // reset to initial
+api.dispose()                   // cleanup
+```
+
+## @pyreon/form — Form Management
+
+```typescript
+import { useForm, useField, useFieldArray, FormProvider } from '@pyreon/form'
+import { zodSchema } from '@pyreon/validation/zod'
+
+const form = useForm({
+  initialValues: { name: '', email: '', tags: [] },
+  onSubmit: async (values) => await api.save(values),
+  schema: zodSchema(myZodSchema),
+  validateOn: 'blur',
+})
+
+const name = useField(form, 'name')
+// name.value(), name.error(), name.hasError(), name.showError()
+// name.register() — returns { value, onInput, onBlur } for <input>
+
+const tags = useFieldArray(['initial'])
+tags.append('new')
+tags.remove(0)
+tags.move(0, 2)
+```
+
+## @pyreon/query — TanStack Query Adapter
+
+```typescript
+import { useQuery, useMutation, useSubscription, QueryClientProvider } from '@pyreon/query'
+
+const { data, error, isFetching } = useQuery({
+  queryKey: ['users'],
+  queryFn: () => fetch('/api/users').then(r => r.json()),
+})
+
+const { mutate } = useMutation({
+  mutationFn: (user) => fetch('/api/users', { method: 'POST', body: JSON.stringify(user) }),
+})
+
+// WebSocket subscription with auto-reconnect:
+const { data: live } = useSubscription({
+  queryKey: ['feed'],
+  url: 'wss://api.example.com/feed',
+})
+```
+
+## @pyreon/permissions — Access Control
+
+```typescript
+import { createPermissions } from '@pyreon/permissions'
+
+const can = createPermissions({
+  'posts.read': true,
+  'posts.create': true,
+  'posts.delete': (post) => post.authorId === currentUser.id,
+  'admin.*': false,
+})
+
+can('posts.read')           // true (reactive)
+can('posts.delete', post)   // evaluates predicate
+can.not('admin.dashboard')  // true
+can.all('posts.read', 'posts.create')  // true
+can.any('admin.users', 'posts.read')   // true
+can.set({ 'admin.*': true })           // update reactively
+```
+
+## @pyreon/machine — State Machines
+
+```typescript
+import { createMachine } from '@pyreon/machine'
+
+const traffic = createMachine({
+  initial: 'red',
+  states: {
+    red:    { on: { NEXT: 'green' } },
+    green:  { on: { NEXT: 'yellow' } },
+    yellow: { on: { NEXT: 'red' } },
+  },
+})
+
+traffic()              // 'red' (reactive signal)
+traffic.send('NEXT')   // 'green'
+traffic.matches('green') // true (reactive)
+traffic.can('NEXT')    // true
+traffic.nextEvents()   // ['NEXT']
+traffic.reset()        // back to 'red'
+```
+
+## @pyreon/document — Universal Rendering
+
+```typescript
+import { createDocument, render } from '@pyreon/document'
+
+// Builder pattern:
+const doc = createDocument({ title: 'Report' })
+  .heading('Q4 Sales')
+  .text('Revenue increased by 25%.')
+  .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M'], ['EU', '$800K']] })
+
+await doc.toPdf()       // PDF (pdfmake)
+await doc.toDocx()      // Word (docx)
+await doc.toEmail()     // Outlook-safe HTML
+await doc.toSlack()     // Slack Block Kit JSON
+await doc.toNotion()    // Notion blocks
+await doc.toMarkdown()  // Markdown
+
+// JSX primitives:
+<Document title="Report">
+  <Page><Heading level={1}>Title</Heading><Text>Body</Text></Page>
+</Document>
+```
+
+## @pyreon/flow — Flow Diagrams
+
+```typescript
+import { createFlow, Flow, Background, Controls, MiniMap } from '@pyreon/flow'
+
+const flow = createFlow({
+  nodes: [
+    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },
+  ],
+  edges: [{ id: 'e1', source: '1', target: '2' }],
+})
+
+flow.addNode({ id: '3', position: { x: 100, y: 200 }, data: { label: 'New' } })
+flow.addEdge({ source: '1', target: '3' })
+await flow.layout('layered')  // auto-layout via elkjs
+
+<Flow instance={flow}>
+  <Background />
+  <Controls />
+  <MiniMap />
+</Flow>
+```
+
+## @pyreon/storage — Persistent Reactive Storage
+
+```typescript
+import { useStorage, useCookie, useIndexedDB } from '@pyreon/storage'
+
+const theme = useStorage('theme', 'light')   // localStorage, cross-tab synced
+theme()           // 'light'
+theme.set('dark') // persists + notifies other tabs
+theme.remove()    // delete from storage
+
+const token = useCookie('session', '', { maxAge: 3600, secure: true })
+const cache = useIndexedDB('large-data', defaultValue, { dbName: 'app' })
+```
+
+## @pyreon/i18n — Internationalization
+
+```typescript
+import { createI18n, I18nProvider, useI18n, Trans } from '@pyreon/i18n'
+
+const i18n = createI18n({
+  locale: 'en',
+  messages: { en: { greeting: 'Hello, {{name}}!', items_one: '{{count}} item', items_other: '{{count}} items' } },
+  loader: (locale, ns) => import(`./locales/${locale}/${ns}.json`),
+})
+
+const { t, locale } = useI18n()
+t('greeting', { name: 'World' })  // "Hello, World!"
+t('items', { count: 5 })          // "5 items"
+locale.set('fr')                   // switch locale reactively
+```
+
+## @pyreon/code — Code Editor
+
+```typescript
+import { createEditor, CodeEditor, DiffEditor } from '@pyreon/code'
+
+const editor = createEditor({ value: '// hello', language: 'typescript', theme: 'dark', minimap: true })
+editor.value()        // reactive
+editor.cursor()       // { line, col }
+editor.goToLine(42)
+editor.insert('new code')
+
+<CodeEditor instance={editor} />
+<DiffEditor original="old code" modified="new code" />
+```
 
 ## AI Developer Tools
 

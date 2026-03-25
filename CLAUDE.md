@@ -27,6 +27,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/server` | createHandler (SSR), prerender (SSG), island(), middleware |
 | `@pyreon/vite-plugin` | JSX transform + SSR dev middleware + signal-preserving HMR |
 | `@pyreon/react-compat` | useState, useEffect, useMemo, lazy, Suspense shims |
+| `@pyreon/storybook` | Storybook renderer — mount, render, and interact with Pyreon components |
 | `@pyreon/typescript` | TypeScript config presets: base, app (noEmit), lib (declarations) |
 
 UI component packages (`@pyreon/styler`, `@pyreon/hooks`, `@pyreon/elements`, etc.) live in a separate repo: `pyreon/ui-system`.
@@ -51,7 +52,6 @@ UI component packages (`@pyreon/styler`, `@pyreon/hooks`, `@pyreon/elements`, et
 | `@pyreon/flow` | Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs |
 | `@pyreon/code` | Reactive code editor — CodeMirror 6 with signals, minimap, diff editor |
 | `@pyreon/document` | Universal document rendering — 18 primitives, 14+ output formats |
-| `@pyreon/storybook` | Storybook renderer for Pyreon components |
 
 ## Fundamentals — Key Technical Details
 

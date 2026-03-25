@@ -503,16 +503,6 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
-    "packages/fundamentals/storybook": {
-      "name": "@pyreon/storybook",
-      "version": "0.10.0",
-      "peerDependencies": {
-        "@pyreon/core": ">=0.7.0 <0.8.0",
-        "@pyreon/reactivity": ">=0.7.0 <0.8.0",
-        "@pyreon/runtime-dom": ">=0.7.0 <0.8.0",
-        "storybook": ">=8.0.0",
-      },
-    },
     "packages/fundamentals/table": {
       "name": "@pyreon/table",
       "version": "0.10.0",
@@ -629,6 +619,16 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.3",
         "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/tools/storybook": {
+      "name": "@pyreon/storybook",
+      "version": "0.10.0",
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "storybook": ">=8.0.0",
       },
     },
     "packages/tools/typescript": {
@@ -1153,7 +1153,7 @@
 
     "@pyreon/store": ["@pyreon/store@workspace:packages/fundamentals/store"],
 
-    "@pyreon/storybook": ["@pyreon/storybook@workspace:packages/fundamentals/storybook"],
+    "@pyreon/storybook": ["@pyreon/storybook@workspace:packages/tools/storybook"],
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 

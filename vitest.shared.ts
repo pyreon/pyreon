@@ -21,6 +21,7 @@ const toolsPackages = [
   "react-compat",
   "solid-compat",
   "vite-plugin",
+  "storybook",
   "vue-compat",
 ] as const
 
@@ -39,7 +40,6 @@ const fundamentalsPackages = [
   "state-tree",
   "storage",
   "store",
-  "storybook",
   "table",
   "validation",
   "virtual",
@@ -70,8 +70,8 @@ alias["@pyreon/validation/zod"] = resolve(root, "packages/fundamentals/validatio
 alias["@pyreon/validation/valibot"] = resolve(root, "packages/fundamentals/validation/src/valibot.ts")
 alias["@pyreon/validation/arktype"] = resolve(root, "packages/fundamentals/validation/src/arktype.ts")
 alias["@pyreon/charts/manual"] = resolve(root, "packages/fundamentals/charts/src/manual.ts")
-alias["@pyreon/storybook/preset"] = resolve(root, "packages/fundamentals/storybook/src/preset.ts")
-alias["@pyreon/storybook/preview"] = resolve(root, "packages/fundamentals/storybook/src/preview.ts")
+alias["@pyreon/storybook/preset"] = resolve(root, "packages/tools/storybook/src/preset.ts")
+alias["@pyreon/storybook/preview"] = resolve(root, "packages/tools/storybook/src/preview.ts")
 
 export const sharedConfig: UserConfig = {
   resolve: { alias, conditions: ["bun"] },
