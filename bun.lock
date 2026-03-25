@@ -194,32 +194,6 @@
         "@pyreon/runtime-dom": "workspace:^",
       },
     },
-    "packages/core/preact-compat": {
-      "name": "@pyreon/preact-compat",
-      "version": "0.7.14",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/core/react-compat": {
-      "name": "@pyreon/react-compat",
-      "version": "0.7.14",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
       "version": "0.7.14",
@@ -269,45 +243,6 @@
         "@pyreon/runtime-server": "workspace:^",
       },
     },
-    "packages/core/solid-compat": {
-      "name": "@pyreon/solid-compat",
-      "version": "0.7.14",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
-    "packages/core/vite-plugin": {
-      "name": "@pyreon/vite-plugin",
-      "version": "0.7.14",
-      "dependencies": {
-        "@pyreon/compiler": "workspace:^",
-      },
-      "devDependencies": {
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "vite": ">=8.0.0",
-      },
-    },
-    "packages/core/vue-compat": {
-      "name": "@pyreon/vue-compat",
-      "version": "0.7.14",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-dom": "workspace:^",
-      },
-      "devDependencies": {
-        "@happy-dom/global-registrator": "^20.8.3",
-        "happy-dom": "^20.8.3",
-      },
-    },
     "packages/tools/mcp": {
       "name": "@pyreon/mcp",
       "version": "0.7.14",
@@ -323,12 +258,77 @@
         "typescript": ">=5.0.0",
       },
     },
+    "packages/tools/preact-compat": {
+      "name": "@pyreon/preact-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/tools/react-compat": {
+      "name": "@pyreon/react-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
+    "packages/tools/solid-compat": {
+      "name": "@pyreon/solid-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
+      },
+    },
     "packages/tools/typescript": {
       "name": "@pyreon/typescript",
       "version": "0.7.14",
       "peerDependencies": {
         "@pyreon/core": ">=0.7.2",
         "typescript": ">=5.9.0",
+      },
+    },
+    "packages/tools/vite-plugin": {
+      "name": "@pyreon/vite-plugin",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/compiler": "workspace:^",
+      },
+      "devDependencies": {
+        "vite": "^8.0.0",
+      },
+      "peerDependencies": {
+        "vite": ">=8.0.0",
+      },
+    },
+    "packages/tools/vue-compat": {
+      "name": "@pyreon/vue-compat",
+      "version": "0.7.14",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.8.3",
+        "happy-dom": "^20.8.3",
       },
     },
   },
@@ -681,9 +681,9 @@
 
     "@pyreon/playground": ["@pyreon/playground@workspace:examples/playground"],
 
-    "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/core/preact-compat"],
+    "@pyreon/preact-compat": ["@pyreon/preact-compat@workspace:packages/tools/preact-compat"],
 
-    "@pyreon/react-compat": ["@pyreon/react-compat@workspace:packages/core/react-compat"],
+    "@pyreon/react-compat": ["@pyreon/react-compat@workspace:packages/tools/react-compat"],
 
     "@pyreon/reactivity": ["@pyreon/reactivity@workspace:packages/core/reactivity"],
 
@@ -695,13 +695,13 @@
 
     "@pyreon/server": ["@pyreon/server@workspace:packages/core/server"],
 
-    "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/core/solid-compat"],
+    "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/tools/solid-compat"],
 
     "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 
-    "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/core/vite-plugin"],
+    "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/tools/vite-plugin"],
 
-    "@pyreon/vue-compat": ["@pyreon/vue-compat@workspace:packages/core/vue-compat"],
+    "@pyreon/vue-compat": ["@pyreon/vue-compat@workspace:packages/tools/vue-compat"],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.0.0-rc.11", "", { "os": "android", "cpu": "arm64" }, "sha512-SJ+/g+xNnOh6NqYxD0V3uVN4W3VfnrGsC9/hoglicgTNfABFG9JjISvkkU0dNY84MNHLWyOgxP9v9Y9pX4S7+A=="],
 

@@ -1,14 +1,14 @@
 {
-  "name": "@pyreon/react-compat",
+  "name": "@pyreon/preact-compat",
   "version": "0.7.14",
-  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
+  "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
-    "directory": "packages/core/react-compat"
+    "directory": "packages/tools/preact-compat"
   },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/react-compat#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/preact-compat#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -29,10 +29,15 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
-    "./dom": {
-      "bun": "./src/dom.ts",
-      "import": "./lib/dom.js",
-      "types": "./lib/types/dom.d.ts"
+    "./hooks": {
+      "bun": "./src/hooks.ts",
+      "import": "./lib/hooks.js",
+      "types": "./lib/types/hooks.d.ts"
+    },
+    "./signals": {
+      "bun": "./src/signals.ts",
+      "import": "./lib/signals.js",
+      "types": "./lib/types/signals.d.ts"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",

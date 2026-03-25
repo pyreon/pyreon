@@ -1,14 +1,14 @@
 {
-  "name": "@pyreon/vue-compat",
+  "name": "@pyreon/react-compat",
   "version": "0.7.14",
-  "description": "Vue 3-compatible Composition API shim for Pyreon — write Vue-style code that runs on Pyreon's reactive engine",
+  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
-    "directory": "packages/core/vue-compat"
+    "directory": "packages/tools/react-compat"
   },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vue-compat#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/react-compat#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -28,6 +28,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./dom": {
+      "bun": "./src/dom.ts",
+      "import": "./lib/dom.js",
+      "types": "./lib/types/dom.d.ts"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",

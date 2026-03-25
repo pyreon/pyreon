@@ -1,14 +1,14 @@
 {
-  "name": "@pyreon/preact-compat",
+  "name": "@pyreon/vue-compat",
   "version": "0.7.14",
-  "description": "Preact-compatible API shim for Pyreon — write Preact-style code that runs on Pyreon's reactive engine",
+  "description": "Vue 3-compatible Composition API shim for Pyreon — write Vue-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
-    "directory": "packages/core/preact-compat"
+    "directory": "packages/tools/vue-compat"
   },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/preact-compat#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vue-compat#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -28,16 +28,6 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
-    },
-    "./hooks": {
-      "bun": "./src/hooks.ts",
-      "import": "./lib/hooks.js",
-      "types": "./lib/types/hooks.d.ts"
-    },
-    "./signals": {
-      "bun": "./src/signals.ts",
-      "import": "./lib/signals.js",
-      "types": "./lib/types/signals.d.ts"
     },
     "./jsx-runtime": {
       "bun": "./src/jsx-runtime.ts",

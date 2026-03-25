@@ -1,14 +1,14 @@
 {
-  "name": "@pyreon/vite-plugin",
+  "name": "@pyreon/solid-compat",
   "version": "0.7.14",
-  "description": "Vite plugin for Pyreon — .pyreon SFC support, HMR, compiler integration",
+  "description": "SolidJS-compatible API shim for Pyreon — write Solid-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
-    "directory": "packages/core/vite-plugin"
+    "directory": "packages/tools/solid-compat"
   },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vite-plugin#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/solid-compat#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -28,6 +28,16 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./jsx-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
+    },
+    "./jsx-dev-runtime": {
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./lib/jsx-runtime.js",
+      "types": "./lib/types/jsx-runtime.d.ts"
     }
   },
   "scripts": {
@@ -39,13 +49,13 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@pyreon/compiler": "workspace:^"
-  },
-  "peerDependencies": {
-    "vite": ">=8.0.0"
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
-    "vite": "^8.0.0"
+    "@happy-dom/global-registrator": "^20.8.3",
+    "happy-dom": "^20.8.3"
   },
   "publishConfig": {
     "access": "public"
