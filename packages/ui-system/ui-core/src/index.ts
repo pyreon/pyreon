@@ -7,6 +7,8 @@ import { HTML_TAGS, HTML_TEXT_TAGS } from "./html"
 import type { IsEmpty } from "./isEmpty"
 import isEmpty from "./isEmpty"
 import isEqual from "./isEqual"
+import type { PyreonUIProps, ThemeMode, ThemeModeInput } from "./PyreonUI"
+import { PyreonUI, useMode } from "./PyreonUI"
 import type { Render } from "./render"
 import render from "./render"
 import type { BreakpointKeys, Breakpoints } from "./types"
@@ -23,7 +25,10 @@ export type {
   HTMLTags,
   HTMLTextTags,
   IsEmpty,
+  PyreonUIProps,
   Render,
+  ThemeMode,
+  ThemeModeInput,
 }
 
 export {
@@ -40,9 +45,11 @@ export {
   merge,
   omit,
   Provider,
+  PyreonUI,
   pick,
   render,
   set,
   throttle,
+  useMode,
   useStableValue,
 }

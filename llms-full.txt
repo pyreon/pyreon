@@ -38,9 +38,9 @@
 | @pyreon/flow | createFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
 | @pyreon/code | createEditor, CodeEditor, DiffEditor, TabbedEditor | Code editor (CodeMirror 6) |
 | @pyreon/document | render, createDocument, Document, Page, Heading, Text, Table | Universal document rendering |
-| @pyreon/ui-core | config, init, Provider, get, set, merge, omit, pick, compose | UI config engine |
+| @pyreon/ui-core | config, init, PyreonUI, useMode, Provider, get, set, merge, omit, pick, compose | UI config engine + unified provider |
 | @pyreon/styler | styled, css, keyframes, createGlobalStyle, ThemeContext, useTheme | CSS-in-JS |
-| @pyreon/unistyle | responsive breakpoints, CSS property mappings, unit utilities | CSS utilities |
+| @pyreon/unistyle | responsive breakpoints, CSS property mappings, unit utilities, enrichTheme | CSS utilities |
 | @pyreon/hooks | useHover, useFocus, useBreakpoint, useElementSize, useFocusTrap, useMediaQuery, useScrollLock, 20+ more | Signal-based hooks |
 | @pyreon/elements | Element, Text, List, Overlay, Portal | Base UI primitives |
 | @pyreon/attrs | attrs() | Chainable HOC factory |
@@ -888,6 +888,69 @@ editor.insert('new code')
 
 <CodeEditor instance={editor} />
 <DiffEditor original="old code" modified="new code" />
+```
+
+## @pyreon/ui-core — PyreonUI Provider
+
+### PyreonUI
+```typescript
+import { PyreonUI } from "@pyreon/ui-core"
+import { enrichTheme } from "@pyreon/unistyle"
+
+// Unified provider — replaces ThemeProvider + ModeProvider + ConfigProvider
+const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
+
+const App = () => (
+  <PyreonUI theme={theme} mode="system">
+    <MyApp />
+  </PyreonUI>
+)
+
+// Props:
+// - theme: Theme object (use enrichTheme() to merge with defaults)
+// - mode: "light" | "dark" | "system" (default: "light")
+// - inversed: boolean (flips resolved mode — light↔dark)
+
+// mode="system" auto-detects OS preference via prefers-color-scheme
+// and reactively updates when the user changes their OS setting.
+```
+
+### useMode()
+```typescript
+import { useMode } from "@pyreon/ui-core"
+
+const MyComponent = () => {
+  const mode = useMode()  // Signal<"light" | "dark">
+
+  return <div class={mode() === "dark" ? "bg-dark" : "bg-light"}>
+    Current mode: {mode()}
+  </div>
+}
+```
+Returns the resolved mode as a reactive signal. When `mode="system"`, this reflects the OS preference. When `inversed` is true, the mode is flipped.
+
+### enrichTheme(theme)
+```typescript
+import { enrichTheme } from "@pyreon/unistyle"
+
+// Merges user theme with default breakpoints, spacing, and unit utilities:
+const theme = enrichTheme({
+  colors: { primary: "#3b82f6", secondary: "#6366f1" },
+  fonts: { body: "Inter, sans-serif" },
+})
+
+<PyreonUI theme={theme} mode="dark">
+  <App />
+</PyreonUI>
+```
+
+### init() — Custom Environments
+```typescript
+import { init } from "@pyreon/ui-core"
+
+// PyreonUI calls init() internally, but for custom setups (e.g., tests,
+// SSR without PyreonUI, or non-standard environments) you can call it directly:
+init({ theme, mode: "dark" })
 ```
 
 ## AI Developer Tools

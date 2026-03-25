@@ -855,6 +855,63 @@ Posts.useTable()   // TanStack Table config`,
   // @pyreon/storybook
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/ui-core
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "ui-core/PyreonUI": {
+    signature:
+      "PyreonUI(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }): VNodeChild",
+    example: `import { PyreonUI } from "@pyreon/ui-core"
+import { enrichTheme } from "@pyreon/unistyle"
+
+const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
+
+<PyreonUI theme={theme} mode="system">
+  <App />
+</PyreonUI>
+
+// mode="system" auto-detects OS dark mode via prefers-color-scheme
+// inversed flips the resolved mode (light↔dark)`,
+    notes:
+      "Unified provider replacing 3 separate providers (theme, mode, config). Calls init() internally. mode='system' uses matchMedia('(prefers-color-scheme: dark)') and reactively updates.",
+    mistakes: `- Using ThemeProvider + ModeProvider + ConfigProvider separately → Use PyreonUI instead
+- Forgetting enrichTheme() → raw theme objects miss default breakpoints/spacing`,
+  },
+
+  "ui-core/useMode": {
+    signature: "useMode(): Signal<'light' | 'dark'>",
+    example: `import { useMode } from "@pyreon/ui-core"
+
+const mode = useMode()
+// mode() returns "light" or "dark" (resolved, reactive)
+// Reflects OS preference when PyreonUI mode="system"`,
+    notes:
+      "Returns the resolved mode as a reactive signal. When mode='system', reflects the OS preference. When inversed is true, the mode is flipped.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/unistyle
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "unistyle/enrichTheme": {
+    signature: "enrichTheme(theme: PartialTheme): Theme",
+    example: `import { enrichTheme } from "@pyreon/unistyle"
+
+const theme = enrichTheme({
+  colors: { primary: "#3b82f6", secondary: "#6366f1" },
+  fonts: { body: "Inter, sans-serif" },
+})
+
+// Merges user overrides with default breakpoints, spacing, and units`,
+    notes:
+      "Merges a partial theme with the full default theme (breakpoints, spacing, unit utilities). Always use when passing a theme to PyreonUI.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/storybook
+  // ═══════════════════════════════════════════════════════════════════════════
+
   "storybook/renderToCanvas": {
     signature: "renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void",
     example: `// .storybook/main.ts:

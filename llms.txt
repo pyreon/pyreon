@@ -194,9 +194,9 @@ mount(<App />, document.getElementById("app")!)
 
 ## UI System (12 packages)
 
-- @pyreon/ui-core — Config engine, init(), utilities
+- @pyreon/ui-core — Config engine, init(), PyreonUI provider, useMode(), utilities
 - @pyreon/styler — CSS-in-JS: styled(), css, keyframes, theming
-- @pyreon/unistyle — Responsive breakpoints, CSS property mappings
+- @pyreon/unistyle — Responsive breakpoints, CSS property mappings, enrichTheme()
 - @pyreon/hooks — 27+ signal-based hooks (useHover, useFocus, useBreakpoint, etc.)
 - @pyreon/elements — Foundational primitives (Element, Text, List, Overlay, Portal)
 - @pyreon/attrs — Chainable HOC factory (.attrs(), .config())
@@ -206,6 +206,23 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/kinetic-presets — 120+ animation presets
 - @pyreon/connector-document — Bridge to @pyreon/document
 - @pyreon/document-primitives — Rocketstyle-based document components
+
+```typescript
+// PyreonUI — unified provider (replaces 3 separate providers)
+import { PyreonUI, useMode } from "@pyreon/ui-core"
+import { enrichTheme } from "@pyreon/unistyle"
+
+const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
+
+const App = () => (
+  <PyreonUI theme={theme} mode="system">
+    <MyApp />
+  </PyreonUI>
+)
+
+// Read resolved mode anywhere:
+const mode = useMode()  // "light" | "dark" (reactive signal)
+```
 
 ## Ecosystem Packages (17)
 
