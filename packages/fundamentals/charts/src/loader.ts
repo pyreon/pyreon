@@ -145,7 +145,8 @@ export async function ensureModules(
   const loads: Promise<void>[] = []
 
   // Renderer (always needed)
-  loads.push(loadAndRegister(core, `renderer:${renderer}`, RENDERERS[renderer]!))
+  const rendererLoader = RENDERERS[renderer]
+  if (rendererLoader) loads.push(loadAndRegister(core, `renderer:${renderer}`, rendererLoader))
 
   // Normalize series to array for analysis
   const rawSeries = option.series
@@ -156,23 +157,26 @@ export async function ensureModules(
   // Chart types from series[].type
   for (const s of seriesList) {
     const type = s.type as string | undefined
-    if (type && CHARTS[type]) {
-      loads.push(loadAndRegister(core, `chart:${type}`, CHARTS[type]!))
+    const chartLoader = type ? CHARTS[type] : undefined
+    if (chartLoader) {
+      loads.push(loadAndRegister(core, `chart:${type}`, chartLoader))
     }
   }
 
   // Components from top-level config keys
   for (const key of Object.keys(option)) {
-    if (COMPONENTS[key]) {
-      loads.push(loadAndRegister(core, `component:${key}`, COMPONENTS[key]!))
+    const compLoader = COMPONENTS[key]
+    if (compLoader) {
+      loads.push(loadAndRegister(core, `component:${key}`, compLoader))
     }
   }
 
   // Series-level features (markPoint, markLine, markArea)
   for (const s of seriesList) {
     for (const key of Object.keys(s)) {
-      if (SERIES_FEATURES[key]) {
-        loads.push(loadAndRegister(core, `feature:${key}`, SERIES_FEATURES[key]!))
+      const featureLoader = SERIES_FEATURES[key]
+      if (featureLoader) {
+        loads.push(loadAndRegister(core, `feature:${key}`, featureLoader))
       }
     }
   }

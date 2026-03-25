@@ -47,7 +47,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
   // Content cache — stores each tab's current content
   const contentCache = new Map<string, string>()
   for (const tab of tabsWithIds) {
-    contentCache.set(tab.id!, tab.value)
+    const tabId = tab.id ?? tab.name
+    contentCache.set(tabId, tab.value)
   }
 
   // ── Editor instance ────────────────────────────────────────────────────
@@ -129,8 +130,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     const tabIndex = currentTabs.findIndex((t) => (t.id ?? t.name) === id)
     if (tabIndex === -1) return
 
-    const tab = currentTabs[tabIndex]!
-    if (tab.closable === false) return
+    const tab = currentTabs[tabIndex]
+    if (!tab || tab.closable === false) return
 
     // Remove from state
     tabs.update((t) => t.filter((item) => (item.id ?? item.name) !== id))
@@ -141,7 +142,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
       const remaining = tabs.peek()
       if (remaining.length > 0) {
         const nextIndex = Math.min(tabIndex, remaining.length - 1)
-        switchTab(remaining[nextIndex]!.id ?? remaining[nextIndex]!.name)
+        const nextTab = remaining[nextIndex]
+        if (nextTab) switchTab(nextTab.id ?? nextTab.name)
       } else {
         activeTabId.set("")
         editor.value.set("")
@@ -178,7 +180,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     tabs.update((t) => t.filter((tab) => tab.closable === false))
     const remaining = tabs.peek()
     if (remaining.length > 0) {
-      switchTab(remaining[0]!.id ?? remaining[0]!.name)
+      const first = remaining[0]
+      if (first) switchTab(first.id ?? first.name)
     } else {
       activeTabId.set("")
       editor.value.set("")
