@@ -64,6 +64,15 @@
 - If workaround needed, document WHY and create follow-up
 - Never blame upstream without reproducing in isolation
 
+## Learning & Memory
+- After every PR, reflect on what was learned and save to memory:
+  - **Patterns that worked** → save as feedback memory (validated approaches)
+  - **Patterns that failed** → save as feedback memory (what to avoid and why)
+  - **New project knowledge** → update project memories (architecture decisions, API changes)
+  - **Bug root causes** → save for future debugging (e.g. "compiler _bindText detaches this on property access")
+- Keep CLAUDE.md, docs, llms.txt, MCP api-reference in sync with every API change
+- Update anti-patterns.md when new anti-patterns are discovered
+
 ## Context Management
 - Use `/compact` at ~50% context for long sessions
 - Start complex tasks in plan mode
