@@ -28,8 +28,8 @@ import { match as ptrMatch } from "next/dist/compiled/path-to-regexp"
 import { createRouter as createRadix3 } from "radix3"
 import { matchRoutes } from "react-router"
 import { createMemoryHistory, createRouter as createVueRouter } from "vue-router"
-import { resolveRoute } from "../packages/router/src/match"
-import type { RouteRecord } from "../packages/router/src/types"
+import { resolveRoute } from "../packages/core/router/src/match"
+import type { RouteRecord } from "../packages/core/router/src/types"
 
 // ─── Noop component (satisfies RouteRecord.component) ────────────────────────
 

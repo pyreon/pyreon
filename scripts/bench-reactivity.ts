@@ -16,7 +16,7 @@ import {
   effect as pyreonEffect,
   signal as pyreonSignal,
   createStore as pyreonStore,
-} from "../packages/reactivity/src/index"
+} from "../packages/core/reactivity/src/index"
 
 import {
   batch as preactBatch,

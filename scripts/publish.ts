@@ -11,12 +11,25 @@ import { join } from "node:path"
 
 const PACKAGES_DIR = join(import.meta.dirname, "..", "packages")
 const dryRun = process.argv.includes("--dry-run")
-const dirs = await readdir(PACKAGES_DIR, { withFileTypes: true })
+
+// Collect all package directories (packages/*/*)
+const packageDirs: { path: string; name: string }[] = []
+const categories = await readdir(PACKAGES_DIR, { withFileTypes: true })
+for (const cat of categories.filter((d) => d.isDirectory())) {
+  const subs = await readdir(join(PACKAGES_DIR, cat.name), { withFileTypes: true })
+  for (const sub of subs.filter((d) => d.isDirectory())) {
+    packageDirs.push({ path: join(PACKAGES_DIR, cat.name, sub.name), name: sub.name })
+  }
+}
 
 const versionMap = new Map<string, string>()
-for (const dir of dirs.filter((d) => d.isDirectory())) {
-  const pkg = JSON.parse(await readFile(join(PACKAGES_DIR, dir.name, "package.json"), "utf-8"))
-  if (pkg.name) versionMap.set(pkg.name, pkg.version)
+for (const dir of packageDirs) {
+  try {
+    const pkg = JSON.parse(await readFile(join(dir.path, "package.json"), "utf-8"))
+    if (pkg.name) versionMap.set(pkg.name, pkg.version)
+  } catch {
+    // skip directories without package.json
+  }
 }
 
 function resolveWorkspaceDeps(
@@ -42,8 +55,8 @@ const failed: string[] = []
 const published: string[] = []
 const skipped: string[] = []
 
-for (const dir of dirs.filter((d) => d.isDirectory())) {
-  const pkgPath = join(PACKAGES_DIR, dir.name, "package.json")
+for (const dir of packageDirs) {
+  const pkgPath = join(dir.path, "package.json")
   const raw = await readFile(pkgPath, "utf-8")
   const pkg = JSON.parse(raw)
   if (pkg.private || !pkg.name) continue
@@ -79,7 +92,7 @@ for (const dir of dirs.filter((d) => d.isDirectory())) {
     ]
     if (dryRun) args.push("--dry-run")
     const result = Bun.spawnSync(args, {
-      cwd: join(PACKAGES_DIR, dir.name),
+      cwd: dir.path,
       stdout: "inherit",
       stderr: "inherit",
     })

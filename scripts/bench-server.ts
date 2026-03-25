@@ -9,11 +9,11 @@
  * Usage: bun scripts/bench-server.ts
  */
 
-import type { ComponentFn, VNode } from "../packages/core/src/index"
-import { h } from "../packages/core/src/index"
-import { RouterProvider, RouterView } from "../packages/router/src/components"
-import { createRouter } from "../packages/router/src/router"
-import type { RouteRecord } from "../packages/router/src/types"
+import type { ComponentFn, VNode } from "../packages/core/core/src/index"
+import { h } from "../packages/core/core/src/index"
+import { RouterProvider, RouterView } from "../packages/core/router/src/components"
+import { createRouter } from "../packages/core/router/src/router"
+import type { RouteRecord } from "../packages/core/router/src/types"
 import {
   buildClientEntryTag,
   buildScripts,
@@ -22,8 +22,8 @@ import {
   DEFAULT_TEMPLATE,
   processCompiledTemplate,
   processTemplate,
-} from "../packages/server/src/html"
-import { createHandler } from "../packages/server/src/handler"
+} from "../packages/core/server/src/html"
+import { createHandler } from "../packages/core/server/src/handler"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

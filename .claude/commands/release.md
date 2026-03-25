@@ -7,7 +7,7 @@ Steps:
 2. Run `git pull` to get latest
 3. Run the full validation pipeline (lint, typecheck, test)
 4. If $ARGUMENTS is provided, use it as the version (e.g. "0.7.14")
-5. Update all packages/*/package.json versions using sed
+5. Update all packages/*/*/package.json versions using sed
 6. Commit with message "chore: release v<version>"
 7. Create git tag v<version>
 8. Push commit and tag to origin

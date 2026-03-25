@@ -13,11 +13,11 @@
  * Usage: bun scripts/bench-head.ts
  */
 
-import type { VNode } from "../packages/core/src/index"
-import { h } from "../packages/core/src/index"
-import type { HeadEntry, HeadTag } from "../packages/head/src/context"
-import { createHeadContext } from "../packages/head/src/context"
-import { renderWithHead } from "../packages/head/src/ssr"
+import type { VNode } from "../packages/core/core/src/index"
+import { h } from "../packages/core/core/src/index"
+import type { HeadEntry, HeadTag } from "../packages/core/head/src/context"
+import { createHeadContext } from "../packages/core/head/src/context"
+import { renderWithHead } from "../packages/core/head/src/ssr"
 import { createHead, renderSSRHead } from "unhead/server"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

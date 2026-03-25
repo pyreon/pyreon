@@ -22,7 +22,7 @@ import * as babel from "@babel/core"
 import babelJsx from "@babel/plugin-transform-react-jsx"
 import { transformSync as swcTransform } from "@swc/core"
 import * as esbuild from "esbuild"
-import { transformJSX } from "../packages/compiler/src/index"
+import { transformJSX } from "../packages/core/compiler/src/index"
 
 // oxc-transform uses CJS exports
 const oxc = require("oxc-transform") as {

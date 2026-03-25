@@ -11,12 +11,12 @@
  * Usage: bun scripts/bench-ssr.ts
  */
 
-import type { ComponentFn, VNode } from "../packages/core/src/index"
-import { h } from "../packages/core/src/index"
-import { RouterLink, RouterProvider, RouterView } from "../packages/router/src/components"
-import { createRouter } from "../packages/router/src/router"
-import type { RouteRecord } from "../packages/router/src/types"
-import { renderToString } from "../packages/runtime-server/src/index"
+import type { ComponentFn, VNode } from "../packages/core/core/src/index"
+import { h } from "../packages/core/core/src/index"
+import { RouterLink, RouterProvider, RouterView } from "../packages/core/router/src/components"
+import { createRouter } from "../packages/core/router/src/router"
+import type { RouteRecord } from "../packages/core/router/src/types"
+import { renderToString } from "../packages/core/runtime-server/src/index"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
