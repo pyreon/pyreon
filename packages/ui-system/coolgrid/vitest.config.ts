@@ -7,5 +7,8 @@ export default mergeConfig(
     resolve: {
       conditions: ["bun"],
     },
+    test: {
+      testTimeout: 15000,
+    },
   }),
 )

@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
     "preview": "vite preview",
     "lint": "biome check .",
-    "typecheck": "echo \"Skipped \u2014 pre-existing PyreonElement type compatibility issue\""
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
