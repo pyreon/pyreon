@@ -3,7 +3,7 @@
   "version": "0.11.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pyreon/ui-system",
+    "url": "https://github.com/pyreon/pyreon",
     "directory": "packages/ui-system/document-primitives"
   },
   "description": "Rocketstyle document components \u2014 render in browser, export to 18 formats",

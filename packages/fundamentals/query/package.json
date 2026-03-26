@@ -8,7 +8,7 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/query"
   },
-  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/query#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/query#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },

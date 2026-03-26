@@ -8,7 +8,7 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/machine"
   },
-  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/machine#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/machine#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },

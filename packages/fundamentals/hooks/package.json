@@ -3,7 +3,7 @@
   "version": "0.11.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pyreon/ui-system",
+    "url": "https://github.com/pyreon/pyreon",
     "directory": "packages/fundamentals/hooks"
   },
   "description": "Signal-based reactive utilities for Pyreon",

@@ -3,10 +3,10 @@
   "version": "0.11.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pyreon/ui-system",
+    "url": "https://github.com/pyreon/pyreon",
     "directory": "packages/ui-system/connector-document"
   },
-  "description": "Bridge between @pyreon/ui-system styled components and @pyreon/document rendering",
+  "description": "Bridge between @pyreon/pyreon styled components and @pyreon/document rendering",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
