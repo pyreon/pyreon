@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/react-compat",
-  "version": "0.7.14",
-  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
+  "version": "0.11.0",
+  "description": "React-compatible API shim for Pyreon \u2014 write React-style hooks that run on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {
     "type": "git",
