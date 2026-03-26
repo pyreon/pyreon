@@ -324,10 +324,12 @@ describe("plugin config", () => {
 // ─── Virtual module (HMR runtime) ────────────────────────────────────────────
 
 describe("virtual module resolution", () => {
-  it("resolves virtual:pyreon/hmr-runtime to internal ID", () => {
+  it("resolves virtual:pyreon/hmr-runtime to internal ID", async () => {
     const plugin = createPlugin()
-    const resolveId = plugin.resolveId as (id: string) => string | undefined
-    const resolved = resolveId("virtual:pyreon/hmr-runtime")
+    const resolveId = plugin.resolveId as (
+      id: string,
+    ) => string | undefined | Promise<string | undefined>
+    const resolved = await resolveId("virtual:pyreon/hmr-runtime")
     expect(resolved).toBe("\0pyreon/hmr-runtime")
   })
 

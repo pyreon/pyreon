@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/dnd",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Signal-driven drag and drop for Pyreon \u2014 wraps @atlaskit/pragmatic-drag-and-drop",
   "license": "MIT",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/storage",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Reactive client-side storage for Pyreon \u2014 localStorage, sessionStorage, cookies, IndexedDB",
   "license": "MIT",
   "repository": {
