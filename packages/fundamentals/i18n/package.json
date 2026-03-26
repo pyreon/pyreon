@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/i18n",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Reactive internationalization for Pyreon with async namespace loading",
   "license": "MIT",
   "repository": {

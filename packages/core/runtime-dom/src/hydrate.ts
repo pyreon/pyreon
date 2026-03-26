@@ -150,7 +150,7 @@ function hydrateVNode(
   path: string,
 ): [Cleanup, ChildNode | null] {
   if (vnode.type === Fragment) {
-    return hydrateChildren(vnode.children, domNode, parent, anchor, path)
+    return hydrateChildren(vnode.children ?? [], domNode, parent, anchor, path)
   }
 
   if (vnode.type === ForSymbol) {
@@ -241,7 +241,7 @@ function hydrateElement(
 
     // Hydrate children
     const firstChild = firstReal(el.firstChild as ChildNode | null)
-    const [childCleanup] = hydrateChildren(vnode.children, firstChild, el, null, elPath)
+    const [childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
     cleanups.push(childCleanup)
 
     // Set ref
@@ -320,10 +320,14 @@ function hydrateComponent(
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
   const componentName = ((vnode.type as ComponentFn).name || "Anonymous") as string
   const mergedProps =
-    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
+    (vnode.children ?? []).length > 0 &&
+    (vnode.props as Record<string, unknown>).children === undefined
       ? {
           ...vnode.props,
-          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+          children:
+            (vnode.children ?? []).length === 1
+              ? (vnode.children ?? [])[0]
+              : (vnode.children ?? []),
         }
       : vnode.props
 

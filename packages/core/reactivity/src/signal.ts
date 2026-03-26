@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+declare const process: { env: { NODE_ENV?: string } } | undefined
+
+const __DEV__ = typeof process !== "undefined" && process?.env?.NODE_ENV !== "production"
+
 import { enqueuePendingNotification, isBatching } from "./batch"
 import { _notifyTraceListeners, isTracing } from "./debug"
 import { notifySubscribers, trackSubscriber } from "./tracking"
@@ -144,7 +149,15 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
 export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   // The read function is the only per-signal closure.
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
-  const read = (() => {
+  const read = ((...args: unknown[]) => {
+    if (__DEV__ && args.length > 0) {
+      // biome-ignore lint/suspicious/noConsole: dev-only signal misuse warning
+      console.warn(
+        "[Pyreon] signal() was called with an argument. " +
+          "Use signal.set(value) or signal.update(fn) to write. " +
+          "signal(value) only reads — the argument is ignored.",
+      )
+    }
     trackSubscriber(read as SignalFn<T>)
     return read._v
   }) as unknown as SignalFn<T>

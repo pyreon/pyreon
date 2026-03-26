@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/preact-compat",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Preact-compatible API shim for Pyreon \u2014 write Preact-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "repository": {

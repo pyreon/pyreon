@@ -118,7 +118,7 @@ export function mountChild(
   // VNode — element, component, fragment, For, Portal
   const vnode = child as VNode
 
-  if (vnode.type === Fragment) return mountChildren(vnode.children, parent, anchor)
+  if (vnode.type === Fragment) return mountChildren(vnode.children ?? [], parent, anchor)
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, by, children } = vnode.props as unknown as ForProps<unknown>
@@ -183,7 +183,7 @@ const VOID_ELEMENTS = new Set([
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
   const el = document.createElement(vnode.type as string)
 
-  if (__DEV__ && vnode.children.length > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
+  if (__DEV__ && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
       `[Pyreon] <${vnode.type as string}> is a void element and cannot have children. ` +
         "Children passed to void elements will be ignored by the browser.",
@@ -196,7 +196,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
   // Mount children inside element context — nested elements can skip DOM removal closures
   _elementDepth++
-  const childCleanup = mountChildren(vnode.children, el, null)
+  const childCleanup = mountChildren(vnode.children ?? [], el, null)
   _elementDepth--
 
   parent.insertBefore(el, anchor)
@@ -259,11 +259,12 @@ function mountComponent(
   _mountingStack.push(compId)
 
   // Merge vnode.children into props.children if not already set
+  const children = vnode.children ?? []
   const mergedProps =
-    vnode.children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
+    children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
       ? {
           ...vnode.props,
-          children: vnode.children.length === 1 ? vnode.children[0] : vnode.children,
+          children: children.length === 1 ? children[0] : children,
         }
       : vnode.props
 
