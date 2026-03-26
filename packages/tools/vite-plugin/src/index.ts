@@ -32,8 +32,8 @@
  *   vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join as pathJoin, resolve as pathResolve } from "node:path"
+import { existsSync, mkdirSync, writeFileSync } from "node:fs"
+import { join as pathJoin } from "node:path"
 import { generateContext, transformJSX } from "@pyreon/compiler"
 import type { Plugin, ViteDevServer } from "vite"
 
@@ -113,43 +113,6 @@ const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
 }
 
 /**
- * Resolve a package specifier to an absolute source path, respecting the "bun"
- * export condition. Falls back to the "import" condition.
- *
- * This is needed because Vite 8's resolve pipeline doesn't consistently apply
- * custom conditions from `resolve.conditions` during the `vite:import-analysis`
- * phase for aliased workspace packages.
- */
-function resolveWithBunCondition(specifier: string, projectRoot: string): string | undefined {
-  // Split specifier: "@pyreon/react-compat/dom" → pkg="@pyreon/react-compat", subpath="./dom"
-  const parts = specifier.startsWith("@")
-    ? specifier.split("/").slice(0, 2)
-    : specifier.split("/").slice(0, 1)
-  const pkgName = parts.join("/")
-  const subpath = specifier.slice(pkgName.length) || "."
-  const exportKey = subpath === "." ? "." : `.${subpath}`
-
-  try {
-    // Walk up from project root to find node_modules containing the package
-    const pkgDir = pathResolve(projectRoot, "node_modules", pkgName)
-    const pkgJsonPath = pathResolve(pkgDir, "package.json")
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, "utf-8")) as {
-      exports?: Record<string, Record<string, string> | string>
-    }
-
-    const exp = pkgJson.exports?.[exportKey]
-    if (!exp) return undefined
-
-    if (typeof exp === "string") return pathResolve(pkgDir, exp)
-    // Prefer bun → import → default
-    const target = exp.bun ?? exp.import ?? exp.default
-    return target ? pathResolve(pkgDir, target) : undefined
-  } catch {
-    return undefined
-  }
-}
-
-/**
  * Return the Pyreon compat target for an import specifier, or undefined if
  * the import should not be redirected.
  */
@@ -173,8 +136,6 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const compat = options?.compat
   let isBuild = false
   let projectRoot = ""
-  // Cache resolved absolute paths for compat aliases
-  const resolvedAliases = new Map<string, string>()
 
   return {
     name: "pyreon",
@@ -217,18 +178,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
     },
 
     // ── Virtual module + compat alias resolution ─────────────────────────────
-    resolveId(id) {
+    async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
       const target = getCompatTarget(compat, id)
       if (!target) return
 
-      // Use cached resolution or resolve with bun condition
-      let resolved = resolvedAliases.get(target)
-      if (!resolved) {
-        resolved = resolveWithBunCondition(target, projectRoot)
-        if (resolved) resolvedAliases.set(target, resolved)
-      }
-      return resolved
+      // Vite 8 resolves the "bun" condition natively via resolve.conditions.
+      // Delegate to Vite's resolver instead of manual package.json parsing.
+      const resolved = await this.resolve(target, importer, { skipSelf: true })
+      return resolved?.id
     },
 
     load(id) {
