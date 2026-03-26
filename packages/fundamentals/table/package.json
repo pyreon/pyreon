@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/table",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "Pyreon adapter for TanStack Table",
   "license": "MIT",
   "repository": {
