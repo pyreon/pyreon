@@ -70,6 +70,6 @@ The route `/contact` is now live — no config or registration needed.
 
 ## Next steps
 
-- [Routing](./routing.md) — dynamic params, catch-all, layouts, groups
-- [Configuration](./configuration.md) — rendering modes, adapters, middleware
-- [API Reference](./api.md) — exports from `@pyreon/zero`
+- [Routing](./zero-routing.md) — dynamic params, catch-all, layouts, groups
+- [Configuration](./zero-configuration.md) — rendering modes, adapters, middleware
+- [API Reference](./zero-api.md) — exports from `@pyreon/zero`
