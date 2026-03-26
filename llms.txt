@@ -247,6 +247,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/toast — Toast notifications (toast(), toast.success/error/warning/info/loading, Toaster component, a11y)
 - @pyreon/url-state — URL-synced state (useUrlState with auto type coercion, schema mode, SSR-safe)
 - @pyreon/storybook — Storybook renderer for Pyreon components
+- @pyreon/lint — Pyreon-specific linter — 55 rules (reactivity, JSX, SSR, performance, architecture, router, etc.), config files, watch mode, AST cache, CLI + API, powered by oxc-parser
 
 ## Key Ecosystem Patterns
 

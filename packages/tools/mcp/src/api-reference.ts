@@ -856,6 +856,46 @@ Posts.useTable()   // TanStack Table config`,
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/lint
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "lint/lint": {
+    signature: "lint(options?: LintOptions): LintResult",
+    example: `import { lint } from "@pyreon/lint"
+
+const result = lint({ paths: ["src/"], preset: "recommended" })
+console.log(result.totalErrors, result.totalWarnings)
+
+// With config file auto-loading + rule overrides
+lint({ paths: ["."], ruleOverrides: { "pyreon/no-classname": "off" } })`,
+    notes:
+      "Programmatic API. 55 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.",
+  },
+
+  "lint/lintFile": {
+    signature:
+      "lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache): LintFileResult",
+    example: `import { lintFile, allRules, getPreset, AstCache } from "@pyreon/lint"
+
+const cache = new AstCache()
+const config = getPreset("recommended")
+const result = lintFile("app.tsx", source, allRules, config, cache)`,
+    notes: "Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed).",
+  },
+
+  "lint/cli": {
+    signature:
+      "pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [path...]",
+    example: `pyreon-lint --preset strict --quiet    # CI mode
+pyreon-lint --fix                       # auto-fix
+pyreon-lint --watch src/                # watch mode
+pyreon-lint --list                      # list all 55 rules
+pyreon-lint --format json               # machine-readable`,
+    notes:
+      "CLI entry. Config: .pyreonlintrc.json, package.json 'pyreonlint' field. Ignore: .pyreonlintignore + .gitignore. Watch: fs.watch recursive with 100ms debounce.",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
 
