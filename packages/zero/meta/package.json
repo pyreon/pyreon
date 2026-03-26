@@ -1,0 +1,68 @@
+{
+  "name": "@pyreon/meta",
+  "version": "0.5.0",
+  "description": "Pyreon Meta \u2014 barrel package re-exporting the full Pyreon fundamentals ecosystem",
+  "license": "MIT",
+  "author": "Vit Bokisch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/zero/meta"
+  },
+  "type": "module",
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build && tsc",
+    "dev": "vl_rolldown_build-watch",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@pyreon/charts": "workspace:^",
+    "@pyreon/code": "workspace:^",
+    "@pyreon/feature": "workspace:^",
+    "@pyreon/flow": "workspace:^",
+    "@pyreon/form": "workspace:^",
+    "@pyreon/hotkeys": "workspace:^",
+    "@pyreon/i18n": "workspace:^",
+    "@pyreon/machine": "workspace:^",
+    "@pyreon/permissions": "workspace:^",
+    "@pyreon/query": "workspace:^",
+    "@pyreon/state-tree": "workspace:^",
+    "@pyreon/storage": "workspace:^",
+    "@pyreon/store": "workspace:^",
+    "@pyreon/table": "workspace:^",
+    "@pyreon/validation": "workspace:^",
+    "@pyreon/virtual": "workspace:^",
+    "@pyreon/attrs": "workspace:^",
+    "@pyreon/coolgrid": "workspace:^",
+    "@pyreon/elements": "workspace:^",
+    "@pyreon/hooks": "workspace:^",
+    "@pyreon/kinetic": "workspace:^",
+    "@pyreon/kinetic-presets": "workspace:^",
+    "@pyreon/rocketstyle": "workspace:^",
+    "@pyreon/styler": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
+    "@pyreon/unistyle": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  }
+}

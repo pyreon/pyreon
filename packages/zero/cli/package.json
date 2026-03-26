@@ -1,0 +1,38 @@
+{
+  "name": "@pyreon/zero-cli",
+  "version": "0.5.0",
+  "description": "CLI for Pyreon Zero \u2014 dev, build, preview",
+  "license": "MIT",
+  "author": "Vit Bokisch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/zero/cli"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "files": [
+    "bin",
+    "lib",
+    "!lib/analysis",
+    "LICENSE",
+    "README.md"
+  ],
+  "bin": {
+    "zero": "./bin/zero.js"
+  },
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@pyreon/cli": "workspace:^",
+    "@pyreon/create-zero": "workspace:^",
+    "@pyreon/server": "workspace:^",
+    "@pyreon/zero": "workspace:^",
+    "cac": "^7.0.0",
+    "vite": "^8.0.0"
+  }
+}

@@ -65,6 +65,11 @@ const uiPackages = [
   "unistyle",
 ] as const
 
+const zeroPackages = [
+  "zero",
+  "meta",
+] as const
+
 // Subpath exports must come BEFORE their parent package to avoid prefix matching.
 // Vite resolves aliases in array order — first match wins.
 type AliasEntry = { find: string | RegExp; replacement: string }
@@ -103,6 +108,9 @@ for (const pkg of fundamentalsPackages) {
 }
 for (const pkg of uiPackages) {
   alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/ui-system/${pkg}/src/index.ts`) })
+}
+for (const pkg of zeroPackages) {
+  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/zero/${pkg}/src/index.ts`) })
 }
 
 export const sharedConfig: UserConfig = {
