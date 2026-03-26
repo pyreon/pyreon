@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/document",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Universal document rendering for Pyreon \u2014 one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
   "license": "MIT",
   "repository": {

@@ -77,6 +77,7 @@ for (const dir of packageDirs) {
     ...pkg,
     dependencies: resolveWorkspaceDeps(pkg.dependencies),
     peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies),
+    devDependencies: resolveWorkspaceDeps(pkg.devDependencies),
   }
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
