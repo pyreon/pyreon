@@ -21,6 +21,7 @@
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
 | @pyreon/vite-plugin | pyreon() | Vite integration |
 | @pyreon/storybook | renderToCanvas, Meta, StoryObj | Storybook renderer |
+| @pyreon/lint | lint, lintFile, listRules, applyFixes, allRules, getPreset, formatText, formatJSON, formatCompact | Pyreon-specific linter (51 rules, 4 presets, CLI) |
 | @pyreon/store | defineStore, resetStore, addStorePlugin | Global state management |
 | @pyreon/state-tree | model, getSnapshot, applySnapshot, onPatch, applyPatch | Structured reactive state tree |
 | @pyreon/form | useForm, useField, useFieldArray, useWatch, FormProvider | Signal-based forms |

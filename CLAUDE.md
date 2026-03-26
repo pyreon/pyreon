@@ -29,6 +29,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat` | useState, useEffect, useMemo, lazy, Suspense shims |
 | `@pyreon/storybook` | Storybook renderer — mount, render, and interact with Pyreon components |
 | `@pyreon/typescript` | TypeScript config presets: base, app (noEmit), lib (declarations) |
+| `@pyreon/lint` | Pyreon-specific linter — 51 rules across 11 categories, 4 presets, CLI + API |
 
 ### UI System (Component Library)
 | Package | Description |
@@ -265,6 +266,18 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Auto type coercion (numbers, booleans, arrays), uses `replaceState` (no history spam)
 - Configurable debounce for high-frequency updates, SSR-safe (reads from request URL on server)
 
+### @pyreon/lint
+
+- `lint(options?)` — programmatic API: lint files in a directory, returns `LintResult`
+- `lintFile(filePath, sourceText, rules, config)` — lint a single file against rules
+- `listRules()` — returns metadata for all 51 rules
+- `applyFixes(sourceText, diagnostics)` — apply auto-fixes to source text
+- CLI: `pyreon-lint [--preset recommended|strict|app|lib] [--fix] [--format text|json|compact] [--quiet] [--list] [--rule id=severity] [path]`
+- 51 rules across 11 categories: reactivity (8), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3)
+- 4 presets: `recommended` (default), `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)
+- Powered by `oxc-parser` — 3x faster than SWC, ESTree/TS-ESTree AST with Visitor
+- Utilities for custom rules: `LineIndex`, `isCallTo`, `getJSXTagName`, `hasJSXAttribute`, `isPyreonImport`, etc.
+
 ### @pyreon/router — useIsActive
 
 - `useIsActive(path, exact?)` — returns reactive boolean for whether a path matches the current route
@@ -395,10 +408,10 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-49 packages across 4 categories under `packages/`:
+50 packages across 4 categories under `packages/`:
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
-- `packages/tools/` — 9 packages: cli, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
+- `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).

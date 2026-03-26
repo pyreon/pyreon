@@ -856,6 +856,55 @@ Posts.useTable()   // TanStack Table config`,
   // ═══════════════════════════════════════════════════════════════════════════
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/lint
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  "lint/lint": {
+    signature:
+      "lint(options?: LintOptions): LintResult",
+    example: `import { lint } from "@pyreon/lint"
+
+const result = lint({ cwd: "./src", preset: "recommended" })
+console.log(result.counts) // { error: 0, warn: 2, info: 1, off: 0 }
+
+// With overrides
+lint({ preset: "strict", rules: { "pyreon/no-classname": "off" } })`,
+    notes:
+      "Programmatic API for running the linter. Presets: recommended (default), strict (warns→errors), app (lib rules off), lib (strict + architecture). Powered by oxc-parser for fast ESTree/TS-ESTree parsing.",
+  },
+
+  "lint/lintFile": {
+    signature:
+      "lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig): LintFileResult",
+    example: `import { lintFile, allRules } from "@pyreon/lint"
+
+const result = lintFile("app.tsx", source, allRules, { rules: { "pyreon/no-classname": "error" } })
+for (const diag of result.diagnostics) {
+  console.log(\`\${diag.loc.line}:\${diag.loc.column} \${diag.severity} \${diag.message}\`)
+}`,
+    notes:
+      "Low-level API for linting a single file. Uses oxc-parser Visitor to walk AST with merged callbacks from all active rules.",
+  },
+
+  "lint/cli": {
+    signature:
+      "pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--list] [--rule id=severity] [path]",
+    example: `# Lint current directory with recommended preset
+pyreon-lint
+
+# Strict mode for CI
+pyreon-lint --preset strict --quiet
+
+# Auto-fix fixable issues
+pyreon-lint --fix
+
+# List all 51 rules
+pyreon-lint --list`,
+    notes:
+      "CLI entry point. 51 rules across 11 categories: reactivity (8), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3).",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
 

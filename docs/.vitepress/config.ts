@@ -66,6 +66,7 @@ export default defineConfig({
             { text: "Vite Plugin", link: "/docs/vite-plugin" },
             { text: "TypeScript", link: "/docs/typescript" },
             { text: "CLI", link: "/docs/cli" },
+            { text: "Lint", link: "/docs/lint" },
             { text: "MCP Server", link: "/docs/mcp" },
           ],
         },
