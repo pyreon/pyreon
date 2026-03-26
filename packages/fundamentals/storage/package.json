@@ -8,7 +8,7 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/storage"
   },
-  "homepage": "https://github.com/pyreon/fundamentals/tree/main/packages/storage#readme",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/storage#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
