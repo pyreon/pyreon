@@ -68,8 +68,8 @@ export function setupDelegation(container: Element): void {
     container.addEventListener(eventName, (e: Event) => {
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
-        const handler = el[prop] as EventListener | undefined
-        if (handler) {
+        const handler = el[prop]
+        if (typeof handler === "function") {
           batch(() => handler(e))
           // Don't break — allow ancestor handlers too (consistent with addEventListener)
           // But if stopPropagation was called, stop walking

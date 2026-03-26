@@ -14,23 +14,38 @@ type UseThemeAttrs = ({ inversed }: { inversed?: boolean | undefined }) => Conte
 
 /**
  * Retrieves the current theme object and resolved mode from context.
- * Supports mode inversion so nested components can flip between
- * light and dark without a new provider.
  *
- * In Pyreon, components run once — no useMemo needed.
+ * Returns an object with getter properties so that mode/isDark/isLight
+ * are evaluated lazily on each access. This supports reactive mode
+ * switching via PyreonUI — when PyreonUI provides `get mode()` getters,
+ * rocketstyle picks up changes on every styled component re-evaluation.
+ *
+ * Without getters, destructuring would capture the mode value once at
+ * setup time, making theme switching permanently broken.
  */
 const useThemeAttrs: UseThemeAttrs = ({ inversed }) => {
-  const {
-    theme = {},
-    mode: ctxMode = "light",
-    isDark: ctxDark,
-  } = useContext<Context>(context) || {}
+  // Keep the context object reference — read its properties lazily via getters.
+  // PyreonUI provides { get mode() {...} } so each access re-evaluates.
+  const ctx = useContext<Context>(context) || ({} as Partial<Context>)
 
-  const mode = inversed ? THEME_MODES_INVERSED[ctxMode] : ctxMode
-  const isDark = inversed ? !ctxDark : ctxDark
-  const isLight = !isDark
-
-  return { theme, mode, isDark, isLight }
+  return {
+    get theme() {
+      return ctx.theme ?? ({} as Record<string, unknown>)
+    },
+    get mode() {
+      const ctxMode = ctx.mode ?? "light"
+      return inversed ? THEME_MODES_INVERSED[ctxMode] : ctxMode
+    },
+    get isDark() {
+      const ctxDark = ctx.isDark ?? false
+      return inversed ? !ctxDark : ctxDark
+    },
+    get isLight() {
+      const ctxDark = ctx.isDark ?? false
+      const isDark = inversed ? !ctxDark : ctxDark
+      return !isDark
+    },
+  }
 }
 
 export default useThemeAttrs

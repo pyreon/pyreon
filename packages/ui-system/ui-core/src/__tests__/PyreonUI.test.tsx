@@ -38,11 +38,16 @@ describe("PyreonUI", () => {
   it("defaults mode to light", () => {
     PyreonUI({ theme, children: null })
 
+    // Core context (2nd call) — has getter properties for reactive mode
     const coreCtx = getProvideValue(1)
     expect(coreCtx.mode).toBe("light")
     expect(coreCtx.isLight).toBe(true)
     expect(coreCtx.isDark).toBe(false)
-    expect(getProvideValue(2)).toBe("light")
+
+    // Mode context (3rd call) — getter function
+    const modeGetter = getProvideValue(2)
+    expect(typeof modeGetter).toBe("function")
+    expect(modeGetter()).toBe("light")
   })
 
   it("provides dark mode", () => {
@@ -52,17 +57,19 @@ describe("PyreonUI", () => {
     expect(coreCtx.mode).toBe("dark")
     expect(coreCtx.isDark).toBe(true)
     expect(coreCtx.isLight).toBe(false)
-    expect(getProvideValue(2)).toBe("dark")
+
+    const modeGetter = getProvideValue(2)
+    expect(modeGetter()).toBe("dark")
   })
 
   it("inverts mode when inversed=true", () => {
     PyreonUI({ theme, mode: "light", inversed: true, children: null })
-    expect(getProvideValue(2)).toBe("dark")
+    expect(getProvideValue(2)()).toBe("dark")
   })
 
   it("inverts dark to light", () => {
     PyreonUI({ theme, mode: "dark", inversed: true, children: null })
-    expect(getProvideValue(2)).toBe("light")
+    expect(getProvideValue(2)()).toBe("light")
   })
 
   it("enriches theme with __PYREON__ before providing", () => {
@@ -76,6 +83,15 @@ describe("PyreonUI", () => {
 
   it("works with system mode (resolves to light in happy-dom)", () => {
     PyreonUI({ theme, mode: "system", children: null })
-    expect(getProvideValue(2)).toBe("light")
+    expect(getProvideValue(2)()).toBe("light")
+  })
+
+  it("mode context is a getter function (reactive-ready)", () => {
+    PyreonUI({ theme, mode: "dark", children: null })
+    const modeGetter = getProvideValue(2)
+    // Mode context is a function, not a static value — consumers call it
+    // inside their own reactive scopes for reactive mode switching.
+    expect(typeof modeGetter).toBe("function")
+    expect(modeGetter()).toBe("dark")
   })
 })

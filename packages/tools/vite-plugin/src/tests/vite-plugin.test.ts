@@ -278,12 +278,10 @@ export function App() { const [x] = useState(0); return null }
 // ─── Plugin config ───────────────────────────────────────────────────────────
 
 describe("plugin config", () => {
-  it("sets resolve conditions to ['bun']", () => {
+  it("does not set resolve.conditions (consumer manages their own)", () => {
     const plugin = pyreonPlugin()
-    const config = getConfigHook(plugin)({}, { command: "serve" }) as {
-      resolve: { conditions: string[] }
-    }
-    expect(config.resolve.conditions).toContain("bun")
+    const config = getConfigHook(plugin)({}, { command: "serve" }) as Record<string, unknown>
+    expect(config.resolve).toBeUndefined()
   })
 
   it("sets JSX import source to @pyreon/core by default", () => {

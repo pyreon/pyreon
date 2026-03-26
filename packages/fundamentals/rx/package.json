@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/rx",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Signal-aware reactive transforms \u2014 filter, map, sort, group, pipe for Pyreon signals",
   "license": "MIT",
   "repository": {

@@ -151,9 +151,6 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
 
       return {
-        resolve: {
-          conditions: ["bun"],
-        },
         optimizeDeps: {
           exclude: optimizeDepsExclude,
         },

@@ -203,11 +203,13 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  * Bind an event handler (onClick → "click") with batching + delegation support.
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
-  if (__DEV__ && typeof value !== "function") {
-    console.warn(
-      `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
-        `Expected a function. Did you mean ${key}={() => ...}?`,
-    )
+  if (typeof value !== "function") {
+    if (__DEV__) {
+      console.warn(
+        `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
+          `Expected a function. Did you mean ${key}={() => ...}?`,
+      )
+    }
     return null
   }
   const eventName = key[2]?.toLowerCase() + key.slice(3)

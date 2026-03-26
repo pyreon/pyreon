@@ -30,6 +30,12 @@ const render: Render = (content, attachProps) => {
   }
 
   if (typeof content === "function") {
+    // Extract key from props — it's a VNode concept, not a component prop.
+    // Passing key inside props causes JSX runtime warnings.
+    if (attachProps && "key" in attachProps) {
+      const { key, ...rest } = attachProps
+      return h(content as string | ComponentFn, rest as Props)
+    }
     return h(content as string | ComponentFn, (attachProps ?? {}) as Props)
   }
 

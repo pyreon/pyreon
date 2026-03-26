@@ -1,6 +1,6 @@
 import type { VNodeChild } from "@pyreon/core"
 import { createContext, provide, useContext } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { computed, signal } from "@pyreon/reactivity"
 import { ThemeContext } from "@pyreon/styler"
 import type { PyreonTheme } from "@pyreon/unistyle"
 import { enrichTheme } from "@pyreon/unistyle"
@@ -16,9 +16,10 @@ export interface PyreonUIProps {
   theme: PyreonTheme
   /**
    * Color mode: "light", "dark", or "system" (follows OS preference).
+   * Can be a signal or getter for reactive mode switching.
    * @default "light"
    */
-  mode?: ThemeModeInput | undefined
+  mode?: ThemeModeInput | (() => ThemeModeInput) | undefined
   /** Flip mode for a nested section (e.g. dark sidebar in light app). */
   inversed?: boolean | undefined
   children?: VNodeChild
@@ -39,7 +40,7 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
 
   if (_isBrowser) {
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-      _systemMode!.set(e.matches ? "dark" : "light")
+      _systemMode?.set(e.matches ? "dark" : "light")
     })
   }
 
@@ -48,7 +49,8 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
 
 // ─── Mode context ───────────────────────────────────────────────────────────
 
-const ModeContext = createContext<ThemeMode>("light")
+/** Context value is a getter — consumers call it to read the current mode reactively. */
+const ModeContext = createContext<() => ThemeMode>(() => "light")
 
 const INVERSED: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "light" }
 
@@ -61,26 +63,16 @@ const INVERSED: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "light" }
  * const mode = useMode() // "light" | "dark"
  */
 export function useMode(): ThemeMode {
-  return useContext(ModeContext)
+  return useContext(ModeContext)()
 }
 
 // ─── Auto-init ──────────────────────────────────────────────────────────────
 
 let _autoInitDone = false
 
-/**
- * Ensure the CSS engine is initialized. If init() was called manually,
- * this is a no-op. Otherwise, imports @pyreon/styler defaults.
- * Called once on first PyreonUI mount.
- */
 function autoInit(): void {
   if (_autoInitDone) return
   _autoInitDone = true
-
-  // config already has styler defaults from the import in config.ts,
-  // so no lazy import needed — the CSS engine is ready.
-  // If the user called init() with a custom engine, those values are
-  // already set and we respect them.
 }
 
 // ─── PyreonUI ───────────────────────────────────────────────────────────────
@@ -91,28 +83,33 @@ function autoInit(): void {
  * Replaces the need for separate UnistyleProvider, RocketstyleProvider,
  * and ThemeProvider — one component, zero init.
  *
- * @example
+ * Mode can be a static string OR a signal/getter for reactive switching:
  * ```tsx
- * <PyreonUI theme={{ rootSize: 16, breakpoints: { xs: 0, sm: 576, md: 768 } }} mode="system">
- *   <App />
- * </PyreonUI>
+ * // Static
+ * <PyreonUI theme={theme} mode="dark">
+ *
+ * // Reactive signal
+ * const mode = signal<ThemeModeInput>("light")
+ * <PyreonUI theme={theme} mode={mode}>
+ *
+ * // System (follows OS preference)
+ * <PyreonUI theme={theme} mode="system">
  * ```
  */
 export function PyreonUI({ theme, mode = "light", inversed, children }: PyreonUIProps): VNodeChild {
   autoInit()
 
-  // Resolve mode: "system" → track OS preference, "light"/"dark" → use directly
-  let resolvedMode: ThemeMode
-  if (mode === "system") {
-    resolvedMode = getSystemMode()()
-  } else {
-    resolvedMode = mode
+  // Create a reactive mode getter that resolves "system" and applies inversion.
+  // This getter is provided via context — consumers read it lazily in their
+  // own reactive scopes, so mode changes propagate automatically.
+  const resolveMode = (): ThemeMode => {
+    const raw = typeof mode === "function" ? mode() : mode
+    const resolved = raw === "system" ? getSystemMode()() : raw
+    return inversed ? INVERSED[resolved] : resolved
   }
 
-  // Apply inversion for nested dark/light sections
-  if (inversed) {
-    resolvedMode = INVERSED[resolvedMode]
-  }
+  // Wrap in computed for memoization
+  const modeComputed = computed(resolveMode)
 
   // Enrich theme with responsive utilities (__PYREON__)
   const enrichedTheme = enrichTheme(theme)
@@ -122,17 +119,24 @@ export function PyreonUI({ theme, mode = "light", inversed, children }: PyreonUI
   // 1. Styler ThemeContext — for styled() components and useTheme()
   provide(ThemeContext, enrichedTheme)
 
-  // 2. Core context — for elements, attrs, coolgrid, rocketstyle
-  //    Includes mode + isDark/isLight for rocketstyle dimension resolution
+  // 2. Core context — provide a reactive object with getters.
+  //    Rocketstyle reads mode/isDark/isLight from this context.
+  //    By providing getters, the values update when modeComputed changes.
   provide(coreContext, {
     theme: enrichedTheme,
-    mode: resolvedMode,
-    isDark: resolvedMode === "dark",
-    isLight: resolvedMode === "light",
+    get mode() {
+      return modeComputed()
+    },
+    get isDark() {
+      return modeComputed() === "dark"
+    },
+    get isLight() {
+      return modeComputed() === "light"
+    },
   })
 
-  // 3. Mode context — for useMode() hook
-  provide(ModeContext, resolvedMode)
+  // 3. Mode context — getter function for useMode()
+  provide(ModeContext, () => modeComputed())
 
   return children ?? null
 }
