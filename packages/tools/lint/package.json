@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/lint",
-  "version": "0.10.0",
-  "description": "Pyreon-specific linter — 55 rules for signals, JSX, SSR, performance, router, and architecture",
+  "version": "0.11.0",
+  "description": "Pyreon-specific linter \u2014 55 rules for signals, JSX, SSR, performance, router, and architecture",
   "license": "MIT",
   "repository": {
     "type": "git",

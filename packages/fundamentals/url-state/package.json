@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/url-state",
-  "version": "0.10.0",
-  "description": "Reactive URL search-param state for Pyreon — signal-backed, type-coerced, SSR-safe",
+  "version": "0.11.0",
+  "description": "Reactive URL search-param state for Pyreon \u2014 signal-backed, type-coerced, SSR-safe",
   "license": "MIT",
   "repository": {
     "type": "git",
