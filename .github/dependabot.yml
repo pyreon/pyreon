@@ -1,0 +1,40 @@
+version: 2
+
+updates:
+  # npm dependencies (bun uses npm registry)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers: []
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Group minor/patch updates to reduce PR noise
+      production:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Major updates get individual PRs
+    ignore:
+      # Don't update workspace packages (handled by changesets)
+      - dependency-name: "@pyreon/*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
