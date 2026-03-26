@@ -102,10 +102,6 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: "Zero", link: "/docs/zero" },
-            { text: "Getting Started", link: "/docs/zero-getting-started" },
-            { text: "Routing", link: "/docs/zero-routing" },
-            { text: "Configuration", link: "/docs/zero-configuration" },
-            { text: "API Reference", link: "/docs/zero-api" },
             { text: "Create Zero", link: "/docs/create-zero" },
             { text: "Meta", link: "/docs/meta" },
             { text: "Storybook", link: "/docs/storybook" },
