@@ -1,0 +1,29 @@
+{
+  "name": "my-zero-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "zero dev",
+    "build": "zero build",
+    "preview": "zero preview",
+    "doctor": "zero doctor",
+    "doctor:fix": "zero doctor --fix",
+    "doctor:ci": "zero doctor --ci"
+  },
+  "dependencies": {
+    "@pyreon/meta": "latest",
+    "@pyreon/zero": "latest",
+    "@tanstack/query-core": "^5.90.0",
+    "@tanstack/table-core": "^8.21.0",
+    "@tanstack/virtual-core": "^3.13.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@pyreon/mcp": "latest",
+    "@pyreon/vite-plugin": "latest",
+    "@pyreon/zero-cli": "latest",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0"
+  }
+}

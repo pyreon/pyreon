@@ -14,7 +14,8 @@
       "!**/node_modules",
       "!**/.turbo",
       "!e2e",
-      "!tests/browser"
+      "!tests/browser",
+      "!**/templates"
     ]
   },
   "formatter": {

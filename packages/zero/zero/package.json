@@ -1,0 +1,132 @@
+{
+  "name": "@pyreon/zero",
+  "version": "0.5.0",
+  "description": "Pyreon Zero \u2014 zero-config full-stack framework powered by Pyreon and Vite",
+  "license": "MIT",
+  "author": "Vit Bokisch",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/zero/zero"
+  },
+  "type": "module",
+  "files": [
+    "lib",
+    "!lib/analysis",
+    "src",
+    "!src/tests",
+    "LICENSE",
+    "README.md"
+  ],
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./client": {
+      "bun": "./src/client.ts",
+      "import": "./lib/client.js",
+      "types": "./lib/types/client.d.ts"
+    },
+    "./config": {
+      "bun": "./src/config.ts",
+      "import": "./lib/config.js",
+      "types": "./lib/types/config.d.ts"
+    },
+    "./image": {
+      "bun": "./src/image.tsx",
+      "import": "./lib/image.js",
+      "types": "./lib/types/image.d.ts"
+    },
+    "./link": {
+      "bun": "./src/link.tsx",
+      "import": "./lib/link.js",
+      "types": "./lib/types/link.d.ts"
+    },
+    "./script": {
+      "bun": "./src/script.tsx",
+      "import": "./lib/script.js",
+      "types": "./lib/types/script.d.ts"
+    },
+    "./font": {
+      "bun": "./src/font.ts",
+      "import": "./lib/font.js",
+      "types": "./lib/types/font.d.ts"
+    },
+    "./cache": {
+      "bun": "./src/cache.ts",
+      "import": "./lib/cache.js",
+      "types": "./lib/types/cache.d.ts"
+    },
+    "./seo": {
+      "bun": "./src/seo.ts",
+      "import": "./lib/seo.js",
+      "types": "./lib/types/seo.d.ts"
+    },
+    "./theme": {
+      "bun": "./src/theme.tsx",
+      "import": "./lib/theme.js",
+      "types": "./lib/types/theme.d.ts"
+    },
+    "./image-plugin": {
+      "bun": "./src/image-plugin.ts",
+      "import": "./lib/image-plugin.js",
+      "types": "./lib/types/image-plugin.d.ts"
+    },
+    "./actions": {
+      "bun": "./src/actions.ts",
+      "import": "./lib/actions.js",
+      "types": "./lib/types/actions.d.ts"
+    },
+    "./api-routes": {
+      "bun": "./src/api-routes.ts",
+      "import": "./lib/api-routes.js",
+      "types": "./lib/types/api-routes.d.ts"
+    },
+    "./cors": {
+      "bun": "./src/cors.ts",
+      "import": "./lib/cors.js",
+      "types": "./lib/types/cors.d.ts"
+    },
+    "./rate-limit": {
+      "bun": "./src/rate-limit.ts",
+      "import": "./lib/rate-limit.js",
+      "types": "./lib/types/rate-limit.d.ts"
+    },
+    "./compression": {
+      "bun": "./src/compression.ts",
+      "import": "./lib/compression.js",
+      "types": "./lib/types/compression.d.ts"
+    },
+    "./testing": {
+      "bun": "./src/testing.ts",
+      "import": "./lib/testing.js",
+      "types": "./lib/types/testing.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vl_rolldown_build && tsc",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/head": "workspace:^",
+    "@pyreon/meta": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^",
+    "@pyreon/server": "workspace:^",
+    "@pyreon/vite-plugin": "workspace:^",
+    "vite": "^8.0.0"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
+  }
+}

@@ -966,6 +966,84 @@
         "@pyreon/ui-core": "workspace:^",
       },
     },
+    "packages/zero/cli": {
+      "name": "@pyreon/zero-cli",
+      "version": "0.5.0",
+      "bin": {
+        "zero": "./bin/zero.js",
+      },
+      "dependencies": {
+        "@pyreon/cli": "workspace:^",
+        "@pyreon/create-zero": "workspace:^",
+        "@pyreon/server": "workspace:^",
+        "@pyreon/zero": "workspace:^",
+        "cac": "^7.0.0",
+        "vite": "^8.0.0",
+      },
+    },
+    "packages/zero/create-zero": {
+      "name": "@pyreon/create-zero",
+      "version": "0.5.0",
+      "bin": {
+        "create-zero": "./bin/create-zero.js",
+      },
+      "dependencies": {
+        "@clack/prompts": "^1.0.0",
+      },
+    },
+    "packages/zero/meta": {
+      "name": "@pyreon/meta",
+      "version": "0.5.0",
+      "dependencies": {
+        "@pyreon/attrs": "workspace:^",
+        "@pyreon/charts": "workspace:^",
+        "@pyreon/code": "workspace:^",
+        "@pyreon/coolgrid": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/feature": "workspace:^",
+        "@pyreon/flow": "workspace:^",
+        "@pyreon/form": "workspace:^",
+        "@pyreon/hooks": "workspace:^",
+        "@pyreon/hotkeys": "workspace:^",
+        "@pyreon/i18n": "workspace:^",
+        "@pyreon/kinetic": "workspace:^",
+        "@pyreon/kinetic-presets": "workspace:^",
+        "@pyreon/machine": "workspace:^",
+        "@pyreon/permissions": "workspace:^",
+        "@pyreon/query": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/state-tree": "workspace:^",
+        "@pyreon/storage": "workspace:^",
+        "@pyreon/store": "workspace:^",
+        "@pyreon/styler": "workspace:^",
+        "@pyreon/table": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
+        "@pyreon/validation": "workspace:^",
+        "@pyreon/virtual": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/zero/zero": {
+      "name": "@pyreon/zero",
+      "version": "0.5.0",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/head": "workspace:^",
+        "@pyreon/meta": "workspace:^",
+        "@pyreon/router": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/runtime-server": "workspace:^",
+        "@pyreon/server": "workspace:^",
+        "@pyreon/vite-plugin": "workspace:^",
+        "vite": "^8.0.0",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.4.4", "", {}, "sha512-Elp+iwUx5rN5+Y8xLt5/GRoG20WGoDCQ/1Fb+1LiGtvwbDavuSk0jhD/eZdckHAuzcDzccnkv+rEjyWfRx18gg=="],
@@ -1115,6 +1193,10 @@
     "@changesets/types": ["@changesets/types@6.1.0", "", {}, "sha512-rKQcJ+o1nKNgeoYRHKOS07tAMNd3YSN0uHaJOZYjBAgxfV7TUE7JE+z4BzZdQwb5hKaYbayKN5KrYV7ODb2rAA=="],
 
     "@changesets/write": ["@changesets/write@0.4.0", "", { "dependencies": { "@changesets/types": "^6.1.0", "fs-extra": "^7.0.1", "human-id": "^4.1.1", "prettier": "^2.7.1" } }, "sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q=="],
+
+    "@clack/core": ["@clack/core@1.1.0", "", { "dependencies": { "sisteransi": "^1.0.5" } }, "sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA=="],
+
+    "@clack/prompts": ["@clack/prompts@1.1.0", "", { "dependencies": { "@clack/core": "1.1.0", "sisteransi": "^1.0.5" } }, "sha512-pkqbPGtohJAvm4Dphs2M8xE29ggupihHdy1x84HNojZuMtFsHiUlRvqD24tM2+XmI+61LlfNceM3Wr7U5QES5g=="],
 
     "@codemirror/autocomplete": ["@codemirror/autocomplete@6.20.1", "", { "dependencies": { "@codemirror/language": "^6.0.0", "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.17.0", "@lezer/common": "^1.0.0" } }, "sha512-1cvg3Vz1dSSToCNlJfRA2WSI4ht3K+WplO0UMOgmUYPivCyy2oueZY6Lx7M9wThm7SDUBViRmuT+OG/i8+ON9A=="],
 
@@ -1456,6 +1538,8 @@
 
     "@pyreon/core": ["@pyreon/core@workspace:packages/core/core"],
 
+    "@pyreon/create-zero": ["@pyreon/create-zero@workspace:packages/zero/create-zero"],
+
     "@pyreon/dnd": ["@pyreon/dnd@workspace:packages/fundamentals/dnd"],
 
     "@pyreon/docs": ["@pyreon/docs@workspace:docs"],
@@ -1503,6 +1587,8 @@
     "@pyreon/machine": ["@pyreon/machine@workspace:packages/fundamentals/machine"],
 
     "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
+
+    "@pyreon/meta": ["@pyreon/meta@workspace:packages/zero/meta"],
 
     "@pyreon/permissions": ["@pyreon/permissions@workspace:packages/fundamentals/permissions"],
 
@@ -1559,6 +1645,10 @@
     "@pyreon/vite-plugin": ["@pyreon/vite-plugin@workspace:packages/tools/vite-plugin"],
 
     "@pyreon/vue-compat": ["@pyreon/vue-compat@workspace:packages/tools/vue-compat"],
+
+    "@pyreon/zero": ["@pyreon/zero@workspace:packages/zero/zero"],
+
+    "@pyreon/zero-cli": ["@pyreon/zero-cli@workspace:packages/zero/cli"],
 
     "@rolldown/binding-android-arm64": ["@rolldown/binding-android-arm64@1.0.0-rc.11", "", { "os": "android", "cpu": "arm64" }, "sha512-SJ+/g+xNnOh6NqYxD0V3uVN4W3VfnrGsC9/hoglicgTNfABFG9JjISvkkU0dNY84MNHLWyOgxP9v9Y9pX4S7+A=="],
 
@@ -1947,6 +2037,8 @@
     "bundle-name": ["bundle-name@4.1.0", "", { "dependencies": { "run-applescript": "^7.0.0" } }, "sha512-tjwM5exMg6BGRI+kNmTntNsvdZS1X8BFYS6tnJ2hdH0kVxM6/eVZ2xy+FqStSWvYmtfFMDLIxurorHwDKfDz5Q=="],
 
     "bytes": ["bytes@3.1.2", "", {}, "sha512-/Nf7TyzTx6S3yRJObOAV7956r8cr2+Oj8AC5dt8wSP3BQAoeX58NoHyCU8P8zGkNXStjTSi6fzO6F0pBdcYbEg=="],
+
+    "cac": ["cac@7.0.0", "", {}, "sha512-tixWYgm5ZoOD+3g6UTea91eow5z6AAHaho3g0V9CNSNb45gM8SmflpAc+GRd1InC4AqN/07Unrgp56Y94N9hJQ=="],
 
     "cacache": ["cacache@17.1.4", "", { "dependencies": { "@npmcli/fs": "^3.1.0", "fs-minipass": "^3.0.0", "glob": "^10.2.2", "lru-cache": "^7.7.1", "minipass": "^7.0.3", "minipass-collect": "^1.0.2", "minipass-flush": "^1.0.5", "minipass-pipeline": "^1.2.4", "p-map": "^4.0.0", "ssri": "^10.0.0", "tar": "^6.1.11", "unique-filename": "^3.0.0" } }, "sha512-/aJwG2l3ZMJ1xNAnqbMpA40of9dj/pIH3QfiuQSqjfPJF747VR0J/bHn+/KdNnHKc6XQcWt/AfRSBft82W1d2A=="],
 
@@ -2771,6 +2863,8 @@
     "signal-exit": ["signal-exit@4.1.0", "", {}, "sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw=="],
 
     "sigstore": ["sigstore@1.9.0", "", { "dependencies": { "@sigstore/bundle": "^1.1.0", "@sigstore/protobuf-specs": "^0.2.0", "@sigstore/sign": "^1.0.0", "@sigstore/tuf": "^1.0.3", "make-fetch-happen": "^11.0.1" }, "bin": { "sigstore": "bin/sigstore.js" } }, "sha512-0Zjz0oe37d08VeOtBIuB6cRriqXse2e8w+7yIy2XSXjshRKxbc2KkhXjL229jXSxEm7UbcjS76wcJDGQddVI9A=="],
+
+    "sisteransi": ["sisteransi@1.0.5", "", {}, "sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg=="],
 
     "slash": ["slash@3.0.0", "", {}, "sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q=="],
 
