@@ -11,6 +11,8 @@ import { join } from "node:path"
 
 const PACKAGES_DIR = join(import.meta.dirname, "..", "packages")
 const dryRun = process.argv.includes("--dry-run")
+const otpArg = process.argv.find((a) => a.startsWith("--otp="))
+const otp = otpArg?.split("=")[1]
 
 // Collect all package directories (packages/*/*)
 const packageDirs: { path: string; name: string }[] = []
@@ -82,15 +84,17 @@ for (const dir of packageDirs) {
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
   try {
+    const isCI = !!process.env.CI
     const args = [
       "bunx",
       "npm",
       "publish",
       "--access",
       "public",
-      "--provenance",
       "--ignore-scripts",
     ]
+    if (isCI) args.push("--provenance")
+    if (otp) args.push(`--otp=${otp}`)
     if (dryRun) args.push("--dry-run")
     const result = Bun.spawnSync(args, {
       cwd: dir.path,
