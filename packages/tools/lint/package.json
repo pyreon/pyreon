@@ -32,11 +32,6 @@
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
     },
-    "./rules": {
-      "bun": "./src/rules/index.ts",
-      "import": "./lib/rules/index.js",
-      "types": "./lib/types/rules/index.d.ts"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
