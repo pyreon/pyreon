@@ -123,7 +123,9 @@
         "packages/tools/cli/src/index.ts",
         "packages/tools/cli/src/doctor.ts",
         "packages/tools/cli/src/context.ts",
-        "packages/tools/mcp/src/index.ts"
+        "packages/tools/mcp/src/index.ts",
+        "packages/tools/lint/src/cli.ts",
+        "packages/tools/lint/src/watcher.ts"
       ],
       "linter": {
         "rules": {

@@ -48,6 +48,11 @@ import { noSignalInLoop } from "./reactivity/no-signal-in-loop"
 import { noSignalLeak } from "./reactivity/no-signal-leak"
 import { noUnbatchedUpdates } from "./reactivity/no-unbatched-updates"
 import { preferComputed } from "./reactivity/prefer-computed"
+// Router
+import { noHrefNavigation } from "./router/no-href-navigation"
+import { noImperativeNavigateInRender } from "./router/no-imperative-navigate-in-render"
+import { noMissingFallback } from "./router/no-missing-fallback"
+import { preferUseIsActive } from "./router/prefer-use-is-active"
 import { noMismatchRisk } from "./ssr/no-mismatch-risk"
 // SSR
 import { noWindowInSsr } from "./ssr/no-window-in-ssr"
@@ -125,6 +130,11 @@ export const allRules: Rule[] = [
   toastA11y,
   dialogA11y,
   overlayA11y,
+  // Router (4)
+  noHrefNavigation,
+  noImperativeNavigateInRender,
+  noMissingFallback,
+  preferUseIsActive,
 ]
 
 // Re-export all rules individually
@@ -148,7 +158,9 @@ export {
   noEffectInFor,
   noEffectInMount,
   noErrorWithoutPrefix,
+  noHrefNavigation,
   noHtmlFor,
+  noImperativeNavigateInRender,
   noIndexAsBy,
   // Styling
   noInlineStyleObject,
@@ -159,6 +171,7 @@ export {
   noMismatchRisk,
   // Lifecycle
   noMissingCleanup,
+  noMissingFallback,
   noMissingForBy,
   noMountInEffect,
   noMutateStoreState,
@@ -188,6 +201,7 @@ export {
   preferFieldArray,
   preferRequestContext,
   preferShowOverDisplay,
+  preferUseIsActive,
   // Accessibility
   toastA11y,
   useByNotKey,

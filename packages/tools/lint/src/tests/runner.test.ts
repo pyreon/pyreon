@@ -1,3 +1,6 @@
+import { AstCache } from "../cache"
+import { createIgnoreFilter } from "../config/ignore"
+import { loadConfig } from "../config/loader"
 import { getPreset } from "../config/presets"
 import { allRules } from "../rules/index"
 import { applyFixes, lintFile } from "../runner"
@@ -23,11 +26,18 @@ function findByRule(result: ReturnType<typeof lintFile>, ruleId: string) {
   return result.diagnostics.filter((d) => d.ruleId === ruleId)
 }
 
+// Helper to lint with a single rule by ID
+function lintWith(ruleId: string, source: string, filePath?: string) {
+  const rule = allRules.find((r) => r.meta.id === ruleId)
+  if (!rule) throw new Error(`Rule not found: ${ruleId}`)
+  return lintFile(filePath ?? "test.tsx", source, [rule], defaultConfig())
+}
+
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe("Rule metadata", () => {
-  it("should have 51 rules", () => {
-    expect(allRules.length).toBe(51)
+  it("should have 55 rules", () => {
+    expect(allRules.length).toBe(55)
   })
 
   it("should have unique rule IDs", () => {
@@ -55,6 +65,7 @@ describe("Rule metadata", () => {
       "styling",
       "hooks",
       "accessibility",
+      "router",
     ])
     for (const rule of allRules) {
       expect(validCategories.has(rule.meta.category)).toBe(true)
@@ -77,6 +88,7 @@ describe("Rule metadata", () => {
     expect(counts.styling).toBe(4)
     expect(counts.hooks).toBe(3)
     expect(counts.accessibility).toBe(3)
+    expect(counts.router).toBe(4)
   })
 })
 
@@ -129,6 +141,20 @@ const b = signal(0)
     expect(fixed).not.toContain("className")
     expect(fixed).not.toContain("htmlFor")
   })
+
+  it("should use AST cache when provided", () => {
+    const cache = new AstCache()
+    const source = `const x = 1`
+    const config = defaultConfig()
+
+    // First lint populates cache
+    lintFile("test.ts", source, allRules, config, cache)
+    expect(cache.size).toBe(1)
+
+    // Second lint reuses cache
+    lintFile("test.ts", source, allRules, config, cache)
+    expect(cache.size).toBe(1)
+  })
 })
 
 // ── Source Utilities ─────────────────────────────────────────────────────────
@@ -151,6 +177,47 @@ describe("LineIndex", () => {
   it("should handle empty source", () => {
     const idx = new LineIndex("")
     expect(idx.locate(0)).toEqual({ line: 1, column: 0 })
+  })
+})
+
+// ── AST Cache ──────────────────────────────────────────────────────────────
+
+describe("AstCache", () => {
+  it("should store and retrieve entries", () => {
+    const cache = new AstCache()
+    const lineIndex = new LineIndex("test")
+    const program = { type: "Program" }
+
+    cache.set("test", { program, lineIndex })
+    expect(cache.size).toBe(1)
+
+    const result = cache.get("test")
+    expect(result).toBeDefined()
+    expect(result!.program).toBe(program)
+  })
+
+  it("should return undefined for missing entries", () => {
+    const cache = new AstCache()
+    expect(cache.get("missing")).toBeUndefined()
+  })
+
+  it("should clear all entries", () => {
+    const cache = new AstCache()
+    const lineIndex = new LineIndex("a")
+    cache.set("a", { program: {}, lineIndex })
+    cache.set("b", { program: {}, lineIndex })
+    expect(cache.size).toBe(2)
+
+    cache.clear()
+    expect(cache.size).toBe(0)
+  })
+
+  it("should use content-based keys (different content = different entry)", () => {
+    const cache = new AstCache()
+    const lineIndex = new LineIndex("a")
+    cache.set("content1", { program: { id: 1 }, lineIndex })
+    cache.set("content2", { program: { id: 2 }, lineIndex })
+    expect(cache.size).toBe(2)
   })
 })
 
@@ -340,6 +407,24 @@ describe("JSX rules", () => {
     const diags = findByRule(result, "pyreon/no-index-as-by")
     expect(diags.length).toBe(1)
   })
+
+  it("pyreon/no-children-access: flags props.children in renderer file", () => {
+    const result = lintWith(
+      "pyreon/no-children-access",
+      `import { renderToString } from "@pyreon/runtime-server"\nconst c = props.children`,
+      "renderer.ts",
+    )
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-children-access: clean in non-renderer file", () => {
+    const result = lintWith(
+      "pyreon/no-children-access",
+      `const c = props.children`,
+      "component.tsx",
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
 })
 
 // ── Lifecycle Rules ─────────────────────────────────────────────────────────
@@ -403,6 +488,54 @@ describe("Performance rules", () => {
     const result = lintSource(source)
     const diags = findByRule(result, "pyreon/no-eager-import")
     expect(diags.length).toBe(0)
+  })
+
+  it("pyreon/no-effect-in-for: flags effect() inside <For>", () => {
+    const result = lintWith(
+      "pyreon/no-effect-in-for",
+      `const App = () => <For each={items}>{r => { effect(() => {}); return <li /> }}</For>`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-effect-in-for: clean when effect is outside <For>", () => {
+    const result = lintWith(
+      "pyreon/no-effect-in-for",
+      `effect(() => {})\nconst App = () => <For each={items}>{r => <li />}</For>`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-large-for-without-by: flags <For> without by prop", () => {
+    const result = lintWith(
+      "pyreon/no-large-for-without-by",
+      `const App = () => <For each={items}>{r => <li />}</For>`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-large-for-without-by: clean with by prop", () => {
+    const result = lintWith(
+      "pyreon/no-large-for-without-by",
+      `const App = () => <For each={items} by={r => r.id}>{r => <li />}</For>`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/prefer-show-over-display: flags conditional display style", () => {
+    const result = lintWith(
+      "pyreon/prefer-show-over-display",
+      `const App = () => <div style={{ display: visible ? "block" : "none" }} />`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/prefer-show-over-display: clean with static display", () => {
+    const result = lintWith(
+      "pyreon/prefer-show-over-display",
+      `const App = () => <div style={{ display: "block" }} />`,
+    )
+    expect(result.diagnostics.length).toBe(0)
   })
 })
 
@@ -521,6 +654,39 @@ defineStore("user", () => {})
     const diags = findByRule(result, "pyreon/no-duplicate-store-id")
     expect(diags.length).toBe(0)
   })
+
+  it("pyreon/no-mutate-store-state: flags store.signal.set()", () => {
+    const result = lintWith("pyreon/no-mutate-store-state", `userStore.count.set(5)`)
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-mutate-store-state: clean for non-store .set()", () => {
+    const result = lintWith("pyreon/no-mutate-store-state", `count.set(5)`)
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-store-outside-provider: flags store hooks in server files without provider", () => {
+    const result = lintWith(
+      "pyreon/no-store-outside-provider",
+      `useCounterStore()`,
+      "app.server.ts",
+    )
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-store-outside-provider: clean when provider is imported", () => {
+    const result = lintWith(
+      "pyreon/no-store-outside-provider",
+      `import { runWithRequestContext } from "@pyreon/reactivity"\nuseCounterStore()`,
+      "app.server.ts",
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-store-outside-provider: clean in non-server files", () => {
+    const result = lintWith("pyreon/no-store-outside-provider", `useCounterStore()`, "app.tsx")
+    expect(result.diagnostics.length).toBe(0)
+  })
 })
 
 // ── Form Rules ──────────────────────────────────────────────────────────────
@@ -538,6 +704,34 @@ describe("Form rules", () => {
     const result = lintSource(source)
     const diags = findByRule(result, "pyreon/no-submit-without-validation")
     expect(diags.length).toBe(0)
+  })
+
+  it("pyreon/no-unregistered-field: flags useField without register()", () => {
+    const result = lintWith("pyreon/no-unregistered-field", `const name = useField(form, "name")`)
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("register")
+  })
+
+  it("pyreon/no-unregistered-field: clean when register is called", () => {
+    const result = lintWith(
+      "pyreon/no-unregistered-field",
+      `const name = useField(form, "name")\nname.register()`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/prefer-field-array: flags signal([]) in form files", () => {
+    const result = lintWith(
+      "pyreon/prefer-field-array",
+      `import { useForm } from "@pyreon/form"\nconst items = signal([])`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("useFieldArray")
+  })
+
+  it("pyreon/prefer-field-array: clean when not in form file", () => {
+    const result = lintWith("pyreon/prefer-field-array", `const items = signal([])`)
+    expect(result.diagnostics.length).toBe(0)
   })
 })
 
@@ -563,6 +757,35 @@ describe("Styling rules", () => {
     const result = lintSource(source)
     const diags = findByRule(result, "pyreon/no-dynamic-styled")
     expect(diags.length).toBe(0)
+  })
+
+  it("pyreon/prefer-cx: flags string concatenation in class attribute", () => {
+    const result = lintWith("pyreon/prefer-cx", `const App = () => <div class={"foo " + bar} />`)
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("cx()")
+  })
+
+  it("pyreon/prefer-cx: flags template literal in class attribute", () => {
+    const result = lintWith("pyreon/prefer-cx", "const App = () => <div class={`foo ${bar}`} />")
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/prefer-cx: clean with plain string class", () => {
+    const result = lintWith("pyreon/prefer-cx", `const App = () => <div class="foo bar" />`)
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-theme-outside-provider: flags useTheme() without provider import", () => {
+    const result = lintWith("pyreon/no-theme-outside-provider", `const theme = useTheme()`)
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/no-theme-outside-provider: clean when PyreonUI is imported", () => {
+    const result = lintWith(
+      "pyreon/no-theme-outside-provider",
+      `import { PyreonUI } from "@pyreon/ui-core"\nconst theme = useTheme()`,
+    )
+    expect(result.diagnostics.length).toBe(0)
   })
 })
 
@@ -621,6 +844,168 @@ describe("Accessibility rules", () => {
     const diags = findByRule(result, "pyreon/overlay-a11y")
     expect(diags.length).toBe(0)
   })
+
+  it("pyreon/toast-a11y: flags Toast component without role or aria-live", () => {
+    const result = lintWith("pyreon/toast-a11y", `const App = () => <ToastItem message="hello" />`)
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("role")
+  })
+
+  it("pyreon/toast-a11y: clean with role attribute", () => {
+    const result = lintWith(
+      "pyreon/toast-a11y",
+      `const App = () => <ToastItem role="alert" message="hello" />`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/toast-a11y: clean with aria-live attribute", () => {
+    const result = lintWith(
+      "pyreon/toast-a11y",
+      `const App = () => <ToastItem aria-live="polite" message="hello" />`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/toast-a11y: skips Toaster container", () => {
+    const result = lintWith("pyreon/toast-a11y", `const App = () => <Toaster />`)
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/toast-a11y: skips non-toast PascalCase components", () => {
+    const result = lintWith("pyreon/toast-a11y", `const App = () => <Button />`)
+    expect(result.diagnostics.length).toBe(0)
+  })
+})
+
+// ── Router Rules ────────────────────────────────────────────────────────────
+
+describe("Router rules", () => {
+  it("pyreon/no-href-navigation: flags <a href> in router file", () => {
+    const result = lintWith(
+      "pyreon/no-href-navigation",
+      `import { Link } from "@pyreon/router"\nconst App = () => <a href="/about">About</a>`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("<Link>")
+  })
+
+  it("pyreon/no-href-navigation: clean for external URLs", () => {
+    const result = lintWith(
+      "pyreon/no-href-navigation",
+      `import { Link } from "@pyreon/router"\nconst App = () => <a href="https://example.com">External</a>`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-href-navigation: clean for anchor links", () => {
+    const result = lintWith(
+      "pyreon/no-href-navigation",
+      `import { Link } from "@pyreon/router"\nconst App = () => <a href="#section">Jump</a>`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-href-navigation: clean without router import", () => {
+    const result = lintWith(
+      "pyreon/no-href-navigation",
+      `const App = () => <a href="/about">About</a>`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-imperative-navigate-in-render: flags navigate() in component body", () => {
+    const result = lintWith(
+      "pyreon/no-imperative-navigate-in-render",
+      `const App = () => { navigate("/home"); return <div /> }`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("infinite")
+  })
+
+  it("pyreon/no-imperative-navigate-in-render: clean inside onMount", () => {
+    const result = lintWith(
+      "pyreon/no-imperative-navigate-in-render",
+      `const App = () => { onMount(() => { navigate("/home") }); return <div /> }`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-imperative-navigate-in-render: clean in non-component", () => {
+    const result = lintWith(
+      "pyreon/no-imperative-navigate-in-render",
+      `const handle = () => { navigate("/home") }`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-missing-fallback: flags route config without catch-all", () => {
+    const result = lintWith(
+      "pyreon/no-missing-fallback",
+      `import { Router } from "@pyreon/router"\nconst routes = [{ path: "/", component: Home }, { path: "/about", component: About }]`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("catch-all")
+  })
+
+  it("pyreon/no-missing-fallback: clean with catch-all route", () => {
+    const result = lintWith(
+      "pyreon/no-missing-fallback",
+      `import { Router } from "@pyreon/router"\nconst routes = [{ path: "/", component: Home }, { path: "*", component: NotFound }]`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/no-missing-fallback: clean without router import", () => {
+    const result = lintWith(
+      "pyreon/no-missing-fallback",
+      `const routes = [{ path: "/", component: Home }]`,
+    )
+    expect(result.diagnostics.length).toBe(0)
+  })
+
+  it("pyreon/prefer-use-is-active: flags location.pathname === comparison", () => {
+    const result = lintWith(
+      "pyreon/prefer-use-is-active",
+      `const active = location.pathname === "/admin"`,
+    )
+    expect(result.diagnostics.length).toBe(1)
+    expect(result.diagnostics[0]!.message).toContain("useIsActive")
+  })
+
+  it("pyreon/prefer-use-is-active: flags route.path === comparison", () => {
+    const result = lintWith("pyreon/prefer-use-is-active", `const active = route.path === "/admin"`)
+    expect(result.diagnostics.length).toBe(1)
+  })
+
+  it("pyreon/prefer-use-is-active: clean for unrelated comparisons", () => {
+    const result = lintWith("pyreon/prefer-use-is-active", `const active = name === "admin"`)
+    expect(result.diagnostics.length).toBe(0)
+  })
+})
+
+// ── Config Loading ──────────────────────────────────────────────────────────
+
+describe("Config loading", () => {
+  it("loadConfig returns null when no config file exists", () => {
+    // Use a path where there's definitely no config
+    const result = loadConfig("/tmp/nonexistent-pyreon-dir-12345")
+    expect(result).toBeNull()
+  })
+})
+
+// ── Ignore Filter ───────────────────────────────────────────────────────────
+
+describe("Ignore filter", () => {
+  it("createIgnoreFilter returns a function", () => {
+    const filter = createIgnoreFilter("/tmp/nonexistent-pyreon-dir-12345")
+    expect(typeof filter).toBe("function")
+  })
+
+  it("filter returns false for paths when no ignore files exist", () => {
+    const filter = createIgnoreFilter("/tmp/nonexistent-pyreon-dir-12345")
+    expect(filter("/tmp/nonexistent-pyreon-dir-12345/src/app.ts")).toBe(false)
+  })
 })
 
 // ── Presets ─────────────────────────────────────────────────────────────────
@@ -628,7 +1013,7 @@ describe("Accessibility rules", () => {
 describe("Presets", () => {
   it("recommended should include all rules", () => {
     const config = getPreset("recommended")
-    expect(Object.keys(config.rules).length).toBe(51)
+    expect(Object.keys(config.rules).length).toBe(55)
   })
 
   it("strict should promote all warns to errors", () => {

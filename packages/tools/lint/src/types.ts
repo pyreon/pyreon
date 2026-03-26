@@ -40,6 +40,7 @@ export type RuleCategory =
   | "styling"
   | "hooks"
   | "accessibility"
+  | "router"
 
 export interface RuleMeta {
   id: string
@@ -74,6 +75,15 @@ export interface Rule {
 
 export interface LintConfig {
   rules: Record<string, Severity>
+  include?: string[] | undefined
+  exclude?: string[] | undefined
+}
+
+export interface LintConfigFile {
+  preset?: PresetName | undefined
+  rules?: Record<string, Severity> | undefined
+  include?: string[] | undefined
+  exclude?: string[] | undefined
 }
 
 export type PresetName = "recommended" | "strict" | "app" | "lib"
@@ -101,6 +111,8 @@ export interface LintOptions {
   fix?: boolean | undefined
   quiet?: boolean | undefined
   ruleOverrides?: Record<string, Severity> | undefined
+  config?: string | undefined
+  ignore?: string | undefined
 }
 
 // ── Import Info ─────────────────────────────────────────────────────────────

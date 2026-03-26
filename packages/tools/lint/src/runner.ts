@@ -1,4 +1,5 @@
 import { parseSync, Visitor } from "oxc-parser"
+import type { AstCache } from "./cache"
 import type {
   Diagnostic,
   LintConfig,
@@ -95,13 +96,34 @@ export function lintFile(
   sourceText: string,
   rules: Rule[],
   config: LintConfig,
+  cache?: AstCache | undefined,
 ): LintFileResult {
   const ext = getExtension(filePath)
   if (!JS_EXTENSIONS.has(ext)) {
     return { filePath, diagnostics: [] }
   }
 
-  const lineIndex = new LineIndex(sourceText)
+  // Try cache first
+  let lineIndex: LineIndex
+  let program: any
+  const cached = cache?.get(sourceText)
+  if (cached) {
+    lineIndex = cached.lineIndex
+    program = cached.program
+  } else {
+    lineIndex = new LineIndex(sourceText)
+    try {
+      const result = parseSync(filePath, sourceText, {
+        sourceType: "module",
+        lang: getLang(ext),
+      })
+      program = result.program
+    } catch {
+      return { filePath, diagnostics: [] }
+    }
+    cache?.set(sourceText, { program, lineIndex })
+  }
+
   const diagnostics: Diagnostic[] = []
 
   // Filter to enabled rules and create visitor callbacks
@@ -111,18 +133,6 @@ export function lintFile(
     if (severity === undefined || severity === "off") continue
     const ctx = createRuleContext(rule, severity, diagnostics, lineIndex, sourceText, filePath)
     allCallbacks.push(rule.create(ctx))
-  }
-
-  // Parse the source
-  let program: any
-  try {
-    const result = parseSync(filePath, sourceText, {
-      sourceType: "module",
-      lang: getLang(ext),
-    })
-    program = result.program
-  } catch {
-    return { filePath, diagnostics: [] }
   }
 
   // Walk the AST
