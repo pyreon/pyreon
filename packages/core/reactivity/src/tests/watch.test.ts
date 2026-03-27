@@ -143,4 +143,104 @@ describe("watch", () => {
 
     stop() // no cleanup function was set, should not throw
   })
+
+  test("oldValue tracks previous value across multiple changes", () => {
+    const s = signal("a")
+    const history: [string, string | undefined][] = []
+
+    watch(
+      () => s(),
+      (newVal, oldVal) => {
+        history.push([newVal, oldVal])
+      },
+    )
+
+    s.set("b")
+    s.set("c")
+    s.set("d")
+
+    expect(history).toEqual([
+      ["b", "a"],
+      ["c", "b"],
+      ["d", "c"],
+    ])
+  })
+
+  test("oldValue is undefined on immediate first call", () => {
+    const s = signal(42)
+    let receivedOld: number | undefined = -1
+
+    watch(
+      () => s(),
+      (_newVal, oldVal) => {
+        receivedOld = oldVal
+      },
+      { immediate: true },
+    )
+
+    expect(receivedOld).toBeUndefined()
+  })
+
+  test("watch with derived source (computed-like)", () => {
+    const a = signal(1)
+    const b = signal(10)
+    const calls: [number, number | undefined][] = []
+
+    watch(
+      () => a() + b(),
+      (newVal, oldVal) => {
+        calls.push([newVal, oldVal])
+      },
+    )
+
+    a.set(2) // 2 + 10 = 12
+    expect(calls).toEqual([[12, 11]])
+
+    b.set(20) // 2 + 20 = 22
+    expect(calls).toEqual([
+      [12, 11],
+      [22, 12],
+    ])
+  })
+
+  test("stop prevents cleanup from running on future changes", () => {
+    const s = signal(1)
+    const log: string[] = []
+
+    const stop = watch(
+      () => s(),
+      (newVal) => {
+        log.push(`run-${newVal}`)
+        return () => log.push(`cleanup-${newVal}`)
+      },
+    )
+
+    s.set(2)
+    expect(log).toEqual(["run-2"])
+
+    stop()
+    expect(log).toEqual(["run-2", "cleanup-2"])
+
+    // Further changes should not trigger anything
+    s.set(3)
+    expect(log).toEqual(["run-2", "cleanup-2"])
+  })
+
+  test("watch does not fire when value stays the same", () => {
+    const s = signal(1)
+    let callCount = 0
+
+    watch(
+      () => s(),
+      () => {
+        callCount++
+      },
+    )
+
+    s.set(1) // same value — signal doesn't notify
+    expect(callCount).toBe(0)
+
+    s.set(2)
+    expect(callCount).toBe(1)
+  })
 })

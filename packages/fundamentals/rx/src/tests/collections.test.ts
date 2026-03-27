@@ -183,4 +183,31 @@ describe("collections — signal values (reactive)", () => {
     src.set({ x: 10 })
     expect(doubled()).toEqual({ x: 20 })
   })
+
+  it("mapValues with signal tracks key argument reactively", () => {
+    const src = signal<Record<string, number[]>>({
+      admin: [1, 2, 3],
+      viewer: [4, 5],
+    })
+    const counts = mapValues(src, (arr, key) => ({ role: key, count: arr.length }))
+    expect(counts()).toEqual({
+      admin: { role: "admin", count: 3 },
+      viewer: { role: "viewer", count: 2 },
+    })
+
+    src.set({ admin: [1], editor: [2, 3, 4, 5] })
+    expect(counts()).toEqual({
+      admin: { role: "admin", count: 1 },
+      editor: { role: "editor", count: 4 },
+    })
+  })
+
+  it("mapValues with signal handles empty record", () => {
+    const src = signal<Record<string, number>>({})
+    const doubled = mapValues(src, (v) => v * 2)
+    expect(doubled()).toEqual({})
+
+    src.set({ a: 5 })
+    expect(doubled()).toEqual({ a: 10 })
+  })
 })

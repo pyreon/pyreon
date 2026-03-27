@@ -48,4 +48,46 @@ describe("pipe — signal values", () => {
     )
     expect(topNames()).toEqual(["B", "A"])
   })
+
+  it("supports 4 transforms", () => {
+    const src = signal([10, 5, 20, 3, 15, 8])
+    const result = pipe(
+      src,
+      (arr) => arr.filter((n) => n > 5),
+      (arr) => arr.sort((a, b) => a - b),
+      (arr) => arr.slice(0, 3),
+      (arr) => arr.reduce((sum, n) => sum + n, 0),
+    )
+    // filter: [10, 20, 15, 8], sort: [8, 10, 15, 20], take 3: [8, 10, 15], sum: 33
+    expect(result()).toBe(33)
+
+    // Reactive: update source
+    src.set([100, 1, 50])
+    // filter: [100, 50], sort: [50, 100], take 3: [50, 100], sum: 150
+    expect(result()).toBe(150)
+  })
+
+  it("supports 5 transforms", () => {
+    const src = signal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    const result = pipe(
+      src,
+      (arr) => arr.filter((n) => n % 2 === 0), // [2, 4, 6, 8, 10]
+      (arr) => arr.map((n) => n * 10), // [20, 40, 60, 80, 100]
+      (arr) => arr.slice(1, 4), // [40, 60, 80]
+      (arr) => arr.reduce((sum, n) => sum + n, 0), // 180
+      (n) => `Total: ${n}`,
+    )
+    expect(result()).toBe("Total: 180")
+  })
+
+  it("4+ transforms with plain values (non-signal)", () => {
+    const result = pipe(
+      [5, 3, 8, 1, 9, 2],
+      (arr) => arr.filter((n) => n > 3),
+      (arr) => arr.sort((a, b) => b - a),
+      (arr) => arr.slice(0, 2),
+      (arr) => arr.join("-"),
+    )
+    expect(result).toBe("9-8")
+  })
 })

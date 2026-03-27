@@ -749,6 +749,302 @@ describe("useHead — CSR", () => {
   })
 })
 
+// ─── createHeadContext — context stacking & caching ──────────────────────────
+
+describe("createHeadContext", () => {
+  test("resolve returns empty array when no entries", () => {
+    const ctx = createHeadContext()
+    expect(ctx.resolve()).toEqual([])
+  })
+
+  test("resolve caches result until dirty", () => {
+    const ctx = createHeadContext()
+    const id = Symbol()
+    ctx.add(id, { tags: [{ tag: "meta", key: "a", props: { name: "a" } }] })
+    const first = ctx.resolve()
+    const second = ctx.resolve()
+    expect(first).toBe(second) // same array reference — cached
+  })
+
+  test("resolve invalidates cache after add", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    ctx.add(id1, { tags: [{ tag: "meta", key: "a", props: { name: "a" } }] })
+    const first = ctx.resolve()
+    const id2 = Symbol()
+    ctx.add(id2, { tags: [{ tag: "meta", key: "b", props: { name: "b" } }] })
+    const second = ctx.resolve()
+    expect(first).not.toBe(second) // different reference — rebuilt
+    expect(second).toHaveLength(2)
+  })
+
+  test("resolve invalidates cache after remove", () => {
+    const ctx = createHeadContext()
+    const id = Symbol()
+    ctx.add(id, { tags: [{ tag: "meta", key: "a", props: { name: "a" } }] })
+    const first = ctx.resolve()
+    ctx.remove(id)
+    const second = ctx.resolve()
+    expect(second).toHaveLength(0)
+    expect(first).not.toBe(second)
+  })
+
+  test("keyed tags deduplicate — last added wins", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [{ tag: "title", key: "title", children: "First" }] })
+    ctx.add(id2, { tags: [{ tag: "title", key: "title", children: "Second" }] })
+    const tags = ctx.resolve()
+    expect(tags).toHaveLength(1)
+    expect(tags[0]?.children).toBe("Second")
+  })
+
+  test("resolveTitleTemplate returns undefined when none set", () => {
+    const ctx = createHeadContext()
+    expect(ctx.resolveTitleTemplate()).toBeUndefined()
+  })
+
+  test("resolveTitleTemplate returns last added template", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [], titleTemplate: "%s | Site A" })
+    ctx.add(id2, { tags: [], titleTemplate: "%s | Site B" })
+    expect(ctx.resolveTitleTemplate()).toBe("%s | Site B")
+  })
+
+  test("resolveHtmlAttrs merges from multiple entries", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [], htmlAttrs: { lang: "en" } })
+    ctx.add(id2, { tags: [], htmlAttrs: { dir: "ltr" } })
+    expect(ctx.resolveHtmlAttrs()).toEqual({ lang: "en", dir: "ltr" })
+  })
+
+  test("resolveHtmlAttrs later entries override earlier", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [], htmlAttrs: { lang: "en" } })
+    ctx.add(id2, { tags: [], htmlAttrs: { lang: "fr" } })
+    expect(ctx.resolveHtmlAttrs()).toEqual({ lang: "fr" })
+  })
+
+  test("resolveBodyAttrs merges from multiple entries", () => {
+    const ctx = createHeadContext()
+    const id1 = Symbol()
+    const id2 = Symbol()
+    ctx.add(id1, { tags: [], bodyAttrs: { class: "dark" } })
+    ctx.add(id2, { tags: [], bodyAttrs: { "data-page": "home" } })
+    expect(ctx.resolveBodyAttrs()).toEqual({ class: "dark", "data-page": "home" })
+  })
+
+  test("remove non-existent id does not throw", () => {
+    const ctx = createHeadContext()
+    expect(() => ctx.remove(Symbol())).not.toThrow()
+  })
+})
+
+// ─── HeadProvider — context stacking ─────────────────────────────────────────
+
+describe("HeadProvider — context stacking", () => {
+  let container: HTMLElement
+
+  beforeEach(() => {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    for (const el of document.head.querySelectorAll("[data-pyreon-head]")) el.remove()
+    document.title = ""
+  })
+
+  test("auto-creates context when no context prop", () => {
+    function Page() {
+      useHead({ title: "Auto Context" })
+      return h("div", null)
+    }
+    // HeadProvider without context prop
+    mount(h(HeadProvider, { children: h(Page, null) }), container)
+    expect(document.title).toBe("Auto Context")
+  })
+
+  test("nested HeadProviders — inner context receives inner useHead calls", () => {
+    const outerCtx = createHeadContext()
+    const innerCtx = createHeadContext()
+
+    function Outer() {
+      useHead({ title: "Outer" })
+      return h("div", null, h(HeadProvider, { context: innerCtx, children: h(Inner, null) }))
+    }
+    function Inner() {
+      useHead({ title: "Inner" })
+      return h("span", null)
+    }
+    mount(h(HeadProvider, { context: outerCtx, children: h(Outer, null) }), container)
+    // Outer context has "Outer" title, inner context has "Inner" title
+    // The outer syncDom runs and sets title to "Outer"
+    // Both contexts sync independently
+    const outerTags = outerCtx.resolve()
+    expect(outerTags.some((t) => t.children === "Outer")).toBe(true)
+    // The inner context should have Inner's title registered
+    const innerTags = innerCtx.resolve()
+    expect(innerTags.some((t) => t.children === "Inner")).toBe(true)
+  })
+})
+
+// ─── useHead with reactive signals — CSR ────────────────────────────────────
+
+describe("useHead — reactive signal-driven values", () => {
+  let container: HTMLElement
+  let ctx: HeadContextValue
+
+  beforeEach(() => {
+    container = document.createElement("div")
+    document.body.appendChild(container)
+    ctx = createHeadContext()
+    for (const el of document.head.querySelectorAll("[data-pyreon-head]")) el.remove()
+    document.title = ""
+  })
+
+  test("reactive meta tags update when signal changes", () => {
+    const description = signal("Initial description")
+    function Page() {
+      useHead(() => ({
+        meta: [{ name: "description", content: description() }],
+      }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+      "Initial description",
+    )
+    description.set("Updated description")
+    expect(document.head.querySelector('meta[name="description"]')?.getAttribute("content")).toBe(
+      "Updated description",
+    )
+  })
+
+  test("reactive link tags update when signal changes", () => {
+    const href = signal("/page-v1")
+    function Page() {
+      useHead(() => ({
+        link: [{ rel: "canonical", href: href() }],
+      }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const link = document.head.querySelector('link[rel="canonical"]')
+    expect(link?.getAttribute("href")).toBe("/page-v1")
+    href.set("/page-v2")
+    // A new link element is created because the key changes (includes href)
+    const newLink = document.head.querySelector("link[data-pyreon-head]")
+    expect(newLink).not.toBeNull()
+  })
+
+  test("reactive bodyAttrs update when signal changes", () => {
+    const theme = signal("light")
+    function Page() {
+      useHead(() => ({ bodyAttrs: { "data-theme": theme() } }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.body.getAttribute("data-theme")).toBe("light")
+    theme.set("dark")
+    expect(document.body.getAttribute("data-theme")).toBe("dark")
+  })
+
+  test("reactive htmlAttrs update when signal changes", () => {
+    const lang = signal("en")
+    function Page() {
+      useHead(() => ({ htmlAttrs: { lang: lang() } }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    expect(document.documentElement.getAttribute("lang")).toBe("en")
+    lang.set("de")
+    expect(document.documentElement.getAttribute("lang")).toBe("de")
+  })
+
+  test("reactive jsonLd updates when signal changes", () => {
+    const pageName = signal("Home")
+    function Page() {
+      useHead(() => ({ jsonLd: { "@type": "WebPage", name: pageName() } }))
+      return h("div", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Page, null) }), container)
+    const script = document.head.querySelector('script[type="application/ld+json"]')
+    expect(script?.textContent).toContain('"name":"Home"')
+    pageName.set("About")
+    const updated = document.head.querySelector('script[type="application/ld+json"]')
+    expect(updated?.textContent).toContain('"name":"About"')
+  })
+
+  test("reactive titleTemplate with signal-driven title", () => {
+    const pageTitle = signal("Home")
+    function Layout() {
+      useHead({ titleTemplate: "%s | MySite" })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead(() => ({ title: pageTitle() }))
+      return h("span", null)
+    }
+    mount(h(HeadProvider, { context: ctx, children: h(Layout, null) }), container)
+    expect(document.title).toBe("Home | MySite")
+    pageTitle.set("About")
+    expect(document.title).toBe("About | MySite")
+  })
+})
+
+// ─── renderWithHead — SSR subpath import ─────────────────────────────────────
+
+describe("renderWithHead — @pyreon/head/ssr subpath", () => {
+  test("renderWithHead is importable from ssr module", async () => {
+    const mod = await import("../ssr")
+    expect(typeof mod.renderWithHead).toBe("function")
+  })
+
+  test("renderWithHead with multiple useHead calls merges tags", async () => {
+    function Layout() {
+      useHead({ titleTemplate: "%s | App", htmlAttrs: { lang: "en" } })
+      return h("div", null, h(Page, null))
+    }
+    function Page() {
+      useHead({
+        title: "Dashboard",
+        meta: [{ name: "description", content: "Dashboard page" }],
+        bodyAttrs: { class: "dashboard" },
+      })
+      return h("span", null)
+    }
+    const result = await renderWithHead(h(Layout, null))
+    expect(result.head).toContain("<title>Dashboard | App</title>")
+    expect(result.head).toContain('name="description"')
+    expect(result.htmlAttrs).toEqual({ lang: "en" })
+    expect(result.bodyAttrs).toEqual({ class: "dashboard" })
+  })
+
+  test("renderWithHead with empty head returns empty string", async () => {
+    function Page() {
+      return h("div", null, "content")
+    }
+    const result = await renderWithHead(h(Page, null))
+    expect(result.head).toBe("")
+    expect(result.html).toContain("content")
+  })
+
+  test("renderWithHead serializes HTML comment openers in script content", async () => {
+    function Page() {
+      useHead({ script: [{ children: "if (x <!-- y) {}" }] })
+      return h("div", null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain("<\\!--")
+    expect(head).not.toContain("<!--")
+  })
+})
+
 // ─── SSR — additional branch coverage ────────────────────────────────────────
 
 describe("renderWithHead — SSR additional branches", () => {

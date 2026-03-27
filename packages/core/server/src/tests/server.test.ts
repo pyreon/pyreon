@@ -1,7 +1,15 @@
 import type { ComponentFn, VNode } from "@pyreon/core"
 import { h } from "@pyreon/core"
 import { createHandler } from "../handler"
-import { buildScripts, DEFAULT_TEMPLATE, processTemplate } from "../html"
+import {
+  buildClientEntryTag,
+  buildScripts,
+  buildScriptsFast,
+  compileTemplate,
+  DEFAULT_TEMPLATE,
+  processCompiledTemplate,
+  processTemplate,
+} from "../html"
 import { island } from "../island"
 import type { Middleware } from "../middleware"
 import { prerender } from "../ssg"
@@ -630,5 +638,162 @@ describe("prerender", () => {
 
     const { rm } = await import("node:fs/promises")
     await rm(tmpDir, { recursive: true, force: true })
+  })
+})
+
+// ─── compileTemplate ─────────────────────────────────────────────────────────
+
+describe("compileTemplate", () => {
+  test("splits template into 4 parts", () => {
+    const compiled = compileTemplate(DEFAULT_TEMPLATE)
+    expect(compiled.parts).toHaveLength(4)
+  })
+
+  test("throws when template is missing <!--pyreon-app-->", () => {
+    expect(() => compileTemplate("<html><!--pyreon-head--><!--pyreon-scripts--></html>")).toThrow(
+      "Template must contain <!--pyreon-app-->",
+    )
+  })
+
+  test("handles template with all three placeholders in custom layout", () => {
+    const tpl =
+      "<head><!--pyreon-head--></head><main><!--pyreon-app--></main><footer><!--pyreon-scripts--></footer>"
+    const compiled = compileTemplate(tpl)
+    const result = processCompiledTemplate(compiled, {
+      head: "<title>Hi</title>",
+      app: "<div>App</div>",
+      scripts: "<script></script>",
+    })
+    expect(result).toBe(
+      "<head><title>Hi</title></head><main><div>App</div></main><footer><script></script></footer>",
+    )
+  })
+
+  test("handles template without <!--pyreon-scripts--> placeholder", () => {
+    const tpl = "<html><!--pyreon-head--><body><!--pyreon-app--></body></html>"
+    const compiled = compileTemplate(tpl)
+    expect(compiled.parts[3]).toBe("") // after-scripts is empty
+  })
+})
+
+// ─── processCompiledTemplate ─────────────────────────────────────────────────
+
+describe("processCompiledTemplate", () => {
+  test("produces same result as processTemplate", () => {
+    const data = {
+      head: "<title>Test</title>",
+      app: "<div>Hello</div>",
+      scripts: '<script type="module" src="/app.js"></script>',
+    }
+    const simple = processTemplate(DEFAULT_TEMPLATE, data)
+    const compiled = compileTemplate(DEFAULT_TEMPLATE)
+    const fast = processCompiledTemplate(compiled, data)
+    expect(fast).toBe(simple)
+  })
+
+  test("works with empty data", () => {
+    const compiled = compileTemplate(DEFAULT_TEMPLATE)
+    const result = processCompiledTemplate(compiled, { head: "", app: "", scripts: "" })
+    expect(result).not.toContain("<!--pyreon-head-->")
+    expect(result).not.toContain("<!--pyreon-app-->")
+    expect(result).not.toContain("<!--pyreon-scripts-->")
+  })
+})
+
+// ─── buildClientEntryTag ─────────────────────────────────────────────────────
+
+describe("buildClientEntryTag", () => {
+  test("emits a module script tag with src", () => {
+    const tag = buildClientEntryTag("/dist/client.js")
+    expect(tag).toBe('<script type="module" src="/dist/client.js"></script>')
+  })
+})
+
+// ─── buildScriptsFast ────────────────────────────────────────────────────────
+
+describe("buildScriptsFast", () => {
+  test("returns only client entry tag when no loader data", () => {
+    const tag = buildClientEntryTag("/app.js")
+    const result = buildScriptsFast(tag, null)
+    expect(result).toBe(tag)
+  })
+
+  test("returns only client entry tag when loader data is empty object", () => {
+    const tag = buildClientEntryTag("/app.js")
+    const result = buildScriptsFast(tag, {})
+    expect(result).toBe(tag)
+  })
+
+  test("includes inline loader data when present", () => {
+    const tag = buildClientEntryTag("/app.js")
+    const result = buildScriptsFast(tag, { users: [1, 2] })
+    expect(result).toContain("__PYREON_LOADER_DATA__")
+    expect(result).toContain('"users"')
+    expect(result).toContain(tag)
+  })
+
+  test("escapes </script> in loader data JSON", () => {
+    const tag = buildClientEntryTag("/app.js")
+    const result = buildScriptsFast(tag, { html: "</script>" })
+    expect(result).not.toContain("</script><")
+    expect(result).toContain("<\\/script>")
+  })
+})
+
+// ─── Middleware chaining edge cases ──────────────────────────────────────────
+
+describe("middleware — edge cases", () => {
+  const App: ComponentFn = () => h("div", null, "app")
+  const routes = [{ path: "/", component: App }]
+
+  test("middleware can modify locals for downstream middleware", async () => {
+    const log: string[] = []
+    const mw1: Middleware = (ctx) => {
+      ctx.locals.user = "alice"
+    }
+    const mw2: Middleware = (ctx) => {
+      log.push(`user=${ctx.locals.user}`)
+    }
+    const handler = createHandler({ App, routes, middleware: [mw1, mw2] })
+    await handler(new Request("http://localhost/"))
+    expect(log).toEqual(["user=alice"])
+  })
+
+  test("early short-circuit prevents later middleware from running", async () => {
+    const log: number[] = []
+    const mw1: Middleware = () => {
+      log.push(1)
+      return new Response("blocked", { status: 403 })
+    }
+    const mw2: Middleware = () => {
+      log.push(2) // should never run
+    }
+    const handler = createHandler({ App, routes, middleware: [mw1, mw2] })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.status).toBe(403)
+    expect(log).toEqual([1]) // mw2 never ran
+  })
+
+  test("async middleware is supported", async () => {
+    const mw: Middleware = async (ctx) => {
+      await new Promise((r) => setTimeout(r, 1))
+      ctx.headers.set("X-Async", "true")
+    }
+    const handler = createHandler({ App, routes, middleware: [mw] })
+    const res = await handler(new Request("http://localhost/"))
+    expect(res.headers.get("X-Async")).toBe("true")
+  })
+
+  test("middleware receives parsed URL and path", async () => {
+    let receivedPath = ""
+    let receivedSearch = ""
+    const mw: Middleware = (ctx) => {
+      receivedPath = ctx.path
+      receivedSearch = ctx.url.search
+    }
+    const handler = createHandler({ App, routes, middleware: [mw] })
+    await handler(new Request("http://localhost/about?foo=bar"))
+    expect(receivedPath).toBe("/about?foo=bar")
+    expect(receivedSearch).toBe("?foo=bar")
   })
 })

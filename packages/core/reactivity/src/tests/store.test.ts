@@ -83,6 +83,102 @@ describe("createStore", () => {
     const s2 = createStore(raw)
     expect(s1).toBe(s2)
   })
+
+  test("deep nested object mutations trigger fine-grained updates", () => {
+    const state = createStore({
+      a: { b: { c: { d: 1 } } },
+    })
+    const dValues: number[] = []
+    effect(() => {
+      dValues.push(state.a.b.c.d)
+    })
+    expect(dValues).toEqual([1])
+    state.a.b.c.d = 2
+    expect(dValues).toEqual([1, 2])
+  })
+
+  test("replacing a nested object triggers dependent effects", () => {
+    const state = createStore({ user: { name: "Alice", address: { city: "NYC" } } })
+    const cities: string[] = []
+    effect(() => {
+      cities.push(state.user.address.city)
+    })
+    expect(cities).toEqual(["NYC"])
+    // Replace the address object entirely
+    state.user.address = { city: "LA" }
+    expect(cities).toEqual(["NYC", "LA"])
+  })
+
+  test("array splice triggers length and index updates", () => {
+    const state = createStore({ items: ["a", "b", "c", "d"] })
+    const lengths: number[] = []
+    effect(() => {
+      lengths.push(state.items.length)
+    })
+    expect(lengths).toEqual([4])
+    state.items.splice(1, 2) // removes "b", "c"
+    expect(lengths).toEqual([4, 2])
+    expect([...state.items]).toEqual(["a", "d"])
+  })
+
+  test("array pop triggers length update", () => {
+    const state = createStore({ items: [1, 2, 3] })
+    const lengths: number[] = []
+    effect(() => {
+      lengths.push(state.items.length)
+    })
+    expect(lengths).toEqual([3])
+    state.items.pop()
+    expect(lengths).toEqual([3, 2])
+  })
+
+  test("delete property triggers reactivity", () => {
+    const state = createStore({ a: 1, b: 2 } as Record<string, number | undefined>)
+    const bValues: (number | undefined)[] = []
+    effect(() => {
+      bValues.push(state.b)
+    })
+    expect(bValues).toEqual([2])
+    delete state.b
+    expect(bValues).toEqual([2, undefined])
+  })
+
+  test("setting array length directly triggers reactivity", () => {
+    const state = createStore({ items: [1, 2, 3, 4, 5] })
+    const lengths: number[] = []
+    effect(() => {
+      lengths.push(state.items.length)
+    })
+    expect(lengths).toEqual([5])
+    state.items.length = 2
+    expect(lengths).toEqual([5, 2])
+  })
+
+  test("symbol property access does not trigger tracking", () => {
+    const sym = Symbol("test")
+    const raw = { x: 1 } as Record<string | symbol, unknown>
+    raw[sym] = "hidden"
+    const state = createStore(raw)
+    expect(state[sym]).toBe("hidden")
+  })
+
+  test("symbol property set goes through to target", () => {
+    const sym = Symbol("test")
+    const state = createStore({} as Record<string | symbol, unknown>)
+    state[sym] = "value"
+    expect(state[sym]).toBe("value")
+  })
+
+  test("has trap works with in operator", () => {
+    const state = createStore({ a: 1 })
+    expect("a" in state).toBe(true)
+    expect("b" in state).toBe(false)
+  })
+
+  test("ownKeys returns correct keys", () => {
+    const state = createStore({ a: 1, b: 2 })
+    expect(Object.keys(state)).toEqual(["a", "b"])
+  })
 })
 
 describe("reconcile", () => {

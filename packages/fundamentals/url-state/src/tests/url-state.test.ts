@@ -563,4 +563,25 @@ describe("useUrlState", () => {
       expect(replaceCalls[0]).not.toContain("page=")
     })
   })
+
+  describe("NaN safety (regression)", () => {
+    it("falls back to default when URL contains non-numeric value for number param", () => {
+      setSearch("?count=abc")
+      const count = useUrlState("count", 0)
+      expect(count()).toBe(0) // not NaN
+    })
+
+    it("empty string coerces to 0 for number param", () => {
+      setSearch("?count=")
+      const count = useUrlState("count", 42)
+      // Number("") is 0, not NaN — this is valid coercion
+      expect(count()).toBe(0)
+    })
+
+    it("parses valid numbers normally", () => {
+      setSearch("?count=7")
+      const count = useUrlState("count", 0)
+      expect(count()).toBe(7)
+    })
+  })
 })
