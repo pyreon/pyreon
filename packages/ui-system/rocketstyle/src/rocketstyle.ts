@@ -104,120 +104,138 @@ const rocketComponent: RocketComponent = (options) => {
     // --------------------------------------------------
     // general theme and theme mode dark / light passed in context
     // --------------------------------------------------
-    const { theme, mode } = useTheme(options)
+    // IMPORTANT: Do NOT destructure — useTheme returns getter properties.
+    // Destructuring calls getters once and captures static values.
+    // Keep the object reference so mode/isDark/isLight re-evaluate lazily.
+    const themeAttrs = useTheme(options)
 
     // --------------------------------------------------
-    // calculate themes for all defined styling dimensions
-    // --------------------------------------------------
-
-    // BASE / DEFAULT THEME Object (cached by theme identity)
-    const baseThemeHelper = ThemeManager.baseTheme
-    if (!baseThemeHelper.has(theme)) {
-      baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
-    }
-    const baseTheme = baseThemeHelper.get(theme)
-
-    // DIMENSION(S) THEMES Object (cached by theme identity)
-    const dimHelper = ThemeManager.dimensionsThemes
-    if (!dimHelper.has(theme)) {
-      dimHelper.set(theme, getDimensionThemes(theme, options))
-    }
-    const themes = dimHelper.get(theme)
-
-    // BASE / DEFAULT MODE THEME Object (cached by mode + baseTheme)
-    const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
-    if (!modeBaseHelper.has(baseTheme)) {
-      modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
-    }
-    const currentModeBaseTheme = modeBaseHelper.get(baseTheme)
-
-    // DIMENSION(S) MODE THEMES Object (cached by mode + themes)
-    const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
-    if (!modeDimHelper.has(themes)) {
-      modeDimHelper.set(themes, getThemeByMode(themes, mode))
-    }
-    const currentModeThemes = modeDimHelper.get(themes)
-
-    // --------------------------------------------------
-    // dimension map & reserved prop names
-    // --------------------------------------------------
-    const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
-      themes,
-      useBooleans: options.useBooleans,
-    })
-
-    const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
-
-    // --------------------------------------------------
-    // get final props: merged styling from context + attrs + direct props
+    // Static setup — runs once at component mount
     // --------------------------------------------------
     const { pseudo, ...mergeProps } = {
       ...localCtx,
       ...props,
     }
 
-    // --------------------------------------------------
-    // pseudo rocket state
-    // --------------------------------------------------
     const pseudoRocketstate = {
       ...pseudo,
       ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
     }
 
     // --------------------------------------------------
-    // rocketstate — active dimension values
+    // Reactive accessor — re-evaluates when mode changes.
+    // When mounted, the runtime wraps this in an effect so
+    // reading themeAttrs.mode creates a reactive dependency.
+    // Mode switches are infrequent (user-initiated), so full
+    // re-render of the styled subtree is acceptable.
     // --------------------------------------------------
-    const rocketstate = _calculateStylingAttrs({
-      props: pickStyledAttrs(mergeProps, reservedPropNames),
-      dimensions,
-    })
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: theme resolution is inherently multi-step
+    return (() => {
+      // Read theme and mode lazily via getters — tracked by the effect
+      const theme = themeAttrs.theme
+      const mode = themeAttrs.mode
 
-    const finalRocketstate = { ...rocketstate, pseudo: pseudoRocketstate }
+      // --------------------------------------------------
+      // calculate themes for all defined styling dimensions
+      // --------------------------------------------------
 
-    // --------------------------------------------------
-    // rocketstyle — computed theme based on active dimensions
-    // --------------------------------------------------
-    const computedRocketstyle = getTheme({
-      rocketstate,
-      themes: currentModeThemes,
-      baseTheme: currentModeBaseTheme,
-      transformKeys: options.transformKeys,
-      appTheme: theme,
-    })
-
-    // --------------------------------------------------
-    // final props passed to WrappedComponent
-    // --------------------------------------------------
-    const finalProps: Record<string, any> = {
-      ...omit(mergeProps, [...RESERVED_STYLING_PROPS_KEYS, ...PSEUDO_KEYS, ...options.filterAttrs]),
-      ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
-      // ref flows as a normal prop in Pyreon
-      ref: props.ref,
-      $rocketstyle: computedRocketstyle,
-      $rocketstate: finalRocketstate,
-    }
-
-    // development debugging
-    if (process.env.NODE_ENV !== "production") {
-      finalProps["data-rocketstyle"] = componentName
-
-      if (options.DEBUG) {
-        const debugPayload = {
-          component: componentName,
-          rocketstate: finalRocketstate,
-          rocketstyle: computedRocketstyle,
-          dimensions,
-          mode,
-          reservedPropNames: RESERVED_STYLING_PROPS_KEYS,
-          filteredAttrs: options.filterAttrs,
-        }
-
-        // biome-ignore lint/suspicious/noConsole: debug logging controlled by DEBUG option
-        console.debug(`[rocketstyle] ${componentName} render:`, debugPayload)
+      // BASE / DEFAULT THEME Object (cached by theme identity)
+      const baseThemeHelper = ThemeManager.baseTheme
+      if (!baseThemeHelper.has(theme)) {
+        baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
       }
-    }
+      const baseTheme = baseThemeHelper.get(theme)
 
-    return RenderComponent(finalProps)
+      // DIMENSION(S) THEMES Object (cached by theme identity)
+      const dimHelper = ThemeManager.dimensionsThemes
+      if (!dimHelper.has(theme)) {
+        dimHelper.set(theme, getDimensionThemes(theme, options))
+      }
+      const themes = dimHelper.get(theme)
+
+      // BASE / DEFAULT MODE THEME Object (cached by mode + baseTheme)
+      const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
+      if (!modeBaseHelper.has(baseTheme)) {
+        modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
+      }
+      const currentModeBaseTheme = modeBaseHelper.get(baseTheme)
+
+      // DIMENSION(S) MODE THEMES Object (cached by mode + themes)
+      const modeDimHelper = ThemeManager.modeDimensionTheme[mode]
+      if (!modeDimHelper.has(themes)) {
+        modeDimHelper.set(themes, getThemeByMode(themes, mode))
+      }
+      const currentModeThemes = modeDimHelper.get(themes)
+
+      // --------------------------------------------------
+      // dimension map & reserved prop names
+      // --------------------------------------------------
+      const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
+        themes,
+        useBooleans: options.useBooleans,
+      })
+
+      const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
+
+      // --------------------------------------------------
+      // rocketstate — active dimension values
+      // --------------------------------------------------
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        dimensions,
+      })
+
+      const finalRocketstate = { ...rocketstate, pseudo: pseudoRocketstate }
+
+      // --------------------------------------------------
+      // rocketstyle — computed theme based on active dimensions
+      // --------------------------------------------------
+      const computedRocketstyle = getTheme({
+        rocketstate,
+        themes: currentModeThemes,
+        baseTheme: currentModeBaseTheme,
+        transformKeys: options.transformKeys,
+        appTheme: theme,
+      })
+
+      // --------------------------------------------------
+      // final props passed to WrappedComponent
+      // --------------------------------------------------
+      const finalProps: Record<string, any> = {
+        ...omit(mergeProps, [
+          ...RESERVED_STYLING_PROPS_KEYS,
+          ...PSEUDO_KEYS,
+          ...options.filterAttrs,
+        ]),
+        ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
+        // ref flows as a normal prop in Pyreon
+        ref: props.ref,
+        $rocketstyle: computedRocketstyle,
+        $rocketstate: finalRocketstate,
+      }
+
+      // development debugging
+      if (process.env.NODE_ENV !== "production") {
+        finalProps["data-rocketstyle"] = componentName
+
+        if (options.DEBUG) {
+          const debugPayload = {
+            component: componentName,
+            rocketstate: finalRocketstate,
+            rocketstyle: computedRocketstyle,
+            dimensions,
+            mode,
+            reservedPropNames: RESERVED_STYLING_PROPS_KEYS,
+            filteredAttrs: options.filterAttrs,
+          }
+
+          // biome-ignore lint/suspicious/noConsole: debug logging controlled by DEBUG option
+          console.debug(`[rocketstyle] ${componentName} render:`, debugPayload)
+        }
+      }
+
+      return RenderComponent(finalProps)
+    }) as unknown as ReturnType<ComponentFn<InnerComponentProps>>
   }
 
   // ------------------------------------------------------

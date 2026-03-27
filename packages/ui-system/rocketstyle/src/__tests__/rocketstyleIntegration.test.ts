@@ -66,10 +66,17 @@ const withThemeContext = (fn: () => any) => {
   }
 }
 
+/** Unwrap reactive accessors (EnhancedComponent returns a function for mode switching). */
+const unwrap = (val: any): any => {
+  let result = val
+  while (typeof result === "function" && !result.IS_ROCKETSTYLE) result = result()
+  return result
+}
+
 /** Helper: call the component and return its output for inspection. */
 const renderProps = (Component: any, props: Record<string, any> = {}) => {
   return withThemeContext(() => {
-    const vnode = Component(props) as any
+    const vnode = unwrap(Component(props))
     return vnode?.props ?? vnode
   })
 }
@@ -584,7 +591,7 @@ describe("theme and state injection", () => {
         primary: { color: "red" },
       }))
 
-    const vnode = withThemeContext(() => Button({ state: "primary" }))
+    const vnode = withThemeContext(() => unwrap(Button({ state: "primary" })))
     expect(vnode.$rocketstyle).toBeDefined()
     expect(vnode.$rocketstyle.color).toBe("red")
     expect(vnode.$rocketstyle.bg).toBe("white")
@@ -608,7 +615,7 @@ describe("theme and state injection", () => {
       primary: { color: "blue" },
     }))
 
-    const vnode = withThemeContext(() => Button({ state: "primary" }))
+    const vnode = withThemeContext(() => unwrap(Button({ state: "primary" })))
     expect(vnode.$rocketstate).toBeDefined()
     expect(vnode.$rocketstate.state).toBe("primary")
   })

@@ -64,7 +64,10 @@ const getComputedTheme = (Component: any, props: Record<string, any> = {}) => {
     ]),
   )
   try {
-    const vnode = Component(props) as any
+    let vnode = Component(props) as any
+    // EnhancedComponent returns a reactive accessor (function) for mode switching.
+    // In tests we evaluate it directly to get the VNode.
+    while (typeof vnode === "function") vnode = vnode()
     return vnode.$rocketstyle
   } finally {
     popContext()

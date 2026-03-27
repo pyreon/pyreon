@@ -27,11 +27,15 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
 
   const Enhanced = (WrappedComponent: ComponentFn<any>) => {
     const HOCComponent: ComponentFn<any> = (props) => {
-      const { theme, mode, isDark, isLight } = useTheme({
-        inversed,
-      })
+      // IMPORTANT: Do NOT destructure — useTheme returns getter properties.
+      // Destructuring calls getters once and captures static values.
+      // Keep the object reference so properties re-evaluate lazily.
+      const themeAttrs = useTheme({ inversed })
 
-      const callbackParams = [theme, { render, mode, isDark, isLight }]
+      const callbackParams = [
+        themeAttrs.theme,
+        { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
+      ]
 
       // Remove undefined props not to override potential default props
       const filteredProps = removeUndefinedProps(props)
