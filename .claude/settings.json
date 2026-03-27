@@ -21,7 +21,26 @@
       "Bash(wc *)",
       "Bash(gh pr checks*)",
       "Bash(gh pr view*)",
-      "Bash(gh api*)"
+      
+      "Bash(gh api*)",
+      "Bash(bun run*)",
+      "Bash(bun install*)",
+      "Bash(bunx biome*)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(echo *)",
+      "Bash(python3 *)",
+      "Bash(sed *)",
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(sort *)",
+      "Bash(gh *)"
     ],
     "deny": [
       "Bash(rm -rf:*)",

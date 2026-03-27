@@ -15,6 +15,12 @@
 - **`onChange` on inputs**: Use `onInput` for keypress-by-keypress updates (native DOM events)
 - **Ternary for conditionals**: Use `<Show>` for signal-driven conditions (more efficient)
 
+## Context & Provider Mistakes
+- **Destructuring context values**: `const { mode } = useContext(ctx)` captures the value once at setup time. If the provider uses getters (`get mode()`), destructuring evaluates the getter immediately — the value becomes static. Instead, keep the context object reference and access properties lazily: `const ctx = useContext(Ctx)` then read `ctx.mode` inside reactive scopes.
+- **Static provide for dynamic values**: `provide(ctx, "dark")` captures a static value. For dynamic values (mode switching), provide an object with getters or a signal getter: `provide(ModeCtx, () => modeSignal())`.
+- **signal(newValue) to write**: `signal(5)` does NOT set the value — it reads and ignores the argument. Use `signal.set(5)` or `signal.update(n => n + 1)`. Dev mode warns about this.
+- **onClick={undefined}**: In production, `undefined` gets wrapped as an event listener and crashes. Always guard: `onClick={condition ? handler : undefined}` is safe (runtime bails on non-functions), but `onClick={maybeUndefined}` from props needs checking.
+
 ## Architecture Mistakes
 - **Circular imports**: Keep dependency order (reactivity → core → runtime-dom → router → server)
 - **Build before dev**: Workspace resolution via `"bun"` condition means no build step needed
