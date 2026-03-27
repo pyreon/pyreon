@@ -23,7 +23,10 @@ export function inferSerializer<T>(
     case "number":
       return {
         serialize: (v: T) => String(v),
-        deserialize: (raw: string) => Number(raw) as T,
+        deserialize: (raw: string) => {
+          const n = Number(raw)
+          return (Number.isNaN(n) ? defaultValue : n) as T
+        },
       }
     case "boolean":
       return {

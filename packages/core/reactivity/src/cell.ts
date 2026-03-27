@@ -57,12 +57,13 @@ export class Cell<T> {
 
   subscribe(listener: () => void): () => void {
     this.listen(listener)
-    if (this._l === listener) {
-      return () => {
-        if (this._l === listener) this._l = null
-      }
+    // The listener could be in _l (single) or _s (multi).
+    // A later subscribe() call may promote it from _l to _s,
+    // so the disposer must check both locations.
+    return () => {
+      if (this._l === listener) this._l = null
+      else this._s?.delete(listener)
     }
-    return () => this._s?.delete(listener)
   }
 }
 

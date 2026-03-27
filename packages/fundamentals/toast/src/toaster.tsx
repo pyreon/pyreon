@@ -7,11 +7,9 @@ import type { Toast, ToasterProps, ToastPosition } from "./types"
 
 // ─── Style injection ─────────────────────────────────────────────────────────
 
-let _styleInjected = false
-
 function injectStyles(): void {
-  if (_styleInjected) return
-  _styleInjected = true
+  if (typeof document === "undefined") return
+  if (document.querySelector("style[data-pyreon-toast]")) return
 
   const style = document.createElement("style")
   style.setAttribute("data-pyreon-toast", "")

@@ -218,6 +218,9 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   onCleanup(() => {
     for (const cleanup of cleanups) cleanup()
     cleanups.length = 0
+    activeId.set(null)
+    overId.set(null)
+    overEdge.set(null)
   })
 
   return { containerRef, itemRef, activeId, overId, overEdge }

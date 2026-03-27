@@ -529,8 +529,18 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     return "continue"
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: navigation is inherently multi-step
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
-    if (redirectDepth > 10) return
+    if (redirectDepth > 10) {
+      if (__DEV__) {
+        // biome-ignore lint/suspicious/noConsole: dev-only warning
+        console.warn(
+          `[Pyreon] Navigation to "${rawPath}" aborted: redirect depth exceeded 10 levels. ` +
+            "This likely indicates a redirect loop in your route configuration.",
+        )
+      }
+      return
+    }
 
     const path = normalizeTrailingSlash(rawPath, trailingSlash)
     const gen = ++_navGen
