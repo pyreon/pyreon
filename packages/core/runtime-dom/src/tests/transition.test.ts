@@ -1,4 +1,4 @@
-import type { ComponentFn, VNode, VNodeChild } from "@pyreon/core"
+import type { ComponentFn } from "@pyreon/core"
 import { h } from "@pyreon/core"
 import { signal } from "@pyreon/reactivity"
 import {
@@ -7,7 +7,6 @@ import {
   TransitionGroup as _TransitionGroup,
   mount,
 } from "../index"
-
 
 const Transition = _Transition as unknown as ComponentFn<Record<string, unknown>>
 const TransitionGroup = _TransitionGroup as unknown as ComponentFn<Record<string, unknown>>

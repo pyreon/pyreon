@@ -4,7 +4,6 @@ import {
   defineStore,
   type MutationInfo,
   resetAllStores,
-  resetStore,
   setStoreRegistryProvider,
   signal,
 } from "../index"
