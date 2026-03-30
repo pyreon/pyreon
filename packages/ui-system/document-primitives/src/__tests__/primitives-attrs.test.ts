@@ -1,66 +1,11 @@
-import { popContext, pushContext } from '@pyreon/core'
-import { context } from '@pyreon/rocketstyle'
-import { config } from '@pyreon/ui-core'
+import { initTestConfig, renderProps } from '@pyreon/test-utils'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-// Mock styled function that returns the component unchanged
-const mockStyled = (component: any) => {
-  const taggedTemplate = (_strings: any, ..._args: any[]) => component
-  return taggedTemplate
-}
-
-const mockCss = (_strings: any, ..._args: any[]) => ''
-
-const originalStyled = config.styled
-const originalCss = config.css
-
+let cleanup: () => void
 beforeAll(() => {
-  config.init({
-    css: mockCss as any,
-    styled: mockStyled as any,
-    component: 'div',
-    textComponent: 'span',
-  })
+  cleanup = initTestConfig()
 })
-
-afterAll(() => {
-  config.styled = originalStyled
-  config.css = originalCss
-})
-
-/** Push a theme context and call fn, then pop context. */
-const withThemeContext = (fn: () => any) => {
-  pushContext(
-    new Map([
-      [
-        context.id,
-        {
-          theme: { rootSize: 16 },
-          mode: 'light',
-          isDark: false,
-          isLight: true,
-        },
-      ],
-    ]),
-  )
-  try {
-    return fn()
-  } finally {
-    popContext()
-  }
-}
-
-/** Call a rocketstyle component and return its rendered VNode props. */
-const renderProps = (Component: any, props: Record<string, any> = {}) => {
-  return withThemeContext(() => {
-    const vnode = Component(props)
-    return vnode?.props ?? vnode
-  })
-}
-
-// Helper: Text-based components convert `tag` to `as` through the Text component;
-// Element-based components keep `tag` as-is.
-// Both pass `_documentProps` through to the rendered output.
+afterAll(() => cleanup())
 
 // --------------------------------------------------------
 // DocDocument (Element-based)

@@ -38,8 +38,10 @@ describe('PyreonUI', () => {
   it('defaults mode to light', () => {
     PyreonUI({ theme, children: null })
 
-    // Core context (2nd call) — has getter properties for reactive mode
-    const coreCtx = getProvideValue(1)
+    // Core context (2nd call) — ReactiveContext getter function
+    const coreCtxGetter = getProvideValue(1)
+    expect(typeof coreCtxGetter).toBe('function')
+    const coreCtx = coreCtxGetter()
     expect(coreCtx.mode).toBe('light')
     expect(coreCtx.isLight).toBe(true)
     expect(coreCtx.isDark).toBe(false)
@@ -53,7 +55,8 @@ describe('PyreonUI', () => {
   it('provides dark mode', () => {
     PyreonUI({ theme, mode: 'dark', children: null })
 
-    const coreCtx = getProvideValue(1)
+    const coreCtxGetter = getProvideValue(1)
+    const coreCtx = coreCtxGetter()
     expect(coreCtx.mode).toBe('dark')
     expect(coreCtx.isDark).toBe(true)
     expect(coreCtx.isLight).toBe(false)

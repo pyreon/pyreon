@@ -43,7 +43,9 @@ describe('buildThemeContextMap', () => {
 
   it('merges custom options', () => {
     const map = buildThemeContextMap({ mode: 'dark', isDark: true })
-    const value = [...map.values()][0] as any
+    const getter = [...map.values()][0] as any
+    // Context is ReactiveContext — value is a getter function
+    const value = getter()
     expect(value.mode).toBe('dark')
     expect(value.isDark).toBe(true)
   })

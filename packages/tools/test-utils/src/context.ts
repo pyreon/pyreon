@@ -17,12 +17,13 @@ const DEFAULTS: Required<TestThemeOptions> = {
 
 /**
  * Build a context Map suitable for pushContext() with theme/mode values.
+ * Wraps the value in a function since coreContext is a ReactiveContext.
  */
 export function buildThemeContextMap(
   options?: TestThemeOptions,
 ): Map<symbol, unknown> {
   const value = { ...DEFAULTS, ...options }
-  return new Map([[context.id, value]])
+  return new Map([[context.id, () => value]])
 }
 
 /**

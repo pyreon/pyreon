@@ -50,12 +50,12 @@ const withThemeContext = (fn: () => any) => {
     new Map([
       [
         context.id,
-        {
+        () => ({
           theme: { rootSize: 16 },
-          mode: 'light',
+          mode: 'light' as const,
           isDark: false,
           isLight: true,
-        },
+        }),
       ],
     ]),
   )

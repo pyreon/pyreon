@@ -43,8 +43,9 @@ describe('Provider', () => {
     const children = 'Content'
     Provider({ theme, children, custom: 'value' })
     // After Provider runs, context should have been pushed
-    // We can verify by reading the context value
-    const ctx = useContext(context)
+    // Context is ReactiveContext — useContext returns () => value
+    const getCtx = useContext(context)
+    const ctx = getCtx() as any
     expect(ctx.theme).toEqual({ rootSize: 16 })
     expect(ctx.custom).toBe('value')
   })

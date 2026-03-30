@@ -885,6 +885,7 @@
         "@pyreon/elements": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/styler": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
         "@vitus-labs/tools-rolldown": "^1.15.4",
@@ -936,6 +937,7 @@
       "name": "@pyreon/rocketstyle",
       "version": "0.11.5",
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },

@@ -1,50 +1,17 @@
 import { popContext, pushContext } from '@pyreon/core'
-import { config } from '@pyreon/ui-core'
-import { context } from '../context/context'
+import {
+  BaseComponent,
+  buildThemeContextMap,
+  initTestConfig,
+  withThemeContext,
+} from '@pyreon/test-utils'
 import rocketstyle from '../init'
 
-// Mock styled function that returns the component unchanged
-const mockStyled = (component: any) => {
-  const taggedTemplate = (_strings: any, ..._args: any[]) => component
-  return taggedTemplate
-}
-
-const mockCss = (_strings: any, ..._args: any[]) => ''
-
-const originalStyled = config.styled
-const originalCss = config.css
-
+let cleanup: () => void
 beforeAll(() => {
-  config.init({
-    css: mockCss as any,
-    styled: mockStyled as any,
-    component: 'div',
-    textComponent: 'span',
-  })
+  cleanup = initTestConfig()
 })
-
-afterAll(() => {
-  config.styled = originalStyled
-  config.css = originalCss
-})
-
-/**
- * Base component that exposes internal props for testing.
- * In Pyreon, components are plain functions — no forwardRef needed.
- */
-const BaseComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
-  type: 'div',
-  props: {
-    ...rest,
-    'data-hover': String($rocketstate?.pseudo?.hover ?? 'none'),
-    'data-focus': String($rocketstate?.pseudo?.focus ?? 'none'),
-    'data-pressed': String($rocketstate?.pseudo?.pressed ?? 'none'),
-  },
-  children,
-  $rocketstyle,
-  $rocketstate,
-})
-BaseComponent.displayName = 'BaseComponent'
+afterAll(() => cleanup())
 
 /** Child component that reads consumer context */
 const ChildComponent: any = ({
@@ -59,28 +26,6 @@ const ChildComponent: any = ({
   children,
 })
 ChildComponent.displayName = 'ChildComponent'
-
-/** Push a theme context and run fn, then pop */
-const withThemeContext = (fn: () => any) => {
-  pushContext(
-    new Map([
-      [
-        context.id,
-        {
-          theme: { rootSize: 16 },
-          mode: 'light',
-          isDark: false,
-          isLight: true,
-        },
-      ],
-    ]),
-  )
-  try {
-    return fn()
-  } finally {
-    popContext()
-  }
-}
 
 // --------------------------------------------------------
 // Provider/Consumer integration
@@ -193,17 +138,7 @@ describe('Provider/Consumer integration', () => {
       }).config({})
 
       pushContext(
-        new Map([
-          [
-            context.id,
-            {
-              theme: { rootSize: 16 },
-              mode: 'dark',
-              isDark: true,
-              isLight: false,
-            },
-          ],
-        ]),
+        buildThemeContextMap({ mode: 'dark', isDark: true, isLight: false }),
       )
       try {
         const result = Button({})

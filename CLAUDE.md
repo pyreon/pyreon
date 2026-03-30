@@ -33,7 +33,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                            |
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
-| `@pyreon/lint`           | Pyreon-specific linter — 56 rules, 12 categories, config files, watch mode, AST cache                                                         |
+| `@pyreon/lint`           | Pyreon-specific linter — 56 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
+| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle                                        |
 
 ### UI System (Component Library)
 
@@ -400,8 +401,19 @@ Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 
 ### Context providing pattern
 
+Two context types:
+- `createContext<T>(default)` — static context, `useContext()` returns `T`, safe to destructure
+- `createReactiveContext<T>(default)` — reactive context, `useContext()` returns `() => T`, must call to read
+
 `provide(ctx, value)` — pushes context and auto-cleans up on unmount.
 Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
+
+For reactive values (mode, locale, etc.), always use `createReactiveContext`:
+```tsx
+const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
+// Provider: provide(ModeCtx, () => modeSignal())
+// Consumer: const getMode = useContext(ModeCtx); getMode() // 'light'
+```
 
 ### onMount signature
 

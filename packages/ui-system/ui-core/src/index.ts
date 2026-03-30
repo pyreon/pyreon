@@ -1,5 +1,6 @@
 import compose from './compose'
 import config, { init } from './config'
+import type { CoreContextValue } from './context'
 import Provider, { context } from './context'
 import hoistNonReactStatics from './hoistNonReactStatics'
 import type { HTMLElementAttrs, HTMLTagAttrsByTag, HTMLTags, HTMLTextTags } from './html'
@@ -20,6 +21,7 @@ export type { CSSEngineConnector } from './config'
 export type {
   BreakpointKeys,
   Breakpoints,
+  CoreContextValue,
   HTMLElementAttrs,
   HTMLTagAttrsByTag,
   HTMLTags,

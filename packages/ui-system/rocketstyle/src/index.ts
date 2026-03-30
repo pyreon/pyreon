@@ -73,5 +73,22 @@ export type {
   TProvider,
 }
 
+/**
+ * Resolve a $rocketstyle value — handles both function accessor and plain object.
+ * Use in styled() interpolation functions when $rocketstyle may be a reactive accessor.
+ *
+ * @example
+ * ```ts
+ * styled(Component)`
+ *   color: ${(props) => resolveTheme(props.$rocketstyle).color};
+ * `
+ * ```
+ */
+export function resolveTheme<T = Record<string, unknown>>(
+  value: (() => T) | T,
+): T {
+  return typeof value === 'function' ? (value as () => T)() : value
+}
+
 export { context, isRocketComponent, Provider, rocketstyle }
 export default rocketstyle
