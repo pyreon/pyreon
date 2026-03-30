@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/toast",
-  "version": "0.11.3",
+  "version": "0.11.4",
   "description": "Imperative toast notifications for Pyreon \u2014 no provider needed",
   "license": "MIT",
   "repository": {
