@@ -443,7 +443,8 @@ function toAttrName(key: string): string {
 }
 
 function isStyleObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  if (!value) return false
+  return typeof value === 'object'
 }
 
 function normalizeStyle(value: unknown): string {
