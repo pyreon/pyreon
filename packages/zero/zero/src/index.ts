@@ -120,6 +120,27 @@ export { compressionMiddleware, compressResponse, isCompressible } from './compr
 export type { Action, ActionContext, ActionHandler } from './actions'
 export { createActionMiddleware, defineAction } from './actions'
 
+// ─── Favicon ────────────────────────────────────────────────────────────────
+
+export type { FaviconPluginConfig } from './favicon'
+export { faviconPlugin } from './favicon'
+
+// ─── Meta ───────────────────────────────────────────────────────────────────
+
+export type { MetaProps } from './meta'
+export { buildMetaTags, Meta } from './meta'
+
+// ─── I18n routing ───────────────────────────────────────────────────────────
+
+export type { I18nRoutingConfig, LocaleContext } from './i18n-routing'
+export {
+  buildLocalePath,
+  createLocaleContext,
+  detectLocaleFromHeader,
+  extractLocaleFromPath,
+  i18nRouting,
+} from './i18n-routing'
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type {
