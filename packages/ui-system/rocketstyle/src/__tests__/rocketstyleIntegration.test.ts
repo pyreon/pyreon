@@ -1,34 +1,18 @@
-import { popContext, pushContext } from '@pyreon/core'
-import { config } from '@pyreon/ui-core'
-import { context } from '../context/context'
+import {
+  ThemeCapture,
+  getComputedTheme,
+  initTestConfig,
+  renderProps,
+  withThemeContext,
+} from '@pyreon/test-utils'
 import rocketstyle from '../init'
 import isRocketComponent from '../isRocketComponent'
 
-// Mock styled function that returns the component unchanged
-const mockStyled = (component: any) => {
-  const taggedTemplate = (_strings: any, ..._args: any[]) => component
-  return taggedTemplate
-}
-
-const mockCss = (_strings: any, ..._args: any[]) => ''
-
-// Store originals to restore later
-const originalStyled = config.styled
-const originalCss = config.css
-
+let cleanup: () => void
 beforeAll(() => {
-  config.init({
-    css: mockCss as any,
-    styled: mockStyled as any,
-    component: 'div',
-    textComponent: 'span',
-  })
+  cleanup = initTestConfig()
 })
-
-afterAll(() => {
-  config.styled = originalStyled
-  config.css = originalCss
-})
+afterAll(() => cleanup())
 
 /**
  * Base component that filters internal props and returns a VNode-like object.
@@ -43,36 +27,6 @@ const BaseComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: a
   $rocketstate,
 })
 BaseComponent.displayName = 'BaseComponent'
-
-/** Helper to push a theme context for testing */
-const withThemeContext = (fn: () => any) => {
-  pushContext(
-    new Map([
-      [
-        context.id,
-        () => ({
-          theme: { rootSize: 16 },
-          mode: 'light' as const,
-          isDark: false,
-          isLight: true,
-        }),
-      ],
-    ]),
-  )
-  try {
-    return fn()
-  } finally {
-    popContext()
-  }
-}
-
-/** Helper: call the component and return its output for inspection. */
-const renderProps = (Component: any, props: Record<string, any> = {}) => {
-  return withThemeContext(() => {
-    const vnode = Component(props)
-    return vnode?.props ?? vnode
-  })
-}
 
 // --------------------------------------------------------
 // rocketstyle factory
@@ -565,47 +519,25 @@ describe('rendering without Provider context', () => {
 // --------------------------------------------------------
 describe('theme and state injection', () => {
   it('passes $rocketstyle theme to inner component', () => {
-    const Receiver: any = ({ $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: 'div',
-      props: rest,
-      children: [],
-      key: null,
-      $rocketstyle,
-      $rocketstate,
-    })
-    Receiver.displayName = 'Receiver'
-
     const Button: any = rocketstyle()({
       name: 'ThemeInjButton',
-      component: Receiver,
+      component: ThemeCapture,
     })
       .theme(() => ({ color: 'blue', bg: 'white' }))
       .states(() => ({
         primary: { color: 'red' },
       }))
 
-    const vnode = withThemeContext(() => Button({ state: 'primary' }))
-    // $rocketstyle is a function accessor for reactive mode switching — call it to resolve
-    const rs = typeof vnode.$rocketstyle === 'function' ? vnode.$rocketstyle() : vnode.$rocketstyle
+    const rs = getComputedTheme(Button, { state: 'primary' })
     expect(rs).toBeDefined()
     expect(rs.color).toBe('red')
     expect(rs.bg).toBe('white')
   })
 
   it('passes $rocketstate with active dimensions to inner component', () => {
-    const Receiver: any = ({ $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: 'div',
-      props: rest,
-      children: [],
-      key: null,
-      $rocketstyle,
-      $rocketstate,
-    })
-    Receiver.displayName = 'Receiver'
-
     const Button: any = rocketstyle()({
       name: 'StateInjButton',
-      component: Receiver,
+      component: ThemeCapture,
     }).states(() => ({
       primary: { color: 'blue' },
     }))
