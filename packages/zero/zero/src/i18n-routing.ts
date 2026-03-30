@@ -1,3 +1,5 @@
+import { createContext, useContext } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
 
 // ─── Localized routing ─────────────────────────────────────────────────────
@@ -233,4 +235,59 @@ function parseCookies(header: string | undefined): Record<string, string> {
     if (key && value) result[key] = decodeURIComponent(value)
   }
   return result
+}
+
+// ─── Reactive locale hook ───────────────────────────────────────────────────
+
+/** @internal Context for the current locale. */
+export const LocaleCtx = createContext<string>('en')
+
+/** Current locale signal — set by the server middleware or client-side detection. */
+export const localeSignal = signal('en')
+
+/**
+ * Read the current locale reactively.
+ *
+ * In SSR: reads from context (set by i18nRouting middleware).
+ * In CSR: reads from the locale signal.
+ *
+ * @example
+ * ```tsx
+ * const locale = useLocale() // "en", "de", etc.
+ * ```
+ */
+export function useLocale(): string {
+  return useContext(LocaleCtx)
+}
+
+/**
+ * Set the locale client-side and update the URL.
+ *
+ * @example
+ * ```tsx
+ * <button onClick={() => setLocale('de')}>Deutsch</button>
+ * ```
+ */
+export function setLocale(
+  locale: string,
+  config: I18nRoutingConfig,
+): void {
+  localeSignal.set(locale)
+
+  // Persist to cookie
+  if (typeof document !== 'undefined') {
+    document.cookie = `${config.cookieName ?? 'locale'}=${locale}; path=/; max-age=31536000`
+  }
+
+  // Navigate to localized URL
+  if (typeof window !== 'undefined') {
+    const strategy = config.strategy ?? 'prefix-except-default'
+    const { pathWithoutLocale } = extractLocaleFromPath(
+      window.location.pathname,
+      config.locales,
+      config.defaultLocale,
+    )
+    const newPath = buildLocalePath(pathWithoutLocale, locale, config.defaultLocale, strategy)
+    window.location.pathname = newPath
+  }
 }

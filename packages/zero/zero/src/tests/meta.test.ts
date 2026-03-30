@@ -106,4 +106,39 @@ describe('buildMetaTags', () => {
     })
     expect(tags.meta.find((m) => m.name === 'viewport')?.content).toBe('width=device-width')
   })
+
+  it('auto-generates hreflang alternates from i18n config', () => {
+    const tags = buildMetaTags({
+      canonical: 'https://example.com/de/about',
+      origin: 'https://example.com',
+      i18n: {
+        locales: ['en', 'de', 'cs'],
+        defaultLocale: 'en',
+      },
+    })
+
+    const alternates = tags.link.filter((l) => l.rel === 'alternate')
+    expect(alternates.length).toBe(4) // 3 locales + x-default
+
+    expect(alternates.find((a) => a.hreflang === 'en')?.href).toBe('https://example.com/about')
+    expect(alternates.find((a) => a.hreflang === 'de')?.href).toBe('https://example.com/de/about')
+    expect(alternates.find((a) => a.hreflang === 'cs')?.href).toBe('https://example.com/cs/about')
+    expect(alternates.find((a) => a.hreflang === 'x-default')?.href).toBe('https://example.com/about')
+  })
+
+  it('adds og:locale:alternate for non-current locales', () => {
+    const tags = buildMetaTags({
+      locale: 'de',
+      origin: 'https://example.com',
+      canonical: 'https://example.com/de/about',
+      i18n: {
+        locales: ['en', 'de'],
+        defaultLocale: 'en',
+      },
+    })
+
+    const ogAlternates = tags.meta.filter((m) => m.property === 'og:locale:alternate')
+    expect(ogAlternates.length).toBe(1)
+    expect(ogAlternates[0]?.content).toBe('en')
+  })
 })

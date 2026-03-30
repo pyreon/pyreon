@@ -1,21 +1,16 @@
 import type { VNodeChild } from '@pyreon/core'
+import { useContext } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import type { I18nRoutingConfig, LocaleContext } from './i18n-routing'
+import { LocaleCtx, createLocaleContext, extractLocaleFromPath } from './i18n-routing'
 
 // ─── Meta component ────────────────────────────────────────────────────────
-//
-// Declarative <Meta> component for managing page-level metadata:
-// - Title, description, canonical URL
-// - Open Graph (og:title, og:image, etc.)
-// - Twitter Cards
-// - Structured data (JSON-LD)
-// - Robots directives
-//
-// Uses @pyreon/head under the hood for SSR-compatible head management.
 
 export interface MetaProps {
-  /** Page title. Also sets og:title and twitter:title. */
-  title?: string
-  /** Page description. Also sets og:description and twitter:description. */
-  description?: string
+  /** Page title. Accepts reactive accessor `() => string`. */
+  title?: string | (() => string)
+  /** Page description. Accepts reactive accessor. */
+  description?: string | (() => string)
   /** Canonical URL. Also sets og:url. */
   canonical?: string
   /** Open Graph image URL. Also sets twitter:image. */
@@ -50,66 +45,40 @@ export interface MetaProps {
   jsonLd?: Record<string, unknown>
   /** Additional custom meta tags. */
   extra?: Array<{ name?: string; property?: string; content: string }>
+  /**
+   * I18n routing config — when provided, auto-generates hreflang alternate
+   * links for all locales based on the current path.
+   * Also sets og:locale and og:locale:alternate.
+   */
+  i18n?: I18nRoutingConfig
+  /** Base URL for building absolute hreflang URLs. e.g. "https://example.com" */
+  origin?: string
   children?: VNodeChild
 }
+
+const resolveStr = (v: string | (() => string) | undefined): string | undefined =>
+  typeof v === 'function' ? v() : v
 
 /**
  * Declarative meta component for SSR-compatible page metadata.
  *
- * Sets title, description, Open Graph, Twitter Cards, canonical URL,
- * JSON-LD structured data, and robots in a single component.
- *
  * @example
  * ```tsx
- * <Meta
- *   title="My Page"
- *   description="Page description"
- *   image="/og-image.jpg"
- *   canonical="https://example.com/page"
- * />
- * ```
- *
- * @example
- * ```tsx
- * // Article with structured data
- * <Meta
- *   title="Blog Post"
- *   description="A great blog post"
- *   type="article"
- *   publishedTime="2026-01-15"
- *   author="Vit Bokisch"
- *   jsonLd={{
- *     "@type": "Article",
- *     headline: "Blog Post",
- *     author: { "@type": "Person", name: "Vit Bokisch" },
- *   }}
- * />
+ * <Meta title="My Page" description="..." image="/og.jpg" canonical="https://..." />
  * ```
  */
 export function Meta(props: MetaProps): VNodeChild {
-  // Lazy import to avoid circular deps and allow tree-shaking
-  // when @pyreon/head is not installed
-  let useHead: ((opts: any) => void) | undefined
-  try {
-    const head = require('@pyreon/head')
-    useHead = head.useHead
-  } catch {
-    // @pyreon/head not available — render meta tags directly
-  }
+  const title = resolveStr(props.title)
+  const description = resolveStr(props.description)
+  const tags = buildMetaTags({ ...props, title, description })
 
-  const tags = buildMetaTags(props)
+  useHead({
+    title,
+    meta: tags.meta,
+    link: tags.link,
+    script: tags.script,
+  })
 
-  if (useHead) {
-    useHead({
-      title: props.title,
-      meta: tags.meta,
-      link: tags.link,
-      script: tags.script,
-    })
-    return props.children ?? null
-  }
-
-  // Fallback: return nothing (tags need @pyreon/head for injection)
   return props.children ?? null
 }
 
@@ -119,39 +88,29 @@ interface MetaTags {
   script: Array<{ type: string; children: string }>
 }
 
-function buildMetaTags(props: MetaProps): MetaTags {
+export function buildMetaTags(
+  props: Omit<MetaProps, 'title' | 'description' | 'children'> & {
+    title?: string
+    description?: string
+  },
+): MetaTags {
   const meta: Array<Record<string, string>> = []
   const link: Array<Record<string, string>> = []
   const script: Array<{ type: string; children: string }> = []
 
   const {
-    title,
-    description,
-    canonical,
-    image,
-    imageAlt,
-    type = 'website',
-    siteName,
-    twitterCard = 'summary_large_image',
-    twitterSite,
-    twitterCreator,
-    locale = 'en_US',
-    alternateLocales,
+    title, description, canonical, image, imageAlt,
+    type = 'website', siteName,
+    twitterCard = 'summary_large_image', twitterSite, twitterCreator,
+    locale = 'en_US', alternateLocales,
     robots = 'index, follow',
-    publishedTime,
-    modifiedTime,
-    author,
-    tags,
-    jsonLd,
-    extra,
+    publishedTime, modifiedTime, author, tags, jsonLd, extra,
   } = props
 
-  // Basic meta
   if (description) meta.push({ name: 'description', content: description })
   if (robots) meta.push({ name: 'robots', content: robots })
   if (author) meta.push({ name: 'author', content: author })
 
-  // Open Graph
   if (title) meta.push({ property: 'og:title', content: title })
   if (description) meta.push({ property: 'og:description', content: description })
   if (canonical) meta.push({ property: 'og:url', content: canonical })
@@ -161,19 +120,13 @@ function buildMetaTags(props: MetaProps): MetaTags {
   if (siteName) meta.push({ property: 'og:site_name', content: siteName })
   meta.push({ property: 'og:locale', content: locale })
 
-  // Article-specific
   if (type === 'article') {
     if (publishedTime) meta.push({ property: 'article:published_time', content: publishedTime })
     if (modifiedTime) meta.push({ property: 'article:modified_time', content: modifiedTime })
     if (author) meta.push({ property: 'article:author', content: author })
-    if (tags) {
-      for (const tag of tags) {
-        meta.push({ property: 'article:tag', content: tag })
-      }
-    }
+    if (tags) for (const tag of tags) meta.push({ property: 'article:tag', content: tag })
   }
 
-  // Twitter Cards
   meta.push({ name: 'twitter:card', content: twitterCard })
   if (title) meta.push({ name: 'twitter:title', content: title })
   if (description) meta.push({ name: 'twitter:description', content: description })
@@ -182,7 +135,6 @@ function buildMetaTags(props: MetaProps): MetaTags {
   if (twitterSite) meta.push({ name: 'twitter:site', content: twitterSite })
   if (twitterCreator) meta.push({ name: 'twitter:creator', content: twitterCreator })
 
-  // Canonical + alternate locales
   if (canonical) link.push({ rel: 'canonical', href: canonical })
   if (alternateLocales) {
     for (const alt of alternateLocales) {
@@ -190,7 +142,6 @@ function buildMetaTags(props: MetaProps): MetaTags {
     }
   }
 
-  // JSON-LD
   if (jsonLd) {
     script.push({
       type: 'application/ld+json',
@@ -198,18 +149,45 @@ function buildMetaTags(props: MetaProps): MetaTags {
     })
   }
 
-  // Custom extra tags
-  if (extra) {
-    for (const tag of extra) {
-      meta.push(tag)
+  if (extra) for (const tag of extra) meta.push(tag)
+
+  // I18n: auto-generate hreflang alternates from i18nRouting config
+  if (props.i18n) {
+    const i18nConfig = props.i18n
+    const origin = props.origin ?? ''
+    const currentPath = canonical?.replace(origin, '') ?? '/'
+    const { pathWithoutLocale } = extractLocaleFromPath(
+      currentPath,
+      i18nConfig.locales,
+      i18nConfig.defaultLocale,
+    )
+    const strategy = i18nConfig.strategy ?? 'prefix-except-default'
+
+    for (const loc of i18nConfig.locales) {
+      const localizedPath =
+        strategy === 'prefix-except-default' && loc === i18nConfig.defaultLocale
+          ? pathWithoutLocale
+          : `/${loc}${pathWithoutLocale === '/' ? '' : pathWithoutLocale}`
+
+      link.push({
+        rel: 'alternate',
+        hreflang: loc,
+        href: `${origin}${localizedPath}`,
+      })
+
+      // og:locale:alternate for non-current locales
+      if (loc !== locale) {
+        meta.push({ property: 'og:locale:alternate', content: loc })
+      }
     }
+
+    // x-default hreflang pointing to default locale
+    link.push({
+      rel: 'alternate',
+      hreflang: 'x-default',
+      href: `${origin}${pathWithoutLocale}`,
+    })
   }
 
   return { meta, link, script }
 }
-
-/**
- * Build meta tags for programmatic use (SSR, API).
- * Returns arrays of meta/link/script objects ready for head injection.
- */
-export { buildMetaTags }

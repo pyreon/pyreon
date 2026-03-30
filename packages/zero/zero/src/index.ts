@@ -139,6 +139,8 @@ export {
   detectLocaleFromHeader,
   extractLocaleFromPath,
   i18nRouting,
+  setLocale,
+  useLocale,
 } from './i18n-routing'
 
 // ─── Types ───────────────────────────────────────────────────────────────────

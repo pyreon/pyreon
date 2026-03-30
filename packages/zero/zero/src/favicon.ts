@@ -82,6 +82,68 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
       isBuild = resolvedConfig.command === 'build'
     },
 
+    // Dev server: serve generated favicons on-the-fly
+    configureServer(server) {
+      const sourcePath = join(root, config.source)
+
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url ?? ''
+
+        // Serve source as favicon.svg in dev
+        if (url === '/favicon.svg' && config.source.endsWith('.svg')) {
+          try {
+            const content = await readFile(sourcePath, 'utf-8')
+            res.setHeader('Content-Type', 'image/svg+xml')
+            res.end(content)
+            return
+          } catch { /* fall through */ }
+        }
+
+        // Serve generated PNGs on-demand
+        const sizeMatch = SIZES.find((s) => url === `/${s.name}`)
+        if (sizeMatch) {
+          const png = await resizeToPng(sourcePath, sizeMatch.size)
+          if (png) {
+            res.setHeader('Content-Type', 'image/png')
+            res.setHeader('Cache-Control', 'no-cache')
+            res.end(Buffer.from(png))
+            return
+          }
+        }
+
+        // Serve generated ICO on-demand
+        if (url === '/favicon.ico') {
+          const ico = await generateIco(sourcePath)
+          if (ico) {
+            res.setHeader('Content-Type', 'image/x-icon')
+            res.setHeader('Cache-Control', 'no-cache')
+            res.end(Buffer.from(ico))
+            return
+          }
+        }
+
+        // Serve manifest
+        if (url === '/site.webmanifest' && generateManifest) {
+          const manifest = {
+            name: config.name ?? 'App',
+            short_name: config.name ?? 'App',
+            icons: [
+              { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+              { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+            ],
+            theme_color: themeColor,
+            background_color: backgroundColor,
+            display: 'standalone',
+          }
+          res.setHeader('Content-Type', 'application/manifest+json')
+          res.end(JSON.stringify(manifest, null, 2))
+          return
+        }
+
+        next()
+      })
+    },
+
     // Inject favicon <link> tags into HTML
     transformIndexHtml() {
       const isSvg = config.source.endsWith('.svg')

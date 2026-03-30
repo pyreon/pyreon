@@ -120,4 +120,44 @@ describe('createLocaleContext', () => {
       { locale: 'cs', url: '/cs/about' },
     ])
   })
+
+  it('alternates for root path', () => {
+    const ctx = createLocaleContext('en', '/', config)
+    const alts = ctx.alternates()
+    expect(alts[0]?.url).toBe('/')
+    expect(alts[1]?.url).toBe('/de')
+  })
+
+  it('localePath for root with prefix strategy', () => {
+    const prefixConfig = { ...config, strategy: 'prefix' as const }
+    const ctx = createLocaleContext('en', '/en/', prefixConfig)
+    expect(ctx.localePath('/')).toBe('/en')
+    expect(ctx.localePath('/', 'de')).toBe('/de')
+  })
+})
+
+describe('useLocale', () => {
+  it('exports useLocale function', async () => {
+    const mod = await import('../i18n-routing')
+    expect(typeof mod.useLocale).toBe('function')
+  })
+
+  it('exports setLocale function', async () => {
+    const mod = await import('../i18n-routing')
+    expect(typeof mod.setLocale).toBe('function')
+  })
+
+  it('exports localeSignal', async () => {
+    const mod = await import('../i18n-routing')
+    expect(typeof mod.localeSignal).toBe('function')
+    expect(mod.localeSignal()).toBe('en')
+  })
+})
+
+describe('i18nRouting plugin', () => {
+  it('returns a Vite plugin with correct name', async () => {
+    const { i18nRouting: routing } = await import('../i18n-routing')
+    const plugin = routing({ locales: ['en', 'de'], defaultLocale: 'en' }) as any
+    expect(plugin.name).toBe('pyreon-zero-i18n-routing')
+  })
 })
