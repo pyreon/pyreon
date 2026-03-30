@@ -35,34 +35,31 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
       // Remove undefined props not to override potential default props
       const filteredProps = removeUndefinedProps(props)
 
-      // Reactive accessor — re-evaluates when mode changes.
-      // Reading themeAttrs.mode inside the accessor creates a dependency
-      // tracked by the runtime's effect (via mountReactive).
-      // This ensures .attrs() callbacks see the current mode on mode switch.
-      return (() => {
-        const callbackParams = [
-          themeAttrs.theme,
-          { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
-        ]
+      // Read theme attrs eagerly — .attrs() callbacks run once at mount.
+      // Mode-dependent styling is handled reactively by the $rocketstyle
+      // accessor in EnhancedComponent, not by re-running attrs.
+      const callbackParams = [
+        themeAttrs.theme,
+        { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
+      ]
 
-        const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
+      const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
 
-        const finalAttrs = calculateAttrs([
-          {
-            ...prioritizedAttrs,
-            ...filteredProps,
-          },
-          ...callbackParams,
-        ])
-
-        const finalProps = {
+      const finalAttrs = calculateAttrs([
+        {
           ...prioritizedAttrs,
-          ...finalAttrs,
           ...filteredProps,
-        }
+        },
+        ...callbackParams,
+      ])
 
-        return WrappedComponent(finalProps)
-      }) as unknown as ReturnType<ComponentFn<any>>
+      const finalProps = {
+        ...prioritizedAttrs,
+        ...finalAttrs,
+        ...filteredProps,
+      }
+
+      return WrappedComponent(finalProps)
     }
     return HOCComponent
   }
