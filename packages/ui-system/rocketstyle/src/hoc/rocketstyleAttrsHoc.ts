@@ -32,31 +32,37 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
       // Keep the object reference so properties re-evaluate lazily.
       const themeAttrs = useTheme({ inversed })
 
-      const callbackParams = [
-        themeAttrs.theme,
-        { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
-      ]
-
       // Remove undefined props not to override potential default props
       const filteredProps = removeUndefinedProps(props)
 
-      const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
+      // Reactive accessor — re-evaluates when mode changes.
+      // Reading themeAttrs.mode inside the accessor creates a dependency
+      // tracked by the runtime's effect (via mountReactive).
+      // This ensures .attrs() callbacks see the current mode on mode switch.
+      return (() => {
+        const callbackParams = [
+          themeAttrs.theme,
+          { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
+        ]
 
-      const finalAttrs = calculateAttrs([
-        {
+        const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
+
+        const finalAttrs = calculateAttrs([
+          {
+            ...prioritizedAttrs,
+            ...filteredProps,
+          },
+          ...callbackParams,
+        ])
+
+        const finalProps = {
           ...prioritizedAttrs,
+          ...finalAttrs,
           ...filteredProps,
-        },
-        ...callbackParams,
-      ])
+        }
 
-      const finalProps = {
-        ...prioritizedAttrs,
-        ...finalAttrs,
-        ...filteredProps,
-      }
-
-      return WrappedComponent(finalProps)
+        return WrappedComponent(finalProps)
+      }) as unknown as ReturnType<ComponentFn<any>>
     }
     return HOCComponent
   }

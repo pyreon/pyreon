@@ -11,7 +11,12 @@ type GroupRendererProps = {
   appear?: boolean | undefined
   timeout?: number | undefined
   callbacks: Partial<TransitionCallbacks>
-  children: VNode[]
+  /**
+   * Children can be a static array OR a reactive accessor `() => VNode[]`.
+   * When passed as an accessor, GroupRenderer tracks changes and
+   * animates entering/leaving children automatically.
+   */
+  children: VNode[] | (() => VNode[])
 }
 
 type KeyedChild = { key: string | number; element: VNode }
@@ -37,6 +42,9 @@ const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
  * Children that appear (new key) animate in. Children that disappear
  * (removed key) stay in DOM during leave animation, then unmount.
  * config.tag wraps all children as a container element.
+ *
+ * In Pyreon, components run once. Pass children as a reactive accessor
+ * `() => VNode[]` for the group to detect changes and animate entries/exits.
  */
 const GroupRenderer = ({
   config,
@@ -51,74 +59,89 @@ const GroupRenderer = ({
 
   const prevMap = new Map<string | number, VNode>()
   const leavingMap = new Map<string | number, VNode>()
-  const forceUpdateSignal = signal(0)
+  const forceUpdate = signal(0)
 
-  const currentKeyed = getKeyedChildren(children)
-  const currentMap = new Map<string | number, VNode>()
-  for (const { key, element } of currentKeyed) {
-    currentMap.set(key, element)
-  }
+  // Normalize children to an accessor
+  const getChildren = typeof children === "function" ? (children as () => VNode[]) : () => children
 
-  const initialKeys: Set<string | number> = new Set(currentMap.keys())
-
-  // Detect leaving children
-  for (const [key, child] of prevMap) {
-    if (!currentMap.has(key)) {
-      leavingMap.set(key, child)
-    }
-  }
-
-  // If a leaving child reappears, stop leaving
-  for (const key of currentMap.keys()) {
-    leavingMap.delete(key)
-  }
-
-  prevMap.clear()
-  for (const [key, element] of currentMap) {
+  // Track initial keys for appear animation logic
+  const initialKeyed = getKeyedChildren(getChildren())
+  const initialKeys = new Set(initialKeyed.map((c) => c.key))
+  for (const { key, element } of initialKeyed) {
     prevMap.set(key, element)
   }
 
   const handleAfterLeave = (key: string | number) => {
     leavingMap.delete(key)
     callbacks.onAfterLeave?.()
-    forceUpdateSignal.update((c) => c + 1)
+    forceUpdate.update((c) => c + 1)
   }
 
-  // Merge current + leaving
-  const allEntries: KeyedChild[] = [...currentKeyed]
-  for (const [key, element] of leavingMap) {
-    allEntries.push({ key, element })
-  }
+  // Reactive accessor — re-evaluates when children() or forceUpdate changes
+  return (() => {
+    forceUpdate()
 
-  const groupedChildren = allEntries.map(({ key, element }) => {
-    const isInitial = initialKeys.has(key)
-    const isShowing = currentMap.has(key)
+    const currentChildren = getChildren()
+    const currentKeyed = getKeyedChildren(currentChildren)
+    const currentMap = new Map<string | number, VNode>()
+    for (const { key, element } of currentKeyed) {
+      currentMap.set(key, element)
+    }
 
-    return (
-      <TransitionItem
-        show={() => isShowing}
-        appear={isInitial ? effectiveAppear : true}
-        timeout={effectiveTimeout}
-        enterStyle={config.enterStyle}
-        enterToStyle={config.enterToStyle}
-        enterTransition={config.enterTransition}
-        leaveStyle={config.leaveStyle}
-        leaveToStyle={config.leaveToStyle}
-        leaveTransition={config.leaveTransition}
-        enter={config.enter}
-        enterFrom={config.enterFrom}
-        enterTo={config.enterTo}
-        leave={config.leave}
-        leaveFrom={config.leaveFrom}
-        leaveTo={config.leaveTo}
-        onAfterLeave={() => handleAfterLeave(key)}
-      >
-        {element}
-      </TransitionItem>
-    )
-  })
+    // Detect leaving children
+    for (const [key, child] of prevMap) {
+      if (!currentMap.has(key) && !leavingMap.has(key)) {
+        leavingMap.set(key, child)
+      }
+    }
 
-  return h(config.tag, { ...htmlProps }, ...groupedChildren)
+    // Cancel leave if child reappears
+    for (const key of currentMap.keys()) {
+      leavingMap.delete(key)
+    }
+
+    // Update prev for next diff
+    prevMap.clear()
+    for (const [key, element] of currentMap) {
+      prevMap.set(key, element)
+    }
+
+    // Merge current + leaving
+    const allEntries: KeyedChild[] = [...currentKeyed]
+    for (const [key, element] of leavingMap) {
+      allEntries.push({ key, element })
+    }
+
+    const groupedChildren = allEntries.map(({ key, element }) => {
+      const isInitial = initialKeys.has(key)
+      const isShowing = currentMap.has(key)
+
+      return (
+        <TransitionItem
+          show={() => isShowing}
+          appear={isInitial ? effectiveAppear : true}
+          timeout={effectiveTimeout}
+          enterStyle={config.enterStyle}
+          enterToStyle={config.enterToStyle}
+          enterTransition={config.enterTransition}
+          leaveStyle={config.leaveStyle}
+          leaveToStyle={config.leaveToStyle}
+          leaveTransition={config.leaveTransition}
+          enter={config.enter}
+          enterFrom={config.enterFrom}
+          enterTo={config.enterTo}
+          leave={config.leave}
+          leaveFrom={config.leaveFrom}
+          leaveTo={config.leaveTo}
+          onAfterLeave={() => handleAfterLeave(key)}
+        >
+          {element}
+        </TransitionItem>
+      )
+    })
+
+    return h(config.tag, { ...htmlProps }, ...groupedChildren)
+  }) as unknown as VNode
 }
 
 export default GroupRenderer

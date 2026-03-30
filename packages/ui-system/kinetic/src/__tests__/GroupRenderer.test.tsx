@@ -40,6 +40,13 @@ const makeConfig = (overrides: Partial<KineticConfig> = {}): KineticConfig => ({
   ...overrides,
 })
 
+/** Unwrap reactive accessors returned by GroupRenderer. */
+const unwrap = (val: any): any => {
+  let result = val
+  while (typeof result === "function") result = result()
+  return result
+}
+
 const makeKeyedChild = (key: string | number, text: string): VNode => ({
   type: "span",
   props: { "data-testid": `child-${key}` },
@@ -52,12 +59,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha"), makeKeyedChild("b", "Beta")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     expect(vnode).not.toBeNull()
     expect(vnode?.type).toBe("div")
@@ -67,12 +76,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ tag: "ul" })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     expect(vnode?.type).toBe("ul")
   })
@@ -81,12 +92,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: { "data-testid": "group-wrapper", class: "my-group" },
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: { "data-testid": "group-wrapper", class: "my-group" },
+        callbacks: {},
+        children,
+      }),
+    )
 
     const props = vnode?.props as Record<string, unknown>
     expect(props?.["data-testid"]).toBe("group-wrapper")
@@ -97,12 +110,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha"), makeKeyedChild("b", "Beta")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     // The wrapper div should have children that are TransitionItem VNodes
     const wrapperChildren = vnode?.children
@@ -122,21 +137,25 @@ describe("GroupRenderer", () => {
 
     // First render with initial children
     const initialChildren = [makeKeyedChild("a", "Alpha")]
-    GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children: initialChildren,
-    })
+    unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children: initialChildren,
+      }),
+    )
 
     // Second render with a new child added
     const updatedChildren = [makeKeyedChild("a", "Alpha"), makeKeyedChild("b", "Beta")]
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children: updatedChildren,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children: updatedChildren,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     expect(wrapperChildren.length).toBe(2)
@@ -153,12 +172,14 @@ describe("GroupRenderer", () => {
     })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const transitionItemVNode = wrapperChildren[0] as VNode
@@ -183,12 +204,14 @@ describe("GroupRenderer", () => {
     })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -205,12 +228,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ appear: true })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -223,12 +248,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ timeout: 2000 })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -240,12 +267,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -258,12 +287,14 @@ describe("GroupRenderer", () => {
     const keyedChild = makeKeyedChild("a", "Alpha")
     const unkeyedChild: VNode = { type: "span", props: {}, children: ["No key"], key: null }
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children: [keyedChild, unkeyedChild],
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children: [keyedChild, unkeyedChild],
+      }),
+    )
 
     // Only keyed child should be wrapped in TransitionItem
     const wrapperChildren = vnode?.children as VNode[]
@@ -274,13 +305,15 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ appear: false })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      appear: true,
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        appear: true,
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -292,13 +325,15 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ timeout: 2000 })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      timeout: 3000,
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        timeout: 3000,
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -311,12 +346,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: { onAfterLeave },
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: { onAfterLeave },
+        children,
+      }),
+    )
 
     // Each TransitionItem child gets an onAfterLeave that calls handleAfterLeave(key)
     const wrapperChildren = vnode?.children as VNode[]
@@ -333,12 +370,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha"), makeKeyedChild("b", "Beta")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
 
@@ -353,12 +392,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig({ appear: false })
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
@@ -371,12 +412,14 @@ describe("GroupRenderer", () => {
     const config = makeConfig()
     const children = [makeKeyedChild("a", "Alpha")]
 
-    const vnode = GroupRenderer({
-      config,
-      htmlProps: {},
-      callbacks: {},
-      children,
-    })
+    const vnode = unwrap(
+      GroupRenderer({
+        config,
+        htmlProps: {},
+        callbacks: {},
+        children,
+      }),
+    )
 
     const wrapperChildren = vnode?.children as VNode[]
     const tiVNode = wrapperChildren[0] as VNode
