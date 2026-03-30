@@ -419,6 +419,32 @@ cd docs && bun run preview   # preview production build
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 
+## Reactive vs Static — The Core Rule
+
+In Pyreon, components run ONCE. What's reactive and what's static depends on WHERE you read a signal:
+
+```tsx
+// Component props are STATIC — evaluated once at mount
+<MyComponent title={name()} />  // name() called once, value captured
+
+// DOM text children are REACTIVE — compiler wraps in accessor
+<div>{name()}</div>  // compiler → () => name() — re-evaluates on change
+
+// Reactive accessor (explicit) — always reactive
+<div>{() => `Hello ${name()}`}</div>
+
+// Context reads are STATIC at setup, REACTIVE inside accessors
+const ctx = useContext(ThemeCtx)
+ctx.mode  // static if destructured: const { mode } = ctx
+() => ctx.mode  // reactive inside accessor — re-evaluates
+```
+
+Rule of thumb:
+- **Component props** = static (called once)
+- **DOM children with signals** = reactive (compiler wraps)
+- **Context reads** = static at setup, reactive inside `() => ...`
+- **To make anything reactive**: wrap in `() => ...` accessor
+
 ## Common Issues & Fixes
 - `ComponentFn<{ name: string }>` not assignable → solved by generic h()
 - `@pyreon/reactivity` missing from deps → add to package.json + `bun install`
@@ -426,6 +452,10 @@ Plus: `docs/` (VitePress site), `examples/` (example apps).
 - SSR empty render → forgot `mergeChildrenIntoProps` in renderComponent
 - DOM tests need happy-dom preload (bunfig.toml in each package)
 - Vite resolves `dist/` not `src/` → add `resolve.conditions: ["bun"]` to vite.config.ts
+- `signal(5)` doesn't write → use `signal.set(5)` (dev mode warns)
+- `onClick={undefined}` crashes in production → runtime now bails on non-function handlers
+- Context destructuring loses reactivity → keep the object reference, access properties lazily
+- Theme mode switching broken → PyreonUI now uses getter properties for reactive mode
 
 ## Testing
 ```bash

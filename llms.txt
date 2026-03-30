@@ -181,6 +181,7 @@ mount(<App />, document.getElementById("app")!)
 ## Common Mistakes
 
 - `{count}` → `{count()}` — signals are functions, call them to read
+- `signal(5)` → `signal.set(5)` — calling signal with args does NOT write (dev mode warns)
 - `key={...}` on `<For>` → use `by={...}` prop instead
 - `.value` → signals are callable, not `.value` getters (that's Vue)
 - `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
@@ -191,6 +192,9 @@ mount(<App />, document.getElementById("app")!)
 - `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `memo(Component)` → not needed, components run once in Pyreon
 - `.map()` in JSX → use `<For>` for reactive list rendering
+- `const { mode } = useContext(ctx)` → loses reactivity! Keep reference: `const ctx = useContext(Ctx)` then `ctx.mode`
+- `<Comp title={signal()}` → static (evaluated once). For reactive props, pass the signal and read inside the component
+- `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
 
 ## UI System (12 packages)
 

@@ -1,3 +1,4 @@
+import { batch } from "../batch"
 import { effect } from "../effect"
 import { signal } from "../signal"
 
@@ -173,6 +174,61 @@ describe("signal", () => {
 
       dispose()
       expect(internal._d![0]).toBeNull()
+    })
+  })
+
+  describe("signal.direct() for template binding", () => {
+    test("direct updater is called synchronously on signal change", () => {
+      const s = signal(0)
+      const values: number[] = []
+      s.direct(() => {
+        values.push(s.peek())
+      })
+
+      s.set(1)
+      expect(values).toEqual([1])
+      s.set(2)
+      expect(values).toEqual([1, 2])
+    })
+
+    test("direct updaters are batch-aware", () => {
+      const s = signal(0)
+      let calls = 0
+      s.direct(() => {
+        calls++
+      })
+
+      batch(() => {
+        s.set(1)
+        s.set(2)
+        s.set(3)
+      })
+      // Should only be called once after batch (deduplication via Set)
+      expect(calls).toBe(1)
+    })
+
+    test("direct updater with no prior direct array initializes lazily", () => {
+      const s = signal(0)
+      const internal = s as unknown as { _d: ((() => void) | null)[] | null }
+      expect(internal._d).toBeNull()
+      s.direct(() => {})
+      expect(internal._d).not.toBeNull()
+      expect(internal._d).toHaveLength(1)
+    })
+  })
+
+  describe("signal misuse warning in dev", () => {
+    test("warns when signal is called with arguments", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      const s = signal(42)
+      // Call signal with an argument (common mistake — trying to set via call)
+      ;(s as unknown as (v: number) => number)(99)
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("signal() was called with an argument"),
+      )
+      // Value should not change — the argument is ignored
+      expect(s()).toBe(42)
+      warnSpy.mockRestore()
     })
   })
 })

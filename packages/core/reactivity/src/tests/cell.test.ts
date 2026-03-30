@@ -108,4 +108,52 @@ describe("Cell", () => {
     c.set(Number.NaN)
     expect(calls).toBe(0) // Object.is(NaN, NaN) is true
   })
+
+  test("subscribe() unsubscribe works after promotion to Set (regression)", () => {
+    // Bug: first subscriber's disposer became stale after second subscriber
+    // promoted _l → _s. The disposer checked _l which was now null.
+    const c = cell(0)
+    let count1 = 0
+    let count2 = 0
+    const unsub1 = c.subscribe(() => count1++)
+    const unsub2 = c.subscribe(() => count2++)
+
+    c.set(1)
+    expect(count1).toBe(1)
+    expect(count2).toBe(1)
+
+    // Unsubscribe first listener — must remove from _s Set
+    unsub1()
+    c.set(2)
+    expect(count1).toBe(1) // should NOT fire again
+    expect(count2).toBe(2)
+
+    // Unsubscribe second listener
+    unsub2()
+    c.set(3)
+    expect(count1).toBe(1)
+    expect(count2).toBe(2)
+  })
+
+  test("subscribe() unsubscribe order: second before first", () => {
+    const c = cell(0)
+    let count1 = 0
+    let count2 = 0
+    const unsub1 = c.subscribe(() => count1++)
+    const unsub2 = c.subscribe(() => count2++)
+
+    c.set(1)
+    expect(count1).toBe(1)
+    expect(count2).toBe(1)
+
+    unsub2()
+    c.set(2)
+    expect(count1).toBe(2)
+    expect(count2).toBe(1)
+
+    unsub1()
+    c.set(3)
+    expect(count1).toBe(2)
+    expect(count2).toBe(1)
+  })
 })

@@ -60,6 +60,13 @@ const ChildComponent: any = ({
 })
 ChildComponent.displayName = "ChildComponent"
 
+/** Unwrap reactive accessors (EnhancedComponent returns a function for mode switching). */
+const unwrap = (val: any): any => {
+  let result = val
+  while (typeof result === "function" && !result.IS_ROCKETSTYLE) result = result()
+  return result
+}
+
 /** Push a theme context and run fn, then pop */
 const withThemeContext = (fn: () => any) => {
   pushContext(
@@ -103,7 +110,7 @@ describe("Provider/Consumer integration", () => {
         component: BaseComponent,
       }).config({ provider: true })
 
-      const result = withThemeContext(() => ParentButton({ children: "Child" }))
+      const result = withThemeContext(() => unwrap(ParentButton({ children: "Child" })))
       // Provider wraps with createLocalProvider which injects pseudo state
       // Initial state should be false
       expect(result.props["data-hover"]).toBe("false")
@@ -131,9 +138,9 @@ describe("Provider/Consumer integration", () => {
 
       // Render parent, then render child within the same context
       withThemeContext(() => {
-        const _parentResult = Parent({ children: null })
+        const _parentResult = unwrap(Parent({ children: null }))
         // The parent pushes local context — child should see it
-        const childResult = Child({})
+        const childResult = unwrap(Child({}))
         expect(childResult).toBeDefined()
         const childProps = childResult?.props ?? childResult
         expect(childProps["data-parent-hover"]).toBe("no")
@@ -151,7 +158,7 @@ describe("Provider/Consumer integration", () => {
           })),
       })
 
-      const result = withThemeContext(() => Child({}))
+      const result = withThemeContext(() => unwrap(Child({})))
       const props = result?.props ?? result
       expect(props["data-parent-hover"]).toBe("no")
     })

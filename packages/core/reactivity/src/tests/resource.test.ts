@@ -130,4 +130,104 @@ describe("createResource", () => {
     expect(resource.error()).toBeUndefined()
     expect(resource.data()).toBe("user-2")
   })
+
+  test("loading returns to true on refetch", async () => {
+    const userId = signal(1)
+    const resource = createResource(
+      () => userId(),
+      (id) => Promise.resolve(`user-${id}`),
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.loading()).toBe(false)
+    expect(resource.data()).toBe("user-1")
+
+    resource.refetch()
+    expect(resource.loading()).toBe(true)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.loading()).toBe(false)
+  })
+
+  test("error is cleared on successful refetch", async () => {
+    let shouldFail = true
+    const src = signal(1)
+    const resource = createResource(
+      () => src(),
+      (_id) => (shouldFail ? Promise.reject(new Error("fail")) : Promise.resolve("ok")),
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.error()).toBeInstanceOf(Error)
+
+    shouldFail = false
+    resource.refetch()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.error()).toBeUndefined()
+    expect(resource.data()).toBe("ok")
+  })
+
+  test("error is cleared before each fetch attempt", async () => {
+    let callCount = 0
+    const src = signal(1)
+    const resource = createResource(
+      () => src(),
+      (_id) => {
+        callCount++
+        if (callCount === 1) return Promise.reject(new Error("first fail"))
+        return Promise.resolve("success")
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.error()).toBeInstanceOf(Error)
+
+    // Trigger re-fetch by changing source
+    src.set(2)
+    // Error should be cleared immediately when new fetch starts
+    expect(resource.error()).toBeUndefined()
+    expect(resource.loading()).toBe(true)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.data()).toBe("success")
+  })
+
+  test("data is undefined initially and after error", async () => {
+    const src = signal(1)
+    const resource = createResource(
+      () => src(),
+      (_id) => Promise.reject(new Error("always fails")),
+    )
+
+    expect(resource.data()).toBeUndefined()
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(resource.data()).toBeUndefined()
+    expect(resource.error()).toBeInstanceOf(Error)
+  })
+
+  test("refetch uses current source value", async () => {
+    const src = signal(1)
+    const results: string[] = []
+    const resource = createResource(
+      () => src(),
+      (id) => {
+        const val = `user-${id}`
+        results.push(val)
+        return Promise.resolve(val)
+      },
+    )
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(results).toEqual(["user-1"])
+
+    src.set(5)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(results).toEqual(["user-1", "user-5"])
+
+    // Refetch should use current source value (5)
+    resource.refetch()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(results).toEqual(["user-1", "user-5", "user-5"])
+  })
 })

@@ -311,4 +311,89 @@ describe("onCleanup", () => {
     // Should not throw
     onCleanup(() => {})
   })
+
+  test("cleanup ordering: onCleanup runs before return cleanup", () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      const val = s()
+      onCleanup(() => log.push(`onCleanup-${val}`))
+      return () => log.push(`return-${val}`)
+    })
+    s.set(1)
+    // onCleanup should fire first, then return cleanup
+    expect(log).toEqual(["onCleanup-0", "return-0"])
+    s.set(2)
+    expect(log).toEqual(["onCleanup-0", "return-0", "onCleanup-1", "return-1"])
+  })
+
+  test("multiple onCleanup callbacks run in registration order", () => {
+    const s = signal(0)
+    const log: string[] = []
+    effect(() => {
+      s()
+      onCleanup(() => log.push("first"))
+      onCleanup(() => log.push("second"))
+      onCleanup(() => log.push("third"))
+    })
+    s.set(1)
+    expect(log).toEqual(["first", "second", "third"])
+  })
+
+  test("cleanup runs on dispose even when effect never re-ran", () => {
+    const log: string[] = []
+    const e = effect(() => {
+      onCleanup(() => log.push("disposed"))
+    })
+    expect(log).toEqual([])
+    e.dispose()
+    expect(log).toEqual(["disposed"])
+  })
+})
+
+describe("effect — error handling", () => {
+  test("error in effect does not prevent other effects from running", () => {
+    const caught: unknown[] = []
+    setErrorHandler((err) => caught.push(err))
+
+    const s = signal(0)
+    let goodEffectRuns = 0
+
+    effect(() => {
+      s()
+      throw new Error("bad effect")
+    })
+    effect(() => {
+      s()
+      goodEffectRuns++
+    })
+
+    expect(caught).toHaveLength(1)
+    expect(goodEffectRuns).toBe(1)
+
+    s.set(1)
+    expect(caught).toHaveLength(2)
+    expect(goodEffectRuns).toBe(2)
+
+    setErrorHandler((_err) => {})
+  })
+
+  test("error during cleanup is caught by error handler", () => {
+    const caught: unknown[] = []
+    setErrorHandler((err) => caught.push(err))
+
+    const s = signal(0)
+    effect(() => {
+      s()
+      onCleanup(() => {
+        throw new Error("cleanup error")
+      })
+    })
+
+    s.set(1) // triggers cleanup which throws
+    expect(caught).toHaveLength(1)
+    expect((caught[0] as Error).message).toBe("cleanup error")
+
+    setErrorHandler((_err) => {})
+  })
 })
