@@ -19,9 +19,9 @@ bun add @pyreon/hooks
 Tracks hover state via mouse enter/leave events.
 
 ```ts
-import { useHover } from "@pyreon/hooks";
+import { useHover } from '@pyreon/hooks'
 
-const { hover, onMouseEnter, onMouseLeave } = useHover();
+const { hover, onMouseEnter, onMouseLeave } = useHover()
 ```
 
 #### useFocus
@@ -29,9 +29,9 @@ const { hover, onMouseEnter, onMouseLeave } = useHover();
 Tracks focus state via focus/blur events.
 
 ```ts
-import { useFocus } from "@pyreon/hooks";
+import { useFocus } from '@pyreon/hooks'
 
-const { focused, onFocus, onBlur } = useFocus();
+const { focused, onFocus, onBlur } = useFocus()
 ```
 
 #### useClickOutside
@@ -39,9 +39,9 @@ const { focused, onFocus, onBlur } = useFocus();
 Calls handler when a click occurs outside the referenced element.
 
 ```ts
-import { useClickOutside } from "@pyreon/hooks";
+import { useClickOutside } from '@pyreon/hooks'
 
-useClickOutside(elementRef, () => setOpen(false));
+useClickOutside(elementRef, () => setOpen(false))
 ```
 
 #### useScrollLock
@@ -49,9 +49,9 @@ useClickOutside(elementRef, () => setOpen(false));
 Locks page scroll by setting `overflow: hidden` on `document.body`.
 
 ```ts
-import { useScrollLock } from "@pyreon/hooks";
+import { useScrollLock } from '@pyreon/hooks'
 
-useScrollLock(isModalOpen);
+useScrollLock(isModalOpen)
 ```
 
 #### useKeyboard
@@ -59,9 +59,9 @@ useScrollLock(isModalOpen);
 Listens for a specific keyboard key.
 
 ```ts
-import { useKeyboard } from "@pyreon/hooks";
+import { useKeyboard } from '@pyreon/hooks'
 
-useKeyboard("Escape", () => setOpen(false));
+useKeyboard('Escape', () => setOpen(false))
 ```
 
 #### useFocusTrap
@@ -69,9 +69,9 @@ useKeyboard("Escape", () => setOpen(false));
 Traps Tab/Shift+Tab focus within a container. Essential for modals and dialogs.
 
 ```ts
-import { useFocusTrap } from "@pyreon/hooks";
+import { useFocusTrap } from '@pyreon/hooks'
 
-useFocusTrap(containerRef, isOpen);
+useFocusTrap(containerRef, isOpen)
 ```
 
 ### DOM & Observers
@@ -81,9 +81,9 @@ useFocusTrap(containerRef, isOpen);
 Tracks element `width` and `height` via `ResizeObserver`.
 
 ```ts
-import { useElementSize } from "@pyreon/hooks";
+import { useElementSize } from '@pyreon/hooks'
 
-const { ref, width, height } = useElementSize();
+const { ref, width, height } = useElementSize()
 ```
 
 #### useIntersection
@@ -91,10 +91,10 @@ const { ref, width, height } = useElementSize();
 `IntersectionObserver` wrapper for visibility detection.
 
 ```ts
-import { useIntersection } from "@pyreon/hooks";
+import { useIntersection } from '@pyreon/hooks'
 
-const { ref, entry } = useIntersection({ threshold: 0.5 });
-const isVisible = entry?.isIntersecting;
+const { ref, entry } = useIntersection({ threshold: 0.5 })
+const isVisible = entry?.isIntersecting
 ```
 
 #### useWindowResize
@@ -102,9 +102,9 @@ const isVisible = entry?.isIntersecting;
 Tracks viewport dimensions with throttled updates.
 
 ```ts
-import { useWindowResize } from "@pyreon/hooks";
+import { useWindowResize } from '@pyreon/hooks'
 
-const { width, height } = useWindowResize({ throttleDelay: 300 });
+const { width, height } = useWindowResize({ throttleDelay: 300 })
 ```
 
 ### Responsive
@@ -114,9 +114,9 @@ const { width, height } = useWindowResize({ throttleDelay: 300 });
 Subscribes to a CSS media query and returns whether it matches.
 
 ```ts
-import { useMediaQuery } from "@pyreon/hooks";
+import { useMediaQuery } from '@pyreon/hooks'
 
-const isDesktop = useMediaQuery("(min-width: 1024px)");
+const isDesktop = useMediaQuery('(min-width: 1024px)')
 ```
 
 #### useBreakpoint
@@ -124,9 +124,9 @@ const isDesktop = useMediaQuery("(min-width: 1024px)");
 Returns the currently active breakpoint name from the theme context.
 
 ```ts
-import { useBreakpoint } from "@pyreon/hooks";
+import { useBreakpoint } from '@pyreon/hooks'
 
-const bp = useBreakpoint(); // "xs" | "sm" | "md" | "lg" | "xl" | undefined
+const bp = useBreakpoint() // "xs" | "sm" | "md" | "lg" | "xl" | undefined
 ```
 
 #### useColorScheme
@@ -134,9 +134,9 @@ const bp = useBreakpoint(); // "xs" | "sm" | "md" | "lg" | "xl" | undefined
 Returns the user's preferred color scheme. Pairs with rocketstyle's `mode`.
 
 ```ts
-import { useColorScheme } from "@pyreon/hooks";
+import { useColorScheme } from '@pyreon/hooks'
 
-const scheme = useColorScheme(); // "light" | "dark"
+const scheme = useColorScheme() // "light" | "dark"
 ```
 
 #### useReducedMotion
@@ -144,10 +144,10 @@ const scheme = useColorScheme(); // "light" | "dark"
 Returns `true` when the user prefers reduced motion.
 
 ```ts
-import { useReducedMotion } from "@pyreon/hooks";
+import { useReducedMotion } from '@pyreon/hooks'
 
-const reduced = useReducedMotion();
-const duration = reduced ? 0 : 300;
+const reduced = useReducedMotion()
+const duration = reduced ? 0 : 300
 ```
 
 ### State
@@ -157,9 +157,9 @@ const duration = reduced ? 0 : 300;
 Boolean state with `toggle`, `setTrue`, and `setFalse` helpers.
 
 ```ts
-import { useToggle } from "@pyreon/hooks";
+import { useToggle } from '@pyreon/hooks'
 
-const { value, toggle, setTrue, setFalse } = useToggle(false);
+const { value, toggle, setTrue, setFalse } = useToggle(false)
 ```
 
 #### usePrevious
@@ -167,9 +167,9 @@ const { value, toggle, setTrue, setFalse } = useToggle(false);
 Returns the value from the previous evaluation.
 
 ```ts
-import { usePrevious } from "@pyreon/hooks";
+import { usePrevious } from '@pyreon/hooks'
 
-const prev = usePrevious(count);
+const prev = usePrevious(count)
 ```
 
 #### useDebouncedValue
@@ -177,9 +177,9 @@ const prev = usePrevious(count);
 Returns a debounced version of the value that only updates after `delay` ms of inactivity.
 
 ```ts
-import { useDebouncedValue } from "@pyreon/hooks";
+import { useDebouncedValue } from '@pyreon/hooks'
 
-const debouncedSearch = useDebouncedValue(searchTerm, 300);
+const debouncedSearch = useDebouncedValue(searchTerm, 300)
 ```
 
 ## Peer Dependencies

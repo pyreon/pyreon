@@ -1,21 +1,21 @@
-import { createSignal, getOwner, runWithOwner } from "solid-js";
-import Demo from "./Demo";
+import { createSignal, getOwner, runWithOwner } from 'solid-js'
+import Demo from './Demo'
 
 export default function OwnerDemo() {
-  const [result, setResult] = createSignal("");
+  const [result, setResult] = createSignal('')
 
   const run = () => {
-    const owner = getOwner();
-    setResult(owner ? "Captured current owner scope" : "No owner (outside reactive scope)");
+    const owner = getOwner()
+    setResult(owner ? 'Captured current owner scope' : 'No owner (outside reactive scope)')
 
     if (owner) {
       setTimeout(() => {
         runWithOwner(owner, () => {
-          setResult("Ran async work inside captured owner scope!");
-        });
-      }, 500);
+          setResult('Ran async work inside captured owner scope!')
+        })
+      }, 500)
     }
-  };
+  }
 
   return (
     <Demo
@@ -37,5 +37,5 @@ setTimeout(() => {
       </button>
       <p class="muted">{result()}</p>
     </Demo>
-  );
+  )
 }

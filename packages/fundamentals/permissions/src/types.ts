@@ -1,4 +1,4 @@
-import type { Computed } from "@pyreon/reactivity";
+import type { Computed } from '@pyreon/reactivity'
 
 // ─── Permission values ───────────────────────────────────────────────────────
 
@@ -6,14 +6,14 @@ import type { Computed } from "@pyreon/reactivity";
  * A permission predicate — receives optional context and returns a boolean.
  * Used for instance-level checks (e.g., "can update THIS post?").
  */
-export type PermissionPredicate<TContext = unknown> = (context?: TContext) => boolean;
+export type PermissionPredicate<TContext = unknown> = (context?: TContext) => boolean
 
 /**
  * A permission value is either a static boolean or a predicate function.
  * - `true` / `false` — static grant or denial
  * - `(context?) => boolean` — dynamic, evaluated per-check
  */
-export type PermissionValue<TContext = unknown> = boolean | PermissionPredicate<TContext>;
+export type PermissionValue<TContext = unknown> = boolean | PermissionPredicate<TContext>
 
 // ─── Permission map ──────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ export type PermissionValue<TContext = unknown> = boolean | PermissionPredicate<
  * Keys are dot-separated strings (e.g., 'posts.read', 'users.manage').
  * Wildcards are supported: 'posts.*' matches any 'posts.X' key.
  */
-export type PermissionMap = Record<string, PermissionValue>;
+export type PermissionMap = Record<string, PermissionValue>
 
 // ─── Permissions instance ────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ export interface Permissions {
    * {() => can('posts.delete') && <DeleteButton />}
    * ```
    */
-  (key: string, context?: unknown): boolean;
+  (key: string, context?: unknown): boolean
 
   /**
    * Inverse check — returns true when the permission is denied.
@@ -55,7 +55,7 @@ export interface Permissions {
    * can.not('billing.export')  // true if user cannot export
    * ```
    */
-  not: (key: string, context?: unknown) => boolean;
+  not: (key: string, context?: unknown) => boolean
 
   /**
    * Check if ALL listed permissions are granted.
@@ -65,7 +65,7 @@ export interface Permissions {
    * can.all('posts.read', 'posts.create')
    * ```
    */
-  all: (...keys: string[]) => boolean;
+  all: (...keys: string[]) => boolean
 
   /**
    * Check if ANY of the listed permissions is granted.
@@ -75,7 +75,7 @@ export interface Permissions {
    * can.any('posts.update', 'posts.delete')
    * ```
    */
-  any: (...keys: string[]) => boolean;
+  any: (...keys: string[]) => boolean
 
   /**
    * Replace all permissions. All reactive reads update automatically.
@@ -85,7 +85,7 @@ export interface Permissions {
    * can.set({ 'posts.read': true, 'users.manage': false })
    * ```
    */
-  set: (permissions: PermissionMap) => void;
+  set: (permissions: PermissionMap) => void
 
   /**
    * Merge permissions into the current map.
@@ -96,7 +96,7 @@ export interface Permissions {
    * can.patch({ 'billing.export': true })
    * ```
    */
-  patch: (permissions: PermissionMap) => void;
+  patch: (permissions: PermissionMap) => void
 
   /**
    * All currently granted permission keys (static true + predicates that exist).
@@ -108,11 +108,11 @@ export interface Permissions {
    * can.granted()  // ['posts.read', 'posts.create', 'users.manage']
    * ```
    */
-  granted: Computed<string[]>;
+  granted: Computed<string[]>
 
   /**
    * All permission entries as [key, value] pairs.
    * Reactive signal — updates when permissions change.
    */
-  entries: Computed<[string, PermissionValue][]>;
+  entries: Computed<[string, PermissionValue][]>
 }

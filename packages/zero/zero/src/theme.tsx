@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core";
-import { onMount, onUnmount } from "@pyreon/core";
-import { effect, signal } from "@pyreon/reactivity";
+import type { VNodeChild } from '@pyreon/core'
+import { onMount, onUnmount } from '@pyreon/core'
+import { effect, signal } from '@pyreon/reactivity'
 
 // ─── Theme system ───────────────────────────────────────────────────────────
 //
@@ -10,36 +10,36 @@ import { effect, signal } from "@pyreon/reactivity";
 // - No flash of wrong theme (inline script in HTML)
 // - Reactive theme signal for components
 
-export type Theme = "light" | "dark" | "system";
+export type Theme = 'light' | 'dark' | 'system'
 
-const STORAGE_KEY = "zero-theme";
+const STORAGE_KEY = 'zero-theme'
 
 /** Reactive theme signal. */
-export const theme = signal<Theme>("system");
+export const theme = signal<Theme>('system')
 
 /** Computed resolved theme (what's actually applied). */
-export function resolvedTheme(): "light" | "dark" {
-  const t = theme();
-  if (t === "system") {
-    if (typeof window === "undefined") return "dark";
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+export function resolvedTheme(): 'light' | 'dark' {
+  const t = theme()
+  if (t === 'system') {
+    if (typeof window === 'undefined') return 'dark'
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   }
-  return t;
+  return t
 }
 
 /** Toggle between light and dark. */
 export function toggleTheme() {
-  const current = resolvedTheme();
-  setTheme(current === "dark" ? "light" : "dark");
+  const current = resolvedTheme()
+  setTheme(current === 'dark' ? 'light' : 'dark')
 }
 
 /** Set theme explicitly. */
 export function setTheme(t: Theme) {
-  theme.set(t);
-  if (typeof document !== "undefined") {
-    document.documentElement.dataset.theme = resolvedTheme();
+  theme.set(t)
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = resolvedTheme()
     try {
-      localStorage.setItem(STORAGE_KEY, t);
+      localStorage.setItem(STORAGE_KEY, t)
     } catch {
       // localStorage may not be available (SSR, private browsing)
     }
@@ -54,35 +54,35 @@ export function initTheme() {
   onMount(() => {
     // Read persisted preference
     try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-      if (stored === "light" || stored === "dark" || stored === "system") {
-        theme.set(stored);
+      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+      if (stored === 'light' || stored === 'dark' || stored === 'system') {
+        theme.set(stored)
       }
     } catch {
       // localStorage may not be available
     }
 
     // Apply to document
-    document.documentElement.dataset.theme = resolvedTheme();
+    document.documentElement.dataset.theme = resolvedTheme()
 
     // Watch for system preference changes
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
     function onChange() {
-      if (theme() === "system") {
-        document.documentElement.dataset.theme = resolvedTheme();
+      if (theme() === 'system') {
+        document.documentElement.dataset.theme = resolvedTheme()
       }
     }
-    mq.addEventListener("change", onChange);
-    onUnmount(() => mq.removeEventListener("change", onChange));
+    mq.addEventListener('change', onChange)
+    onUnmount(() => mq.removeEventListener('change', onChange))
 
     // Re-apply when theme signal changes
     const dispose = effect(() => {
-      document.documentElement.dataset.theme = resolvedTheme();
-    });
-    if (dispose) onUnmount(() => dispose.dispose());
+      document.documentElement.dataset.theme = resolvedTheme()
+    })
+    if (dispose) onUnmount(() => dispose.dispose())
 
-    return undefined;
-  });
+    return undefined
+  })
 }
 
 /**
@@ -93,7 +93,7 @@ export function initTheme() {
  * <ThemeToggle />
  */
 export function ThemeToggle(props: { class?: string; style?: string }): VNodeChild {
-  initTheme();
+  initTheme()
 
   return (
     <button
@@ -105,7 +105,7 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
       type="button"
     >
       {() =>
-        resolvedTheme() === "dark" ? (
+        resolvedTheme() === 'dark' ? (
           <svg
             width="18"
             height="18"
@@ -144,7 +144,7 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
         )
       }
     </button>
-  );
+  )
 }
 
 /**
@@ -158,4 +158,4 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
  *   ...
  * </head>
  */
-export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r}catch(e){}})()`;
+export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r}catch(e){}})()`

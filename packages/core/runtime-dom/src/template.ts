@@ -1,5 +1,5 @@
-import type { NativeItem } from "@pyreon/core";
-import { renderEffect } from "@pyreon/reactivity";
+import type { NativeItem } from '@pyreon/core'
+import { renderEffect } from '@pyreon/reactivity'
 
 /**
  * Creates a row/item factory backed by HTML template cloning.
@@ -30,15 +30,15 @@ export function createTemplate<T>(
   html: string,
   bind: (el: HTMLElement, item: T) => (() => void) | null,
 ): (item: T) => NativeItem {
-  const tmpl = document.createElement("template");
-  tmpl.innerHTML = html;
-  const proto = tmpl.content.firstElementChild as HTMLElement;
+  const tmpl = document.createElement('template')
+  tmpl.innerHTML = html
+  const proto = tmpl.content.firstElementChild as HTMLElement
 
   return (item: T): NativeItem => {
-    const el = proto.cloneNode(true) as HTMLElement;
-    const cleanup = bind(el, item);
-    return { __isNative: true, el, cleanup };
-  };
+    const el = proto.cloneNode(true) as HTMLElement
+    const cleanup = bind(el, item)
+    return { __isNative: true, el, cleanup }
+  }
 }
 
 // ─── Direct text binding (bypasses effect system) ────────────────────────────
@@ -66,18 +66,18 @@ export function _bindText(
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
     const textUpdate = () => {
-      const v = source._v;
-      node.data = v == null || v === false ? "" : String(v as string | number);
-    };
-    textUpdate();
-    return source.direct(textUpdate);
+      const v = source._v
+      node.data = v == null || v === false ? '' : String(v as string | number)
+    }
+    textUpdate()
+    return source.direct(textUpdate)
   }
   // Fallback: source is a plain callable (e.g. store getter, createMachine) — use renderEffect
-  const fn = source as unknown as () => unknown;
+  const fn = source as unknown as () => unknown
   return renderEffect(() => {
-    const v = fn();
-    node.data = v == null || v === false ? "" : String(v as string | number);
-  });
+    const v = fn()
+    node.data = v == null || v === false ? '' : String(v as string | number)
+  })
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
@@ -104,18 +104,18 @@ export function _bindDirect(
 ): () => void {
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
-    updater(source._v);
-    return source.direct(() => updater(source._v));
+    updater(source._v)
+    return source.direct(() => updater(source._v))
   }
   // Fallback: plain callable — use renderEffect
-  const fn = source as unknown as () => unknown;
-  return renderEffect(() => updater(fn()));
+  const fn = source as unknown as () => unknown
+  return renderEffect(() => updater(fn()))
 }
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
-const _tplCache = new Map<string, HTMLTemplateElement>();
+const _tplCache = new Map<string, HTMLTemplateElement>()
 
 /**
  * Compiler-emitted template instantiation.
@@ -141,13 +141,13 @@ const _tplCache = new Map<string, HTMLTemplateElement>();
  * })
  */
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
-  let tpl = _tplCache.get(html);
+  let tpl = _tplCache.get(html)
   if (!tpl) {
-    tpl = document.createElement("template");
-    tpl.innerHTML = html;
-    _tplCache.set(html, tpl);
+    tpl = document.createElement('template')
+    tpl.innerHTML = html
+    _tplCache.set(html, tpl)
   }
-  const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement;
-  const cleanup = bind(el);
-  return { __isNative: true, el, cleanup };
+  const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
+  const cleanup = bind(el)
+  return { __isNative: true, el, cleanup }
 }

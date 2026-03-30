@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/create-zero"
+title: '@pyreon/create-zero'
 description: Project scaffolding tool for creating new Pyreon Zero applications.
 ---
 

@@ -1,16 +1,16 @@
-import { isEmpty } from "@pyreon/ui-core";
-import { ALL_RESERVED_KEYS } from "./constants";
-import defaultDimensions from "./constants/defaultDimensions";
-import rocketComponent from "./rocketstyle";
-import type { DefaultDimensions, Dimensions } from "./types/dimensions";
-import type { RocketComponent } from "./types/rocketComponent";
-import type { ElementType } from "./types/utils";
+import { isEmpty } from '@pyreon/ui-core'
+import { ALL_RESERVED_KEYS } from './constants'
+import defaultDimensions from './constants/defaultDimensions'
+import rocketComponent from './rocketstyle'
+import type { DefaultDimensions, Dimensions } from './types/dimensions'
+import type { RocketComponent } from './types/rocketComponent'
+import type { ElementType } from './types/utils'
 import {
   getDimensionsValues,
   getKeys,
   getMultipleDimensions,
   getTransformDimensions,
-} from "./utils/dimensions";
+} from './utils/dimensions'
 
 export type Rocketstyle = <
   const D extends Dimensions = DefaultDimensions,
@@ -19,15 +19,15 @@ export type Rocketstyle = <
   dimensions,
   useBooleans,
 }?: {
-  dimensions?: D;
-  useBooleans?: UB;
+  dimensions?: D
+  useBooleans?: UB
 }) => <C extends ElementType>({
   name,
   component,
 }: {
-  name: string;
-  component: C;
-}) => ReturnType<RocketComponent<C, {}, {}, D, UB>>;
+  name: string
+  component: C
+}) => ReturnType<RocketComponent<C, {}, {}, D, UB>>
 
 /**
  * Factory initializer for rocketstyle components. Validates dimension
@@ -35,46 +35,46 @@ export type Rocketstyle = <
  * `rocketComponent` builder with pre-computed dimension metadata.
  */
 type InitErrors = Partial<{
-  component: string;
-  name: string;
-  dimensions: string;
-  invalidDimensions: string;
-}>;
+  component: string
+  name: string
+  dimensions: string
+  invalidDimensions: string
+}>
 
 const validateInit = (name: string, component: unknown, dimensions: Dimensions) => {
-  const errors: InitErrors = {};
+  const errors: InitErrors = {}
 
   if (!component) {
-    errors.component = "Parameter `component` is missing in params!";
+    errors.component = 'Parameter `component` is missing in params!'
   }
 
   if (!name) {
-    errors.name = "Parameter `name` is missing in params!";
+    errors.name = 'Parameter `name` is missing in params!'
   }
 
   if (isEmpty(dimensions)) {
-    errors.dimensions = "Parameter `dimensions` is missing in params!";
+    errors.dimensions = 'Parameter `dimensions` is missing in params!'
   } else {
-    const definedDimensions = getKeys(dimensions);
+    const definedDimensions = getKeys(dimensions)
     const invalidDimension = ALL_RESERVED_KEYS.some((item) =>
       definedDimensions.some((d) => d === item),
-    );
+    )
 
     if (invalidDimension) {
       errors.invalidDimensions = `Some of your \`dimensions\` is invalid and uses reserved static keys which are
-          ${defaultDimensions.toString()}`;
+          ${defaultDimensions.toString()}`
     }
   }
 
   if (!isEmpty(errors)) {
-    throw Error(JSON.stringify(errors));
+    throw Error(JSON.stringify(errors))
   }
-};
+}
 
 const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = true } = {}) =>
   ({ name, component }: { name: string; component: any }) => {
-    if (process.env.NODE_ENV !== "production") {
-      validateInit(name, component, dimensions);
+    if (process.env.NODE_ENV !== 'production') {
+      validateInit(name, component, dimensions)
     }
 
     return (rocketComponent as any)({
@@ -87,7 +87,7 @@ const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = true } = {
       multiKeys: getMultipleDimensions(dimensions),
       transformKeys: getTransformDimensions(dimensions),
       styled: true,
-    });
-  }) as unknown as Rocketstyle;
+    })
+  }) as unknown as Rocketstyle
 
-export default rocketstyle;
+export default rocketstyle

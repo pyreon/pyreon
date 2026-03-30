@@ -1,16 +1,16 @@
-import { batch, createEffect, createSignal } from "solid-js";
-import Demo from "./Demo";
+import { batch, createEffect, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function BatchDemo() {
-  const [first, setFirst] = createSignal("John");
-  const [last, setLast] = createSignal("Doe");
-  const [renderCount, setRenderCount] = createSignal(0);
+  const [first, setFirst] = createSignal('John')
+  const [last, setLast] = createSignal('Doe')
+  const [renderCount, setRenderCount] = createSignal(0)
 
   createEffect(() => {
-    first();
-    last();
-    setRenderCount((c) => c + 1);
-  });
+    first()
+    last()
+    setRenderCount((c) => c + 1)
+  })
 
   return (
     <Demo
@@ -34,13 +34,13 @@ batch(() => {
         type="button"
         onClick={() => {
           batch(() => {
-            setFirst((f) => (f === "John" ? "Jane" : "John"));
-            setLast((l) => (l === "Doe" ? "Smith" : "Doe"));
-          });
+            setFirst((f) => (f === 'John' ? 'Jane' : 'John'))
+            setLast((l) => (l === 'Doe' ? 'Smith' : 'Doe'))
+          })
         }}
       >
         Swap (batched)
       </button>
     </Demo>
-  );
+  )
 }

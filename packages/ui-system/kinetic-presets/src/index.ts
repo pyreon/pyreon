@@ -1,4 +1,4 @@
-export { createBlur, createFade, createRotate, createScale, createSlide } from "./factories";
+export { createBlur, createFade, createRotate, createScale, createSlide } from './factories'
 export {
   backInDown,
   backInLeft,
@@ -123,7 +123,7 @@ export {
   zoomOutLeft,
   zoomOutRight,
   zoomOutUp,
-} from "./presets";
+} from './presets'
 export type {
   BlurOptions,
   CSSProperties,
@@ -133,5 +133,5 @@ export type {
   RotateOptions,
   ScaleOptions,
   SlideOptions,
-} from "./types";
-export { compose, reverse, withDelay, withDuration, withEasing } from "./utils";
+} from './types'
+export { compose, reverse, withDelay, withDuration, withEasing } from './utils'

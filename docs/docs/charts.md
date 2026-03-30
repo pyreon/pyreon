@@ -34,24 +34,24 @@ yarn add @pyreon/charts
 Use the `<Chart />` component to render a chart. Pass an options function that returns a standard ECharts configuration -- signal reads inside the function are tracked for reactivity.
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
-import { Chart } from "@pyreon/charts";
+import { signal } from '@pyreon/reactivity'
+import { Chart } from '@pyreon/charts'
 
 function SalesChart() {
-  const months = signal(["Jan", "Feb", "Mar", "Apr", "May", "Jun"]);
-  const revenue = signal([120, 200, 150, 80, 70, 110]);
+  const months = signal(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'])
+  const revenue = signal([120, 200, 150, 80, 70, 110])
 
   return (
     <Chart
       options={() => ({
-        xAxis: { type: "category", data: months() },
-        yAxis: { type: "value" },
-        tooltip: { trigger: "axis" },
-        series: [{ name: "Revenue", type: "bar", data: revenue() }],
+        xAxis: { type: 'category', data: months() },
+        yAxis: { type: 'value' },
+        tooltip: { trigger: 'axis' },
+        series: [{ name: 'Revenue', type: 'bar', data: revenue() }],
       })}
       style="height: 400px"
     />
-  );
+  )
 }
 ```
 
@@ -79,8 +79,8 @@ The primary component for rendering charts.
   })}
   style="height: 300px"
   renderer="svg"
-  onClick={(params) => console.log("Clicked:", params.name)}
-  onChartReady={(instance) => console.log("Chart ready:", instance)}
+  onClick={(params) => console.log('Clicked:', params.name)}
+  onChartReady={(instance) => console.log('Chart ready:', instance)}
 />
 ```
 
@@ -89,21 +89,21 @@ The primary component for rendering charts.
 A lower-level hook for programmatic control. Returns reactive signals for the chart instance and error state.
 
 ```tsx
-import { useChart } from "@pyreon/charts";
+import { useChart } from '@pyreon/charts'
 
 function MyChart() {
   const { containerRef, instance, error } = useChart(() => ({
-    xAxis: { type: "category", data: ["A", "B", "C"] },
-    yAxis: { type: "value" },
-    series: [{ type: "bar", data: [10, 20, 30] }],
-  }));
+    xAxis: { type: 'category', data: ['A', 'B', 'C'] },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: [10, 20, 30] }],
+  }))
 
   return (
     <div>
       {() => (error() ? <p class="error">{error()!.message}</p> : null)}
       <div ref={(el) => containerRef.set(el)} style="height: 400px" />
     </div>
-  );
+  )
 }
 ```
 
@@ -142,7 +142,7 @@ import type {
   FunnelSeriesOption,
   CandlestickSeriesOption,
   GraphSeriesOption,
-} from "@pyreon/charts";
+} from '@pyreon/charts'
 ```
 
 ## Auto-Detection
@@ -159,10 +159,10 @@ Only the required modules are dynamically imported. A chart with `type: 'bar'` a
 // Only loads: BarChart, TooltipComponent, GridComponent, CanvasRenderer
 <Chart
   options={() => ({
-    tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: labels() },
-    yAxis: { type: "value" },
-    series: [{ type: "bar", data: values() }],
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: labels() },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: values() }],
   })}
   style="height: 300px"
 />
@@ -173,22 +173,22 @@ Only the required modules are dynamically imported. A chart with `type: 'bar'` a
 For type-safe chart configurations, use `ComposeOption<>` to narrow the options type to only the series types you use:
 
 ```tsx
-import { useChart } from "@pyreon/charts";
-import type { ComposeOption, BarSeriesOption, LineSeriesOption } from "@pyreon/charts";
+import { useChart } from '@pyreon/charts'
+import type { ComposeOption, BarSeriesOption, LineSeriesOption } from '@pyreon/charts'
 
-type DashboardOption = ComposeOption<BarSeriesOption | LineSeriesOption>;
+type DashboardOption = ComposeOption<BarSeriesOption | LineSeriesOption>
 
 function Dashboard() {
   const chart = useChart<DashboardOption>(() => ({
-    xAxis: { type: "category", data: ["Q1", "Q2", "Q3", "Q4"] },
-    yAxis: { type: "value" },
+    xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3', 'Q4'] },
+    yAxis: { type: 'value' },
     series: [
-      { type: "bar", data: [100, 200, 150, 300] },
-      { type: "line", data: [80, 170, 130, 280] },
+      { type: 'bar', data: [100, 200, 150, 300] },
+      { type: 'line', data: [80, 170, 130, 280] },
     ],
-  }));
+  }))
 
-  return <div ref={(el) => chart.containerRef.set(el)} style="height: 400px" />;
+  return <div ref={(el) => chart.containerRef.set(el)} style="height: 400px" />
 }
 ```
 
@@ -199,10 +199,10 @@ This gives you autocomplete and type checking for the specific series options yo
 For maximum tree-shaking control, use the `@pyreon/charts/manual` entry point. This disables auto-detection and requires you to register ECharts modules explicitly:
 
 ```tsx
-import { useChart, registerModules } from "@pyreon/charts/manual";
-import { BarChart, LineChart } from "echarts/charts";
-import { TooltipComponent, GridComponent, LegendComponent } from "echarts/components";
-import { CanvasRenderer } from "echarts/renderers";
+import { useChart, registerModules } from '@pyreon/charts/manual'
+import { BarChart, LineChart } from 'echarts/charts'
+import { TooltipComponent, GridComponent, LegendComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 
 // Register once at app startup
 registerModules([
@@ -212,15 +212,15 @@ registerModules([
   GridComponent,
   LegendComponent,
   CanvasRenderer,
-]);
+])
 
 // Then use useChart / <Chart /> as normal
 function MyChart() {
   const chart = useChart(() => ({
-    series: [{ type: "bar", data: [1, 2, 3] }],
-  }));
+    series: [{ type: 'bar', data: [1, 2, 3] }],
+  }))
 
-  return <div ref={(el) => chart.containerRef.set(el)} style="height: 300px" />;
+  return <div ref={(el) => chart.containerRef.set(el)} style="height: 300px" />
 }
 ```
 
@@ -244,30 +244,30 @@ Auto-detection ensures you only pay for what you use. A typical dashboard with 2
 Both `<Chart />` and `useChart()` expose an `error` signal that captures initialization and rendering failures:
 
 ```tsx
-import { Chart } from "@pyreon/charts";
+import { Chart } from '@pyreon/charts'
 
 function SafeChart() {
   return (
     <Chart
       options={() => ({
-        series: [{ type: "bar", data: chartData() }],
+        series: [{ type: 'bar', data: chartData() }],
       })}
       style="height: 300px"
-      onError={(err) => console.error("Chart error:", err)}
+      onError={(err) => console.error('Chart error:', err)}
     />
-  );
+  )
 }
 ```
 
 With `useChart()`, check the error signal directly:
 
 ```tsx
-import { useChart } from "@pyreon/charts";
+import { useChart } from '@pyreon/charts'
 
 function SafeChart() {
   const { containerRef, error } = useChart(() => ({
-    series: [{ type: "bar", data: chartData() }],
-  }));
+    series: [{ type: 'bar', data: chartData() }],
+  }))
 
   return (
     <div>
@@ -280,7 +280,7 @@ function SafeChart() {
       }
       <div ref={(el) => containerRef.set(el)} style="height: 300px" />
     </div>
-  );
+  )
 }
 ```
 

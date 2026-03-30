@@ -24,17 +24,17 @@
  * Bun.serve({ fetch: handler })
  */
 
-import type { ComponentFn } from "@pyreon/core";
-import { h } from "@pyreon/core";
-import { renderWithHead } from "@pyreon/head/ssr";
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { renderWithHead } from '@pyreon/head/ssr'
 import {
   createRouter,
   prefetchLoaderData,
   type RouteRecord,
   RouterProvider,
   serializeLoaderData,
-} from "@pyreon/router";
-import { renderToStream, runWithRequestContext } from "@pyreon/runtime-server";
+} from '@pyreon/router'
+import { renderToStream, runWithRequestContext } from '@pyreon/runtime-server'
 import {
   buildClientEntryTag,
   buildScriptsFast,
@@ -42,16 +42,16 @@ import {
   compileTemplate,
   DEFAULT_TEMPLATE,
   processCompiledTemplate,
-} from "./html";
-import type { Middleware, MiddlewareContext } from "./middleware";
+} from './html'
+import type { Middleware, MiddlewareContext } from './middleware'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export interface HandlerOptions {
   /** Root application component */
-  App: ComponentFn;
+  App: ComponentFn
   /** Route definitions */
-  routes: RouteRecord[];
+  routes: RouteRecord[]
   /**
    * HTML template with placeholders:
    *   <!--pyreon-head-->     — head tags (title, meta, link, etc.)
@@ -60,17 +60,17 @@ export interface HandlerOptions {
    *
    * Defaults to a minimal HTML5 template.
    */
-  template?: string;
+  template?: string
   /** Path to the client entry module (default: "/src/entry-client.ts") */
-  clientEntry?: string;
+  clientEntry?: string
   /** Middleware chain — runs before rendering */
-  middleware?: Middleware[];
+  middleware?: Middleware[]
   /**
    * Rendering mode:
    *   "string" (default) — full renderToString, complete HTML in one response
    *   "stream" — progressive streaming via renderToStream (Suspense out-of-order)
    */
-  mode?: "string" | "stream";
+  mode?: 'string' | 'stream'
 }
 
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
@@ -78,66 +78,66 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     App,
     routes,
     template = DEFAULT_TEMPLATE,
-    clientEntry = "/src/entry-client.ts",
+    clientEntry = '/src/entry-client.ts',
     middleware = [],
-    mode = "string",
-  } = options;
+    mode = 'string',
+  } = options
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
-  const compiled = compileTemplate(template);
-  const clientEntryTag = buildClientEntryTag(clientEntry);
+  const compiled = compileTemplate(template)
+  const clientEntryTag = buildClientEntryTag(clientEntry)
 
   return async function handler(req: Request): Promise<Response> {
-    const url = new URL(req.url);
-    const path = url.pathname + url.search;
+    const url = new URL(req.url)
+    const path = url.pathname + url.search
 
     // ── Middleware pipeline ────────────────────────────────────────────────────
     const ctx: MiddlewareContext = {
       req,
       url,
       path,
-      headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }),
+      headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
       locals: {},
-    };
+    }
 
     for (const mw of middleware) {
-      const result = await mw(ctx);
-      if (result instanceof Response) return result;
+      const result = await mw(ctx)
+      if (result instanceof Response) return result
     }
 
     // ── Per-request router ────────────────────────────────────────────────────
-    const router = createRouter({ routes, mode: "history", url: path });
+    const router = createRouter({ routes, mode: 'history', url: path })
 
     return runWithRequestContext(async () => {
       try {
         // Pre-run loaders so data is available during render
-        await prefetchLoaderData(router as never, path);
+        await prefetchLoaderData(router as never, path)
 
         // Build the VNode tree
-        const app = h(RouterProvider, { router }, h(App, null));
+        const app = h(RouterProvider, { router }, h(App, null))
 
-        if (mode === "stream") {
-          return renderStreamResponse(app, router, compiled, clientEntryTag, ctx.headers);
+        if (mode === 'stream') {
+          return renderStreamResponse(app, router, compiled, clientEntryTag, ctx.headers)
         }
 
         // ── String mode (default) ─────────────────────────────────────────────
-        const { html: appHtml, head } = await renderWithHead(app);
-        const loaderData = serializeLoaderData(router as never);
-        const scripts = buildScriptsFast(clientEntryTag, loaderData);
-        const fullHtml = processCompiledTemplate(compiled, { head, app: appHtml, scripts });
+        const { html: appHtml, head } = await renderWithHead(app)
+        const loaderData = serializeLoaderData(router as never)
+        const scripts = buildScriptsFast(clientEntryTag, loaderData)
+        const fullHtml = processCompiledTemplate(compiled, { head, app: appHtml, scripts })
 
-        return new Response(fullHtml, { status: 200, headers: ctx.headers });
+        return new Response(fullHtml, { status: 200, headers: ctx.headers })
       } catch (err) {
         if (__DEV__) {
-          console.error("[Pyreon Server] SSR render failed:", err);
+          console.error('[Pyreon Server] SSR render failed:', err)
         }
-        return new Response("Internal Server Error", {
+        return new Response('Internal Server Error', {
           status: 500,
-          headers: { "Content-Type": "text/plain" },
-        });
+          headers: { 'Content-Type': 'text/plain' },
+        })
       }
-    });
-  };
+    })
+  }
 }
 
 /**
@@ -153,49 +153,49 @@ async function renderStreamResponse(
   clientEntryTag: string,
   extraHeaders: Headers,
 ): Promise<Response> {
-  const loaderData = serializeLoaderData(router as never);
-  const scripts = buildScriptsFast(clientEntryTag, loaderData);
+  const loaderData = serializeLoaderData(router as never)
+  const scripts = buildScriptsFast(clientEntryTag, loaderData)
 
   // Use pre-split parts: [before-head, between-head-app, between-app-scripts, after-scripts]
-  const [p0, p1, p2, p3] = compiled.parts;
-  const shellHead = p0 + p1;
-  const shellTail = p2 + scripts + p3;
+  const [p0, p1, p2, p3] = compiled.parts
+  const shellHead = p0 + p1
+  const shellTail = p2 + scripts + p3
 
-  const appStream = renderToStream(app);
-  const reader = appStream.getReader();
+  const appStream = renderToStream(app)
+  const reader = appStream.getReader()
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const encoder = new TextEncoder();
-      const push = (s: string) => controller.enqueue(encoder.encode(s));
+      const encoder = new TextEncoder()
+      const push = (s: string) => controller.enqueue(encoder.encode(s))
 
       try {
-        push(shellHead);
+        push(shellHead)
 
         // Stream app content
-        let done = false;
+        let done = false
         while (!done) {
-          const result = await reader.read();
-          done = result.done;
-          if (result.value) push(result.value);
+          const result = await reader.read()
+          done = result.done
+          if (result.value) push(result.value)
         }
 
-        push(shellTail);
+        push(shellTail)
       } catch (err) {
         if (__DEV__) {
-          console.error("[Pyreon Server] Stream render failed:", err);
+          console.error('[Pyreon Server] Stream render failed:', err)
         }
         // Emit an inline error indicator — status code is already sent (200)
-        push(`<script>console.error("[pyreon/server] Stream render failed")</script>`);
-        push(shellTail);
+        push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)
+        push(shellTail)
       } finally {
-        controller.close();
+        controller.close()
       }
     },
-  });
+  })
 
   return new Response(stream, {
     status: 200,
     headers: extraHeaders,
-  });
+  })
 }

@@ -61,8 +61,8 @@ These primitives mirror the JSX primitives from `@pyreon/document` but add desig
 ## Usage
 
 ```tsx
-import { DocDocument, DocPage, DocHeading, DocText, DocTable } from "@pyreon/document-primitives";
-import { render } from "@pyreon/document";
+import { DocDocument, DocPage, DocHeading, DocText, DocTable } from '@pyreon/document-primitives'
+import { render } from '@pyreon/document'
 
 function Invoice({ data }) {
   return (
@@ -72,9 +72,9 @@ function Invoice({ data }) {
         <DocText color="#666">{data.date}</DocText>
         <DocTable
           columns={[
-            { header: "Item", width: "50%" },
-            { header: "Qty", align: "center" },
-            { header: "Price", align: "right" },
+            { header: 'Item', width: '50%' },
+            { header: 'Qty', align: 'center' },
+            { header: 'Price', align: 'right' },
           ]}
           rows={data.items.map((i) => [i.name, i.qty, `$${i.price}`])}
           striped
@@ -84,12 +84,12 @@ function Invoice({ data }) {
         </DocText>
       </DocPage>
     </DocDocument>
-  );
+  )
 }
 
 // Render in browser for preview, or export
-const pdf = await render(<Invoice data={invoiceData} />, "pdf");
-const email = await render(<Invoice data={invoiceData} />, "email");
+const pdf = await render(<Invoice data={invoiceData} />, 'pdf')
+const email = await render(<Invoice data={invoiceData} />, 'email')
 ```
 
 ## Rocketstyle Integration

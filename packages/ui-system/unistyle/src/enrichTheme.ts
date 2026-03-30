@@ -1,14 +1,14 @@
-import { config, isEmpty } from "@pyreon/ui-core";
-import { createMediaQueries, sortBreakpoints } from "./responsive";
+import { config, isEmpty } from '@pyreon/ui-core'
+import { createMediaQueries, sortBreakpoints } from './responsive'
 
 export type PyreonTheme = {
-  rootSize?: number;
-  breakpoints?: Record<string, number>;
+  rootSize?: number
+  breakpoints?: Record<string, number>
   __PYREON__?: {
-    sortedBreakpoints: string[] | undefined;
-    media: Record<string, (...args: any[]) => any> | undefined;
-  };
-} & Record<string, unknown>;
+    sortedBreakpoints: string[] | undefined
+    media: Record<string, (...args: any[]) => any> | undefined
+  }
+} & Record<string, unknown>
 
 /**
  * Enrich a theme with pre-computed responsive utilities.
@@ -24,19 +24,19 @@ export type PyreonTheme = {
  */
 export function enrichTheme<T extends PyreonTheme>(
   theme: T,
-): T & Required<Pick<PyreonTheme, "__PYREON__">> {
-  const { breakpoints, rootSize = 16 } = theme;
+): T & Required<Pick<PyreonTheme, '__PYREON__'>> {
+  const { breakpoints, rootSize = 16 } = theme
 
   const sortedBreakpoints =
-    breakpoints && !isEmpty(breakpoints) ? sortBreakpoints(breakpoints) : undefined;
+    breakpoints && !isEmpty(breakpoints) ? sortBreakpoints(breakpoints) : undefined
 
   const media =
     breakpoints && !isEmpty(breakpoints)
       ? createMediaQueries({ breakpoints, css: config.css, rootSize })
-      : undefined;
+      : undefined
 
   return {
     ...theme,
     __PYREON__: { sortedBreakpoints, media },
-  };
+  }
 }

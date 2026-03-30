@@ -1,48 +1,48 @@
-import { popContext, pushContext } from "@pyreon/core";
-import { config } from "@pyreon/ui-core";
-import { context } from "../context/context";
-import rocketstyle from "../init";
-import isRocketComponent from "../isRocketComponent";
+import { popContext, pushContext } from '@pyreon/core'
+import { config } from '@pyreon/ui-core'
+import { context } from '../context/context'
+import rocketstyle from '../init'
+import isRocketComponent from '../isRocketComponent'
 
 // Mock styled function that returns the component unchanged
 const mockStyled = (component: any) => {
-  const taggedTemplate = (_strings: any, ..._args: any[]) => component;
-  return taggedTemplate;
-};
+  const taggedTemplate = (_strings: any, ..._args: any[]) => component
+  return taggedTemplate
+}
 
-const mockCss = (_strings: any, ..._args: any[]) => "";
+const mockCss = (_strings: any, ..._args: any[]) => ''
 
 // Store originals to restore later
-const originalStyled = config.styled;
-const originalCss = config.css;
+const originalStyled = config.styled
+const originalCss = config.css
 
 beforeAll(() => {
   config.init({
     css: mockCss as any,
     styled: mockStyled as any,
-    component: "div",
-    textComponent: "span",
-  });
-});
+    component: 'div',
+    textComponent: 'span',
+  })
+})
 
 afterAll(() => {
-  config.styled = originalStyled;
-  config.css = originalCss;
-});
+  config.styled = originalStyled
+  config.css = originalCss
+})
 
 /**
  * Base component that filters internal props and returns a VNode-like object.
  * In Pyreon, components are plain functions — no forwardRef needed.
  */
 const BaseComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
-  type: "div",
+  type: 'div',
   props: rest,
   children,
   key: null,
   $rocketstyle,
   $rocketstate,
-});
-BaseComponent.displayName = "BaseComponent";
+})
+BaseComponent.displayName = 'BaseComponent'
 
 /** Helper to push a theme context for testing */
 const withThemeContext = (fn: () => any) => {
@@ -52,339 +52,339 @@ const withThemeContext = (fn: () => any) => {
         context.id,
         {
           theme: { rootSize: 16 },
-          mode: "light",
+          mode: 'light',
           isDark: false,
           isLight: true,
         },
       ],
     ]),
-  );
+  )
   try {
-    return fn();
+    return fn()
   } finally {
-    popContext();
+    popContext()
   }
-};
+}
 
 /** Unwrap reactive accessors (EnhancedComponent returns a function for mode switching). */
 const unwrap = (val: any): any => {
-  let result = val;
-  while (typeof result === "function" && !result.IS_ROCKETSTYLE) result = result();
-  return result;
-};
+  let result = val
+  while (typeof result === 'function' && !result.IS_ROCKETSTYLE) result = result()
+  return result
+}
 
 /** Helper: call the component and return its output for inspection. */
 const renderProps = (Component: any, props: Record<string, any> = {}) => {
   return withThemeContext(() => {
-    const vnode = unwrap(Component(props));
-    return vnode?.props ?? vnode;
-  });
-};
+    const vnode = unwrap(Component(props))
+    return vnode?.props ?? vnode
+  })
+}
 
 // --------------------------------------------------------
 // rocketstyle factory
 // --------------------------------------------------------
-describe("rocketstyle factory", () => {
-  it("creates a component from factory", () => {
+describe('rocketstyle factory', () => {
+  it('creates a component from factory', () => {
     const Button = rocketstyle()({
-      name: "TestButton",
+      name: 'TestButton',
       component: BaseComponent,
-    });
-    expect(Button).toBeDefined();
-    expect(typeof Button).toBe("function");
-  });
+    })
+    expect(Button).toBeDefined()
+    expect(typeof Button).toBe('function')
+  })
 
-  it("sets IS_ROCKETSTYLE on the component", () => {
+  it('sets IS_ROCKETSTYLE on the component', () => {
     const Button = rocketstyle()({
-      name: "TestButton",
+      name: 'TestButton',
       component: BaseComponent,
-    });
-    expect(Button.IS_ROCKETSTYLE).toBe(true);
-    expect(isRocketComponent(Button)).toBe(true);
-  });
+    })
+    expect(Button.IS_ROCKETSTYLE).toBe(true)
+    expect(isRocketComponent(Button)).toBe(true)
+  })
 
-  it("sets displayName on the component", () => {
+  it('sets displayName on the component', () => {
     const Button = rocketstyle()({
-      name: "MyButton",
+      name: 'MyButton',
       component: BaseComponent,
-    });
-    expect(Button.displayName).toBe("MyButton");
-  });
+    })
+    expect(Button.displayName).toBe('MyButton')
+  })
 
-  it("throws when component is missing", () => {
+  it('throws when component is missing', () => {
     expect(() => {
-      rocketstyle()({ name: "Test", component: undefined as any });
-    }).toThrow("component");
-  });
+      rocketstyle()({ name: 'Test', component: undefined as any })
+    }).toThrow('component')
+  })
 
-  it("throws when name is missing", () => {
+  it('throws when name is missing', () => {
     expect(() => {
-      rocketstyle()({ name: "", component: BaseComponent });
-    }).toThrow("name");
-  });
+      rocketstyle()({ name: '', component: BaseComponent })
+    }).toThrow('name')
+  })
 
-  it("throws when dimension uses reserved key", () => {
+  it('throws when dimension uses reserved key', () => {
     expect(() => {
-      rocketstyle({ dimensions: { attrs: "attrs" } as any })({
-        name: "Test",
+      rocketstyle({ dimensions: { attrs: 'attrs' } as any })({
+        name: 'Test',
         component: BaseComponent,
-      });
-    }).toThrow("invalid");
-  });
+      })
+    }).toThrow('invalid')
+  })
 
-  it("allows custom dimensions", () => {
+  it('allows custom dimensions', () => {
     const Button = rocketstyle({
-      dimensions: { colors: "color", shapes: "shape" },
-    })({ name: "CustomButton", component: BaseComponent });
-    expect(Button).toBeDefined();
-    expect(Button.IS_ROCKETSTYLE).toBe(true);
-  });
+      dimensions: { colors: 'color', shapes: 'shape' },
+    })({ name: 'CustomButton', component: BaseComponent })
+    expect(Button).toBeDefined()
+    expect(Button.IS_ROCKETSTYLE).toBe(true)
+  })
 
-  it("defaults useBooleans to true", () => {
+  it('defaults useBooleans to true', () => {
     const Button = rocketstyle()({
-      name: "Test",
+      name: 'Test',
       component: BaseComponent,
-    });
-    expect(Button).toBeDefined();
-  });
-});
+    })
+    expect(Button).toBeDefined()
+  })
+})
 
 // --------------------------------------------------------
 // chaining methods
 // --------------------------------------------------------
-describe("chaining methods", () => {
+describe('chaining methods', () => {
   const Button: any = rocketstyle()({
-    name: "ChainButton",
+    name: 'ChainButton',
     component: BaseComponent,
-  });
+  })
 
-  it(".attrs() returns a new component", () => {
-    const Enhanced = Button.attrs(() => ({ label: "test" }));
-    expect(Enhanced).toBeDefined();
-    expect(Enhanced.IS_ROCKETSTYLE).toBe(true);
-    expect(Enhanced).not.toBe(Button);
-  });
+  it('.attrs() returns a new component', () => {
+    const Enhanced = Button.attrs(() => ({ label: 'test' }))
+    expect(Enhanced).toBeDefined()
+    expect(Enhanced.IS_ROCKETSTYLE).toBe(true)
+    expect(Enhanced).not.toBe(Button)
+  })
 
-  it(".attrs() with priority option", () => {
-    const Enhanced = Button.attrs(() => ({ label: "priority" }), {
+  it('.attrs() with priority option', () => {
+    const Enhanced = Button.attrs(() => ({ label: 'priority' }), {
       priority: true,
-    });
-    expect(Enhanced).toBeDefined();
-    expect(Enhanced.IS_ROCKETSTYLE).toBe(true);
-  });
+    })
+    expect(Enhanced).toBeDefined()
+    expect(Enhanced.IS_ROCKETSTYLE).toBe(true)
+  })
 
-  it(".attrs() with filter option", () => {
-    const Enhanced = Button.attrs(() => ({ label: "filtered" }), {
-      filter: ["internal"],
-    });
-    expect(Enhanced).toBeDefined();
-  });
+  it('.attrs() with filter option', () => {
+    const Enhanced = Button.attrs(() => ({ label: 'filtered' }), {
+      filter: ['internal'],
+    })
+    expect(Enhanced).toBeDefined()
+  })
 
-  it(".config() returns a new component", () => {
-    const Enhanced = Button.config({ DEBUG: true });
-    expect(Enhanced).toBeDefined();
-    expect(Enhanced.IS_ROCKETSTYLE).toBe(true);
-  });
+  it('.config() returns a new component', () => {
+    const Enhanced = Button.config({ DEBUG: true })
+    expect(Enhanced).toBeDefined()
+    expect(Enhanced.IS_ROCKETSTYLE).toBe(true)
+  })
 
-  it(".statics() returns a new component", () => {
-    const Enhanced = Button.statics({ customMeta: "value" });
-    expect(Enhanced).toBeDefined();
-    expect(Enhanced.meta.customMeta).toBe("value");
-  });
+  it('.statics() returns a new component', () => {
+    const Enhanced = Button.statics({ customMeta: 'value' })
+    expect(Enhanced).toBeDefined()
+    expect(Enhanced.meta.customMeta).toBe('value')
+  })
 
-  it(".theme() returns a new component", () => {
-    const Enhanced = Button.theme(() => ({ color: "blue" }));
-    expect(Enhanced).toBeDefined();
-    expect(Enhanced.IS_ROCKETSTYLE).toBe(true);
-  });
+  it('.theme() returns a new component', () => {
+    const Enhanced = Button.theme(() => ({ color: 'blue' }))
+    expect(Enhanced).toBeDefined()
+    expect(Enhanced.IS_ROCKETSTYLE).toBe(true)
+  })
 
-  it(".styles() returns a new component", () => {
-    const Enhanced = Button.styles(() => "color: red;");
-    expect(Enhanced).toBeDefined();
-  });
+  it('.styles() returns a new component', () => {
+    const Enhanced = Button.styles(() => 'color: red;')
+    expect(Enhanced).toBeDefined()
+  })
 
-  it(".compose() returns a new component", () => {
-    const hoc = (C: any) => C;
-    const Enhanced = Button.compose({ myHoc: hoc });
-    expect(Enhanced).toBeDefined();
-  });
+  it('.compose() returns a new component', () => {
+    const hoc = (C: any) => C
+    const Enhanced = Button.compose({ myHoc: hoc })
+    expect(Enhanced).toBeDefined()
+  })
 
-  it("supports chaining multiple methods", () => {
-    const Enhanced = Button.theme(() => ({ color: "blue" }))
-      .attrs(() => ({ label: "test" }))
-      .config({ name: "EnhancedButton" })
-      .statics({ version: "1.0" });
+  it('supports chaining multiple methods', () => {
+    const Enhanced = Button.theme(() => ({ color: 'blue' }))
+      .attrs(() => ({ label: 'test' }))
+      .config({ name: 'EnhancedButton' })
+      .statics({ version: '1.0' })
 
-    expect(Enhanced.IS_ROCKETSTYLE).toBe(true);
-    expect(Enhanced.meta.version).toBe("1.0");
-  });
+    expect(Enhanced.IS_ROCKETSTYLE).toBe(true)
+    expect(Enhanced.meta.version).toBe('1.0')
+  })
 
-  it(".getStaticDimensions() returns dimension info", () => {
+  it('.getStaticDimensions() returns dimension info', () => {
     const Themed = Button.states(() => ({
-      primary: { color: "red" },
-      secondary: { color: "blue" },
-    }));
+      primary: { color: 'red' },
+      secondary: { color: 'blue' },
+    }))
 
-    const info = Themed.getStaticDimensions({ rootSize: 16 });
-    expect(info.dimensions).toBeDefined();
-    expect(info.useBooleans).toBe(true);
-    expect(info.multiKeys).toBeDefined();
-  });
+    const info = Themed.getStaticDimensions({ rootSize: 16 })
+    expect(info.dimensions).toBeDefined()
+    expect(info.useBooleans).toBe(true)
+    expect(info.multiKeys).toBeDefined()
+  })
 
-  it(".getDefaultAttrs() evaluates attrs chain", () => {
+  it('.getDefaultAttrs() evaluates attrs chain', () => {
     const WithAttrs = Button.attrs((props: any) => ({
-      label: "default",
+      label: 'default',
       ...props,
-    }));
-    const result = WithAttrs.getDefaultAttrs({}, {}, "light");
-    expect(result.label).toBe("default");
-  });
-});
+    }))
+    const result = WithAttrs.getDefaultAttrs({}, {}, 'light')
+    expect(result.label).toBe('default')
+  })
+})
 
 // --------------------------------------------------------
 // rendering
 // --------------------------------------------------------
-describe("rendering", () => {
-  it("renders a basic rocketstyle component", () => {
+describe('rendering', () => {
+  it('renders a basic rocketstyle component', () => {
     const Button: any = rocketstyle()({
-      name: "RenderButton",
+      name: 'RenderButton',
       component: BaseComponent,
-    }).config({});
+    }).config({})
 
-    const result = renderProps(Button, { children: "Hello" });
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button, { children: 'Hello' })
+    expect(result).toBeDefined()
+  })
 
-  it("adds data-rocketstyle attribute in dev mode", () => {
+  it('adds data-rocketstyle attribute in dev mode', () => {
     const Button: any = rocketstyle()({
-      name: "DevButton",
+      name: 'DevButton',
       component: BaseComponent,
-    }).config({});
+    }).config({})
 
-    const result = renderProps(Button);
-    expect(result["data-rocketstyle"]).toBe("DevButton");
-  });
+    const result = renderProps(Button)
+    expect(result['data-rocketstyle']).toBe('DevButton')
+  })
 
-  it("renders with attrs defaults", () => {
+  it('renders with attrs defaults', () => {
     const Button: any = rocketstyle()({
-      name: "AttrsButton",
+      name: 'AttrsButton',
       component: BaseComponent,
-    }).attrs((() => ({ "data-default": "yes" })) as any);
+    }).attrs((() => ({ 'data-default': 'yes' })) as any)
 
-    const result = renderProps(Button);
-    expect(result["data-default"]).toBe("yes");
-  });
+    const result = renderProps(Button)
+    expect(result['data-default']).toBe('yes')
+  })
 
-  it("explicit props override attrs", () => {
+  it('explicit props override attrs', () => {
     const Button: any = rocketstyle()({
-      name: "OverrideButton",
+      name: 'OverrideButton',
       component: BaseComponent,
-    }).attrs((() => ({ "data-val": "from-attrs" })) as any);
+    }).attrs((() => ({ 'data-val': 'from-attrs' })) as any)
 
-    const result = renderProps(Button, { "data-val": "from-props" });
-    expect(result["data-val"]).toBe("from-props");
-  });
+    const result = renderProps(Button, { 'data-val': 'from-props' })
+    expect(result['data-val']).toBe('from-props')
+  })
 
-  it("renders with theme", () => {
+  it('renders with theme', () => {
     const Button: any = rocketstyle()({
-      name: "ThemedButton",
+      name: 'ThemedButton',
       component: BaseComponent,
-    }).theme(() => ({ fontSize: 14 }));
+    }).theme(() => ({ fontSize: 14 }))
 
-    const result = renderProps(Button);
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button)
+    expect(result).toBeDefined()
+  })
 
-  it("renders with dimension states", () => {
+  it('renders with dimension states', () => {
     const Button: any = rocketstyle()({
-      name: "StatesButton",
+      name: 'StatesButton',
       component: BaseComponent,
     })
-      .theme(() => ({ color: "default" }))
+      .theme(() => ({ color: 'default' }))
       .states(() => ({
-        primary: { color: "blue" },
-        secondary: { color: "green" },
-      }));
+        primary: { color: 'blue' },
+        secondary: { color: 'green' },
+      }))
 
-    const result = renderProps(Button, { state: "primary" });
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button, { state: 'primary' })
+    expect(result).toBeDefined()
+  })
 
-  it("renders with boolean dimension props", () => {
+  it('renders with boolean dimension props', () => {
     const Button: any = rocketstyle()({
-      name: "BoolButton",
+      name: 'BoolButton',
       component: BaseComponent,
     }).states(() => ({
-      primary: { color: "blue" },
-    }));
+      primary: { color: 'blue' },
+    }))
 
     // boolean prop 'primary' should map to state='primary'
-    const result = renderProps(Button, { primary: true });
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button, { primary: true })
+    expect(result).toBeDefined()
+  })
 
-  it("renders with priority attrs", () => {
+  it('renders with priority attrs', () => {
     const Button: any = rocketstyle()({
-      name: "PriorityButton",
+      name: 'PriorityButton',
       component: BaseComponent,
-    }).attrs((() => ({ "data-priority": "yes" })) as any, { priority: true });
+    }).attrs((() => ({ 'data-priority': 'yes' })) as any, { priority: true })
 
-    const result = renderProps(Button);
-    expect(result["data-priority"]).toBe("yes");
-  });
-});
+    const result = renderProps(Button)
+    expect(result['data-priority']).toBe('yes')
+  })
+})
 
 // --------------------------------------------------------
 // DEBUG option
 // --------------------------------------------------------
-describe("DEBUG option", () => {
-  it("calls console.debug when DEBUG is enabled", () => {
-    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {
+describe('DEBUG option', () => {
+  it('calls console.debug when DEBUG is enabled', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {
       /* no-op */
-    });
+    })
 
     const Button: any = rocketstyle()({
-      name: "DebugButton",
+      name: 'DebugButton',
       component: BaseComponent,
-    }).config({ DEBUG: true });
+    }).config({ DEBUG: true })
 
-    renderProps(Button);
+    renderProps(Button)
     expect(debugSpy).toHaveBeenCalledWith(
-      "[rocketstyle] DebugButton render:",
+      '[rocketstyle] DebugButton render:',
       expect.objectContaining({
-        component: "DebugButton",
+        component: 'DebugButton',
         rocketstate: expect.any(Object),
         rocketstyle: expect.any(Object),
         dimensions: expect.any(Object),
         mode: expect.any(String),
       }),
-    );
+    )
 
-    debugSpy.mockRestore();
-  });
+    debugSpy.mockRestore()
+  })
 
-  it("does not call console.debug when DEBUG is not set", () => {
-    const debugSpy = vi.spyOn(console, "debug").mockImplementation(() => {
+  it('does not call console.debug when DEBUG is not set', () => {
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {
       /* no-op */
-    });
+    })
 
     const Button: any = rocketstyle()({
-      name: "NoDebugButton",
+      name: 'NoDebugButton',
       component: BaseComponent,
-    }).config({});
+    }).config({})
 
-    renderProps(Button);
-    expect(debugSpy).not.toHaveBeenCalled();
+    renderProps(Button)
+    expect(debugSpy).not.toHaveBeenCalled()
 
-    debugSpy.mockRestore();
-  });
-});
+    debugSpy.mockRestore()
+  })
+})
 
 // --------------------------------------------------------
 // passProps option
 // --------------------------------------------------------
-describe("passProps option", () => {
-  it("passes styling props through when passProps is configured", () => {
+describe('passProps option', () => {
+  it('passes styling props through when passProps is configured', () => {
     const PassPropsComponent: any = ({
       children,
       $rocketstyle,
@@ -392,28 +392,28 @@ describe("passProps option", () => {
       state,
       ...rest
     }: any) => ({
-      type: "div",
-      props: { ...rest, "data-state": state },
+      type: 'div',
+      props: { ...rest, 'data-state': state },
       children,
       key: null,
-    });
-    PassPropsComponent.displayName = "PassPropsComponent";
+    })
+    PassPropsComponent.displayName = 'PassPropsComponent'
 
     const Button: any = rocketstyle()({
-      name: "PassPropsButton",
+      name: 'PassPropsButton',
       component: PassPropsComponent,
     })
       .states(() => ({
-        primary: { color: "blue" },
-        secondary: { color: "green" },
+        primary: { color: 'blue' },
+        secondary: { color: 'green' },
       }))
-      .config({ passProps: ["state"] } as any);
+      .config({ passProps: ['state'] } as any)
 
-    const result = renderProps(Button, { state: "primary" });
-    expect(result["data-state"]).toBe("primary");
-  });
+    const result = renderProps(Button, { state: 'primary' })
+    expect(result['data-state']).toBe('primary')
+  })
 
-  it("does not pass styling props without passProps", () => {
+  it('does not pass styling props without passProps', () => {
     const PassPropsComponent: any = ({
       children,
       $rocketstyle,
@@ -421,202 +421,202 @@ describe("passProps option", () => {
       state,
       ...rest
     }: any) => ({
-      type: "div",
-      props: { ...rest, "data-state": state ?? "none" },
+      type: 'div',
+      props: { ...rest, 'data-state': state ?? 'none' },
       children,
       key: null,
-    });
-    PassPropsComponent.displayName = "NoPassPropsComponent";
+    })
+    PassPropsComponent.displayName = 'NoPassPropsComponent'
 
     const Button: any = rocketstyle()({
-      name: "NoPassPropsButton",
+      name: 'NoPassPropsButton',
       component: PassPropsComponent,
     }).states(() => ({
-      primary: { color: "blue" },
-    }));
+      primary: { color: 'blue' },
+    }))
 
-    const result = renderProps(Button, { state: "primary" });
+    const result = renderProps(Button, { state: 'primary' })
     // Without passProps, the state prop should be filtered out
-    expect(result["data-state"]).toBe("none");
-  });
-});
+    expect(result['data-state']).toBe('none')
+  })
+})
 
 // --------------------------------------------------------
 // IS_ROCKETSTYLE component wrapping
 // --------------------------------------------------------
-describe("IS_ROCKETSTYLE component wrapping", () => {
-  it("skips styled() wrapping when component already has IS_ROCKETSTYLE", () => {
+describe('IS_ROCKETSTYLE component wrapping', () => {
+  it('skips styled() wrapping when component already has IS_ROCKETSTYLE', () => {
     const MarkedComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: "div",
+      type: 'div',
       props: rest,
       children,
       key: null,
-    });
-    MarkedComponent.IS_ROCKETSTYLE = true;
-    MarkedComponent.displayName = "MarkedComponent";
+    })
+    MarkedComponent.IS_ROCKETSTYLE = true
+    MarkedComponent.displayName = 'MarkedComponent'
 
     const Outer: any = rocketstyle()({
-      name: "OuterComponent",
+      name: 'OuterComponent',
       component: MarkedComponent,
-    });
+    })
 
-    expect(Outer).toBeDefined();
-    expect(Outer.IS_ROCKETSTYLE).toBe(true);
-    expect(Outer.displayName).toBe("OuterComponent");
-  });
+    expect(Outer).toBeDefined()
+    expect(Outer.IS_ROCKETSTYLE).toBe(true)
+    expect(Outer.displayName).toBe('OuterComponent')
+  })
 
-  it("renders IS_ROCKETSTYLE component when chained with config", () => {
+  it('renders IS_ROCKETSTYLE component when chained with config', () => {
     const MarkedComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: "div",
+      type: 'div',
       props: rest,
       children,
       key: null,
-    });
-    MarkedComponent.IS_ROCKETSTYLE = true;
-    MarkedComponent.displayName = "MarkedComponent";
+    })
+    MarkedComponent.IS_ROCKETSTYLE = true
+    MarkedComponent.displayName = 'MarkedComponent'
 
     const Outer: any = rocketstyle()({
-      name: "OuterChained",
+      name: 'OuterChained',
       component: MarkedComponent,
-    }).config({});
+    }).config({})
 
-    const result = renderProps(Outer, { children: "Wrapped" });
-    expect(result).toBeDefined();
-  });
-});
+    const result = renderProps(Outer, { children: 'Wrapped' })
+    expect(result).toBeDefined()
+  })
+})
 
 // --------------------------------------------------------
 // empty dimensions validation
 // --------------------------------------------------------
-describe("empty dimensions validation", () => {
-  it("throws when dimensions is an empty object", () => {
+describe('empty dimensions validation', () => {
+  it('throws when dimensions is an empty object', () => {
     expect(() => {
       rocketstyle({ dimensions: {} as any })({
-        name: "EmptyDimensions",
+        name: 'EmptyDimensions',
         component: BaseComponent,
-      });
-    }).toThrow("dimensions");
-  });
-});
+      })
+    }).toThrow('dimensions')
+  })
+})
 
 // --------------------------------------------------------
 // multiple dimension values
 // --------------------------------------------------------
-describe("multiple dimension values", () => {
-  it("renders with array values for multi-key dimensions", () => {
+describe('multiple dimension values', () => {
+  it('renders with array values for multi-key dimensions', () => {
     const Button: any = rocketstyle()({
-      name: "MultiButton",
+      name: 'MultiButton',
       component: BaseComponent,
     }).multiple(() => ({
-      bold: { fontWeight: "bold" },
-      italic: { fontStyle: "italic" },
-      underline: { textDecoration: "underline" },
-    }));
+      bold: { fontWeight: 'bold' },
+      italic: { fontStyle: 'italic' },
+      underline: { textDecoration: 'underline' },
+    }))
 
-    const result = renderProps(Button, { multiple: ["bold", "italic"] });
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button, { multiple: ['bold', 'italic'] })
+    expect(result).toBeDefined()
+  })
 
-  it("renders with single value for non-multi dimensions", () => {
+  it('renders with single value for non-multi dimensions', () => {
     const Button: any = rocketstyle()({
-      name: "SingleDimButton",
+      name: 'SingleDimButton',
       component: BaseComponent,
     })
       .states(() => ({
-        primary: { color: "blue" },
-        secondary: { color: "green" },
+        primary: { color: 'blue' },
+        secondary: { color: 'green' },
       }))
       .sizes(() => ({
         small: { fontSize: 12 },
         large: { fontSize: 18 },
-      }));
+      }))
 
-    const result = renderProps(Button, { state: "primary", size: "large" });
-    expect(result).toBeDefined();
-  });
+    const result = renderProps(Button, { state: 'primary', size: 'large' })
+    expect(result).toBeDefined()
+  })
 
-  it("renders with boolean shorthand for multi-key dimensions", () => {
+  it('renders with boolean shorthand for multi-key dimensions', () => {
     const Button: any = rocketstyle()({
-      name: "MultiBoolButton",
+      name: 'MultiBoolButton',
       component: BaseComponent,
     }).multiple(() => ({
-      bold: { fontWeight: "bold" },
-      italic: { fontStyle: "italic" },
-    }));
+      bold: { fontWeight: 'bold' },
+      italic: { fontStyle: 'italic' },
+    }))
 
     // Boolean shorthand for multi-key: both bold and italic as boolean props
-    const result = renderProps(Button, { bold: true, italic: true });
-    expect(result).toBeDefined();
-  });
-});
+    const result = renderProps(Button, { bold: true, italic: true })
+    expect(result).toBeDefined()
+  })
+})
 
 // --------------------------------------------------------
 // rendering without Provider context
 // --------------------------------------------------------
-describe("rendering without Provider context", () => {
-  it("renders component without any Provider (useContext returns default)", () => {
+describe('rendering without Provider context', () => {
+  it('renders component without any Provider (useContext returns default)', () => {
     const Button: any = rocketstyle()({
-      name: "NoProviderButton",
+      name: 'NoProviderButton',
       component: BaseComponent,
-    }).config({});
+    }).config({})
 
     // Call without any context pushed
-    const vnode = Button({ children: "NoCtx" }) as any;
-    const result = vnode?.props ?? vnode;
-    expect(result).toBeDefined();
-  });
-});
+    const vnode = Button({ children: 'NoCtx' }) as any
+    const result = vnode?.props ?? vnode
+    expect(result).toBeDefined()
+  })
+})
 
 // --------------------------------------------------------
 // $rocketstyle and $rocketstate are passed to inner component
 // --------------------------------------------------------
-describe("theme and state injection", () => {
-  it("passes $rocketstyle theme to inner component", () => {
+describe('theme and state injection', () => {
+  it('passes $rocketstyle theme to inner component', () => {
     const Receiver: any = ({ $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: "div",
+      type: 'div',
       props: rest,
       children: [],
       key: null,
       $rocketstyle,
       $rocketstate,
-    });
-    Receiver.displayName = "Receiver";
+    })
+    Receiver.displayName = 'Receiver'
 
     const Button: any = rocketstyle()({
-      name: "ThemeInjButton",
+      name: 'ThemeInjButton',
       component: Receiver,
     })
-      .theme(() => ({ color: "blue", bg: "white" }))
+      .theme(() => ({ color: 'blue', bg: 'white' }))
       .states(() => ({
-        primary: { color: "red" },
-      }));
+        primary: { color: 'red' },
+      }))
 
-    const vnode = withThemeContext(() => unwrap(Button({ state: "primary" })));
-    expect(vnode.$rocketstyle).toBeDefined();
-    expect(vnode.$rocketstyle.color).toBe("red");
-    expect(vnode.$rocketstyle.bg).toBe("white");
-  });
+    const vnode = withThemeContext(() => unwrap(Button({ state: 'primary' })))
+    expect(vnode.$rocketstyle).toBeDefined()
+    expect(vnode.$rocketstyle.color).toBe('red')
+    expect(vnode.$rocketstyle.bg).toBe('white')
+  })
 
-  it("passes $rocketstate with active dimensions to inner component", () => {
+  it('passes $rocketstate with active dimensions to inner component', () => {
     const Receiver: any = ({ $rocketstyle, $rocketstate, ...rest }: any) => ({
-      type: "div",
+      type: 'div',
       props: rest,
       children: [],
       key: null,
       $rocketstyle,
       $rocketstate,
-    });
-    Receiver.displayName = "Receiver";
+    })
+    Receiver.displayName = 'Receiver'
 
     const Button: any = rocketstyle()({
-      name: "StateInjButton",
+      name: 'StateInjButton',
       component: Receiver,
     }).states(() => ({
-      primary: { color: "blue" },
-    }));
+      primary: { color: 'blue' },
+    }))
 
-    const vnode = withThemeContext(() => unwrap(Button({ state: "primary" })));
-    expect(vnode.$rocketstate).toBeDefined();
-    expect(vnode.$rocketstate.state).toBe("primary");
-  });
-});
+    const vnode = withThemeContext(() => unwrap(Button({ state: 'primary' })))
+    expect(vnode.$rocketstate).toBeDefined()
+    expect(vnode.$rocketstate.state).toBe('primary')
+  })
+})

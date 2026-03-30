@@ -1,6 +1,6 @@
-import { mergeConfig } from "vite";
-import { defineConfig } from "vitest/config";
-import { sharedConfig } from "../../../vitest.shared";
+import { mergeConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
+import { sharedConfig } from '../../../vitest.shared'
 
 // This package has all logic in src/index.ts (not just re-exports),
 // so we define coverage config directly instead of using createVitestConfig()
@@ -11,11 +11,11 @@ export default mergeConfig(
     test: {
       globals: true,
       mockReset: true,
-      include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+      include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
       coverage: {
-        provider: "v8",
-        include: ["src/**/*.ts", "src/**/*.tsx"],
-        exclude: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/bin/**"],
+        provider: 'v8',
+        include: ['src/**/*.ts', 'src/**/*.tsx'],
+        exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/bin/**'],
         thresholds: {
           statements: 95,
           branches: 95,
@@ -25,4 +25,4 @@ export default mergeConfig(
       },
     },
   }),
-);
+)

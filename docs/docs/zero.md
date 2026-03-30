@@ -47,31 +47,31 @@ This gives you a working application with file-system routing, SSR, and hot modu
 Zero is configured as a set of Vite plugins in your `vite.config.ts`:
 
 ```ts title="vite.config.ts"
-import pyreon from "@pyreon/vite-plugin";
-import zero from "@pyreon/zero";
-import { fontPlugin } from "@pyreon/zero/font";
-import { seoPlugin } from "@pyreon/zero/seo";
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero'
+import { fontPlugin } from '@pyreon/zero/font'
+import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
   plugins: [
     pyreon(),
-    zero({ mode: "ssr" }),
-    fontPlugin({ google: ["Inter:wght@400;500;700"] }),
-    seoPlugin({ sitemap: { origin: "https://example.com" } }),
+    zero({ mode: 'ssr' }),
+    fontPlugin({ google: ['Inter:wght@400;500;700'] }),
+    seoPlugin({ sitemap: { origin: 'https://example.com' } }),
   ],
-};
+}
 ```
 
 You can also use the `defineConfig` helper for type-safe configuration:
 
 ```ts
-import { defineConfig } from "@pyreon/zero/config";
+import { defineConfig } from '@pyreon/zero/config'
 
 const config = defineConfig({
-  mode: "ssr",
-  adapter: "node",
+  mode: 'ssr',
+  adapter: 'node',
   port: 3000,
-});
+})
 ```
 
 ### ZeroConfig Options
@@ -125,7 +125,7 @@ src/routes/
 Import the generated route table at runtime:
 
 ```ts
-import { routes } from "virtual:zero/routes";
+import { routes } from 'virtual:zero/routes'
 ```
 
 This provides a fully typed route array ready to pass to the router.
@@ -143,17 +143,17 @@ export default function UserPage({ params, data }) {
     <div>
       User {params.id}: {data.name}
     </div>
-  );
+  )
 }
 
 // Optional: wrap the page in a layout
 export function layout({ children }) {
-  return <div class="user-layout">{children}</div>;
+  return <div class="user-layout">{children}</div>
 }
 
 // Optional: suspense fallback
 export function loading() {
-  return <div>Loading user...</div>;
+  return <div>Loading user...</div>
 }
 
 // Optional: error boundary
@@ -162,13 +162,13 @@ export function error({ error, reset }) {
     <div>
       Error: {error.message} <button on:click={reset}>Retry</button>
     </div>
-  );
+  )
 }
 
 // Optional: server-side data loading
 export async function loader({ params, query, request, signal }) {
-  const user = await db.users.findById(params.id);
-  return { name: user.name };
+  const user = await db.users.findById(params.id)
+  return { name: user.name }
 }
 
 // Optional: middleware for this route
@@ -178,18 +178,18 @@ export function middleware(ctx) {
 
 // Optional: navigation guard
 export function guard({ params }) {
-  if (!params.id) return "/404";
-  return true;
+  if (!params.id) return '/404'
+  return true
 }
 
 // Optional: head/meta tags
 export const meta = {
-  title: "User Profile",
-  description: "View user profile details",
-};
+  title: 'User Profile',
+  description: 'View user profile details',
+}
 
 // Optional: per-route rendering mode override
-export const renderMode = "ssr"; // "ssr" | "ssg" | "spa" | "isr"
+export const renderMode = 'ssr' // "ssr" | "ssg" | "spa" | "isr"
 ```
 
 ### Loader Context
@@ -209,9 +209,9 @@ The default mode. Pages are rendered on the server for every request and sent as
 
 ```ts
 defineConfig({
-  mode: "ssr",
-  ssr: { mode: "stream" }, // "stream" for chunked transfer, "string" for buffered
-});
+  mode: 'ssr',
+  ssr: { mode: 'stream' }, // "stream" for chunked transfer, "string" for buffered
+})
 ```
 
 ### SSG (Static Site Generation)
@@ -220,11 +220,11 @@ Pages are prerendered at build time. Ideal for content that rarely changes.
 
 ```ts
 defineConfig({
-  mode: "ssg",
+  mode: 'ssg',
   ssg: {
-    paths: ["/", "/about", "/blog/hello-world"],
+    paths: ['/', '/about', '/blog/hello-world'],
   },
-});
+})
 ```
 
 ### SPA (Single-Page Application)
@@ -233,8 +233,8 @@ Client-only rendering. The server sends a minimal HTML shell and all rendering h
 
 ```ts
 defineConfig({
-  mode: "spa",
-});
+  mode: 'spa',
+})
 ```
 
 ### ISR (Incremental Static Regeneration)
@@ -243,11 +243,11 @@ Combines SSG with stale-while-revalidate caching. Pages are served from cache an
 
 ```ts
 defineConfig({
-  mode: "isr",
+  mode: 'isr',
   isr: {
     revalidate: 60, // seconds
   },
-});
+})
 ```
 
 ## Components
@@ -308,16 +308,16 @@ Zero provides the `Link` system at three levels of abstraction:
 **1. `useLink(props)` — Composable with full control**
 
 ```tsx
-import { useLink } from "@pyreon/zero";
+import { useLink } from '@pyreon/zero'
 
 function CustomNav({ href, children }) {
-  const { isActive, isExactActive, navigate, prefetch } = useLink({ href });
+  const { isActive, isExactActive, navigate, prefetch } = useLink({ href })
 
   return (
-    <button class={isActive() ? "active" : ""} on:click={navigate} on:mouseenter={prefetch}>
+    <button class={isActive() ? 'active' : ''} on:click={navigate} on:mouseenter={prefetch}>
       {children}
     </button>
-  );
+  )
 }
 ```
 
@@ -343,9 +343,9 @@ const FancyLink = createLink(FancyButton)
 **3. `Link` — Default `<a>`-based link**
 
 ```tsx
-import { Link } from "@pyreon/zero";
+import { Link } from '@pyreon/zero'
 
-<Link href="/about">About</Link>;
+;<Link href="/about">About</Link>
 ```
 
 ### Script
@@ -392,13 +392,13 @@ import {
   initTheme,
   ThemeToggle,
   themeScript,
-} from "@pyreon/zero";
+} from '@pyreon/zero'
 ```
 
 ### Usage
 
 ```tsx
-import { theme, resolvedTheme, toggleTheme, setTheme, ThemeToggle } from "@pyreon/zero";
+import { theme, resolvedTheme, toggleTheme, setTheme, ThemeToggle } from '@pyreon/zero'
 
 function Header() {
   return (
@@ -406,14 +406,14 @@ function Header() {
       <p>Current theme: {theme()}</p>
       <p>Resolved (system-aware): {resolvedTheme()}</p>
       <button on:click={toggleTheme}>Toggle</button>
-      <button on:click={() => setTheme("dark")}>Force Dark</button>
-      <button on:click={() => setTheme("light")}>Force Light</button>
-      <button on:click={() => setTheme("system")}>System</button>
+      <button on:click={() => setTheme('dark')}>Force Dark</button>
+      <button on:click={() => setTheme('light')}>Force Light</button>
+      <button on:click={() => setTheme('system')}>System</button>
 
       {/* Or use the built-in toggle component */}
       <ThemeToggle />
     </header>
-  );
+  )
 }
 ```
 
@@ -422,7 +422,7 @@ function Header() {
 Add `themeScript` to your HTML `<head>` to apply the theme before the first paint:
 
 ```tsx
-import { themeScript } from "@pyreon/zero";
+import { themeScript } from '@pyreon/zero'
 
 function Document() {
   return (
@@ -432,16 +432,16 @@ function Document() {
       </head>
       <body>{/* ... */}</body>
     </html>
-  );
+  )
 }
 ```
 
 Call `initTheme()` during app startup to initialize the reactive theme state from `localStorage` and system preferences:
 
 ```tsx
-import { initTheme } from "@pyreon/zero";
+import { initTheme } from '@pyreon/zero'
 
-initTheme();
+initTheme()
 ```
 
 ### Theme API
@@ -465,7 +465,7 @@ Built-in server middleware for common tasks:
 Applies `Cache-Control` headers based on asset type:
 
 ```ts
-import { cacheMiddleware } from "@pyreon/zero";
+import { cacheMiddleware } from '@pyreon/zero'
 
 cacheMiddleware({
   immutable: 31536000, // Hashed assets (1 year, default)
@@ -474,9 +474,9 @@ cacheMiddleware({
   staleWhileRevalidate: 60, // SWR window in seconds (default)
   rules: [
     // Custom per-path overrides
-    { match: "/api/*", control: "no-store" },
+    { match: '/api/*', control: 'no-store' },
   ],
-});
+})
 ```
 
 | Option                 | Type          | Default    | Description                             |
@@ -492,10 +492,10 @@ cacheMiddleware({
 Adds security-related HTTP headers (Content-Security-Policy, X-Frame-Options, etc.):
 
 ```ts
-import { securityHeaders } from "@pyreon/zero";
+import { securityHeaders } from '@pyreon/zero'
 
 // Use in your server middleware
-securityHeaders();
+securityHeaders()
 ```
 
 ### varyEncoding
@@ -503,9 +503,9 @@ securityHeaders();
 Adds `Vary: Accept-Encoding` header for proper CDN caching:
 
 ```ts
-import { varyEncoding } from "@pyreon/zero";
+import { varyEncoding } from '@pyreon/zero'
 
-varyEncoding();
+varyEncoding()
 ```
 
 ## API Routes
@@ -513,15 +513,15 @@ varyEncoding();
 API routes are `.ts` files in `src/routes/api/` that export HTTP method handlers. They run on the server and return `Response` objects directly.
 
 ```ts title="src/routes/api/posts.ts"
-import type { ApiContext } from "@pyreon/zero";
+import type { ApiContext } from '@pyreon/zero'
 
 export function GET(ctx: ApiContext) {
-  return Response.json([{ id: 1, title: "Hello World" }]);
+  return Response.json([{ id: 1, title: 'Hello World' }])
 }
 
 export async function POST(ctx: ApiContext) {
-  const body = await ctx.request.json();
-  return Response.json({ id: 2, ...body }, { status: 201 });
+  const body = await ctx.request.json()
+  return Response.json({ id: 2, ...body }, { status: 201 })
 }
 ```
 
@@ -561,22 +561,22 @@ Unsupported methods automatically return `405 Method Not Allowed` with an `Allow
 ### CORS Middleware
 
 ```ts
-import { corsMiddleware } from "@pyreon/zero/cors";
+import { corsMiddleware } from '@pyreon/zero/cors'
 
 // Allow any origin
-corsMiddleware();
+corsMiddleware()
 
 // Specific origins with credentials
 corsMiddleware({
-  origin: ["https://app.com", "https://admin.com"],
+  origin: ['https://app.com', 'https://admin.com'],
   credentials: true,
   maxAge: 86400,
-});
+})
 
 // Dynamic origin matching
 corsMiddleware({
-  origin: (o) => o.endsWith(".example.com"),
-});
+  origin: (o) => o.endsWith('.example.com'),
+})
 ```
 
 | Option           | Type                                                | Default                                           | Description               |
@@ -591,17 +591,17 @@ corsMiddleware({
 ### Rate Limiting
 
 ```ts
-import { rateLimitMiddleware } from "@pyreon/zero/rate-limit";
+import { rateLimitMiddleware } from '@pyreon/zero/rate-limit'
 
 // 100 requests per minute (default)
-rateLimitMiddleware();
+rateLimitMiddleware()
 
 // Strict API rate limiting
 rateLimitMiddleware({
   max: 20,
   window: 60,
-  include: ["/api/*"],
-});
+  include: ['/api/*'],
+})
 ```
 
 | Option    | Type              | Default   | Description                |
@@ -617,9 +617,9 @@ Sets `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers. 
 ### Compression
 
 ```ts
-import { compressionMiddleware } from "@pyreon/zero/compression";
+import { compressionMiddleware } from '@pyreon/zero/compression'
 
-compressionMiddleware({ threshold: 1024, encodings: ["gzip"] });
+compressionMiddleware({ threshold: 1024, encodings: ['gzip'] })
 ```
 
 Compresses text-based responses (HTML, JSON, JS, CSS, XML, SVG) using the native `CompressionStream` API. Skips binary content and responses below the threshold.
@@ -629,34 +629,34 @@ Compresses text-based responses (HTML, JSON, JS, CSS, XML, SVG) using the native
 Define server-side mutations that are callable from the client. Actions receive parsed JSON or FormData and are mounted at `/_zero/actions/*`.
 
 ```ts title="src/features/posts.ts"
-import { defineAction } from "@pyreon/zero/actions";
+import { defineAction } from '@pyreon/zero/actions'
 
 export const createPost = defineAction(async (ctx) => {
-  const { title, body } = ctx.json as { title: string; body: string };
-  const post = await db.posts.create({ title, body });
-  return { success: true, id: post.id };
-});
+  const { title, body } = ctx.json as { title: string; body: string }
+  const post = await db.posts.create({ title, body })
+  return { success: true, id: post.id }
+})
 
 export const deletePost = defineAction(async (ctx) => {
-  const { id } = ctx.json as { id: number };
-  await db.posts.delete(id);
-  return { success: true };
-});
+  const { id } = ctx.json as { id: number }
+  await db.posts.delete(id)
+  return { success: true }
+})
 ```
 
 Call actions from components — they're just async functions:
 
 ```tsx
-import { createPost } from "../features/posts";
+import { createPost } from '../features/posts'
 
 function NewPostForm() {
   const handleSubmit = async (e: Event) => {
-    e.preventDefault();
-    const result = await createPost({ title: "Hello", body: "World" });
-    if (result.success) window.location.href = `/posts/${result.id}`;
-  };
+    e.preventDefault()
+    const result = await createPost({ title: 'Hello', body: 'World' })
+    if (result.success) window.location.href = `/posts/${result.id}`
+  }
 
-  return <form onSubmit={handleSubmit}>...</form>;
+  return <form onSubmit={handleSubmit}>...</form>
 }
 ```
 
@@ -674,7 +674,7 @@ function NewPostForm() {
 Mount the action handler in your server entry:
 
 ```ts title="src/entry-server.ts"
-import { createActionMiddleware } from "@pyreon/zero/actions";
+import { createActionMiddleware } from '@pyreon/zero/actions'
 
 export default createServer({
   routes,
@@ -683,7 +683,7 @@ export default createServer({
     securityHeaders(),
     cacheMiddleware(),
   ],
-});
+})
 ```
 
 ## Per-Route Middleware
@@ -691,38 +691,38 @@ export default createServer({
 Route files can export a `middleware` function that runs on the server before rendering. Middleware uses `@pyreon/server`'s signature:
 
 ```tsx title="src/routes/(admin)/dashboard.tsx"
-import type { MiddlewareContext } from "@pyreon/server";
+import type { MiddlewareContext } from '@pyreon/server'
 
 // Runs on every request to /dashboard
 export const middleware = (ctx: MiddlewareContext) => {
-  const token = ctx.req.headers.get("authorization");
+  const token = ctx.req.headers.get('authorization')
   if (!token) {
-    return new Response("Unauthorized", { status: 401 });
+    return new Response('Unauthorized', { status: 401 })
   }
   // Return void to continue to rendering
-};
+}
 ```
 
 Wire route middleware in your server entry:
 
 ```ts title="src/entry-server.ts"
-import { routes } from "virtual:zero/routes";
-import { routeMiddleware } from "virtual:zero/route-middleware";
-import { createServer } from "@pyreon/zero";
+import { routes } from 'virtual:zero/routes'
+import { routeMiddleware } from 'virtual:zero/route-middleware'
+import { createServer } from '@pyreon/zero'
 
 export default createServer({
   routes,
   routeMiddleware, // per-route middleware dispatched before global middleware
   middleware: [securityHeaders(), cacheMiddleware()],
-});
+})
 ```
 
 Add the virtual module type to your `env.d.ts`:
 
 ```ts title="env.d.ts"
-declare module "virtual:zero/route-middleware" {
-  import type { RouteMiddlewareEntry } from "@pyreon/zero";
-  export const routeMiddleware: RouteMiddlewareEntry[];
+declare module 'virtual:zero/route-middleware' {
+  import type { RouteMiddlewareEntry } from '@pyreon/zero'
+  export const routeMiddleware: RouteMiddlewareEntry[]
 }
 ```
 
@@ -731,13 +731,13 @@ declare module "virtual:zero/route-middleware" {
 ### Sitemap Generation
 
 ```ts
-import { generateSitemap } from "@pyreon/zero";
+import { generateSitemap } from '@pyreon/zero'
 
-const sitemap = generateSitemap(["/", "/about", "/blog/hello-world"], {
-  origin: "https://example.com",
-  changefreq: "weekly",
+const sitemap = generateSitemap(['/', '/about', '/blog/hello-world'], {
+  origin: 'https://example.com',
+  changefreq: 'weekly',
   priority: 0.8,
-});
+})
 ```
 
 | Option            | Type             | Default  | Description                              |
@@ -751,42 +751,42 @@ const sitemap = generateSitemap(["/", "/about", "/blog/hello-world"], {
 ### Robots.txt
 
 ```ts
-import { generateRobots } from "@pyreon/zero";
+import { generateRobots } from '@pyreon/zero'
 
 const robots = generateRobots({
   rules: [
     {
-      userAgent: "*",
-      allow: ["/"],
-      disallow: ["/admin", "/api"],
+      userAgent: '*',
+      allow: ['/'],
+      disallow: ['/admin', '/api'],
     },
   ],
-  sitemap: "https://example.com/sitemap.xml",
-});
+  sitemap: 'https://example.com/sitemap.xml',
+})
 ```
 
 ### JSON-LD
 
 ```tsx
-import { jsonLd } from "@pyreon/zero";
+import { jsonLd } from '@pyreon/zero'
 
 function ProductPage({ product }) {
   return (
     <>
       {jsonLd({
-        "@context": "https://schema.org",
-        "@type": "Product",
+        '@context': 'https://schema.org',
+        '@type': 'Product',
         name: product.name,
         description: product.description,
         offers: {
-          "@type": "Offer",
+          '@type': 'Offer',
           price: product.price,
-          priceCurrency: "USD",
+          priceCurrency: 'USD',
         },
       })}
       <h1>{product.name}</h1>
     </>
-  );
+  )
 }
 ```
 
@@ -795,23 +795,23 @@ function ProductPage({ product }) {
 Auto-generates `sitemap.xml` and `robots.txt` at build time:
 
 ```ts title="vite.config.ts"
-import { seoPlugin } from "@pyreon/zero/seo";
+import { seoPlugin } from '@pyreon/zero/seo'
 
 export default {
   plugins: [
     seoPlugin({
       sitemap: {
-        origin: "https://example.com",
-        changefreq: "weekly",
+        origin: 'https://example.com',
+        changefreq: 'weekly',
         priority: 0.8,
       },
       robots: {
-        rules: [{ userAgent: "*", allow: ["/"] }],
-        sitemap: "https://example.com/sitemap.xml",
+        rules: [{ userAgent: '*', allow: ['/'] }],
+        sitemap: 'https://example.com/sitemap.xml',
       },
     }),
   ],
-};
+}
 ```
 
 ### SEO Dev Middleware
@@ -819,13 +819,13 @@ export default {
 Serves sitemap and robots in development:
 
 ```ts
-import { seoMiddleware } from "@pyreon/zero";
+import { seoMiddleware } from '@pyreon/zero'
 
 seoMiddleware({
   sitemap: {
-    origin: "http://localhost:3000",
+    origin: 'http://localhost:3000',
   },
-});
+})
 ```
 
 ## Font Optimization
@@ -833,31 +833,31 @@ seoMiddleware({
 The `fontPlugin` automatically downloads Google Fonts at build time and self-hosts them, eliminating external requests in production. In development, it falls back to the CDN.
 
 ```ts title="vite.config.ts"
-import { fontPlugin } from "@pyreon/zero/font";
+import { fontPlugin } from '@pyreon/zero/font'
 
 export default {
   plugins: [
     fontPlugin({
       google: [
-        "Inter:wght@400;500;700", // String shorthand
-        { family: "Fira Code", weights: [400, 700] }, // Static font object
-        { family: "Roboto Flex", weightRange: [100, 900], variable: true }, // Variable font
+        'Inter:wght@400;500;700', // String shorthand
+        { family: 'Fira Code', weights: [400, 700] }, // Static font object
+        { family: 'Roboto Flex', weightRange: [100, 900], variable: true }, // Variable font
       ],
-      local: [{ family: "Custom Font", src: "./fonts/custom.woff2", weight: 400 }],
-      display: "swap", // font-display strategy (default: "swap")
+      local: [{ family: 'Custom Font', src: './fonts/custom.woff2', weight: 400 }],
+      display: 'swap', // font-display strategy (default: "swap")
       preload: true, // Preload fonts (default: true)
       selfHost: true, // Self-host at build time (default: true)
       fallbacks: {
         // CLS-reducing fallback metrics
         Inter: {
-          fallback: "Arial",
+          fallback: 'Arial',
           sizeAdjust: 1.07,
           ascentOverride: 0.9,
         },
       },
     }),
   ],
-};
+}
 ```
 
 ### Font Config
@@ -876,9 +876,9 @@ export default {
 Generate CSS custom properties for font families:
 
 ```ts
-import { fontVariables } from "@pyreon/zero";
+import { fontVariables } from '@pyreon/zero'
 
-const vars = fontVariables({ Inter: "'Inter', sans-serif", "Fira Code": "'Fira Code', monospace" });
+const vars = fontVariables({ Inter: "'Inter', sans-serif", 'Fira Code': "'Fira Code', monospace" })
 // Returns CSS like:
 // --font-inter: 'Inter', sans-serif;
 // --font-fira-code: 'Fira Code', monospace;
@@ -889,32 +889,32 @@ const vars = fontVariables({ Inter: "'Inter', sans-serif", "Fira Code": "'Fira C
 The `imagePlugin` provides build-time image optimization. Import images with `?optimize` to generate responsive srcsets and modern formats automatically.
 
 ```ts title="vite.config.ts"
-import { imagePlugin } from "@pyreon/zero/image-plugin";
+import { imagePlugin } from '@pyreon/zero/image-plugin'
 
 export default {
   plugins: [
     imagePlugin({
       widths: [640, 1024, 1920], // Responsive breakpoints (default)
-      formats: ["webp"], // Output formats (default). Options: "webp", "avif", "jpeg", "png"
+      formats: ['webp'], // Output formats (default). Options: "webp", "avif", "jpeg", "png"
       quality: 80, // Lossy format quality 1-100 (default: 80)
       placeholderSize: 16, // Blur placeholder size in px (default: 16)
-      outDir: "assets/img", // Output subdirectory (default: "assets/img")
+      outDir: 'assets/img', // Output subdirectory (default: "assets/img")
       include: /\.(jpe?g|png|webp|avif)$/i, // File patterns to process (default)
     }),
   ],
-};
+}
 ```
 
 ### Usage in Components
 
 ```tsx
 // Import with ?optimize to get a ProcessedImage object
-import hero from "./images/hero.jpg?optimize";
+import hero from './images/hero.jpg?optimize'
 // hero = { src, srcset, width, height, placeholder, formats, sources }
 
-import { Image } from "@pyreon/zero";
+import { Image } from '@pyreon/zero'
 
-<Image {...hero} alt="Hero" priority />;
+;<Image {...hero} alt="Hero" priority />
 ```
 
 The plugin uses [sharp](https://sharp.pixelplumbing.com/) for image processing. If sharp is not installed, images are copied as-is with a build-time warning.
@@ -924,19 +924,19 @@ The plugin uses [sharp](https://sharp.pixelplumbing.com/) for image processing. 
 For custom ISR logic outside the config, use `createISRHandler` directly:
 
 ```ts
-import { createISRHandler } from "@pyreon/zero";
+import { createISRHandler } from '@pyreon/zero'
 
 const handler = createISRHandler(
   async (request) => {
-    const html = await renderPage(request);
+    const html = await renderPage(request)
     return new Response(html, {
-      headers: { "Content-Type": "text/html" },
-    });
+      headers: { 'Content-Type': 'text/html' },
+    })
   },
   {
     revalidate: 60, // seconds between revalidations
   },
-);
+)
 ```
 
 The handler uses an in-memory cache with stale-while-revalidate semantics. Cached responses are served immediately while a background revalidation refreshes the entry.
@@ -955,16 +955,16 @@ Set the adapter in your config:
 
 ```ts
 defineConfig({
-  adapter: "bun",
-});
+  adapter: 'bun',
+})
 ```
 
 Or use the adapter API directly:
 
 ```ts
-import { resolveAdapter, nodeAdapter, bunAdapter, staticAdapter } from "@pyreon/zero";
+import { resolveAdapter, nodeAdapter, bunAdapter, staticAdapter } from '@pyreon/zero'
 
-const adapter = resolveAdapter(config); // Resolves based on config.adapter
+const adapter = resolveAdapter(config) // Resolves based on config.adapter
 ```
 
 Each adapter implements a `build()` method that receives the server entry, client output, and output directory paths.
@@ -976,15 +976,15 @@ Each adapter implements a `build()` method that receives the server entry, clien
 Assembles the full application shell with router, head provider, and root layout. Returns both the App component and the router instance:
 
 ```tsx
-import { createApp } from "@pyreon/zero";
+import { createApp } from '@pyreon/zero'
 
 const { App, router } = createApp({
   routes, // from virtual:zero/routes or manual definition
-  routerMode: "history", // "history" (default) or "hash"
-  url: "/", // Initial URL for SSR
+  routerMode: 'history', // "history" (default) or "hash"
+  url: '/', // Initial URL for SSR
   layout: RootLayout, // Optional root layout component
   errorComponent: GlobalError, // Optional global error boundary
-});
+})
 ```
 
 ### createServer
@@ -992,16 +992,16 @@ const { App, router } = createApp({
 Creates a production SSR request handler:
 
 ```ts
-import { createServer } from "@pyreon/zero";
+import { createServer } from '@pyreon/zero'
 
 const handler = createServer({
   routes,
   routeMiddleware, // Per-route middleware from virtual:zero/route-middleware
-  config: { mode: "ssr" },
+  config: { mode: 'ssr' },
   middleware: [securityHeaders(), cacheMiddleware()],
   template: indexHtml, // HTML template string
-  clientEntry: "/src/main.tsx", // Client entry point path
-});
+  clientEntry: '/src/main.tsx', // Client entry point path
+})
 ```
 
 ### startClient
@@ -1009,12 +1009,12 @@ const handler = createServer({
 Client-side hydration or mounting, imported from `@pyreon/zero/client`:
 
 ```ts
-import { startClient } from "@pyreon/zero/client";
+import { startClient } from '@pyreon/zero/client'
 
 startClient({
   routes,
   layout: RootLayout, // Optional root layout component
-});
+})
 ```
 
 The client automatically detects whether to hydrate (if SSR-rendered HTML is present) or mount fresh (SPA mode).
@@ -1026,41 +1026,41 @@ Test helpers for middleware and API routes, imported from `@pyreon/zero/testing`
 ### Testing Middleware
 
 ```ts
-import { testMiddleware } from "@pyreon/zero/testing";
-import { corsMiddleware } from "@pyreon/zero/cors";
+import { testMiddleware } from '@pyreon/zero/testing'
+import { corsMiddleware } from '@pyreon/zero/cors'
 
-const { response, headers } = await testMiddleware(corsMiddleware({ origin: "*" }), "/api/posts");
-expect(headers.get("Access-Control-Allow-Origin")).toBe("*");
+const { response, headers } = await testMiddleware(corsMiddleware({ origin: '*' }), '/api/posts')
+expect(headers.get('Access-Control-Allow-Origin')).toBe('*')
 ```
 
 ### Testing API Routes
 
 ```ts
-import { createTestApiServer } from "@pyreon/zero/testing";
+import { createTestApiServer } from '@pyreon/zero/testing'
 
 const server = createTestApiServer([
-  { pattern: "/api/posts", module: { GET: () => Response.json([]) } },
-]);
+  { pattern: '/api/posts', module: { GET: () => Response.json([]) } },
+])
 
-const res = await server.request("/api/posts");
-expect(res.status).toBe(200);
+const res = await server.request('/api/posts')
+expect(res.status).toBe(200)
 
-const res2 = await server.request("/api/posts", {
-  method: "POST",
-  body: { title: "Hello" },
-});
-expect(res2.status).toBe(201);
+const res2 = await server.request('/api/posts', {
+  method: 'POST',
+  body: { title: 'Hello' },
+})
+expect(res2.status).toBe(201)
 ```
 
 ### Mock Handlers
 
 ```ts
-import { createMockHandler } from "@pyreon/zero/testing";
+import { createMockHandler } from '@pyreon/zero/testing'
 
-const handler = createMockHandler({ status: 200, body: { ok: true } });
+const handler = createMockHandler({ status: 200, body: { ok: true } })
 // ... use in API route module
-expect(handler.calls).toHaveLength(1);
-expect(handler.calls[0].params).toEqual({ id: "123" });
+expect(handler.calls).toHaveLength(1)
+expect(handler.calls[0].params).toEqual({ id: '123' })
 ```
 
 | Export                              | Description                               |

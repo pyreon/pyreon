@@ -11,21 +11,21 @@ bun add @pyreon/store
 ## Quick Start
 
 ```ts
-import { defineStore, signal, computed } from "@pyreon/store";
+import { defineStore, signal, computed } from '@pyreon/store'
 
-const useCounter = defineStore("counter", () => {
-  const count = signal(0);
-  const doubled = computed(() => count() * 2);
-  const increment = () => count.update((n) => n + 1);
-  return { count, doubled, increment };
-});
+const useCounter = defineStore('counter', () => {
+  const count = signal(0)
+  const doubled = computed(() => count() * 2)
+  const increment = () => count.update((n) => n + 1)
+  return { count, doubled, increment }
+})
 
 // Destructure what you need:
-const { store, patch, subscribe, reset, dispose } = useCounter();
-store.count(); // 0
-store.increment();
-store.doubled(); // 2
-patch({ count: 10 }); // batch-update
+const { store, patch, subscribe, reset, dispose } = useCounter()
+store.count() // 0
+store.increment()
+store.doubled() // 2
+patch({ count: 10 }) // batch-update
 ```
 
 Stores are singletons. The setup function runs once per store ID; subsequent calls return the cached instance.
@@ -64,11 +64,11 @@ Destroy all stores. Useful for testing and SSR isolation.
 Override the store registry provider for concurrent SSR. Each request can get its own isolated registry via `AsyncLocalStorage`.
 
 ```ts
-import { AsyncLocalStorage } from "node:async_hooks";
-import { setStoreRegistryProvider } from "@pyreon/store";
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { setStoreRegistryProvider } from '@pyreon/store'
 
-const als = new AsyncLocalStorage<Map<string, unknown>>();
-setStoreRegistryProvider(() => als.getStore() ?? new Map());
+const als = new AsyncLocalStorage<Map<string, unknown>>()
+setStoreRegistryProvider(() => als.getStore() ?? new Map())
 ```
 
 ## Re-exports

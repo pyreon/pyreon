@@ -1,4 +1,4 @@
-import { average, count, max, min, sum } from "./aggregation";
+import { average, count, max, min, sum } from './aggregation'
 import {
   chunk,
   filter,
@@ -13,13 +13,13 @@ import {
   sortBy,
   take,
   uniqBy,
-} from "./collections";
-import { combine, distinct, scan } from "./operators";
-import { pipe } from "./pipe";
-import { search } from "./search";
-import { debounce, throttle } from "./timing";
+} from './collections'
+import { combine, distinct, scan } from './operators'
+import { pipe } from './pipe'
+import { search } from './search'
+import { debounce, throttle } from './timing'
 
-export type { KeyOf, ReadableSignal } from "./types";
+export type { KeyOf, ReadableSignal } from './types'
 
 /**
  * Signal-aware reactive transforms.
@@ -82,7 +82,7 @@ export const rx = {
 
   // Pipe
   pipe,
-} as const;
+} as const
 
 // Also export individual functions for tree-shaking
 export {
@@ -111,4 +111,4 @@ export {
   take,
   throttle,
   uniqBy,
-};
+}

@@ -1,21 +1,21 @@
-import { useReducer } from "react";
-import Demo from "./Demo";
+import { useReducer } from 'react'
+import Demo from './Demo'
 
-type CounterAction = { type: "increment" } | { type: "decrement" } | { type: "reset" };
+type CounterAction = { type: 'increment' } | { type: 'decrement' } | { type: 'reset' }
 
 function counterReducer(state: number, action: CounterAction): number {
   switch (action.type) {
-    case "increment":
-      return state + 1;
-    case "decrement":
-      return state - 1;
-    case "reset":
-      return 0;
+    case 'increment':
+      return state + 1
+    case 'decrement':
+      return state - 1
+    case 'reset':
+      return 0
   }
 }
 
 export default function UseReducerDemo() {
-  const [count, dispatch] = useReducer(counterReducer, 0);
+  const [count, dispatch] = useReducer(counterReducer, 0)
 
   return (
     <Demo
@@ -36,16 +36,16 @@ dispatch({ type: "increment" });`}
         Count: <strong>{count}</strong>
       </p>
       <div class="row">
-        <button type="button" onClick={() => dispatch({ type: "increment" })}>
+        <button type="button" onClick={() => dispatch({ type: 'increment' })}>
           +
         </button>
-        <button type="button" onClick={() => dispatch({ type: "decrement" })}>
+        <button type="button" onClick={() => dispatch({ type: 'decrement' })}>
           -
         </button>
-        <button type="button" onClick={() => dispatch({ type: "reset" })}>
+        <button type="button" onClick={() => dispatch({ type: 'reset' })}>
           Reset
         </button>
       </div>
     </Demo>
-  );
+  )
 }

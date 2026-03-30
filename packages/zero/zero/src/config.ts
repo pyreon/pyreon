@@ -1,4 +1,4 @@
-import type { ZeroConfig } from "./types";
+import type { ZeroConfig } from './types'
 
 /**
  * Define a Zero configuration.
@@ -14,22 +14,22 @@ import type { ZeroConfig } from "./types";
  * })
  */
 export function defineConfig(config: ZeroConfig): ZeroConfig {
-  return config;
+  return config
 }
 
 /** Merge user config with defaults. */
 export function resolveConfig(
   userConfig: ZeroConfig = {},
-): Required<Pick<ZeroConfig, "mode" | "base" | "port" | "adapter">> & ZeroConfig {
+): Required<Pick<ZeroConfig, 'mode' | 'base' | 'port' | 'adapter'>> & ZeroConfig {
   return {
-    mode: "ssr",
-    base: "/",
+    mode: 'ssr',
+    base: '/',
     port: 3000,
-    adapter: "node",
+    adapter: 'node',
     ...userConfig,
     ssr: {
-      mode: "string",
+      mode: 'string',
       ...userConfig.ssr,
     },
-  };
+  }
 }

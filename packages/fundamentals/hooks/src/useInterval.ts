@@ -1,6 +1,6 @@
-import { onUnmount } from "@pyreon/core";
+import { onUnmount } from '@pyreon/core'
 
-export type UseInterval = (callback: () => void, delay: number | null) => void;
+export type UseInterval = (callback: () => void, delay: number | null) => void
 
 /**
  * Declarative `setInterval` with auto-cleanup.
@@ -8,23 +8,23 @@ export type UseInterval = (callback: () => void, delay: number | null) => void;
  * In Pyreon, components run once — callback is captured at setup time.
  */
 export const useInterval: UseInterval = (callback, delay) => {
-  let intervalId: ReturnType<typeof setInterval> | null = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null
 
   const start = () => {
-    if (delay === null) return;
-    intervalId = setInterval(() => callback(), delay);
-  };
+    if (delay === null) return
+    intervalId = setInterval(() => callback(), delay)
+  }
 
   const stop = () => {
     if (intervalId != null) {
-      clearInterval(intervalId);
-      intervalId = null;
+      clearInterval(intervalId)
+      intervalId = null
     }
-  };
+  }
 
-  start();
+  start()
 
-  onUnmount(() => stop());
-};
+  onUnmount(() => stop())
+}
 
-export default useInterval;
+export default useInterval

@@ -11,16 +11,16 @@ bun add @pyreon/compiler
 ## Quick Start
 
 ```ts
-import { transformJSX } from "@pyreon/compiler";
+import { transformJSX } from '@pyreon/compiler'
 
 const result = transformJSX(
   `
   const App = () => <div class={color()}>{count()}</div>
 `,
-  "app.tsx",
-);
+  'app.tsx',
+)
 
-console.log(result.code);
+console.log(result.code)
 // Dynamic expressions are wrapped: {() => count()}, class={() => color()}
 // Static JSX nodes are hoisted to module scope
 ```

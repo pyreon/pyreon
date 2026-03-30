@@ -22,19 +22,19 @@ bun add @pyreon/unistyle
 ## Quick Start
 
 ```ts
-import { Provider } from "@pyreon/unistyle";
+import { Provider } from '@pyreon/unistyle'
 
 const theme = {
   rootSize: 16,
   breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 },
-};
+}
 
 Provider({
   theme,
   children: [
     /* your app */
   ],
-});
+})
 ```
 
 ## API
@@ -44,27 +44,27 @@ Provider({
 The core responsive engine. Takes a theme object and a styles processor, returns CSS with media query wrappers for each breakpoint.
 
 ```ts
-import { makeItResponsive, styles } from "@pyreon/unistyle";
-import { config } from "@pyreon/ui-core";
+import { makeItResponsive, styles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-const { styled, css } = config;
+const { styled, css } = config
 
-const Box = styled("div")`
+const Box = styled('div')`
   ${makeItResponsive({
-    key: "$box",
+    key: '$box',
     css,
     styles,
   })}
-`;
+`
 
 // Single values
-Box({ $box: { padding: 16, fontSize: 14 } });
+Box({ $box: { padding: 16, fontSize: 14 } })
 
 // Responsive breakpoint object
-Box({ $box: { padding: { xs: 8, md: 16, lg: 24 }, fontSize: 14 } });
+Box({ $box: { padding: { xs: 8, md: 16, lg: 24 }, fontSize: 14 } })
 
 // Responsive mobile-first array
-Box({ $box: { padding: [8, 16, 24], fontSize: 14 } });
+Box({ $box: { padding: [8, 16, 24], fontSize: 14 } })
 ```
 
 **Pipeline:**
@@ -90,7 +90,7 @@ Data-driven CSS property processor. Reads a theme object and outputs CSS for all
 Used internally by `makeItResponsive` but can be called directly:
 
 ```ts
-import { styles } from "@pyreon/unistyle";
+import { styles } from '@pyreon/unistyle'
 
 // styles({ theme, css, rootSize }) => css``
 ```
@@ -100,29 +100,29 @@ Supports shorthand properties (`margin`, `padding`, `borderRadius`) with automat
 ### Unit Conversion
 
 ```ts
-import { value, values, stripUnit } from "@pyreon/unistyle";
+import { value, values, stripUnit } from '@pyreon/unistyle'
 
 // value(input, rootSize?, outputUnit?) => string | number | null
-value(16); // => '1rem'     (16 / 16)
-value(24); // => '1.5rem'   (24 / 16)
-value(0); // => '0'        (always unitless)
-value("2em"); // => '2em'      (string passthrough)
-value(16, 16, "px"); // => '16px'
+value(16) // => '1rem'     (16 / 16)
+value(24) // => '1.5rem'   (24 / 16)
+value(0) // => '0'        (always unitless)
+value('2em') // => '2em'      (string passthrough)
+value(16, 16, 'px') // => '16px'
 
 // stripUnit(input, unitReturn?)
-stripUnit("24px"); // => 24
-stripUnit("24px", true); // => [24, 'px']
-stripUnit(24); // => 24
+stripUnit('24px') // => 24
+stripUnit('24px', true) // => [24, 'px']
+stripUnit(24) // => 24
 
 // values(array, rootSize?, outputUnit?) => string
 // Picks first non-null and converts
-values([null, 16, 24], 16); // => '1rem'
+values([null, 16, 24], 16) // => '1rem'
 ```
 
 ### Alignment Helpers
 
 ```ts
-import { alignContent, ALIGN_CONTENT_MAP_X, ALIGN_CONTENT_MAP_Y } from "@pyreon/unistyle";
+import { alignContent, ALIGN_CONTENT_MAP_X, ALIGN_CONTENT_MAP_Y } from '@pyreon/unistyle'
 ```
 
 Maps alignment keywords to CSS flex values:
@@ -139,7 +139,7 @@ Maps alignment keywords to CSS flex values:
 ### Default Breakpoints
 
 ```ts
-import { breakpoints } from "@pyreon/unistyle";
+import { breakpoints } from '@pyreon/unistyle'
 ```
 
 ```ts

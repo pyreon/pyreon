@@ -1,18 +1,18 @@
-import { readFileSync, watch } from "node:fs";
-import { resolve } from "node:path";
-import { AstCache } from "./cache";
-import { createIgnoreFilter } from "./config/ignore";
-import { getPreset } from "./config/presets";
-import { formatCompact, formatJSON, formatText } from "./reporter";
-import { allRules } from "./rules/index";
-import { lintFile } from "./runner";
-import type { LintConfig, LintOptions, LintResult, Severity } from "./types";
-import { hasJsExtension } from "./utils/index";
+import { readFileSync, watch } from 'node:fs'
+import { resolve } from 'node:path'
+import { AstCache } from './cache'
+import { createIgnoreFilter } from './config/ignore'
+import { getPreset } from './config/presets'
+import { formatCompact, formatJSON, formatText } from './reporter'
+import { allRules } from './rules/index'
+import { lintFile } from './runner'
+import type { LintConfig, LintOptions, LintResult, Severity } from './types'
+import { hasJsExtension } from './utils/index'
 
 function formatOutput(result: LintResult, format: string): string {
-  if (format === "json") return formatJSON(result);
-  if (format === "compact") return formatCompact(result);
-  return formatText(result);
+  if (format === 'json') return formatJSON(result)
+  if (format === 'compact') return formatCompact(result)
+  return formatText(result)
 }
 
 /**
@@ -29,44 +29,44 @@ function formatOutput(result: LintResult, format: string): string {
  * ```
  */
 export function watchAndLint(options: LintOptions & { format: string }): void {
-  const cache = new AstCache();
-  const preset = options.preset ?? "recommended";
-  const config = getPreset(preset);
+  const cache = new AstCache()
+  const preset = options.preset ?? 'recommended'
+  const config = getPreset(preset)
 
-  applyOverrides(config, options.ruleOverrides);
+  applyOverrides(config, options.ruleOverrides)
 
-  const cwd = resolve(".");
-  const isIgnored = createIgnoreFilter(cwd, options.ignore);
+  const cwd = resolve('.')
+  const isIgnored = createIgnoreFilter(cwd, options.ignore)
 
   // Debounce map: filePath -> timeout
-  const pending = new Map<string, ReturnType<typeof setTimeout>>();
+  const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
   // eslint-disable-next-line no-console
-  console.log(`\x1b[2m[pyreon-lint] Watching for changes...\x1b[0m\n`);
+  console.log(`\x1b[2m[pyreon-lint] Watching for changes...\x1b[0m\n`)
 
   for (const p of options.paths) {
-    const dir = resolve(p);
+    const dir = resolve(p)
     try {
       watch(dir, { recursive: true }, (_event, filename) => {
-        if (!filename) return;
-        const filePath = resolve(dir, filename);
+        if (!filename) return
+        const filePath = resolve(dir, filename)
 
-        if (!hasJsExtension(filePath) || isIgnored(filePath)) return;
+        if (!hasJsExtension(filePath) || isIgnored(filePath)) return
 
         // Debounce: clear existing timeout for this file
-        const existing = pending.get(filePath);
-        if (existing) clearTimeout(existing);
+        const existing = pending.get(filePath)
+        if (existing) clearTimeout(existing)
 
         pending.set(
           filePath,
           setTimeout(() => {
-            pending.delete(filePath);
-            relintFile(filePath, config, cache, options.format);
+            pending.delete(filePath)
+            relintFile(filePath, config, cache, options.format)
           }, 100),
-        );
-      });
+        )
+      })
     } catch {
-      console.error(`[pyreon-lint] Could not watch: ${dir}`);
+      console.error(`[pyreon-lint] Could not watch: ${dir}`)
     }
   }
 }
@@ -75,38 +75,38 @@ function applyOverrides(
   config: LintConfig,
   overrides?: Record<string, Severity> | undefined,
 ): void {
-  if (!overrides) return;
+  if (!overrides) return
   for (const [id, severity] of Object.entries(overrides)) {
-    config.rules[id] = severity;
+    config.rules[id] = severity
   }
 }
 
 function relintFile(filePath: string, config: LintConfig, cache: AstCache, format: string): void {
-  let source: string;
+  let source: string
   try {
-    source = readFileSync(filePath, "utf-8");
+    source = readFileSync(filePath, 'utf-8')
   } catch {
-    return;
+    return
   }
 
-  const fileResult = lintFile(filePath, source, allRules, config, cache);
+  const fileResult = lintFile(filePath, source, allRules, config, cache)
 
-  if (fileResult.diagnostics.length === 0) return;
+  if (fileResult.diagnostics.length === 0) return
 
   const result: LintResult = {
     files: [fileResult],
     totalErrors: 0,
     totalWarnings: 0,
     totalInfos: 0,
-  };
+  }
 
   for (const d of fileResult.diagnostics) {
-    if (d.severity === "error") result.totalErrors++;
-    else if (d.severity === "warn") result.totalWarnings++;
-    else if (d.severity === "info") result.totalInfos++;
+    if (d.severity === 'error') result.totalErrors++
+    else if (d.severity === 'warn') result.totalWarnings++
+    else if (d.severity === 'info') result.totalInfos++
   }
 
   // Clear screen and print
-  process.stdout.write("\x1b[2J\x1b[H");
-  console.log(formatOutput(result, format));
+  process.stdout.write('\x1b[2J\x1b[H')
+  console.log(formatOutput(result, format))
 }

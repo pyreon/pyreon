@@ -1,5 +1,5 @@
-import { _errorHandler } from "./effect";
-import { getCurrentScope } from "./scope";
+import { _errorHandler } from './effect'
+import { getCurrentScope } from './scope'
 import {
   cleanupEffect,
   notifySubscribers,
@@ -7,16 +7,16 @@ import {
   setSkipDepsCollection,
   trackSubscriber,
   withTracking,
-} from "./tracking";
+} from './tracking'
 
 export interface Computed<T> {
-  (): T;
+  (): T
   /** Remove this computed from all its reactive dependencies. */
-  dispose(): void;
+  dispose(): void
   /** Cached value for compiler-emitted direct bindings (_bindText, _bindDirect). */
-  _v: T;
+  _v: T
   /** Register a direct updater — used by compiler-emitted _bindText/_bindDirect. */
-  direct(updater: () => void): () => void;
+  direct(updater: () => void): () => void
 }
 
 export interface ComputedOptions<T> {
@@ -30,25 +30,25 @@ export interface ComputedOptions<T> {
    *   equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i])
    * })
    */
-  equals?: (prev: T, next: T) => boolean;
+  equals?: (prev: T, next: T) => boolean
 }
 
 /** Remove a computed from all dependency subscriber sets (local deps array). */
 function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
-  for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn);
-  deps.length = 0;
+  for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
+  deps.length = 0
 }
 
 /** Re-track dependencies using the local deps array collector. */
 function trackWithLocalDeps<T>(deps: Set<() => void>[], effect: () => void, fn: () => T): T {
-  setDepsCollector(deps);
-  const result = withTracking(effect, fn);
-  setDepsCollector(null);
-  return result;
+  setDepsCollector(deps)
+  const result = withTracking(effect, fn)
+  setDepsCollector(null)
+  return result
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
-  return options?.equals ? computedWithEquals(fn, options.equals) : computedLazy(fn);
+  return options?.equals ? computedWithEquals(fn, options.equals) : computedLazy(fn)
 }
 
 /**
@@ -62,67 +62,67 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
  * skipped because d is already dirty).
  */
 function computedLazy<T>(fn: () => T): Computed<T> {
-  let value: T;
-  let dirty = true;
-  let disposed = false;
-  let tracked = false;
-  const deps: Set<() => void>[] = [];
-  const host: { _s: Set<() => void> | null } = { _s: null };
-  let directFns: ((() => void) | null)[] | null = null;
+  let value: T
+  let dirty = true
+  let disposed = false
+  let tracked = false
+  const deps: Set<() => void>[] = []
+  const host: { _s: Set<() => void> | null } = { _s: null }
+  let directFns: ((() => void) | null)[] | null = null
 
   const recompute = () => {
-    if (disposed || dirty) return;
-    dirty = true;
-    if (host._s) notifySubscribers(host._s);
-    if (directFns) for (const f of directFns) f?.();
-  };
+    if (disposed || dirty) return
+    dirty = true
+    if (host._s) notifySubscribers(host._s)
+    if (directFns) for (const f of directFns) f?.()
+  }
 
   const read = (): T => {
-    trackSubscriber(host);
+    trackSubscriber(host)
     if (dirty) {
       try {
         if (tracked) {
-          setSkipDepsCollection(true);
-          value = withTracking(recompute, fn);
-          setSkipDepsCollection(false);
+          setSkipDepsCollection(true)
+          value = withTracking(recompute, fn)
+          setSkipDepsCollection(false)
         } else {
-          value = trackWithLocalDeps(deps, recompute, fn);
-          tracked = true;
+          value = trackWithLocalDeps(deps, recompute, fn)
+          tracked = true
         }
       } catch (err) {
-        setSkipDepsCollection(false);
-        _errorHandler(err);
+        setSkipDepsCollection(false)
+        _errorHandler(err)
       }
-      dirty = false;
+      dirty = false
     }
-    return value as T;
-  };
+    return value as T
+  }
 
   read.dispose = () => {
-    disposed = true;
-    cleanupLocalDeps(deps, recompute);
-  };
+    disposed = true
+    cleanupLocalDeps(deps, recompute)
+  }
 
-  Object.defineProperty(read, "_v", {
+  Object.defineProperty(read, '_v', {
     get: () => {
-      if (dirty) read(); // ensure value is fresh
-      return value;
+      if (dirty) read() // ensure value is fresh
+      return value
     },
     enumerable: false,
-  });
+  })
 
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = [];
-    const arr = directFns;
-    const idx = arr.length;
-    arr.push(updater);
+    if (!directFns) directFns = []
+    const arr = directFns
+    const idx = arr.length
+    arr.push(updater)
     return () => {
-      arr[idx] = null;
-    };
-  };
+      arr[idx] = null
+    }
+  }
 
-  getCurrentScope()?.add({ dispose: read.dispose });
-  return read as Computed<T>;
+  getCurrentScope()?.add({ dispose: read.dispose })
+  return read as Computed<T>
 }
 
 /**
@@ -132,70 +132,70 @@ function computedLazy<T>(fn: () => T): Computed<T> {
  * if `equals(prev, next)` returns false.
  */
 function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolean): Computed<T> {
-  let value: T;
-  let dirty = true;
-  let initialized = false;
-  let disposed = false;
-  const deps: Set<() => void>[] = [];
-  const host: { _s: Set<() => void> | null } = { _s: null };
-  let directFns: ((() => void) | null)[] | null = null;
+  let value: T
+  let dirty = true
+  let initialized = false
+  let disposed = false
+  const deps: Set<() => void>[] = []
+  const host: { _s: Set<() => void> | null } = { _s: null }
+  let directFns: ((() => void) | null)[] | null = null
 
   const recompute = () => {
-    if (disposed) return;
-    cleanupLocalDeps(deps, recompute);
+    if (disposed) return
+    cleanupLocalDeps(deps, recompute)
     try {
-      const next = trackWithLocalDeps(deps, recompute, fn);
-      if (initialized && equals(value as T, next)) return;
-      value = next;
-      dirty = false;
-      initialized = true;
+      const next = trackWithLocalDeps(deps, recompute, fn)
+      if (initialized && equals(value as T, next)) return
+      value = next
+      dirty = false
+      initialized = true
     } catch (err) {
-      _errorHandler(err);
-      return;
+      _errorHandler(err)
+      return
     }
-    if (host._s) notifySubscribers(host._s);
-    if (directFns) for (const f of directFns) f?.();
-  };
+    if (host._s) notifySubscribers(host._s)
+    if (directFns) for (const f of directFns) f?.()
+  }
 
   const read = (): T => {
-    trackSubscriber(host);
+    trackSubscriber(host)
     if (dirty) {
-      cleanupLocalDeps(deps, recompute);
+      cleanupLocalDeps(deps, recompute)
       try {
-        value = trackWithLocalDeps(deps, recompute, fn);
+        value = trackWithLocalDeps(deps, recompute, fn)
       } catch (err) {
-        _errorHandler(err);
+        _errorHandler(err)
       }
-      dirty = false;
-      initialized = true;
+      dirty = false
+      initialized = true
     }
-    return value as T;
-  };
+    return value as T
+  }
 
   read.dispose = () => {
-    disposed = true;
-    cleanupLocalDeps(deps, recompute);
-    cleanupEffect(recompute);
-  };
+    disposed = true
+    cleanupLocalDeps(deps, recompute)
+    cleanupEffect(recompute)
+  }
 
-  Object.defineProperty(read, "_v", {
+  Object.defineProperty(read, '_v', {
     get: () => {
-      if (dirty) read();
-      return value;
+      if (dirty) read()
+      return value
     },
     enumerable: false,
-  });
+  })
 
   read.direct = (updater: () => void): (() => void) => {
-    if (!directFns) directFns = [];
-    const arr = directFns;
-    const idx = arr.length;
-    arr.push(updater);
+    if (!directFns) directFns = []
+    const arr = directFns
+    const idx = arr.length
+    arr.push(updater)
     return () => {
-      arr[idx] = null;
-    };
-  };
+      arr[idx] = null
+    }
+  }
 
-  getCurrentScope()?.add({ dispose: read.dispose });
-  return read as Computed<T>;
+  getCurrentScope()?.add({ dispose: read.dispose })
+  return read as Computed<T>
 }

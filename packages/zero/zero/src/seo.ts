@@ -1,5 +1,5 @@
-import type { Middleware } from "@pyreon/server";
-import type { Plugin } from "vite";
+import type { Middleware } from '@pyreon/server'
+import type { Plugin } from 'vite'
 
 // ─── SEO utilities ──────────────────────────────────────────────────────────
 //
@@ -11,147 +11,147 @@ import type { Plugin } from "vite";
 
 export interface SitemapConfig {
   /** Base URL of the site (required). e.g. "https://example.com" */
-  origin: string;
+  origin: string
   /** Paths to exclude from the sitemap. */
-  exclude?: string[];
+  exclude?: string[]
   /** Default change frequency. Default: "weekly" */
-  changefreq?: ChangeFreq;
+  changefreq?: ChangeFreq
   /** Default priority. Default: 0.7 */
-  priority?: number;
+  priority?: number
   /** Additional URLs to include (for dynamic routes). */
-  additionalPaths?: SitemapEntry[];
+  additionalPaths?: SitemapEntry[]
 }
 
 export interface SitemapEntry {
-  path: string;
-  changefreq?: ChangeFreq;
-  priority?: number;
-  lastmod?: string;
+  path: string
+  changefreq?: ChangeFreq
+  priority?: number
+  lastmod?: string
 }
 
-export type ChangeFreq = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+export type ChangeFreq = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
 
 /**
  * Generate a sitemap.xml string from route file paths.
  */
 export function generateSitemap(routeFiles: string[], config: SitemapConfig): string {
-  const { origin, exclude = [], changefreq = "weekly", priority = 0.7 } = config;
+  const { origin, exclude = [], changefreq = 'weekly', priority = 0.7 } = config
 
   const paths = routeFiles
     .filter((f) => {
       // Exclude layout, error, loading files
       const name = f
-        .split("/")
+        .split('/')
         .pop()
-        ?.replace(/\.\w+$/, "");
-      return name !== "_layout" && name !== "_error" && name !== "_loading";
+        ?.replace(/\.\w+$/, '')
+      return name !== '_layout' && name !== '_error' && name !== '_loading'
     })
     .map((f) => {
       // Convert file path to URL
       let path = f
-        .replace(/\.\w+$/, "")
-        .replace(/\/index$/, "/")
-        .replace(/^index$/, "/");
+        .replace(/\.\w+$/, '')
+        .replace(/\/index$/, '/')
+        .replace(/^index$/, '/')
 
       // Skip dynamic routes — they need additionalPaths
-      if (path.includes("[")) return null;
+      if (path.includes('[')) return null
 
       // Strip route groups
-      path = path.replace(/\([\w-]+\)\//g, "");
+      path = path.replace(/\([\w-]+\)\//g, '')
 
-      if (!path.startsWith("/")) path = `/${path}`;
-      return path;
+      if (!path.startsWith('/')) path = `/${path}`
+      return path
     })
     .filter((p): p is string => p !== null)
-    .filter((p) => !exclude.some((e) => p.startsWith(e)));
+    .filter((p) => !exclude.some((e) => p.startsWith(e)))
 
   const allPaths: SitemapEntry[] = [
     ...paths.map((p) => ({ path: p, changefreq, priority })),
     ...(config.additionalPaths ?? []),
-  ];
+  ]
 
   const entries = allPaths
     .map((entry) => {
-      const loc = `${origin}${entry.path === "/" ? "" : entry.path}`;
+      const loc = `${origin}${entry.path === '/' ? '' : entry.path}`
       return `  <url>
     <loc>${escapeXml(loc)}</loc>
     <changefreq>${entry.changefreq ?? changefreq}</changefreq>
-    <priority>${entry.priority ?? priority}</priority>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ""}
-  </url>`;
+    <priority>${entry.priority ?? priority}</priority>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ''}
+  </url>`
     })
-    .join("\n");
+    .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${entries}
-</urlset>`;
+</urlset>`
 }
 
 function escapeXml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 // ─── Robots.txt ─────────────────────────────────────────────────────────────
 
 export interface RobotsConfig {
   /** Rules per user-agent. */
-  rules?: RobotsRule[];
+  rules?: RobotsRule[]
   /** Sitemap URL. */
-  sitemap?: string;
+  sitemap?: string
   /** Host directive. */
-  host?: string;
+  host?: string
 }
 
 export interface RobotsRule {
-  userAgent: string;
-  allow?: string[];
-  disallow?: string[];
-  crawlDelay?: number;
+  userAgent: string
+  allow?: string[]
+  disallow?: string[]
+  crawlDelay?: number
 }
 
 /**
  * Generate a robots.txt string.
  */
 export function generateRobots(config: RobotsConfig = {}): string {
-  const { rules = [{ userAgent: "*", allow: ["/"] }], sitemap, host } = config;
-  const lines: string[] = [];
+  const { rules = [{ userAgent: '*', allow: ['/'] }], sitemap, host } = config
+  const lines: string[] = []
 
   for (const rule of rules) {
-    lines.push(`User-agent: ${rule.userAgent}`);
+    lines.push(`User-agent: ${rule.userAgent}`)
     if (rule.allow) {
-      for (const path of rule.allow) lines.push(`Allow: ${path}`);
+      for (const path of rule.allow) lines.push(`Allow: ${path}`)
     }
     if (rule.disallow) {
-      for (const path of rule.disallow) lines.push(`Disallow: ${path}`);
+      for (const path of rule.disallow) lines.push(`Disallow: ${path}`)
     }
-    if (rule.crawlDelay) lines.push(`Crawl-delay: ${rule.crawlDelay}`);
-    lines.push("");
+    if (rule.crawlDelay) lines.push(`Crawl-delay: ${rule.crawlDelay}`)
+    lines.push('')
   }
 
-  if (sitemap) lines.push(`Sitemap: ${sitemap}`);
-  if (host) lines.push(`Host: ${host}`);
+  if (sitemap) lines.push(`Sitemap: ${sitemap}`)
+  if (host) lines.push(`Host: ${host}`)
 
-  return lines.join("\n");
+  return lines.join('\n')
 }
 
 // ─── Structured data (JSON-LD) ──────────────────────────────────────────────
 
 export type JsonLdType =
-  | "WebSite"
-  | "WebPage"
-  | "Article"
-  | "BlogPosting"
-  | "Product"
-  | "Organization"
-  | "Person"
-  | "BreadcrumbList"
-  | "FAQPage"
-  | (string & {});
+  | 'WebSite'
+  | 'WebPage'
+  | 'Article'
+  | 'BlogPosting'
+  | 'Product'
+  | 'Organization'
+  | 'Person'
+  | 'BreadcrumbList'
+  | 'FAQPage'
+  | (string & {})
 
 /**
  * Generate a JSON-LD script tag string for structured data.
@@ -167,19 +167,19 @@ export type JsonLdType =
  */
 export function jsonLd(data: Record<string, unknown>): string {
   const ld = {
-    "@context": "https://schema.org",
+    '@context': 'https://schema.org',
     ...data,
-  };
-  return `<script type="application/ld+json">${JSON.stringify(ld)}</script>`;
+  }
+  return `<script type="application/ld+json">${JSON.stringify(ld)}</script>`
 }
 
 // ─── SEO Vite plugin ────────────────────────────────────────────────────────
 
 export interface SeoPluginConfig {
   /** Sitemap configuration. */
-  sitemap?: SitemapConfig;
+  sitemap?: SitemapConfig
   /** Robots.txt configuration. */
-  robots?: RobotsConfig;
+  robots?: RobotsConfig
 }
 
 /**
@@ -202,24 +202,24 @@ export interface SeoPluginConfig {
  */
 export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
   return {
-    name: "pyreon-zero-seo",
-    apply: "build",
+    name: 'pyreon-zero-seo',
+    apply: 'build',
 
     async generateBundle(_, _bundle) {
       // Generate sitemap.xml
       if (config.sitemap) {
-        const { scanRouteFiles } = await import("./fs-router");
-        const routesDir = `${process.cwd()}/src/routes`;
+        const { scanRouteFiles } = await import('./fs-router')
+        const routesDir = `${process.cwd()}/src/routes`
 
         try {
-          const files = await scanRouteFiles(routesDir);
-          const sitemap = generateSitemap(files, config.sitemap);
+          const files = await scanRouteFiles(routesDir)
+          const sitemap = generateSitemap(files, config.sitemap)
 
           this.emitFile({
-            type: "asset",
-            fileName: "sitemap.xml",
+            type: 'asset',
+            fileName: 'sitemap.xml',
             source: sitemap,
-          });
+          })
         } catch {
           // Sitemap generation failed — skip silently
         }
@@ -227,16 +227,16 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
 
       // Generate robots.txt
       if (config.robots) {
-        const robots = generateRobots(config.robots);
+        const robots = generateRobots(config.robots)
 
         this.emitFile({
-          type: "asset",
-          fileName: "robots.txt",
+          type: 'asset',
+          fileName: 'robots.txt',
           source: robots,
-        });
+        })
       }
     },
-  };
+  }
 }
 
 // ─── SEO middleware (serve sitemap/robots in dev) ────────────────────────────
@@ -247,25 +247,25 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
  */
 export function seoMiddleware(config: SeoPluginConfig = {}): Middleware {
   return async (ctx) => {
-    if (ctx.url.pathname === "/robots.txt" && config.robots) {
+    if (ctx.url.pathname === '/robots.txt' && config.robots) {
       return new Response(generateRobots(config.robots), {
-        headers: { "Content-Type": "text/plain" },
-      });
+        headers: { 'Content-Type': 'text/plain' },
+      })
     }
 
-    if (ctx.url.pathname === "/sitemap.xml" && config.sitemap) {
+    if (ctx.url.pathname === '/sitemap.xml' && config.sitemap) {
       try {
-        const { scanRouteFiles } = await import("./fs-router");
-        const routesDir = `${process.cwd()}/src/routes`;
-        const files = await scanRouteFiles(routesDir);
-        const sitemap = generateSitemap(files, config.sitemap);
+        const { scanRouteFiles } = await import('./fs-router')
+        const routesDir = `${process.cwd()}/src/routes`
+        const files = await scanRouteFiles(routesDir)
+        const sitemap = generateSitemap(files, config.sitemap)
 
         return new Response(sitemap, {
-          headers: { "Content-Type": "application/xml" },
-        });
+          headers: { 'Content-Type': 'application/xml' },
+        })
       } catch {
         // Sitemap generation failed — continue to rendering
       }
     }
-  };
+  }
 }

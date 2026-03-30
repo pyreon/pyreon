@@ -1,22 +1,22 @@
-import { signal } from "@pyreon/reactivity";
-import { computed, defineStore, signal as storeSignal } from "@pyreon/store";
+import { signal } from '@pyreon/reactivity'
+import { computed, defineStore, signal as storeSignal } from '@pyreon/store'
 
-const useCounter = defineStore("playground-counter", () => {
-  const count = storeSignal(0);
-  const doubled = computed(() => count() * 2);
-  const increment = () => count.update((n) => n + 1);
-  const decrement = () => count.update((n) => n - 1);
-  return { count, doubled, increment, decrement };
-});
+const useCounter = defineStore('playground-counter', () => {
+  const count = storeSignal(0)
+  const doubled = computed(() => count() * 2)
+  const increment = () => count.update((n) => n + 1)
+  const decrement = () => count.update((n) => n - 1)
+  return { count, doubled, increment, decrement }
+})
 
 export function StoreDemo() {
-  const { store, patch, subscribe, reset } = useCounter();
-  const log = signal<string[]>([]);
+  const { store, patch, subscribe, reset } = useCounter()
+  const log = signal<string[]>([])
 
   subscribe((mutation) => {
-    const entry = `[${mutation.type}] ${mutation.events.map((e) => `${e.key}: ${JSON.stringify(e.oldValue)} → ${JSON.stringify(e.newValue)}`).join(", ")}`;
-    log.update((lines) => [...lines.slice(-9), entry]);
-  });
+    const entry = `[${mutation.type}] ${mutation.events.map((e) => `${e.key}: ${JSON.stringify(e.oldValue)} → ${JSON.stringify(e.newValue)}`).join(', ')}`
+    log.update((lines) => [...lines.slice(-9), entry])
+  })
 
   return (
     <div>
@@ -59,10 +59,10 @@ export function StoreDemo() {
         <h3>Mutation Log</h3>
         <div class="log">
           {() =>
-            log().length === 0 ? "No mutations yet. Click a button above." : log().join("\n")
+            log().length === 0 ? 'No mutations yet. Click a button above.' : log().join('\n')
           }
         </div>
       </div>
     </div>
-  );
+  )
 }

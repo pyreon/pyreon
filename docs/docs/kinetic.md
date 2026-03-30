@@ -91,10 +91,10 @@ For zero-CSS setups, use inline style objects instead of class names:
   enterStyle={{ opacity: 0 }}
   enterToStyle={{ opacity: 1 }}
   enterTransition="opacity 300ms ease-out"
-  onEnter={() => console.log("entering")}
-  onAfterEnter={() => console.log("entered")}
-  onLeave={() => console.log("leaving")}
-  onAfterLeave={() => console.log("left")}
+  onEnter={() => console.log('entering')}
+  onAfterEnter={() => console.log('entered')}
+  onLeave={() => console.log('leaving')}
+  onAfterLeave={() => console.log('left')}
 >
   <div>Content</div>
 </kinetic.Transition>
@@ -108,8 +108,8 @@ For zero-CSS setups, use inline style objects instead of class names:
 <kinetic.Stagger
   show={() => visible()}
   interval={80}
-  enterStyle={{ opacity: 0, transform: "translateY(16px)" }}
-  enterToStyle={{ opacity: 1, transform: "translateY(0)" }}
+  enterStyle={{ opacity: 0, transform: 'translateY(16px)' }}
+  enterToStyle={{ opacity: 1, transform: 'translateY(0)' }}
   enterTransition="opacity 300ms ease-out, transform 300ms ease-out"
   leaveStyle={{ opacity: 1 }}
   leaveToStyle={{ opacity: 0 }}
@@ -166,13 +166,13 @@ Available presets: `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slid
 Low-level hook that powers the `Transition` component. Returns reactive `stage`, `shouldMount`, a `ref` callback, and a `complete` function.
 
 ```tsx
-import { useTransitionState } from "@pyreon/kinetic";
+import { useTransitionState } from '@pyreon/kinetic'
 
 const { stage, shouldMount, ref, complete } = useTransitionState({
   show: () => visible(),
   appear: true,
   timeout: 5000,
-});
+})
 ```
 
 ### `useAnimationEnd`
@@ -180,11 +180,11 @@ const { stage, shouldMount, ref, complete } = useTransitionState({
 Listens for `transitionend` / `animationend` on an element and calls a callback when the animation finishes.
 
 ```tsx
-import { useAnimationEnd } from "@pyreon/kinetic";
+import { useAnimationEnd } from '@pyreon/kinetic'
 
 useAnimationEnd(elementRef, () => {
-  console.log("animation finished");
-});
+  console.log('animation finished')
+})
 ```
 
 ## Transition Stages

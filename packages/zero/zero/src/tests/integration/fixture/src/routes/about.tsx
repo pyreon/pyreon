@@ -4,9 +4,9 @@ export default function About() {
       <h1>About</h1>
       <p>Integration test page</p>
     </div>
-  );
+  )
 }
 
 export const meta = {
-  title: "About",
-};
+  title: 'About',
+}

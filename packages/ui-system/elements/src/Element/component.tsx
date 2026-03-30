@@ -7,35 +7,35 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { onMount } from "@pyreon/core";
-import { render } from "@pyreon/ui-core";
-import { PKG_NAME } from "../constants";
-import { Content, Wrapper } from "../helpers";
-import type { PyreonElement } from "./types";
-import { getShouldBeEmpty, isInlineElement } from "./utils";
+import { onMount } from '@pyreon/core'
+import { render } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import { Content, Wrapper } from '../helpers'
+import type { PyreonElement } from './types'
+import { getShouldBeEmpty, isInlineElement } from './utils'
 
 const equalize = (el: HTMLElement, direction: unknown) => {
-  const beforeEl = el.firstElementChild as HTMLElement | null;
-  const afterEl = el.lastElementChild as HTMLElement | null;
+  const beforeEl = el.firstElementChild as HTMLElement | null
+  const afterEl = el.lastElementChild as HTMLElement | null
 
   if (beforeEl && afterEl && beforeEl !== afterEl) {
-    const type: "height" | "width" = direction === "rows" ? "height" : "width";
-    const prop = type === "height" ? "offsetHeight" : "offsetWidth";
-    const beforeSize = beforeEl[prop];
-    const afterSize = afterEl[prop];
+    const type: 'height' | 'width' = direction === 'rows' ? 'height' : 'width'
+    const prop = type === 'height' ? 'offsetHeight' : 'offsetWidth'
+    const beforeSize = beforeEl[prop]
+    const afterSize = afterEl[prop]
 
     if (Number.isInteger(beforeSize) && Number.isInteger(afterSize)) {
-      const maxSize = `${Math.max(beforeSize, afterSize)}px`;
-      beforeEl.style[type] = maxSize;
-      afterEl.style[type] = maxSize;
+      const maxSize = `${Math.max(beforeSize, afterSize)}px`
+      beforeEl.style[type] = maxSize
+      afterEl.style[type] = maxSize
     }
   }
-};
+}
 
-const defaultDirection = "inline";
-const defaultContentDirection = "rows";
-const defaultAlignX = "left";
-const defaultAlignY = "center";
+const defaultDirection = 'inline'
+const defaultContentDirection = 'rows'
+const defaultAlignX = 'left'
+const defaultAlignY = 'center'
 
 const Component: PyreonElement = ({
   innerRef,
@@ -78,53 +78,53 @@ const Component: PyreonElement = ({
   // --------------------------------------------------------
   // check if should render only single element
   // --------------------------------------------------------
-  const shouldBeEmpty = !!props.dangerouslySetInnerHTML || getShouldBeEmpty(tag);
+  const shouldBeEmpty = !!props.dangerouslySetInnerHTML || getShouldBeEmpty(tag)
 
   // --------------------------------------------------------
   // if not single element, calculate values
   // --------------------------------------------------------
-  const isSimpleElement = !beforeContent && !afterContent;
-  const CHILDREN = children ?? content ?? label;
+  const isSimpleElement = !beforeContent && !afterContent
+  const CHILDREN = children ?? content ?? label
 
-  const isInline = isInlineElement(tag);
-  const SUB_TAG = isInline ? "span" : undefined;
+  const isInline = isInlineElement(tag)
+  const SUB_TAG = isInline ? 'span' : undefined
 
   // --------------------------------------------------------
   // direction & alignX & alignY calculations
   // --------------------------------------------------------
-  let wrapperDirection: typeof direction = direction;
-  let wrapperAlignX: typeof alignX = alignX;
-  let wrapperAlignY: typeof alignY = alignY;
+  let wrapperDirection: typeof direction = direction
+  let wrapperAlignX: typeof alignX = alignX
+  let wrapperAlignY: typeof alignY = alignY
 
   if (isSimpleElement) {
-    if (contentDirection) wrapperDirection = contentDirection;
-    if (contentAlignX) wrapperAlignX = contentAlignX;
-    if (contentAlignY) wrapperAlignY = contentAlignY;
+    if (contentDirection) wrapperDirection = contentDirection
+    if (contentAlignX) wrapperAlignX = contentAlignX
+    if (contentAlignY) wrapperAlignY = contentAlignY
   } else if (direction) {
-    wrapperDirection = direction;
+    wrapperDirection = direction
   } else {
-    wrapperDirection = defaultDirection;
+    wrapperDirection = defaultDirection
   }
 
   // --------------------------------------------------------
   // equalBeforeAfter: measure & equalize slot dimensions
   // --------------------------------------------------------
-  let equalizeRef: HTMLElement | null = null;
-  const externalRef = ref ?? innerRef;
+  let equalizeRef: HTMLElement | null = null
+  const externalRef = ref ?? innerRef
 
   const mergedRef = (node: HTMLElement | null) => {
-    equalizeRef = node;
-    if (typeof externalRef === "function") externalRef(node);
+    equalizeRef = node
+    if (typeof externalRef === 'function') externalRef(node)
     else if (externalRef != null) {
-      (externalRef as unknown as { current: HTMLElement | null }).current = node;
+      ;(externalRef as unknown as { current: HTMLElement | null }).current = node
     }
-  };
+  }
 
   if (equalBeforeAfter && beforeContent && afterContent) {
     onMount(() => {
-      if (equalizeRef) equalize(equalizeRef, direction);
-      return undefined;
-    });
+      if (equalizeRef) equalize(equalizeRef, direction)
+      return undefined
+    })
   }
 
   // --------------------------------------------------------
@@ -139,13 +139,13 @@ const Component: PyreonElement = ({
     alignX: wrapperAlignX,
     alignY: wrapperAlignY,
     as: undefined, // reset styled-components `as` prop
-  };
+  }
 
   // --------------------------------------------------------
   // return simple/empty element like input or image etc.
   // --------------------------------------------------------
   if (shouldBeEmpty) {
-    return <Wrapper {...props} {...WRAPPER_PROPS} />;
+    return <Wrapper {...props} {...WRAPPER_PROPS} />
   }
 
   return (
@@ -199,13 +199,13 @@ const Component: PyreonElement = ({
         </Content>
       )}
     </Wrapper>
-  );
-};
+  )
+}
 
-const name = `${PKG_NAME}/Element` as const;
+const name = `${PKG_NAME}/Element` as const
 
-Component.displayName = name;
-Component.pkgName = PKG_NAME;
-Component.PYREON__COMPONENT = name;
+Component.displayName = name
+Component.pkgName = PKG_NAME
+Component.PYREON__COMPONENT = name
 
-export default Component;
+export default Component

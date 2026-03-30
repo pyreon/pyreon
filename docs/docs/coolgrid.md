@@ -32,9 +32,9 @@ yarn add @pyreon/coolgrid
 ## Quick Start
 
 ```tsx
-import { Container, Row, Col } from "@pyreon/coolgrid";
+import { Container, Row, Col } from '@pyreon/coolgrid'
 
-<Container maxWidth={1140} gap={24} gutter={16}>
+;<Container maxWidth={1140} gap={24} gutter={16}>
   <Row>
     <Col xs={12} md={6} lg={4}>
       Column 1
@@ -46,7 +46,7 @@ import { Container, Row, Col } from "@pyreon/coolgrid";
       Column 3
     </Col>
   </Row>
-</Container>;
+</Container>
 ```
 
 This creates a three-column layout that stacks to two columns at medium screens and one column on mobile.
@@ -111,11 +111,11 @@ The outermost grid wrapper. Centers content horizontally with auto margins, cons
 ### Basic Usage
 
 ```tsx
-import { Container } from "@pyreon/coolgrid";
+import { Container } from '@pyreon/coolgrid'
 
-<Container maxWidth={1140} columns={12} gap={24} gutter={16}>
+;<Container maxWidth={1140} columns={12} gap={24} gutter={16}>
   {children}
-</Container>;
+</Container>
 ```
 
 ### Props
@@ -442,15 +442,15 @@ Col can be used without a Row context. When no context is available, it defaults
 The package exports default configuration values for reference and reuse:
 
 ```ts
-import { defaultGridConfig, defaultBreakpoints, defaultContainerWidths } from "@pyreon/coolgrid";
+import { defaultGridConfig, defaultBreakpoints, defaultContainerWidths } from '@pyreon/coolgrid'
 
-defaultGridConfig;
+defaultGridConfig
 // { columns: 12, containerWidth: '100%', gap: 0, gutter: 0, padding: 0 }
 
-defaultBreakpoints;
+defaultBreakpoints
 // { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 }
 
-defaultContainerWidths;
+defaultContainerWidths
 // { xs: '100%', sm: 540, md: 720, lg: 960, xl: 1140 }
 ```
 
@@ -460,11 +460,11 @@ The configuration object that flows through the grid context:
 
 ```ts
 interface GridConfig {
-  columns: number; // Number of grid columns (default: 12)
-  containerWidth: string | number; // Max width of the container
-  gap: number; // Gap between columns in pixels
-  gutter: number; // Container horizontal padding in pixels
-  padding: number; // Additional padding value
+  columns: number // Number of grid columns (default: 12)
+  containerWidth: string | number // Max width of the container
+  gap: number // Gap between columns in pixels
+  gutter: number // Container horizontal padding in pixels
+  padding: number // Additional padding value
 }
 ```
 
@@ -577,10 +577,10 @@ While 12 columns is the default, you can use any column count. Common alternativ
 
 ```tsx
 function HolyGrailLayout(props: {
-  header: VNodeChild;
-  sidebar: VNodeChild;
-  content: VNodeChild;
-  footer: VNodeChild;
+  header: VNodeChild
+  sidebar: VNodeChild
+  content: VNodeChild
+  footer: VNodeChild
 }) {
   return (
     <Container maxWidth={1200} gap={24} gutter={16}>
@@ -606,7 +606,7 @@ function HolyGrailLayout(props: {
         </Col>
       </Row>
     </Container>
-  );
+  )
 }
 ```
 
@@ -614,10 +614,10 @@ function HolyGrailLayout(props: {
 
 ```tsx
 function DashboardLayout(props: {
-  stats: { label: string; value: string }[];
-  chart: VNodeChild;
-  recentActivity: VNodeChild;
-  quickActions: VNodeChild;
+  stats: { label: string; value: string }[]
+  chart: VNodeChild
+  recentActivity: VNodeChild
+  quickActions: VNodeChild
 }) {
   return (
     <Container maxWidth={1400} gap={24} gutter={24}>
@@ -646,7 +646,7 @@ function DashboardLayout(props: {
         <Col xs={12}>{props.quickActions}</Col>
       </Row>
     </Container>
-  );
+  )
 }
 ```
 
@@ -654,10 +654,10 @@ function DashboardLayout(props: {
 
 ```tsx
 function BlogPostLayout(props: {
-  title: string;
-  meta: VNodeChild;
-  content: VNodeChild;
-  relatedPosts: VNodeChild;
+  title: string
+  meta: VNodeChild
+  content: VNodeChild
+  relatedPosts: VNodeChild
 }) {
   return (
     <Container maxWidth={1200} gap={32}>
@@ -682,7 +682,7 @@ function BlogPostLayout(props: {
       </Row>
       <Row>{props.relatedPosts}</Row>
     </Container>
-  );
+  )
 }
 ```
 
@@ -690,11 +690,11 @@ function BlogPostLayout(props: {
 
 ```tsx
 function SidebarLayout(props: {
-  sidebar: VNodeChild;
-  content: VNodeChild;
-  sidebarPosition?: "left" | "right";
+  sidebar: VNodeChild
+  content: VNodeChild
+  sidebarPosition?: 'left' | 'right'
 }) {
-  const isRight = props.sidebarPosition === "right";
+  const isRight = props.sidebarPosition === 'right'
 
   return (
     <Container maxWidth={1200} gap={24} gutter={16}>
@@ -707,7 +707,7 @@ function SidebarLayout(props: {
         </Col>
       </Row>
     </Container>
-  );
+  )
 }
 ```
 

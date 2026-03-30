@@ -1,5 +1,5 @@
-import { computed, effect, signal } from "@pyreon/reactivity";
-import type { ReadableSignal } from "./types";
+import { computed, effect, signal } from '@pyreon/reactivity'
+import type { ReadableSignal } from './types'
 
 /**
  * Distinct — skip consecutive duplicate values from a signal.
@@ -9,16 +9,16 @@ export function distinct<T>(
   source: ReadableSignal<T>,
   equals: (a: T, b: T) => boolean = Object.is,
 ): ReadableSignal<T> {
-  const result = signal(source());
+  const result = signal(source())
 
   effect(() => {
-    const val = source();
+    const val = source()
     if (!equals(val, result.peek())) {
-      result.set(val);
+      result.set(val)
     }
-  });
+  })
 
-  return result;
+  return result
 }
 
 /**
@@ -39,14 +39,14 @@ export function scan<T, U>(
   reducer: (acc: U, value: T) => U,
   initial: U,
 ): ReadableSignal<U> {
-  const result = signal(initial);
+  const result = signal(initial)
 
   effect(() => {
-    const val = source();
-    result.set(reducer(result.peek(), val));
-  });
+    const val = source()
+    result.set(reducer(result.peek(), val))
+  })
 
-  return result;
+  return result
 }
 
 /**
@@ -61,15 +61,15 @@ export function combine<A, B, R>(
   a: ReadableSignal<A>,
   b: ReadableSignal<B>,
   fn: (a: A, b: B) => R,
-): ReturnType<typeof computed<R>>;
+): ReturnType<typeof computed<R>>
 export function combine<A, B, C, R>(
   a: ReadableSignal<A>,
   b: ReadableSignal<B>,
   c: ReadableSignal<C>,
   fn: (a: A, b: B, c: C) => R,
-): ReturnType<typeof computed<R>>;
+): ReturnType<typeof computed<R>>
 export function combine(...args: any[]): any {
-  const fn = args[args.length - 1] as (...vals: any[]) => any;
-  const sources = args.slice(0, -1) as ReadableSignal<any>[];
-  return computed(() => fn(...sources.map((s) => s())));
+  const fn = args[args.length - 1] as (...vals: any[]) => any
+  const sources = args.slice(0, -1) as ReadableSignal<any>[]
+  return computed(() => fn(...sources.map((s) => s())))
 }

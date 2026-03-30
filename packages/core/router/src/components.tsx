@@ -1,41 +1,41 @@
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core";
-import { createRef, h, onUnmount, provide, useContext } from "@pyreon/core";
-import { LoaderDataContext, prefetchLoaderData } from "./loader";
-import { isLazy, RouterContext, setActiveRouter } from "./router";
-import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types";
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import { createRef, h, onUnmount, provide, useContext } from '@pyreon/core'
+import { LoaderDataContext, prefetchLoaderData } from './loader'
+import { isLazy, RouterContext, setActiveRouter } from './router'
+import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 
 // Track prefetched paths per router to avoid duplicate fetches
-const _prefetched = new WeakMap<RouterInstance, Set<string>>();
+const _prefetched = new WeakMap<RouterInstance, Set<string>>()
 
 // ─── RouterProvider ───────────────────────────────────────────────────────────
 
 export interface RouterProviderProps extends Props {
-  router: Router;
-  children?: VNodeChild;
+  router: Router
+  children?: VNodeChild
 }
 
 export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
-  const router = props.router as RouterInstance;
+  const router = props.router as RouterInstance
   // Push router into the context stack — isolated per request in SSR via ALS,
   // isolated per component tree in CSR.
-  provide(RouterContext, router);
+  provide(RouterContext, router)
   onUnmount(() => {
     // Clean up event listeners, caches, abort in-flight navigations.
     // Safe to call multiple times (destroy is idempotent).
-    router.destroy();
-    setActiveRouter(null);
-  });
+    router.destroy()
+    setActiveRouter(null)
+  })
   // Also set the module fallback so programmatic useRouter() outside a component
   // tree (e.g. navigation guards in event handlers) still works in CSR.
-  setActiveRouter(router);
-  return props.children ?? null;
-};
+  setActiveRouter(router)
+  return props.children ?? null
+}
 
 // ─── RouterView ───────────────────────────────────────────────────────────────
 
 export interface RouterViewProps extends Props {
   /** Explicitly pass a router (optional — uses the active router by default) */
-  router?: Router;
+  router?: Router
 }
 
 /**
@@ -63,142 +63,142 @@ export interface RouterViewProps extends Props {
  */
 export const RouterView: ComponentFn<RouterViewProps> = (props) => {
   const router = ((props.router as RouterInstance | undefined) ??
-    useContext(RouterContext)) as RouterInstance | null;
-  if (!router) return null;
+    useContext(RouterContext)) as RouterInstance | null
+  if (!router) return null
 
   // Claim this view's depth at setup time (depth-first component init order)
-  const depth = router._viewDepth;
-  router._viewDepth++;
+  const depth = router._viewDepth
+  router._viewDepth++
 
   onUnmount(() => {
-    router._viewDepth--;
-  });
+    router._viewDepth--
+  })
 
   const child = (): VNodeChild => {
-    router._loadingSignal(); // reactive — re-renders after lazy load completes
+    router._loadingSignal() // reactive — re-renders after lazy load completes
 
-    const route = router.currentRoute();
+    const route = router.currentRoute()
 
-    if (route.matched.length === 0) return null;
+    if (route.matched.length === 0) return null
 
     // Render the matched record at this view's depth level
-    const record = route.matched[depth];
-    if (!record) return null; // no component at this nesting level
+    const record = route.matched[depth]
+    if (!record) return null // no component at this nesting level
 
-    const cached = router._componentCache.get(record);
+    const cached = router._componentCache.get(record)
     if (cached) {
-      return renderWithLoader(router, record, cached, route);
+      return renderWithLoader(router, record, cached, route)
     }
 
-    const raw = record.component;
+    const raw = record.component
 
     if (!isLazy(raw)) {
-      cacheSet(router, record, raw);
-      return renderWithLoader(router, record, raw, route);
+      cacheSet(router, record, raw)
+      return renderWithLoader(router, record, raw, route)
     }
 
-    return renderLazyRoute(router, record, raw);
-  };
+    return renderLazyRoute(router, record, raw)
+  }
 
-  return h("div", { "data-pyreon-router-view": true }, child as unknown as VNodeChild);
-};
+  return h('div', { 'data-pyreon-router-view': true }, child as unknown as VNodeChild)
+}
 
 // ─── RouterLink ───────────────────────────────────────────────────────────────
 
 export interface RouterLinkProps extends Props {
-  to: string;
+  to: string
   /** If true, uses router.replace() instead of router.push() */
-  replace?: boolean;
+  replace?: boolean
   /** CSS class applied when this link is active (default: "router-link-active") */
-  activeClass?: string;
+  activeClass?: string
   /** CSS class for exact-match active state (default: "router-link-exact-active") */
-  exactActiveClass?: string;
+  exactActiveClass?: string
   /** If true, only applies activeClass on exact match */
-  exact?: boolean;
+  exact?: boolean
   /**
    * Prefetch strategy for loader data:
    *   - "hover" (default) — prefetch when the user hovers over the link
    *   - "viewport" — prefetch when the link scrolls into the viewport
    *   - "none" — no prefetching
    */
-  prefetch?: "hover" | "viewport" | "none";
-  children?: VNodeChild | null;
+  prefetch?: 'hover' | 'viewport' | 'none'
+  children?: VNodeChild | null
 }
 
 export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
-  const router = useContext(RouterContext);
-  const prefetchMode = props.prefetch ?? "hover";
+  const router = useContext(RouterContext)
+  const prefetchMode = props.prefetch ?? 'hover'
 
   const handleClick = (e: MouseEvent) => {
-    e.preventDefault();
-    if (!router) return;
+    e.preventDefault()
+    if (!router) return
     if (props.replace) {
-      router.replace(props.to);
+      router.replace(props.to)
     } else {
-      router.push(props.to);
+      router.push(props.to)
     }
-  };
+  }
 
   const handleMouseEnter = () => {
-    if (prefetchMode !== "hover" || !router) return;
-    prefetchRoute(router as RouterInstance, props.to);
-  };
+    if (prefetchMode !== 'hover' || !router) return
+    prefetchRoute(router as RouterInstance, props.to)
+  }
 
-  const inst = router as RouterInstance | null;
-  const href = inst?.mode === "history" ? `${inst._base}${props.to}` : `#${props.to}`;
+  const inst = router as RouterInstance | null
+  const href = inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
 
   const activeClass = (): string => {
-    if (!router) return "";
-    const current = router.currentRoute().path;
-    const target = props.to;
-    const isExact = current === target;
-    const isActive = isExact || (!props.exact && isSegmentPrefix(current, target));
+    if (!router) return ''
+    const current = router.currentRoute().path
+    const target = props.to
+    const isExact = current === target
+    const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
 
-    const classes: string[] = [];
-    if (isActive) classes.push(props.activeClass ?? "router-link-active");
-    if (isExact) classes.push(props.exactActiveClass ?? "router-link-exact-active");
-    return classes.join(" ").trim();
-  };
+    const classes: string[] = []
+    if (isActive) classes.push(props.activeClass ?? 'router-link-active')
+    if (isExact) classes.push(props.exactActiveClass ?? 'router-link-exact-active')
+    return classes.join(' ').trim()
+  }
 
   // Viewport prefetching — observe link visibility with IntersectionObserver
-  const ref = createRef<Element>();
-  if (prefetchMode === "viewport" && router && typeof IntersectionObserver !== "undefined") {
+  const ref = createRef<Element>()
+  if (prefetchMode === 'viewport' && router && typeof IntersectionObserver !== 'undefined') {
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
-          prefetchRoute(router as RouterInstance, props.to);
-          observer.disconnect();
-          break;
+          prefetchRoute(router as RouterInstance, props.to)
+          observer.disconnect()
+          break
         }
       }
-    });
+    })
     // Observe after mount — the ref will be populated once the element is in the DOM
     queueMicrotask(() => {
-      observer.observe(ref.current as Element);
-    });
-    onUnmount(() => observer.disconnect());
+      observer.observe(ref.current as Element)
+    })
+    onUnmount(() => observer.disconnect())
   }
 
   return h(
-    "a",
+    'a',
     { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
     props.children ?? props.to,
-  );
-};
+  )
+}
 
 /** Prefetch loader data for a route (only once per router + path). */
 function prefetchRoute(router: RouterInstance, path: string): void {
-  let set = _prefetched.get(router);
+  let set = _prefetched.get(router)
   if (!set) {
-    set = new Set();
-    _prefetched.set(router, set);
+    set = new Set()
+    _prefetched.set(router, set)
   }
-  if (set.has(path)) return;
-  set.add(path);
+  if (set.has(path)) return
+  set.add(path)
   prefetchLoaderData(router, path).catch(() => {
     // Silently ignore — prefetch is best-effort
-    set?.delete(path);
-  });
+    set?.delete(path)
+  })
 }
 
 function renderLazyRoute(
@@ -207,34 +207,34 @@ function renderLazyRoute(
   raw: LazyComponent,
 ): VNodeChild {
   if (router._erroredChunks.has(record)) {
-    return raw.errorComponent ? h(raw.errorComponent, {}) : null;
+    return raw.errorComponent ? h(raw.errorComponent, {}) : null
   }
 
   const tryLoad = (attempt: number): Promise<void> =>
     raw
       .loader()
       .then((mod) => {
-        const resolved = typeof mod === "function" ? mod : mod.default;
-        cacheSet(router, record, resolved);
-        router._loadingSignal.update((n) => n + 1);
+        const resolved = typeof mod === 'function' ? mod : mod.default
+        cacheSet(router, record, resolved)
+        router._loadingSignal.update((n) => n + 1)
       })
       .catch((err: unknown) => {
         if (attempt < 3) {
           return new Promise<void>((res) => setTimeout(res, 500 * 2 ** attempt)).then(() =>
             tryLoad(attempt + 1),
-          );
+          )
         }
-        if (typeof window !== "undefined" && isStaleChunk(err)) {
-          window.location.reload();
-          return;
+        if (typeof window !== 'undefined' && isStaleChunk(err)) {
+          window.location.reload()
+          return
         }
 
-        router._erroredChunks.add(record);
-        router._loadingSignal.update((n) => n + 1);
-      });
+        router._erroredChunks.add(record)
+        router._loadingSignal.update((n) => n + 1)
+      })
 
-  tryLoad(0);
-  return raw.loadingComponent ? h(raw.loadingComponent, {}) : null;
+  tryLoad(0)
+  return raw.loadingComponent ? h(raw.loadingComponent, {}) : null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -247,18 +247,18 @@ function renderWithLoader(
   router: RouterInstance,
   record: RouteRecord,
   Comp: ComponentFn,
-  route: Pick<ResolvedRoute, "params" | "query" | "meta">,
+  route: Pick<ResolvedRoute, 'params' | 'query' | 'meta'>,
 ): VNodeChild {
-  const routeProps = { params: route.params, query: route.query, meta: route.meta };
+  const routeProps = { params: route.params, query: route.query, meta: route.meta }
   if (!record.loader) {
-    return h(Comp, routeProps);
+    return h(Comp, routeProps)
   }
-  const data = router._loaderData.get(record);
+  const data = router._loaderData.get(record)
   // If loader data is undefined and route has an errorComponent, render it
   if (data === undefined && record.errorComponent) {
-    return h(record.errorComponent, routeProps);
+    return h(record.errorComponent, routeProps)
   }
-  return h(LoaderDataProvider, { data, children: h(Comp, routeProps) });
+  return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
 }
 
 /**
@@ -266,17 +266,17 @@ function renderWithLoader(
  * Uses Pyreon's context stack so useLoaderData() reads it during child setup.
  */
 function LoaderDataProvider(props: { data: unknown; children: VNodeChild }): VNodeChild {
-  provide(LoaderDataContext, props.data);
-  return props.children;
+  provide(LoaderDataContext, props.data)
+  return props.children
 }
 
 /** Evict oldest cache entries when the component cache exceeds maxCacheSize. */
 function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn): void {
-  router._componentCache.set(record, comp);
+  router._componentCache.set(record, comp)
   if (router._componentCache.size > router._maxCacheSize) {
     // Map iterates in insertion order — first key is oldest
-    const oldest = router._componentCache.keys().next().value as RouteRecord;
-    router._componentCache.delete(oldest);
+    const oldest = router._componentCache.keys().next().value as RouteRecord
+    router._componentCache.delete(oldest)
   }
 }
 
@@ -285,11 +285,11 @@ function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn
  * `/admin` is a prefix of `/admin/users` but NOT of `/admin-panel`.
  */
 function isSegmentPrefix(current: string, target: string): boolean {
-  if (target === "/") return false;
-  const cs = current.split("/").filter(Boolean);
-  const ts = target.split("/").filter(Boolean);
-  if (ts.length > cs.length) return false;
-  return ts.every((seg, i) => seg === cs[i]);
+  if (target === '/') return false
+  const cs = current.split('/').filter(Boolean)
+  const ts = target.split('/').filter(Boolean)
+  if (ts.length > cs.length) return false
+  return ts.every((seg, i) => seg === cs[i])
 }
 
 /**
@@ -298,7 +298,7 @@ function isSegmentPrefix(current: string, target: string): boolean {
  * so the user gets the new bundle instead of a broken loading state.
  */
 function isStaleChunk(err: unknown): boolean {
-  if (err instanceof TypeError && String(err.message).includes("Failed to fetch")) return true;
-  if (err instanceof SyntaxError) return true;
-  return false;
+  if (err instanceof TypeError && String(err.message).includes('Failed to fetch')) return true
+  if (err instanceof SyntaxError) return true
+  return false
 }

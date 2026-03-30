@@ -15,65 +15,65 @@ bun add @pyreon/preact-compat
 // import { render } from "preact"
 // import { useState, useEffect } from "preact/hooks"
 // With:
-import { render } from "@pyreon/preact-compat";
-import { useState, useEffect } from "@pyreon/preact-compat/hooks";
+import { render } from '@pyreon/preact-compat'
+import { useState, useEffect } from '@pyreon/preact-compat/hooks'
 
 function Counter() {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0)
   useEffect(() => {
-    console.log("count changed:", count());
-  });
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
+    console.log('count changed:', count())
+  })
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
 }
 
-render(<Counter />, document.getElementById("app")!);
+render(<Counter />, document.getElementById('app')!)
 ```
 
 ### Signals
 
 ```tsx
-import { signal, computed, effect } from "@pyreon/preact-compat/signals";
+import { signal, computed, effect } from '@pyreon/preact-compat/signals'
 
-const count = signal(0);
-const doubled = computed(() => count.value * 2);
+const count = signal(0)
+const doubled = computed(() => count.value * 2)
 
 function Display() {
-  effect(() => console.log("doubled:", doubled.value));
+  effect(() => console.log('doubled:', doubled.value))
   return (
     <div>
       <span>{doubled.value}</span>
       <button onClick={() => count.value++}>+</button>
     </div>
-  );
+  )
 }
 ```
 
 ### Class Components
 
 ```tsx
-import { Component } from "@pyreon/preact-compat";
+import { Component } from '@pyreon/preact-compat'
 
 interface Props {
-  name: string;
+  name: string
 }
 interface State {
-  clicked: boolean;
+  clicked: boolean
 }
 
 class Greeting extends Component<Props, State> {
-  state = { clicked: false };
+  state = { clicked: false }
 
   handleClick = () => {
-    this.setState({ clicked: true });
-  };
+    this.setState({ clicked: true })
+  }
 
   render() {
     return (
       <div>
         <p>Hello, {this.props.name}!</p>
-        <button onClick={this.handleClick}>{this.state.clicked ? "Clicked" : "Click me"}</button>
+        <button onClick={this.handleClick}>{this.state.clicked ? 'Clicked' : 'Click me'}</button>
       </div>
-    );
+    )
   }
 }
 ```

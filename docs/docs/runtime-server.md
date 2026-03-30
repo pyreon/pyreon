@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/runtime-server"
+title: '@pyreon/runtime-server'
 description: SSR and SSG renderer that walks VNode trees and produces HTML strings or streams.
 ---
 
@@ -67,30 +67,30 @@ Render a VNode tree to a complete HTML string. Returns a `Promise<string>` becau
 ### Basic Usage
 
 ```tsx
-import { renderToString } from "@pyreon/runtime-server";
-import { h } from "@pyreon/core";
+import { renderToString } from '@pyreon/runtime-server'
+import { h } from '@pyreon/core'
 
-const html = await renderToString(<div class="greeting">Hello, world!</div>);
+const html = await renderToString(<div class="greeting">Hello, world!</div>)
 // => '<div class="greeting">Hello, world!</div>'
 ```
 
 ### Rendering a Component Tree
 
 ```tsx
-import { renderToString } from "@pyreon/runtime-server";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+import { renderToString } from '@pyreon/runtime-server'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-const html = await renderToString(<App />);
+const html = await renderToString(<App />)
 
-res.setHeader("Content-Type", "text/html");
+res.setHeader('Content-Type', 'text/html')
 res.end(`
   <!DOCTYPE html>
   <html>
     <head><meta charset="UTF-8" /><title>My App</title></head>
     <body><div id="app">${html}</div></body>
   </html>
-`);
+`)
 ```
 
 ### Rendering null
@@ -98,7 +98,7 @@ res.end(`
 Passing `null` returns an empty string immediately:
 
 ```ts
-const html = await renderToString(null);
+const html = await renderToString(null)
 // => ''
 ```
 
@@ -125,33 +125,33 @@ Each `renderToString` call runs in its own `AsyncLocalStorage` store with a fres
 
 ```tsx
 // These two renders run concurrently -- their contexts are completely isolated
-app.get("/page-a", async (req, res) => {
-  const html = await renderToString(<PageA />);
-  res.end(html);
-});
+app.get('/page-a', async (req, res) => {
+  const html = await renderToString(<PageA />)
+  res.end(html)
+})
 
-app.get("/page-b", async (req, res) => {
-  const html = await renderToString(<PageB />);
-  res.end(html);
-});
+app.get('/page-b', async (req, res) => {
+  const html = await renderToString(<PageB />)
+  res.end(html)
+})
 ```
 
 Even with 50+ concurrent requests and async components that resolve in unpredictable order, each render sees only its own context values:
 
 ```tsx
-import { createContext, provide, useContext } from "@pyreon/core";
+import { createContext, provide, useContext } from '@pyreon/core'
 
-const RequestIdCtx = createContext("none");
+const RequestIdCtx = createContext('none')
 
 async function AsyncReader(props: { delay: number }) {
-  await new Promise((r) => setTimeout(r, props.delay));
-  const id = useContext(RequestIdCtx);
-  return <span>{id}</span>;
+  await new Promise((r) => setTimeout(r, props.delay))
+  const id = useContext(RequestIdCtx)
+  return <span>{id}</span>
 }
 
 function RequestWrapper(props: { reqId: string; delay: number }) {
-  provide(RequestIdCtx, props.reqId);
-  return <AsyncReader delay={props.delay} />;
+  provide(RequestIdCtx, props.reqId)
+  return <AsyncReader delay={props.delay} />
 }
 
 // All 50 renders see their own reqId, even with random delays
@@ -159,7 +159,7 @@ const results = await Promise.all(
   Array.from({ length: 50 }, (_, i) =>
     renderToString(<RequestWrapper reqId={`req-${i}`} delay={Math.random() * 20} />),
   ),
-);
+)
 // results[0] contains "req-0", results[1] contains "req-1", etc.
 ```
 
@@ -169,16 +169,16 @@ Async components (components that return a `Promise<VNode>`) are fully supported
 
 ```tsx
 async function UserProfile(props: { userId: string }) {
-  const user = await fetchUser(props.userId);
+  const user = await fetchUser(props.userId)
   return (
     <div class="profile">
       <h1>{user.name}</h1>
       <p>{user.bio}</p>
     </div>
-  );
+  )
 }
 
-const html = await renderToString(<UserProfile userId="123" />);
+const html = await renderToString(<UserProfile userId="123" />)
 ```
 
 ### For List Rendering
@@ -186,18 +186,18 @@ const html = await renderToString(<UserProfile userId="123" />);
 The `For` component renders list items with hydration markers so the client can claim existing DOM nodes during hydration:
 
 ```tsx
-import { For, h } from "@pyreon/core";
-import { signal } from "@pyreon/reactivity";
+import { For, h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
-const items = signal(["apple", "banana", "cherry"]);
+const items = signal(['apple', 'banana', 'cherry'])
 
 const vnode = For({
   each: () => items(),
   by: (item) => item,
   children: (item) => <li>{item}</li>,
-});
+})
 
-const html = await renderToString(vnode);
+const html = await renderToString(vnode)
 // => '<!--pyreon-for--><li>apple</li><li>banana</li><li>cherry</li><!--/pyreon-for-->'
 ```
 
@@ -208,14 +208,14 @@ The `<!--pyreon-for-->` and `<!--/pyreon-for-->` markers are used by the client-
 Fragments render their children without any wrapper element:
 
 ```tsx
-import { Fragment, h } from "@pyreon/core";
+import { Fragment, h } from '@pyreon/core'
 
 const html = await renderToString(
   <>
     <span>a</span>
     <span>b</span>
   </>,
-);
+)
 // => '<span>a</span><span>b</span>'
 ```
 
@@ -225,14 +225,14 @@ When children are passed via `h(Component, props, child1, child2)`, they are mer
 
 ```tsx
 function Wrapper(props: { children: VNode }) {
-  return <div class="wrapper">{props.children}</div>;
+  return <div class="wrapper">{props.children}</div>
 }
 
 const html = await renderToString(
   <Wrapper>
     <span>child content</span>
   </Wrapper>,
-);
+)
 // => '<div class="wrapper"><span>child content</span></div>'
 ```
 
@@ -240,7 +240,7 @@ Multiple children are passed as an array:
 
 ```tsx
 function Layout(props: { children: VNode[] }) {
-  return <div>{...props.children}</div>;
+  return <div>{...props.children}</div>
 }
 
 const html = await renderToString(
@@ -248,7 +248,7 @@ const html = await renderToString(
     <header>Header</header>
     <main>Content</main>
   </Layout>,
-);
+)
 ```
 
 If `props.children` is explicitly provided, it is not overridden by positional children.
@@ -262,15 +262,15 @@ Render a VNode tree to a Web-standard `ReadableStream<string>` for progressive s
 ### Basic Usage
 
 ```tsx
-import { renderToStream } from "@pyreon/runtime-server";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+import { renderToStream } from '@pyreon/runtime-server'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-const stream = renderToStream(<App />);
+const stream = renderToStream(<App />)
 
 return new Response(stream, {
-  headers: { "Content-Type": "text/html" },
-});
+  headers: { 'Content-Type': 'text/html' },
+})
 ```
 
 ### Streaming Behavior
@@ -285,15 +285,15 @@ The key advantage of streaming is that the browser can start parsing and renderi
 
 ```tsx
 async function SlowChild() {
-  await new Promise((r) => setTimeout(r, 1000));
-  return <span>loaded</span>;
+  await new Promise((r) => setTimeout(r, 1000))
+  return <span>loaded</span>
 }
 
 const stream = renderToStream(
   <div>
     <SlowChild />
   </div>,
-);
+)
 
 // Stream chunks arrive as:
 // 1. "<div>"        -- immediate
@@ -306,13 +306,13 @@ const stream = renderToStream(
 Each chunk is enqueued to the stream independently. The browser receives and renders content progressively:
 
 ```ts
-const chunks: string[] = [];
-const reader = stream.getReader();
+const chunks: string[] = []
+const reader = stream.getReader()
 
 while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  chunks.push(value);
+  const { done, value } = await reader.read()
+  if (done) break
+  chunks.push(value)
 }
 
 // chunks[0] === "<div>"
@@ -325,7 +325,7 @@ while (true) {
 Streaming `null` produces an empty stream that closes immediately:
 
 ```ts
-const stream = renderToStream(null);
+const stream = renderToStream(null)
 // Stream closes with no chunks
 ```
 
@@ -341,10 +341,10 @@ The first time a Suspense boundary is encountered, a small inline `<script>` is 
 <script>
   function __NS(s, t) {
     var e = document.getElementById(s),
-      l = document.getElementById(t);
+      l = document.getElementById(t)
     if (e && l) {
-      e.replaceWith(l.content.cloneNode(!0));
-      l.remove();
+      e.replaceWith(l.content.cloneNode(!0))
+      l.remove()
     }
   }
 </script>
@@ -371,7 +371,7 @@ Once the async children resolve, their HTML is buffered and then emitted as a `<
 ```html
 <template id="pyreon-t-0"><div class="actual-content">Data loaded!</div></template>
 <script>
-  __NS("pyreon-s-0", "pyreon-t-0");
+  __NS('pyreon-s-0', 'pyreon-t-0')
 </script>
 ```
 
@@ -380,12 +380,12 @@ The browser executes the swap script immediately, replacing the fallback placeho
 ### Suspense Streaming Example
 
 ```tsx
-import { renderToStream } from "@pyreon/runtime-server";
-import { h, Suspense } from "@pyreon/core";
+import { renderToStream } from '@pyreon/runtime-server'
+import { h, Suspense } from '@pyreon/core'
 
 async function UserData() {
-  const user = await fetchUser(); // takes 500ms
-  return <div class="user">{user.name}</div>;
+  const user = await fetchUser() // takes 500ms
+  return <div class="user">{user.name}</div>
 }
 
 const stream = renderToStream(
@@ -396,7 +396,7 @@ const stream = renderToStream(
     </Suspense>
     <p>Footer content</p>
   </div>,
-);
+)
 ```
 
 The stream produces chunks in this order:
@@ -426,7 +426,7 @@ const stream = renderToStream(
       {/* resolves in 100ms */}
     </Suspense>
   </div>,
-);
+)
 ```
 
 - Placeholders: `pyreon-s-0` and `pyreon-s-1`
@@ -443,16 +443,16 @@ When `Suspense` boundaries are encountered in `renderToString` (non-streaming), 
 Suspense boundary resolutions inherit the context stack from their parent scope. This means `useContext` calls inside async Suspense children see the correct per-request context values:
 
 ```tsx
-const ThemeCtx = createContext("light");
+const ThemeCtx = createContext('light')
 
 function App() {
-  provide(ThemeCtx, "dark");
+  provide(ThemeCtx, 'dark')
   return (
     <Suspense fallback={<p>Loading...</p>}>
       <AsyncContent />
       {/* useContext(ThemeCtx) returns "dark" */}
     </Suspense>
-  );
+  )
 }
 ```
 
@@ -465,16 +465,16 @@ Run an async function with a fresh, isolated context stack and store registry. T
 ### Basic Usage
 
 ```tsx
-import { runWithRequestContext } from "@pyreon/runtime-server";
+import { runWithRequestContext } from '@pyreon/runtime-server'
 
-app.get("/page", async (req, res) => {
+app.get('/page', async (req, res) => {
   const html = await runWithRequestContext(async () => {
     // Set up context, prefetch data, etc.
-    await prefetchLoaderData(router, req.url);
-    return renderToString(<App />);
-  });
-  res.end(html);
-});
+    await prefetchLoaderData(router, req.url)
+    return renderToString(<App />)
+  })
+  res.end(html)
+})
 ```
 
 ### Why Use runWithRequestContext?
@@ -486,25 +486,25 @@ app.get("/page", async (req, res) => {
 3. **Head management** -- collecting `<head>` tags across the render lifecycle
 
 ```tsx
-import { runWithRequestContext, renderToString } from "@pyreon/runtime-server";
-import { createRouter, prefetchLoaderData } from "@pyreon/router";
-import { h } from "@pyreon/core";
+import { runWithRequestContext, renderToString } from '@pyreon/runtime-server'
+import { createRouter, prefetchLoaderData } from '@pyreon/router'
+import { h } from '@pyreon/core'
 
-app.get("*", async (req, res) => {
+app.get('*', async (req, res) => {
   const result = await runWithRequestContext(async () => {
-    const router = createRouter({ routes, url: req.url });
+    const router = createRouter({ routes, url: req.url })
 
     // Prefetch in the same context scope as the render
-    await prefetchLoaderData(router, req.url);
+    await prefetchLoaderData(router, req.url)
 
     // Render in the same context scope
-    const html = await renderToString(<App router={router} />);
+    const html = await renderToString(<App router={router} />)
 
-    return { html, router };
-  });
+    return { html, router }
+  })
 
-  res.end(`<!DOCTYPE html><html><body>${result.html}</body></html>`);
-});
+  res.end(`<!DOCTYPE html><html><body>${result.html}</body></html>`)
+})
 ```
 
 ### Concurrent Isolation
@@ -514,16 +514,16 @@ Two concurrent `runWithRequestContext` calls are fully isolated, even with async
 ```ts
 const [r1, r2] = await Promise.all([
   runWithRequestContext(async () => {
-    pushContext(new Map([[Ctx.id, "ctx-A"]]));
-    await new Promise((r) => setTimeout(r, 100));
-    return useContext(Ctx); // "ctx-A"
+    pushContext(new Map([[Ctx.id, 'ctx-A']]))
+    await new Promise((r) => setTimeout(r, 100))
+    return useContext(Ctx) // "ctx-A"
   }),
   runWithRequestContext(async () => {
-    pushContext(new Map([[Ctx.id, "ctx-B"]]));
-    await new Promise((r) => setTimeout(r, 50));
-    return useContext(Ctx); // "ctx-B"
+    pushContext(new Map([[Ctx.id, 'ctx-B']]))
+    await new Promise((r) => setTimeout(r, 50))
+    return useContext(Ctx) // "ctx-B"
   }),
-]);
+])
 // r1 === "ctx-A", r2 === "ctx-B"
 ```
 
@@ -534,11 +534,11 @@ You can nest `renderToString` inside `runWithRequestContext`. The render will us
 ```tsx
 const html = await runWithRequestContext(async () => {
   // Push context before render
-  pushContext(new Map([[ThemeCtx.id, "dark"]]));
+  pushContext(new Map([[ThemeCtx.id, 'dark']]))
 
   // renderToString runs inside the existing context
-  return renderToString(<App />);
-});
+  return renderToString(<App />)
+})
 ```
 
 ---
@@ -550,11 +550,11 @@ Wire up per-request store isolation for concurrent SSR. Call once at server star
 ### Basic Setup
 
 ```ts
-import { configureStoreIsolation } from "@pyreon/runtime-server";
-import { setStoreRegistryProvider } from "@pyreon/store";
+import { configureStoreIsolation } from '@pyreon/runtime-server'
+import { setStoreRegistryProvider } from '@pyreon/store'
 
 // Call once at server startup:
-configureStoreIsolation(setStoreRegistryProvider);
+configureStoreIsolation(setStoreRegistryProvider)
 ```
 
 ### How It Works
@@ -572,35 +572,35 @@ When `configureStoreIsolation` is called, it sets up a second `AsyncLocalStorage
 ### Full Server Setup with Store Isolation
 
 ```tsx
-import express from "express";
+import express from 'express'
 import {
   renderToString,
   configureStoreIsolation,
   runWithRequestContext,
-} from "@pyreon/runtime-server";
-import { setStoreRegistryProvider } from "@pyreon/store";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+} from '@pyreon/runtime-server'
+import { setStoreRegistryProvider } from '@pyreon/store'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-const app = express();
+const app = express()
 
 // Enable store isolation before any renders
-configureStoreIsolation(setStoreRegistryProvider);
+configureStoreIsolation(setStoreRegistryProvider)
 
-app.get("*", async (req, res) => {
+app.get('*', async (req, res) => {
   const html = await runWithRequestContext(async () => {
-    return renderToString(<App />);
-  });
+    return renderToString(<App />)
+  })
 
-  res.setHeader("Content-Type", "text/html");
+  res.setHeader('Content-Type', 'text/html')
   res.end(`<!DOCTYPE html>
     <html>
       <head><meta charset="UTF-8" /><title>My App</title></head>
       <body><div id="app">${html}</div></body>
-    </html>`);
-});
+    </html>`)
+})
 
-app.listen(3000);
+app.listen(3000)
 ```
 
 ### When Store Isolation is Not Active
@@ -628,19 +628,19 @@ These attributes are never emitted in server-rendered HTML:
 When a prop value is a function (a reactive getter), it is called synchronously to snapshot the current value:
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
+import { signal } from '@pyreon/reactivity'
 
-const count = signal(42);
+const count = signal(42)
 
-const html = await renderToString(<span data-count={() => count()} />);
+const html = await renderToString(<span data-count={() => count()} />)
 // => '<span data-count="42"></span>'
 ```
 
 The same applies to reactive children:
 
 ```tsx
-const name = signal("world");
-const html = await renderToString(<p>{() => name()}</p>);
+const name = signal('world')
+const html = await renderToString(<p>{() => name()}</p>)
 // => '<p>world</p>'
 ```
 
@@ -658,7 +658,7 @@ The `class` attribute accepts three formats:
 **Array (falsy values filtered):**
 
 ```tsx
-<div class={["foo", null, "bar", false, "baz"]} />
+<div class={['foo', null, 'bar', false, 'baz']} />
 // => '<div class="foo bar baz"></div>'
 ```
 
@@ -690,7 +690,7 @@ The `style` attribute accepts two formats:
 **Object (camelCase keys converted to kebab-case):**
 
 ```tsx
-<div style={{ color: "red", fontSize: "16px" }} />
+<div style={{ color: 'red', fontSize: '16px' }} />
 // => '<div style="color: red; font-size: 16px"></div>'
 ```
 
@@ -763,12 +763,12 @@ All text content and attribute values are HTML-escaped. The following characters
 ### Basic SSR with Web Standard Request/Response
 
 ```tsx
-import { renderToString } from "@pyreon/runtime-server";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+import { renderToString } from '@pyreon/runtime-server'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const html = await renderToString(<App />);
+  const html = await renderToString(<App />)
 
   return new Response(
     `<!DOCTYPE html>
@@ -776,37 +776,37 @@ export async function handler(req: Request): Promise<Response> {
       <head><meta charset="UTF-8" /><title>My App</title></head>
       <body><div id="app">${html}</div></body>
     </html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+    { headers: { 'Content-Type': 'text/html' } },
+  )
 }
 ```
 
 ### SSR with Express
 
 ```tsx
-import express from "express";
+import express from 'express'
 import {
   renderToString,
   runWithRequestContext,
   configureStoreIsolation,
-} from "@pyreon/runtime-server";
-import { setStoreRegistryProvider } from "@pyreon/store";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+} from '@pyreon/runtime-server'
+import { setStoreRegistryProvider } from '@pyreon/store'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-const app = express();
+const app = express()
 
-configureStoreIsolation(setStoreRegistryProvider);
+configureStoreIsolation(setStoreRegistryProvider)
 
-app.use(express.static("public"));
+app.use(express.static('public'))
 
-app.get("*", async (req, res) => {
+app.get('*', async (req, res) => {
   try {
     const html = await runWithRequestContext(async () => {
-      return renderToString(<App />);
-    });
+      return renderToString(<App />)
+    })
 
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader('Content-Type', 'text/html')
     res.status(200).end(`<!DOCTYPE html>
       <html lang="en">
         <head>
@@ -819,38 +819,38 @@ app.get("*", async (req, res) => {
           <div id="app">${html}</div>
           <script type="module" src="/client.js"></script>
         </body>
-      </html>`);
+      </html>`)
   } catch (err) {
-    console.error("SSR error:", err);
-    res.status(500).end("Internal Server Error");
+    console.error('SSR error:', err)
+    res.status(500).end('Internal Server Error')
   }
-});
+})
 
-app.listen(3000, () => console.log("Server running on port 3000"));
+app.listen(3000, () => console.log('Server running on port 3000'))
 ```
 
 ### SSR with Hono
 
 ```tsx
-import { Hono } from "hono";
+import { Hono } from 'hono'
 import {
   renderToString,
   runWithRequestContext,
   configureStoreIsolation,
-} from "@pyreon/runtime-server";
-import { setStoreRegistryProvider } from "@pyreon/store";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+} from '@pyreon/runtime-server'
+import { setStoreRegistryProvider } from '@pyreon/store'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-const app = new Hono();
+const app = new Hono()
 
-configureStoreIsolation(setStoreRegistryProvider);
+configureStoreIsolation(setStoreRegistryProvider)
 
-app.get("*", async (c) => {
+app.get('*', async (c) => {
   try {
     const html = await runWithRequestContext(async () => {
-      return renderToString(<App />);
-    });
+      return renderToString(<App />)
+    })
 
     return c.html(`<!DOCTYPE html>
       <html lang="en">
@@ -862,62 +862,62 @@ app.get("*", async (c) => {
           <div id="app">${html}</div>
           <script type="module" src="/client.js"></script>
         </body>
-      </html>`);
+      </html>`)
   } catch (err) {
-    console.error("SSR error:", err);
-    return c.text("Internal Server Error", 500);
+    console.error('SSR error:', err)
+    return c.text('Internal Server Error', 500)
   }
-});
+})
 
-export default app;
+export default app
 ```
 
 ### SSR with Node.js HTTP
 
 ```tsx
-import { createServer } from "node:http";
+import { createServer } from 'node:http'
 import {
   renderToString,
   runWithRequestContext,
   configureStoreIsolation,
-} from "@pyreon/runtime-server";
-import { setStoreRegistryProvider } from "@pyreon/store";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+} from '@pyreon/runtime-server'
+import { setStoreRegistryProvider } from '@pyreon/store'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
-configureStoreIsolation(setStoreRegistryProvider);
+configureStoreIsolation(setStoreRegistryProvider)
 
 const server = createServer(async (req, res) => {
   try {
     const html = await runWithRequestContext(async () => {
-      return renderToString(<App />);
-    });
+      return renderToString(<App />)
+    })
 
-    res.writeHead(200, { "Content-Type": "text/html" });
+    res.writeHead(200, { 'Content-Type': 'text/html' })
     res.end(`<!DOCTYPE html>
       <html>
         <head><meta charset="UTF-8" /><title>My App</title></head>
         <body><div id="app">${html}</div></body>
-      </html>`);
+      </html>`)
   } catch (err) {
-    console.error("SSR error:", err);
-    res.writeHead(500);
-    res.end("Internal Server Error");
+    console.error('SSR error:', err)
+    res.writeHead(500)
+    res.end('Internal Server Error')
   }
-});
+})
 
-server.listen(3000);
+server.listen(3000)
 ```
 
 ### Streaming SSR with Document Shell
 
 ```tsx
-import { renderToStream } from "@pyreon/runtime-server";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+import { renderToStream } from '@pyreon/runtime-server'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const appStream = renderToStream(<App />);
+  const appStream = renderToStream(<App />)
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -932,14 +932,14 @@ export async function handler(req: Request): Promise<Response> {
           </head>
           <body>
             <div id="app">`,
-      );
+      )
 
       // Pipe the app stream
-      const reader = appStream.getReader();
+      const reader = appStream.getReader()
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        controller.enqueue(value);
+        const { done, value } = await reader.read()
+        if (done) break
+        controller.enqueue(value)
       }
 
       // Close the document shell
@@ -948,40 +948,40 @@ export async function handler(req: Request): Promise<Response> {
             <script type="module" src="/client.js"></script>
           </body>
         </html>`,
-      );
-      controller.close();
+      )
+      controller.close()
     },
-  });
+  })
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/html" },
-  });
+    headers: { 'Content-Type': 'text/html' },
+  })
 }
 ```
 
 ### SSR with Router Integration
 
 ```tsx
-import { renderToString, runWithRequestContext } from "@pyreon/runtime-server";
-import { createRouter, prefetchLoaderData } from "@pyreon/router";
-import { h } from "@pyreon/core";
-import { routes } from "./routes";
-import { App } from "./App";
+import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
+import { createRouter, prefetchLoaderData } from '@pyreon/router'
+import { h } from '@pyreon/core'
+import { routes } from './routes'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
+  const url = new URL(req.url)
 
   const html = await runWithRequestContext(async () => {
     const router = createRouter({
       routes,
       url: url.pathname + url.search,
-    });
+    })
 
     // Prefetch loader data for the matched route
-    await prefetchLoaderData(router, url.pathname + url.search);
+    await prefetchLoaderData(router, url.pathname + url.search)
 
-    return renderToString(<App router={router} />);
-  });
+    return renderToString(<App router={router} />)
+  })
 
   return new Response(
     `<!DOCTYPE html>
@@ -993,27 +993,27 @@ export async function handler(req: Request): Promise<Response> {
         <script type="module" src="/client.js"></script>
       </body>
     </html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+    { headers: { 'Content-Type': 'text/html' } },
+  )
 }
 ```
 
 ### SSR with Head Management
 
 ```tsx
-import { renderWithHead } from "@pyreon/head";
-import { h } from "@pyreon/core";
-import { App } from "./App";
+import { renderWithHead } from '@pyreon/head'
+import { h } from '@pyreon/core'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />);
+  const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
 
   const htmlAttrStr = Object.entries(htmlAttrs)
     .map(([k, v]) => `${k}="${v}"`)
-    .join(" ");
+    .join(' ')
   const bodyAttrStr = Object.entries(bodyAttrs)
     .map(([k, v]) => `${k}="${v}"`)
-    .join(" ");
+    .join(' ')
 
   return new Response(
     `<!DOCTYPE html>
@@ -1027,8 +1027,8 @@ export async function handler(req: Request): Promise<Response> {
         <script type="module" src="/client.js"></script>
       </body>
     </html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+    { headers: { 'Content-Type': 'text/html' } },
+  )
 }
 ```
 
@@ -1041,18 +1041,18 @@ export async function handler(req: Request): Promise<Response> {
 Always wrap render calls in try/catch to handle errors from components, data fetching, or invalid VNode trees:
 
 ```tsx
-app.get("*", async (req, res) => {
+app.get('*', async (req, res) => {
   try {
     const html = await runWithRequestContext(async () => {
-      return renderToString(<App />);
-    });
-    res.status(200).end(wrapHtml(html));
+      return renderToString(<App />)
+    })
+    res.status(200).end(wrapHtml(html))
   } catch (err) {
-    console.error("SSR render error:", err);
+    console.error('SSR render error:', err)
 
     // Option 1: Return error page
     res.status(500).end(`<!DOCTYPE html>
-      <html><body><h1>500 Server Error</h1></body></html>`);
+      <html><body><h1>500 Server Error</h1></body></html>`)
 
     // Option 2: Fall back to client-side rendering
     // res.status(200).end(`<!DOCTYPE html>
@@ -1061,7 +1061,7 @@ app.get("*", async (req, res) => {
     //     <script type="module" src="/client.js"></script>
     //   </body></html>`)
   }
-});
+})
 ```
 
 ### Stream Error Handling
@@ -1069,17 +1069,17 @@ app.get("*", async (req, res) => {
 `renderToStream` propagates errors through the stream's error channel. The `ReadableStream` will call `controller.error(err)` if any part of the render throws:
 
 ```tsx
-const stream = renderToStream(<App />);
+const stream = renderToStream(<App />)
 
-const reader = stream.getReader();
+const reader = stream.getReader()
 try {
   while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    const { done, value } = await reader.read()
+    if (done) break
     // process chunk
   }
 } catch (err) {
-  console.error("Stream error:", err);
+  console.error('Stream error:', err)
 }
 ```
 
@@ -1095,10 +1095,10 @@ For pages with multiple async data sources, `renderToStream` with Suspense bound
 
 ```tsx
 // Slower: waits for everything before sending any HTML
-const html = await renderToString(<App />);
+const html = await renderToString(<App />)
 
 // Faster: starts sending HTML immediately
-const stream = renderToStream(<App />);
+const stream = renderToStream(<App />)
 ```
 
 ### 2. Enable Store Isolation Only When Needed
@@ -1107,8 +1107,8 @@ const stream = renderToStream(<App />);
 
 ```ts
 // Only enable for production SSR with concurrent requests
-if (process.env.NODE_ENV === "production") {
-  configureStoreIsolation(setStoreRegistryProvider);
+if (process.env.NODE_ENV === 'production') {
+  configureStoreIsolation(setStoreRegistryProvider)
 }
 ```
 
@@ -1123,9 +1123,9 @@ Use `runWithRequestContext` to prefetch all necessary data before calling `rende
 ```tsx
 const html = await runWithRequestContext(async () => {
   // One prefetch call, not N component-level fetches
-  await prefetchLoaderData(router, url);
-  return renderToString(<App />);
-});
+  await prefetchLoaderData(router, url)
+  return renderToString(<App />)
+})
 ```
 
 ### 5. Parallelize Array Children

@@ -21,19 +21,19 @@
 
 export interface MiddlewareContext {
   /** The incoming request */
-  req: Request;
+  req: Request
   /** Parsed URL */
-  url: URL;
+  url: URL
   /** Pathname + search (passed to router) */
-  path: string;
+  path: string
   /** Response headers — middleware can set custom headers */
-  headers: Headers;
+  headers: Headers
   /** Arbitrary per-request data shared between middleware and components */
-  locals: Record<string, unknown>;
+  locals: Record<string, unknown>
 }
 
 /**
  * Middleware function. Return a Response to short-circuit, or void to continue.
  */
 // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
-export type Middleware = (ctx: MiddlewareContext) => Response | void | Promise<Response | void>;
+export type Middleware = (ctx: MiddlewareContext) => Response | void | Promise<Response | void>

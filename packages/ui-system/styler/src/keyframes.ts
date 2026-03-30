@@ -9,28 +9,28 @@
  *   `
  *   // fadeIn === "pyr-kf-abc123" (deterministic, hash-based)
  */
-import { hash } from "./hash";
-import { type Interpolation, normalizeCSS, resolve } from "./resolve";
-import { sheet } from "./sheet";
+import { hash } from './hash'
+import { type Interpolation, normalizeCSS, resolve } from './resolve'
+import { sheet } from './sheet'
 
 class KeyframesResult {
-  readonly name: string;
+  readonly name: string
 
   constructor(strings: TemplateStringsArray, values: Interpolation[]) {
-    const body = normalizeCSS(resolve(strings, values, {}));
-    const h = hash(body);
-    this.name = `pyr-kf-${h}`;
+    const body = normalizeCSS(resolve(strings, values, {}))
+    const h = hash(body)
+    this.name = `pyr-kf-${h}`
 
-    sheet.insertKeyframes(this.name, body);
+    sheet.insertKeyframes(this.name, body)
   }
 
   /** Returns the animation name when used in string context. */
   toString(): string {
-    return this.name;
+    return this.name
   }
 }
 
 export const keyframes = (
   strings: TemplateStringsArray,
   ...values: Interpolation[]
-): KeyframesResult => new KeyframesResult(strings, values);
+): KeyframesResult => new KeyframesResult(strings, values)

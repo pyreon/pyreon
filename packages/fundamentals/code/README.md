@@ -29,23 +29,23 @@ editor.value.set('new')  // updates editor
 ## Diff Editor
 
 ```tsx
-import { DiffEditor } from "@pyreon/code";
+import { DiffEditor } from '@pyreon/code'
 
-<DiffEditor original="const a = 1" modified="const a = 2" style="height: 300px" />;
+;<DiffEditor original="const a = 1" modified="const a = 2" style="height: 300px" />
 ```
 
 ## Tabbed Editor
 
 ```tsx
-import { TabbedEditor } from "@pyreon/code";
+import { TabbedEditor } from '@pyreon/code'
 
-<TabbedEditor
+;<TabbedEditor
   tabs={[
-    { id: "main", label: "main.ts", value: "export {}", language: "typescript" },
-    { id: "style", label: "style.css", value: "body {}", language: "css" },
+    { id: 'main', label: 'main.ts', value: 'export {}', language: 'typescript' },
+    { id: 'style', label: 'style.css', value: 'body {}', language: 'css' },
   ]}
   style="height: 500px"
-/>;
+/>
 ```
 
 ## API

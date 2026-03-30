@@ -1,4 +1,4 @@
-import type { StorageOptions } from "./types";
+import type { StorageOptions } from './types'
 
 // ─── SSR Detection ───────────────────────────────────────────────────────────
 
@@ -6,7 +6,7 @@ import type { StorageOptions } from "./types";
  * Check if we're running in a browser environment.
  */
 export function isBrowser(): boolean {
-  return typeof window !== "undefined" && typeof document !== "undefined";
+  return typeof window !== 'undefined' && typeof document !== 'undefined'
 }
 
 // ─── Serialization ───────────────────────────────────────────────────────────
@@ -14,9 +14,9 @@ export function isBrowser(): boolean {
 /**
  * Serialize a value to a string for storage.
  */
-export function serialize<T>(value: T, serializer?: StorageOptions<T>["serializer"]): string {
-  if (serializer) return serializer(value);
-  return JSON.stringify(value);
+export function serialize<T>(value: T, serializer?: StorageOptions<T>['serializer']): string {
+  if (serializer) return serializer(value)
+  return JSON.stringify(value)
 }
 
 /**
@@ -26,18 +26,18 @@ export function serialize<T>(value: T, serializer?: StorageOptions<T>["serialize
 export function deserialize<T>(
   raw: string,
   defaultValue: T,
-  deserializer?: StorageOptions<T>["deserializer"],
-  onError?: StorageOptions<T>["onError"],
+  deserializer?: StorageOptions<T>['deserializer'],
+  onError?: StorageOptions<T>['onError'],
 ): T {
   try {
-    if (deserializer) return deserializer(raw);
-    return JSON.parse(raw) as T;
+    if (deserializer) return deserializer(raw)
+    return JSON.parse(raw) as T
   } catch (e) {
     if (onError) {
-      const result = onError(e as Error);
-      return result !== undefined ? result : defaultValue;
+      const result = onError(e as Error)
+      return result !== undefined ? result : defaultValue
     }
-    return defaultValue;
+    return defaultValue
   }
 }
 
@@ -47,16 +47,16 @@ export function deserialize<T>(
  * Safely get a Web Storage instance (localStorage or sessionStorage).
  * Returns null if not available (SSR, security restrictions, etc.).
  */
-export function getWebStorage(type: "local" | "session"): Storage | null {
-  if (!isBrowser()) return null;
+export function getWebStorage(type: 'local' | 'session'): Storage | null {
+  if (!isBrowser()) return null
   try {
-    const storage = type === "local" ? window.localStorage : window.sessionStorage;
+    const storage = type === 'local' ? window.localStorage : window.sessionStorage
     // Test that it actually works (can throw in private browsing)
-    const testKey = "__pyreon_storage_test__";
-    storage.setItem(testKey, "1");
-    storage.removeItem(testKey);
-    return storage;
+    const testKey = '__pyreon_storage_test__'
+    storage.setItem(testKey, '1')
+    storage.removeItem(testKey)
+    return storage
   } catch {
-    return null;
+    return null
   }
 }

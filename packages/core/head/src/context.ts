@@ -1,20 +1,20 @@
-import { createContext } from "@pyreon/core";
+import { createContext } from '@pyreon/core'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface HeadTag {
   /** HTML tag name */
-  tag: "title" | "meta" | "link" | "script" | "style" | "base" | "noscript";
+  tag: 'title' | 'meta' | 'link' | 'script' | 'style' | 'base' | 'noscript'
   /**
    * Deduplication key. Tags with the same key replace each other;
    * innermost component (last added) wins.
    * Example: all components setting the page title use key "title".
    */
-  key?: string;
+  key?: string
   /** HTML attributes for the tag */
-  props?: Record<string, string>;
+  props?: Record<string, string>
   /** Text content — for <title>, <script>, <style>, <noscript> */
-  children?: string;
+  children?: string
 }
 
 // ─── Strict tag types ────────────────────────────────────────────────────────
@@ -22,209 +22,209 @@ export interface HeadTag {
 /** Standard `<meta>` tag attributes. Catches typos like `{ naem: "description" }`. */
 export interface MetaTag {
   /** Standard meta name (e.g. "description", "viewport", "robots") */
-  name?: string;
+  name?: string
   /** Open Graph / social property (e.g. "og:title", "twitter:card") */
-  property?: string;
+  property?: string
   /** HTTP equivalent header (e.g. "refresh", "content-type") */
-  "http-equiv"?: string;
+  'http-equiv'?: string
   /** Value associated with name, property, or http-equiv */
-  content?: string;
+  content?: string
   /** Document character encoding (e.g. "utf-8") */
-  charset?: string;
+  charset?: string
   /** Schema.org itemprop */
-  itemprop?: string;
+  itemprop?: string
   /** Media condition for applicability (e.g. "(prefers-color-scheme: dark)") */
-  media?: string;
+  media?: string
 }
 
 /** Standard `<link>` tag attributes. */
 export interface LinkTag {
   /** Relationship to the current document (e.g. "stylesheet", "icon", "canonical") */
-  rel?: string;
+  rel?: string
   /** URL of the linked resource */
-  href?: string;
+  href?: string
   /** Resource type hint for preloading (e.g. "style", "script", "font") */
-  as?: string;
+  as?: string
   /** MIME type (e.g. "text/css", "image/png") */
-  type?: string;
+  type?: string
   /** Media query for conditional loading */
-  media?: string;
+  media?: string
   /** CORS mode */
-  crossorigin?: string;
+  crossorigin?: string
   /** Subresource integrity hash */
-  integrity?: string;
+  integrity?: string
   /** Icon sizes (e.g. "32x32", "any") */
-  sizes?: string;
+  sizes?: string
   /** Language of the linked resource */
-  hreflang?: string;
+  hreflang?: string
   /** Title for the link (used for alternate stylesheets) */
-  title?: string;
+  title?: string
   /** Fetch priority hint */
-  fetchpriority?: "high" | "low" | "auto";
+  fetchpriority?: 'high' | 'low' | 'auto'
   /** Referrer policy */
-  referrerpolicy?: string;
+  referrerpolicy?: string
   /** Image source set for preloading responsive images */
-  imagesrcset?: string;
+  imagesrcset?: string
   /** Image sizes for preloading responsive images */
-  imagesizes?: string;
+  imagesizes?: string
   /** Disable the resource (for stylesheets) */
-  disabled?: string;
+  disabled?: string
   /** Color for mask-icon */
-  color?: string;
+  color?: string
 }
 
 /** Standard `<script>` tag attributes. */
 export interface ScriptTag {
   /** External script URL */
-  src?: string;
+  src?: string
   /** Script MIME type or module type (e.g. "module", "importmap") */
-  type?: string;
+  type?: string
   /** Load asynchronously */
-  async?: string;
+  async?: string
   /** Defer execution until document is parsed */
-  defer?: string;
+  defer?: string
   /** CORS mode */
-  crossorigin?: string;
+  crossorigin?: string
   /** Subresource integrity hash */
-  integrity?: string;
+  integrity?: string
   /** Exclude from module-supporting browsers */
-  nomodule?: string;
+  nomodule?: string
   /** Referrer policy */
-  referrerpolicy?: string;
+  referrerpolicy?: string
   /** Fetch priority hint */
-  fetchpriority?: string;
+  fetchpriority?: string
   /** Inline script content */
-  children?: string;
+  children?: string
 }
 
 /** Standard `<style>` tag attributes. */
 export interface StyleTag {
   /** Inline CSS content (required) */
-  children: string;
+  children: string
   /** Media query for conditional styles */
-  media?: string;
+  media?: string
   /** Nonce for CSP */
-  nonce?: string;
+  nonce?: string
   /** Title for alternate stylesheets */
-  title?: string;
+  title?: string
   /** Render-blocking behavior */
-  blocking?: string;
+  blocking?: string
 }
 
 /** Standard `<base>` tag attributes. */
 export interface BaseTag {
   /** Base URL for relative URLs in the document */
-  href?: string;
+  href?: string
   /** Default target for links and forms */
-  target?: "_blank" | "_self" | "_parent" | "_top";
+  target?: '_blank' | '_self' | '_parent' | '_top'
 }
 
 export interface UseHeadInput {
-  title?: string;
+  title?: string
   /**
    * Title template — use `%s` as a placeholder for the page title.
    * Applied to the resolved title after deduplication.
    * @example useHead({ titleTemplate: "%s | My App" })
    */
-  titleTemplate?: string | ((title: string) => string);
-  meta?: MetaTag[];
-  link?: LinkTag[];
-  script?: ScriptTag[];
-  style?: StyleTag[];
-  noscript?: { children: string }[];
+  titleTemplate?: string | ((title: string) => string)
+  meta?: MetaTag[]
+  link?: LinkTag[]
+  script?: ScriptTag[]
+  style?: StyleTag[]
+  noscript?: { children: string }[]
   /** Convenience: emits a <script type="application/ld+json"> tag with JSON.stringify'd content */
-  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
-  base?: BaseTag;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[]
+  base?: BaseTag
   /** Attributes to set on the <html> element (e.g. { lang: "en", dir: "ltr" }) */
-  htmlAttrs?: Record<string, string>;
+  htmlAttrs?: Record<string, string>
   /** Attributes to set on the <body> element (e.g. { class: "dark" }) */
-  bodyAttrs?: Record<string, string>;
+  bodyAttrs?: Record<string, string>
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 export interface HeadEntry {
-  tags: HeadTag[];
-  titleTemplate?: string | ((title: string) => string) | undefined;
-  htmlAttrs?: Record<string, string> | undefined;
-  bodyAttrs?: Record<string, string> | undefined;
+  tags: HeadTag[]
+  titleTemplate?: string | ((title: string) => string) | undefined
+  htmlAttrs?: Record<string, string> | undefined
+  bodyAttrs?: Record<string, string> | undefined
 }
 
 export interface HeadContextValue {
-  add(id: symbol, entry: HeadEntry): void;
-  remove(id: symbol): void;
+  add(id: symbol, entry: HeadEntry): void
+  remove(id: symbol): void
   /** Returns deduplicated tags — last-added entry wins per key */
-  resolve(): HeadTag[];
+  resolve(): HeadTag[]
   /** Returns the merged titleTemplate (last-added wins) */
-  resolveTitleTemplate(): (string | ((title: string) => string)) | undefined;
+  resolveTitleTemplate(): (string | ((title: string) => string)) | undefined
   /** Returns merged htmlAttrs (later entries override earlier) */
-  resolveHtmlAttrs(): Record<string, string>;
+  resolveHtmlAttrs(): Record<string, string>
   /** Returns merged bodyAttrs (later entries override earlier) */
-  resolveBodyAttrs(): Record<string, string>;
+  resolveBodyAttrs(): Record<string, string>
 }
 
 export function createHeadContext(): HeadContextValue {
-  const map = new Map<symbol, HeadEntry>();
+  const map = new Map<symbol, HeadEntry>()
 
   // ── Cached resolve ───────────────────────────────────────────────────────
-  let dirty = true;
-  let cachedTags: HeadTag[] = [];
-  let cachedTitleTemplate: (string | ((title: string) => string)) | undefined;
-  let cachedHtmlAttrs: Record<string, string> = {};
-  let cachedBodyAttrs: Record<string, string> = {};
+  let dirty = true
+  let cachedTags: HeadTag[] = []
+  let cachedTitleTemplate: (string | ((title: string) => string)) | undefined
+  let cachedHtmlAttrs: Record<string, string> = {}
+  let cachedBodyAttrs: Record<string, string> = {}
 
   function rebuild(): void {
-    if (!dirty) return;
-    dirty = false;
+    if (!dirty) return
+    dirty = false
 
-    const keyed = new Map<string, HeadTag>();
-    const unkeyed: HeadTag[] = [];
-    let titleTemplate: (string | ((title: string) => string)) | undefined;
-    const htmlAttrs: Record<string, string> = {};
-    const bodyAttrs: Record<string, string> = {};
+    const keyed = new Map<string, HeadTag>()
+    const unkeyed: HeadTag[] = []
+    let titleTemplate: (string | ((title: string) => string)) | undefined
+    const htmlAttrs: Record<string, string> = {}
+    const bodyAttrs: Record<string, string> = {}
 
     for (const entry of map.values()) {
       for (const tag of entry.tags) {
-        if (tag.key) keyed.set(tag.key, tag);
-        else unkeyed.push(tag);
+        if (tag.key) keyed.set(tag.key, tag)
+        else unkeyed.push(tag)
       }
-      if (entry.titleTemplate !== undefined) titleTemplate = entry.titleTemplate;
-      if (entry.htmlAttrs) Object.assign(htmlAttrs, entry.htmlAttrs);
-      if (entry.bodyAttrs) Object.assign(bodyAttrs, entry.bodyAttrs);
+      if (entry.titleTemplate !== undefined) titleTemplate = entry.titleTemplate
+      if (entry.htmlAttrs) Object.assign(htmlAttrs, entry.htmlAttrs)
+      if (entry.bodyAttrs) Object.assign(bodyAttrs, entry.bodyAttrs)
     }
 
-    cachedTags = [...keyed.values(), ...unkeyed];
-    cachedTitleTemplate = titleTemplate;
-    cachedHtmlAttrs = htmlAttrs;
-    cachedBodyAttrs = bodyAttrs;
+    cachedTags = [...keyed.values(), ...unkeyed]
+    cachedTitleTemplate = titleTemplate
+    cachedHtmlAttrs = htmlAttrs
+    cachedBodyAttrs = bodyAttrs
   }
 
   return {
     add(id, entry) {
-      map.set(id, entry);
-      dirty = true;
+      map.set(id, entry)
+      dirty = true
     },
     remove(id) {
-      map.delete(id);
-      dirty = true;
+      map.delete(id)
+      dirty = true
     },
     resolve() {
-      rebuild();
-      return cachedTags;
+      rebuild()
+      return cachedTags
     },
     resolveTitleTemplate() {
-      rebuild();
-      return cachedTitleTemplate;
+      rebuild()
+      return cachedTitleTemplate
     },
     resolveHtmlAttrs() {
-      rebuild();
-      return cachedHtmlAttrs;
+      rebuild()
+      return cachedHtmlAttrs
     },
     resolveBodyAttrs() {
-      rebuild();
-      return cachedBodyAttrs;
+      rebuild()
+      return cachedBodyAttrs
     },
-  };
+  }
 }
 
-export const HeadContext = createContext<HeadContextValue | null>(null);
+export const HeadContext = createContext<HeadContextValue | null>(null)

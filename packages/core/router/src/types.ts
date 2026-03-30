@@ -1,6 +1,6 @@
-import type { ComponentFn } from "@pyreon/core";
+import type { ComponentFn } from '@pyreon/core'
 
-export type { ComponentFn };
+export type { ComponentFn }
 
 // ─── Path param extraction ────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ export type ExtractParams<T extends string> = T extends `${string}:${infer Param
           ? { [K in Param]: string } & ExtractParams<`/${Rest}`>
           : T extends `${string}:${infer Param}`
             ? { [K in Param]: string }
-            : Record<never, never>;
+            : Record<never, never>
 
 // ─── Route meta ───────────────────────────────────────────────────────────────
 
@@ -45,13 +45,13 @@ export type ExtractParams<T extends string> = T extends `${string}:${infer Param
  */
 export interface RouteMeta {
   /** Sets document.title on navigation */
-  title?: string;
+  title?: string
   /** Page description (for meta tags) */
-  description?: string;
+  description?: string
   /** If true, guards can redirect to login */
-  requiresAuth?: boolean;
+  requiresAuth?: boolean
   /** Scroll behavior for this route */
-  scrollBehavior?: "top" | "restore" | "none";
+  scrollBehavior?: 'top' | 'restore' | 'none'
 }
 
 // ─── Resolved route ───────────────────────────────────────────────────────────
@@ -60,26 +60,26 @@ export interface ResolvedRoute<
   P extends Record<string, string | undefined> = Record<string, string>,
   Q extends Record<string, string> = Record<string, string>,
 > {
-  path: string;
-  params: P;
-  query: Q;
-  hash: string;
+  path: string
+  params: P
+  query: Q
+  hash: string
   /** All matched records from root to leaf (one per nesting level) */
-  matched: RouteRecord[];
-  meta: RouteMeta;
+  matched: RouteRecord[]
+  meta: RouteMeta
 }
 
 // ─── Lazy component ───────────────────────────────────────────────────────────
 
-export const LAZY_SYMBOL = Symbol("pyreon.lazy");
+export const LAZY_SYMBOL = Symbol('pyreon.lazy')
 
 export interface LazyComponent {
-  readonly [LAZY_SYMBOL]: true;
-  readonly loader: () => Promise<ComponentFn | { default: ComponentFn }>;
+  readonly [LAZY_SYMBOL]: true
+  readonly loader: () => Promise<ComponentFn | { default: ComponentFn }>
   /** Optional component shown while the lazy chunk is loading */
-  readonly loadingComponent?: ComponentFn;
+  readonly loadingComponent?: ComponentFn
   /** Optional component shown after all retries have failed */
-  readonly errorComponent?: ComponentFn;
+  readonly errorComponent?: ComponentFn
 }
 
 export function lazy(
@@ -91,24 +91,24 @@ export function lazy(
     loader,
     ...(options?.loading ? { loadingComponent: options.loading } : {}),
     ...(options?.error ? { errorComponent: options.error } : {}),
-  };
+  }
 }
 
 export function isLazy(c: RouteComponent): c is LazyComponent {
-  return typeof c === "object" && c !== null && (c as LazyComponent)[LAZY_SYMBOL] === true;
+  return typeof c === 'object' && c !== null && (c as LazyComponent)[LAZY_SYMBOL] === true
 }
 
-export type RouteComponent = ComponentFn | LazyComponent;
+export type RouteComponent = ComponentFn | LazyComponent
 
 // ─── Navigation guard ─────────────────────────────────────────────────────────
 
-export type NavigationGuardResult = boolean | string | undefined;
+export type NavigationGuardResult = boolean | string | undefined
 export type NavigationGuard = (
   to: ResolvedRoute,
   from: ResolvedRoute,
-) => NavigationGuardResult | Promise<NavigationGuardResult>;
+) => NavigationGuardResult | Promise<NavigationGuardResult>
 
-export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void;
+export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void
 
 // ─── Navigation blockers ──────────────────────────────────────────────────────
 
@@ -116,44 +116,44 @@ export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void;
  * Called before each navigation. Return `true` to block, `false` to allow.
  * Async blockers are supported (e.g. to show a confirmation dialog).
  */
-export type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>;
+export type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>
 
 export interface Blocker {
   /** Unregister this blocker so future navigations proceed freely. */
-  remove(): void;
+  remove(): void
 }
 
 // ─── Route loaders ────────────────────────────────────────────────────────────
 
 export interface LoaderContext {
-  params: Record<string, string>;
-  query: Record<string, string>;
+  params: Record<string, string>
+  query: Record<string, string>
   /** Aborted when a newer navigation supersedes this one */
-  signal: AbortSignal;
+  signal: AbortSignal
 }
 
-export type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>;
+export type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>
 
 // ─── Route record ─────────────────────────────────────────────────────────────
 
 export interface RouteRecord<TPath extends string = string> {
   /** Path pattern — supports `:param` segments and `(.*)` wildcard */
-  path: TPath;
-  component: RouteComponent;
+  path: TPath
+  component: RouteComponent
   /** Optional route name for named navigation */
-  name?: string;
+  name?: string
   /** Metadata attached to this route */
-  meta?: RouteMeta;
+  meta?: RouteMeta
   /**
    * Redirect target. Evaluated before guards.
    * String: redirect to that path.
    * Function: called with the resolved route, return path string.
    */
-  redirect?: string | ((to: ResolvedRoute) => string);
+  redirect?: string | ((to: ResolvedRoute) => string)
   /** Guard(s) run only for this route, before global beforeEach guards */
-  beforeEnter?: NavigationGuard | NavigationGuard[];
+  beforeEnter?: NavigationGuard | NavigationGuard[]
   /** Guard(s) run before leaving this route. Return false to cancel. */
-  beforeLeave?: NavigationGuard | NavigationGuard[];
+  beforeLeave?: NavigationGuard | NavigationGuard[]
   /**
    * Alternative path(s) for this route. Alias paths render the same component
    * and share guards, loaders, and metadata with the primary path.
@@ -161,23 +161,23 @@ export interface RouteRecord<TPath extends string = string> {
    * @example
    * { path: "/user/:id", alias: ["/profile/:id"], component: UserPage }
    */
-  alias?: string | string[];
+  alias?: string | string[]
   /** Child routes rendered inside this route's component via <RouterView /> */
-  children?: RouteRecord[];
+  children?: RouteRecord[]
   /**
    * Data loader — runs before navigation commits, in parallel with sibling loaders.
    * The result is accessible via `useLoaderData()` inside the route component.
    * Receives an AbortSignal that fires if a newer navigation supersedes this one.
    */
-  loader?: RouteLoaderFn;
+  loader?: RouteLoaderFn
   /**
    * When true, the router shows cached loader data immediately (stale) and
    * revalidates in the background. The component re-renders once fresh data arrives.
    * Only applies when navigating to a route that already has cached loader data.
    */
-  staleWhileRevalidate?: boolean;
+  staleWhileRevalidate?: boolean
   /** Component rendered when this route's loader throws an error */
-  errorComponent?: ComponentFn;
+  errorComponent?: ComponentFn
 }
 
 // ─── Router options ───────────────────────────────────────────────────────────
@@ -186,24 +186,24 @@ export type ScrollBehaviorFn = (
   to: ResolvedRoute,
   from: ResolvedRoute,
   savedPosition: number | null,
-) => "top" | "restore" | "none" | number;
+) => 'top' | 'restore' | 'none' | number
 
 export interface RouterOptions {
-  routes: RouteRecord[];
+  routes: RouteRecord[]
   /** "hash" (default) uses location.hash; "history" uses pushState */
-  mode?: "hash" | "history";
+  mode?: 'hash' | 'history'
   /**
    * Base path for the application. Used when deploying to a sub-path
    * (e.g. `"/app"` for `https://example.com/app/`).
    * Only applies in history mode. Must start with `/`.
    * Default: `""` (no base path).
    */
-  base?: string;
+  base?: string
   /**
    * Global scroll behavior. Per-route meta.scrollBehavior takes precedence.
    * Default: "top"
    */
-  scrollBehavior?: ScrollBehaviorFn | "top" | "restore" | "none";
+  scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
   /**
    * Initial URL for SSR. On the server, window.location is unavailable;
    * pass the request URL here so the router resolves the correct route.
@@ -212,104 +212,104 @@ export interface RouterOptions {
    * // In your SSR handler:
    * const router = createRouter({ routes, url: req.url })
    */
-  url?: string;
+  url?: string
   /**
    * Called when a route loader throws. If not provided, errors are logged
    * and the navigation continues with `undefined` data for the failed loader.
    * Return `false` to cancel the navigation.
    */
-  onError?: (err: unknown, route: ResolvedRoute) => undefined | false;
+  onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   /**
    * Maximum number of resolved lazy components to cache.
    * When exceeded, the oldest entry is evicted.
    * Default: 100.
    */
-  maxCacheSize?: number;
+  maxCacheSize?: number
   /**
    * Trailing slash handling:
    *   - `"strip"` — removes trailing slashes before matching (default)
    *   - `"add"` — ensures paths always end with `/`
    *   - `"ignore"` — no normalization
    */
-  trailingSlash?: "strip" | "add" | "ignore";
+  trailingSlash?: 'strip' | 'add' | 'ignore'
 }
 
 // ─── Router interface ─────────────────────────────────────────────────────────
 
 export interface Router {
   /** Navigate to a path */
-  push(path: string): Promise<void>;
+  push(path: string): Promise<void>
   /** Navigate to a path by name */
   push(location: {
-    name: string;
-    params?: Record<string, string>;
-    query?: Record<string, string>;
-  }): Promise<void>;
+    name: string
+    params?: Record<string, string>
+    query?: Record<string, string>
+  }): Promise<void>
   /** Replace current history entry */
-  replace(path: string): Promise<void>;
+  replace(path: string): Promise<void>
   /** Replace current history entry using a named route */
   replace(location: {
-    name: string;
-    params?: Record<string, string>;
-    query?: Record<string, string>;
-  }): Promise<void>;
+    name: string
+    params?: Record<string, string>
+    query?: Record<string, string>
+  }): Promise<void>
   /** Go back one step in history */
-  back(): void;
+  back(): void
   /** Go forward one step in history */
-  forward(): void;
+  forward(): void
   /** Navigate forward or backward by `delta` steps in the history stack */
-  go(delta: number): void;
+  go(delta: number): void
   /** Register a global before-navigation guard. Returns an unregister function. */
-  beforeEach(guard: NavigationGuard): () => void;
+  beforeEach(guard: NavigationGuard): () => void
   /** Register a global after-navigation hook. Returns an unregister function. */
-  afterEach(hook: AfterEachHook): () => void;
+  afterEach(hook: AfterEachHook): () => void
   /** Current resolved route (reactive signal) */
-  readonly currentRoute: () => ResolvedRoute;
+  readonly currentRoute: () => ResolvedRoute
   /** True while a navigation (guards + loaders) is in flight */
-  readonly loading: () => boolean;
+  readonly loading: () => boolean
   /**
    * Promise that resolves once the initial navigation is complete.
    * Useful for SSR and for delaying rendering until the first route is resolved.
    */
-  isReady(): Promise<void>;
+  isReady(): Promise<void>
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
-  destroy(): void;
+  destroy(): void
 }
 
 // ─── Internal router instance ─────────────────────────────────────────────────
 
-import type { Computed, Signal } from "@pyreon/reactivity";
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 export interface RouterInstance extends Router {
-  routes: RouteRecord[];
-  mode: "hash" | "history";
+  routes: RouteRecord[]
+  mode: 'hash' | 'history'
   /** Normalized base path (e.g. "/app"), empty string if none */
-  _base: string;
-  _currentPath: Signal<string>;
-  _currentRoute: Computed<ResolvedRoute>;
-  _componentCache: Map<RouteRecord, ComponentFn>;
-  _loadingSignal: Signal<number>;
-  _resolve(rawPath: string): ResolvedRoute;
-  _scrollPositions: Map<string, number>;
-  _scrollBehavior: RouterOptions["scrollBehavior"];
-  _onError: RouterOptions["onError"];
-  _maxCacheSize: number;
+  _base: string
+  _currentPath: Signal<string>
+  _currentRoute: Computed<ResolvedRoute>
+  _componentCache: Map<RouteRecord, ComponentFn>
+  _loadingSignal: Signal<number>
+  _resolve(rawPath: string): ResolvedRoute
+  _scrollPositions: Map<string, number>
+  _scrollBehavior: RouterOptions['scrollBehavior']
+  _onError: RouterOptions['onError']
+  _maxCacheSize: number
   /**
    * Current RouterView nesting depth. Incremented by each RouterView as it
    * mounts (in tree order = depth-first), so each view knows which level of
    * `matched[]` to render. Reset to 0 by RouterProvider.
    */
-  _viewDepth: number;
+  _viewDepth: number
   /** Route records whose lazy chunk permanently failed (all retries exhausted) */
-  _erroredChunks: Set<RouteRecord>;
+  _erroredChunks: Set<RouteRecord>
   /** Loader data keyed by route record — populated before each navigation commits */
-  _loaderData: Map<RouteRecord, unknown>;
+  _loaderData: Map<RouteRecord, unknown>
   /** AbortController for the in-flight loader batch — aborted when a newer navigation starts */
-  _abortController: AbortController | null;
+  _abortController: AbortController | null
   /** Registered navigation blockers */
-  _blockers: Set<BlockerFn>;
+  _blockers: Set<BlockerFn>
   /** Resolves the isReady() promise after initial navigation completes */
-  _readyResolve: (() => void) | null;
+  _readyResolve: (() => void) | null
   /** The isReady() promise instance */
-  _readyPromise: Promise<void>;
+  _readyPromise: Promise<void>
 }

@@ -1,16 +1,16 @@
-import type { config } from "@pyreon/ui-core";
-import type { PseudoState } from "./pseudo";
-import type { TObj } from "./utils";
+import type { config } from '@pyreon/ui-core'
+import type { PseudoState } from './pseudo'
+import type { TObj } from './utils'
 
 // biome-ignore lint/suspicious/noEmptyInterface: this is an interface to be extended in consuming projects
 export interface StylesDefault {}
 
 // biome-ignore lint/correctness/noUnusedVariables: S kept for backward compatibility
-export type Styles<S = unknown> = StylesDefault;
+export type Styles<S = unknown> = StylesDefault
 
-export type Css = typeof config.css;
-export type Style = ReturnType<Css>;
-export type OptionStyles = ((css: Css) => ReturnType<Css>)[];
+export type Css = typeof config.css
+export type Style = ReturnType<Css>
+export type OptionStyles = ((css: Css) => ReturnType<Css>)[]
 
 /**
  * Props available inside `.styles()` interpolation functions.
@@ -19,11 +19,11 @@ export type OptionStyles = ((css: Css) => ReturnType<Css>)[];
  * - `$rocketstate` — active dimension values + pseudo state
  */
 export type RocketStyleInterpolationProps<CSS extends TObj = TObj> = {
-  $rocketstyle: CSS;
+  $rocketstyle: CSS
   $rocketstate: Record<string, string | string[]> & {
-    pseudo: Partial<PseudoState>;
-  };
-} & Record<string, any>;
+    pseudo: Partial<PseudoState>
+  }
+} & Record<string, any>
 
 /**
  * A tagged-template css function whose interpolation functions
@@ -40,7 +40,7 @@ export type RocketCss<CSS extends TObj = TObj> = (
     | ((props: RocketStyleInterpolationProps<CSS>) => any)
     | any[]
   >
-) => any;
+) => any
 
-export type StylesCb<CSS extends TObj = TObj> = (css: RocketCss<CSS>) => ReturnType<Css>;
-export type StylesCbArray = StylesCb[];
+export type StylesCb<CSS extends TObj = TObj> = (css: RocketCss<CSS>) => ReturnType<Css>
+export type StylesCbArray = StylesCb[]

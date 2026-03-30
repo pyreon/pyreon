@@ -4,20 +4,20 @@
  * and `multiple` (a multi-select dimension).
  */
 const DEFAULT_DIMENSIONS = {
-  states: "state",
-  sizes: "size",
-  variants: "variant",
+  states: 'state',
+  sizes: 'size',
+  variants: 'variant',
   multiple: {
-    propName: "multiple",
+    propName: 'multiple',
     multi: true,
   },
   modifiers: {
-    propName: "modifier",
+    propName: 'modifier',
     multi: true,
     transform: true,
   },
-} as const;
+} as const
 
-export type DefaultDimensions = typeof DEFAULT_DIMENSIONS;
+export type DefaultDimensions = typeof DEFAULT_DIMENSIONS
 
-export default DEFAULT_DIMENSIONS;
+export default DEFAULT_DIMENSIONS

@@ -22,7 +22,7 @@
  * ```
  */
 
-export { Chart } from "./chart-component";
+export { Chart } from './chart-component'
 // Chart configuration types
 // Re-exported ECharts types for consumer convenience —
 // consumers get full autocomplete without importing echarts directly
@@ -60,5 +60,5 @@ export type {
   UseChartConfig,
   UseChartResult,
   VisualMapComponentOption,
-} from "./types";
-export { useChart } from "./use-chart";
+} from './types'
+export { useChart } from './use-chart'

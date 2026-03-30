@@ -1,10 +1,10 @@
-import { createMemo, createSignal } from "solid-js";
-import Demo from "./Demo";
+import { createMemo, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function MemoDemo() {
-  const [count, setCount] = createSignal(1);
-  const doubled = createMemo(() => count() * 2);
-  const quadrupled = createMemo(() => doubled() * 2);
+  const [count, setCount] = createSignal(1)
+  const doubled = createMemo(() => count() * 2)
+  const quadrupled = createMemo(() => doubled() * 2)
 
   return (
     <Demo
@@ -18,12 +18,12 @@ const quadrupled = createMemo(() => doubled() * 2);
 <span>{doubled()} / {quadrupled()}</span>`}
     >
       <p>
-        Count: <strong>{count()}</strong> | Doubled: <strong>{doubled()}</strong> | Quadrupled:{" "}
+        Count: <strong>{count()}</strong> | Doubled: <strong>{doubled()}</strong> | Quadrupled:{' '}
         <strong>{quadrupled()}</strong>
       </p>
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
     </Demo>
-  );
+  )
 }

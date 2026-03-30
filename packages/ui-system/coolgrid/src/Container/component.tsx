@@ -1,10 +1,10 @@
-import { provide } from "@pyreon/core";
-import { PKG_NAME } from "../constants";
-import ContainerContext from "../context/ContainerContext";
-import type { ElementType } from "../types";
-import useGridContext from "../useContext";
-import { omitCtxKeys } from "../utils";
-import Styled from "./styled";
+import { provide } from '@pyreon/core'
+import { PKG_NAME } from '../constants'
+import ContainerContext from '../context/ContainerContext'
+import type { ElementType } from '../types'
+import useGridContext from '../useContext'
+import { omitCtxKeys } from '../utils'
+import Styled from './styled'
 
 /**
  * Container component that establishes the outermost grid boundary.
@@ -14,9 +14,9 @@ import Styled from "./styled";
  */
 
 const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== "production" ? { "data-coolgrid": "container" } : {};
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
 
-const Component: ElementType<["containerWidth"]> = ({
+const Component: ElementType<['containerWidth']> = ({
   children,
   component,
   css,
@@ -35,7 +35,7 @@ const Component: ElementType<["containerWidth"]> = ({
     rowCss,
     rowComponent,
     contentAlignX,
-  } = useGridContext(props);
+  } = useGridContext(props)
 
   const context = {
     columns,
@@ -48,35 +48,35 @@ const Component: ElementType<["containerWidth"]> = ({
     rowCss,
     rowComponent,
     contentAlignX,
-  };
+  }
 
   const finalWidth = (() => {
-    if (!width) return containerWidth;
-    if (typeof width === "function") return width(containerWidth as Record<string, any>);
-    return width;
-  })();
+    if (!width) return containerWidth
+    if (typeof width === 'function') return width(containerWidth as Record<string, any>)
+    return width
+  })()
 
   const finalProps = {
     $coolgrid: {
       width: finalWidth,
       extraStyles: css,
     },
-  };
+  }
 
   // Provide container context to descendant Row/Col components
-  provide(ContainerContext, context);
+  provide(ContainerContext, context)
 
   return (
     <Styled {...omitCtxKeys(props)} as={component} {...finalProps} {...DEV_PROPS}>
       {children}
     </Styled>
-  );
-};
+  )
+}
 
-const name = `${PKG_NAME}/Container`;
+const name = `${PKG_NAME}/Container`
 
-Component.displayName = name;
-Component.pkgName = PKG_NAME;
-Component.PYREON__COMPONENT = name;
+Component.displayName = name
+Component.pkgName = PKG_NAME
+Component.PYREON__COMPONENT = name
 
-export default Component;
+export default Component

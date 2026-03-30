@@ -1,26 +1,26 @@
-import { signal } from "@pyreon/reactivity";
-import { getEntry, removeEntry, setEntry } from "./registry";
-import type { StorageOptions, StorageSignal } from "./types";
-import { deserialize, getWebStorage, isBrowser, serialize } from "./utils";
+import { signal } from '@pyreon/reactivity'
+import { getEntry, removeEntry, setEntry } from './registry'
+import type { StorageOptions, StorageSignal } from './types'
+import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
-let listenerAttached = false;
+let listenerAttached = false
 
 function attachStorageListener(): void {
-  if (listenerAttached || !isBrowser()) return;
-  listenerAttached = true;
+  if (listenerAttached || !isBrowser()) return
+  listenerAttached = true
 
-  window.addEventListener("storage", (e) => {
-    if (!e.key) return;
-    const entry = getEntry("local", e.key);
-    if (!entry) return;
+  window.addEventListener('storage', (e) => {
+    if (!e.key) return
+    const entry = getEntry('local', e.key)
+    if (!entry) return
 
     const newValue =
-      e.newValue !== null ? deserialize(e.newValue, entry.defaultValue) : entry.defaultValue;
+      e.newValue !== null ? deserialize(e.newValue, entry.defaultValue) : entry.defaultValue
 
-    entry.signal.set(newValue);
-  });
+    entry.signal.set(newValue)
+  })
 }
 
 // ─── useStorage ──────────────────────────────────────────────────────────────
@@ -43,29 +43,29 @@ export function useStorage<T>(
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
   // Return existing signal if already registered
-  const existing = getEntry<T>("local", key);
-  if (existing) return existing.signal;
+  const existing = getEntry<T>('local', key)
+  if (existing) return existing.signal
 
-  const storage = getWebStorage("local");
+  const storage = getWebStorage('local')
 
   // Read initial value from storage
-  let initialValue = defaultValue;
+  let initialValue = defaultValue
   if (storage) {
-    const raw = storage.getItem(key);
+    const raw = storage.getItem(key)
     if (raw !== null) {
-      initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError);
+      initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError)
     }
   }
 
-  const sig = signal<T>(initialValue);
+  const sig = signal<T>(initialValue)
 
   // Create the storage signal by extending the base signal
-  const storageSig = createStorageSignal(sig, key, defaultValue, "local", options);
+  const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
 
-  setEntry("local", key, storageSig, defaultValue);
-  attachStorageListener();
+  setEntry('local', key, storageSig, defaultValue)
+  attachStorageListener()
 
-  return storageSig;
+  return storageSig
 }
 
 // ─── Storage Signal Factory ──────────────────────────────────────────────────
@@ -78,53 +78,53 @@ export function createStorageSignal<T>(
   sig: ReturnType<typeof signal<T>>,
   key: string,
   defaultValue: T,
-  backend: "local" | "session",
+  backend: 'local' | 'session',
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
-  const storage = getWebStorage(backend);
+  const storage = getWebStorage(backend)
 
   // The callable signal function (read)
-  const storageSig = (() => sig()) as unknown as StorageSignal<T>;
+  const storageSig = (() => sig()) as unknown as StorageSignal<T>
 
   // Delegate all signal methods
-  storageSig.peek = () => sig.peek();
-  storageSig.subscribe = (listener: () => void) => sig.subscribe(listener);
-  storageSig.direct = (updater: () => void) => sig.direct(updater);
-  storageSig.debug = () => sig.debug();
+  storageSig.peek = () => sig.peek()
+  storageSig.subscribe = (listener: () => void) => sig.subscribe(listener)
+  storageSig.direct = (updater: () => void) => sig.direct(updater)
+  storageSig.debug = () => sig.debug()
 
-  Object.defineProperty(storageSig, "label", {
+  Object.defineProperty(storageSig, 'label', {
     get: () => sig.label,
     set: (v: string | undefined) => {
-      sig.label = v;
+      sig.label = v
     },
-  });
+  })
 
   // Override set to persist
   storageSig.set = (value: T) => {
-    sig.set(value);
+    sig.set(value)
     if (storage) {
       try {
-        storage.setItem(key, serialize(value, options?.serializer));
+        storage.setItem(key, serialize(value, options?.serializer))
       } catch {
         // Storage full or blocked — signal still updates
       }
     }
-  };
+  }
 
   // Override update to persist
   storageSig.update = (fn: (current: T) => T) => {
-    const newValue = fn(sig.peek());
-    storageSig.set(newValue);
-  };
+    const newValue = fn(sig.peek())
+    storageSig.set(newValue)
+  }
 
   // Add remove method
   storageSig.remove = () => {
-    sig.set(defaultValue);
+    sig.set(defaultValue)
     if (storage) {
-      storage.removeItem(key);
+      storage.removeItem(key)
     }
-    removeEntry(backend, key);
-  };
+    removeEntry(backend, key)
+  }
 
-  return storageSig;
+  return storageSig
 }

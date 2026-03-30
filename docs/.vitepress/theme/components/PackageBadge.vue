@@ -1,19 +1,19 @@
 <script setup lang="ts">
 const props = withDefaults(
   defineProps<{
-    name: string;
-    href?: string;
-    status?: "stable" | "beta" | "alpha" | "deprecated";
+    name: string
+    href?: string
+    status?: 'stable' | 'beta' | 'alpha' | 'deprecated'
   }>(),
-  { status: "stable" },
-);
+  { status: 'stable' },
+)
 
 const statusColors: Record<string, string> = {
-  stable: "var(--vp-c-green-1)",
-  beta: "var(--vp-c-yellow-1)",
-  alpha: "var(--vp-c-orange-1)",
-  deprecated: "var(--vp-c-red-1)",
-};
+  stable: 'var(--vp-c-green-1)',
+  beta: 'var(--vp-c-yellow-1)',
+  alpha: 'var(--vp-c-orange-1)',
+  deprecated: 'var(--vp-c-red-1)',
+}
 </script>
 
 <template>

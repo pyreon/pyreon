@@ -4,9 +4,9 @@
 declare global {
   namespace JSX {
     interface IntrinsicAttributes {
-      key?: string | number;
+      key?: string | number
     }
   }
 }
 
-export {};
+export {}

@@ -32,16 +32,16 @@
  *   vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
  */
 
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join as pathJoin } from "node:path";
-import { generateContext, transformJSX } from "@pyreon/compiler";
-import type { Plugin, ViteDevServer } from "vite";
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join as pathJoin } from 'node:path'
+import { generateContext, transformJSX } from '@pyreon/compiler'
+import type { Plugin, ViteDevServer } from 'vite'
 
 // Virtual module ID for the HMR runtime
-const HMR_RUNTIME_ID = "\0pyreon/hmr-runtime";
-const HMR_RUNTIME_IMPORT = "virtual:pyreon/hmr-runtime";
+const HMR_RUNTIME_ID = '\0pyreon/hmr-runtime'
+const HMR_RUNTIME_IMPORT = 'virtual:pyreon/hmr-runtime'
 
-export type CompatFramework = "react" | "preact" | "vue" | "solid";
+export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid'
 
 export interface PyreonPluginOptions {
   /**
@@ -56,7 +56,7 @@ export interface PyreonPluginOptions {
    * pyreon({ compat: "solid" })   // solid-js → @pyreon/solid-compat
    * pyreon({ compat: "preact" })  // preact + hooks + signals → @pyreon/preact-compat
    */
-  compat?: CompatFramework;
+  compat?: CompatFramework
 
   /**
    * Enable SSR dev middleware.
@@ -70,85 +70,85 @@ export interface PyreonPluginOptions {
    */
   ssr?: {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
-    entry: string;
-  };
+    entry: string
+  }
 }
 
 // ── Compat JSX import sources ─────────────────────────────────────────────────
 
 const COMPAT_JSX_SOURCE: Record<CompatFramework, string> = {
-  react: "@pyreon/react-compat",
-  preact: "@pyreon/preact-compat",
-  vue: "@pyreon/vue-compat",
-  solid: "@pyreon/solid-compat",
-};
+  react: '@pyreon/react-compat',
+  preact: '@pyreon/preact-compat',
+  vue: '@pyreon/vue-compat',
+  solid: '@pyreon/solid-compat',
+}
 
 // ── Compat alias maps ─────────────────────────────────────────────────────────
 
 const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
   react: {
-    react: "@pyreon/react-compat",
-    "react/jsx-runtime": "@pyreon/react-compat/jsx-runtime",
-    "react/jsx-dev-runtime": "@pyreon/react-compat/jsx-runtime",
-    "react-dom": "@pyreon/react-compat/dom",
-    "react-dom/client": "@pyreon/react-compat/dom",
+    react: '@pyreon/react-compat',
+    'react/jsx-runtime': '@pyreon/react-compat/jsx-runtime',
+    'react/jsx-dev-runtime': '@pyreon/react-compat/jsx-runtime',
+    'react-dom': '@pyreon/react-compat/dom',
+    'react-dom/client': '@pyreon/react-compat/dom',
   },
   preact: {
-    preact: "@pyreon/preact-compat",
-    "preact/hooks": "@pyreon/preact-compat/hooks",
-    "preact/jsx-runtime": "@pyreon/preact-compat/jsx-runtime",
-    "preact/jsx-dev-runtime": "@pyreon/preact-compat/jsx-runtime",
-    "@preact/signals": "@pyreon/preact-compat/signals",
+    preact: '@pyreon/preact-compat',
+    'preact/hooks': '@pyreon/preact-compat/hooks',
+    'preact/jsx-runtime': '@pyreon/preact-compat/jsx-runtime',
+    'preact/jsx-dev-runtime': '@pyreon/preact-compat/jsx-runtime',
+    '@preact/signals': '@pyreon/preact-compat/signals',
   },
   vue: {
-    vue: "@pyreon/vue-compat",
-    "vue/jsx-runtime": "@pyreon/vue-compat/jsx-runtime",
-    "vue/jsx-dev-runtime": "@pyreon/vue-compat/jsx-runtime",
+    vue: '@pyreon/vue-compat',
+    'vue/jsx-runtime': '@pyreon/vue-compat/jsx-runtime',
+    'vue/jsx-dev-runtime': '@pyreon/vue-compat/jsx-runtime',
   },
   solid: {
-    "solid-js": "@pyreon/solid-compat",
-    "solid-js/jsx-runtime": "@pyreon/solid-compat/jsx-runtime",
-    "solid-js/jsx-dev-runtime": "@pyreon/solid-compat/jsx-runtime",
+    'solid-js': '@pyreon/solid-compat',
+    'solid-js/jsx-runtime': '@pyreon/solid-compat/jsx-runtime',
+    'solid-js/jsx-dev-runtime': '@pyreon/solid-compat/jsx-runtime',
   },
-};
+}
 
 /**
  * Return the Pyreon compat target for an import specifier, or undefined if
  * the import should not be redirected.
  */
 function getCompatTarget(compat: CompatFramework | undefined, id: string): string | undefined {
-  if (!compat) return undefined;
-  const aliased = COMPAT_ALIASES[compat][id];
-  if (aliased) return aliased;
+  if (!compat) return undefined
+  const aliased = COMPAT_ALIASES[compat][id]
+  if (aliased) return aliased
   // OXC's JSX transform reads jsxImportSource from tsconfig (@pyreon/core),
   // not from our plugin config. Redirect JSX runtime imports in compat mode.
-  if (id === "@pyreon/core/jsx-runtime" || id === "@pyreon/core/jsx-dev-runtime") {
-    if (compat === "react") return "@pyreon/react-compat/jsx-runtime";
-    if (compat === "preact") return "@pyreon/preact-compat/jsx-runtime";
-    if (compat === "vue") return "@pyreon/vue-compat/jsx-runtime";
-    if (compat === "solid") return "@pyreon/solid-compat/jsx-runtime";
+  if (id === '@pyreon/core/jsx-runtime' || id === '@pyreon/core/jsx-dev-runtime') {
+    if (compat === 'react') return '@pyreon/react-compat/jsx-runtime'
+    if (compat === 'preact') return '@pyreon/preact-compat/jsx-runtime'
+    if (compat === 'vue') return '@pyreon/vue-compat/jsx-runtime'
+    if (compat === 'solid') return '@pyreon/solid-compat/jsx-runtime'
   }
-  return undefined;
+  return undefined
 }
 
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
-  const ssrConfig = options?.ssr;
-  const compat = options?.compat;
-  let isBuild = false;
-  let projectRoot = "";
+  const ssrConfig = options?.ssr
+  const compat = options?.compat
+  let isBuild = false
+  let projectRoot = ''
 
   return {
-    name: "pyreon",
-    enforce: "pre",
+    name: 'pyreon',
+    enforce: 'pre',
 
     config(userConfig, env) {
-      isBuild = env.command === "build";
+      isBuild = env.command === 'build'
       // Capture the project root for package resolution in resolveId
-      projectRoot = userConfig.root ?? process.cwd();
+      projectRoot = userConfig.root ?? process.cwd()
 
       // Tell Vite's dep scanner not to pre-bundle the aliased framework imports —
       // they resolve to workspace packages via our resolveId hook, not node_modules.
-      const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : [];
+      const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
 
       return {
         optimizeDeps: {
@@ -156,8 +156,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         },
         oxc: {
           jsx: {
-            runtime: "automatic",
-            importSource: compat ? COMPAT_JSX_SOURCE[compat] : "@pyreon/core",
+            runtime: 'automatic',
+            importSource: compat ? COMPAT_JSX_SOURCE[compat] : '@pyreon/core',
           },
         },
         // In SSR build mode, configure the entry
@@ -171,127 +171,127 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
               },
             }
           : {}),
-      };
+      }
     },
 
     // ── Virtual module + compat alias resolution ─────────────────────────────
     async resolveId(id, importer) {
-      if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID;
-      const target = getCompatTarget(compat, id);
-      if (!target) return;
+      if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
+      const target = getCompatTarget(compat, id)
+      if (!target) return
 
       // Vite 8 resolves the "bun" condition natively via resolve.conditions.
       // Delegate to Vite's resolver instead of manual package.json parsing.
-      const resolved = await this.resolve(target, importer, { skipSelf: true });
-      return resolved?.id;
+      const resolved = await this.resolve(target, importer, { skipSelf: true })
+      return resolved?.id
     },
 
     load(id) {
       if (id === HMR_RUNTIME_ID) {
-        return HMR_RUNTIME_SOURCE;
+        return HMR_RUNTIME_SOURCE
       }
     },
 
     transform(code, id) {
-      const ext = getExt(id);
-      if (ext !== ".tsx" && ext !== ".jsx" && ext !== ".pyreon") return;
+      const ext = getExt(id)
+      if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
       // In compat mode, skip Pyreon's reactive JSX transform.
       // OXC's built-in JSX transform handles jsx() calls; the compat
       // JSX runtime wraps components for re-render support.
-      if (compat === "react" || compat === "preact" || compat === "vue" || compat === "solid")
-        return;
+      if (compat === 'react' || compat === 'preact' || compat === 'vue' || compat === 'solid')
+        return
 
-      const result = transformJSX(code, id);
+      const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
-        this.warn(`${w.message} (${id}:${w.line}:${w.column})`);
+        this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
       }
 
-      let output = result.code;
+      let output = result.code
 
       // ── Dev-only transforms ────────────────────────────────────────────
       if (!isBuild) {
-        output = injectHmr(output, id);
+        output = injectHmr(output, id)
         // Inject debug names for signal() calls not rewritten by HMR
-        output = injectSignalNames(output);
+        output = injectSignalNames(output)
       }
 
-      return { code: output, map: null };
+      return { code: output, map: null }
     },
 
     // ── SSR dev middleware ───────────────────────────────────────────────────
     configureServer(server: ViteDevServer) {
       // Generate .pyreon/context.json for AI tools on dev server start
-      generateProjectContext(projectRoot);
+      generateProjectContext(projectRoot)
 
       // Debounced regeneration on file changes
-      let contextTimer: ReturnType<typeof setTimeout> | null = null;
-      server.watcher.on("change", (file) => {
-        if (/\.(tsx|jsx|ts|js)$/.test(file) && !file.includes("node_modules")) {
-          if (contextTimer) clearTimeout(contextTimer);
-          contextTimer = setTimeout(() => generateProjectContext(projectRoot), 500);
+      let contextTimer: ReturnType<typeof setTimeout> | null = null
+      server.watcher.on('change', (file) => {
+        if (/\.(tsx|jsx|ts|js)$/.test(file) && !file.includes('node_modules')) {
+          if (contextTimer) clearTimeout(contextTimer)
+          contextTimer = setTimeout(() => generateProjectContext(projectRoot), 500)
         }
-      });
+      })
 
-      if (!ssrConfig) return;
+      if (!ssrConfig) return
 
       // Return a function so the middleware runs AFTER Vite's built-in middleware
       // (static files, HMR, etc.) — only handle requests that Vite doesn't serve.
       return () => {
         server.middlewares.use(async (req, res, next) => {
-          if (req.method !== "GET") return next();
-          const url = req.url ?? "/";
-          if (isAssetRequest(url)) return next();
+          if (req.method !== 'GET') return next()
+          const url = req.url ?? '/'
+          if (isAssetRequest(url)) return next()
 
           try {
-            await handleSsrRequest(server, ssrConfig.entry, url, req, res, next);
+            await handleSsrRequest(server, ssrConfig.entry, url, req, res, next)
           } catch (err) {
-            server.ssrFixStacktrace(err as Error);
-            next(err);
+            server.ssrFixStacktrace(err as Error)
+            next(err)
           }
-        });
-      };
+        })
+      }
     },
-  };
+  }
 }
 
 async function handleSsrRequest(
   server: ViteDevServer,
   entry: string,
   url: string,
-  req: import("node:http").IncomingMessage,
-  res: import("node:http").ServerResponse,
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
   next: (err?: unknown) => void,
 ): Promise<void> {
-  const mod = await server.ssrLoadModule(entry);
-  const handler = mod.handler ?? mod.default;
+  const mod = await server.ssrLoadModule(entry)
+  const handler = mod.handler ?? mod.default
 
-  if (typeof handler !== "function") {
-    next();
-    return;
+  if (typeof handler !== 'function') {
+    next()
+    return
   }
 
-  const origin = `http://${req.headers.host ?? "localhost"}`;
-  const fullUrl = new URL(url, origin);
+  const origin = `http://${req.headers.host ?? 'localhost'}`
+  const fullUrl = new URL(url, origin)
   const request = new Request(fullUrl.href, {
-    method: req.method ?? "GET",
+    method: req.method ?? 'GET',
     headers: Object.entries(req.headers).reduce((h, [k, v]) => {
-      if (v) h.set(k, Array.isArray(v) ? v.join(", ") : v);
-      return h;
+      if (v) h.set(k, Array.isArray(v) ? v.join(', ') : v)
+      return h
     }, new Headers()),
-  });
+  })
 
-  const response: Response = await handler(request);
-  let html = await response.text();
+  const response: Response = await handler(request)
+  let html = await response.text()
 
-  html = await server.transformIndexHtml(url, html);
+  html = await server.transformIndexHtml(url, html)
 
-  res.statusCode = response.status;
+  res.statusCode = response.status
   response.headers.forEach((v, k) => {
-    res.setHeader(k, v);
-  });
-  res.end(html);
+    res.setHeader(k, v)
+  })
+  res.end(html)
 }
 
 // ── AI context generation ─────────────────────────────────────────────────────
@@ -302,10 +302,10 @@ async function handleSsrRequest(
  */
 function generateProjectContext(root: string): void {
   try {
-    const context = generateContext(root);
-    const outDir = pathJoin(root, ".pyreon");
-    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-    writeFileSync(pathJoin(outDir, "context.json"), JSON.stringify(context, null, 2), "utf-8");
+    const context = generateContext(root)
+    const outDir = pathJoin(root, '.pyreon')
+    if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
+    writeFileSync(pathJoin(outDir, 'context.json'), JSON.stringify(context, null, 2), 'utf-8')
   } catch {
     // Silently fail — context generation is best-effort
   }
@@ -319,41 +319,41 @@ function generateProjectContext(root: string): void {
  * A brace-depth check filters out matches inside functions/blocks — only
  * module-scope (depth 0) signals are rewritten for HMR state preservation.
  */
-const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm;
+const SIGNAL_PREFIX_RE = /^((?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*)signal\(/gm
 
 /**
  * Detect whether the module exports any component-like functions
  * (uppercase first letter — standard convention for JSX components).
  */
 const EXPORT_COMPONENT_RE =
-  /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/;
+  /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/
 
 function skipStringLiteral(code: string, start: number, quote: string): number {
-  let j = start + 1;
+  let j = start + 1
   while (j < code.length) {
-    if (code[j] === "\\") {
-      j += 2;
-      continue;
+    if (code[j] === '\\') {
+      j += 2
+      continue
     }
-    if (code[j] === quote) break;
-    j++;
+    if (code[j] === quote) break
+    j++
   }
-  return j;
+  return j
 }
 
 function extractBalancedArgs(code: string, start: number): string | null {
-  let depth = 1;
+  let depth = 1
   for (let i = start; i < code.length; i++) {
-    const ch = code[i];
-    if (ch === "(") depth++;
-    else if (ch === ")") {
-      depth--;
-      if (depth === 0) return code.slice(start, i);
-    } else if (ch === '"' || ch === "'" || ch === "`") {
-      i = skipStringLiteral(code, i, ch);
+    const ch = code[i]
+    if (ch === '(') depth++
+    else if (ch === ')') {
+      depth--
+      if (depth === 0) return code.slice(start, i)
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      i = skipStringLiteral(code, i, ch)
     }
   }
-  return null;
+  return null
 }
 
 /**
@@ -361,69 +361,69 @@ function extractBalancedArgs(code: string, start: number): string | null {
  * Skips string literals to avoid counting braces inside strings.
  */
 function braceDepthAt(code: string, pos: number): number {
-  let depth = 0;
+  let depth = 0
   for (let i = 0; i < pos; i++) {
-    const ch = code[i];
-    if (ch === "{") depth++;
-    else if (ch === "}") depth--;
-    else if (ch === '"' || ch === "'" || ch === "`") {
-      i = skipStringLiteral(code, i, ch);
+    const ch = code[i]
+    if (ch === '{') depth++
+    else if (ch === '}') depth--
+    else if (ch === '"' || ch === "'" || ch === '`') {
+      i = skipStringLiteral(code, i, ch)
     }
   }
-  return depth;
+  return depth
 }
 
 /** Rewrite module-scope `signal()` calls to `__hmr_signal()` for state preservation. */
 function rewriteSignals(code: string, moduleId: string): string {
-  const escapedId = JSON.stringify(moduleId);
+  const escapedId = JSON.stringify(moduleId)
   const matches: {
-    start: number;
-    end: number;
-    prefix: string;
-    name: string;
-    args: string;
-  }[] = [];
-  let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code);
+    start: number
+    end: number
+    prefix: string
+    name: string
+    args: string
+  }[] = []
+  let m: RegExpExecArray | null = SIGNAL_PREFIX_RE.exec(code)
   while (m !== null) {
-    const argsStart = m.index + m[0].length;
-    const args = extractBalancedArgs(code, argsStart);
+    const argsStart = m.index + m[0].length
+    const args = extractBalancedArgs(code, argsStart)
     if (args === null) {
-      m = SIGNAL_PREFIX_RE.exec(code);
-      continue; // unbalanced — skip
+      m = SIGNAL_PREFIX_RE.exec(code)
+      continue // unbalanced — skip
     }
     // Only rewrite module-scope signals (brace depth 0).
     if (braceDepthAt(code, m.index) === 0) {
       matches.push({
         start: m.index,
         end: argsStart + args.length + 1, // +1 for closing paren
-        prefix: m[1] ?? "",
-        name: m[2] ?? "",
+        prefix: m[1] ?? '',
+        name: m[2] ?? '',
         args,
-      });
+      })
     }
-    m = SIGNAL_PREFIX_RE.exec(code);
+    m = SIGNAL_PREFIX_RE.exec(code)
   }
-  SIGNAL_PREFIX_RE.lastIndex = 0;
+  SIGNAL_PREFIX_RE.lastIndex = 0
 
   // Replace in reverse to preserve offsets
-  let output = code;
+  let output = code
   for (let i = matches.length - 1; i >= 0; i--) {
-    const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number];
-    const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`;
-    output = output.slice(0, start) + replacement + output.slice(end);
+    const { start, end, prefix, name, args } = matches[i] as (typeof matches)[number]
+    const replacement = `${prefix}__hmr_signal(${escapedId}, ${JSON.stringify(name)}, signal, ${args})`
+    output = output.slice(0, start) + replacement + output.slice(end)
   }
-  return output;
+  return output
 }
 
 /** Check if an argument string contains a top-level comma (i.e. has multiple arguments). */
 function hasMultipleArgs(args: string): boolean {
-  let depth = 0;
+  let depth = 0
   for (const ch of args) {
-    if (ch === "(" || ch === "[" || ch === "{") depth++;
-    else if (ch === ")" || ch === "]" || ch === "}") depth--;
-    else if (ch === "," && depth === 0) return true;
+    if (ch === '(' || ch === '[' || ch === '{') depth++
+    else if (ch === ')' || ch === ']' || ch === '}') depth--
+    else if (ch === ',' && depth === 0) return true
   }
-  return false;
+  return false
 }
 
 /**
@@ -436,77 +436,77 @@ function hasMultipleArgs(args: string): boolean {
  * because the regex matches `signal(` not `__hmr_signal(`.
  */
 function injectSignalNames(code: string): string {
-  const re = /(?:const|let)\s+(\w+)\s*=\s*signal\(/gm;
-  const matches: { start: number; end: number; name: string; args: string }[] = [];
+  const re = /(?:const|let)\s+(\w+)\s*=\s*signal\(/gm
+  const matches: { start: number; end: number; name: string; args: string }[] = []
 
-  let m: RegExpExecArray | null = re.exec(code);
+  let m: RegExpExecArray | null = re.exec(code)
   while (m !== null) {
-    const argsStart = m.index + m[0].length;
-    const args = extractBalancedArgs(code, argsStart);
+    const argsStart = m.index + m[0].length
+    const args = extractBalancedArgs(code, argsStart)
     if (args !== null && !hasMultipleArgs(args)) {
-      matches.push({ start: argsStart, end: argsStart + args.length, name: m[1] ?? "", args });
+      matches.push({ start: argsStart, end: argsStart + args.length, name: m[1] ?? '', args })
     }
-    m = re.exec(code);
+    m = re.exec(code)
   }
-  re.lastIndex = 0;
+  re.lastIndex = 0
 
-  let output = code;
+  let output = code
   for (let i = matches.length - 1; i >= 0; i--) {
-    const { start, end, name, args } = matches[i] as (typeof matches)[number];
-    output = `${output.slice(0, start)}${args}, { name: ${JSON.stringify(name)} }${output.slice(end)}`;
+    const { start, end, name, args } = matches[i] as (typeof matches)[number]
+    output = `${output.slice(0, start)}${args}, { name: ${JSON.stringify(name)} }${output.slice(end)}`
   }
-  return output;
+  return output
 }
 
 function injectHmr(code: string, moduleId: string): string {
-  const hasSignals = SIGNAL_PREFIX_RE.test(code);
-  SIGNAL_PREFIX_RE.lastIndex = 0;
+  const hasSignals = SIGNAL_PREFIX_RE.test(code)
+  SIGNAL_PREFIX_RE.lastIndex = 0
 
-  const hasComponentExport = EXPORT_COMPONENT_RE.test(code);
+  const hasComponentExport = EXPORT_COMPONENT_RE.test(code)
 
   // Only inject HMR if the module exports components or has module-scope signals
-  if (!hasComponentExport && !hasSignals) return code;
+  if (!hasComponentExport && !hasSignals) return code
 
-  let output = hasSignals ? rewriteSignals(code, moduleId) : code;
+  let output = hasSignals ? rewriteSignals(code, moduleId) : code
 
   // Build the HMR footer
-  const escapedId = JSON.stringify(moduleId);
-  const lines: string[] = [];
+  const escapedId = JSON.stringify(moduleId)
+  const lines: string[] = []
 
   if (hasSignals) {
-    lines.push(`import { __hmr_signal, __hmr_dispose } from "${HMR_RUNTIME_IMPORT}";`);
+    lines.push(`import { __hmr_signal, __hmr_dispose } from "${HMR_RUNTIME_IMPORT}";`)
   }
 
-  lines.push(`if (import.meta.hot) {`);
+  lines.push(`if (import.meta.hot) {`)
 
   if (hasSignals) {
-    lines.push(`  import.meta.hot.dispose(() => __hmr_dispose(${escapedId}));`);
+    lines.push(`  import.meta.hot.dispose(() => __hmr_dispose(${escapedId}));`)
   }
 
-  lines.push(`  import.meta.hot.accept();`);
-  lines.push(`}`);
+  lines.push(`  import.meta.hot.accept();`)
+  lines.push(`}`)
 
-  output = `${output}\n\n${lines.join("\n")}\n`;
+  output = `${output}\n\n${lines.join('\n')}\n`
 
-  return output;
+  return output
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getExt(id: string): string {
-  const clean = id.split("?")[0] ?? id;
-  const dot = clean.lastIndexOf(".");
-  return dot >= 0 ? clean.slice(dot) : "";
+  const clean = id.split('?')[0] ?? id
+  const dot = clean.lastIndexOf('.')
+  return dot >= 0 ? clean.slice(dot) : ''
 }
 
 /** Skip Vite-handled asset requests (CSS, images, HMR, etc.) */
 function isAssetRequest(url: string): boolean {
   return (
-    url.startsWith("/@") || // @vite/client, @id, @fs, etc.
-    url.startsWith("/__") || // __open-in-editor, etc.
-    url.includes("/node_modules/") ||
+    url.startsWith('/@') || // @vite/client, @id, @fs, etc.
+    url.startsWith('/__') || // __open-in-editor, etc.
+    url.includes('/node_modules/') ||
     /\.(css|js|ts|tsx|jsx|json|ico|png|jpg|jpeg|gif|svg|woff2?|ttf|eot|map)(\?|$)/.test(url)
-  );
+  )
 }
 
 // ── HMR runtime source (served as virtual module) ─────────────────────────────
@@ -554,4 +554,4 @@ export function __hmr_dispose(moduleId) {
   registry.set(moduleId, saved);
   moduleSignals.delete(moduleId);
 }
-`;
+`

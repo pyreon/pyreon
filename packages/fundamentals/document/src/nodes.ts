@@ -19,7 +19,7 @@ import type {
   SpacerProps,
   TableProps,
   TextProps,
-} from "./types";
+} from './types'
 
 // ─── Node Constructor ───────────────────────────────────────────────────────
 
@@ -28,32 +28,32 @@ function createNode(type: NodeType, props: object, children: unknown): DocNode {
     type,
     props: props as Record<string, unknown>,
     children: normalizeChildren(children),
-  };
+  }
 }
 
 function normalizeChildren(children: unknown): DocChild[] {
-  if (children == null || children === false) return [];
-  if (typeof children === "string") return [children];
-  if (typeof children === "number") return [String(children)];
-  if (Array.isArray(children)) return children.flatMap(normalizeChildren);
-  if (isDocNode(children)) return [children];
-  if (typeof children === "object") {
+  if (children == null || children === false) return []
+  if (typeof children === 'string') return [children]
+  if (typeof children === 'number') return [String(children)]
+  if (Array.isArray(children)) return children.flatMap(normalizeChildren)
+  if (isDocNode(children)) return [children]
+  if (typeof children === 'object') {
     throw new Error(
-      "[@pyreon/document] Invalid child: plain objects are not valid document children. Use a document node (Text, Heading, etc.) instead.",
-    );
+      '[@pyreon/document] Invalid child: plain objects are not valid document children. Use a document node (Text, Heading, etc.) instead.',
+    )
   }
-  return [String(children)];
+  return [String(children)]
 }
 
 /** Type guard — checks if a value is a DocNode. */
 export function isDocNode(value: unknown): value is DocNode {
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    "type" in value &&
-    "props" in value &&
-    "children" in value
-  );
+    'type' in value &&
+    'props' in value &&
+    'children' in value
+  )
 }
 
 // ─── Document Primitives ────────────────────────────────────────────────────
@@ -69,10 +69,10 @@ export function isDocNode(value: unknown): value is DocNode {
  * ```
  */
 export function Document(props: DocumentProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("document", rest, children);
+  const { children, ...rest } = props
+  return createNode('document', rest, children)
 }
-Document._documentType = "document" as const;
+Document._documentType = 'document' as const
 
 /**
  * Page container. Maps to a PDF page, DOCX section, or email block.
@@ -85,10 +85,10 @@ Document._documentType = "document" as const;
  * ```
  */
 export function Page(props: PageProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("page", rest, children);
+  const { children, ...rest } = props
+  return createNode('page', rest, children)
 }
-Page._documentType = "page" as const;
+Page._documentType = 'page' as const
 
 /**
  * Layout section — groups content with optional direction, padding, background.
@@ -102,10 +102,10 @@ Page._documentType = "page" as const;
  * ```
  */
 export function Section(props: SectionProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("section", rest, children);
+  const { children, ...rest } = props
+  return createNode('section', rest, children)
 }
-Section._documentType = "section" as const;
+Section._documentType = 'section' as const
 
 /**
  * Horizontal layout container.
@@ -119,19 +119,19 @@ Section._documentType = "section" as const;
  * ```
  */
 export function Row(props: RowProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("row", rest, children);
+  const { children, ...rest } = props
+  return createNode('row', rest, children)
 }
-Row._documentType = "row" as const;
+Row._documentType = 'row' as const
 
 /**
  * Column within a Row.
  */
 export function Column(props: ColumnProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("column", rest, children);
+  const { children, ...rest } = props
+  return createNode('column', rest, children)
 }
-Column._documentType = "column" as const;
+Column._documentType = 'column' as const
 
 /**
  * Heading text (h1–h6).
@@ -143,10 +143,10 @@ Column._documentType = "column" as const;
  * ```
  */
 export function Heading(props: HeadingProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("heading", { level: 1, ...rest }, children);
+  const { children, ...rest } = props
+  return createNode('heading', { level: 1, ...rest }, children)
 }
-Heading._documentType = "heading" as const;
+Heading._documentType = 'heading' as const
 
 /**
  * Text paragraph with optional formatting.
@@ -158,10 +158,10 @@ Heading._documentType = "heading" as const;
  * ```
  */
 export function Text(props: TextProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("text", rest, children);
+  const { children, ...rest } = props
+  return createNode('text', rest, children)
 }
-Text._documentType = "text" as const;
+Text._documentType = 'text' as const
 
 /**
  * Hyperlink.
@@ -172,10 +172,10 @@ Text._documentType = "text" as const;
  * ```
  */
 export function Link(props: LinkProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("link", rest, children);
+  const { children, ...rest } = props
+  return createNode('link', rest, children)
 }
-Link._documentType = "link" as const;
+Link._documentType = 'link' as const
 
 /**
  * Image with optional sizing and caption.
@@ -187,9 +187,9 @@ Link._documentType = "link" as const;
  * ```
  */
 export function Image(props: ImageProps): DocNode {
-  return createNode("image", props, []);
+  return createNode('image', props, [])
 }
-Image._documentType = "image" as const;
+Image._documentType = 'image' as const
 
 /**
  * Data table with columns and rows.
@@ -205,9 +205,9 @@ Image._documentType = "image" as const;
  * ```
  */
 export function Table(props: TableProps): DocNode {
-  return createNode("table", props, []);
+  return createNode('table', props, [])
 }
-Table._documentType = "table" as const;
+Table._documentType = 'table' as const
 
 /**
  * Ordered or unordered list.
@@ -221,19 +221,19 @@ Table._documentType = "table" as const;
  * ```
  */
 export function List(props: ListProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("list", rest, children);
+  const { children, ...rest } = props
+  return createNode('list', rest, children)
 }
-List._documentType = "list" as const;
+List._documentType = 'list' as const
 
 /**
  * Single list item within a List.
  */
 export function ListItem(props: ListItemProps): DocNode {
-  const { children } = props;
-  return createNode("list-item", {}, children);
+  const { children } = props
+  return createNode('list-item', {}, children)
 }
-ListItem._documentType = "list-item" as const;
+ListItem._documentType = 'list-item' as const
 
 /**
  * Code block with optional language hint.
@@ -244,10 +244,10 @@ ListItem._documentType = "list-item" as const;
  * ```
  */
 export function Code(props: CodeProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("code", rest, children);
+  const { children, ...rest } = props
+  return createNode('code', rest, children)
 }
-Code._documentType = "code" as const;
+Code._documentType = 'code' as const
 
 /**
  * Horizontal divider line.
@@ -258,9 +258,9 @@ Code._documentType = "code" as const;
  * ```
  */
 export function Divider(props: DividerProps = {}): DocNode {
-  return createNode("divider", props, []);
+  return createNode('divider', props, [])
 }
-Divider._documentType = "divider" as const;
+Divider._documentType = 'divider' as const
 
 /**
  * Page break — forces content after this point to the next page (PDF/DOCX)
@@ -272,9 +272,9 @@ Divider._documentType = "divider" as const;
  * ```
  */
 export function PageBreak(): DocNode {
-  return createNode("page-break", {}, []);
+  return createNode('page-break', {}, [])
 }
-PageBreak._documentType = "page-break" as const;
+PageBreak._documentType = 'page-break' as const
 
 /**
  * Vertical spacer.
@@ -285,9 +285,9 @@ PageBreak._documentType = "page-break" as const;
  * ```
  */
 export function Spacer(props: SpacerProps): DocNode {
-  return createNode("spacer", props, []);
+  return createNode('spacer', props, [])
 }
-Spacer._documentType = "spacer" as const;
+Spacer._documentType = 'spacer' as const
 
 /**
  * CTA button — renders as a bulletproof button in email, styled link in PDF/DOCX.
@@ -300,10 +300,10 @@ Spacer._documentType = "spacer" as const;
  * ```
  */
 export function Button(props: ButtonProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("button", rest, children);
+  const { children, ...rest } = props
+  return createNode('button', rest, children)
 }
-Button._documentType = "button" as const;
+Button._documentType = 'button' as const
 
 /**
  * Block quote.
@@ -314,7 +314,7 @@ Button._documentType = "button" as const;
  * ```
  */
 export function Quote(props: QuoteProps): DocNode {
-  const { children, ...rest } = props;
-  return createNode("quote", rest, children);
+  const { children, ...rest } = props
+  return createNode('quote', rest, children)
 }
-Quote._documentType = "quote" as const;
+Quote._documentType = 'quote' as const

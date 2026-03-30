@@ -35,29 +35,29 @@ Every piece of editor state is a reactive signal:
 
 ```tsx
 // Read reactively
-editor.value(); // current content
-editor.language(); // current language
-editor.theme(); // current theme
-editor.readOnly(); // read-only state
-editor.cursor(); // { line: number, col: number }
-editor.selection(); // { from: number, to: number, text: string }
-editor.lineCount(); // number of lines
-editor.focused(); // has focus
+editor.value() // current content
+editor.language() // current language
+editor.theme() // current theme
+editor.readOnly() // read-only state
+editor.cursor() // { line: number, col: number }
+editor.selection() // { from: number, to: number, text: string }
+editor.lineCount() // number of lines
+editor.focused() // has focus
 
 // Write — editor updates automatically
-editor.value.set("new content");
-editor.language.set("python");
-editor.theme.set("dark");
-editor.readOnly.set(true);
+editor.value.set('new content')
+editor.language.set('python')
+editor.theme.set('dark')
+editor.readOnly.set(true)
 ```
 
 ## Configuration
 
 ```tsx
 const editor = createEditor({
-  value: "", // initial content
-  language: "typescript", // syntax highlighting language
-  theme: "dark", // 'light' | 'dark' | custom Extension
+  value: '', // initial content
+  language: 'typescript', // syntax highlighting language
+  theme: 'dark', // 'light' | 'dark' | custom Extension
   lineNumbers: true, // show line numbers
   readOnly: false, // read-only mode
   foldGutter: true, // code folding
@@ -67,13 +67,13 @@ const editor = createEditor({
   tabSize: 2, // tab width
   lineWrapping: false, // wrap long lines
   highlightIndentGuides: true, // indent guide lines
-  placeholder: "Type here...", // placeholder when empty
+  placeholder: 'Type here...', // placeholder when empty
   minimap: true, // code overview sidebar
   vim: false, // vim keybinding mode
   emacs: false, // emacs keybinding mode
   extensions: [], // additional CodeMirror extensions
   onChange: (value) => {}, // called on content change
-});
+})
 ```
 
 ## Languages
@@ -81,45 +81,45 @@ const editor = createEditor({
 20+ languages, lazy-loaded on demand — zero cost until used:
 
 ```tsx
-editor.language.set("typescript"); // switch language dynamically
+editor.language.set('typescript') // switch language dynamically
 ```
 
 Supported: `javascript`, `typescript`, `jsx`, `tsx`, `html`, `css`, `json`, `markdown`, `python`, `rust`, `sql`, `xml`, `yaml`, `cpp`, `java`, `go`, `php`, `ruby`, `shell`, `plain`
 
 ```tsx
-import { getAvailableLanguages, loadLanguage } from "@pyreon/code";
+import { getAvailableLanguages, loadLanguage } from '@pyreon/code'
 
-getAvailableLanguages(); // list all supported
-await loadLanguage("typescript"); // preload a language
+getAvailableLanguages() // list all supported
+await loadLanguage('typescript') // preload a language
 ```
 
 ## Themes
 
 ```tsx
-import { lightTheme, darkTheme, resolveTheme } from "@pyreon/code";
+import { lightTheme, darkTheme, resolveTheme } from '@pyreon/code'
 
 // Switch dynamically
-editor.theme.set("dark");
-editor.theme.set("light");
+editor.theme.set('dark')
+editor.theme.set('light')
 
 // Custom theme — pass any CodeMirror theme Extension
-editor.theme.set(myCustomTheme);
+editor.theme.set(myCustomTheme)
 ```
 
 ## Actions
 
 ```tsx
-editor.focus(); // focus the editor
-editor.insert("// comment"); // insert at cursor
-editor.replaceSelection("replacement"); // replace selected text
-editor.select(0, 10); // select range
-editor.selectAll(); // select all
-editor.goToLine(42); // jump to line
-editor.undo(); // undo
-editor.redo(); // redo
-editor.foldAll(); // fold all code blocks
-editor.unfoldAll(); // unfold all
-editor.scrollTo(position); // scroll to character position
+editor.focus() // focus the editor
+editor.insert('// comment') // insert at cursor
+editor.replaceSelection('replacement') // replace selected text
+editor.select(0, 10) // select range
+editor.selectAll() // select all
+editor.goToLine(42) // jump to line
+editor.undo() // undo
+editor.redo() // redo
+editor.foldAll() // fold all code blocks
+editor.unfoldAll() // unfold all
+editor.scrollTo(position) // scroll to character position
 ```
 
 ## Diagnostics (Lint Integration)
@@ -128,11 +128,11 @@ Push diagnostics from external tools (TypeScript, ESLint, etc.):
 
 ```tsx
 editor.setDiagnostics([
-  { from: 0, to: 5, severity: "error", message: "Unexpected token", source: "typescript" },
-  { from: 20, to: 30, severity: "warning", message: "Unused variable", source: "eslint" },
-]);
+  { from: 0, to: 5, severity: 'error', message: 'Unexpected token', source: 'typescript' },
+  { from: 20, to: 30, severity: 'warning', message: 'Unused variable', source: 'eslint' },
+])
 
-editor.clearDiagnostics();
+editor.clearDiagnostics()
 ```
 
 Severities: `'error'` | `'warning'` | `'info'` | `'hint'`
@@ -142,9 +142,9 @@ Severities: `'error'` | `'warning'` | `'info'` | `'hint'`
 Highlight specific lines (errors, breakpoints, current execution):
 
 ```tsx
-editor.highlightLine(5, "error-line"); // add highlight
-editor.highlightLine(10, "current-line"); // different style
-editor.clearLineHighlights(); // remove all
+editor.highlightLine(5, 'error-line') // add highlight
+editor.highlightLine(10, 'current-line') // different style
+editor.clearLineHighlights() // remove all
 ```
 
 ## Gutter Markers
@@ -152,25 +152,25 @@ editor.clearLineHighlights(); // remove all
 Add icons in the gutter (breakpoints, error indicators):
 
 ```tsx
-editor.setGutterMarker(5, { text: "🔴", title: "Breakpoint" });
-editor.setGutterMarker(12, { text: "⚠️", title: "Warning", class: "warning-marker" });
-editor.clearGutterMarkers();
+editor.setGutterMarker(5, { text: '🔴', title: 'Breakpoint' })
+editor.setGutterMarker(12, { text: '⚠️', title: 'Warning', class: 'warning-marker' })
+editor.clearGutterMarkers()
 ```
 
 ## Custom Keybindings
 
 ```tsx
-editor.addKeybinding("Ctrl-Shift-L", () => {
-  console.log("Custom shortcut!");
-  return true;
-});
+editor.addKeybinding('Ctrl-Shift-L', () => {
+  console.log('Custom shortcut!')
+  return true
+})
 ```
 
 ## Text Queries
 
 ```tsx
-editor.getLine(5); // text of line 5
-editor.getWordAtCursor(); // word under cursor
+editor.getLine(5) // text of line 5
+editor.getWordAtCursor() // word under cursor
 ```
 
 ## Minimap
@@ -181,7 +181,7 @@ Canvas-based code overview with viewport indicator and click-to-scroll:
 const editor = createEditor({
   value: longCode,
   minimap: true, // enable minimap
-});
+})
 ```
 
 The minimap renders a scaled-down view of the entire document on the right side. Click to jump to that section. The viewport rectangle shows your current position.
@@ -230,22 +230,22 @@ const editor = createTabbedEditor({
 ### Tab Operations
 
 ```tsx
-editor.tabs(); // Signal<Tab[]> — all open tabs
-editor.activeTab(); // Computed<Tab | null> — current tab
-editor.activeTabId(); // Signal<string>
+editor.tabs() // Signal<Tab[]> — all open tabs
+editor.activeTab() // Computed<Tab | null> — current tab
+editor.activeTabId() // Signal<string>
 
 // Lifecycle
-editor.openTab({ name: "utils.ts", language: "typescript", value: "" });
-editor.closeTab("style.css");
-editor.switchTab("index.ts");
+editor.openTab({ name: 'utils.ts', language: 'typescript', value: '' })
+editor.closeTab('style.css')
+editor.switchTab('index.ts')
 
 // Management
-editor.renameTab("index.ts", "main.ts");
-editor.setModified("index.ts", true); // show modified indicator
-editor.moveTab(0, 2); // reorder
-editor.closeAll(); // close all closable tabs
-editor.closeOthers("index.ts"); // close all except one
-editor.getTab("index.ts"); // get tab by id
+editor.renameTab('index.ts', 'main.ts')
+editor.setModified('index.ts', true) // show modified indicator
+editor.moveTab(0, 2) // reorder
+editor.closeAll() // close all closable tabs
+editor.closeOthers('index.ts') // close all except one
+editor.getTab('index.ts') // get tab by id
 ```
 
 ### Tab Features
@@ -266,9 +266,9 @@ bun add @replit/codemirror-emacs  # for emacs mode
 
 ```tsx
 const editor = createEditor({
-  value: "hello world",
+  value: 'hello world',
   vim: true, // enable vim mode
-});
+})
 ```
 
 ## Accessing CodeMirror Directly

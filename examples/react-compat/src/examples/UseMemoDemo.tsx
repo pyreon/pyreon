@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
-import Demo from "./Demo";
+import { useCallback, useMemo, useState } from 'react'
+import Demo from './Demo'
 
 export default function UseMemoDemo() {
-  const [count, setCount] = useState(1);
-  const doubled = useMemo(() => count * 2, [count]);
-  const quadrupled = useMemo(() => doubled * 2, [doubled]);
-  const increment = useCallback(() => setCount((c) => c + 1), []);
+  const [count, setCount] = useState(1)
+  const doubled = useMemo(() => count * 2, [count])
+  const quadrupled = useMemo(() => doubled * 2, [doubled])
+  const increment = useCallback(() => setCount((c) => c + 1), [])
 
   return (
     <Demo
@@ -24,12 +24,12 @@ const increment = useCallback(() =>
 );`}
     >
       <p>
-        Count: <strong>{count}</strong> | Doubled: <strong>{doubled}</strong> | Quadrupled:{" "}
+        Count: <strong>{count}</strong> | Doubled: <strong>{doubled}</strong> | Quadrupled:{' '}
         <strong>{quadrupled}</strong>
       </p>
       <button type="button" onClick={increment}>
         Increment (useCallback)
       </button>
     </Demo>
-  );
+  )
 }

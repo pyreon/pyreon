@@ -1,6 +1,6 @@
-import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { onCleanup, signal } from "@pyreon/reactivity";
-import type { DragData, UseDraggableOptions, UseDraggableResult } from "./types";
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { onCleanup, signal } from '@pyreon/reactivity'
+import type { DragData, UseDraggableOptions, UseDraggableResult } from './types'
 
 /**
  * Make an element draggable with signal-driven state.
@@ -22,45 +22,45 @@ import type { DragData, UseDraggableOptions, UseDraggableResult } from "./types"
 export function useDraggable<T extends DragData = DragData>(
   options: UseDraggableOptions<T>,
 ): UseDraggableResult {
-  const isDragging = signal(false);
-  let cleanup: (() => void) | undefined;
+  const isDragging = signal(false)
+  let cleanup: (() => void) | undefined
 
   function setup() {
-    if (cleanup) cleanup();
+    if (cleanup) cleanup()
 
-    const el = options.element();
-    if (!el) return;
+    const el = options.element()
+    if (!el) return
 
     const resolveData = () =>
-      typeof options.data === "function" ? (options.data as () => T)() : options.data;
+      typeof options.data === 'function' ? (options.data as () => T)() : options.data
 
-    const handle = options.handle?.();
+    const handle = options.handle?.()
     cleanup = draggable({
       element: el,
       ...(handle ? { dragHandle: handle } : {}),
       getInitialData: resolveData,
       canDrag: () => {
-        const disabled = options.disabled;
-        if (typeof disabled === "function") return !disabled();
-        return !disabled;
+        const disabled = options.disabled
+        if (typeof disabled === 'function') return !disabled()
+        return !disabled
       },
       onDragStart: () => {
-        isDragging.set(true);
-        options.onDragStart?.();
+        isDragging.set(true)
+        options.onDragStart?.()
       },
       onDrop: () => {
-        isDragging.set(false);
-        options.onDragEnd?.();
+        isDragging.set(false)
+        options.onDragEnd?.()
       },
-    });
+    })
   }
 
   // Defer setup to next microtask so refs are populated
-  queueMicrotask(setup);
+  queueMicrotask(setup)
 
   onCleanup(() => {
-    if (cleanup) cleanup();
-  });
+    if (cleanup) cleanup()
+  })
 
-  return { isDragging };
+  return { isDragging }
 }

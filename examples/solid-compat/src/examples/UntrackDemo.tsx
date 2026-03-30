@@ -1,16 +1,16 @@
-import { createEffect, createSignal, untrack } from "solid-js";
-import Demo from "./Demo";
+import { createEffect, createSignal, untrack } from 'solid-js'
+import Demo from './Demo'
 
 export default function UntrackDemo() {
-  const [tracked, setTracked] = createSignal(0);
-  const [untrackedVal, setUntrackedVal] = createSignal(0);
-  const [log, setLog] = createSignal("");
+  const [tracked, setTracked] = createSignal(0)
+  const [untrackedVal, setUntrackedVal] = createSignal(0)
+  const [log, setLog] = createSignal('')
 
   createEffect(() => {
-    const t = tracked();
-    const u = untrack(() => untrackedVal());
-    setLog(`Effect: tracked=${t}, untracked=${u}`);
-  });
+    const t = tracked()
+    const u = untrack(() => untrackedVal())
+    setLog(`Effect: tracked=${t}, untracked=${u}`)
+  })
 
   return (
     <Demo
@@ -33,5 +33,5 @@ createEffect(() => {
       </button>
       <p class="muted">{log()}</p>
     </Demo>
-  );
+  )
 }

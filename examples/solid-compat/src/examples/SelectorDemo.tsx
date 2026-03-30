@@ -1,11 +1,11 @@
-import { For } from "@pyreon/core";
-import { createSelector, createSignal } from "solid-js";
-import Demo from "./Demo";
+import { For } from '@pyreon/core'
+import { createSelector, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function SelectorDemo() {
-  const [selected, setSelected] = createSignal(1);
-  const isSelected = createSelector(selected);
-  const ids = [1, 2, 3, 4, 5];
+  const [selected, setSelected] = createSignal(1)
+  const isSelected = createSelector(selected)
+  const ids = [1, 2, 3, 4, 5]
 
   return (
     <Demo
@@ -24,7 +24,7 @@ const isSelected = createSelector(selected);
           {(id) => (
             <button
               type="button"
-              class={isSelected(id) ? "selected" : ""}
+              class={isSelected(id) ? 'selected' : ''}
               onClick={() => setSelected(id)}
             >
               Item {id}
@@ -34,5 +34,5 @@ const isSelected = createSelector(selected);
       </div>
       <p class="muted">Selected: {selected()}</p>
     </Demo>
-  );
+  )
 }

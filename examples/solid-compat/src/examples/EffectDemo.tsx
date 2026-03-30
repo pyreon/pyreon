@@ -1,13 +1,13 @@
-import { createEffect, createSignal } from "solid-js";
-import Demo from "./Demo";
+import { createEffect, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function EffectDemo() {
-  const [count, setCount] = createSignal(0);
-  const [log, setLog] = createSignal<string[]>([]);
+  const [count, setCount] = createSignal(0)
+  const [log, setLog] = createSignal<string[]>([])
 
   createEffect(() => {
-    setLog((prev) => [...prev.slice(-4), `Effect ran: count = ${count()}`]);
-  });
+    setLog((prev) => [...prev.slice(-4), `Effect ran: count = ${count()}`])
+  })
 
   return (
     <Demo
@@ -26,7 +26,7 @@ createEffect(() => {
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">Log: {log().join(" | ")}</p>
+      <p class="muted">Log: {log().join(' | ')}</p>
     </Demo>
-  );
+  )
 }

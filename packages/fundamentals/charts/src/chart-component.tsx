@@ -1,15 +1,15 @@
-import type { VNodeChild } from "@pyreon/core";
-import { effect } from "@pyreon/reactivity";
-import type { EChartsOption } from "echarts";
-import type { ECElementEvent } from "echarts/core";
-import type { ChartProps } from "./types";
-import { useChart } from "./use-chart";
+import type { VNodeChild } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
+import type { EChartsOption } from 'echarts'
+import type { ECElementEvent } from 'echarts/core'
+import type { ChartProps } from './types'
+import { useChart } from './use-chart'
 
 /**
  * Handler type that bridges our duck-typed ChartEventParams with
  * echarts' internal ECElementEvent. Used for event binding casts.
  */
-type ECHandler = (params: ECElementEvent) => boolean | undefined;
+type ECHandler = (params: ECElementEvent) => boolean | undefined
 
 /**
  * Reactive chart component. Wraps useChart in a div with automatic
@@ -42,20 +42,20 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
   const chart = useChart(props.options, {
     ...(props.theme != null ? { theme: props.theme } : {}),
     ...(props.renderer != null ? { renderer: props.renderer } : {}),
-  });
+  })
 
   // Bind events when instance is ready
   effect(() => {
-    const inst = chart.instance();
-    if (!inst) return;
+    const inst = chart.instance()
+    if (!inst) return
 
     // Handlers are duck-typed ChartEventParams — cast through unknown
     // to ECHandler because echarts/core and echarts export incompatible
     // private class types for ECElementEvent.
-    if (props.onClick) inst.on("click", props.onClick as unknown as ECHandler);
-    if (props.onMouseover) inst.on("mouseover", props.onMouseover as unknown as ECHandler);
-    if (props.onMouseout) inst.on("mouseout", props.onMouseout as unknown as ECHandler);
-  });
+    if (props.onClick) inst.on('click', props.onClick as unknown as ECHandler)
+    if (props.onMouseover) inst.on('mouseover', props.onMouseover as unknown as ECHandler)
+    if (props.onMouseout) inst.on('mouseout', props.onMouseout as unknown as ECHandler)
+  })
 
-  return () => <div ref={chart.ref} style={props.style} class={props.class} />;
+  return () => <div ref={chart.ref} style={props.style} class={props.class} />
 }

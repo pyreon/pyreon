@@ -20,12 +20,12 @@ bun add @pyreon/vite-plugin --dev
 **vite.config.ts**
 
 ```ts
-import { defineConfig } from "vite";
-import pyreonPlugin from "@pyreon/vite-plugin";
+import { defineConfig } from 'vite'
+import pyreonPlugin from '@pyreon/vite-plugin'
 
 export default defineConfig({
   plugins: [pyreonPlugin()],
-});
+})
 ```
 
 **tsconfig.json**
@@ -42,29 +42,29 @@ export default defineConfig({
 **src/App.tsx**
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
+import { signal } from '@pyreon/reactivity'
 
 function Counter() {
-  const count = signal(0);
+  const count = signal(0)
   return (
     <div>
       <button onClick={() => count.update((n) => n - 1)}>-</button>
       <span>{count()}</span>
       <button onClick={() => count.update((n) => n + 1)}>+</button>
     </div>
-  );
+  )
 }
 
-export default Counter;
+export default Counter
 ```
 
 **src/main.tsx**
 
 ```tsx
-import { mount } from "@pyreon/runtime-dom";
-import Counter from "./App";
+import { mount } from '@pyreon/runtime-dom'
+import Counter from './App'
 
-mount(<Counter />, document.getElementById("app")!);
+mount(<Counter />, document.getElementById('app')!)
 ```
 
 The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect automatically, so only that text node updates when `count` changes. The `Counter` function itself runs exactly once.

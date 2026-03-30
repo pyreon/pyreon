@@ -23,8 +23,8 @@
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
-export { useHotkey } from "./use-hotkey";
-export { useHotkeyScope } from "./use-hotkey-scope";
+export { useHotkey } from './use-hotkey'
+export { useHotkeyScope } from './use-hotkey-scope'
 
 // ─── Imperative API ──────────────────────────────────────────────────────────
 
@@ -34,16 +34,16 @@ export {
   getActiveScopes,
   getRegisteredHotkeys,
   registerHotkey,
-} from "./registry";
+} from './registry'
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
-export { formatCombo, matchesCombo, parseShortcut } from "./parse";
+export { formatCombo, matchesCombo, parseShortcut } from './parse'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type { HotkeyEntry, HotkeyOptions, KeyCombo } from "./types";
+export type { HotkeyEntry, HotkeyOptions, KeyCombo } from './types'
 
 // ─── Testing ─────────────────────────────────────────────────────────────────
 
-export { _resetHotkeys } from "./registry";
+export { _resetHotkeys } from './registry'

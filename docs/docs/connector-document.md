@@ -44,16 +44,16 @@ When you build components with `@pyreon/rocketstyle` or `@pyreon/styler`, their 
 ## Usage
 
 ```tsx
-import { extractDocumentTree, resolveStyles } from "@pyreon/connector-document";
-import { render } from "@pyreon/document";
+import { extractDocumentTree, resolveStyles } from '@pyreon/connector-document'
+import { render } from '@pyreon/document'
 
 // Extract the styled component tree into document nodes
-const tree = extractDocumentTree(MyStyledComponent, { data: myData });
+const tree = extractDocumentTree(MyStyledComponent, { data: myData })
 
 // Render to any format
-const pdf = await render(tree, "pdf");
-const docx = await render(tree, "docx");
-const email = await render(tree, "email");
+const pdf = await render(tree, 'pdf')
+const docx = await render(tree, 'docx')
+const email = await render(tree, 'email')
 ```
 
 ## CSS Value Parsers
@@ -66,13 +66,13 @@ import {
   parseBoxModel,
   parseFontWeight,
   parseLineHeight,
-} from "@pyreon/connector-document";
+} from '@pyreon/connector-document'
 
-parseCssDimension("16px"); // { value: 16, unit: 'px' }
-parseCssDimension("1.5rem"); // { value: 1.5, unit: 'rem' }
-parseBoxModel("8px 16px"); // { top: 8, right: 16, bottom: 8, left: 16 }
-parseFontWeight("bold"); // 700
-parseLineHeight("1.5"); // 1.5
+parseCssDimension('16px') // { value: 16, unit: 'px' }
+parseCssDimension('1.5rem') // { value: 1.5, unit: 'rem' }
+parseBoxModel('8px 16px') // { top: 8, right: 16, bottom: 8, left: 16 }
+parseFontWeight('bold') // 700
+parseLineHeight('1.5') // 1.5
 ```
 
 ## API Reference

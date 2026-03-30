@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/compiler"
+title: '@pyreon/compiler'
 description: JSX reactive transform that wraps dynamic expressions in reactive getters for fine-grained DOM updates.
 ---
 
@@ -178,13 +178,13 @@ Fully static JSX expressions inside expression containers are hoisted to module 
 ```tsx
 // Input
 function App() {
-  return <div>{<span>Hello</span>}</div>;
+  return <div>{<span>Hello</span>}</div>
 }
 
 // Output
-const _$h0 = /*@__PURE__*/ <span>Hello</span>;
+const _$h0 = /*@__PURE__*/ <span>Hello</span>
 function App() {
-  return <div>{_$h0}</div>;
+  return <div>{_$h0}</div>
 }
 ```
 
@@ -239,25 +239,25 @@ JSX element trees with two or more DOM elements (no components, no spread attrib
 
 ```tsx
 // Input
-<div class="box">
+;<div class="box">
   <span>{text()}</span>
-</div>;
+</div>
 
 // Output
-import { _tpl } from "@pyreon/runtime-dom";
-import { _bind } from "@pyreon/reactivity";
+import { _tpl } from '@pyreon/runtime-dom'
+import { _bind } from '@pyreon/reactivity'
 
 _tpl('<div class="box"><span></span></div>', (__root) => {
-  const __e0 = __root.children[0];
-  const __t1 = document.createTextNode("");
-  __e0.appendChild(__t1);
+  const __e0 = __root.children[0]
+  const __t1 = document.createTextNode('')
+  __e0.appendChild(__t1)
   const __d0 = _bind(() => {
-    __t1.data = text();
-  });
+    __t1.data = text()
+  })
   return () => {
-    __d0();
-  };
-});
+    __d0()
+  }
+})
 ```
 
 ### Eligibility Rules
@@ -315,58 +315,58 @@ Dynamic attributes and text content are handled by the bind function:
 
 ```tsx
 // Input
-<div class={cls()}>
+;<div class={cls()}>
   <span>{name()}</span>
-</div>;
+</div>
 
 // Output bind function:
-(__root) => {
-  const __e0 = __root.children[0];
+;(__root) => {
+  const __e0 = __root.children[0]
   const __d0 = _bind(() => {
-    __root.className = cls();
-  });
-  const __t1 = document.createTextNode("");
-  __e0.appendChild(__t1);
+    __root.className = cls()
+  })
+  const __t1 = document.createTextNode('')
+  __e0.appendChild(__t1)
   const __d1 = _bind(() => {
-    __t1.data = name();
-  });
+    __t1.data = name()
+  })
   return () => {
-    __d0();
-    __d1();
-  };
-};
+    __d0()
+    __d1()
+  }
+}
 ```
 
 **One-time static expressions** (no calls, so not reactive) are set directly without `_bind()`:
 
 ```tsx
 // Input
-<div>
+;<div>
   <span>{label}</span>
-</div>;
+</div>
 
 // Output bind function:
-(__root) => {
-  const __e0 = __root.children[0];
-  __e0.textContent = label;
-  return null;
-};
+;(__root) => {
+  const __e0 = __root.children[0]
+  __e0.textContent = label
+  return null
+}
 ```
 
 **Event handlers** are converted to `addEventListener` calls:
 
 ```tsx
 // Input
-<div>
+;<div>
   <button onClick={handler}>click</button>
-</div>;
+</div>
 
 // Output bind function:
-(__root) => {
-  const __e0 = __root.children[0];
-  __e0.addEventListener("click", handler);
-  return null;
-};
+;(__root) => {
+  const __e0 = __root.children[0]
+  __e0.addEventListener('click', handler)
+  return null
+}
 ```
 
 The event name is derived by lowering the third character: `onClick` becomes `"click"`, `onMouseEnter` becomes `"mouseEnter"`.
@@ -375,16 +375,16 @@ The event name is derived by lowering the third character: `onClick` becomes `"c
 
 ```tsx
 // Input
-<div>
+;<div>
   <input ref={myRef} />
-</div>;
+</div>
 
 // Output bind function:
-(__root) => {
-  const __e0 = __root.children[0];
-  myRef.current = __e0;
-  return null;
-};
+;(__root) => {
+  const __e0 = __root.children[0]
+  myRef.current = __e0
+  return null
+}
 ```
 
 ### Reactive Text Nodes
@@ -392,11 +392,11 @@ The event name is derived by lowering the third character: `onClick` becomes `"c
 For dynamic text content, the compiler creates a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update:
 
 ```tsx
-const __t0 = document.createTextNode("");
-__e0.appendChild(__t0);
+const __t0 = document.createTextNode('')
+__e0.appendChild(__t0)
 const __d0 = _bind(() => {
-  __t0.data = name();
-});
+  __t0.data = name()
+})
 ```
 
 ### Cleanup / Disposal
@@ -405,21 +405,21 @@ The bind function returns a cleanup function that disposes all reactive bindings
 
 ```tsx
 // No dynamic parts → null cleanup
-_tpl("<div><span>static</span></div>", () => null);
+_tpl('<div><span>static</span></div>', () => null)
 
 // Multiple dynamic parts → composed cleanup
-_tpl("...", (__root) => {
+_tpl('...', (__root) => {
   const __d0 = _bind(() => {
-    __root.className = cls();
-  });
+    __root.className = cls()
+  })
   const __d1 = _bind(() => {
-    __t0.data = name();
-  });
+    __t0.data = name()
+  })
   return () => {
-    __d0();
-    __d1();
-  };
-});
+    __d0()
+    __d1()
+  }
+})
 ```
 
 ### Element Access Paths
@@ -476,8 +476,8 @@ The full list of recognized void elements: `area`, `base`, `br`, `col`, `embed`,
 When template emission is used, the compiler automatically prepends import statements:
 
 ```ts
-import { _tpl } from "@pyreon/runtime-dom";
-import { _bind } from "@pyreon/reactivity";
+import { _tpl } from '@pyreon/runtime-dom'
+import { _bind } from '@pyreon/reactivity'
 ```
 
 These imports are only added when at least one `_tpl()` call is emitted. The `usesTemplates` flag on the transform result indicates whether this happened.
@@ -498,34 +498,34 @@ Here is a realistic benchmark-style table row showing all template features work
 
 ```tsx
 // Input
-<tr class={cls()}>
+;<tr class={cls()}>
   <td class="id">{String(row.id)}</td>
   <td>{row.label()}</td>
-</tr>;
+</tr>
 
 // Output
 _tpl('<tr><td class="id"></td><td></td></tr>', (__root) => {
-  const __e0 = __root.children[0];
-  const __e1 = __root.children[1];
+  const __e0 = __root.children[0]
+  const __e1 = __root.children[1]
   const __d0 = _bind(() => {
-    __root.className = cls();
-  });
-  const __t2 = document.createTextNode("");
-  __e0.appendChild(__t2);
+    __root.className = cls()
+  })
+  const __t2 = document.createTextNode('')
+  __e0.appendChild(__t2)
   const __d1 = _bind(() => {
-    __t2.data = String(row.id);
-  });
-  const __t3 = document.createTextNode("");
-  __e1.appendChild(__t3);
+    __t2.data = String(row.id)
+  })
+  const __t3 = document.createTextNode('')
+  __e1.appendChild(__t3)
   const __d2 = _bind(() => {
-    __t3.data = row.label();
-  });
+    __t3.data = row.label()
+  })
   return () => {
-    __d0();
-    __d1();
-    __d2();
-  };
-});
+    __d0()
+    __d1()
+    __d2()
+  }
+})
 ```
 
 Static class `"id"` is baked into the HTML. Dynamic class `cls()` and text children `String(row.id)` / `row.label()` use `_bind()`.
@@ -554,10 +554,10 @@ Without `by`, the runtime falls back to index-based diffing, which is slower and
 
 ```ts
 interface CompilerWarning {
-  message: string;
-  line: number; // 1-based line number
-  column: number; // 0-based column number
-  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop";
+  message: string
+  line: number // 1-based line number
+  column: number // 0-based column number
+  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
 }
 ```
 
@@ -568,13 +568,13 @@ interface CompilerWarning {
 The main API. Transforms JSX source code, applying reactive wrapping, static hoisting, and template emission.
 
 ```ts
-import { transformJSX } from "@pyreon/compiler";
+import { transformJSX } from '@pyreon/compiler'
 
-const result = transformJSX(code, "MyComponent.tsx");
+const result = transformJSX(code, 'MyComponent.tsx')
 
-console.log(result.code); // Transformed source code
-console.log(result.usesTemplates); // true if _tpl() was emitted
-console.log(result.warnings); // Array of compiler warnings
+console.log(result.code) // Transformed source code
+console.log(result.usesTemplates) // true if _tpl() was emitted
+console.log(result.warnings) // Array of compiler warnings
 ```
 
 **Parameters:**
@@ -589,11 +589,11 @@ console.log(result.warnings); // Array of compiler warnings
 ```ts
 interface TransformResult {
   /** Transformed source code (JSX preserved, only expression containers modified) */
-  code: string;
+  code: string
   /** Whether the output uses _tpl/_bind template helpers (needs auto-import) */
-  usesTemplates?: boolean;
+  usesTemplates?: boolean
   /** Compiler warnings for common mistakes */
-  warnings: CompilerWarning[];
+  warnings: CompilerWarning[]
 }
 ```
 
@@ -602,13 +602,13 @@ interface TransformResult {
 ```ts
 interface CompilerWarning {
   /** Warning message */
-  message: string;
+  message: string
   /** Source file line number (1-based) */
-  line: number;
+  line: number
   /** Source file column number (0-based) */
-  column: number;
+  column: number
   /** Warning code for filtering */
-  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop";
+  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
 }
 ```
 
@@ -648,65 +648,65 @@ interface CompilerWarning {
 The compiler is used automatically by `@pyreon/vite-plugin`. For custom integrations, call `transformJSX` in your build tool's transform hook:
 
 ```ts
-import { transformJSX } from "@pyreon/compiler";
+import { transformJSX } from '@pyreon/compiler'
 
 function myBuildPlugin() {
   return {
-    name: "my-pyreon-transform",
+    name: 'my-pyreon-transform',
     transform(code: string, id: string) {
-      if (id.endsWith(".tsx") || id.endsWith(".jsx") || id.endsWith(".pyreon")) {
-        const result = transformJSX(code, id);
+      if (id.endsWith('.tsx') || id.endsWith('.jsx') || id.endsWith('.pyreon')) {
+        const result = transformJSX(code, id)
 
         // Log any warnings
         for (const warning of result.warnings) {
-          console.warn(`[pyreon] ${id}:${warning.line}:${warning.column} ${warning.message}`);
+          console.warn(`[pyreon] ${id}:${warning.line}:${warning.column} ${warning.message}`)
         }
 
-        return { code: result.code, map: null };
+        return { code: result.code, map: null }
       }
     },
-  };
+  }
 }
 ```
 
 ### Webpack Loader Example
 
 ```ts
-import { transformJSX } from "@pyreon/compiler";
+import { transformJSX } from '@pyreon/compiler'
 
 export default function pyreonLoader(source: string) {
-  const result = transformJSX(source, this.resourcePath);
+  const result = transformJSX(source, this.resourcePath)
 
   for (const warning of result.warnings) {
-    this.emitWarning(new Error(warning.message));
+    this.emitWarning(new Error(warning.message))
   }
 
-  return result.code;
+  return result.code
 }
 ```
 
 ### Rollup Plugin Example
 
 ```ts
-import { transformJSX } from "@pyreon/compiler";
+import { transformJSX } from '@pyreon/compiler'
 
 export default function pyreonPlugin() {
   return {
-    name: "pyreon-compiler",
+    name: 'pyreon-compiler',
     transform(code: string, id: string) {
-      if (!/\.[jt]sx$/.test(id)) return null;
+      if (!/\.[jt]sx$/.test(id)) return null
 
-      const result = transformJSX(code, id);
+      const result = transformJSX(code, id)
 
       if (result.warnings.length > 0) {
         for (const w of result.warnings) {
-          this.warn({ message: w.message, id, pos: { line: w.line, column: w.column } });
+          this.warn({ message: w.message, id, pos: { line: w.line, column: w.column } })
         }
       }
 
-      return { code: result.code, map: null };
+      return { code: result.code, map: null }
     },
-  };
+  }
 }
 ```
 

@@ -53,12 +53,12 @@ const Button = styled('button')`
 The `css` function creates a lazy `CSSResult` from a tagged template literal. It does **not** inject styles immediately -- the result must be resolved before injection.
 
 ```ts
-import { css } from "@pyreon/styler";
+import { css } from '@pyreon/styler'
 
 const baseStyles = css`
   font-size: 14px;
   line-height: 1.5;
-`;
+`
 ```
 
 `css` returns a `CSSResult` instance that stores the template strings and interpolated values as-is. No CSS processing happens at creation time.
@@ -74,9 +74,9 @@ Values interpolated into `css` templates can be:
 
 ```ts
 const dynamicStyles = css`
-  color: ${(props) => (props.active ? "blue" : "gray")};
+  color: ${(props) => (props.active ? 'blue' : 'gray')};
   opacity: ${(props) => (props.disabled ? 0.5 : 1)};
-`;
+`
 ```
 
 ### Static Interpolations
@@ -84,12 +84,12 @@ const dynamicStyles = css`
 String and number interpolations are static -- they are resolved once and never re-evaluated:
 
 ```ts
-const color = "red";
-const size = 16;
+const color = 'red'
+const size = 16
 const styles = css`
   color: ${color};
   font-size: ${size}px;
-`;
+`
 ```
 
 ### Nested CSS Results
@@ -101,13 +101,13 @@ const resetStyles = css`
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-`;
+`
 
 const cardStyles = css`
   ${resetStyles}
   border: 1px solid #ddd;
   border-radius: 8px;
-`;
+`
 ```
 
 ### Conditional Styles
@@ -117,9 +117,9 @@ Use boolean/null returns for conditional inclusion:
 ```ts
 const styles = css`
   display: flex;
-  ${(props) => (props.centered ? "align-items: center; justify-content: center;" : false)}
+  ${(props) => (props.centered ? 'align-items: center; justify-content: center;' : false)}
   ${(props) => (props.gap ? `gap: ${props.gap}px;` : null)}
-`;
+`
 ```
 
 ### Multiple Interpolations
@@ -128,10 +128,10 @@ A single `css` template can contain any number of interpolations:
 
 ```ts
 const styles = css`
-  color: ${"red"};
+  color: ${'red'};
   font-size: ${16}px;
   padding: ${8}px ${16}px;
-`;
+`
 ```
 
 ### `CSSResult` Class
@@ -139,9 +139,9 @@ const styles = css`
 The `CSSResult` class holds the raw template strings and values. It is the type returned by `css`.
 
 ```ts
-import { CSSResult } from "@pyreon/styler";
+import { CSSResult } from '@pyreon/styler'
 
-const result = new CSSResult(["color: ", ";"], ["red"]);
+const result = new CSSResult(['color: ', ';'], ['red'])
 ```
 
 Properties:
@@ -154,13 +154,13 @@ Properties:
 Resolves a `CSSResult` into a plain CSS string. Optionally pass a props object to resolve dynamic interpolation functions.
 
 ```ts
-import { css, resolveCSS } from "@pyreon/styler";
+import { css, resolveCSS } from '@pyreon/styler'
 
 const result = css`
   color: red;
   font-size: 14px;
-`;
-const cssString = resolveCSS(result);
+`
+const cssString = resolveCSS(result)
 // => "color: red; font-size: 14px;"
 ```
 
@@ -169,8 +169,8 @@ With dynamic props:
 ```ts
 const result = css`
   color: ${(props) => props.color};
-`;
-const cssString = resolveCSS(result, { color: "blue" });
+`
+const cssString = resolveCSS(result, { color: 'blue' })
 // => "color: blue;"
 ```
 
@@ -185,14 +185,14 @@ During resolution:
 Creates a styled Pyreon component. Returns a tagged template function that produces a `ComponentFn`.
 
 ```ts
-import { styled } from "@pyreon/styler";
+import { styled } from '@pyreon/styler'
 
-const Card = styled("div")`
+const Card = styled('div')`
   padding: 16px;
   border: 1px solid #ddd;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-`;
+`
 ```
 
 The two-step API: `styled(tag)` returns a tagged template function, and calling that with a template literal returns the component.
@@ -202,24 +202,24 @@ The two-step API: `styled(tag)` returns a tagged template function, and calling 
 When all interpolations are static (no functions), the CSS class is computed once at component creation time and reused for every render. This is the fast path -- no per-render work is needed.
 
 ```ts
-const StaticBox = styled("div")`
+const StaticBox = styled('div')`
   display: flex;
   padding: 16px;
   background: #f5f5f5;
-`;
+`
 // Class computed once, reused on every render
 ```
 
 Static interpolations (strings and numbers) also use the fast path:
 
 ```ts
-const color = "royalblue";
-const padding = 12;
+const color = 'royalblue'
+const padding = 12
 
-const StaticButton = styled("button")`
+const StaticButton = styled('button')`
   color: ${color};
   padding: ${padding}px;
-`;
+`
 // Still static — class computed once
 ```
 
@@ -305,11 +305,11 @@ const Box = styled('div', {
 Block all prop forwarding:
 
 ```ts
-const PureStyled = styled("div", {
+const PureStyled = styled('div', {
   shouldForwardProp: () => false,
 })`
   display: flex;
-`;
+`
 // Only class is set, no other props forwarded
 ```
 
@@ -357,10 +357,10 @@ const Wrapper = styled('div')`padding: 16px;`
 When the CSS template resolves to an empty string (or only whitespace), no class name is generated:
 
 ```ts
-const NoStyles = styled("div")``;
+const NoStyles = styled('div')``
 // Renders <div> with no class attribute
 
-const WhitespaceOnly = styled("div")``;
+const WhitespaceOnly = styled('div')``
 // Same — no class generated
 ```
 
@@ -369,19 +369,19 @@ const WhitespaceOnly = styled("div")``;
 A convenience proxy for common HTML tags. Instead of `styled('div')`, write `s.div`:
 
 ```ts
-import { styledElements as s } from "@pyreon/styler";
+import { styledElements as s } from '@pyreon/styler'
 
 const Title = s.h1`
   font-size: 24px;
   font-weight: bold;
   margin-bottom: 16px;
-`;
+`
 
 const Subtitle = s.h2`
   font-size: 18px;
   font-weight: 500;
   color: #666;
-`;
+`
 
 const Link = s.a`
   color: royalblue;
@@ -389,20 +389,20 @@ const Link = s.a`
   &:hover {
     text-decoration: underline;
   }
-`;
+`
 
 const Container = s.section`
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 16px;
-`;
+`
 
 const Input = s.input`
   padding: 8px 12px;
   border: 1px solid #ccc;
   border-radius: 4px;
   font-size: 14px;
-`;
+`
 
 const Button = s.button`
   padding: 8px 16px;
@@ -410,7 +410,7 @@ const Button = s.button`
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-`;
+`
 ```
 
 This is equivalent to calling `styled('h1')`, `styled('a')`, `styled('section')`, etc. Any valid HTML tag name works.
@@ -420,21 +420,21 @@ This is equivalent to calling `styled('h1')`, `styled('a')`, `styled('section')`
 Define CSS `@keyframes` animations. Returns the generated animation name that you can use in style rules.
 
 ```ts
-import { keyframes, styled } from "@pyreon/styler";
+import { keyframes, styled } from '@pyreon/styler'
 
 const spin = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-`;
+`
 
-const Spinner = styled("div")`
+const Spinner = styled('div')`
   width: 24px;
   height: 24px;
   border: 2px solid #ccc;
   border-top-color: royalblue;
   border-radius: 50%;
   animation: ${spin} 1s linear infinite;
-`;
+`
 ```
 
 The returned string is a unique animation name (e.g., `ns-kf-abc123`) generated from an FNV-1a hash of the keyframes CSS. The `@keyframes` rule is injected into the stylesheet immediately.
@@ -445,16 +445,16 @@ The returned string is a unique animation name (e.g., `ns-kf-abc123`) generated 
 const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: translateY(0); }
-`;
+`
 
 const fadeOut = keyframes`
   from { opacity: 1; transform: translateY(0); }
   to { opacity: 0; transform: translateY(10px); }
-`;
+`
 
-const FadeInBox = styled("div")`
+const FadeInBox = styled('div')`
   animation: ${fadeIn} 0.3s ease-out forwards;
-`;
+`
 ```
 
 ### Pulse
@@ -464,16 +464,16 @@ const pulse = keyframes`
   0% { transform: scale(1); }
   50% { transform: scale(1.05); }
   100% { transform: scale(1); }
-`;
+`
 
-const PulseButton = styled("button")`
+const PulseButton = styled('button')`
   animation: ${pulse} 2s ease-in-out infinite;
   padding: 12px 24px;
   background: royalblue;
   color: white;
   border: none;
   border-radius: 4px;
-`;
+`
 ```
 
 ### Slide In
@@ -482,17 +482,17 @@ const PulseButton = styled("button")`
 const slideInFromLeft = keyframes`
   from { transform: translateX(-100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
-`;
+`
 
 const slideInFromRight = keyframes`
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
-`;
+`
 
-const SlidePanel = styled("div")`
-  animation: ${(props) => (props.direction === "left" ? slideInFromLeft : slideInFromRight)} 0.4s
+const SlidePanel = styled('div')`
+  animation: ${(props) => (props.direction === 'left' ? slideInFromLeft : slideInFromRight)} 0.4s
     ease-out;
-`;
+`
 ```
 
 ### Skeleton Loading
@@ -501,16 +501,16 @@ const SlidePanel = styled("div")`
 const shimmer = keyframes`
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
-`;
+`
 
-const Skeleton = styled("div")`
+const Skeleton = styled('div')`
   background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
   background-size: 200% 100%;
   animation: ${shimmer} 1.5s ease-in-out infinite;
   border-radius: 4px;
-  height: ${(props) => props.height || "20px"};
-  width: ${(props) => props.width || "100%"};
-`;
+  height: ${(props) => props.height || '20px'};
+  width: ${(props) => props.width || '100%'};
+`
 ```
 
 ## `sheet` (StyleSheet)
@@ -532,13 +532,13 @@ The sheet automatically detects whether it is running in a browser or server env
 Inserts a CSS rule and returns the generated class name. Rules are deduplicated -- inserting the same CSS twice returns the same class name without creating a duplicate rule.
 
 ```ts
-import { sheet } from "@pyreon/styler";
+import { sheet } from '@pyreon/styler'
 
-const className = sheet.insert("color: red; font-size: 14px;");
+const className = sheet.insert('color: red; font-size: 14px;')
 // => "ns-abc123"
 
 // Same CSS returns same class (deduplication)
-const same = sheet.insert("color: red; font-size: 14px;");
+const same = sheet.insert('color: red; font-size: 14px;')
 // same === className
 ```
 
@@ -553,7 +553,7 @@ The sheet maintains a maximum cache size of 10,000 entries. When the cache excee
 Inserts a `@keyframes` rule and returns the generated animation name. Used internally by the `keyframes` function.
 
 ```ts
-const animName = sheet.insertKeyframes("", "from { opacity: 0; } to { opacity: 1; }");
+const animName = sheet.insertKeyframes('', 'from { opacity: 0; } to { opacity: 1; }')
 // => "ns-kf-xyz789"
 // Injects: @keyframes ns-kf-xyz789 { from { opacity: 0; } to { opacity: 1; } }
 ```
@@ -563,9 +563,9 @@ const animName = sheet.insertKeyframes("", "from { opacity: 0; } to { opacity: 1
 Inserts a global (unscoped) CSS rule. The rule is not wrapped in a class selector.
 
 ```ts
-sheet.insertGlobal("body { margin: 0; font-family: system-ui; }");
-sheet.insertGlobal("*, *::before, *::after { box-sizing: border-box; }");
-sheet.insertGlobal(":root { --primary: royalblue; --text: #333; }");
+sheet.insertGlobal('body { margin: 0; font-family: system-ui; }')
+sheet.insertGlobal('*, *::before, *::after { box-sizing: border-box; }')
+sheet.insertGlobal(':root { --primary: royalblue; --text: #333; }')
 ```
 
 ### `sheet.getSSRStyles()`
@@ -573,7 +573,7 @@ sheet.insertGlobal(":root { --primary: royalblue; --text: #333; }");
 Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty string if no rules have been inserted.
 
 ```ts
-const html = sheet.getSSRStyles();
+const html = sheet.getSSRStyles()
 // => '<style data-nova-styler>.ns-abc123 { color: red; }@keyframes ns-kf-xyz { ... }</style>'
 ```
 
@@ -582,11 +582,11 @@ const html = sheet.getSSRStyles();
 Clears the entire cache, empties the SSR rules buffer, and removes the injected `<style>` element from the DOM. Useful for testing:
 
 ```ts
-import { sheet } from "@pyreon/styler";
+import { sheet } from '@pyreon/styler'
 
 afterEach(() => {
-  sheet.reset();
-});
+  sheet.reset()
+})
 ```
 
 ## SSR (Server-Side Rendering)
@@ -596,19 +596,19 @@ On the server (`typeof document === 'undefined'`), the sheet collects rules in a
 ### Basic SSR Flow
 
 ```ts
-import { styled, sheet } from "@pyreon/styler";
+import { styled, sheet } from '@pyreon/styler'
 
 // 1. Render your components (this inserts rules into the sheet)
-const Button = styled("button")`
+const Button = styled('button')`
   background: royalblue;
   color: white;
   padding: 8px 16px;
-`;
+`
 
 // ... render your component tree ...
 
 // 2. Collect the generated styles
-const styleTag = sheet.getSSRStyles();
+const styleTag = sheet.getSSRStyles()
 // '<style data-nova-styler>.ns-abc { background: royalblue; color: white; padding: 8px 16px; }</style>'
 
 // 3. Inject into your HTML template
@@ -618,10 +618,10 @@ const html = `
     <head>${styleTag}</head>
     <body>${renderedApp}</body>
   </html>
-`;
+`
 
 // 4. Reset for the next request
-sheet.reset();
+sheet.reset()
 ```
 
 ### Per-Request Isolation
@@ -630,14 +630,14 @@ For server environments handling multiple requests, reset the sheet between requ
 
 ```ts
 function handleRequest(req, res) {
-  sheet.reset();
+  sheet.reset()
 
   // ... render app ...
 
-  const styles = sheet.getSSRStyles();
-  const html = renderToString(App);
+  const styles = sheet.getSSRStyles()
+  const html = renderToString(App)
 
-  res.send(`<html><head>${styles}</head><body>${html}</body></html>`);
+  res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
 }
 ```
 
@@ -646,10 +646,10 @@ function handleRequest(req, res) {
 FNV-1a hash function that produces compact base-36 strings. Used internally for class name and animation name generation.
 
 ```ts
-import { hash } from "@pyreon/styler";
+import { hash } from '@pyreon/styler'
 
-hash("color: red;"); // => "1m3k5q7" (example)
-hash("display: flex;"); // => "a2b3c4d" (example)
+hash('color: red;') // => "1m3k5q7" (example)
+hash('display: flex;') // => "a2b3c4d" (example)
 ```
 
 The hash uses the standard FNV-1a algorithm with offset basis `2166136261` and prime `16777619`, then converts to base-36 for compact string representation.
@@ -729,16 +729,16 @@ function ThemedCard(props) {
 Access the theme inside styled component interpolations via `useTheme()` in the parent component, or structure your app so theme values are passed as props:
 
 ```ts
-const PrimaryButton = styled("button")`
-  background: ${(props) => props.theme?.colors?.primary || "royalblue"};
+const PrimaryButton = styled('button')`
+  background: ${(props) => props.theme?.colors?.primary || 'royalblue'};
   color: white;
   padding: ${(props) => props.theme?.spacing?.sm || 8}px
     ${(props) => props.theme?.spacing?.md || 16}px;
   border: none;
   border-radius: ${(props) => props.theme?.radii?.sm || 4}px;
   cursor: pointer;
-  font-family: ${(props) => props.theme?.fonts?.body || "system-ui"};
-`;
+  font-family: ${(props) => props.theme?.fonts?.body || 'system-ui'};
+`
 ```
 
 ### TypeScript Theme Augmentation
@@ -747,33 +747,33 @@ Extend the `DefaultTheme` interface with module augmentation to get full type sa
 
 ```ts
 // types/theme.d.ts
-declare module "@pyreon/styler" {
+declare module '@pyreon/styler' {
   interface DefaultTheme {
     colors: {
-      primary: string;
-      secondary: string;
-      success: string;
-      danger: string;
-      text: string;
-      background: string;
-    };
+      primary: string
+      secondary: string
+      success: string
+      danger: string
+      text: string
+      background: string
+    }
     spacing: {
-      xs: number;
-      sm: number;
-      md: number;
-      lg: number;
-      xl: number;
-    };
+      xs: number
+      sm: number
+      md: number
+      lg: number
+      xl: number
+    }
     radii: {
-      sm: number;
-      md: number;
-      lg: number;
-      full: number;
-    };
+      sm: number
+      md: number
+      lg: number
+      full: number
+    }
     fonts: {
-      body: string;
-      mono: string;
-    };
+      body: string
+      mono: string
+    }
   }
 }
 ```
@@ -781,10 +781,10 @@ declare module "@pyreon/styler" {
 After augmentation, `useTheme()` returns a fully typed theme object:
 
 ```ts
-const theme = useTheme();
-theme.colors.primary; // string -- type-safe
-theme.spacing.md; // number -- type-safe
-theme.colors.invalid; // TypeScript error
+const theme = useTheme()
+theme.colors.primary // string -- type-safe
+theme.spacing.md // number -- type-safe
+theme.colors.invalid // TypeScript error
 ```
 
 ### Dark Mode Example
@@ -826,7 +826,7 @@ function App() {
 CSS in styled components supports standard CSS selectors including pseudo-classes and pseudo-elements. Because styles are scoped to a generated class, you can use nested patterns freely:
 
 ```ts
-const InteractiveButton = styled("button")`
+const InteractiveButton = styled('button')`
   background: royalblue;
   color: white;
   padding: 8px 16px;
@@ -856,7 +856,7 @@ const InteractiveButton = styled("button")`
     cursor: not-allowed;
     transform: none;
   }
-`;
+`
 ```
 
 ## Media Queries
@@ -864,7 +864,7 @@ const InteractiveButton = styled("button")`
 Use standard CSS media queries inside styled components:
 
 ```ts
-const ResponsiveGrid = styled("div")`
+const ResponsiveGrid = styled('div')`
   display: grid;
   gap: 16px;
   grid-template-columns: 1fr;
@@ -880,9 +880,9 @@ const ResponsiveGrid = styled("div")`
   @media (min-width: 1280px) {
     grid-template-columns: repeat(4, 1fr);
   }
-`;
+`
 
-const ResponsiveText = styled("p")`
+const ResponsiveText = styled('p')`
   font-size: 14px;
   line-height: 1.5;
 
@@ -894,7 +894,7 @@ const ResponsiveText = styled("p")`
   @media (min-width: 1024px) {
     font-size: 18px;
   }
-`;
+`
 ```
 
 ## Real-World Component Examples
@@ -1017,7 +1017,7 @@ const CardFooter = styled('div')`
 ### Input with States
 
 ```ts
-const Input = styled("input")`
+const Input = styled('input')`
   display: block;
   width: 100%;
   padding: 8px 12px;
@@ -1025,7 +1025,7 @@ const Input = styled("input")`
   line-height: 1.5;
   color: #333;
   background: white;
-  border: 1px solid ${(props) => (props.error ? "#dc3545" : "#ccc")};
+  border: 1px solid ${(props) => (props.error ? '#dc3545' : '#ccc')};
   border-radius: 4px;
   transition:
     border-color 0.15s ease,
@@ -1037,31 +1037,31 @@ const Input = styled("input")`
 
   &:focus {
     outline: none;
-    border-color: ${(props) => (props.error ? "#dc3545" : "royalblue")};
+    border-color: ${(props) => (props.error ? '#dc3545' : 'royalblue')};
     box-shadow: 0 0 0 3px
-      ${(props) => (props.error ? "rgba(220, 53, 69, 0.25)" : "rgba(65, 105, 225, 0.25)")};
+      ${(props) => (props.error ? 'rgba(220, 53, 69, 0.25)' : 'rgba(65, 105, 225, 0.25)')};
   }
 
   &:disabled {
     background: #f5f5f5;
     cursor: not-allowed;
   }
-`;
+`
 
-const Label = styled("label")`
+const Label = styled('label')`
   display: block;
   margin-bottom: 4px;
   font-size: 14px;
   font-weight: 500;
-  color: ${(props) => (props.error ? "#dc3545" : "#333")};
-`;
+  color: ${(props) => (props.error ? '#dc3545' : '#333')};
+`
 
-const ErrorMessage = styled("span")`
+const ErrorMessage = styled('span')`
   display: block;
   margin-top: 4px;
   font-size: 12px;
   color: #dc3545;
-`;
+`
 ```
 
 ### Badge Component
@@ -1104,7 +1104,7 @@ For best performance, separate static base styles from dynamic parts. This allow
 
 ```ts
 // Less optimal: entire template is dynamic because of one function interpolation
-const Button = styled("button")`
+const Button = styled('button')`
   display: inline-flex;
   align-items: center;
   padding: 8px 16px;
@@ -1112,8 +1112,8 @@ const Button = styled("button")`
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  background: ${(props) => (props.primary ? "royalblue" : "#e2e2e2")};
-`;
+  background: ${(props) => (props.primary ? 'royalblue' : '#e2e2e2')};
+`
 
 // More optimal: use a static base and compose styles via class
 const baseButton = css`
@@ -1124,13 +1124,13 @@ const baseButton = css`
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-`;
+`
 
 // Dynamic part is kept minimal
-const DynamicButton = styled("button")`
+const DynamicButton = styled('button')`
   ${baseButton}
-  background: ${(props) => (props.primary ? "royalblue" : "#e2e2e2")};
-`;
+  background: ${(props) => (props.primary ? 'royalblue' : '#e2e2e2')};
+`
 ```
 
 Since the sheet deduplicates by CSS content, identical CSS strings always resolve to the same class. This means you pay zero cost for repeated identical insertions.

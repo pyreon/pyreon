@@ -1,48 +1,48 @@
-import { isEmpty, set } from "@pyreon/ui-core";
+import { isEmpty, set } from '@pyreon/ui-core'
 
 const removeUnexpectedKeys = (obj: Record<string, unknown>, keys: string[]) => {
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = {}
   keys.forEach((bp) => {
-    const value = obj[bp];
+    const value = obj[bp]
     if (value) {
-      result[bp] = value;
+      result[bp] = value
     }
-  });
-  return result;
-};
+  })
+  return result
+}
 
 export type TransformTheme = ({
   theme,
   breakpoints,
 }: {
-  theme: Record<string, unknown>;
-  breakpoints: string[];
-}) => any;
+  theme: Record<string, unknown>
+  breakpoints: string[]
+}) => any
 
 const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
-  const result = {};
+  const result = {}
 
-  if (isEmpty(theme) || isEmpty(breakpoints)) return result;
+  if (isEmpty(theme) || isEmpty(breakpoints)) return result
 
   Object.entries(theme).forEach(([key, value]) => {
     if (Array.isArray(value) && value.length > 0) {
       value.forEach((child, i) => {
-        const indexBreakpoint = breakpoints[i];
-        if (indexBreakpoint == null) return;
-        set(result, [indexBreakpoint, key], child);
-      });
-    } else if (typeof value === "object" && value !== null) {
+        const indexBreakpoint = breakpoints[i]
+        if (indexBreakpoint == null) return
+        set(result, [indexBreakpoint, key], child)
+      })
+    } else if (typeof value === 'object' && value !== null) {
       Object.entries(value).forEach(([childKey, childValue]) => {
-        set(result, [childKey, key], childValue);
-      });
+        set(result, [childKey, key], childValue)
+      })
     } else if (value != null) {
-      const firstBreakpoint = breakpoints[0];
-      if (firstBreakpoint == null) return;
-      set(result, [firstBreakpoint, key], value);
+      const firstBreakpoint = breakpoints[0]
+      if (firstBreakpoint == null) return
+      set(result, [firstBreakpoint, key], value)
     }
-  });
+  })
 
-  return removeUnexpectedKeys(result, breakpoints);
-};
+  return removeUnexpectedKeys(result, breakpoints)
+}
 
-export default transformTheme;
+export default transformTheme

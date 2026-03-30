@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core";
-import type { BackgroundProps } from "../types";
+import type { VNodeChild } from '@pyreon/core'
+import type { BackgroundProps } from '../types'
 
 /**
  * Background pattern for the flow canvas.
@@ -13,11 +13,11 @@ import type { BackgroundProps } from "../types";
  * ```
  */
 export function Background(props: BackgroundProps): VNodeChild {
-  const { variant = "dots", gap = 20, size = 1, color = "#ddd" } = props;
+  const { variant = 'dots', gap = 20, size = 1, color = '#ddd' } = props
 
-  const patternId = `flow-bg-${variant}`;
+  const patternId = `flow-bg-${variant}`
 
-  if (variant === "dots") {
+  if (variant === 'dots') {
     return (
       <svg
         role="img"
@@ -32,17 +32,17 @@ export function Background(props: BackgroundProps): VNodeChild {
             y="0"
             width={String(gap)}
             height={String(gap)}
-            {...{ patternUnits: "userSpaceOnUse" }}
+            {...{ patternUnits: 'userSpaceOnUse' }}
           >
             <circle cx={String(size)} cy={String(size)} r={String(size)} fill={color} />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
       </svg>
-    );
+    )
   }
 
-  if (variant === "lines") {
+  if (variant === 'lines') {
     return (
       <svg
         role="img"
@@ -57,7 +57,7 @@ export function Background(props: BackgroundProps): VNodeChild {
             y="0"
             width={String(gap)}
             height={String(gap)}
-            {...{ patternUnits: "userSpaceOnUse" }}
+            {...{ patternUnits: 'userSpaceOnUse' }}
           >
             <line
               x1="0"
@@ -79,7 +79,7 @@ export function Background(props: BackgroundProps): VNodeChild {
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
       </svg>
-    );
+    )
   }
 
   // cross
@@ -97,7 +97,7 @@ export function Background(props: BackgroundProps): VNodeChild {
           y="0"
           width={String(gap)}
           height={String(gap)}
-          {...{ patternUnits: "userSpaceOnUse" }}
+          {...{ patternUnits: 'userSpaceOnUse' }}
         >
           <line
             x1={String(gap / 2 - size * 2)}
@@ -119,5 +119,5 @@ export function Background(props: BackgroundProps): VNodeChild {
       </defs>
       <rect width="100%" height="100%" fill={`url(#${patternId})`} />
     </svg>
-  );
+  )
 }

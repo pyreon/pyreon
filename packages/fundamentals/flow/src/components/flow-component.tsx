@@ -1,60 +1,60 @@
-import type { VNodeChild } from "@pyreon/core";
-import { signal } from "@pyreon/reactivity";
-import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from "../edges";
-import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from "../types";
-import { Position } from "../types";
+import type { VNodeChild } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
+import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from '../types'
+import { Position } from '../types'
 
 // ─── Node type registry ──────────────────────────────────────────────────────
 
-type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild>;
+type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild>
 
 /**
  * Default node renderer — simple labeled box.
  */
 function DefaultNode(props: NodeComponentProps) {
-  const borderColor = props.selected ? "#3b82f6" : "#ddd";
-  const cursor = props.dragging ? "grabbing" : "grab";
+  const borderColor = props.selected ? '#3b82f6' : '#ddd'
+  const cursor = props.dragging ? 'grabbing' : 'grab'
   return (
     <div
       style={`padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`}
     >
       {(props.data?.label as string) ?? props.id}
     </div>
-  );
+  )
 }
 
 // ─── Connection line state ───────────────────────────────────────────────────
 
 interface ConnectionState {
-  active: boolean;
-  sourceNodeId: string;
-  sourceHandleId: string;
-  sourcePosition: Position;
-  sourceX: number;
-  sourceY: number;
-  currentX: number;
-  currentY: number;
+  active: boolean
+  sourceNodeId: string
+  sourceHandleId: string
+  sourcePosition: Position
+  sourceX: number
+  sourceY: number
+  currentX: number
+  currentY: number
 }
 
 const emptyConnection: ConnectionState = {
   active: false,
-  sourceNodeId: "",
-  sourceHandleId: "",
+  sourceNodeId: '',
+  sourceHandleId: '',
   sourcePosition: Position.Right,
   sourceX: 0,
   sourceY: 0,
   currentX: 0,
   currentY: 0,
-};
+}
 
 // ─── Selection box state ─────────────────────────────────────────────────────
 
 interface SelectionBoxState {
-  active: boolean;
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
+  active: boolean
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
 }
 
 const emptySelectionBox: SelectionBoxState = {
@@ -63,41 +63,41 @@ const emptySelectionBox: SelectionBoxState = {
   startY: 0,
   currentX: 0,
   currentY: 0,
-};
+}
 
 // ─── Drag state ──────────────────────────────────────────────────────────────
 
 interface DragState {
-  active: boolean;
-  nodeId: string;
-  startX: number;
-  startY: number;
+  active: boolean
+  nodeId: string
+  startX: number
+  startY: number
   /** Starting positions of all nodes being dragged (for multi-drag) */
-  startPositions: Map<string, { x: number; y: number }>;
+  startPositions: Map<string, { x: number; y: number }>
 }
 
 const emptyDrag: DragState = {
   active: false,
-  nodeId: "",
+  nodeId: '',
   startX: 0,
   startY: 0,
   startPositions: new Map(),
-};
+}
 
 // ─── Edge Layer ──────────────────────────────────────────────────────────────
 
 function EdgeLayer(props: {
-  instance: FlowInstance;
-  connectionState: () => ConnectionState;
-  edgeTypes?: EdgeTypeMap;
+  instance: FlowInstance
+  connectionState: () => ConnectionState
+  edgeTypes?: EdgeTypeMap
 }): VNodeChild {
-  const { instance, connectionState, edgeTypes } = props;
+  const { instance, connectionState, edgeTypes } = props
 
   return () => {
-    const nodes = instance.nodes();
-    const edges = instance.edges();
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const conn = connectionState();
+    const nodes = instance.nodes()
+    const edges = instance.edges()
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]))
+    const conn = connectionState()
 
     return (
       <svg
@@ -110,30 +110,27 @@ function EdgeLayer(props: {
           <marker
             id="flow-arrowhead"
             {...{
-              markerWidth: "10",
-              markerHeight: "7",
-              refX: "10",
-              refY: "3.5",
-              orient: "auto",
+              markerWidth: '10',
+              markerHeight: '7',
+              refX: '10',
+              refY: '3.5',
+              orient: 'auto',
             }}
           >
             <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
           </marker>
         </defs>
         {edges.map((edge) => {
-          const sourceNode = nodeMap.get(edge.source);
-          const targetNode = nodeMap.get(edge.target);
-          if (!sourceNode || !targetNode) return <g key={edge.id} />;
+          const sourceNode = nodeMap.get(edge.source)
+          const targetNode = nodeMap.get(edge.target)
+          if (!sourceNode || !targetNode) return <g key={edge.id} />
 
-          const sourceW = sourceNode.width ?? 150;
-          const sourceH = sourceNode.height ?? 40;
-          const targetW = targetNode.width ?? 150;
-          const targetH = targetNode.height ?? 40;
+          const sourceW = sourceNode.width ?? 150
+          const sourceH = sourceNode.height ?? 40
+          const targetW = targetNode.width ?? 150
+          const targetH = targetNode.height ?? 40
 
-          const { sourcePosition, targetPosition } = getSmartHandlePositions(
-            sourceNode,
-            targetNode,
-          );
+          const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode)
 
           const sourcePos = getHandlePosition(
             sourcePosition,
@@ -141,14 +138,14 @@ function EdgeLayer(props: {
             sourceNode.position.y,
             sourceW,
             sourceH,
-          );
+          )
           const targetPos = getHandlePosition(
             targetPosition,
             targetNode.position.x,
             targetNode.position.y,
             targetW,
             targetH,
-          );
+          )
 
           const { path, labelX, labelY } = edge.waypoints?.length
             ? getWaypointPath({
@@ -159,20 +156,20 @@ function EdgeLayer(props: {
                 waypoints: edge.waypoints,
               })
             : getEdgePath(
-                edge.type ?? "bezier",
+                edge.type ?? 'bezier',
                 sourcePos.x,
                 sourcePos.y,
                 sourcePosition,
                 targetPos.x,
                 targetPos.y,
                 targetPosition,
-              );
+              )
 
-          const selectedEdges = instance.selectedEdges();
-          const isSelected = edge.id ? selectedEdges.includes(edge.id) : false;
+          const selectedEdges = instance.selectedEdges()
+          const isSelected = edge.id ? selectedEdges.includes(edge.id) : false
 
           // Custom edge renderer
-          const CustomEdge = edge.type && edgeTypes?.[edge.type];
+          const CustomEdge = edge.type && edgeTypes?.[edge.type]
           if (CustomEdge) {
             return (
               <g key={edge.id} onClick={() => edge.id && instance.selectEdge(edge.id)}>
@@ -185,7 +182,7 @@ function EdgeLayer(props: {
                   selected={isSelected}
                 />
               </g>
-            );
+            )
           }
 
           return (
@@ -193,14 +190,14 @@ function EdgeLayer(props: {
               <path
                 d={path}
                 fill="none"
-                stroke={isSelected ? "#3b82f6" : "#999"}
-                stroke-width={isSelected ? "2" : "1.5"}
+                stroke={isSelected ? '#3b82f6' : '#999'}
+                stroke-width={isSelected ? '2' : '1.5'}
                 marker-end="url(#flow-arrowhead)"
-                class={edge.animated ? "pyreon-flow-edge-animated" : ""}
-                style={`pointer-events: stroke; cursor: pointer; ${edge.style ?? ""}`}
+                class={edge.animated ? 'pyreon-flow-edge-animated' : ''}
+                style={`pointer-events: stroke; cursor: pointer; ${edge.style ?? ''}`}
                 onClick={() => {
-                  if (edge.id) instance.selectEdge(edge.id);
-                  instance._emit.edgeClick(edge);
+                  if (edge.id) instance.selectEdge(edge.id)
+                  instance._emit.edgeClick(edge)
                 }}
               />
               {edge.label && (
@@ -215,13 +212,13 @@ function EdgeLayer(props: {
                 </text>
               )}
             </g>
-          );
+          )
         })}
         {conn.active && (
           <path
             d={
               getEdgePath(
-                "bezier",
+                'bezier',
                 conn.sourceX,
                 conn.sourceY,
                 conn.sourcePosition,
@@ -237,69 +234,69 @@ function EdgeLayer(props: {
           />
         )}
       </svg>
-    );
-  };
+    )
+  }
 }
 
 // ─── Node Layer ──────────────────────────────────────────────────────────────
 
 function NodeLayer(props: {
-  instance: FlowInstance;
-  nodeTypes: NodeTypeMap;
-  draggingNodeId: () => string;
-  onNodePointerDown: (e: PointerEvent, node: FlowNode) => void;
+  instance: FlowInstance
+  nodeTypes: NodeTypeMap
+  draggingNodeId: () => string
+  onNodePointerDown: (e: PointerEvent, node: FlowNode) => void
   onHandlePointerDown: (
     e: PointerEvent,
     nodeId: string,
     handleType: string,
     handleId: string,
     position: Position,
-  ) => void;
+  ) => void
 }): VNodeChild {
-  const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props;
+  const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
 
   return () => {
-    const nodes = instance.nodes();
-    const selectedIds = instance.selectedNodes();
-    const dragId = draggingNodeId();
+    const nodes = instance.nodes()
+    const selectedIds = instance.selectedNodes()
+    const dragId = draggingNodeId()
 
     return (
       <>
         {nodes.map((node) => {
-          const isSelected = selectedIds.includes(node.id);
-          const isDragging = dragId === node.id;
-          const NodeComponent = (node.type && nodeTypes[node.type]) || nodeTypes.default!;
+          const isSelected = selectedIds.includes(node.id)
+          const isDragging = dragId === node.id
+          const NodeComponent = (node.type && nodeTypes[node.type]) || nodeTypes.default!
 
           return (
             <div
               key={node.id}
-              class={`pyreon-flow-node ${node.class ?? ""} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
-              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ""}`}
+              class={`pyreon-flow-node ${node.class ?? ''} ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
+              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ''}`}
               data-nodeid={node.id}
               onClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                instance.selectNode(node.id, e.shiftKey);
-                instance._emit.nodeClick(node);
+                e.stopPropagation()
+                instance.selectNode(node.id, e.shiftKey)
+                instance._emit.nodeClick(node)
               }}
               onDblClick={(e: MouseEvent) => {
-                e.stopPropagation();
-                instance._emit.nodeDoubleClick(node);
+                e.stopPropagation()
+                instance._emit.nodeDoubleClick(node)
               }}
               onPointerDown={(e: PointerEvent) => {
                 // Check if clicking a handle
-                const target = e.target as HTMLElement;
-                const handle = target.closest(".pyreon-flow-handle");
+                const target = e.target as HTMLElement
+                const handle = target.closest('.pyreon-flow-handle')
                 if (handle) {
-                  const hType = handle.getAttribute("data-handletype") ?? "source";
-                  const hId = handle.getAttribute("data-handleid") ?? "source";
+                  const hType = handle.getAttribute('data-handletype') ?? 'source'
+                  const hId = handle.getAttribute('data-handleid') ?? 'source'
                   const hPos =
-                    (handle.getAttribute("data-handleposition") as Position) ?? Position.Right;
-                  onHandlePointerDown(e, node.id, hType, hId, hPos);
-                  return;
+                    (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
+                  onHandlePointerDown(e, node.id, hType, hId, hPos)
+                  return
                 }
                 // Otherwise start dragging node
                 if (node.draggable !== false && instance.config.nodesDraggable !== false) {
-                  onNodePointerDown(e, node);
+                  onNodePointerDown(e, node)
                 }
               }}
             >
@@ -310,11 +307,11 @@ function NodeLayer(props: {
                 dragging={isDragging}
               />
             </div>
-          );
+          )
         })}
       </>
-    );
-  };
+    )
+  }
 }
 
 // ─── Flow Component ──────────────────────────────────────────────────────────
@@ -322,24 +319,24 @@ function NodeLayer(props: {
 type EdgeTypeMap = Record<
   string,
   (props: {
-    edge: import("../types").FlowEdge;
-    sourceX: number;
-    sourceY: number;
-    targetX: number;
-    targetY: number;
-    selected: boolean;
+    edge: import('../types').FlowEdge
+    sourceX: number
+    sourceY: number
+    targetX: number
+    targetY: number
+    selected: boolean
   }) => VNodeChild
->;
+>
 
 export interface FlowComponentProps {
-  instance: FlowInstance;
+  instance: FlowInstance
   /** Custom node type renderers */
-  nodeTypes?: NodeTypeMap;
+  nodeTypes?: NodeTypeMap
   /** Custom edge type renderers */
-  edgeTypes?: EdgeTypeMap;
-  style?: string;
-  class?: string;
-  children?: VNodeChild;
+  edgeTypes?: EdgeTypeMap
+  style?: string
+  class?: string
+  children?: VNodeChild
 }
 
 /**
@@ -363,49 +360,49 @@ export interface FlowComponentProps {
  * ```
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
-  const { instance, children, edgeTypes } = props;
+  const { instance, children, edgeTypes } = props
   const nodeTypes: NodeTypeMap = {
     default: DefaultNode,
     input: DefaultNode,
     output: DefaultNode,
     ...props.nodeTypes,
-  };
+  }
 
   // ── Drag state ─────────────────────────────────────────────────────────
 
-  const dragState = signal<DragState>({ ...emptyDrag });
-  const connectionState = signal<ConnectionState>({ ...emptyConnection });
-  const selectionBox = signal<SelectionBoxState>({ ...emptySelectionBox });
+  const dragState = signal<DragState>({ ...emptyDrag })
+  const connectionState = signal<ConnectionState>({ ...emptyConnection })
+  const selectionBox = signal<SelectionBoxState>({ ...emptySelectionBox })
   const helperLines = signal<{ x: number | null; y: number | null }>({
     x: null,
     y: null,
-  });
+  })
 
-  const draggingNodeId = () => (dragState().active ? dragState().nodeId : "");
+  const draggingNodeId = () => (dragState().active ? dragState().nodeId : '')
 
   // ── Node dragging ──────────────────────────────────────────────────────
 
   const handleNodePointerDown = (e: PointerEvent, node: FlowNode) => {
-    e.stopPropagation();
+    e.stopPropagation()
 
     // Capture starting positions of all selected nodes (for multi-drag)
-    const selected = instance.selectedNodes();
-    const startPositions = new Map<string, { x: number; y: number }>();
+    const selected = instance.selectedNodes()
+    const startPositions = new Map<string, { x: number; y: number }>()
 
     // Always include the dragged node
-    startPositions.set(node.id, { ...node.position });
+    startPositions.set(node.id, { ...node.position })
 
     // Include other selected nodes if this node is part of selection
     if (selected.includes(node.id)) {
       for (const nid of selected) {
-        if (nid === node.id) continue;
-        const n = instance.getNode(nid);
-        if (n) startPositions.set(nid, { ...n.position });
+        if (nid === node.id) continue
+        const n = instance.getNode(nid)
+        if (n) startPositions.set(nid, { ...n.position })
       }
     }
 
     // Save undo state before drag
-    instance.pushHistory();
+    instance.pushHistory()
 
     dragState.set({
       active: true,
@@ -413,15 +410,15 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       startX: e.clientX,
       startY: e.clientY,
       startPositions,
-    });
+    })
 
-    instance.selectNode(node.id, e.shiftKey);
+    instance.selectNode(node.id, e.shiftKey)
 
-    instance._emit.nodeDragStart(node);
+    instance._emit.nodeDragStart(node)
 
-    const container = (e.currentTarget as HTMLElement).closest(".pyreon-flow") as HTMLElement;
-    if (container) container.setPointerCapture(e.pointerId);
-  };
+    const container = (e.currentTarget as HTMLElement).closest('.pyreon-flow') as HTMLElement
+    if (container) container.setPointerCapture(e.pointerId)
+  }
 
   // ── Connection drawing ─────────────────────────────────────────────────
 
@@ -432,15 +429,15 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     handleId: string,
     position: Position,
   ) => {
-    e.stopPropagation();
-    e.preventDefault();
+    e.stopPropagation()
+    e.preventDefault()
 
-    const node = instance.getNode(nodeId);
-    if (!node) return;
+    const node = instance.getNode(nodeId)
+    if (!node) return
 
-    const w = node.width ?? 150;
-    const h = node.height ?? 40;
-    const handlePos = getHandlePosition(position, node.position.x, node.position.y, w, h);
+    const w = node.width ?? 150
+    const h = node.height ?? 40
+    const handlePos = getHandlePosition(position, node.position.x, node.position.y, w, h)
 
     connectionState.set({
       active: true,
@@ -451,59 +448,59 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       sourceY: handlePos.y,
       currentX: handlePos.x,
       currentY: handlePos.y,
-    });
+    })
 
-    const container = (e.target as HTMLElement).closest(".pyreon-flow") as HTMLElement;
-    if (container) container.setPointerCapture(e.pointerId);
-  };
+    const container = (e.target as HTMLElement).closest('.pyreon-flow') as HTMLElement
+    if (container) container.setPointerCapture(e.pointerId)
+  }
 
   // ── Zoom ───────────────────────────────────────────────────────────────
 
   const handleWheel = (e: WheelEvent) => {
-    if (instance.config.zoomable === false) return;
-    e.preventDefault();
+    if (instance.config.zoomable === false) return
+    e.preventDefault()
 
-    const delta = -e.deltaY * 0.001;
+    const delta = -e.deltaY * 0.001
     const newZoom = Math.min(
       Math.max(instance.viewport.peek().zoom * (1 + delta), instance.config.minZoom ?? 0.1),
       instance.config.maxZoom ?? 4,
-    );
+    )
 
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const vp = instance.viewport.peek();
-    const scale = newZoom / vp.zoom;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+    const vp = instance.viewport.peek()
+    const scale = newZoom / vp.zoom
 
     instance.viewport.set({
       x: mouseX - (mouseX - vp.x) * scale,
       y: mouseY - (mouseY - vp.y) * scale,
       zoom: newZoom,
-    });
-  };
+    })
+  }
 
   // ── Pan ────────────────────────────────────────────────────────────────
 
-  let isPanning = false;
-  let panStartX = 0;
-  let panStartY = 0;
-  let panStartVpX = 0;
-  let panStartVpY = 0;
+  let isPanning = false
+  let panStartX = 0
+  let panStartY = 0
+  let panStartVpX = 0
+  let panStartVpY = 0
 
   const handlePointerDown = (e: PointerEvent) => {
-    if (instance.config.pannable === false) return;
+    if (instance.config.pannable === false) return
 
-    const target = e.target as HTMLElement;
-    if (target.closest(".pyreon-flow-node")) return;
-    if (target.closest(".pyreon-flow-handle")) return;
+    const target = e.target as HTMLElement
+    if (target.closest('.pyreon-flow-node')) return
+    if (target.closest('.pyreon-flow-handle')) return
 
     // Shift+drag on empty space → selection box
     if (e.shiftKey && instance.config.multiSelect !== false) {
-      const container = e.currentTarget as HTMLElement;
-      const rect = container.getBoundingClientRect();
-      const vp = instance.viewport.peek();
-      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom;
-      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom;
+      const container = e.currentTarget as HTMLElement
+      const rect = container.getBoundingClientRect()
+      const vp = instance.viewport.peek()
+      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
+      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
 
       selectionBox.set({
         active: true,
@@ -511,139 +508,139 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         startY: flowY,
         currentX: flowX,
         currentY: flowY,
-      });
-      container.setPointerCapture(e.pointerId);
-      return;
+      })
+      container.setPointerCapture(e.pointerId)
+      return
     }
 
-    isPanning = true;
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    const vp = instance.viewport.peek();
-    panStartVpX = vp.x;
-    panStartVpY = vp.y;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    isPanning = true
+    panStartX = e.clientX
+    panStartY = e.clientY
+    const vp = instance.viewport.peek()
+    panStartVpX = vp.x
+    panStartVpY = vp.y
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
 
-    instance.clearSelection();
-  };
+    instance.clearSelection()
+  }
 
   // ── Unified pointer move/up ────────────────────────────────────────────
 
   const handlePointerMove = (e: PointerEvent) => {
-    const drag = dragState.peek();
-    const conn = connectionState.peek();
-    const sel = selectionBox.peek();
+    const drag = dragState.peek()
+    const conn = connectionState.peek()
+    const sel = selectionBox.peek()
 
     if (sel.active) {
-      const container = e.currentTarget as HTMLElement;
-      const rect = container.getBoundingClientRect();
-      const vp = instance.viewport.peek();
-      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom;
-      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom;
-      selectionBox.set({ ...sel, currentX: flowX, currentY: flowY });
-      return;
+      const container = e.currentTarget as HTMLElement
+      const rect = container.getBoundingClientRect()
+      const vp = instance.viewport.peek()
+      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
+      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
+      selectionBox.set({ ...sel, currentX: flowX, currentY: flowY })
+      return
     }
 
     if (drag.active) {
       // Node dragging with snap guides
-      const vp = instance.viewport.peek();
-      const dx = (e.clientX - drag.startX) / vp.zoom;
-      const dy = (e.clientY - drag.startY) / vp.zoom;
+      const vp = instance.viewport.peek()
+      const dx = (e.clientX - drag.startX) / vp.zoom
+      const dy = (e.clientY - drag.startY) / vp.zoom
 
-      const primaryStart = drag.startPositions.get(drag.nodeId);
-      if (!primaryStart) return;
+      const primaryStart = drag.startPositions.get(drag.nodeId)
+      if (!primaryStart) return
 
-      const rawPos = { x: primaryStart.x + dx, y: primaryStart.y + dy };
-      const snap = instance.getSnapLines(drag.nodeId, rawPos);
-      helperLines.set({ x: snap.x, y: snap.y });
+      const rawPos = { x: primaryStart.x + dx, y: primaryStart.y + dy }
+      const snap = instance.getSnapLines(drag.nodeId, rawPos)
+      helperLines.set({ x: snap.x, y: snap.y })
 
       // Calculate actual delta (including snap adjustment)
-      const actualDx = snap.snappedPosition.x - primaryStart.x;
-      const actualDy = snap.snappedPosition.y - primaryStart.y;
+      const actualDx = snap.snappedPosition.x - primaryStart.x
+      const actualDy = snap.snappedPosition.y - primaryStart.y
 
       // Update all dragged nodes from their starting positions
       instance.nodes.update((nds) =>
         nds.map((n) => {
-          const start = drag.startPositions.get(n.id);
-          if (!start) return n;
+          const start = drag.startPositions.get(n.id)
+          if (!start) return n
           return {
             ...n,
             position: { x: start.x + actualDx, y: start.y + actualDy },
-          };
+          }
         }),
-      );
-      return;
+      )
+      return
     }
 
     if (conn.active) {
       // Connection drawing — convert screen to flow coordinates
-      const container = e.currentTarget as HTMLElement;
-      const rect = container.getBoundingClientRect();
-      const vp = instance.viewport.peek();
-      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom;
-      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom;
+      const container = e.currentTarget as HTMLElement
+      const rect = container.getBoundingClientRect()
+      const vp = instance.viewport.peek()
+      const flowX = (e.clientX - rect.left - vp.x) / vp.zoom
+      const flowY = (e.clientY - rect.top - vp.y) / vp.zoom
 
       connectionState.set({
         ...conn,
         currentX: flowX,
         currentY: flowY,
-      });
-      return;
+      })
+      return
     }
 
     if (isPanning) {
-      const dx = e.clientX - panStartX;
-      const dy = e.clientY - panStartY;
+      const dx = e.clientX - panStartX
+      const dy = e.clientY - panStartY
       instance.viewport.set({
         ...instance.viewport.peek(),
         x: panStartVpX + dx,
         y: panStartVpY + dy,
-      });
+      })
     }
-  };
+  }
 
   const handlePointerUp = (e: PointerEvent) => {
-    const drag = dragState.peek();
-    const conn = connectionState.peek();
-    const sel = selectionBox.peek();
+    const drag = dragState.peek()
+    const conn = connectionState.peek()
+    const sel = selectionBox.peek()
 
     if (sel.active) {
       // Select all nodes within the selection rectangle
-      const minX = Math.min(sel.startX, sel.currentX);
-      const minY = Math.min(sel.startY, sel.currentY);
-      const maxX = Math.max(sel.startX, sel.currentX);
-      const maxY = Math.max(sel.startY, sel.currentY);
+      const minX = Math.min(sel.startX, sel.currentX)
+      const minY = Math.min(sel.startY, sel.currentY)
+      const maxX = Math.max(sel.startX, sel.currentX)
+      const maxY = Math.max(sel.startY, sel.currentY)
 
-      instance.clearSelection();
+      instance.clearSelection()
       for (const node of instance.nodes.peek()) {
-        const w = node.width ?? 150;
-        const h = node.height ?? 40;
-        const nx = node.position.x;
-        const ny = node.position.y;
+        const w = node.width ?? 150
+        const h = node.height ?? 40
+        const nx = node.position.x
+        const ny = node.position.y
         // Node is within box if any part overlaps
         if (nx + w > minX && nx < maxX && ny + h > minY && ny < maxY) {
-          instance.selectNode(node.id, true);
+          instance.selectNode(node.id, true)
         }
       }
 
-      selectionBox.set({ ...emptySelectionBox });
-      return;
+      selectionBox.set({ ...emptySelectionBox })
+      return
     }
 
     if (drag.active) {
-      const node = instance.getNode(drag.nodeId);
-      if (node) instance._emit.nodeDragEnd(node);
-      dragState.set({ ...emptyDrag });
-      helperLines.set({ x: null, y: null });
+      const node = instance.getNode(drag.nodeId)
+      if (node) instance._emit.nodeDragEnd(node)
+      dragState.set({ ...emptyDrag })
+      helperLines.set({ x: null, y: null })
     }
 
     if (conn.active) {
       // Check if we released over a handle target
-      const target = e.target as HTMLElement;
-      const handle = target.closest(".pyreon-flow-handle");
+      const target = e.target as HTMLElement
+      const handle = target.closest('.pyreon-flow-handle')
       if (handle) {
-        const targetNodeId = handle.closest(".pyreon-flow-node")?.getAttribute("data-nodeid") ?? "";
-        const targetHandleId = handle.getAttribute("data-handleid") ?? "target";
+        const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
+        const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
 
         if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
           const connection: Connection = {
@@ -651,7 +648,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
             target: targetNodeId,
             sourceHandle: conn.sourceHandleId,
             targetHandle: targetHandleId,
-          };
+          }
 
           if (instance.isValidConnection(connection)) {
             instance.addEdge({
@@ -659,136 +656,136 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               target: connection.target,
               ...(connection.sourceHandle != null ? { sourceHandle: connection.sourceHandle } : {}),
               ...(connection.targetHandle != null ? { targetHandle: connection.targetHandle } : {}),
-            });
+            })
           }
         }
       }
 
-      connectionState.set({ ...emptyConnection });
+      connectionState.set({ ...emptyConnection })
     }
 
-    isPanning = false;
-  };
+    isPanning = false
+  }
 
   // ── Keyboard ───────────────────────────────────────────────────────────
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Delete" || e.key === "Backspace") {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      instance.pushHistory();
-      instance.deleteSelected();
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+      instance.pushHistory()
+      instance.deleteSelected()
     }
-    if (e.key === "Escape") {
-      instance.clearSelection();
-      connectionState.set({ ...emptyConnection });
+    if (e.key === 'Escape') {
+      instance.clearSelection()
+      connectionState.set({ ...emptyConnection })
     }
-    if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      instance.selectAll();
+    if (e.key === 'a' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      instance.selectAll()
     }
-    if (e.key === "c" && (e.metaKey || e.ctrlKey)) {
-      instance.copySelected();
+    if (e.key === 'c' && (e.metaKey || e.ctrlKey)) {
+      instance.copySelected()
     }
-    if (e.key === "v" && (e.metaKey || e.ctrlKey)) {
-      instance.paste();
+    if (e.key === 'v' && (e.metaKey || e.ctrlKey)) {
+      instance.paste()
     }
-    if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
-      e.preventDefault();
-      instance.undo();
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+      e.preventDefault()
+      instance.undo()
     }
-    if (e.key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-      e.preventDefault();
-      instance.redo();
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      e.preventDefault()
+      instance.redo()
     }
-  };
+  }
 
   // ── Touch support (pinch zoom) ──────────────────────────────────────────
 
-  let lastTouchDist = 0;
-  let lastTouchCenter = { x: 0, y: 0 };
+  let lastTouchDist = 0
+  let lastTouchCenter = { x: 0, y: 0 }
 
   const handleTouchStart = (e: TouchEvent) => {
     if (e.touches.length === 2) {
-      e.preventDefault();
-      const t1 = e.touches[0]!;
-      const t2 = e.touches[1]!;
-      lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      e.preventDefault()
+      const t1 = e.touches[0]!
+      const t2 = e.touches[1]!
+      lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
       lastTouchCenter = {
         x: (t1.clientX + t2.clientX) / 2,
         y: (t1.clientY + t2.clientY) / 2,
-      };
+      }
     }
-  };
+  }
 
   const handleTouchMove = (e: TouchEvent) => {
     if (e.touches.length === 2 && instance.config.zoomable !== false) {
-      e.preventDefault();
-      const t1 = e.touches[0]!;
-      const t2 = e.touches[1]!;
-      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      e.preventDefault()
+      const t1 = e.touches[0]!
+      const t2 = e.touches[1]!
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY)
       const center = {
         x: (t1.clientX + t2.clientX) / 2,
         y: (t1.clientY + t2.clientY) / 2,
-      };
+      }
 
-      const vp = instance.viewport.peek();
-      const scaleFactor = dist / lastTouchDist;
+      const vp = instance.viewport.peek()
+      const scaleFactor = dist / lastTouchDist
       const newZoom = Math.min(
         Math.max(vp.zoom * scaleFactor, instance.config.minZoom ?? 0.1),
         instance.config.maxZoom ?? 4,
-      );
+      )
 
-      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-      const mouseX = center.x - rect.left;
-      const mouseY = center.y - rect.top;
-      const scale = newZoom / vp.zoom;
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const mouseX = center.x - rect.left
+      const mouseY = center.y - rect.top
+      const scale = newZoom / vp.zoom
 
       // Pan with touch center movement
-      const panDx = center.x - lastTouchCenter.x;
-      const panDy = center.y - lastTouchCenter.y;
+      const panDx = center.x - lastTouchCenter.x
+      const panDy = center.y - lastTouchCenter.y
 
       instance.viewport.set({
         x: mouseX - (mouseX - vp.x) * scale + panDx,
         y: mouseY - (mouseY - vp.y) * scale + panDy,
         zoom: newZoom,
-      });
+      })
 
-      lastTouchDist = dist;
-      lastTouchCenter = center;
+      lastTouchDist = dist
+      lastTouchCenter = center
     }
-  };
+  }
 
   // ── Container size tracking ─────────────────────────────────────────────
 
-  let resizeObserver: ResizeObserver | null = null;
+  let resizeObserver: ResizeObserver | null = null
 
   const containerRef = (el: Element | null) => {
     if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
+      resizeObserver.disconnect()
+      resizeObserver = null
     }
-    if (!el) return;
+    if (!el) return
 
     const updateSize = () => {
-      const rect = el.getBoundingClientRect();
+      const rect = el.getBoundingClientRect()
       instance.containerSize.set({
         width: rect.width,
         height: rect.height,
-      });
-    };
+      })
+    }
 
-    updateSize();
-    resizeObserver = new ResizeObserver(updateSize);
-    resizeObserver.observe(el);
-  };
+    updateSize()
+    resizeObserver = new ResizeObserver(updateSize)
+    resizeObserver.observe(el)
+  }
 
-  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ""}`;
+  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ''}`
 
   return (
     <div
       ref={containerRef}
-      class={`pyreon-flow ${props.class ?? ""}`}
+      class={`pyreon-flow ${props.class ?? ''}`}
       style={containerStyle}
       tabIndex={0}
       onWheel={handleWheel}
@@ -801,7 +798,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     >
       {children}
       {() => {
-        const vp = instance.viewport();
+        const vp = instance.viewport()
         return (
           <div
             class="pyreon-flow-viewport"
@@ -813,22 +810,22 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               {...(edgeTypes != null ? { edgeTypes } : {})}
             />
             {() => {
-              const sel = selectionBox();
-              if (!sel.active) return null;
-              const x = Math.min(sel.startX, sel.currentX);
-              const y = Math.min(sel.startY, sel.currentY);
-              const w = Math.abs(sel.currentX - sel.startX);
-              const h = Math.abs(sel.currentY - sel.startY);
+              const sel = selectionBox()
+              if (!sel.active) return null
+              const x = Math.min(sel.startX, sel.currentX)
+              const y = Math.min(sel.startY, sel.currentY)
+              const w = Math.abs(sel.currentX - sel.startX)
+              const h = Math.abs(sel.currentY - sel.startY)
               return (
                 <div
                   class="pyreon-flow-selection-box"
                   style={`position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px dashed #3b82f6; background: rgba(59, 130, 246, 0.08); pointer-events: none; z-index: 10;`}
                 />
-              );
+              )
             }}
             {() => {
-              const lines = helperLines();
-              if (!lines.x && !lines.y) return null;
+              const lines = helperLines()
+              if (!lines.x && !lines.y) return null
               return (
                 <svg
                   role="img"
@@ -858,7 +855,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
                     />
                   )}
                 </svg>
-              );
+              )
             }}
             <NodeLayer
               instance={instance}
@@ -868,8 +865,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               onHandlePointerDown={handleHandlePointerDown}
             />
           </div>
-        );
+        )
       }}
     </div>
-  );
+  )
 }

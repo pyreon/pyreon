@@ -3,7 +3,7 @@ export function About() {
     <div class="card">
       <h2>About Pyreon</h2>
       <p>
-        Pyreon is a fine-grained reactive UI framework with no virtual DOM. Components run{" "}
+        Pyreon is a fine-grained reactive UI framework with no virtual DOM. Components run{' '}
         <em>once</em> — signal updates cause surgical DOM patches.
       </p>
       <ul>
@@ -13,5 +13,5 @@ export function About() {
         <li>📦 Zero runtime VDOM overhead</li>
       </ul>
     </div>
-  );
+  )
 }

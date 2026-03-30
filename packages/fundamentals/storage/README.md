@@ -11,36 +11,36 @@ bun add @pyreon/storage
 ## Quick Start
 
 ```tsx
-import { useStorage, useCookie, useSessionStorage, useIndexedDB } from "@pyreon/storage";
+import { useStorage, useCookie, useSessionStorage, useIndexedDB } from '@pyreon/storage'
 
 // localStorage — persistent, cross-tab synced
-const theme = useStorage("theme", "light");
-theme(); // read reactively
-theme.set("dark"); // updates signal + localStorage
-theme.remove(); // remove from storage
+const theme = useStorage('theme', 'light')
+theme() // read reactively
+theme.set('dark') // updates signal + localStorage
+theme.remove() // remove from storage
 
 // Cookie — SSR-readable, configurable expiry
-const locale = useCookie("locale", "en", { maxAge: 365 * 86400 });
+const locale = useCookie('locale', 'en', { maxAge: 365 * 86400 })
 
 // sessionStorage — tab-scoped
-const wizardStep = useSessionStorage("wizard-step", 0);
+const wizardStep = useSessionStorage('wizard-step', 0)
 
 // IndexedDB — large data, debounced writes
-const draft = useIndexedDB("article-draft", { title: "", body: "" });
+const draft = useIndexedDB('article-draft', { title: '', body: '' })
 ```
 
 ## Custom Backends
 
 ```tsx
-import { createStorage } from "@pyreon/storage";
+import { createStorage } from '@pyreon/storage'
 
 const useEncryptedStorage = createStorage({
   get: (key) => decrypt(localStorage.getItem(key)),
   set: (key, value) => localStorage.setItem(key, encrypt(value)),
   remove: (key) => localStorage.removeItem(key),
-});
+})
 
-const secret = useEncryptedStorage("api-key", "");
+const secret = useEncryptedStorage('api-key', '')
 ```
 
 ## API

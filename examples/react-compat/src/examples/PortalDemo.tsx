@@ -1,8 +1,8 @@
-import { createPortal, useState } from "react";
-import Demo from "./Demo";
+import { createPortal, useState } from 'react'
+import Demo from './Demo'
 
 export default function PortalDemo() {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(false)
 
   return (
     <Demo
@@ -17,7 +17,7 @@ export default function PortalDemo() {
 )}`}
     >
       <button type="button" onClick={() => setShow((v) => !v)}>
-        {show ? "Hide Portal" : "Show Portal"}
+        {show ? 'Hide Portal' : 'Show Portal'}
       </button>
       {show
         ? createPortal(
@@ -27,7 +27,7 @@ export default function PortalDemo() {
             document.body,
           )
         : null}
-      <p class="muted">{show ? "Portal is visible (bottom-right corner)" : "Click to show"}</p>
+      <p class="muted">{show ? 'Portal is visible (bottom-right corner)' : 'Click to show'}</p>
     </Demo>
-  );
+  )
 }

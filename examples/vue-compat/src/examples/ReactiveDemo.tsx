@@ -1,11 +1,11 @@
-import { reactive, readonly, ref, shallowReactive, toRaw } from "vue";
-import Demo from "./Demo";
+import { reactive, readonly, ref, shallowReactive, toRaw } from 'vue'
+import Demo from './Demo'
 
 export default function ReactiveDemo() {
-  const state = reactive({ x: 0, y: 0 });
-  const shallow = shallowReactive({ label: "hello" });
-  const frozen = readonly({ secret: 42 });
-  const errorMsg = ref("");
+  const state = reactive({ x: 0, y: 0 })
+  const shallow = shallowReactive({ label: 'hello' })
+  const frozen = readonly({ secret: 42 })
+  const errorMsg = ref('')
 
   return (
     <Demo
@@ -45,18 +45,18 @@ try { frozen.secret = 0 } catch (e) { ... }`}
         type="button"
         onClick={() => {
           try {
-            (frozen as { secret: number }).secret = 0;
+            ;(frozen as { secret: number }).secret = 0
           } catch (e) {
-            errorMsg.value = (e as Error).message;
+            errorMsg.value = (e as Error).message
           }
         }}
       >
         Try mutate readonly
       </button>
-      <p class="muted">{errorMsg.value ? `Error: ${errorMsg.value}` : ""}</p>
+      <p class="muted">{errorMsg.value ? `Error: ${errorMsg.value}` : ''}</p>
       <p class="muted">
         toRaw(state) === state: <strong>{String(toRaw(state) !== state)}</strong> (unwraps proxy)
       </p>
     </Demo>
-  );
+  )
 }

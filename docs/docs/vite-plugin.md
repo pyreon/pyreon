@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/vite-plugin"
+title: '@pyreon/vite-plugin'
 description: Vite integration that applies Pyreon's JSX reactive transform and configures SSR dev middleware.
 ---
 
@@ -59,12 +59,12 @@ For a client-side single-page application, the plugin requires no options:
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin";
-import { defineConfig } from "vite";
+import pyreon from '@pyreon/vite-plugin'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [pyreon()],
-});
+})
 ```
 
 This is all you need. The plugin automatically:
@@ -94,12 +94,12 @@ my-app/
 **vite.config.ts:**
 
 ```ts
-import pyreon from "@pyreon/vite-plugin";
-import { defineConfig } from "vite";
+import pyreon from '@pyreon/vite-plugin'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [pyreon()],
-});
+})
 ```
 
 **index.html:**
@@ -122,19 +122,19 @@ export default defineConfig({
 **src/main.ts:**
 
 ```tsx
-import { mount } from "@pyreon/runtime-dom";
-import { App } from "./App";
+import { mount } from '@pyreon/runtime-dom'
+import { App } from './App'
 
-mount(document.getElementById("app")!, <App />);
+mount(document.getElementById('app')!, <App />)
 ```
 
 **src/App.tsx:**
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
+import { signal } from '@pyreon/reactivity'
 
 export function App() {
-  const count = signal(0);
+  const count = signal(0)
 
   return (
     <div>
@@ -142,7 +142,7 @@ export function App() {
       <p>{() => `Count: ${count()}`}</p>
       <button onClick={() => count.update((c) => c + 1)}>Increment</button>
     </div>
-  );
+  )
 }
 ```
 
@@ -168,8 +168,8 @@ npx vite build
 interface PyreonPluginOptions {
   ssr?: {
     /** Server entry file path (e.g. "./src/entry-server.ts") */
-    entry: string;
-  };
+    entry: string
+  }
 }
 ```
 
@@ -182,12 +182,12 @@ interface PyreonPluginOptions {
 
 ```ts
 // SPA mode (no options)
-pyreon();
+pyreon()
 
 // SSR mode
 pyreon({
-  ssr: { entry: "./src/entry-server.ts" },
-});
+  ssr: { entry: './src/entry-server.ts' },
+})
 ```
 
 ---
@@ -271,16 +271,16 @@ For server-side rendered applications, pass an `ssr` option with the path to you
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin";
-import { defineConfig } from "vite";
+import pyreon from '@pyreon/vite-plugin'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [
     pyreon({
-      ssr: { entry: "./src/entry-server.ts" },
+      ssr: { entry: './src/entry-server.ts' },
     }),
   ],
-});
+})
 ```
 
 ### Server Entry Requirements
@@ -301,7 +301,7 @@ export async function handler(req: Request): Promise<Response> {
 The plugin looks for `handler` first, then falls back to `default`:
 
 ```ts
-const handler = mod.handler ?? mod.default;
+const handler = mod.handler ?? mod.default
 ```
 
 If neither is found, the plugin logs an error and passes the request to the next middleware.
@@ -388,113 +388,113 @@ After building, you need a production server to serve the client assets and run 
 
 ```ts
 // server.ts (production entry point)
-import { createServer } from "node:http";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { createServer } from 'node:http'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // Import the built SSR handler
-const { handler } = await import("./dist/server/entry-server.js");
+const { handler } = await import('./dist/server/entry-server.js')
 
-const PORT = process.env.PORT ?? 3000;
-const DIST = join(import.meta.dirname, "dist");
+const PORT = process.env.PORT ?? 3000
+const DIST = join(import.meta.dirname, 'dist')
 
 createServer(async (req, res) => {
-  const url = req.url ?? "/";
+  const url = req.url ?? '/'
 
   // Serve static assets from dist/
-  if (url.startsWith("/assets/") || url.endsWith(".js") || url.endsWith(".css")) {
+  if (url.startsWith('/assets/') || url.endsWith('.js') || url.endsWith('.css')) {
     try {
-      const filePath = join(DIST, url);
-      const content = readFileSync(filePath);
-      const ext = url.split(".").pop();
+      const filePath = join(DIST, url)
+      const content = readFileSync(filePath)
+      const ext = url.split('.').pop()
       const mimeTypes: Record<string, string> = {
-        js: "application/javascript",
-        css: "text/css",
-        svg: "image/svg+xml",
-        png: "image/png",
-        jpg: "image/jpeg",
-      };
-      res.setHeader("Content-Type", mimeTypes[ext ?? ""] ?? "application/octet-stream");
-      res.end(content);
-      return;
+        js: 'application/javascript',
+        css: 'text/css',
+        svg: 'image/svg+xml',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+      }
+      res.setHeader('Content-Type', mimeTypes[ext ?? ''] ?? 'application/octet-stream')
+      res.end(content)
+      return
     } catch {
-      res.statusCode = 404;
-      res.end("Not Found");
-      return;
+      res.statusCode = 404
+      res.end('Not Found')
+      return
     }
   }
 
   // SSR handler
-  const origin = `http://localhost:${PORT}`;
-  const request = new Request(new URL(url, origin).href);
-  const response = await handler(request);
-  const html = await response.text();
+  const origin = `http://localhost:${PORT}`
+  const request = new Request(new URL(url, origin).href)
+  const response = await handler(request)
+  const html = await response.text()
 
-  res.statusCode = response.status;
-  response.headers.forEach((v, k) => res.setHeader(k, v));
-  res.end(html);
+  res.statusCode = response.status
+  response.headers.forEach((v, k) => res.setHeader(k, v))
+  res.end(html)
 }).listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+  console.log(`Server running at http://localhost:${PORT}`)
+})
 ```
 
 ### Production with Express
 
 ```ts
-import express from "express";
-import { join } from "node:path";
+import express from 'express'
+import { join } from 'node:path'
 
-const { handler } = await import("./dist/server/entry-server.js");
+const { handler } = await import('./dist/server/entry-server.js')
 
-const app = express();
-const PORT = process.env.PORT ?? 3000;
+const app = express()
+const PORT = process.env.PORT ?? 3000
 
 // Serve static assets
-app.use(express.static(join(import.meta.dirname, "dist"), { index: false }));
+app.use(express.static(join(import.meta.dirname, 'dist'), { index: false }))
 
 // SSR handler for all other routes
-app.get("*", async (req, res) => {
-  const origin = `${req.protocol}://${req.get("host")}`;
+app.get('*', async (req, res) => {
+  const origin = `${req.protocol}://${req.get('host')}`
   const request = new Request(new URL(req.originalUrl, origin).href, {
     headers: new Headers(req.headers as Record<string, string>),
-  });
+  })
 
-  const response = await handler(request);
-  const html = await response.text();
+  const response = await handler(request)
+  const html = await response.text()
 
-  res.status(response.status);
-  response.headers.forEach((v, k) => res.setHeader(k, v));
-  res.send(html);
-});
+  res.status(response.status)
+  response.headers.forEach((v, k) => res.setHeader(k, v))
+  res.send(html)
+})
 
 app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+  console.log(`Server running at http://localhost:${PORT}`)
+})
 ```
 
 ### Production with Hono
 
 ```ts
-import { serve } from "@hono/node-server";
-import { Hono } from "hono";
-import { serveStatic } from "@hono/node-server/serve-static";
+import { serve } from '@hono/node-server'
+import { Hono } from 'hono'
+import { serveStatic } from '@hono/node-server/serve-static'
 
-const { handler } = await import("./dist/server/entry-server.js");
+const { handler } = await import('./dist/server/entry-server.js')
 
-const app = new Hono();
+const app = new Hono()
 
 // Serve static assets
-app.use("/assets/*", serveStatic({ root: "./dist" }));
+app.use('/assets/*', serveStatic({ root: './dist' }))
 
 // SSR handler
-app.get("*", async (c) => {
-  const response = await handler(c.req.raw);
-  return response;
-});
+app.get('*', async (c) => {
+  const response = await handler(c.req.raw)
+  return response
+})
 
 serve({ fetch: app.fetch, port: 3000 }, (info) => {
-  console.log(`Server running at http://localhost:${info.port}`);
-});
+  console.log(`Server running at http://localhost:${info.port}`)
+})
 ```
 
 ---
@@ -540,12 +540,12 @@ In development mode, the plugin automatically injects debug names into `signal()
 
 ```tsx
 // Your source code
-const count = signal(0);
-const userName = signal("Alice");
+const count = signal(0)
+const userName = signal('Alice')
 
 // What the plugin transforms it to (dev only)
-const count = signal(0, { name: "count" });
-const userName = signal("Alice", { name: "userName" });
+const count = signal(0, { name: 'count' })
+const userName = signal('Alice', { name: 'userName' })
 ```
 
 This applies to all `signal()` calls -- both module-scope and function-scope. Signals that already have an options argument are skipped. Module-scope signals get their names via the `__hmr_signal` rewrite; function-scope signals get names via an injected options argument.
@@ -571,46 +571,46 @@ package.json
 ### vite.config.ts
 
 ```ts
-import pyreon from "@pyreon/vite-plugin";
-import { defineConfig } from "vite";
+import pyreon from '@pyreon/vite-plugin'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [
     pyreon({
-      ssr: { entry: "./src/entry-server.ts" },
+      ssr: { entry: './src/entry-server.ts' },
     }),
   ],
-});
+})
 ```
 
 ### src/entry-server.ts
 
 ```tsx
-import { renderWithHead } from "@pyreon/head";
-import { createRouter, prefetchLoaderData, serializeLoaderData } from "@pyreon/router";
-import { routes } from "./routes";
-import { App } from "./App";
+import { renderWithHead } from '@pyreon/head'
+import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import { routes } from './routes'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const url = new URL(req.url);
+  const url = new URL(req.url)
   const router = createRouter({
     routes,
     url: url.pathname + url.search,
-  });
+  })
 
   // Pre-fetch all loader data for the matched route
-  await prefetchLoaderData(router, url.pathname + url.search);
+  await prefetchLoaderData(router, url.pathname + url.search)
 
   // Render the app to HTML with head management
-  const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App router={router} />);
+  const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App router={router} />)
 
   const htmlAttrStr = Object.entries(htmlAttrs)
     .map(([k, v]) => `${k}="${v}"`)
-    .join(" ");
+    .join(' ')
   const bodyAttrStr = Object.entries(bodyAttrs)
     .map(([k, v]) => `${k}="${v}"`)
-    .join(" ");
-  const loaderData = JSON.stringify(serializeLoaderData(router));
+    .join(' ')
+  const loaderData = JSON.stringify(serializeLoaderData(router))
 
   return new Response(
     `<!DOCTYPE html>
@@ -625,42 +625,42 @@ export async function handler(req: Request): Promise<Response> {
         <script type="module" src="/src/entry-client.ts"></script>
       </body>
     </html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+    { headers: { 'Content-Type': 'text/html' } },
+  )
 }
 ```
 
 ### src/entry-client.ts
 
 ```tsx
-import { hydrateRoot } from "@pyreon/runtime-dom";
-import { createRouter, hydrateLoaderData } from "@pyreon/router";
-import { createHeadContext, HeadProvider } from "@pyreon/head";
-import { routes } from "./routes";
-import { App } from "./App";
+import { hydrateRoot } from '@pyreon/runtime-dom'
+import { createRouter, hydrateLoaderData } from '@pyreon/router'
+import { createHeadContext, HeadProvider } from '@pyreon/head'
+import { routes } from './routes'
+import { App } from './App'
 
 // Create client-side router
-const router = createRouter({ routes, mode: "history" });
+const router = createRouter({ routes, mode: 'history' })
 
 // Hydrate server-fetched loader data to avoid re-fetching on the client
-hydrateLoaderData(router, (window as any).__PYREON_LOADER_DATA__ ?? {});
+hydrateLoaderData(router, (window as any).__PYREON_LOADER_DATA__ ?? {})
 
 // Set up head context for client-side head management
-const headCtx = createHeadContext();
+const headCtx = createHeadContext()
 
 // Hydrate the server-rendered HTML
 hydrateRoot(
-  document.getElementById("app")!,
+  document.getElementById('app')!,
   <HeadProvider context={headCtx}>
     <App router={router} />
   </HeadProvider>,
-);
+)
 ```
 
 ### src/App.tsx
 
 ```tsx
-import { RouterOutlet, Link } from "@pyreon/router";
+import { RouterOutlet, Link } from '@pyreon/router'
 
 export function App(props: { router: any }) {
   return (
@@ -671,7 +671,7 @@ export function App(props: { router: any }) {
       </nav>
       <RouterOutlet router={props.router} />
     </div>
-  );
+  )
 }
 ```
 
@@ -680,18 +680,18 @@ export function App(props: { router: any }) {
 ```ts
 export const routes = [
   {
-    path: "/",
-    component: () => import("./pages/Home"),
+    path: '/',
+    component: () => import('./pages/Home'),
     loader: async () => {
-      const res = await fetch("/api/data");
-      return res.json();
+      const res = await fetch('/api/data')
+      return res.json()
     },
   },
   {
-    path: "/about",
-    component: () => import("./pages/About"),
+    path: '/about',
+    component: () => import('./pages/About'),
   },
-];
+]
 ```
 
 ### Simple SSR (Without Router)
@@ -700,11 +700,11 @@ For simpler apps that do not need routing, the SSR entry can be straightforward:
 
 ```tsx
 // src/entry-server.ts
-import { renderToString } from "@pyreon/runtime-server";
-import { App } from "./App";
+import { renderToString } from '@pyreon/runtime-server'
+import { App } from './App'
 
 export async function handler(req: Request): Promise<Response> {
-  const html = await renderToString(<App />);
+  const html = await renderToString(<App />)
 
   return new Response(
     `<!DOCTYPE html>
@@ -719,17 +719,17 @@ export async function handler(req: Request): Promise<Response> {
         <script type="module" src="/src/entry-client.ts"></script>
       </body>
     </html>`,
-    { headers: { "Content-Type": "text/html" } },
-  );
+    { headers: { 'Content-Type': 'text/html' } },
+  )
 }
 ```
 
 ```tsx
 // src/entry-client.ts
-import { hydrateRoot } from "@pyreon/runtime-dom";
-import { App } from "./App";
+import { hydrateRoot } from '@pyreon/runtime-dom'
+import { App } from './App'
 
-hydrateRoot(document.getElementById("app")!, <App />);
+hydrateRoot(document.getElementById('app')!, <App />)
 ```
 
 ---
@@ -747,22 +747,22 @@ VITE_APP_TITLE=My App
 Access them in your code:
 
 ```ts
-const apiUrl = import.meta.env.VITE_API_URL;
-const title = import.meta.env.VITE_APP_TITLE;
-const isDev = import.meta.env.DEV;
-const isProd = import.meta.env.PROD;
-const mode = import.meta.env.MODE;
+const apiUrl = import.meta.env.VITE_API_URL
+const title = import.meta.env.VITE_APP_TITLE
+const isDev = import.meta.env.DEV
+const isProd = import.meta.env.PROD
+const mode = import.meta.env.MODE
 ```
 
 In SSR mode, the server entry has access to all environment variables (not just `VITE_`-prefixed ones) through `process.env`, since it runs in Node.js:
 
 ```ts
 // src/entry-server.ts -- server-only env vars
-const dbUrl = process.env.DATABASE_URL; // Available
-const secret = process.env.SESSION_SECRET; // Available
+const dbUrl = process.env.DATABASE_URL // Available
+const secret = process.env.SESSION_SECRET // Available
 
 // Client-exposed env vars
-const apiUrl = import.meta.env.VITE_API_URL; // Also available in SSR
+const apiUrl = import.meta.env.VITE_API_URL // Also available in SSR
 ```
 
 ---
@@ -772,25 +772,25 @@ const apiUrl = import.meta.env.VITE_API_URL; // Also available in SSR
 Vite's proxy configuration works normally with the Pyreon plugin. Configure API proxies in `vite.config.ts`:
 
 ```ts
-import pyreon from "@pyreon/vite-plugin";
-import { defineConfig } from "vite";
+import pyreon from '@pyreon/vite-plugin'
+import { defineConfig } from 'vite'
 
 export default defineConfig({
   plugins: [pyreon()],
   server: {
     port: 3000,
     proxy: {
-      "/api": {
-        target: "http://localhost:8080",
+      '/api': {
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
-      "/ws": {
-        target: "ws://localhost:8080",
+      '/ws': {
+        target: 'ws://localhost:8080',
         ws: true,
       },
     },
   },
-});
+})
 ```
 
 In SSR mode, the proxy runs before the SSR middleware (since Vite's built-in middleware runs first), so API requests are proxied as expected.

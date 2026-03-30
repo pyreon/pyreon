@@ -1,5 +1,5 @@
-import { createSignal, lazy, Show, Suspense } from "solid-js";
-import Demo from "./Demo";
+import { createSignal, lazy, Show, Suspense } from 'solid-js'
+import Demo from './Demo'
 
 const LazyHeavy = lazy(
   () =>
@@ -7,13 +7,13 @@ const LazyHeavy = lazy(
       setTimeout(() => {
         resolve({
           default: () => <p>Lazy component loaded!</p>,
-        });
-      }, 1000);
+        })
+      }, 1000)
     }),
-);
+)
 
 export default function LazyDemo() {
-  const [show, setShow] = createSignal(false);
+  const [show, setShow] = createSignal(false)
 
   return (
     <Demo
@@ -36,5 +36,5 @@ export default function LazyDemo() {
         </Suspense>
       </Show>
     </Demo>
-  );
+  )
 }

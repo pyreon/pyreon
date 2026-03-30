@@ -1,18 +1,18 @@
-import { useEffect, useLayoutEffect, useState } from "preact/hooks";
-import Demo from "./Demo";
+import { useEffect, useLayoutEffect, useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function UseEffectDemo() {
-  const [count, setCount] = useState(0);
-  const [effectLog, setEffectLog] = useState("waiting...");
-  const [layoutLog, setLayoutLog] = useState("waiting...");
+  const [count, setCount] = useState(0)
+  const [effectLog, setEffectLog] = useState('waiting...')
+  const [layoutLog, setLayoutLog] = useState('waiting...')
 
   useEffect(() => {
-    setEffectLog(`useEffect ran, count = ${count}`);
-  }, [count]);
+    setEffectLog(`useEffect ran, count = ${count}`)
+  }, [count])
 
   useLayoutEffect(() => {
-    setLayoutLog(`useLayoutEffect ran, count = ${count}`);
-  }, [count]);
+    setLayoutLog(`useLayoutEffect ran, count = ${count}`)
+  }, [count])
 
   return (
     <Demo
@@ -35,5 +35,5 @@ useLayoutEffect(() => {
       <p class="muted">{effectLog}</p>
       <p class="muted">{layoutLog}</p>
     </Demo>
-  );
+  )
 }

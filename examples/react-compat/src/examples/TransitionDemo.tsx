@@ -1,10 +1,10 @@
-import { useDeferredValue, useState, useTransition } from "react";
-import Demo from "./Demo";
+import { useDeferredValue, useState, useTransition } from 'react'
+import Demo from './Demo'
 
 export default function TransitionDemo() {
-  const [isPending, startTransition] = useTransition();
-  const [count, setCount] = useState(0);
-  const deferred = useDeferredValue(42);
+  const [isPending, startTransition] = useTransition()
+  const [count, setCount] = useState(0)
+  const deferred = useDeferredValue(42)
 
   return (
     <Demo
@@ -29,5 +29,5 @@ const deferred = useDeferredValue(value);
       </button>
       <p class="muted">Both are no-ops — Pyreon has no concurrent mode</p>
     </Demo>
-  );
+  )
 }

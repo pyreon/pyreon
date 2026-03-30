@@ -1,12 +1,12 @@
-import type { Context } from "@pyreon/core";
-import { createContext, useContext } from "@pyreon/core";
-import type { RouterInstance } from "./types";
+import type { Context } from '@pyreon/core'
+import { createContext, useContext } from '@pyreon/core'
+import type { RouterInstance } from './types'
 
 /**
  * Context frame that holds the loader data for the currently rendered route record.
  * Pushed by RouterView's withLoaderData wrapper before invoking the route component.
  */
-export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefined);
+export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefined)
 
 /**
  * Returns the data resolved by the current route's `loader` function.
@@ -21,7 +21,7 @@ export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefi
  * }
  */
 export function useLoaderData<T = unknown>(): T {
-  return useContext(LoaderDataContext) as T;
+  return useContext(LoaderDataContext) as T
 }
 
 /**
@@ -34,9 +34,9 @@ export function useLoaderData<T = unknown>(): T {
  * const html = await renderToString(h(App, { router }))
  */
 export async function prefetchLoaderData(router: RouterInstance, path: string): Promise<void> {
-  const route = router._resolve(path);
-  const ac = new AbortController();
-  router._abortController = ac;
+  const route = router._resolve(path)
+  const ac = new AbortController()
+  router._abortController = ac
   await Promise.all(
     route.matched
       .filter((r) => r.loader)
@@ -45,10 +45,10 @@ export async function prefetchLoaderData(router: RouterInstance, path: string): 
           params: route.params,
           query: route.query,
           signal: ac.signal,
-        });
-        router._loaderData.set(r, data);
+        })
+        router._loaderData.set(r, data)
       }),
-  );
+  )
 }
 
 /**
@@ -63,11 +63,11 @@ export async function prefetchLoaderData(router: RouterInstance, path: string): 
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = {}
   for (const [record, data] of router._loaderData) {
-    result[record.path] = data;
+    result[record.path] = data
   }
-  return result;
+  return result
 }
 
 /**
@@ -87,11 +87,11 @@ export function hydrateLoaderData(
   router: RouterInstance,
   serialized: Record<string, unknown>,
 ): void {
-  if (!serialized || typeof serialized !== "object") return;
-  const route = router._resolve(router.currentRoute().path);
+  if (!serialized || typeof serialized !== 'object') return
+  const route = router._resolve(router.currentRoute().path)
   for (const record of route.matched) {
     if (Object.hasOwn(serialized, record.path)) {
-      router._loaderData.set(record, serialized[record.path]);
+      router._loaderData.set(record, serialized[record.path])
     }
   }
 }

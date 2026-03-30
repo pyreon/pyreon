@@ -1,20 +1,20 @@
-import { createContext, useContext } from "preact";
-import { useState } from "preact/hooks";
-import Demo from "./Demo";
+import { createContext, useContext } from 'preact'
+import { useState } from 'preact/hooks'
+import Demo from './Demo'
 
-const ThemeCtx = createContext("dark");
+const ThemeCtx = createContext('dark')
 
 function ThemeConsumer() {
-  const theme = useContext(ThemeCtx);
+  const theme = useContext(ThemeCtx)
   return (
     <p>
       Current theme: <strong>{theme}</strong>
     </p>
-  );
+  )
 }
 
 export default function ContextDemo() {
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState('dark')
 
   return (
     <Demo
@@ -34,16 +34,16 @@ const theme = useContext(ThemeCtx)`}
         <ThemeConsumer />
       </ThemeCtx.Provider>
       <div class="row">
-        <button type="button" onClick={() => setTheme("dark")}>
+        <button type="button" onClick={() => setTheme('dark')}>
           Dark
         </button>
-        <button type="button" onClick={() => setTheme("light")}>
+        <button type="button" onClick={() => setTheme('light')}>
           Light
         </button>
-        <button type="button" onClick={() => setTheme("auto")}>
+        <button type="button" onClick={() => setTheme('auto')}>
           Auto
         </button>
       </div>
     </Demo>
-  );
+  )
 }

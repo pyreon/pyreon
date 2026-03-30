@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/cli"
+title: '@pyreon/cli'
 description: CLI tools for Pyreon — doctor, generate, and context commands.
 ---
 

@@ -1,5 +1,5 @@
-import { signal } from "@pyreon/reactivity";
-import isEqual from "./isEqual";
+import { signal } from '@pyreon/reactivity'
+import isEqual from './isEqual'
 
 /**
  * Returns a referentially stable version of `value`. The returned reference
@@ -9,13 +9,13 @@ import isEqual from "./isEqual";
  * internally to hold the stable reference.
  */
 const useStableValue = <T>(value: T): T => {
-  const ref = signal(value);
+  const ref = signal(value)
 
   if (!isEqual(ref.peek(), value)) {
-    ref.set(value);
+    ref.set(value)
   }
 
-  return ref.peek();
-};
+  return ref.peek()
+}
 
-export default useStableValue;
+export default useStableValue

@@ -1,14 +1,14 @@
-import { Element } from "@pyreon/elements";
-import rocketstyle from "@pyreon/rocketstyle";
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
-const DocRow = rocketstyle()({ name: "DocRow", component: Element })
+const DocRow = rocketstyle()({ name: 'DocRow', component: Element })
   .theme({
-    direction: "row",
+    direction: 'row',
   })
-  .statics({ _documentType: "row" as const })
+  .statics({ _documentType: 'row' as const })
   .attrs<{ tag: string; _documentProps: Record<string, unknown> }>((_props) => ({
-    tag: "div",
+    tag: 'div',
     _documentProps: {},
-  }));
+  }))
 
-export default DocRow;
+export default DocRow

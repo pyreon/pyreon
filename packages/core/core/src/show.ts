@@ -1,12 +1,12 @@
-import type { Props, VNode, VNodeChild, VNodeChildAtom } from "./types";
+import type { Props, VNode, VNodeChild, VNodeChildAtom } from './types'
 
 // ─── Show ─────────────────────────────────────────────────────────────────────
 
 export interface ShowProps extends Props {
   /** Accessor — children render when truthy, fallback when falsy. */
-  when: () => unknown;
-  fallback?: VNodeChild;
-  children?: VNodeChild;
+  when: () => unknown
+  fallback?: VNodeChild
+  children?: VNodeChild
 }
 
 /**
@@ -27,15 +27,15 @@ export function Show(props: ShowProps): VNode | null {
   return ((): VNodeChildAtom =>
     (props.when()
       ? (props.children ?? null)
-      : (props.fallback ?? null)) as VNodeChildAtom) as unknown as VNode;
+      : (props.fallback ?? null)) as VNodeChildAtom) as unknown as VNode
 }
 
 // ─── Switch / Match ───────────────────────────────────────────────────────────
 
 export interface MatchProps extends Props {
   /** Accessor — this branch renders when truthy. */
-  when: () => unknown;
-  children?: VNodeChild;
+  when: () => unknown
+  children?: VNodeChild
 }
 
 /**
@@ -47,13 +47,13 @@ export interface MatchProps extends Props {
  */
 export function Match(_props: MatchProps): VNode | null {
   // Match is never mounted directly — Switch inspects Match VNodes by type identity.
-  return null;
+  return null
 }
 
 export interface SwitchProps extends Props {
   /** Rendered when no Match branch is truthy. */
-  fallback?: VNodeChild;
-  children?: VNodeChild | VNodeChild[];
+  fallback?: VNodeChild
+  children?: VNodeChild | VNodeChild[]
 }
 
 /**
@@ -69,40 +69,40 @@ export interface SwitchProps extends Props {
 function isMatchVNode(branch: VNodeChild): branch is VNode {
   return (
     branch !== null &&
-    typeof branch === "object" &&
+    typeof branch === 'object' &&
     !Array.isArray(branch) &&
     (branch as VNode).type === Match
-  );
+  )
 }
 
 function resolveMatchChildren(matchVNode: VNode): VNodeChildAtom {
   if (matchVNode.children.length === 0) {
-    return ((matchVNode.props as unknown as MatchProps).children ?? null) as VNodeChildAtom;
+    return ((matchVNode.props as unknown as MatchProps).children ?? null) as VNodeChildAtom
   }
-  if (matchVNode.children.length === 1) return matchVNode.children[0] as VNodeChildAtom;
-  return matchVNode.children as unknown as VNodeChildAtom;
+  if (matchVNode.children.length === 1) return matchVNode.children[0] as VNodeChildAtom
+  return matchVNode.children as unknown as VNodeChildAtom
 }
 
-function normalizeBranches(children: SwitchProps["children"]): VNodeChild[] {
-  if (Array.isArray(children)) return children;
-  if (children != null) return [children];
-  return [];
+function normalizeBranches(children: SwitchProps['children']): VNodeChild[] {
+  if (Array.isArray(children)) return children
+  if (children != null) return [children]
+  return []
 }
 
 export function Switch(props: SwitchProps): VNode | null {
   // Returns a reactive accessor; the renderer unwraps it at mount time.
   return ((): VNodeChildAtom => {
-    const branches = normalizeBranches(props.children);
+    const branches = normalizeBranches(props.children)
 
     for (const branch of branches) {
-      if (!isMatchVNode(branch)) continue;
-      const matchProps = branch.props as unknown as MatchProps;
-      if (matchProps.when()) return resolveMatchChildren(branch);
+      if (!isMatchVNode(branch)) continue
+      const matchProps = branch.props as unknown as MatchProps
+      if (matchProps.when()) return resolveMatchChildren(branch)
     }
 
-    return (props.fallback ?? null) as VNodeChildAtom;
-  }) as unknown as VNode;
+    return (props.fallback ?? null) as VNodeChildAtom
+  }) as unknown as VNode
 }
 
 // Keep MatchSymbol export for any code that was using it
-export const MatchSymbol: unique symbol = Symbol("pyreon.Match");
+export const MatchSymbol: unique symbol = Symbol('pyreon.Match')

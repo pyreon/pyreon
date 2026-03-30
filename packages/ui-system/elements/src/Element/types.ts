@@ -1,5 +1,5 @@
-import type { ComponentFn, PyreonHTMLAttributes } from "@pyreon/core";
-import type { HTMLTags } from "@pyreon/ui-core";
+import type { ComponentFn, PyreonHTMLAttributes } from '@pyreon/core'
+import type { HTMLTags } from '@pyreon/ui-core'
 import type {
   AlignX,
   AlignY,
@@ -10,23 +10,23 @@ import type {
   PyreonStatic,
   Responsive,
   ResponsiveBoolType,
-} from "../types";
+} from '../types'
 
 export type Props = Partial<{
   /**
    * Valid HTML Tag
    */
-  tag: HTMLTags;
+  tag: HTMLTags
 
   /**
    * Ref prop, alternative to `ref`
    */
-  innerRef: InnerRef;
+  innerRef: InnerRef
 
   /**
    * Valid `children`
    */
-  children: Content;
+  children: Content
 
   /**
    * Alternative prop to `children`
@@ -34,7 +34,7 @@ export type Props = Partial<{
    *
    * The prioritization of rendering is following: `children` → `content` → `label`
    */
-  content: Content;
+  content: Content
 
   /**
    * Alternative prop to `children`
@@ -42,127 +42,127 @@ export type Props = Partial<{
    *
    * The prioritization of rendering is following: `children` → `content` → `label`
    */
-  label: Content;
+  label: Content
 
   /**
    * Valid `children` to be rendered inside _beforeContent_ wrapper
    */
-  beforeContent: Content;
+  beforeContent: Content
 
   /**
    * Valid `children` to be rendered inside _afterContent_ wrapper
    */
-  afterContent: Content;
+  afterContent: Content
 
   /**
    * A boolean type to define whether **Element** should behave
    * as an inline or block element (`flex` vs. `inline-flex`)
    */
-  block: ResponsiveBoolType;
+  block: ResponsiveBoolType
 
   /**
    * A boolean type to define whether inner wrappers should be equal
    * (have the same width or height)
    */
-  equalCols: ResponsiveBoolType;
+  equalCols: ResponsiveBoolType
 
   /**
    * When true, measures the `beforeContent` and `afterContent` slot wrappers
    * after render and sets both to the larger dimension so they match.
    */
-  equalBeforeAfter: boolean;
+  equalBeforeAfter: boolean
 
   /**
    * Defines a `gap` spacing between inner wrappers
    */
-  gap: Responsive;
+  gap: Responsive
 
   /**
    * Defines direction of inner wrappers
    */
-  direction: Direction;
+  direction: Direction
 
   /**
    * Defines flow of `children` elements within its inner wrapper.
    */
-  contentDirection: Direction;
+  contentDirection: Direction
 
   /**
    * Defines flow of `beforeContent` elements within its inner wrapper.
    */
-  beforeContentDirection: Direction;
+  beforeContentDirection: Direction
 
   /**
    * Defines flow of `afterContent` elements within its inner wrapper.
    */
-  afterContentDirection: Direction;
+  afterContentDirection: Direction
 
   /**
    * Define alignment horizontally.
    */
-  alignX: AlignX;
+  alignX: AlignX
 
   /**
    * Defines how `content` children are aligned horizontally.
    */
-  contentAlignX: AlignX;
+  contentAlignX: AlignX
 
   /**
    * Defines how `beforeContent` children are aligned horizontally.
    */
-  beforeContentAlignX: AlignX;
+  beforeContentAlignX: AlignX
 
   /**
    * Defines how `afterContent` children are aligned horizontally.
    */
-  afterContentAlignX: AlignX;
+  afterContentAlignX: AlignX
 
   /**
    * Define alignment vertically.
    */
-  alignY: AlignY;
+  alignY: AlignY
 
   /**
    * Defines how `content` children are aligned vertically.
    */
-  contentAlignY: AlignY;
+  contentAlignY: AlignY
 
   /**
    * Defines how `beforeContent` children are aligned vertically.
    */
-  beforeContentAlignY: AlignY;
+  beforeContentAlignY: AlignY
 
   /**
    * Defines how `afterContent` children are aligned vertically.
    */
-  afterContentAlignY: AlignY;
+  afterContentAlignY: AlignY
 
   /**
    * `dangerouslySetInnerHTML` prop
    */
-  dangerouslySetInnerHTML: { __html: string };
+  dangerouslySetInnerHTML: { __html: string }
 
   /**
    * An additional prop for extending styling of the **root** wrapper element
    */
-  css: ExtendCss;
+  css: ExtendCss
 
   /**
    * An additional prop for extending styling of the **content** wrapper element.
    */
-  contentCss: ExtendCss;
+  contentCss: ExtendCss
 
   /**
    * An additional prop for extending styling of the **beforeContent** wrapper element.
    */
-  beforeContentCss: ExtendCss;
+  beforeContentCss: ExtendCss
 
   /**
    * An additional prop for extending styling of the **afterContent** wrapper element.
    */
-  afterContentCss: ExtendCss;
+  afterContentCss: ExtendCss
 }> &
-  PyreonHTMLAttributes;
+  PyreonHTMLAttributes
 
 export type PyreonElement<P extends Record<string, unknown> = {}> = ComponentFn<Props & P> &
-  PyreonStatic;
+  PyreonStatic

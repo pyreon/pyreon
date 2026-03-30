@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/typescript"
+title: '@pyreon/typescript'
 description: Shared TypeScript configuration presets for Pyreon applications and libraries.
 ---
 
@@ -161,14 +161,14 @@ The base preset enables `exactOptionalPropertyTypes`. This means optional proper
 
 ```ts
 interface Config {
-  name?: string;
+  name?: string
 }
 
 function getConfig(): Config {
-  const value = maybeGetName(); // returns string | undefined
+  const value = maybeGetName() // returns string | undefined
   return {
     name: value, // OK -- value is string | undefined, name is optional
-  };
+  }
 }
 ```
 

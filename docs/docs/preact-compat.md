@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/preact-compat"
+title: '@pyreon/preact-compat'
 description: Preact-compatible API layer with hooks and signals, running on Pyreon's reactive engine.
 ---
 
@@ -35,36 +35,36 @@ Replace your Preact imports:
 
 ```tsx
 // Before
-import { h, render, Fragment } from "preact";
-import { useState, useEffect } from "preact/hooks";
-import { signal, computed } from "@preact/signals";
+import { h, render, Fragment } from 'preact'
+import { useState, useEffect } from 'preact/hooks'
+import { signal, computed } from '@preact/signals'
 
 // After
-import { h, render, Fragment } from "@pyreon/preact-compat";
-import { useState, useEffect } from "@pyreon/preact-compat/hooks";
-import { signal, computed } from "@pyreon/preact-compat/signals";
+import { h, render, Fragment } from '@pyreon/preact-compat'
+import { useState, useEffect } from '@pyreon/preact-compat/hooks'
+import { signal, computed } from '@pyreon/preact-compat/signals'
 ```
 
 ```tsx
-import { h, render } from "@pyreon/preact-compat";
-import { useState, useEffect } from "@pyreon/preact-compat/hooks";
+import { h, render } from '@pyreon/preact-compat'
+import { useState, useEffect } from '@pyreon/preact-compat/hooks'
 
 const Counter = () => {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0)
 
   useEffect(() => {
-    document.title = `Count: ${count()}`;
-  });
+    document.title = `Count: ${count()}`
+  })
 
   return (
     <div>
       <p>Count: {count()}</p>
       <button onClick={() => setCount((prev) => prev + 1)}>+1</button>
     </div>
-  );
-};
+  )
+}
 
-render(<Counter />, document.getElementById("app")!);
+render(<Counter />, document.getElementById('app')!)
 ```
 
 ## Key Differences from Preact
@@ -87,12 +87,12 @@ The most important change: `useState` returns a getter function, not a raw value
 
 ```tsx
 // Preact
-const [count, setCount] = useState(0);
-console.log(count); // 0
+const [count, setCount] = useState(0)
+console.log(count) // 0
 
 // Pyreon
-const [count, setCount] = useState(0);
-console.log(count()); // 0 -- note the function call
+const [count, setCount] = useState(0)
+console.log(count()) // 0 -- note the function call
 ```
 
 ### No Stale Closures
@@ -101,19 +101,19 @@ In Preact, closures capture the value at render time. In Pyreon, signal reads al
 
 ```tsx
 function Timer() {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0)
 
   useEffect(() => {
     const id = setInterval(() => {
       // In Preact, this would capture the initial value without deps
       // In Pyreon, count() always returns the current value
-      console.log("Count:", count());
-      setCount((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+      console.log('Count:', count())
+      setCount((prev) => prev + 1)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
 
-  return <p>{count()}</p>;
+  return <p>{count()}</p>
 }
 ```
 
@@ -123,18 +123,18 @@ If you use Preact Signals (`@preact/signals`), the `@pyreon/preact-compat/signal
 
 ```tsx
 // Before (Preact Signals)
-import { signal, computed, effect } from "@preact/signals";
+import { signal, computed, effect } from '@preact/signals'
 
-const count = signal(0);
-count.value++;
-console.log(count.value);
+const count = signal(0)
+count.value++
+console.log(count.value)
 
 // After (Pyreon)
-import { signal, computed, effect } from "@pyreon/preact-compat/signals";
+import { signal, computed, effect } from '@pyreon/preact-compat/signals'
 
-const count = signal(0);
-count.value++; // same API
-console.log(count.value); // same API
+const count = signal(0)
+count.value++ // same API
+console.log(count.value) // same API
 ```
 
 ## Module Structure
@@ -152,16 +152,16 @@ console.log(count.value); // same API
 ### `h` / `createElement`
 
 ```ts
-function h(type: string | ComponentFn, props: Props | null, ...children: VNodeChild[]): VNode;
+function h(type: string | ComponentFn, props: Props | null, ...children: VNodeChild[]): VNode
 ```
 
 Preact's hyperscript function. Maps directly to Pyreon's `h()`. `createElement` is an alias.
 
 ```tsx
-import { h, createElement } from "@pyreon/preact-compat";
+import { h, createElement } from '@pyreon/preact-compat'
 
-const vnode = <div class="box">Hello</div>;
-const same = <div class="box">Hello</div>;
+const vnode = <div class="box">Hello</div>
+const same = <div class="box">Hello</div>
 ```
 
 **All element types:**
@@ -187,7 +187,7 @@ const same = <div class="box">Hello</div>;
 The fragment symbol for grouping children without a wrapper DOM element.
 
 ```tsx
-import { h, Fragment } from "@pyreon/preact-compat";
+import { h, Fragment } from '@pyreon/preact-compat'
 
 const items = (
   <Fragment>
@@ -195,62 +195,62 @@ const items = (
     <li>Item 2</li>
     <li>Item 3</li>
   </Fragment>
-);
+)
 ```
 
 ### `render`
 
 ```ts
-function render(vnode: VNodeChild, container: Element): void;
+function render(vnode: VNodeChild, container: Element): void
 ```
 
 Mounts a VNode tree into a DOM container. Maps to Pyreon's `mount()`.
 
 ```tsx
-import { h, render } from "@pyreon/preact-compat";
+import { h, render } from '@pyreon/preact-compat'
 
-render(<div>Hello</div>, document.getElementById("app")!);
+render(<div>Hello</div>, document.getElementById('app')!)
 
 // Or with JSX
-render(<App />, document.getElementById("app")!);
+render(<App />, document.getElementById('app')!)
 ```
 
 ### `hydrate`
 
 ```ts
-function hydrate(vnode: VNodeChild, container: Element): void;
+function hydrate(vnode: VNodeChild, container: Element): void
 ```
 
 Hydrates server-rendered HTML. Maps to Pyreon's `hydrateRoot()`. Use this when your HTML is pre-rendered on the server and you want to attach event handlers and reactive behavior on the client.
 
 ```tsx
-import { h, hydrate } from "@pyreon/preact-compat";
+import { h, hydrate } from '@pyreon/preact-compat'
 
 // Server-rendered HTML is already in #app
-hydrate(<App />, document.getElementById("app")!);
+hydrate(<App />, document.getElementById('app')!)
 ```
 
 ### `Component`
 
 ```ts
 class Component<P extends Props, S extends Record<string, unknown>> {
-  props: P;
-  state: S;
-  setState(partial: Partial<S> | ((prev: S) => Partial<S>)): void;
-  forceUpdate(): void;
-  render(): VNodeChild;
+  props: P
+  state: S
+  setState(partial: Partial<S> | ((prev: S) => Partial<S>)): void
+  forceUpdate(): void
+  render(): VNodeChild
 }
 ```
 
 A class-based component with `setState` and `forceUpdate`. State changes are backed by a Pyreon signal, so `setState` triggers reactive updates through Pyreon's batching system.
 
 ```tsx
-import { Component, render } from "@pyreon/preact-compat";
+import { Component, render } from '@pyreon/preact-compat'
 
 class Counter extends Component<{}, { count: number }> {
   constructor(props: {}) {
-    super(props);
-    this.state = { count: 0 };
+    super(props)
+    this.state = { count: 0 }
   }
 
   render() {
@@ -261,7 +261,7 @@ class Counter extends Component<{}, { count: number }> {
           Increment
         </button>
       </div>
-    );
+    )
   }
 }
 ```
@@ -271,16 +271,16 @@ class Counter extends Component<{}, { count: number }> {
 ```tsx
 class Form extends Component<{}, { name: string; email: string; submitted: boolean }> {
   constructor(props: {}) {
-    super(props);
-    this.state = { name: "", email: "", submitted: false };
+    super(props)
+    this.state = { name: '', email: '', submitted: false }
   }
 
   render() {
     return (
       <form
         onSubmit={(e: SubmitEvent) => {
-          e.preventDefault();
-          this.setState({ submitted: true });
+          e.preventDefault()
+          this.setState({ submitted: true })
         }}
       >
         <input
@@ -295,7 +295,7 @@ class Form extends Component<{}, { name: string; email: string; submitted: boole
         />
         <button type="submit">Submit</button>
       </form>
-    );
+    )
   }
 }
 ```
@@ -305,7 +305,7 @@ class Form extends Component<{}, { name: string; email: string; submitted: boole
 ### `cloneElement`
 
 ```ts
-function cloneElement(vnode: VNode, props?: Props, ...children: VNodeChild[]): VNode;
+function cloneElement(vnode: VNode, props?: Props, ...children: VNodeChild[]): VNode
 ```
 
 Clones a VNode with merged props. If new children are provided, they replace the original children. The key can be overridden via props.
@@ -315,15 +315,15 @@ const original = (
   <div class="a" id="x">
     child
   </div>
-);
-const cloned = cloneElement(original, { class: "b" });
+)
+const cloned = cloneElement(original, { class: 'b' })
 // cloned.props.class === 'b', cloned.props.id === 'x'
 
 // Override children
-const withNewChildren = cloneElement(original, null, "new child");
+const withNewChildren = cloneElement(original, null, 'new child')
 
 // Override key
-const withNewKey = cloneElement(original, { key: "new-key" });
+const withNewKey = cloneElement(original, { key: 'new-key' })
 ```
 
 **Real-world use case -- adding props to children:**
@@ -332,45 +332,45 @@ const withNewKey = cloneElement(original, { key: "new-key" });
 function Toolbar(props: { children: VNode[] }) {
   return (
     <div class="toolbar">
-      {props.children.map((child) => cloneElement(child, { class: "toolbar-button" }))}
+      {props.children.map((child) => cloneElement(child, { class: 'toolbar-button' }))}
     </div>
-  );
+  )
 }
 ```
 
 ### `toChildArray`
 
 ```ts
-function toChildArray(children: VNodeChild | VNodeChild[]): VNodeChild[];
+function toChildArray(children: VNodeChild | VNodeChild[]): VNodeChild[]
 ```
 
 Flattens nested children into a flat array, filtering out `null`, `undefined`, and booleans.
 
 ```tsx
-toChildArray(["a", ["b", ["c"]], null, false, "d"]);
+toChildArray(['a', ['b', ['c']], null, false, 'd'])
 // => ['a', 'b', 'c', 'd']
 
 // Useful for manipulating children
 function FilteredList(props: { children: VNodeChild }) {
-  const items = toChildArray(props.children);
-  return <ul>{items.slice(0, 5)}</ul>; // show max 5
+  const items = toChildArray(props.children)
+  return <ul>{items.slice(0, 5)}</ul> // show max 5
 }
 ```
 
 ### `isValidElement`
 
 ```ts
-function isValidElement(x: unknown): x is VNode;
+function isValidElement(x: unknown): x is VNode
 ```
 
 Returns `true` if the value is a VNode (has `type`, `props`, and `children` properties).
 
 ```tsx
-const vnode = <div>Hello</div>;
-isValidElement(vnode); // true
-isValidElement("string"); // false
-isValidElement(null); // false
-isValidElement({ type: "div", props: {}, children: [] }); // true
+const vnode = <div>Hello</div>
+isValidElement(vnode) // true
+isValidElement('string') // false
+isValidElement(null) // false
+isValidElement({ type: 'div', props: {}, children: [] }) // true
 ```
 
 ### `createContext` / `useContext`
@@ -378,36 +378,36 @@ isValidElement({ type: "div", props: {}, children: [] }); // true
 Re-exports from `@pyreon/core`. Create and consume context values.
 
 ```tsx
-import { createContext, useContext } from "@pyreon/preact-compat";
+import { createContext, useContext } from '@pyreon/preact-compat'
 
-const Theme = createContext("light");
+const Theme = createContext('light')
 
 function ThemedButton() {
-  const theme = useContext(Theme); // 'light'
-  return <button class={theme}>Click me</button>;
+  const theme = useContext(Theme) // 'light'
+  return <button class={theme}>Click me</button>
 }
 ```
 
 **Context with Provider pattern:**
 
 ```tsx
-import { createContext, useContext } from "@pyreon/preact-compat";
-import { withContext } from "@pyreon/core";
+import { createContext, useContext } from '@pyreon/preact-compat'
+import { withContext } from '@pyreon/core'
 
-const LocaleContext = createContext("en");
+const LocaleContext = createContext('en')
 
 function LocaleProvider(props: { locale: string; children: VNodeChild }) {
-  return withContext(LocaleContext, props.locale, () => props.children);
+  return withContext(LocaleContext, props.locale, () => props.children)
 }
 
 function Greeting() {
-  const locale = useContext(LocaleContext);
+  const locale = useContext(LocaleContext)
   const messages: Record<string, string> = {
-    en: "Hello!",
-    es: "Hola!",
-    fr: "Bonjour!",
-  };
-  return <p>{messages[locale] ?? messages.en}</p>;
+    en: 'Hello!',
+    es: 'Hola!',
+    fr: 'Bonjour!',
+  }
+  return <p>{messages[locale] ?? messages.en}</p>
 }
 
 // Usage
@@ -415,31 +415,31 @@ render(
   <LocaleProvider locale="es">
     <Greeting /> {/* renders "Hola!" */}
   </LocaleProvider>,
-  document.getElementById("app")!,
-);
+  document.getElementById('app')!,
+)
 ```
 
 ### `createRef`
 
 ```ts
-function createRef<T>(): { current: T | null };
+function createRef<T>(): { current: T | null }
 ```
 
 Creates a mutable ref object with an initial `current` value of `null`.
 
 ```tsx
-import { createRef } from "@pyreon/preact-compat";
+import { createRef } from '@pyreon/preact-compat'
 
-const inputRef = createRef<HTMLInputElement>();
+const inputRef = createRef<HTMLInputElement>()
 
 // Later, after mount
-inputRef.current?.focus();
+inputRef.current?.focus()
 ```
 
 ### `options`
 
 ```ts
-const options: Record<string, unknown>;
+const options: Record<string, unknown>
 ```
 
 An empty object exposed for compatibility with Preact plugins that inspect `options._hook`, `options.vnode`, `options._diff`, etc. No hooks are active -- this is a stub.
@@ -448,7 +448,7 @@ An empty object exposed for compatibility with Preact plugins that inspect `opti
 // This will not throw, but the hook will not be called
 options.vnode = (vnode) => {
   /* not called */
-};
+}
 ```
 
 ## Hooks (`@pyreon/preact-compat/hooks`)
@@ -456,20 +456,20 @@ options.vnode = (vnode) => {
 ### `useState`
 
 ```ts
-function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void];
+function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void]
 ```
 
 Returns `[getter, setter]`. The getter is a Pyreon signal -- call it as a function to read.
 
 ```tsx
-const [name, setName] = useState("Alice");
-console.log(name()); // 'Alice'
+const [name, setName] = useState('Alice')
+console.log(name()) // 'Alice'
 
-setName("Bob");
-setName((prev) => prev + "!");
+setName('Bob')
+setName((prev) => prev + '!')
 
 // Lazy initializer
-const [cache, setCache] = useState(() => buildInitialCache());
+const [cache, setCache] = useState(() => buildInitialCache())
 ```
 
 **Real-world useState patterns:**
@@ -477,37 +477,37 @@ const [cache, setCache] = useState(() => buildInitialCache());
 ```tsx
 // Toggle
 function useToggle(initial = false) {
-  const [value, setValue] = useState(initial);
-  const toggle = () => setValue((prev) => !prev);
-  return [value, toggle] as const;
+  const [value, setValue] = useState(initial)
+  const toggle = () => setValue((prev) => !prev)
+  return [value, toggle] as const
 }
 
 // Counter with bounds
 function useBoundedCounter(min: number, max: number, initial: number) {
-  const [count, setCount] = useState(Math.max(min, Math.min(max, initial)));
+  const [count, setCount] = useState(Math.max(min, Math.min(max, initial)))
 
   return {
     count,
     increment: () => setCount((prev) => Math.min(max, prev + 1)),
     decrement: () => setCount((prev) => Math.max(min, prev - 1)),
     reset: () => setCount(initial),
-  };
+  }
 }
 
 // Previous value tracking
 function usePrevious<T>(getter: () => T) {
-  const ref = useRef<T>();
+  const ref = useRef<T>()
   useEffect(() => {
-    ref.current = getter();
-  });
-  return ref;
+    ref.current = getter()
+  })
+  return ref
 }
 ```
 
 ### `useEffect`
 
 ```ts
-function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void;
+function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void
 ```
 
 Runs a reactive side effect. The deps array is **ignored** -- Pyreon auto-tracks signal reads. Return a cleanup function for disposal.
@@ -517,60 +517,60 @@ Runs a reactive side effect. The deps array is **ignored** -- Pyreon auto-tracks
 ```tsx
 // Runs every time name() changes
 useEffect(() => {
-  document.title = name();
-});
+  document.title = name()
+})
 
 // Runs once on mount
 useEffect(() => {
-  const ws = new WebSocket("/stream");
-  ws.onmessage = (e) => setMessages((prev) => [...prev, JSON.parse(e.data)]);
-  return () => ws.close();
-}, []);
+  const ws = new WebSocket('/stream')
+  ws.onmessage = (e) => setMessages((prev) => [...prev, JSON.parse(e.data)])
+  return () => ws.close()
+}, [])
 ```
 
 **Data fetching pattern:**
 
 ```tsx
 function UserProfile(props: { userId: () => number }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const id = props.userId();
-    setLoading(true);
-    setError(null);
+    const id = props.userId()
+    setLoading(true)
+    setError(null)
 
-    const controller = new AbortController();
+    const controller = new AbortController()
     fetch(`/api/users/${id}`, { signal: controller.signal })
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
       })
       .then((data) => {
-        setUser(data);
-        setLoading(false);
+        setUser(data)
+        setLoading(false)
       })
       .catch((err) => {
-        if (err.name !== "AbortError") {
-          setError(String(err));
-          setLoading(false);
+        if (err.name !== 'AbortError') {
+          setError(String(err))
+          setLoading(false)
         }
-      });
+      })
 
-    return () => controller.abort();
-  });
+    return () => controller.abort()
+  })
 
   return () => {
-    if (loading()) return <div class="skeleton" />;
-    if (error()) return <div class="error">{error()}</div>;
+    if (loading()) return <div class="skeleton" />
+    if (error()) return <div class="error">{error()}</div>
     return (
       <div>
         <h2>{user()!.name}</h2>
         <p>{user()!.email}</p>
       </div>
-    );
-  };
+    )
+  }
 }
 ```
 
@@ -581,28 +581,26 @@ Alias for `useEffect`. No layout/passive distinction in Pyreon.
 ### `useMemo`
 
 ```ts
-function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T;
+function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T
 ```
 
 Returns a computed getter. Deps are ignored.
 
 ```tsx
-const [items, setItems] = useState([1, 2, 3]);
-const sum = useMemo(() => items().reduce((a, b) => a + b, 0));
-console.log(sum()); // 6
+const [items, setItems] = useState([1, 2, 3])
+const sum = useMemo(() => items().reduce((a, b) => a + b, 0))
+console.log(sum()) // 6
 
 // Filtered + sorted list
-const [filter, setFilter] = useState("");
-const filteredItems = useMemo(() => items().filter((item) => item.name.includes(filter())));
-const sortedItems = useMemo(() =>
-  [...filteredItems()].sort((a, b) => a.name.localeCompare(b.name)),
-);
+const [filter, setFilter] = useState('')
+const filteredItems = useMemo(() => items().filter((item) => item.name.includes(filter())))
+const sortedItems = useMemo(() => [...filteredItems()].sort((a, b) => a.name.localeCompare(b.name)))
 ```
 
 ### `useCallback`
 
 ```ts
-function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T;
+function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T
 ```
 
 Returns `fn` as-is. Components run once, so callbacks never go stale.
@@ -610,19 +608,19 @@ Returns `fn` as-is. Components run once, so callbacks never go stale.
 ### `useRef`
 
 ```ts
-function useRef<T>(initial?: T): { current: T | null };
+function useRef<T>(initial?: T): { current: T | null }
 ```
 
 Returns a `&#123; current &#125;` object. If `initial` is provided, `current` is set to it; otherwise it defaults to `null`.
 
 ```tsx
 // DOM ref
-const inputRef = useRef<HTMLInputElement>();
+const inputRef = useRef<HTMLInputElement>()
 // later: inputRef.current?.focus()
 
 // Mutable value store
-const renderCount = useRef(0);
-renderCount.current!++;
+const renderCount = useRef(0)
+renderCount.current!++
 ```
 
 ### `useReducer`
@@ -631,46 +629,46 @@ renderCount.current!++;
 function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
   initial: S | (() => S),
-): [() => S, (action: A) => void];
+): [() => S, (action: A) => void]
 ```
 
 Returns `[getter, dispatch]`. Dispatch applies the reducer and updates the underlying signal.
 
 ```tsx
 type Action =
-  | { type: "add"; text: string }
-  | { type: "remove"; id: number }
-  | { type: "toggle"; id: number };
+  | { type: 'add'; text: string }
+  | { type: 'remove'; id: number }
+  | { type: 'toggle'; id: number }
 
 interface Todo {
-  id: number;
-  text: string;
-  done: boolean;
+  id: number
+  text: string
+  done: boolean
 }
 
 function todoReducer(state: Todo[], action: Action): Todo[] {
   switch (action.type) {
-    case "add":
-      return [...state, { id: Date.now(), text: action.text, done: false }];
-    case "remove":
-      return state.filter((t) => t.id !== action.id);
-    case "toggle":
-      return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t));
+    case 'add':
+      return [...state, { id: Date.now(), text: action.text, done: false }]
+    case 'remove':
+      return state.filter((t) => t.id !== action.id)
+    case 'toggle':
+      return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))
   }
 }
 
 function TodoApp() {
-  const [todos, dispatch] = useReducer(todoReducer, []);
+  const [todos, dispatch] = useReducer(todoReducer, [])
 
   return (
     <div>
-      <button onClick={() => dispatch({ type: "add", text: "New todo" })}>Add</button>
+      <button onClick={() => dispatch({ type: 'add', text: 'New todo' })}>Add</button>
       <ul>
         {() =>
           todos().map((todo) => (
             <li
-              onClick={() => dispatch({ type: "toggle", id: todo.id })}
-              style={todo.done ? "text-decoration: line-through" : ""}
+              onClick={() => dispatch({ type: 'toggle', id: todo.id })}
+              style={todo.done ? 'text-decoration: line-through' : ''}
             >
               {todo.text}
             </li>
@@ -678,27 +676,27 @@ function TodoApp() {
         }
       </ul>
     </div>
-  );
+  )
 }
 ```
 
 ### `useId`
 
 ```ts
-function useId(): string;
+function useId(): string
 ```
 
 Returns a stable unique string (e.g. `:r0:`) scoped to the current component. Deterministic and hydration-safe.
 
 ```tsx
 function LabeledInput(props: { label: string }) {
-  const id = useId();
+  const id = useId()
   return (
     <>
       <label for={id}>{props.label}</label>
       <input id={id} />
     </>
-  );
+  )
 }
 ```
 
@@ -709,19 +707,19 @@ Re-export from `@pyreon/core`.
 ### `useErrorBoundary`
 
 ```ts
-function useErrorBoundary(handler: (error: Error) => boolean | void): void;
+function useErrorBoundary(handler: (error: Error) => boolean | void): void
 ```
 
 Wraps Pyreon's `onErrorCaptured`. Register a handler for errors thrown in child components.
 
 ```tsx
 function SafeZone(props: { children: VNodeChild }) {
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null)
 
   useErrorBoundary((err) => {
-    setError(String(err));
-    return true; // handled
-  });
+    setError(String(err))
+    return true // handled
+  })
 
   return () =>
     error() ? (
@@ -731,7 +729,7 @@ function SafeZone(props: { children: VNodeChild }) {
       </div>
     ) : (
       props.children
-    );
+    )
 }
 ```
 
@@ -742,53 +740,53 @@ This module provides a Preact Signals-compatible API with `.value` accessors, ba
 ### `signal`
 
 ```ts
-function signal<T>(initial: T): WritableSignal<T>;
+function signal<T>(initial: T): WritableSignal<T>
 
 interface WritableSignal<T> {
-  value: T; // get (tracked) / set
-  peek(): T; // get (untracked)
+  value: T // get (tracked) / set
+  peek(): T // get (untracked)
 }
 ```
 
 Create a writable signal with `.value` accessor syntax.
 
 ```tsx
-import { signal } from "@pyreon/preact-compat/signals";
+import { signal } from '@pyreon/preact-compat/signals'
 
-const count = signal(0);
-count.value++; // write
-console.log(count.value); // read (tracked)
-console.log(count.peek()); // read (untracked)
+const count = signal(0)
+count.value++ // write
+console.log(count.value) // read (tracked)
+console.log(count.peek()) // read (untracked)
 ```
 
 **Using signals in components:**
 
 ```tsx
-import { signal, computed, effect } from "@pyreon/preact-compat/signals";
-import { h, render } from "@pyreon/preact-compat";
+import { signal, computed, effect } from '@pyreon/preact-compat/signals'
+import { h, render } from '@pyreon/preact-compat'
 
 // Global signals (can be shared across components)
-const todos = signal<Array<{ id: number; text: string; done: boolean }>>([]);
-const filter = signal<"all" | "active" | "done">("all");
+const todos = signal<Array<{ id: number; text: string; done: boolean }>>([])
+const filter = signal<'all' | 'active' | 'done'>('all')
 
 const filteredTodos = computed(() => {
-  const list = todos.value;
+  const list = todos.value
   switch (filter.value) {
-    case "active":
-      return list.filter((t) => !t.done);
-    case "done":
-      return list.filter((t) => t.done);
+    case 'active':
+      return list.filter((t) => !t.done)
+    case 'done':
+      return list.filter((t) => t.done)
     default:
-      return list;
+      return list
   }
-});
+})
 
-const remaining = computed(() => todos.value.filter((t) => !t.done).length);
+const remaining = computed(() => todos.value.filter((t) => !t.done).length)
 
 function TodoApp() {
   effect(() => {
-    document.title = `${remaining.value} remaining`;
-  });
+    document.title = `${remaining.value} remaining`
+  })
 
   return (
     <div>
@@ -799,85 +797,85 @@ function TodoApp() {
         ))}
       </ul>
     </div>
-  );
+  )
 }
 ```
 
 ### `computed`
 
 ```ts
-function computed<T>(fn: () => T): ReadonlySignal<T>;
+function computed<T>(fn: () => T): ReadonlySignal<T>
 
 interface ReadonlySignal<T> {
-  readonly value: T;
-  peek(): T;
+  readonly value: T
+  peek(): T
 }
 ```
 
 Create a derived signal. Reads via `.value` are tracked.
 
 ```tsx
-import { signal, computed } from "@pyreon/preact-compat/signals";
+import { signal, computed } from '@pyreon/preact-compat/signals'
 
-const count = signal(3);
-const doubled = computed(() => count.value * 2);
-console.log(doubled.value); // 6
+const count = signal(3)
+const doubled = computed(() => count.value * 2)
+console.log(doubled.value) // 6
 
-count.value = 10;
-console.log(doubled.value); // 20
+count.value = 10
+console.log(doubled.value) // 20
 ```
 
 **Chained computeds:**
 
 ```tsx
-const price = signal(100);
-const quantity = signal(2);
-const taxRate = signal(0.08);
+const price = signal(100)
+const quantity = signal(2)
+const taxRate = signal(0.08)
 
-const subtotal = computed(() => price.value * quantity.value);
-const tax = computed(() => subtotal.value * taxRate.value);
-const total = computed(() => subtotal.value + tax.value);
+const subtotal = computed(() => price.value * quantity.value)
+const tax = computed(() => subtotal.value * taxRate.value)
+const total = computed(() => subtotal.value + tax.value)
 
-console.log(total.value); // 216
+console.log(total.value) // 216
 ```
 
 ### `effect`
 
 ```ts
-function effect(fn: () => void | (() => void)): () => void;
+function effect(fn: () => void | (() => void)): () => void
 ```
 
 Runs `fn` reactively -- re-executes whenever tracked signal reads change. Returns a **dispose function**. Optionally return a cleanup function from `fn`.
 
 ```tsx
 const dispose = effect(() => {
-  console.log("Count is", count.value);
-});
+  console.log('Count is', count.value)
+})
 
 // With cleanup
 const dispose = effect(() => {
-  const handler = () => console.log("resize");
-  window.addEventListener("resize", handler);
-  return () => window.removeEventListener("resize", handler);
-});
+  const handler = () => console.log('resize')
+  window.addEventListener('resize', handler)
+  return () => window.removeEventListener('resize', handler)
+})
 
 // Stop tracking
-dispose();
+dispose()
 ```
 
 ### `batch`
 
 ```ts
-function batch<T>(fn: () => T): T;
+function batch<T>(fn: () => T): T
 ```
 
 Groups multiple `.value` writes into a single reactive flush.
 
 ```tsx
 batch(() => {
-  count.value = 10;
-  name.value = "Alice";
-});
+  count.value = 10
+  name.value = 'Alice'
+})
 // Effects that depend on both run only once
 ```
 
@@ -887,25 +885,25 @@ The `.value` accessor API is identical between `@preact/signals` and `@pyreon/pr
 
 ```tsx
 // Before
-import { signal, computed, effect, batch } from "@preact/signals";
+import { signal, computed, effect, batch } from '@preact/signals'
 
 // After
-import { signal, computed, effect, batch } from "@pyreon/preact-compat/signals";
+import { signal, computed, effect, batch } from '@pyreon/preact-compat/signals'
 ```
 
 If you want to migrate further to native Pyreon signals (getter function pattern instead of `.value`), the changes are:
 
 ```tsx
 // Preact Signals style
-const count = signal(0);
-count.value++;
-console.log(count.value);
+const count = signal(0)
+count.value++
+console.log(count.value)
 
 // Native Pyreon style
-import { signal } from "@pyreon/reactivity";
-const count = signal(0);
-count.update((n) => n + 1);
-console.log(count());
+import { signal } from '@pyreon/reactivity'
+const count = signal(0)
+count.update((n) => n + 1)
+console.log(count())
 ```
 
 ## Real-World Migration Examples
@@ -914,71 +912,71 @@ console.log(count());
 
 ```tsx
 // Before (Preact)
-import { h, render } from "preact";
-import { Router, Route } from "preact-router";
+import { h, render } from 'preact'
+import { Router, Route } from 'preact-router'
 
 const App = () => (
   <Router>
     <Route path="/" component={Home} />
     <Route path="/about" component={About} />
   </Router>
-);
+)
 
-render(<App />, document.body);
+render(<App />, document.body)
 
 // After (Pyreon)
-import { h, render } from "@pyreon/preact-compat";
+import { h, render } from '@pyreon/preact-compat'
 // Note: preact-router will need to be replaced with @pyreon/router
 
 const App = () => (
   <div>
     <Home />
   </div>
-);
+)
 
-render(<App />, document.getElementById("app")!);
+render(<App />, document.getElementById('app')!)
 ```
 
 ### Converting a Component with Lifecycle Methods
 
 ```tsx
 // Before (Preact class component)
-import { Component, h } from "preact";
+import { Component, h } from 'preact'
 
 class Timer extends Component {
-  state = { seconds: 0 };
-  interval = null;
+  state = { seconds: 0 }
+  interval = null
 
   componentDidMount() {
     this.interval = setInterval(() => {
-      this.setState((prev) => ({ seconds: prev.seconds + 1 }));
-    }, 1000);
+      this.setState((prev) => ({ seconds: prev.seconds + 1 }))
+    }, 1000)
   }
 
   componentWillUnmount() {
-    clearInterval(this.interval);
+    clearInterval(this.interval)
   }
 
   render() {
-    return <p>Seconds: {this.state.seconds}</p>;
+    return <p>Seconds: {this.state.seconds}</p>
   }
 }
 
 // After (Pyreon functional component with hooks)
-import { h } from "@pyreon/preact-compat";
-import { useState, useEffect } from "@pyreon/preact-compat/hooks";
+import { h } from '@pyreon/preact-compat'
+import { useState, useEffect } from '@pyreon/preact-compat/hooks'
 
 function Timer() {
-  const [seconds, setSeconds] = useState(0);
+  const [seconds, setSeconds] = useState(0)
 
   useEffect(() => {
     const id = setInterval(() => {
-      setSeconds((prev) => prev + 1);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+      setSeconds((prev) => prev + 1)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
 
-  return <p>Seconds: {seconds()}</p>;
+  return <p>Seconds: {seconds()}</p>
 }
 ```
 
@@ -986,25 +984,25 @@ function Timer() {
 
 ```tsx
 // Before (@preact/signals)
-import { signal, computed } from "@preact/signals";
+import { signal, computed } from '@preact/signals'
 
-const cart = signal<CartItem[]>([]);
+const cart = signal<CartItem[]>([])
 const totalPrice = computed(() =>
   cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0),
-);
-const itemCount = computed(() => cart.value.reduce((sum, item) => sum + item.quantity, 0));
+)
+const itemCount = computed(() => cart.value.reduce((sum, item) => sum + item.quantity, 0))
 
 function addToCart(item: CartItem) {
-  const existing = cart.value.find((i) => i.id === item.id);
+  const existing = cart.value.find((i) => i.id === item.id)
   if (existing) {
-    cart.value = cart.value.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+    cart.value = cart.value.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i))
   } else {
-    cart.value = [...cart.value, { ...item, quantity: 1 }];
+    cart.value = [...cart.value, { ...item, quantity: 1 }]
   }
 }
 
 // After (@pyreon/preact-compat/signals) -- exact same code!
-import { signal, computed } from "@pyreon/preact-compat/signals";
+import { signal, computed } from '@pyreon/preact-compat/signals'
 // ... all code remains identical
 ```
 
@@ -1017,12 +1015,12 @@ Libraries that depend on Preact internals may not work. Libraries that use the p
 export default defineConfig({
   resolve: {
     alias: {
-      preact: "@pyreon/preact-compat",
-      "preact/hooks": "@pyreon/preact-compat/hooks",
-      "@preact/signals": "@pyreon/preact-compat/signals",
+      preact: '@pyreon/preact-compat',
+      'preact/hooks': '@pyreon/preact-compat/hooks',
+      '@preact/signals': '@pyreon/preact-compat/signals',
     },
   },
-});
+})
 ```
 
 **Known limitations with aliasing:**

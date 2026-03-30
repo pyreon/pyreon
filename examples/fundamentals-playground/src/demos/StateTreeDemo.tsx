@@ -1,10 +1,10 @@
-import { computed, signal } from "@pyreon/reactivity";
-import type { Patch } from "@pyreon/state-tree";
-import { applySnapshot, getSnapshot, model, onPatch } from "@pyreon/state-tree";
+import { computed, signal } from '@pyreon/reactivity'
+import type { Patch } from '@pyreon/state-tree'
+import { applySnapshot, getSnapshot, model, onPatch } from '@pyreon/state-tree'
 
 const TodoList = model({
   state: {
-    title: "My Todos",
+    title: 'My Todos',
     nextId: 1,
   },
   views: (self) => ({
@@ -14,16 +14,16 @@ const TodoList = model({
     setTitle: (title: string) => self.title.set(title),
     bumpId: () => self.nextId.update((n) => n + 1),
   }),
-});
+})
 
 export function StateTreeDemo() {
-  const list = TodoList.create({ title: "Shopping List" });
-  const patches = signal<Patch[]>([]);
-  const savedSnapshot = signal<string>("");
+  const list = TodoList.create({ title: 'Shopping List' })
+  const patches = signal<Patch[]>([])
+  const savedSnapshot = signal<string>('')
 
   onPatch(list, (patch) => {
-    patches.update((p) => [...p.slice(-9), patch]);
-  });
+    patches.update((p) => [...p.slice(-9), patch])
+  })
 
   return (
     <div>
@@ -45,7 +45,7 @@ export function StateTreeDemo() {
         <p>Next ID: {() => list.nextId()}</p>
         <div class="row" style="margin-top: 8px">
           <button onClick={() => list.bumpId()}>Bump ID</button>
-          <button onClick={() => list.setTitle("Shopping List")}>Reset Title</button>
+          <button onClick={() => list.setTitle('Shopping List')}>Reset Title</button>
         </div>
       </div>
 
@@ -60,8 +60,8 @@ export function StateTreeDemo() {
           </button>
           <button
             onClick={() => {
-              const snap = savedSnapshot();
-              if (snap) applySnapshot(list, JSON.parse(snap));
+              const snap = savedSnapshot()
+              if (snap) applySnapshot(list, JSON.parse(snap))
             }}
             disabled={!savedSnapshot()}
           >
@@ -85,13 +85,13 @@ export function StateTreeDemo() {
         <div class="log">
           {() =>
             patches().length === 0
-              ? "No patches yet."
+              ? 'No patches yet.'
               : patches()
                   .map((p) => JSON.stringify(p))
-                  .join("\n")
+                  .join('\n')
           }
         </div>
       </div>
     </div>
-  );
+  )
 }

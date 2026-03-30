@@ -41,28 +41,28 @@ pyreon-lint --list
 ### Programmatic API
 
 ```ts
-import { lint, listRules, lintFile, applyFixes } from "@pyreon/lint";
+import { lint, listRules, lintFile, applyFixes } from '@pyreon/lint'
 
 // Lint files
 const result = lint({
-  paths: ["src/"],
-  preset: "recommended",
+  paths: ['src/'],
+  preset: 'recommended',
   fix: false,
   quiet: false,
-});
+})
 
-console.log(`${result.totalErrors} errors, ${result.totalWarnings} warnings`);
+console.log(`${result.totalErrors} errors, ${result.totalWarnings} warnings`)
 
 // List all rules
 for (const rule of listRules()) {
-  console.log(`${rule.id} (${rule.severity}): ${rule.description}`);
+  console.log(`${rule.id} (${rule.severity}): ${rule.description}`)
 }
 
 // Lint a single source string
-import { getPreset } from "@pyreon/lint";
-import { allRules } from "@pyreon/lint/rules";
+import { getPreset } from '@pyreon/lint'
+import { allRules } from '@pyreon/lint/rules'
 
-const fileResult = lintFile("app.tsx", source, allRules, getPreset("recommended"));
+const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'))
 ```
 
 ## Rules (51)
@@ -185,14 +185,14 @@ const fileResult = lintFile("app.tsx", source, allRules, getPreset("recommended"
 ## Custom Rules
 
 ```ts
-import type { Rule } from "@pyreon/lint";
+import type { Rule } from '@pyreon/lint'
 
 const myRule: Rule = {
   meta: {
-    id: "custom/my-rule",
-    category: "reactivity",
-    description: "My custom rule",
-    severity: "warn",
+    id: 'custom/my-rule',
+    category: 'reactivity',
+    description: 'My custom rule',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -200,13 +200,13 @@ const myRule: Rule = {
       CallExpression(node, parent) {
         // Your rule logic
         context.report({
-          message: "Something is wrong",
+          message: 'Something is wrong',
           span: { start: node.start, end: node.end },
-        });
+        })
       },
-    };
+    }
   },
-};
+}
 ```
 
 ## License

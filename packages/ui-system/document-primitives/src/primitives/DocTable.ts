@@ -1,28 +1,28 @@
-import { Element } from "@pyreon/elements";
-import rocketstyle from "@pyreon/rocketstyle";
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
 const DocTable = rocketstyle({
   dimensions: {
-    variants: "variant",
+    variants: 'variant',
   },
   useBooleans: true,
-})({ name: "DocTable", component: Element })
+})({ name: 'DocTable', component: Element })
   .theme({
     fontSize: 14,
-    borderColor: "#dddddd",
+    borderColor: '#dddddd',
   })
-  .statics({ _documentType: "table" as const })
+  .statics({ _documentType: 'table' as const })
   .attrs<{
-    columns?: unknown[];
-    rows?: unknown[];
-    headerStyle?: Record<string, unknown>;
-    striped?: boolean;
-    bordered?: boolean;
-    caption?: string;
-    tag: string;
-    _documentProps: Record<string, unknown>;
+    columns?: unknown[]
+    rows?: unknown[]
+    headerStyle?: Record<string, unknown>
+    striped?: boolean
+    bordered?: boolean
+    caption?: string
+    tag: string
+    _documentProps: Record<string, unknown>
   }>((props) => ({
-    tag: "table",
+    tag: 'table',
     _documentProps: {
       columns: props.columns ?? [],
       rows: props.rows ?? [],
@@ -31,6 +31,6 @@ const DocTable = rocketstyle({
       ...(props.bordered ? { bordered: props.bordered } : {}),
       ...(props.caption ? { caption: props.caption } : {}),
     },
-  }));
+  }))
 
-export default DocTable;
+export default DocTable

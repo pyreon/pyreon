@@ -1,5 +1,5 @@
-import { batch, computed, signal } from "@pyreon/reactivity";
-import type { PermissionMap, Permissions, PermissionValue } from "./types";
+import { batch, computed, signal } from '@pyreon/reactivity'
+import type { PermissionMap, Permissions, PermissionValue } from './types'
 
 /**
  * Resolve a permission key against the map.
@@ -9,41 +9,41 @@ import type { PermissionMap, Permissions, PermissionValue } from "./types";
  * Safely evaluate a permission value. Predicates that throw are treated as denied.
  */
 function evaluate(value: PermissionValue, context?: unknown): boolean {
-  if (typeof value === "function") {
+  if (typeof value === 'function') {
     try {
-      return value(context);
+      return value(context)
     } catch {
-      return false;
+      return false
     }
   }
-  return value;
+  return value
 }
 
 function resolve(map: Map<string, PermissionValue>, key: string, context?: unknown): boolean {
   // 1. Exact match
-  const exact = map.get(key);
+  const exact = map.get(key)
   if (exact !== undefined) {
-    return evaluate(exact, context);
+    return evaluate(exact, context)
   }
 
   // 2. Wildcard match — 'posts.read' matches 'posts.*'
-  const dotIndex = key.lastIndexOf(".");
+  const dotIndex = key.lastIndexOf('.')
   if (dotIndex !== -1) {
-    const prefix = key.slice(0, dotIndex);
-    const wildcard = map.get(`${prefix}.*`);
+    const prefix = key.slice(0, dotIndex)
+    const wildcard = map.get(`${prefix}.*`)
     if (wildcard !== undefined) {
-      return evaluate(wildcard, context);
+      return evaluate(wildcard, context)
     }
   }
 
   // 3. Global wildcard
-  const global = map.get("*");
+  const global = map.get('*')
   if (global !== undefined) {
-    return evaluate(global, context);
+    return evaluate(global, context)
   }
 
   // 4. No match → denied
-  return false;
+  return false
 }
 
 /**
@@ -77,68 +77,68 @@ function resolve(map: Map<string, PermissionValue>, key: string, context?: unkno
  */
 export function createPermissions(initial?: PermissionMap): Permissions {
   // Internal reactive state — a signal holding the permission map
-  const store = signal(toMap(initial));
+  const store = signal(toMap(initial))
   // Version counter — incremented on every set/patch to trigger reactive updates
-  const version = signal(0);
+  const version = signal(0)
 
   function toMap(obj?: PermissionMap): Map<string, PermissionValue> {
-    if (!obj) return new Map();
-    return new Map(Object.entries(obj));
+    if (!obj) return new Map()
+    return new Map(Object.entries(obj))
   }
 
   // The main check function — reads `version` to subscribe in reactive contexts
   function can(key: string, context?: unknown): boolean {
     // Reading version subscribes this call to reactive updates
-    version();
-    return resolve(store.peek(), key, context);
+    version()
+    return resolve(store.peek(), key, context)
   }
 
   can.not = (key: string, context?: unknown): boolean => {
-    return !can(key, context);
-  };
+    return !can(key, context)
+  }
 
   can.all = (...keys: string[]): boolean => {
-    return keys.every((key) => can(key));
-  };
+    return keys.every((key) => can(key))
+  }
 
   can.any = (...keys: string[]): boolean => {
-    return keys.some((key) => can(key));
-  };
+    return keys.some((key) => can(key))
+  }
 
   can.set = (permissions: PermissionMap): void => {
     batch(() => {
-      store.set(toMap(permissions));
-      version.update((v) => v + 1);
-    });
-  };
+      store.set(toMap(permissions))
+      version.update((v) => v + 1)
+    })
+  }
 
   can.patch = (permissions: PermissionMap): void => {
     batch(() => {
-      const current = store.peek();
+      const current = store.peek()
       for (const [key, value] of Object.entries(permissions)) {
-        current.set(key, value);
+        current.set(key, value)
       }
-      store.set(current);
-      version.update((v) => v + 1);
-    });
-  };
+      store.set(current)
+      version.update((v) => v + 1)
+    })
+  }
 
   can.granted = computed(() => {
-    version();
-    const keys: string[] = [];
+    version()
+    const keys: string[] = []
     for (const [key, value] of store.peek()) {
       // Static true or predicate (capability exists)
-      if (value === true || typeof value === "function") {
-        keys.push(key);
+      if (value === true || typeof value === 'function') {
+        keys.push(key)
       }
     }
-    return keys;
-  });
+    return keys
+  })
 
   can.entries = computed(() => {
-    version();
-    return [...store.peek().entries()];
-  });
+    version()
+    return [...store.peek().entries()]
+  })
 
-  return can as Permissions;
+  return can as Permissions
 }

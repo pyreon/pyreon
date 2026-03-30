@@ -24,52 +24,52 @@ bun add @pyreon/rocketstyle
 ## Quick Start
 
 ```ts
-import rocketstyle from "@pyreon/rocketstyle";
-import { Element } from "@pyreon/elements";
+import rocketstyle from '@pyreon/rocketstyle'
+import { Element } from '@pyreon/elements'
 
 const Button = rocketstyle()({
-  name: "Button",
+  name: 'Button',
   component: Element,
 })
-  .attrs({ tag: "button" })
+  .attrs({ tag: 'button' })
   .theme({
     fontSize: 16,
     paddingX: 16,
     paddingY: 8,
     borderRadius: 4,
-    color: "#fff",
-    backgroundColor: "#0d6efd",
+    color: '#fff',
+    backgroundColor: '#0d6efd',
     hover: {
-      backgroundColor: "#0b5ed7",
+      backgroundColor: '#0b5ed7',
     },
   })
   .states({
     primary: {
-      backgroundColor: "#0d6efd",
-      hover: { backgroundColor: "#0b5ed7" },
+      backgroundColor: '#0d6efd',
+      hover: { backgroundColor: '#0b5ed7' },
     },
     danger: {
-      backgroundColor: "#dc3545",
-      hover: { backgroundColor: "#bb2d3b" },
+      backgroundColor: '#dc3545',
+      hover: { backgroundColor: '#bb2d3b' },
     },
     success: {
-      backgroundColor: "#198754",
-      hover: { backgroundColor: "#157347" },
+      backgroundColor: '#198754',
+      hover: { backgroundColor: '#157347' },
     },
   })
   .sizes({
     sm: { fontSize: 14, paddingX: 12, paddingY: 6 },
     md: { fontSize: 16, paddingX: 16, paddingY: 8 },
     lg: { fontSize: 18, paddingX: 20, paddingY: 10 },
-  });
+  })
 ```
 
 ```ts
 // Named props
-Button({ state: "danger", size: "lg", label: "Delete" });
+Button({ state: 'danger', size: 'lg', label: 'Delete' })
 
 // Boolean shorthand (when useBooleans is enabled)
-Button({ danger: true, lg: true, label: "Delete" });
+Button({ danger: true, lg: true, label: 'Delete' })
 ```
 
 ## Core Concepts
@@ -131,12 +131,12 @@ const factory = rocketstyle({
     /* custom dimensions */
   },
   useBooleans: true,
-});
+})
 
 const Component = factory({
-  name: "ComponentName",
+  name: 'ComponentName',
   component: BaseComponent,
-});
+})
 ```
 
 ### .attrs(props | callback, options?)
@@ -144,8 +144,8 @@ const Component = factory({
 Same API as `@pyreon/attrs`. Define default props with optional priority and filter.
 
 ```ts
-Button.attrs({ tag: "button", role: "button" });
-Button.attrs((props) => ({ "aria-label": props.label }));
+Button.attrs({ tag: 'button', role: 'button' })
+Button.attrs((props) => ({ 'aria-label': props.label }))
 ```
 
 ### .theme(values | callback)
@@ -156,15 +156,15 @@ Base theme values applied to every instance.
 // Object form
 Button.theme({
   fontSize: 16,
-  color: "#fff",
+  color: '#fff',
   hover: { opacity: 0.9 },
-});
+})
 
 // Callback form — receives the theme context and mode
 Button.theme((theme, mode, css) => ({
   fontSize: 16,
-  color: mode === "dark" ? "#fff" : "#333",
-}));
+  color: mode === 'dark' ? '#fff' : '#333',
+}))
 ```
 
 ### .states() / .sizes() / .variants() / .multiple()
@@ -173,28 +173,28 @@ Define values for each dimension. Each key becomes a selectable option.
 
 ```ts
 Button.states({
-  primary: { backgroundColor: "#0d6efd" },
-  danger: { backgroundColor: "#dc3545" },
-});
+  primary: { backgroundColor: '#0d6efd' },
+  danger: { backgroundColor: '#dc3545' },
+})
 
 Button.sizes({
   sm: { fontSize: 14, paddingX: 8 },
   lg: { fontSize: 18, paddingX: 20 },
-});
+})
 
 // Multi dimension — multiple can be active at once
 Button.multiple({
   rounded: { borderRadius: 999 },
-  shadow: { boxShadow: "0 2px 8px rgba(0,0,0,0.15)" },
-});
+  shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
+})
 ```
 
 Dimension methods also accept callbacks:
 
 ```ts
 Button.states((theme, mode, css) => ({
-  primary: { backgroundColor: theme.colors?.primary ?? "#0d6efd" },
-}));
+  primary: { backgroundColor: theme.colors?.primary ?? '#0d6efd' },
+}))
 ```
 
 ### .styles(callback)
@@ -210,7 +210,7 @@ Button.styles(
 
     ${({ $rocketstyle }) => makeItResponsive({ theme: $rocketstyle, styles, css })}
   `,
-);
+)
 ```
 
 ### .config(options)
@@ -233,10 +233,10 @@ Button.config({
 Same API as `@pyreon/attrs`:
 
 ```ts
-Button.compose({ withTracking: trackingHoc });
-Button.statics({ category: "action" });
+Button.compose({ withTracking: trackingHoc })
+Button.statics({ category: 'action' })
 
-Button.meta.category; // => 'action'
+Button.meta.category // => 'action'
 ```
 
 ### isRocketComponent(value)
@@ -244,9 +244,9 @@ Button.meta.category; // => 'action'
 Runtime type guard.
 
 ```ts
-import { isRocketComponent } from "@pyreon/rocketstyle";
+import { isRocketComponent } from '@pyreon/rocketstyle'
 
-isRocketComponent(Button); // => true
+isRocketComponent(Button) // => true
 ```
 
 ## Custom Dimensions
@@ -256,14 +256,14 @@ Define your own dimensions by passing them to the factory:
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    intent: "intent", // prop: intent="primary"
-    size: "size", // prop: size="lg"
+    intent: 'intent', // prop: intent="primary"
+    size: 'size', // prop: size="lg"
     appearance: {
-      propName: "appearance",
+      propName: 'appearance',
       multi: true, // allows multiple values
     },
   },
-});
+})
 ```
 
 This creates `.intent()`, `.size()`, and `.appearance()` chain methods.
@@ -275,25 +275,25 @@ Mark a dimension as `transform: true` to make its values receive the accumulated
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    states: "state",
-    modifiers: { propName: "modifier", multi: true, transform: true },
+    states: 'state',
+    modifiers: { propName: 'modifier', multi: true, transform: true },
   },
-});
+})
 
-const Button = rocketButton({ name: "Button", component: Element })
-  .theme({ backgroundColor: "#0d6efd", color: "#fff" })
+const Button = rocketButton({ name: 'Button', component: Element })
+  .theme({ backgroundColor: '#0d6efd', color: '#fff' })
   .states({
-    danger: { backgroundColor: "#dc3545", color: "#fff" },
+    danger: { backgroundColor: '#dc3545', color: '#fff' },
   })
   .modifiers({
     outlined: (theme) => ({
       color: theme.backgroundColor,
-      backgroundColor: "transparent",
+      backgroundColor: 'transparent',
     }),
-  });
+  })
 
 // outlined receives { backgroundColor: '#dc3545', color: '#fff' } from the danger state
-Button({ state: "danger", modifier: "outlined" });
+Button({ state: 'danger', modifier: 'outlined' })
 ```
 
 ## Provider / Consumer
@@ -302,26 +302,26 @@ Propagate parent component state to children through Pyreon's context system.
 
 ```ts
 // Parent provides its state
-const ButtonGroup = Button.config({ provider: true });
+const ButtonGroup = Button.config({ provider: true })
 
 // Child consumes parent state
 const ButtonIcon = rocketstyle()({
-  name: "ButtonIcon",
+  name: 'ButtonIcon',
   component: Element,
 })
   .config({
     consumer: (ctx) =>
       ctx(({ pseudo }) => ({
-        state: pseudo.hover ? "active" : "default",
+        state: pseudo.hover ? 'active' : 'default',
       })),
   })
   .states({
-    default: { color: "#666" },
-    active: { color: "#fff" },
-  });
+    default: { color: '#666' },
+    active: { color: '#fff' },
+  })
 
 // Icon reacts to parent's hover state
-ButtonGroup({ state: "primary", children: [ButtonIcon({}), "Label"] });
+ButtonGroup({ state: 'primary', children: [ButtonIcon({}), 'Label'] })
 ```
 
 ## Light / Dark Mode
@@ -330,9 +330,9 @@ Theme callbacks receive a `mode` parameter:
 
 ```ts
 Button.theme((theme, mode) => ({
-  color: mode === "dark" ? "#fff" : "#1a1a1a",
-  backgroundColor: mode === "dark" ? "#333" : "#fff",
-}));
+  color: mode === 'dark' ? '#fff' : '#1a1a1a',
+  backgroundColor: mode === 'dark' ? '#333' : '#fff',
+}))
 ```
 
 Use `inversed: true` in `.config()` to flip the mode for a component subtree.

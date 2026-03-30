@@ -1,10 +1,10 @@
-import { useContext } from "@pyreon/core";
-import { PKG_NAME } from "../constants";
-import { RowContext } from "../context";
-import type { ElementType } from "../types";
-import useGridContext from "../useContext";
-import { omitCtxKeys } from "../utils";
-import Styled from "./styled";
+import { useContext } from '@pyreon/core'
+import { PKG_NAME } from '../constants'
+import { RowContext } from '../context'
+import type { ElementType } from '../types'
+import useGridContext from '../useContext'
+import { omitCtxKeys } from '../utils'
+import Styled from './styled'
 
 /**
  * Col (column) component that reads grid settings from RowContext
@@ -13,27 +13,27 @@ import Styled from "./styled";
  */
 
 const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== "production" ? { "data-coolgrid": "col" } : {};
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'col' } : {}
 
 const Component: ElementType<
   [
-    "containerWidth",
-    "width",
-    "rowComponent",
-    "rowCss",
-    "colCss",
-    "colComponent",
-    "columns",
-    "gap",
-    "gutter",
-    "contentAlignX",
+    'containerWidth',
+    'width',
+    'rowComponent',
+    'rowCss',
+    'colCss',
+    'colComponent',
+    'columns',
+    'gap',
+    'gutter',
+    'contentAlignX',
   ]
 > = ({ children, component, css, ...props }) => {
-  const parentCtx = useContext(RowContext);
+  const parentCtx = useContext(RowContext)
   const { colCss, colComponent, columns, gap, size, padding } = useGridContext({
     ...parentCtx,
     ...props,
-  });
+  })
 
   const finalProps = {
     $coolgrid: {
@@ -43,19 +43,19 @@ const Component: ElementType<
       padding,
       extraStyles: css ?? colCss,
     },
-  };
+  }
 
   return (
     <Styled {...omitCtxKeys(props)} as={component ?? colComponent} {...finalProps} {...DEV_PROPS}>
       {children}
     </Styled>
-  );
-};
+  )
+}
 
-const name = `${PKG_NAME}/Col`;
+const name = `${PKG_NAME}/Col`
 
-Component.displayName = name;
-Component.pkgName = PKG_NAME;
-Component.PYREON__COMPONENT = name;
+Component.displayName = name
+Component.pkgName = PKG_NAME
+Component.PYREON__COMPONENT = name
 
-export default Component;
+export default Component

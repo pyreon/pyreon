@@ -63,9 +63,9 @@ Pass a function to `.attrs()` to compute defaults based on incoming props:
 
 ```tsx
 const Input = attrs(BaseInput).attrs((props) => ({
-  "aria-invalid": props.error ? "true" : undefined,
-  class: props.error ? "input-error" : "input",
-}));
+  'aria-invalid': props.error ? 'true' : undefined,
+  class: props.error ? 'input-error' : 'input',
+}))
 ```
 
 ## Chaining
@@ -73,12 +73,12 @@ const Input = attrs(BaseInput).attrs((props) => ({
 Each `.attrs()` call creates a new component in the chain. Defaults are merged in order -- later calls override earlier ones for the same prop:
 
 ```tsx
-const Base = attrs(Component).attrs({ variant: "default", size: "md" });
+const Base = attrs(Component).attrs({ variant: 'default', size: 'md' })
 
-const Small = Base.attrs({ size: "sm" });
+const Small = Base.attrs({ size: 'sm' })
 // Effective defaults: { variant: 'default', size: 'sm' }
 
-const SmallPrimary = Small.attrs({ variant: "primary" });
+const SmallPrimary = Small.attrs({ variant: 'primary' })
 // Effective defaults: { variant: 'primary', size: 'sm' }
 ```
 

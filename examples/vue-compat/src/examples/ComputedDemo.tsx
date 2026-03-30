@@ -1,18 +1,18 @@
-import { computed, ref } from "vue";
-import Demo from "./Demo";
+import { computed, ref } from 'vue'
+import Demo from './Demo'
 
 export default function ComputedDemo() {
-  const firstName = ref("Vue");
-  const lastName = ref("Compat");
-  const fullName = computed(() => `${firstName.value} ${lastName.value}`);
+  const firstName = ref('Vue')
+  const lastName = ref('Compat')
+  const fullName = computed(() => `${firstName.value} ${lastName.value}`)
 
-  const raw = ref(5);
+  const raw = ref(5)
   const writable = computed({
     get: () => raw.value * 2,
     set: (v: number) => {
-      raw.value = v / 2;
+      raw.value = v / 2
     },
-  });
+  })
 
   return (
     <Demo
@@ -33,10 +33,10 @@ const doubled = computed({
         fullName: <strong>{fullName.value}</strong>
       </p>
       <div class="row">
-        <button type="button" onClick={() => (firstName.value = "Pyreon")}>
+        <button type="button" onClick={() => (firstName.value = 'Pyreon')}>
           firstName = "Pyreon"
         </button>
-        <button type="button" onClick={() => (lastName.value = "Framework")}>
+        <button type="button" onClick={() => (lastName.value = 'Framework')}>
           lastName = "Framework"
         </button>
       </div>
@@ -52,5 +52,5 @@ const doubled = computed({
         </button>
       </div>
     </Demo>
-  );
+  )
 }

@@ -1,45 +1,45 @@
-import { onUnmount } from "@pyreon/core";
-import type { Signal } from "@pyreon/reactivity";
-import { batch, effect, signal } from "@pyreon/reactivity";
-import type { QueryClient } from "@tanstack/query-core";
-import { useQueryClient } from "./query-client";
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
+import type { QueryClient } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SubscriptionStatus = "connecting" | "connected" | "disconnected" | "error";
+export type SubscriptionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface UseSubscriptionOptions {
   /** WebSocket URL — can be a signal for reactive URLs */
-  url: string | (() => string);
+  url: string | (() => string)
   /** WebSocket sub-protocols */
-  protocols?: string | string[];
+  protocols?: string | string[]
   /** Called when a message is received — use queryClient to invalidate or update cache */
-  onMessage: (event: MessageEvent, queryClient: QueryClient) => void;
+  onMessage: (event: MessageEvent, queryClient: QueryClient) => void
   /** Called when the connection opens */
-  onOpen?: (event: Event) => void;
+  onOpen?: (event: Event) => void
   /** Called when the connection closes */
-  onClose?: (event: CloseEvent) => void;
+  onClose?: (event: CloseEvent) => void
   /** Called when a connection error occurs */
-  onError?: (event: Event) => void;
+  onError?: (event: Event) => void
   /** Whether to automatically reconnect — default: true */
-  reconnect?: boolean;
+  reconnect?: boolean
   /** Initial reconnect delay in ms — doubles on each retry, default: 1000 */
-  reconnectDelay?: number;
+  reconnectDelay?: number
   /** Maximum reconnect attempts — default: 10, 0 = unlimited */
-  maxReconnectAttempts?: number;
+  maxReconnectAttempts?: number
   /** Whether the subscription is enabled — default: true */
-  enabled?: boolean | (() => boolean);
+  enabled?: boolean | (() => boolean)
 }
 
 export interface UseSubscriptionResult {
   /** Current connection status */
-  status: Signal<SubscriptionStatus>;
+  status: Signal<SubscriptionStatus>
   /** Send data through the WebSocket */
-  send: (data: string | Blob | BufferSource) => void;
+  send: (data: string | Blob | BufferSource) => void
   /** Manually close the connection */
-  close: () => void;
+  close: () => void
   /** Manually reconnect */
-  reconnect: () => void;
+  reconnect: () => void
 }
 
 // ─── useSubscription ─────────────────────────────────────────────────────────
@@ -67,148 +67,148 @@ export interface UseSubscriptionResult {
  * ```
  */
 export function useSubscription(options: UseSubscriptionOptions): UseSubscriptionResult {
-  const queryClient = useQueryClient();
-  const status = signal<SubscriptionStatus>("disconnected");
+  const queryClient = useQueryClient()
+  const status = signal<SubscriptionStatus>('disconnected')
 
-  let ws: WebSocket | null = null;
-  let reconnectAttempts = 0;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let intentionalClose = false;
+  let ws: WebSocket | null = null
+  let reconnectAttempts = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let intentionalClose = false
 
-  const reconnectEnabled = options.reconnect !== false;
-  const baseDelay = options.reconnectDelay ?? 1000;
-  const maxAttempts = options.maxReconnectAttempts ?? 10;
+  const reconnectEnabled = options.reconnect !== false
+  const baseDelay = options.reconnectDelay ?? 1000
+  const maxAttempts = options.maxReconnectAttempts ?? 10
 
   function getUrl(): string {
-    return typeof options.url === "function" ? options.url() : options.url;
+    return typeof options.url === 'function' ? options.url() : options.url
   }
 
   function isEnabled(): boolean {
-    if (options.enabled === undefined) return true;
-    return typeof options.enabled === "function" ? options.enabled() : options.enabled;
+    if (options.enabled === undefined) return true
+    return typeof options.enabled === 'function' ? options.enabled() : options.enabled
   }
 
   function connect(): void {
     if (ws) {
-      ws.onopen = null;
-      ws.onmessage = null;
-      ws.onclose = null;
-      ws.onerror = null;
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onclose = null
+      ws.onerror = null
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+        ws.close()
       }
     }
 
     if (!isEnabled()) {
-      status.set("disconnected");
-      return;
+      status.set('disconnected')
+      return
     }
 
-    status.set("connecting");
+    status.set('connecting')
 
     try {
-      ws = options.protocols ? new WebSocket(getUrl(), options.protocols) : new WebSocket(getUrl());
+      ws = options.protocols ? new WebSocket(getUrl(), options.protocols) : new WebSocket(getUrl())
     } catch {
-      status.set("error");
-      scheduleReconnect();
-      return;
+      status.set('error')
+      scheduleReconnect()
+      return
     }
 
     ws.onopen = (event) => {
       batch(() => {
-        status.set("connected");
-        reconnectAttempts = 0;
-      });
-      options.onOpen?.(event);
-    };
+        status.set('connected')
+        reconnectAttempts = 0
+      })
+      options.onOpen?.(event)
+    }
 
     ws.onmessage = (event) => {
       try {
-        options.onMessage(event, queryClient);
+        options.onMessage(event, queryClient)
       } catch {
         // Message handler errors should not crash the subscription
       }
-    };
+    }
 
     ws.onclose = (event) => {
-      status.set("disconnected");
-      options.onClose?.(event);
+      status.set('disconnected')
+      options.onClose?.(event)
 
       if (!intentionalClose && reconnectEnabled) {
-        scheduleReconnect();
+        scheduleReconnect()
       }
-    };
+    }
 
     ws.onerror = (event) => {
-      status.set("error");
-      options.onError?.(event);
-    };
+      status.set('error')
+      options.onError?.(event)
+    }
   }
 
   function scheduleReconnect(): void {
-    if (!reconnectEnabled) return;
-    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return;
+    if (!reconnectEnabled) return
+    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return
 
-    const delay = baseDelay * 2 ** reconnectAttempts;
-    reconnectAttempts++;
+    const delay = baseDelay * 2 ** reconnectAttempts
+    reconnectAttempts++
 
     reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
+      reconnectTimer = null
       if (!intentionalClose && isEnabled()) {
-        connect();
+        connect()
       }
-    }, delay);
+    }, delay)
   }
 
   function send(data: string | Blob | BufferSource): void {
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(data);
+      ws.send(data)
     }
   }
 
   function close(): void {
-    intentionalClose = true;
+    intentionalClose = true
     if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
     }
     if (ws) {
-      ws.onopen = null;
-      ws.onmessage = null;
-      ws.onclose = null;
-      ws.onerror = null;
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onclose = null
+      ws.onerror = null
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+        ws.close()
       }
-      ws = null;
+      ws = null
     }
-    status.set("disconnected");
+    status.set('disconnected')
   }
 
   function manualReconnect(): void {
-    intentionalClose = false;
-    reconnectAttempts = 0;
-    connect();
+    intentionalClose = false
+    reconnectAttempts = 0
+    connect()
   }
 
   // Track reactive URL and enabled state
   effect(() => {
     // Read reactive values to subscribe to changes
-    if (typeof options.url === "function") options.url();
-    if (typeof options.enabled === "function") options.enabled();
+    if (typeof options.url === 'function') options.url()
+    if (typeof options.enabled === 'function') options.enabled()
 
-    intentionalClose = false;
-    reconnectAttempts = 0;
-    connect();
-  });
+    intentionalClose = false
+    reconnectAttempts = 0
+    connect()
+  })
 
   // Cleanup on unmount
-  onUnmount(() => close());
+  onUnmount(() => close())
 
   return {
     status,
     send,
     close,
     reconnect: manualReconnect,
-  };
+  }
 }

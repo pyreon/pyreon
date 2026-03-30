@@ -1,14 +1,14 @@
-import { defineComponent, ref } from "vue";
-import Demo from "./Demo";
+import { defineComponent, ref } from 'vue'
+import Demo from './Demo'
 
 const Greeting = defineComponent({
-  name: "Greeting",
+  name: 'Greeting',
   setup(props: { name: string }) {
-    const exclaim = ref(false);
+    const exclaim = ref(false)
     return () => (
       <p>
         Hello, <strong>{props.name}</strong>
-        {exclaim.value ? "!" : "."}
+        {exclaim.value ? '!' : '.'}
         <button
           type="button"
           onClick={() => (exclaim.value = !exclaim.value)}
@@ -17,12 +17,12 @@ const Greeting = defineComponent({
           Toggle !
         </button>
       </p>
-    );
+    )
   },
-});
+})
 
 export default function DefineComponentDemo() {
-  const name = ref("World");
+  const name = ref('World')
 
   return (
     <Demo
@@ -40,13 +40,13 @@ export default function DefineComponentDemo() {
     >
       <Greeting name={name.value} />
       <div class="row">
-        <button type="button" onClick={() => (name.value = "Pyreon")}>
+        <button type="button" onClick={() => (name.value = 'Pyreon')}>
           name = "Pyreon"
         </button>
-        <button type="button" onClick={() => (name.value = "Vue")}>
+        <button type="button" onClick={() => (name.value = 'Vue')}>
           name = "Vue"
         </button>
       </div>
     </Demo>
-  );
+  )
 }

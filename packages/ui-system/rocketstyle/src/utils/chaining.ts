@@ -1,5 +1,5 @@
-type Func = (...args: any) => Record<string, unknown>;
-type Obj = Record<string, unknown>;
+type Func = (...args: any) => Record<string, unknown>
+type Obj = Record<string, unknown>
 
 // --------------------------------------------------------
 // Chain Options
@@ -8,16 +8,16 @@ type Obj = Record<string, unknown>;
  * Appends a new option (function or plain object) to an existing chain
  * of option callbacks. Objects are wrapped in a thunk for uniform handling.
  */
-type ChainOptions = (opts: Obj | Func | undefined, defaultOpts: Func[]) => Func[];
+type ChainOptions = (opts: Obj | Func | undefined, defaultOpts: Func[]) => Func[]
 
 export const chainOptions: ChainOptions = (opts, defaultOpts = []) => {
-  const result = [...defaultOpts];
+  const result = [...defaultOpts]
 
-  if (typeof opts === "function") result.push(opts);
-  else if (typeof opts === "object") result.push(() => opts);
+  if (typeof opts === 'function') result.push(opts)
+  else if (typeof opts === 'object') result.push(() => opts)
 
-  return result;
-};
+  return result
+}
 
 // --------------------------------------------------------
 // Chain Or Options
@@ -30,10 +30,10 @@ type ChainOrOptions = (
   keys: readonly string[],
   opts: Obj,
   defaultOpts: Obj,
-) => Record<string, unknown>;
+) => Record<string, unknown>
 
 export const chainOrOptions: ChainOrOptions = (keys, opts, defaultOpts) =>
-  keys.reduce((acc, item) => ({ ...acc, [item]: opts[item] || defaultOpts[item] }), {});
+  keys.reduce((acc, item) => ({ ...acc, [item]: opts[item] || defaultOpts[item] }), {})
 
 // --------------------------------------------------------
 // Chain Reserved Options
@@ -46,7 +46,7 @@ type ChainReservedKeyOptions = (
   keys: readonly string[],
   opts: Record<string, Obj | Func>,
   defaultOpts: Record<string, Func[]>,
-) => Record<string, ReturnType<typeof chainOptions>>;
+) => Record<string, ReturnType<typeof chainOptions>>
 
 export const chainReservedKeyOptions: ChainReservedKeyOptions = (keys, opts, defaultOpts) =>
   keys.reduce(
@@ -55,4 +55,4 @@ export const chainReservedKeyOptions: ChainReservedKeyOptions = (keys, opts, def
       [item]: chainOptions(opts[item], defaultOpts[item] ?? []),
     }),
     {},
-  );
+  )

@@ -1,12 +1,12 @@
-import { compose, hoistNonReactStatics, omit, pick } from "@pyreon/ui-core";
-import { attrsHoc } from "./hoc";
-import type { AttrsComponent as AttrsComponentType } from "./types/AttrsComponent";
-import type { Configuration, ExtendedConfiguration } from "./types/configuration";
-import type { InitAttrsComponent } from "./types/InitAttrsComponent";
-import { calculateChainOptions } from "./utils/attrs";
-import { chainOptions } from "./utils/chaining";
-import { calculateHocsFuncs } from "./utils/compose";
-import { createStaticsEnhancers } from "./utils/statics";
+import { compose, hoistNonReactStatics, omit, pick } from '@pyreon/ui-core'
+import { attrsHoc } from './hoc'
+import type { AttrsComponent as AttrsComponentType } from './types/AttrsComponent'
+import type { Configuration, ExtendedConfiguration } from './types/configuration'
+import type { InitAttrsComponent } from './types/InitAttrsComponent'
+import { calculateChainOptions } from './utils/attrs'
+import { chainOptions } from './utils/chaining'
+import { calculateHocsFuncs } from './utils/compose'
+import { createStaticsEnhancers } from './utils/statics'
 
 /**
  * Clones the current configuration and merges new options, then creates a
@@ -17,7 +17,7 @@ import { createStaticsEnhancers } from "./utils/statics";
 type CloneAndEnhance = (
   defaultOpts: Configuration,
   opts: Partial<ExtendedConfiguration>,
-) => ReturnType<typeof attrsComponent>;
+) => ReturnType<typeof attrsComponent>
 
 const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) =>
   attrsComponent({
@@ -29,7 +29,7 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) =>
     priorityAttrs: chainOptions(opts.priorityAttrs, defaultOpts.priorityAttrs),
     statics: { ...defaultOpts.statics, ...opts.statics },
     compose: { ...defaultOpts.compose, ...opts.compose },
-  } as Parameters<typeof attrsComponent>[0]);
+  } as Parameters<typeof attrsComponent>[0])
 
 /**
  * Core factory that builds an attrs-enhanced Pyreon component.
@@ -46,71 +46,71 @@ const cloneAndEnhance: CloneAndEnhance = (defaultOpts, opts) =>
  * Components are plain functions that run once per mount.
  */
 const attrsComponent: InitAttrsComponent = (options) => {
-  const componentName = options.name ?? options.component.displayName ?? options.component.name;
+  const componentName = options.name ?? options.component.displayName ?? options.component.name
 
-  const RenderComponent = options.component;
+  const RenderComponent = options.component
 
   // Build the HOC chain: attrsHoc is always first (resolves default props),
   // followed by user-composed HOCs in reverse order (outermost wraps first).
-  const hocsFuncs = [attrsHoc(options), ...calculateHocsFuncs(options.compose)];
+  const hocsFuncs = [attrsHoc(options), ...calculateHocsFuncs(options.compose)]
 
   // The inner component receives already-computed props from the HOC chain.
   // It handles prop filtering and final rendering.
   const EnhancedComponent = (props: Record<string, any>) => {
-    const needsFiltering = options.filterAttrs && options.filterAttrs.length > 0;
+    const needsFiltering = options.filterAttrs && options.filterAttrs.length > 0
 
-    const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props;
+    const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
     const finalProps =
-      process.env.NODE_ENV !== "production"
-        ? { ...filteredProps, "data-attrs": componentName }
-        : filteredProps;
+      process.env.NODE_ENV !== 'production'
+        ? { ...filteredProps, 'data-attrs': componentName }
+        : filteredProps
 
-    return RenderComponent(finalProps);
-  };
+    return RenderComponent(finalProps)
+  }
 
   // Apply the full HOC chain: compose(attrsHoc, ...userHocs)(EnhancedComponent)
-  const AttrsComponent: AttrsComponentType = compose(...hocsFuncs)(EnhancedComponent);
+  const AttrsComponent: AttrsComponentType = compose(...hocsFuncs)(EnhancedComponent)
 
-  AttrsComponent.IS_ATTRS = true;
-  AttrsComponent.displayName = componentName;
-  AttrsComponent.meta = {};
+  AttrsComponent.IS_ATTRS = true
+  AttrsComponent.displayName = componentName
+  AttrsComponent.meta = {}
 
   // Copy static properties from the original component.
-  hoistNonReactStatics(AttrsComponent, options.component);
+  hoistNonReactStatics(AttrsComponent, options.component)
 
   // Populate `component.meta` with user-defined statics from `.statics()`.
   createStaticsEnhancers({
     context: AttrsComponent.meta,
     options: options.statics,
-  });
+  })
 
   // ─── Chaining Methods ──────────────────────────────────
   // Each method creates a new component via cloneAndEnhance.
   // The original component is never mutated.
   Object.assign(AttrsComponent, {
     attrs: (attrs: any, { priority, filter }: any = {}) => {
-      const result: Record<string, any> = {};
+      const result: Record<string, any> = {}
 
       if (filter) {
-        result.filterAttrs = filter;
+        result.filterAttrs = filter
       }
 
       if (priority) {
-        result.priorityAttrs = attrs as ExtendedConfiguration["priorityAttrs"];
+        result.priorityAttrs = attrs as ExtendedConfiguration['priorityAttrs']
 
-        return cloneAndEnhance(options, result);
+        return cloneAndEnhance(options, result)
       }
 
-      result.attrs = attrs as ExtendedConfiguration["attrs"];
+      result.attrs = attrs as ExtendedConfiguration['attrs']
 
-      return cloneAndEnhance(options, result);
+      return cloneAndEnhance(options, result)
     },
 
     config: (opts: any = {}) => {
-      const result = pick(opts);
+      const result = pick(opts)
 
-      return cloneAndEnhance(options, result);
+      return cloneAndEnhance(options, result)
     },
 
     compose: (opts: any) => cloneAndEnhance(options, { compose: opts }),
@@ -118,9 +118,9 @@ const attrsComponent: InitAttrsComponent = (options) => {
     statics: (opts: any) => cloneAndEnhance(options, { statics: opts }),
 
     getDefaultAttrs: (props: any) => calculateChainOptions(options.attrs)([props]),
-  });
+  })
 
-  return AttrsComponent;
-};
+  return AttrsComponent
+}
 
-export default attrsComponent;
+export default attrsComponent

@@ -1,253 +1,253 @@
-import type { Extension } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
-import type { Computed, Signal } from "@pyreon/reactivity";
+import type { Extension } from '@codemirror/state'
+import type { EditorView } from '@codemirror/view'
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 // ─── Editor config ───────────────────────────────────────────────────────────
 
 export type EditorLanguage =
-  | "javascript"
-  | "typescript"
-  | "jsx"
-  | "tsx"
-  | "html"
-  | "css"
-  | "json"
-  | "markdown"
-  | "python"
-  | "rust"
-  | "sql"
-  | "xml"
-  | "yaml"
-  | "cpp"
-  | "java"
-  | "go"
-  | "php"
-  | "ruby"
-  | "shell"
-  | "plain";
+  | 'javascript'
+  | 'typescript'
+  | 'jsx'
+  | 'tsx'
+  | 'html'
+  | 'css'
+  | 'json'
+  | 'markdown'
+  | 'python'
+  | 'rust'
+  | 'sql'
+  | 'xml'
+  | 'yaml'
+  | 'cpp'
+  | 'java'
+  | 'go'
+  | 'php'
+  | 'ruby'
+  | 'shell'
+  | 'plain'
 
-export type EditorTheme = "light" | "dark" | Extension;
+export type EditorTheme = 'light' | 'dark' | Extension
 
 export interface EditorConfig {
   /** Initial value */
-  value?: string;
+  value?: string
   /** Language for syntax highlighting — lazy-loaded */
-  language?: EditorLanguage;
+  language?: EditorLanguage
   /** Theme — 'light', 'dark', or a custom CodeMirror theme extension */
-  theme?: EditorTheme;
+  theme?: EditorTheme
   /** Show line numbers — default: true */
-  lineNumbers?: boolean;
+  lineNumbers?: boolean
   /** Read-only mode — default: false */
-  readOnly?: boolean;
+  readOnly?: boolean
   /** Enable code folding — default: true */
-  foldGutter?: boolean;
+  foldGutter?: boolean
   /** Enable bracket matching — default: true */
-  bracketMatching?: boolean;
+  bracketMatching?: boolean
   /** Enable autocomplete — default: true */
-  autocomplete?: boolean;
+  autocomplete?: boolean
   /** Enable search (Cmd+F) — default: true */
-  search?: boolean;
+  search?: boolean
   /** Enable lint/diagnostics — default: false */
-  lint?: boolean;
+  lint?: boolean
   /** Enable indent guides — default: true */
-  highlightIndentGuides?: boolean;
+  highlightIndentGuides?: boolean
   /** Vim keybinding mode — default: false */
-  vim?: boolean;
+  vim?: boolean
   /** Emacs keybinding mode — default: false */
-  emacs?: boolean;
+  emacs?: boolean
   /** Tab size — default: 2 */
-  tabSize?: number;
+  tabSize?: number
   /** Enable indent guides — default: true */
-  indentGuides?: boolean;
+  indentGuides?: boolean
   /** Enable line wrapping — default: false */
-  lineWrapping?: boolean;
+  lineWrapping?: boolean
   /** Placeholder text when empty */
-  placeholder?: string;
+  placeholder?: string
   /** Enable minimap — default: false */
-  minimap?: boolean;
+  minimap?: boolean
   /** Additional CodeMirror extensions */
-  extensions?: Extension[];
+  extensions?: Extension[]
   /** Called when value changes */
-  onChange?: (value: string) => void;
+  onChange?: (value: string) => void
 }
 
 // ─── Editor instance ─────────────────────────────────────────────────────────
 
 export interface EditorInstance {
   /** Current editor value — reactive signal */
-  value: Signal<string>;
+  value: Signal<string>
   /** Current language — reactive signal */
-  language: Signal<EditorLanguage>;
+  language: Signal<EditorLanguage>
   /** Current theme — reactive signal */
-  theme: Signal<EditorTheme>;
+  theme: Signal<EditorTheme>
   /** Read-only state — reactive signal */
-  readOnly: Signal<boolean>;
+  readOnly: Signal<boolean>
   /** Cursor position — reactive */
-  cursor: Computed<{ line: number; col: number }>;
+  cursor: Computed<{ line: number; col: number }>
   /** Current selection — reactive */
-  selection: Computed<{ from: number; to: number; text: string }>;
+  selection: Computed<{ from: number; to: number; text: string }>
   /** Line count — reactive */
-  lineCount: Computed<number>;
+  lineCount: Computed<number>
   /** Whether the editor has focus — reactive */
-  focused: Signal<boolean>;
+  focused: Signal<boolean>
   /** The underlying CodeMirror EditorView — null until mounted */
-  view: Signal<EditorView | null>;
+  view: Signal<EditorView | null>
   /** Focus the editor */
-  focus: () => void;
+  focus: () => void
   /** Insert text at cursor */
-  insert: (text: string) => void;
+  insert: (text: string) => void
   /** Replace selection */
-  replaceSelection: (text: string) => void;
+  replaceSelection: (text: string) => void
   /** Select a range */
-  select: (from: number, to: number) => void;
+  select: (from: number, to: number) => void
   /** Select all */
-  selectAll: () => void;
+  selectAll: () => void
   /** Go to a specific line */
-  goToLine: (line: number) => void;
+  goToLine: (line: number) => void
   /** Undo */
-  undo: () => void;
+  undo: () => void
   /** Redo */
-  redo: () => void;
+  redo: () => void
   /** Fold all */
-  foldAll: () => void;
+  foldAll: () => void
   /** Unfold all */
-  unfoldAll: () => void;
+  unfoldAll: () => void
   /** Set diagnostics (lint errors/warnings) */
-  setDiagnostics: (diagnostics: Diagnostic[]) => void;
+  setDiagnostics: (diagnostics: Diagnostic[]) => void
   /** Clear all diagnostics */
-  clearDiagnostics: () => void;
+  clearDiagnostics: () => void
   /** Highlight a specific line (e.g., error line, current execution) */
-  highlightLine: (line: number, className: string) => void;
+  highlightLine: (line: number, className: string) => void
   /** Clear all line highlights */
-  clearLineHighlights: () => void;
+  clearLineHighlights: () => void
   /** Set gutter markers (breakpoints, error icons) */
-  setGutterMarker: (line: number, marker: GutterMarker) => void;
+  setGutterMarker: (line: number, marker: GutterMarker) => void
   /** Clear all gutter markers */
-  clearGutterMarkers: () => void;
+  clearGutterMarkers: () => void
   /** Add a custom keybinding */
-  addKeybinding: (key: string, handler: () => boolean | undefined) => void;
+  addKeybinding: (key: string, handler: () => boolean | undefined) => void
   /** Get the text of a specific line */
-  getLine: (line: number) => string;
+  getLine: (line: number) => string
   /** Get word at cursor position */
-  getWordAtCursor: () => string;
+  getWordAtCursor: () => string
   /** Scroll to a specific position */
-  scrollTo: (pos: number) => void;
+  scrollTo: (pos: number) => void
   /** The editor configuration */
-  config: EditorConfig;
+  config: EditorConfig
   /** Dispose — clean up view and listeners */
-  dispose: () => void;
+  dispose: () => void
 }
 
 // ─── Diagnostic ──────────────────────────────────────────────────────────────
 
 export interface Diagnostic {
   /** Start position (character offset) */
-  from: number;
+  from: number
   /** End position (character offset) */
-  to: number;
+  to: number
   /** Severity */
-  severity: "error" | "warning" | "info" | "hint";
+  severity: 'error' | 'warning' | 'info' | 'hint'
   /** Message */
-  message: string;
+  message: string
   /** Optional source (e.g., "typescript", "eslint") */
-  source?: string;
+  source?: string
 }
 
 // ─── Gutter marker ───────────────────────────────────────────────────────────
 
 export interface GutterMarker {
   /** CSS class for the marker element */
-  class?: string;
+  class?: string
   /** Text content (e.g., emoji or icon) */
-  text?: string;
+  text?: string
   /** Tooltip on hover */
-  title?: string;
+  title?: string
 }
 
 // ─── Component props ─────────────────────────────────────────────────────────
 
 export interface CodeEditorProps {
-  instance: EditorInstance;
-  style?: string;
-  class?: string;
+  instance: EditorInstance
+  style?: string
+  class?: string
 }
 
 export interface DiffEditorProps {
   /** Original (left) content */
-  original: string | Signal<string>;
+  original: string | Signal<string>
   /** Modified (right) content */
-  modified: string | Signal<string>;
+  modified: string | Signal<string>
   /** Language for both panels */
-  language?: EditorLanguage;
+  language?: EditorLanguage
   /** Theme */
-  theme?: EditorTheme;
+  theme?: EditorTheme
   /** Show inline diff instead of side-by-side — default: false */
-  inline?: boolean;
+  inline?: boolean
   /** Read-only — default: true */
-  readOnly?: boolean;
-  style?: string;
-  class?: string;
+  readOnly?: boolean
+  style?: string
+  class?: string
 }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
 
 export interface Tab {
   /** Unique tab identifier — defaults to name */
-  id?: string;
+  id?: string
   /** File name displayed in the tab */
-  name: string;
+  name: string
   /** Language for syntax highlighting */
-  language?: EditorLanguage;
+  language?: EditorLanguage
   /** File content */
-  value: string;
+  value: string
   /** Whether the tab has unsaved changes */
-  modified?: boolean;
+  modified?: boolean
   /** Whether the tab can be closed — default: true */
-  closable?: boolean;
+  closable?: boolean
 }
 
 export interface TabbedEditorConfig {
   /** Initial tabs */
-  tabs?: Tab[];
+  tabs?: Tab[]
   /** Theme — 'light', 'dark', or custom */
-  theme?: EditorTheme;
+  theme?: EditorTheme
   /** Editor config applied to all tabs */
-  editorConfig?: Omit<EditorConfig, "value" | "language" | "theme">;
+  editorConfig?: Omit<EditorConfig, 'value' | 'language' | 'theme'>
 }
 
 export interface TabbedEditorInstance {
   /** The underlying editor instance */
-  editor: EditorInstance;
+  editor: EditorInstance
   /** All open tabs — reactive */
-  tabs: Signal<Tab[]>;
+  tabs: Signal<Tab[]>
   /** Active tab — reactive */
-  activeTab: Computed<Tab | null>;
+  activeTab: Computed<Tab | null>
   /** Active tab ID — reactive */
-  activeTabId: Signal<string>;
+  activeTabId: Signal<string>
   /** Open a new tab (or switch to it if already open) */
-  openTab: (tab: Tab) => void;
+  openTab: (tab: Tab) => void
   /** Close a tab by ID */
-  closeTab: (id: string) => void;
+  closeTab: (id: string) => void
   /** Switch to a tab by ID */
-  switchTab: (id: string) => void;
+  switchTab: (id: string) => void
   /** Rename a tab */
-  renameTab: (id: string, name: string) => void;
+  renameTab: (id: string, name: string) => void
   /** Mark a tab as modified/saved */
-  setModified: (id: string, modified: boolean) => void;
+  setModified: (id: string, modified: boolean) => void
   /** Reorder tabs */
-  moveTab: (fromIndex: number, toIndex: number) => void;
+  moveTab: (fromIndex: number, toIndex: number) => void
   /** Get tab by ID */
-  getTab: (id: string) => Tab | undefined;
+  getTab: (id: string) => Tab | undefined
   /** Close all tabs */
-  closeAll: () => void;
+  closeAll: () => void
   /** Close all tabs except the given one */
-  closeOthers: (id: string) => void;
+  closeOthers: (id: string) => void
   /** Dispose */
-  dispose: () => void;
+  dispose: () => void
 }
 
 export interface TabbedEditorProps {
-  instance: TabbedEditorInstance;
-  style?: string;
-  class?: string;
+  instance: TabbedEditorInstance
+  style?: string
+  class?: string
 }

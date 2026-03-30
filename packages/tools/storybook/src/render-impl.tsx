@@ -1,10 +1,10 @@
-import type { ComponentFn, VNodeChild } from "@pyreon/core";
-import { mount } from "@pyreon/runtime-dom";
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 
 /**
  * State tracked per canvas element so we can clean up between renders.
  */
-const canvasState = new WeakMap<HTMLElement, () => void>();
+const canvasState = new WeakMap<HTMLElement, () => void>()
 
 /**
  * Render a Pyreon story into a Storybook canvas element.
@@ -24,36 +24,36 @@ export function renderToCanvas(
     showMain,
     showError,
   }: {
-    storyFn: () => VNodeChild;
+    storyFn: () => VNodeChild
     storyContext: {
-      component?: ComponentFn<any>;
-      args: Record<string, unknown>;
-      [key: string]: unknown;
-    };
-    showMain: () => void;
-    showError: (error: { title: string; description: string }) => void;
-    forceRemount: boolean;
+      component?: ComponentFn<any>
+      args: Record<string, unknown>
+      [key: string]: unknown
+    }
+    showMain: () => void
+    showError: (error: { title: string; description: string }) => void
+    forceRemount: boolean
   },
   canvasElement: HTMLElement,
 ): void {
   // Always clean up the previous render
-  const prevUnmount = canvasState.get(canvasElement);
+  const prevUnmount = canvasState.get(canvasElement)
   if (prevUnmount) {
-    prevUnmount();
-    canvasState.delete(canvasElement);
+    prevUnmount()
+    canvasState.delete(canvasElement)
   }
 
   try {
-    const element = storyFn();
-    const unmount = mount(element, canvasElement);
-    canvasState.set(canvasElement, unmount);
-    showMain();
+    const element = storyFn()
+    const unmount = mount(element, canvasElement)
+    canvasState.set(canvasElement, unmount)
+    showMain()
   } catch (err) {
-    const error = err instanceof Error ? err : new Error(String(err));
+    const error = err instanceof Error ? err : new Error(String(err))
     showError({
       title: `Error rendering story`,
       description: error.message,
-    });
+    })
   }
 }
 
@@ -64,6 +64,6 @@ export function defaultRender(
   component: ComponentFn<any>,
   args: Record<string, unknown>,
 ): VNodeChild {
-  const Component = component;
-  return <Component {...args} />;
+  const Component = component
+  return <Component {...args} />
 }

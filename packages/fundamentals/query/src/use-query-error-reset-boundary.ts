@@ -1,19 +1,19 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core";
-import { createContext, provide, useContext } from "@pyreon/core";
-import { useQueryClient } from "./query-client";
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
+import { useQueryClient } from './query-client'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
 interface ErrorResetBoundaryValue {
-  reset: () => void;
+  reset: () => void
 }
 
-const QueryErrorResetBoundaryContext = createContext<ErrorResetBoundaryValue | null>(null);
+const QueryErrorResetBoundaryContext = createContext<ErrorResetBoundaryValue | null>(null)
 
 // ─── QueryErrorResetBoundary ─────────────────────────────────────────────────
 
 export interface QueryErrorResetBoundaryProps extends Props {
-  children?: VNodeChild;
+  children?: VNodeChild
 }
 
 /**
@@ -36,21 +36,21 @@ export interface QueryErrorResetBoundaryProps extends Props {
  * )
  */
 export function QueryErrorResetBoundary(props: QueryErrorResetBoundaryProps): VNode {
-  const client = useQueryClient();
+  const client = useQueryClient()
 
   const value: ErrorResetBoundaryValue = {
     reset: () => {
       // Reset all active queries that are in error state so they refetch.
       client.refetchQueries({
-        predicate: (query) => query.state.status === "error",
-      });
+        predicate: (query) => query.state.status === 'error',
+      })
     },
-  };
+  }
 
-  provide(QueryErrorResetBoundaryContext, value);
+  provide(QueryErrorResetBoundaryContext, value)
 
-  const ch = props.children;
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode;
+  const ch = props.children
+  return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
 
 // ─── useQueryErrorResetBoundary ──────────────────────────────────────────────
@@ -66,18 +66,18 @@ export function QueryErrorResetBoundary(props: QueryErrorResetBoundaryProps): VN
  * h('button', { onClick: () => { reset(); boundaryReset() } }, 'Retry')
  */
 export function useQueryErrorResetBoundary(): ErrorResetBoundaryValue {
-  const boundary = useContext(QueryErrorResetBoundaryContext);
+  const boundary = useContext(QueryErrorResetBoundaryContext)
   // Always call useQueryClient to respect hook ordering rules
-  const client = useQueryClient();
+  const client = useQueryClient()
 
-  if (boundary) return boundary;
+  if (boundary) return boundary
 
   // Fallback: no explicit boundary — use the QueryClient directly.
   return {
     reset: () => {
       client.refetchQueries({
-        predicate: (query) => query.state.status === "error",
-      });
+        predicate: (query) => query.state.status === 'error',
+      })
     },
-  };
+  }
 }

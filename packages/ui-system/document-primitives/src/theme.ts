@@ -1,18 +1,18 @@
 export const documentTheme = {
   colors: {
-    primary: "#4f46e5",
-    text: "#333333",
-    textSecondary: "#666666",
-    background: "#ffffff",
-    border: "#dddddd",
-    headerBg: "#1a1a2e",
-    headerText: "#ffffff",
-    stripedRow: "#f9f9f9",
+    primary: '#4f46e5',
+    text: '#333333',
+    textSecondary: '#666666',
+    background: '#ffffff',
+    border: '#dddddd',
+    headerBg: '#1a1a2e',
+    headerText: '#ffffff',
+    stripedRow: '#f9f9f9',
   },
   fonts: {
-    heading: "system-ui, -apple-system, sans-serif",
-    body: "system-ui, -apple-system, sans-serif",
-    mono: "ui-monospace, monospace",
+    heading: 'system-ui, -apple-system, sans-serif',
+    body: 'system-ui, -apple-system, sans-serif',
+    mono: 'ui-monospace, monospace',
   },
   sizes: {
     h1: 32,
@@ -32,6 +32,6 @@ export const documentTheme = {
     lg: 24,
     xl: 40,
   },
-};
+}
 
-export type DocumentTheme = typeof documentTheme;
+export type DocumentTheme = typeof documentTheme

@@ -1,12 +1,12 @@
-import { createApp, ref } from "vue";
-import Demo from "./Demo";
+import { createApp, ref } from 'vue'
+import Demo from './Demo'
 
 export default function CreateAppDemo() {
-  const mounted = ref(false);
-  const unmountFn = ref<(() => void) | null>(null);
+  const mounted = ref(false)
+  const unmountFn = ref<(() => void) | null>(null)
 
   function MiniApp() {
-    return <p class="highlight">Mini app mounted via createApp!</p>;
+    return <p class="highlight">Mini app mounted via createApp!</p>
   }
 
   return (
@@ -23,11 +23,11 @@ unmount() // cleanup`}
           type="button"
           onClick={() => {
             if (!mounted.value) {
-              const el = document.getElementById("mini-app-target");
+              const el = document.getElementById('mini-app-target')
               if (el) {
-                const un = createApp(MiniApp).mount(el);
-                unmountFn.value = un;
-                mounted.value = true;
+                const un = createApp(MiniApp).mount(el)
+                unmountFn.value = un
+                mounted.value = true
               }
             }
           }}
@@ -38,16 +38,16 @@ unmount() // cleanup`}
           type="button"
           onClick={() => {
             if (unmountFn.value) {
-              unmountFn.value();
-              unmountFn.value = null;
-              mounted.value = false;
+              unmountFn.value()
+              unmountFn.value = null
+              mounted.value = false
             }
           }}
         >
           Unmount
         </button>
       </div>
-      <p class="muted">{mounted.value ? "Mini app is mounted" : "Not mounted"}</p>
+      <p class="muted">{mounted.value ? 'Mini app is mounted' : 'Not mounted'}</p>
     </Demo>
-  );
+  )
 }

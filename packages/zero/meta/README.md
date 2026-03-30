@@ -61,7 +61,7 @@ import {
   createFlow,
   styled,
   useHover,
-} from "@pyreon/meta";
+} from '@pyreon/meta'
 ```
 
 ## License

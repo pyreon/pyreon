@@ -1,19 +1,19 @@
-import { createEffect, createSignal, on, untrack } from "solid-js";
-import Demo from "./Demo";
+import { createEffect, createSignal, on, untrack } from 'solid-js'
+import Demo from './Demo'
 
 export default function OnDemo() {
-  const [a, setA] = createSignal(1);
-  const [b, setB] = createSignal(10);
-  const [result, setResult] = createSignal("(click a++ to start)");
+  const [a, setA] = createSignal(1)
+  const [b, setB] = createSignal(10)
+  const [result, setResult] = createSignal('(click a++ to start)')
 
   createEffect(
     on(
       () => a(),
       (val, prev) => {
-        setResult(`a: ${prev} → ${val} (b=${untrack(b)} not tracked)`);
+        setResult(`a: ${prev} → ${val} (b=${untrack(b)} not tracked)`)
       },
     ),
-  );
+  )
 
   return (
     <Demo
@@ -37,5 +37,5 @@ createEffect(on(
       </button>
       <p class="muted">{result()}</p>
     </Demo>
-  );
+  )
 }

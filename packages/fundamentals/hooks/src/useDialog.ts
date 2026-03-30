@@ -1,18 +1,18 @@
-import { onCleanup, signal } from "@pyreon/reactivity";
+import { onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseDialogResult {
   /** Whether the dialog is currently open. */
-  open: () => boolean;
+  open: () => boolean
   /** Open the dialog. */
-  show: () => void;
+  show: () => void
   /** Open as modal (with backdrop, traps focus). */
-  showModal: () => void;
+  showModal: () => void
   /** Close the dialog. */
-  close: () => void;
+  close: () => void
   /** Toggle open/closed state. */
-  toggle: () => void;
+  toggle: () => void
   /** Ref callback — pass to `ref` prop on a `<dialog>` element. */
-  ref: (el: HTMLDialogElement) => void;
+  ref: (el: HTMLDialogElement) => void
 }
 
 /**
@@ -30,29 +30,29 @@ export interface UseDialogResult {
  * ```
  */
 export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
-  const open = signal(false);
-  let dialogEl: HTMLDialogElement | null = null;
-  let closeHandler: (() => void) | null = null;
+  const open = signal(false)
+  let dialogEl: HTMLDialogElement | null = null
+  let closeHandler: (() => void) | null = null
 
   const show = () => {
-    dialogEl?.show();
-    open.set(true);
-  };
+    dialogEl?.show()
+    open.set(true)
+  }
 
   const showModal = () => {
-    dialogEl?.showModal();
-    open.set(true);
-  };
+    dialogEl?.showModal()
+    open.set(true)
+  }
 
   const close = () => {
-    dialogEl?.close();
-    open.set(false);
-  };
+    dialogEl?.close()
+    open.set(false)
+  }
 
   const toggle = () => {
-    if (open()) close();
-    else showModal();
-  };
+    if (open()) close()
+    else showModal()
+  }
 
   // Attach the close listener in the ref callback — guaranteed to have
   // the element. onMount fires at the same time as ref in Pyreon, but
@@ -60,24 +60,24 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
   const ref = (el: HTMLDialogElement) => {
     // Clean up previous element if ref is called again
     if (dialogEl && closeHandler) {
-      dialogEl.removeEventListener("close", closeHandler);
+      dialogEl.removeEventListener('close', closeHandler)
     }
 
-    dialogEl = el;
+    dialogEl = el
 
     closeHandler = () => {
-      open.set(false);
-      options?.onClose?.();
-    };
+      open.set(false)
+      options?.onClose?.()
+    }
 
-    el.addEventListener("close", closeHandler);
-  };
+    el.addEventListener('close', closeHandler)
+  }
 
   onCleanup(() => {
     if (dialogEl && closeHandler) {
-      dialogEl.removeEventListener("close", closeHandler);
+      dialogEl.removeEventListener('close', closeHandler)
     }
-  });
+  })
 
-  return { open, show, showModal, close, toggle, ref };
+  return { open, show, showModal, close, toggle, ref }
 }

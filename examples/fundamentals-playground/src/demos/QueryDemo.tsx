@@ -4,64 +4,64 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "@pyreon/query";
-import { signal } from "@pyreon/reactivity";
+} from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
 
 interface User {
-  id: number;
-  name: string;
-  email: string;
+  id: number
+  name: string
+  email: string
 }
 
 let mockUsers: User[] = [
-  { id: 1, name: "Alice", email: "alice@example.com" },
-  { id: 2, name: "Bob", email: "bob@example.com" },
-];
-let nextId = 3;
+  { id: 1, name: 'Alice', email: 'alice@example.com' },
+  { id: 2, name: 'Bob', email: 'bob@example.com' },
+]
+let nextId = 3
 
 async function fetchUsers(): Promise<User[]> {
-  await new Promise((r) => setTimeout(r, 400));
-  return [...mockUsers];
+  await new Promise((r) => setTimeout(r, 400))
+  return [...mockUsers]
 }
 
 async function createUser(input: { name: string; email: string }): Promise<User> {
-  await new Promise((r) => setTimeout(r, 300));
-  const user = { id: nextId++, ...input };
-  mockUsers = [...mockUsers, user];
-  return user;
+  await new Promise((r) => setTimeout(r, 300))
+  const user = { id: nextId++, ...input }
+  mockUsers = [...mockUsers, user]
+  return user
 }
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5000 } },
-});
+})
 
 function QueryContent() {
-  const client = useQueryClient();
-  const nameInput = signal("");
-  const emailInput = signal("");
+  const client = useQueryClient()
+  const nameInput = signal('')
+  const emailInput = signal('')
 
   const { data, isPending, isFetching, refetch } = useQuery(() => ({
-    queryKey: ["users"],
+    queryKey: ['users'],
     queryFn: fetchUsers,
-  }));
+  }))
 
   const mutation = useMutation({
     mutationFn: createUser,
     onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["users"] });
-      nameInput.set("");
-      emailInput.set("");
+      client.invalidateQueries({ queryKey: ['users'] })
+      nameInput.set('')
+      emailInput.set('')
     },
-  });
+  })
 
   return (
     <div>
       <div class="section">
         <h3>User List</h3>
         {() => {
-          if (isPending()) return <p>Loading users...</p>;
-          const users = data();
-          if (!users) return <p>No data</p>;
+          if (isPending()) return <p>Loading users...</p>
+          const users = data()
+          if (!users) return <p>No data</p>
           return (
             <div>
               <table>
@@ -84,12 +84,12 @@ function QueryContent() {
               </table>
               <div class="row" style="margin-top: 8px">
                 <button onClick={() => refetch()}>
-                  {() => (isFetching() ? "Refreshing..." : "Refresh")}
+                  {() => (isFetching() ? 'Refreshing...' : 'Refresh')}
                 </button>
                 <span class="badge gray">{() => `${users.length} users`}</span>
               </div>
             </div>
-          );
+          )
         }}
       </div>
 
@@ -117,7 +117,7 @@ function QueryContent() {
           disabled={mutation.isPending() || !nameInput() || !emailInput()}
           onClick={() => mutation.mutate({ name: nameInput(), email: emailInput() })}
         >
-          {() => (mutation.isPending() ? "Creating..." : "Add User")}
+          {() => (mutation.isPending() ? 'Creating...' : 'Add User')}
         </button>
         {() =>
           mutation.isError() ? (
@@ -128,7 +128,7 @@ function QueryContent() {
         }
       </div>
     </div>
-  );
+  )
 }
 
 export function QueryDemo() {
@@ -142,5 +142,5 @@ export function QueryDemo() {
         <QueryContent />
       </QueryClientProvider>
     </div>
-  );
+  )
 }

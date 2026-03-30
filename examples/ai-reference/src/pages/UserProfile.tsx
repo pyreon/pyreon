@@ -9,54 +9,54 @@
  *   - onMount with cleanup
  */
 
-import { onMount, Show } from "@pyreon/core";
-import { useHead } from "@pyreon/head";
-import { computed, effect, signal } from "@pyreon/reactivity";
-import { useRoute } from "@pyreon/router";
+import { onMount, Show } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { computed, effect, signal } from '@pyreon/reactivity'
+import { useRoute } from '@pyreon/router'
 
 export const UserProfile = () => {
-  const route = useRoute<"/user/:id">();
-  const name = signal("");
-  const email = signal("");
-  const saving = signal(false);
+  const route = useRoute<'/user/:id'>()
+  const name = signal('')
+  const email = signal('')
+  const saving = signal(false)
 
-  const isValid = computed(() => name().length > 0 && email().includes("@"));
+  const isValid = computed(() => name().length > 0 && email().includes('@'))
 
-  useHead(() => ({ title: `User ${route().params.id}` }));
+  useHead(() => ({ title: `User ${route().params.id}` }))
 
   // Load user data on mount
   onMount(() => {
-    const controller = new AbortController();
+    const controller = new AbortController()
     fetch(`/api/user/${route().params.id}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((user: { name: string; email: string }) => {
-        name.set(user.name);
-        email.set(user.email);
+        name.set(user.name)
+        email.set(user.email)
       })
       .catch(() => {
         // aborted or failed
-      });
-    return () => controller.abort();
-  });
+      })
+    return () => controller.abort()
+  })
 
   // Auto-save effect (debounced via effect)
   effect(() => {
-    const n = name();
-    const e = email();
-    if (!n || !e) return;
+    const n = name()
+    const e = email()
+    if (!n || !e) return
     // Effect re-runs when name or email change (auto-tracked)
-  });
+  })
 
   const handleSubmit = async (e: Event) => {
-    e.preventDefault();
-    if (!isValid()) return;
-    saving.set(true);
+    e.preventDefault()
+    if (!isValid()) return
+    saving.set(true)
     await fetch(`/api/user/${route().params.id}`, {
-      method: "PUT",
+      method: 'PUT',
       body: JSON.stringify({ name: name(), email: email() }),
-    });
-    saving.set(false);
-  };
+    })
+    saving.set(false)
+  }
 
   return (
     <div>
@@ -77,9 +77,9 @@ export const UserProfile = () => {
         </Show>
 
         <button type="submit" disabled={!isValid() || saving()}>
-          {saving() ? "Saving..." : "Save"}
+          {saving() ? 'Saving...' : 'Save'}
         </button>
       </form>
     </div>
-  );
-};
+  )
+}

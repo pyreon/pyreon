@@ -1,1 +1,1 @@
-import "@happy-dom/global-registrator";
+import '@happy-dom/global-registrator'

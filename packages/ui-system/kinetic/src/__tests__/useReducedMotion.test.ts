@@ -1,157 +1,157 @@
 // Track lifecycle callbacks
-let mountCallbacks: Array<() => undefined | (() => void)> = [];
-let unmountCallbacks: Array<() => void> = [];
+let mountCallbacks: Array<() => undefined | (() => void)> = []
+let unmountCallbacks: Array<() => void> = []
 
-vi.mock("@pyreon/core", () => ({
+vi.mock('@pyreon/core', () => ({
   onMount: vi.fn((cb: () => undefined | (() => void)) => {
-    mountCallbacks.push(cb);
+    mountCallbacks.push(cb)
   }),
   onUnmount: vi.fn((cb: () => void) => {
-    unmountCallbacks.push(cb);
+    unmountCallbacks.push(cb)
   }),
-}));
+}))
 
-vi.mock("@pyreon/reactivity", () => {
+vi.mock('@pyreon/reactivity', () => {
   const signal = <T>(initial: T) => {
-    let value = initial;
+    let value = initial
     const s = (() => value) as (() => T) & {
-      set: (v: T) => void;
-      update: (fn: (c: T) => T) => void;
-      peek: () => T;
-      subscribe: () => () => void;
-      direct: () => () => void;
-      label: string | undefined;
-      debug: () => { name: string | undefined; value: T; subscriberCount: number };
-    };
+      set: (v: T) => void
+      update: (fn: (c: T) => T) => void
+      peek: () => T
+      subscribe: () => () => void
+      direct: () => () => void
+      label: string | undefined
+      debug: () => { name: string | undefined; value: T; subscriberCount: number }
+    }
     s.set = (v: T) => {
-      value = v;
-    };
+      value = v
+    }
     s.update = (fn: (c: T) => T) => {
-      value = fn(value);
-    };
-    s.peek = () => value;
-    s.subscribe = () => () => undefined;
-    s.direct = () => () => undefined;
-    s.label = undefined;
-    s.debug = () => ({ name: undefined, value, subscriberCount: 0 });
-    return s;
-  };
-  return { signal };
-});
+      value = fn(value)
+    }
+    s.peek = () => value
+    s.subscribe = () => () => undefined
+    s.direct = () => () => undefined
+    s.label = undefined
+    s.debug = () => ({ name: undefined, value, subscriberCount: 0 })
+    return s
+  }
+  return { signal }
+})
 
-import { useReducedMotion } from "../useReducedMotion";
+import { useReducedMotion } from '../useReducedMotion'
 
-describe("useReducedMotion", () => {
-  let changeHandlers: Array<(e: any) => void>;
-  let removedHandlers: Array<(e: any) => void>;
+describe('useReducedMotion', () => {
+  let changeHandlers: Array<(e: any) => void>
+  let removedHandlers: Array<(e: any) => void>
 
   const createMockMQL = (matches: boolean) => ({
     matches,
-    media: "(prefers-reduced-motion: reduce)",
+    media: '(prefers-reduced-motion: reduce)',
     addEventListener: vi.fn((event: string, handler: (e: any) => void) => {
-      if (event === "change") changeHandlers.push(handler);
+      if (event === 'change') changeHandlers.push(handler)
     }),
     removeEventListener: vi.fn((event: string, handler: (e: any) => void) => {
-      if (event === "change") removedHandlers.push(handler);
+      if (event === 'change') removedHandlers.push(handler)
     }),
-  });
+  })
 
   beforeEach(() => {
-    mountCallbacks = [];
-    unmountCallbacks = [];
-    changeHandlers = [];
-    removedHandlers = [];
-  });
+    mountCallbacks = []
+    unmountCallbacks = []
+    changeHandlers = []
+    removedHandlers = []
+  })
 
   afterEach(() => {
-    vi.restoreAllMocks();
-  });
+    vi.restoreAllMocks()
+  })
 
-  it("returns false initially", () => {
+  it('returns false initially', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(false)),
-    );
-    const result = useReducedMotion();
-    expect(result()).toBe(false);
-  });
+    )
+    const result = useReducedMotion()
+    expect(result()).toBe(false)
+  })
 
-  it("reads matchMedia state on mount (true)", () => {
+  it('reads matchMedia state on mount (true)', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(true)),
-    );
-    const result = useReducedMotion();
+    )
+    const result = useReducedMotion()
 
     // Fire mount callback
-    for (const cb of mountCallbacks) cb();
+    for (const cb of mountCallbacks) cb()
 
-    expect(result()).toBe(true);
-  });
+    expect(result()).toBe(true)
+  })
 
-  it("reads matchMedia state on mount (false)", () => {
+  it('reads matchMedia state on mount (false)', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(false)),
-    );
-    const result = useReducedMotion();
+    )
+    const result = useReducedMotion()
 
-    for (const cb of mountCallbacks) cb();
+    for (const cb of mountCallbacks) cb()
 
-    expect(result()).toBe(false);
-  });
+    expect(result()).toBe(false)
+  })
 
-  it("reacts to change events", () => {
+  it('reacts to change events', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(false)),
-    );
-    const result = useReducedMotion();
+    )
+    const result = useReducedMotion()
 
-    for (const cb of mountCallbacks) cb();
-    expect(result()).toBe(false);
+    for (const cb of mountCallbacks) cb()
+    expect(result()).toBe(false)
 
     // Simulate preference change
     for (const handler of changeHandlers) {
-      handler({ matches: true });
+      handler({ matches: true })
     }
 
-    expect(result()).toBe(true);
-  });
+    expect(result()).toBe(true)
+  })
 
-  it("queries the correct media string", () => {
-    const mockMatchMedia = vi.fn(() => createMockMQL(false));
-    vi.stubGlobal("matchMedia", mockMatchMedia);
+  it('queries the correct media string', () => {
+    const mockMatchMedia = vi.fn(() => createMockMQL(false))
+    vi.stubGlobal('matchMedia', mockMatchMedia)
 
-    useReducedMotion();
-    for (const cb of mountCallbacks) cb();
+    useReducedMotion()
+    for (const cb of mountCallbacks) cb()
 
-    expect(mockMatchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
-  });
+    expect(mockMatchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)')
+  })
 
-  it("registers a change listener on mount", () => {
+  it('registers a change listener on mount', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(false)),
-    );
-    useReducedMotion();
+    )
+    useReducedMotion()
 
-    for (const cb of mountCallbacks) cb();
+    for (const cb of mountCallbacks) cb()
 
-    expect(changeHandlers).toHaveLength(1);
-  });
+    expect(changeHandlers).toHaveLength(1)
+  })
 
-  it("removes the change listener on unmount", () => {
+  it('removes the change listener on unmount', () => {
     vi.stubGlobal(
-      "matchMedia",
+      'matchMedia',
       vi.fn(() => createMockMQL(false)),
-    );
-    useReducedMotion();
+    )
+    useReducedMotion()
 
-    for (const cb of mountCallbacks) cb();
-    expect(changeHandlers).toHaveLength(1);
+    for (const cb of mountCallbacks) cb()
+    expect(changeHandlers).toHaveLength(1)
 
-    for (const cb of unmountCallbacks) cb();
-    expect(removedHandlers).toHaveLength(1);
-  });
-});
+    for (const cb of unmountCallbacks) cb()
+    expect(removedHandlers).toHaveLength(1)
+  })
+})

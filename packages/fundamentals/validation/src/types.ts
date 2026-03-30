@@ -1,7 +1,7 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form";
+import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
 
 /** Re-export form types for convenience. */
-export type { SchemaValidateFn, ValidateFn, ValidationError };
+export type { SchemaValidateFn, ValidateFn, ValidationError }
 
 /**
  * Generic issue produced by any schema library.
@@ -9,9 +9,9 @@ export type { SchemaValidateFn, ValidateFn, ValidationError };
  */
 export interface ValidationIssue {
   /** Dot-separated field path (e.g. "address.city"). */
-  path: string;
+  path: string
   /** Human-readable error message. */
-  message: string;
+  message: string
 }
 
 /**
@@ -20,10 +20,10 @@ export interface ValidationIssue {
  */
 export type SchemaAdapter<TSchema> = <TValues extends Record<string, unknown>>(
   schema: TSchema,
-) => SchemaValidateFn<TValues>;
+) => SchemaValidateFn<TValues>
 
 /**
  * A generic field adapter transforms a library-specific schema
  * into a single-field validator function.
  */
-export type FieldAdapter<TSchema> = <T>(schema: TSchema) => ValidateFn<T>;
+export type FieldAdapter<TSchema> = <T>(schema: TSchema) => ValidateFn<T>

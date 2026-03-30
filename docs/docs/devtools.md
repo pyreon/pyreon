@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/devtools"
+title: '@pyreon/devtools'
 description: Chrome DevTools extension for inspecting Pyreon component trees, signals, and performance.
 ---
 

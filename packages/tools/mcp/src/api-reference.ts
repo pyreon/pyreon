@@ -6,10 +6,10 @@
  */
 
 export interface ApiEntry {
-  signature: string;
-  example: string;
-  notes?: string;
-  mistakes?: string;
+  signature: string
+  example: string
+  notes?: string
+  mistakes?: string
 }
 
 export const API_REFERENCE: Record<string, ApiEntry> = {
@@ -17,8 +17,8 @@ export const API_REFERENCE: Record<string, ApiEntry> = {
   // @pyreon/reactivity
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "reactivity/signal": {
-    signature: "signal<T>(initialValue: T, options?: { name?: string }): Signal<T>",
+  'reactivity/signal': {
+    signature: 'signal<T>(initialValue: T, options?: { name?: string }): Signal<T>',
     example: `const count = signal(0)
 
 // Read (subscribes to updates):
@@ -33,15 +33,15 @@ count.update(n => n + 1)  // 6
 // Read without subscribing:
 count.peek()     // 6`,
     notes:
-      "Signals are callable functions, NOT .value getters. Components run once — signal reads in JSX auto-subscribe. Optional { name } for debugging — auto-injected by @pyreon/vite-plugin in dev mode.",
+      'Signals are callable functions, NOT .value getters. Components run once — signal reads in JSX auto-subscribe. Optional { name } for debugging — auto-injected by @pyreon/vite-plugin in dev mode.',
     mistakes: `- \`count.value\` → Use \`count()\` to read
 - \`{count}\` in JSX → Use \`{count()}\` to read (or let the compiler wrap it)
 - \`const [val, setVal] = signal(0)\` → Not destructurable. Use \`const val = signal(0)\``,
   },
 
-  "reactivity/computed": {
+  'reactivity/computed': {
     signature:
-      "computed<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }): Computed<T>",
+      'computed<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }): Computed<T>',
     example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 
@@ -49,13 +49,13 @@ doubled()  // 0
 count.set(5)
 doubled()  // 10`,
     notes:
-      "Dependencies auto-tracked. No dependency array needed. Memoized — only recomputes when dependencies change.",
+      'Dependencies auto-tracked. No dependency array needed. Memoized — only recomputes when dependencies change.',
     mistakes: `- \`computed(() => count)\` → Must call signal: \`computed(() => count())\`
 - Don't use for side effects — use effect() instead`,
   },
 
-  "reactivity/effect": {
-    signature: "effect(fn: () => (() => void) | void): () => void",
+  'reactivity/effect': {
+    signature: 'effect(fn: () => (() => void) | void): () => void',
     example: `const count = signal(0)
 
 // Auto-tracks count() dependency:
@@ -77,26 +77,26 @@ effect(() => {
   return () => window.removeEventListener("resize", handler)
 })`,
     notes:
-      "Returns a dispose function. Dependencies auto-tracked on each run. Use onCleanup() inside to register cleanup that runs before re-execution. For DOM-specific effects, use renderEffect().",
+      'Returns a dispose function. Dependencies auto-tracked on each run. Use onCleanup() inside to register cleanup that runs before re-execution. For DOM-specific effects, use renderEffect().',
     mistakes: `- Don't pass a dependency array — Pyreon auto-tracks
 - \`effect(() => { count })\` → Must call: \`effect(() => { count() })\``,
   },
 
-  "reactivity/onCleanup": {
-    signature: "onCleanup(fn: () => void): void",
+  'reactivity/onCleanup': {
+    signature: 'onCleanup(fn: () => void): void',
     example: `effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   onCleanup(() => window.removeEventListener("resize", handler))
 })`,
     notes:
-      "Registers a cleanup function inside an effect. Runs between re-executions (before the effect re-runs) and when the effect is disposed.",
+      'Registers a cleanup function inside an effect. Runs between re-executions (before the effect re-runs) and when the effect is disposed.',
     mistakes: `- Using onCleanup outside an effect — it only works inside effect() or renderEffect()
 - Confusing with onUnmount — onCleanup is for effects, onUnmount is for components`,
   },
 
-  "reactivity/batch": {
-    signature: "batch(fn: () => void): void",
+  'reactivity/batch': {
+    signature: 'batch(fn: () => void): void',
     example: `const a = signal(1)
 const b = signal(2)
 
@@ -105,11 +105,11 @@ batch(() => {
   a.set(10)
   b.set(20)
 })`,
-    notes: "Defers all signal notifications until the batch completes. Nested batches are merged.",
+    notes: 'Defers all signal notifications until the batch completes. Nested batches are merged.',
   },
 
-  "reactivity/createStore": {
-    signature: "createStore<T extends object>(initialValue: T): T",
+  'reactivity/createStore': {
+    signature: 'createStore<T extends object>(initialValue: T): T',
     example: `const store = createStore({
   user: { name: "Alice", age: 30 },
   items: [1, 2, 3]
@@ -119,12 +119,12 @@ batch(() => {
 store.user.name = "Bob"  // only name subscribers fire
 store.items.push(4)      // only items subscribers fire`,
     notes:
-      "Deep proxy — nested objects are automatically reactive. Use reconcile() for bulk updates.",
+      'Deep proxy — nested objects are automatically reactive. Use reconcile() for bulk updates.',
   },
 
-  "reactivity/createResource": {
+  'reactivity/createResource': {
     signature:
-      "createResource<T>(fetcher: () => Promise<T>, options?: ResourceOptions): Resource<T>",
+      'createResource<T>(fetcher: () => Promise<T>, options?: ResourceOptions): Resource<T>',
     example: `const users = createResource(() => fetch("/api/users").then(r => r.json()))
 
 // In JSX:
@@ -134,11 +134,11 @@ store.items.push(4)      // only items subscribers fire`,
   </For>
 </Show>`,
     notes:
-      "Integrates with Suspense. Access .loading(), .error(), and call resource() for the value.",
+      'Integrates with Suspense. Access .loading(), .error(), and call resource() for the value.',
   },
 
-  "reactivity/untrack": {
-    signature: "untrack<T>(fn: () => T): T",
+  'reactivity/untrack': {
+    signature: 'untrack<T>(fn: () => T): T',
     example: `import { untrack } from "@pyreon/reactivity"
 
 // Read signals without subscribing:
@@ -147,26 +147,26 @@ effect(() => {
   console.log("Count changed:", count(), "user is", name)
 })`,
     notes:
-      "Alias for runUntracked. Reads signals inside fn without adding them as dependencies of the current effect/computed.",
+      'Alias for runUntracked. Reads signals inside fn without adding them as dependencies of the current effect/computed.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/core
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "core/h": {
+  'core/h': {
     signature:
-      "h<P>(type: ComponentFn<P> | string | symbol, props: P | null, ...children: VNodeChild[]): VNode",
+      'h<P>(type: ComponentFn<P> | string | symbol, props: P | null, ...children: VNodeChild[]): VNode',
     example: `// Usually use JSX instead:
 const vnode = h("div", { class: "container" },
   h("h1", null, "Hello"),
   h(Counter, { initial: 0 })
 )`,
-    notes: "Low-level API. Prefer JSX which compiles to h() calls (or _tpl() for templates).",
+    notes: 'Low-level API. Prefer JSX which compiles to h() calls (or _tpl() for templates).',
   },
 
-  "core/Fragment": {
-    signature: "Fragment: symbol",
+  'core/Fragment': {
+    signature: 'Fragment: symbol',
     example: `// JSX:
 <>
   <h1>Title</h1>
@@ -177,8 +177,8 @@ const vnode = h("div", { class: "container" },
 h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
   },
 
-  "core/onMount": {
-    signature: "onMount(fn: () => CleanupFn | void): void",
+  'core/onMount': {
+    signature: 'onMount(fn: () => CleanupFn | void): void',
     example: `const Timer = () => {
   const count = signal(0)
 
@@ -189,19 +189,19 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
 
   return <div>{count()}</div>
 }`,
-    notes: "Optionally return a cleanup function that runs on unmount.",
+    notes: 'Optionally return a cleanup function that runs on unmount.',
     mistakes: `- Forgetting cleanup: \`onMount(() => { const id = setInterval(...) })\` → Return cleanup: \`onMount(() => { const id = setInterval(...); return () => clearInterval(id) })\``,
   },
 
-  "core/onUnmount": {
-    signature: "onUnmount(fn: () => void): void",
+  'core/onUnmount': {
+    signature: 'onUnmount(fn: () => void): void',
     example: `onUnmount(() => {
   console.log("Component removed from DOM")
 })`,
   },
 
-  "core/createContext": {
-    signature: "createContext<T>(defaultValue: T): Context<T>",
+  'core/createContext': {
+    signature: 'createContext<T>(defaultValue: T): Context<T>',
     example: `const ThemeContext = createContext<"light" | "dark">("light")
 
 // Provide:
@@ -217,13 +217,13 @@ const Child = () => {
 }`,
   },
 
-  "core/useContext": {
-    signature: "useContext<T>(ctx: Context<T>): T",
+  'core/useContext': {
+    signature: 'useContext<T>(ctx: Context<T>): T',
     example: `const theme = useContext(ThemeContext)  // returns provided value or default`,
   },
 
-  "core/provide": {
-    signature: "provide<T>(ctx: Context<T>, value: T): void",
+  'core/provide': {
+    signature: 'provide<T>(ctx: Context<T>, value: T): void',
     example: `const ThemeCtx = createContext<"light" | "dark">("light")
 
 function App() {
@@ -231,21 +231,21 @@ function App() {
   return <Child />
 }`,
     notes:
-      "Pushes a context value and auto-cleans up on unmount. Preferred over manual pushContext/popContext. Must be called during component setup.",
+      'Pushes a context value and auto-cleans up on unmount. Preferred over manual pushContext/popContext. Must be called during component setup.',
   },
 
-  "core/ExtractProps": {
-    signature: "type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T",
+  'core/ExtractProps': {
+    signature: 'type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T',
     example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
 
 type Props = ExtractProps<typeof Greet>
 // { name: string }`,
     notes:
-      "Extracts the props type from a ComponentFn. Passes through unchanged if T is not a ComponentFn.",
+      'Extracts the props type from a ComponentFn. Passes through unchanged if T is not a ComponentFn.',
   },
 
-  "core/HigherOrderComponent": {
-    signature: "type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>",
+  'core/HigherOrderComponent': {
+    signature: 'type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>',
     example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
   return (props) => {
     console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)
@@ -256,8 +256,8 @@ type Props = ExtractProps<typeof Greet>
       "Typed HOC pattern — HOP is the props the HOC adds, P is the wrapped component's own props.",
   },
 
-  "core/For": {
-    signature: "<For each={items} by={keyFn}>{renderFn}</For>",
+  'core/For': {
+    signature: '<For each={items} by={keyFn}>{renderFn}</For>',
     example: `const items = signal([
   { id: 1, name: "Apple" },
   { id: 2, name: "Banana" },
@@ -272,17 +272,17 @@ type Props = ExtractProps<typeof Greet>
 - \`{items().map(...)}\` → Use <For> for reactive list rendering`,
   },
 
-  "core/Show": {
-    signature: "<Show when={condition} fallback={alternative}>{children}</Show>",
+  'core/Show': {
+    signature: '<Show when={condition} fallback={alternative}>{children}</Show>',
     example: `<Show when={isLoggedIn()} fallback={<LoginForm />}>
   <Dashboard />
 </Show>`,
     notes:
-      "More efficient than ternary for signal-driven conditions. Only mounts/unmounts when condition changes.",
+      'More efficient than ternary for signal-driven conditions. Only mounts/unmounts when condition changes.',
   },
 
-  "core/Suspense": {
-    signature: "<Suspense fallback={loadingUI}>{children}</Suspense>",
+  'core/Suspense': {
+    signature: '<Suspense fallback={loadingUI}>{children}</Suspense>',
     example: `const LazyPage = lazy(() => import("./HeavyPage"))
 
 <Suspense fallback={<div>Loading...</div>}>
@@ -290,9 +290,9 @@ type Props = ExtractProps<typeof Greet>
 </Suspense>`,
   },
 
-  "core/lazy": {
+  'core/lazy': {
     signature:
-      "lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent",
+      'lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent',
     example: `const Settings = lazy(() => import("./pages/Settings"))
 
 // Use in JSX (wrap with Suspense):
@@ -301,16 +301,16 @@ type Props = ExtractProps<typeof Greet>
 </Suspense>`,
   },
 
-  "core/Dynamic": {
-    signature: "<Dynamic component={comp} {...props} />",
+  'core/Dynamic': {
+    signature: '<Dynamic component={comp} {...props} />',
     example: `const components = { home: HomePage, about: AboutPage }
 const current = signal("home")
 
 <Dynamic component={components[current()]} />`,
   },
 
-  "core/ErrorBoundary": {
-    signature: "<ErrorBoundary onCatch={handler} fallback={errorUI}>{children}</ErrorBoundary>",
+  'core/ErrorBoundary': {
+    signature: '<ErrorBoundary onCatch={handler} fallback={errorUI}>{children}</ErrorBoundary>',
     example: `<ErrorBoundary
   onCatch={(err) => console.error(err)}
   fallback={(err) => <div>Error: {err.message}</div>}
@@ -319,8 +319,8 @@ const current = signal("home")
 </ErrorBoundary>`,
   },
 
-  "core/cx": {
-    signature: "cx(...values: ClassValue[]): string",
+  'core/cx': {
+    signature: 'cx(...values: ClassValue[]): string',
     example: `import { cx } from "@pyreon/core"
 
 cx("foo", "bar")                         // "foo bar"
@@ -332,13 +332,13 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 <div class={["base", cond && "active"]} />
 <div class={{ base: true, active: isActive() }} />`,
     notes:
-      "Combines class values into a single string. Accepts strings, booleans, objects, arrays (nested). Falsy values are ignored. ClassValue type is also exported from @pyreon/core.",
+      'Combines class values into a single string. Accepts strings, booleans, objects, arrays (nested). Falsy values are ignored. ClassValue type is also exported from @pyreon/core.',
     mistakes: `- \`class={cx(...)}\` works but is redundant — class prop already accepts ClassValue
 - \`class={condition ? "a" : undefined}\` → Use \`class={[condition && "a"]}\` or \`class={{ a: condition }}\``,
   },
 
-  "core/splitProps": {
-    signature: "splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]",
+  'core/splitProps': {
+    signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
     example: `import { splitProps } from "@pyreon/core"
 
 const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
@@ -346,13 +346,13 @@ const Button = (props: { class?: string; onClick: () => void; children: VNodeChi
   return <button {...rest} class={cx("btn", local.class)} />
 }`,
     notes:
-      "Splits a props object into two: picked keys and the rest. Preserves signal reactivity on both halves.",
+      'Splits a props object into two: picked keys and the rest. Preserves signal reactivity on both halves.',
     mistakes: `- Destructuring props directly breaks reactivity — use splitProps instead
 - \`const { class: cls, ...rest } = props\` → \`const [local, rest] = splitProps(props, ["class"])\``,
   },
 
-  "core/mergeProps": {
-    signature: "mergeProps<T extends object[]>(...sources: T): MergedProps<T>",
+  'core/mergeProps': {
+    signature: 'mergeProps<T extends object[]>(...sources: T): MergedProps<T>',
     example: `import { mergeProps } from "@pyreon/core"
 
 const Button = (props: { size?: string; variant?: string }) => {
@@ -360,11 +360,11 @@ const Button = (props: { size?: string; variant?: string }) => {
   return <button class={\`btn-\${merged.size} btn-\${merged.variant}\`} />
 }`,
     notes:
-      "Merges multiple props objects. Last source wins for each key. Preserves reactivity — reads are lazy.",
+      'Merges multiple props objects. Last source wins for each key. Preserves reactivity — reads are lazy.',
   },
 
-  "core/createUniqueId": {
-    signature: "createUniqueId(): string",
+  'core/createUniqueId': {
+    signature: 'createUniqueId(): string',
     example: `import { createUniqueId } from "@pyreon/core"
 
 const LabeledInput = (props: { label: string }) => {
@@ -384,8 +384,8 @@ const LabeledInput = (props: { label: string }) => {
   // @pyreon/router
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "router/createRouter": {
-    signature: "createRouter(options: RouterOptions | RouteRecord[]): Router",
+  'router/createRouter': {
+    signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
     example: `const router = createRouter([
   { path: "/", component: Home },
   { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) },
@@ -395,8 +395,8 @@ const LabeledInput = (props: { label: string }) => {
 ])`,
   },
 
-  "router/RouterProvider": {
-    signature: "<RouterProvider router={router}>{children}</RouterProvider>",
+  'router/RouterProvider': {
+    signature: '<RouterProvider router={router}>{children}</RouterProvider>',
     example: `const App = () => (
   <RouterProvider router={router}>
     <nav><RouterLink to="/">Home</RouterLink></nav>
@@ -405,8 +405,8 @@ const LabeledInput = (props: { label: string }) => {
 )`,
   },
 
-  "router/RouterView": {
-    signature: "<RouterView />",
+  'router/RouterView': {
+    signature: '<RouterView />',
     example: `// Renders the matched route's component
 <RouterView />
 
@@ -419,14 +419,14 @@ const Admin = () => (
 )`,
   },
 
-  "router/RouterLink": {
-    signature: "<RouterLink to={path} activeClass={cls} exactActiveClass={cls} />",
+  'router/RouterLink': {
+    signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls} />',
     example: `<RouterLink to="/" activeClass="nav-active">Home</RouterLink>
 <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>`,
   },
 
-  "router/useRouter": {
-    signature: "useRouter(): Router",
+  'router/useRouter': {
+    signature: 'useRouter(): Router',
     example: `const router = useRouter()
 
 router.push("/settings")
@@ -437,8 +437,8 @@ router.forward()
 router.go(-2)`,
   },
 
-  "router/useRoute": {
-    signature: "useRoute<TPath extends string>(): () => ResolvedRoute<ExtractParams<TPath>>",
+  'router/useRoute': {
+    signature: 'useRoute<TPath extends string>(): () => ResolvedRoute<ExtractParams<TPath>>',
     example: `// Type-safe params:
 const route = useRoute<"/user/:id">()
 const userId = route().params.id  // string
@@ -448,9 +448,9 @@ route().query
 route().meta`,
   },
 
-  "router/useSearchParams": {
+  'router/useSearchParams': {
     signature:
-      "useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]",
+      'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]',
     example: `const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
 
 // Read:
@@ -460,8 +460,8 @@ search().page  // "1"
 setSearch({ page: "2" })`,
   },
 
-  "router/useLoaderData": {
-    signature: "useLoaderData<T>(): T",
+  'router/useLoaderData': {
+    signature: 'useLoaderData<T>(): T',
     example: `// Route: { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) }
 
 const User = () => {
@@ -474,8 +474,8 @@ const User = () => {
   // @pyreon/head
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "head/useHead": {
-    signature: "useHead(input: UseHeadInput | (() => UseHeadInput)): void",
+  'head/useHead': {
+    signature: 'useHead(input: UseHeadInput | (() => UseHeadInput)): void',
     example: `// Static:
 useHead({ title: "My Page", meta: [{ name: "description", content: "..." }] })
 
@@ -486,8 +486,8 @@ useHead(() => ({
 }))`,
   },
 
-  "head/HeadProvider": {
-    signature: "<HeadProvider>{children}</HeadProvider>",
+  'head/HeadProvider': {
+    signature: '<HeadProvider>{children}</HeadProvider>',
     example: `// Client-side setup:
 mount(
   <HeadProvider>
@@ -501,8 +501,8 @@ mount(
   // @pyreon/server
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "server/createHandler": {
-    signature: "createHandler(options: HandlerOptions): (req: Request) => Promise<Response>",
+  'server/createHandler': {
+    signature: 'createHandler(options: HandlerOptions): (req: Request) => Promise<Response>',
     example: `import { createHandler } from "@pyreon/server"
 
 export default createHandler({
@@ -513,9 +513,9 @@ export default createHandler({
 })`,
   },
 
-  "server/island": {
+  'server/island': {
     signature:
-      "island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn",
+      'island(loader: () => Promise<ComponentFn>, options: { name: string; hydrate?: HydrationStrategy }): ComponentFn',
     example: `const SearchBar = island(
   () => import("./SearchBar"),
   { name: "SearchBar", hydrate: "visible" }
@@ -524,8 +524,8 @@ export default createHandler({
 // Hydration strategies: "load" | "idle" | "visible" | "media" | "never"`,
   },
 
-  "server/prerender": {
-    signature: "prerender(options: PrerenderOptions): Promise<PrerenderResult>",
+  'server/prerender': {
+    signature: 'prerender(options: PrerenderOptions): Promise<PrerenderResult>',
     example: `await prerender({
   handler,
   paths: ["/", "/about", "/blog/1", "/blog/2"],
@@ -537,8 +537,8 @@ export default createHandler({
   // @pyreon/runtime-dom
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "runtime-dom/mount": {
-    signature: "mount(root: VNodeChild, container: Element): () => void",
+  'runtime-dom/mount': {
+    signature: 'mount(root: VNodeChild, container: Element): () => void',
     example: `import { mount } from "@pyreon/runtime-dom"
 
 const dispose = mount(<App />, document.getElementById("app")!)
@@ -549,16 +549,16 @@ dispose()`,
 - Container must not be null/undefined`,
   },
 
-  "runtime-dom/hydrateRoot": {
-    signature: "hydrateRoot(root: VNodeChild, container: Element): () => void",
+  'runtime-dom/hydrateRoot': {
+    signature: 'hydrateRoot(root: VNodeChild, container: Element): () => void',
     example: `import { hydrateRoot } from "@pyreon/runtime-dom"
 
 // Hydrate server-rendered HTML:
 hydrateRoot(<App />, document.getElementById("app")!)`,
   },
 
-  "runtime-dom/Transition": {
-    signature: "<Transition name={name} mode={mode}>{children}</Transition>",
+  'runtime-dom/Transition': {
+    signature: '<Transition name={name} mode={mode}>{children}</Transition>',
     example: `<Transition name="fade" mode="out-in">
   <Show when={visible()}>
     <div>Content</div>
@@ -575,8 +575,8 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
   // @pyreon/store
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "store/defineStore": {
-    signature: "defineStore<T>(id: string, setup: () => T): () => StoreApi<T>",
+  'store/defineStore': {
+    signature: 'defineStore<T>(id: string, setup: () => T): () => StoreApi<T>',
     example: `const useCounter = defineStore('counter', () => {
   const count = signal(0)
   const increment = () => count.update(n => n + 1)
@@ -587,16 +587,16 @@ const { store } = useCounter()
 store.count()      // 0
 store.increment()  // reactive update`,
     notes:
-      "Composition-style stores. Singleton by ID. Returns StoreApi with .store, .patch(), .subscribe(), .onAction(), .reset(), .dispose().",
+      'Composition-style stores. Singleton by ID. Returns StoreApi with .store, .patch(), .subscribe(), .onAction(), .reset(), .dispose().',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/form
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "form/useForm": {
+  'form/useForm': {
     signature:
-      "useForm<T>(options: { initialValues: T, onSubmit: (values: T) => void | Promise<void>, schema?, validateOn?, debounceMs? }): FormInstance<T>",
+      'useForm<T>(options: { initialValues: T, onSubmit: (values: T) => void | Promise<void>, schema?, validateOn?, debounceMs? }): FormInstance<T>',
     example: `const form = useForm({
   initialValues: { name: '', email: '' },
   onSubmit: async (values) => await api.save(values),
@@ -606,11 +606,11 @@ store.increment()  // reactive update`,
 form.handleSubmit()  // triggers validation + onSubmit
 form.reset()         // reset to initial values`,
     notes:
-      "Signal-based form state. Use useField() for individual field binding, useFieldArray() for dynamic arrays.",
+      'Signal-based form state. Use useField() for individual field binding, useFieldArray() for dynamic arrays.',
   },
 
-  "form/useField": {
-    signature: "useField<T>(form: FormInstance<T>, name: keyof T): FieldInstance",
+  'form/useField': {
+    signature: 'useField<T>(form: FormInstance<T>, name: keyof T): FieldInstance',
     example: `const name = useField(form, 'name')
 
 <input {...name.register()} />
@@ -621,23 +621,23 @@ form.reset()         // reset to initial values`,
   // @pyreon/query
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "query/useQuery": {
+  'query/useQuery': {
     signature:
-      "useQuery<T>(options: { queryKey: unknown[], queryFn: () => Promise<T>, ... }): { data: Signal<T>, error: Signal<Error>, isFetching: Signal<boolean>, ... }",
+      'useQuery<T>(options: { queryKey: unknown[], queryFn: () => Promise<T>, ... }): { data: Signal<T>, error: Signal<Error>, isFetching: Signal<boolean>, ... }',
     example: `const { data, error, isFetching } = useQuery({
   queryKey: ['users'],
   queryFn: () => fetch('/api/users').then(r => r.json()),
 })`,
     notes:
-      "TanStack Query adapter. Fine-grained signals per field. Reactive options via function getter. Also: useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription (WebSocket).",
+      'TanStack Query adapter. Fine-grained signals per field. Reactive options via function getter. Also: useMutation, useInfiniteQuery, useSuspenseQuery, useSubscription (WebSocket).',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/permissions
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "permissions/createPermissions": {
-    signature: "createPermissions<T extends PermissionMap>(initial?: T): PermissionsInstance",
+  'permissions/createPermissions': {
+    signature: 'createPermissions<T extends PermissionMap>(initial?: T): PermissionsInstance',
     example: `const can = createPermissions({
   'posts.read': true,
   'posts.delete': (post) => post.authorId === userId,
@@ -657,8 +657,8 @@ can.any('admin.users', 'posts.read')`,
   // @pyreon/machine
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "machine/createMachine": {
-    signature: "createMachine<S, E>(config: MachineConfig<S, E>): Machine<S, E>",
+  'machine/createMachine': {
+    signature: 'createMachine<S, E>(config: MachineConfig<S, E>): Machine<S, E>',
     example: `const traffic = createMachine({
   initial: 'red',
   states: {
@@ -673,31 +673,31 @@ traffic.send('NEXT') // 'green'
 traffic.matches('green') // true
 traffic.can('NEXT')  // true`,
     notes:
-      "Constrained signal with type-safe transitions. Guards: { target, guard: (payload?) => boolean }. No context — use signals alongside.",
+      'Constrained signal with type-safe transitions. Guards: { target, guard: (payload?) => boolean }. No context — use signals alongside.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storage
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "storage/useStorage": {
+  'storage/useStorage': {
     signature:
-      "useStorage<T>(key: string, defaultValue: T, options?: StorageOptions<T>): StorageSignal<T>",
+      'useStorage<T>(key: string, defaultValue: T, options?: StorageOptions<T>): StorageSignal<T>',
     example: `const theme = useStorage('theme', 'light')
 theme()           // 'light'
 theme.set('dark') // persists + cross-tab sync
 theme.remove()    // delete from storage`,
     notes:
-      "localStorage by default. Also: useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage(backend). All return StorageSignal<T> extending Signal<T> with .remove().",
+      'localStorage by default. Also: useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage(backend). All return StorageSignal<T> extending Signal<T> with .remove().',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/i18n
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "i18n/createI18n": {
+  'i18n/createI18n': {
     signature:
-      "createI18n(options: { locale: string, messages: Record<string, Record<string, string>>, loader?, fallbackLocale?, pluralRules? }): I18nInstance",
+      'createI18n(options: { locale: string, messages: Record<string, Record<string, string>>, loader?, fallbackLocale?, pluralRules? }): I18nInstance',
     example: `const i18n = createI18n({
   locale: 'en',
   messages: { en: { greeting: 'Hello, {{name}}!' } },
@@ -708,15 +708,15 @@ const { t, locale } = useI18n()
 t('greeting', { name: 'World' }) // "Hello, World!"
 locale.set('fr')                  // switch reactively`,
     notes:
-      "Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation.",
+      'Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/document
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "document/createDocument": {
-    signature: "createDocument(props?: DocumentProps): DocumentBuilder",
+  'document/createDocument': {
+    signature: 'createDocument(props?: DocumentProps): DocumentBuilder',
     example: `const doc = createDocument({ title: 'Report' })
   .heading('Sales Report')
   .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
@@ -727,15 +727,15 @@ await doc.toDocx()     // Word document
 await doc.toSlack()    // Slack Block Kit JSON
 await doc.toNotion()   // Notion blocks`,
     notes:
-      "14+ output formats. JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, etc. Heavy renderers lazy-loaded.",
+      '14+ output formats. JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, etc. Heavy renderers lazy-loaded.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/flow
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "flow/createFlow": {
-    signature: "createFlow(config: { nodes: FlowNode[], edges: FlowEdge[], ... }): FlowInstance",
+  'flow/createFlow': {
+    signature: 'createFlow(config: { nodes: FlowNode[], edges: FlowEdge[], ... }): FlowInstance',
     example: `const flow = createFlow({
   nodes: [
     { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
@@ -749,16 +749,16 @@ await flow.layout('layered')  // auto-layout via elkjs
 
 <Flow instance={flow}><Background /><Controls /><MiniMap /></Flow>`,
     notes:
-      "Signal-native nodes/edges. Auto-layout via elkjs (lazy-loaded). Pan/zoom via pointer events + CSS transforms. No D3.",
+      'Signal-native nodes/edges. Auto-layout via elkjs (lazy-loaded). Pan/zoom via pointer events + CSS transforms. No D3.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/code
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "code/createEditor": {
+  'code/createEditor': {
     signature:
-      "createEditor(config: { value?: string, language?: string, theme?: string, minimap?: boolean, ... }): EditorInstance",
+      'createEditor(config: { value?: string, language?: string, theme?: string, minimap?: boolean, ... }): EditorInstance',
     example: `const editor = createEditor({
   value: '// hello',
   language: 'typescript',
@@ -780,9 +780,9 @@ editor.insert('new code')
   // @pyreon/hotkeys
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "hotkeys/useHotkey": {
+  'hotkeys/useHotkey': {
     signature:
-      "useHotkey(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions): void",
+      'useHotkey(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions): void',
     example: `useHotkey('mod+s', (e) => {
   e.preventDefault()
   save()
@@ -798,8 +798,8 @@ useHotkeyScope('editor')  // activate scope for component lifetime`,
   // @pyreon/table
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "table/useTable": {
-    signature: "useTable<T>(options: TableOptions<T>): Table<T>",
+  'table/useTable': {
+    signature: 'useTable<T>(options: TableOptions<T>): Table<T>',
     example: `const table = useTable({
   data: () => users(),
   columns: [
@@ -810,31 +810,31 @@ useHotkeyScope('editor')  // activate scope for component lifetime`,
 
 // flexRender for column templates:
 flexRender(cell.column.columnDef.cell, cell.getContext())`,
-    notes: "TanStack Table adapter with reactive options and auto state sync.",
+    notes: 'TanStack Table adapter with reactive options and auto state sync.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/virtual
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "virtual/useVirtualizer": {
+  'virtual/useVirtualizer': {
     signature:
-      "useVirtualizer(options: VirtualizerOptions): { virtualItems: Signal, totalSize: Signal, scrollToIndex: (i) => void, ... }",
+      'useVirtualizer(options: VirtualizerOptions): { virtualItems: Signal, totalSize: Signal, scrollToIndex: (i) => void, ... }',
     example: `const { virtualItems, totalSize } = useVirtualizer({
   count: 10000,
   getScrollElement: () => scrollRef.current,
   estimateSize: () => 35,
 })`,
-    notes: "TanStack Virtual adapter. Also: useWindowVirtualizer for window-scoped virtualization.",
+    notes: 'TanStack Virtual adapter. Also: useWindowVirtualizer for window-scoped virtualization.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/feature
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "feature/defineFeature": {
+  'feature/defineFeature': {
     signature:
-      "defineFeature<T>(config: { name: string, schema: FeatureSchema<T>, api: FeatureApi<T> }): Feature<T>",
+      'defineFeature<T>(config: { name: string, schema: FeatureSchema<T>, api: FeatureApi<T> }): Feature<T>',
     example: `const Posts = defineFeature({
   name: 'posts',
   schema: { title: 'string', body: 'string', author: reference('users') },
@@ -848,7 +848,7 @@ Posts.useCreate()  // mutation
 Posts.useForm(id)  // edit form with validation
 Posts.useTable()   // TanStack Table config`,
     notes:
-      "Schema-driven CRUD. Composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table.",
+      'Schema-driven CRUD. Composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -859,8 +859,8 @@ Posts.useTable()   // TanStack Table config`,
   // @pyreon/lint
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "lint/lint": {
-    signature: "lint(options?: LintOptions): LintResult",
+  'lint/lint': {
+    signature: 'lint(options?: LintOptions): LintResult',
     example: `import { lint } from "@pyreon/lint"
 
 const result = lint({ paths: ["src/"], preset: "recommended" })
@@ -869,23 +869,23 @@ console.log(result.totalErrors, result.totalWarnings)
 // With config file auto-loading + rule overrides
 lint({ paths: ["."], ruleOverrides: { "pyreon/no-classname": "off" } })`,
     notes:
-      "Programmatic API. 55 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.",
+      'Programmatic API. 55 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.',
   },
 
-  "lint/lintFile": {
+  'lint/lintFile': {
     signature:
-      "lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache): LintFileResult",
+      'lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache): LintFileResult',
     example: `import { lintFile, allRules, getPreset, AstCache } from "@pyreon/lint"
 
 const cache = new AstCache()
 const config = getPreset("recommended")
 const result = lintFile("app.tsx", source, allRules, config, cache)`,
-    notes: "Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed).",
+    notes: 'Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed).',
   },
 
-  "lint/cli": {
+  'lint/cli': {
     signature:
-      "pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [path...]",
+      'pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [path...]',
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
@@ -899,7 +899,7 @@ pyreon-lint --format json               # machine-readable`,
   // @pyreon/ui-core
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "ui-core/PyreonUI": {
+  'ui-core/PyreonUI': {
     signature:
       "PyreonUI(props: { theme?: Theme; mode?: 'light' | 'dark' | 'system'; inversed?: boolean; children: VNodeChild }): VNodeChild",
     example: `import { PyreonUI } from "@pyreon/ui-core"
@@ -919,7 +919,7 @@ const theme = enrichTheme({ colors: { primary: "#3b82f6" } })
 - Forgetting enrichTheme() → raw theme objects miss default breakpoints/spacing`,
   },
 
-  "ui-core/useMode": {
+  'ui-core/useMode': {
     signature: "useMode(): Signal<'light' | 'dark'>",
     example: `import { useMode } from "@pyreon/ui-core"
 
@@ -934,8 +934,8 @@ const mode = useMode()
   // @pyreon/unistyle
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "unistyle/enrichTheme": {
-    signature: "enrichTheme(theme: PartialTheme): Theme",
+  'unistyle/enrichTheme': {
+    signature: 'enrichTheme(theme: PartialTheme): Theme',
     example: `import { enrichTheme } from "@pyreon/unistyle"
 
 const theme = enrichTheme({
@@ -945,7 +945,7 @@ const theme = enrichTheme({
 
 // Merges user overrides with default breakpoints, spacing, and units`,
     notes:
-      "Merges a partial theme with the full default theme (breakpoints, spacing, unit utilities). Always use when passing a theme to PyreonUI.",
+      'Merges a partial theme with the full default theme (breakpoints, spacing, unit utilities). Always use when passing a theme to PyreonUI.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -956,9 +956,9 @@ const theme = enrichTheme({
   // @pyreon/rx
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "rx/filter": {
+  'rx/filter': {
     signature:
-      "filter<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean): Computed<T[]> | T[]",
+      'filter<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean): Computed<T[]> | T[]',
     example: `import { filter } from '@pyreon/rx'
 
 // Signal input → Computed output (auto-tracks):
@@ -969,11 +969,11 @@ evens()  // [2, 4]
 // Plain input → plain output:
 const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
     notes:
-      "Every @pyreon/rx function is overloaded: Signal<T[]> input produces Computed<T[]>, plain T[] input produces plain T[]. 24 functions total: filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search.",
+      'Every @pyreon/rx function is overloaded: Signal<T[]> input produces Computed<T[]>, plain T[] input produces plain T[]. 24 functions total: filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search.',
   },
 
-  "rx/pipe": {
-    signature: "pipe<T>(source: Signal<T[]> | T[], ...operators: Operator[]): Computed<T[]> | T[]",
+  'rx/pipe': {
+    signature: 'pipe<T>(source: Signal<T[]> | T[], ...operators: Operator[]): Computed<T[]> | T[]',
     example: `import { pipe, filter, sortBy, map } from '@pyreon/rx'
 
 const users = signal([
@@ -991,16 +991,16 @@ const result = pipe(
 )
 // Computed<string[]> → ["Bob", "Charlie"]`,
     notes:
-      "Pipe composes operators left-to-right. Signal source produces reactive Computed that re-derives when source changes.",
+      'Pipe composes operators left-to-right. Signal source produces reactive Computed that re-derives when source changes.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/toast
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "toast/toast": {
+  'toast/toast': {
     signature:
-      "toast(message: string, options?: ToastOptions): string\ntoast.success/error/warning/info/loading(message): string\ntoast.update(id, options): void\ntoast.dismiss(id?): void\ntoast.promise(promise, { loading, success, error }): string",
+      'toast(message: string, options?: ToastOptions): string\ntoast.success/error/warning/info/loading(message): string\ntoast.update(id, options): void\ntoast.dismiss(id?): void\ntoast.promise(promise, { loading, success, error }): string',
     example: `import { toast, Toaster } from '@pyreon/toast'
 
 // Basic:
@@ -1034,9 +1034,9 @@ toast.dismiss()    // all
   // @pyreon/url-state
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "url-state/useUrlState": {
+  'url-state/useUrlState': {
     signature:
-      "useUrlState<T>(key: string, defaultValue: T): UrlStateSignal<T>\nuseUrlState<T extends Record<string, unknown>>(schema: T): UrlStateSchema<T>",
+      'useUrlState<T>(key: string, defaultValue: T): UrlStateSignal<T>\nuseUrlState<T extends Record<string, unknown>>(schema: T): UrlStateSchema<T>',
     example: `import { useUrlState } from '@pyreon/url-state'
 
 // Single param — synced to ?page=:
@@ -1050,16 +1050,16 @@ filters.page()   // 1
 filters.sort()   // "name"
 filters.set({ page: 2, sort: 'date' })`,
     notes:
-      "Auto type coercion (numbers, booleans, arrays). Uses replaceState (no history spam). Configurable debounce. SSR-safe — reads request URL on server.",
+      'Auto type coercion (numbers, booleans, arrays). Uses replaceState (no history spam). Configurable debounce. SSR-safe — reads request URL on server.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/query — useSSE
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "query/useSSE": {
+  'query/useSSE': {
     signature:
-      "useSSE<T>(options: { queryKey: unknown[], url: string, transform?: (event: MessageEvent) => T, ... }): { data: Signal<T>, error: Signal<Error>, status: Signal<string> }",
+      'useSSE<T>(options: { queryKey: unknown[], url: string, transform?: (event: MessageEvent) => T, ... }): { data: Signal<T>, error: Signal<Error>, status: Signal<string> }',
     example: `import { useSSE } from '@pyreon/query'
 
 const { data, error, status } = useSSE({
@@ -1072,15 +1072,15 @@ const { data, error, status } = useSSE({
 // Auto-reconnects on disconnect
 // Integrates with QueryClient for cache invalidation`,
     notes:
-      "Server-Sent Events hook. Same pattern as useSubscription but read-only (no send). Integrates with QueryClient cache.",
+      'Server-Sent Events hook. Same pattern as useSubscription but read-only (no send). Integrates with QueryClient cache.',
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/router — useIsActive
   // ═══════════════════════════════════════════════════════════════════════════
 
-  "router/useIsActive": {
-    signature: "useIsActive(path: string, exact?: boolean): () => boolean",
+  'router/useIsActive': {
+    signature: 'useIsActive(path: string, exact?: boolean): () => boolean',
     example: `import { useIsActive } from '@pyreon/router'
 
 const isHome = useIsActive('/')
@@ -1090,11 +1090,11 @@ const isExactAdmin = useIsActive('/admin', true)  // exact only
 // Reactive — updates when route changes:
 <a class={{ active: isAdmin() }} href="/admin">Admin</a>`,
     notes:
-      "Returns a reactive boolean. Segment-aware prefix matching: /admin matches /admin/users but not /admin-panel. Pass exact=true for exact-only matching.",
+      'Returns a reactive boolean. Segment-aware prefix matching: /admin matches /admin/users but not /admin-panel. Pass exact=true for exact-only matching.',
   },
 
-  "storybook/renderToCanvas": {
-    signature: "renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void",
+  'storybook/renderToCanvas': {
+    signature: 'renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void',
     example: `// .storybook/main.ts:
 export default { framework: '@pyreon/storybook' }
 
@@ -1109,6 +1109,6 @@ export const Primary: StoryObj<typeof meta> = {
   args: { variant: 'primary', label: 'Click me' },
 }`,
     notes:
-      "Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.",
+      'Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.',
   },
-};
+}

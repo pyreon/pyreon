@@ -1,16 +1,16 @@
-import type { VNodeChild } from "@pyreon/core";
-import type { Computed, Signal } from "@pyreon/reactivity";
+import type { VNodeChild } from '@pyreon/core'
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 // ─── Position & Geometry ─────────────────────────────────────────────────────
 
 export interface XYPosition {
-  x: number;
-  y: number;
+  x: number
+  y: number
 }
 
 export interface Dimensions {
-  width: number;
-  height: number;
+  width: number
+  height: number
 }
 
 export interface Rect extends XYPosition, Dimensions {}
@@ -18,140 +18,140 @@ export interface Rect extends XYPosition, Dimensions {}
 // ─── Viewport ────────────────────────────────────────────────────────────────
 
 export interface Viewport {
-  x: number;
-  y: number;
-  zoom: number;
+  x: number
+  y: number
+  zoom: number
 }
 
 // ─── Handle ──────────────────────────────────────────────────────────────────
 
-export type HandleType = "source" | "target";
+export type HandleType = 'source' | 'target'
 
 export enum Position {
-  Top = "top",
-  Right = "right",
-  Bottom = "bottom",
-  Left = "left",
+  Top = 'top',
+  Right = 'right',
+  Bottom = 'bottom',
+  Left = 'left',
 }
 
 export interface HandleConfig {
-  id?: string;
-  type: HandleType;
-  position: Position;
+  id?: string
+  type: HandleType
+  position: Position
 }
 
 // ─── Node ────────────────────────────────────────────────────────────────────
 
 export interface FlowNode<TData = Record<string, unknown>> {
-  id: string;
-  type?: string;
-  position: XYPosition;
-  data: TData;
-  width?: number;
-  height?: number;
+  id: string
+  type?: string
+  position: XYPosition
+  data: TData
+  width?: number
+  height?: number
   /** Whether the node can be dragged */
-  draggable?: boolean;
+  draggable?: boolean
   /** Whether the node can be selected */
-  selectable?: boolean;
+  selectable?: boolean
   /** Whether the node can be connected to */
-  connectable?: boolean;
+  connectable?: boolean
   /** Custom class name */
-  class?: string;
+  class?: string
   /** Custom style */
-  style?: string;
+  style?: string
   /** Source handles */
-  sourceHandles?: HandleConfig[];
+  sourceHandles?: HandleConfig[]
   /** Target handles */
-  targetHandles?: HandleConfig[];
+  targetHandles?: HandleConfig[]
   /** Parent node id for grouping */
-  parentId?: string;
+  parentId?: string
   /** Whether this node is a group */
-  group?: boolean;
+  group?: boolean
 }
 
 // ─── Edge ────────────────────────────────────────────────────────────────────
 
-export type EdgeType = "bezier" | "smoothstep" | "straight" | "step";
+export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step'
 
 export interface FlowEdge {
-  id?: string;
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-  type?: EdgeType;
-  label?: string;
-  animated?: boolean;
-  class?: string;
-  style?: string;
+  id?: string
+  source: string
+  target: string
+  sourceHandle?: string
+  targetHandle?: string
+  type?: EdgeType
+  label?: string
+  animated?: boolean
+  class?: string
+  style?: string
   /** Custom data attached to the edge */
-  data?: Record<string, unknown>;
+  data?: Record<string, unknown>
   /** Waypoints — intermediate points the edge passes through */
-  waypoints?: XYPosition[];
+  waypoints?: XYPosition[]
 }
 
 // ─── Connection ──────────────────────────────────────────────────────────────
 
 export interface Connection {
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
+  source: string
+  target: string
+  sourceHandle?: string
+  targetHandle?: string
 }
 
-export type ConnectionRule = Record<string, { outputs: string[] }>;
+export type ConnectionRule = Record<string, { outputs: string[] }>
 
 // ─── Node Change Events ──────────────────────────────────────────────────────
 
 export type NodeChange =
-  | { type: "position"; id: string; position: XYPosition }
-  | { type: "dimensions"; id: string; dimensions: Dimensions }
-  | { type: "select"; id: string; selected: boolean }
-  | { type: "remove"; id: string };
+  | { type: 'position'; id: string; position: XYPosition }
+  | { type: 'dimensions'; id: string; dimensions: Dimensions }
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
 
 // ─── Edge path result ────────────────────────────────────────────────────────
 
 export interface EdgePathResult {
-  path: string;
-  labelX: number;
-  labelY: number;
+  path: string
+  labelX: number
+  labelY: number
 }
 
 // ─── Flow config ─────────────────────────────────────────────────────────────
 
 export interface FlowConfig {
-  nodes?: FlowNode[];
-  edges?: FlowEdge[];
+  nodes?: FlowNode[]
+  edges?: FlowEdge[]
   /** Default edge type */
-  defaultEdgeType?: EdgeType;
+  defaultEdgeType?: EdgeType
   /** Min zoom level — default: 0.1 */
-  minZoom?: number;
+  minZoom?: number
   /** Max zoom level — default: 4 */
-  maxZoom?: number;
+  maxZoom?: number
   /** Snap to grid */
-  snapToGrid?: boolean;
+  snapToGrid?: boolean
   /** Grid size for snapping — default: 15 */
-  snapGrid?: number;
+  snapGrid?: number
   /** Connection rules — which node types can connect */
-  connectionRules?: ConnectionRule;
+  connectionRules?: ConnectionRule
   /** Whether nodes are draggable by default — default: true */
-  nodesDraggable?: boolean;
+  nodesDraggable?: boolean
   /** Whether nodes are connectable by default — default: true */
-  nodesConnectable?: boolean;
+  nodesConnectable?: boolean
   /** Whether nodes are selectable by default — default: true */
-  nodesSelectable?: boolean;
+  nodesSelectable?: boolean
   /** Whether to allow multi-selection — default: true */
-  multiSelect?: boolean;
+  multiSelect?: boolean
   /** Drag boundaries for nodes — [[minX, minY], [maxX, maxY]] */
-  nodeExtent?: [[number, number], [number, number]];
+  nodeExtent?: [[number, number], [number, number]]
   /** Whether panning is enabled — default: true */
-  pannable?: boolean;
+  pannable?: boolean
   /** Whether zooming is enabled — default: true */
-  zoomable?: boolean;
+  zoomable?: boolean
   /** Fit view on initial render — default: false */
-  fitView?: boolean;
+  fitView?: boolean
   /** Padding for fitView — default: 0.1 */
-  fitViewPadding?: number;
+  fitViewPadding?: number
 }
 
 // ─── Flow instance ───────────────────────────────────────────────────────────
@@ -160,130 +160,130 @@ export interface FlowInstance {
   // ── State (signals) ──────────────────────────────────────────────────────
 
   /** All nodes — reactive */
-  nodes: Signal<FlowNode[]>;
+  nodes: Signal<FlowNode[]>
   /** All edges — reactive */
-  edges: Signal<FlowEdge[]>;
+  edges: Signal<FlowEdge[]>
   /** Viewport state — reactive */
-  viewport: Signal<Viewport>;
+  viewport: Signal<Viewport>
   /** Current zoom level — computed */
-  zoom: Computed<number>;
+  zoom: Computed<number>
   /** Selected node ids — computed */
-  selectedNodes: Computed<string[]>;
+  selectedNodes: Computed<string[]>
   /** Selected edge ids — computed */
-  selectedEdges: Computed<string[]>;
+  selectedEdges: Computed<string[]>
   /** Container dimensions — updated by the Flow component via ResizeObserver */
-  containerSize: Signal<{ width: number; height: number }>;
+  containerSize: Signal<{ width: number; height: number }>
 
   // ── Node operations ──────────────────────────────────────────────────────
 
   /** Get a single node by id */
-  getNode: (id: string) => FlowNode | undefined;
+  getNode: (id: string) => FlowNode | undefined
   /** Add a node */
-  addNode: (node: FlowNode) => void;
+  addNode: (node: FlowNode) => void
   /** Remove a node and its connected edges */
-  removeNode: (id: string) => void;
+  removeNode: (id: string) => void
   /** Update a node's properties */
-  updateNode: (id: string, update: Partial<FlowNode>) => void;
+  updateNode: (id: string, update: Partial<FlowNode>) => void
   /** Update a node's position */
-  updateNodePosition: (id: string, position: XYPosition) => void;
+  updateNodePosition: (id: string, position: XYPosition) => void
 
   // ── Edge operations ──────────────────────────────────────────────────────
 
   /** Get a single edge by id */
-  getEdge: (id: string) => FlowEdge | undefined;
+  getEdge: (id: string) => FlowEdge | undefined
   /** Add an edge */
-  addEdge: (edge: FlowEdge) => void;
+  addEdge: (edge: FlowEdge) => void
   /** Remove an edge */
-  removeEdge: (id: string) => void;
+  removeEdge: (id: string) => void
   /** Check if a connection is valid (based on rules) */
-  isValidConnection: (connection: Connection) => boolean;
+  isValidConnection: (connection: Connection) => boolean
 
   // ── Selection ────────────────────────────────────────────────────────────
 
   /** Select a node */
-  selectNode: (id: string, additive?: boolean) => void;
+  selectNode: (id: string, additive?: boolean) => void
   /** Deselect a node */
-  deselectNode: (id: string) => void;
+  deselectNode: (id: string) => void
   /** Select an edge */
-  selectEdge: (id: string, additive?: boolean) => void;
+  selectEdge: (id: string, additive?: boolean) => void
   /** Clear all selection */
-  clearSelection: () => void;
+  clearSelection: () => void
   /** Select all nodes */
-  selectAll: () => void;
+  selectAll: () => void
   /** Delete selected nodes/edges */
-  deleteSelected: () => void;
+  deleteSelected: () => void
 
   // ── Viewport ─────────────────────────────────────────────────────────────
 
   /** Fit view to show all nodes */
-  fitView: (nodeIds?: string[], padding?: number) => void;
+  fitView: (nodeIds?: string[], padding?: number) => void
   /** Set zoom level */
-  zoomTo: (zoom: number) => void;
+  zoomTo: (zoom: number) => void
   /** Zoom in */
-  zoomIn: () => void;
+  zoomIn: () => void
   /** Zoom out */
-  zoomOut: () => void;
+  zoomOut: () => void
   /** Pan to position */
-  panTo: (position: XYPosition) => void;
+  panTo: (position: XYPosition) => void
   /** Check if a node is visible in the current viewport */
-  isNodeVisible: (id: string) => boolean;
+  isNodeVisible: (id: string) => boolean
 
   // ── Layout ───────────────────────────────────────────────────────────────
 
   /** Apply auto-layout using elkjs */
-  layout: (algorithm?: LayoutAlgorithm, options?: LayoutOptions) => Promise<void>;
+  layout: (algorithm?: LayoutAlgorithm, options?: LayoutOptions) => Promise<void>
 
   // ── Batch ────────────────────────────────────────────────────────────────
 
   /** Batch multiple operations */
-  batch: (fn: () => void) => void;
+  batch: (fn: () => void) => void
 
   // ── Graph queries ────────────────────────────────────────────────────────
 
   /** Get edges connected to a node */
-  getConnectedEdges: (nodeId: string) => FlowEdge[];
+  getConnectedEdges: (nodeId: string) => FlowEdge[]
   /** Get incoming edges for a node */
-  getIncomers: (nodeId: string) => FlowNode[];
+  getIncomers: (nodeId: string) => FlowNode[]
   /** Get outgoing edges from a node */
-  getOutgoers: (nodeId: string) => FlowNode[];
+  getOutgoers: (nodeId: string) => FlowNode[]
 
   // ── Listeners ────────────────────────────────────────────────────────────
 
   /** Called when a connection is made */
-  onConnect: (callback: (connection: Connection) => void) => () => void;
+  onConnect: (callback: (connection: Connection) => void) => () => void
   /** Called when nodes change */
-  onNodesChange: (callback: (changes: NodeChange[]) => void) => () => void;
+  onNodesChange: (callback: (changes: NodeChange[]) => void) => () => void
   /** Called when a node is clicked */
-  onNodeClick: (callback: (node: FlowNode) => void) => () => void;
+  onNodeClick: (callback: (node: FlowNode) => void) => () => void
   /** Called when an edge is clicked */
-  onEdgeClick: (callback: (edge: FlowEdge) => void) => () => void;
+  onEdgeClick: (callback: (edge: FlowEdge) => void) => () => void
   /** Called when a node starts being dragged */
-  onNodeDragStart: (callback: (node: FlowNode) => void) => () => void;
+  onNodeDragStart: (callback: (node: FlowNode) => void) => () => void
   /** Called when a node stops being dragged */
-  onNodeDragEnd: (callback: (node: FlowNode) => void) => () => void;
+  onNodeDragEnd: (callback: (node: FlowNode) => void) => () => void
   /** Called when a node is double-clicked */
-  onNodeDoubleClick: (callback: (node: FlowNode) => void) => () => void;
+  onNodeDoubleClick: (callback: (node: FlowNode) => void) => () => void
 
   // ── Copy / Paste ─────────────────────────────────────────────────────────
 
   /** Copy selected nodes and their edges to clipboard */
-  copySelected: () => void;
+  copySelected: () => void
   /** Paste clipboard contents with offset */
-  paste: (offset?: XYPosition) => void;
+  paste: (offset?: XYPosition) => void
 
   // ── Undo / Redo ─────────────────────────────────────────────────────────
 
   /** Save current state to undo history */
-  pushHistory: () => void;
+  pushHistory: () => void
   /** Undo last change */
-  undo: () => void;
+  undo: () => void
   /** Redo last undone change */
-  redo: () => void;
+  redo: () => void
 
   // ── Multi-node drag ─────────────────────────────────────────────────────
 
   /** Move all selected nodes by dx/dy */
-  moveSelectedNodes: (dx: number, dy: number) => void;
+  moveSelectedNodes: (dx: number, dy: number) => void
 
   // ── Helper lines ────────────────────────────────────────────────────────
 
@@ -292,25 +292,25 @@ export interface FlowInstance {
     dragNodeId: string,
     position: XYPosition,
     threshold?: number,
-  ) => { x: number | null; y: number | null; snappedPosition: XYPosition };
+  ) => { x: number | null; y: number | null; snappedPosition: XYPosition }
 
   // ── Sub-flows / Groups ───────────────────────────────────────────────────
 
   /** Get child nodes of a group node */
-  getChildNodes: (parentId: string) => FlowNode[];
+  getChildNodes: (parentId: string) => FlowNode[]
   /** Get absolute position of a node (accounting for parent offsets) */
-  getAbsolutePosition: (nodeId: string) => XYPosition;
+  getAbsolutePosition: (nodeId: string) => XYPosition
 
   // ── Edge reconnecting ──────────────────────────────────────────────────
 
   // ── Edge waypoints ──────────────────────────────────────────────────────
 
   /** Add a waypoint (bend point) to an edge */
-  addEdgeWaypoint: (edgeId: string, point: XYPosition, index?: number) => void;
+  addEdgeWaypoint: (edgeId: string, point: XYPosition, index?: number) => void
   /** Remove a waypoint from an edge */
-  removeEdgeWaypoint: (edgeId: string, index: number) => void;
+  removeEdgeWaypoint: (edgeId: string, index: number) => void
   /** Update a waypoint position */
-  updateEdgeWaypoint: (edgeId: string, index: number, point: XYPosition) => void;
+  updateEdgeWaypoint: (edgeId: string, index: number, point: XYPosition) => void
 
   // ── Edge reconnecting ──────────────────────────────────────────────────
 
@@ -318,152 +318,152 @@ export interface FlowInstance {
   reconnectEdge: (
     edgeId: string,
     newConnection: {
-      source?: string;
-      target?: string;
-      sourceHandle?: string;
-      targetHandle?: string;
+      source?: string
+      target?: string
+      sourceHandle?: string
+      targetHandle?: string
     },
-  ) => void;
+  ) => void
 
   // ── Proximity connect ────────────────────────────────────────────────────
 
   /** Find the nearest unconnected node within threshold distance */
-  getProximityConnection: (nodeId: string, threshold?: number) => Connection | null;
+  getProximityConnection: (nodeId: string, threshold?: number) => Connection | null
 
   // ── Collision detection ─────────────────────────────────────────────────
 
   /** Get nodes that overlap with the given node */
-  getOverlappingNodes: (nodeId: string) => FlowNode[];
+  getOverlappingNodes: (nodeId: string) => FlowNode[]
   /** Push overlapping nodes apart */
-  resolveCollisions: (nodeId: string, spacing?: number) => void;
+  resolveCollisions: (nodeId: string, spacing?: number) => void
 
   // ── Node extent ─────────────────────────────────────────────────────────
 
   /** Set drag boundaries for all nodes — [[minX, minY], [maxX, maxY]] or null to remove */
-  setNodeExtent: (extent: [[number, number], [number, number]] | null) => void;
+  setNodeExtent: (extent: [[number, number], [number, number]] | null) => void
   /** Clamp a position to the current node extent */
-  clampToExtent: (position: XYPosition, nodeWidth?: number, nodeHeight?: number) => XYPosition;
+  clampToExtent: (position: XYPosition, nodeWidth?: number, nodeHeight?: number) => XYPosition
 
   // ── Search / Filter ─────────────────────────────────────────────────────
 
   /** Find nodes matching a predicate */
-  findNodes: (predicate: (node: FlowNode) => boolean) => FlowNode[];
+  findNodes: (predicate: (node: FlowNode) => boolean) => FlowNode[]
   /** Find nodes by label text (case-insensitive) */
-  searchNodes: (query: string) => FlowNode[];
+  searchNodes: (query: string) => FlowNode[]
   /** Focus viewport on a specific node (pan + optional zoom) */
-  focusNode: (nodeId: string, zoom?: number) => void;
+  focusNode: (nodeId: string, zoom?: number) => void
 
   // ── Export ─────────────────────────────────────────────────────────────
 
   /** Export the flow as a JSON-serializable object */
-  toJSON: () => { nodes: FlowNode[]; edges: FlowEdge[]; viewport: Viewport };
+  toJSON: () => { nodes: FlowNode[]; edges: FlowEdge[]; viewport: Viewport }
   /** Import flow state from a JSON object */
-  fromJSON: (data: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void;
+  fromJSON: (data: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void
 
   // ── Viewport animation ─────────────────────────────────────────────────
 
   /** Animate viewport to a new position/zoom */
-  animateViewport: (target: Partial<Viewport>, duration?: number) => void;
+  animateViewport: (target: Partial<Viewport>, duration?: number) => void
 
   // ── Internal emitters (used by Flow component) ──────────────────────────
 
   /** @internal */
   _emit: {
-    nodeDragStart: (node: FlowNode) => void;
-    nodeDragEnd: (node: FlowNode) => void;
-    nodeDoubleClick: (node: FlowNode) => void;
-    nodeClick: (node: FlowNode) => void;
-    edgeClick: (edge: FlowEdge) => void;
-  };
+    nodeDragStart: (node: FlowNode) => void
+    nodeDragEnd: (node: FlowNode) => void
+    nodeDoubleClick: (node: FlowNode) => void
+    nodeClick: (node: FlowNode) => void
+    edgeClick: (edge: FlowEdge) => void
+  }
 
   // ── Config ───────────────────────────────────────────────────────────────
 
   /** The flow configuration */
-  config: FlowConfig;
+  config: FlowConfig
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
 
   /** Dispose all listeners and clean up */
-  dispose: () => void;
+  dispose: () => void
 }
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
 export type LayoutAlgorithm =
-  | "layered"
-  | "force"
-  | "stress"
-  | "tree"
-  | "radial"
-  | "box"
-  | "rectpacking";
+  | 'layered'
+  | 'force'
+  | 'stress'
+  | 'tree'
+  | 'radial'
+  | 'box'
+  | 'rectpacking'
 
 export interface LayoutOptions {
   /** Layout direction — default: 'DOWN' */
-  direction?: "UP" | "DOWN" | "LEFT" | "RIGHT";
+  direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /** Spacing between nodes — default: 50 */
-  nodeSpacing?: number;
+  nodeSpacing?: number
   /** Spacing between layers — default: 80 */
-  layerSpacing?: number;
+  layerSpacing?: number
   /** Edge routing — default: 'orthogonal' */
-  edgeRouting?: "orthogonal" | "splines" | "polyline";
+  edgeRouting?: 'orthogonal' | 'splines' | 'polyline'
   /** Whether to animate the layout transition — default: true */
-  animate?: boolean;
+  animate?: boolean
   /** Animation duration in ms — default: 300 */
-  animationDuration?: number;
+  animationDuration?: number
 }
 
 // ─── Component props ─────────────────────────────────────────────────────────
 
 export interface FlowProps {
-  instance: FlowInstance;
-  style?: string;
-  class?: string;
-  children?: VNodeChild;
+  instance: FlowInstance
+  style?: string
+  class?: string
+  children?: VNodeChild
 }
 
 export interface BackgroundProps {
-  variant?: "dots" | "lines" | "cross";
-  gap?: number;
-  size?: number;
-  color?: string;
+  variant?: 'dots' | 'lines' | 'cross'
+  gap?: number
+  size?: number
+  color?: string
 }
 
 export interface MiniMapProps {
-  style?: string;
-  class?: string;
-  nodeColor?: string | ((node: FlowNode) => string);
-  maskColor?: string;
-  width?: number;
-  height?: number;
+  style?: string
+  class?: string
+  nodeColor?: string | ((node: FlowNode) => string)
+  maskColor?: string
+  width?: number
+  height?: number
 }
 
 export interface ControlsProps {
-  showZoomIn?: boolean;
-  showZoomOut?: boolean;
-  showFitView?: boolean;
-  showLock?: boolean;
-  position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  showZoomIn?: boolean
+  showZoomOut?: boolean
+  showFitView?: boolean
+  showLock?: boolean
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 }
 
 export interface PanelProps {
-  position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
-  style?: string;
-  class?: string;
-  children?: VNodeChild;
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  style?: string
+  class?: string
+  children?: VNodeChild
 }
 
 export interface HandleProps {
-  type: HandleType;
-  position: Position;
-  id?: string;
-  style?: string;
-  class?: string;
+  type: HandleType
+  position: Position
+  id?: string
+  style?: string
+  class?: string
 }
 
 export type NodeComponentProps<TData = Record<string, unknown>> = {
-  id: string;
-  data: TData;
-  selected: boolean;
-  dragging: boolean;
-};
+  id: string
+  data: TData
+  selected: boolean
+  dragging: boolean
+}

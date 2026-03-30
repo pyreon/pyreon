@@ -5,15 +5,15 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
-import { onUnmount } from "./lifecycle";
+import { onUnmount } from './lifecycle'
 
 export interface Context<T> {
-  readonly id: symbol;
-  readonly defaultValue: T;
+  readonly id: symbol
+  readonly defaultValue: T
 }
 
 export function createContext<T>(defaultValue: T): Context<T> {
-  return { id: Symbol("PyreonContext"), defaultValue };
+  return { id: Symbol('PyreonContext'), defaultValue }
 }
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
@@ -21,8 +21,8 @@ export function createContext<T>(defaultValue: T): Context<T> {
 // Default stack — used for CSR and single-threaded SSR.
 // On Node.js with concurrent requests, @pyreon/runtime-server replaces this with
 // an AsyncLocalStorage-backed provider via setContextStackProvider().
-const _defaultStack: Map<symbol, unknown>[] = [];
-let _stackProvider: () => Map<symbol, unknown>[] = () => _defaultStack;
+const _defaultStack: Map<symbol, unknown>[] = []
+let _stackProvider: () => Map<symbol, unknown>[] = () => _defaultStack
 
 /**
  * Override the context stack provider. Called by @pyreon/runtime-server to
@@ -30,29 +30,29 @@ let _stackProvider: () => Map<symbol, unknown>[] = () => _defaultStack;
  * Has no effect in the browser (CSR always uses the default module-level stack).
  */
 export function setContextStackProvider(fn: () => Map<symbol, unknown>[]): void {
-  _stackProvider = fn;
+  _stackProvider = fn
 }
 
 function getStack(): Map<symbol, unknown>[] {
-  return _stackProvider();
+  return _stackProvider()
 }
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export function pushContext(values: Map<symbol, unknown>) {
-  getStack().push(values);
+  getStack().push(values)
 }
 
 export function popContext() {
-  const stack = getStack();
+  const stack = getStack()
   if (__DEV__ && stack.length === 0) {
     // biome-ignore lint/suspicious/noConsole: dev-only warning
     console.warn(
-      "[Pyreon] popContext() called on an empty context stack. This likely indicates a missing Provider.",
-    );
-    return;
+      '[Pyreon] popContext() called on an empty context stack. This likely indicates a missing Provider.',
+    )
+    return
   }
-  stack.pop();
+  stack.pop()
 }
 
 /**
@@ -60,14 +60,14 @@ export function popContext() {
  * Falls back to `context.defaultValue` if none found.
  */
 export function useContext<T>(context: Context<T>): T {
-  const stack = getStack();
+  const stack = getStack()
   for (let i = stack.length - 1; i >= 0; i--) {
-    const frame = stack[i];
+    const frame = stack[i]
     if (frame?.has(context.id)) {
-      return frame.get(context.id) as T;
+      return frame.get(context.id) as T
     }
   }
-  return context.defaultValue;
+  return context.defaultValue
 }
 
 /**
@@ -82,8 +82,8 @@ export function useContext<T>(context: Context<T>): T {
  * }
  */
 export function provide<T>(context: Context<T>, value: T): void {
-  pushContext(new Map<symbol, unknown>([[context.id, value]]));
-  onUnmount(() => popContext());
+  pushContext(new Map<symbol, unknown>([[context.id, value]]))
+  onUnmount(() => popContext())
 }
 
 /**
@@ -91,11 +91,11 @@ export function provide<T>(context: Context<T>, value: T): void {
  * Used by the renderer when it encounters a `<Provider>` component.
  */
 export function withContext<T>(context: Context<T>, value: T, fn: () => void) {
-  const frame = new Map<symbol, unknown>([[context.id, value]]);
-  pushContext(frame);
+  const frame = new Map<symbol, unknown>([[context.id, value]])
+  pushContext(frame)
   try {
-    fn();
+    fn()
   } finally {
-    popContext();
+    popContext()
   }
 }

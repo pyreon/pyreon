@@ -1,7 +1,7 @@
-import type { VNodeChild } from "@pyreon/core";
-import type { AttrsCb } from "./attrs";
-import type { ConfigAttrs } from "./config";
-import type { DefaultProps } from "./configuration";
+import type { VNodeChild } from '@pyreon/core'
+import type { AttrsCb } from './attrs'
+import type { ConfigAttrs } from './config'
+import type { DefaultProps } from './configuration'
 import type {
   DimensionCallbackParam,
   DimensionProps,
@@ -11,15 +11,15 @@ import type {
   ExtractDimensions,
   MultiKeys,
   TDKP,
-} from "./dimensions";
-import type { ComposeParam } from "./hoc";
-import type { Styles, StylesCb } from "./styles";
-import type { Theme, ThemeCb, ThemeModeKeys } from "./theme";
-import type { ElementType, ExtractProps, MergeTypes, TObj } from "./utils";
+} from './dimensions'
+import type { ComposeParam } from './hoc'
+import type { Styles, StylesCb } from './styles'
+import type { Theme, ThemeCb, ThemeModeKeys } from './theme'
+import type { ElementType, ExtractProps, MergeTypes, TObj } from './utils'
 
 export type InnerComponentProps = {
-  "data-rocketstyle"?: string | undefined;
-} & Record<string, any>;
+  'data-rocketstyle'?: string | undefined
+} & Record<string, any>
 
 export type RocketStyleComponent<
   OA extends TObj = {},
@@ -42,8 +42,8 @@ export type RocketStyleComponent<
     param: P,
   ) => P extends DimensionCallbackParam<Theme<T>, Styles<CSS>>
     ? RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DimensionProps<K, D, P, DKP>>
-    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
-};
+    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
+}
 
 /**
  * @param OA   Origin component props params.
@@ -79,7 +79,7 @@ export interface IRocketStyleComponent<
   DFP = MergeTypes<[OA, EA, DefaultProps, ExtractDimensionProps<D, DKP, UB>]>,
 > {
   // The component is callable — Pyreon components are plain functions
-  (props: DFP): VNodeChild;
+  (props: DFP): VNodeChild
 
   // CONFIG chaining method
   config: <NC extends ElementType | unknown = unknown>({
@@ -92,7 +92,7 @@ export interface IRocketStyleComponent<
     passProps,
   }: ConfigAttrs<NC, D, DKP, UB>) => NC extends ElementType
     ? RocketStyleComponent<ExtractProps<NC>, EA, T, CSS, S, HOC, D, UB, DKP>
-    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
+    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
 
   // ATTRS chaining method
   attrs: <P extends TObj | unknown = unknown>(
@@ -106,51 +106,51 @@ export interface IRocketStyleComponent<
             ) => Partial<P> & Record<string, unknown>)
       : Partial<DFP> | AttrsCb<DFP, Theme<T>>,
     config?: Partial<{
-      priority: boolean;
-      filter: P extends TObj ? Partial<keyof (EA & P)>[] : Partial<keyof EA>[];
+      priority: boolean
+      filter: P extends TObj ? Partial<keyof (EA & P)>[] : Partial<keyof EA>[]
     }>,
   ) => P extends TObj
     ? RocketStyleComponent<OA, MergeTypes<[EA, P]>, T, CSS, S, HOC, D, UB, DKP>
-    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
+    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
 
   // THEME chaining method
   theme: <P extends TObj = TObj>(
     param: Partial<P> | Partial<Styles<CSS>> | ThemeCb<P, Theme<T>>,
-  ) => RocketStyleComponent<OA, EA, T, MergeTypes<[CSS, P]>, S, HOC, D, UB, DKP>;
+  ) => RocketStyleComponent<OA, EA, T, MergeTypes<[CSS, P]>, S, HOC, D, UB, DKP>
 
   // STYLES chaining method
-  styles: (param: StylesCb<CSS>) => RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
+  styles: (param: StylesCb<CSS>) => RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
 
   // COMPOSE chaining method
   compose: <P extends ComposeParam>(
     param: P,
   ) => P extends TObj
     ? RocketStyleComponent<OA, EA, T, CSS, S, MergeTypes<[HOC, P]>, D, UB, DKP>
-    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
+    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
 
   // STATICS chaining method
   statics: <P extends TObj | unknown = unknown>(
     param: P,
   ) => P extends TObj
     ? RocketStyleComponent<OA, EA, T, CSS, MergeTypes<[S, P]>, HOC, D, UB, DKP>
-    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>;
+    : RocketStyleComponent<OA, EA, T, CSS, S, HOC, D, UB, DKP>
 
   /** Access to all defined statics on the component. */
-  meta: S;
+  meta: S
 
   getStaticDimensions: (theme: TObj) => {
-    dimensions: DKP;
-    useBooleans: UB;
-    multiKeys: MultiKeys<D>;
-  };
+    dimensions: DKP
+    useBooleans: UB
+    multiKeys: MultiKeys<D>
+  }
 
-  getDefaultAttrs: (props: TObj, theme: TObj, mode: ThemeModeKeys) => TObj;
+  getDefaultAttrs: (props: TObj, theme: TObj, mode: ThemeModeKeys) => TObj
 
-  readonly $$rocketstyle: ExtractDimensions<D, DKP>;
-  readonly $$originTypes: OA;
-  readonly $$extendedTypes: EA;
-  readonly $$types: DFP;
+  readonly $$rocketstyle: ExtractDimensions<D, DKP>
+  readonly $$originTypes: OA
+  readonly $$extendedTypes: EA
+  readonly $$types: DFP
 
-  IS_ROCKETSTYLE: true;
-  displayName: string;
+  IS_ROCKETSTYLE: true
+  displayName: string
 }

@@ -1,8 +1,8 @@
-import { Fragment, h, ref } from "vue";
-import Demo from "./Demo";
+import { Fragment, h, ref } from 'vue'
+import Demo from './Demo'
 
 export default function HFragmentDemo() {
-  const items = ref(["one", "two", "three"]);
+  const items = ref(['one', 'two', 'three'])
 
   return (
     <Demo
@@ -17,15 +17,15 @@ h(Fragment, null,
   h("span", null, "B"),
 )`}
     >
-      {h("p", null, "This paragraph was created with ", h("strong", null, "h()"))}
+      {h('p', null, 'This paragraph was created with ', h('strong', null, 'h()'))}
       {h(
         Fragment,
         null,
-        h("p", { class: "muted" }, "Fragment child 1"),
-        h("p", { class: "muted" }, "Fragment child 2"),
+        h('p', { class: 'muted' }, 'Fragment child 1'),
+        h('p', { class: 'muted' }, 'Fragment child 2'),
       )}
       <p>
-        Items: <strong>{items.value.join(", ")}</strong>
+        Items: <strong>{items.value.join(', ')}</strong>
       </p>
       <button
         type="button"
@@ -34,5 +34,5 @@ h(Fragment, null,
         Add item
       </button>
     </Demo>
-  );
+  )
 }

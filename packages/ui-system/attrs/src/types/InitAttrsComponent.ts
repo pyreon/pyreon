@@ -1,6 +1,6 @@
-import type { AttrsComponent } from "./AttrsComponent";
-import type { Configuration } from "./configuration";
-import type { ElementType, ExtractProps } from "./utils";
+import type { AttrsComponent } from './AttrsComponent'
+import type { Configuration } from './configuration'
+import type { ElementType, ExtractProps } from './utils'
 
 /**
  * Type of the internal `attrsComponent` factory function.
@@ -16,4 +16,4 @@ export type InitAttrsComponent<C extends ElementType = ElementType> = (
   {}, // EA — extended props (empty initially)
   {}, // S  — statics (empty initially)
   {} //  HOC — composed HOCs (empty initially)
->;
+>

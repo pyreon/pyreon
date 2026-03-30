@@ -21,27 +21,27 @@
  */
 
 interface SignalLike {
-  peek(): unknown;
-  set(value: unknown): void;
+  peek(): unknown
+  set(value: unknown): void
 }
 
 interface ModuleSignals {
-  entries: Map<string, SignalLike>;
+  entries: Map<string, SignalLike>
 }
 
-const REGISTRY_KEY = "__pyreon_hmr_registry__";
+const REGISTRY_KEY = '__pyreon_hmr_registry__'
 
-type Registry = Map<string, Map<string, unknown>>;
+type Registry = Map<string, Map<string, unknown>>
 
 function getRegistry(): Registry {
-  const g = globalThis as Record<string, unknown>;
+  const g = globalThis as Record<string, unknown>
   if (!g[REGISTRY_KEY]) {
-    g[REGISTRY_KEY] = new Map();
+    g[REGISTRY_KEY] = new Map()
   }
-  return g[REGISTRY_KEY] as Registry;
+  return g[REGISTRY_KEY] as Registry
 }
 
-const moduleSignals = new Map<string, ModuleSignals>();
+const moduleSignals = new Map<string, ModuleSignals>()
 
 /**
  * Called in place of `signal(initialValue)` for module-scope signals.
@@ -53,23 +53,23 @@ export function __hmr_signal<T>(
   signalFn: (value: T, options?: { name?: string }) => SignalLike,
   initialValue: T,
 ): ReturnType<typeof signalFn> {
-  const registry = getRegistry();
-  const saved = registry.get(moduleId);
+  const registry = getRegistry()
+  const saved = registry.get(moduleId)
 
   // Use saved value if available (hot reload), otherwise use initial
-  const value = saved?.has(name) ? (saved.get(name) as T) : initialValue;
+  const value = saved?.has(name) ? (saved.get(name) as T) : initialValue
 
-  const s = signalFn(value, { name });
+  const s = signalFn(value, { name })
 
   // Track this signal for future disposal
-  let mod = moduleSignals.get(moduleId);
+  let mod = moduleSignals.get(moduleId)
   if (!mod) {
-    mod = { entries: new Map() };
-    moduleSignals.set(moduleId, mod);
+    mod = { entries: new Map() }
+    moduleSignals.set(moduleId, mod)
   }
-  mod.entries.set(name, s);
+  mod.entries.set(name, s)
 
-  return s;
+  return s
 }
 
 /**
@@ -77,16 +77,16 @@ export function __hmr_signal<T>(
  * Saves all registered signal values for the module before it is discarded.
  */
 export function __hmr_dispose(moduleId: string): void {
-  const mod = moduleSignals.get(moduleId);
-  if (!mod) return;
+  const mod = moduleSignals.get(moduleId)
+  if (!mod) return
 
-  const registry = getRegistry();
-  const saved = new Map<string, unknown>();
+  const registry = getRegistry()
+  const saved = new Map<string, unknown>()
   for (const [name, s] of mod.entries) {
-    saved.set(name, s.peek());
+    saved.set(name, s.peek())
   }
-  registry.set(moduleId, saved);
+  registry.set(moduleId, saved)
 
   // Clear entries so the new module can re-register
-  moduleSignals.delete(moduleId);
+  moduleSignals.delete(moduleId)
 }

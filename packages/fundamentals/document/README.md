@@ -11,7 +11,7 @@ bun add @pyreon/document
 ## Quick Start
 
 ```tsx
-import { Document, Page, Heading, Text, Table, render } from "@pyreon/document";
+import { Document, Page, Heading, Text, Table, render } from '@pyreon/document'
 
 const doc = (
   <Document title="Report">
@@ -19,27 +19,27 @@ const doc = (
       <Heading>Sales Report</Heading>
       <Text>Q4 performance summary.</Text>
       <Table
-        columns={["Region", "Revenue"]}
+        columns={['Region', 'Revenue']}
         rows={[
-          ["US", "$1M"],
-          ["EU", "$800K"],
+          ['US', '$1M'],
+          ['EU', '$800K'],
         ]}
       />
     </Page>
   </Document>
-);
+)
 
-await render(doc, "pdf"); // PDF Uint8Array
-await render(doc, "email"); // email-safe HTML string
-await render(doc, "md"); // Markdown string
+await render(doc, 'pdf') // PDF Uint8Array
+await render(doc, 'email') // email-safe HTML string
+await render(doc, 'md') // Markdown string
 ```
 
 ## Browser Download
 
 ```tsx
-import { download } from "@pyreon/document";
+import { download } from '@pyreon/document'
 
-await download(doc, "pdf", "report.pdf");
+await download(doc, 'pdf', 'report.pdf')
 ```
 
 ## API

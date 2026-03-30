@@ -16,27 +16,27 @@ export function mapArray<T, U>(
   getKey: (item: T) => string | number,
   map: (item: T) => U,
 ): () => U[] {
-  const cache = new Map<string | number, U>();
+  const cache = new Map<string | number, U>()
 
   return () => {
-    const items = source();
-    const result: U[] = [];
-    const newKeys = new Set<string | number>();
+    const items = source()
+    const result: U[] = []
+    const newKeys = new Set<string | number>()
 
     for (const item of items) {
-      const key = getKey(item);
-      newKeys.add(key);
+      const key = getKey(item)
+      newKeys.add(key)
       if (!cache.has(key)) {
-        cache.set(key, map(item));
+        cache.set(key, map(item))
       }
-      result.push(cache.get(key) as U);
+      result.push(cache.get(key) as U)
     }
 
     // Evict entries whose keys are no longer present
     for (const key of cache.keys()) {
-      if (!newKeys.has(key)) cache.delete(key);
+      if (!newKeys.has(key)) cache.delete(key)
     }
 
-    return result;
-  };
+    return result
+  }
 }

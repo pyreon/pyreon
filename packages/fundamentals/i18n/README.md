@@ -11,29 +11,29 @@ bun add @pyreon/i18n
 ## Quick Start
 
 ```ts
-import { createI18n } from "@pyreon/i18n";
+import { createI18n } from '@pyreon/i18n'
 
 const i18n = createI18n({
-  locale: "en",
-  fallbackLocale: "en",
+  locale: 'en',
+  fallbackLocale: 'en',
   messages: {
     en: {
-      greeting: "Hello, {{name}}!",
-      items_one: "{{count}} item",
-      items_other: "{{count}} items",
+      greeting: 'Hello, {{name}}!',
+      items_one: '{{count}} item',
+      items_other: '{{count}} items',
     },
     de: {
-      greeting: "Hallo, {{name}}!",
+      greeting: 'Hallo, {{name}}!',
     },
   },
-});
+})
 
-i18n.t("greeting", { name: "Alice" }); // "Hello, Alice!"
-i18n.t("items", { count: 3 }); // "3 items"
+i18n.t('greeting', { name: 'Alice' }) // "Hello, Alice!"
+i18n.t('items', { count: 3 }) // "3 items"
 
-i18n.locale.set("de");
-i18n.t("greeting", { name: "Alice" }); // "Hallo, Alice!"
-i18n.t("items", { count: 1 }); // "1 item" (fallback to en)
+i18n.locale.set('de')
+i18n.t('greeting', { name: 'Alice' }) // "Hallo, Alice!"
+i18n.t('items', { count: 1 }) // "1 item" (fallback to en)
 ```
 
 ## API
@@ -67,14 +67,14 @@ Create a reactive i18n instance with static messages and/or an async namespace l
 
 ```ts
 const i18n = createI18n({
-  locale: "en",
+  locale: 'en',
   loader: async (locale, namespace) => {
-    const mod = await import(`./locales/${locale}/${namespace}.json`);
-    return mod.default;
+    const mod = await import(`./locales/${locale}/${namespace}.json`)
+    return mod.default
   },
-});
-await i18n.loadNamespace("auth");
-i18n.t("auth:errors.invalid"); // namespace:key.path syntax
+})
+await i18n.loadNamespace('auth')
+i18n.t('auth:errors.invalid') // namespace:key.path syntax
 ```
 
 ### `interpolate(template, values?)`
@@ -89,7 +89,7 @@ Replace `{{key}}` placeholders in a string. Supports whitespace inside braces. U
 **Returns:** `string`
 
 ```ts
-interpolate("Hello, {{ name }}!", { name: "World" });
+interpolate('Hello, {{ name }}!', { name: 'World' })
 // "Hello, World!"
 ```
 
@@ -106,9 +106,9 @@ Resolve the CLDR plural category for a count. Uses custom rules if provided, the
 **Returns:** `string` — one of `"zero"`, `"one"`, `"two"`, `"few"`, `"many"`, `"other"`
 
 ```ts
-resolvePluralCategory("en", 1); // "one"
-resolvePluralCategory("en", 5); // "other"
-resolvePluralCategory("ar", 3); // "few" (via Intl.PluralRules)
+resolvePluralCategory('en', 1) // "one"
+resolvePluralCategory('en', 5) // "other"
+resolvePluralCategory('ar', 3) // "few" (via Intl.PluralRules)
 ```
 
 ### `I18nProvider` / `useI18n()`
@@ -117,14 +117,14 @@ Context pattern for providing an i18n instance to the component tree.
 
 ```tsx
 // Root:
-<I18nProvider instance={i18n}>
+;<I18nProvider instance={i18n}>
   <App />
-</I18nProvider>;
+</I18nProvider>
 
 // Any descendant:
 function Greeting() {
-  const { t, locale } = useI18n();
-  return () => <h1>{t("greeting", { name: "World" })}</h1>;
+  const { t, locale } = useI18n()
+  return () => <h1>{t('greeting', { name: 'World' })}</h1>
 }
 ```
 
@@ -164,7 +164,7 @@ Parse a string into an array of plain text and `{ tag, children }` segments. Use
 **Returns:** `(string | { tag: string, children: string })[]`
 
 ```ts
-parseRichText("Hello <bold>world</bold>!");
+parseRichText('Hello <bold>world</bold>!')
 // ["Hello ", { tag: "bold", children: "world" }, "!"]
 ```
 
@@ -176,13 +176,13 @@ Split translations by feature and load them lazily.
 
 ```ts
 const i18n = createI18n({
-  locale: "en",
+  locale: 'en',
   loader: (locale, ns) => fetch(`/locales/${locale}/${ns}.json`).then((r) => r.json()),
-});
+})
 
 // Load on route entry:
-await i18n.loadNamespace("dashboard");
-i18n.t("dashboard:widgets.chart");
+await i18n.loadNamespace('dashboard')
+i18n.t('dashboard:widgets.chart')
 ```
 
 ### Runtime Message Addition
@@ -190,8 +190,8 @@ i18n.t("dashboard:widgets.chart");
 Add messages without async loading (e.g. from server-rendered data).
 
 ```ts
-i18n.addMessages("en", { newFeature: "Try our new feature!" });
-i18n.addMessages("en", { errors: { timeout: "Request timed out" } }, "api");
+i18n.addMessages('en', { newFeature: 'Try our new feature!' })
+i18n.addMessages('en', { errors: { timeout: 'Request timed out' } }, 'api')
 ```
 
 ### Pluralization
@@ -200,8 +200,8 @@ Use `_one`, `_other` (and `_zero`, `_two`, `_few`, `_many` for complex locales) 
 
 ```ts
 // messages: { items_one: "{{count}} item", items_other: "{{count}} items" }
-i18n.t("items", { count: 1 }); // "1 item"
-i18n.t("items", { count: 5 }); // "5 items"
+i18n.t('items', { count: 1 }) // "1 item"
+i18n.t('items', { count: 5 }) // "5 items"
 ```
 
 ## Types

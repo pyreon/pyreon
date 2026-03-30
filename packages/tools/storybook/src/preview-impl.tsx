@@ -1,5 +1,5 @@
-import type { ComponentFn, VNodeChild } from "@pyreon/core";
-import { renderToCanvas } from "./render-impl";
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { renderToCanvas } from './render-impl'
 
 /**
  * Preview entry — Storybook loads this in the preview iframe.
@@ -8,7 +8,7 @@ import { renderToCanvas } from "./render-impl";
  * that apply to all stories using this renderer.
  */
 
-export { renderToCanvas };
+export { renderToCanvas }
 
 /**
  * Default render function — if the story CSF has a `component` but no
@@ -18,11 +18,11 @@ export function render<TArgs extends Record<string, unknown>>(
   args: TArgs,
   context: { component?: ComponentFn<any> },
 ): VNodeChild {
-  const Component = context.component;
+  const Component = context.component
   if (!Component) {
     throw new Error(
-      "[@pyreon/storybook] No component provided. Either set `component` in your meta or provide a `render` function.",
-    );
+      '[@pyreon/storybook] No component provided. Either set `component` in your meta or provide a `render` function.',
+    )
   }
-  return <Component {...args} />;
+  return <Component {...args} />
 }

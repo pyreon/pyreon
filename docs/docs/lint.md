@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/lint"
+title: '@pyreon/lint'
 description: Pyreon-specific linter — 55 rules for signals, JSX, SSR, performance, architecture, and routing.
 ---
 
@@ -129,41 +129,41 @@ src/tests/fixtures/
 ## Programmatic API
 
 ```typescript
-import { lint, listRules } from "@pyreon/lint";
+import { lint, listRules } from '@pyreon/lint'
 
 // Lint a directory
-const result = lint({ paths: ["src/"], preset: "recommended" });
-console.log(result.totalErrors, result.totalWarnings);
+const result = lint({ paths: ['src/'], preset: 'recommended' })
+console.log(result.totalErrors, result.totalWarnings)
 
 // List all rules
-const rules = listRules();
+const rules = listRules()
 ```
 
 ### Single file with caching
 
 ```typescript
-import { lintFile, allRules, getPreset, AstCache } from "@pyreon/lint";
+import { lintFile, allRules, getPreset, AstCache } from '@pyreon/lint'
 
-const cache = new AstCache();
-const config = getPreset("recommended");
+const cache = new AstCache()
+const config = getPreset('recommended')
 
 // First lint — parses and caches AST
-const r1 = lintFile("app.tsx", source, allRules, config, cache);
+const r1 = lintFile('app.tsx', source, allRules, config, cache)
 
 // Same source — cache hit, no re-parse
-const r2 = lintFile("app.tsx", source, allRules, config, cache);
+const r2 = lintFile('app.tsx', source, allRules, config, cache)
 ```
 
 ### Watch mode
 
 ```typescript
-import { watchAndLint } from "@pyreon/lint";
+import { watchAndLint } from '@pyreon/lint'
 
 watchAndLint({
-  paths: ["src/"],
-  preset: "recommended",
-  format: "text",
-});
+  paths: ['src/'],
+  preset: 'recommended',
+  format: 'text',
+})
 ```
 
 ## Presets

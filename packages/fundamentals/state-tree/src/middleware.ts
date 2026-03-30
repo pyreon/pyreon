@@ -1,5 +1,5 @@
-import { instanceMeta } from "./registry";
-import type { ActionCall, InstanceMeta, MiddlewareFn } from "./types";
+import { instanceMeta } from './registry'
+import type { ActionCall, InstanceMeta, MiddlewareFn } from './types'
 
 // ─── Action runner ────────────────────────────────────────────────────────────
 
@@ -14,16 +14,16 @@ export function runAction(
   fn: (...fnArgs: unknown[]) => unknown,
   args: unknown[],
 ): unknown {
-  const call: ActionCall = { name, args, path: `/${name}` };
+  const call: ActionCall = { name, args, path: `/${name}` }
 
   const dispatch = (idx: number, c: ActionCall): unknown => {
-    if (idx >= meta.middlewares.length) return fn(...c.args);
-    const mw = meta.middlewares[idx];
-    if (!mw) return fn(...c.args);
-    return mw(c, (nextCall) => dispatch(idx + 1, nextCall));
-  };
+    if (idx >= meta.middlewares.length) return fn(...c.args)
+    const mw = meta.middlewares[idx]
+    if (!mw) return fn(...c.args)
+    return mw(c, (nextCall) => dispatch(idx + 1, nextCall))
+  }
 
-  return dispatch(0, call);
+  return dispatch(0, call)
 }
 
 // ─── addMiddleware ────────────────────────────────────────────────────────────
@@ -43,11 +43,11 @@ export function runAction(
  * })
  */
 export function addMiddleware(instance: object, middleware: MiddlewareFn): () => void {
-  const meta = instanceMeta.get(instance);
-  if (!meta) throw new Error("[@pyreon/state-tree] addMiddleware: not a model instance");
-  meta.middlewares.push(middleware);
+  const meta = instanceMeta.get(instance)
+  if (!meta) throw new Error('[@pyreon/state-tree] addMiddleware: not a model instance')
+  meta.middlewares.push(middleware)
   return () => {
-    const idx = meta.middlewares.indexOf(middleware);
-    if (idx !== -1) meta.middlewares.splice(idx, 1);
-  };
+    const idx = meta.middlewares.indexOf(middleware)
+    if (idx !== -1) meta.middlewares.splice(idx, 1)
+  }
 }

@@ -5,61 +5,61 @@
  * a static `isText` flag so other components can detect text children.
  */
 
-import type { PyreonHTMLAttributes, VNodeChild } from "@pyreon/core";
-import type { HTMLTextTags } from "@pyreon/ui-core";
-import { PKG_NAME } from "../constants";
-import type { ExtendCss, PyreonComponent } from "../types";
-import Styled from "./styled";
+import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
+import type { HTMLTextTags } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import type { ExtendCss, PyreonComponent } from '../types'
+import Styled from './styled'
 
 export type Props = Partial<{
   /**
    * Label can be used instead of children for inline syntax. But **children** prop takes a precedence
    */
-  label: VNodeChild;
+  label: VNodeChild
   /**
    * Children to be rendered within **Text** component.
    */
-  children: VNodeChild;
+  children: VNodeChild
   /**
    * Defines whether should behave as a block text element. Automatically adds **p** HTML tag
    */
-  paragraph: boolean;
+  paragraph: boolean
   /**
    * Defines what kind of HTML tag should be rendered
    */
-  tag: HTMLTextTags;
+  tag: HTMLTextTags
   /**
    * If an additional styling needs to be added, it can be do so via injecting styles using this property.
    */
-  css: ExtendCss;
+  css: ExtendCss
 }> &
-  PyreonHTMLAttributes;
+  PyreonHTMLAttributes
 
 const Component: PyreonComponent<Props> & {
-  isText?: true;
+  isText?: true
 } = ({ paragraph, label, children, tag, css, ref, ...props }) => {
-  let finalTag: string | undefined;
+  let finalTag: string | undefined
 
-  if (paragraph) finalTag = "p";
+  if (paragraph) finalTag = 'p'
   else {
-    finalTag = tag;
+    finalTag = tag
   }
 
   return (
     <Styled ref={ref} as={finalTag} $text={{ extraStyles: css }} {...props}>
       {children ?? label}
     </Styled>
-  );
-};
+  )
+}
 
 // ----------------------------------------------
 // DEFINE STATICS
 // ----------------------------------------------
-const name = `${PKG_NAME}/Text` as const;
+const name = `${PKG_NAME}/Text` as const
 
-Component.displayName = name;
-Component.pkgName = PKG_NAME;
-Component.PYREON__COMPONENT = name;
-Component.isText = true;
+Component.displayName = name
+Component.pkgName = PKG_NAME
+Component.PYREON__COMPONENT = name
+Component.isText = true
 
-export default Component;
+export default Component

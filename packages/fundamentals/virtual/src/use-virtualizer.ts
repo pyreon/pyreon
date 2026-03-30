@@ -1,6 +1,6 @@
-import { onMount, onUnmount } from "@pyreon/core";
-import type { Signal } from "@pyreon/reactivity";
-import { batch, effect, signal } from "@pyreon/reactivity";
+import { onMount, onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   elementScroll,
   observeElementOffset,
@@ -8,34 +8,34 @@ import {
   type VirtualItem,
   Virtualizer,
   type VirtualizerOptions,
-} from "@tanstack/virtual-core";
+} from '@tanstack/virtual-core'
 
 export type UseVirtualizerOptions<
   TScrollElement extends Element,
   TItemElement extends Element,
 > = () => Omit<
   VirtualizerOptions<TScrollElement, TItemElement>,
-  "observeElementRect" | "observeElementOffset" | "scrollToFn"
+  'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
 > &
   Partial<
     Pick<
       VirtualizerOptions<TScrollElement, TItemElement>,
-      "observeElementRect" | "observeElementOffset" | "scrollToFn"
+      'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
     >
-  >;
+  >
 
 export interface UseVirtualizerResult<
   TScrollElement extends Element,
   TItemElement extends Element,
 > {
   /** The virtualizer instance — read to access all methods. */
-  instance: Virtualizer<TScrollElement, TItemElement>;
+  instance: Virtualizer<TScrollElement, TItemElement>
   /** Reactive signal of currently visible virtual items. */
-  virtualItems: Signal<VirtualItem[]>;
+  virtualItems: Signal<VirtualItem[]>
   /** Reactive signal of the total scrollable size in pixels. */
-  totalSize: Signal<number>;
+  totalSize: Signal<number>
   /** Reactive signal indicating whether the user is scrolling. */
-  isScrolling: Signal<boolean>;
+  isScrolling: Signal<boolean>
 }
 
 /**
@@ -62,58 +62,58 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
     observeElementOffset,
     scrollToFn: elementScroll,
     ...options(),
-  };
+  }
 
-  const virtualItems = signal<VirtualItem[]>([]);
-  const totalSize = signal(0);
-  const isScrolling = signal(false);
+  const virtualItems = signal<VirtualItem[]>([])
+  const totalSize = signal(0)
+  const isScrolling = signal(false)
 
   // Store latest user options so onChange always reads the freshest reference
-  let latestUserOpts = options();
+  let latestUserOpts = options()
 
-  const instance = new Virtualizer<TScrollElement, TItemElement>(resolvedOptions);
+  const instance = new Virtualizer<TScrollElement, TItemElement>(resolvedOptions)
 
   // Track reactive options: when signals inside options() change, update the virtualizer.
   const effectCleanup = effect(() => {
-    latestUserOpts = options();
+    latestUserOpts = options()
     instance.setOptions({
       ...instance.options,
       ...latestUserOpts,
       onChange: (inst, sync) => {
         batch(() => {
-          virtualItems.set(inst.getVirtualItems());
-          totalSize.set(inst.getTotalSize());
-          isScrolling.set(inst.isScrolling);
-        });
+          virtualItems.set(inst.getVirtualItems())
+          totalSize.set(inst.getTotalSize())
+          isScrolling.set(inst.isScrolling)
+        })
         // Read latest opts to avoid stale closure
-        latestUserOpts.onChange?.(inst, sync);
+        latestUserOpts.onChange?.(inst, sync)
       },
-    });
+    })
 
     // After updating options, recalculate and re-emit
-    instance._willUpdate();
+    instance._willUpdate()
     batch(() => {
-      virtualItems.set(instance.getVirtualItems());
-      totalSize.set(instance.getTotalSize());
-    });
-  });
+      virtualItems.set(instance.getVirtualItems())
+      totalSize.set(instance.getTotalSize())
+    })
+  })
 
   // Lifecycle: mount observers, clean up on unmount.
-  let mountCleanup: (() => void) | undefined;
+  let mountCleanup: (() => void) | undefined
   onMount(() => {
-    mountCleanup = instance._didMount();
-    instance._willUpdate();
+    mountCleanup = instance._didMount()
+    instance._willUpdate()
     batch(() => {
-      virtualItems.set(instance.getVirtualItems());
-      totalSize.set(instance.getTotalSize());
-    });
-    return undefined;
-  });
+      virtualItems.set(instance.getVirtualItems())
+      totalSize.set(instance.getTotalSize())
+    })
+    return undefined
+  })
 
   onUnmount(() => {
-    effectCleanup.dispose();
-    mountCleanup?.();
-  });
+    effectCleanup.dispose()
+    mountCleanup?.()
+  })
 
-  return { instance, virtualItems, totalSize, isScrolling };
+  return { instance, virtualItems, totalSize, isScrolling }
 }

@@ -1,12 +1,12 @@
-import { computed, signal } from "@pyreon/reactivity";
+import { computed, signal } from '@pyreon/reactivity'
 
 export function Counter() {
-  const count = signal(0);
-  const doubled = computed(() => count() * 2);
+  const count = signal(0)
+  const doubled = computed(() => count() * 2)
 
-  const increment = () => count.update((n) => n + 1);
-  const decrement = () => count.update((n) => n - 1);
-  const reset = () => count.set(0);
+  const increment = () => count.update((n) => n + 1)
+  const decrement = () => count.update((n) => n - 1)
+  const reset = () => count.set(0)
 
   return (
     <div class="card">
@@ -25,5 +25,5 @@ export function Counter() {
         </button>
       </div>
     </div>
-  );
+  )
 }

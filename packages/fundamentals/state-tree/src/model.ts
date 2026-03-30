@@ -1,22 +1,22 @@
-import type { Computed, Signal } from "@pyreon/reactivity";
-import { createInstance, type ModelConfig } from "./instance";
-import type { ModelInstance, Snapshot, StateShape } from "./types";
-import { MODEL_BRAND } from "./types";
+import type { Computed, Signal } from '@pyreon/reactivity'
+import { createInstance, type ModelConfig } from './instance'
+import type { ModelInstance, Snapshot, StateShape } from './types'
+import { MODEL_BRAND } from './types'
 
 // ─── Hook registry ────────────────────────────────────────────────────────────
 
 // Module-level singleton registry for `asHook()` — isolated per package import.
 // Use `resetHook(id)` or `resetAllHooks()` to clear entries (useful for tests / HMR).
-const _hookRegistry = new Map<string, unknown>();
+const _hookRegistry = new Map<string, unknown>()
 
 /** Destroy a hook singleton by id so next call re-creates the instance. */
 export function resetHook(id: string): void {
-  _hookRegistry.delete(id);
+  _hookRegistry.delete(id)
 }
 
 /** Destroy all hook singletons. */
 export function resetAllHooks(): void {
-  _hookRegistry.clear();
+  _hookRegistry.clear()
 }
 
 // ─── ModelDefinition ──────────────────────────────────────────────────────────
@@ -31,13 +31,13 @@ export class ModelDefinition<
   TViews extends Record<string, Signal<any> | Computed<any>>,
 > {
   /** Brand used to identify ModelDefinition objects at runtime (without instanceof). */
-  readonly [MODEL_BRAND] = true as const;
+  readonly [MODEL_BRAND] = true as const
 
   /** @internal — exposed so nested instance creation can read it. */
-  readonly _config: ModelConfig<TState, TActions, TViews>;
+  readonly _config: ModelConfig<TState, TActions, TViews>
 
   constructor(config: ModelConfig<TState, TActions, TViews>) {
-    this._config = config;
+    this._config = config
   }
 
   /**
@@ -48,7 +48,7 @@ export class ModelDefinition<
    * const counter = Counter.create({ count: 5 })
    */
   create(initial?: Partial<Snapshot<TState>>): ModelInstance<TState, TActions, TViews> {
-    return createInstance(this._config, initial ?? {});
+    return createInstance(this._config, initial ?? {})
   }
 
   /**
@@ -63,10 +63,10 @@ export class ModelDefinition<
   asHook(id: string): () => ModelInstance<TState, TActions, TViews> {
     return () => {
       if (!_hookRegistry.has(id)) {
-        _hookRegistry.set(id, this.create());
+        _hookRegistry.set(id, this.create())
       }
-      return _hookRegistry.get(id) as ModelInstance<TState, TActions, TViews>;
-    };
+      return _hookRegistry.get(id) as ModelInstance<TState, TActions, TViews>
+    }
   }
 }
 
@@ -103,5 +103,5 @@ export function model<
   TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
   TViews extends Record<string, Signal<any> | Computed<any>> = Record<never, never>,
 >(config: ModelConfig<TState, TActions, TViews>): ModelDefinition<TState, TActions, TViews> {
-  return new ModelDefinition(config);
+  return new ModelDefinition(config)
 }

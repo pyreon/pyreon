@@ -32,36 +32,36 @@ yarn add @pyreon/document
 ## Quick Start — Builder Pattern
 
 ```tsx
-import { createDocument } from "@pyreon/document";
+import { createDocument } from '@pyreon/document'
 
-const doc = createDocument({ title: "Sales Report" })
-  .heading("Q4 Sales Report")
-  .text("Revenue grew 25% quarter over quarter.")
+const doc = createDocument({ title: 'Sales Report' })
+  .heading('Q4 Sales Report')
+  .text('Revenue grew 25% quarter over quarter.')
   .table({
-    columns: ["Region", "Revenue", "Growth"],
+    columns: ['Region', 'Revenue', 'Growth'],
     rows: [
-      ["US", "$1.2M", "+30%"],
-      ["EU", "$800K", "+15%"],
-      ["APAC", "$500K", "+40%"],
+      ['US', '$1.2M', '+30%'],
+      ['EU', '$800K', '+15%'],
+      ['APAC', '$500K', '+40%'],
     ],
     striped: true,
-    headerStyle: { background: "#1a1a2e", color: "#fff" },
+    headerStyle: { background: '#1a1a2e', color: '#fff' },
   })
-  .text("Total: $2.5M", { bold: true, align: "right" });
+  .text('Total: $2.5M', { bold: true, align: 'right' })
 
 // Export to any format
-await doc.toPdf(); // PDF buffer
-await doc.toDocx(); // Word document
-await doc.toEmail(); // Outlook-safe HTML
-await doc.toSlack(); // Slack Block Kit JSON
-await doc.toNotion(); // Notion blocks
-await doc.download("report.pdf"); // Browser download
+await doc.toPdf() // PDF buffer
+await doc.toDocx() // Word document
+await doc.toEmail() // Outlook-safe HTML
+await doc.toSlack() // Slack Block Kit JSON
+await doc.toNotion() // Notion blocks
+await doc.download('report.pdf') // Browser download
 ```
 
 ## Quick Start — JSX Pattern
 
 ```tsx
-import { Document, Page, Heading, Text, Table, Button, render } from "@pyreon/document";
+import { Document, Page, Heading, Text, Table, Button, render } from '@pyreon/document'
 
 function Invoice({ data }) {
   return (
@@ -71,9 +71,9 @@ function Invoice({ data }) {
         <Text color="#666">{data.date}</Text>
         <Table
           columns={[
-            { header: "Item", width: "50%" },
-            { header: "Qty", align: "center" },
-            { header: "Price", align: "right" },
+            { header: 'Item', width: '50%' },
+            { header: 'Qty', align: 'center' },
+            { header: 'Price', align: 'right' },
           ]}
           rows={data.items.map((i) => [i.name, i.qty, `$${i.price}`])}
           striped
@@ -86,13 +86,13 @@ function Invoice({ data }) {
         </Button>
       </Page>
     </Document>
-  );
+  )
 }
 
 // Same template → any format
-const pdf = await render(<Invoice data={invoiceData} />, "pdf");
-const email = await render(<Invoice data={invoiceData} />, "email");
-const docx = await render(<Invoice data={invoiceData} />, "docx");
+const pdf = await render(<Invoice data={invoiceData} />, 'pdf')
+const email = await render(<Invoice data={invoiceData} />, 'email')
+const docx = await render(<Invoice data={invoiceData} />, 'docx')
 ```
 
 ## Output Formats
@@ -161,18 +161,18 @@ const docx = await render(<Invoice data={invoiceData} />, "docx");
 ```tsx
 <Table
   columns={[
-    { header: "Name", width: "50%" },
-    { header: "Price", align: "right", width: "25%" },
-    { header: "Qty", align: "center", width: "25%" },
+    { header: 'Name', width: '50%' },
+    { header: 'Price', align: 'right', width: '25%' },
+    { header: 'Qty', align: 'center', width: '25%' },
   ]}
   rows={[
-    ["Widget", "$10", "5"],
-    ["Gadget", "$20", "3"],
+    ['Widget', '$10', '5'],
+    ['Gadget', '$20', '3'],
   ]}
   striped // alternating row colors
   bordered // cell borders
   keepTogether // avoid page breaks within table (PDF)
-  headerStyle={{ background: "#1a1a2e", color: "#fff" }}
+  headerStyle={{ background: '#1a1a2e', color: '#fff' }}
   caption="Order Items"
 />
 ```
@@ -184,9 +184,9 @@ Embed charts and flow diagrams from other Pyreon packages:
 ```tsx
 // Builder pattern
 const doc = createDocument()
-  .heading("Dashboard")
+  .heading('Dashboard')
   .chart(chartInstance, { width: 500, height: 300 })
-  .flow(flowInstance, { width: 600, height: 400 });
+  .flow(flowInstance, { width: 600, height: 400 })
 
 // Charts use instance.getDataURL() → PNG
 // Flow diagrams use instance.toSVG() → SVG
@@ -195,40 +195,40 @@ const doc = createDocument()
 ## Custom Renderers
 
 ```tsx
-import { registerRenderer } from "@pyreon/document";
+import { registerRenderer } from '@pyreon/document'
 
-registerRenderer("thermal", {
+registerRenderer('thermal', {
   async render(node, options) {
     // Walk node tree → ESC/POS commands for receipt printers
-    return escPosBuffer;
+    return escPosBuffer
   },
-});
+})
 
-await render(doc, "thermal");
+await render(doc, 'thermal')
 ```
 
 ## Browser Download
 
 ```tsx
-import { download } from "@pyreon/document";
+import { download } from '@pyreon/document'
 
 // File extension determines format
-await download(doc, "report.pdf");
-await download(doc, "report.docx");
-await download(doc, "data.xlsx");
-await download(doc, "slides.pptx");
+await download(doc, 'report.pdf')
+await download(doc, 'report.docx')
+await download(doc, 'data.xlsx')
+await download(doc, 'slides.pptx')
 ```
 
 ## Render Options
 
 ```tsx
-await render(doc, "html", {
-  direction: "rtl", // RTL text direction
+await render(doc, 'html', {
+  direction: 'rtl', // RTL text direction
   fonts: {
     // Custom PDF fonts
-    MyFont: { normal: "path/to/font.ttf" },
+    MyFont: { normal: 'path/to/font.ttf' },
   },
-});
+})
 ```
 
 ## Security

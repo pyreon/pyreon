@@ -1,45 +1,45 @@
-import type { VNodeChild } from "@pyreon/core";
-import { For, Portal } from "@pyreon/core";
-import { computed, effect, onCleanup } from "@pyreon/reactivity";
-import { toastStyles } from "./styles";
-import { _pauseAll, _resumeAll, _toasts, toast } from "./toast";
-import type { Toast, ToasterProps, ToastPosition } from "./types";
+import type { VNodeChild } from '@pyreon/core'
+import { For, Portal } from '@pyreon/core'
+import { computed, effect, onCleanup } from '@pyreon/reactivity'
+import { toastStyles } from './styles'
+import { _pauseAll, _resumeAll, _toasts, toast } from './toast'
+import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
 
 function injectStyles(): void {
-  if (typeof document === "undefined") return;
-  if (document.querySelector("style[data-pyreon-toast]")) return;
+  if (typeof document === 'undefined') return
+  if (document.querySelector('style[data-pyreon-toast]')) return
 
-  const style = document.createElement("style");
-  style.setAttribute("data-pyreon-toast", "");
-  style.textContent = toastStyles;
-  document.head.appendChild(style);
+  const style = document.createElement('style')
+  style.setAttribute('data-pyreon-toast', '')
+  style.textContent = toastStyles
+  document.head.appendChild(style)
 }
 
 // ─── Position helpers ────────────────────────────────────────────────────────
 
 function getContainerStyle(position: ToastPosition, gap: number, offset: number): string {
-  const [vertical, horizontal] = position.split("-") as [string, string];
+  const [vertical, horizontal] = position.split('-') as [string, string]
 
-  let style = `gap: ${gap}px;`;
+  let style = `gap: ${gap}px;`
 
-  if (vertical === "top") {
-    style += ` top: ${offset}px;`;
+  if (vertical === 'top') {
+    style += ` top: ${offset}px;`
   } else {
-    style += ` bottom: ${offset}px;`;
-    style += " flex-direction: column-reverse;";
+    style += ` bottom: ${offset}px;`
+    style += ' flex-direction: column-reverse;'
   }
 
-  if (horizontal === "left") {
-    style += ` left: ${offset}px;`;
-  } else if (horizontal === "center") {
-    style += " left: 50%; transform: translateX(-50%);";
+  if (horizontal === 'left') {
+    style += ` left: ${offset}px;`
+  } else if (horizontal === 'center') {
+    style += ' left: 50%; transform: translateX(-50%);'
   } else {
-    style += ` right: ${offset}px;`;
+    style += ` right: ${offset}px;`
   }
 
-  return style;
+  return style
 }
 
 // ─── Toaster component ──────────────────────────────────────────────────────
@@ -60,40 +60,40 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  * ```
  */
 export function Toaster(props?: ToasterProps): VNodeChild {
-  const position = props?.position ?? "top-right";
-  const max = props?.max ?? 5;
-  const gap = props?.gap ?? 8;
-  const offset = props?.offset ?? 16;
+  const position = props?.position ?? 'top-right'
+  const max = props?.max ?? 5
+  const gap = props?.gap ?? 8
+  const offset = props?.offset ?? 16
 
-  injectStyles();
+  injectStyles()
 
   // Promote "entering" toasts to "visible" on next frame.
   // Only runs when there are actually entering toasts (early return guard).
   effect(() => {
-    const toasts = _toasts();
-    const hasEntering = toasts.some((t) => t.state === "entering");
-    if (!hasEntering) return;
+    const toasts = _toasts()
+    const hasEntering = toasts.some((t) => t.state === 'entering')
+    if (!hasEntering) return
 
     const raf = requestAnimationFrame(() => {
-      const current = _toasts();
-      let changed = false;
+      const current = _toasts()
+      let changed = false
       const next = current.map((t) => {
-        if (t.state === "entering") {
-          changed = true;
-          return { ...t, state: "visible" as const };
+        if (t.state === 'entering') {
+          changed = true
+          return { ...t, state: 'visible' as const }
         }
-        return t;
-      });
-      if (changed) _toasts.set(next);
-    });
+        return t
+      })
+      if (changed) _toasts.set(next)
+    })
 
-    onCleanup(() => cancelAnimationFrame(raf));
-  });
+    onCleanup(() => cancelAnimationFrame(raf))
+  })
 
   // Computed visible toasts — only the most recent `max` items
-  const visibleToasts = computed(() => _toasts().slice(-max));
+  const visibleToasts = computed(() => _toasts().slice(-max))
 
-  const containerStyle = getContainerStyle(position, gap, offset);
+  const containerStyle = getContainerStyle(position, gap, offset)
 
   return (
     <Portal target={document.body}>
@@ -110,18 +110,18 @@ export function Toaster(props?: ToasterProps): VNodeChild {
         </For>
       </section>
     </Portal>
-  );
+  )
 }
 
 // ─── Toast item ─────────────────────────────────────────────────────────────
 
 function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
   const stateClass =
-    t.state === "entering"
-      ? " pyreon-toast--entering"
-      : t.state === "exiting"
-        ? " pyreon-toast--exiting"
-        : "";
+    t.state === 'entering'
+      ? ' pyreon-toast--entering'
+      : t.state === 'exiting'
+        ? ' pyreon-toast--exiting'
+        : ''
 
   return (
     <div
@@ -131,7 +131,7 @@ function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
       data-toast-id={t.id}
     >
       <div class="pyreon-toast__message">
-        {typeof t.message === "string" ? t.message : t.message}
+        {typeof t.message === 'string' ? t.message : t.message}
       </div>
       {t.action && (
         <button type="button" class="pyreon-toast__action" onClick={t.action.onClick}>
@@ -149,5 +149,5 @@ function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
         </button>
       )}
     </div>
-  );
+  )
 }

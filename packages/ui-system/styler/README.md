@@ -13,10 +13,10 @@ bun add @pyreon/styler
 ## Quick Start
 
 ```ts
-import { styled, css, ThemeContext } from "@pyreon/styler";
-import { useContext, pushContext, popContext, onUnmount } from "@pyreon/core";
+import { styled, css, ThemeContext } from '@pyreon/styler'
+import { useContext, pushContext, popContext, onUnmount } from '@pyreon/core'
 
-const Button = styled("button")`
+const Button = styled('button')`
   display: inline-flex;
   align-items: center;
   padding: 8px 16px;
@@ -28,7 +28,7 @@ const Button = styled("button")`
   &:hover {
     opacity: 0.9;
   }
-`;
+`
 ```
 
 ## API
@@ -39,20 +39,20 @@ Creates a styled Pyreon component from an HTML tag or another component.
 
 ```ts
 // HTML tag
-const Box = styled("div")`
+const Box = styled('div')`
   display: flex;
-`;
+`
 
 // Shorthand (via Proxy)
 const Box = styled.div`
   display: flex;
-`;
+`
 
 // Wrapping a component
 const StyledLink = styled(Link)`
   color: blue;
   text-decoration: none;
-`;
+`
 ```
 
 #### Dynamic interpolations
@@ -60,10 +60,10 @@ const StyledLink = styled(Link)`
 Function interpolations receive all props plus the current `theme`:
 
 ```ts
-const Text = styled("p")`
+const Text = styled('p')`
   color: ${({ theme }) => theme.colors.text};
-  font-size: ${(props) => props.$size || "16px"};
-`;
+  font-size: ${(props) => props.$size || '16px'};
+`
 ```
 
 #### Polymorphic `as` prop
@@ -71,12 +71,12 @@ const Text = styled("p")`
 Render as a different element at runtime:
 
 ```ts
-const Box = styled("div")`
+const Box = styled('div')`
   padding: 16px;
-`;
+`
 
 // Renders as a <section>
-Box({ as: "section", children: "Content" });
+Box({ as: 'section', children: 'Content' })
 ```
 
 #### Transient props
@@ -84,22 +84,22 @@ Box({ as: "section", children: "Content" });
 Props prefixed with `$` are not forwarded to the DOM:
 
 ```ts
-const Box = styled("div")`
-  color: ${(p) => (p.$active ? "blue" : "gray")};
-`;
+const Box = styled('div')`
+  color: ${(p) => (p.$active ? 'blue' : 'gray')};
+`
 
 // $active is used for styling but won't appear on the <div>
-Box({ $active: true });
+Box({ $active: true })
 ```
 
 #### Custom prop filtering
 
 ```ts
-const Box = styled("div", {
-  shouldForwardProp: (prop) => prop !== "size",
+const Box = styled('div', {
+  shouldForwardProp: (prop) => prop !== 'size',
 })`
   font-size: ${(p) => p.size}px;
-`;
+`
 ```
 
 ### `css`
@@ -111,18 +111,18 @@ const flexCenter = css`
   display: flex;
   align-items: center;
   justify-content: center;
-`;
+`
 
-const Card = styled("div")`
+const Card = styled('div')`
   ${flexCenter};
   padding: 16px;
-`;
+`
 ```
 
 Supports conditional patterns:
 
 ```ts
-const Box = styled("div")`
+const Box = styled('div')`
   display: flex;
   ${(props) =>
     props.$bordered &&
@@ -130,7 +130,7 @@ const Box = styled("div")`
       border: 1px solid #e0e0e0;
       border-radius: 4px;
     `};
-`;
+`
 ```
 
 ### `keyframes`
@@ -141,11 +141,11 @@ Creates `@keyframes` animations:
 const fadeIn = keyframes`
   from { opacity: 0; }
   to { opacity: 1; }
-`;
+`
 
-const FadeBox = styled("div")`
+const FadeBox = styled('div')`
   animation: ${fadeIn} 300ms ease-in;
-`;
+`
 ```
 
 ### `createGlobalStyle`
@@ -162,7 +162,7 @@ const GlobalStyle = createGlobalStyle`
     margin: 0;
     font-family: ${({ theme }) => theme.font};
   }
-`;
+`
 ```
 
 ### `ThemeContext` & `useTheme`
@@ -170,21 +170,21 @@ const GlobalStyle = createGlobalStyle`
 Provides a theme object to all nested styled components via Pyreon's context system:
 
 ```ts
-import { ThemeContext, useTheme } from "@pyreon/styler";
-import { pushContext, onUnmount, popContext } from "@pyreon/core";
+import { ThemeContext, useTheme } from '@pyreon/styler'
+import { pushContext, onUnmount, popContext } from '@pyreon/core'
 
 // Provide theme
-pushContext(new Map([[ThemeContext.id, myTheme]]));
-onUnmount(() => popContext());
+pushContext(new Map([[ThemeContext.id, myTheme]]))
+onUnmount(() => popContext())
 ```
 
 Access the theme from any component:
 
 ```ts
 const MyComponent = () => {
-  const theme = useTheme();
+  const theme = useTheme()
   // use theme values
-};
+}
 ```
 
 #### TypeScript theme augmentation
@@ -192,10 +192,10 @@ const MyComponent = () => {
 Extend `DefaultTheme` for strict typing across your app:
 
 ```ts
-declare module "@pyreon/styler" {
+declare module '@pyreon/styler' {
   interface DefaultTheme {
-    colors: { primary: string; text: string };
-    spacing: (n: number) => string;
+    colors: { primary: string; text: string }
+    spacing: (n: number) => string
   }
 }
 ```
@@ -205,12 +205,12 @@ declare module "@pyreon/styler" {
 The singleton `sheet` manages CSS rule injection. For SSR, use `createSheet` for per-request isolation:
 
 ```ts
-import { createSheet } from "@pyreon/styler";
+import { createSheet } from '@pyreon/styler'
 
-const sheet = createSheet();
-const html = renderToString(App({}));
-const styleTags = sheet.getStyleTag();
-sheet.reset();
+const sheet = createSheet()
+const html = renderToString(App({}))
+const styleTags = sheet.getStyleTag()
+sheet.reset()
 ```
 
 #### `@layer` support
@@ -218,7 +218,7 @@ sheet.reset();
 Wrap all scoped rules in a CSS Cascade Layer:
 
 ```ts
-const sheet = createSheet({ layer: "components" });
+const sheet = createSheet({ layer: 'components' })
 ```
 
 ## How It Works
@@ -236,7 +236,7 @@ Templates with function interpolations resolve on every render. A cache skips `s
 Native CSS nesting is supported out of the box. The engine passes CSS through without transformation, so `&:hover`, `&::before`, nested selectors, and `@media` queries work as-is in all modern browsers.
 
 ```ts
-const Card = styled("div")`
+const Card = styled('div')`
   padding: 16px;
 
   &:hover {
@@ -250,7 +250,7 @@ const Card = styled("div")`
   @media (min-width: 768px) {
     padding: 24px;
   }
-`;
+`
 ```
 
 ## Benchmarks

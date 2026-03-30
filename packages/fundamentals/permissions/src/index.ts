@@ -23,8 +23,8 @@
  * ```
  */
 
-export { PermissionsProvider, usePermissions } from "./context";
-export { createPermissions } from "./permissions";
+export { PermissionsProvider, usePermissions } from './context'
+export { createPermissions } from './permissions'
 
 // Types
-export type { PermissionMap, PermissionPredicate, Permissions, PermissionValue } from "./types";
+export type { PermissionMap, PermissionPredicate, Permissions, PermissionValue } from './types'

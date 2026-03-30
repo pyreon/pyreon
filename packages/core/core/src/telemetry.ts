@@ -14,30 +14,30 @@
 
 export interface ErrorContext {
   /** Component function name, or "Anonymous" */
-  component: string;
+  component: string
   /** Lifecycle phase where the error occurred */
-  phase: "setup" | "render" | "mount" | "unmount" | "effect";
+  phase: 'setup' | 'render' | 'mount' | 'unmount' | 'effect'
   /** The thrown value */
-  error: unknown;
+  error: unknown
   /** Unix timestamp (ms) */
-  timestamp: number;
+  timestamp: number
   /** Component props at the time of the error */
-  props?: Record<string, unknown>;
+  props?: Record<string, unknown>
 }
 
-export type ErrorHandler = (ctx: ErrorContext) => void;
+export type ErrorHandler = (ctx: ErrorContext) => void
 
-let _handlers: ErrorHandler[] = [];
+let _handlers: ErrorHandler[] = []
 
 /**
  * Register a global error handler. Called whenever a component throws in any
  * lifecycle phase. Returns an unregister function.
  */
 export function registerErrorHandler(handler: ErrorHandler): () => void {
-  _handlers.push(handler);
+  _handlers.push(handler)
   return () => {
-    _handlers = _handlers.filter((h) => h !== handler);
-  };
+    _handlers = _handlers.filter((h) => h !== handler)
+  }
 }
 
 /**
@@ -47,7 +47,7 @@ export function registerErrorHandler(handler: ErrorHandler): () => void {
 export function reportError(ctx: ErrorContext): void {
   for (const h of _handlers) {
     try {
-      h(ctx);
+      h(ctx)
     } catch {
       // handler errors must never propagate back into the framework
     }

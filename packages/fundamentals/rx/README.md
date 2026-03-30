@@ -13,14 +13,14 @@ bun add @pyreon/rx
 ## Usage
 
 ```ts
-import { rx } from "@pyreon/rx";
-import { signal } from "@pyreon/reactivity";
+import { rx } from '@pyreon/rx'
+import { signal } from '@pyreon/reactivity'
 
-const users = signal<User[]>([]);
+const users = signal<User[]>([])
 
-const active = rx.filter(users, (u) => u.active); // Computed<User[]>
-const sorted = rx.sortBy(active, "name"); // Computed<User[]>
-const top10 = rx.take(sorted, 10); // Computed<User[]>
+const active = rx.filter(users, (u) => u.active) // Computed<User[]>
+const sorted = rx.sortBy(active, 'name') // Computed<User[]>
+const top10 = rx.take(sorted, 10) // Computed<User[]>
 
 // Pipe chains
 const result = rx.pipe(
@@ -28,7 +28,7 @@ const result = rx.pipe(
   (items) => items.filter((u) => u.active),
   (items) => items.sort((a, b) => a.name.localeCompare(b.name)),
   (items) => items.slice(0, 10),
-);
+)
 ```
 
 ## API

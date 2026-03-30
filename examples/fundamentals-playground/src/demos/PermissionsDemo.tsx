@@ -1,69 +1,69 @@
-import { createPermissions } from "@pyreon/permissions";
-import { effect, signal } from "@pyreon/reactivity";
+import { createPermissions } from '@pyreon/permissions'
+import { effect, signal } from '@pyreon/reactivity'
 
 // Role → permissions mapping
 function fromRole(role: string): Record<string, boolean | ((ctx?: any) => boolean)> {
-  const currentUserId = "user-42";
+  const currentUserId = 'user-42'
   const roles: Record<string, Record<string, boolean | ((ctx?: any) => boolean)>> = {
-    admin: { "*": true },
+    admin: { '*': true },
     editor: {
-      "posts.read": true,
-      "posts.create": true,
-      "posts.update": (post?: any) => !post || post.authorId === currentUserId,
-      "posts.delete": (post?: any) => !post || post.authorId === currentUserId,
-      "posts.publish": true,
-      "users.read": true,
-      "comments.*": true,
-      "feature.new-editor": true,
+      'posts.read': true,
+      'posts.create': true,
+      'posts.update': (post?: any) => !post || post.authorId === currentUserId,
+      'posts.delete': (post?: any) => !post || post.authorId === currentUserId,
+      'posts.publish': true,
+      'users.read': true,
+      'comments.*': true,
+      'feature.new-editor': true,
     },
     viewer: {
-      "posts.read": true,
-      "comments.read": true,
-      "users.read": true,
+      'posts.read': true,
+      'comments.read': true,
+      'users.read': true,
     },
-  };
-  return roles[role] ?? {};
+  }
+  return roles[role] ?? {}
 }
 
-const can = createPermissions(fromRole("editor"));
-const currentRole = signal("editor");
+const can = createPermissions(fromRole('editor'))
+const currentRole = signal('editor')
 
 // Sync role changes to permissions
 effect(() => {
-  can.set(fromRole(currentRole()));
-});
+  can.set(fromRole(currentRole()))
+})
 
 // Sample posts
 const posts = [
   {
     id: 1,
-    title: "Getting Started with Pyreon",
-    authorId: "user-42",
-    status: "published",
+    title: 'Getting Started with Pyreon',
+    authorId: 'user-42',
+    status: 'published',
   },
   {
     id: 2,
-    title: "Advanced Signal Patterns",
-    authorId: "user-42",
-    status: "draft",
+    title: 'Advanced Signal Patterns',
+    authorId: 'user-42',
+    status: 'draft',
   },
   {
     id: 3,
-    title: "Building Dashboards",
-    authorId: "user-99",
-    status: "published",
+    title: 'Building Dashboards',
+    authorId: 'user-99',
+    status: 'published',
   },
   {
     id: 4,
-    title: "State Management Deep Dive",
-    authorId: "user-99",
-    status: "draft",
+    title: 'State Management Deep Dive',
+    authorId: 'user-99',
+    status: 'draft',
   },
-];
+]
 
 export function PermissionsDemo() {
-  const log = signal<string[]>([]);
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg]);
+  const log = signal<string[]>([])
+  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
 
   return (
     <div>
@@ -76,14 +76,14 @@ export function PermissionsDemo() {
       <div class="section">
         <h3>Role Selector</h3>
         <div class="row">
-          {["admin", "editor", "viewer"].map((role) => (
+          {['admin', 'editor', 'viewer'].map((role) => (
             <button
               type="button"
               key={role}
-              class={currentRole() === role ? "active" : ""}
+              class={currentRole() === role ? 'active' : ''}
               onClick={() => {
-                currentRole.set(role);
-                addLog(`Role changed to ${role}`);
+                currentRole.set(role)
+                addLog(`Role changed to ${role}`)
               }}
             >
               {role.charAt(0).toUpperCase() + role.slice(1)}
@@ -110,23 +110,23 @@ export function PermissionsDemo() {
           </thead>
           <tbody>
             {[
-              "posts.read",
-              "posts.create",
-              "posts.publish",
-              "posts.delete",
-              "users.read",
-              "users.manage",
-              "comments.read",
-              "comments.create",
-              "billing.export",
-              "feature.new-editor",
+              'posts.read',
+              'posts.create',
+              'posts.publish',
+              'posts.delete',
+              'users.read',
+              'users.manage',
+              'comments.read',
+              'comments.create',
+              'billing.export',
+              'feature.new-editor',
             ].map((perm) => (
               <tr key={perm}>
                 <td style="padding: 4px 8px; font-family: monospace; font-size: 13px">{perm}</td>
                 <td style="padding: 4px 8px">
                   {() => (
-                    <span style={`color: ${can(perm) ? "green" : "red"}; font-weight: bold`}>
-                      {can(perm) ? "Yes" : "No"}
+                    <span style={`color: ${can(perm) ? 'green' : 'red'}; font-weight: bold`}>
+                      {can(perm) ? 'Yes' : 'No'}
                     </span>
                   )}
                 </td>
@@ -167,15 +167,15 @@ export function PermissionsDemo() {
                 </td>
                 <td style="padding: 4px 8px; text-align: center">
                   {() => (
-                    <span style={`color: ${can("posts.update", post) ? "green" : "red"}`}>
-                      {can("posts.update", post) ? "Yes" : "No"}
+                    <span style={`color: ${can('posts.update', post) ? 'green' : 'red'}`}>
+                      {can('posts.update', post) ? 'Yes' : 'No'}
                     </span>
                   )}
                 </td>
                 <td style="padding: 4px 8px; text-align: center">
                   {() => (
-                    <span style={`color: ${can("posts.delete", post) ? "green" : "red"}`}>
-                      {can("posts.delete", post) ? "Yes" : "No"}
+                    <span style={`color: ${can('posts.delete', post) ? 'green' : 'red'}`}>
+                      {can('posts.delete', post) ? 'Yes' : 'No'}
                     </span>
                   )}
                 </td>
@@ -188,18 +188,18 @@ export function PermissionsDemo() {
       <div class="section">
         <h3>Combinators</h3>
         <p>
-          <code>can.all('posts.read', 'posts.create')</code>:{" "}
-          <strong>{() => (can.all("posts.read", "posts.create") ? "true" : "false")}</strong>
+          <code>can.all('posts.read', 'posts.create')</code>:{' '}
+          <strong>{() => (can.all('posts.read', 'posts.create') ? 'true' : 'false')}</strong>
         </p>
         <p>
-          <code>can.any('billing.export', 'feature.new-editor')</code>:{" "}
+          <code>can.any('billing.export', 'feature.new-editor')</code>:{' '}
           <strong>
-            {() => (can.any("billing.export", "feature.new-editor") ? "true" : "false")}
+            {() => (can.any('billing.export', 'feature.new-editor') ? 'true' : 'false')}
           </strong>
         </p>
         <p>
-          <code>can.not('billing.export')</code>:{" "}
-          <strong>{() => (can.not("billing.export") ? "true" : "false")}</strong>
+          <code>can.not('billing.export')</code>:{' '}
+          <strong>{() => (can.not('billing.export') ? 'true' : 'false')}</strong>
         </p>
       </div>
 
@@ -209,16 +209,16 @@ export function PermissionsDemo() {
           Editor has <code>comments.*</code> — matches any comments action:
         </p>
         <p>
-          <code>can('comments.read')</code>:{" "}
-          <strong>{() => (can("comments.read") ? "true" : "false")}</strong>
+          <code>can('comments.read')</code>:{' '}
+          <strong>{() => (can('comments.read') ? 'true' : 'false')}</strong>
         </p>
         <p>
-          <code>can('comments.create')</code>:{" "}
-          <strong>{() => (can("comments.create") ? "true" : "false")}</strong>
+          <code>can('comments.create')</code>:{' '}
+          <strong>{() => (can('comments.create') ? 'true' : 'false')}</strong>
         </p>
         <p>
-          <code>can('comments.delete')</code>:{" "}
-          <strong>{() => (can("comments.delete") ? "true" : "false")}</strong>
+          <code>can('comments.delete')</code>:{' '}
+          <strong>{() => (can('comments.delete') ? 'true' : 'false')}</strong>
         </p>
       </div>
 
@@ -235,8 +235,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.patch({ "billing.export": true });
-              addLog("Patched: billing.export → true");
+              can.patch({ 'billing.export': true })
+              addLog('Patched: billing.export → true')
             }}
           >
             Grant billing.export
@@ -244,8 +244,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.patch({ "feature.new-editor": false });
-              addLog("Patched: feature.new-editor → false");
+              can.patch({ 'feature.new-editor': false })
+              addLog('Patched: feature.new-editor → false')
             }}
           >
             Revoke feature.new-editor
@@ -253,8 +253,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.set(fromRole(currentRole()));
-              addLog("Reset to role defaults");
+              can.set(fromRole(currentRole()))
+              addLog('Reset to role defaults')
             }}
           >
             Reset
@@ -267,11 +267,11 @@ export function PermissionsDemo() {
         <div class="log">
           {() =>
             log().length === 0
-              ? "Switch roles or patch permissions to see changes."
-              : log().join("\n")
+              ? 'Switch roles or patch permissions to see changes.'
+              : log().join('\n')
           }
         </div>
       </div>
     </div>
-  );
+  )
 }

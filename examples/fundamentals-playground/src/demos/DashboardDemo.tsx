@@ -1,9 +1,9 @@
-import { createDocument, render } from "@pyreon/document";
-import { createMachine } from "@pyreon/machine";
-import { createPermissions } from "@pyreon/permissions";
-import { computed, signal } from "@pyreon/reactivity";
-import { useStorage } from "@pyreon/storage";
-import { defineStore } from "@pyreon/store";
+import { createDocument, render } from '@pyreon/document'
+import { createMachine } from '@pyreon/machine'
+import { createPermissions } from '@pyreon/permissions'
+import { computed, signal } from '@pyreon/reactivity'
+import { useStorage } from '@pyreon/storage'
+import { defineStore } from '@pyreon/store'
 
 /**
  * Integrated Dashboard Demo
@@ -19,102 +19,102 @@ import { defineStore } from "@pyreon/store";
 
 // ── Store: dashboard data ───────────────────────────────────────────────────
 
-const useDashboard = defineStore("dashboard", () => {
+const useDashboard = defineStore('dashboard', () => {
   const salesData = signal([
-    { region: "US", revenue: 1200000, growth: 30 },
-    { region: "EU", revenue: 800000, growth: 15 },
-    { region: "APAC", revenue: 500000, growth: 40 },
-    { region: "LATAM", revenue: 300000, growth: 25 },
-  ]);
+    { region: 'US', revenue: 1200000, growth: 30 },
+    { region: 'EU', revenue: 800000, growth: 15 },
+    { region: 'APAC', revenue: 500000, growth: 40 },
+    { region: 'LATAM', revenue: 300000, growth: 25 },
+  ])
 
-  const totalRevenue = computed(() => salesData().reduce((sum, r) => sum + r.revenue, 0));
+  const totalRevenue = computed(() => salesData().reduce((sum, r) => sum + r.revenue, 0))
 
   const topRegion = computed(() => {
-    const sorted = [...salesData()].sort((a, b) => b.revenue - a.revenue);
-    return sorted[0]?.region ?? "N/A";
-  });
+    const sorted = [...salesData()].sort((a, b) => b.revenue - a.revenue)
+    return sorted[0]?.region ?? 'N/A'
+  })
 
   const addSale = (region: string, amount: number) => {
     salesData.update((data) =>
       data.map((r) => (r.region === region ? { ...r, revenue: r.revenue + amount } : r)),
-    );
-  };
+    )
+  }
 
-  return { salesData, totalRevenue, topRegion, addSale };
-});
+  return { salesData, totalRevenue, topRegion, addSale }
+})
 
 // ── Permissions ─────────────────────────────────────────────────────────────
 
 const can = createPermissions({
-  "dashboard.view": true,
-  "dashboard.export": true,
-  "sales.add": true,
-  "admin.panel": false,
-});
+  'dashboard.view': true,
+  'dashboard.export': true,
+  'sales.add': true,
+  'admin.panel': false,
+})
 
 // ── Export workflow machine ──────────────────────────────────────────────────
 
 const exportMachine = createMachine({
-  initial: "idle",
+  initial: 'idle',
   states: {
-    idle: { on: { START: "choosing" } },
-    choosing: { on: { SELECT: "exporting", CANCEL: "idle" } },
-    exporting: { on: { DONE: "complete", ERROR: "idle" } },
-    complete: { on: { RESET: "idle" } },
+    idle: { on: { START: 'choosing' } },
+    choosing: { on: { SELECT: 'exporting', CANCEL: 'idle' } },
+    exporting: { on: { DONE: 'complete', ERROR: 'idle' } },
+    complete: { on: { RESET: 'idle' } },
   },
-});
+})
 
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function DashboardDemo() {
-  const { store } = useDashboard();
-  const theme = useStorage("dashboard-theme", "light");
-  const exportFormat = signal("html");
-  const exportResult = signal("");
-  const saleRegion = signal("US");
-  const saleAmount = signal(10000);
+  const { store } = useDashboard()
+  const theme = useStorage('dashboard-theme', 'light')
+  const exportFormat = signal('html')
+  const exportResult = signal('')
+  const saleRegion = signal('US')
+  const saleAmount = signal(10000)
 
   const handleExport = async () => {
-    exportMachine.send("START");
-    exportMachine.send("SELECT");
+    exportMachine.send('START')
+    exportMachine.send('SELECT')
 
     try {
-      const doc = createDocument({ title: "Sales Dashboard Report" })
-        .heading("Sales Dashboard Report")
+      const doc = createDocument({ title: 'Sales Dashboard Report' })
+        .heading('Sales Dashboard Report')
         .text(`Total Revenue: $${store.totalRevenue().toLocaleString()}`)
         .text(`Top Region: ${store.topRegion()}`)
         .table({
           columns: [
-            { header: "Region", width: "30%" },
-            { header: "Revenue", align: "right" as const },
-            { header: "Growth", align: "right" as const },
+            { header: 'Region', width: '30%' },
+            { header: 'Revenue', align: 'right' as const },
+            { header: 'Growth', align: 'right' as const },
           ],
           rows: store
             .salesData()
             .map((r) => [r.region, `$${r.revenue.toLocaleString()}`, `${r.growth}%`]),
           striped: true,
-          headerStyle: { background: "#1a1a2e", color: "#fff" },
-        });
+          headerStyle: { background: '#1a1a2e', color: '#fff' },
+        })
 
-      const format = exportFormat();
-      const result = await render(doc.build(), format);
+      const format = exportFormat()
+      const result = await render(doc.build(), format)
       exportResult.set(
-        typeof result === "string"
+        typeof result === 'string'
           ? result
           : `[Binary ${format.toUpperCase()} — ${result.length} bytes]`,
-      );
-      exportMachine.send("DONE");
+      )
+      exportMachine.send('DONE')
     } catch {
-      exportMachine.send("ERROR");
-      exportResult.set("Export failed");
+      exportMachine.send('ERROR')
+      exportResult.set('Export failed')
     }
-  };
+  }
 
   const handleAddSale = () => {
-    if (can("sales.add")) {
-      store.addSale(saleRegion(), saleAmount());
+    if (can('sales.add')) {
+      store.addSale(saleRegion(), saleAmount())
     }
-  };
+  }
 
   return (
     <div>
@@ -126,8 +126,8 @@ export function DashboardDemo() {
       {/* Theme toggle — persisted via @pyreon/storage */}
       <div style="margin-bottom: 16px">
         <strong>Theme (persisted): </strong>
-        <button type="button" onClick={() => theme.set(theme() === "light" ? "dark" : "light")}>
-          {() => (theme() === "light" ? "☀️ Light" : "🌙 Dark")}
+        <button type="button" onClick={() => theme.set(theme() === 'light' ? 'dark' : 'light')}>
+          {() => (theme() === 'light' ? '☀️ Light' : '🌙 Dark')}
         </button>
       </div>
 
@@ -157,17 +157,17 @@ export function DashboardDemo() {
       <p>
         <strong>Total Revenue: </strong>
         {() => {
-          const rev = store.totalRevenue();
-          return `$${rev.toLocaleString()}`;
+          const rev = store.totalRevenue()
+          return `$${rev.toLocaleString()}`
         }}
-        {" | "}
+        {' | '}
         <strong>Top Region: </strong>
         {() => store.topRegion()}
       </p>
 
       {/* Add sale — gated by @pyreon/permissions */}
       {() =>
-        can("sales.add") ? (
+        can('sales.add') ? (
           <div style="margin: 16px 0; padding: 12px; background: #f9f9f9; border-radius: 4px">
             <h4>Add Sale</h4>
             <select
@@ -178,7 +178,7 @@ export function DashboardDemo() {
               <option value="EU">EU</option>
               <option value="APAC">APAC</option>
               <option value="LATAM">LATAM</option>
-            </select>{" "}
+            </select>{' '}
             <input
               type="number"
               value={saleAmount()}
@@ -186,7 +186,7 @@ export function DashboardDemo() {
                 saleAmount.set(Number((e.target as HTMLInputElement).value))
               }
               style="width: 100px"
-            />{" "}
+            />{' '}
             <button type="button" onClick={handleAddSale}>
               Add
             </button>
@@ -198,7 +198,7 @@ export function DashboardDemo() {
 
       {/* Admin panel — hidden by permissions */}
       {() =>
-        can("admin.panel") ? (
+        can('admin.panel') ? (
           <div style="padding: 12px; background: #fff3cd; border-radius: 4px">
             <h4>Admin Panel</h4>
             <p>Admin-only content</p>
@@ -208,7 +208,7 @@ export function DashboardDemo() {
 
       {/* Export — @pyreon/machine workflow + @pyreon/document */}
       {() =>
-        can("dashboard.export") ? (
+        can('dashboard.export') ? (
           <div style="margin: 16px 0; padding: 12px; background: #f0f0f0; border-radius: 4px">
             <h4>Export Report</h4>
             <p>
@@ -217,7 +217,7 @@ export function DashboardDemo() {
             </p>
 
             {() =>
-              exportMachine.matches("idle") ? (
+              exportMachine.matches('idle') ? (
                 <div>
                   <select
                     value={exportFormat()}
@@ -228,17 +228,17 @@ export function DashboardDemo() {
                     <option value="text">Plain Text</option>
                     <option value="csv">CSV</option>
                     <option value="email">Email HTML</option>
-                  </select>{" "}
+                  </select>{' '}
                   <button type="button" onClick={handleExport}>
                     Export
                   </button>
                 </div>
-              ) : exportMachine.matches("choosing", "exporting") ? (
+              ) : exportMachine.matches('choosing', 'exporting') ? (
                 <p>Generating...</p>
-              ) : exportMachine.matches("complete") ? (
+              ) : exportMachine.matches('complete') ? (
                 <div>
                   <p style="color: green">Export complete!</p>
-                  <button type="button" onClick={() => exportMachine.send("RESET")}>
+                  <button type="button" onClick={() => exportMachine.send('RESET')}>
                     New Export
                   </button>
                 </div>
@@ -256,5 +256,5 @@ export function DashboardDemo() {
         ) : null
       }
     </div>
-  );
+  )
 }

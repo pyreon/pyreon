@@ -1,9 +1,9 @@
-import { nextTick, ref } from "vue";
-import Demo from "./Demo";
+import { nextTick, ref } from 'vue'
+import Demo from './Demo'
 
 export default function NextTickDemo() {
-  const count = ref(0);
-  const message = ref("Click to test nextTick");
+  const count = ref(0)
+  const message = ref('Click to test nextTick')
 
   return (
     <Demo
@@ -20,15 +20,15 @@ await nextTick()
       <button
         type="button"
         onClick={async () => {
-          count.value = count.value + 1;
-          message.value = "waiting for nextTick...";
-          await nextTick();
-          message.value = `nextTick resolved after count = ${count.value}`;
+          count.value = count.value + 1
+          message.value = 'waiting for nextTick...'
+          await nextTick()
+          message.value = `nextTick resolved after count = ${count.value}`
         }}
       >
         Increment + nextTick
       </button>
       <p class="muted">{message.value}</p>
     </Demo>
-  );
+  )
 }

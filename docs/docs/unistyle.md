@@ -45,9 +45,9 @@ The package ships with a default set of mobile-first breakpoints that follow com
 | `xxl` | 1400px    | Large desktops, ultrawide monitors  |
 
 ```ts
-import { defaultBreakpoints } from "@pyreon/unistyle";
+import { defaultBreakpoints } from '@pyreon/unistyle'
 
-console.log(defaultBreakpoints);
+console.log(defaultBreakpoints)
 // { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1400 }
 ```
 
@@ -58,20 +58,20 @@ The breakpoint values are always in ascending order and the smallest breakpoint 
 A `BreakpointMap` is a record mapping breakpoint names to pixel values:
 
 ```ts
-type BreakpointMap = Record<string, number>;
+type BreakpointMap = Record<string, number>
 ```
 
 You can define custom breakpoint maps with any names and values:
 
 ```ts
-import type { BreakpointMap } from "@pyreon/unistyle";
+import type { BreakpointMap } from '@pyreon/unistyle'
 
 const customBreakpoints: BreakpointMap = {
   mobile: 0,
   tablet: 600,
   desktop: 1024,
   wide: 1440,
-};
+}
 ```
 
 ### `BreakpointKey` Type
@@ -79,7 +79,7 @@ const customBreakpoints: BreakpointMap = {
 A union type of the default breakpoint names:
 
 ```ts
-type BreakpointKey = "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
+type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
 ```
 
 This is derived from `keyof typeof defaultBreakpoints` and is useful for type-safe access to default breakpoint values.
@@ -89,11 +89,11 @@ This is derived from `keyof typeof defaultBreakpoints` and is useful for type-sa
 Returns breakpoints as sorted `[name, px]` tuples in ascending order by pixel value. This is the canonical way to iterate breakpoints from smallest to largest, regardless of the order they were defined.
 
 ```ts
-import { sortBreakpoints } from "@pyreon/unistyle";
+import { sortBreakpoints } from '@pyreon/unistyle'
 
 // Handles unsorted input
-const bps = { md: 768, xs: 0, xl: 1200, sm: 576 };
-const sorted = sortBreakpoints(bps);
+const bps = { md: 768, xs: 0, xl: 1200, sm: 576 }
+const sorted = sortBreakpoints(bps)
 // [['xs', 0], ['sm', 576], ['md', 768], ['xl', 1200]]
 ```
 
@@ -101,29 +101,29 @@ Edge cases:
 
 ```ts
 // Single breakpoint
-sortBreakpoints({ xs: 0 });
+sortBreakpoints({ xs: 0 })
 // [['xs', 0]]
 
 // Empty map
-sortBreakpoints({});
+sortBreakpoints({})
 // []
 
 // Already sorted — returns same order
-sortBreakpoints({ xs: 0, sm: 576, md: 768 });
+sortBreakpoints({ xs: 0, sm: 576, md: 768 })
 // [['xs', 0], ['sm', 576], ['md', 768]]
 ```
 
 The full default set:
 
 ```ts
-import { sortBreakpoints, defaultBreakpoints } from "@pyreon/unistyle";
+import { sortBreakpoints, defaultBreakpoints } from '@pyreon/unistyle'
 
-const sorted = sortBreakpoints(defaultBreakpoints);
+const sorted = sortBreakpoints(defaultBreakpoints)
 // [['xs', 0], ['sm', 576], ['md', 768], ['lg', 992], ['xl', 1200], ['xxl', 1400]]
 
 // Destructure the tuples
 for (const [name, minWidth] of sorted) {
-  console.log(`${name}: ${minWidth}px`);
+  console.log(`${name}: ${minWidth}px`)
 }
 ```
 
@@ -132,66 +132,66 @@ for (const [name, minWidth] of sorted) {
 Returns the active breakpoint name for a given viewport width. Walks sorted breakpoints from smallest to largest and returns the last one whose min-width is less than or equal to the given width.
 
 ```ts
-import { getBreakpoint } from "@pyreon/unistyle";
+import { getBreakpoint } from '@pyreon/unistyle'
 
 // Using default breakpoints
-getBreakpoint(0); // => 'xs'
-getBreakpoint(100); // => 'xs'
-getBreakpoint(575); // => 'xs'
-getBreakpoint(576); // => 'sm'  (exactly at threshold)
-getBreakpoint(767); // => 'sm'
-getBreakpoint(768); // => 'md'
-getBreakpoint(991); // => 'md'
-getBreakpoint(992); // => 'lg'
-getBreakpoint(1199); // => 'lg'
-getBreakpoint(1200); // => 'xl'
-getBreakpoint(1399); // => 'xl'
-getBreakpoint(1400); // => 'xxl'
-getBreakpoint(2000); // => 'xxl'
+getBreakpoint(0) // => 'xs'
+getBreakpoint(100) // => 'xs'
+getBreakpoint(575) // => 'xs'
+getBreakpoint(576) // => 'sm'  (exactly at threshold)
+getBreakpoint(767) // => 'sm'
+getBreakpoint(768) // => 'md'
+getBreakpoint(991) // => 'md'
+getBreakpoint(992) // => 'lg'
+getBreakpoint(1199) // => 'lg'
+getBreakpoint(1200) // => 'xl'
+getBreakpoint(1399) // => 'xl'
+getBreakpoint(1400) // => 'xxl'
+getBreakpoint(2000) // => 'xxl'
 ```
 
 With custom breakpoints:
 
 ```ts
-import type { BreakpointMap } from "@pyreon/unistyle";
+import type { BreakpointMap } from '@pyreon/unistyle'
 
-const custom: BreakpointMap = { small: 0, large: 1000 };
+const custom: BreakpointMap = { small: 0, large: 1000 }
 
-getBreakpoint(500, custom); // => 'small'
-getBreakpoint(1000, custom); // => 'large'
-getBreakpoint(1500, custom); // => 'large'
+getBreakpoint(500, custom) // => 'small'
+getBreakpoint(1000, custom) // => 'large'
+getBreakpoint(1500, custom) // => 'large'
 ```
 
 When the width is smaller than the smallest breakpoint, the smallest breakpoint name is still returned:
 
 ```ts
-const custom: BreakpointMap = { tablet: 768, desktop: 1024 };
-getBreakpoint(500, custom); // => 'tablet' (below smallest, returns first)
+const custom: BreakpointMap = { tablet: 768, desktop: 1024 }
+getBreakpoint(500, custom) // => 'tablet' (below smallest, returns first)
 ```
 
 ### Practical Usage: Responsive Component
 
 ```tsx
-import { getBreakpoint, defaultBreakpoints } from "@pyreon/unistyle";
-import { signal, effect } from "@pyreon/reactivity";
+import { getBreakpoint, defaultBreakpoints } from '@pyreon/unistyle'
+import { signal, effect } from '@pyreon/reactivity'
 
 // Track the current breakpoint reactively
-const currentBreakpoint = signal(getBreakpoint(window.innerWidth));
+const currentBreakpoint = signal(getBreakpoint(window.innerWidth))
 
-window.addEventListener("resize", () => {
-  currentBreakpoint.set(getBreakpoint(window.innerWidth));
-});
+window.addEventListener('resize', () => {
+  currentBreakpoint.set(getBreakpoint(window.innerWidth))
+})
 
 // Use in a component
 const Layout = defineComponent(() => {
-  const bp = currentBreakpoint;
+  const bp = currentBreakpoint
 
   return () => {
-    const isMobile = bp() === "xs" || bp() === "sm";
+    const isMobile = bp() === 'xs' || bp() === 'sm'
 
-    return isMobile ? <MobileLayout /> : <DesktopLayout />;
-  };
-});
+    return isMobile ? <MobileLayout /> : <DesktopLayout />
+  }
+})
 ```
 
 ## Media Queries
@@ -203,9 +203,9 @@ Generates mobile-first CSS media query strings from a breakpoint map. Uses `em` 
 The smallest breakpoint (value `0`) produces an empty string, since it applies to all widths and no media query is needed.
 
 ```ts
-import { createMediaQueries, defaultBreakpoints } from "@pyreon/unistyle";
+import { createMediaQueries, defaultBreakpoints } from '@pyreon/unistyle'
 
-const queries = createMediaQueries(defaultBreakpoints);
+const queries = createMediaQueries(defaultBreakpoints)
 // {
 //   xs:  '',
 //   sm:  '@media (min-width: 36em)',      // 576 / 16 = 36
@@ -234,7 +234,7 @@ The formula is `em = px / rootSize`. The default `rootSize` is `16` (the browser
 If your application uses a non-standard root font size, pass it as the second parameter:
 
 ```ts
-const queries = createMediaQueries({ xs: 0, md: 768 }, 10);
+const queries = createMediaQueries({ xs: 0, md: 768 }, 10)
 // { xs: '', md: '@media (min-width: 76.8em)' }
 // 768 / 10 = 76.8
 ```
@@ -246,7 +246,7 @@ const customQueries = createMediaQueries({
   mobile: 0,
   tablet: 600,
   desktop: 1024,
-});
+})
 // {
 //   mobile:  '',
 //   tablet:  '@media (min-width: 37.5em)',    // 600 / 16
@@ -258,11 +258,11 @@ const customQueries = createMediaQueries({
 
 ```ts
 // Empty breakpoints
-createMediaQueries({});
+createMediaQueries({})
 // {}
 
 // Single zero breakpoint
-createMediaQueries({ xs: 0 });
+createMediaQueries({ xs: 0 })
 // { xs: '' }
 ```
 
@@ -271,9 +271,9 @@ createMediaQueries({ xs: 0 });
 Creates a media query that targets a specific range between two pixel values. The max value is reduced by `0.02px` to avoid overlap with the next breakpoint's `min-width` query.
 
 ```ts
-import { createBetweenQuery } from "@pyreon/unistyle";
+import { createBetweenQuery } from '@pyreon/unistyle'
 
-createBetweenQuery(768, 992);
+createBetweenQuery(768, 992)
 // => '@media (min-width: 48em) and (max-width: 61.99875em)'
 // min: 768 / 16 = 48
 // max: (992 - 0.02) / 16 = 61.99875
@@ -283,20 +283,20 @@ This is useful for targeting a specific breakpoint range without affecting large
 
 ```ts
 // Tablet only (md breakpoint range)
-const tabletOnly = createBetweenQuery(768, 992);
+const tabletOnly = createBetweenQuery(768, 992)
 
 // Tablet to small desktop
-const tabletToDesktop = createBetweenQuery(768, 1200);
+const tabletToDesktop = createBetweenQuery(768, 1200)
 
 // Phone only
-const phoneOnly = createBetweenQuery(0, 576);
+const phoneOnly = createBetweenQuery(0, 576)
 // => '@media (min-width: 0em) and (max-width: 35.99875em)'
 ```
 
 **Custom root size:**
 
 ```ts
-createBetweenQuery(768, 1024, 10);
+createBetweenQuery(768, 1024, 10)
 // min: 768 / 10 = 76.8em
 // max: (1024 - 0.02) / 10 = 102.398em
 // => '@media (min-width: 76.8em) and (max-width: 102.398em)'
@@ -309,9 +309,9 @@ The subtraction prevents a 1px overlap between the `max-width` of one range and 
 ### Using Media Queries in CSS-in-JS
 
 ```ts
-import { createMediaQueries, defaultBreakpoints } from "@pyreon/unistyle";
+import { createMediaQueries, defaultBreakpoints } from '@pyreon/unistyle'
 
-const mq = createMediaQueries(defaultBreakpoints);
+const mq = createMediaQueries(defaultBreakpoints)
 
 // Build a responsive style object
 function responsiveStyles() {
@@ -331,7 +331,7 @@ function responsiveStyles() {
       ${mq.lg} { grid-template-columns: repeat(3, 1fr); }
       ${mq.xl} { grid-template-columns: repeat(4, 1fr); }
     }
-  `;
+  `
 }
 ```
 
@@ -342,28 +342,28 @@ function responsiveStyles() {
 A value that can be either a single scalar (applied to all breakpoints) or an object mapping breakpoint names to values:
 
 ```ts
-type ResponsiveValue<T> = T | Partial<Record<string, T>>;
+type ResponsiveValue<T> = T | Partial<Record<string, T>>
 ```
 
 Examples:
 
 ```ts
-import type { ResponsiveValue } from "@pyreon/unistyle";
+import type { ResponsiveValue } from '@pyreon/unistyle'
 
 // Scalar: same value at all breakpoints
-const fontSize: ResponsiveValue<number> = 16;
+const fontSize: ResponsiveValue<number> = 16
 
 // Object: different values per breakpoint
-const fontSize: ResponsiveValue<number> = { xs: 14, md: 16, xl: 18 };
+const fontSize: ResponsiveValue<number> = { xs: 14, md: 16, xl: 18 }
 
 // Partial: only specify breakpoints that change
-const padding: ResponsiveValue<number> = { xs: 8, lg: 16 };
+const padding: ResponsiveValue<number> = { xs: 8, lg: 16 }
 
 // String values
-const color: ResponsiveValue<string> = { xs: "red", md: "blue", xl: "green" };
+const color: ResponsiveValue<string> = { xs: 'red', md: 'blue', xl: 'green' }
 
 // Mixed: start with a value that persists until overridden
-const display: ResponsiveValue<string> = { xs: "block", md: "flex" };
+const display: ResponsiveValue<string> = { xs: 'block', md: 'flex' }
 ```
 
 ### `normalizeResponsive(value, bps)`
@@ -373,19 +373,19 @@ Expands a `ResponsiveValue` into a full breakpoint map. This function handles tw
 **Scalar values** are applied to every breakpoint:
 
 ```ts
-import { normalizeResponsive, defaultBreakpoints } from "@pyreon/unistyle";
+import { normalizeResponsive, defaultBreakpoints } from '@pyreon/unistyle'
 
-normalizeResponsive(16, defaultBreakpoints);
+normalizeResponsive(16, defaultBreakpoints)
 // { xs: 16, sm: 16, md: 16, lg: 16, xl: 16, xxl: 16 }
 
-normalizeResponsive("red", defaultBreakpoints);
+normalizeResponsive('red', defaultBreakpoints)
 // { xs: 'red', sm: 'red', md: 'red', lg: 'red', xl: 'red', xxl: 'red' }
 ```
 
 **Object values** cascade forward -- if a breakpoint is not explicitly set, it inherits from the nearest previous breakpoint that is set:
 
 ```ts
-normalizeResponsive({ xs: 14, md: 16, xl: 18 }, defaultBreakpoints);
+normalizeResponsive({ xs: 14, md: 16, xl: 18 }, defaultBreakpoints)
 // { xs: 14, sm: 14, md: 16, lg: 16, xl: 18, xxl: 18 }
 //          ^^         ^^         ^^
 //          inherits   inherits   inherits
@@ -397,7 +397,7 @@ normalizeResponsive({ xs: 14, md: 16, xl: 18 }, defaultBreakpoints);
 If the first defined key is not the smallest breakpoint, earlier breakpoints are omitted from the result (they have no defined value to inherit):
 
 ```ts
-normalizeResponsive({ md: 16 }, defaultBreakpoints);
+normalizeResponsive({ md: 16 }, defaultBreakpoints)
 // { md: 16, lg: 16, xl: 16, xxl: 16 }
 // xs and sm are NOT in the result — no value cascades into them
 ```
@@ -405,7 +405,7 @@ normalizeResponsive({ md: 16 }, defaultBreakpoints);
 **Zero values cascade correctly:**
 
 ```ts
-normalizeResponsive({ xs: 0, md: 16 }, defaultBreakpoints);
+normalizeResponsive({ xs: 0, md: 16 }, defaultBreakpoints)
 // { xs: 0, sm: 0, md: 16, lg: 16, xl: 16, xxl: 16 }
 ```
 
@@ -413,28 +413,28 @@ normalizeResponsive({ xs: 0, md: 16 }, defaultBreakpoints);
 
 ```ts
 // Null is treated as a scalar (not an object)
-normalizeResponsive(null, defaultBreakpoints);
+normalizeResponsive(null, defaultBreakpoints)
 // { xs: null, sm: null, md: null, lg: null, xl: null, xxl: null }
 
 // Arrays are treated as scalars (not objects)
-normalizeResponsive([1, 2, 3], defaultBreakpoints);
+normalizeResponsive([1, 2, 3], defaultBreakpoints)
 // { xs: [1,2,3], sm: [1,2,3], md: [1,2,3], ... }
 
 // Empty object
-normalizeResponsive({}, defaultBreakpoints);
+normalizeResponsive({}, defaultBreakpoints)
 // {}
 
 // Keys not in the breakpoint map are ignored
-normalizeResponsive({ xs: 10, nonexistent: 99 } as any, defaultBreakpoints);
+normalizeResponsive({ xs: 10, nonexistent: 99 } as any, defaultBreakpoints)
 // { xs: 10, sm: 10, md: 10, lg: 10, xl: 10, xxl: 10 }
 // "nonexistent" is silently dropped
 
 // Empty breakpoint map
-normalizeResponsive(42, {});
+normalizeResponsive(42, {})
 // {}
 
 // Single breakpoint
-normalizeResponsive(42, { only: 0 });
+normalizeResponsive(42, { only: 0 })
 // { only: 42 }
 ```
 
@@ -449,7 +449,7 @@ Transforms an object of responsive CSS properties into a CSS string with appropr
 **Deduplication:** A CSS rule is only emitted at the breakpoint where the value changes from the previous breakpoint. This avoids redundant CSS.
 
 ```ts
-import { makeResponsive, defaultBreakpoints } from "@pyreon/unistyle";
+import { makeResponsive, defaultBreakpoints } from '@pyreon/unistyle'
 
 const css = makeResponsive(
   {
@@ -458,7 +458,7 @@ const css = makeResponsive(
     lineHeight: 1.5,
   },
   defaultBreakpoints,
-);
+)
 ```
 
 The output CSS is:
@@ -484,10 +484,10 @@ Notice:
 makeResponsive(
   {
     fontSize: { xs: 14, md: 18 },
-    color: { xs: "red", md: "blue" },
+    color: { xs: 'red', md: 'blue' },
   },
   defaultBreakpoints,
-);
+)
 // "font-size: 14px; color: red;
 //  @media (min-width: 48em) { font-size: 18px; color: blue; }"
 ```
@@ -495,7 +495,7 @@ makeResponsive(
 **Scalar values (applied to all breakpoints):**
 
 ```ts
-makeResponsive({ fontSize: 16, color: "red" }, defaultBreakpoints);
+makeResponsive({ fontSize: 16, color: 'red' }, defaultBreakpoints)
 // "font-size: 16px; color: red;"
 // No media queries — values are constant across all breakpoints
 ```
@@ -503,7 +503,7 @@ makeResponsive({ fontSize: 16, color: "red" }, defaultBreakpoints);
 **String values pass through:**
 
 ```ts
-makeResponsive({ display: "flex", justifyContent: "center" }, defaultBreakpoints);
+makeResponsive({ display: 'flex', justifyContent: 'center' }, defaultBreakpoints)
 // "display: flex; justify-content: center;"
 ```
 
@@ -511,10 +511,10 @@ makeResponsive({ display: "flex", justifyContent: "center" }, defaultBreakpoints
 
 ```ts
 makeResponsive(
-  { color: { xs: "red", md: "blue" } },
+  { color: { xs: 'red', md: 'blue' } },
   defaultBreakpoints,
   10, // root font size = 10px
-);
+)
 // "color: red; @media (min-width: 76.8em) { color: blue; }"
 // 768 / 10 = 76.8em
 ```
@@ -523,25 +523,25 @@ makeResponsive(
 
 ```ts
 // Empty theme
-makeResponsive({}, defaultBreakpoints);
+makeResponsive({}, defaultBreakpoints)
 // ""
 
 // Empty breakpoints
-makeResponsive({ fontSize: 16 }, {});
+makeResponsive({ fontSize: 16 }, {})
 // ""
 ```
 
 ### Complex Responsive Layout Example
 
 ```ts
-import { makeResponsive, defaultBreakpoints } from "@pyreon/unistyle";
+import { makeResponsive, defaultBreakpoints } from '@pyreon/unistyle'
 
 // A card component with fully responsive styling
 const cardStyles = makeResponsive(
   {
     // Layout
-    display: "flex",
-    flexDirection: { xs: "column", md: "row" },
+    display: 'flex',
+    flexDirection: { xs: 'column', md: 'row' },
     gap: { xs: 8, md: 16, xl: 24 },
 
     // Spacing
@@ -552,13 +552,13 @@ const cardStyles = makeResponsive(
     fontSize: { xs: 14, md: 16, xl: 18 },
 
     // Sizing
-    maxWidth: { xs: "100%", md: 720, lg: 960, xl: 1200 },
+    maxWidth: { xs: '100%', md: 720, lg: 960, xl: 1200 },
 
     // Visual
     borderRadius: { xs: 8, md: 12 },
   },
   defaultBreakpoints,
-);
+)
 ```
 
 This produces optimized CSS with media queries only at breakpoints where values actually change.
@@ -567,28 +567,28 @@ This produces optimized CSS with media queries only at breakpoints where values 
 
 ```ts
 function createGridStyles(columns: ResponsiveValue<number>) {
-  const bps = defaultBreakpoints;
+  const bps = defaultBreakpoints
 
   return makeResponsive(
     {
-      display: "grid",
+      display: 'grid',
       gap: { xs: 8, md: 16, xl: 24 },
       gridTemplateColumns: (() => {
         // Convert column counts to CSS grid-template-columns
-        const normalized = normalizeResponsive(columns, bps);
-        const result: Partial<Record<string, string>> = {};
+        const normalized = normalizeResponsive(columns, bps)
+        const result: Partial<Record<string, string>> = {}
         for (const [bp, cols] of Object.entries(normalized)) {
-          result[bp] = `repeat(${cols}, 1fr)`;
+          result[bp] = `repeat(${cols}, 1fr)`
         }
-        return result;
+        return result
       })(),
     },
     bps,
-  );
+  )
 }
 
 // Usage:
-const gridCss = createGridStyles({ xs: 1, sm: 2, md: 3, xl: 4 });
+const gridCss = createGridStyles({ xs: 1, sm: 2, md: 3, xl: 4 })
 ```
 
 ## Unit Helpers
@@ -600,49 +600,49 @@ Parses a CSS value string into its numeric part. Supports an overloaded signatur
 **Number only (default):**
 
 ```ts
-import { stripUnit } from "@pyreon/unistyle";
+import { stripUnit } from '@pyreon/unistyle'
 
-stripUnit("16px"); // => 16
-stripUnit("2.5rem"); // => 2.5
-stripUnit("2em"); // => 2
-stripUnit("50%"); // => 50
-stripUnit("100vh"); // => 100
-stripUnit("0"); // => 0
-stripUnit("-10px"); // => -10
-stripUnit("1.5em"); // => 1.5
-stripUnit("0.5rem"); // => 0.5
+stripUnit('16px') // => 16
+stripUnit('2.5rem') // => 2.5
+stripUnit('2em') // => 2
+stripUnit('50%') // => 50
+stripUnit('100vh') // => 100
+stripUnit('0') // => 0
+stripUnit('-10px') // => -10
+stripUnit('1.5em') // => 1.5
+stripUnit('0.5rem') // => 0.5
 ```
 
 **With unit (returnUnit = true):**
 
 ```ts
-stripUnit("16px", true); // => [16, 'px']
-stripUnit("2.5rem", true); // => [2.5, 'rem']
-stripUnit("100%", true); // => [100, '%']
-stripUnit("1.5em", true); // => [1.5, 'em']
-stripUnit("42", true); // => [42, '']  (unitless)
-stripUnit("-10px", true); // => [-10, 'px']
-stripUnit("0.5rem", true); // => [0.5, 'rem']
+stripUnit('16px', true) // => [16, 'px']
+stripUnit('2.5rem', true) // => [2.5, 'rem']
+stripUnit('100%', true) // => [100, '%']
+stripUnit('1.5em', true) // => [1.5, 'em']
+stripUnit('42', true) // => [42, '']  (unitless)
+stripUnit('-10px', true) // => [-10, 'px']
+stripUnit('0.5rem', true) // => [0.5, 'rem']
 ```
 
 **Edge cases:**
 
 ```ts
 // Non-numeric strings return 0
-stripUnit("auto"); // => 0
-stripUnit("auto", true); // => [0, '']
+stripUnit('auto') // => 0
+stripUnit('auto', true) // => [0, '']
 
 // Empty string
-stripUnit(""); // => 0
-stripUnit("", true); // => [0, '']
+stripUnit('') // => 0
+stripUnit('', true) // => [0, '']
 ```
 
 **TypeScript overloads:**
 
 ```ts
 // The function has two overloaded signatures:
-function stripUnit(value: string): number;
-function stripUnit(value: string, returnUnit: true): [number, string];
+function stripUnit(value: string): number
+function stripUnit(value: string, returnUnit: true): [number, string]
 ```
 
 This means TypeScript correctly narrows the return type based on the second argument.
@@ -659,39 +659,39 @@ Converts a number or string to a CSS value string. The conversion rules are:
 | `\|n\| > 1`      | `'Npx'`     | Numbers greater than 1 become pixels             |
 
 ```ts
-import { value } from "@pyreon/unistyle";
+import { value } from '@pyreon/unistyle'
 
 // Strings pass through unchanged
-value("2rem"); // => '2rem'
-value("50%"); // => '50%'
-value("100vh"); // => '100vh'
-value("auto"); // => 'auto'
-value("2em"); // => '2em'
+value('2rem') // => '2rem'
+value('50%') // => '50%'
+value('100vh') // => '100vh'
+value('auto') // => 'auto'
+value('2em') // => '2em'
 
 // Zero
-value(0); // => '0'
+value(0) // => '0'
 
 // Fractional (0 < |n| <= 1) → rem
-value(0.5); // => '0.5rem'
-value(1); // => '1rem'
-value(0.25); // => '0.25rem'
+value(0.5) // => '0.5rem'
+value(1) // => '1rem'
+value(0.25) // => '0.25rem'
 
 // Greater than 1 → px
-value(16); // => '16px'
-value(32); // => '32px'
-value(100); // => '100px'
+value(16) // => '16px'
+value(32) // => '32px'
+value(100) // => '100px'
 
 // Negative values follow the same rules
-value(-0.5); // => '-0.5rem'
-value(-1); // => '-1rem'
-value(-10); // => '-10px'
+value(-0.5) // => '-0.5rem'
+value(-1) // => '-1rem'
+value(-10) // => '-10px'
 ```
 
 **Design rationale:** The `value()` function implements a convention where small numbers (0-1) represent relative sizing (rem) and larger numbers represent absolute sizing (px). This makes it natural to write:
 
 ```ts
-value(0.5); // Half a rem — relative to root font size
-value(16); // 16 pixels — absolute
+value(0.5) // Half a rem — relative to root font size
+value(16) // 16 pixels — absolute
 ```
 
 **The `rootSize` parameter:** The second parameter exists for future extensibility but does not currently affect the output.
@@ -701,37 +701,37 @@ value(16); // 16 pixels — absolute
 Picks the first defined (non-null, non-undefined) value from a list and converts it using `value()`. Useful for resolving prop fallbacks in component APIs.
 
 ```ts
-import { values } from "@pyreon/unistyle";
+import { values } from '@pyreon/unistyle'
 
 // Basic fallback chain
-values(undefined, null, 16); // => '16px'
-values(0.5, 16); // => '0.5rem' (first defined wins)
-values(undefined, undefined); // => '0'      (all undefined → fallback to '0')
+values(undefined, null, 16) // => '16px'
+values(0.5, 16) // => '0.5rem' (first defined wins)
+values(undefined, undefined) // => '0'      (all undefined → fallback to '0')
 
 // Zero is a valid value (not skipped)
-values(0, 16); // => '0'
+values(0, 16) // => '0'
 
 // String values
-values(undefined, "50%", 16); // => '50%'
-values("auto"); // => 'auto'
+values(undefined, '50%', 16) // => '50%'
+values('auto') // => 'auto'
 
 // No arguments
-values(); // => '0'
+values() // => '0'
 
 // Mixed types
-values(undefined, null, 42); // => '42px'
-values(undefined, undefined, null, 42); // => '42px'
+values(undefined, null, 42) // => '42px'
+values(undefined, undefined, null, 42) // => '42px'
 ```
 
 **Practical use in a component:**
 
 ```ts
-import { values } from "@pyreon/unistyle";
+import { values } from '@pyreon/unistyle'
 
 interface BoxProps {
-  padding?: number | string;
-  paddingX?: number | string;
-  paddingLeft?: number | string;
+  padding?: number | string
+  paddingX?: number | string
+  paddingLeft?: number | string
 }
 
 function resolveBoxStyles(props: BoxProps) {
@@ -741,16 +741,16 @@ function resolveBoxStyles(props: BoxProps) {
     paddingRight: values(props.paddingX, props.padding),
     paddingTop: values(props.padding),
     paddingBottom: values(props.padding),
-  };
+  }
 }
 
-resolveBoxStyles({ padding: 16 });
+resolveBoxStyles({ padding: 16 })
 // { paddingLeft: '16px', paddingRight: '16px', paddingTop: '16px', paddingBottom: '16px' }
 
-resolveBoxStyles({ padding: 16, paddingX: 32 });
+resolveBoxStyles({ padding: 16, paddingX: 32 })
 // { paddingLeft: '32px', paddingRight: '32px', paddingTop: '16px', paddingBottom: '16px' }
 
-resolveBoxStyles({ padding: 16, paddingX: 32, paddingLeft: 0 });
+resolveBoxStyles({ padding: 16, paddingX: 32, paddingLeft: 0 })
 // { paddingLeft: '0', paddingRight: '32px', paddingTop: '16px', paddingBottom: '16px' }
 ```
 
@@ -761,14 +761,14 @@ resolveBoxStyles({ padding: 16, paddingX: 32, paddingLeft: 0 });
 You can use any breakpoint names and pixel values. All functions accept a `BreakpointMap`:
 
 ```ts
-import type { BreakpointMap } from "@pyreon/unistyle";
+import type { BreakpointMap } from '@pyreon/unistyle'
 import {
   sortBreakpoints,
   getBreakpoint,
   createMediaQueries,
   normalizeResponsive,
   makeResponsive,
-} from "@pyreon/unistyle";
+} from '@pyreon/unistyle'
 
 const appBreakpoints: BreakpointMap = {
   phone: 0,
@@ -776,12 +776,12 @@ const appBreakpoints: BreakpointMap = {
   laptop: 1024,
   desktop: 1440,
   ultrawide: 1920,
-};
+}
 
 // All functions work with custom breakpoints
-const sorted = sortBreakpoints(appBreakpoints);
-const bp = getBreakpoint(800, appBreakpoints); // => 'tablet'
-const queries = createMediaQueries(appBreakpoints);
+const sorted = sortBreakpoints(appBreakpoints)
+const bp = getBreakpoint(800, appBreakpoints) // => 'tablet'
+const queries = createMediaQueries(appBreakpoints)
 
 const css = makeResponsive(
   {
@@ -789,7 +789,7 @@ const css = makeResponsive(
     padding: { phone: 8, laptop: 16, desktop: 24 },
   },
   appBreakpoints,
-);
+)
 ```
 
 ### Minimal Breakpoint Set
@@ -800,15 +800,15 @@ For simpler applications, a two-breakpoint setup works well:
 const simpleBreakpoints: BreakpointMap = {
   mobile: 0,
   desktop: 768,
-};
+}
 
 const css = makeResponsive(
   {
     fontSize: { mobile: 14, desktop: 16 },
-    display: { mobile: "block", desktop: "flex" },
+    display: { mobile: 'block', desktop: 'flex' },
   },
   simpleBreakpoints,
-);
+)
 // "font-size: 14px; display: block;
 //  @media (min-width: 48em) { font-size: 16px; display: flex; }"
 ```
@@ -823,7 +823,7 @@ const contentBreakpoints: BreakpointMap = {
   readable: 540, // Optimal line length for body text
   wide: 900, // Room for sidebar
   spacious: 1200, // Multi-column layouts
-};
+}
 ```
 
 ## Integration with Styler
@@ -831,15 +831,15 @@ const contentBreakpoints: BreakpointMap = {
 `@pyreon/unistyle` provides the foundation that `@pyreon/styler` builds on. When using Styler, responsive values and breakpoints are passed through automatically:
 
 ```ts
-import { styled } from "@pyreon/styler";
-import { defaultBreakpoints } from "@pyreon/unistyle";
+import { styled } from '@pyreon/styler'
+import { defaultBreakpoints } from '@pyreon/unistyle'
 
 // Styler uses unistyle's responsive utilities internally
-const Box = styled("div", {
+const Box = styled('div', {
   padding: { xs: 8, md: 16, xl: 24 },
   fontSize: { xs: 14, md: 16 },
-  color: "inherit",
-});
+  color: 'inherit',
+})
 ```
 
 Under the hood, Styler calls `makeResponsive` with your theme's breakpoints to generate the CSS rules.
@@ -849,26 +849,26 @@ Under the hood, Styler calls `makeResponsive` with your theme's breakpoints to g
 ### Responsive Navigation
 
 ```ts
-import { makeResponsive, defaultBreakpoints, createMediaQueries } from "@pyreon/unistyle";
+import { makeResponsive, defaultBreakpoints, createMediaQueries } from '@pyreon/unistyle'
 
-const mq = createMediaQueries(defaultBreakpoints);
+const mq = createMediaQueries(defaultBreakpoints)
 
 const navStyles = makeResponsive(
   {
-    display: "flex",
-    flexDirection: { xs: "column", md: "row" },
-    alignItems: { xs: "stretch", md: "center" },
+    display: 'flex',
+    flexDirection: { xs: 'column', md: 'row' },
+    alignItems: { xs: 'stretch', md: 'center' },
     gap: { xs: 4, md: 16 },
     padding: { xs: 8, md: 16, xl: 24 },
   },
   defaultBreakpoints,
-);
+)
 ```
 
 ### Responsive Typography Scale
 
 ```ts
-import { makeResponsive, defaultBreakpoints } from "@pyreon/unistyle";
+import { makeResponsive, defaultBreakpoints } from '@pyreon/unistyle'
 
 function createTypographyScale() {
   return {
@@ -876,7 +876,7 @@ function createTypographyScale() {
       {
         fontSize: { xs: 28, md: 36, xl: 48 },
         lineHeight: { xs: 1.2, md: 1.15 },
-        letterSpacing: { xs: "-0.02em", xl: "-0.03em" },
+        letterSpacing: { xs: '-0.02em', xl: '-0.03em' },
       },
       defaultBreakpoints,
     ),
@@ -904,15 +904,15 @@ function createTypographyScale() {
       },
       defaultBreakpoints,
     ),
-  };
+  }
 }
 ```
 
 ### Responsive Spacing System
 
 ```ts
-import { value } from "@pyreon/unistyle";
-import type { ResponsiveValue } from "@pyreon/unistyle";
+import { value } from '@pyreon/unistyle'
+import type { ResponsiveValue } from '@pyreon/unistyle'
 
 // Define a spacing scale
 const spacing = {
@@ -927,19 +927,19 @@ const spacing = {
   10: 40,
   12: 48,
   16: 64,
-} as const;
+} as const
 
-type SpacingKey = keyof typeof spacing;
+type SpacingKey = keyof typeof spacing
 
 // Convert spacing tokens to CSS values
 function space(key: SpacingKey): string {
-  return value(spacing[key]);
+  return value(spacing[key])
 }
 
-space(0); // => '0'
-space(1); // => '4px'
-space(4); // => '16px'
-space(16); // => '64px'
+space(0) // => '0'
+space(1) // => '4px'
+space(4) // => '16px'
+space(16) // => '64px'
 ```
 
 ### Responsive Container
@@ -950,11 +950,11 @@ import {
   normalizeResponsive,
   defaultBreakpoints,
   createMediaQueries,
-} from "@pyreon/unistyle";
+} from '@pyreon/unistyle'
 
 function containerStyles(
   maxWidth: ResponsiveValue<number | string> = {
-    xs: "100%",
+    xs: '100%',
     sm: 540,
     md: 720,
     lg: 960,
@@ -964,15 +964,15 @@ function containerStyles(
 ) {
   return makeResponsive(
     {
-      width: "100%",
-      marginLeft: "auto",
-      marginRight: "auto",
+      width: '100%',
+      marginLeft: 'auto',
+      marginRight: 'auto',
       paddingLeft: { xs: 16, md: 24 },
       paddingRight: { xs: 16, md: 24 },
       maxWidth: maxWidth,
     },
     defaultBreakpoints,
-  );
+  )
 }
 ```
 
@@ -981,7 +981,7 @@ function containerStyles(
 ### `BreakpointMap`
 
 ```ts
-type BreakpointMap = Record<string, number>;
+type BreakpointMap = Record<string, number>
 ```
 
 A record mapping breakpoint names (strings) to minimum pixel widths (numbers). The keys can be any string; they do not need to match the default breakpoint names.
@@ -989,7 +989,7 @@ A record mapping breakpoint names (strings) to minimum pixel widths (numbers). T
 ### `BreakpointKey`
 
 ```ts
-type BreakpointKey = "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
+type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
 ```
 
 Union of the default breakpoint names. Derived from `keyof typeof defaultBreakpoints`. Use this when you want to type-check against the default set.
@@ -997,7 +997,7 @@ Union of the default breakpoint names. Derived from `keyof typeof defaultBreakpo
 ### `MediaQueryMap`
 
 ```ts
-type MediaQueryMap = Record<string, string>;
+type MediaQueryMap = Record<string, string>
 ```
 
 A record mapping breakpoint names to their generated CSS media query strings. The smallest breakpoint maps to an empty string.
@@ -1005,7 +1005,7 @@ A record mapping breakpoint names to their generated CSS media query strings. Th
 ### `ResponsiveValue<T>`
 
 ```ts
-type ResponsiveValue<T> = T | Partial<Record<string, T>>;
+type ResponsiveValue<T> = T | Partial<Record<string, T>>
 ```
 
 A value that can be either a scalar `T` (applied to all breakpoints) or a partial record mapping breakpoint names to values of type `T`. This is the core type that enables responsive prop APIs.
@@ -1014,51 +1014,51 @@ A value that can be either a scalar `T` (applied to all breakpoints) or a partia
 
 ```ts
 function isResponsiveObject<T>(value: ResponsiveValue<T>): value is Partial<Record<string, T>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 ```
 
 ### Creating Type-Safe Responsive Props
 
 ```ts
-import type { ResponsiveValue, BreakpointKey } from "@pyreon/unistyle";
+import type { ResponsiveValue, BreakpointKey } from '@pyreon/unistyle'
 
 // Constrain responsive values to default breakpoint keys
-type StrictResponsiveValue<T> = T | Partial<Record<BreakpointKey, T>>;
+type StrictResponsiveValue<T> = T | Partial<Record<BreakpointKey, T>>
 
 interface TypographyProps {
-  fontSize?: StrictResponsiveValue<number>;
-  lineHeight?: StrictResponsiveValue<number | string>;
-  fontWeight?: StrictResponsiveValue<number>;
-  textAlign?: StrictResponsiveValue<"left" | "center" | "right" | "justify">;
+  fontSize?: StrictResponsiveValue<number>
+  lineHeight?: StrictResponsiveValue<number | string>
+  fontWeight?: StrictResponsiveValue<number>
+  textAlign?: StrictResponsiveValue<'left' | 'center' | 'right' | 'justify'>
 }
 
 // This catches typos in breakpoint names at compile time:
 const props: TypographyProps = {
   fontSize: { xs: 14, md: 16 }, // OK
   // fontSize: { mobile: 14 },     // Type error! 'mobile' is not in BreakpointKey
-};
+}
 ```
 
 ### Type-Safe Custom Breakpoints
 
 ```ts
-import type { BreakpointMap } from "@pyreon/unistyle";
+import type { BreakpointMap } from '@pyreon/unistyle'
 
 // Define your custom breakpoints as a const
 const myBreakpoints = {
   phone: 0,
   tablet: 600,
   desktop: 1024,
-} as const satisfies BreakpointMap;
+} as const satisfies BreakpointMap
 
-type MyBreakpointKey = keyof typeof myBreakpoints;
+type MyBreakpointKey = keyof typeof myBreakpoints
 // 'phone' | 'tablet' | 'desktop'
 
-type MyResponsiveValue<T> = T | Partial<Record<MyBreakpointKey, T>>;
+type MyResponsiveValue<T> = T | Partial<Record<MyBreakpointKey, T>>
 
 // Now you get autocomplete and type checking for your custom breakpoints
-const padding: MyResponsiveValue<number> = { phone: 8, tablet: 16, desktop: 24 };
+const padding: MyResponsiveValue<number> = { phone: 8, tablet: 16, desktop: 24 }
 ```
 
 ## API Reference

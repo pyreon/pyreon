@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/mcp"
+title: '@pyreon/mcp'
 description: Model Context Protocol server that gives AI coding assistants deep knowledge of Pyreon APIs, patterns, and project structure.
 ---
 

@@ -8,20 +8,20 @@
  */
 
 export interface BenchResult {
-  name: string;
-  mean: number; // ms
-  stddev: number; // ms
-  runs: number;
+  name: string
+  mean: number // ms
+  stddev: number // ms
+  runs: number
 }
 
 export interface BenchSuite {
-  framework: string;
-  container: HTMLElement;
-  results: BenchResult[];
+  framework: string
+  container: HTMLElement
+  results: BenchResult[]
 }
 
-export const WARMUP = 5;
-export const RUNS = 20;
+export const WARMUP = 5
+export const RUNS = 20
 
 export async function bench(
   name: string,
@@ -29,105 +29,105 @@ export async function bench(
   fn: () => void | Promise<void>,
   resetFn?: () => void | Promise<void>,
 ): Promise<BenchResult> {
-  const samples: number[] = [];
+  const samples: number[] = []
 
   for (let i = 0; i < WARMUP + RUNS; i++) {
-    if (resetFn) await resetFn();
-    const t0 = performance.now();
-    await fn();
+    if (resetFn) await resetFn()
+    const t0 = performance.now()
+    await fn()
     // Force layout flush so DOM work is included in the measurement
-    suite.container.getBoundingClientRect();
-    const elapsed = performance.now() - t0;
-    if (i >= WARMUP) samples.push(elapsed);
+    suite.container.getBoundingClientRect()
+    const elapsed = performance.now() - t0
+    if (i >= WARMUP) samples.push(elapsed)
     // Yield to browser between runs
-    await tick();
+    await tick()
   }
 
-  const mean = samples.reduce((a, b) => a + b, 0) / RUNS;
-  const variance = samples.reduce((a, b) => a + (b - mean) ** 2, 0) / RUNS;
-  const stddev = Math.sqrt(variance);
+  const mean = samples.reduce((a, b) => a + b, 0) / RUNS
+  const variance = samples.reduce((a, b) => a + (b - mean) ** 2, 0) / RUNS
+  const stddev = Math.sqrt(variance)
 
-  const result: BenchResult = { name, mean, stddev, runs: RUNS };
-  suite.results.push(result);
-  return result;
+  const result: BenchResult = { name, mean, stddev, runs: RUNS }
+  suite.results.push(result)
+  return result
 }
 
 export function tick(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 0));
+  return new Promise((r) => setTimeout(r, 0))
 }
 
 /** Build a row data array of N items */
 export interface Row {
-  id: number;
-  label: string;
+  id: number
+  label: string
 }
 
-let _nextId = 1;
+let _nextId = 1
 const ADJECTIVES = [
-  "pretty",
-  "large",
-  "big",
-  "small",
-  "tall",
-  "short",
-  "long",
-  "handsome",
-  "plain",
-  "quaint",
-  "clean",
-  "elegant",
-  "easy",
-  "angry",
-  "crazy",
-  "helpful",
-  "mushy",
-  "odd",
-  "unsightly",
-  "adorable",
-  "important",
-  "inexpensive",
-  "cheap",
-  "expensive",
-  "fancy",
-];
+  'pretty',
+  'large',
+  'big',
+  'small',
+  'tall',
+  'short',
+  'long',
+  'handsome',
+  'plain',
+  'quaint',
+  'clean',
+  'elegant',
+  'easy',
+  'angry',
+  'crazy',
+  'helpful',
+  'mushy',
+  'odd',
+  'unsightly',
+  'adorable',
+  'important',
+  'inexpensive',
+  'cheap',
+  'expensive',
+  'fancy',
+]
 const COLOURS = [
-  "red",
-  "yellow",
-  "blue",
-  "green",
-  "pink",
-  "brown",
-  "purple",
-  "brown",
-  "white",
-  "black",
-  "orange",
-];
+  'red',
+  'yellow',
+  'blue',
+  'green',
+  'pink',
+  'brown',
+  'purple',
+  'brown',
+  'white',
+  'black',
+  'orange',
+]
 const NOUNS = [
-  "table",
-  "chair",
-  "house",
-  "bbq",
-  "desk",
-  "car",
-  "pony",
-  "cookie",
-  "sandwich",
-  "burger",
-  "pizza",
-  "mouse",
-  "keyboard",
-];
+  'table',
+  'chair',
+  'house',
+  'bbq',
+  'desk',
+  'car',
+  'pony',
+  'cookie',
+  'sandwich',
+  'burger',
+  'pizza',
+  'mouse',
+  'keyboard',
+]
 
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)] as T;
+  return arr[Math.floor(Math.random() * arr.length)] as T
 }
 
 export function buildRows(count: number): Row[] {
   return Array.from({ length: count }, () => ({
     id: _nextId++,
     label: `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`,
-  }));
+  }))
 }
 
 /**
@@ -136,9 +136,9 @@ export function buildRows(count: number): Row[] {
  * a different shape (e.g. reactive rows with signals).
  */
 export function buildRowsWith<T>(count: number, factory: (id: number, label: string) => T): T[] {
-  const rows = new Array<T>(count);
+  const rows = new Array<T>(count)
   for (let i = 0; i < count; i++) {
-    rows[i] = factory(_nextId++, `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`) as T;
+    rows[i] = factory(_nextId++, `${pick(ADJECTIVES)} ${pick(COLOURS)} ${pick(NOUNS)}`) as T
   }
-  return rows;
+  return rows
 }

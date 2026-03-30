@@ -4,23 +4,23 @@ export type ExtendCss = (
     | string
     | null
     | undefined,
-) => string;
+) => string
 
 const simpleCss = (strings: TemplateStringsArray, ...values: any[]): string => {
-  let result = "";
+  let result = ''
   for (let i = 0; i < strings.length; i++) {
-    result += strings[i];
-    if (i < values.length) result += String(values[i] ?? "");
+    result += strings[i]
+    if (i < values.length) result += String(values[i] ?? '')
   }
-  return result;
-};
+  return result
+}
 
 const extendCss: ExtendCss = (styles) => {
-  if (!styles) return "";
-  if (typeof styles === "function") {
-    return styles(simpleCss);
+  if (!styles) return ''
+  if (typeof styles === 'function') {
+    return styles(simpleCss)
   }
-  return styles;
-};
+  return styles
+}
 
-export default extendCss;
+export default extendCss

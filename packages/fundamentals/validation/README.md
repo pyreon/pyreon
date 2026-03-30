@@ -11,20 +11,20 @@ bun add @pyreon/validation
 ## Quick Start
 
 ```ts
-import { z } from "zod";
-import { useForm } from "@pyreon/form";
-import { zodSchema } from "@pyreon/validation";
+import { z } from 'zod'
+import { useForm } from '@pyreon/form'
+import { zodSchema } from '@pyreon/validation'
 
 const schema = z.object({
   email: z.string().email(),
   age: z.number().min(13),
-});
+})
 
 const form = useForm({
-  initialValues: { email: "", age: 0 },
+  initialValues: { email: '', age: 0 },
   schema: zodSchema(schema),
   onSubmit: async (values) => console.log(values),
-});
+})
 ```
 
 Each adapter comes in two flavors: **schema-level** (validates the whole form) and **field-level** (validates a single field).
@@ -166,10 +166,10 @@ Convert an array of `ValidationIssue` objects into a flat field-to-error record.
 
 ```ts
 issuesToRecord([
-  { path: "email", message: "Required" },
-  { path: "email", message: "Invalid" }, // ignored — first wins
-  { path: "age", message: "Too young" },
-]);
+  { path: 'email', message: 'Required' },
+  { path: 'email', message: 'Invalid' }, // ignored — first wins
+  { path: 'age', message: 'Too young' },
+])
 // => { email: "Required", age: "Too young" }
 ```
 
@@ -180,9 +180,9 @@ issuesToRecord([
 Each adapter is available via subpath import to avoid bundling unused adapters:
 
 ```ts
-import { zodSchema } from "@pyreon/validation/zod";
-import { valibotSchema } from "@pyreon/validation/valibot";
-import { arktypeSchema } from "@pyreon/validation/arktype";
+import { zodSchema } from '@pyreon/validation/zod'
+import { valibotSchema } from '@pyreon/validation/valibot'
+import { arktypeSchema } from '@pyreon/validation/arktype'
 ```
 
 ### Mixing Field and Schema Validators

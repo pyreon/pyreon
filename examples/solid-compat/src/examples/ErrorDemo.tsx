@@ -1,12 +1,12 @@
-import { createSignal, ErrorBoundary, Show } from "solid-js";
-import Demo from "./Demo";
+import { createSignal, ErrorBoundary, Show } from 'solid-js'
+import Demo from './Demo'
 
 function Bomb(): JSX.Element {
-  throw new Error("Boom!");
+  throw new Error('Boom!')
 }
 
 export default function ErrorDemo() {
-  const [explode, setExplode] = createSignal(false);
+  const [explode, setExplode] = createSignal(false)
 
   return (
     <Demo
@@ -37,5 +37,5 @@ export default function ErrorDemo() {
         </Show>
       </ErrorBoundary>
     </Demo>
-  );
+  )
 }

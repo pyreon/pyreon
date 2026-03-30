@@ -1,25 +1,25 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server";
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Rate limiting middleware ───────────────────────────────────────────────
 
 export interface RateLimitConfig {
   /** Maximum requests per window. Default: `100` */
-  max?: number;
+  max?: number
   /** Time window in seconds. Default: `60` */
-  window?: number;
+  window?: number
   /** Function to extract the client identifier. Default: IP from headers. */
-  keyFn?: (ctx: MiddlewareContext) => string;
+  keyFn?: (ctx: MiddlewareContext) => string
   /** Custom response when rate limited. */
-  onLimit?: (ctx: MiddlewareContext) => Response;
+  onLimit?: (ctx: MiddlewareContext) => Response
   /** URL patterns to rate limit (glob-style). Default: all paths. */
-  include?: string[];
+  include?: string[]
   /** URL patterns to exclude from rate limiting. */
-  exclude?: string[];
+  exclude?: string[]
 }
 
 interface RateLimitEntry {
-  count: number;
-  resetAt: number;
+  count: number
+  resetAt: number
 }
 
 /**
@@ -47,76 +47,76 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
     onLimit,
     include,
     exclude,
-  } = config;
+  } = config
 
-  const windowMs = windowSec * 1000;
-  const store = new Map<string, RateLimitEntry>();
+  const windowMs = windowSec * 1000
+  const store = new Map<string, RateLimitEntry>()
 
   // Periodic cleanup of expired entries
   const cleanupInterval = setInterval(() => {
-    const now = Date.now();
+    const now = Date.now()
     for (const [key, entry] of store) {
-      if (entry.resetAt <= now) store.delete(key);
+      if (entry.resetAt <= now) store.delete(key)
     }
-  }, windowMs);
+  }, windowMs)
 
   // Allow GC to clean up the interval
-  if (typeof cleanupInterval === "object" && "unref" in cleanupInterval) {
-    cleanupInterval.unref();
+  if (typeof cleanupInterval === 'object' && 'unref' in cleanupInterval) {
+    cleanupInterval.unref()
   }
 
   return (ctx: MiddlewareContext) => {
     // Check include/exclude patterns
-    if (include && !include.some((p) => matchSimpleGlob(p, ctx.path))) return;
-    if (exclude?.some((p) => matchSimpleGlob(p, ctx.path))) return;
+    if (include && !include.some((p) => matchSimpleGlob(p, ctx.path))) return
+    if (exclude?.some((p) => matchSimpleGlob(p, ctx.path))) return
 
-    const key = keyFn(ctx);
-    const now = Date.now();
-    let entry = store.get(key);
+    const key = keyFn(ctx)
+    const now = Date.now()
+    let entry = store.get(key)
 
     if (!entry || entry.resetAt <= now) {
-      entry = { count: 0, resetAt: now + windowMs };
-      store.set(key, entry);
+      entry = { count: 0, resetAt: now + windowMs }
+      store.set(key, entry)
     }
 
-    entry.count++;
-    const remaining = Math.max(0, max - entry.count);
-    const resetSeconds = Math.ceil((entry.resetAt - now) / 1000);
+    entry.count++
+    const remaining = Math.max(0, max - entry.count)
+    const resetSeconds = Math.ceil((entry.resetAt - now) / 1000)
 
     // Set rate limit headers on all responses
-    ctx.headers.set("X-RateLimit-Limit", String(max));
-    ctx.headers.set("X-RateLimit-Remaining", String(remaining));
-    ctx.headers.set("X-RateLimit-Reset", String(resetSeconds));
+    ctx.headers.set('X-RateLimit-Limit', String(max))
+    ctx.headers.set('X-RateLimit-Remaining', String(remaining))
+    ctx.headers.set('X-RateLimit-Reset', String(resetSeconds))
 
     if (entry.count > max) {
-      if (onLimit) return onLimit(ctx);
+      if (onLimit) return onLimit(ctx)
 
-      return new Response(JSON.stringify({ error: "Too many requests" }), {
+      return new Response(JSON.stringify({ error: 'Too many requests' }), {
         status: 429,
         headers: {
-          "Content-Type": "application/json",
-          "Retry-After": String(resetSeconds),
-          "X-RateLimit-Limit": String(max),
-          "X-RateLimit-Remaining": "0",
-          "X-RateLimit-Reset": String(resetSeconds),
+          'Content-Type': 'application/json',
+          'Retry-After': String(resetSeconds),
+          'X-RateLimit-Limit': String(max),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(resetSeconds),
         },
-      });
+      })
     }
-  };
+  }
 }
 
 function defaultKeyFn(ctx: MiddlewareContext): string {
   return (
-    ctx.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    ctx.req.headers.get("x-real-ip") ??
-    "unknown"
-  );
+    ctx.req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    ctx.req.headers.get('x-real-ip') ??
+    'unknown'
+  )
 }
 
 /** Simple glob matching for path patterns. Supports trailing `*`. */
 function matchSimpleGlob(pattern: string, path: string): boolean {
-  if (pattern.endsWith("/*")) {
-    return path.startsWith(pattern.slice(0, -1));
+  if (pattern.endsWith('/*')) {
+    return path.startsWith(pattern.slice(0, -1))
   }
-  return pattern === path;
+  return pattern === path
 }

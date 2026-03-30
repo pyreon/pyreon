@@ -34,17 +34,17 @@ bun add @pyreon/kinetic
 ## Quick Start
 
 ```ts
-import { kinetic, fade, slideUp } from "@pyreon/kinetic";
-import { signal } from "@pyreon/reactivity";
+import { kinetic, fade, slideUp } from '@pyreon/kinetic'
+import { signal } from '@pyreon/reactivity'
 
 // Create animated components at module level
-const FadeDiv = kinetic("div").preset(fade);
-const SlideSection = kinetic("section").preset(slideUp);
+const FadeDiv = kinetic('div').preset(fade)
+const SlideSection = kinetic('section').preset(slideUp)
 
 // Use with signals for reactive show/hide
-const show = signal(true);
+const show = signal(true)
 
-FadeDiv({ show: show(), children: "Hello, world!" });
+FadeDiv({ show: show(), children: 'Hello, world!' })
 ```
 
 ## API
@@ -54,9 +54,9 @@ FadeDiv({ show: show(), children: "Hello, world!" });
 Creates an animated component. `tag` can be any HTML element string or Pyreon component.
 
 ```ts
-kinetic("div"); // HTML element
-kinetic("section"); // Any HTML tag
-kinetic(MyComponent); // Pyreon component
+kinetic('div') // HTML element
+kinetic('section') // Any HTML tag
+kinetic(MyComponent) // Pyreon component
 ```
 
 Returns a renderable Pyreon component with chain methods attached. Default mode: **transition**.
@@ -98,9 +98,9 @@ All methods return a new component (immutable). The tag generic flows through, p
 Single element enter/leave with CSS transitions.
 
 ```ts
-const FadeDiv = kinetic("div").preset(fade);
+const FadeDiv = kinetic('div').preset(fade)
 
-FadeDiv({ show: isOpen, children: "Content" });
+FadeDiv({ show: isOpen, children: 'Content' })
 ```
 
 #### Collapse
@@ -108,12 +108,12 @@ FadeDiv({ show: isOpen, children: "Content" });
 Height animation with `overflow: hidden`. Measures `scrollHeight` automatically.
 
 ```ts
-const Accordion = kinetic("div").collapse();
-const FancyAccordion = kinetic("section").collapse({
-  transition: "height 400ms cubic-bezier(0.4, 0, 0.2, 1)",
-});
+const Accordion = kinetic('div').collapse()
+const FancyAccordion = kinetic('section').collapse({
+  transition: 'height 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+})
 
-Accordion({ show: isExpanded, children: "Expandable content" });
+Accordion({ show: isExpanded, children: 'Expandable content' })
 ```
 
 #### Stagger
@@ -121,16 +121,16 @@ Accordion({ show: isExpanded, children: "Expandable content" });
 Staggered entrance/exit for child elements.
 
 ```ts
-const StaggerList = kinetic("ul").preset(slideUp).stagger({ interval: 75 });
+const StaggerList = kinetic('ul').preset(slideUp).stagger({ interval: 75 })
 
 StaggerList({
   show: isVisible,
   children: [
-    h("li", { key: "1" }, "Item 1"),
-    h("li", { key: "2" }, "Item 2"),
-    h("li", { key: "3" }, "Item 3"),
+    h('li', { key: '1' }, 'Item 1'),
+    h('li', { key: '2' }, 'Item 2'),
+    h('li', { key: '3' }, 'Item 3'),
   ],
-});
+})
 ```
 
 #### Group
@@ -138,9 +138,9 @@ StaggerList({
 Key-based enter/exit — adding a child triggers enter animation, removing triggers leave + unmount. No `show` prop.
 
 ```ts
-const AnimatedList = kinetic("ul").preset(fade).group();
+const AnimatedList = kinetic('ul').preset(fade).group()
 
-AnimatedList({ children: items.map((item) => h("li", { key: item.id }, item.text)) });
+AnimatedList({ children: items.map((item) => h('li', { key: item.id }, item.text)) })
 ```
 
 ### Inline Configuration
@@ -148,13 +148,13 @@ AnimatedList({ children: items.map((item) => h("li", { key: item.id }, item.text
 Build animations without presets:
 
 ```ts
-const SlidePanel = kinetic("aside")
-  .enter({ opacity: 0, transform: "translateX(-100%)" })
-  .enterTo({ opacity: 1, transform: "translateX(0)" })
-  .enterTransition("all 300ms ease-out")
-  .leave({ opacity: 1, transform: "translateX(0)" })
-  .leaveTo({ opacity: 0, transform: "translateX(-100%)" })
-  .leaveTransition("all 200ms ease-in");
+const SlidePanel = kinetic('aside')
+  .enter({ opacity: 0, transform: 'translateX(-100%)' })
+  .enterTo({ opacity: 1, transform: 'translateX(0)' })
+  .enterTransition('all 300ms ease-out')
+  .leave({ opacity: 1, transform: 'translateX(0)' })
+  .leaveTo({ opacity: 0, transform: 'translateX(-100%)' })
+  .leaveTransition('all 200ms ease-in')
 ```
 
 ### Class-Based Transitions
@@ -162,9 +162,9 @@ const SlidePanel = kinetic("aside")
 Works with Tailwind CSS, CSS modules, or any class-based approach:
 
 ```ts
-const TailwindFade = kinetic("div")
-  .enterClass({ active: "transition-opacity duration-300", from: "opacity-0", to: "opacity-100" })
-  .leaveClass({ active: "transition-opacity duration-200", from: "opacity-100", to: "opacity-0" });
+const TailwindFade = kinetic('div')
+  .enterClass({ active: 'transition-opacity duration-300', from: 'opacity-0', to: 'opacity-100' })
+  .leaveClass({ active: 'transition-opacity duration-200', from: 'opacity-100', to: 'opacity-0' })
 ```
 
 ### Lifecycle Callbacks
@@ -172,12 +172,12 @@ const TailwindFade = kinetic("div")
 ```ts
 FadeDiv({
   show: isOpen,
-  onEnter: () => console.log("entering"),
-  onAfterEnter: () => console.log("entered"),
-  onLeave: () => console.log("leaving"),
-  onAfterLeave: () => console.log("left"),
-  children: "Content",
-});
+  onEnter: () => console.log('entering'),
+  onAfterEnter: () => console.log('entered'),
+  onLeave: () => console.log('leaving'),
+  onAfterLeave: () => console.log('left'),
+  children: 'Content',
+})
 ```
 
 ### Accessibility
@@ -189,7 +189,7 @@ Kinetic automatically detects `prefers-reduced-motion: reduce`. When enabled, an
 Six presets are included in the core package:
 
 ```ts
-import { fade, scaleIn, slideUp, slideDown, slideLeft, slideRight } from "@pyreon/kinetic";
+import { fade, scaleIn, slideUp, slideDown, slideLeft, slideRight } from '@pyreon/kinetic'
 ```
 
 For 122 presets, factories, and composition utilities, install `@pyreon/kinetic-presets`.
@@ -199,16 +199,16 @@ For 122 presets, factories, and composition utilities, install `@pyreon/kinetic-
 Kinetic and rocketstyle compose naturally:
 
 ```ts
-import rocketstyle from "@pyreon/rocketstyle";
+import rocketstyle from '@pyreon/rocketstyle'
 
-const Button = rocketstyle()({ component: "button", name: "Button" }).theme({
-  primaryColor: "blue",
-});
+const Button = rocketstyle()({ component: 'button', name: 'Button' }).theme({
+  primaryColor: 'blue',
+})
 
-const AnimatedButton = kinetic(Button).preset(fade);
+const AnimatedButton = kinetic(Button).preset(fade)
 
 // Has both rocketstyle props AND kinetic props
-AnimatedButton({ show: isVisible, primary: true, size: "large", children: "Click me" });
+AnimatedButton({ show: isVisible, primary: true, size: 'large', children: 'Click me' })
 ```
 
 ## Peer Dependencies

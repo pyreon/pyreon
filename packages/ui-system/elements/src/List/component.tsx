@@ -5,13 +5,13 @@
  * is wrapped in an Element that receives all non-iterator props (e.g.,
  * layout, alignment, css), allowing the list to be styled as a single block.
  */
-import { omit, pick } from "@pyreon/ui-core";
-import { PKG_NAME } from "../constants";
-import type { ElementProps, PyreonElement } from "../Element";
-import { Element } from "../Element";
-import type { Props as IteratorProps } from "../helpers/Iterator";
-import Iterator from "../helpers/Iterator";
-import type { MergeTypes } from "../types";
+import { omit, pick } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import type { ElementProps, PyreonElement } from '../Element'
+import { Element } from '../Element'
+import type { Props as IteratorProps } from '../helpers/Iterator'
+import Iterator from '../helpers/Iterator'
+import type { MergeTypes } from '../types'
 
 type ListProps = {
   /**
@@ -19,39 +19,39 @@ type ListProps = {
    * When set to `true`, component returns as the **root** element `Element`
    * component.
    */
-  rootElement?: boolean;
+  rootElement?: boolean
   /**
    * Label prop from `Element` component is being ignored.
    */
-  label: never;
+  label: never
   /**
    * Content prop from `Element` component is being ignored.
    */
-  content: never;
-};
+  content: never
+}
 
-export type Props = MergeTypes<[IteratorProps, ListProps]>;
+export type Props = MergeTypes<[IteratorProps, ListProps]>
 
 const Component: PyreonElement<Props> = (({
   rootElement = false,
   ref,
   ...props
 }: Partial<Props & ElementProps>) => {
-  const renderedList = <Iterator {...pick(props, Iterator.RESERVED_PROPS)} />;
+  const renderedList = <Iterator {...pick(props, Iterator.RESERVED_PROPS)} />
 
-  if (!rootElement) return renderedList;
+  if (!rootElement) return renderedList
 
   return (
     <Element {...(ref ? { ref } : {})} {...omit(props, Iterator.RESERVED_PROPS)}>
       {renderedList}
     </Element>
-  );
-}) as PyreonElement<Props>;
+  )
+}) as PyreonElement<Props>
 
-const name = `${PKG_NAME}/List` as const;
+const name = `${PKG_NAME}/List` as const
 
-Component.displayName = name;
-Component.pkgName = PKG_NAME;
-Component.PYREON__COMPONENT = name;
+Component.displayName = name
+Component.pkgName = PKG_NAME
+Component.PYREON__COMPONENT = name
 
-export default Component;
+export default Component

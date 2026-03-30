@@ -1,4 +1,4 @@
-export const PKG_NAME = "@pyreon/coolgrid";
+export const PKG_NAME = '@pyreon/coolgrid'
 
 /**
  * Grid configuration keys that are passed through context
@@ -7,14 +7,14 @@ export const PKG_NAME = "@pyreon/coolgrid";
 export const CONTEXT_KEYS = [
   // 'breakpoints',
   // 'rootSize',
-  "columns",
-  "size",
-  "gap",
-  "padding",
-  "gutter",
-  "colCss",
-  "colComponent",
-  "rowCss",
-  "rowComponent",
-  "contentAlignX",
-];
+  'columns',
+  'size',
+  'gap',
+  'padding',
+  'gutter',
+  'colCss',
+  'colComponent',
+  'rowCss',
+  'rowComponent',
+  'contentAlignX',
+]

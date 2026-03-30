@@ -1,37 +1,37 @@
-import { Text } from "@pyreon/elements";
-import rocketstyle from "@pyreon/rocketstyle";
+import { Text } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
 const DocButton = rocketstyle({
   dimensions: {
-    variants: "variant",
+    variants: 'variant',
   },
   useBooleans: true,
-})({ name: "DocButton", component: Text })
+})({ name: 'DocButton', component: Text })
   .theme({
     fontSize: 14,
-    fontWeight: "bold",
-    padding: "10px 24px",
+    fontWeight: 'bold',
+    padding: '10px 24px',
     borderRadius: 4,
-    textAlign: "center",
-    textDecoration: "none",
+    textAlign: 'center',
+    textDecoration: 'none',
   })
   .variants({
     primary: {
-      backgroundColor: "#4f46e5",
-      color: "#ffffff",
+      backgroundColor: '#4f46e5',
+      color: '#ffffff',
     },
     secondary: {
-      backgroundColor: "#ffffff",
-      color: "#4f46e5",
+      backgroundColor: '#ffffff',
+      color: '#4f46e5',
       borderWidth: 1,
-      borderColor: "#4f46e5",
-      borderStyle: "solid",
+      borderColor: '#4f46e5',
+      borderStyle: 'solid',
     },
   })
-  .statics({ _documentType: "button" as const })
+  .statics({ _documentType: 'button' as const })
   .attrs<{ href?: string; tag: string; _documentProps: { href: string } }>((props) => ({
-    tag: "a",
-    _documentProps: { href: props.href ?? "#" },
-  }));
+    tag: 'a',
+    _documentProps: { href: props.href ?? '#' },
+  }))
 
-export default DocButton;
+export default DocButton

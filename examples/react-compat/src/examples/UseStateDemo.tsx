@@ -1,9 +1,9 @@
-import { useState } from "react";
-import Demo from "./Demo";
+import { useState } from 'react'
+import Demo from './Demo'
 
 export default function UseStateDemo() {
-  const [count, setCount] = useState(0);
-  const [name, setName] = useState("World");
+  const [count, setCount] = useState(0)
+  const [name, setName] = useState('World')
 
   return (
     <Demo
@@ -41,5 +41,5 @@ setCount(prev => prev + 1);`}
         />
       </div>
     </Demo>
-  );
+  )
 }

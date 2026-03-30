@@ -11,28 +11,28 @@ bun add @pyreon/machine
 ## Quick Start
 
 ```tsx
-import { createMachine } from "@pyreon/machine";
+import { createMachine } from '@pyreon/machine'
 
 const machine = createMachine({
-  initial: "idle",
+  initial: 'idle',
   states: {
-    idle: { on: { FETCH: "loading" } },
-    loading: { on: { SUCCESS: "done", ERROR: "error" } },
+    idle: { on: { FETCH: 'loading' } },
+    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },
     done: {},
-    error: { on: { RETRY: "loading" } },
+    error: { on: { RETRY: 'loading' } },
   },
-});
+})
 
-machine(); // 'idle' — reads like a signal
-machine.send("FETCH"); // transition to 'loading'
-machine.matches("loading"); // true — reactive in effects/JSX
+machine() // 'idle' — reads like a signal
+machine.send('FETCH') // transition to 'loading'
+machine.matches('loading') // true — reactive in effects/JSX
 
 // Reactive in JSX
 {
-  () => machine.matches("loading") && <Spinner />;
+  ;() => machine.matches('loading') && <Spinner />
 }
 {
-  () => machine.matches("done") && <Results />;
+  ;() => machine.matches('done') && <Results />
 }
 ```
 
@@ -42,15 +42,15 @@ Conditional transitions using guard functions:
 
 ```tsx
 const form = createMachine({
-  initial: "editing",
+  initial: 'editing',
   states: {
     editing: {
-      on: { SUBMIT: { target: "submitting", guard: () => isValid() } },
+      on: { SUBMIT: { target: 'submitting', guard: () => isValid() } },
     },
-    submitting: { on: { SUCCESS: "done", ERROR: "editing" } },
+    submitting: { on: { SUCCESS: 'done', ERROR: 'editing' } },
     done: {},
   },
-});
+})
 ```
 
 ## API

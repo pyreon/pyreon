@@ -32,25 +32,25 @@ yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 Add the Pyreon plugin to your Vite config:
 
 ```ts title="vite.config.ts"
-import { defineConfig } from "vite";
-import { pyreonPlugin } from "@pyreon/vite-plugin";
+import { defineConfig } from 'vite'
+import { pyreonPlugin } from '@pyreon/vite-plugin'
 
 export default defineConfig({
   plugins: [pyreonPlugin()],
-});
+})
 ```
 
 ## Your First Component
 
 ```tsx title="src/main.tsx"
-import { signal, computed } from "@pyreon/reactivity";
-import { defineComponent, Show } from "@pyreon/core";
-import { mount } from "@pyreon/runtime-dom";
+import { signal, computed } from '@pyreon/reactivity'
+import { defineComponent, Show } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 
-const count = signal(0);
+const count = signal(0)
 
 const App = defineComponent(() => {
-  const doubled = computed(() => count() * 2);
+  const doubled = computed(() => count() * 2)
 
   return () => (
     <div>
@@ -61,10 +61,10 @@ const App = defineComponent(() => {
         <p>You've started clicking!</p>
       </Show>
     </div>
-  );
-});
+  )
+})
 
-mount(App, document.getElementById("app")!);
+mount(App, document.getElementById('app')!)
 ```
 
 ## HTML Entry Point
@@ -109,22 +109,22 @@ yarn add @pyreon/runtime-server
 :::
 
 ```tsx title="src/entry-server.tsx"
-import { renderToString } from "@pyreon/runtime-server";
-import App from "./App";
+import { renderToString } from '@pyreon/runtime-server'
+import App from './App'
 
 export async function render() {
-  return await renderToString(App);
+  return await renderToString(App)
 }
 ```
 
 For streaming SSR with Suspense support:
 
 ```tsx title="src/entry-server.tsx"
-import { renderToStream } from "@pyreon/runtime-server";
-import App from "./App";
+import { renderToStream } from '@pyreon/runtime-server'
+import App from './App'
 
 export function render(res: WritableStream) {
-  return renderToStream(App, res);
+  return renderToStream(App, res)
 }
 ```
 
@@ -151,21 +151,21 @@ yarn add @pyreon/router
 :::
 
 ```tsx title="src/router.ts"
-import { createRouter } from "@pyreon/router";
+import { createRouter } from '@pyreon/router'
 
 export const router = createRouter({
   routes: [
-    { path: "/", component: () => import("./pages/Home") },
-    { path: "/about", component: () => import("./pages/About") },
-    { path: "/users/:id", component: () => import("./pages/User") },
+    { path: '/', component: () => import('./pages/Home') },
+    { path: '/about', component: () => import('./pages/About') },
+    { path: '/users/:id', component: () => import('./pages/User') },
   ],
-});
+})
 ```
 
 ```tsx title="src/App.tsx"
-import { defineComponent } from "@pyreon/core";
-import { RouterProvider, RouterView, RouterLink } from "@pyreon/router";
-import { router } from "./router";
+import { defineComponent } from '@pyreon/core'
+import { RouterProvider, RouterView, RouterLink } from '@pyreon/router'
+import { router } from './router'
 
 export default defineComponent(() => {
   return () => (
@@ -176,8 +176,8 @@ export default defineComponent(() => {
       </nav>
       <RouterView />
     </RouterProvider>
-  );
-});
+  )
+})
 ```
 
 ## Using a Compatibility Layer
@@ -205,17 +205,17 @@ yarn add @pyreon/react-compat
 :::
 
 ```tsx
-import { useState, useEffect, memo } from "@pyreon/react-compat";
+import { useState, useEffect, memo } from '@pyreon/react-compat'
 
 const Counter = memo(() => {
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0)
 
   useEffect(() => {
-    document.title = `Count: ${count}`;
-  }, [count]);
+    document.title = `Count: ${count}`
+  }, [count])
 
-  return <button onClick={() => setCount(count + 1)}>Count: {count}</button>;
-});
+  return <button onClick={() => setCount(count + 1)}>Count: {count}</button>
+})
 ```
 
 ## What's Next?

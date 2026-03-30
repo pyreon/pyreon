@@ -29,12 +29,12 @@ bun add @pyreon/zero
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin";
-import zero from "@pyreon/zero";
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero'
 
 export default {
-  plugins: [pyreon(), zero({ mode: "ssr", ssr: { mode: "stream" } })],
-};
+  plugins: [pyreon(), zero({ mode: 'ssr', ssr: { mode: 'stream' } })],
+}
 ```
 
 ## Subpath Exports

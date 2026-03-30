@@ -11,28 +11,28 @@ bun add @pyreon/form
 ## Quick Start
 
 ```tsx
-import { useForm } from "@pyreon/form";
+import { useForm } from '@pyreon/form'
 
 function LoginForm() {
   const form = useForm({
-    initialValues: { email: "", password: "" },
+    initialValues: { email: '', password: '' },
     validators: {
-      email: (v) => (!v.includes("@") ? "Invalid email" : undefined),
-      password: (v) => (v.length < 8 ? "Too short" : undefined),
+      email: (v) => (!v.includes('@') ? 'Invalid email' : undefined),
+      password: (v) => (v.length < 8 ? 'Too short' : undefined),
     },
-    validateOn: "blur",
+    validateOn: 'blur',
     onSubmit: async (values) => {
-      await fetch("/api/login", { method: "POST", body: JSON.stringify(values) });
+      await fetch('/api/login', { method: 'POST', body: JSON.stringify(values) })
     },
-  });
+  })
 
   return () => (
     <form onSubmit={form.handleSubmit}>
-      <input type="email" {...form.register("email")} />
-      <input type="password" {...form.register("password")} />
+      <input type="email" {...form.register('email')} />
+      <input type="password" {...form.register('password')} />
       <button type="submit">Login</button>
     </form>
-  );
+  )
 }
 ```
 
@@ -103,13 +103,13 @@ Extract a single field's state with computed helpers. Useful for building isolat
 
 ```tsx
 function EmailField({ form }) {
-  const field = useField(form, "email");
+  const field = useField(form, 'email')
   return () => (
     <div>
       <input {...field.register()} />
       {() => (field.showError() ? <span>{field.error()}</span> : null)}
     </div>
-  );
+  )
 }
 ```
 
@@ -138,9 +138,9 @@ Manage a dynamic array of form fields with stable keys for keyed rendering.
 | `values()`             | `() => T[]`                   | Get current values as plain array         |
 
 ```ts
-const tags = useFieldArray<string>(["typescript"]);
-tags.append("pyreon");
-tags.items(); // [{ key: 0, value: Signal("typescript") }, { key: 1, value: Signal("pyreon") }]
+const tags = useFieldArray<string>(['typescript'])
+tags.append('pyreon')
+tags.items() // [{ key: 0, value: Signal("typescript") }, { key: 1, value: Signal("pyreon") }]
 ```
 
 ### `useWatch(form, name?)`
@@ -154,10 +154,10 @@ Watch specific field values reactively.
 | `useWatch(form)`                    | `Computed<TValues>` — all fields as object  |
 
 ```ts
-const email = useWatch(form, "email");
+const email = useWatch(form, 'email')
 // email() re-evaluates reactively when the email field changes
 
-const all = useWatch(form);
+const all = useWatch(form)
 // all() => { email: "...", password: "..." }
 ```
 
@@ -175,11 +175,11 @@ Subscribe to the full form state as a computed signal. Optionally pass a selecto
 `FormStateSummary` contains: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`, `touchedFields`, `dirtyFields`, `errors`.
 
 ```ts
-const state = useFormState(form);
-state().isValid; // boolean
+const state = useFormState(form)
+state().isValid // boolean
 
-const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting);
-canSubmit(); // boolean
+const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting)
+canSubmit() // boolean
 ```
 
 ### `FormProvider` / `useFormContext()`
@@ -188,14 +188,14 @@ Context pattern for sharing a form instance with nested components.
 
 ```tsx
 // Parent:
-<FormProvider form={form}>
+;<FormProvider form={form}>
   <EmailField />
-</FormProvider>;
+</FormProvider>
 
 // Child:
 function EmailField() {
-  const form = useFormContext<{ email: string }>();
-  return () => <input {...form.register("email")} />;
+  const form = useFormContext<{ email: string }>()
+  return () => <input {...form.register('email')} />
 }
 ```
 
@@ -207,15 +207,15 @@ Use `setErrors()` to apply errors returned from your API.
 
 ```ts
 const form = useForm({
-  initialValues: { email: "" },
+  initialValues: { email: '' },
   onSubmit: async (values) => {
-    const res = await fetch("/api/register", { method: "POST", body: JSON.stringify(values) });
+    const res = await fetch('/api/register', { method: 'POST', body: JSON.stringify(values) })
     if (!res.ok) {
-      const errors = await res.json();
-      form.setErrors(errors); // { email: "Already taken" }
+      const errors = await res.json()
+      form.setErrors(errors) // { email: "Already taken" }
     }
   },
-});
+})
 ```
 
 ### Schema Validation

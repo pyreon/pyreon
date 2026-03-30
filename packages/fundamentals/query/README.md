@@ -11,28 +11,28 @@ bun add @pyreon/query @tanstack/query-core
 ## Quick Start
 
 ```tsx
-import { QueryClient, QueryClientProvider, useQuery } from "@pyreon/query";
+import { QueryClient, QueryClientProvider, useQuery } from '@pyreon/query'
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient()
 
 function UserProfile(props: { id: string }) {
   const query = useQuery(() => ({
-    queryKey: ["user", props.id],
+    queryKey: ['user', props.id],
     queryFn: () => fetch(`/api/users/${props.id}`).then((r) => r.json()),
-  }));
+  }))
 
   return () => {
-    if (query.isLoading()) return <p>Loading...</p>;
-    if (query.isError()) return <p>Error</p>;
-    return <h1>{query.data()?.name}</h1>;
-  };
+    if (query.isLoading()) return <p>Loading...</p>
+    if (query.isError()) return <p>Error</p>
+    return <h1>{query.data()?.name}</h1>
+  }
 }
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <UserProfile id="1" />
   </QueryClientProvider>
-);
+)
 ```
 
 ## API
@@ -75,11 +75,11 @@ Subscribe to a query with fine-grained reactive signals. Options are passed as a
 | `refetch()`  | `() => Promise<QueryObserverResult>`        | Trigger manual refetch  |
 
 ```ts
-const userId = signal(1);
+const userId = signal(1)
 const query = useQuery(() => ({
-  queryKey: ["user", userId()],
+  queryKey: ['user', userId()],
   queryFn: () => fetchUser(userId()),
-}));
+}))
 // Changing userId triggers automatic refetch
 ```
 
@@ -109,11 +109,11 @@ Run a mutation with reactive status signals.
 ```ts
 const mutation = useMutation({
   mutationFn: (data: { title: string }) =>
-    fetch("/api/posts", { method: "POST", body: JSON.stringify(data) }).then((r) => r.json()),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ["posts"] }),
-});
+    fetch('/api/posts', { method: 'POST', body: JSON.stringify(data) }).then((r) => r.json()),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['posts'] }),
+})
 
-mutation.mutate({ title: "New Post" });
+mutation.mutate({ title: 'New Post' })
 ```
 
 ### `useInfiniteQuery(options)`
@@ -147,16 +147,16 @@ Suspense-enabled queries. Data is guaranteed non-undefined after the suspense bo
 ```tsx
 function UserList() {
   const query = useSuspenseQuery({
-    queryKey: ["users"],
+    queryKey: ['users'],
     queryFn: fetchUsers,
-  });
+  })
   return () => (
     <ul>
       {query.data().map((u) => (
         <li>{u.name}</li>
       ))}
     </ul>
-  );
+  )
 }
 ```
 
@@ -190,7 +190,7 @@ Global counters of active queries/mutations as reactive signals.
 **Returns:** `Signal<number>`
 
 ```ts
-const fetching = useIsFetching();
+const fetching = useIsFetching()
 // fetching() => number of active queries
 ```
 
@@ -199,15 +199,15 @@ const fetching = useIsFetching();
 ### SSR Dehydration
 
 ```ts
-import { QueryClient, dehydrate, hydrate } from "@pyreon/query";
+import { QueryClient, dehydrate, hydrate } from '@pyreon/query'
 
 // Server: prefetch and serialize
-const queryClient = new QueryClient();
-await queryClient.prefetchQuery({ queryKey: ["users"], queryFn: fetchUsers });
-const dehydratedState = dehydrate(queryClient);
+const queryClient = new QueryClient()
+await queryClient.prefetchQuery({ queryKey: ['users'], queryFn: fetchUsers })
+const dehydratedState = dehydrate(queryClient)
 
 // Client: restore cache
-hydrate(queryClient, dehydratedState);
+hydrate(queryClient, dehydratedState)
 ```
 
 ### Reactive Query Keys
@@ -215,11 +215,11 @@ hydrate(queryClient, dehydratedState);
 Options are a function, so reading signals inside auto-tracks dependencies.
 
 ```ts
-const filter = signal("active");
+const filter = signal('active')
 const query = useQuery(() => ({
-  queryKey: ["todos", filter()],
+  queryKey: ['todos', filter()],
   queryFn: () => fetchTodos(filter()),
-}));
+}))
 // Changing filter() triggers a new fetch
 ```
 

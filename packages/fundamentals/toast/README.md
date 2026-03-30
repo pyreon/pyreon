@@ -11,22 +11,22 @@ bun add @pyreon/toast
 ## Usage
 
 ```tsx
-import { toast, Toaster } from "@pyreon/toast";
+import { toast, Toaster } from '@pyreon/toast'
 
 // Place once at app root
-<Toaster position="top-right" />;
+;<Toaster position="top-right" />
 
 // Show toasts from anywhere — no provider needed
-toast.success("Saved!");
-toast.error("Connection failed");
-toast("Custom message", { duration: 8000 });
+toast.success('Saved!')
+toast.error('Connection failed')
+toast('Custom message', { duration: 8000 })
 
 // Promise pattern
 toast.promise(saveData(), {
-  loading: "Saving...",
-  success: "Done!",
-  error: "Failed",
-});
+  loading: 'Saving...',
+  success: 'Done!',
+  error: 'Failed',
+})
 ```
 
 ## API

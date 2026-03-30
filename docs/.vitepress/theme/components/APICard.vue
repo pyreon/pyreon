@@ -1,20 +1,20 @@
 <script setup lang="ts">
 defineProps<{
-  name: string;
-  type?: "fn" | "component" | "hook" | "type" | "constant" | "property" | "context";
-  signature?: string;
-  description?: string;
-}>();
+  name: string
+  type?: 'fn' | 'component' | 'hook' | 'type' | 'constant' | 'property' | 'context'
+  signature?: string
+  description?: string
+}>()
 
 const labels: Record<string, { label: string; color: string }> = {
-  fn: { label: "fn", color: "var(--vp-c-blue-1)" },
-  component: { label: "C", color: "var(--vp-c-green-1)" },
-  hook: { label: "H", color: "var(--vp-c-purple-1)" },
-  type: { label: "T", color: "var(--vp-c-yellow-1)" },
-  constant: { label: "K", color: "var(--vp-c-orange-1)" },
-  property: { label: "P", color: "var(--vp-c-indigo-1)" },
-  context: { label: "Cx", color: "var(--vp-c-red-1)" },
-};
+  fn: { label: 'fn', color: 'var(--vp-c-blue-1)' },
+  component: { label: 'C', color: 'var(--vp-c-green-1)' },
+  hook: { label: 'H', color: 'var(--vp-c-purple-1)' },
+  type: { label: 'T', color: 'var(--vp-c-yellow-1)' },
+  constant: { label: 'K', color: 'var(--vp-c-orange-1)' },
+  property: { label: 'P', color: 'var(--vp-c-indigo-1)' },
+  context: { label: 'Cx', color: 'var(--vp-c-red-1)' },
+}
 </script>
 
 <template>

@@ -1,21 +1,21 @@
-import { signal } from "@pyreon/reactivity";
-import { useVirtualizer } from "@pyreon/virtual";
+import { signal } from '@pyreon/reactivity'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const items = Array.from({ length: 10000 }, (_, i) => ({
   id: i,
   label: `Item ${i + 1}`,
   color: `hsl(${(i * 7) % 360}, 70%, 92%)`,
-}));
+}))
 
 export function VirtualDemo() {
-  const parentRef = signal<HTMLElement | null>(null);
+  const parentRef = signal<HTMLElement | null>(null)
 
   const { virtualItems, totalSize, isScrolling } = useVirtualizer(() => ({
     count: items.length,
     getScrollElement: () => parentRef(),
     estimateSize: () => 40,
     overscan: 10,
-  }));
+  }))
 
   return (
     <div>
@@ -47,7 +47,7 @@ export function VirtualDemo() {
           <div style={`height: ${totalSize()}px; width: 100%; position: relative`}>
             {() =>
               virtualItems().map((vRow) => {
-                const item = items[vRow.index]!;
+                const item = items[vRow.index]!
                 return (
                   <div
                     key={vRow.key}
@@ -69,12 +69,12 @@ export function VirtualDemo() {
                     <strong style="min-width: 80px; color: #666">#{item.id + 1}</strong>
                     {item.label}
                   </div>
-                );
+                )
               })
             }
           </div>
         </div>
       </div>
     </div>
-  );
+  )
 }

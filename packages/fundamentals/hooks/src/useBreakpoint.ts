@@ -1,7 +1,7 @@
-import { onMount, onUnmount } from "@pyreon/core";
-import { signal } from "@pyreon/reactivity";
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
-export type BreakpointMap = Record<string, number>;
+export type BreakpointMap = Record<string, number>
 
 const defaultBreakpoints: BreakpointMap = {
   xs: 0,
@@ -9,44 +9,44 @@ const defaultBreakpoints: BreakpointMap = {
   md: 768,
   lg: 992,
   xl: 1200,
-};
+}
 
 /**
  * Return the currently active breakpoint name as a reactive signal.
  */
 export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): () => string {
-  const sorted = Object.entries(breakpoints).sort(([, a], [, b]) => a - b);
-  const active = signal(getActive(sorted));
-  let rafId: number | undefined;
+  const sorted = Object.entries(breakpoints).sort(([, a], [, b]) => a - b)
+  const active = signal(getActive(sorted))
+  let rafId: number | undefined
 
   function getActive(bps: [string, number][]): string {
-    if (typeof window === "undefined") return bps[0]?.[0] ?? "";
-    const w = window.innerWidth;
-    let result = bps[0]?.[0] ?? "";
+    if (typeof window === 'undefined') return bps[0]?.[0] ?? ''
+    const w = window.innerWidth
+    let result = bps[0]?.[0] ?? ''
     for (const [name, min] of bps) {
-      if (w >= min) result = name;
-      else break;
+      if (w >= min) result = name
+      else break
     }
-    return result;
+    return result
   }
 
   function onResize() {
-    if (rafId !== undefined) cancelAnimationFrame(rafId);
+    if (rafId !== undefined) cancelAnimationFrame(rafId)
     rafId = requestAnimationFrame(() => {
-      const next = getActive(sorted);
-      if (next !== active.peek()) active.set(next);
-    });
+      const next = getActive(sorted)
+      if (next !== active.peek()) active.set(next)
+    })
   }
 
   onMount(() => {
-    window.addEventListener("resize", onResize);
-    return undefined;
-  });
+    window.addEventListener('resize', onResize)
+    return undefined
+  })
 
   onUnmount(() => {
-    window.removeEventListener("resize", onResize);
-    if (rafId !== undefined) cancelAnimationFrame(rafId);
-  });
+    window.removeEventListener('resize', onResize)
+    if (rafId !== undefined) cancelAnimationFrame(rafId)
+  })
 
-  return active;
+  return active
 }

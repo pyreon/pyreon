@@ -1,16 +1,16 @@
-import type { ComponentFn } from "@pyreon/core";
-import { h } from "@pyreon/core";
-import type { RouteRecord } from "@pyreon/router";
-import { hydrateRoot, mount } from "@pyreon/runtime-dom";
-import { createApp } from "./app";
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import type { RouteRecord } from '@pyreon/router'
+import { hydrateRoot, mount } from '@pyreon/runtime-dom'
+import { createApp } from './app'
 
 // ─── Client entry factory ───────────────────────────────────────────────────
 
 export interface StartClientOptions {
   /** Route definitions. */
-  routes: RouteRecord[];
+  routes: RouteRecord[]
   /** Root layout component. */
-  layout?: ComponentFn;
+  layout?: ComponentFn
 }
 
 /**
@@ -23,21 +23,21 @@ export interface StartClientOptions {
  * startClient({ routes })
  */
 export function startClient(options: StartClientOptions) {
-  const container = document.getElementById("app");
-  if (!container) throw new Error("[zero] Missing #app container element");
+  const container = document.getElementById('app')
+  if (!container) throw new Error('[zero] Missing #app container element')
 
   const { App } = createApp({
     routes: options.routes,
-    routerMode: "history",
+    routerMode: 'history',
     ...(options.layout ? { layout: options.layout } : {}),
-  });
+  })
 
-  const vnode = h(App, null);
+  const vnode = h(App, null)
 
   // If container has SSR content, hydrate. Otherwise mount fresh.
   if (container.childNodes.length > 0) {
-    return hydrateRoot(container, vnode);
+    return hydrateRoot(container, vnode)
   }
 
-  return mount(vnode, container);
+  return mount(vnode, container)
 }

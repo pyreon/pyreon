@@ -11,35 +11,35 @@ bun add @pyreon/table @tanstack/table-core
 ## Quick Start
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
+import { signal } from '@pyreon/reactivity'
 import {
   useTable,
   flexRender,
   createColumnHelper,
   getCoreRowModel,
   getSortedRowModel,
-} from "@pyreon/table";
+} from '@pyreon/table'
 
-type Person = { name: string; age: number };
+type Person = { name: string; age: number }
 
-const columnHelper = createColumnHelper<Person>();
+const columnHelper = createColumnHelper<Person>()
 const columns = [
-  columnHelper.accessor("name", { header: "Name" }),
-  columnHelper.accessor("age", { header: "Age" }),
-];
+  columnHelper.accessor('name', { header: 'Name' }),
+  columnHelper.accessor('age', { header: 'Age' }),
+]
 
 function UserTable() {
   const data = signal<Person[]>([
-    { name: "Alice", age: 30 },
-    { name: "Bob", age: 25 },
-  ]);
+    { name: 'Alice', age: 30 },
+    { name: 'Bob', age: 25 },
+  ])
 
   const table = useTable(() => ({
     data: data(),
     columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-  }));
+  }))
 
   return () => (
     <table>
@@ -68,7 +68,7 @@ function UserTable() {
           ))}
       </tbody>
     </table>
-  );
+  )
 }
 ```
 
@@ -87,17 +87,17 @@ Create a reactive TanStack Table instance. Options are passed as a function so r
 The adapter handles internal state synchronization. When the table state changes (e.g. sorting, pagination), a version counter is bumped so the computed signal re-notifies consumers.
 
 ```ts
-const sorting = signal<SortingState>([]);
+const sorting = signal<SortingState>([])
 const table = useTable(() => ({
   data: data(),
   columns,
   state: { sorting: sorting() },
   onSortingChange: (updater) => {
-    sorting.set(typeof updater === "function" ? updater(sorting.peek()) : updater);
+    sorting.set(typeof updater === 'function' ? updater(sorting.peek()) : updater)
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
-}));
+}))
 ```
 
 ### `flexRender(component, props)`
@@ -113,13 +113,13 @@ Render a TanStack Table column definition template. Handles strings, numbers, co
 
 ```ts
 // In a header cell:
-flexRender(header.column.columnDef.header, header.getContext());
+flexRender(header.column.columnDef.header, header.getContext())
 
 // In a data cell:
-flexRender(cell.column.columnDef.cell, cell.getContext());
+flexRender(cell.column.columnDef.cell, cell.getContext())
 
 // In a footer cell:
-flexRender(footer.column.columnDef.footer, footer.getContext());
+flexRender(footer.column.columnDef.footer, footer.getContext())
 ```
 
 ## Patterns
@@ -129,8 +129,8 @@ flexRender(footer.column.columnDef.footer, footer.getContext());
 Manage table state externally with signals for full control.
 
 ```ts
-const sorting = signal<SortingState>([]);
-const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 10 });
+const sorting = signal<SortingState>([])
+const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 10 })
 
 const table = useTable(() => ({
   data: data(),
@@ -139,12 +139,12 @@ const table = useTable(() => ({
     sorting: sorting(),
     pagination: pagination(),
   },
-  onSortingChange: (u) => sorting.set(typeof u === "function" ? u(sorting.peek()) : u),
-  onPaginationChange: (u) => pagination.set(typeof u === "function" ? u(pagination.peek()) : u),
+  onSortingChange: (u) => sorting.set(typeof u === 'function' ? u(sorting.peek()) : u),
+  onPaginationChange: (u) => pagination.set(typeof u === 'function' ? u(pagination.peek()) : u),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
   getPaginatedRowModel: getPaginatedRowModel(),
-}));
+}))
 ```
 
 ### Custom Cell Renderers
@@ -153,15 +153,15 @@ Use functions in column definitions to render custom content.
 
 ```tsx
 const columns = [
-  columnHelper.accessor("name", {
-    header: "Name",
+  columnHelper.accessor('name', {
+    header: 'Name',
     cell: (info) => <strong>{info.getValue()}</strong>,
   }),
-  columnHelper.accessor("age", {
-    header: "Age",
+  columnHelper.accessor('age', {
+    header: 'Age',
     cell: (info) => `${info.getValue()} years`,
   }),
-];
+]
 ```
 
 ## Re-exports from `@tanstack/table-core`

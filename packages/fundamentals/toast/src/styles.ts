@@ -77,4 +77,4 @@ export const toastStyles = /* css */ `
 .pyreon-toast__dismiss:hover {
   color: #4b5563;
 }
-`;
+`

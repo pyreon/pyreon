@@ -1,15 +1,15 @@
-import { Element } from "@pyreon/elements";
-import rocketstyle from "@pyreon/rocketstyle";
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
-const DocList = rocketstyle()({ name: "DocList", component: Element })
+const DocList = rocketstyle()({ name: 'DocList', component: Element })
   .theme({
     marginBottom: 8,
     paddingLeft: 20,
   })
-  .statics({ _documentType: "list" as const })
+  .statics({ _documentType: 'list' as const })
   .attrs<{ ordered?: boolean; tag: string; _documentProps: Record<string, unknown> }>((props) => ({
-    tag: props.ordered ? "ol" : "ul",
+    tag: props.ordered ? 'ol' : 'ul',
     _documentProps: props.ordered ? { ordered: props.ordered } : {},
-  }));
+  }))
 
-export default DocList;
+export default DocList

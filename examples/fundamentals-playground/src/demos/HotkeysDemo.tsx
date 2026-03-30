@@ -4,56 +4,56 @@ import {
   getRegisteredHotkeys,
   parseShortcut,
   registerHotkey,
-} from "@pyreon/hotkeys";
-import { signal } from "@pyreon/reactivity";
+} from '@pyreon/hotkeys'
+import { signal } from '@pyreon/reactivity'
 
 export function HotkeysDemo() {
-  const log = signal<string[]>([]);
-  const editorScope = signal(false);
-  const parsedResult = signal("");
+  const log = signal<string[]>([])
+  const editorScope = signal(false)
+  const parsedResult = signal('')
 
   const addLog = (msg: string) =>
-    log.update((l) => [...l.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`]);
+    log.update((l) => [...l.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`])
 
   // Global shortcuts
-  registerHotkey("mod+k", () => addLog("mod+k: Open command palette"), {
-    description: "Open command palette",
-  });
+  registerHotkey('mod+k', () => addLog('mod+k: Open command palette'), {
+    description: 'Open command palette',
+  })
 
   registerHotkey(
-    "mod+s",
+    'mod+s',
     (e) => {
-      e.preventDefault();
-      addLog("mod+s: Save (prevented default)");
+      e.preventDefault()
+      addLog('mod+s: Save (prevented default)')
     },
     {
-      description: "Save",
+      description: 'Save',
     },
-  );
+  )
 
-  registerHotkey("mod+shift+p", () => addLog("mod+shift+p: Toggle panel"), {
-    description: "Toggle panel",
-  });
+  registerHotkey('mod+shift+p', () => addLog('mod+shift+p: Toggle panel'), {
+    description: 'Toggle panel',
+  })
 
-  registerHotkey("escape", () => addLog("escape: Close/dismiss"), {
-    description: "Close",
-  });
+  registerHotkey('escape', () => addLog('escape: Close/dismiss'), {
+    description: 'Close',
+  })
 
   // Scoped shortcuts
-  registerHotkey("mod+z", () => addLog("[editor] mod+z: Undo"), {
-    scope: "editor",
-    description: "Undo",
-  });
+  registerHotkey('mod+z', () => addLog('[editor] mod+z: Undo'), {
+    scope: 'editor',
+    description: 'Undo',
+  })
 
-  registerHotkey("mod+shift+z", () => addLog("[editor] mod+shift+z: Redo"), {
-    scope: "editor",
-    description: "Redo",
-  });
+  registerHotkey('mod+shift+z', () => addLog('[editor] mod+shift+z: Redo'), {
+    scope: 'editor',
+    description: 'Redo',
+  })
 
-  registerHotkey("mod+b", () => addLog("[editor] mod+b: Bold"), {
-    scope: "editor",
-    description: "Bold",
-  });
+  registerHotkey('mod+b', () => addLog('[editor] mod+b: Bold'), {
+    scope: 'editor',
+    description: 'Bold',
+  })
 
   return (
     <div>
@@ -115,25 +115,25 @@ export function HotkeysDemo() {
         <div class="row" style="margin-bottom: 8px">
           <button
             type="button"
-            class={editorScope() ? "active" : ""}
+            class={editorScope() ? 'active' : ''}
             onClick={() => {
               if (editorScope()) {
-                disableScope("editor");
-                editorScope.set(false);
-                addLog("Editor scope disabled");
+                disableScope('editor')
+                editorScope.set(false)
+                addLog('Editor scope disabled')
               } else {
-                enableScope("editor");
-                editorScope.set(true);
-                addLog("Editor scope enabled");
+                enableScope('editor')
+                editorScope.set(true)
+                addLog('Editor scope enabled')
               }
             }}
           >
-            {() => (editorScope() ? "Disable Editor Scope" : "Enable Editor Scope")}
+            {() => (editorScope() ? 'Disable Editor Scope' : 'Enable Editor Scope')}
           </button>
           <span>
-            Status:{" "}
-            <strong style={`color: ${editorScope() ? "green" : "red"}`}>
-              {() => (editorScope() ? "Active" : "Inactive")}
+            Status:{' '}
+            <strong style={`color: ${editorScope() ? 'green' : 'red'}`}>
+              {() => (editorScope() ? 'Active' : 'Inactive')}
             </strong>
           </span>
         </div>
@@ -194,31 +194,31 @@ export function HotkeysDemo() {
           type="text"
           placeholder="Try: mod+shift+k, ctrl+alt+del, escape"
           onInput={(e: Event) => {
-            const value = (e.target as HTMLInputElement).value;
+            const value = (e.target as HTMLInputElement).value
             if (!value) {
-              parsedResult.set("");
-              return;
+              parsedResult.set('')
+              return
             }
             try {
-              const combo = parseShortcut(value);
-              parsedResult.set(JSON.stringify(combo, null, 2));
+              const combo = parseShortcut(value)
+              parsedResult.set(JSON.stringify(combo, null, 2))
             } catch (err) {
-              parsedResult.set(`Error: ${(err as Error).message}`);
+              parsedResult.set(`Error: ${(err as Error).message}`)
             }
           }}
           style="width: 100%; padding: 8px; margin-bottom: 8px"
         />
-        <pre style="font-size: 12px">{() => parsedResult() || "Enter a shortcut above..."}</pre>
+        <pre style="font-size: 12px">{() => parsedResult() || 'Enter a shortcut above...'}</pre>
       </div>
 
       <div class="section">
         <h3>Event Log</h3>
         <div class="log" style="min-height: 120px">
           {() =>
-            log().length === 0 ? "Press keyboard shortcuts to see events here." : log().join("\n")
+            log().length === 0 ? 'Press keyboard shortcuts to see events here.' : log().join('\n')
           }
         </div>
       </div>
     </div>
-  );
+  )
 }

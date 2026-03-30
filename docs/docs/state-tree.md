@@ -32,8 +32,8 @@ yarn add @pyreon/state-tree
 ## Quick Start
 
 ```ts
-import { model, getSnapshot, onPatch, addMiddleware } from "@pyreon/state-tree";
-import { computed } from "@pyreon/reactivity";
+import { model, getSnapshot, onPatch, addMiddleware } from '@pyreon/state-tree'
+import { computed } from '@pyreon/reactivity'
 
 const Counter = model({
   state: { count: 0 },
@@ -45,13 +45,13 @@ const Counter = model({
     decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
   }),
-});
+})
 
-const counter = Counter.create({ count: 5 });
-counter.increment();
-counter.count(); // 6
-counter.doubled(); // 12
-getSnapshot(counter); // { count: 6 }
+const counter = Counter.create({ count: 5 })
+counter.increment()
+counter.count() // 6
+counter.doubled() // 12
+getSnapshot(counter) // { count: 6 }
 ```
 
 ## Defining a Model
@@ -63,8 +63,8 @@ Use `model()` to define a reactive model with state, views, and actions.
 - **actions** -- Factory receiving `self`. Return functions that mutate state signals.
 
 ```ts
-import { model } from "@pyreon/state-tree";
-import { computed } from "@pyreon/reactivity";
+import { model } from '@pyreon/state-tree'
+import { computed } from '@pyreon/reactivity'
 
 const Counter = model({
   state: { count: 0 },
@@ -76,7 +76,7 @@ const Counter = model({
     decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
   }),
-});
+})
 ```
 
 ### State Field Types
@@ -87,13 +87,13 @@ State fields can hold any JavaScript value. Each field becomes a `Signal<T>` on 
 const Settings = model({
   state: {
     // Primitives
-    name: "",
+    name: '',
     count: 0,
     enabled: true,
 
     // Objects and arrays
     tags: [] as string[],
-    config: { theme: "light", locale: "en" } as { theme: string; locale: string },
+    config: { theme: 'light', locale: 'en' } as { theme: string; locale: string },
 
     // Nullable values
     selectedId: null as string | null,
@@ -104,11 +104,11 @@ const Settings = model({
     toggleTheme: () =>
       self.config.update((c) => ({
         ...c,
-        theme: c.theme === "light" ? "dark" : "light",
+        theme: c.theme === 'light' ? 'dark' : 'light',
       })),
     select: (id: string | null) => self.selectedId.set(id),
   }),
-});
+})
 ```
 
 ### Reading and Writing Signals
@@ -116,19 +116,19 @@ const Settings = model({
 Every state field is a signal. Call it to read, use `.set()` for replacement, and `.update()` for transform-in-place. Use `.peek()` to read without subscribing to changes.
 
 ```ts
-const counter = Counter.create({ count: 5 });
+const counter = Counter.create({ count: 5 })
 
 // Read (creates a reactive dependency)
-counter.count(); // 5
+counter.count() // 5
 
 // Read without subscribing
-counter.count.peek(); // 5
+counter.count.peek() // 5
 
 // Replace value
-counter.count.set(10);
+counter.count.set(10)
 
 // Transform current value
-counter.count.update((c) => c + 1); // 11
+counter.count.update((c) => c + 1) // 11
 ```
 
 ### Models Without Views or Actions
@@ -137,12 +137,12 @@ Both `views` and `actions` are optional. A state-only model is valid:
 
 ```ts
 const Config = model({
-  state: { theme: "light", locale: "en" },
-});
+  state: { theme: 'light', locale: 'en' },
+})
 
-const config = Config.create();
-config.theme(); // "light"
-config.theme.set("dark");
+const config = Config.create()
+config.theme() // "light"
+config.theme.set('dark')
 ```
 
 ## Creating Instances
@@ -150,15 +150,15 @@ config.theme.set("dark");
 Call `.create()` on a model definition to create an independent instance. Pass a partial snapshot to override defaults.
 
 ```ts
-const counter = Counter.create();
-counter.count(); // 0
+const counter = Counter.create()
+counter.count() // 0
 
-const counter2 = Counter.create({ count: 10 });
-counter2.count(); // 10
-counter2.doubled(); // 20
+const counter2 = Counter.create({ count: 10 })
+counter2.count() // 10
+counter2.doubled() // 20
 
-counter2.increment();
-counter2.count(); // 11
+counter2.increment()
+counter2.count() // 11
 ```
 
 ### Partial Initialization
@@ -167,12 +167,12 @@ When you pass a partial snapshot, only the specified keys are overridden. Unspec
 
 ```ts
 const NamedCounter = model({
-  state: { count: 0, label: "default" },
-});
+  state: { count: 0, label: 'default' },
+})
 
-const c = NamedCounter.create({ count: 10 });
-c.count(); // 10
-c.label(); // "default" — not overridden
+const c = NamedCounter.create({ count: 10 })
+c.count() // 10
+c.label() // "default" — not overridden
 ```
 
 ### Independent Instances
@@ -180,12 +180,12 @@ c.label(); // "default" — not overridden
 Each `.create()` call produces a fully independent instance. Mutations on one do not affect the other.
 
 ```ts
-const a = Counter.create();
-const b = Counter.create();
+const a = Counter.create()
+const b = Counter.create()
 
-a.increment();
-a.count(); // 1
-b.count(); // 0  — independent
+a.increment()
+a.count() // 1
+b.count() // 0  — independent
 ```
 
 ## Computed Views
@@ -193,8 +193,8 @@ b.count(); // 0  — independent
 Views are computed signals derived from state. They automatically recompute when their dependencies change and are fully reactive in effects and templates.
 
 ```ts
-import { model } from "@pyreon/state-tree";
-import { computed, effect } from "@pyreon/reactivity";
+import { model } from '@pyreon/state-tree'
+import { computed, effect } from '@pyreon/reactivity'
 
 const Counter = model({
   state: { count: 0 },
@@ -207,17 +207,17 @@ const Counter = model({
     increment: () => self.count.update((c) => c + 1),
     decrement: () => self.count.update((c) => c - 1),
   }),
-});
+})
 
-const counter = Counter.create({ count: 5 });
-counter.doubled(); // 10
-counter.isPositive(); // true
-counter.label(); // "Count is 5"
+const counter = Counter.create({ count: 5 })
+counter.doubled() // 10
+counter.isPositive() // true
+counter.label() // "Count is 5"
 
 // Views are reactive — they update automatically
-counter.increment();
-counter.doubled(); // 12
-counter.label(); // "Count is 6"
+counter.increment()
+counter.doubled() // 12
+counter.label() // "Count is 6"
 ```
 
 ### Views in Effects
@@ -225,15 +225,15 @@ counter.label(); // "Count is 6"
 Views participate in the reactive graph. When used inside an `effect()`, the effect re-runs whenever the underlying state changes.
 
 ```ts
-const counter = Counter.create();
-const observed: boolean[] = [];
+const counter = Counter.create()
+const observed: boolean[] = []
 
 effect(() => {
-  observed.push(counter.isPositive());
-});
+  observed.push(counter.isPositive())
+})
 
-counter.increment();
-counter.decrement();
+counter.increment()
+counter.decrement()
 // observed: [false, true, false]
 ```
 
@@ -248,20 +248,20 @@ const CartItem = model({
     subtotal: computed(() => self.price() * self.quantity()),
     tax: computed(() => self.price() * self.quantity() * self.taxRate()),
     total: computed(() => {
-      const sub = self.price() * self.quantity();
-      return sub + sub * self.taxRate();
+      const sub = self.price() * self.quantity()
+      return sub + sub * self.taxRate()
     }),
   }),
   actions: (self) => ({
     setPrice: (p: number) => self.price.set(p),
     setQuantity: (q: number) => self.quantity.set(q),
   }),
-});
+})
 
-const item = CartItem.create({ price: 100, quantity: 3 });
-item.subtotal(); // 300
-item.tax(); // 30
-item.total(); // 330
+const item = CartItem.create({ price: 100, quantity: 3 })
+item.subtotal() // 300
+item.tax() // 30
+item.total() // 330
 ```
 
 ## Actions
@@ -272,13 +272,13 @@ Actions are functions that mutate state. They are wrapped with the middleware ru
 
 ```ts
 const Todo = model({
-  state: { text: "", done: false },
+  state: { text: '', done: false },
   actions: (self) => ({
     setText: (text: string) => self.text.set(text),
     toggle: () => self.done.update((d) => !d),
     complete: () => self.done.set(true),
   }),
-});
+})
 ```
 
 ### Actions With Arguments
@@ -292,13 +292,13 @@ const Counter = model({
     add: (n: number) => self.count.update((c) => c + n),
     addMultiple: (a: number, b: number) => self.count.update((c) => c + a + b),
   }),
-});
+})
 
-const counter = Counter.create();
-counter.add(5);
-counter.count(); // 5
-counter.addMultiple(3, 7);
-counter.count(); // 15
+const counter = Counter.create()
+counter.add(5)
+counter.count() // 5
+counter.addMultiple(3, 7)
+counter.count() // 15
 ```
 
 ### Actions Calling Other Actions
@@ -310,16 +310,16 @@ const Counter = model({
   state: { x: 0 },
   actions: (self) => ({
     doubleInc: () => {
-      self.inc();
-      self.inc();
+      self.inc()
+      self.inc()
     },
     inc: () => self.x.update((n: number) => n + 1),
   }),
-});
+})
 
-const c = Counter.create();
-c.doubleInc();
-c.x(); // 2
+const c = Counter.create()
+c.doubleInc()
+c.x() // 2
 ```
 
 ### Async Actions
@@ -335,23 +335,23 @@ const UserStore = model({
   },
   actions: (self) => ({
     fetchUsers: async () => {
-      self.loading.set(true);
-      self.error.set(null);
+      self.loading.set(true)
+      self.error.set(null)
       try {
-        const response = await fetch("/api/users");
-        const data = await response.json();
-        self.users.set(data);
+        const response = await fetch('/api/users')
+        const data = await response.json()
+        self.users.set(data)
       } catch (err) {
-        self.error.set(err instanceof Error ? err.message : "Unknown error");
+        self.error.set(err instanceof Error ? err.message : 'Unknown error')
       } finally {
-        self.loading.set(false);
+        self.loading.set(false)
       }
     },
   }),
-});
+})
 
-const store = UserStore.create();
-await store.fetchUsers();
+const store = UserStore.create()
+await store.fetchUsers()
 ```
 
 ## Nested Models (Composition)
@@ -360,22 +360,22 @@ Use a `ModelDefinition` as a state field value to compose models. Nested models 
 
 ```ts
 const Profile = model({
-  state: { name: "", email: "" },
+  state: { name: '', email: '' },
   actions: (self) => ({
     setName: (name: string) => self.name.set(name),
     setEmail: (email: string) => self.email.set(email),
   }),
-});
+})
 
 const App = model({
   state: {
-    title: "My App",
+    title: 'My App',
     profile: Profile, // nested model definition
   },
   actions: (self) => ({
     setTitle: (title: string) => self.title.set(title),
   }),
-});
+})
 ```
 
 ### Creating Nested Instances
@@ -384,20 +384,20 @@ Pass nested snapshots as plain objects. The parent model automatically creates i
 
 ```ts
 const app = App.create({
-  profile: { name: "Alice", email: "alice@example.com" },
-});
+  profile: { name: 'Alice', email: 'alice@example.com' },
+})
 
 // Access the nested instance via .peek() (it is stored in a signal)
-app.profile.peek().name(); // "Alice"
-app.profile.peek().email(); // "alice@example.com"
+app.profile.peek().name() // "Alice"
+app.profile.peek().email() // "alice@example.com"
 ```
 
 When no snapshot is provided for a nested model, its defaults are used:
 
 ```ts
-const app = App.create();
-app.profile.peek().name(); // ""
-app.title(); // "My App"
+const app = App.create()
+app.profile.peek().name() // ""
+app.title() // "My App"
 ```
 
 ### Nested Actions
@@ -405,9 +405,9 @@ app.title(); // "My App"
 Nested instances retain their own actions:
 
 ```ts
-const app = App.create({ profile: { name: "Alice", email: "" } });
-app.profile.peek().setName("Bob");
-app.profile.peek().name(); // "Bob"
+const app = App.create({ profile: { name: 'Alice', email: '' } })
+app.profile.peek().setName('Bob')
+app.profile.peek().name() // "Bob"
 ```
 
 ### Nested Snapshots and Patches
@@ -419,15 +419,15 @@ Nested models are fully integrated with the snapshot and patch systems. See [Sna
 Use `.asHook(id)` to get a Zustand/Pinia-style singleton hook. Every call returns the same instance, making it ideal for global stores.
 
 ```ts
-const useCounter = Counter.asHook("app-counter");
+const useCounter = Counter.asHook('app-counter')
 
 // Anywhere in your app:
-const store = useCounter();
-store.increment();
+const store = useCounter()
+store.increment()
 
 // Same instance every time:
-const same = useCounter();
-same.count(); // reflects the increment above
+const same = useCounter()
+same.count() // reflects the increment above
 ```
 
 ### Multiple Independent Hooks
@@ -435,12 +435,12 @@ same.count(); // reflects the increment above
 Different IDs produce independent singletons:
 
 ```ts
-const useCounterA = Counter.asHook("counter-a");
-const useCounterB = Counter.asHook("counter-b");
+const useCounterA = Counter.asHook('counter-a')
+const useCounterB = Counter.asHook('counter-b')
 
-useCounterA().increment();
-useCounterA().count(); // 1
-useCounterB().count(); // 0  — independent
+useCounterA().increment()
+useCounterA().count() // 1
+useCounterB().count() // 0  — independent
 ```
 
 ### Resetting Hooks
@@ -448,19 +448,19 @@ useCounterB().count(); // 0  — independent
 Use `resetHook()` to destroy a specific singleton (the next call re-creates a fresh instance) or `resetAllHooks()` to clear all singletons at once.
 
 ```ts
-import { resetHook, resetAllHooks } from "@pyreon/state-tree";
+import { resetHook, resetAllHooks } from '@pyreon/state-tree'
 
 // Destroy a single hook singleton
-resetHook("app-counter");
+resetHook('app-counter')
 
 // Destroy all hook singletons (useful for tests / HMR)
-resetAllHooks();
+resetAllHooks()
 ```
 
 Resetting a non-existent hook ID is a silent no-op:
 
 ```ts
-resetHook("no-such-hook"); // no error
+resetHook('no-such-hook') // no error
 ```
 
 ## Snapshots
@@ -472,19 +472,19 @@ Serialize and restore model instances as plain JS objects (no signals, no functi
 Recursively serialize a model instance to a plain object. Nested model instances are recursively serialized.
 
 ```ts
-import { getSnapshot } from "@pyreon/state-tree";
+import { getSnapshot } from '@pyreon/state-tree'
 
-const counter = Counter.create({ count: 5 });
-counter.increment();
+const counter = Counter.create({ count: 5 })
+counter.increment()
 
-getSnapshot(counter); // { count: 6 }
+getSnapshot(counter) // { count: 6 }
 ```
 
 The returned snapshot contains only plain values -- no signals, no functions:
 
 ```ts
-const snap = getSnapshot(counter);
-typeof snap.count; // "number", not "function"
+const snap = getSnapshot(counter)
+typeof snap.count // "number", not "function"
 ```
 
 ### Nested Snapshots
@@ -492,8 +492,8 @@ typeof snap.count; // "number", not "function"
 For nested models, `getSnapshot` recursively serializes all nested instances:
 
 ```ts
-const app = App.create({ profile: { name: "Alice" } });
-getSnapshot(app);
+const app = App.create({ profile: { name: 'Alice' } })
+getSnapshot(app)
 // { title: "My App", profile: { name: "Alice", email: "" } }
 ```
 
@@ -502,11 +502,11 @@ getSnapshot(app);
 Snapshots always reflect the latest state after mutations:
 
 ```ts
-const counter = Counter.create();
-counter.increment();
-counter.increment();
-counter.increment();
-getSnapshot(counter); // { count: 3 }
+const counter = Counter.create()
+counter.increment()
+counter.increment()
+counter.increment()
+getSnapshot(counter) // { count: 3 }
 ```
 
 ### `applySnapshot(instance, snapshot)`
@@ -514,10 +514,10 @@ getSnapshot(counter); // { count: 3 }
 Restore a model instance from a plain-object snapshot. All signal writes are batched via `batch()` for a single reactive flush. Keys absent from the snapshot are left unchanged.
 
 ```ts
-import { applySnapshot } from "@pyreon/state-tree";
+import { applySnapshot } from '@pyreon/state-tree'
 
-applySnapshot(counter, { count: 0 });
-counter.count(); // 0
+applySnapshot(counter, { count: 0 })
+counter.count() // 0
 ```
 
 ### Partial Snapshots
@@ -525,12 +525,12 @@ counter.count(); // 0
 Only the keys present in the snapshot are updated. Other keys retain their current values.
 
 ```ts
-const NamedCounter = model({ state: { count: 0, label: "x" } });
-const c = NamedCounter.create({ count: 5, label: "hello" });
+const NamedCounter = model({ state: { count: 0, label: 'x' } })
+const c = NamedCounter.create({ count: 5, label: 'hello' })
 
-applySnapshot(c, { count: 99 });
-c.count(); // 99
-c.label(); // "hello" — unchanged
+applySnapshot(c, { count: 99 })
+c.count() // 99
+c.label() // "hello" — unchanged
 ```
 
 ### Batched Updates
@@ -538,20 +538,20 @@ c.label(); // "hello" — unchanged
 `applySnapshot` uses `batch()` internally. When updating multiple fields, effects that depend on any of those fields fire only once:
 
 ```ts
-import { effect } from "@pyreon/reactivity";
+import { effect } from '@pyreon/reactivity'
 
-const M = model({ state: { a: 0, b: 0 } });
-const m = M.create();
+const M = model({ state: { a: 0, b: 0 } })
+const m = M.create()
 
-let effectRuns = 0;
+let effectRuns = 0
 effect(() => {
-  m.a();
-  m.b();
-  effectRuns++;
-});
-effectRuns = 0; // reset after initial run
+  m.a()
+  m.b()
+  effectRuns++
+})
+effectRuns = 0 // reset after initial run
 
-applySnapshot(m, { a: 1, b: 2 });
+applySnapshot(m, { a: 1, b: 2 })
 // effectRuns === 1  (not 2)
 ```
 
@@ -560,12 +560,12 @@ applySnapshot(m, { a: 1, b: 2 });
 `applySnapshot` recurses into nested model instances:
 
 ```ts
-const app = App.create({ profile: { name: "Alice", email: "" }, title: "old" });
+const app = App.create({ profile: { name: 'Alice', email: '' }, title: 'old' })
 
-applySnapshot(app, { profile: { name: "Carol", email: "carol@test.com" }, title: "new" });
-app.profile.peek().name(); // "Carol"
-app.profile.peek().email(); // "carol@test.com"
-app.title(); // "new"
+applySnapshot(app, { profile: { name: 'Carol', email: 'carol@test.com' }, title: 'new' })
+app.profile.peek().name() // "Carol"
+app.profile.peek().email() // "carol@test.com"
+app.title() // "new"
 ```
 
 ### Snapshot Serialization for Persistence
@@ -576,7 +576,7 @@ Combine `getSnapshot` and `applySnapshot` for persistence:
 const TodoList = model({
   state: {
     items: [] as Array<{ text: string; done: boolean }>,
-    filter: "all" as "all" | "active" | "done",
+    filter: 'all' as 'all' | 'active' | 'done',
   },
   actions: (self) => ({
     addItem: (text: string) => self.items.update((i) => [...i, { text, done: false }]),
@@ -584,21 +584,21 @@ const TodoList = model({
       self.items.update((i) =>
         i.map((item, i2) => (i2 === idx ? { ...item, done: !item.done } : item)),
       ),
-    setFilter: (f: "all" | "active" | "done") => self.filter.set(f),
+    setFilter: (f: 'all' | 'active' | 'done') => self.filter.set(f),
   }),
-});
+})
 
 // Save to localStorage
 function save(store: ReturnType<typeof TodoList.create>) {
-  const snapshot = getSnapshot(store);
-  localStorage.setItem("todos", JSON.stringify(snapshot));
+  const snapshot = getSnapshot(store)
+  localStorage.setItem('todos', JSON.stringify(snapshot))
 }
 
 // Restore from localStorage
 function restore(store: ReturnType<typeof TodoList.create>) {
-  const raw = localStorage.getItem("todos");
+  const raw = localStorage.getItem('todos')
   if (raw) {
-    applySnapshot(store, JSON.parse(raw));
+    applySnapshot(store, JSON.parse(raw))
   }
 }
 ```
@@ -608,8 +608,8 @@ function restore(store: ReturnType<typeof TodoList.create>) {
 Both `getSnapshot` and `applySnapshot` throw if called on a non-model-instance:
 
 ```ts
-getSnapshot({}); // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
-applySnapshot({}, {}); // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
+getSnapshot({}) // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
+applySnapshot({}, {}) // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
 ```
 
 ## Patches
@@ -621,16 +621,16 @@ Subscribe to every state mutation as a JSON patch (RFC 6902 `replace` operations
 Returns an unsubscribe function. The listener receives a `Patch` object for every state mutation.
 
 ```ts
-import { onPatch } from "@pyreon/state-tree";
+import { onPatch } from '@pyreon/state-tree'
 
 const unsub = onPatch(counter, (patch) => {
-  console.log(patch);
+  console.log(patch)
   // { op: "replace", path: "/count", value: 6 }
-});
+})
 
-counter.increment();
+counter.increment()
 
-unsub(); // stop listening
+unsub() // stop listening
 ```
 
 ### Patch Values
@@ -638,13 +638,13 @@ unsub(); // stop listening
 Patch values are always the new value after the mutation. For primitive state fields, the value is the primitive. For nested model instances, the value is a plain snapshot of the nested instance.
 
 ```ts
-const counter = Counter.create();
-const values: number[] = [];
+const counter = Counter.create()
+const values: number[] = []
 
-onPatch(counter, (p) => values.push(p.value as number));
+onPatch(counter, (p) => values.push(p.value as number))
 
-counter.add(3);
-counter.add(7);
+counter.add(3)
+counter.add(7)
 // values: [3, 10]
 ```
 
@@ -653,11 +653,11 @@ counter.add(7);
 If a `.set()` call writes the same value (determined by `Object.is`), no patch is emitted:
 
 ```ts
-const counter = Counter.create();
-const patches: Patch[] = [];
-onPatch(counter, (p) => patches.push(p));
+const counter = Counter.create()
+const patches: Patch[] = []
+onPatch(counter, (p) => patches.push(p))
 
-counter.count.set(0); // same as default
+counter.count.set(0) // same as default
 // patches: [] — empty, no change detected
 ```
 
@@ -666,14 +666,14 @@ counter.count.set(0); // same as default
 Mutations in nested model instances propagate upward with prefixed paths:
 
 ```ts
-const app = App.create({ profile: { name: "Alice", email: "" } });
+const app = App.create({ profile: { name: 'Alice', email: '' } })
 
 onPatch(app, (patch) => {
-  console.log(patch);
+  console.log(patch)
   // { op: "replace", path: "/profile/name", value: "Bob" }
-});
+})
 
-app.profile.peek().setName("Bob");
+app.profile.peek().setName('Bob')
 ```
 
 ### Unsubscribing
@@ -681,31 +681,31 @@ app.profile.peek().setName("Bob");
 The function returned by `onPatch` removes the listener. After unsubscribing, no further patches are delivered:
 
 ```ts
-const counter = Counter.create();
-const patches: Patch[] = [];
-const unsub = onPatch(counter, (p) => patches.push(p));
+const counter = Counter.create()
+const patches: Patch[] = []
+const unsub = onPatch(counter, (p) => patches.push(p))
 
-unsub();
-counter.increment();
+unsub()
+counter.increment()
 // patches: [] — listener was removed
 ```
 
 ### `applyPatch` -- Apply JSON patches to a model instance
 
 ```ts
-import { applyPatch } from "@pyreon/state-tree";
+import { applyPatch } from '@pyreon/state-tree'
 
 // Apply a single patch
-applyPatch(counter, { op: "replace", path: "/count", value: 10 });
+applyPatch(counter, { op: 'replace', path: '/count', value: 10 })
 
 // Apply multiple patches at once (batched)
 applyPatch(counter, [
-  { op: "replace", path: "/count", value: 1 },
-  { op: "replace", path: "/count", value: 2 },
-]);
+  { op: 'replace', path: '/count', value: 1 },
+  { op: 'replace', path: '/count', value: 2 },
+])
 
 // Nested model patches use JSON pointer paths
-applyPatch(user, { op: "replace", path: "/profile/name", value: "Alice" });
+applyPatch(user, { op: 'replace', path: '/profile/name', value: 'Alice' })
 ```
 
 Only `"replace"` operations are supported (matching the patches emitted by `onPatch`). Paths use JSON pointer format: `"/count"` for top-level properties, `"/profile/name"` for nested model instances.
@@ -748,78 +748,78 @@ function undo() {
 ### Real-World: Syncing Patches to a Server
 
 ```ts
-const store = TodoList.create();
+const store = TodoList.create()
 
 onPatch(store, (patch) => {
   // Send each mutation to a server for real-time sync
   websocket.send(
     JSON.stringify({
-      type: "PATCH",
+      type: 'PATCH',
       payload: patch,
     }),
-  );
-});
+  )
+})
 ```
 
 ### Real-World: Undo/Redo with Patches
 
 ```ts
-import { onPatch, applySnapshot, getSnapshot, type Patch } from "@pyreon/state-tree";
+import { onPatch, applySnapshot, getSnapshot, type Patch } from '@pyreon/state-tree'
 
 function withUndoRedo<T extends object>(instance: T) {
-  const history: Array<Record<string, unknown>> = [getSnapshot(instance)];
-  let index = 0;
+  const history: Array<Record<string, unknown>> = [getSnapshot(instance)]
+  let index = 0
 
   onPatch(instance, () => {
     // Trim any forward history after an undo
-    history.length = index + 1;
-    history.push(getSnapshot(instance));
-    index++;
-  });
+    history.length = index + 1
+    history.push(getSnapshot(instance))
+    index++
+  })
 
   return {
     undo: () => {
       if (index > 0) {
-        index--;
-        applySnapshot(instance, history[index]!);
+        index--
+        applySnapshot(instance, history[index]!)
       }
     },
     redo: () => {
       if (index < history.length - 1) {
-        index++;
-        applySnapshot(instance, history[index]!);
+        index++
+        applySnapshot(instance, history[index]!)
       }
     },
     canUndo: () => index > 0,
     canRedo: () => index < history.length - 1,
-  };
+  }
 }
 
 // Usage
-const counter = Counter.create();
-const { undo, redo, canUndo, canRedo } = withUndoRedo(counter);
+const counter = Counter.create()
+const { undo, redo, canUndo, canRedo } = withUndoRedo(counter)
 
-counter.increment(); // count: 1
-counter.increment(); // count: 2
-counter.increment(); // count: 3
+counter.increment() // count: 1
+counter.increment() // count: 2
+counter.increment() // count: 3
 
-undo();
-counter.count(); // 2
+undo()
+counter.count() // 2
 
-undo();
-counter.count(); // 1
+undo()
+counter.count() // 1
 
-redo();
-counter.count(); // 2
+redo()
+counter.count() // 2
 ```
 
 ### Patch Type
 
 ```ts
 interface Patch {
-  op: "replace";
-  path: string; // JSON pointer, e.g. "/count" or "/profile/name"
-  value: unknown;
+  op: 'replace'
+  path: string // JSON pointer, e.g. "/count" or "/profile/name"
+  value: unknown
 }
 ```
 
@@ -832,20 +832,20 @@ Intercept every action call on an instance. Middlewares run in registration orde
 Returns an unsubscribe function.
 
 ```ts
-import { addMiddleware } from "@pyreon/state-tree";
+import { addMiddleware } from '@pyreon/state-tree'
 
 const unsub = addMiddleware(counter, (call, next) => {
-  console.log(`> ${call.name}(${JSON.stringify(call.args)})`);
-  const result = next(call);
-  console.log(`< ${call.name}`);
-  return result;
-});
+  console.log(`> ${call.name}(${JSON.stringify(call.args)})`)
+  const result = next(call)
+  console.log(`< ${call.name}`)
+  return result
+})
 
-counter.increment();
+counter.increment()
 // > increment([])
 // < increment
 
-unsub();
+unsub()
 ```
 
 ### Middleware Execution Order
@@ -853,22 +853,22 @@ unsub();
 Multiple middlewares run in registration order, forming a Koa-style onion model. The first registered middleware is the outermost layer:
 
 ```ts
-const counter = Counter.create();
-const log: string[] = [];
+const counter = Counter.create()
+const log: string[] = []
 
 addMiddleware(counter, (call, next) => {
-  log.push("A-before");
-  next(call);
-  log.push("A-after");
-});
+  log.push('A-before')
+  next(call)
+  log.push('A-after')
+})
 
 addMiddleware(counter, (call, next) => {
-  log.push("B-before");
-  next(call);
-  log.push("B-after");
-});
+  log.push('B-before')
+  next(call)
+  log.push('B-after')
+})
 
-counter.increment();
+counter.increment()
 // log: ["A-before", "B-before", "B-after", "A-after"]
 ```
 
@@ -877,14 +877,14 @@ counter.increment();
 If a middleware does not call `next()`, the action never executes:
 
 ```ts
-const counter = Counter.create();
+const counter = Counter.create()
 
 addMiddleware(counter, (_call, _next) => {
   // Don't call next — action is blocked
-});
+})
 
-counter.increment();
-counter.count(); // 0 — action was prevented
+counter.increment()
+counter.count() // 0 — action was prevented
 ```
 
 ### Conditional Blocking
@@ -894,12 +894,12 @@ Block specific actions or based on conditions:
 ```ts
 addMiddleware(counter, (call, next) => {
   // Only allow increment if count is below 10
-  if (call.name === "increment" && counter.count.peek() >= 10) {
-    console.warn("Max count reached!");
-    return;
+  if (call.name === 'increment' && counter.count.peek() >= 10) {
+    console.warn('Max count reached!')
+    return
   }
-  return next(call);
-});
+  return next(call)
+})
 ```
 
 ### Logging Middleware
@@ -907,16 +907,16 @@ addMiddleware(counter, (call, next) => {
 ```ts
 function createLogger(prefix: string) {
   return (call: ActionCall, next: (call: ActionCall) => unknown) => {
-    const start = performance.now();
-    console.log(`[${prefix}] ${call.name}(${JSON.stringify(call.args)})`);
-    const result = next(call);
-    const ms = (performance.now() - start).toFixed(2);
-    console.log(`[${prefix}] ${call.name} completed in ${ms}ms`);
-    return result;
-  };
+    const start = performance.now()
+    console.log(`[${prefix}] ${call.name}(${JSON.stringify(call.args)})`)
+    const result = next(call)
+    const ms = (performance.now() - start).toFixed(2)
+    console.log(`[${prefix}] ${call.name} completed in ${ms}ms`)
+    return result
+  }
 }
 
-addMiddleware(counter, createLogger("Counter"));
+addMiddleware(counter, createLogger('Counter'))
 ```
 
 ### Persistence Middleware
@@ -926,12 +926,12 @@ Auto-save to localStorage after every action:
 ```ts
 function createPersistenceMiddleware(key: string, root: Instance) {
   return (call: ActionCall, next: (call: ActionCall) => unknown) => {
-    const result = next(call);
+    const result = next(call)
     // Save snapshot after every action
-    const snapshot = getSnapshot(root);
-    localStorage.setItem(key, JSON.stringify(snapshot));
-    return result;
-  };
+    const snapshot = getSnapshot(root)
+    localStorage.setItem(key, JSON.stringify(snapshot))
+    return result
+  }
 }
 ```
 
@@ -941,28 +941,28 @@ The returned unsubscribe function removes the middleware:
 
 ```ts
 const unsub = addMiddleware(counter, (call, next) => {
-  console.log(call.name);
-  return next(call);
-});
+  console.log(call.name)
+  return next(call)
+})
 
-unsub();
-counter.increment(); // no log output — middleware removed
+unsub()
+counter.increment() // no log output — middleware removed
 ```
 
 ### ActionCall Type
 
 ```ts
 interface ActionCall {
-  name: string; // Action name, e.g. "increment"
-  args: unknown[]; // Arguments passed to the action
-  path: string; // JSON-pointer-style path, e.g. "/increment"
+  name: string // Action name, e.g. "increment"
+  args: unknown[] // Arguments passed to the action
+  path: string // JSON-pointer-style path, e.g. "/increment"
 }
 ```
 
 ### MiddlewareFn Type
 
 ```ts
-type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown;
+type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown
 ```
 
 ## Testing Models
@@ -972,8 +972,8 @@ Models are plain objects with signals and functions, making them straightforward
 ### Basic Unit Tests
 
 ```ts
-import { model, getSnapshot, applySnapshot, onPatch } from "@pyreon/state-tree";
-import { computed } from "@pyreon/reactivity";
+import { model, getSnapshot, applySnapshot, onPatch } from '@pyreon/state-tree'
+import { computed } from '@pyreon/reactivity'
 
 const Counter = model({
   state: { count: 0 },
@@ -985,46 +985,46 @@ const Counter = model({
     add: (n: number) => self.count.update((c) => c + n),
     reset: () => self.count.set(0),
   }),
-});
+})
 
-describe("Counter", () => {
-  it("creates with default state", () => {
-    const counter = Counter.create();
-    expect(counter.count()).toBe(0);
-  });
+describe('Counter', () => {
+  it('creates with default state', () => {
+    const counter = Counter.create()
+    expect(counter.count()).toBe(0)
+  })
 
-  it("creates with initial state", () => {
-    const counter = Counter.create({ count: 42 });
-    expect(counter.count()).toBe(42);
-  });
+  it('creates with initial state', () => {
+    const counter = Counter.create({ count: 42 })
+    expect(counter.count()).toBe(42)
+  })
 
-  it("actions update state", () => {
-    const counter = Counter.create();
-    counter.inc();
-    expect(counter.count()).toBe(1);
-  });
+  it('actions update state', () => {
+    const counter = Counter.create()
+    counter.inc()
+    expect(counter.count()).toBe(1)
+  })
 
-  it("views recompute when state changes", () => {
-    const counter = Counter.create({ count: 3 });
-    expect(counter.doubled()).toBe(6);
-    counter.inc();
-    expect(counter.doubled()).toBe(8);
-  });
+  it('views recompute when state changes', () => {
+    const counter = Counter.create({ count: 3 })
+    expect(counter.doubled()).toBe(6)
+    counter.inc()
+    expect(counter.doubled()).toBe(8)
+  })
 
-  it("snapshot serializes correctly", () => {
-    const counter = Counter.create({ count: 7 });
-    expect(getSnapshot(counter)).toEqual({ count: 7 });
-  });
+  it('snapshot serializes correctly', () => {
+    const counter = Counter.create({ count: 7 })
+    expect(getSnapshot(counter)).toEqual({ count: 7 })
+  })
 
-  it("emits patches on mutation", () => {
-    const counter = Counter.create();
-    const patches: any[] = [];
-    onPatch(counter, (p) => patches.push(p));
+  it('emits patches on mutation', () => {
+    const counter = Counter.create()
+    const patches: any[] = []
+    onPatch(counter, (p) => patches.push(p))
 
-    counter.add(5);
-    expect(patches).toEqual([{ op: "replace", path: "/count", value: 5 }]);
-  });
-});
+    counter.add(5)
+    expect(patches).toEqual([{ op: 'replace', path: '/count', value: 5 }])
+  })
+})
 ```
 
 ### Testing Hooks
@@ -1032,27 +1032,27 @@ describe("Counter", () => {
 Use `resetAllHooks()` in test teardown to ensure clean state between tests:
 
 ```ts
-import { resetAllHooks } from "@pyreon/state-tree";
+import { resetAllHooks } from '@pyreon/state-tree'
 
 afterEach(() => {
-  resetAllHooks();
-});
+  resetAllHooks()
+})
 
-it("hook returns singleton", () => {
-  const useCounter = Counter.asHook("test-counter");
-  const a = useCounter();
-  const b = useCounter();
-  expect(a).toBe(b); // same instance
-});
+it('hook returns singleton', () => {
+  const useCounter = Counter.asHook('test-counter')
+  const a = useCounter()
+  const b = useCounter()
+  expect(a).toBe(b) // same instance
+})
 
-it("hook is fresh after reset", () => {
-  const useCounter = Counter.asHook("test-counter");
-  useCounter().add(10);
-  expect(useCounter().count()).toBe(10);
+it('hook is fresh after reset', () => {
+  const useCounter = Counter.asHook('test-counter')
+  useCounter().add(10)
+  expect(useCounter().count()).toBe(10)
 
-  resetAllHooks();
-  expect(useCounter().count()).toBe(0); // fresh instance
-});
+  resetAllHooks()
+  expect(useCounter().count()).toBe(0) // fresh instance
+})
 ```
 
 ## Real-World Example: Todo App with Undo/Redo
@@ -1060,40 +1060,40 @@ it("hook is fresh after reset", () => {
 A complete todo application demonstrating nested models, snapshots, patches, and middleware.
 
 ```ts
-import { model, getSnapshot, applySnapshot, onPatch, addMiddleware } from "@pyreon/state-tree";
-import { computed } from "@pyreon/reactivity";
+import { model, getSnapshot, applySnapshot, onPatch, addMiddleware } from '@pyreon/state-tree'
+import { computed } from '@pyreon/reactivity'
 
 // ---- Todo Item Model ----
 const TodoItem = model({
   state: {
-    id: "",
-    text: "",
+    id: '',
+    text: '',
     done: false,
   },
   actions: (self) => ({
     toggle: () => self.done.update((d) => !d),
     setText: (text: string) => self.text.set(text),
   }),
-});
+})
 
 // ---- Todo List Model ----
 const TodoList = model({
   state: {
     items: [] as Array<{ id: string; text: string; done: boolean }>,
-    filter: "all" as "all" | "active" | "done",
+    filter: 'all' as 'all' | 'active' | 'done',
     nextId: 1,
   },
   views: (self) => ({
     filteredItems: computed(() => {
-      const items = self.items();
-      const filter = self.filter();
+      const items = self.items()
+      const filter = self.filter()
       switch (filter) {
-        case "active":
-          return items.filter((i) => !i.done);
-        case "done":
-          return items.filter((i) => i.done);
+        case 'active':
+          return items.filter((i) => !i.done)
+        case 'done':
+          return items.filter((i) => i.done)
         default:
-          return items;
+          return items
       }
     }),
     activeCount: computed(() => self.items().filter((i) => !i.done).length),
@@ -1102,72 +1102,72 @@ const TodoList = model({
   }),
   actions: (self) => ({
     addItem: (text: string) => {
-      const id = `todo-${self.nextId.peek()}`;
-      self.nextId.update((n) => n + 1);
-      self.items.update((items) => [...items, { id, text, done: false }]);
+      const id = `todo-${self.nextId.peek()}`
+      self.nextId.update((n) => n + 1)
+      self.items.update((items) => [...items, { id, text, done: false }])
     },
     removeItem: (id: string) => {
-      self.items.update((items) => items.filter((i) => i.id !== id));
+      self.items.update((items) => items.filter((i) => i.id !== id))
     },
     toggleItem: (id: string) => {
-      self.items.update((items) => items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)));
+      self.items.update((items) => items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)))
     },
     clearDone: () => {
-      self.items.update((items) => items.filter((i) => !i.done));
+      self.items.update((items) => items.filter((i) => !i.done))
     },
-    setFilter: (filter: "all" | "active" | "done") => {
-      self.filter.set(filter);
+    setFilter: (filter: 'all' | 'active' | 'done') => {
+      self.filter.set(filter)
     },
   }),
-});
+})
 
 // ---- Undo/redo manager ----
-const todos = TodoList.create();
+const todos = TodoList.create()
 
-const snapshots: Array<Record<string, unknown>> = [getSnapshot(todos)];
-let historyIndex = 0;
+const snapshots: Array<Record<string, unknown>> = [getSnapshot(todos)]
+let historyIndex = 0
 
 onPatch(todos, () => {
-  snapshots.length = historyIndex + 1;
-  snapshots.push(getSnapshot(todos));
-  historyIndex++;
-});
+  snapshots.length = historyIndex + 1
+  snapshots.push(getSnapshot(todos))
+  historyIndex++
+})
 
 function undo() {
   if (historyIndex > 0) {
-    historyIndex--;
-    applySnapshot(todos, snapshots[historyIndex]!);
+    historyIndex--
+    applySnapshot(todos, snapshots[historyIndex]!)
   }
 }
 
 function redo() {
   if (historyIndex < snapshots.length - 1) {
-    historyIndex++;
-    applySnapshot(todos, snapshots[historyIndex]!);
+    historyIndex++
+    applySnapshot(todos, snapshots[historyIndex]!)
   }
 }
 
 // ---- Logging middleware ----
 addMiddleware(todos, (call, next) => {
-  console.log(`[TodoList] ${call.name}(${JSON.stringify(call.args)})`);
-  return next(call);
-});
+  console.log(`[TodoList] ${call.name}(${JSON.stringify(call.args)})`)
+  return next(call)
+})
 
 // ---- Usage ----
-todos.addItem("Buy groceries");
-todos.addItem("Write docs");
-todos.addItem("Review PR");
+todos.addItem('Buy groceries')
+todos.addItem('Write docs')
+todos.addItem('Review PR')
 
-todos.toggleItem("todo-1");
-todos.activeCount(); // 2
-todos.doneCount(); // 1
+todos.toggleItem('todo-1')
+todos.activeCount() // 2
+todos.doneCount() // 1
 
-todos.setFilter("active");
-todos.filteredItems(); // only undone items
+todos.setFilter('active')
+todos.filteredItems() // only undone items
 
-undo(); // un-sets the filter
-undo(); // un-toggles todo-1
-redo(); // re-toggles todo-1
+undo() // un-sets the filter
+undo() // un-toggles todo-1
+redo() // re-toggles todo-1
 ```
 
 ## TypeScript Inference Patterns
@@ -1185,9 +1185,9 @@ const Counter = model({
   actions: (self) => ({
     inc: () => self.count.update((c) => c + 1),
   }),
-});
+})
 
-type CounterInstance = ReturnType<typeof Counter.create>;
+type CounterInstance = ReturnType<typeof Counter.create>
 // CounterInstance has:
 //   count: Signal<number>
 //   doubled: Computed<number>
@@ -1199,7 +1199,7 @@ type CounterInstance = ReturnType<typeof Counter.create>;
 The `Snapshot<TState>` type recursively strips signals and model instances:
 
 ```ts
-import type { Snapshot } from "@pyreon/state-tree";
+import type { Snapshot } from '@pyreon/state-tree'
 
 // For a model with state { count: number, label: string }:
 // Snapshot is { count: number, label: string }
@@ -1219,12 +1219,12 @@ const M = model({
     doubleInc: () => {
       // self.inc is typed as `any` (avoids circular reference)
       // but works correctly at runtime
-      self.inc();
-      self.inc();
+      self.inc()
+      self.inc()
     },
     inc: () => self.x.update((n: number) => n + 1),
   }),
-});
+})
 ```
 
 ## API Reference
@@ -1293,11 +1293,11 @@ Destroy all hook singletons.
 All public functions that accept a model instance (`getSnapshot`, `applySnapshot`, `onPatch`, `applyPatch`, `addMiddleware`) validate their input and throw a descriptive error if called on a non-model-instance:
 
 ```ts
-getSnapshot({}); // Error: [@pyreon/state-tree] getSnapshot: not a model instance
-applySnapshot({}, {}); // Error: [@pyreon/state-tree] applySnapshot: not a model instance
-onPatch({}, () => {}); // Error: [@pyreon/state-tree] onPatch: not a model instance
-applyPatch({}, {}); // Error: [@pyreon/state-tree] applyPatch: not a model instance
-addMiddleware({}, fn); // Error: [@pyreon/state-tree] addMiddleware: not a model instance
+getSnapshot({}) // Error: [@pyreon/state-tree] getSnapshot: not a model instance
+applySnapshot({}, {}) // Error: [@pyreon/state-tree] applySnapshot: not a model instance
+onPatch({}, () => {}) // Error: [@pyreon/state-tree] onPatch: not a model instance
+applyPatch({}, {}) // Error: [@pyreon/state-tree] applyPatch: not a model instance
+addMiddleware({}, fn) // Error: [@pyreon/state-tree] addMiddleware: not a model instance
 ```
 
 ## Internals

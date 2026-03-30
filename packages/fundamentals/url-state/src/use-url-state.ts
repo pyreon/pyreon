@@ -1,7 +1,7 @@
-import { effect, onCleanup, signal } from "@pyreon/reactivity";
-import { inferSerializer } from "./serializers";
-import type { Serializer, UrlStateOptions, UrlStateSignal } from "./types";
-import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from "./url";
+import { effect, onCleanup, signal } from '@pyreon/reactivity'
+import { inferSerializer } from './serializers'
+import type { Serializer, UrlStateOptions, UrlStateSignal } from './types'
+import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from './url'
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export function useUrlState<T>(
   key: string,
   defaultValue: T,
   options?: UrlStateOptions<T>,
-): UrlStateSignal<T>;
+): UrlStateSignal<T>
 
 // ─── Schema overload ────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ export function useUrlState<T>(
 export function useUrlState<T extends Record<string, unknown>>(
   schema: T,
   options?: UrlStateOptions,
-): { [K in keyof T]: UrlStateSignal<T[K]> };
+): { [K in keyof T]: UrlStateSignal<T[K]> }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
 
@@ -48,23 +48,23 @@ export function useUrlState<T>(
   maybeOptions?: UrlStateOptions<T>,
 ): UrlStateSignal<T> | Record<string, UrlStateSignal<unknown>> {
   // Schema mode
-  if (typeof keyOrSchema === "object") {
-    const schema = keyOrSchema as Record<string, unknown>;
-    const opts = defaultOrOptions as UrlStateOptions | undefined;
-    const result: Record<string, UrlStateSignal<unknown>> = {};
+  if (typeof keyOrSchema === 'object') {
+    const schema = keyOrSchema as Record<string, unknown>
+    const opts = defaultOrOptions as UrlStateOptions | undefined
+    const result: Record<string, UrlStateSignal<unknown>> = {}
 
     for (const key of Object.keys(schema)) {
-      result[key] = createUrlSignal(key, schema[key], opts);
+      result[key] = createUrlSignal(key, schema[key], opts)
     }
 
-    return result;
+    return result
   }
 
   // Single-param mode
-  const key = keyOrSchema;
-  const defaultValue = defaultOrOptions as T;
-  const options = maybeOptions;
-  return createUrlSignal(key, defaultValue, options);
+  const key = keyOrSchema
+  const defaultValue = defaultOrOptions as T
+  const options = maybeOptions
+  return createUrlSignal(key, defaultValue, options)
 }
 
 // ─── Core factory ───────────────────────────────────────────────────────────
@@ -74,120 +74,120 @@ function createUrlSignal<T>(
   defaultValue: T,
   options?: UrlStateOptions<T>,
 ): UrlStateSignal<T> {
-  const replace = options?.replace !== false;
-  const debounceMs = options?.debounce ?? 0;
-  const arrayFormat = options?.arrayFormat ?? "comma";
-  const isArray = Array.isArray(defaultValue);
-  const isRepeat = isArray && arrayFormat === "repeat";
+  const replace = options?.replace !== false
+  const debounceMs = options?.debounce ?? 0
+  const arrayFormat = options?.arrayFormat ?? 'comma'
+  const isArray = Array.isArray(defaultValue)
+  const isRepeat = isArray && arrayFormat === 'repeat'
 
   const { serialize, deserialize }: Serializer<T> =
     options?.serialize && options?.deserialize
       ? { serialize: options.serialize, deserialize: options.deserialize }
-      : inferSerializer(defaultValue, arrayFormat);
+      : inferSerializer(defaultValue, arrayFormat)
 
   // Read initial value from URL (falls back to default when missing or in SSR)
-  let initial: T;
+  let initial: T
   if (isRepeat) {
-    const values = getParamAll(key);
-    initial = values.length > 0 ? (values as T) : defaultValue;
+    const values = getParamAll(key)
+    initial = values.length > 0 ? (values as T) : defaultValue
   } else {
-    const raw = getParam(key);
-    initial = raw !== null ? deserialize(raw) : defaultValue;
+    const raw = getParam(key)
+    initial = raw !== null ? deserialize(raw) : defaultValue
   }
 
-  const state = signal<T>(initial);
+  const state = signal<T>(initial)
 
   // Pending debounce timer
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   // Write URL when signal changes
   const writeUrl = (value: T) => {
     if (isRepeat) {
-      const arr = value as string[];
-      const defaultArr = defaultValue as string[];
+      const arr = value as string[]
+      const defaultArr = defaultValue as string[]
       // Remove param when value equals default to keep URLs clean
       if (arr.length === defaultArr.length && arr.every((v, i) => v === defaultArr[i])) {
-        setParamRepeated(key, null, replace);
+        setParamRepeated(key, null, replace)
       } else {
-        setParamRepeated(key, arr, replace);
+        setParamRepeated(key, arr, replace)
       }
-      return;
+      return
     }
 
-    const serialized = serialize(value);
-    const defaultSerialized = serialize(defaultValue);
+    const serialized = serialize(value)
+    const defaultSerialized = serialize(defaultValue)
 
     // Remove param when value equals default to keep URLs clean
     if (serialized === defaultSerialized) {
-      setParams({ [key]: null }, replace);
+      setParams({ [key]: null }, replace)
     } else {
-      setParams({ [key]: serialized }, replace);
+      setParams({ [key]: serialized }, replace)
     }
-  };
+  }
 
   /** Force-remove the param from URL regardless of value. */
   const removeFromUrl = () => {
     if (isRepeat) {
-      setParamRepeated(key, null, replace);
+      setParamRepeated(key, null, replace)
     } else {
-      setParams({ [key]: null }, replace);
+      setParams({ [key]: null }, replace)
     }
-  };
+  }
 
   const scheduleWrite = (value: T) => {
     if (debounceMs <= 0) {
-      writeUrl(value);
-      return;
+      writeUrl(value)
+      return
     }
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer)
     timer = setTimeout(() => {
-      timer = undefined;
-      writeUrl(value);
-    }, debounceMs);
-  };
+      timer = undefined
+      writeUrl(value)
+    }, debounceMs)
+  }
 
   // Listen for popstate (back/forward navigation)
   if (_isBrowser) {
     const onPopState = () => {
-      let value: T;
+      let value: T
       if (isRepeat) {
-        const values = getParamAll(key);
-        value = values.length > 0 ? (values as T) : defaultValue;
+        const values = getParamAll(key)
+        value = values.length > 0 ? (values as T) : defaultValue
       } else {
-        const current = getParam(key);
-        value = current !== null ? deserialize(current) : defaultValue;
+        const current = getParam(key)
+        value = current !== null ? deserialize(current) : defaultValue
       }
-      state.set(value);
-      options?.onChange?.(value);
-    };
+      state.set(value)
+      options?.onChange?.(value)
+    }
 
     effect(() => {
-      window.addEventListener("popstate", onPopState);
+      window.addEventListener('popstate', onPopState)
       onCleanup(() => {
-        window.removeEventListener("popstate", onPopState);
-        if (timer !== undefined) clearTimeout(timer);
-      });
-    });
+        window.removeEventListener('popstate', onPopState)
+        if (timer !== undefined) clearTimeout(timer)
+      })
+    })
   }
 
   // Build the signal-like accessor
-  const accessor = (() => state()) as UrlStateSignal<T>;
+  const accessor = (() => state()) as UrlStateSignal<T>
 
   accessor.set = (value: T) => {
-    state.set(value);
-    scheduleWrite(value);
-  };
+    state.set(value)
+    scheduleWrite(value)
+  }
 
   accessor.reset = () => {
-    state.set(defaultValue);
-    scheduleWrite(defaultValue);
-  };
+    state.set(defaultValue)
+    scheduleWrite(defaultValue)
+  }
 
   accessor.remove = () => {
-    state.set(defaultValue);
-    if (timer !== undefined) clearTimeout(timer);
-    removeFromUrl();
-  };
+    state.set(defaultValue)
+    if (timer !== undefined) clearTimeout(timer)
+    removeFromUrl()
+  }
 
-  return accessor;
+  return accessor
 }

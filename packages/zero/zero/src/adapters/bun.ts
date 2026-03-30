@@ -1,27 +1,27 @@
-import type { Adapter, AdapterBuildOptions } from "../types";
+import type { Adapter, AdapterBuildOptions } from '../types'
 
 /**
  * Bun adapter — generates a standalone Bun.serve() entry.
  */
 export function bunAdapter(): Adapter {
   return {
-    name: "bun",
+    name: 'bun',
     async build(options: AdapterBuildOptions) {
-      const { writeFile, cp, mkdir } = await import("node:fs/promises");
-      const { join } = await import("node:path");
+      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { join } = await import('node:path')
 
-      const outDir = options.outDir;
-      await mkdir(outDir, { recursive: true });
+      const outDir = options.outDir
+      await mkdir(outDir, { recursive: true })
 
       // Copy server and client builds
-      await cp(options.clientOutDir, join(outDir, "client"), {
+      await cp(options.clientOutDir, join(outDir, 'client'), {
         recursive: true,
-      });
-      await cp(join(options.serverEntry, ".."), join(outDir, "server"), {
+      })
+      await cp(join(options.serverEntry, '..'), join(outDir, 'server'), {
         recursive: true,
-      });
+      })
 
-      const port = options.config.port ?? 3000;
+      const port = options.config.port ?? 3000
       const serverEntry = `
 const handler = (await import("./server/entry-server.js")).default
 const clientDir = new URL("./client/", import.meta.url).pathname
@@ -57,9 +57,9 @@ Bun.serve({
 })
 
 console.log("\\n  ⚡ Zero production server running on http://localhost:${port}\\n")
-`.trimStart();
+`.trimStart()
 
-      await writeFile(join(outDir, "index.ts"), serverEntry);
+      await writeFile(join(outDir, 'index.ts'), serverEntry)
     },
-  };
+  }
 }

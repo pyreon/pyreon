@@ -1,4 +1,4 @@
-import { onCleanup } from "@pyreon/reactivity";
+import { onCleanup } from '@pyreon/reactivity'
 
 /**
  * Attach an event listener with automatic cleanup on unmount.
@@ -22,10 +22,10 @@ export function useEventListener<K extends keyof WindowEventMap>(
   options?: boolean | AddEventListenerOptions,
   target?: () => EventTarget | null | undefined,
 ): void {
-  const isBrowser = typeof window !== "undefined";
-  if (!isBrowser) return;
+  const isBrowser = typeof window !== 'undefined'
+  if (!isBrowser) return
 
-  const el = target?.() ?? window;
-  el.addEventListener(event, handler as EventListener, options);
-  onCleanup(() => el.removeEventListener(event, handler as EventListener, options));
+  const el = target?.() ?? window
+  el.addEventListener(event, handler as EventListener, options)
+  onCleanup(() => el.removeEventListener(event, handler as EventListener, options))
 }

@@ -155,12 +155,12 @@ yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 Create a component:
 
 ```tsx
-import { signal, computed } from "@pyreon/reactivity";
-import { defineComponent, Show } from "@pyreon/core";
-import { mount } from "@pyreon/runtime-dom";
+import { signal, computed } from '@pyreon/reactivity'
+import { defineComponent, Show } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 
-const count = signal(0);
-const doubled = computed(() => count() * 2);
+const count = signal(0)
+const doubled = computed(() => count() * 2)
 
 const App = defineComponent(() => {
   return () => (
@@ -172,8 +172,8 @@ const App = defineComponent(() => {
         <p>Count is greater than 5!</p>
       </Show>
     </div>
-  );
-});
+  )
+})
 
-mount(App, document.getElementById("app")!);
+mount(App, document.getElementById('app')!)
 ```

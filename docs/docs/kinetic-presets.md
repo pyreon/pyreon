@@ -32,10 +32,10 @@ yarn add @pyreon/kinetic-presets
 ## Quick Start
 
 ```ts
-import { fade, fadeUp, scaleIn, compose, withDuration } from "@pyreon/kinetic-presets";
+import { fade, fadeUp, scaleIn, compose, withDuration } from '@pyreon/kinetic-presets'
 
 // Use a preset directly
-const myTransition = fadeUp;
+const myTransition = fadeUp
 // {
 //   enterStyle: { opacity: 0, transform: 'translateY(16px)' },
 //   enterToStyle: { opacity: 1, transform: 'translateY(0)' },
@@ -46,10 +46,10 @@ const myTransition = fadeUp;
 // }
 
 // Customize timing
-const slower = withDuration(fadeUp, 500, 300);
+const slower = withDuration(fadeUp, 500, 300)
 
 // Combine presets
-const combined = compose(fade, scaleIn);
+const combined = compose(fade, scaleIn)
 ```
 
 ## The Preset Type
@@ -59,21 +59,21 @@ Every preset is an object describing the enter and leave phases of a CSS transit
 ```ts
 type Preset = {
   // Inline style mode:
-  enterStyle?: CSSProperties; // Styles at the start of enter
-  enterToStyle?: CSSProperties; // Styles at the end of enter
-  enterTransition?: string; // CSS transition for the enter phase
-  leaveStyle?: CSSProperties; // Styles at the start of leave
-  leaveToStyle?: CSSProperties; // Styles at the end of leave
-  leaveTransition?: string; // CSS transition for the leave phase
+  enterStyle?: CSSProperties // Styles at the start of enter
+  enterToStyle?: CSSProperties // Styles at the end of enter
+  enterTransition?: string // CSS transition for the enter phase
+  leaveStyle?: CSSProperties // Styles at the start of leave
+  leaveToStyle?: CSSProperties // Styles at the end of leave
+  leaveTransition?: string // CSS transition for the leave phase
 
   // Class-based mode:
-  enter?: string; // Active class during enter
-  enterFrom?: string; // Class at start of enter
-  enterTo?: string; // Class at end of enter
-  leave?: string; // Active class during leave
-  leaveFrom?: string; // Class at start of leave
-  leaveTo?: string; // Class at end of leave
-};
+  enter?: string // Active class during enter
+  enterFrom?: string // Class at start of enter
+  enterTo?: string // Class at end of enter
+  leave?: string // Active class during leave
+  leaveFrom?: string // Class at start of leave
+  leaveTo?: string // Class at end of leave
+}
 ```
 
 ### Two Modes of Operation
@@ -89,7 +89,7 @@ Both modes can coexist in a single preset if needed.
 ### CSSProperties Type
 
 ```ts
-type CSSProperties = Record<string, string | number | undefined>;
+type CSSProperties = Record<string, string | number | undefined>
 ```
 
 Standard CSS property names in camelCase form, matching the `HTMLElement.style` property API.
@@ -103,10 +103,10 @@ Factory functions create customized presets with your own parameters. They are t
 Creates a fade transition, optionally with directional movement.
 
 ```ts
-import { createFade } from "@pyreon/kinetic-presets";
+import { createFade } from '@pyreon/kinetic-presets'
 
 // Simple opacity fade
-const simpleFade = createFade();
+const simpleFade = createFade()
 // {
 //   enterStyle: { opacity: 0 },
 //   enterToStyle: { opacity: 1 },
@@ -117,7 +117,7 @@ const simpleFade = createFade();
 // }
 
 // Fade with upward movement
-const fadeUp = createFade({ direction: "up", distance: 24 });
+const fadeUp = createFade({ direction: 'up', distance: 24 })
 // {
 //   enterStyle: { opacity: 0, transform: 'translateY(24px)' },
 //   enterToStyle: { opacity: 1, transform: 'translateY(0)' },
@@ -129,21 +129,21 @@ const fadeUp = createFade({ direction: "up", distance: 24 });
 
 // Fade from the left with custom timing
 const slideInLeft = createFade({
-  direction: "left",
+  direction: 'left',
   distance: 32,
   duration: 500,
   leaveDuration: 300,
-  easing: "ease-in-out",
-  leaveEasing: "ease-in",
-});
+  easing: 'ease-in-out',
+  leaveEasing: 'ease-in',
+})
 
 // Subtle fade for tooltips
 const tooltipFade = createFade({
-  direction: "down",
+  direction: 'down',
   distance: 4,
   duration: 150,
   leaveDuration: 100,
-});
+})
 ```
 
 **Options (FadeOptions):**
@@ -171,27 +171,27 @@ const tooltipFade = createFade({
 Creates a slide transition with directional movement. Similar to `createFade` but always includes a direction.
 
 ```ts
-import { createSlide } from "@pyreon/kinetic-presets";
+import { createSlide } from '@pyreon/kinetic-presets'
 
-const slideDown = createSlide({ direction: "down", distance: 32 });
+const slideDown = createSlide({ direction: 'down', distance: 32 })
 
 // Menu dropdown slide
 const menuSlide = createSlide({
-  direction: "down",
+  direction: 'down',
   distance: 8,
   duration: 200,
   leaveDuration: 150,
-  easing: "ease-out",
-});
+  easing: 'ease-out',
+})
 
 // Sidebar slide
 const sidebarSlide = createSlide({
-  direction: "right",
+  direction: 'right',
   distance: 280,
   duration: 300,
   leaveDuration: 200,
-  easing: "cubic-bezier(0.4, 0, 0.2, 1)",
-});
+  easing: 'cubic-bezier(0.4, 0, 0.2, 1)',
+})
 ```
 
 **Options (SlideOptions):**
@@ -210,10 +210,10 @@ const sidebarSlide = createSlide({
 Creates a scale transition.
 
 ```ts
-import { createScale } from "@pyreon/kinetic-presets";
+import { createScale } from '@pyreon/kinetic-presets'
 
 // Default: scale from 0.9
-const scaleUp = createScale();
+const scaleUp = createScale()
 // {
 //   enterStyle: { opacity: 0, transform: 'scale(0.9)' },
 //   enterToStyle: { opacity: 1, transform: 'scale(1)' },
@@ -224,20 +224,20 @@ const scaleUp = createScale();
 // }
 
 // Scale from zero (dramatic pop-in)
-const popIn = createScale({ from: 0, duration: 400 });
+const popIn = createScale({ from: 0, duration: 400 })
 
 // Subtle scale for cards
-const cardScale = createScale({ from: 0.95, duration: 200, leaveDuration: 150 });
+const cardScale = createScale({ from: 0.95, duration: 200, leaveDuration: 150 })
 
 // Scale up from a large size (zoom out effect)
-const zoomOut = createScale({ from: 1.5 });
+const zoomOut = createScale({ from: 1.5 })
 
 // Bouncy scale with spring easing
 const bouncyScale = createScale({
   from: 0.5,
   duration: 500,
-  easing: "cubic-bezier(0.34, 1.56, 0.64, 1)",
-});
+  easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+})
 ```
 
 **Options (ScaleOptions):**
@@ -255,10 +255,10 @@ const bouncyScale = createScale({
 Creates a rotation transition.
 
 ```ts
-import { createRotate } from "@pyreon/kinetic-presets";
+import { createRotate } from '@pyreon/kinetic-presets'
 
 // Gentle tilt
-const tilt = createRotate({ degrees: 10 });
+const tilt = createRotate({ degrees: 10 })
 // {
 //   enterStyle: { opacity: 0, transform: 'rotate(-10deg)' },
 //   enterToStyle: { opacity: 1, transform: 'rotate(0)' },
@@ -269,17 +269,17 @@ const tilt = createRotate({ degrees: 10 });
 // }
 
 // Half spin
-const spin = createRotate({ degrees: 180, duration: 500 });
+const spin = createRotate({ degrees: 180, duration: 500 })
 
 // Full rotation (clock hand effect)
-const fullSpin = createRotate({ degrees: 360, duration: 800 });
+const fullSpin = createRotate({ degrees: 360, duration: 800 })
 
 // Subtle wobble
 const wobble = createRotate({
   degrees: 5,
   duration: 200,
-  easing: "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
-});
+  easing: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+})
 ```
 
 **Options (RotateOptions):**
@@ -297,10 +297,10 @@ const wobble = createRotate({
 Creates a blur transition, optionally combined with a scale effect.
 
 ```ts
-import { createBlur } from "@pyreon/kinetic-presets";
+import { createBlur } from '@pyreon/kinetic-presets'
 
 // Simple blur
-const blur = createBlur({ amount: 12 });
+const blur = createBlur({ amount: 12 })
 // {
 //   enterStyle: { opacity: 0, filter: 'blur(12px)' },
 //   enterToStyle: { opacity: 1, filter: 'blur(0px)' },
@@ -311,7 +311,7 @@ const blur = createBlur({ amount: 12 });
 // }
 
 // Blur with scale (glass-like effect)
-const glassBlur = createBlur({ amount: 8, scale: 0.95 });
+const glassBlur = createBlur({ amount: 8, scale: 0.95 })
 // enterStyle also includes: transform: 'scale(0.95)'
 
 // Heavy blur for dramatic reveals
@@ -320,10 +320,10 @@ const dramaticBlur = createBlur({
   scale: 0.8,
   duration: 600,
   leaveDuration: 400,
-});
+})
 
 // Subtle blur for overlays
-const overlayBlur = createBlur({ amount: 4, duration: 200 });
+const overlayBlur = createBlur({ amount: 4, duration: 200 })
 ```
 
 **Options (BlurOptions):**
@@ -346,10 +346,10 @@ Utilities to modify and combine presets without creating new ones from scratch.
 Merges multiple presets into one. Styles are shallow-merged (later presets override earlier ones for the same CSS property). Transition strings and class names are taken from the last preset that defines them.
 
 ```ts
-import { compose, fade, scaleIn, blurIn } from "@pyreon/kinetic-presets";
+import { compose, fade, scaleIn, blurIn } from '@pyreon/kinetic-presets'
 
 // Combine fade + scale + blur
-const fancy = compose(fade, scaleIn, blurIn);
+const fancy = compose(fade, scaleIn, blurIn)
 // enterStyle: { opacity: 0, transform: 'scale(0.9)', filter: 'blur(8px)' }
 // enterToStyle: { opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }
 // enterTransition: 'all 300ms ease-out' (from blurIn, the last one)
@@ -368,14 +368,14 @@ const fancy = compose(fade, scaleIn, blurIn);
 #### Composing Inline and Class Presets
 
 ```ts
-const inlinePreset = createFade({ direction: "up" });
+const inlinePreset = createFade({ direction: 'up' })
 const classPreset: Preset = {
-  enterFrom: "ring-2 ring-blue-500",
-  enterTo: "ring-0",
-};
+  enterFrom: 'ring-2 ring-blue-500',
+  enterTo: 'ring-0',
+}
 
 // Both modes merge independently
-const combined = compose(inlinePreset, classPreset);
+const combined = compose(inlinePreset, classPreset)
 // Has both enterStyle AND enterFrom set
 ```
 
@@ -384,23 +384,23 @@ const combined = compose(inlinePreset, classPreset);
 Override the duration of a preset. If `leaveMs` is omitted, the enter duration is used for both phases.
 
 ```ts
-import { withDuration, fadeUp, scaleIn, blurIn } from "@pyreon/kinetic-presets";
+import { withDuration, fadeUp, scaleIn, blurIn } from '@pyreon/kinetic-presets'
 
 // Different enter and leave durations
-const slow = withDuration(fadeUp, 600, 400);
+const slow = withDuration(fadeUp, 600, 400)
 // enterTransition: 'all 600ms ease-out'
 // leaveTransition: 'all 400ms ease-in'
 
 // Symmetric duration
-const symmetric = withDuration(fadeUp, 500);
+const symmetric = withDuration(fadeUp, 500)
 // enterTransition: 'all 500ms ease-out'
 // leaveTransition: 'all 500ms ease-in'
 
 // Quick tooltip animation
-const quick = withDuration(scaleIn, 150, 100);
+const quick = withDuration(scaleIn, 150, 100)
 
 // Slow dramatic reveal
-const dramatic = withDuration(blurIn, 800, 500);
+const dramatic = withDuration(blurIn, 800, 500)
 ```
 
 **How it works:** Replaces the first duration pattern (e.g., `300ms`) in the transition string with the new value.
@@ -410,22 +410,22 @@ const dramatic = withDuration(blurIn, 800, 500);
 Override the easing function of a preset. If `leaveEasing` is omitted, the enter easing is used for both phases.
 
 ```ts
-import { withEasing, scaleIn, fadeUp } from "@pyreon/kinetic-presets";
+import { withEasing, scaleIn, fadeUp } from '@pyreon/kinetic-presets'
 
 // Bouncy spring easing
-const bouncy = withEasing(scaleIn, "cubic-bezier(0.34, 1.56, 0.64, 1)");
+const bouncy = withEasing(scaleIn, 'cubic-bezier(0.34, 1.56, 0.64, 1)')
 // enterTransition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)'
 // leaveTransition: 'all 200ms cubic-bezier(0.34, 1.56, 0.64, 1)'
 
 // Different enter/leave easing
 const asymmetric = withEasing(
   fadeUp,
-  "cubic-bezier(0.22, 1, 0.36, 1)", // Smooth deceleration for enter
-  "cubic-bezier(0.55, 0, 1, 0.45)", // Quick acceleration for leave
-);
+  'cubic-bezier(0.22, 1, 0.36, 1)', // Smooth deceleration for enter
+  'cubic-bezier(0.55, 0, 1, 0.45)', // Quick acceleration for leave
+)
 
 // Linear for progress indicators
-const linear = withEasing(fadeUp, "linear");
+const linear = withEasing(fadeUp, 'linear')
 ```
 
 **Supported easing patterns:** `ease`, `ease-in`, `ease-out`, `ease-in-out`, `linear`, `cubic-bezier(...)`.
@@ -435,15 +435,15 @@ const linear = withEasing(fadeUp, "linear");
 Add a delay to a preset's transitions. Useful for staggered animations.
 
 ```ts
-import { withDelay, fadeUp, scaleIn } from "@pyreon/kinetic-presets";
+import { withDelay, fadeUp, scaleIn } from '@pyreon/kinetic-presets'
 
 // Delay enter by 150ms, no delay on leave
-const delayed = withDelay(fadeUp, 150, 0);
+const delayed = withDelay(fadeUp, 150, 0)
 // enterTransition: 'all 300ms 150ms ease-out'
 // leaveTransition: 'all 200ms 0ms ease-in'
 
 // Same delay for both phases
-const symmetricDelay = withDelay(scaleIn, 200);
+const symmetricDelay = withDelay(scaleIn, 200)
 // enterTransition: 'all 300ms 200ms ease-out'
 // leaveTransition: 'all 200ms 200ms ease-in'
 ```
@@ -453,14 +453,14 @@ const symmetricDelay = withDelay(scaleIn, 200);
 #### Creating Staggered Delays
 
 ```ts
-import { withDelay, fadeUp } from "@pyreon/kinetic-presets";
+import { withDelay, fadeUp } from '@pyreon/kinetic-presets'
 
 // Create staggered presets for a list of items
 function stagger(basePreset: Preset, count: number, delayStep: number) {
-  return Array.from({ length: count }, (_, i) => withDelay(basePreset, i * delayStep, 0));
+  return Array.from({ length: count }, (_, i) => withDelay(basePreset, i * delayStep, 0))
 }
 
-const staggeredFades = stagger(fadeUp, 5, 50);
+const staggeredFades = stagger(fadeUp, 5, 50)
 // staggeredFades[0] → 0ms delay
 // staggeredFades[1] → 50ms delay
 // staggeredFades[2] → 100ms delay
@@ -473,17 +473,17 @@ const staggeredFades = stagger(fadeUp, 5, 50);
 Swaps the enter and leave phases of a preset. The enter styles become the leave styles and vice versa.
 
 ```ts
-import { reverse, fadeUp, slideLeft } from "@pyreon/kinetic-presets";
+import { reverse, fadeUp, slideLeft } from '@pyreon/kinetic-presets'
 
 // fadeUp enters from below -- reverse enters from above
-const fadeDown = reverse(fadeUp);
+const fadeDown = reverse(fadeUp)
 // enterStyle: { opacity: 1, transform: 'translateY(0)' }  (was leaveStyle)
 // enterToStyle: { opacity: 0, transform: 'translateY(16px)' }  (was leaveToStyle)
 // leaveStyle: { opacity: 0, transform: 'translateY(16px)' }  (was enterStyle)
 // leaveToStyle: { opacity: 1, transform: 'translateY(0)' }  (was enterToStyle)
 
 // Enter from right, leave to left (opposite of slideLeft)
-const slideRight = reverse(slideLeft);
+const slideRight = reverse(slideLeft)
 ```
 
 **What gets swapped:**
@@ -513,13 +513,13 @@ import {
   reverse,
   fade,
   scaleIn,
-} from "@pyreon/kinetic-presets";
+} from '@pyreon/kinetic-presets'
 
 const custom = withDelay(
-  withEasing(withDuration(compose(fade, scaleIn), 500, 300), "cubic-bezier(0.34, 1.56, 0.64, 1)"),
+  withEasing(withDuration(compose(fade, scaleIn), 500, 300), 'cubic-bezier(0.34, 1.56, 0.64, 1)'),
   100,
   0,
-);
+)
 ```
 
 ## Built-in Presets
@@ -548,10 +548,10 @@ Simple opacity fades, optionally combined with directional movement.
 | `fadeDownRight` | `translate(-16px, -16px)` to `translate(0, 0)` | 300ms / 200ms |
 
 ```ts
-import { fade, fadeUp, fadeLeftBig } from "@pyreon/kinetic-presets";
+import { fade, fadeUp, fadeLeftBig } from '@pyreon/kinetic-presets'
 
 // fadeUp is the most commonly used -- great for modals, dropdowns, tooltips
-console.log(fadeUp.enterStyle);
+console.log(fadeUp.enterStyle)
 // { opacity: 0, transform: 'translateY(16px)' }
 ```
 
@@ -586,10 +586,10 @@ Scale transitions with opacity.
 | `scaleInRight` | `0.9` + `translateX(-16px)` | 300ms / 200ms |
 
 ```ts
-import { scaleIn } from "@pyreon/kinetic-presets";
+import { scaleIn } from '@pyreon/kinetic-presets'
 
 // scaleIn is great for dialogs and popovers
-console.log(scaleIn.enterStyle);
+console.log(scaleIn.enterStyle)
 // { opacity: 0, transform: 'scale(0.9)' }
 ```
 
@@ -626,9 +626,9 @@ Dramatic scale transitions from zero or double size.
 All flip presets use `perspective(600px)` for a realistic 3D effect.
 
 ```ts
-import { flipX } from "@pyreon/kinetic-presets";
+import { flipX } from '@pyreon/kinetic-presets'
 
-console.log(flipX.enterStyle);
+console.log(flipX.enterStyle)
 // { opacity: 0, transform: 'perspective(600px) rotateX(90deg)' }
 ```
 
@@ -648,10 +648,10 @@ console.log(flipX.enterStyle);
 | `newspaperIn`     | `scale(0) rotate(-720deg)`   | 700ms / 400ms |
 
 ```ts
-import { newspaperIn } from "@pyreon/kinetic-presets";
+import { newspaperIn } from '@pyreon/kinetic-presets'
 
 // The newspaper effect: element spins in from nothing
-console.log(newspaperIn.enterStyle);
+console.log(newspaperIn.enterStyle)
 // { opacity: 0, transform: 'scale(0) rotate(-720deg)' }
 ```
 
@@ -673,7 +673,7 @@ Transitions using bouncy, spring-like easing curves.
 | `squishY`       | `scaleX(0.6) scaleY(1.4)` | Spring                                    | 400ms / 250ms |
 
 ```ts
-import { bounceIn, springIn } from "@pyreon/kinetic-presets";
+import { bounceIn, springIn } from '@pyreon/kinetic-presets'
 
 // bounceIn overshoots then settles
 // springIn is a subtler version
@@ -695,7 +695,7 @@ Blur-based transitions with optional scale and directional movement.
 | `puffOut`     | `4px` | `scale(0.5)`        | 400ms / 250ms |
 
 ```ts
-import { blurIn, puffIn } from "@pyreon/kinetic-presets";
+import { blurIn, puffIn } from '@pyreon/kinetic-presets'
 
 // blurIn: element fades from blurred to sharp
 // puffIn: element shrinks from large + blurry to normal + sharp
@@ -717,15 +717,15 @@ Clip-path reveal transitions. These use `clipPath` instead of `opacity` for uniq
 | `clipCorner`  | Expand from top-left corner | 500ms / 300ms |
 
 ```ts
-import { clipCircle, clipDiamond } from "@pyreon/kinetic-presets";
+import { clipCircle, clipDiamond } from '@pyreon/kinetic-presets'
 
-console.log(clipCircle.enterStyle);
+console.log(clipCircle.enterStyle)
 // { clipPath: 'circle(0% at 50% 50%)' }
 
-console.log(clipCircle.enterToStyle);
+console.log(clipCircle.enterToStyle)
 // { clipPath: 'circle(75% at 50% 50%)' }
 
-console.log(clipDiamond.enterStyle);
+console.log(clipDiamond.enterStyle)
 // { clipPath: 'polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%)' }
 ```
 
@@ -778,14 +778,14 @@ These presets combine multiple transforms for dramatic entrance effects.
 | `tiltInLeft` / `tiltInRight`             | 3D tilt + `translate(24px)`           | 300ms / 200ms |
 
 ```ts
-import { swingInTop, swirlIn, lightSpeedInLeft } from "@pyreon/kinetic-presets";
+import { swingInTop, swirlIn, lightSpeedInLeft } from '@pyreon/kinetic-presets'
 
 // swingInTop uses transformOrigin: 'top' for a hinge-like effect
-console.log(swingInTop.enterStyle);
+console.log(swingInTop.enterStyle)
 // { opacity: 0, transform: 'perspective(600px) rotateX(-90deg)', transformOrigin: 'top' }
 
 // swirlIn is a dramatic 540-degree spin from nothing
-console.log(swirlIn.enterStyle);
+console.log(swirlIn.enterStyle)
 // { opacity: 0, transform: 'rotate(-540deg) scale(0)' }
 ```
 
@@ -794,18 +794,18 @@ console.log(swirlIn.enterStyle);
 All built-in presets are also available via the `presets` object for dynamic lookup:
 
 ```ts
-import { presets } from "@pyreon/kinetic-presets";
+import { presets } from '@pyreon/kinetic-presets'
 
 // Look up a preset by name
-const preset = presets["fadeUp"];
+const preset = presets['fadeUp']
 
 // List all available preset names
-const allNames = Object.keys(presets);
+const allNames = Object.keys(presets)
 // ['fade', 'fadeUp', 'fadeDown', ...] (90+ entries)
 
 // Dynamic preset selection
 function getPreset(name: string): Preset | undefined {
-  return presets[name as keyof typeof presets];
+  return presets[name as keyof typeof presets]
 }
 ```
 
@@ -816,11 +816,11 @@ The primary use case for kinetic-presets is with Pyreon's `Transition` component
 ### Using Presets with Transition
 
 ```tsx
-import { Transition } from "@pyreon/runtime-dom";
-import { fadeUp } from "@pyreon/kinetic-presets";
-import { signal } from "@pyreon/reactivity";
+import { Transition } from '@pyreon/runtime-dom'
+import { fadeUp } from '@pyreon/kinetic-presets'
+import { signal } from '@pyreon/reactivity'
 
-const visible = signal(false);
+const visible = signal(false)
 
 function AnimatedModal() {
   return () => (
@@ -828,26 +828,26 @@ function AnimatedModal() {
       show={() => visible()}
       onBeforeEnter={(el) => {
         // Apply enter-from styles
-        Object.assign(el.style, fadeUp.enterStyle);
-        el.style.transition = fadeUp.enterTransition ?? "";
+        Object.assign(el.style, fadeUp.enterStyle)
+        el.style.transition = fadeUp.enterTransition ?? ''
       }}
       onAfterEnter={(el) => {
         // Apply enter-to styles (transition will animate)
-        Object.assign(el.style, fadeUp.enterToStyle);
+        Object.assign(el.style, fadeUp.enterToStyle)
       }}
       onBeforeLeave={(el) => {
         // Apply leave-from styles
-        Object.assign(el.style, fadeUp.leaveStyle);
-        el.style.transition = fadeUp.leaveTransition ?? "";
+        Object.assign(el.style, fadeUp.leaveStyle)
+        el.style.transition = fadeUp.leaveTransition ?? ''
       }}
       onAfterLeave={(el) => {
         // Apply leave-to styles
-        Object.assign(el.style, fadeUp.leaveToStyle);
+        Object.assign(el.style, fadeUp.leaveToStyle)
       }}
     >
       <div class="modal">Modal content</div>
     </Transition>
-  );
+  )
 }
 ```
 
@@ -856,31 +856,31 @@ function AnimatedModal() {
 Create a reusable helper to convert presets into Transition-compatible props:
 
 ```ts
-import type { Preset } from "@pyreon/kinetic-presets";
+import type { Preset } from '@pyreon/kinetic-presets'
 
 function presetToTransitionProps(preset: Preset) {
   return {
     onBeforeEnter: (el: HTMLElement) => {
-      if (preset.enterStyle) Object.assign(el.style, preset.enterStyle);
-      if (preset.enterTransition) el.style.transition = preset.enterTransition;
+      if (preset.enterStyle) Object.assign(el.style, preset.enterStyle)
+      if (preset.enterTransition) el.style.transition = preset.enterTransition
     },
     onAfterEnter: (el: HTMLElement) => {
       if (preset.enterToStyle) {
-        requestAnimationFrame(() => Object.assign(el.style, preset.enterToStyle));
+        requestAnimationFrame(() => Object.assign(el.style, preset.enterToStyle))
       }
     },
     onBeforeLeave: (el: HTMLElement) => {
-      if (preset.leaveStyle) Object.assign(el.style, preset.leaveStyle);
-      if (preset.leaveTransition) el.style.transition = preset.leaveTransition;
+      if (preset.leaveStyle) Object.assign(el.style, preset.leaveStyle)
+      if (preset.leaveTransition) el.style.transition = preset.leaveTransition
     },
     onAfterLeave: (el: HTMLElement) => {
-      if (preset.leaveToStyle) Object.assign(el.style, preset.leaveToStyle);
+      if (preset.leaveToStyle) Object.assign(el.style, preset.leaveToStyle)
     },
-  };
+  }
 }
 
 // Usage:
-const transitionProps = presetToTransitionProps(fadeUp);
+const transitionProps = presetToTransitionProps(fadeUp)
 // <Transition show={() => visible()} {...transitionProps}>
 //   <div>Animated content</div>
 // </Transition>
@@ -891,106 +891,100 @@ const transitionProps = presetToTransitionProps(fadeUp);
 ### Page Transitions
 
 ```ts
-import { createFade, withDuration, withEasing } from "@pyreon/kinetic-presets";
+import { createFade, withDuration, withEasing } from '@pyreon/kinetic-presets'
 
 // Smooth page transition: slide up with deceleration
 const pageTransition = withEasing(
-  withDuration(createFade({ direction: "up", distance: 30 }), 400, 250),
-  "cubic-bezier(0.22, 1, 0.36, 1)", // Smooth deceleration
-  "cubic-bezier(0.55, 0, 1, 0.45)", // Quick acceleration out
-);
+  withDuration(createFade({ direction: 'up', distance: 30 }), 400, 250),
+  'cubic-bezier(0.22, 1, 0.36, 1)', // Smooth deceleration
+  'cubic-bezier(0.55, 0, 1, 0.45)', // Quick acceleration out
+)
 ```
 
 ### Modal Enter/Exit
 
 ```ts
-import {
-  compose,
-  createFade,
-  createScale,
-  withDuration,
-  withEasing,
-} from "@pyreon/kinetic-presets";
+import { compose, createFade, createScale, withDuration, withEasing } from '@pyreon/kinetic-presets'
 
 // Modal: fade + scale with spring easing
 const modalTransition = withEasing(
   withDuration(compose(createFade(), createScale({ from: 0.95 })), 300, 200),
-  "cubic-bezier(0.34, 1.56, 0.64, 1)", // Slight overshoot on enter
-  "ease-in", // Quick exit
-);
+  'cubic-bezier(0.34, 1.56, 0.64, 1)', // Slight overshoot on enter
+  'ease-in', // Quick exit
+)
 
 // Overlay backdrop: simple fade
-const backdropTransition = withDuration(createFade(), 200, 150);
+const backdropTransition = withDuration(createFade(), 200, 150)
 ```
 
 ### Dropdown Menu
 
 ```ts
-import { createFade, withDuration } from "@pyreon/kinetic-presets";
+import { createFade, withDuration } from '@pyreon/kinetic-presets'
 
 // Fast, subtle animation for menus
-const dropdownTransition = withDuration(createFade({ direction: "down", distance: 8 }), 200, 150);
+const dropdownTransition = withDuration(createFade({ direction: 'down', distance: 8 }), 200, 150)
 ```
 
 ### Notification Toast
 
 ```ts
-import { compose, createFade, createSlide, withEasing } from "@pyreon/kinetic-presets";
+import { compose, createFade, createSlide, withEasing } from '@pyreon/kinetic-presets'
 
 // Toast slides in from the right with a bounce
 const toastTransition = withEasing(
-  compose(createFade(), createSlide({ direction: "right", distance: 100 })),
-  "cubic-bezier(0.34, 1.56, 0.64, 1)", // Bouncy enter
-  "ease-in", // Quick dismiss
-);
+  compose(createFade(), createSlide({ direction: 'right', distance: 100 })),
+  'cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy enter
+  'ease-in', // Quick dismiss
+)
 ```
 
 ### Tab Content Switch
 
 ```ts
-import { createFade } from "@pyreon/kinetic-presets";
+import { createFade } from '@pyreon/kinetic-presets'
 
 // Subtle cross-fade for tab content
 const tabTransition = createFade({
   duration: 200,
   leaveDuration: 150,
-  easing: "ease-in-out",
-});
+  easing: 'ease-in-out',
+})
 ```
 
 ### Sidebar Navigation
 
 ```ts
-import { compose, createFade, createSlide, withDuration } from "@pyreon/kinetic-presets";
+import { compose, createFade, createSlide, withDuration } from '@pyreon/kinetic-presets'
 
 // Sidebar slides in from the left
 const sidebarTransition = withDuration(
-  compose(createFade(), createSlide({ direction: "left", distance: 280 })),
+  compose(createFade(), createSlide({ direction: 'left', distance: 280 })),
   300,
   200,
-);
+)
 ```
 
 ### Image Gallery Zoom
 
 ```ts
-import { compose, createScale, createBlur, withDuration } from "@pyreon/kinetic-presets";
+import { compose, createScale, createBlur, withDuration } from '@pyreon/kinetic-presets'
 
 // Full-size image zoom with blur
 const galleryTransition = withDuration(
   compose(createScale({ from: 0.8 }), createBlur({ amount: 4 })),
   400,
   250,
-);
+)
 ```
 
 ### Card Hover Preview
 
 ```ts
-import { compose, createFade, createScale, withDuration } from "@pyreon/kinetic-presets";
+import { compose, createFade, createScale, withDuration } from '@pyreon/kinetic-presets'
 
 // Quick preview card animation
-const previewCard = withDuration(compose(createFade(), createScale({ from: 0.98 })), 150, 100);
+const previewCard = withDuration(compose(createFade(), createScale({ from: 0.98 })), 150, 100)
 ```
 
 ## Creating Custom Presets from Factories
@@ -998,48 +992,48 @@ const previewCard = withDuration(compose(createFade(), createScale({ from: 0.98 
 ### Custom Preset from Scratch
 
 ```ts
-import type { Preset } from "@pyreon/kinetic-presets";
+import type { Preset } from '@pyreon/kinetic-presets'
 
 // Custom "grow from left edge" preset
 const growFromLeft: Preset = {
   enterStyle: {
     opacity: 0,
-    transform: "scaleX(0)",
-    transformOrigin: "left center",
+    transform: 'scaleX(0)',
+    transformOrigin: 'left center',
   },
   enterToStyle: {
     opacity: 1,
-    transform: "scaleX(1)",
-    transformOrigin: "left center",
+    transform: 'scaleX(1)',
+    transformOrigin: 'left center',
   },
-  enterTransition: "all 400ms cubic-bezier(0.22, 1, 0.36, 1)",
+  enterTransition: 'all 400ms cubic-bezier(0.22, 1, 0.36, 1)',
   leaveStyle: {
     opacity: 1,
-    transform: "scaleX(1)",
-    transformOrigin: "left center",
+    transform: 'scaleX(1)',
+    transformOrigin: 'left center',
   },
   leaveToStyle: {
     opacity: 0,
-    transform: "scaleX(0)",
-    transformOrigin: "left center",
+    transform: 'scaleX(0)',
+    transformOrigin: 'left center',
   },
-  leaveTransition: "all 250ms ease-in",
-};
+  leaveTransition: 'all 250ms ease-in',
+}
 ```
 
 ### Custom Factory Function
 
 ```ts
-import type { Preset } from "@pyreon/kinetic-presets";
+import type { Preset } from '@pyreon/kinetic-presets'
 
 interface ShakeOptions {
-  distance?: number;
-  duration?: number;
-  axis?: "x" | "y";
+  distance?: number
+  duration?: number
+  axis?: 'x' | 'y'
 }
 
-function createShakeIn({ distance = 10, duration = 400, axis = "x" }: ShakeOptions = {}): Preset {
-  const translate = axis === "x" ? "translateX" : "translateY";
+function createShakeIn({ distance = 10, duration = 400, axis = 'x' }: ShakeOptions = {}): Preset {
+  const translate = axis === 'x' ? 'translateX' : 'translateY'
   return {
     enterStyle: {
       opacity: 0,
@@ -1059,47 +1053,41 @@ function createShakeIn({ distance = 10, duration = 400, axis = "x" }: ShakeOptio
       transform: `${translate}(-${distance}px)`,
     },
     leaveTransition: `all ${duration * 0.6}ms ease-in`,
-  };
+  }
 }
 ```
 
 ### Building a Preset Library
 
 ```ts
-import {
-  createFade,
-  createScale,
-  compose,
-  withDuration,
-  withEasing,
-} from "@pyreon/kinetic-presets";
-import type { Preset } from "@pyreon/kinetic-presets";
+import { createFade, createScale, compose, withDuration, withEasing } from '@pyreon/kinetic-presets'
+import type { Preset } from '@pyreon/kinetic-presets'
 
 // Define your app's animation system
 export const animations = {
   // UI elements
-  tooltip: withDuration(createFade({ direction: "down", distance: 4 }), 150, 100),
-  dropdown: withDuration(createFade({ direction: "down", distance: 8 }), 200, 150),
+  tooltip: withDuration(createFade({ direction: 'down', distance: 4 }), 150, 100),
+  dropdown: withDuration(createFade({ direction: 'down', distance: 8 }), 200, 150),
   popover: withDuration(compose(createFade(), createScale({ from: 0.95 })), 250, 180),
 
   // Modals
   modal: withEasing(
     withDuration(compose(createFade(), createScale({ from: 0.95 })), 300, 200),
-    "cubic-bezier(0.34, 1.56, 0.64, 1)",
+    'cubic-bezier(0.34, 1.56, 0.64, 1)',
   ),
-  drawer: withDuration(createFade({ direction: "right", distance: 320 }), 300, 200),
+  drawer: withDuration(createFade({ direction: 'right', distance: 320 }), 300, 200),
 
   // Page transitions
-  pageForward: createFade({ direction: "left", distance: 30, duration: 350, leaveDuration: 200 }),
-  pageBack: createFade({ direction: "right", distance: 30, duration: 350, leaveDuration: 200 }),
+  pageForward: createFade({ direction: 'left', distance: 30, duration: 350, leaveDuration: 200 }),
+  pageBack: createFade({ direction: 'right', distance: 30, duration: 350, leaveDuration: 200 }),
 
   // Feedback
-  success: withEasing(createScale({ from: 0.3 }), "cubic-bezier(0.34, 1.56, 0.64, 1)"),
+  success: withEasing(createScale({ from: 0.3 }), 'cubic-bezier(0.34, 1.56, 0.64, 1)'),
   error: withEasing(
-    createFade({ direction: "down", distance: 8 }),
-    "cubic-bezier(0.68, -0.55, 0.265, 1.55)",
+    createFade({ direction: 'down', distance: 8 }),
+    'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
   ),
-} satisfies Record<string, Preset>;
+} satisfies Record<string, Preset>
 ```
 
 ## Performance Tips for Animations
@@ -1143,15 +1131,15 @@ Anything over 500ms starts to feel sluggish for frequent interactions.
 Respect `prefers-reduced-motion` for accessibility:
 
 ```ts
-import { fade, type Preset } from "@pyreon/kinetic-presets";
+import { fade, type Preset } from '@pyreon/kinetic-presets'
 
 const prefersReducedMotion =
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // Use a simple fade (or no animation) for reduced motion
 function safePreset(preset: Preset): Preset {
-  if (prefersReducedMotion) return fade; // or return {} for no animation
-  return preset;
+  if (prefersReducedMotion) return fade // or return {} for no animation
+  return preset
 }
 ```
 

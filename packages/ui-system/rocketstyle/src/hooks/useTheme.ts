@@ -1,16 +1,16 @@
-import { useContext } from "@pyreon/core";
-import { THEME_MODES_INVERSED } from "../constants";
-import { context } from "../context/context";
-import type { ThemeModeKeys } from "../types/theme";
+import { useContext } from '@pyreon/core'
+import { THEME_MODES_INVERSED } from '../constants'
+import { context } from '../context/context'
+import type { ThemeModeKeys } from '../types/theme'
 
 type Context = {
-  theme: Record<string, unknown>;
-  mode: ThemeModeKeys;
-  isDark: boolean;
-  isLight: boolean;
-};
+  theme: Record<string, unknown>
+  mode: ThemeModeKeys
+  isDark: boolean
+  isLight: boolean
+}
 
-type UseThemeAttrs = ({ inversed }: { inversed?: boolean | undefined }) => Context;
+type UseThemeAttrs = ({ inversed }: { inversed?: boolean | undefined }) => Context
 
 /**
  * Retrieves the current theme object and resolved mode from context.
@@ -26,26 +26,26 @@ type UseThemeAttrs = ({ inversed }: { inversed?: boolean | undefined }) => Conte
 const useThemeAttrs: UseThemeAttrs = ({ inversed }) => {
   // Keep the context object reference — read its properties lazily via getters.
   // PyreonUI provides { get mode() {...} } so each access re-evaluates.
-  const ctx = useContext<Context>(context) || ({} as Partial<Context>);
+  const ctx = useContext<Context>(context) || ({} as Partial<Context>)
 
   return {
     get theme() {
-      return ctx.theme ?? ({} as Record<string, unknown>);
+      return ctx.theme ?? ({} as Record<string, unknown>)
     },
     get mode() {
-      const ctxMode = ctx.mode ?? "light";
-      return inversed ? THEME_MODES_INVERSED[ctxMode] : ctxMode;
+      const ctxMode = ctx.mode ?? 'light'
+      return inversed ? THEME_MODES_INVERSED[ctxMode] : ctxMode
     },
     get isDark() {
-      const ctxDark = ctx.isDark ?? false;
-      return inversed ? !ctxDark : ctxDark;
+      const ctxDark = ctx.isDark ?? false
+      return inversed ? !ctxDark : ctxDark
     },
     get isLight() {
-      const ctxDark = ctx.isDark ?? false;
-      const isDark = inversed ? !ctxDark : ctxDark;
-      return !isDark;
+      const ctxDark = ctx.isDark ?? false
+      const isDark = inversed ? !ctxDark : ctxDark
+      return !isDark
     },
-  };
-};
+  }
+}
 
-export default useThemeAttrs;
+export default useThemeAttrs

@@ -11,19 +11,19 @@ bun add @pyreon/virtual @tanstack/virtual-core
 ## Quick Start
 
 ```tsx
-import { signal } from "@pyreon/reactivity";
-import { useVirtualizer } from "@pyreon/virtual";
+import { signal } from '@pyreon/reactivity'
+import { useVirtualizer } from '@pyreon/virtual'
 
 function VirtualList() {
-  const parentRef = signal<HTMLElement | null>(null);
-  const items = Array.from({ length: 10000 }, (_, i) => `Item ${i + 1}`);
+  const parentRef = signal<HTMLElement | null>(null)
+  const items = Array.from({ length: 10000 }, (_, i) => `Item ${i + 1}`)
 
   const { virtualItems, totalSize } = useVirtualizer(() => ({
     count: items.length,
     getScrollElement: () => parentRef(),
     estimateSize: () => 40,
     overscan: 5,
-  }));
+  }))
 
   return () => (
     <div ref={(el) => parentRef.set(el)} style="height: 400px; overflow-y: auto;">
@@ -38,7 +38,7 @@ function VirtualList() {
         ))}
       </div>
     </div>
-  );
+  )
 }
 ```
 
@@ -64,18 +64,18 @@ Options extend `VirtualizerOptions` from `@tanstack/virtual-core` with `observeE
 | `isScrolling`  | `Signal<boolean>`       | Whether the user is currently scrolling      |
 
 ```ts
-const parentRef = signal<HTMLDivElement | null>(null);
-const count = signal(1000);
+const parentRef = signal<HTMLDivElement | null>(null)
+const count = signal(1000)
 
 const { virtualItems, totalSize, isScrolling, instance } = useVirtualizer(() => ({
   count: count(),
   getScrollElement: () => parentRef(),
   estimateSize: () => 35,
   overscan: 5,
-}));
+}))
 
 // Scroll programmatically:
-instance.scrollToIndex(500);
+instance.scrollToIndex(500)
 ```
 
 ### `useWindowVirtualizer(options)`
@@ -90,12 +90,12 @@ Create a reactive virtualizer for window-based scrolling. The scroll element is 
 
 ```tsx
 function WindowList() {
-  const items = Array.from({ length: 50000 }, (_, i) => `Row ${i}`);
+  const items = Array.from({ length: 50000 }, (_, i) => `Row ${i}`)
 
   const { virtualItems, totalSize } = useWindowVirtualizer(() => ({
     count: items.length,
     estimateSize: () => 40,
-  }));
+  }))
 
   return () => (
     <div style={`height: ${totalSize()}px; position: relative;`}>
@@ -108,7 +108,7 @@ function WindowList() {
         </div>
       ))}
     </div>
-  );
+  )
 }
 ```
 
@@ -119,21 +119,21 @@ function WindowList() {
 Use `measureElement` for variable-height items that are measured after render.
 
 ```tsx
-import { measureElement } from "@pyreon/virtual";
+import { measureElement } from '@pyreon/virtual'
 
 const { virtualItems, totalSize, instance } = useVirtualizer(() => ({
   count: items.length,
   getScrollElement: () => parentRef(),
   estimateSize: () => 50,
   measureElement,
-}));
+}))
 
 // In render, set the ref on each item:
 virtualItems().map((row) => (
   <div key={row.key} ref={(el) => instance.measureElement(el)} data-index={row.index}>
     {items[row.index]}
   </div>
-));
+))
 ```
 
 ### Horizontal Lists
@@ -146,7 +146,7 @@ const { virtualItems, totalSize } = useVirtualizer(() => ({
   getScrollElement: () => parentRef(),
   estimateSize: () => 120,
   horizontal: true,
-}));
+}))
 ```
 
 ### Reactive Count
@@ -154,15 +154,15 @@ const { virtualItems, totalSize } = useVirtualizer(() => ({
 Since options are a function, changing the count signal re-calculates virtual items automatically.
 
 ```ts
-const filteredItems = signal(allItems);
+const filteredItems = signal(allItems)
 const { virtualItems } = useVirtualizer(() => ({
   count: filteredItems().length,
   getScrollElement: () => parentRef(),
   estimateSize: () => 40,
-}));
+}))
 
 // Updating filteredItems triggers recalculation
-filteredItems.set(allItems.filter((i) => i.includes(search())));
+filteredItems.set(allItems.filter((i) => i.includes(search())))
 ```
 
 ## Re-exports from `@tanstack/virtual-core`

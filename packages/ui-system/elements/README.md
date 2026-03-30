@@ -27,18 +27,18 @@ bun add @pyreon/elements
 The core layout primitive. Renders a three-section flex container with optional beforeContent and afterContent slots around the main content.
 
 ```ts
-import { Element } from "@pyreon/elements";
+import { Element } from '@pyreon/elements'
 
 Element({
-  tag: "button",
-  beforeContent: Icon({ name: "star" }),
-  afterContent: Icon({ name: "chevron-right" }),
-  direction: "inline",
-  alignX: "center",
-  alignY: "center",
+  tag: 'button',
+  beforeContent: Icon({ name: 'star' }),
+  afterContent: Icon({ name: 'chevron-right' }),
+  direction: 'inline',
+  alignX: 'center',
+  alignY: 'center',
   gap: 8,
-  children: "Click me",
-});
+  children: 'Click me',
+})
 ```
 
 When only content is present (no beforeContent/afterContent), Element optimizes by skipping the inner wrapper layer.
@@ -69,11 +69,11 @@ Each section (content, beforeContent, afterContent) has its own direction, align
 
 ```ts
 Element({
-  contentDirection: "rows",
-  contentAlignX: "center",
-  beforeContentAlignY: "top",
-  afterContentDirection: "inline",
-});
+  contentDirection: 'rows',
+  contentAlignX: 'center',
+  beforeContentAlignY: 'top',
+  afterContentDirection: 'inline',
+})
 ```
 
 ### Text
@@ -81,11 +81,11 @@ Element({
 Semantic text component with optional paragraph auto-wrapping.
 
 ```ts
-import { Text } from "@pyreon/elements";
+import { Text } from '@pyreon/elements'
 
-Text({ tag: "h1", children: "Heading" });
-Text({ paragraph: true, children: "This renders as a p tag." });
-Text({ tag: "strong", label: "Bold text" });
+Text({ tag: 'h1', children: 'Heading' })
+Text({ paragraph: true, children: 'This renders as a p tag.' })
+Text({ tag: 'strong', label: 'Bold text' })
 ```
 
 | Prop             | Type           | Description                                              |
@@ -100,37 +100,37 @@ Text({ tag: "strong", label: "Bold text" });
 Data-driven list renderer with positional metadata.
 
 ```ts
-import { List, Element } from "@pyreon/elements";
+import { List, Element } from '@pyreon/elements'
 
 // Simple string data
 List({
   component: Element,
-  data: ["Apple", "Banana", "Cherry"],
-  valueName: "label",
-});
+  data: ['Apple', 'Banana', 'Cherry'],
+  valueName: 'label',
+})
 
 // Object data with positional metadata
 List({
   component: ListItem,
   data: [
-    { id: 1, name: "Alice" },
-    { id: 2, name: "Bob" },
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' },
   ],
-  itemKey: "id",
+  itemKey: 'id',
   itemProps: (item, { first, last, odd, even, index }) => ({
     highlighted: first,
     separator: !last,
   }),
-});
+})
 
 // With root Element wrapper
 List({
   rootElement: true,
-  direction: "rows",
+  direction: 'rows',
   gap: 8,
   component: Card,
   data: items,
-});
+})
 ```
 
 | Prop          | Type                 | Description                                            |
@@ -152,16 +152,16 @@ List({
 Headless trigger+content pattern for dropdowns, tooltips, and modals.
 
 ```ts
-import { Overlay } from "@pyreon/elements";
+import { Overlay } from '@pyreon/elements'
 
 Overlay({
-  openOn: "click",
-  closeOn: "clickOutsideContent",
-  align: "bottom",
-  alignX: "left",
-  trigger: Button({ label: "Open menu" }),
+  openOn: 'click',
+  closeOn: 'clickOutsideContent',
+  align: 'bottom',
+  alignX: 'left',
+  trigger: Button({ label: 'Open menu' }),
   children: DropdownMenu({}),
-});
+})
 ```
 
 ### Portal
@@ -174,13 +174,13 @@ Every layout prop (direction, alignX, alignY, gap, block, equalCols) supports th
 
 ```ts
 // Single value — all breakpoints
-Element({ direction: "inline" });
+Element({ direction: 'inline' })
 
 // Array — mobile-first, maps to breakpoints by position
-Element({ direction: ["rows", "inline"] });
+Element({ direction: ['rows', 'inline'] })
 
 // Object — explicit breakpoints
-Element({ direction: { xs: "rows", md: "inline", lg: "inline" } });
+Element({ direction: { xs: 'rows', md: 'inline', lg: 'inline' } })
 ```
 
 ## Peer Dependencies

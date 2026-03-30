@@ -13,23 +13,23 @@ bun add @pyreon/charts echarts
 ## Quick Start
 
 ```tsx
-import { Chart } from "@pyreon/charts";
-import { signal } from "@pyreon/reactivity";
+import { Chart } from '@pyreon/charts'
+import { signal } from '@pyreon/reactivity'
 
 function RevenueChart() {
-  const revenue = signal([120, 200, 150, 80, 70, 110, 130]);
+  const revenue = signal([120, 200, 150, 80, 70, 110, 130])
 
   return (
     <Chart
       options={() => ({
-        xAxis: { type: "category", data: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"] },
-        yAxis: { type: "value" },
-        tooltip: { trigger: "axis" },
-        series: [{ type: "bar", data: revenue() }],
+        xAxis: { type: 'category', data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'] },
+        yAxis: { type: 'value' },
+        tooltip: { trigger: 'axis' },
+        series: [{ type: 'bar', data: revenue() }],
       })}
       style="height: 400px"
     />
-  );
+  )
 }
 ```
 
@@ -54,7 +54,7 @@ Component shorthand wrapping `useChart`.
 ```tsx
 <Chart
   options={() => ({
-    series: [{ type: "pie", data: segments() }],
+    series: [{ type: 'pie', data: segments() }],
     legend: {},
   })}
   theme="dark"
@@ -82,10 +82,10 @@ Core hook for programmatic control.
 ```tsx
 const chart = useChart(() => ({
   xAxis: { data: months() },
-  series: [{ type: "line", data: values(), smooth: true }],
-}));
+  series: [{ type: 'line', data: values(), smooth: true }],
+}))
 
-return <div ref={chart.ref} style="height: 400px" />;
+return <div ref={chart.ref} style="height: 400px" />
 ```
 
 **Returns:**

@@ -89,12 +89,12 @@ Dimension values can be static objects or dynamic callbacks that receive the com
 
 ```tsx
 const Card = rocketstyle(BaseCard).theme({
-  light: { background: "#fff", color: "#333" },
+  light: { background: '#fff', color: '#333' },
   dark: (props) => ({
-    background: props.elevated ? "#2d2d2d" : "#1a1a1a",
-    color: "#e0e0e0",
+    background: props.elevated ? '#2d2d2d' : '#1a1a1a',
+    color: '#e0e0e0',
   }),
-});
+})
 ```
 
 ## Chaining with Attrs
@@ -103,14 +103,14 @@ Rocketstyle builds on `@pyreon/attrs`, so you can chain `.attrs()` calls alongsi
 
 ```tsx
 const IconButton = rocketstyle(BaseButton)
-  .attrs({ "aria-label": "icon button" })
+  .attrs({ 'aria-label': 'icon button' })
   .theme({
-    primary: { background: "royalblue", color: "white" },
+    primary: { background: 'royalblue', color: 'white' },
   })
   .size({
-    sm: { width: "32px", height: "32px" },
-    md: { width: "40px", height: "40px" },
-  });
+    sm: { width: '32px', height: '32px' },
+    md: { width: '40px', height: '40px' },
+  })
 ```
 
 ## Provider and Context
@@ -118,13 +118,13 @@ const IconButton = rocketstyle(BaseButton)
 Rocketstyle components can be configured at the tree level using the built-in `Provider`:
 
 ```tsx
-import { Provider } from "@pyreon/rocketstyle";
+import { Provider } from '@pyreon/rocketstyle'
 
-<Provider value={{ theme: "dark", size: "sm" }}>
+;<Provider value={{ theme: 'dark', size: 'sm' }}>
   {/* All rocketstyle components inside inherit these defaults */}
   <Button>Uses dark theme, sm size</Button>
   <Card>Also dark and small</Card>
-</Provider>;
+</Provider>
 ```
 
 ## Integration with Styler

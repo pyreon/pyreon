@@ -1,36 +1,36 @@
 /** Props consumed by Element that should not be forwarded to the underlying DOM node. */
 export const RESERVED_PROPS = [
-  "innerRef",
-  "tag",
-  "block",
-  "label",
-  "children",
-  "beforeContent",
-  "afterContent",
+  'innerRef',
+  'tag',
+  'block',
+  'label',
+  'children',
+  'beforeContent',
+  'afterContent',
 
-  "equalCols",
-  "vertical",
-  "direction",
-  "alignX",
-  "alignY",
+  'equalCols',
+  'vertical',
+  'direction',
+  'alignX',
+  'alignY',
 
-  "css",
-  "contentCss",
-  "beforeContentCss",
-  "afterContentCss",
+  'css',
+  'contentCss',
+  'beforeContentCss',
+  'afterContentCss',
 
-  "contentDirection",
-  "contentAlignX",
-  "contentAlignY",
+  'contentDirection',
+  'contentAlignX',
+  'contentAlignY',
 
-  "beforeContentDirection",
-  "beforeContentAlignX",
-  "beforeContentAlignY",
+  'beforeContentDirection',
+  'beforeContentAlignX',
+  'beforeContentAlignY',
 
-  "afterContentDirection",
-  "afterContentAlignX",
-  "afterContentAlignY",
-] as const;
+  'afterContentDirection',
+  'afterContentAlignX',
+  'afterContentAlignY',
+] as const
 
 /**
  * HTML tags that are inline-level by default. When Element renders one of
@@ -69,7 +69,7 @@ export const INLINE_ELEMENTS = {
   script: true,
   sub: true,
   sup: true,
-};
+}
 
 /**
  * HTML void/self-closing elements that cannot have children. When Element
@@ -93,4 +93,4 @@ export const EMPTY_ELEMENTS = {
   source: true,
   track: true,
   wbr: true,
-};
+}

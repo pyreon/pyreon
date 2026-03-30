@@ -15,28 +15,28 @@ Configure Storybook to use the Pyreon renderer:
 ```ts
 // .storybook/main.ts
 export default {
-  stories: ["../src/**/*.stories.ts"],
-  framework: "@pyreon/storybook",
-};
+  stories: ['../src/**/*.stories.ts'],
+  framework: '@pyreon/storybook',
+}
 ```
 
 ## Quick Start
 
 ```tsx
-import type { Meta, StoryObj } from "@pyreon/storybook";
-import { Button } from "./Button";
+import type { Meta, StoryObj } from '@pyreon/storybook'
+import { Button } from './Button'
 
 const meta = {
   component: Button,
-  args: { label: "Click me" },
-} satisfies Meta<typeof Button>;
+  args: { label: 'Click me' },
+} satisfies Meta<typeof Button>
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+export default meta
+type Story = StoryObj<typeof meta>
 
 export const Primary: Story = {
-  args: { variant: "primary" },
-};
+  args: { variant: 'primary' },
+}
 
 export const AllVariants: Story = {
   render: (args) => (
@@ -45,7 +45,7 @@ export const AllVariants: Story = {
       <Button {...args} variant="secondary" />
     </div>
   ),
-};
+}
 ```
 
 ## API
@@ -114,7 +114,7 @@ Decorator function type for wrapping stories.
 ```tsx
 const withTheme: DecoratorFn<{ label: string }> = (storyFn, context) => (
   <div class="dark-theme">{storyFn(context.args, context)}</div>
-);
+)
 ```
 
 ### `StoryFn<TArgs>` / `StoryContext<TArgs>` / `InferProps<T>`
@@ -139,7 +139,7 @@ const meta = {
       <div style="padding: 20px; background: #f5f5f5;">{storyFn(context.args, context)}</div>
     ),
   ],
-} satisfies Meta<typeof Button>;
+} satisfies Meta<typeof Button>
 ```
 
 ### Interaction Tests
@@ -148,14 +148,14 @@ Use the `play` function for automated interaction testing.
 
 ```ts
 export const Clickable: Story = {
-  args: { label: "Click me" },
+  args: { label: 'Click me' },
   play: async ({ canvasElement, step }) => {
-    await step("click the button", async () => {
-      const button = canvasElement.querySelector("button")!;
-      button.click();
-    });
+    await step('click the button', async () => {
+      const button = canvasElement.querySelector('button')!
+      button.click()
+    })
   },
-};
+}
 ```
 
 ### Reactive Stories
@@ -163,19 +163,19 @@ export const Clickable: Story = {
 Use signals directly in stories to demonstrate interactive behavior.
 
 ```tsx
-import { signal, effect } from "@pyreon/storybook";
+import { signal, effect } from '@pyreon/storybook'
 
 export const Interactive: Story = {
   render: (args) => {
-    const count = signal(0);
+    const count = signal(0)
     return (
       <div>
         <p>{() => `Count: ${count()}`}</p>
         <button onClick={() => count.update((n) => n + 1)}>Increment</button>
       </div>
-    );
+    )
   },
-};
+}
 ```
 
 ## Re-exports
