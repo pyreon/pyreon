@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/kinetic",
-  "version": "0.11.7",
+  "version": "0.11.8",
   "description": "CSS-transition-based animation components for Pyreon",
   "license": "MIT",
   "repository": {

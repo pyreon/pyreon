@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/code",
-  "version": "0.11.7",
+  "version": "0.11.8",
   "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/code#readme",
   "bugs": {
