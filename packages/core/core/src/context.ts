@@ -99,3 +99,42 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void) {
     popContext()
   }
 }
+
+// ─── Context snapshot for deferred mounting ─────────────────────────────────
+
+export type ContextSnapshot = Map<symbol, unknown>[]
+
+/**
+ * Capture a snapshot of the current context stack.
+ *
+ * Used by `mountReactive` to preserve the context that was active when a
+ * reactive boundary (e.g. `<Show>`, `<For>`) was set up. When the boundary
+ * later mounts new children inside an effect, the snapshot is restored so
+ * those children can see ancestor providers via `useContext()`.
+ */
+export function captureContextStack(): ContextSnapshot {
+  // Shallow copy — each frame (Map) is shared by reference, which is
+  // correct because providers don't mutate frames after creation.
+  return [...getStack()]
+}
+
+/**
+ * Execute `fn()` with a previously captured context stack active.
+ * Restores the original stack after `fn()` completes (even on throw).
+ */
+export function restoreContextStack<T>(snapshot: ContextSnapshot, fn: () => T): T {
+  const stack = getStack()
+  const savedLength = stack.length
+
+  // Push all captured frames onto the current stack
+  for (const frame of snapshot) {
+    stack.push(frame)
+  }
+
+  try {
+    return fn()
+  } finally {
+    // Remove only the frames we pushed (preserve anything added by fn)
+    stack.length = savedLength
+  }
+}

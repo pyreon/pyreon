@@ -1,4 +1,5 @@
 import type { VNode, VNodeChild } from '@pyreon/core'
+import { captureContextStack, restoreContextStack } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
@@ -46,6 +47,12 @@ export function mountReactive(
   const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
+  // Capture the context stack at creation time — ancestor provide() calls
+  // have already run, so this snapshot contains all parent contexts.
+  // When the effect re-mounts children later (e.g. Show toggling on),
+  // we restore this snapshot so children see ancestor providers.
+  const contextSnapshot = captureContextStack()
+
   let currentCleanup: Cleanup = () => {
     /* noop */
   }
@@ -67,7 +74,12 @@ export function mountReactive(
       )
     }
     if (value != null && value !== false) {
-      const cleanup = mount(value, parent, marker)
+      // Restore ancestor context so children mounted here can read
+      // provider values via useContext() — without this, <Show> children
+      // wouldn't inherit context from components above the Show boundary.
+      const cleanup = restoreContextStack(contextSnapshot, () =>
+        mount(value, parent, marker),
+      )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.
       // In that case, discard our stale cleanup rather than overwriting the one

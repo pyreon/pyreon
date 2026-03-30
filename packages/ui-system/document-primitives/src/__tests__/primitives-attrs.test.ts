@@ -50,17 +50,10 @@ const withThemeContext = (fn: () => any) => {
   }
 }
 
-/** Unwrap reactive accessors (EnhancedComponent returns a function for mode switching). */
-const unwrap = (val: any): any => {
-  let result = val
-  while (typeof result === 'function' && !result.IS_ROCKETSTYLE) result = result()
-  return result
-}
-
 /** Call a rocketstyle component and return its rendered VNode props. */
 const renderProps = (Component: any, props: Record<string, any> = {}) => {
   return withThemeContext(() => {
-    const vnode = unwrap(Component(props))
+    const vnode = Component(props)
     return vnode?.props ?? vnode
   })
 }

@@ -17,6 +17,7 @@
  */
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -124,17 +125,61 @@ const createStyledComponent = (
   }
 
   // DYNAMIC PATH: resolve CSS on every render with theme/props.
+  // When $rocketstyle is a function accessor (from rocketstyle's
+  // EnhancedComponent), we resolve it initially for the first class,
+  // then set up an effect to reactively swap classes when mode changes.
+  // This avoids VNode remounting — only classList updates on the DOM element.
   const DynamicStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
     const theme = useTheme()
-    const allProps = { ...rawProps, theme }
-    const cssText = normalizeCSS(resolve(strings, values, allProps))
+    const $rs = rawProps.$rocketstyle
+    const isReactiveRS = typeof $rs === 'function'
 
-    const className = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
+    // Resolve initial $rocketstyle value
+    const resolvedRS = isReactiveRS ? $rs() : $rs
+    const initialProps = isReactiveRS ? { ...rawProps, $rocketstyle: resolvedRS } : rawProps
+    const cssText = normalizeCSS(resolve(strings, values, { ...initialProps, theme }))
+    const initialClassName = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
 
     const finalTag = rawProps.as || tag
     const isDOM = typeof finalTag === 'string'
-    const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
+    // Track mounted element for reactive class updates
+    let el: Element | null = null
+    let currentClassName = initialClassName
+
+    const originalRef = rawProps.ref
+    const refCallback = (node: Element | null) => {
+      el = node
+      if (originalRef) {
+        if (typeof originalRef === 'function') originalRef(node)
+        else if (originalRef && typeof originalRef === 'object') originalRef.current = node
+      }
+    }
+
+    const finalProps = buildProps(
+      { ...rawProps, ref: isReactiveRS ? refCallback : rawProps.ref },
+      initialClassName,
+      isDOM,
+      customFilter,
+    )
+
+    // Set up reactive class swap when $rocketstyle is a function accessor
+    if (isReactiveRS) {
+      effect(() => {
+        const newRS = $rs() // reactive read — tracks mode dependency
+        const newResolvedProps = { ...rawProps, $rocketstyle: newRS }
+        const newCss = normalizeCSS(resolve(strings, values, { ...newResolvedProps, theme }))
+        const newClass = newCss.length > 0 ? sheet.insert(newCss, boost) : ''
+
+        if (el && newClass !== currentClassName) {
+          if (currentClassName) el.classList.remove(currentClassName)
+          if (newClass) el.classList.add(newClass)
+          currentClassName = newClass
+        }
+      })
+    }
+
+    // STATIC VNode — created once, never remounted on mode change
     return h(
       finalTag as string,
       finalProps,
