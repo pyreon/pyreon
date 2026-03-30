@@ -3,13 +3,24 @@ import { MergeView } from "@codemirror/merge"
 import { EditorState, type Extension } from "@codemirror/state"
 import { EditorView } from "@codemirror/view"
 import type { VNodeChild } from "@pyreon/core"
+import { onUnmount } from "@pyreon/core"
 import type { Signal } from "@pyreon/reactivity"
+import { watch } from "@pyreon/reactivity"
 import { loadLanguage } from "../languages"
 import { resolveTheme } from "../themes"
 import type { DiffEditorProps } from "../types"
 
+const readText = (value: string | Signal<string>): string =>
+  typeof value === "string" ? value : value()
+
+const isSignal = (value: string | Signal<string>): value is Signal<string> =>
+  typeof value === "function"
+
 /**
  * Side-by-side or inline diff editor using @codemirror/merge.
+ *
+ * Supports reactive `original` and `modified` props — pass a Signal<string>
+ * and the diff view updates automatically when the signal changes.
  *
  * @example
  * ```tsx
@@ -23,14 +34,10 @@ import type { DiffEditorProps } from "../types"
  * ```
  */
 export function DiffEditor(props: DiffEditorProps): VNodeChild {
-  const {
-    original,
-    modified,
-    language = "plain",
-    theme = "light",
-    readOnly = true,
-    inline = false,
-  } = props
+  const { original, modified, language = "plain", theme = "light", readOnly = true } = props
+
+  let mergeView: MergeView | null = null
+  const cleanups: (() => void)[] = []
 
   const containerRef = async (el: Element | null) => {
     if (!el) return
@@ -46,42 +53,48 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
       EditorState.readOnly.of(readOnly),
     ]
 
-    const originalText = typeof original === "string" ? original : (original as Signal<string>)()
-    const modifiedText = typeof modified === "string" ? modified : (modified as Signal<string>)()
+    const originalText = readText(original)
+    const modifiedText = readText(modified)
 
     // Clear previous content
     ;(el as HTMLElement).innerHTML = ""
 
-    if (inline) {
-      // Unified/inline diff view
-      new MergeView({
-        a: {
-          doc: originalText,
-          extensions,
-        },
-        b: {
-          doc: modifiedText,
-          extensions,
-        },
-        parent: el as HTMLElement,
-        collapseUnchanged: { margin: 3, minSize: 4 },
+    mergeView = new MergeView({
+      a: { doc: originalText, extensions },
+      b: { doc: modifiedText, extensions },
+      parent: el as HTMLElement,
+      collapseUnchanged: { margin: 3, minSize: 4 },
+    })
+
+    // Track signal changes and update MergeView editors reactively
+    if (isSignal(original)) {
+      const stop = watch(original, (text) => {
+        if (!mergeView) return
+        const editor = mergeView.a
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: text },
+        })
       })
-    } else {
-      // Side-by-side diff
-      new MergeView({
-        a: {
-          doc: originalText,
-          extensions,
-        },
-        b: {
-          doc: modifiedText,
-          extensions,
-        },
-        parent: el as HTMLElement,
-        collapseUnchanged: { margin: 3, minSize: 4 },
+      cleanups.push(stop)
+    }
+
+    if (isSignal(modified)) {
+      const stop = watch(modified, (text) => {
+        if (!mergeView) return
+        const editor = mergeView.b
+        editor.dispatch({
+          changes: { from: 0, to: editor.state.doc.length, insert: text },
+        })
       })
+      cleanups.push(stop)
     }
   }
+
+  onUnmount(() => {
+    for (const cleanup of cleanups) cleanup()
+    mergeView?.destroy()
+    mergeView = null
+  })
 
   const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ""}`
 

@@ -1,4 +1,4 @@
-import { computed, signal } from "@pyreon/reactivity"
+import { batch, computed, signal } from "@pyreon/reactivity"
 import type { PermissionMap, Permissions, PermissionValue } from "./types"
 
 /**
@@ -106,17 +106,21 @@ export function createPermissions(initial?: PermissionMap): Permissions {
   }
 
   can.set = (permissions: PermissionMap): void => {
-    store.set(toMap(permissions))
-    version.update((v) => v + 1)
+    batch(() => {
+      store.set(toMap(permissions))
+      version.update((v) => v + 1)
+    })
   }
 
   can.patch = (permissions: PermissionMap): void => {
-    const current = store.peek()
-    for (const [key, value] of Object.entries(permissions)) {
-      current.set(key, value)
-    }
-    store.set(current)
-    version.update((v) => v + 1)
+    batch(() => {
+      const current = store.peek()
+      for (const [key, value] of Object.entries(permissions)) {
+        current.set(key, value)
+      }
+      store.set(current)
+      version.update((v) => v + 1)
+    })
   }
 
   can.granted = computed(() => {
