@@ -17,7 +17,6 @@
  * @module
  */
 
-import { readFileSync } from 'node:fs'
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
