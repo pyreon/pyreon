@@ -1,4 +1,4 @@
-import { createContext, useContext } from '@pyreon/core'
+import { createContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { Plugin } from 'vite'
 
@@ -176,11 +176,11 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
   return {
     name: 'pyreon-zero-i18n-routing',
 
-    // Extend route generation to create locale-prefixed routes
-    configResolved() {
-      // Route duplication happens at the fs-router level
-      // This plugin provides middleware for runtime locale detection
-    },
+    // Route duplication is NOT handled here. The fs-router's `scanRouteFiles`
+    // consumes the i18n config to duplicate routes per locale at build time.
+    // This plugin only provides: (1) the server middleware for locale detection
+    // and (2) the runtime hooks (useLocale, setLocale) for client-side use.
+    configResolved() {},
 
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
@@ -221,6 +221,9 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
         ;(req as any).__locale = locale
         ;(req as any).__localeContext = createLocaleContext(locale, url, config)
 
+        // Update the module-level signal so useLocale() returns the correct value
+        localeSignal.set(locale)
+
         next()
       })
     },
@@ -248,8 +251,9 @@ export const localeSignal = signal('en')
 /**
  * Read the current locale reactively.
  *
- * In SSR: reads from context (set by i18nRouting middleware).
- * In CSR: reads from the locale signal.
+ * Returns the locale signal value directly — reactive in both SSR and CSR.
+ * The server middleware sets `localeSignal` per-request, and client-side
+ * `setLocale()` updates it as well.
  *
  * @example
  * ```tsx
@@ -257,7 +261,7 @@ export const localeSignal = signal('en')
  * ```
  */
 export function useLocale(): string {
-  return useContext(LocaleCtx)
+  return localeSignal()
 }
 
 /**
@@ -279,7 +283,7 @@ export function setLocale(
     document.cookie = `${config.cookieName ?? 'locale'}=${locale}; path=/; max-age=31536000`
   }
 
-  // Navigate to localized URL
+  // Navigate to localized URL — use pushState to avoid full page reload
   if (typeof window !== 'undefined') {
     const strategy = config.strategy ?? 'prefix-except-default'
     const { pathWithoutLocale } = extractLocaleFromPath(
@@ -288,6 +292,8 @@ export function setLocale(
       config.defaultLocale,
     )
     const newPath = buildLocalePath(pathWithoutLocale, locale, config.defaultLocale, strategy)
-    window.location.pathname = newPath
+    window.history.pushState(null, '', newPath)
+    // Dispatch popstate so @pyreon/router picks up the URL change
+    window.dispatchEvent(new PopStateEvent('popstate'))
   }
 }

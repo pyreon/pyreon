@@ -3,6 +3,16 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { Plugin } from 'vite'
 
+let sharpWarned = false
+function warnSharpMissing() {
+  if (sharpWarned) return
+  sharpWarned = true
+  // biome-ignore lint/suspicious/noConsole: intentional build-time warning
+  console.warn(
+    '\n[zero:favicon] sharp not installed — favicons will not be generated. Install for full support: bun add -D sharp\n',
+  )
+}
+
 // ─── Favicon generation plugin ──────────────────────────────────────────────
 //
 // Generates all favicon formats from a single source file (SVG or PNG):
@@ -306,6 +316,7 @@ async function resizeToPng(input: string, size: number): Promise<Uint8Array | nu
     const sharp = await import('sharp').then((m) => m.default ?? m)
     return await sharp(input).resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer()
   } catch {
+    warnSharpMissing()
     return null
   }
 }
@@ -322,16 +333,18 @@ async function generateIco(input: string): Promise<Uint8Array | null> {
       { buffer: png32, size: 32 },
     ])
   } catch {
+    warnSharpMissing()
     return null
   }
 }
 
-interface IcoEntry {
+export interface IcoEntry {
   buffer: Buffer
   size: number
 }
 
-function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
+/** @internal Exported for testing */
+export function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
   const headerSize = 6
   const dirEntrySize = 16
   const dirSize = dirEntrySize * entries.length

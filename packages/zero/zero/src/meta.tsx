@@ -62,22 +62,50 @@ const resolveStr = (v: string | (() => string) | undefined): string | undefined 
 /**
  * Declarative meta component for SSR-compatible page metadata.
  *
+ * Supports reactive title/description — when passed as `() => string` accessors,
+ * they are forwarded to `useHead()` as a reactive getter so updates propagate
+ * automatically via signal tracking.
+ *
  * @example
  * ```tsx
  * <Meta title="My Page" description="..." image="/og.jpg" canonical="https://..." />
  * ```
+ *
+ * @example Reactive title
+ * ```tsx
+ * const count = signal(0)
+ * <Meta title={() => `${count()} items`} />
+ * ```
  */
 export function Meta(props: MetaProps): VNodeChild {
-  const title = resolveStr(props.title)
-  const description = resolveStr(props.description)
-  const tags = buildMetaTags({ ...props, title, description })
+  const hasReactiveTitle = typeof props.title === 'function'
+  const hasReactiveDescription = typeof props.description === 'function'
 
-  useHead({
-    title,
-    meta: tags.meta,
-    link: tags.link,
-    script: tags.script,
-  })
+  // If title or description are reactive accessors, pass a getter to useHead
+  // so it re-evaluates when the signals change.
+  if (hasReactiveTitle || hasReactiveDescription) {
+    useHead(() => {
+      const title = resolveStr(props.title)
+      const description = resolveStr(props.description)
+      const tags = buildMetaTags({ ...props, title, description })
+      return {
+        title,
+        meta: tags.meta,
+        link: tags.link,
+        script: tags.script,
+      }
+    })
+  } else {
+    const title = resolveStr(props.title)
+    const description = resolveStr(props.description)
+    const tags = buildMetaTags({ ...props, title, description })
+    useHead({
+      title,
+      meta: tags.meta,
+      link: tags.link,
+      script: tags.script,
+    })
+  }
 
   return props.children ?? null
 }

@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { buildMetaTags } from '../meta'
+
+// Mock @pyreon/head to capture useHead calls without requiring HeadProvider
+const useHeadCalls: unknown[] = []
+vi.mock('@pyreon/head', () => ({
+  useHead: (input: unknown) => { useHeadCalls.push(input) },
+}))
 
 describe('buildMetaTags', () => {
   it('builds basic meta tags', () => {
@@ -140,5 +146,54 @@ describe('buildMetaTags', () => {
     const ogAlternates = tags.meta.filter((m) => m.property === 'og:locale:alternate')
     expect(ogAlternates.length).toBe(1)
     expect(ogAlternates[0]?.content).toBe('en')
+  })
+})
+
+describe('Meta component', () => {
+  it('calls useHead with static title and meta tags', async () => {
+    useHeadCalls.length = 0
+    const { Meta } = await import('../meta')
+
+    Meta({
+      title: 'Test Page',
+      description: 'A test description',
+    })
+
+    expect(useHeadCalls.length).toBe(1)
+    const call = useHeadCalls[0] as { title?: string; meta?: Array<Record<string, string>> }
+    expect(call.title).toBe('Test Page')
+    expect(call.meta?.find((m) => m.name === 'description')?.content).toBe('A test description')
+  })
+
+  it('passes a getter to useHead when title is a reactive accessor', async () => {
+    useHeadCalls.length = 0
+    const { Meta } = await import('../meta')
+
+    Meta({
+      title: () => 'Dynamic Title',
+    })
+
+    expect(useHeadCalls.length).toBe(1)
+    // When title is a function, Meta should pass a getter (function) to useHead
+    expect(typeof useHeadCalls[0]).toBe('function')
+    // Calling the getter should resolve the title
+    const result = (useHeadCalls[0] as () => { title?: string })()
+    expect(result.title).toBe('Dynamic Title')
+  })
+
+  it('returns children when provided', async () => {
+    useHeadCalls.length = 0
+    const { Meta } = await import('../meta')
+
+    const result = Meta({ title: 'Page', children: 'child content' })
+    expect(result).toBe('child content')
+  })
+
+  it('returns null when no children', async () => {
+    useHeadCalls.length = 0
+    const { Meta } = await import('../meta')
+
+    const result = Meta({ title: 'Page' })
+    expect(result).toBe(null)
   })
 })

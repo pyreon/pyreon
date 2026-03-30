@@ -1,4 +1,62 @@
 import { describe, expect, it } from "vitest"
+import { createIcoFromPngs } from '../favicon'
+
+describe('createIcoFromPngs', () => {
+  it('produces valid ICO header bytes', () => {
+    // Create minimal fake PNG buffers
+    const fakePng16 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    const fakePng32 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00])
+
+    const ico = createIcoFromPngs([
+      { buffer: fakePng16 as Buffer, size: 16 },
+      { buffer: fakePng32 as Buffer, size: 32 },
+    ])
+
+    // ICO header: reserved = 0x0000, type = 0x0100 (icon, little-endian)
+    expect(ico[0]).toBe(0x00) // reserved low
+    expect(ico[1]).toBe(0x00) // reserved high
+    expect(ico[2]).toBe(0x01) // type low (icon)
+    expect(ico[3]).toBe(0x00) // type high
+    // Image count = 2 (little-endian)
+    expect(ico[4]).toBe(0x02)
+    expect(ico[5]).toBe(0x00)
+  })
+
+  it('encodes directory entry sizes correctly', () => {
+    const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const ico = createIcoFromPngs([
+      { buffer: fakePng as Buffer, size: 16 },
+    ])
+
+    // First directory entry starts at byte 6
+    expect(ico[6]).toBe(16) // width
+    expect(ico[7]).toBe(16) // height
+  })
+
+  it('encodes size 256 as 0 per ICO spec', () => {
+    const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const ico = createIcoFromPngs([
+      { buffer: fakePng as Buffer, size: 256 },
+    ])
+
+    // 256 is stored as 0 in ICO format
+    expect(ico[6]).toBe(0)  // width
+    expect(ico[7]).toBe(0)  // height
+  })
+
+  it('includes PNG data after header and directory', () => {
+    const fakePng = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    const ico = createIcoFromPngs([
+      { buffer: fakePng as Buffer, size: 32 },
+    ])
+
+    // header(6) + 1 dir entry(16) = 22, data starts there
+    expect(ico[22]).toBe(0x89) // PNG magic byte
+    expect(ico[23]).toBe(0x50)
+    expect(ico.length).toBe(6 + 16 + 4)
+  })
+})
+
 describe('faviconPlugin', () => {
   it('exports faviconPlugin function', async () => {
     const { faviconPlugin } = await import('../favicon')
