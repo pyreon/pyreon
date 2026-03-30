@@ -29,12 +29,6 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
     const focus = signal(false)
     const pressed = signal(false)
 
-    const pseudoState = () => ({
-      hover: hover(),
-      focus: focus(),
-      pressed: pressed(),
-    })
-
     const events = {
       onMouseEnter: (e: MouseEvent) => {
         hover.set(true)
@@ -63,9 +57,25 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
       },
     }
 
+    // Use getters so pseudo-state signals are read lazily by consumers
+    // inside their own reactive scopes — NOT eagerly during parent setup.
+    // Without getters, hover()/focus()/pressed() reads here would register
+    // as dependencies of any parent effect, causing cascading re-renders
+    // on every mouse event.
     const updatedState = {
       ...$rocketstate,
-      pseudo: { ...$rocketstate?.pseudo, ...pseudoState() },
+      pseudo: {
+        ...$rocketstate?.pseudo,
+        get hover() {
+          return hover()
+        },
+        get focus() {
+          return focus()
+        },
+        get pressed() {
+          return pressed()
+        },
+      },
     }
 
     // Provide local context for child rocketstyle components
