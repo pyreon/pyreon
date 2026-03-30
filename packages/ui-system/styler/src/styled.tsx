@@ -132,11 +132,20 @@ const createStyledComponent = (
   const DynamicStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
     const theme = useTheme()
     const $rs = rawProps.$rocketstyle
+    const $rsState = rawProps.$rocketstate
     const isReactiveRS = typeof $rs === 'function'
+    const isReactiveState = typeof $rsState === 'function'
 
-    // Resolve initial $rocketstyle value
+    // Resolve initial accessor values — both $rocketstyle and $rocketstate
+    // must be plain objects when passed to resolve(), because .styles()
+    // interpolation functions destructure them directly.
     const resolvedRS = isReactiveRS ? $rs() : $rs
-    const initialProps = isReactiveRS ? { ...rawProps, $rocketstyle: resolvedRS } : rawProps
+    const resolvedState = isReactiveState ? $rsState() : $rsState
+    const initialProps = {
+      ...rawProps,
+      ...(isReactiveRS ? { $rocketstyle: resolvedRS } : {}),
+      ...(isReactiveState ? { $rocketstate: resolvedState } : {}),
+    }
     const cssText = normalizeCSS(resolve(strings, values, { ...initialProps, theme }))
     const initialClassName = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
 
@@ -172,11 +181,16 @@ const createStyledComponent = (
     // cascade across 50+ components on any signal change.
     if (isReactiveRS) {
       effect(() => {
-        const newRS = $rs() // TRACKED: subscribes to mode signal only
+        const newRS = $rs() // TRACKED: subscribes to mode + dimension signals
+        const newState = isReactiveState ? $rsState() : $rsState // TRACKED: dimension signals
 
         runUntracked(() => {
           // UNTRACKED: resolve + DOM mutation — no additional subscriptions
-          const newResolvedProps = { ...rawProps, $rocketstyle: newRS }
+          const newResolvedProps = {
+            ...rawProps,
+            $rocketstyle: newRS,
+            $rocketstate: newState,
+          }
           const newCss = normalizeCSS(
             resolve(strings, values, { ...newResolvedProps, theme }),
           )
