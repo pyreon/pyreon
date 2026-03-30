@@ -8,10 +8,9 @@ export type UseTimeout = (
 /**
  * Declarative `setTimeout` with auto-cleanup.
  * Pass `null` as `delay` to disable. Returns `reset` and `clear` controls.
- * Always calls the latest callback (no stale closures).
+ * In Pyreon, components run once — callback is captured at setup time.
  */
 export const useTimeout: UseTimeout = (callback, delay) => {
-  const currentCallback = callback
   let timer: ReturnType<typeof setTimeout> | null = null
 
   const clear = () => {
@@ -26,7 +25,7 @@ export const useTimeout: UseTimeout = (callback, delay) => {
     if (delay !== null) {
       timer = setTimeout(() => {
         timer = null
-        currentCallback()
+        callback()
       }, delay)
     }
   }
