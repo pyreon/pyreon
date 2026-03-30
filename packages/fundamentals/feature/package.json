@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/feature",
-  "version": "0.11.5",
+  "version": "0.11.6",
   "description": "Schema-driven feature primitives — define once, get CRUD hooks, forms, tables, and stores",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/feature#readme",
   "bugs": {
