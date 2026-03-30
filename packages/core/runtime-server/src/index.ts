@@ -444,7 +444,7 @@ function toAttrName(key: string): string {
 
 function normalizeStyle(value: unknown): string {
   if (typeof value === 'string') return value
-  if (typeof value === 'object' && value !== null) {
+  if (value != null && typeof value === 'object') {
     return Object.entries(value as Record<string, unknown>)
       .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
       .join('; ')
