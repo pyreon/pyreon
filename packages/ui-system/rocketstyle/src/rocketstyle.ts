@@ -142,18 +142,16 @@ const rocketComponent: RocketComponent = (options) => {
     // (signals, getters) produce updated dimension values.
     // --------------------------------------------------
     const $rocketstyleAccessor = () => {
-      // Merge props fresh — if parent passes reactive accessors,
-      // spreading them here evaluates them in this reactive scope.
-      const { pseudo, ...mergeProps } = {
-        ...localCtx,
-        ...props,
-      }
-
+      // Only read mode and dimension props — NOT pseudo state.
+      // Pseudo state (hover, focus, pressed) is read by .styles()
+      // via $rocketstate inside runUntracked(). Reading pseudo signals
+      // here would subscribe this accessor to hover/focus/pressed,
+      // causing CSS recomputation on every mouse event.
       const mode = themeAttrs.mode // reactive: tracks mode signal
 
-      // Resolve active dimensions from current prop values
+      // Resolve active dimensions from props (not localCtx which has pseudo getters)
       const rocketstate = _calculateStylingAttrs({
-        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
         dimensions,
       })
 
@@ -183,23 +181,24 @@ const rocketComponent: RocketComponent = (options) => {
     // $rocketstate as a FUNCTION ACCESSOR — reactive on prop changes.
     // Re-evaluates active dimensions + pseudo state from current props.
     // --------------------------------------------------
+    // Capture pseudo from localCtx once at setup — pseudo properties are
+    // getters (from createLocalProvider) that read signals lazily.
+    // Passing them through preserves reactivity without subscribing here.
+    const localPseudo = localCtx?.pseudo
+    const propPseudo = pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS])
+
     const $rocketstateAccessor = () => {
-      const { pseudo, ...mergeProps } = {
-        ...localCtx,
-        ...props,
-      }
-
-      const pseudoRocketstate = {
-        ...pseudo,
-        ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
-      }
-
       const rocketstate = _calculateStylingAttrs({
-        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
         dimensions,
       })
 
-      return { ...rocketstate, pseudo: pseudoRocketstate }
+      // Pseudo state uses getter properties — they're evaluated lazily
+      // by .styles() inside runUntracked(), not here.
+      return {
+        ...rocketstate,
+        pseudo: { ...localPseudo, ...propPseudo },
+      }
     }
 
     // --------------------------------------------------
