@@ -7,16 +7,10 @@ import { getPreset } from "./config/presets"
 import { allRules } from "./rules/index"
 import { applyFixes, lintFile } from "./runner"
 import type { LintConfig, LintFileResult, LintOptions, LintResult, RuleMeta } from "./types"
-
-const JS_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"])
+import { hasJsExtension } from "./utils/index"
 
 function isHiddenOrVendor(entry: string): boolean {
   return entry.startsWith(".") || entry === "node_modules" || entry === "lib" || entry === "dist"
-}
-
-function hasJsExtension(filePath: string): boolean {
-  const ext = filePath.slice(filePath.lastIndexOf("."))
-  return JS_EXTENSIONS.has(ext)
 }
 
 function matchesPatterns(
