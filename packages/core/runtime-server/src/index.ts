@@ -444,15 +444,13 @@ function toAttrName(key: string): string {
 
 function normalizeStyle(value: unknown): string {
   if (typeof value === 'string') return value
-  if (
-    typeof value === 'object' &&
-    value !== null &&
-    (Object.getPrototypeOf(value) === Object.prototype ||
-      Object.getPrototypeOf(value) === null)
-  ) {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
-      .join('; ')
+  if (typeof value === 'object' && value !== null) {
+    const proto = Object.getPrototypeOf(value)
+    if (proto === Object.prototype || proto === null) {
+      return Object.entries(value as Record<string, unknown>)
+        .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
+        .join('; ')
+    }
   }
   return ''
 }
