@@ -530,7 +530,7 @@ export function __hmr_signal(moduleId, name, signalFn, initialValue) {
   const registry = getRegistry();
   const saved = registry.get(moduleId);
   const value = saved?.has(name) ? saved.get(name) : initialValue;
-  const s = signalFn(value);
+  const s = signalFn(value, { name: name });
 
   let mod = moduleSignals.get(moduleId);
   if (!mod) {

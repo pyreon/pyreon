@@ -7,13 +7,7 @@ import { formatCompact, formatJSON, formatText } from "./reporter"
 import { allRules } from "./rules/index"
 import { lintFile } from "./runner"
 import type { LintConfig, LintOptions, LintResult, Severity } from "./types"
-
-const JS_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"])
-
-function hasJsExtension(filePath: string): boolean {
-  const ext = filePath.slice(filePath.lastIndexOf("."))
-  return JS_EXTENSIONS.has(ext)
-}
+import { hasJsExtension } from "./utils/index"
 
 function formatOutput(result: LintResult, format: string): string {
   if (format === "json") return formatJSON(result)

@@ -9,9 +9,8 @@ import type {
   Severity,
   VisitorCallbacks,
 } from "./types"
+import { JS_EXTENSIONS } from "./utils/index"
 import { LineIndex } from "./utils/source"
-
-const JS_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"])
 
 function getExtension(filePath: string): string {
   const lastDot = filePath.lastIndexOf(".")

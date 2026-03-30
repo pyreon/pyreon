@@ -4,7 +4,8 @@ import { formatCompact, formatJSON, formatText } from "./reporter"
 import type { PresetName, Severity } from "./types"
 import { watchAndLint } from "./watcher"
 
-const VERSION = "0.10.0"
+// Read version from package.json at build time; fallback for dev
+const VERSION = "0.11.4"
 
 function printUsage() {
   console.log(`
