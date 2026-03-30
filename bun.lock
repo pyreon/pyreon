@@ -702,6 +702,15 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/internals/test-utils": {
+      "name": "@pyreon/test-utils",
+      "version": "0.11.5",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+      },
+    },
     "packages/tools/cli": {
       "name": "@pyreon/cli",
       "version": "0.11.5",
@@ -788,15 +797,6 @@
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "storybook": ">=8.0.0",
-      },
-    },
-    "packages/tools/test-utils": {
-      "name": "@pyreon/test-utils",
-      "version": "0.11.5",
-      "dependencies": {
-        "@pyreon/core": "workspace:^",
-        "@pyreon/rocketstyle": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
       },
     },
     "packages/tools/typescript": {
@@ -1768,7 +1768,7 @@
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 
-    "@pyreon/test-utils": ["@pyreon/test-utils@workspace:packages/tools/test-utils"],
+    "@pyreon/test-utils": ["@pyreon/test-utils@workspace:packages/internals/test-utils"],
 
     "@pyreon/toast": ["@pyreon/toast@workspace:packages/fundamentals/toast"],
 
