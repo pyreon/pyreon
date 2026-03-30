@@ -62,10 +62,13 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
     // Without getters, hover()/focus()/pressed() reads here would register
     // as dependencies of any parent effect, causing cascading re-renders
     // on every mouse event.
+    // Resolve $rocketstate if it's a function accessor (from EnhancedComponent)
+    const resolvedState =
+      typeof $rocketstate === 'function' ? $rocketstate() : $rocketstate
     const updatedState = {
-      ...$rocketstate,
+      ...resolvedState,
       pseudo: {
-        ...$rocketstate?.pseudo,
+        ...resolvedState?.pseudo,
         get hover() {
           return hover()
         },

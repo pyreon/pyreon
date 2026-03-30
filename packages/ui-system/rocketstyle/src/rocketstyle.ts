@@ -110,41 +110,24 @@ const rocketComponent: RocketComponent = (options) => {
     const themeAttrs = useTheme(options)
 
     // --------------------------------------------------
-    // Static setup — runs once at component mount
-    // --------------------------------------------------
-    const { pseudo, ...mergeProps } = {
-      ...localCtx,
-      ...props,
-    }
-
-    const pseudoRocketstate = {
-      ...pseudo,
-      ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
-    }
-
-    // --------------------------------------------------
-    // Static theme structure — computed once at mount, doesn't change with mode.
-    // Only the mode-dependent resolution is reactive (via $rocketstyle accessor).
+    // Theme structure — cached by theme object identity.
+    // Theme object itself doesn't change (enrichTheme produces a stable ref),
+    // only mode switches change which mode-variant is resolved.
     // --------------------------------------------------
     const theme = themeAttrs.theme
 
-    // BASE / DEFAULT THEME Object (cached by theme identity)
     const baseThemeHelper = ThemeManager.baseTheme
     if (!baseThemeHelper.has(theme)) {
       baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
     }
     const baseTheme = baseThemeHelper.get(theme)
 
-    // DIMENSION(S) THEMES Object (cached by theme identity)
     const dimHelper = ThemeManager.dimensionsThemes
     if (!dimHelper.has(theme)) {
       dimHelper.set(theme, getDimensionThemes(theme, options))
     }
     const themes = dimHelper.get(theme)
 
-    // --------------------------------------------------
-    // dimension map & reserved prop names
-    // --------------------------------------------------
     const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
       themes,
       useBooleans: options.useBooleans,
@@ -153,23 +136,28 @@ const rocketComponent: RocketComponent = (options) => {
     const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
 
     // --------------------------------------------------
-    // rocketstate — active dimension values
-    // --------------------------------------------------
-    const rocketstate = _calculateStylingAttrs({
-      props: pickStyledAttrs(mergeProps, reservedPropNames),
-      dimensions,
-    })
-
-    const finalRocketstate = { ...rocketstate, pseudo: pseudoRocketstate }
-
-    // --------------------------------------------------
-    // $rocketstyle as a FUNCTION ACCESSOR — reactive on mode changes.
-    // The styled component calls this inside its own effect() to track
-    // the mode dependency. Only the CSS class swaps — no VNode remount.
+    // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
+    // Re-evaluates when mode OR dimension props change.
+    // Props are resolved fresh each call so reactive prop accessors
+    // (signals, getters) produce updated dimension values.
     // --------------------------------------------------
     const $rocketstyleAccessor = () => {
-      const mode = themeAttrs.mode // reactive read via getter
+      // Merge props fresh — if parent passes reactive accessors,
+      // spreading them here evaluates them in this reactive scope.
+      const { pseudo, ...mergeProps } = {
+        ...localCtx,
+        ...props,
+      }
 
+      const mode = themeAttrs.mode // reactive: tracks mode signal
+
+      // Resolve active dimensions from current prop values
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        dimensions,
+      })
+
+      // Resolve mode-specific theme
       const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
       if (!modeBaseHelper.has(baseTheme)) {
         modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
@@ -192,6 +180,37 @@ const rocketComponent: RocketComponent = (options) => {
     }
 
     // --------------------------------------------------
+    // $rocketstate as a FUNCTION ACCESSOR — reactive on prop changes.
+    // Re-evaluates active dimensions + pseudo state from current props.
+    // --------------------------------------------------
+    const $rocketstateAccessor = () => {
+      const { pseudo, ...mergeProps } = {
+        ...localCtx,
+        ...props,
+      }
+
+      const pseudoRocketstate = {
+        ...pseudo,
+        ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
+      }
+
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        dimensions,
+      })
+
+      return { ...rocketstate, pseudo: pseudoRocketstate }
+    }
+
+    // --------------------------------------------------
+    // Static mergeProps for final prop filtering (non-dimension props)
+    // --------------------------------------------------
+    const { pseudo: _pseudo, ...mergeProps } = {
+      ...localCtx,
+      ...props,
+    }
+
+    // --------------------------------------------------
     // final props passed to WrappedComponent
     // --------------------------------------------------
     const finalProps: Record<string, any> = {
@@ -202,9 +221,9 @@ const rocketComponent: RocketComponent = (options) => {
       ]),
       ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
       ref: props.ref,
-      // FUNCTION accessor — styled component resolves it reactively
+      // FUNCTION accessors — styled component resolves them reactively
       $rocketstyle: $rocketstyleAccessor,
-      $rocketstate: finalRocketstate,
+      $rocketstate: $rocketstateAccessor,
     }
 
     // development debugging
@@ -214,7 +233,7 @@ const rocketComponent: RocketComponent = (options) => {
       if (options.DEBUG) {
         const debugPayload = {
           component: componentName,
-          rocketstate: finalRocketstate,
+          rocketstate: $rocketstateAccessor(),
           rocketstyle: $rocketstyleAccessor(),
           dimensions,
           mode: themeAttrs.mode,

@@ -7,7 +7,7 @@
  * Unlike the React version which tested CSS injection in the DOM,
  * this Pyreon version tests the computed $rocketstyle output directly.
  */
-import { ThemeCapture, getComputedTheme, initTestConfig } from '@pyreon/test-utils'
+import { ThemeCapture, getComputedTheme, initTestConfig, withThemeContext } from '@pyreon/test-utils'
 import rocketstyle from '../init'
 
 let cleanup: () => void
@@ -232,5 +232,69 @@ describe('e2e: rocketstyle theme computation', () => {
     })
     expect(theme.step).toBe('one')
     expect(theme.sawStep).toBe('one')
+  })
+})
+
+// ── Reactive dimension props ──────────────────────────────────────────────────
+
+describe('reactive $rocketstyle accessor', () => {
+  it('$rocketstyleAccessor resolves different themes for different dimension props', () => {
+    const Comp: any = rocketstyle()({
+      name: 'ReactiveComp',
+      component: ThemeCapture,
+    })
+      .theme({ color: 'black', bg: 'white' })
+      .states({
+        primary: { color: 'blue' },
+        secondary: { color: 'green' },
+      })
+
+    // First call with state=primary
+    const theme1 = getComputedTheme(Comp, { state: 'primary' })
+    expect(theme1.color).toBe('blue')
+
+    // Second call with state=secondary — should produce different theme
+    const theme2 = getComputedTheme(Comp, { state: 'secondary' })
+    expect(theme2.color).toBe('green')
+  })
+
+  it('$rocketstyleAccessor is a function, not a plain object', () => {
+    const Comp: any = rocketstyle()({
+      name: 'AccessorComp',
+      component: ThemeCapture,
+    }).theme({ color: 'red' })
+
+    const vnode = withThemeContext(() => Comp({}))
+    // ThemeCapture resolves the accessor — result should be the theme object
+    expect(vnode.$rocketstyle).toBeDefined()
+    expect(vnode.$rocketstyle.color).toBe('red')
+  })
+
+  it('$rocketstateAccessor resolves active dimensions', () => {
+    const Comp: any = rocketstyle()({
+      name: 'StateAccessorComp',
+      component: ThemeCapture,
+    }).states({
+      primary: { color: 'blue' },
+    })
+
+    const vnode = withThemeContext(() => Comp({ state: 'primary' }))
+    expect(vnode.$rocketstate).toBeDefined()
+    expect(vnode.$rocketstate.state).toBe('primary')
+  })
+
+  it('mode change produces different theme via accessor', () => {
+    const Comp: any = rocketstyle()({
+      name: 'ModeReactiveComp',
+      component: ThemeCapture,
+    }).theme((t: any, m: any) => ({
+      color: m('light-color', 'dark-color'),
+    }))
+
+    const lightTheme = getComputedTheme(Comp, {}, { mode: 'light' })
+    expect(lightTheme.color).toBe('light-color')
+
+    const darkTheme = getComputedTheme(Comp, {}, { mode: 'dark' })
+    expect(darkTheme.color).toBe('dark-color')
   })
 })
