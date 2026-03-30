@@ -36,12 +36,13 @@ export { bunAdapter, nodeAdapter, resolveAdapter, staticAdapter } from './adapte
 export type { ImageProps, ImageSource } from './image'
 export { Image } from './image'
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from './link'
-export { createLink, Link, useLink } from './link'
+export { createLink, Link, prefetchRoute, useLink } from './link'
 export type { ScriptProps, ScriptStrategy } from './script'
 export { Script } from './script'
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
+export { compose, getContext } from './middleware'
 export type { CacheConfig, CacheRule } from './cache'
 export { cacheMiddleware, securityHeaders, varyEncoding } from './cache'
 

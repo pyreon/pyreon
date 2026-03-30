@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+/**
+ * @vitest-environment happy-dom
+ */
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 // Link module depends on @pyreon/router and DOM APIs.
 // We test the pure logic patterns extracted from useLink:
 // - path matching (isActive, isExactActive)
 // - class building
 // - click validation
+// - prefetchRoute (DOM injection)
 
 describe('link path matching', () => {
   function isActive(href: string, currentPath: string): boolean {
@@ -143,5 +147,49 @@ describe('link click validation', () => {
 
   it('skips external links', () => {
     expect(shouldNavigate(false, 0, false, false, false, false, true)).toBe(false)
+  })
+})
+
+describe('prefetchRoute', () => {
+  let originalHead: HTMLHeadElement
+
+  beforeEach(() => {
+    // Ensure clean head for each test
+    originalHead = document.head
+    document.head.innerHTML = ''
+  })
+
+  afterEach(() => {
+    document.head.innerHTML = ''
+  })
+
+  it('injects a <link rel="prefetch"> into document head', async () => {
+    const { prefetchRoute } = await import('../link')
+    prefetchRoute('/about')
+
+    const links = document.head.querySelectorAll('link[rel="prefetch"]')
+    expect(links.length).toBeGreaterThanOrEqual(1)
+    const prefetchLink = Array.from(links).find((l) => l.getAttribute('href') === '/about')
+    expect(prefetchLink).toBeTruthy()
+    expect(prefetchLink?.getAttribute('as')).toBe('document')
+  })
+
+  it('injects a <link rel="modulepreload"> as well', async () => {
+    const { prefetchRoute } = await import('../link')
+    prefetchRoute('/dashboard')
+
+    const links = document.head.querySelectorAll('link[rel="modulepreload"]')
+    const preload = Array.from(links).find((l) => l.getAttribute('href') === '/dashboard')
+    expect(preload).toBeTruthy()
+  })
+
+  it('deduplicates — same href only injected once', async () => {
+    const { prefetchRoute } = await import('../link')
+    prefetchRoute('/dedup-test')
+    prefetchRoute('/dedup-test')
+
+    const links = document.head.querySelectorAll('link[href="/dedup-test"]')
+    // One prefetch + one modulepreload = 2, not 4
+    expect(links.length).toBe(2)
   })
 })

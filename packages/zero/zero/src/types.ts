@@ -105,6 +105,8 @@ export interface FileRoute {
   isError: boolean
   /** Whether this is a loading fallback file. */
   isLoading: boolean
+  /** Whether this is a not-found (404) file. */
+  isNotFound: boolean
   /** Whether this is a catch-all route. */
   isCatchAll: boolean
   /** Resolved rendering mode. */

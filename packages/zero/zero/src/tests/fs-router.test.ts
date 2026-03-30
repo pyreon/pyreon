@@ -54,6 +54,22 @@ describe('filePathToUrlPath', () => {
     expect(filePathToUrlPath('_loading')).toBe('/')
   })
 
+  it('strips _404', () => {
+    expect(filePathToUrlPath('_404')).toBe('/')
+  })
+
+  it('strips _not-found', () => {
+    expect(filePathToUrlPath('_not-found')).toBe('/')
+  })
+
+  it('strips nested _404', () => {
+    expect(filePathToUrlPath('dashboard/_404')).toBe('/dashboard')
+  })
+
+  it('strips nested _not-found', () => {
+    expect(filePathToUrlPath('users/_not-found')).toBe('/users')
+  })
+
   it('strips nested _layout', () => {
     expect(filePathToUrlPath('dashboard/_layout')).toBe('/dashboard')
   })
@@ -91,6 +107,27 @@ describe('parseFileRoutes', () => {
     const routes = parseFileRoutes(['_loading.tsx', 'index.tsx'])
     const loading = routes.find((r) => r.isLoading)
     expect(loading).toBeDefined()
+  })
+
+  it('identifies not-found files (_404)', () => {
+    const routes = parseFileRoutes(['_404.tsx', 'index.tsx'])
+    const notFound = routes.find((r) => r.isNotFound)
+    expect(notFound).toBeDefined()
+    expect(notFound?.filePath).toBe('_404.tsx')
+  })
+
+  it('identifies not-found files (_not-found)', () => {
+    const routes = parseFileRoutes(['_not-found.tsx', 'index.tsx'])
+    const notFound = routes.find((r) => r.isNotFound)
+    expect(notFound).toBeDefined()
+    expect(notFound?.filePath).toBe('_not-found.tsx')
+  })
+
+  it('identifies nested _404 files', () => {
+    const routes = parseFileRoutes(['users/_404.tsx', 'users/index.tsx'])
+    const notFound = routes.find((r) => r.isNotFound)
+    expect(notFound).toBeDefined()
+    expect(notFound?.dirPath).toBe('users')
   })
 
   it('identifies catch-all routes', () => {
@@ -234,6 +271,27 @@ describe('generateRouteModule', () => {
     const matches = code.match(/renderMode/g)
     expect(matches?.length).toBeGreaterThanOrEqual(2)
   })
+
+  it('wires notFoundComponent from _404.tsx', () => {
+    const code = generateRouteModule(['_404.tsx', 'index.tsx'], '/src/routes')
+    expect(code).toContain('notFoundComponent:')
+  })
+
+  it('wires notFoundComponent from _not-found.tsx', () => {
+    const code = generateRouteModule(['_not-found.tsx', 'index.tsx'], '/src/routes')
+    expect(code).toContain('notFoundComponent:')
+  })
+
+  it('wires notFoundComponent in layout with _404', () => {
+    const code = generateRouteModule(['_layout.tsx', '_404.tsx', 'index.tsx'], '/src/routes')
+    expect(code).toContain('notFoundComponent:')
+    expect(code).toContain('children:')
+  })
+
+  it('does not include notFoundComponent when no _404 exists', () => {
+    const code = generateRouteModule(['index.tsx', 'about.tsx'], '/src/routes')
+    expect(code).not.toContain('notFoundComponent:')
+  })
 })
 
 // ─── generateMiddlewareModule ───────────────────────────────────────────────
@@ -250,14 +308,16 @@ describe('generateMiddlewareModule', () => {
     expect(code).toContain('pattern: "/about"')
   })
 
-  it('skips layout, error, and loading files', () => {
+  it('skips layout, error, loading, and not-found files', () => {
     const code = generateMiddlewareModule(
-      ['_layout.tsx', '_error.tsx', '_loading.tsx', 'index.tsx'],
+      ['_layout.tsx', '_error.tsx', '_loading.tsx', '_404.tsx', '_not-found.tsx', 'index.tsx'],
       '/src/routes',
     )
     expect(code).not.toContain('_layout')
     expect(code).not.toContain('_error')
     expect(code).not.toContain('_loading')
+    expect(code).not.toContain('_404')
+    expect(code).not.toContain('_not-found')
     expect(code).toContain('pattern: "/"')
   })
 

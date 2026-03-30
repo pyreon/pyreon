@@ -85,7 +85,6 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
         const accept = req.headers.accept ?? ''
         if (!accept.includes('text/html')) return next()
 
-        // Monkey-patch res.end to catch errors from SSR rendering
         const originalEnd = res.end.bind(res)
         let errored = false
 
@@ -103,9 +102,15 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 
         res.on('error', handleError)
 
-        // Wrap next() in try/catch to handle synchronous errors
+        // Wrap next() in try/catch to handle both sync and async errors.
+        // Express-style middleware may throw synchronously or pass errors
+        // through next(err), and Vite's SSR pipeline may reject promises.
         try {
-          next()
+          const result = next() as unknown
+          // Handle async errors from Vite's SSR pipeline
+          if (result && typeof (result as Promise<unknown>).catch === 'function') {
+            ;(result as Promise<unknown>).catch(handleError)
+          }
         } catch (err) {
           handleError(err)
         }
