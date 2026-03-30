@@ -1,9 +1,9 @@
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function UseStateDemo() {
   const [count, setCount] = useState(0)
-  const [name, setName] = useState("Preact")
+  const [name, setName] = useState('Preact')
 
   return (
     <Demo

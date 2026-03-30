@@ -31,7 +31,7 @@ const handleObjectCb =
 const handleValueCb = (value: unknown) => () => value
 
 const shouldNormalize = (props: Record<string, any>) =>
-  Object.values(props).some((item) => typeof item === "object" || Array.isArray(item))
+  Object.values(props).some((item) => typeof item === 'object' || Array.isArray(item))
 
 export type NormalizeTheme = ({
   theme,
@@ -52,7 +52,7 @@ const normalizeTheme: NormalizeTheme = ({ theme, breakpoints }) => {
 
     if (Array.isArray(value)) {
       result[key] = getBpValues(handleArrayCb(value as (string | number)[]))
-    } else if (typeof value === "object") {
+    } else if (typeof value === 'object') {
       result[key] = getBpValues(handleObjectCb(value as Record<string, any>))
     } else {
       result[key] = getBpValues(handleValueCb(value))

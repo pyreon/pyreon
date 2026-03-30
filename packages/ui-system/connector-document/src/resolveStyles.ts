@@ -3,13 +3,13 @@ import {
   parseCssDimension,
   parseFontWeight,
   parseLineHeight,
-} from "./cssValueParser"
-import type { ResolvedStyles } from "./types"
+} from './cssValueParser'
+import type { ResolvedStyles } from './types'
 
-const TEXT_ALIGN_VALUES = new Set(["left", "center", "right", "justify"])
-const FONT_STYLE_VALUES = new Set(["normal", "italic"])
-const TEXT_DECORATION_VALUES = new Set(["none", "underline", "line-through"])
-const BORDER_STYLE_VALUES = new Set(["solid", "dashed", "dotted"])
+const TEXT_ALIGN_VALUES = new Set(['left', 'center', 'right', 'justify'])
+const FONT_STYLE_VALUES = new Set(['normal', 'italic'])
+const TEXT_DECORATION_VALUES = new Set(['none', 'underline', 'line-through'])
+const BORDER_STYLE_VALUES = new Set(['solid', 'dashed', 'dotted'])
 
 /**
  * Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles`
@@ -25,27 +25,27 @@ export function resolveStyles(rocketstyle: Record<string, unknown>, rootSize = 1
   const fontSize = parseCssDimension(rocketstyle.fontSize as string | number, rootSize)
   if (fontSize != null) styles.fontSize = fontSize
 
-  if (typeof rocketstyle.fontFamily === "string") styles.fontFamily = rocketstyle.fontFamily
+  if (typeof rocketstyle.fontFamily === 'string') styles.fontFamily = rocketstyle.fontFamily
 
   const fontWeight = parseFontWeight(rocketstyle.fontWeight as string | number | undefined)
   if (fontWeight != null) styles.fontWeight = fontWeight
 
-  if (typeof rocketstyle.fontStyle === "string" && FONT_STYLE_VALUES.has(rocketstyle.fontStyle))
-    styles.fontStyle = rocketstyle.fontStyle as "normal" | "italic"
+  if (typeof rocketstyle.fontStyle === 'string' && FONT_STYLE_VALUES.has(rocketstyle.fontStyle))
+    styles.fontStyle = rocketstyle.fontStyle as 'normal' | 'italic'
 
   if (
-    typeof rocketstyle.textDecoration === "string" &&
+    typeof rocketstyle.textDecoration === 'string' &&
     TEXT_DECORATION_VALUES.has(rocketstyle.textDecoration)
   )
-    styles.textDecoration = rocketstyle.textDecoration as "none" | "underline" | "line-through"
+    styles.textDecoration = rocketstyle.textDecoration as 'none' | 'underline' | 'line-through'
 
-  if (typeof rocketstyle.color === "string") styles.color = rocketstyle.color
+  if (typeof rocketstyle.color === 'string') styles.color = rocketstyle.color
 
-  if (typeof rocketstyle.backgroundColor === "string")
+  if (typeof rocketstyle.backgroundColor === 'string')
     styles.backgroundColor = rocketstyle.backgroundColor
 
-  if (typeof rocketstyle.textAlign === "string" && TEXT_ALIGN_VALUES.has(rocketstyle.textAlign))
-    styles.textAlign = rocketstyle.textAlign as "left" | "center" | "right" | "justify"
+  if (typeof rocketstyle.textAlign === 'string' && TEXT_ALIGN_VALUES.has(rocketstyle.textAlign))
+    styles.textAlign = rocketstyle.textAlign as 'left' | 'center' | 'right' | 'justify'
 
   const lineHeight = parseLineHeight(
     rocketstyle.lineHeight as string | number | undefined,
@@ -70,13 +70,13 @@ export function resolveStyles(rocketstyle: Record<string, unknown>, rootSize = 1
   const borderWidth = parseCssDimension(rocketstyle.borderWidth as string | number, rootSize)
   if (borderWidth != null) styles.borderWidth = borderWidth
 
-  if (typeof rocketstyle.borderColor === "string") styles.borderColor = rocketstyle.borderColor
+  if (typeof rocketstyle.borderColor === 'string') styles.borderColor = rocketstyle.borderColor
 
   if (
-    typeof rocketstyle.borderStyle === "string" &&
+    typeof rocketstyle.borderStyle === 'string' &&
     BORDER_STYLE_VALUES.has(rocketstyle.borderStyle)
   )
-    styles.borderStyle = rocketstyle.borderStyle as "solid" | "dashed" | "dotted"
+    styles.borderStyle = rocketstyle.borderStyle as 'solid' | 'dashed' | 'dotted'
 
   // Sizing
   if (rocketstyle.width != null) {
@@ -95,7 +95,7 @@ export function resolveStyles(rocketstyle: Record<string, unknown>, rootSize = 1
   }
 
   // Opacity
-  if (typeof rocketstyle.opacity === "number") styles.opacity = rocketstyle.opacity
+  if (typeof rocketstyle.opacity === 'number') styles.opacity = rocketstyle.opacity
 
   return styles
 }

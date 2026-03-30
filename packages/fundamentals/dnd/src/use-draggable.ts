@@ -1,6 +1,6 @@
-import { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
-import { onCleanup, signal } from "@pyreon/reactivity"
-import type { DragData, UseDraggableOptions, UseDraggableResult } from "./types"
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { onCleanup, signal } from '@pyreon/reactivity'
+import type { DragData, UseDraggableOptions, UseDraggableResult } from './types'
 
 /**
  * Make an element draggable with signal-driven state.
@@ -32,7 +32,7 @@ export function useDraggable<T extends DragData = DragData>(
     if (!el) return
 
     const resolveData = () =>
-      typeof options.data === "function" ? (options.data as () => T)() : options.data
+      typeof options.data === 'function' ? (options.data as () => T)() : options.data
 
     const handle = options.handle?.()
     cleanup = draggable({
@@ -41,7 +41,7 @@ export function useDraggable<T extends DragData = DragData>(
       getInitialData: resolveData,
       canDrag: () => {
         const disabled = options.disabled
-        if (typeof disabled === "function") return !disabled()
+        if (typeof disabled === 'function') return !disabled()
         return !disabled
       },
       onDragStart: () => {

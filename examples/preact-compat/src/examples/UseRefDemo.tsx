@@ -1,11 +1,11 @@
-import { createRef } from "preact"
-import { useRef, useState } from "preact/hooks"
-import Demo from "./Demo"
+import { createRef } from 'preact'
+import { useRef, useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function UseRefDemo() {
   const inputRef = useRef<HTMLInputElement>()
   const classRef = createRef<HTMLInputElement>()
-  const [msg, setMsg] = useState("")
+  const [msg, setMsg] = useState('')
 
   return (
     <Demo
@@ -45,7 +45,7 @@ const classRef = createRef<HTMLInputElement>()
           Focus createRef
         </button>
       </div>
-      <p class="muted">{msg || "Click a button to focus an input"}</p>
+      <p class="muted">{msg || 'Click a button to focus an input'}</p>
     </Demo>
   )
 }

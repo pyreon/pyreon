@@ -1,4 +1,4 @@
-import type { LineIndex } from "./utils/source"
+import type { LineIndex } from './utils/source'
 
 /**
  * Simple in-memory cache for parsed ASTs keyed by file content hash.

@@ -1,17 +1,17 @@
-import { readFileSync, watch } from "node:fs"
-import { resolve } from "node:path"
-import { AstCache } from "./cache"
-import { createIgnoreFilter } from "./config/ignore"
-import { getPreset } from "./config/presets"
-import { formatCompact, formatJSON, formatText } from "./reporter"
-import { allRules } from "./rules/index"
-import { lintFile } from "./runner"
-import type { LintConfig, LintOptions, LintResult, Severity } from "./types"
-import { hasJsExtension } from "./utils/index"
+import { readFileSync, watch } from 'node:fs'
+import { resolve } from 'node:path'
+import { AstCache } from './cache'
+import { createIgnoreFilter } from './config/ignore'
+import { getPreset } from './config/presets'
+import { formatCompact, formatJSON, formatText } from './reporter'
+import { allRules } from './rules/index'
+import { lintFile } from './runner'
+import type { LintConfig, LintOptions, LintResult, Severity } from './types'
+import { hasJsExtension } from './utils/index'
 
 function formatOutput(result: LintResult, format: string): string {
-  if (format === "json") return formatJSON(result)
-  if (format === "compact") return formatCompact(result)
+  if (format === 'json') return formatJSON(result)
+  if (format === 'compact') return formatCompact(result)
   return formatText(result)
 }
 
@@ -30,12 +30,12 @@ function formatOutput(result: LintResult, format: string): string {
  */
 export function watchAndLint(options: LintOptions & { format: string }): void {
   const cache = new AstCache()
-  const preset = options.preset ?? "recommended"
+  const preset = options.preset ?? 'recommended'
   const config = getPreset(preset)
 
   applyOverrides(config, options.ruleOverrides)
 
-  const cwd = resolve(".")
+  const cwd = resolve('.')
   const isIgnored = createIgnoreFilter(cwd, options.ignore)
 
   // Debounce map: filePath -> timeout
@@ -84,7 +84,7 @@ function applyOverrides(
 function relintFile(filePath: string, config: LintConfig, cache: AstCache, format: string): void {
   let source: string
   try {
-    source = readFileSync(filePath, "utf-8")
+    source = readFileSync(filePath, 'utf-8')
   } catch {
     return
   }
@@ -101,12 +101,12 @@ function relintFile(filePath: string, config: LintConfig, cache: AstCache, forma
   }
 
   for (const d of fileResult.diagnostics) {
-    if (d.severity === "error") result.totalErrors++
-    else if (d.severity === "warn") result.totalWarnings++
-    else if (d.severity === "info") result.totalInfos++
+    if (d.severity === 'error') result.totalErrors++
+    else if (d.severity === 'warn') result.totalWarnings++
+    else if (d.severity === 'info') result.totalInfos++
   }
 
   // Clear screen and print
-  process.stdout.write("\x1b[2J\x1b[H")
+  process.stdout.write('\x1b[2J\x1b[H')
   console.log(formatOutput(result, format))
 }

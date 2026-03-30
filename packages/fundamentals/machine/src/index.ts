@@ -25,7 +25,7 @@
  * ```
  */
 
-export { createMachine } from "./machine"
+export { createMachine } from './machine'
 
 // Types
 export type {
@@ -38,4 +38,4 @@ export type {
   StateConfig,
   TransitionCallback,
   TransitionConfig,
-} from "./types"
+} from './types'

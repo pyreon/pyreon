@@ -26,11 +26,11 @@ Then replace the framework in your Storybook config with `@pyreon/storybook`.
 Configure Storybook to use the Pyreon renderer in `.storybook/main.ts`:
 
 ```ts
-import type { StorybookConfig } from "@pyreon/storybook"
+import type { StorybookConfig } from '@pyreon/storybook'
 
 const config: StorybookConfig = {
-  stories: ["../src/**/*.stories.@(ts|tsx)"],
-  framework: "@pyreon/storybook",
+  stories: ['../src/**/*.stories.@(ts|tsx)'],
+  framework: '@pyreon/storybook',
 }
 
 export default config
@@ -57,29 +57,29 @@ export const decorators = globalDecorators
 Stories use the CSF3 (Component Story Format 3) syntax. Each story file exports a default `meta` object describing the component and named exports for individual stories.
 
 ```tsx
-import type { Meta, StoryObj } from "@pyreon/storybook"
-import { Button } from "./Button"
+import type { Meta, StoryObj } from '@pyreon/storybook'
+import { Button } from './Button'
 
 const meta = {
   component: Button,
-  title: "Components/Button",
-  args: { label: "Click me" },
-  tags: ["autodocs"],
+  title: 'Components/Button',
+  args: { label: 'Click me' },
+  tags: ['autodocs'],
 } satisfies Meta<typeof Button>
 
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const Primary: Story = {
-  args: { variant: "primary" },
+  args: { variant: 'primary' },
 }
 
 export const Secondary: Story = {
-  args: { variant: "secondary" },
+  args: { variant: 'secondary' },
 }
 
 export const Disabled: Story = {
-  args: { label: "Disabled", disabled: true },
+  args: { label: 'Disabled', disabled: true },
 }
 ```
 
@@ -93,26 +93,26 @@ const meta = {
   component: Button,
 
   // Sidebar title — use slashes for nesting: "Design System/Atoms/Button"
-  title: "Components/Button",
+  title: 'Components/Button',
 
   // Default args applied to all stories (overridden per-story)
-  args: { label: "Click me", variant: "primary" },
+  args: { label: 'Click me', variant: 'primary' },
 
   // Arg type definitions for the Controls panel
   argTypes: {
     variant: {
-      control: "select",
-      options: ["primary", "secondary", "ghost"],
+      control: 'select',
+      options: ['primary', 'secondary', 'ghost'],
     },
-    onClick: { action: "clicked" },
+    onClick: { action: 'clicked' },
   },
 
   // Tags for filtering and features (e.g., "autodocs" enables auto-generated docs)
-  tags: ["autodocs"],
+  tags: ['autodocs'],
 
   // Story parameters (backgrounds, viewport, layout, etc.)
   parameters: {
-    layout: "centered",
+    layout: 'centered',
   },
 
   // Decorators applied to every story in this file
@@ -122,7 +122,7 @@ const meta = {
   render: undefined,
 
   // Filter which named exports are treated as stories
-  excludeStories: /^_/,  // exclude exports starting with _
+  excludeStories: /^_/, // exclude exports starting with _
 } satisfies Meta<typeof Button>
 ```
 
@@ -133,17 +133,13 @@ Each named export is a `StoryObj` that can override meta-level defaults:
 ```tsx
 export const WithLongLabel: Story = {
   // Override args for this story
-  args: { label: "This is a very long button label" },
+  args: { label: 'This is a very long button label' },
 
   // Story-specific decorators (run inside meta decorators)
-  decorators: [(storyFn, ctx) => (
-    <div style={{ maxWidth: "200px" }}>
-      {storyFn(ctx.args, ctx)}
-    </div>
-  )],
+  decorators: [(storyFn, ctx) => <div style={{ maxWidth: '200px' }}>{storyFn(ctx.args, ctx)}</div>],
 
   // Story-specific parameters
-  parameters: { layout: "padded" },
+  parameters: { layout: 'padded' },
 
   // Custom render for this story
   render: (args) => (
@@ -154,10 +150,10 @@ export const WithLongLabel: Story = {
   ),
 
   // Display name override (defaults to the export name)
-  name: "Long Label",
+  name: 'Long Label',
 
   // Tags for this story
-  tags: ["!autodocs"],  // exclude from auto-generated docs
+  tags: ['!autodocs'], // exclude from auto-generated docs
 }
 ```
 
@@ -205,9 +201,7 @@ const meta = {
   component: ThemeCard,
   decorators: [
     (storyFn, context) => (
-      <ThemeProvider theme="dark">
-        {storyFn(context.args, context)}
-      </ThemeProvider>
+      <ThemeProvider theme="dark">{storyFn(context.args, context)}</ThemeProvider>
     ),
   ],
 } satisfies Meta<typeof ThemeCard>
@@ -219,13 +213,7 @@ Applied to a single story:
 
 ```tsx
 export const InModal: Story = {
-  decorators: [
-    (storyFn, context) => (
-      <Modal open={true}>
-        {storyFn(context.args, context)}
-      </Modal>
-    ),
-  ],
+  decorators: [(storyFn, context) => <Modal open={true}>{storyFn(context.args, context)}</Modal>],
 }
 ```
 
@@ -268,7 +256,7 @@ type DecoratorFn<TArgs = Props> = (
 Since Pyreon's reactivity system works inside stories, you can create interactive stories with signals:
 
 ```tsx
-import { signal, computed } from "@pyreon/storybook"
+import { signal, computed } from '@pyreon/storybook'
 
 export const Interactive: Story = {
   render: (args) => {
@@ -277,11 +265,7 @@ export const Interactive: Story = {
 
     return (
       <div>
-        <Button
-          {...args}
-          label={label()}
-          onClick={() => count.update(n => n + 1)}
-        />
+        <Button {...args} label={label()} onClick={() => count.update((n) => n + 1)} />
         <p>Clicked {count()} times</p>
         <button onClick={() => count.set(0)}>Reset</button>
       </div>
@@ -293,19 +277,17 @@ export const Interactive: Story = {
 Effects also work as expected:
 
 ```tsx
-import { signal, effect } from "@pyreon/storybook"
+import { signal, effect } from '@pyreon/storybook'
 
 export const WithEffect: Story = {
   render: (args) => {
     const clicks = signal(0)
 
     effect(() => {
-      console.log("Click count:", clicks())
+      console.log('Click count:', clicks())
     })
 
-    return (
-      <Button {...args} onClick={() => clicks.update(n => n + 1)} />
-    )
+    return <Button {...args} onClick={() => clicks.update((n) => n + 1)} />
   },
 }
 ```
@@ -317,15 +299,15 @@ Use `play` functions to simulate user interactions and run assertions against th
 ```tsx
 export const Clicked: Story = {
   play: async ({ canvasElement }) => {
-    const button = canvasElement.querySelector("button")!
+    const button = canvasElement.querySelector('button')!
     button.click()
 
     // Wait for reactive updates
-    await new Promise(r => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
 
     // Assert the result
     const text = canvasElement.textContent
-    console.assert(text?.includes("1"), "Expected click count to be 1")
+    console.assert(text?.includes('1'), 'Expected click count to be 1')
   },
 }
 ```
@@ -337,25 +319,25 @@ Use the `step` utility to organize complex interaction tests:
 ```tsx
 export const MultiStep: Story = {
   play: async ({ canvasElement, step }) => {
-    await step("Click the button three times", async () => {
-      const button = canvasElement.querySelector("button")!
+    await step('Click the button three times', async () => {
+      const button = canvasElement.querySelector('button')!
       button.click()
       button.click()
       button.click()
     })
 
-    await step("Verify the count", async () => {
-      await new Promise(r => setTimeout(r, 0))
-      const count = canvasElement.querySelector(".count")?.textContent
-      console.assert(count === "3", `Expected 3, got ${count}`)
+    await step('Verify the count', async () => {
+      await new Promise((r) => setTimeout(r, 0))
+      const count = canvasElement.querySelector('.count')?.textContent
+      console.assert(count === '3', `Expected 3, got ${count}`)
     })
 
-    await step("Reset and verify", async () => {
-      const resetBtn = canvasElement.querySelector(".reset")!
+    await step('Reset and verify', async () => {
+      const resetBtn = canvasElement.querySelector('.reset')!
       ;(resetBtn as HTMLElement).click()
-      await new Promise(r => setTimeout(r, 0))
-      const count = canvasElement.querySelector(".count")?.textContent
-      console.assert(count === "0", `Expected 0 after reset, got ${count}`)
+      await new Promise((r) => setTimeout(r, 0))
+      const count = canvasElement.querySelector('.count')?.textContent
+      console.assert(count === '0', `Expected 0 after reset, got ${count}`)
     })
   },
 }
@@ -365,11 +347,11 @@ export const MultiStep: Story = {
 
 The `play` function receives a context object:
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `canvasElement` | `HTMLElement` | The DOM element containing the rendered story |
-| `args` | `TArgs` | The merged args for this story |
-| `step` | `(name, fn) => Promise<void>` | Organize interactions into named steps |
+| Property        | Type                          | Description                                   |
+| --------------- | ----------------------------- | --------------------------------------------- |
+| `canvasElement` | `HTMLElement`                 | The DOM element containing the rendered story |
+| `args`          | `TArgs`                       | The merged args for this story                |
+| `step`          | `(name, fn) => Promise<void>` | Organize interactions into named steps        |
 
 ## How It Works
 
@@ -399,30 +381,28 @@ A complete example showing a card component with multiple stories, decorators, a
 
 ```tsx
 // Card.stories.tsx
-import type { Meta, StoryObj } from "@pyreon/storybook"
-import { signal } from "@pyreon/storybook"
-import { Card } from "./Card"
+import type { Meta, StoryObj } from '@pyreon/storybook'
+import { signal } from '@pyreon/storybook'
+import { Card } from './Card'
 
 const meta = {
   component: Card,
-  title: "Components/Card",
+  title: 'Components/Card',
   args: {
-    title: "Card Title",
-    description: "This is a card description.",
-    variant: "default",
+    title: 'Card Title',
+    description: 'This is a card description.',
+    variant: 'default',
   },
   argTypes: {
     variant: {
-      control: "select",
-      options: ["default", "outlined", "elevated"],
+      control: 'select',
+      options: ['default', 'outlined', 'elevated'],
     },
   },
-  tags: ["autodocs"],
+  tags: ['autodocs'],
   decorators: [
     (storyFn, context) => (
-      <div style={{ maxWidth: "400px", margin: "0 auto" }}>
-        {storyFn(context.args, context)}
-      </div>
+      <div style={{ maxWidth: '400px', margin: '0 auto' }}>{storyFn(context.args, context)}</div>
     ),
   ],
 } satisfies Meta<typeof Card>
@@ -433,11 +413,11 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {}
 
 export const Outlined: Story = {
-  args: { variant: "outlined" },
+  args: { variant: 'outlined' },
 }
 
 export const Elevated: Story = {
-  args: { variant: "elevated" },
+  args: { variant: 'elevated' },
 }
 
 export const WithActions: Story = {
@@ -447,32 +427,27 @@ export const WithActions: Story = {
     return (
       <Card {...args}>
         <div class="card-actions">
-          <button onClick={() => liked.set(!liked())}>
-            {liked() ? "Unlike" : "Like"}
-          </button>
+          <button onClick={() => liked.set(!liked())}>{liked() ? 'Unlike' : 'Like'}</button>
         </div>
       </Card>
     )
   },
   play: async ({ canvasElement }) => {
-    const likeBtn = canvasElement.querySelector("button")!
+    const likeBtn = canvasElement.querySelector('button')!
     likeBtn.click()
-    await new Promise(r => setTimeout(r, 0))
-    console.assert(
-      likeBtn.textContent === "Unlike",
-      "Button should show Unlike after click"
-    )
+    await new Promise((r) => setTimeout(r, 0))
+    console.assert(likeBtn.textContent === 'Unlike', 'Button should show Unlike after click')
   },
 }
 
 export const Loading: Story = {
   args: {
-    title: "Loading...",
-    description: "Content is loading.",
+    title: 'Loading...',
+    description: 'Content is loading.',
   },
   render: (args) => (
     <Card {...args}>
-      <div class="skeleton" style={{ height: "100px" }} />
+      <div class="skeleton" style={{ height: '100px' }} />
     </Card>
   ),
 }
@@ -482,34 +457,34 @@ export const Loading: Story = {
 
 ### Functions
 
-| Export | Description |
-| --- | --- |
+| Export                            | Description                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `renderToCanvas(options, canvas)` | Core render function for Storybook integration. Manages mount/unmount lifecycle per canvas element. |
-| `defaultRender(component, args)` | Default render function: calls `h(component, args)`. Used when no custom render is provided. |
+| `defaultRender(component, args)`  | Default render function: calls `h(component, args)`. Used when no custom render is provided.        |
 
 ### Type Exports
 
-| Type | Description |
-| --- | --- |
-| `Meta<TComponent>` | Story metadata -- component, title, args, decorators, argTypes, parameters, tags, render, excludeStories, includeStories |
-| `StoryObj<TMeta>` | Individual story definition -- args, decorators, parameters, tags, render, name, play |
-| `StoryFn<TArgs>` | Story function type: `(args: TArgs, context: StoryContext<TArgs>) => VNodeChild` |
-| `DecoratorFn<TArgs>` | Decorator function type: `(storyFn: StoryFn<TArgs>, context: StoryContext<TArgs>) => VNodeChild` |
-| `StoryContext<TArgs>` | Context passed to stories and decorators -- args, argTypes, globals, id, kind, name, viewMode |
-| `PyreonRenderer` | Renderer descriptor for Storybook -- component, storyResult, canvasElement |
-| `InferProps<T>` | Extract props type from a Pyreon component function |
+| Type                  | Description                                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Meta<TComponent>`    | Story metadata -- component, title, args, decorators, argTypes, parameters, tags, render, excludeStories, includeStories |
+| `StoryObj<TMeta>`     | Individual story definition -- args, decorators, parameters, tags, render, name, play                                    |
+| `StoryFn<TArgs>`      | Story function type: `(args: TArgs, context: StoryContext<TArgs>) => VNodeChild`                                         |
+| `DecoratorFn<TArgs>`  | Decorator function type: `(storyFn: StoryFn<TArgs>, context: StoryContext<TArgs>) => VNodeChild`                         |
+| `StoryContext<TArgs>` | Context passed to stories and decorators -- args, argTypes, globals, id, kind, name, viewMode                            |
+| `PyreonRenderer`      | Renderer descriptor for Storybook -- component, storyResult, canvasElement                                               |
+| `InferProps<T>`       | Extract props type from a Pyreon component function                                                                      |
 
 ### StoryContext Properties
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `args` | `TArgs` | Merged args for this story |
-| `argTypes` | `Record<string, unknown>` | Arg type definitions |
-| `globals` | `Record<string, unknown>` | Storybook global values |
-| `id` | `string` | Story ID |
-| `kind` | `string` | Story kind (component title) |
-| `name` | `string` | Story name |
-| `viewMode` | `'story' \| 'docs'` | Current view mode |
+| Property   | Type                      | Description                  |
+| ---------- | ------------------------- | ---------------------------- |
+| `args`     | `TArgs`                   | Merged args for this story   |
+| `argTypes` | `Record<string, unknown>` | Arg type definitions         |
+| `globals`  | `Record<string, unknown>` | Storybook global values      |
+| `id`       | `string`                  | Story ID                     |
+| `kind`     | `string`                  | Story kind (component title) |
+| `name`     | `string`                  | Story name                   |
+| `viewMode` | `'story' \| 'docs'`       | Current view mode            |
 
 ### Re-exports
 
@@ -522,6 +497,6 @@ The package re-exports the following from Pyreon for convenience, so you do not 
 Using these re-exports keeps story files self-contained:
 
 ```tsx
-import { signal, computed, effect } from "@pyreon/storybook"
-import type { Meta, StoryObj } from "@pyreon/storybook"
+import { signal, computed, effect } from '@pyreon/storybook'
+import type { Meta, StoryObj } from '@pyreon/storybook'
 ```

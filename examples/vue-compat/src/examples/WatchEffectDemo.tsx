@@ -1,10 +1,10 @@
-import { ref, watchEffect } from "vue"
-import Demo from "./Demo"
+import { ref, watchEffect } from 'vue'
+import Demo from './Demo'
 
 export default function WatchEffectDemo() {
   const x = ref(1)
   const y = ref(1)
-  const effectLog = ref("running...")
+  const effectLog = ref('running...')
 
   const stop = watchEffect(() => {
     effectLog.value = `x + y = ${x.value + y.value}`
@@ -47,7 +47,7 @@ stop() // dispose the effect`}
       </div>
       <p class="muted">
         effect: <strong>{effectLog.value}</strong>
-        {stopped.value ? " (stopped)" : ""}
+        {stopped.value ? ' (stopped)' : ''}
       </p>
     </Demo>
   )

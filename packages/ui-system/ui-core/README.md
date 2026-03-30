@@ -25,7 +25,9 @@ import { Provider } from '@pyreon/ui-core'
 
 Provider({
   theme: { rootSize: 16, breakpoints: { xs: 0, md: 768 } },
-  children: [/* your app */],
+  children: [
+    /* your app */
+  ],
 })
 ```
 
@@ -58,9 +60,9 @@ Flexible element renderer. Handles components, elements, primitives, and arrays.
 ```ts
 import { render } from '@pyreon/ui-core'
 
-render('hello')           // => 'hello'
-render(MyComponent)       // => MyComponent({})
-render(null)              // => null
+render('hello') // => 'hello'
+render(MyComponent) // => MyComponent({})
+render(null) // => null
 ```
 
 #### isEmpty
@@ -70,9 +72,9 @@ Type-safe emptiness check. Returns `true` for `null`, `undefined`, `{}`, `[]`, a
 ```ts
 import { isEmpty } from '@pyreon/ui-core'
 
-isEmpty({})        // => true
-isEmpty([])        // => true
-isEmpty(null)      // => true
+isEmpty({}) // => true
+isEmpty([]) // => true
+isEmpty(null) // => true
 isEmpty({ a: 1 }) // => false
 ```
 
@@ -83,7 +85,7 @@ Create objects without or with only specified keys. Accept nullable inputs.
 ```ts
 import { omit, pick } from '@pyreon/ui-core'
 
-omit({ a: 1, b: 2, c: 3 }, ['b'])    // => { a: 1, c: 3 }
+omit({ a: 1, b: 2, c: 3 }, ['b']) // => { a: 1, c: 3 }
 pick({ a: 1, b: 2, c: 3 }, ['a', 'b']) // => { a: 1, b: 2 }
 ```
 
@@ -95,8 +97,8 @@ Nested property access and mutation by dot/bracket path. `set` has built-in prot
 import { set, get } from '@pyreon/ui-core'
 
 const obj = {}
-set(obj, 'a.b.c', 42)    // => { a: { b: { c: 42 } } }
-get(obj, 'a.b.c')         // => 42
+set(obj, 'a.b.c', 42) // => { a: { b: { c: 42 } } }
+get(obj, 'a.b.c') // => 42
 get(obj, 'a.x', 'default') // => 'default'
 ```
 
@@ -135,9 +137,9 @@ Both have corresponding TypeScript union types: `HTMLTags` and `HTMLTextTags`.
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package        | Version  |
+| -------------- | -------- |
+| @pyreon/core   | >= 0.0.1 |
 | @pyreon/styler | >= 0.0.1 |
 
 ## License

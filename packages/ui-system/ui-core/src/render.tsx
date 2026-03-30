@@ -1,5 +1,5 @@
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { h } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import { h } from '@pyreon/core'
 
 type RenderProps<T extends Record<string, unknown> | undefined> = (props: Partial<T>) => VNodeChild
 
@@ -21,7 +21,7 @@ const render: Render = (content, attachProps) => {
   if (!content) return null
 
   const t = typeof content
-  if (t === "string" || t === "number" || t === "boolean" || t === "bigint") {
+  if (t === 'string' || t === 'number' || t === 'boolean' || t === 'bigint') {
     return content as VNodeChild
   }
 
@@ -29,10 +29,10 @@ const render: Render = (content, attachProps) => {
     return content as VNodeChild
   }
 
-  if (typeof content === "function") {
+  if (typeof content === 'function') {
     // Extract key from props — it's a VNode concept, not a component prop.
     // Passing key inside props causes JSX runtime warnings.
-    if (attachProps && "key" in attachProps) {
+    if (attachProps && 'key' in attachProps) {
       const { key, ...rest } = attachProps
       return h(content as string | ComponentFn, rest as Props)
     }
@@ -40,7 +40,7 @@ const render: Render = (content, attachProps) => {
   }
 
   // VNode object — return directly
-  if (typeof content === "object") {
+  if (typeof content === 'object') {
     return content as VNodeChild
   }
 

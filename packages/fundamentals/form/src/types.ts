@@ -1,4 +1,4 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 export type ValidationError = string | undefined
 
@@ -85,7 +85,7 @@ export interface FormState<TValues extends Record<string, unknown>> {
    */
   register: <K extends keyof TValues & string>(
     field: K,
-    options?: { type?: "checkbox" | "number" },
+    options?: { type?: 'checkbox' | 'number' },
   ) => FieldRegisterProps<TValues[K]>
   /**
    * Submit handler — runs validation, then calls onSubmit if valid.
@@ -110,7 +110,7 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
   /** Schema-level validator (runs after field validators). */
   schema?: SchemaValidateFn<TValues>
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
-  validateOn?: "blur" | "change" | "submit"
+  validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */
   debounceMs?: number
 }

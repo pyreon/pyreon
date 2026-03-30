@@ -1,7 +1,9 @@
 Run linting and type checking.
 
 Steps:
-1. Run `bunx biome check --write .` to lint and auto-fix
-2. Run `bunx tsc --noEmit` for type checking
-3. Report any remaining errors clearly
-4. If $ARGUMENTS contains `--check` (no auto-fix), run `bunx biome check .` instead
+
+1. Run `oxlint .` to lint
+2. Run `oxfmt --check .` to check formatting
+3. Run `bun run typecheck` for type checking
+4. Report any remaining errors clearly
+5. If $ARGUMENTS contains `--fix`, run `oxlint --fix .` and `oxfmt --write .`

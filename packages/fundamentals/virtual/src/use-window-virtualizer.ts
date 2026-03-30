@@ -1,6 +1,6 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   observeWindowOffset,
   observeWindowRect,
@@ -8,16 +8,16 @@ import {
   Virtualizer,
   type VirtualizerOptions,
   windowScroll,
-} from "@tanstack/virtual-core"
+} from '@tanstack/virtual-core'
 
 export type UseWindowVirtualizerOptions<TItemElement extends Element> = () => Omit<
   VirtualizerOptions<Window, TItemElement>,
-  "observeElementRect" | "observeElementOffset" | "scrollToFn" | "getScrollElement"
+  'observeElementRect' | 'observeElementOffset' | 'scrollToFn' | 'getScrollElement'
 > &
   Partial<
     Pick<
       VirtualizerOptions<Window, TItemElement>,
-      "observeElementRect" | "observeElementOffset" | "scrollToFn"
+      'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
     >
   >
 
@@ -48,8 +48,8 @@ export function useWindowVirtualizer<TItemElement extends Element>(
     observeElementRect: observeWindowRect,
     observeElementOffset: observeWindowOffset,
     scrollToFn: windowScroll,
-    initialOffset: typeof document !== "undefined" ? window.scrollY : 0,
-    getScrollElement: () => (typeof window !== "undefined" ? window : (null as unknown as Window)),
+    initialOffset: typeof document !== 'undefined' ? window.scrollY : 0,
+    getScrollElement: () => (typeof window !== 'undefined' ? window : (null as unknown as Window)),
     ...options(),
   }
 

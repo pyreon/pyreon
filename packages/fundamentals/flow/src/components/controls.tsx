@@ -1,11 +1,11 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { ControlsProps, FlowInstance } from "../types"
+import type { VNodeChild } from '@pyreon/core'
+import type { ControlsProps, FlowInstance } from '../types'
 
 const positionStyles: Record<string, string> = {
-  "top-left": "top: 10px; left: 10px;",
-  "top-right": "top: 10px; right: 10px;",
-  "bottom-left": "bottom: 10px; left: 10px;",
-  "bottom-right": "bottom: 10px; right: 10px;",
+  'top-left': 'top: 10px; left: 10px;',
+  'top-right': 'top: 10px; right: 10px;',
+  'bottom-left': 'bottom: 10px; left: 10px;',
+  'bottom-right': 'bottom: 10px; right: 10px;',
 }
 
 // Simple SVG icons
@@ -86,15 +86,15 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
     showZoomOut = true,
     showFitView = true,
     showLock = false,
-    position = "bottom-left",
+    position = 'bottom-left',
     instance,
   } = props
 
   if (!instance) return null
 
-  const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles["bottom-left"]} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);`
+  const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);`
   const btnStyle =
-    "width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: #555; padding: 0;"
+    'width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: #555; padding: 0;'
 
   return () => {
     const zoomPercent = Math.round(instance.zoom() * 100)

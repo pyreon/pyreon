@@ -1,10 +1,10 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
-import { signal } from "@pyreon/reactivity"
-import { runAction } from "./middleware"
-import { onPatch, trackedSignal } from "./patch"
-import { instanceMeta } from "./registry"
-import type { InstanceMeta, ModelInstance, Snapshot, StateShape } from "./types"
-import { MODEL_BRAND } from "./types"
+import type { Computed, Signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { runAction } from './middleware'
+import { onPatch, trackedSignal } from './patch'
+import { instanceMeta } from './registry'
+import type { InstanceMeta, ModelInstance, Snapshot, StateShape } from './types'
+import { MODEL_BRAND } from './types'
 
 // ─── Model definition detection ───────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ interface AnyModelDef {
 }
 
 function isModelDef(v: unknown): v is AnyModelDef {
-  if (v == null || typeof v !== "object") return false
+  if (v == null || typeof v !== 'object') return false
   return (v as Record<string, unknown>)[MODEL_BRAND] === true
 }
 

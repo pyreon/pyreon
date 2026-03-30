@@ -16,7 +16,7 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import type { ComponentFn, Ref, VNode, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, Ref, VNode, VNodeChild } from '@pyreon/core'
 import {
   dispatchToErrorBoundary,
   ForSymbol,
@@ -24,13 +24,13 @@ import {
   PortalSymbol,
   reportError,
   runWithHooks,
-} from "@pyreon/core"
-import { effectScope, renderEffect, runUntracked, setCurrentScope } from "@pyreon/reactivity"
-import { setupDelegation } from "./delegate"
-import { warnHydrationMismatch } from "./hydration-debug"
-import { mountChild } from "./mount"
-import { mountReactive } from "./nodes"
-import { applyProps } from "./props"
+} from '@pyreon/core'
+import { effectScope, renderEffect, runUntracked, setCurrentScope } from '@pyreon/reactivity'
+import { setupDelegation } from './delegate'
+import { warnHydrationMismatch } from './hydration-debug'
+import { mountChild } from './mount'
+import { mountReactive } from './nodes'
+import { applyProps } from './props'
 
 type Cleanup = () => void
 const noop: Cleanup = () => {
@@ -99,12 +99,12 @@ function hydrateReactiveChild(
   const initial = runUntracked(child)
 
   if (initial == null || initial === false) {
-    const marker = insertMarker(parent, domNode, "pyreon")
+    const marker = insertMarker(parent, domNode, 'pyreon')
     const cleanup = mountReactive(child, parent, marker, mountChild)
     return [cleanup, domNode]
   }
 
-  if (typeof initial === "string" || typeof initial === "number" || typeof initial === "boolean") {
+  if (typeof initial === 'string' || typeof initial === 'number' || typeof initial === 'boolean') {
     return hydrateReactiveText(
       child as () => string | number | boolean | null | undefined,
       domNode,
@@ -114,7 +114,7 @@ function hydrateReactiveChild(
     )
   }
 
-  const marker = insertMarker(parent, domNode, "pyreon")
+  const marker = insertMarker(parent, domNode, 'pyreon')
   const cleanup = mountReactive(child, parent, marker, mountChild)
   const next = domNode ? nextReal(domNode) : null
   return [cleanup, next]
@@ -132,11 +132,11 @@ function hydrateReactiveText(
     const textNode = domNode as Text
     const dispose = renderEffect(() => {
       const v = child()
-      textNode.data = v == null ? "" : String(v)
+      textNode.data = v == null ? '' : String(v)
     })
     return [dispose, nextReal(domNode)]
   }
-  warnHydrationMismatch("text", "TextNode", domNode?.nodeType ?? "null", `${path} > reactive`)
+  warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > reactive`)
   const cleanup = mountChild(child, parent, anchor)
   return [cleanup, domNode]
 }
@@ -154,7 +154,7 @@ function hydrateVNode(
   }
 
   if (vnode.type === ForSymbol) {
-    const marker = insertMarker(parent, domNode, "pyreon-for")
+    const marker = insertMarker(parent, domNode, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
     return [cleanup, null]
   }
@@ -164,11 +164,11 @@ function hydrateVNode(
     return [cleanup, domNode]
   }
 
-  if (typeof vnode.type === "function") {
+  if (typeof vnode.type === 'function') {
     return hydrateComponent(vnode, domNode, parent, anchor, path)
   }
 
-  if (typeof vnode.type === "string") {
+  if (typeof vnode.type === 'string') {
     return hydrateElement(vnode, domNode, parent, anchor, path)
   }
 
@@ -180,7 +180,7 @@ function hydrateChild(
   domNode: ChildNode | null,
   parent: Node,
   anchor: Node | null,
-  path = "root",
+  path = 'root',
 ): [Cleanup, ChildNode | null] {
   if (Array.isArray(child)) {
     const cleanups: Cleanup[] = []
@@ -200,15 +200,15 @@ function hydrateChild(
 
   if (child == null || child === false) return [noop, domNode]
 
-  if (typeof child === "function") {
+  if (typeof child === 'function') {
     return hydrateReactiveChild(child as () => VNodeChild, domNode, parent, anchor, path)
   }
 
-  if (typeof child === "string" || typeof child === "number") {
+  if (typeof child === 'string' || typeof child === 'number') {
     if (domNode?.nodeType === Node.TEXT_NODE) {
       return [() => (domNode as Text).remove(), nextReal(domNode)]
     }
-    warnHydrationMismatch("text", "TextNode", domNode?.nodeType ?? "null", `${path} > text`)
+    warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
     const cleanup = mountChild(child, parent, anchor)
     return [cleanup, domNode]
   }
@@ -223,7 +223,7 @@ function hydrateElement(
   domNode: ChildNode | null,
   parent: Node,
   anchor: Node | null,
-  path = "root",
+  path = 'root',
 ): [Cleanup, ChildNode | null] {
   const elPath = `${path} > ${vnode.type as string}`
 
@@ -247,12 +247,12 @@ function hydrateElement(
     // Set ref
     const ref = vnode.props.ref as Ref<Element> | ((el: Element) => void) | undefined
     if (ref) {
-      if (typeof ref === "function") ref(el)
+      if (typeof ref === 'function') ref(el)
       else ref.current = el
     }
 
     const cleanup = () => {
-      if (ref && typeof ref === "object") ref.current = null
+      if (ref && typeof ref === 'object') ref.current = null
       for (const c of cleanups) c()
       el.remove()
     }
@@ -264,8 +264,8 @@ function hydrateElement(
   const actual =
     domNode?.nodeType === Node.ELEMENT_NODE
       ? (domNode as Element).tagName.toLowerCase()
-      : (domNode?.nodeType ?? "null")
-  warnHydrationMismatch("tag", vnode.type, actual, elPath)
+      : (domNode?.nodeType ?? 'null')
+  warnHydrationMismatch('tag', vnode.type, actual, elPath)
   const cleanup = mountChild(vnode, parent, anchor)
   return [cleanup, domNode]
 }
@@ -277,7 +277,7 @@ function hydrateChildren(
   domNode: ChildNode | null,
   parent: Node,
   anchor: Node | null,
-  path = "root",
+  path = 'root',
 ): [Cleanup, ChildNode | null] {
   if (children.length === 0) return [noop, domNode]
 
@@ -308,7 +308,7 @@ function hydrateComponent(
   domNode: ChildNode | null,
   parent: Node,
   anchor: Node | null,
-  path = "root",
+  path = 'root',
 ): [Cleanup, ChildNode | null] {
   const scope = effectScope()
   setCurrentScope(scope)
@@ -318,7 +318,7 @@ function hydrateComponent(
   let nextDom: ChildNode | null = domNode
 
   // Function.name is always a string per spec; || handles empty string, avoids uncoverable ?? branch
-  const componentName = ((vnode.type as ComponentFn).name || "Anonymous") as string
+  const componentName = ((vnode.type as ComponentFn).name || 'Anonymous') as string
   const mergedProps =
     (vnode.children ?? []).length > 0 &&
     (vnode.props as Record<string, unknown>).children === undefined
@@ -341,7 +341,7 @@ function hydrateComponent(
     console.error(`[Pyreon] Error hydrating component <${componentName}>:`, err)
     reportError({
       component: componentName,
-      phase: "setup",
+      phase: 'setup',
       error: err,
       timestamp: Date.now(),
       props: vnode.props as Record<string, unknown>,
@@ -373,7 +373,7 @@ function hydrateComponent(
       })
       if (c) mountCleanups.push(c)
     } catch (err) {
-      reportError({ component: componentName, phase: "mount", error: err, timestamp: Date.now() })
+      reportError({ component: componentName, phase: 'mount', error: err, timestamp: Date.now() })
     }
   }
 

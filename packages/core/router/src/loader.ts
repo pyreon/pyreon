@@ -1,6 +1,6 @@
-import type { Context } from "@pyreon/core"
-import { createContext, useContext } from "@pyreon/core"
-import type { RouterInstance } from "./types"
+import type { Context } from '@pyreon/core'
+import { createContext, useContext } from '@pyreon/core'
+import type { RouterInstance } from './types'
 
 /**
  * Context frame that holds the loader data for the currently rendered route record.
@@ -87,7 +87,7 @@ export function hydrateLoaderData(
   router: RouterInstance,
   serialized: Record<string, unknown>,
 ): void {
-  if (!serialized || typeof serialized !== "object") return
+  if (!serialized || typeof serialized !== 'object') return
   const route = router._resolve(router.currentRoute().path)
   for (const record of route.matched) {
     if (Object.hasOwn(serialized, record.path)) {

@@ -1,7 +1,7 @@
-import { effect, onCleanup, signal } from "@pyreon/reactivity"
-import { inferSerializer } from "./serializers"
-import type { Serializer, UrlStateOptions, UrlStateSignal } from "./types"
-import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from "./url"
+import { effect, onCleanup, signal } from '@pyreon/reactivity'
+import { inferSerializer } from './serializers'
+import type { Serializer, UrlStateOptions, UrlStateSignal } from './types'
+import { _isBrowser, getParam, getParamAll, setParamRepeated, setParams } from './url'
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ export function useUrlState<T>(
   maybeOptions?: UrlStateOptions<T>,
 ): UrlStateSignal<T> | Record<string, UrlStateSignal<unknown>> {
   // Schema mode
-  if (typeof keyOrSchema === "object") {
+  if (typeof keyOrSchema === 'object') {
     const schema = keyOrSchema as Record<string, unknown>
     const opts = defaultOrOptions as UrlStateOptions | undefined
     const result: Record<string, UrlStateSignal<unknown>> = {}
@@ -76,9 +76,9 @@ function createUrlSignal<T>(
 ): UrlStateSignal<T> {
   const replace = options?.replace !== false
   const debounceMs = options?.debounce ?? 0
-  const arrayFormat = options?.arrayFormat ?? "comma"
+  const arrayFormat = options?.arrayFormat ?? 'comma'
   const isArray = Array.isArray(defaultValue)
-  const isRepeat = isArray && arrayFormat === "repeat"
+  const isRepeat = isArray && arrayFormat === 'repeat'
 
   const { serialize, deserialize }: Serializer<T> =
     options?.serialize && options?.deserialize
@@ -162,9 +162,9 @@ function createUrlSignal<T>(
     }
 
     effect(() => {
-      window.addEventListener("popstate", onPopState)
+      window.addEventListener('popstate', onPopState)
       onCleanup(() => {
-        window.removeEventListener("popstate", onPopState)
+        window.removeEventListener('popstate', onPopState)
         if (timer !== undefined) clearTimeout(timer)
       })
     })

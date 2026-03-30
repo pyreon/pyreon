@@ -21,7 +21,7 @@ export {
   isPeekCall,
   isSetCall,
   isTernaryWithJSX,
-} from "./ast"
+} from './ast'
 export {
   BROWSER_GLOBALS,
   CONTEXT_APIS,
@@ -35,14 +35,14 @@ export {
   LIFECYCLE_APIS,
   PYREON_PREFIX,
   REACTIVITY_APIS,
-} from "./imports"
-export { LineIndex } from "./source"
+} from './imports'
+export { LineIndex } from './source'
 
 /** Supported JS/TS file extensions for linting. */
-export const JS_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mts", ".mjs"])
+export const JS_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mts', '.mjs'])
 
 /** Check if a file path has a supported JS/TS extension. */
 export function hasJsExtension(filePath: string): boolean {
-  const ext = filePath.slice(filePath.lastIndexOf("."))
+  const ext = filePath.slice(filePath.lastIndexOf('.'))
   return JS_EXTENSIONS.has(ext)
 }

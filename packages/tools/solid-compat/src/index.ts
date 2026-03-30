@@ -13,7 +13,7 @@
  *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
  */
 
-import type { ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, LazyComponent, Props, VNodeChild } from '@pyreon/core'
 import {
   ErrorBoundary,
   For,
@@ -25,7 +25,7 @@ import {
   Show,
   Suspense,
   Switch,
-} from "@pyreon/core"
+} from '@pyreon/core'
 import {
   type EffectScope,
   effectScope,
@@ -37,8 +37,8 @@ import {
   signal as pyreonSignal,
   runUntracked,
   setCurrentScope,
-} from "@pyreon/reactivity"
-import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
+} from '@pyreon/reactivity'
+import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── createSignal ────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter
 
     const getter: SignalGetter<T> = () => s()
     const setter: SignalSetter<T> = (v) => {
-      if (typeof v === "function") {
+      if (typeof v === 'function') {
         s.update(v as (prev: T) => T)
       } else {
         s.set(v)
@@ -71,7 +71,7 @@ export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter
   const s = pyreonSignal<T>(initialValue)
   const getter: SignalGetter<T> = () => s()
   const setter: SignalSetter<T> = (v) => {
-    if (typeof v === "function") {
+    if (typeof v === 'function') {
       s.update(v as (prev: T) => T)
     } else {
       s.set(v)
@@ -326,7 +326,7 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   for (const key of Reflect.ownKeys(descriptors)) {
     const desc = descriptors[key as string]
     if (!desc) continue
-    const target = typeof key === "string" && keySet.has(key) ? picked : rest
+    const target = typeof key === 'string' && keySet.has(key) ? picked : rest
     if (desc.get) {
       Object.defineProperty(target, key, {
         get: desc.get,
@@ -352,7 +352,7 @@ export function children(fn: () => VNodeChild): () => VNodeChild {
   const memo = createMemo(() => {
     const result = fn()
     // Resolve function children (reactive getters)
-    if (typeof result === "function") return (result as () => VNodeChild)()
+    if (typeof result === 'function') return (result as () => VNodeChild)()
     return result
   })
   return memo

@@ -1,12 +1,12 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isCallTo } from '../../utils/ast'
 
 export const noSignalLeak: Rule = {
   meta: {
-    id: "pyreon/no-signal-leak",
-    category: "reactivity",
-    description: "Warn about unused signal declarations (potential leaks).",
-    severity: "warn",
+    id: 'pyreon/no-signal-leak',
+    category: 'reactivity',
+    description: 'Warn about unused signal declarations (potential leaks).',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -19,9 +19,9 @@ export const noSignalLeak: Rule = {
     const callbacks: VisitorCallbacks = {
       VariableDeclarator(node: any) {
         const init = node.init
-        if (!init || !isCallTo(init, "signal")) return
+        if (!init || !isCallTo(init, 'signal')) return
         const id = node.id
-        if (!id || id.type !== "Identifier") return
+        if (!id || id.type !== 'Identifier') return
         signalDecls.set(id.name, {
           span: getSpan(node),
           declStart: id.start as number,
@@ -39,7 +39,7 @@ export const noSignalLeak: Rule = {
           ])
         }
       },
-      "Program:exit"() {
+      'Program:exit'() {
         for (const [name, { span, declStart, declEnd }] of signalDecls) {
           const occurrences = identifierOccurrences.get(name) ?? []
           // Filter out the declaration identifier itself

@@ -27,8 +27,8 @@
  * })
  */
 
-export { _reset, _toasts, toast } from "./toast"
-export { Toaster } from "./toaster"
+export { _reset, _toasts, toast } from './toast'
+export { Toaster } from './toaster'
 export type {
   Toast,
   ToasterProps,
@@ -37,4 +37,4 @@ export type {
   ToastPromiseOptions,
   ToastState,
   ToastType,
-} from "./types"
+} from './types'

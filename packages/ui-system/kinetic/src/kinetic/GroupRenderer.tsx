@@ -1,9 +1,9 @@
-import type { VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { TransitionCallbacks } from "../types"
-import TransitionItem from "./TransitionItem"
-import type { KineticConfig } from "./types"
+import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import type { TransitionCallbacks } from '../types'
+import TransitionItem from './TransitionItem'
+import type { KineticConfig } from './types'
 
 type GroupRendererProps = {
   config: KineticConfig
@@ -22,7 +22,7 @@ type GroupRendererProps = {
 type KeyedChild = { key: string | number; element: VNode }
 
 const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === "object" && "type" in (child as object)
+  child != null && typeof child === 'object' && 'type' in (child as object)
 
 const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
   const result: KeyedChild[] = []
@@ -62,7 +62,7 @@ const GroupRenderer = ({
   const forceUpdate = signal(0)
 
   // Normalize children to an accessor
-  const getChildren = typeof children === "function" ? (children as () => VNode[]) : () => children
+  const getChildren = typeof children === 'function' ? (children as () => VNode[]) : () => children
 
   // Track initial keys for appear animation logic
   const initialKeyed = getKeyedChildren(getChildren())

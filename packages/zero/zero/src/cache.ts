@@ -1,4 +1,4 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Cache control middleware ───────────────────────────────────────────────
 //
@@ -38,8 +38,8 @@ const SCRIPT_EXT = /\.(js|css|mjs)$/i
 /** @internal Exported for testing */
 export function matchGlob(pattern: string, path: string): boolean {
   // Escape regex special chars, then convert glob wildcards
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-  const regex = escaped.replace(/\*/g, ".*").replace(/\?/g, ".")
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  const regex = escaped.replace(/\*/g, '.*').replace(/\?/g, '.')
   return new RegExp(`^${regex}$`).test(path)
 }
 
@@ -62,7 +62,7 @@ function resolveControl(
   if (pageDuration > 0) {
     return `public, max-age=${pageDuration}, stale-while-revalidate=${swr}`
   }
-  return "no-cache"
+  return 'no-cache'
 }
 
 /**
@@ -97,13 +97,13 @@ export function cacheMiddleware(config: CacheConfig = {}): Middleware {
 
     for (const rule of rules) {
       if (matchGlob(rule.match, path)) {
-        ctx.headers.set("Cache-Control", rule.control)
+        ctx.headers.set('Cache-Control', rule.control)
         return
       }
     }
 
     const control = resolveControl(path, immutableDuration, staticDuration, pageDuration, swr)
-    ctx.headers.set("Cache-Control", control)
+    ctx.headers.set('Cache-Control', control)
   }
 }
 
@@ -113,11 +113,11 @@ export function cacheMiddleware(config: CacheConfig = {}): Middleware {
  */
 export function securityHeaders(): Middleware {
   return (ctx: MiddlewareContext) => {
-    ctx.headers.set("X-Content-Type-Options", "nosniff")
-    ctx.headers.set("X-Frame-Options", "DENY")
-    ctx.headers.set("X-XSS-Protection", "1; mode=block")
-    ctx.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
-    ctx.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    ctx.headers.set('X-Content-Type-Options', 'nosniff')
+    ctx.headers.set('X-Frame-Options', 'DENY')
+    ctx.headers.set('X-XSS-Protection', '1; mode=block')
+    ctx.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    ctx.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
   }
 }
 
@@ -128,9 +128,9 @@ export function securityHeaders(): Middleware {
  */
 export function varyEncoding(): Middleware {
   return (ctx: MiddlewareContext) => {
-    const existing = ctx.headers.get("Vary")
-    if (!existing?.includes("Accept-Encoding")) {
-      ctx.headers.set("Vary", existing ? `${existing}, Accept-Encoding` : "Accept-Encoding")
+    const existing = ctx.headers.get('Vary')
+    if (!existing?.includes('Accept-Encoding')) {
+      ctx.headers.set('Vary', existing ? `${existing}, Accept-Encoding` : 'Accept-Encoding')
     }
   }
 }

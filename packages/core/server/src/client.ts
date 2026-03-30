@@ -25,11 +25,11 @@
  * ```
  */
 
-import type { ComponentFn } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from "@pyreon/router"
-import { hydrateRoot, mount } from "@pyreon/runtime-dom"
-import type { HydrationStrategy } from "./island"
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { createRouter, hydrateLoaderData, type RouteRecord, RouterProvider } from '@pyreon/router'
+import { hydrateRoot, mount } from '@pyreon/runtime-dom'
+import type { HydrationStrategy } from './island'
 
 // ─── Full app hydration ──────────────────────────────────────────────────────
 
@@ -53,20 +53,20 @@ export interface StartClientOptions {
  * Returns a cleanup function that unmounts the app.
  */
 export function startClient(options: StartClientOptions): () => void {
-  const { App, routes, container = "#app" } = options
+  const { App, routes, container = '#app' } = options
 
-  const el = typeof container === "string" ? document.querySelector(container) : container
+  const el = typeof container === 'string' ? document.querySelector(container) : container
 
   if (!el) {
     throw new Error(`[pyreon/client] Container "${container}" not found`)
   }
 
   // Create client-side router (history mode to match SSR)
-  const router = createRouter({ routes, mode: "history" })
+  const router = createRouter({ routes, mode: 'history' })
 
   // Hydrate loader data from SSR (avoids re-fetching on initial render)
   const loaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
-  if (loaderData && typeof loaderData === "object") {
+  if (loaderData && typeof loaderData === 'object') {
     hydrateLoaderData(router as never, loaderData as Record<string, unknown>)
   }
 
@@ -101,11 +101,11 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * Returns a cleanup function that disconnects any pending observers/listeners.
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
-  const islands = document.querySelectorAll("pyreon-island")
+  const islands = document.querySelectorAll('pyreon-island')
   const cleanups: (() => void)[] = []
 
   for (const el of islands) {
-    const componentId = el.getAttribute("data-component")
+    const componentId = el.getAttribute('data-component')
     if (!componentId) continue
 
     const loader = registry[componentId]
@@ -114,8 +114,8 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
       continue
     }
 
-    const strategy = (el.getAttribute("data-hydrate") ?? "load") as HydrationStrategy
-    const propsJson = el.getAttribute("data-props") ?? "{}"
+    const strategy = (el.getAttribute('data-hydrate') ?? 'load') as HydrationStrategy
+    const propsJson = el.getAttribute('data-props') ?? '{}'
 
     const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
     if (cleanup) cleanups.push(cleanup)
@@ -138,12 +138,12 @@ function scheduleHydration(
   }
 
   switch (strategy) {
-    case "load":
+    case 'load':
       hydrate()
       return null
 
-    case "idle": {
-      if ("requestIdleCallback" in window) {
+    case 'idle': {
+      if ('requestIdleCallback' in window) {
         const id = requestIdleCallback(hydrate)
         return () => {
           cancelled = true
@@ -157,15 +157,15 @@ function scheduleHydration(
       }
     }
 
-    case "visible":
+    case 'visible':
       return observeVisibility(el, hydrate)
 
-    case "never":
+    case 'never':
       return null
 
     default:
       // media(query)
-      if (strategy.startsWith("media(")) {
+      if (strategy.startsWith('media(')) {
         const query = strategy.slice(6, -1)
         const mql = window.matchMedia(query)
         if (mql.matches) {
@@ -174,14 +174,14 @@ function scheduleHydration(
         }
         const onChange = (e: MediaQueryListEvent) => {
           if (e.matches) {
-            mql.removeEventListener("change", onChange)
+            mql.removeEventListener('change', onChange)
             hydrate()
           }
         }
-        mql.addEventListener("change", onChange)
+        mql.addEventListener('change', onChange)
         return () => {
           cancelled = true
-          mql.removeEventListener("change", onChange)
+          mql.removeEventListener('change', onChange)
         }
       }
       hydrate()
@@ -194,13 +194,13 @@ async function hydrateIsland(
   loader: IslandLoader,
   propsJson: string,
 ): Promise<void> {
-  const name = el.getAttribute("data-component") ?? "unknown"
+  const name = el.getAttribute('data-component') ?? 'unknown'
   try {
     let props: Record<string, unknown>
     try {
       props = JSON.parse(propsJson)
-      if (typeof props !== "object" || props === null || Array.isArray(props)) {
-        throw new TypeError("Expected object")
+      if (typeof props !== 'object' || props === null || Array.isArray(props)) {
+        throw new TypeError('Expected object')
       }
     } catch (parseErr) {
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
@@ -208,7 +208,7 @@ async function hydrateIsland(
     }
 
     const mod = await loader()
-    const Comp = typeof mod === "function" ? mod : mod.default
+    const Comp = typeof mod === 'function' ? mod : mod.default
     hydrateRoot(el, h(Comp, props))
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
@@ -216,7 +216,7 @@ async function hydrateIsland(
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
-  if (!("IntersectionObserver" in window)) {
+  if (!('IntersectionObserver' in window)) {
     callback()
     return null
   }
@@ -231,7 +231,7 @@ function observeVisibility(el: HTMLElement, callback: () => void): (() => void) 
         }
       }
     },
-    { rootMargin: "200px" },
+    { rootMargin: '200px' },
   )
 
   observer.observe(el)

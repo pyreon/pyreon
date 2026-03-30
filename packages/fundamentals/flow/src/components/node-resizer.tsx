@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { FlowInstance } from "../types"
+import type { VNodeChild } from '@pyreon/core'
+import type { FlowInstance } from '../types'
 
 export interface NodeResizerProps {
   nodeId: string
@@ -14,28 +14,28 @@ export interface NodeResizerProps {
   showEdgeHandles?: boolean
 }
 
-type ResizeDirection = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w"
+type ResizeDirection = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w'
 
 const directionCursors: Record<ResizeDirection, string> = {
-  nw: "nw-resize",
-  ne: "ne-resize",
-  sw: "sw-resize",
-  se: "se-resize",
-  n: "n-resize",
-  s: "s-resize",
-  e: "e-resize",
-  w: "w-resize",
+  nw: 'nw-resize',
+  ne: 'ne-resize',
+  sw: 'sw-resize',
+  se: 'se-resize',
+  n: 'n-resize',
+  s: 's-resize',
+  e: 'e-resize',
+  w: 'w-resize',
 }
 
 const directionPositions: Record<ResizeDirection, string> = {
-  nw: "top: -4px; left: -4px;",
-  ne: "top: -4px; right: -4px;",
-  sw: "bottom: -4px; left: -4px;",
-  se: "bottom: -4px; right: -4px;",
-  n: "top: -4px; left: 50%; transform: translateX(-50%);",
-  s: "bottom: -4px; left: 50%; transform: translateX(-50%);",
-  e: "right: -4px; top: 50%; transform: translateY(-50%);",
-  w: "left: -4px; top: 50%; transform: translateY(-50%);",
+  nw: 'top: -4px; left: -4px;',
+  ne: 'top: -4px; right: -4px;',
+  sw: 'bottom: -4px; left: -4px;',
+  se: 'bottom: -4px; right: -4px;',
+  n: 'top: -4px; left: 50%; transform: translateX(-50%);',
+  s: 'bottom: -4px; left: 50%; transform: translateX(-50%);',
+  e: 'right: -4px; top: 50%; transform: translateY(-50%);',
+  w: 'left: -4px; top: 50%; transform: translateY(-50%);',
 }
 
 /**
@@ -67,8 +67,8 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
   } = props
 
   const directions: ResizeDirection[] = showEdgeHandles
-    ? ["nw", "ne", "sw", "se", "n", "s", "e", "w"]
-    : ["nw", "ne", "sw", "se"]
+    ? ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']
+    : ['nw', 'ne', 'sw', 'se']
 
   const createHandler = (dir: ResizeDirection) => {
     let startX = 0
@@ -112,19 +112,19 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
       let newY = startNodeY
 
       // Horizontal
-      if (dir === "e" || dir === "se" || dir === "ne") {
+      if (dir === 'e' || dir === 'se' || dir === 'ne') {
         newW = Math.max(minWidth, startWidth + dx)
       }
-      if (dir === "w" || dir === "sw" || dir === "nw") {
+      if (dir === 'w' || dir === 'sw' || dir === 'nw') {
         newW = Math.max(minWidth, startWidth - dx)
         newX = startNodeX + startWidth - newW
       }
 
       // Vertical
-      if (dir === "s" || dir === "se" || dir === "sw") {
+      if (dir === 's' || dir === 'se' || dir === 'sw') {
         newH = Math.max(minHeight, startHeight + dy)
       }
-      if (dir === "n" || dir === "ne" || dir === "nw") {
+      if (dir === 'n' || dir === 'ne' || dir === 'nw') {
         newH = Math.max(minHeight, startHeight - dy)
         newY = startNodeY + startHeight - newH
       }

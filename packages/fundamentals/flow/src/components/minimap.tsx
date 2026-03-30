@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { FlowInstance, MiniMapProps } from "../types"
+import type { VNodeChild } from '@pyreon/core'
+import type { FlowInstance, MiniMapProps } from '../types'
 
 /**
  * Miniature overview of the flow diagram showing all nodes
@@ -16,8 +16,8 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
   const {
     width = 200,
     height = 150,
-    nodeColor = "#e2e8f0",
-    maskColor = "rgba(0, 0, 0, 0.08)",
+    nodeColor = '#e2e8f0',
+    maskColor = 'rgba(0, 0, 0, 0.08)',
     instance,
   } = props
 
@@ -86,7 +86,7 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
             const h = (node.height ?? 40) * scale
             const x = (node.position.x - minX + padding) * scale
             const y = (node.position.y - minY + padding) * scale
-            const color = typeof nodeColor === "function" ? nodeColor(node) : nodeColor
+            const color = typeof nodeColor === 'function' ? nodeColor(node) : nodeColor
 
             return (
               <rect

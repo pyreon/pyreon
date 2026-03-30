@@ -10,11 +10,11 @@
  *   - computed() for derived values
  */
 
-import { For, Show } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { computed, signal } from "@pyreon/reactivity"
-import { useLoaderData } from "@pyreon/router"
-import { TodoItem } from "../components/TodoItem"
+import { For, Show } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { computed, signal } from '@pyreon/reactivity'
+import { useLoaderData } from '@pyreon/router'
+import { TodoItem } from '../components/TodoItem'
 
 interface Todo {
   id: number
@@ -24,12 +24,12 @@ interface Todo {
 
 export const TodoList = () => {
   const todos = useLoaderData<Todo[]>()
-  const filter = signal<"all" | "active" | "done">("all")
+  const filter = signal<'all' | 'active' | 'done'>('all')
 
   const filtered = computed(() => {
     const f = filter()
-    if (f === "active") return todos.filter((t) => !t.completed)
-    if (f === "done") return todos.filter((t) => t.completed)
+    if (f === 'active') return todos.filter((t) => !t.completed)
+    if (f === 'done') return todos.filter((t) => t.completed)
     return todos
   })
 
@@ -44,13 +44,13 @@ export const TodoList = () => {
       <h1>Todos</h1>
 
       <div>
-        <button type="button" onClick={() => filter.set("all")}>
+        <button type="button" onClick={() => filter.set('all')}>
           All
         </button>
-        <button type="button" onClick={() => filter.set("active")}>
+        <button type="button" onClick={() => filter.set('active')}>
           Active
         </button>
-        <button type="button" onClick={() => filter.set("done")}>
+        <button type="button" onClick={() => filter.set('done')}>
           Done
         </button>
       </div>

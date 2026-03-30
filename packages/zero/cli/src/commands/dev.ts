@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs"
-import { join, resolve } from "node:path"
-import { createServer } from "vite"
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { createServer } from 'vite'
 
 export interface DevOptions {
   port?: number
@@ -10,13 +10,13 @@ export interface DevOptions {
 
 export async function dev(root: string | undefined, options: DevOptions) {
   try {
-    const projectRoot = resolve(root ?? ".")
+    const projectRoot = resolve(root ?? '.')
 
     const server = await createServer({
       root: projectRoot,
       server: {
         port: options.port ?? 3000,
-        host: options.host === true ? "0.0.0.0" : options.host || false,
+        host: options.host === true ? '0.0.0.0' : options.host || false,
         ...(options.open != null ? { open: options.open } : {}),
       },
     })
@@ -27,18 +27,18 @@ export async function dev(root: string | undefined, options: DevOptions) {
     // Print route table after server starts
     await printRouteTable(projectRoot)
   } catch (error) {
-    console.error("Failed to start dev server:", (error as Error).message)
+    console.error('Failed to start dev server:', (error as Error).message)
     process.exit(1)
   }
 }
 
 async function printRouteTable(projectRoot: string) {
   try {
-    const routesDir = join(projectRoot, "src/routes")
+    const routesDir = join(projectRoot, 'src/routes')
     if (!existsSync(routesDir)) return
 
-    const { scanRouteFiles, parseFileRoutes } = await import("@pyreon/zero")
-    const { isApiRoute, apiFilePathToPattern } = await import("@pyreon/zero/api-routes")
+    const { scanRouteFiles, parseFileRoutes } = await import('@pyreon/zero')
+    const { isApiRoute, apiFilePathToPattern } = await import('@pyreon/zero/api-routes')
 
     const files = await scanRouteFiles(routesDir)
     const pageRoutes = parseFileRoutes(files).filter(
@@ -48,9 +48,9 @@ async function printRouteTable(projectRoot: string) {
 
     if (pageRoutes.length === 0 && apiFiles.length === 0) return
 
-    console.log("")
-    console.log("  \x1b[36m Routes\x1b[0m")
-    console.log("")
+    console.log('')
+    console.log('  \x1b[36m Routes\x1b[0m')
+    console.log('')
 
     for (const route of pageRoutes) {
       const mode = route.renderMode.toUpperCase()
@@ -58,15 +58,15 @@ async function printRouteTable(projectRoot: string) {
     }
 
     if (apiFiles.length > 0) {
-      console.log("")
-      console.log("  \x1b[33m API Routes\x1b[0m")
-      console.log("")
+      console.log('')
+      console.log('  \x1b[33m API Routes\x1b[0m')
+      console.log('')
       for (const file of apiFiles) {
         console.log(`  \x1b[2mAPI \x1b[0m ${apiFilePathToPattern(file)}`)
       }
     }
 
-    console.log("")
+    console.log('')
   } catch {
     // Route table is informational — don't fail dev server
   }

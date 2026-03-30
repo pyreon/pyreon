@@ -1,8 +1,8 @@
-import { config } from "@pyreon/ui-core"
-import type { MakeItResponsiveStyles } from "@pyreon/unistyle"
-import { extendCss, makeItResponsive, value } from "@pyreon/unistyle"
-import type { CssOutput, StyledTypes } from "../types"
-import { hasValue, isNumber, isVisible } from "../utils"
+import { config } from '@pyreon/ui-core'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
+import { extendCss, makeItResponsive, value } from '@pyreon/unistyle'
+import type { CssOutput, StyledTypes } from '../types'
+import { hasValue, isNumber, isVisible } from '../utils'
 
 const { styled, css, component } = config
 
@@ -12,7 +12,7 @@ type HasWidth = (size?: number, columns?: number) => boolean
 const hasWidth: HasWidth = (size, columns) => hasValue(size) && hasValue(columns)
 
 type WidthStyles = (
-  props: Pick<StyledTypes, "size" | "columns" | "gap">,
+  props: Pick<StyledTypes, 'size' | 'columns' | 'gap'>,
   defaults: { rootSize?: number | undefined },
 ) => CssOutput
 
@@ -22,7 +22,7 @@ type WidthStyles = (
  */
 const widthStyles: WidthStyles = ({ size, columns, gap }, { rootSize }) => {
   if (!hasWidth(size, columns)) {
-    return ""
+    return ''
   }
 
   const s = size as number
@@ -46,11 +46,11 @@ const widthStyles: WidthStyles = ({ size, columns, gap }, { rootSize }) => {
   `
 }
 
-type SpacingStyles = (type: "margin" | "padding", param?: number, rootSize?: number) => CssOutput
+type SpacingStyles = (type: 'margin' | 'padding', param?: number, rootSize?: number) => CssOutput
 /** Applies half of the given value as either margin or padding (used for gap and padding distribution). */
 const spacingStyles: SpacingStyles = (type, param, rootSize) => {
   if (!isNumber(param)) {
-    return ""
+    return ''
   }
 
   const finalStyle = `${type}: ${value((param as number) / 2, rootSize)}`
@@ -74,8 +74,8 @@ const styles: MakeItResponsiveStyles<StyledTypes> = ({ theme, css: cssFn, rootSi
       left: initial;
       position: relative;
       ${widthStyles({ size, columns, gap }, { rootSize })};
-      ${spacingStyles("padding", padding, rootSize)};
-      ${spacingStyles("margin", gap, rootSize)};
+      ${spacingStyles('padding', padding, rootSize)};
+      ${spacingStyles('margin', gap, rootSize)};
       ${extendCss(extraStyles)};
     `
   }
@@ -99,7 +99,7 @@ export default styled(component)`
   flex-direction: column;
 
   ${makeItResponsive({
-    key: "$coolgrid",
+    key: '$coolgrid',
     styles,
     css,
     normalize: true,

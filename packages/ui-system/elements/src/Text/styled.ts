@@ -4,9 +4,9 @@
  * styles can be injected via the responsive `extraStyles` prop processed
  * through makeItResponsive.
  */
-import { config } from "@pyreon/ui-core"
-import { extendCss, makeItResponsive } from "@pyreon/unistyle"
-import type { ResponsiveStylesCallback } from "../types"
+import { config } from '@pyreon/ui-core'
+import { extendCss, makeItResponsive } from '@pyreon/unistyle'
+import type { ResponsiveStylesCallback } from '../types'
 
 const { styled, css, textComponent } = config
 
@@ -22,7 +22,7 @@ export default styled(textComponent)`
   `};
 
   ${makeItResponsive({
-    key: "$text",
+    key: '$text',
     styles,
     css,
     normalize: false,

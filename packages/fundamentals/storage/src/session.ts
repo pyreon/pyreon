@@ -1,8 +1,8 @@
-import { signal } from "@pyreon/reactivity"
-import { createStorageSignal } from "./local"
-import { getEntry, setEntry } from "./registry"
-import type { StorageOptions, StorageSignal } from "./types"
-import { deserialize, getWebStorage } from "./utils"
+import { signal } from '@pyreon/reactivity'
+import { createStorageSignal } from './local'
+import { getEntry, setEntry } from './registry'
+import type { StorageOptions, StorageSignal } from './types'
+import { deserialize, getWebStorage } from './utils'
 
 // ─── useSessionStorage ───────────────────────────────────────────────────────
 
@@ -24,10 +24,10 @@ export function useSessionStorage<T>(
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
   // Return existing signal if already registered
-  const existing = getEntry<T>("session", key)
+  const existing = getEntry<T>('session', key)
   if (existing) return existing.signal
 
-  const storage = getWebStorage("session")
+  const storage = getWebStorage('session')
 
   // Read initial value from storage
   let initialValue = defaultValue
@@ -39,9 +39,9 @@ export function useSessionStorage<T>(
   }
 
   const sig = signal<T>(initialValue)
-  const storageSig = createStorageSignal(sig, key, defaultValue, "session", options)
+  const storageSig = createStorageSignal(sig, key, defaultValue, 'session', options)
 
-  setEntry("session", key, storageSig, defaultValue)
+  setEntry('session', key, storageSig, defaultValue)
 
   return storageSig
 }

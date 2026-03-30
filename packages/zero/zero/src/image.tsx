@@ -1,8 +1,8 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createRef } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { FormatSource } from "./image-plugin"
-import { useIntersectionObserver } from "./utils/use-intersection-observer"
+import type { VNodeChild } from '@pyreon/core'
+import { createRef } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import type { FormatSource } from './image-plugin'
+import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Image optimization component ───────────────────────────────────────────
 //
@@ -30,7 +30,7 @@ export interface ImageProps {
   /** Per-format source sets for <picture>. Provided automatically by imagePlugin. */
   formats?: FormatSource[]
   /** Loading strategy. "lazy" uses IntersectionObserver, "eager" loads immediately. Default: "lazy" */
-  loading?: "lazy" | "eager"
+  loading?: 'lazy' | 'eager'
   /** Mark as priority (LCP image). Disables lazy loading, adds fetchPriority="high". */
   priority?: boolean
   /** Low-quality placeholder image URL or base64 data URI for blur-up effect. */
@@ -40,9 +40,9 @@ export interface ImageProps {
   /** Inline styles. */
   style?: string
   /** CSS object-fit. Default: "cover" */
-  fit?: "cover" | "contain" | "fill" | "none" | "scale-down"
+  fit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'
   /** Decode async. Default: true */
-  decoding?: "sync" | "async" | "auto"
+  decoding?: 'sync' | 'async' | 'auto'
 }
 
 export interface ImageSource {
@@ -64,19 +64,19 @@ export interface ImageSource {
  * <Image src="/hero.jpg" alt="Hero" width={1200} height={630} />
  */
 export function Image(props: ImageProps): VNodeChild {
-  const isEager = props.priority || props.loading === "eager"
+  const isEager = props.priority || props.loading === 'eager'
   const loaded = signal(isEager)
   const inView = signal(isEager)
   const containerRef = createRef<HTMLElement>()
 
   // Resolve srcset from string or array
   const resolvedSrcset =
-    typeof props.srcset === "string"
+    typeof props.srcset === 'string'
       ? props.srcset
-      : props.srcset?.map((s) => `${s.src} ${s.width}w`).join(", ")
+      : props.srcset?.map((s) => `${s.src} ${s.width}w`).join(', ')
 
-  const sizes = props.sizes ?? "100vw"
-  const fit = props.fit ?? "cover"
+  const sizes = props.sizes ?? '100vw'
+  const fit = props.fit ?? 'cover'
   const hasFormats = props.formats && props.formats.length > 0
   const aspectRatio = `${props.width} / ${props.height}`
 
@@ -89,37 +89,37 @@ export function Image(props: ImageProps): VNodeChild {
 
   // Static styles (don't depend on signals)
   const containerStyle = [
-    "position: relative",
-    "overflow: hidden",
+    'position: relative',
+    'overflow: hidden',
     `aspect-ratio: ${aspectRatio}`,
     `max-width: ${props.width}px`,
-    "width: 100%",
+    'width: 100%',
     props.style,
   ]
     .filter(Boolean)
-    .join("; ")
+    .join('; ')
 
   const imgEl = (
     <img
-      src={() => (inView() ? props.src : "")}
-      srcSet={() => (!hasFormats && inView() && resolvedSrcset ? resolvedSrcset : "")}
+      src={() => (inView() ? props.src : '')}
+      srcSet={() => (!hasFormats && inView() && resolvedSrcset ? resolvedSrcset : '')}
       sizes={resolvedSrcset ? sizes : undefined}
       alt={props.alt}
       width={props.width}
       height={props.height}
-      loading={isEager ? "eager" : "lazy"}
-      decoding={props.decoding ?? "async"}
-      fetchPriority={props.priority ? "high" : undefined}
+      loading={isEager ? 'eager' : 'lazy'}
+      decoding={props.decoding ?? 'async'}
+      fetchPriority={props.priority ? 'high' : undefined}
       onLoad={() => loaded.set(true)}
       style={() =>
         [
-          "display: block",
-          "width: 100%",
-          "height: 100%",
+          'display: block',
+          'width: 100%',
+          'height: 100%',
           `object-fit: ${fit}`,
-          "transition: opacity 0.3s ease",
-          props.placeholder && !loaded() ? "opacity: 0" : "opacity: 1",
-        ].join("; ")
+          'transition: opacity 0.3s ease',
+          props.placeholder && !loaded() ? 'opacity: 0' : 'opacity: 1',
+        ].join('; ')
       }
     />
   )
@@ -134,16 +134,16 @@ export function Image(props: ImageProps): VNodeChild {
           loading="eager"
           style={() =>
             [
-              "position: absolute",
-              "inset: 0",
-              "width: 100%",
-              "height: 100%",
-              "object-fit: cover",
-              "filter: blur(20px)",
-              "transform: scale(1.1)",
-              "transition: opacity 0.4s ease",
-              loaded() ? "opacity: 0; pointer-events: none" : "opacity: 1",
-            ].join("; ")
+              'position: absolute',
+              'inset: 0',
+              'width: 100%',
+              'height: 100%',
+              'object-fit: cover',
+              'filter: blur(20px)',
+              'transform: scale(1.1)',
+              'transition: opacity 0.4s ease',
+              loaded() ? 'opacity: 0; pointer-events: none' : 'opacity: 1',
+            ].join('; ')
           }
         />
       )}
@@ -152,7 +152,7 @@ export function Image(props: ImageProps): VNodeChild {
           {props.formats?.map((fmt) => (
             <source
               type={fmt.type}
-              srcSet={() => (inView() ? (fmt.srcset ?? "") : "")}
+              srcSet={() => (inView() ? (fmt.srcset ?? '') : '')}
               sizes={sizes}
             />
           ))}

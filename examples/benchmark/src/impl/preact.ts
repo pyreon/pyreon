@@ -3,11 +3,11 @@
  * Uses h() directly (no JSX needed) like the React impl uses createElement.
  * Preact flushes batched hook updates via Promise microtask.
  */
-import { h, render } from "preact"
-import { memo } from "preact/compat"
-import { useEffect, useState } from "preact/hooks"
-import type { BenchSuite, Row } from "../runner"
-import { bench, buildRows } from "../runner"
+import { h, render } from 'preact'
+import { memo } from 'preact/compat'
+import { useEffect, useState } from 'preact/hooks'
+import type { BenchSuite, Row } from '../runner'
+import { bench, buildRows } from '../runner'
 
 /** Wait for Preact's async batch flush (microtask + one macro turn) */
 function afterCommit(): Promise<void> {
@@ -21,10 +21,10 @@ interface Setters {
 
 const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
   return h(
-    "tr",
-    { className: selected ? "selected" : undefined },
-    h("td", null, row.id),
-    h("td", null, row.label),
+    'tr',
+    { className: selected ? 'selected' : undefined },
+    h('td', null, row.id),
+    h('td', null, row.label),
   )
 })
 
@@ -37,10 +37,10 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   }, [onMounted])
 
   return h(
-    "table",
+    'table',
     null,
     h(
-      "tbody",
+      'tbody',
       null,
       ...rows.map((row) => h(RowItem, { key: row.id, row, selected: row.id === selectedId })),
     ),
@@ -48,7 +48,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
 }
 
 export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "Preact", container, results: [] }
+  const suite: BenchSuite = { framework: 'Preact', container, results: [] }
 
   let resolveSetters!: (s: Setters) => void
   const settersPromise = new Promise<Setters>((res) => {
@@ -69,19 +69,19 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
 
   let currentRows: Row[] = []
 
-  await bench("create 1,000 rows", suite, async () => {
+  await bench('create 1,000 rows', suite, async () => {
     currentRows = buildRows(1_000)
     await setRows(currentRows)
   })
 
-  await bench("replace all rows", suite, async () => {
+  await bench('replace all rows', suite, async () => {
     currentRows = buildRows(1_000)
     await setRows(currentRows)
   })
 
   let originalLabels: string[] = currentRows.map((r) => r.label)
   await bench(
-    "partial update (every 10th)",
+    'partial update (every 10th)',
     suite,
     async () => {
       const updated = [...currentRows]
@@ -107,11 +107,11 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
   await setRows(currentRows)
   originalLabels = currentRows.map((r) => r.label)
 
-  await bench("select row", suite, async () => {
+  await bench('select row', suite, async () => {
     await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
   })
 
-  await bench("swap rows", suite, async () => {
+  await bench('swap rows', suite, async () => {
     const updated = [...currentRows]
     if (updated.length >= 999) {
       const tmp = updated[1]
@@ -125,7 +125,7 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
     await setRows(currentRows)
   })
 
-  await bench("clear rows", suite, async () => {
+  await bench('clear rows', suite, async () => {
     currentRows = []
     await setRows([])
   })
@@ -133,7 +133,7 @@ export async function runPreact(container: HTMLElement): Promise<BenchSuite> {
   currentRows = buildRows(1_000)
   await setRows(currentRows)
 
-  await bench("create 10,000 rows", suite, async () => {
+  await bench('create 10,000 rows', suite, async () => {
     currentRows = buildRows(10_000)
     await setRows(currentRows)
   })

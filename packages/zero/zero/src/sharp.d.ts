@@ -1,4 +1,4 @@
-declare module "sharp" {
+declare module 'sharp' {
   interface SharpInstance {
     resize(width: number, height?: number, options?: { fit?: string }): SharpInstance
     webp(options?: { quality?: number }): SharpInstance

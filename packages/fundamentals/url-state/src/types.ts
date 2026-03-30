@@ -13,9 +13,9 @@ export interface UrlStateSignal<T> {
 /** Encoding strategy for array values in the URL. */
 export type ArrayFormat =
   /** Comma-separated: `?tags=a,b` */
-  | "comma"
+  | 'comma'
   /** Repeated keys: `?tags=a&tags=b` */
-  | "repeat"
+  | 'repeat'
 
 /** Options for `useUrlState`. */
 export interface UrlStateOptions<T = unknown> {

@@ -1,18 +1,18 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator"
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
 GlobalRegistrator.register()
 
 // Profile: different ways to bulk-remove 1000 tr>td+td from connected DOM
 
 function buildTbody(n: number): HTMLTableSectionElement {
-  const tbody = document.createElement("tbody")
+  const tbody = document.createElement('tbody')
   document.body.appendChild(tbody)
   for (let i = 0; i < n; i++) {
-    const tr = document.createElement("tr")
-    const td1 = document.createElement("td")
+    const tr = document.createElement('tr')
+    const td1 = document.createElement('td')
     td1.textContent = String(i)
     tr.appendChild(td1)
-    const td2 = document.createElement("td")
+    const td2 = document.createElement('td')
     td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)
@@ -47,7 +47,7 @@ function buildTbody(n: number): HTMLTableSectionElement {
 {
   const tbody = buildTbody(1000)
   const t0 = performance.now()
-  tbody.innerHTML = ""
+  tbody.innerHTML = ''
   const t1 = performance.now()
   console.log(`innerHTML = "":                ${(t1 - t0).toFixed(1)}ms`)
   document.body.removeChild(tbody)
@@ -93,15 +93,15 @@ function buildTbody(n: number): HTMLTableSectionElement {
 // Method 7: range between markers (actual mountFor pattern)
 {
   const tbody = buildTbody(0)
-  const startMarker = document.createComment("")
-  const tailMarker = document.createComment("")
+  const startMarker = document.createComment('')
+  const tailMarker = document.createComment('')
   tbody.appendChild(startMarker)
   for (let i = 0; i < 1000; i++) {
-    const tr = document.createElement("tr")
-    const td1 = document.createElement("td")
+    const tr = document.createElement('tr')
+    const td1 = document.createElement('td')
     td1.textContent = String(i)
     tr.appendChild(td1)
-    const td2 = document.createElement("td")
+    const td2 = document.createElement('td')
     td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)
@@ -121,15 +121,15 @@ function buildTbody(n: number): HTMLTableSectionElement {
 // Method 8: move children between markers to fragment
 {
   const tbody = buildTbody(0)
-  const startMarker = document.createComment("")
-  const tailMarker = document.createComment("")
+  const startMarker = document.createComment('')
+  const tailMarker = document.createComment('')
   tbody.appendChild(startMarker)
   for (let i = 0; i < 1000; i++) {
-    const tr = document.createElement("tr")
-    const td1 = document.createElement("td")
+    const tr = document.createElement('tr')
+    const td1 = document.createElement('td')
     td1.textContent = String(i)
     tr.appendChild(td1)
-    const td2 = document.createElement("td")
+    const td2 = document.createElement('td')
     td2.textContent = `label${i}`
     tr.appendChild(td2)
     tbody.appendChild(tr)

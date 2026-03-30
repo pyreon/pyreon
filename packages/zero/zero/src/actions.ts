@@ -1,4 +1,4 @@
-import type { MiddlewareContext } from "@pyreon/server"
+import type { MiddlewareContext } from '@pyreon/server'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -59,23 +59,23 @@ export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> 
 
   const callable = async (data?: unknown): Promise<T> => {
     // Server-side: execute handler directly (no network round-trip)
-    if (typeof globalThis.window === "undefined") {
+    if (typeof globalThis.window === 'undefined') {
       return handler({
         request: new Request(`http://localhost/_zero/actions/${id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data ?? null),
         }),
         formData: null,
         json: data ?? null,
-        headers: new Headers({ "Content-Type": "application/json" }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
       })
     }
 
     // Client-side: POST to the action endpoint
     const response = await fetch(`/_zero/actions/${id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data ?? null),
     })
     if (!response.ok) {
@@ -113,17 +113,17 @@ export function createActionMiddleware(): (
   ctx: MiddlewareContext,
 ) => Response | undefined | Promise<Response | undefined> {
   return async (ctx: MiddlewareContext) => {
-    if (!ctx.path.startsWith("/_zero/actions/")) return
+    if (!ctx.path.startsWith('/_zero/actions/')) return
 
-    const actionId = ctx.path.slice("/_zero/actions/".length)
+    const actionId = ctx.path.slice('/_zero/actions/'.length)
     const action = actionRegistry.get(actionId)
 
     if (!action) {
-      return Response.json({ error: "Action not found" }, { status: 404 })
+      return Response.json({ error: 'Action not found' }, { status: 404 })
     }
 
-    if (ctx.req.method !== "POST") {
-      return Response.json({ error: "Method not allowed" }, { status: 405 })
+    if (ctx.req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405 })
     }
 
     return executeAction(action, ctx.req)
@@ -132,15 +132,15 @@ export function createActionMiddleware(): (
 
 async function executeAction(action: RegisteredAction, req: Request): Promise<Response> {
   try {
-    const contentType = req.headers.get("content-type") ?? ""
+    const contentType = req.headers.get('content-type') ?? ''
     let formData: FormData | null = null
     let json: unknown = null
 
-    if (contentType.includes("application/json")) {
+    if (contentType.includes('application/json')) {
       json = await req.json()
     } else if (
-      contentType.includes("multipart/form-data") ||
-      contentType.includes("application/x-www-form-urlencoded")
+      contentType.includes('multipart/form-data') ||
+      contentType.includes('application/x-www-form-urlencoded')
     ) {
       formData = await req.formData()
     }
@@ -154,7 +154,7 @@ async function executeAction(action: RegisteredAction, req: Request): Promise<Re
 
     return Response.json(result ?? null)
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Internal server error"
+    const message = err instanceof Error ? err.message : 'Internal server error'
     return Response.json({ error: message }, { status: 500 })
   }
 }

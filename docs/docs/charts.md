@@ -10,18 +10,23 @@ description: Reactive ECharts bridge with lazy loading, auto-detection, and type
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/charts
 ```
+
 ```bash [bun]
 bun add @pyreon/charts
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/charts
 ```
+
 ```bash [yarn]
 yarn add @pyreon/charts
 ```
+
 :::
 
 ## Quick Start
@@ -58,18 +63,20 @@ The `options` prop accepts a function (not a plain object) so that signal reads 
 
 The primary component for rendering charts.
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `options` | `() => EChartsOption` | Function returning ECharts configuration. Signal reads are tracked for reactivity. |
-| `style` | `string` | Inline style string. Must include a height (ECharts requires a sized container). |
-| `class` | `string` | CSS class name for the container element. |
-| `renderer` | `'canvas' \| 'svg'` | Rendering mode. Defaults to `'canvas'`. |
-| `onChartReady` | `(instance: ECharts) => void` | Callback fired after the chart instance is initialized. |
-| `on*` | Event handlers | ECharts event bindings, e.g. `onClick`, `onMouseover`, `onLegendSelectChanged`. |
+| Prop           | Type                          | Description                                                                        |
+| -------------- | ----------------------------- | ---------------------------------------------------------------------------------- |
+| `options`      | `() => EChartsOption`         | Function returning ECharts configuration. Signal reads are tracked for reactivity. |
+| `style`        | `string`                      | Inline style string. Must include a height (ECharts requires a sized container).   |
+| `class`        | `string`                      | CSS class name for the container element.                                          |
+| `renderer`     | `'canvas' \| 'svg'`           | Rendering mode. Defaults to `'canvas'`.                                            |
+| `onChartReady` | `(instance: ECharts) => void` | Callback fired after the chart instance is initialized.                            |
+| `on*`          | Event handlers                | ECharts event bindings, e.g. `onClick`, `onMouseover`, `onLegendSelectChanged`.    |
 
 ```tsx
 <Chart
-  options={() => ({ /* ... */ })}
+  options={() => ({
+    /* ... */
+  })}
   style="height: 300px"
   renderer="svg"
   onClick={(params) => console.log('Clicked:', params.name)}
@@ -93,7 +100,7 @@ function MyChart() {
 
   return (
     <div>
-      {() => error() ? <p class="error">{error()!.message}</p> : null}
+      {() => (error() ? <p class="error">{error()!.message}</p> : null)}
       <div ref={(el) => containerRef.set(el)} style="height: 400px" />
     </div>
   )
@@ -102,19 +109,19 @@ function MyChart() {
 
 **Config options:**
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `renderer` | `'canvas' \| 'svg'` | `'canvas'` | Rendering mode |
-| `notMerge` | `boolean` | `false` | Replace options entirely instead of merging |
-| `lazyUpdate` | `boolean` | `false` | Defer chart update to next frame |
+| Option       | Type                | Default    | Description                                 |
+| ------------ | ------------------- | ---------- | ------------------------------------------- |
+| `renderer`   | `'canvas' \| 'svg'` | `'canvas'` | Rendering mode                              |
+| `notMerge`   | `boolean`           | `false`    | Replace options entirely instead of merging |
+| `lazyUpdate` | `boolean`           | `false`    | Defer chart update to next frame            |
 
 **Return value:**
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `containerRef` | `Signal<HTMLElement \| null>` | Bind to a DOM element via `ref` |
-| `instance` | `Signal<ECharts \| null>` | The underlying ECharts instance (available after init) |
-| `error` | `Signal<Error \| null>` | Error signal for init or setOption failures |
+| Property       | Type                          | Description                                            |
+| -------------- | ----------------------------- | ------------------------------------------------------ |
+| `containerRef` | `Signal<HTMLElement \| null>` | Bind to a DOM element via `ref`                        |
+| `instance`     | `Signal<ECharts \| null>`     | The underlying ECharts instance (available after init) |
+| `error`        | `Signal<Error \| null>`       | Error signal for init or setOption failures            |
 
 ### Types
 
@@ -221,14 +228,14 @@ Use manual registration when you need deterministic bundle sizes or are building
 
 ## Bundle Size
 
-| Import | Approximate Size (gzipped) |
-|--------|---------------------------|
-| `@pyreon/charts` (wrapper only) | ~2 KB |
-| + Bar chart | ~15 KB |
-| + Line chart | ~18 KB |
-| + Pie chart | ~12 KB |
-| + Tooltip + Legend | ~8 KB |
-| Full ECharts (all modules) | ~300 KB |
+| Import                          | Approximate Size (gzipped) |
+| ------------------------------- | -------------------------- |
+| `@pyreon/charts` (wrapper only) | ~2 KB                      |
+| + Bar chart                     | ~15 KB                     |
+| + Line chart                    | ~18 KB                     |
+| + Pie chart                     | ~12 KB                     |
+| + Tooltip + Legend              | ~8 KB                      |
+| Full ECharts (all modules)      | ~300 KB                    |
 
 Auto-detection ensures you only pay for what you use. A typical dashboard with 2-3 chart types loads ~40-50 KB of ECharts code.
 
@@ -264,11 +271,13 @@ function SafeChart() {
 
   return (
     <div>
-      {() => error() ? (
-        <div class="chart-error">
-          <p>Failed to render chart: {error()!.message}</p>
-        </div>
-      ) : null}
+      {() =>
+        error() ? (
+          <div class="chart-error">
+            <p>Failed to render chart: {error()!.message}</p>
+          </div>
+        ) : null
+      }
       <div ref={(el) => containerRef.set(el)} style="height: 300px" />
     </div>
   )
@@ -276,6 +285,7 @@ function SafeChart() {
 ```
 
 Common error scenarios:
+
 - Container element has zero height (ECharts requires a sized container)
 - Invalid option structure passed to `setOption`
 - Network failure when lazy-loading ECharts modules

@@ -1,21 +1,21 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   QueryKey,
   QueryObserverOptions,
   QueryObserverResult,
-} from "@tanstack/query-core"
-import { QueryObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from '@tanstack/query-core'
+import { QueryObserver } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 export interface UseQueryResult<TData, TError = DefaultError> {
   /** Raw signal — the full observer result. Fine-grained accessors below are preferred. */
   result: Signal<QueryObserverResult<TData, TError>>
   data: Signal<TData | undefined>
   error: Signal<TError | null>
-  status: Signal<"pending" | "error" | "success">
+  status: Signal<'pending' | 'error' | 'success'>
   isPending: Signal<boolean>
   isLoading: Signal<boolean>
   isFetching: Signal<boolean>
@@ -52,7 +52,7 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
   const resultSig = signal<QueryObserverResult<TData, TError>>(initial)
   const dataSig = signal<TData | undefined>(initial.data)
   const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<"pending" | "error" | "success">(initial.status)
+  const statusSig = signal<'pending' | 'error' | 'success'>(initial.status)
   const isPending = signal(initial.isPending)
   const isLoading = signal(initial.isLoading)
   const isFetching = signal(initial.isFetching)

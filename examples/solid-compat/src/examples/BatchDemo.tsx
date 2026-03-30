@@ -1,9 +1,9 @@
-import { batch, createEffect, createSignal } from "solid-js"
-import Demo from "./Demo"
+import { batch, createEffect, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function BatchDemo() {
-  const [first, setFirst] = createSignal("John")
-  const [last, setLast] = createSignal("Doe")
+  const [first, setFirst] = createSignal('John')
+  const [last, setLast] = createSignal('Doe')
   const [renderCount, setRenderCount] = createSignal(0)
 
   createEffect(() => {
@@ -34,8 +34,8 @@ batch(() => {
         type="button"
         onClick={() => {
           batch(() => {
-            setFirst((f) => (f === "John" ? "Jane" : "John"))
-            setLast((l) => (l === "Doe" ? "Smith" : "Doe"))
+            setFirst((f) => (f === 'John' ? 'Jane' : 'John'))
+            setLast((l) => (l === 'Doe' ? 'Smith' : 'Doe'))
           })
         }}
       >

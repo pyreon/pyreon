@@ -1,5 +1,5 @@
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import { mount } from "@pyreon/runtime-dom"
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 
 /**
  * State tracked per canvas element so we can clean up between renders.

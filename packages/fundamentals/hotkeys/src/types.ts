@@ -44,7 +44,7 @@ export interface HotkeyEntry {
   options: Required<
     Pick<
       HotkeyOptions,
-      "scope" | "preventDefault" | "stopPropagation" | "enableOnInputs" | "enabled"
+      'scope' | 'preventDefault' | 'stopPropagation' | 'enableOnInputs' | 'enabled'
     >
   > & { description?: string }
 }

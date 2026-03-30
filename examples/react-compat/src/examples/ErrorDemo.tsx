@@ -1,8 +1,8 @@
-import { ErrorBoundary, useState } from "react"
-import Demo from "./Demo"
+import { ErrorBoundary, useState } from 'react'
+import Demo from './Demo'
 
 function Bomb(): JSX.Element {
-  throw new Error("Boom!")
+  throw new Error('Boom!')
 }
 
 export default function ErrorDemo() {

@@ -1,5 +1,5 @@
-import type { PropertyValue } from "../../types"
-import value from "../../units/value"
+import type { PropertyValue } from '../../types'
+import value from '../../units/value'
 
 const isValidValue = (v: unknown) => !!v || v === 0
 
@@ -47,7 +47,7 @@ const formatSpacing = (property: string, sides: (PropertyValue | null | undefine
   if (sides.every((val) => !!val))
     return `${property}: ${value(t)} ${value(r)} ${value(b)} ${value(l)};`
 
-  let output = ""
+  let output = ''
   if (t) output += `${property}-top: ${value(t)};`
   if (b) output += `${property}-bottom: ${value(b)};`
   if (l) output += `${property}-left: ${value(l)};`
@@ -56,7 +56,7 @@ const formatSpacing = (property: string, sides: (PropertyValue | null | undefine
   return output
 }
 
-export type SpacingShorthand = (property: "padding" | "margin") => (props: SideValues) => string
+export type SpacingShorthand = (property: 'padding' | 'margin') => (props: SideValues) => string
 
 export const spacingShorthand: SpacingShorthand = (property) => (props) =>
   formatSpacing(property, resolveSides(props))

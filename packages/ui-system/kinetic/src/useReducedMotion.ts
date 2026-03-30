@@ -1,5 +1,5 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 /**
  * Inline reduced-motion check for kinetic package.
@@ -14,14 +14,14 @@ export function useReducedMotion(): () => boolean {
   }
 
   onMount(() => {
-    mql = window.matchMedia("(prefers-reduced-motion: reduce)")
+    mql = window.matchMedia('(prefers-reduced-motion: reduce)')
     matches.set(mql.matches)
-    mql.addEventListener("change", onChange)
+    mql.addEventListener('change', onChange)
     return undefined
   })
 
   onUnmount(() => {
-    mql?.removeEventListener("change", onChange)
+    mql?.removeEventListener('change', onChange)
   })
 
   return matches

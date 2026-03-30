@@ -1,8 +1,8 @@
-import { onMount, onUnmount, useContext } from "@pyreon/core"
-import { effect } from "@pyreon/reactivity"
-import type { HeadEntry, HeadTag, UseHeadInput } from "./context"
-import { HeadContext } from "./context"
-import { syncDom } from "./dom"
+import { onMount, onUnmount, useContext } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
+import type { HeadEntry, HeadTag, UseHeadInput } from './context'
+import { HeadContext } from './context'
+import { syncDom } from './dom'
 
 /** Cast a strict tag interface to the internal props format, stripping undefined values */
 function toProps(obj: Record<string, string | undefined>): Record<string, string> {
@@ -15,25 +15,25 @@ function toProps(obj: Record<string, string | undefined>): Record<string, string
 
 function buildEntry(o: UseHeadInput): HeadEntry {
   const tags: HeadTag[] = []
-  if (o.title != null) tags.push({ tag: "title", key: "title", children: o.title })
+  if (o.title != null) tags.push({ tag: 'title', key: 'title', children: o.title })
   o.meta?.forEach((m, i) => {
     tags.push({
-      tag: "meta",
+      tag: 'meta',
       key: m.name ?? m.property ?? `meta-${i}`,
       props: toProps(m as Record<string, string | undefined>),
     })
   })
   o.link?.forEach((l, i) => {
     tags.push({
-      tag: "link",
-      key: l.href ? `link-${l.rel || ""}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
+      tag: 'link',
+      key: l.href ? `link-${l.rel || ''}-${l.href}` : l.rel ? `link-${l.rel}` : `link-${i}`,
       props: toProps(l as Record<string, string | undefined>),
     })
   })
   o.script?.forEach((s, i) => {
     const { children, ...rest } = s
     tags.push({
-      tag: "script",
+      tag: 'script',
       key: s.src ?? `script-${i}`,
       props: toProps(rest as Record<string, string | undefined>),
       ...(children != null ? { children } : {}),
@@ -42,27 +42,27 @@ function buildEntry(o: UseHeadInput): HeadEntry {
   o.style?.forEach((s, i) => {
     const { children, ...rest } = s
     tags.push({
-      tag: "style",
+      tag: 'style',
       key: `style-${i}`,
       props: toProps(rest as Record<string, string | undefined>),
       children,
     })
   })
   o.noscript?.forEach((ns, i) => {
-    tags.push({ tag: "noscript", key: `noscript-${i}`, children: ns.children })
+    tags.push({ tag: 'noscript', key: `noscript-${i}`, children: ns.children })
   })
   if (o.jsonLd) {
     tags.push({
-      tag: "script",
-      key: "jsonld",
-      props: { type: "application/ld+json" },
+      tag: 'script',
+      key: 'jsonld',
+      props: { type: 'application/ld+json' },
       children: JSON.stringify(o.jsonLd),
     })
   }
   if (o.base)
     tags.push({
-      tag: "base",
-      key: "base",
+      tag: 'base',
+      key: 'base',
       props: toProps(o.base as Record<string, string | undefined>),
     })
   return {
@@ -90,8 +90,8 @@ export function useHead(input: UseHeadInput | (() => UseHeadInput)): void {
 
   const id = Symbol()
 
-  if (typeof input === "function") {
-    if (typeof document !== "undefined") {
+  if (typeof input === 'function') {
+    if (typeof document !== 'undefined') {
       // CSR: reactive — re-register whenever signals change
       effect(() => {
         ctx.add(id, buildEntry(input()))

@@ -5,10 +5,10 @@
  * split flex behavior across two DOM nodes for button/fieldset/legend
  * elements where a single flex container is insufficient.
  */
-import { config } from "@pyreon/ui-core"
-import { alignContent, extendCss, makeItResponsive } from "@pyreon/unistyle"
-import type { ResponsiveStylesCallback } from "../../types"
-import type { StyledProps } from "./types"
+import { config } from '@pyreon/ui-core'
+import { alignContent, extendCss, makeItResponsive } from '@pyreon/unistyle'
+import type { ResponsiveStylesCallback } from '../../types'
+import type { StyledProps } from './types'
 
 const { styled, css, component } = config
 
@@ -32,10 +32,10 @@ const blockCSS = `
   width: 100%;
 `
 
-const childFixPosition = (isBlock?: boolean) => `display: ${isBlock ? "flex" : "inline-flex"};`
+const childFixPosition = (isBlock?: boolean) => `display: ${isBlock ? 'flex' : 'inline-flex'};`
 
 const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
-  ${t.alignY === "block" && fullHeightCSS};
+  ${t.alignY === 'block' && fullHeightCSS};
 
   ${alignContent({
     direction: t.direction,
@@ -44,7 +44,7 @@ const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
   })};
 
   ${t.block && blockCSS};
-  ${t.alignY === "block" && t.block && fullHeightCSS};
+  ${t.alignY === 'block' && t.block && fullHeightCSS};
 
   ${!t.childFix && childFixPosition(t.block)};
   ${t.parentFix && parentFixCSS};
@@ -61,7 +61,7 @@ export default styled(component)`
   ${(({ $childFix }: StyledProps) => $childFix && childFixCSS) as any};
 
   ${makeItResponsive({
-    key: "$element",
+    key: '$element',
     styles,
     css,
     normalize: true,

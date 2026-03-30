@@ -1,5 +1,5 @@
-import { batch, ref, watchEffect } from "vue"
-import Demo from "./Demo"
+import { batch, ref, watchEffect } from 'vue'
+import Demo from './Demo'
 
 export default function BatchDemo() {
   const a = ref(0)
@@ -29,7 +29,7 @@ batch(() => {
 })`}
     >
       <p>
-        a: <strong>{a.value}</strong> | b: <strong>{b.value}</strong> | effects ran:{" "}
+        a: <strong>{a.value}</strong> | b: <strong>{b.value}</strong> | effects ran:{' '}
         <strong>{renderCount.value}</strong>
       </p>
       <div class="row">

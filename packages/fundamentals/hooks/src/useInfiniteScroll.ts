@@ -1,4 +1,4 @@
-import { onCleanup, signal } from "@pyreon/reactivity"
+import { onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseInfiniteScrollOptions {
   /** Distance from bottom (px) to trigger load. Default: 100 */
@@ -8,7 +8,7 @@ export interface UseInfiniteScrollOptions {
   /** Whether there's more data to load. Default: true */
   hasMore?: () => boolean
   /** Scroll direction. Default: "down" */
-  direction?: "up" | "down"
+  direction?: 'up' | 'down'
 }
 
 export interface UseInfiniteScrollResult {
@@ -48,7 +48,7 @@ export function useInfiniteScroll(
   options?: UseInfiniteScrollOptions,
 ): UseInfiniteScrollResult {
   const threshold = options?.threshold ?? 100
-  const direction = options?.direction ?? "down"
+  const direction = options?.direction ?? 'down'
   const triggered = signal(false)
   let observer: IntersectionObserver | null = null
   let sentinel: HTMLDivElement | null = null
@@ -72,13 +72,13 @@ export function useInfiniteScroll(
     containerEl = el
 
     // Create an invisible sentinel element at the scroll boundary
-    sentinel = document.createElement("div")
-    sentinel.style.height = "1px"
-    sentinel.style.width = "100%"
-    sentinel.style.pointerEvents = "none"
-    sentinel.setAttribute("aria-hidden", "true")
+    sentinel = document.createElement('div')
+    sentinel.style.height = '1px'
+    sentinel.style.width = '100%'
+    sentinel.style.pointerEvents = 'none'
+    sentinel.setAttribute('aria-hidden', 'true')
 
-    if (direction === "down") {
+    if (direction === 'down') {
       el.appendChild(sentinel)
     } else {
       el.insertBefore(sentinel, el.firstChild)
@@ -87,7 +87,7 @@ export function useInfiniteScroll(
     observer = new IntersectionObserver(handleIntersect, {
       root: el,
       rootMargin:
-        direction === "down" ? `0px 0px ${threshold}px 0px` : `${threshold}px 0px 0px 0px`,
+        direction === 'down' ? `0px 0px ${threshold}px 0px` : `${threshold}px 0px 0px 0px`,
       threshold: 0,
     })
     observer.observe(sentinel)

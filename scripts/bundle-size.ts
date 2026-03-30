@@ -12,13 +12,13 @@
  *   3. Optionally compares against a saved baseline (scripts/bundle-baseline.json)
  */
 
-import { readdir, readFile, writeFile } from "node:fs/promises"
-import { join, resolve } from "node:path"
-import { gzipSync } from "node:zlib"
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import { gzipSync } from 'node:zlib'
 
-const ROOT = resolve(import.meta.dir, "..")
-const PACKAGES_DIR = join(ROOT, "packages")
-const BASELINE_PATH = join(ROOT, "scripts", "bundle-baseline.json")
+const ROOT = resolve(import.meta.dir, '..')
+const PACKAGES_DIR = join(ROOT, 'packages')
+const BASELINE_PATH = join(ROOT, 'scripts', 'bundle-baseline.json')
 
 interface PackageSize {
   name: string
@@ -35,7 +35,7 @@ interface Baseline {
 // ── Bundling ─────────────────────────────────────────────────────────────────
 
 async function bundlePackage(pkgDir: string, pkgName: string): Promise<PackageSize | null> {
-  const entry = join(pkgDir, "src", "index.ts")
+  const entry = join(pkgDir, 'src', 'index.ts')
   const exists = await Bun.file(entry).exists()
   if (!exists) return null
 
@@ -43,16 +43,16 @@ async function bundlePackage(pkgDir: string, pkgName: string): Promise<PackageSi
     const result = await Bun.build({
       entrypoints: [entry],
       minify: true,
-      target: "browser",
+      target: 'browser',
       external: [
         // Externalize all workspace packages so we measure only this package's code
-        "@pyreon/*",
+        '@pyreon/*',
         // Externalize Node.js built-ins
-        "node:*",
-        "node:async_hooks",
-        "node:fs",
-        "node:fs/promises",
-        "node:path",
+        'node:*',
+        'node:async_hooks',
+        'node:fs',
+        'node:fs/promises',
+        'node:path',
       ],
     })
 
@@ -66,12 +66,12 @@ async function bundlePackage(pkgDir: string, pkgName: string): Promise<PackageSi
     if (!output) return null
 
     const code = await output.text()
-    const raw = Buffer.byteLength(code, "utf-8")
+    const raw = Buffer.byteLength(code, 'utf-8')
     const gzipped = gzipSync(code, { level: 9 })
     // Brotli via zlib
     let brotliSize: number
     try {
-      const { brotliCompressSync } = await import("node:zlib")
+      const { brotliCompressSync } = await import('node:zlib')
       brotliSize = brotliCompressSync(code).byteLength
     } catch {
       brotliSize = 0
@@ -87,26 +87,26 @@ async function bundlePackage(pkgDir: string, pkgName: string): Promise<PackageSi
 // ── Formatting ───────────────────────────────────────────────────────────────
 
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "—"
+  if (bytes === 0) return '—'
   if (bytes < 1024) return `${bytes} B`
   return `${(bytes / 1024).toFixed(1)} kB`
 }
 
 function delta(current: number, baseline: number): string {
-  if (baseline === 0) return ""
+  if (baseline === 0) return ''
   const diff = current - baseline
   const pct = ((diff / baseline) * 100).toFixed(1)
   if (diff > 0) return ` (+${formatBytes(diff)}, +${pct}%)`
   if (diff < 0) return ` (${formatBytes(diff)}, ${pct}%)`
-  return " (=)"
+  return ' (=)'
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   const args = process.argv.slice(2)
-  const jsonMode = args.includes("--json")
-  const saveBaseline = args.includes("--save")
+  const jsonMode = args.includes('--json')
+  const saveBaseline = args.includes('--save')
 
   // Discover packages
   const dirs = await readdir(PACKAGES_DIR, { withFileTypes: true })
@@ -118,7 +118,7 @@ async function main() {
   // Load baseline for comparison
   let baseline: Baseline | null = null
   try {
-    const raw = await readFile(BASELINE_PATH, "utf-8")
+    const raw = await readFile(BASELINE_PATH, 'utf-8')
     baseline = JSON.parse(raw) as Baseline
   } catch {
     // No baseline yet
@@ -139,13 +139,13 @@ async function main() {
   }
 
   // Table output
-  console.log("")
-  console.log("  Pyreon Framework — Bundle Sizes")
-  console.log("  ═══════════════════════════════════════════════════════════════")
+  console.log('')
+  console.log('  Pyreon Framework — Bundle Sizes')
+  console.log('  ═══════════════════════════════════════════════════════════════')
   console.log(
-    `  ${"Package".padEnd(25)} ${"Raw".padStart(10)} ${"Gzip".padStart(10)} ${"Brotli".padStart(10)}`,
+    `  ${'Package'.padEnd(25)} ${'Raw'.padStart(10)} ${'Gzip'.padStart(10)} ${'Brotli'.padStart(10)}`,
   )
-  console.log(`  ${"─".repeat(63)}`)
+  console.log(`  ${'─'.repeat(63)}`)
 
   let totalRaw = 0
   let totalGzip = 0
@@ -153,7 +153,7 @@ async function main() {
 
   for (const pkg of results) {
     const bl = baselineMap.get(pkg.name)
-    const gzDelta = bl ? delta(pkg.gzip, bl.gzip) : ""
+    const gzDelta = bl ? delta(pkg.gzip, bl.gzip) : ''
 
     console.log(
       `  ${pkg.name.padEnd(25)} ${formatBytes(pkg.raw).padStart(10)} ${formatBytes(pkg.gzip).padStart(10)} ${formatBytes(pkg.brotli).padStart(10)}${gzDelta}`,
@@ -163,18 +163,18 @@ async function main() {
     totalBrotli += pkg.brotli
   }
 
-  console.log(`  ${"─".repeat(63)}`)
+  console.log(`  ${'─'.repeat(63)}`)
   console.log(
-    `  ${"TOTAL".padEnd(25)} ${formatBytes(totalRaw).padStart(10)} ${formatBytes(totalGzip).padStart(10)} ${formatBytes(totalBrotli).padStart(10)}`,
+    `  ${'TOTAL'.padEnd(25)} ${formatBytes(totalRaw).padStart(10)} ${formatBytes(totalGzip).padStart(10)} ${formatBytes(totalBrotli).padStart(10)}`,
   )
-  console.log("")
+  console.log('')
 
   // Save baseline
   if (saveBaseline) {
     const output: Baseline = { date: new Date().toISOString(), packages: results }
     await writeFile(BASELINE_PATH, JSON.stringify(output, null, 2))
     console.log(`  ✓ Baseline saved to ${BASELINE_PATH}`)
-    console.log("")
+    console.log('')
   }
 }
 

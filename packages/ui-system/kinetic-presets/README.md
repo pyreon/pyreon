@@ -39,7 +39,7 @@ import { fadeUp, scaleIn, bounceIn } from '@pyreon/kinetic-presets'
 
 // Map access (useful for dynamic selection)
 import { presets } from '@pyreon/kinetic-presets'
-presets.fadeUp   // same as named fadeUp
+presets.fadeUp // same as named fadeUp
 ```
 
 ### Fades (14)
@@ -143,14 +143,20 @@ presets.fadeUp   // same as named fadeUp
 Configurable factories for creating custom presets:
 
 ```ts
-import { createFade, createSlide, createScale, createRotate, createBlur } from '@pyreon/kinetic-presets'
+import {
+  createFade,
+  createSlide,
+  createScale,
+  createRotate,
+  createBlur,
+} from '@pyreon/kinetic-presets'
 ```
 
 ### createFade(options?)
 
 ```ts
-createFade()                                    // Pure opacity fade
-createFade({ direction: 'up', distance: 24 })   // Fade with movement
+createFade() // Pure opacity fade
+createFade({ direction: 'up', distance: 24 }) // Fade with movement
 createFade({ duration: 500, easing: 'ease-in-out' })
 ```
 
@@ -168,7 +174,7 @@ Options: `direction?` (default `'up'`), `distance?` (default 16), `duration?`, `
 
 ```ts
 createScale({ from: 0.5, duration: 400 })
-createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' })  // spring bounce
+createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }) // spring bounce
 ```
 
 Options: `from?` (default 0.9), `duration?`, `leaveDuration?`, `easing?`, `leaveEasing?`.
@@ -177,7 +183,7 @@ Options: `from?` (default 0.9), `duration?`, `leaveDuration?`, `easing?`, `leave
 
 ```ts
 createRotate({ degrees: 30, duration: 400 })
-createRotate({ degrees: -90 })  // counter-clockwise
+createRotate({ degrees: -90 }) // counter-clockwise
 ```
 
 Options: `degrees?` (default 15), `duration?`, `leaveDuration?`, `easing?`, `leaveEasing?`.
@@ -186,7 +192,7 @@ Options: `degrees?` (default 15), `duration?`, `leaveDuration?`, `easing?`, `lea
 
 ```ts
 createBlur({ amount: 12, duration: 400 })
-createBlur({ amount: 8, scale: 0.95 })  // blur with scale
+createBlur({ amount: 8, scale: 0.95 }) // blur with scale
 ```
 
 Options: `amount?` (px, default 8), `scale?` (optional scale factor), `duration?`, `leaveDuration?`, `easing?`, `leaveEasing?`.

@@ -1,5 +1,5 @@
-import { useTheme } from "@pyreon/styler"
-import { get } from "@pyreon/ui-core"
+import { useTheme } from '@pyreon/styler'
+import { get } from '@pyreon/ui-core'
 
 export type UseThemeValue = <T = unknown>(path: string) => T | undefined
 

@@ -14,14 +14,14 @@
  * Fix mode (--fix): auto-applies safe transforms via migrateReactCode
  */
 
-import * as fs from "node:fs"
-import * as path from "node:path"
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import {
   detectReactPatterns,
   hasReactPatterns,
   migrateReactCode,
   type ReactDiagnostic,
-} from "@pyreon/compiler"
+} from '@pyreon/compiler'
 
 export interface DoctorOptions {
   fix: boolean
@@ -67,20 +67,20 @@ export async function doctor(options: DoctorOptions): Promise<number> {
 // File collection
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const sourceExtensions = new Set([".tsx", ".jsx", ".ts", ".js"])
+const sourceExtensions = new Set(['.tsx', '.jsx', '.ts', '.js'])
 const sourceIgnoreDirs = new Set([
-  "node_modules",
-  "dist",
-  "lib",
-  ".pyreon",
-  ".git",
-  ".next",
-  "build",
+  'node_modules',
+  'dist',
+  'lib',
+  '.pyreon',
+  '.git',
+  '.next',
+  'build',
 ])
 
 function shouldSkipDirEntry(entry: fs.Dirent): boolean {
   if (!entry.isDirectory()) return false
-  return entry.name.startsWith(".") || sourceIgnoreDirs.has(entry.name)
+  return entry.name.startsWith('.') || sourceIgnoreDirs.has(entry.name)
 }
 
 function walkSourceFiles(dir: string, results: string[]): void {
@@ -119,7 +119,7 @@ function checkFileWithFix(
 ): { result: FileResult | null; fixCount: number } {
   let code: string
   try {
-    code = fs.readFileSync(file, "utf-8")
+    code = fs.readFileSync(file, 'utf-8')
   } catch {
     return { result: null, fixCount: 0 }
   }
@@ -128,7 +128,7 @@ function checkFileWithFix(
 
   const migrated = migrateReactCode(code, relPath)
   if (migrated.changes.length > 0) {
-    fs.writeFileSync(file, migrated.code, "utf-8")
+    fs.writeFileSync(file, migrated.code, 'utf-8')
   }
   const remaining = detectReactPatterns(migrated.code, relPath)
   if (remaining.length > 0 || migrated.changes.length > 0) {
@@ -143,7 +143,7 @@ function checkFileWithFix(
 function checkFileDetectOnly(file: string, relPath: string): FileResult | null {
   let code: string
   try {
-    code = fs.readFileSync(file, "utf-8")
+    code = fs.readFileSync(file, 'utf-8')
   } catch {
     return null
   }
@@ -204,43 +204,43 @@ function printJson(result: DoctorResult): void {
 function printFileResult(fileResult: FileResult): void {
   if (fileResult.diagnostics.length === 0) return
 
-  console.log(`  ${fileResult.file}${fileResult.fixed ? " (partially fixed)" : ""}`)
+  console.log(`  ${fileResult.file}${fileResult.fixed ? ' (partially fixed)' : ''}`)
 
   for (const diag of fileResult.diagnostics) {
-    const fixTag = diag.fixable ? " [fixable]" : ""
+    const fixTag = diag.fixable ? ' [fixable]' : ''
     console.log(`    ${diag.line}:${diag.column} — ${diag.message}${fixTag}`)
     console.log(`      Current:   ${diag.current}`)
     console.log(`      Suggested: ${diag.suggested}`)
-    console.log("")
+    console.log('')
   }
 }
 
-function printSummary(summary: DoctorResult["summary"]): void {
+function printSummary(summary: DoctorResult['summary']): void {
   console.log(
-    `  ${summary.totalErrors} issue${summary.totalErrors === 1 ? "" : "s"} in ${summary.filesWithIssues} file${summary.filesWithIssues === 1 ? "" : "s"}`,
+    `  ${summary.totalErrors} issue${summary.totalErrors === 1 ? '' : 's'} in ${summary.filesWithIssues} file${summary.filesWithIssues === 1 ? '' : 's'}`,
   )
   if (summary.totalFixable > 0) {
     console.log(`  ${summary.totalFixable} auto-fixable — run 'pyreon doctor --fix' to apply`)
   }
-  console.log("")
+  console.log('')
 }
 
 function printHuman(result: DoctorResult, elapsed: number): void {
   const { summary } = result
 
-  console.log("")
+  console.log('')
   console.log(`  Pyreon Doctor — scanned ${summary.filesScanned} files in ${elapsed}ms`)
-  console.log("")
+  console.log('')
 
   if (result.passed && summary.totalFixed === 0) {
-    console.log("  ✓ No issues found. Your code is Pyreon-native!")
-    console.log("")
+    console.log('  ✓ No issues found. Your code is Pyreon-native!')
+    console.log('')
     return
   }
 
   if (summary.totalFixed > 0) {
-    console.log(`  ✓ Auto-fixed ${summary.totalFixed} issue${summary.totalFixed === 1 ? "" : "s"}`)
-    console.log("")
+    console.log(`  ✓ Auto-fixed ${summary.totalFixed} issue${summary.totalFixed === 1 ? '' : 's'}`)
+    console.log('')
   }
 
   for (const fileResult of result.files) {

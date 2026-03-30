@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/core"
+title: '@pyreon/core'
 description: Component model, VNode types, JSX runtime, lifecycle hooks, and built-in control flow components.
 ---
 
@@ -10,18 +10,23 @@ description: Component model, VNode types, JSX runtime, lifecycle hooks, and bui
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/core
 ```
+
 ```bash [bun]
 bun add @pyreon/core
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/core
 ```
+
 ```bash [yarn]
 yarn add @pyreon/core
 ```
+
 :::
 
 ## Components
@@ -29,8 +34,8 @@ yarn add @pyreon/core
 A Pyreon component is a plain function that runs **once**. It receives props, may call lifecycle hooks during setup, and returns a VNode (or null). Reactivity is handled by signals and effects, not by re-running the component function. This is a fundamental difference from React and Preact, where component functions re-execute on every state change.
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { defineComponent } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 const Counter = defineComponent((props: { initial: number }) => {
   const count = signal(props.initial)
@@ -38,7 +43,7 @@ const Counter = defineComponent((props: { initial: number }) => {
   return (
     <div>
       <span>{count()}</span>
-      <button onClick={() => count.update(n => n + 1)}>+1</button>
+      <button onClick={() => count.update((n) => n + 1)}>+1</button>
     </div>
   )
 })
@@ -63,14 +68,14 @@ const MyComponent = defineComponent((props: { name: string }) => {
 The most common way to write components is the setup function pattern. The function body is the setup phase: you create signals, register lifecycle hooks, set up effects, and return the render tree. The function runs once; reactivity handles all future updates.
 
 ```tsx
-import { defineComponent, onMount, onUnmount, createRef } from "@pyreon/core"
-import { signal, effect } from "@pyreon/reactivity"
+import { defineComponent, onMount, onUnmount, createRef } from '@pyreon/core'
+import { signal, effect } from '@pyreon/reactivity'
 
 const SearchBox = defineComponent((props: { placeholder: string }) => {
   // --- Setup phase: runs once ---
 
   // Create reactive state
-  const query = signal("")
+  const query = signal('')
   const results = signal<string[]>([])
   const inputRef = createRef<HTMLInputElement>()
 
@@ -87,8 +92,8 @@ const SearchBox = defineComponent((props: { placeholder: string }) => {
       return
     }
     fetch(`/api/search?q=${encodeURIComponent(q)}`)
-      .then(r => r.json())
-      .then(data => results.set(data))
+      .then((r) => r.json())
+      .then((data) => results.set(data))
   })
 
   // --- Return the render tree (once) ---
@@ -100,9 +105,7 @@ const SearchBox = defineComponent((props: { placeholder: string }) => {
         value={() => query()}
         onInput={(e) => query.set(e.currentTarget.value)}
       />
-      <ul>
-        {() => results().map(r => <li>{r}</li>)}
-      </ul>
+      <ul>{() => results().map((r) => <li>{r}</li>)}</ul>
     </div>
   )
 })
@@ -122,9 +125,7 @@ For components with dynamic rendering logic, return a reactive accessor function
 
 ```tsx
 const ConditionalGreeting = (props: { name: () => string; show: () => boolean }) => {
-  return () => props.show()
-    ? <h1>Hello, {props.name()}!</h1>
-    : null
+  return () => (props.show() ? <h1>Hello, {props.name()}!</h1> : null)
 }
 ```
 
@@ -269,7 +270,7 @@ const LoggedCounter = withLogging(Counter)
 The `h` function is the compiled output of JSX. It creates VNode objects that describe the UI tree.
 
 ```ts
-import { h, Fragment } from "@pyreon/core"
+import { h, Fragment } from '@pyreon/core'
 ```
 
 ### Creating Elements
@@ -358,6 +359,7 @@ interface VNode {
 ```
 
 Children can be:
+
 - **Strings and numbers** -- rendered as text nodes
 - **Booleans, null, undefined** -- rendered as nothing (useful for conditional `&#123;flag && <Element />&#125;`)
 - **VNodes** -- nested elements or components
@@ -400,15 +402,15 @@ The JSX runtime exports `jsx`, `jsxs`, and `Fragment`. The bundler rewrites JSX 
 
 ```tsx
 // Source JSX
-<div class="box">
+;<div class="box">
   <span>{name()}</span>
 </div>
 
 // Compiled output
-import { jsx, jsxs } from "@pyreon/core/jsx-runtime"
-jsxs("div", {
-  class: "box",
-  children: jsx("span", { children: name() })
+import { jsx, jsxs } from '@pyreon/core/jsx-runtime'
+jsxs('div', {
+  class: 'box',
+  children: jsx('span', { children: name() }),
 })
 ```
 
@@ -416,14 +418,14 @@ For components, children are placed in `props.children` rather than in `vnode.ch
 
 ```tsx
 // Source JSX
-<Card title="Hello">
+;<Card title="Hello">
   <p>Content</p>
 </Card>
 
 // Compiled output (component)
 jsx(Card, {
-  title: "Hello",
-  children: jsx("p", { children: "Content" })
+  title: 'Hello',
+  children: jsx('p', { children: 'Content' }),
 })
 ```
 
@@ -462,12 +464,12 @@ Lifecycle hooks are called during the component's setup phase (the single functi
 Register a callback to run after the component is mounted to the DOM. Optionally return a cleanup function that runs on unmount.
 
 ```tsx
-import { onMount } from "@pyreon/core"
+import { onMount } from '@pyreon/core'
 
 function MyComponent() {
   onMount(() => {
-    console.log("Mounted!")
-    const timer = setInterval(() => console.log("tick"), 1000)
+    console.log('Mounted!')
+    const timer = setInterval(() => console.log('tick'), 1000)
     return () => clearInterval(timer) // cleanup on unmount
   })
 
@@ -495,7 +497,7 @@ function ChartComponent(props: { data: () => number[] }) {
 
   onMount(() => {
     const chart = new Chart(containerRef.current!, {
-      type: "line",
+      type: 'line',
       data: props.data(),
     })
 
@@ -516,7 +518,7 @@ function ResponsiveBox() {
   const width = signal(0)
 
   onMount(() => {
-    const observer = new ResizeObserver(entries => {
+    const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         width.set(entry.contentRect.width)
       }
@@ -538,14 +540,14 @@ function ResponsiveBox() {
 Register a callback to run when the component is removed from the DOM. Use this to clean up resources that were not set up via `onMount`'s return value.
 
 ```tsx
-import { onUnmount } from "@pyreon/core"
+import { onUnmount } from '@pyreon/core'
 
 function MyComponent() {
   const controller = new AbortController()
 
   // Fetch data with abort support
-  fetch("/api/data", { signal: controller.signal })
-    .then(r => r.json())
+  fetch('/api/data', { signal: controller.signal })
+    .then((r) => r.json())
     .then(setData)
 
   onUnmount(() => {
@@ -560,11 +562,11 @@ function MyComponent() {
 // Clean up event listeners on external elements
 function GlobalKeyHandler() {
   const handler = (e: KeyboardEvent) => {
-    if (e.key === "Escape") close()
+    if (e.key === 'Escape') close()
   }
 
-  document.addEventListener("keydown", handler)
-  onUnmount(() => document.removeEventListener("keydown", handler))
+  document.addEventListener('keydown', handler)
+  onUnmount(() => document.removeEventListener('keydown', handler))
 
   return <div>Press Escape to close</div>
 }
@@ -575,8 +577,8 @@ function GlobalKeyHandler() {
 Register a callback to run after each reactive update within the component. The callback fires via microtask after all synchronous effects settle, so the DOM is up-to-date when it runs.
 
 ```tsx
-import { onUpdate } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onUpdate } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 function DebugComponent() {
   const count = signal(0)
@@ -590,7 +592,7 @@ function DebugComponent() {
   return (
     <div>
       <p>{count()}</p>
-      <button onClick={() => count.update(n => n + 1)}>Increment</button>
+      <button onClick={() => count.update((n) => n + 1)}>Increment</button>
     </div>
   )
 }
@@ -608,7 +610,7 @@ function ChatMessages(props: { messages: () => Message[] }) {
 
   return (
     <div ref={containerRef} class="chat-messages">
-      {() => props.messages().map(m => <div class="message">{m.text}</div>)}
+      {() => props.messages().map((m) => <div class="message">{m.text}</div>)}
     </div>
   )
 }
@@ -619,32 +621,34 @@ function ChatMessages(props: { messages: () => Message[] }) {
 Register a cleanup function that runs when the current reactive scope is disposed. Inside an `effect`, `onCleanup` runs before each re-execution and on final disposal. Inside a component, it runs when the component unmounts. This is the idiomatic way to clean up resources in effects.
 
 ```tsx
-import { onCleanup } from "@pyreon/core"
-import { signal, effect } from "@pyreon/reactivity"
+import { onCleanup } from '@pyreon/core'
+import { signal, effect } from '@pyreon/reactivity'
 
 function WebSocketComponent(props: { url: () => string }) {
   const messages = signal<string[]>([])
 
   effect(() => {
     const ws = new WebSocket(props.url())
-    ws.onmessage = (e) => messages.update(m => [...m, e.data])
+    ws.onmessage = (e) => messages.update((m) => [...m, e.data])
 
     // Runs before next effect re-execution and on unmount
     onCleanup(() => ws.close())
   })
 
-  return <ul>{() => messages().map(m => <li>{m}</li>)}</ul>
+  return <ul>{() => messages().map((m) => <li>{m}</li>)}</ul>
 }
 ```
 
 ```tsx
 // Cleanup a timer inside an effect
 function Poller(props: { interval: () => number }) {
-  const data = signal<string>("")
+  const data = signal<string>('')
 
   effect(() => {
     const id = setInterval(() => {
-      fetch("/api/data").then(r => r.text()).then(t => data.set(t))
+      fetch('/api/data')
+        .then((r) => r.text())
+        .then((t) => data.set(t))
     }, props.interval())
 
     onCleanup(() => clearInterval(id))
@@ -659,8 +663,8 @@ function Poller(props: { interval: () => number }) {
 Register an error handler for the component subtree. When an error is thrown during rendering or in a child component, the nearest `onErrorCaptured` handler is called. Return `true` to mark the error as handled and stop propagation.
 
 ```tsx
-import { onErrorCaptured } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onErrorCaptured } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 function SafeWrapper(props: { children: VNodeChild }) {
   const error = signal<string | null>(null)
@@ -684,7 +688,7 @@ If you do not return `true`, the error propagates to the next parent `onErrorCap
 // Logging handler that does not stop propagation
 function LoggingWrapper(props: { children: VNodeChild }) {
   onErrorCaptured((err) => {
-    console.error("Child error:", err)
+    console.error('Child error:', err)
     // Not returning true -- error propagates to parent boundaries
   })
 
@@ -701,7 +705,7 @@ Pyreon's context system provides dependency injection without prop-drilling, sim
 Create a context with a default value. The default value is returned by `useContext` when no provider is found in the tree above.
 
 ```ts
-import { createContext } from "@pyreon/core"
+import { createContext } from '@pyreon/core'
 
 interface Theme {
   primary: string
@@ -710,17 +714,17 @@ interface Theme {
 }
 
 const ThemeContext = createContext<Theme>({
-  primary: "#007bff",
-  secondary: "#6c757d",
-  background: "#ffffff",
+  primary: '#007bff',
+  secondary: '#6c757d',
+  background: '#ffffff',
 })
 ```
 
 Each context gets a unique symbol ID, so even two contexts with the same default value are distinct:
 
 ```ts
-const ContextA = createContext("default")
-const ContextB = createContext("default")
+const ContextA = createContext('default')
+const ContextB = createContext('default')
 // ContextA !== ContextB -- they have different symbol IDs
 ```
 
@@ -729,15 +733,17 @@ const ContextB = createContext("default")
 Read the nearest provided value for a context. Falls back to the default value if no provider is found.
 
 ```tsx
-import { useContext } from "@pyreon/core"
+import { useContext } from '@pyreon/core'
 
 function ThemedButton() {
   const theme = useContext(ThemeContext)
   return (
-    <button style={{
-      background: theme.primary,
-      color: theme.background,
-    }}>
+    <button
+      style={{
+        background: theme.primary,
+        color: theme.background,
+      }}
+    >
       Click me
     </button>
   )
@@ -749,9 +755,9 @@ function ThemedButton() {
 Provide a context value to all descendants. Automatically handles cleanup on unmount. This is the recommended way to provide context inside components.
 
 ```tsx
-import { createContext, provide, useContext } from "@pyreon/core"
+import { createContext, provide, useContext } from '@pyreon/core'
 
-const ThemeContext = createContext("light")
+const ThemeContext = createContext('light')
 
 function ThemeProvider(props: { mode: string; children: VNodeChild }) {
   provide(ThemeContext, props.mode)
@@ -764,7 +770,7 @@ function ThemedContent() {
 }
 
 // Usage
-<ThemeProvider mode="dark">
+;<ThemeProvider mode="dark">
   <ThemedContent />
 </ThemeProvider>
 ```
@@ -778,9 +784,9 @@ function ThemedContent() {
 Provide a value for a context during a function execution. Used internally by the renderer when it encounters a provider component.
 
 ```ts
-import { withContext } from "@pyreon/core"
+import { withContext } from '@pyreon/core'
 
-withContext(ThemeContext, { primary: "red", secondary: "blue", background: "#fff" }, () => {
+withContext(ThemeContext, { primary: 'red', secondary: 'blue', background: '#fff' }, () => {
   // All useContext(ThemeContext) calls here return the dark theme
   const theme = useContext(ThemeContext)
   console.log(theme.primary) // "red"
@@ -807,14 +813,18 @@ const AuthContext = createContext<AuthState>({
 })
 
 function AuthProvider(props: { children: VNodeChild }) {
-  const user = signal<AuthState["user"]>(null)
+  const user = signal<AuthState['user']>(null)
 
   const authState: AuthState = {
-    get user() { return user() },
-    get isAuthenticated() { return user() !== null },
+    get user() {
+      return user()
+    },
+    get isAuthenticated() {
+      return user() !== null
+    },
     async login(email, password) {
-      const res = await fetch("/api/login", {
-        method: "POST",
+      const res = await fetch('/api/login', {
+        method: 'POST',
         body: JSON.stringify({ email, password }),
       })
       user.set(await res.json())
@@ -846,7 +856,7 @@ const I18nContext = createContext<{
   locale: string
   t: (key: string) => string
 }>({
-  locale: "en",
+  locale: 'en',
   t: (key) => key,
 })
 
@@ -856,7 +866,7 @@ function useTranslation() {
 
 function Greeting() {
   const { t } = useTranslation()
-  return <h1>{t("greeting.hello")}</h1>
+  return <h1>{t('greeting.hello')}</h1>
 }
 ```
 
@@ -871,7 +881,7 @@ Refs provide mutable containers for DOM element references. The runtime sets `re
 ### createRef
 
 ```ts
-import { createRef } from "@pyreon/core"
+import { createRef } from '@pyreon/core'
 
 interface Ref<T = unknown> {
   current: T | null
@@ -887,7 +897,7 @@ function createRef<T = unknown>(): Ref<T>
 ### Basic Usage
 
 ```tsx
-import { createRef, onMount } from "@pyreon/core"
+import { createRef, onMount } from '@pyreon/core'
 
 function AutoFocusInput() {
   const inputRef = createRef<HTMLInputElement>()
@@ -908,8 +918,8 @@ function FormWithRefs() {
   const emailRef = createRef<HTMLInputElement>()
   const submitRef = createRef<HTMLButtonElement>()
 
-  const focusNext = (current: "name" | "email") => {
-    if (current === "name") emailRef.current?.focus()
+  const focusNext = (current: 'name' | 'email') => {
+    if (current === 'name') emailRef.current?.focus()
     else submitRef.current?.focus()
   }
 
@@ -918,14 +928,16 @@ function FormWithRefs() {
       <input
         ref={nameRef}
         placeholder="Name"
-        onKeyDown={(e) => e.key === "Enter" && focusNext("name")}
+        onKeyDown={(e) => e.key === 'Enter' && focusNext('name')}
       />
       <input
         ref={emailRef}
         placeholder="Email"
-        onKeyDown={(e) => e.key === "Enter" && focusNext("email")}
+        onKeyDown={(e) => e.key === 'Enter' && focusNext('email')}
       />
-      <button ref={submitRef} type="submit">Submit</button>
+      <button ref={submitRef} type="submit">
+        Submit
+      </button>
     </form>
   )
 }
@@ -969,9 +981,9 @@ function DrawingCanvas() {
 
   onMount(() => {
     const canvas = canvasRef.current!
-    const ctx = canvas.getContext("2d")!
+    const ctx = canvas.getContext('2d')!
 
-    ctx.fillStyle = "#007bff"
+    ctx.fillStyle = '#007bff'
     ctx.fillRect(10, 10, 100, 100)
   })
 
@@ -995,8 +1007,8 @@ Conditionally render children based on a reactive condition. The `when` prop mus
 />
 
 ```tsx
-import { Show } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { Show } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 function App() {
   const loggedIn = signal(false)
@@ -1014,10 +1026,7 @@ function App() {
 ```tsx
 function UserProfile(props: { userId: () => string | null }) {
   return (
-    <Show
-      when={() => props.userId()}
-      fallback={<p>No user selected. Pick one from the list.</p>}
-    >
+    <Show when={() => props.userId()} fallback={<p>No user selected. Pick one from the list.</p>}>
       <ProfileCard userId={props.userId} />
     </Show>
   )
@@ -1046,21 +1055,21 @@ function PermissionGate(props: { children: VNodeChild }) {
 Multi-branch conditional rendering. Evaluates each `Match` child in order and renders the first whose `when()` is truthy. Falls back to the `fallback` prop if no match is found.
 
 ```tsx
-import { Switch, Match } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { Switch, Match } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 function App() {
-  const page = signal("home")
+  const page = signal('home')
 
   return (
     <Switch fallback={<NotFound />}>
-      <Match when={() => page() === "home"}>
+      <Match when={() => page() === 'home'}>
         <HomePage />
       </Match>
-      <Match when={() => page() === "about"}>
+      <Match when={() => page() === 'about'}>
         <AboutPage />
       </Match>
-      <Match when={() => page() === "contact"}>
+      <Match when={() => page() === 'contact'}>
         <ContactPage />
       </Match>
     </Switch>
@@ -1089,20 +1098,20 @@ function AsyncContent(props: { loading: () => boolean; error: () => string | nul
 
 ```tsx
 type Notification =
-  | { type: "success"; message: string }
-  | { type: "warning"; message: string }
-  | { type: "error"; message: string; code: number }
+  | { type: 'success'; message: string }
+  | { type: 'warning'; message: string }
+  | { type: 'error'; message: string; code: number }
 
 function NotificationBanner(props: { notification: () => Notification }) {
   return (
     <Switch>
-      <Match when={() => props.notification().type === "success"}>
+      <Match when={() => props.notification().type === 'success'}>
         <div class="banner success">{props.notification().message}</div>
       </Match>
-      <Match when={() => props.notification().type === "warning"}>
+      <Match when={() => props.notification().type === 'warning'}>
         <div class="banner warning">{props.notification().message}</div>
       </Match>
-      <Match when={() => props.notification().type === "error"}>
+      <Match when={() => props.notification().type === 'error'}>
         <div class="banner error">
           Error {(props.notification() as { code: number }).code}: {props.notification().message}
         </div>
@@ -1126,13 +1135,13 @@ Efficient reactive list rendering with keyed reconciliation. Unlike a plain `.ma
 />
 
 ```tsx
-import { For } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { For } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 function TodoList() {
   const todos = signal([
-    { id: 1, text: "Learn Pyreon" },
-    { id: 2, text: "Build something" },
+    { id: 1, text: 'Learn Pyreon' },
+    { id: 2, text: 'Build something' },
   ])
 
   return (
@@ -1184,7 +1193,7 @@ function UserList() {
         by: (u) => u.id,
         children: (user) => (
           <div
-            class={() => selectedId() === user.id ? "user selected" : "user"}
+            class={() => (selectedId() === user.id ? 'user selected' : 'user')}
             onClick={() => selectedId.set(user.id)}
           >
             <img src={user.avatar} alt={user.name} />
@@ -1203,7 +1212,7 @@ function UserList() {
 Renders children into a different DOM node than the current parent tree. Useful for modals, tooltips, dropdowns, and any overlay that needs to escape CSS overflow or stacking context restrictions.
 
 ```tsx
-import { Portal } from "@pyreon/core"
+import { Portal } from '@pyreon/core'
 
 function Modal(props: { onClose: () => void; children: VNodeChild }) {
   return (
@@ -1238,7 +1247,10 @@ function Tooltip(props: { text: string; children: VNodeChild }) {
     <>
       <span
         ref={triggerRef}
-        onMouseEnter={() => { updatePosition(); show.set(true) }}
+        onMouseEnter={() => {
+          updatePosition()
+          show.set(true)
+        }}
         onMouseLeave={() => show.set(false)}
       >
         {props.children}
@@ -1248,7 +1260,7 @@ function Tooltip(props: { text: string; children: VNodeChild }) {
           <div
             class="tooltip"
             style={() => ({
-              position: "fixed",
+              position: 'fixed',
               top: `${position().top}px`,
               left: `${position().left}px`,
             })}
@@ -1267,9 +1279,9 @@ function Tooltip(props: { text: string; children: VNodeChild }) {
 Shows a fallback while a lazy child component is still loading. Works with the `lazy()` helper from `@pyreon/core` (or `@pyreon/react-compat`).
 
 ```tsx
-import { Suspense, lazy } from "@pyreon/core"
+import { Suspense, lazy } from '@pyreon/core'
 
-const HeavyComponent = lazy(() => import("./HeavyComponent"))
+const HeavyComponent = lazy(() => import('./HeavyComponent'))
 
 function App() {
   return (
@@ -1283,23 +1295,23 @@ function App() {
 #### Suspense with Multiple Lazy Components
 
 ```tsx
-const Dashboard = lazy(() => import("./Dashboard"))
-const Analytics = lazy(() => import("./Analytics"))
-const Settings = lazy(() => import("./Settings"))
+const Dashboard = lazy(() => import('./Dashboard'))
+const Analytics = lazy(() => import('./Analytics'))
+const Settings = lazy(() => import('./Settings'))
 
 function App() {
-  const page = signal("dashboard")
+  const page = signal('dashboard')
 
   return (
     <Suspense fallback={<div class="loading-skeleton" />}>
       <Switch>
-        <Match when={() => page() === "dashboard"}>
+        <Match when={() => page() === 'dashboard'}>
           <Dashboard />
         </Match>
-        <Match when={() => page() === "analytics"}>
+        <Match when={() => page() === 'analytics'}>
           <Analytics />
         </Match>
-        <Match when={() => page() === "settings"}>
+        <Match when={() => page() === 'settings'}>
           <Settings />
         </Match>
       </Switch>
@@ -1315,7 +1327,7 @@ The `Suspense` component checks if a child VNode's type has a `__loading()` sign
 Catches errors thrown by child components and renders a fallback UI instead of crashing the entire tree. Also reports caught errors to any registered telemetry handlers.
 
 ```tsx
-import { ErrorBoundary } from "@pyreon/core"
+import { ErrorBoundary } from '@pyreon/core'
 
 function App() {
   return (
@@ -1335,6 +1347,7 @@ function App() {
 ```
 
 The `fallback` function receives:
+
 - `err` -- the caught error value
 - `reset()` -- a function that clears the error state and re-renders children
 
@@ -1346,12 +1359,14 @@ function App() {
     <ErrorBoundary fallback={(err) => <AppCrashScreen error={err} />}>
       <Header />
       <main>
-        <ErrorBoundary fallback={(err, reset) => (
-          <div>
-            <p>Widget failed: {String(err)}</p>
-            <button onClick={reset}>Retry</button>
-          </div>
-        )}>
+        <ErrorBoundary
+          fallback={(err, reset) => (
+            <div>
+              <p>Widget failed: {String(err)}</p>
+              <button onClick={reset}>Retry</button>
+            </div>
+          )}
+        >
           <UnstableWidget />
         </ErrorBoundary>
         <StableContent />
@@ -1372,11 +1387,11 @@ Inner boundaries catch errors first. If an inner boundary is already in an error
 Renders a component or HTML element dynamically based on a reactive value. Useful for rendering polymorphic components or switching between element types at runtime.
 
 ```tsx
-import { Dynamic } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { Dynamic } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 // Dynamic component
-const currentView = signal<"home" | "settings">("home")
+const currentView = signal<'home' | 'settings'>('home')
 const views = { home: HomePage, settings: SettingsPage }
 
 function App() {
@@ -1386,10 +1401,14 @@ function App() {
 
 ```tsx
 // Dynamic HTML element
-const tag = signal<"h1" | "h2" | "p">("h1")
+const tag = signal<'h1' | 'h2' | 'p'>('h1')
 
 function Heading(props: { text: string }) {
-  return <Dynamic component={tag()} class="heading">{props.text}</Dynamic>
+  return (
+    <Dynamic component={tag()} class="heading">
+      {props.text}
+    </Dynamic>
+  )
 }
 ```
 
@@ -1409,9 +1428,9 @@ All other props are forwarded to the resolved component or element. If `componen
 Lazily load a component module. Returns a wrapper component that shows `null` while loading and the resolved component once ready. Pairs with `Suspense` to show a fallback during loading.
 
 ```tsx
-import { lazy, Suspense } from "@pyreon/core"
+import { lazy, Suspense } from '@pyreon/core'
 
-const HeavyChart = lazy(() => import("./HeavyChart"))
+const HeavyChart = lazy(() => import('./HeavyChart'))
 
 function Dashboard() {
   return (
@@ -1431,9 +1450,7 @@ function Dashboard() {
 5. If the import fails, the error is thrown during rendering and can be caught by `ErrorBoundary`.
 
 ```ts
-function lazy<P extends Props>(
-  load: () => Promise<{ default: ComponentFn<P> }>,
-): LazyComponent<P>
+function lazy<P extends Props>(load: () => Promise<{ default: ComponentFn<P> }>): LazyComponent<P>
 ```
 
 ## mapArray
@@ -1441,18 +1458,18 @@ function lazy<P extends Props>(
 Keyed reactive list mapping that creates each mapped item exactly once per key and reuses it across updates. When the source array is reordered or partially changed, only new keys invoke `map()`; existing entries return the cached result. Removed keys are evicted from the cache.
 
 ```ts
-import { mapArray } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { mapArray } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 const items = signal([
-  { id: 1, name: "Alice" },
-  { id: 2, name: "Bob" },
+  { id: 1, name: 'Alice' },
+  { id: 2, name: 'Bob' },
 ])
 
 const mapped = mapArray(
   items,
   (item) => item.id,
-  (item) => ({ ...item, uppercaseName: item.name.toUpperCase() })
+  (item) => ({ ...item, uppercaseName: item.name.toUpperCase() }),
 )
 
 // mapped() returns the mapped array, reusing cached entries for unchanged keys
@@ -1467,11 +1484,11 @@ const nodes = mapArray(
   items,
   (item) => item.id,
   (item) => {
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     el.textContent = item.name
-    el.className = "list-item"
+    el.className = 'list-item'
     return el
-  }
+  },
 )
 
 // nodes() returns the same DOM elements for unchanged keys
@@ -1495,10 +1512,10 @@ function mapArray<T, U>(
 Split a props object into two parts: one with the specified keys, and one with the rest. Both parts preserve reactivity -- accessing a property on either part reads the original prop.
 
 ```tsx
-import { splitProps } from "@pyreon/core"
+import { splitProps } from '@pyreon/core'
 
 function Button(props: { label: string; icon?: string } & PyreonHTMLAttributes<HTMLButtonElement>) {
-  const [own, html] = splitProps(props, ["label", "icon"])
+  const [own, html] = splitProps(props, ['label', 'icon'])
 
   return (
     <button {...html}>
@@ -1523,16 +1540,12 @@ function splitProps<T extends object, K extends keyof T>(
 Merge multiple props objects into one, with later sources overriding earlier ones. The merged object is lazy -- property reads go through the original sources, preserving reactivity.
 
 ```tsx
-import { mergeProps } from "@pyreon/core"
+import { mergeProps } from '@pyreon/core'
 
-function Button(props: { size?: "sm" | "md" | "lg"; variant?: string }) {
-  const merged = mergeProps({ size: "md", variant: "primary" }, props)
+function Button(props: { size?: 'sm' | 'md' | 'lg'; variant?: string }) {
+  const merged = mergeProps({ size: 'md', variant: 'primary' }, props)
 
-  return (
-    <button class={() => `btn-${merged.size} btn-${merged.variant}`}>
-      {merged.children}
-    </button>
-  )
+  return <button class={() => `btn-${merged.size} btn-${merged.variant}`}>{merged.children}</button>
 }
 ```
 
@@ -1545,7 +1558,7 @@ function mergeProps<T extends object[]>(...sources: T): MergedProps<T>
 Generate a unique string ID that is stable across server and client renders. Use this for linking labels to inputs, ARIA attributes, and other cases where you need a deterministic unique ID.
 
 ```tsx
-import { createUniqueId } from "@pyreon/core"
+import { createUniqueId } from '@pyreon/core'
 
 function LabeledInput(props: { label: string }) {
   const id = createUniqueId()
@@ -1570,8 +1583,8 @@ Register global error handlers for monitoring and reporting. This integrates wit
 ### registerErrorHandler
 
 ```ts
-import { registerErrorHandler } from "@pyreon/core"
-import * as Sentry from "@sentry/browser"
+import { registerErrorHandler } from '@pyreon/core'
+import * as Sentry from '@sentry/browser'
 
 const unregister = registerErrorHandler((ctx) => {
   Sentry.captureException(ctx.error, {
@@ -1594,7 +1607,7 @@ interface ErrorContext {
   /** Component function name, or "Anonymous" */
   component: string
   /** Lifecycle phase where the error occurred */
-  phase: "setup" | "render" | "mount" | "unmount" | "effect"
+  phase: 'setup' | 'render' | 'mount' | 'unmount' | 'effect'
   /** The thrown value */
   error: unknown
   /** Unix timestamp (ms) */
@@ -1616,7 +1629,7 @@ registerErrorHandler((ctx) => {
 
 // Analytics
 registerErrorHandler((ctx) => {
-  analytics.track("component_error", {
+  analytics.track('component_error', {
     component: ctx.component,
     phase: ctx.phase,
   })
@@ -1635,8 +1648,8 @@ Handler errors are silently swallowed -- a failing handler never propagates back
 ### Form Component
 
 ```tsx
-import { defineComponent, createRef, onMount } from "@pyreon/core"
-import { signal, effect } from "@pyreon/reactivity"
+import { defineComponent, createRef, onMount } from '@pyreon/core'
+import { signal, effect } from '@pyreon/reactivity'
 
 interface FormField {
   value: string
@@ -1645,16 +1658,16 @@ interface FormField {
 }
 
 const ContactForm = defineComponent(() => {
-  const name = signal<FormField>({ value: "", error: null, touched: false })
-  const email = signal<FormField>({ value: "", error: null, touched: false })
-  const message = signal<FormField>({ value: "", error: null, touched: false })
+  const name = signal<FormField>({ value: '', error: null, touched: false })
+  const email = signal<FormField>({ value: '', error: null, touched: false })
+  const message = signal<FormField>({ value: '', error: null, touched: false })
   const submitting = signal(false)
   const submitted = signal(false)
 
   const validate = (field: string, value: string): string | null => {
-    if (field === "name" && value.length < 2) return "Name must be at least 2 characters"
-    if (field === "email" && !value.includes("@")) return "Invalid email address"
-    if (field === "message" && value.length < 10) return "Message must be at least 10 characters"
+    if (field === 'name' && value.length < 2) return 'Name must be at least 2 characters'
+    if (field === 'email' && !value.includes('@')) return 'Invalid email address'
+    if (field === 'message' && value.length < 10) return 'Message must be at least 10 characters'
     return null
   }
 
@@ -1667,8 +1680,12 @@ const ContactForm = defineComponent(() => {
   }
 
   const isValid = () =>
-    !name().error && !email().error && !message().error &&
-    name().touched && email().touched && message().touched
+    !name().error &&
+    !email().error &&
+    !message().error &&
+    name().touched &&
+    email().touched &&
+    message().touched
 
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault()
@@ -1676,8 +1693,8 @@ const ContactForm = defineComponent(() => {
 
     submitting.set(true)
     try {
-      await fetch("/api/contact", {
-        method: "POST",
+      await fetch('/api/contact', {
+        method: 'POST',
         body: JSON.stringify({
           name: name().value,
           email: email().value,
@@ -1697,7 +1714,7 @@ const ContactForm = defineComponent(() => {
           <label>Name</label>
           <input
             value={() => name().value}
-            onInput={(e) => updateField(name, "name", e.currentTarget.value)}
+            onInput={(e) => updateField(name, 'name', e.currentTarget.value)}
           />
           <Show when={() => name().touched && name().error}>
             <span class="error">{name().error}</span>
@@ -1708,7 +1725,7 @@ const ContactForm = defineComponent(() => {
           <input
             type="email"
             value={() => email().value}
-            onInput={(e) => updateField(email, "email", e.currentTarget.value)}
+            onInput={(e) => updateField(email, 'email', e.currentTarget.value)}
           />
           <Show when={() => email().touched && email().error}>
             <span class="error">{email().error}</span>
@@ -1718,14 +1735,14 @@ const ContactForm = defineComponent(() => {
           <label>Message</label>
           <textarea
             value={() => message().value}
-            onInput={(e) => updateField(message, "message", e.currentTarget.value)}
+            onInput={(e) => updateField(message, 'message', e.currentTarget.value)}
           />
           <Show when={() => message().touched && message().error}>
             <span class="error">{message().error}</span>
           </Show>
         </div>
         <button type="submit" disabled={() => !isValid() || submitting()}>
-          {() => submitting() ? "Sending..." : "Send"}
+          {() => (submitting() ? 'Sending...' : 'Send')}
         </button>
       </form>
     </Show>
@@ -1736,124 +1753,119 @@ const ContactForm = defineComponent(() => {
 ### Modal Component
 
 ```tsx
-const Modal = defineComponent((props: {
-  open: () => boolean
-  onClose: () => void
-  title: string
-  children?: VNodeChild
-}) => {
-  // Close on Escape
-  onMount(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") props.onClose()
-    }
-    document.addEventListener("keydown", handler)
-    return () => document.removeEventListener("keydown", handler)
-  })
+const Modal = defineComponent(
+  (props: { open: () => boolean; onClose: () => void; title: string; children?: VNodeChild }) => {
+    // Close on Escape
+    onMount(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') props.onClose()
+      }
+      document.addEventListener('keydown', handler)
+      return () => document.removeEventListener('keydown', handler)
+    })
 
-  return (
-    <Show when={props.open}>
-      <Portal target={document.body}>
-        <div class="modal-backdrop" onClick={props.onClose}>
-          <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div class="modal-header">
-              <h2>{props.title}</h2>
-              <button onClick={props.onClose} aria-label="Close">&times;</button>
-            </div>
-            <div class="modal-body">
-              {props.children}
+    return (
+      <Show when={props.open}>
+        <Portal target={document.body}>
+          <div class="modal-backdrop" onClick={props.onClose}>
+            <div class="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+              <div class="modal-header">
+                <h2>{props.title}</h2>
+                <button onClick={props.onClose} aria-label="Close">
+                  &times;
+                </button>
+              </div>
+              <div class="modal-body">{props.children}</div>
             </div>
           </div>
-        </div>
-      </Portal>
-    </Show>
-  )
-})
+        </Portal>
+      </Show>
+    )
+  },
+)
 ```
 
 ### Tabs Component
 
 ```tsx
-const Tabs = defineComponent((props: {
-  tabs: Array<{ id: string; label: string; content: VNodeChild }>
-  defaultTab?: string
-}) => {
-  const activeTab = signal(props.defaultTab ?? props.tabs[0]?.id ?? "")
+const Tabs = defineComponent(
+  (props: {
+    tabs: Array<{ id: string; label: string; content: VNodeChild }>
+    defaultTab?: string
+  }) => {
+    const activeTab = signal(props.defaultTab ?? props.tabs[0]?.id ?? '')
 
-  return (
-    <div class="tabs">
-      <div class="tab-list" role="tablist">
-        {props.tabs.map(tab => (
-          <button
-            role="tab"
-            class={() => activeTab() === tab.id ? "tab active" : "tab"}
-            aria-selected={() => activeTab() === tab.id}
-            onClick={() => activeTab.set(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div class="tab-panel" role="tabpanel">
-        <Switch>
-          {props.tabs.map(tab => (
-            <Match when={() => activeTab() === tab.id}>
-              {tab.content}
-            </Match>
+    return (
+      <div class="tabs">
+        <div class="tab-list" role="tablist">
+          {props.tabs.map((tab) => (
+            <button
+              role="tab"
+              class={() => (activeTab() === tab.id ? 'tab active' : 'tab')}
+              aria-selected={() => activeTab() === tab.id}
+              onClick={() => activeTab.set(tab.id)}
+            >
+              {tab.label}
+            </button>
           ))}
-        </Switch>
+        </div>
+        <div class="tab-panel" role="tabpanel">
+          <Switch>
+            {props.tabs.map((tab) => (
+              <Match when={() => activeTab() === tab.id}>{tab.content}</Match>
+            ))}
+          </Switch>
+        </div>
       </div>
-    </div>
-  )
-})
+    )
+  },
+)
 ```
 
 ### Accordion Component
 
 ```tsx
-const Accordion = defineComponent((props: {
-  items: Array<{ id: string; title: string; content: VNodeChild }>
-  multiple?: boolean
-}) => {
-  const openItems = signal<Set<string>>(new Set())
+const Accordion = defineComponent(
+  (props: {
+    items: Array<{ id: string; title: string; content: VNodeChild }>
+    multiple?: boolean
+  }) => {
+    const openItems = signal<Set<string>>(new Set())
 
-  const toggle = (id: string) => {
-    openItems.update(current => {
-      const next = new Set(current)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        if (!props.multiple) next.clear()
-        next.add(id)
-      }
-      return next
-    })
-  }
+    const toggle = (id: string) => {
+      openItems.update((current) => {
+        const next = new Set(current)
+        if (next.has(id)) {
+          next.delete(id)
+        } else {
+          if (!props.multiple) next.clear()
+          next.add(id)
+        }
+        return next
+      })
+    }
 
-  return (
-    <div class="accordion">
-      {props.items.map(item => (
-        <div class="accordion-item">
-          <button
-            class="accordion-header"
-            onClick={() => toggle(item.id)}
-            aria-expanded={() => openItems().has(item.id)}
-          >
-            {item.title}
-            <span class={() => openItems().has(item.id) ? "icon open" : "icon"}>
-              &#9660;
-            </span>
-          </button>
-          <Show when={() => openItems().has(item.id)}>
-            <div class="accordion-body">
-              {item.content}
-            </div>
-          </Show>
-        </div>
-      ))}
-    </div>
-  )
-})
+    return (
+      <div class="accordion">
+        {props.items.map((item) => (
+          <div class="accordion-item">
+            <button
+              class="accordion-header"
+              onClick={() => toggle(item.id)}
+              aria-expanded={() => openItems().has(item.id)}
+            >
+              {item.title}
+              <span class={() => (openItems().has(item.id) ? 'icon open' : 'icon')}>&#9660;</span>
+            </button>
+            <Show when={() => openItems().has(item.id)}>
+              <div class="accordion-body">{item.content}</div>
+            </Show>
+          </div>
+        ))}
+      </div>
+    )
+  },
+)
 ```
 
 ## Internal APIs
@@ -1919,19 +1931,19 @@ Dispatch an error to the nearest active `ErrorBoundary`. Returns `true` if the b
 
 ## Type Exports
 
-| Type | Description |
-|------|-------------|
-| `ComponentFn<P>` | `(props: P) => VNodeChild` -- component function type |
-| `VNode` | Virtual DOM node with type, props, children, and key |
-| `VNodeChild` | Union type for all renderable values (VNode, string, number, null, boolean, function, array) |
-| `Props` | Base props interface for elements and components |
-| `Ref<T>` | Mutable ref container `&#123; current: T \| null &#125;` |
-| `RefCallback<T>` | Function ref callback `(el: T \| null) => void` -- called with the element on mount and `null` on unmount |
-| `RefProp<T>` | Union of `Ref<T> \| RefCallback<T>` -- the type accepted by the JSX `ref` prop |
-| `ExtractProps<T>` | Extracts the props type from a `ComponentFn<P>`, or passes through if already a props object |
-| `HigherOrderComponent<HOP, P>` | Typed higher-order component pattern `(component: ComponentFn<P>) => ComponentFn<P & HOP>` |
-| `PyreonHTMLAttributes<E>` | HTML attribute types parameterized by element type (e.g., `PyreonHTMLAttributes<HTMLInputElement>`) |
-| `CSSProperties` | Typed CSS property object for the `style` prop |
-| `StyleValue` | Union type for style prop values: `string \| CSSProperties \| (() => string \| CSSProperties)` |
-| `ClassValue` | Union type for the `class` prop: `string \| boolean \| null \| undefined \| ClassValue[] \| Record<string, boolean \| (() => boolean)>` |
-| `TargetedEvent<E>` | Event type where `currentTarget` is typed as `E` (e.g., `TargetedEvent<HTMLInputElement>`) |
+| Type                           | Description                                                                                                                             |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `ComponentFn<P>`               | `(props: P) => VNodeChild` -- component function type                                                                                   |
+| `VNode`                        | Virtual DOM node with type, props, children, and key                                                                                    |
+| `VNodeChild`                   | Union type for all renderable values (VNode, string, number, null, boolean, function, array)                                            |
+| `Props`                        | Base props interface for elements and components                                                                                        |
+| `Ref<T>`                       | Mutable ref container `&#123; current: T \| null &#125;`                                                                                |
+| `RefCallback<T>`               | Function ref callback `(el: T \| null) => void` -- called with the element on mount and `null` on unmount                               |
+| `RefProp<T>`                   | Union of `Ref<T> \| RefCallback<T>` -- the type accepted by the JSX `ref` prop                                                          |
+| `ExtractProps<T>`              | Extracts the props type from a `ComponentFn<P>`, or passes through if already a props object                                            |
+| `HigherOrderComponent<HOP, P>` | Typed higher-order component pattern `(component: ComponentFn<P>) => ComponentFn<P & HOP>`                                              |
+| `PyreonHTMLAttributes<E>`      | HTML attribute types parameterized by element type (e.g., `PyreonHTMLAttributes<HTMLInputElement>`)                                     |
+| `CSSProperties`                | Typed CSS property object for the `style` prop                                                                                          |
+| `StyleValue`                   | Union type for style prop values: `string \| CSSProperties \| (() => string \| CSSProperties)`                                          |
+| `ClassValue`                   | Union type for the `class` prop: `string \| boolean \| null \| undefined \| ClassValue[] \| Record<string, boolean \| (() => boolean)>` |
+| `TargetedEvent<E>`             | Event type where `currentTarget` is typed as `E` (e.g., `TargetedEvent<HTMLInputElement>`)                                              |

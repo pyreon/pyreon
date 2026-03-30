@@ -1,12 +1,12 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isArrayMapCall } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isArrayMapCall } from '../../utils/ast'
 
 export const noMapInJsx: Rule = {
   meta: {
-    id: "pyreon/no-map-in-jsx",
-    category: "jsx",
-    description: "Prefer <For> over .map() inside JSX for reactive list rendering.",
-    severity: "warn",
+    id: 'pyreon/no-map-in-jsx',
+    category: 'jsx',
+    description: 'Prefer <For> over .map() inside JSX for reactive list rendering.',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -15,13 +15,13 @@ export const noMapInJsx: Rule = {
       JSXElement() {
         jsxDepth++
       },
-      "JSXElement:exit"() {
+      'JSXElement:exit'() {
         jsxDepth--
       },
       JSXFragment() {
         jsxDepth++
       },
-      "JSXFragment:exit"() {
+      'JSXFragment:exit'() {
         jsxDepth--
       },
       CallExpression(node: any) {
@@ -33,7 +33,7 @@ export const noMapInJsx: Rule = {
         const callback = args[0]
         if (!callback) return
         context.report({
-          message: "`.map()` in JSX — use `<For>` for reactive list rendering instead.",
+          message: '`.map()` in JSX — use `<For>` for reactive list rendering instead.',
           span: getSpan(node),
         })
       },

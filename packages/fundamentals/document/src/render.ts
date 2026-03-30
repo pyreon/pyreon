@@ -1,4 +1,4 @@
-import type { DocNode, DocumentRenderer, OutputFormat, RenderOptions, RenderResult } from "./types"
+import type { DocNode, DocumentRenderer, OutputFormat, RenderOptions, RenderResult } from './types'
 
 // ─── Renderer Registry ──────────────────────────────────────────────────────
 
@@ -37,44 +37,44 @@ export function unregisterRenderer(format: string): void {
 
 // Built-in renderers are registered lazily — only loaded when first used.
 
-registerRenderer("html", () => import("./renderers/html").then((m) => m.htmlRenderer))
+registerRenderer('html', () => import('./renderers/html').then((m) => m.htmlRenderer))
 
-registerRenderer("email", () => import("./renderers/email").then((m) => m.emailRenderer))
+registerRenderer('email', () => import('./renderers/email').then((m) => m.emailRenderer))
 
-registerRenderer("md", () => import("./renderers/markdown").then((m) => m.markdownRenderer))
+registerRenderer('md', () => import('./renderers/markdown').then((m) => m.markdownRenderer))
 
-registerRenderer("text", () => import("./renderers/text").then((m) => m.textRenderer))
+registerRenderer('text', () => import('./renderers/text').then((m) => m.textRenderer))
 
-registerRenderer("csv", () => import("./renderers/csv").then((m) => m.csvRenderer))
+registerRenderer('csv', () => import('./renderers/csv').then((m) => m.csvRenderer))
 
-registerRenderer("pdf", () => import("./renderers/pdf").then((m) => m.pdfRenderer))
+registerRenderer('pdf', () => import('./renderers/pdf').then((m) => m.pdfRenderer))
 
-registerRenderer("docx", () => import("./renderers/docx").then((m) => m.docxRenderer))
+registerRenderer('docx', () => import('./renderers/docx').then((m) => m.docxRenderer))
 
-registerRenderer("xlsx", () => import("./renderers/xlsx").then((m) => m.xlsxRenderer))
+registerRenderer('xlsx', () => import('./renderers/xlsx').then((m) => m.xlsxRenderer))
 
-registerRenderer("pptx", () => import("./renderers/pptx").then((m) => m.pptxRenderer))
+registerRenderer('pptx', () => import('./renderers/pptx').then((m) => m.pptxRenderer))
 
-registerRenderer("slack", () => import("./renderers/slack").then((m) => m.slackRenderer))
+registerRenderer('slack', () => import('./renderers/slack').then((m) => m.slackRenderer))
 
-registerRenderer("svg", () => import("./renderers/svg").then((m) => m.svgRenderer))
+registerRenderer('svg', () => import('./renderers/svg').then((m) => m.svgRenderer))
 
-registerRenderer("teams", () => import("./renderers/teams").then((m) => m.teamsRenderer))
+registerRenderer('teams', () => import('./renderers/teams').then((m) => m.teamsRenderer))
 
-registerRenderer("discord", () => import("./renderers/discord").then((m) => m.discordRenderer))
+registerRenderer('discord', () => import('./renderers/discord').then((m) => m.discordRenderer))
 
-registerRenderer("telegram", () => import("./renderers/telegram").then((m) => m.telegramRenderer))
+registerRenderer('telegram', () => import('./renderers/telegram').then((m) => m.telegramRenderer))
 
-registerRenderer("notion", () => import("./renderers/notion").then((m) => m.notionRenderer))
+registerRenderer('notion', () => import('./renderers/notion').then((m) => m.notionRenderer))
 
-registerRenderer("confluence", () =>
-  import("./renderers/confluence").then((m) => m.confluenceRenderer),
+registerRenderer('confluence', () =>
+  import('./renderers/confluence').then((m) => m.confluenceRenderer),
 )
 
-registerRenderer("whatsapp", () => import("./renderers/whatsapp").then((m) => m.whatsappRenderer))
+registerRenderer('whatsapp', () => import('./renderers/whatsapp').then((m) => m.whatsappRenderer))
 
-registerRenderer("google-chat", () =>
-  import("./renderers/google-chat").then((m) => m.googleChatRenderer),
+registerRenderer('google-chat', () =>
+  import('./renderers/google-chat').then((m) => m.googleChatRenderer),
 )
 
 // ─── Render Function ────────────────────────────────────────────────────────
@@ -83,11 +83,11 @@ async function resolveRenderer(format: string): Promise<DocumentRenderer> {
   const entry = renderers.get(format)
   if (!entry) {
     throw new Error(
-      `[@pyreon/document] No renderer registered for format '${format}'. Available: ${[...renderers.keys()].join(", ")}`,
+      `[@pyreon/document] No renderer registered for format '${format}'. Available: ${[...renderers.keys()].join(', ')}`,
     )
   }
 
-  if (typeof entry === "function") {
+  if (typeof entry === 'function') {
     const renderer = await entry()
     // Cache the resolved renderer so we don't re-import
     renderers.set(format, renderer)
@@ -124,26 +124,26 @@ export async function render(
 export function _resetRenderers(): void {
   renderers.clear()
   // Re-register built-in lazy loaders
-  registerRenderer("html", () => import("./renderers/html").then((m) => m.htmlRenderer))
-  registerRenderer("email", () => import("./renderers/email").then((m) => m.emailRenderer))
-  registerRenderer("md", () => import("./renderers/markdown").then((m) => m.markdownRenderer))
-  registerRenderer("text", () => import("./renderers/text").then((m) => m.textRenderer))
-  registerRenderer("csv", () => import("./renderers/csv").then((m) => m.csvRenderer))
-  registerRenderer("pdf", () => import("./renderers/pdf").then((m) => m.pdfRenderer))
-  registerRenderer("docx", () => import("./renderers/docx").then((m) => m.docxRenderer))
-  registerRenderer("xlsx", () => import("./renderers/xlsx").then((m) => m.xlsxRenderer))
-  registerRenderer("pptx", () => import("./renderers/pptx").then((m) => m.pptxRenderer))
-  registerRenderer("slack", () => import("./renderers/slack").then((m) => m.slackRenderer))
-  registerRenderer("svg", () => import("./renderers/svg").then((m) => m.svgRenderer))
-  registerRenderer("teams", () => import("./renderers/teams").then((m) => m.teamsRenderer))
-  registerRenderer("discord", () => import("./renderers/discord").then((m) => m.discordRenderer))
-  registerRenderer("telegram", () => import("./renderers/telegram").then((m) => m.telegramRenderer))
-  registerRenderer("notion", () => import("./renderers/notion").then((m) => m.notionRenderer))
-  registerRenderer("confluence", () =>
-    import("./renderers/confluence").then((m) => m.confluenceRenderer),
+  registerRenderer('html', () => import('./renderers/html').then((m) => m.htmlRenderer))
+  registerRenderer('email', () => import('./renderers/email').then((m) => m.emailRenderer))
+  registerRenderer('md', () => import('./renderers/markdown').then((m) => m.markdownRenderer))
+  registerRenderer('text', () => import('./renderers/text').then((m) => m.textRenderer))
+  registerRenderer('csv', () => import('./renderers/csv').then((m) => m.csvRenderer))
+  registerRenderer('pdf', () => import('./renderers/pdf').then((m) => m.pdfRenderer))
+  registerRenderer('docx', () => import('./renderers/docx').then((m) => m.docxRenderer))
+  registerRenderer('xlsx', () => import('./renderers/xlsx').then((m) => m.xlsxRenderer))
+  registerRenderer('pptx', () => import('./renderers/pptx').then((m) => m.pptxRenderer))
+  registerRenderer('slack', () => import('./renderers/slack').then((m) => m.slackRenderer))
+  registerRenderer('svg', () => import('./renderers/svg').then((m) => m.svgRenderer))
+  registerRenderer('teams', () => import('./renderers/teams').then((m) => m.teamsRenderer))
+  registerRenderer('discord', () => import('./renderers/discord').then((m) => m.discordRenderer))
+  registerRenderer('telegram', () => import('./renderers/telegram').then((m) => m.telegramRenderer))
+  registerRenderer('notion', () => import('./renderers/notion').then((m) => m.notionRenderer))
+  registerRenderer('confluence', () =>
+    import('./renderers/confluence').then((m) => m.confluenceRenderer),
   )
-  registerRenderer("whatsapp", () => import("./renderers/whatsapp").then((m) => m.whatsappRenderer))
-  registerRenderer("google-chat", () =>
-    import("./renderers/google-chat").then((m) => m.googleChatRenderer),
+  registerRenderer('whatsapp', () => import('./renderers/whatsapp').then((m) => m.whatsappRenderer))
+  registerRenderer('google-chat', () =>
+    import('./renderers/google-chat').then((m) => m.googleChatRenderer),
   )
 }

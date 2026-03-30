@@ -1,6 +1,6 @@
-import type { HeadContextValue } from "./context"
+import type { HeadContextValue } from './context'
 
-const ATTR = "data-pyreon-head"
+const ATTR = 'data-pyreon-head'
 
 /** Tracks managed elements by key — avoids querySelectorAll on every sync */
 const managedElements = new Map<string, Element>()
@@ -41,7 +41,7 @@ function createNewTag(tag: {
 }
 
 export function syncDom(ctx: HeadContextValue): void {
-  if (typeof document === "undefined") return
+  if (typeof document === 'undefined') return
 
   const tags = ctx.resolve()
   const titleTemplate = ctx.resolveTitleTemplate()
@@ -66,7 +66,7 @@ export function syncDom(ctx: HeadContextValue): void {
   const kept = new Set<string>()
 
   for (const tag of tags) {
-    if (tag.tag === "title") {
+    if (tag.tag === 'title') {
       document.title = applyTitleTemplate(String(tag.children), titleTemplate)
       continue
     }
@@ -117,7 +117,7 @@ function applyTitleTemplate(
   template: string | ((t: string) => string) | undefined,
 ): string {
   if (!template) return title
-  if (typeof template === "function") return template(title)
+  if (typeof template === 'function') return template(title)
   return template.replace(/%s/g, title)
 }
 
@@ -126,7 +126,7 @@ function syncElementAttrs(el: Element, attrs: Record<string, string>): void {
   // Remove previously managed attrs that are no longer present
   const managed = el.getAttribute(`${ATTR}-attrs`)
   if (managed) {
-    for (const name of managed.split(",")) {
+    for (const name of managed.split(',')) {
       if (name && !(name in attrs)) el.removeAttribute(name)
     }
   }
@@ -136,7 +136,7 @@ function syncElementAttrs(el: Element, attrs: Record<string, string>): void {
     if (el.getAttribute(k) !== v) el.setAttribute(k, v)
   }
   if (keys.length > 0) {
-    el.setAttribute(`${ATTR}-attrs`, keys.join(","))
+    el.setAttribute(`${ATTR}-attrs`, keys.join(','))
   } else if (managed) {
     el.removeAttribute(`${ATTR}-attrs`)
   }

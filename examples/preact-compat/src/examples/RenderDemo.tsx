@@ -1,6 +1,6 @@
-import { render } from "preact"
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { render } from 'preact'
+import { useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function RenderDemo() {
   const [mounted, setMounted] = useState(false)
@@ -21,7 +21,7 @@ render(<App />, document.getElementById("app"))`}
         <button
           type="button"
           onClick={() => {
-            const el = document.getElementById("preact-render-target")
+            const el = document.getElementById('preact-render-target')
             if (el && !mounted) {
               render(<MiniApp />, el)
               setMounted(true)
@@ -33,9 +33,9 @@ render(<App />, document.getElementById("app"))`}
         <button
           type="button"
           onClick={() => {
-            const el = document.getElementById("preact-render-target")
+            const el = document.getElementById('preact-render-target')
             if (el) {
-              el.innerHTML = ""
+              el.innerHTML = ''
               setMounted(false)
             }
           }}
@@ -43,7 +43,7 @@ render(<App />, document.getElementById("app"))`}
           Clear
         </button>
       </div>
-      <p class="muted">{mounted ? "Mini app is rendered" : "Not rendered"}</p>
+      <p class="muted">{mounted ? 'Mini app is rendered' : 'Not rendered'}</p>
     </Demo>
   )
 }

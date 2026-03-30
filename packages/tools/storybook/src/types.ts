@@ -1,4 +1,4 @@
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 
 // ─── Storybook Renderer Interface ────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export interface StoryContext<TArgs = Props> {
   id: string
   kind: string
   name: string
-  viewMode: "story" | "docs"
+  viewMode: 'story' | 'docs'
 }
 
 export type StoryFn<TArgs = Props> = (args: TArgs, context: StoryContext<TArgs>) => VNodeChild

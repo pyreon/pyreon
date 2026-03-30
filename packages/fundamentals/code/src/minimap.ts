@@ -1,5 +1,5 @@
-import type { Extension } from "@codemirror/state"
-import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view"
+import type { Extension } from '@codemirror/state'
+import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 
 /**
  * Canvas-based minimap extension for CodeMirror 6.
@@ -9,22 +9,22 @@ import { EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view"
 const MINIMAP_WIDTH = 80
 const CHAR_WIDTH = 1.2
 const LINE_HEIGHT = 2.5
-const MINIMAP_BG = "#1e1e2e"
-const MINIMAP_BG_LIGHT = "#f8fafc"
-const TEXT_COLOR = "#585b70"
-const TEXT_COLOR_LIGHT = "#94a3b8"
-const VIEWPORT_COLOR = "rgba(59, 130, 246, 0.15)"
-const VIEWPORT_BORDER = "rgba(59, 130, 246, 0.4)"
+const MINIMAP_BG = '#1e1e2e'
+const MINIMAP_BG_LIGHT = '#f8fafc'
+const TEXT_COLOR = '#585b70'
+const TEXT_COLOR_LIGHT = '#94a3b8'
+const VIEWPORT_COLOR = 'rgba(59, 130, 246, 0.15)'
+const VIEWPORT_BORDER = 'rgba(59, 130, 246, 0.4)'
 
 function createMinimapCanvas(): HTMLCanvasElement {
-  const canvas = document.createElement("canvas")
+  const canvas = document.createElement('canvas')
   canvas.style.cssText = `position: absolute; right: 0; top: 0; width: ${MINIMAP_WIDTH}px; height: 100%; cursor: pointer; z-index: 5;`
   canvas.width = MINIMAP_WIDTH * 2 // retina
   return canvas
 }
 
 function renderMinimap(canvas: HTMLCanvasElement, view: EditorView): void {
-  const ctx = canvas.getContext("2d")
+  const ctx = canvas.getContext('2d')
   if (!ctx) return
 
   const doc = view.state.doc
@@ -32,7 +32,7 @@ function renderMinimap(canvas: HTMLCanvasElement, view: EditorView): void {
   const height = canvas.clientHeight
   canvas.height = height * 2 // retina
 
-  const isDark = view.dom.classList.contains("cm-dark")
+  const isDark = view.dom.classList.contains('cm-dark')
   const bg = isDark ? MINIMAP_BG : MINIMAP_BG_LIGHT
   const textColor = isDark ? TEXT_COLOR : TEXT_COLOR_LIGHT
 
@@ -64,7 +64,7 @@ function renderMinimap(canvas: HTMLCanvasElement, view: EditorView): void {
     const text = line.text
     let x = 4
     for (let j = 0; j < Math.min(text.length, 60); j++) {
-      if (text[j] !== " " && text[j] !== "\t") {
+      if (text[j] !== ' ' && text[j] !== '\t') {
         ctx.fillRect(x, y, CHAR_WIDTH, 1.5)
       }
       x += CHAR_WIDTH
@@ -107,17 +107,17 @@ export function minimapExtension(): Extension {
         constructor(view: EditorView) {
           this.view = view
           this.canvas = createMinimapCanvas()
-          view.dom.style.position = "relative"
+          view.dom.style.position = 'relative'
           view.dom.appendChild(this.canvas)
 
           // Click to scroll
-          this.canvas.addEventListener("click", (e) => {
+          this.canvas.addEventListener('click', (e) => {
             const rect = this.canvas.getBoundingClientRect()
             const clickY = e.clientY - rect.top
             const fraction = clickY / rect.height
             const scrollTarget =
               fraction * (view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight)
-            view.scrollDOM.scrollTo({ top: scrollTarget, behavior: "smooth" })
+            view.scrollDOM.scrollTo({ top: scrollTarget, behavior: 'smooth' })
           })
 
           this.render()
@@ -142,7 +142,7 @@ export function minimapExtension(): Extension {
     ),
     // Add padding on the right for the minimap
     EditorView.theme({
-      ".cm-scroller": {
+      '.cm-scroller': {
         paddingRight: `${MINIMAP_WIDTH + 8}px`,
       },
     }),

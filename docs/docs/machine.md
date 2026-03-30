@@ -10,18 +10,23 @@ description: Reactive state machines for Pyreon — constrained signals with typ
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/machine
 ```
+
 ```bash [bun]
 bun add @pyreon/machine
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/machine
 ```
+
 ```bash [yarn]
 yarn add @pyreon/machine
 ```
+
 :::
 
 ## Quick Start
@@ -39,9 +44,9 @@ const machine = createMachine({
   },
 })
 
-machine()              // 'idle' — reads like a signal
+machine() // 'idle' — reads like a signal
 machine.send('FETCH')
-machine()              // 'loading'
+machine() // 'loading'
 ```
 
 ## Why State Machines?
@@ -84,7 +89,7 @@ const machine = createMachine({
 })
 
 // Read current state
-machine()  // 'idle'
+machine() // 'idle'
 
 // Reactive in JSX
 function StatusBadge() {
@@ -97,16 +102,16 @@ function StatusBadge() {
 Transition between states by sending events:
 
 ```tsx
-machine.send('START')   // idle → running
-machine.send('PAUSE')   // running → paused
-machine.send('RESUME')  // paused → running
-machine.send('STOP')    // running → idle
+machine.send('START') // idle → running
+machine.send('PAUSE') // running → paused
+machine.send('RESUME') // paused → running
+machine.send('STOP') // running → idle
 
 // With payload
 machine.send('SELECT', { id: 42 })
 
 // Invalid events are silently ignored
-machine.send('PAUSE')   // ignored when in 'idle' — no transition defined
+machine.send('PAUSE') // ignored when in 'idle' — no transition defined
 ```
 
 ## Guards
@@ -130,7 +135,7 @@ const form = createMachine({
 })
 
 // SUBMIT only transitions if guard returns true
-form.send('SUBMIT')  // ignored if isValid() is false
+form.send('SUBMIT') // ignored if isValid() is false
 
 // Guards can also receive the event payload
 const transfer = createMachine({
@@ -146,8 +151,8 @@ const transfer = createMachine({
   },
 })
 
-transfer.send('SEND', { amount: 100 })  // guard passes → confirming
-transfer.send('SEND', { amount: 0 })    // guard fails → stays idle
+transfer.send('SEND', { amount: 100 }) // guard passes → confirming
+transfer.send('SEND', { amount: 0 }) // guard fails → stays idle
 ```
 
 ## Checking State
@@ -157,20 +162,16 @@ transfer.send('SEND', { amount: 0 })    // guard fails → stays idle
 Check if the machine is in one or more states — reactive in JSX and effects:
 
 ```tsx
-machine.matches('loading')              // true if in 'loading'
-machine.matches('success', 'error')     // true if in either
+machine.matches('loading') // true if in 'loading'
+machine.matches('success', 'error') // true if in either
 
 // Reactive rendering
 function App() {
   return () => {
-    if (machine.matches('idle'))
-      return <button onClick={() => machine.send('FETCH')}>Load</button>
-    if (machine.matches('loading'))
-      return <Spinner />
-    if (machine.matches('error'))
-      return <ErrorView onRetry={() => machine.send('RETRY')} />
-    if (machine.matches('done'))
-      return <DataView />
+    if (machine.matches('idle')) return <button onClick={() => machine.send('FETCH')}>Load</button>
+    if (machine.matches('loading')) return <Spinner />
+    if (machine.matches('error')) return <ErrorView onRetry={() => machine.send('RETRY')} />
+    if (machine.matches('done')) return <DataView />
     return null
   }
 }
@@ -194,7 +195,7 @@ machine.can('FETCH')   // true if FETCH is defined in current state's transition
 Get all available events from the current state:
 
 ```tsx
-machine.nextEvents()  // ['FETCH', 'RESET'] — depends on current state
+machine.nextEvents() // ['FETCH', 'RESET'] — depends on current state
 
 // Useful for command palettes or help dialogs
 const availableActions = machine.nextEvents()
@@ -221,7 +222,7 @@ const error = signal(null)
 // Side effect — fetch when entering 'loading'
 fetchMachine.onEnter('loading', async () => {
   try {
-    const result = await fetch('/api/data').then(r => r.json())
+    const result = await fetch('/api/data').then((r) => r.json())
     data.set(result)
     fetchMachine.send('SUCCESS')
   } catch (e) {
@@ -254,7 +255,7 @@ machine.onTransition((from, to, event) => {
 Return to the initial state:
 
 ```tsx
-machine.reset()  // back to 'idle' (or whatever initial was)
+machine.reset() // back to 'idle' (or whatever initial was)
 ```
 
 ## Cleanup
@@ -262,7 +263,7 @@ machine.reset()  // back to 'idle' (or whatever initial was)
 Remove all listeners:
 
 ```tsx
-machine.dispose()  // clears all onEnter and onTransition listeners
+machine.dispose() // clears all onEnter and onTransition listeners
 ```
 
 ## Type Safety
@@ -280,11 +281,11 @@ const machine = createMachine({
   },
 })
 
-machine()              // type: 'idle' | 'loading' | 'done' | 'error'
-machine.send('FETCH')  // ✓ valid event
-machine.send('FLY')    // TS error — not a valid event
+machine() // type: 'idle' | 'loading' | 'done' | 'error'
+machine.send('FETCH') // ✓ valid event
+machine.send('FLY') // TS error — not a valid event
 machine.matches('idle') // ✓ valid state
-machine.matches('x')   // TS error — not a valid state
+machine.matches('x') // TS error — not a valid state
 ```
 
 ## Real-World Patterns
@@ -316,16 +317,13 @@ wizard.onEnter('submitting', async () => {
 
 function WizardUI() {
   return () => {
-    if (wizard.matches('step1'))
-      return <Step1 onNext={() => wizard.send('NEXT')} />
+    if (wizard.matches('step1')) return <Step1 onNext={() => wizard.send('NEXT')} />
     if (wizard.matches('step2'))
       return <Step2 onNext={() => wizard.send('NEXT')} onBack={() => wizard.send('BACK')} />
     if (wizard.matches('step3'))
       return <Step3 onSubmit={() => wizard.send('SUBMIT')} onBack={() => wizard.send('BACK')} />
-    if (wizard.matches('submitting'))
-      return <Spinner />
-    if (wizard.matches('done'))
-      return <Success />
+    if (wizard.matches('submitting')) return <Spinner />
+    if (wizard.matches('done')) return <Success />
     return null
   }
 }
@@ -395,7 +393,7 @@ const machine = createMachine({
 })
 
 machine.onEnter('idle', (event) => {
-  if (event.type === 'INCREMENT') count.update(n => n + 1)
+  if (event.type === 'INCREMENT') count.update((n) => n + 1)
 })
 ```
 
@@ -403,24 +401,24 @@ machine.onEnter('idle', (event) => {
 
 ### `createMachine(config)`
 
-| Property | Type | Description |
-|---|---|---|
-| `config.initial` | `string` | Initial state |
-| `config.states` | `Record<string, StateConfig>` | State definitions with transitions |
+| Property         | Type                          | Description                        |
+| ---------------- | ----------------------------- | ---------------------------------- |
+| `config.initial` | `string`                      | Initial state                      |
+| `config.states`  | `Record<string, StateConfig>` | State definitions with transitions |
 
 ### `Machine` instance
 
-| Method | Returns | Description |
-|---|---|---|
-| `machine()` | `TState` | Read current state (reactive) |
-| `machine.send(event, payload?)` | `void` | Send event to trigger transition |
-| `machine.matches(...states)` | `boolean` | Check if in any of the given states (reactive) |
-| `machine.can(event)` | `boolean` | Check if event would trigger a transition |
-| `machine.nextEvents()` | `TEvent[]` | Available events from current state |
-| `machine.reset()` | `void` | Return to initial state |
+| Method                             | Returns      | Description                                       |
+| ---------------------------------- | ------------ | ------------------------------------------------- |
+| `machine()`                        | `TState`     | Read current state (reactive)                     |
+| `machine.send(event, payload?)`    | `void`       | Send event to trigger transition                  |
+| `machine.matches(...states)`       | `boolean`    | Check if in any of the given states (reactive)    |
+| `machine.can(event)`               | `boolean`    | Check if event would trigger a transition         |
+| `machine.nextEvents()`             | `TEvent[]`   | Available events from current state               |
+| `machine.reset()`                  | `void`       | Return to initial state                           |
 | `machine.onEnter(state, callback)` | `() => void` | Fire callback on state entry, returns unsubscribe |
-| `machine.onTransition(callback)` | `() => void` | Fire on any transition, returns unsubscribe |
-| `machine.dispose()` | `void` | Remove all listeners |
+| `machine.onTransition(callback)`   | `() => void` | Fire on any transition, returns unsubscribe       |
+| `machine.dispose()`                | `void`       | Remove all listeners                              |
 
 ### `StateConfig`
 

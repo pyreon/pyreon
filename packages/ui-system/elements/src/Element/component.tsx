@@ -7,20 +7,20 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { onMount } from "@pyreon/core"
-import { render } from "@pyreon/ui-core"
-import { PKG_NAME } from "../constants"
-import { Content, Wrapper } from "../helpers"
-import type { PyreonElement } from "./types"
-import { getShouldBeEmpty, isInlineElement } from "./utils"
+import { onMount } from '@pyreon/core'
+import { render } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import { Content, Wrapper } from '../helpers'
+import type { PyreonElement } from './types'
+import { getShouldBeEmpty, isInlineElement } from './utils'
 
 const equalize = (el: HTMLElement, direction: unknown) => {
   const beforeEl = el.firstElementChild as HTMLElement | null
   const afterEl = el.lastElementChild as HTMLElement | null
 
   if (beforeEl && afterEl && beforeEl !== afterEl) {
-    const type: "height" | "width" = direction === "rows" ? "height" : "width"
-    const prop = type === "height" ? "offsetHeight" : "offsetWidth"
+    const type: 'height' | 'width' = direction === 'rows' ? 'height' : 'width'
+    const prop = type === 'height' ? 'offsetHeight' : 'offsetWidth'
     const beforeSize = beforeEl[prop]
     const afterSize = afterEl[prop]
 
@@ -32,10 +32,10 @@ const equalize = (el: HTMLElement, direction: unknown) => {
   }
 }
 
-const defaultDirection = "inline"
-const defaultContentDirection = "rows"
-const defaultAlignX = "left"
-const defaultAlignY = "center"
+const defaultDirection = 'inline'
+const defaultContentDirection = 'rows'
+const defaultAlignX = 'left'
+const defaultAlignY = 'center'
 
 const Component: PyreonElement = ({
   innerRef,
@@ -87,7 +87,7 @@ const Component: PyreonElement = ({
   const CHILDREN = children ?? content ?? label
 
   const isInline = isInlineElement(tag)
-  const SUB_TAG = isInline ? "span" : undefined
+  const SUB_TAG = isInline ? 'span' : undefined
 
   // --------------------------------------------------------
   // direction & alignX & alignY calculations
@@ -114,7 +114,7 @@ const Component: PyreonElement = ({
 
   const mergedRef = (node: HTMLElement | null) => {
     equalizeRef = node
-    if (typeof externalRef === "function") externalRef(node)
+    if (typeof externalRef === 'function') externalRef(node)
     else if (externalRef != null) {
       ;(externalRef as unknown as { current: HTMLElement | null }).current = node
     }

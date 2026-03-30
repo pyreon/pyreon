@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/code",
   "version": "0.11.5",
-  "description": "Reactive code editor for Pyreon \u2014 CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
+  "description": "Reactive code editor for Pyreon — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/code#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/code"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/code#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -22,6 +19,7 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,13 +30,15 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -51,30 +51,30 @@
     "@codemirror/view": "^6.40.0",
     "codemirror": "^6.0.2"
   },
-  "optionalDependencies": {
-    "@codemirror/lang-javascript": "^6.2.5",
-    "@codemirror/lang-html": "^6.4.11",
-    "@codemirror/lang-css": "^6.3.1",
-    "@codemirror/lang-json": "^6.0.2",
-    "@codemirror/lang-python": "^6.2.1",
-    "@codemirror/lang-markdown": "^6.5.0",
-    "@codemirror/lang-rust": "^6.0.2",
-    "@codemirror/lang-sql": "^6.10.0",
-    "@codemirror/lang-xml": "^6.1.0",
-    "@codemirror/lang-yaml": "^6.1.2",
-    "@codemirror/lang-cpp": "^6.0.2",
-    "@codemirror/lang-java": "^6.0.1",
-    "@codemirror/lang-go": "^6.0.1",
-    "@codemirror/lang-php": "^6.0.1"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@vitus-labs/tools-lint": "^1.11.0"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "optionalDependencies": {
+    "@codemirror/lang-cpp": "^6.0.2",
+    "@codemirror/lang-css": "^6.3.1",
+    "@codemirror/lang-go": "^6.0.1",
+    "@codemirror/lang-html": "^6.4.11",
+    "@codemirror/lang-java": "^6.0.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-php": "^6.0.1",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/lang-rust": "^6.0.2",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lang-yaml": "^6.1.2"
   }
 }

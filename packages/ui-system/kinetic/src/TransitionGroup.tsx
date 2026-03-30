@@ -1,7 +1,7 @@
-import type { VNode } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import Transition from "./Transition"
-import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from "./types"
+import type { VNode } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import Transition from './Transition'
+import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from './types'
 
 export type TransitionGroupProps = ClassTransitionProps &
   StyleTransitionProps &
@@ -19,7 +19,7 @@ export type TransitionGroupProps = ClassTransitionProps &
 type KeyedChild = { key: string | number; element: VNode }
 
 const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === "object" && "type" in (child as object)
+  child != null && typeof child === 'object' && 'type' in (child as object)
 
 const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
   const result: KeyedChild[] = []
@@ -54,7 +54,7 @@ const TransitionGroup = ({
   const forceUpdate = signal(0)
 
   // Normalize children to an accessor for uniform handling
-  const getChildren = typeof children === "function" ? (children as () => VNode[]) : () => children
+  const getChildren = typeof children === 'function' ? (children as () => VNode[]) : () => children
 
   // Track initial keys for appear animation logic
   const initialKeyed = getKeyedChildren(getChildren())

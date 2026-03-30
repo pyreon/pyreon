@@ -10,18 +10,23 @@ description: Schema-driven CRUD primitives with auto-generated hooks for lists, 
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/feature
 ```
+
 ```bash [bun]
 bun add @pyreon/feature
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/feature
 ```
+
 ```bash [yarn]
 yarn add @pyreon/feature
 ```
+
 :::
 
 ## Quick Start
@@ -61,7 +66,7 @@ const TaskList = defineComponent(() => {
         <p>Loading tasks...</p>
       ) : (
         <ul>
-          {items().map(task => (
+          {items().map((task) => (
             <li key={task.id}>
               {task.title} — {task.status}
             </li>
@@ -87,7 +92,9 @@ const CreateTask = defineComponent(() => {
         <option value="in-progress">In Progress</option>
         <option value="done">Done</option>
       </select>
-      <button type="submit" disabled={isSubmitting()}>Create</button>
+      <button type="submit" disabled={isSubmitting()}>
+        Create
+      </button>
     </form>
   )
 })
@@ -121,8 +128,8 @@ const feature = defineFeature({
 
     // Optional: override individual endpoints
     endpoints: {
-      list:   (params) => ({ url: '/api/tasks', method: 'GET', params }),
-      byId:   (id) => ({ url: `/api/tasks/${id}`, method: 'GET' }),
+      list: (params) => ({ url: '/api/tasks', method: 'GET', params }),
+      byId: (id) => ({ url: `/api/tasks/${id}`, method: 'GET' }),
       create: (data) => ({ url: '/api/tasks', method: 'POST', body: data }),
       update: (id, data) => ({ url: `/api/tasks/${id}`, method: 'PATCH', body: data }),
       delete: (id) => ({ url: `/api/tasks/${id}`, method: 'DELETE' }),
@@ -139,19 +146,19 @@ const feature = defineFeature({
 
 `defineFeature` returns an object containing all generated hooks and utilities:
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `useList` | `(opts?) => ListResult` | Fetch and display a paginated list of entities |
-| `useById` | `(id) => ByIdResult` | Fetch a single entity by ID |
-| `useSearch` | `(opts?) => SearchResult` | Search entities with a reactive query signal |
-| `useCreate` | `() => CreateResult` | Mutation hook for creating entities |
-| `useUpdate` | `(opts?) => UpdateResult` | Mutation hook with optimistic updates |
-| `useDelete` | `() => DeleteResult` | Mutation hook for deleting entities |
-| `useForm` | `(opts) => FormResult` | Form hook with create/edit modes |
-| `useTable` | `(opts?) => TableResult` | Table hook with schema-inferred columns |
-| `useStore` | `() => StoreResult` | Reactive client-side cache |
-| `schema` | `ZodSchema` | The original schema passed to `defineFeature` |
-| `name` | `string` | The feature name |
+| Property    | Type                      | Description                                    |
+| ----------- | ------------------------- | ---------------------------------------------- |
+| `useList`   | `(opts?) => ListResult`   | Fetch and display a paginated list of entities |
+| `useById`   | `(id) => ByIdResult`      | Fetch a single entity by ID                    |
+| `useSearch` | `(opts?) => SearchResult` | Search entities with a reactive query signal   |
+| `useCreate` | `() => CreateResult`      | Mutation hook for creating entities            |
+| `useUpdate` | `(opts?) => UpdateResult` | Mutation hook with optimistic updates          |
+| `useDelete` | `() => DeleteResult`      | Mutation hook for deleting entities            |
+| `useForm`   | `(opts) => FormResult`    | Form hook with create/edit modes               |
+| `useTable`  | `(opts?) => TableResult`  | Table hook with schema-inferred columns        |
+| `useStore`  | `() => StoreResult`       | Reactive client-side cache                     |
+| `schema`    | `ZodSchema`               | The original schema passed to `defineFeature`  |
+| `name`      | `string`                  | The feature name                               |
 
 ## Hooks
 
@@ -170,15 +177,21 @@ const TaskList = defineComponent(() => {
       {error() && <p>Error: {error().message}</p>}
 
       <ul>
-        {items().map(task => (
+        {items().map((task) => (
           <li key={task.id}>{task.title}</li>
         ))}
       </ul>
 
       <div>
-        <button onClick={prevPage} disabled={page() === 1}>Previous</button>
-        <span>Page {page()} of {totalPages()}</span>
-        <button onClick={nextPage} disabled={page() === totalPages()}>Next</button>
+        <button onClick={prevPage} disabled={page() === 1}>
+          Previous
+        </button>
+        <span>
+          Page {page()} of {totalPages()}
+        </span>
+        <button onClick={nextPage} disabled={page() === totalPages()}>
+          Next
+        </button>
       </div>
     </div>
   )
@@ -230,7 +243,7 @@ const TaskSearch = defineComponent(() => {
       {isSearching() && <p>Searching...</p>}
 
       <ul>
-        {results().map(task => (
+        {results().map((task) => (
           <li key={task.id}>{task.title}</li>
         ))}
       </ul>
@@ -321,12 +334,12 @@ When the form is in `edit` mode:
 
 ### Create vs Edit Summary
 
-| Behavior | `mode: 'create'` | `mode: 'edit'` |
-|----------|-------------------|----------------|
-| Initial values | From schema defaults | Auto-fetched by ID |
-| Submit action | `useCreate` | `useUpdate` |
-| Auto-fetch | No | Yes (`useById`) |
-| `isLoadingInitial` | Always `false` | `true` until fetched |
+| Behavior           | `mode: 'create'`     | `mode: 'edit'`       |
+| ------------------ | -------------------- | -------------------- |
+| Initial values     | From schema defaults | Auto-fetched by ID   |
+| Submit action      | `useCreate`          | `useUpdate`          |
+| Auto-fetch         | No                   | Yes (`useById`)      |
+| `isLoadingInitial` | Always `false`       | `true` until fetched |
 
 ## Pagination
 
@@ -334,13 +347,14 @@ Every `useList` call returns pagination signals and controls. The page signal is
 
 ```tsx
 const PaginatedTasks = defineComponent(() => {
-  const { items, page, pageSize, totalPages, nextPage, prevPage, goToPage } =
-    taskFeature.useList({ pageSize: 25 })
+  const { items, page, pageSize, totalPages, nextPage, prevPage, goToPage } = taskFeature.useList({
+    pageSize: 25,
+  })
 
   return () => (
     <div>
       <ul>
-        {items().map(task => (
+        {items().map((task) => (
           <li key={task.id}>{task.title}</li>
         ))}
       </ul>
@@ -371,14 +385,14 @@ const PaginatedTasks = defineComponent(() => {
 })
 ```
 
-| Signal / Method | Type | Description |
-|-----------------|------|-------------|
-| `page` | `Signal<number>` | Current page number (1-indexed) |
-| `pageSize` | `Signal<number>` | Items per page |
-| `totalPages` | `Computed<number>` | Total number of pages |
-| `nextPage()` | `() => void` | Increment page by 1 |
-| `prevPage()` | `() => void` | Decrement page by 1 |
-| `goToPage(n)` | `(n: number) => void` | Jump to a specific page |
+| Signal / Method | Type                  | Description                     |
+| --------------- | --------------------- | ------------------------------- |
+| `page`          | `Signal<number>`      | Current page number (1-indexed) |
+| `pageSize`      | `Signal<number>`      | Items per page                  |
+| `totalPages`    | `Computed<number>`    | Total number of pages           |
+| `nextPage()`    | `() => void`          | Increment page by 1             |
+| `prevPage()`    | `() => void`          | Decrement page by 1             |
+| `goToPage(n)`   | `(n: number) => void` | Jump to a specific page         |
 
 ## Optimistic Updates
 
@@ -399,9 +413,7 @@ const TaskToggle = defineComponent((props: { task: Task }) => {
   }
 
   return () => (
-    <button onClick={toggle}>
-      {props.task.status === 'done' ? 'Reopen' : 'Complete'}
-    </button>
+    <button onClick={toggle}>{props.task.status === 'done' ? 'Reopen' : 'Complete'}</button>
   )
 })
 ```
@@ -492,14 +504,14 @@ const fields = extractFields(taskFeature.schema)
 
 The shape returned by `extractFields` for each field:
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `name` | `string` | Field name from the schema |
-| `type` | `string` | Inferred type: `'string'`, `'number'`, `'boolean'`, `'enum'`, `'date'`, `'array'`, `'object'` |
-| `required` | `boolean` | Whether the field is required |
-| `enumValues` | `string[] \| undefined` | Possible values for enum fields |
-| `defaultValue` | `unknown \| undefined` | Default value if defined in the schema |
-| `reference` | `FeatureRef \| undefined` | Reference metadata if the field uses `reference()` |
+| Property       | Type                      | Description                                                                                   |
+| -------------- | ------------------------- | --------------------------------------------------------------------------------------------- |
+| `name`         | `string`                  | Field name from the schema                                                                    |
+| `type`         | `string`                  | Inferred type: `'string'`, `'number'`, `'boolean'`, `'enum'`, `'date'`, `'array'`, `'object'` |
+| `required`     | `boolean`                 | Whether the field is required                                                                 |
+| `enumValues`   | `string[] \| undefined`   | Possible values for enum fields                                                               |
+| `defaultValue` | `unknown \| undefined`    | Default value if defined in the schema                                                        |
+| `reference`    | `FeatureRef \| undefined` | Reference metadata if the field uses `reference()`                                            |
 
 ### `defaultInitialValues`
 
@@ -540,18 +552,20 @@ const TaskTable = defineComponent(() => {
       ) : (
         <table>
           <thead>
-            {table.getHeaderGroups().map(headerGroup => (
+            {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
-                  <th key={header.id}>{flexRender(header.column.columnDef.header, header.getContext())}</th>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id}>
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
                 ))}
               </tr>
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map(row => (
+            {table.getRowModel().rows.map((row) => (
               <tr key={row.id}>
-                {row.getVisibleCells().map(cell => (
+                {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                 ))}
               </tr>
@@ -588,13 +602,13 @@ const TaskDashboard = defineComponent(() => {
 })
 ```
 
-| Signal / Method | Type | Description |
-|-----------------|------|-------------|
-| `items` | `Signal<T[]>` | All cached entities |
-| `selected` | `Signal<T \| null>` | Currently selected entity |
-| `loading` | `Signal<boolean>` | Whether any query is in flight |
-| `select(item)` | `(item: T) => void` | Set the selected entity |
-| `clear()` | `() => void` | Clear the selection |
+| Signal / Method | Type                | Description                    |
+| --------------- | ------------------- | ------------------------------ |
+| `items`         | `Signal<T[]>`       | All cached entities            |
+| `selected`      | `Signal<T \| null>` | Currently selected entity      |
+| `loading`       | `Signal<boolean>`   | Whether any query is in flight |
+| `select(item)`  | `(item: T) => void` | Set the selected entity        |
+| `clear()`       | `() => void`        | Clear the selection            |
 
 ## Integration with Other Packages
 
@@ -610,7 +624,7 @@ import { useQuery } from '@pyreon/query'
 // Use the feature's query key factory for custom queries
 const customQuery = useQuery({
   queryKey: [taskFeature.name, 'custom', { status: 'overdue' }],
-  queryFn: () => fetch('/api/tasks/overdue').then(r => r.json()),
+  queryFn: () => fetch('/api/tasks/overdue').then((r) => r.json()),
 })
 ```
 
@@ -648,7 +662,9 @@ import { z } from 'zod'
 // Zod schemas work out of the box
 const feature = defineFeature({
   name: 'task',
-  schema: z.object({ /* ... */ }),
+  schema: z.object({
+    /* ... */
+  }),
   api: { baseUrl: '/api/tasks' },
 })
 ```
@@ -664,9 +680,7 @@ const useDashboard = defineStore('dashboard', () => {
   const tasks = taskFeature.useStore()
   const users = userFeature.useStore()
 
-  const assignedTaskCount = computed(() =>
-    tasks.items().filter(t => t.assigneeId != null).length
-  )
+  const assignedTaskCount = computed(() => tasks.items().filter((t) => t.assigneeId != null).length)
 
   return { tasks, users, assignedTaskCount }
 })

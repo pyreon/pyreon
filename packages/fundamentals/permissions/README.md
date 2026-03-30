@@ -20,19 +20,23 @@ const can = createPermissions({
   'users.manage': false,
 })
 
-can('posts.read')              // true — reactive in effects/JSX
-can('posts.update', myPost)    // evaluates predicate
-can.not('billing.export')      // true if denied
-can.all('posts.read', 'posts.create')  // true if both granted
-can.any('posts.read', 'users.manage')  // true if any granted
+can('posts.read') // true — reactive in effects/JSX
+can('posts.update', myPost) // evaluates predicate
+can.not('billing.export') // true if denied
+can.all('posts.read', 'posts.create') // true if both granted
+can.any('posts.read', 'users.manage') // true if any granted
 
 // Update after login / role change
 can.set(fromRole(user.role))
 can.patch({ 'billing.export': true })
 
 // Reactive in JSX
-{() => can('posts.delete') && <DeleteButton />}
-{() => can('users.manage') && <AdminPanel />}
+{
+  ;() => can('posts.delete') && <DeleteButton />
+}
+{
+  ;() => can('users.manage') && <AdminPanel />
+}
 ```
 
 ## Wildcards
@@ -44,7 +48,7 @@ can.patch({ 'billing.export': true })
 ```tsx
 import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
 
-<PermissionsProvider instance={can}>
+;<PermissionsProvider instance={can}>
   <App />
 </PermissionsProvider>
 
@@ -58,16 +62,16 @@ const can = usePermissions()
 
 Create a reactive permissions instance. Permission values are `boolean` (static) or `(context?) => boolean` (predicate).
 
-| Method | Description |
-| --- | --- |
-| `can(key, context?)` | Check a permission (reactive) |
-| `can.not(key)` | Inverse check |
-| `can.all(...keys)` | True if all granted |
-| `can.any(...keys)` | True if any granted |
-| `can.set(map)` | Replace all permissions |
-| `can.patch(map)` | Merge permissions |
-| `can.granted()` | `Computed<string[]>` of all granted keys |
-| `can.entries()` | `Computed<[key, value][]>` for introspection |
+| Method               | Description                                  |
+| -------------------- | -------------------------------------------- |
+| `can(key, context?)` | Check a permission (reactive)                |
+| `can.not(key)`       | Inverse check                                |
+| `can.all(...keys)`   | True if all granted                          |
+| `can.any(...keys)`   | True if any granted                          |
+| `can.set(map)`       | Replace all permissions                      |
+| `can.patch(map)`     | Merge permissions                            |
+| `can.granted()`      | `Computed<string[]>` of all granted keys     |
+| `can.entries()`      | `Computed<[key, value][]>` for introspection |
 
 ### `PermissionsProvider` / `usePermissions()`
 

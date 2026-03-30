@@ -11,11 +11,14 @@ bun add @pyreon/compiler
 ## Quick Start
 
 ```ts
-import { transformJSX } from "@pyreon/compiler"
+import { transformJSX } from '@pyreon/compiler'
 
-const result = transformJSX(`
+const result = transformJSX(
+  `
   const App = () => <div class={color()}>{count()}</div>
-`, "app.tsx")
+`,
+  'app.tsx',
+)
 
 console.log(result.code)
 // Dynamic expressions are wrapped: {() => count()}, class={() => color()}
@@ -26,13 +29,13 @@ console.log(result.code)
 
 The compiler transforms JSX expression containers and props so the Pyreon runtime receives reactive getters instead of eagerly-evaluated values.
 
-| Input | Output | Reason |
-|---|---|---|
-| `<div>{expr}</div>` | `<div>{() => expr}</div>` | Dynamic child |
-| `<div class={expr}>` | `<div class={() => expr}>` | Dynamic prop |
-| `<button onClick={fn}>` | unchanged | Event handler |
-| `<div>{() => expr}</div>` | unchanged | Already wrapped |
-| `<div>{"literal"}</div>` | unchanged | Static value |
+| Input                     | Output                     | Reason          |
+| ------------------------- | -------------------------- | --------------- |
+| `<div>{expr}</div>`       | `<div>{() => expr}</div>`  | Dynamic child   |
+| `<div class={expr}>`      | `<div class={() => expr}>` | Dynamic prop    |
+| `<button onClick={fn}>`   | unchanged                  | Event handler   |
+| `<div>{() => expr}</div>` | unchanged                  | Already wrapped |
+| `<div>{"literal"}</div>`  | unchanged                  | Static value    |
 
 ### Static Hoisting
 

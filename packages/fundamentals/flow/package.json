@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/flow",
   "version": "0.11.5",
-  "description": "Reactive flow diagrams for Pyreon \u2014 signal-native nodes, edges, pan/zoom, auto-layout",
+  "description": "Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/flow#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/flow"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/flow#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -22,6 +19,7 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,25 +30,27 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "elkjs": "^0.9.3"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@vitus-labs/tools-lint": "^1.11.0"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

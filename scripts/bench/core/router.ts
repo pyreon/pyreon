@@ -21,20 +21,20 @@ import {
   createRoute,
   createMemoryHistory as createTanStackHistory,
   createRouter as createTanStackRouter,
-} from "@tanstack/react-router"
-import FindMyWay from "find-my-way"
-import { Hono } from "hono"
-import { match as ptrMatch } from "next/dist/compiled/path-to-regexp"
-import { createRouter as createRadix3 } from "radix3"
-import { matchRoutes } from "react-router"
-import { createMemoryHistory, createRouter as createVueRouter } from "vue-router"
-import { resolveRoute } from "../../../packages/core/router/src/match"
-import type { RouteRecord } from "../../../packages/core/router/src/types"
+} from '@tanstack/react-router'
+import FindMyWay from 'find-my-way'
+import { Hono } from 'hono'
+import { match as ptrMatch } from 'next/dist/compiled/path-to-regexp'
+import { createRouter as createRadix3 } from 'radix3'
+import { matchRoutes } from 'react-router'
+import { createMemoryHistory, createRouter as createVueRouter } from 'vue-router'
+import { resolveRoute } from '../../../packages/core/router/src/match'
+import type { RouteRecord } from '../../../packages/core/router/src/types'
 
 // ─── Noop component (satisfies RouteRecord.component) ────────────────────────
 
 const Noop = () => null
-const VueNoop = { template: "<div/>" }
+const VueNoop = { template: '<div/>' }
 
 // ─── Route definitions (shared across all routers) ───────────────────────────
 
@@ -59,9 +59,9 @@ function generateRoutes(count: number): {
   const urls: TestUrl[] = []
 
   // Fixed core routes
-  const coreStatic = ["/about", "/pricing", "/contact", "/terms"]
-  pyreonRoutes.push({ path: "/", component: Noop })
-  flatDefs.push({ pattern: "/", flat: "/" })
+  const coreStatic = ['/about', '/pricing', '/contact', '/terms']
+  pyreonRoutes.push({ path: '/', component: Noop })
+  flatDefs.push({ pattern: '/', flat: '/' })
   for (const p of coreStatic) {
     pyreonRoutes.push({ path: p, component: Noop })
     flatDefs.push({ pattern: p, flat: p })
@@ -69,9 +69,9 @@ function generateRoutes(count: number): {
 
   // Dynamic routes
   const coreDynamic: RouteDef[] = [
-    { pattern: "/user/:id", flat: "/user/:id" },
-    { pattern: "/post/:id", flat: "/post/:id" },
-    { pattern: "/post/:id/comment/:commentId", flat: "/post/:id/comment/:commentId" },
+    { pattern: '/user/:id', flat: '/user/:id' },
+    { pattern: '/post/:id', flat: '/post/:id' },
+    { pattern: '/post/:id/comment/:commentId', flat: '/post/:id/comment/:commentId' },
   ]
   for (const d of coreDynamic) {
     pyreonRoutes.push({ path: d.pattern, component: Noop })
@@ -80,29 +80,29 @@ function generateRoutes(count: number): {
 
   // Nested routes (Pyreon-specific nesting, flattened for others)
   pyreonRoutes.push({
-    path: "/admin",
+    path: '/admin',
     component: Noop,
     children: [
-      { path: "dashboard", component: Noop },
+      { path: 'dashboard', component: Noop },
       {
-        path: "users",
+        path: 'users',
         component: Noop,
         children: [
-          { path: ":id", component: Noop },
-          { path: ":id/settings", component: Noop },
+          { path: ':id', component: Noop },
+          { path: ':id/settings', component: Noop },
         ],
       },
     ],
   })
   flatDefs.push(
-    { pattern: "/admin/dashboard", flat: "/admin/dashboard" },
-    { pattern: "/admin/users/:id", flat: "/admin/users/:id" },
-    { pattern: "/admin/users/:id/settings", flat: "/admin/users/:id/settings" },
+    { pattern: '/admin/dashboard', flat: '/admin/dashboard' },
+    { pattern: '/admin/users/:id', flat: '/admin/users/:id' },
+    { pattern: '/admin/users/:id/settings', flat: '/admin/users/:id/settings' },
   )
 
   // Wildcard
-  pyreonRoutes.push({ path: "/files/:path*", component: Noop })
-  flatDefs.push({ pattern: "/files/:path*", flat: "/files/*" })
+  pyreonRoutes.push({ path: '/files/:path*', component: Noop })
+  flatDefs.push({ pattern: '/files/:path*', flat: '/files/*' })
 
   // Pad to desired count
   let i = pyreonRoutes.length
@@ -120,8 +120,8 @@ function generateRoutes(count: number): {
         path: `/group-${i}`,
         component: Noop,
         children: [
-          { path: "list", component: Noop },
-          { path: ":id", component: Noop },
+          { path: 'list', component: Noop },
+          { path: ':id', component: Noop },
         ],
       })
       flatDefs.push(
@@ -133,25 +133,25 @@ function generateRoutes(count: number): {
   }
 
   // Wildcard fallback
-  pyreonRoutes.push({ path: "(.*)", component: Noop })
+  pyreonRoutes.push({ path: '(.*)', component: Noop })
 
   // Test URLs
   urls.push(
-    { label: "static (root)", path: "/" },
-    { label: "static (early)", path: "/about" },
-    { label: "static (mid)", path: "/pricing" },
-    { label: "dynamic (1 param)", path: "/user/42" },
-    { label: "dynamic (2 params)", path: "/post/123/comment/456" },
-    { label: "nested (2 deep)", path: "/admin/dashboard" },
-    { label: "nested (3 deep)", path: "/admin/users/99/settings" },
-    { label: "wildcard", path: "/files/docs/2024/report.pdf" },
+    { label: 'static (root)', path: '/' },
+    { label: 'static (early)', path: '/about' },
+    { label: 'static (mid)', path: '/pricing' },
+    { label: 'dynamic (1 param)', path: '/user/42' },
+    { label: 'dynamic (2 params)', path: '/post/123/comment/456' },
+    { label: 'nested (2 deep)', path: '/admin/dashboard' },
+    { label: 'nested (3 deep)', path: '/admin/users/99/settings' },
+    { label: 'wildcard', path: '/files/docs/2024/report.pdf' },
   )
 
   if (count >= 50) {
     const lateIdx = Math.floor(count * 0.8)
     const lateRoute = pyreonRoutes[lateIdx]
-    if (lateRoute && !lateRoute.path.includes(":") && !lateRoute.path.includes("*")) {
-      urls.push({ label: "static (late)", path: lateRoute.path })
+    if (lateRoute && !lateRoute.path.includes(':') && !lateRoute.path.includes('*')) {
+      urls.push({ label: 'static (late)', path: lateRoute.path })
     }
   }
 
@@ -163,39 +163,39 @@ function generateRoutes(count: number): {
 function setupFindMyWay(flatDefs: RouteDef[]): FindMyWay.Instance<FindMyWay.HTTPVersion.V1> {
   const router = FindMyWay()
   for (const d of flatDefs) {
-    router.on("GET", d.flat, () => null)
+    router.on('GET', d.flat, () => null)
   }
-  router.on("GET", "/*", () => null)
+  router.on('GET', '/*', () => null)
   return router
 }
 
 function setupHono(flatDefs: RouteDef[]): Hono {
   const app = new Hono()
   for (const d of flatDefs) {
-    app.get(d.flat, (c) => c.text(""))
+    app.get(d.flat, (c) => c.text(''))
   }
-  app.get("/*", (c) => c.text(""))
+  app.get('/*', (c) => c.text(''))
   return app
 }
 
 function setupRadix3(flatDefs: RouteDef[]) {
   const router = createRadix3()
   for (const d of flatDefs) {
-    const path = d.flat.endsWith("/*") ? `${d.flat.slice(0, -1)}**` : d.flat
+    const path = d.flat.endsWith('/*') ? `${d.flat.slice(0, -1)}**` : d.flat
     router.insert(path, { handler: d.pattern })
   }
-  router.insert("/**", { handler: "catch-all" })
+  router.insert('/**', { handler: 'catch-all' })
   return router
 }
 
 function setupReactRouter(flatDefs: RouteDef[]) {
   // React Router supports nested routes but we use flat for fair comparison
   const routes = flatDefs.map((d) => ({
-    path: d.flat === "/*" ? "*" : d.flat,
+    path: d.flat === '/*' ? '*' : d.flat,
     element: null,
   }))
   // Add catch-all
-  routes.push({ path: "*", element: null })
+  routes.push({ path: '*', element: null })
   return routes
 }
 
@@ -203,9 +203,9 @@ function setupReactRouter(flatDefs: RouteDef[]) {
  * Convert `:param` to `$param` and `:param*` splat to `$` for TanStack Router syntax.
  */
 function toTanStackPath(flat: string): string {
-  if (flat === "/*" || flat === "/files/*") return flat.replace("/*", "/$")
+  if (flat === '/*' || flat === '/files/*') return flat.replace('/*', '/$')
   // Replace :param* with $ (splat) and :param with $param
-  return flat.replace(/:(\w+)\*/g, "$").replace(/:(\w+)/g, (_m, name) => `$${name}`)
+  return flat.replace(/:(\w+)\*/g, '$').replace(/:(\w+)/g, (_m, name) => `$${name}`)
 }
 
 function setupTanStack(flatDefs: RouteDef[]) {
@@ -219,22 +219,22 @@ function setupTanStack(flatDefs: RouteDef[]) {
   const routeTree = rootRoute.addChildren(childRoutes)
   const router = createTanStackRouter({
     routeTree,
-    history: createTanStackHistory({ initialEntries: ["/"] }),
+    history: createTanStackHistory({ initialEntries: ['/'] }),
   })
   return router
 }
 
 function setupVueRouter(flatDefs: RouteDef[]) {
   const routes = flatDefs.map((d) => ({
-    path: d.flat === "/*" ? "/:pathMatch(.*)*" : d.flat,
+    path: d.flat === '/*' ? '/:pathMatch(.*)*' : d.flat,
     component: VueNoop,
   }))
-  routes.push({ path: "/:pathMatch(.*)*", component: VueNoop })
+  routes.push({ path: '/:pathMatch(.*)*', component: VueNoop })
   return createVueRouter({ history: createMemoryHistory(), routes })
 }
 
 function toPtrPattern(flat: string): string {
-  if (flat === "/*" || flat === "/files/*") return "/(.*)"
+  if (flat === '/*' || flat === '/files/*') return '/(.*)'
   return flat
 }
 
@@ -244,7 +244,7 @@ function setupPathToRegexp(flatDefs: RouteDef[]) {
     pattern: d.flat,
     match: ptrMatch(toPtrPattern(d.flat)),
   }))
-  matchers.push({ pattern: "/(.*)", match: ptrMatch("/(.*)") })
+  matchers.push({ pattern: '/(.*)', match: ptrMatch('/(.*)') })
 
   // Return a function that tries each matcher in order (linear, like Next.js pages router)
   return (path: string) => {
@@ -305,12 +305,12 @@ const SIZES = [10, 50, 200]
 const COL_W = 14
 const LABEL_W = 24
 
-console.log("Router Matching Benchmark (Bun)")
+console.log('Router Matching Benchmark (Bun)')
 console.log(
-  "Pyreon · find-my-way · Hono · radix3 (Nuxt) · React Router · TanStack · Vue Router · Next.js*",
+  'Pyreon · find-my-way · Hono · radix3 (Nuxt) · React Router · TanStack · Vue Router · Next.js*',
 )
-console.log("* Next.js uses path-to-regexp internally (pre-compiled, linear scan)")
-console.log(`${"=".repeat(LABEL_W + COL_W * 8 + 2)}\n`)
+console.log('* Next.js uses path-to-regexp internally (pre-compiled, linear scan)')
+console.log(`${'='.repeat(LABEL_W + COL_W * 8 + 2)}\n`)
 
 for (const size of SIZES) {
   const { pyreonRoutes, flatDefs, urls } = generateRoutes(size)
@@ -327,20 +327,20 @@ for (const size of SIZES) {
   const ptr = setupPathToRegexp(flatDefs)
 
   const routers: RouterEntry[] = [
-    { name: "Pyreon", matchFn: (p) => resolveRoute(p, pyreonRoutes) },
-    { name: "find-my-way", matchFn: (p) => fmw.find("GET", p) },
-    { name: "Hono", matchFn: (p) => honoRouter.match("GET", p) },
-    { name: "radix3 (Nuxt)", matchFn: (p) => radix3.lookup(p) },
-    { name: "React Router", matchFn: (p) => matchRoutes(reactRoutes, p) },
-    { name: "TanStack", matchFn: (p) => tanstack.matchRoutes(p) },
-    { name: "Vue Router", matchFn: (p) => vueRouter.resolve(p) },
-    { name: "Next.js*", matchFn: (p) => ptr(p) },
+    { name: 'Pyreon', matchFn: (p) => resolveRoute(p, pyreonRoutes) },
+    { name: 'find-my-way', matchFn: (p) => fmw.find('GET', p) },
+    { name: 'Hono', matchFn: (p) => honoRouter.match('GET', p) },
+    { name: 'radix3 (Nuxt)', matchFn: (p) => radix3.lookup(p) },
+    { name: 'React Router', matchFn: (p) => matchRoutes(reactRoutes, p) },
+    { name: 'TanStack', matchFn: (p) => tanstack.matchRoutes(p) },
+    { name: 'Vue Router', matchFn: (p) => vueRouter.resolve(p) },
+    { name: 'Next.js*', matchFn: (p) => ptr(p) },
   ]
 
   console.log(`Route table: ${size} routes`)
-  const header = `  ${"test".padEnd(LABEL_W)}${routers.map((r) => r.name.padStart(COL_W)).join("")}`
+  const header = `  ${'test'.padEnd(LABEL_W)}${routers.map((r) => r.name.padStart(COL_W)).join('')}`
   console.log(header)
-  console.log(`  ${"-".repeat(LABEL_W + COL_W * routers.length)}`)
+  console.log(`  ${'-'.repeat(LABEL_W + COL_W * routers.length)}`)
 
   const totals: number[] = routers.map(() => 0)
 
@@ -354,22 +354,22 @@ for (const size of SIZES) {
       if (r) totals[j] += r.opsPerSec
     }
 
-    const line = `  ${url.label.padEnd(LABEL_W)}${results.map((r) => fmtOps(r.opsPerSec).padStart(COL_W)).join("")}`
+    const line = `  ${url.label.padEnd(LABEL_W)}${results.map((r) => fmtOps(r.opsPerSec).padStart(COL_W)).join('')}`
     console.log(line)
   }
 
   // Averages
   const count = urls.length
   const averages = totals.map((t) => Math.round(t / count))
-  console.log(`  ${"-".repeat(LABEL_W + COL_W * routers.length)}`)
+  console.log(`  ${'-'.repeat(LABEL_W + COL_W * routers.length)}`)
   console.log(
-    `  ${"average".padEnd(LABEL_W)}${averages.map((a) => fmtOps(a).padStart(COL_W)).join("")}`,
+    `  ${'average'.padEnd(LABEL_W)}${averages.map((a) => fmtOps(a).padStart(COL_W)).join('')}`,
   )
 
   // Slowdown vs best
   const best = Math.max(...averages)
   console.log(
-    `  ${"vs best".padEnd(LABEL_W)}${averages.map((a) => `${(best / a).toFixed(2)}x`.padStart(COL_W)).join("")}`,
+    `  ${'vs best'.padEnd(LABEL_W)}${averages.map((a) => `${(best / a).toFixed(2)}x`.padStart(COL_W)).join('')}`,
   )
   console.log()
 }

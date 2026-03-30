@@ -1,5 +1,5 @@
-import { isRef, ref, shallowRef, triggerRef, unref } from "vue"
-import Demo from "./Demo"
+import { isRef, ref, shallowRef, triggerRef, unref } from 'vue'
+import Demo from './Demo'
 
 export default function RefDemo() {
   const count = ref(0)
@@ -47,7 +47,7 @@ unref(count)    // 0 (unwrapped)`}
         Mutate & Trigger ({triggerCount.value}x)
       </button>
       <p class="muted">
-        isRef(count): <strong>{String(isRef(checkTarget))}</strong> | unref(count):{" "}
+        isRef(count): <strong>{String(isRef(checkTarget))}</strong> | unref(count):{' '}
         <strong>{unref(count)}</strong>
       </p>
     </Demo>

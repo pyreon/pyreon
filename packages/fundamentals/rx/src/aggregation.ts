@@ -1,6 +1,6 @@
-import { computed } from "@pyreon/reactivity"
-import type { KeyOf, ReadableSignal } from "./types"
-import { isSignal, resolveKey } from "./types"
+import { computed } from '@pyreon/reactivity'
+import type { KeyOf, ReadableSignal } from './types'
+import { isSignal, resolveKey } from './types'
 
 function reactive<TIn, TOut>(source: TIn, fn: (val: any) => TOut): any {
   if (isSignal(source)) return computed(() => fn((source as ReadableSignal<any>)()))

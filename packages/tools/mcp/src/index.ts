@@ -17,20 +17,20 @@
  *   bunx @pyreon/mcp          # stdio transport (for IDE integration)
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import { detectReactPatterns, diagnoseError, migrateReactCode } from "@pyreon/compiler"
-import { z } from "zod"
-import packageJson from "../package.json" with { type: "json" }
-import { API_REFERENCE } from "./api-reference"
-import { generateContext, type ProjectContext } from "./project-scanner"
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { detectReactPatterns, diagnoseError, migrateReactCode } from '@pyreon/compiler'
+import { z } from 'zod'
+import packageJson from '../package.json' with { type: 'json' }
+import { API_REFERENCE } from './api-reference'
+import { generateContext, type ProjectContext } from './project-scanner'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Server setup
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const server = new McpServer({
-  name: "pyreon",
+  name: 'pyreon',
   version: packageJson.version,
 })
 
@@ -47,7 +47,7 @@ function getContext(): ProjectContext {
 }
 
 function textResult(text: string) {
-  return { content: [{ type: "text" as const, text }] }
+  return { content: [{ type: 'text' as const, text }] }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -55,7 +55,7 @@ function textResult(text: string) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 server.tool(
-  "get_api",
+  'get_api',
   {
     package: z.string(),
     symbol: z.string(),
@@ -73,14 +73,14 @@ server.tool(
       return textResult(
         `Symbol '${symbol}' not found in @pyreon/${pkg}.\n\n${
           suggestions.length > 0
-            ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join("\n")}`
-            : "No similar symbols found."
+            ? `Did you mean one of these?\n${suggestions.map((s) => `  - ${s}`).join('\n')}`
+            : 'No similar symbols found.'
         }`,
       )
     }
 
     return textResult(
-      `## @pyreon/${pkg} — ${symbol}\n\n**Signature:**\n\`\`\`typescript\n${entry.signature}\n\`\`\`\n\n**Usage:**\n\`\`\`typescript\n${entry.example}\n\`\`\`\n\n${entry.notes ? `**Notes:** ${entry.notes}\n\n` : ""}${entry.mistakes ? `**Common mistakes:**\n${entry.mistakes}\n` : ""}`,
+      `## @pyreon/${pkg} — ${symbol}\n\n**Signature:**\n\`\`\`typescript\n${entry.signature}\n\`\`\`\n\n**Usage:**\n\`\`\`typescript\n${entry.example}\n\`\`\`\n\n${entry.notes ? `**Notes:** ${entry.notes}\n\n` : ''}${entry.mistakes ? `**Common mistakes:**\n${entry.mistakes}\n` : ''}`,
     )
   },
 )
@@ -90,27 +90,27 @@ server.tool(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 server.tool(
-  "validate",
+  'validate',
   {
     code: z.string(),
     filename: z.string().optional(),
   },
   async ({ code, filename }) => {
-    const diagnostics = detectReactPatterns(code, filename ?? "snippet.tsx")
+    const diagnostics = detectReactPatterns(code, filename ?? 'snippet.tsx')
 
     if (diagnostics.length === 0) {
-      return textResult("✓ No issues found. The code follows Pyreon patterns correctly.")
+      return textResult('✓ No issues found. The code follows Pyreon patterns correctly.')
     }
 
     const issueText = diagnostics
       .map(
         (d, i) =>
-          `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? "yes" : "no"}`,
+          `${i + 1}. **${d.code}** (line ${d.line})\n   ${d.message}\n   Current: \`${d.current}\`\n   Fix: \`${d.suggested}\`\n   Auto-fixable: ${d.fixable ? 'yes' : 'no'}`,
       )
-      .join("\n\n")
+      .join('\n\n')
 
     return textResult(
-      `Found ${diagnostics.length} issue${diagnostics.length === 1 ? "" : "s"}:\n\n${issueText}`,
+      `Found ${diagnostics.length} issue${diagnostics.length === 1 ? '' : 's'}:\n\n${issueText}`,
     )
   },
 )
@@ -120,24 +120,24 @@ server.tool(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 server.tool(
-  "migrate_react",
+  'migrate_react',
   {
     code: z.string(),
     filename: z.string().optional(),
   },
   async ({ code, filename }) => {
-    const result = migrateReactCode(code, filename ?? "component.tsx")
+    const result = migrateReactCode(code, filename ?? 'component.tsx')
 
-    const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join("\n")
+    const changeList = result.changes.map((c) => `- Line ${c.line}: ${c.description}`).join('\n')
 
     const remainingIssues = result.diagnostics.filter((d) => !d.fixable)
     const manualText =
       remainingIssues.length > 0
-        ? `\n\n**Remaining issues (manual fix needed):**\n${remainingIssues.map((d) => `- Line ${d.line}: ${d.message}\n  Suggested: \`${d.suggested}\``).join("\n")}`
-        : ""
+        ? `\n\n**Remaining issues (manual fix needed):**\n${remainingIssues.map((d) => `- Line ${d.line}: ${d.message}\n  Suggested: \`${d.suggested}\``).join('\n')}`
+        : ''
 
     return textResult(
-      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || "No changes needed."}${manualText}`,
+      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}`,
     )
   },
 )
@@ -147,7 +147,7 @@ server.tool(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 server.tool(
-  "diagnose",
+  'diagnose',
   {
     error: z.string(),
   },
@@ -176,29 +176,29 @@ server.tool(
 // Tool: get_routes
 // ═══════════════════════════════════════════════════════════════════════════════
 
-server.tool("get_routes", {}, async () => {
+server.tool('get_routes', {}, async () => {
   const ctx = getContext()
 
   if (ctx.routes.length === 0) {
     return textResult(
-      "No routes detected. Routes are defined via createRouter() or a routes array.",
+      'No routes detected. Routes are defined via createRouter() or a routes array.',
     )
   }
 
   const routeTable = ctx.routes
     .map((r) => {
       const flags = [
-        r.hasLoader ? "loader" : "",
-        r.hasGuard ? "guard" : "",
-        r.params.length > 0 ? `params: ${r.params.join(", ")}` : "",
-        r.name ? `name: "${r.name}"` : "",
+        r.hasLoader ? 'loader' : '',
+        r.hasGuard ? 'guard' : '',
+        r.params.length > 0 ? `params: ${r.params.join(', ')}` : '',
+        r.name ? `name: "${r.name}"` : '',
       ]
         .filter(Boolean)
-        .join(", ")
+        .join(', ')
 
-      return `  ${r.path}${flags ? ` (${flags})` : ""}`
+      return `  ${r.path}${flags ? ` (${flags})` : ''}`
     })
-    .join("\n")
+    .join('\n')
 
   return textResult(`**Routes (${ctx.routes.length}):**\n\n${routeTable}`)
 })
@@ -207,25 +207,25 @@ server.tool("get_routes", {}, async () => {
 // Tool: get_components
 // ═══════════════════════════════════════════════════════════════════════════════
 
-server.tool("get_components", {}, async () => {
+server.tool('get_components', {}, async () => {
   const ctx = getContext()
 
   if (ctx.components.length === 0) {
-    return textResult("No components detected.")
+    return textResult('No components detected.')
   }
 
   const compList = ctx.components
     .map((c) => {
       const details = [
-        c.props.length > 0 ? `props: { ${c.props.join(", ")} }` : "",
-        c.hasSignals ? `signals: [${c.signalNames.join(", ")}]` : "",
+        c.props.length > 0 ? `props: { ${c.props.join(', ')} }` : '',
+        c.hasSignals ? `signals: [${c.signalNames.join(', ')}]` : '',
       ]
         .filter(Boolean)
-        .join(", ")
+        .join(', ')
 
-      return `  ${c.name} — ${c.file}${details ? `\n    ${details}` : ""}`
+      return `  ${c.name} — ${c.file}${details ? `\n    ${details}` : ''}`
     })
-    .join("\n")
+    .join('\n')
 
   return textResult(`**Components (${ctx.components.length}):**\n\n${compList}`)
 })
@@ -240,6 +240,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("MCP server error:", err)
+  console.error('MCP server error:', err)
   process.exit(1)
 })

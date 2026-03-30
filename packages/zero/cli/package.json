@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/zero-cli",
   "version": "0.11.5",
-  "description": "CLI for Pyreon Zero \u2014 dev, build, preview",
+  "description": "CLI for Pyreon Zero — dev, build, preview",
   "license": "MIT",
   "author": "Vit Bokisch",
   "repository": {
@@ -9,8 +9,9 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/cli"
   },
-  "type": "module",
-  "main": "./lib/index.js",
+  "bin": {
+    "zero": "./bin/zero.js"
+  },
   "files": [
     "bin",
     "lib",
@@ -18,14 +19,13 @@
     "LICENSE",
     "README.md"
   ],
-  "bin": {
-    "zero": "./bin/zero.js"
-  },
+  "type": "module",
+  "main": "./lib/index.js",
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@pyreon/cli": "workspace:^",

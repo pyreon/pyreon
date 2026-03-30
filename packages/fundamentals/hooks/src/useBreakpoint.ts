@@ -1,5 +1,5 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 export type BreakpointMap = Record<string, number>
 
@@ -20,9 +20,9 @@ export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): 
   let rafId: number | undefined
 
   function getActive(bps: [string, number][]): string {
-    if (typeof window === "undefined") return bps[0]?.[0] ?? ""
+    if (typeof window === 'undefined') return bps[0]?.[0] ?? ''
     const w = window.innerWidth
-    let result = bps[0]?.[0] ?? ""
+    let result = bps[0]?.[0] ?? ''
     for (const [name, min] of bps) {
       if (w >= min) result = name
       else break
@@ -39,12 +39,12 @@ export function useBreakpoint(breakpoints: BreakpointMap = defaultBreakpoints): 
   }
 
   onMount(() => {
-    window.addEventListener("resize", onResize)
+    window.addEventListener('resize', onResize)
     return undefined
   })
 
   onUnmount(() => {
-    window.removeEventListener("resize", onResize)
+    window.removeEventListener('resize', onResize)
     if (rafId !== undefined) cancelAnimationFrame(rafId)
   })
 

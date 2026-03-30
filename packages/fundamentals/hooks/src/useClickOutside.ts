@@ -1,4 +1,4 @@
-import { onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount } from '@pyreon/core'
 
 /**
  * Call handler when a click occurs outside the target element.
@@ -11,13 +11,13 @@ export function useClickOutside(getEl: () => HTMLElement | null, handler: () => 
   }
 
   onMount(() => {
-    document.addEventListener("mousedown", listener, true)
-    document.addEventListener("touchstart", listener, true)
+    document.addEventListener('mousedown', listener, true)
+    document.addEventListener('touchstart', listener, true)
     return undefined
   })
 
   onUnmount(() => {
-    document.removeEventListener("mousedown", listener, true)
-    document.removeEventListener("touchstart", listener, true)
+    document.removeEventListener('mousedown', listener, true)
+    document.removeEventListener('touchstart', listener, true)
   })
 }

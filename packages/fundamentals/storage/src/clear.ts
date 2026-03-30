@@ -1,9 +1,9 @@
-import { getEntriesByBackend, getEntry, removeEntry } from "./registry"
-import { getWebStorage, isBrowser } from "./utils"
+import { getEntriesByBackend, getEntry, removeEntry } from './registry'
+import { getWebStorage, isBrowser } from './utils'
 
 // ─── Storage type mapping ────────────────────────────────────────────────────
 
-type StorageType = "local" | "session" | "cookie" | "indexeddb" | "all"
+type StorageType = 'local' | 'session' | 'cookie' | 'indexeddb' | 'all'
 
 // ─── removeStorage ───────────────────────────────────────────────────────────
 
@@ -19,19 +19,19 @@ type StorageType = "local" | "session" | "cookie" | "indexeddb" | "all"
  */
 export function removeStorage(
   key: string,
-  options?: { type?: "local" | "session" | "cookie" | "indexeddb" },
+  options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' },
 ): void {
-  const type = options?.type ?? "local"
+  const type = options?.type ?? 'local'
   const entry = getEntry(type, key)
 
   if (entry) {
     entry.signal.remove()
   } else {
     // No signal registered — still try to clear the raw storage
-    if (type === "local" || type === "session") {
+    if (type === 'local' || type === 'session') {
       const storage = getWebStorage(type)
       if (storage) storage.removeItem(key)
-    } else if (type === "cookie" && isBrowser()) {
+    } else if (type === 'cookie' && isBrowser()) {
       // biome-ignore lint/suspicious/noDocumentCookie: standard cookie deletion API
       document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
     }
@@ -52,12 +52,12 @@ export function removeStorage(
  * clearStorage('all')      // clear everything
  * ```
  */
-export function clearStorage(type: StorageType = "local"): void {
-  if (type === "all") {
-    clearBackend("local")
-    clearBackend("session")
-    clearBackend("cookie")
-    clearBackend("indexeddb")
+export function clearStorage(type: StorageType = 'local'): void {
+  if (type === 'all') {
+    clearBackend('local')
+    clearBackend('session')
+    clearBackend('cookie')
+    clearBackend('indexeddb')
     return
   }
 

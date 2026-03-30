@@ -1,5 +1,5 @@
-import { onUnmount } from "@pyreon/core"
-import { watch } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import { watch } from '@pyreon/reactivity'
 
 export type UseUpdateEffect = <T>(
   source: () => T,

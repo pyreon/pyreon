@@ -1,12 +1,12 @@
-import type { VNode } from "@pyreon/core"
-import { createRef, h, Show } from "@pyreon/core"
-import { watch } from "@pyreon/reactivity"
-import type { CSSProperties, TransitionCallbacks } from "../types"
-import useAnimationEnd from "../useAnimationEnd"
-import { useReducedMotion } from "../useReducedMotion"
-import useTransitionState from "../useTransitionState"
-import { addClasses, mergeRefs, nextFrame, removeClasses } from "../utils"
-import type { KineticConfig } from "./types"
+import type { VNode } from '@pyreon/core'
+import { createRef, h, Show } from '@pyreon/core'
+import { watch } from '@pyreon/reactivity'
+import type { CSSProperties, TransitionCallbacks } from '../types'
+import useAnimationEnd from '../useAnimationEnd'
+import { useReducedMotion } from '../useReducedMotion'
+import useTransitionState from '../useTransitionState'
+import { addClasses, mergeRefs, nextFrame, removeClasses } from '../utils'
+import type { KineticConfig } from './types'
 
 type TransitionRendererProps = {
   config: KineticConfig
@@ -53,11 +53,11 @@ const applyReducedMotion = (
   cbs: Partial<TransitionCallbacks>,
   complete: () => void,
 ) => {
-  if (stage === "entering") {
+  if (stage === 'entering') {
     cbs.onEnter?.()
     cbs.onAfterEnter?.()
     complete()
-  } else if (stage === "leaving") {
+  } else if (stage === 'leaving') {
     cbs.onLeave?.()
     cbs.onAfterLeave?.()
     complete()
@@ -97,12 +97,12 @@ const TransitionRenderer = ({
 
   useAnimationEnd({
     ref: elementRef,
-    active: () => (stage() === "entering" || stage() === "leaving") && !reducedMotion(),
+    active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout: effectiveTimeout,
     onEnd: () => {
-      if (stage() === "entering") {
+      if (stage() === 'entering') {
         callbacks.onAfterEnter?.()
-      } else if (stage() === "leaving") {
+      } else if (stage() === 'leaving') {
         callbacks.onAfterLeave?.()
       }
       complete()
@@ -120,21 +120,21 @@ const TransitionRenderer = ({
         return
       }
 
-      if (currentStage === "entering") {
+      if (currentStage === 'entering') {
         callbacks.onEnter?.()
         const frameId = applyEnter(el, config)
         return () => cancelAnimationFrame(frameId)
       }
 
-      if (currentStage === "leaving") {
+      if (currentStage === 'leaving') {
         callbacks.onLeave?.()
         const frameId = applyLeave(el, config)
         return () => cancelAnimationFrame(frameId)
       }
 
-      if (currentStage === "entered") {
+      if (currentStage === 'entered') {
         removeClasses(el, config.enter)
-        el.style.transition = ""
+        el.style.transition = ''
       }
     },
     { immediate: true },
@@ -153,7 +153,7 @@ const TransitionRenderer = ({
                 ...htmlProps,
                 style: {
                   ...((htmlProps.style as CSSProperties) ?? {}),
-                  display: "none",
+                  display: 'none',
                 },
               },
               children,

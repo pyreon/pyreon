@@ -1,6 +1,6 @@
-import { computed } from "@pyreon/reactivity"
-import type { KeyOf, ReadableSignal } from "./types"
-import { isSignal, resolveKey } from "./types"
+import { computed } from '@pyreon/reactivity'
+import type { KeyOf, ReadableSignal } from './types'
+import { isSignal, resolveKey } from './types'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

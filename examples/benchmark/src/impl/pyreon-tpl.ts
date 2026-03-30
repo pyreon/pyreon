@@ -11,14 +11,14 @@
  * - Zero VNode / props-object / children-array allocations per row
  * - Static attributes baked into the HTML string
  */
-import { For, h } from "@pyreon/core"
-import { _bind, createSelector, signal } from "@pyreon/reactivity"
-import { _bindText, _tpl, mount } from "@pyreon/runtime-dom"
-import type { BenchSuite } from "../runner"
-import { bench, buildRowsWith, tick } from "../runner"
+import { For, h } from '@pyreon/core'
+import { _bind, createSelector, signal } from '@pyreon/reactivity'
+import { _bindText, _tpl, mount } from '@pyreon/runtime-dom'
+import type { BenchSuite } from '../runner'
+import { bench, buildRowsWith, tick } from '../runner'
 
 export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "Pyreon (compiled)", container, results: [] }
+  const suite: BenchSuite = { framework: 'Pyreon (compiled)', container, results: [] }
 
   type ReactiveRow = { id: number; label: ReturnType<typeof signal<string>> }
   const rows = signal<ReactiveRow[]>([])
@@ -29,17 +29,17 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
 
   const unmount = mount(
     h(
-      "table",
+      'table',
       null,
       h(
-        "tbody",
+        'tbody',
         null,
         For({
           each: rows,
           by: (row) => row.id,
           children: (row: ReactiveRow) =>
             // Fully compiled row — _tpl + _bindText + _bind (same 2-column DOM as other frameworks)
-            _tpl("<tr><td></td><td></td></tr>", (__root) => {
+            _tpl('<tr><td></td><td></td></tr>', (__root) => {
               const __e0 = __root.children[0] as HTMLElement
               const __e1 = __root.children[1] as HTMLElement
 
@@ -47,13 +47,13 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
               __e0.textContent = String(row.id)
 
               // _bindText: direct signal→TextNode subscription (no effect)
-              const __t0 = document.createTextNode("")
+              const __t0 = document.createTextNode('')
               __e1.appendChild(__t0)
               const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
 
               // _bind: single renderEffect for className (selector dependency)
               const __d1 = _bind(() => {
-                __root.className = isSelected(row.id) ? "selected" : ""
+                __root.className = isSelected(row.id) ? 'selected' : ''
               })
 
               return () => {
@@ -70,12 +70,12 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
   const mkRows = (n: number) =>
     buildRowsWith<ReactiveRow>(n, (id, label) => ({ id, label: signal(label) }))
 
-  await bench("create 1,000 rows", suite, async () => {
+  await bench('create 1,000 rows', suite, async () => {
     rows.set(mkRows(1_000))
     await tick()
   })
 
-  await bench("replace all rows", suite, async () => {
+  await bench('replace all rows', suite, async () => {
     rows.set(mkRows(1_000))
     await tick()
   })
@@ -83,7 +83,7 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
   // Capture original labels for reset between partial update runs
   let originalLabels: string[] = rows().map((r) => r.label())
   await bench(
-    "partial update (every 10th)",
+    'partial update (every 10th)',
     suite,
     async () => {
       const current = rows()
@@ -109,13 +109,13 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
   originalLabels = rows().map((r) => r.label())
   await tick()
 
-  await bench("select row", suite, async () => {
+  await bench('select row', suite, async () => {
     const r = rows()
     selectedId.set(r[Math.floor(r.length / 2)]?.id ?? null)
     await tick()
   })
 
-  await bench("swap rows", suite, async () => {
+  await bench('swap rows', suite, async () => {
     const current = [...rows()]
     if (current.length >= 999) {
       const a = current[1]
@@ -129,7 +129,7 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
     await tick()
   })
 
-  await bench("clear rows", suite, async () => {
+  await bench('clear rows', suite, async () => {
     rows.set([])
     await tick()
   })
@@ -137,7 +137,7 @@ export async function runPyreonTpl(container: HTMLElement): Promise<BenchSuite> 
   rows.set(mkRows(1_000))
   await tick()
 
-  await bench("create 10,000 rows", suite, async () => {
+  await bench('create 10,000 rows', suite, async () => {
     rows.set(mkRows(10_000))
     await tick()
   })

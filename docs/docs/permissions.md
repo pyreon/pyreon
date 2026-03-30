@@ -10,18 +10,23 @@ Reactive permissions primitive for Pyreon. A permission is either a boolean or a
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/permissions
 ```
+
 ```bash [bun]
 bun add @pyreon/permissions
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/permissions
 ```
+
 ```bash [yarn]
 yarn add @pyreon/permissions
 ```
+
 :::
 
 Peer dependencies: `@pyreon/reactivity`, `@pyreon/core`
@@ -39,9 +44,9 @@ const can = createPermissions({
 })
 
 // Check — reactive in effects/computeds/JSX
-can('posts.read')              // true
-can('posts.update', myPost)    // evaluates predicate
-can('users.manage')            // false
+can('posts.read') // true
+can('posts.update', myPost) // evaluates predicate
+can('users.manage') // false
 ```
 
 ## Core Concepts
@@ -49,6 +54,7 @@ can('users.manage')            // false
 ### Permission Values
 
 A permission value is either:
+
 - **`true` / `false`** — static grant or denial
 - **`(context?) => boolean`** — predicate, evaluated per-check with optional context
 
@@ -72,14 +78,18 @@ const can = createPermissions({
 
 ```tsx
 // Static check
-can('posts.read')                // true
+can('posts.read') // true
 
 // Instance check — passes context to predicate
-can('posts.update', somePost)    // evaluates (post) => post.authorId === userId()
+can('posts.update', somePost) // evaluates (post) => post.authorId === userId()
 
 // In JSX — reactive, updates when permissions change
-{() => can('posts.read') && <PostList />}
-{() => can('posts.update', post) && <EditButton />}
+{
+  ;() => can('posts.read') && <PostList />
+}
+{
+  ;() => can('posts.update', post) && <EditButton />
+}
 
 // In effects — reactive
 effect(() => {
@@ -94,13 +104,13 @@ const isAdmin = computed(() => can('users.manage'))
 
 ```tsx
 // Inverse
-can.not('billing.export')                        // true if denied
+can.not('billing.export') // true if denied
 
 // All must be true
-can.all('posts.read', 'posts.create')            // true if both granted
+can.all('posts.read', 'posts.create') // true if both granted
 
 // At least one must be true
-can.any('posts.update', 'posts.delete')           // true if either granted
+can.any('posts.update', 'posts.delete') // true if either granted
 ```
 
 ## Updating Permissions
@@ -137,13 +147,13 @@ Wildcards allow grouping permissions under a prefix.
 
 ```tsx
 const can = createPermissions({
-  'posts.*': true,           // matches posts.read, posts.create, posts.delete, etc.
-  'posts.delete': false,     // exact match overrides wildcard
+  'posts.*': true, // matches posts.read, posts.create, posts.delete, etc.
+  'posts.delete': false, // exact match overrides wildcard
 })
 
-can('posts.read')    // true  — matched by 'posts.*'
-can('posts.create')  // true  — matched by 'posts.*'
-can('posts.delete')  // false — exact match takes precedence
+can('posts.read') // true  — matched by 'posts.*'
+can('posts.create') // true  — matched by 'posts.*'
+can('posts.delete') // false — exact match takes precedence
 ```
 
 ### Resolution Order
@@ -156,7 +166,7 @@ can('posts.delete')  // false — exact match takes precedence
 ```tsx
 // Superadmin — global wildcard grants everything
 const can = createPermissions({ '*': true })
-can('literally.anything')  // true
+can('literally.anything') // true
 ```
 
 ## Introspection
@@ -165,10 +175,10 @@ For help dialogs, admin dashboards, or debugging.
 
 ```tsx
 // All granted permission keys — reactive Computed<string[]>
-can.granted()    // ['posts.read', 'posts.create', 'users.manage']
+can.granted() // ['posts.read', 'posts.create', 'users.manage']
 
 // All entries as [key, value] pairs — reactive Computed
-can.entries()    // [['posts.read', true], ['users.manage', false], ...]
+can.entries() // [['posts.read', true], ['users.manage', false], ...]
 ```
 
 ## Context Pattern (SSR / Testing)
@@ -179,7 +189,7 @@ For SSR isolation or testing, use the provider to scope a permissions instance.
 import { PermissionsProvider, usePermissions } from '@pyreon/permissions'
 
 // Provide
-<PermissionsProvider instance={can}>
+;<PermissionsProvider instance={can}>
   <App />
 </PermissionsProvider>
 
@@ -224,11 +234,7 @@ const { permissions } = await response.json()
 // permissions: ['posts:read', 'posts:create', 'users:manage']
 
 // Transform to permission map
-can.set(
-  Object.fromEntries(
-    permissions.map((p: string) => [p.replace(':', '.'), true])
-  )
-)
+can.set(Object.fromEntries(permissions.map((p: string) => [p.replace(':', '.'), true])))
 ```
 
 ### Feature Flags
@@ -248,8 +254,12 @@ const can = createPermissions({
   'tier.enterprise': false,
 })
 
-{() => can('feature.new-editor') && <NewEditor />}
-{() => can('tier.pro') && <ExportButton />}
+{
+  ;() => can('feature.new-editor') && <NewEditor />
+}
+{
+  ;() => can('tier.pro') && <ExportButton />
+}
 ```
 
 ### Instance-Level Ownership
@@ -258,8 +268,7 @@ const can = createPermissions({
 const can = createPermissions({
   'posts.read': true,
   'posts.update': (post: Post) => post.authorId === currentUserId(),
-  'posts.delete': (post: Post) =>
-    post.authorId === currentUserId() && post.status === 'draft',
+  'posts.delete': (post: Post) => post.authorId === currentUserId() && post.status === 'draft',
 })
 
 function PostRow({ post }: { post: Post }) {
@@ -284,8 +293,8 @@ const can = createPermissions({
   'ws:engineering.posts.read': true,
 })
 
-can('ws:design.posts.delete')        // true — wildcard match
-can('ws:engineering.posts.delete')   // false — only read granted
+can('ws:design.posts.delete') // true — wildcard match
+can('ws:engineering.posts.delete') // false — only read granted
 ```
 
 ### Reactive Role Switching
@@ -315,25 +324,25 @@ const { data } = useQuery(() => ({
 
 ```tsx
 import type {
-  Permissions,        // The callable permissions instance
-  PermissionMap,      // Record<string, PermissionValue>
-  PermissionValue,    // boolean | (context?) => boolean
+  Permissions, // The callable permissions instance
+  PermissionMap, // Record<string, PermissionValue>
+  PermissionValue, // boolean | (context?) => boolean
   PermissionPredicate, // (context?) => boolean
 } from '@pyreon/permissions'
 ```
 
 ## API Reference
 
-| API | Description |
-|---|---|
-| `createPermissions(initial?)` | Create a reactive permissions instance |
-| `can(key, context?)` | Check permission — reactive in effects/computeds/JSX |
-| `can.not(key, context?)` | Inverse check |
-| `can.all(...keys)` | True if all permissions granted |
-| `can.any(...keys)` | True if any permission granted |
-| `can.set(map)` | Replace all permissions |
-| `can.patch(map)` | Merge into existing permissions |
-| `can.granted()` | `Computed<string[]>` — all granted keys |
-| `can.entries()` | `Computed<[string, PermissionValue][]>` — all entries |
-| `PermissionsProvider` | Context provider for SSR/testing |
-| `usePermissions()` | Access permissions from context |
+| API                           | Description                                           |
+| ----------------------------- | ----------------------------------------------------- |
+| `createPermissions(initial?)` | Create a reactive permissions instance                |
+| `can(key, context?)`          | Check permission — reactive in effects/computeds/JSX  |
+| `can.not(key, context?)`      | Inverse check                                         |
+| `can.all(...keys)`            | True if all permissions granted                       |
+| `can.any(...keys)`            | True if any permission granted                        |
+| `can.set(map)`                | Replace all permissions                               |
+| `can.patch(map)`              | Merge into existing permissions                       |
+| `can.granted()`               | `Computed<string[]>` — all granted keys               |
+| `can.entries()`               | `Computed<[string, PermissionValue][]>` — all entries |
+| `PermissionsProvider`         | Context provider for SSR/testing                      |
+| `usePermissions()`            | Access permissions from context                       |

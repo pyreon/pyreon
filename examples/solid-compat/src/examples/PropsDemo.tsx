@@ -1,9 +1,9 @@
-import { mergeProps, splitProps } from "solid-js"
-import Demo from "./Demo"
+import { mergeProps, splitProps } from 'solid-js'
+import Demo from './Demo'
 
 function Greeting(props: { greeting?: string; name: string; class?: string }) {
-  const merged = mergeProps({ greeting: "Hello" }, props)
-  const [local, rest] = splitProps(merged, "greeting", "name")
+  const merged = mergeProps({ greeting: 'Hello' }, props)
+  const [local, rest] = splitProps(merged, 'greeting', 'name')
 
   return (
     <p {...rest}>

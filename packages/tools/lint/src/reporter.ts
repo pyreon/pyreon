@@ -1,25 +1,25 @@
-import type { LintResult, Severity } from "./types"
+import type { LintResult, Severity } from './types'
 
 // ANSI colors
-const BOLD = "\x1b[1m"
-const RED = "\x1b[31m"
-const YELLOW = "\x1b[33m"
-const BLUE = "\x1b[34m"
-const DIM = "\x1b[2m"
-const RESET = "\x1b[0m"
+const BOLD = '\x1b[1m'
+const RED = '\x1b[31m'
+const YELLOW = '\x1b[33m'
+const BLUE = '\x1b[34m'
+const DIM = '\x1b[2m'
+const RESET = '\x1b[0m'
 
 const SEVERITY_SYMBOL: Record<Severity, string> = {
   error: `${RED}\u2716${RESET}`,
   warn: `${YELLOW}\u26A0${RESET}`,
   info: `${BLUE}\u2139${RESET}`,
-  off: "",
+  off: '',
 }
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   error: `${RED}error${RESET}`,
   warn: `${YELLOW}warning${RESET}`,
   info: `${BLUE}info${RESET}`,
-  off: "",
+  off: '',
 }
 
 /**
@@ -31,7 +31,7 @@ export function formatText(result: LintResult): string {
   for (const file of result.files) {
     if (file.diagnostics.length === 0) continue
 
-    lines.push("")
+    lines.push('')
     lines.push(`${BOLD}${file.filePath}${RESET}`)
 
     for (const d of file.diagnostics) {
@@ -44,20 +44,20 @@ export function formatText(result: LintResult): string {
 
   const total = result.totalErrors + result.totalWarnings + result.totalInfos
   if (total > 0) {
-    lines.push("")
+    lines.push('')
     const parts: string[] = []
     if (result.totalErrors > 0)
-      parts.push(`${RED}${result.totalErrors} error${result.totalErrors === 1 ? "" : "s"}${RESET}`)
+      parts.push(`${RED}${result.totalErrors} error${result.totalErrors === 1 ? '' : 's'}${RESET}`)
     if (result.totalWarnings > 0)
       parts.push(
-        `${YELLOW}${result.totalWarnings} warning${result.totalWarnings === 1 ? "" : "s"}${RESET}`,
+        `${YELLOW}${result.totalWarnings} warning${result.totalWarnings === 1 ? '' : 's'}${RESET}`,
       )
     if (result.totalInfos > 0) parts.push(`${BLUE}${result.totalInfos} info${RESET}`)
-    lines.push(`${SEVERITY_SYMBOL.error} ${parts.join(", ")}`)
-    lines.push("")
+    lines.push(`${SEVERITY_SYMBOL.error} ${parts.join(', ')}`)
+    lines.push('')
   }
 
-  return lines.join("\n")
+  return lines.join('\n')
 }
 
 /**
@@ -81,5 +81,5 @@ export function formatCompact(result: LintResult): string {
     }
   }
 
-  return lines.join("\n")
+  return lines.join('\n')
 }

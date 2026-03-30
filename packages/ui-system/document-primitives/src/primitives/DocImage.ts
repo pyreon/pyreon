@@ -1,8 +1,8 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
-const DocImage = rocketstyle()({ name: "DocImage", component: Element })
-  .statics({ _documentType: "image" as const })
+const DocImage = rocketstyle()({ name: 'DocImage', component: Element })
+  .statics({ _documentType: 'image' as const })
   .attrs<{
     src?: string
     alt?: string
@@ -12,9 +12,9 @@ const DocImage = rocketstyle()({ name: "DocImage", component: Element })
     tag: string
     _documentProps: Record<string, unknown>
   }>((props) => ({
-    tag: "img",
+    tag: 'img',
     _documentProps: {
-      src: props.src ?? "",
+      src: props.src ?? '',
       ...(props.alt ? { alt: props.alt } : {}),
       ...(props.width ? { width: props.width } : {}),
       ...(props.height ? { height: props.height } : {}),

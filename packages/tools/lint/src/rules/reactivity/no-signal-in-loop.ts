@@ -1,12 +1,12 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan } from '../../utils/ast'
 
 export const noSignalInLoop: Rule = {
   meta: {
-    id: "pyreon/no-signal-in-loop",
-    category: "reactivity",
-    description: "Disallow creating signals or computeds inside loops.",
-    severity: "error",
+    id: 'pyreon/no-signal-in-loop',
+    category: 'reactivity',
+    description: 'Disallow creating signals or computeds inside loops.',
+    severity: 'error',
     fixable: false,
   },
   create(context) {
@@ -15,38 +15,38 @@ export const noSignalInLoop: Rule = {
       ForStatement() {
         loopDepth++
       },
-      "ForStatement:exit"() {
+      'ForStatement:exit'() {
         loopDepth--
       },
       ForInStatement() {
         loopDepth++
       },
-      "ForInStatement:exit"() {
+      'ForInStatement:exit'() {
         loopDepth--
       },
       ForOfStatement() {
         loopDepth++
       },
-      "ForOfStatement:exit"() {
+      'ForOfStatement:exit'() {
         loopDepth--
       },
       WhileStatement() {
         loopDepth++
       },
-      "WhileStatement:exit"() {
+      'WhileStatement:exit'() {
         loopDepth--
       },
       DoWhileStatement() {
         loopDepth++
       },
-      "DoWhileStatement:exit"() {
+      'DoWhileStatement:exit'() {
         loopDepth--
       },
       CallExpression(node: any) {
         if (loopDepth === 0) return
         const callee = node.callee
-        if (!callee || callee.type !== "Identifier") return
-        if (callee.name === "signal" || callee.name === "computed") {
+        if (!callee || callee.type !== 'Identifier') return
+        if (callee.name === 'signal' || callee.name === 'computed') {
           context.report({
             message: `\`${callee.name}()\` inside a loop — signals should be created once at component setup, not on every iteration.`,
             span: getSpan(node),

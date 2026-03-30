@@ -1,8 +1,8 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createRef, Fragment, h, onUnmount } from "@pyreon/core"
-import { effect, runUntracked, signal } from "@pyreon/reactivity"
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createRef, Fragment, h, onUnmount } from '@pyreon/core'
+import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export interface TransitionProps {
   /**
@@ -60,7 +60,7 @@ export interface TransitionProps {
  * // .fade-enter-active, .fade-leave-active { transition: opacity 300ms ease; }
  */
 export function Transition(props: TransitionProps): VNodeChild {
-  const n = props.name ?? "pyreon"
+  const n = props.name ?? 'pyreon'
   const cls = {
     ef: props.enterFrom ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,
@@ -89,13 +89,13 @@ export function Transition(props: TransitionProps): VNodeChild {
       el.classList.add(cls.et)
       const done = () => {
         // Remove both listeners — only one fires, so clean up the other
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
-      el.addEventListener("transitionend", done, { once: true })
-      el.addEventListener("animationend", done, { once: true })
+      el.addEventListener('transitionend', done, { once: true })
+      el.addEventListener('animationend', done, { once: true })
     })
   }
 
@@ -108,20 +108,20 @@ export function Transition(props: TransitionProps): VNodeChild {
       el.classList.add(cls.lt)
       const done = () => {
         // Remove both listeners — only one fires, so clean up the other
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.la, cls.lt)
         pendingLeaveCancel = null
         isMounted.set(false)
         props.onAfterLeave?.(el)
       }
       pendingLeaveCancel = () => {
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.lf, cls.la, cls.lt)
       }
-      el.addEventListener("transitionend", done, { once: true })
-      el.addEventListener("animationend", done, { once: true })
+      el.addEventListener('transitionend', done, { once: true })
+      el.addEventListener('animationend', done, { once: true })
     })
   }
 
@@ -166,15 +166,15 @@ export function Transition(props: TransitionProps): VNodeChild {
   const emptyFragment = h(Fragment, null)
   return (() => {
     if (!isMounted()) return emptyFragment
-    if (!rawChild || typeof rawChild !== "object" || Array.isArray(rawChild)) {
+    if (!rawChild || typeof rawChild !== 'object' || Array.isArray(rawChild)) {
       return rawChild ?? null
     }
     const vnode = rawChild as VNode
     // Only inject ref into DOM element children — component children need ref forwarding
-    if (typeof vnode.type !== "string") {
+    if (typeof vnode.type !== 'string') {
       if (__DEV__) {
         console.warn(
-          "[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.",
+          '[Pyreon] Transition child is a component. Wrap it in a DOM element for enter/leave animations to work.',
         )
       }
       return vnode

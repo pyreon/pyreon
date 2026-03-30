@@ -1,9 +1,9 @@
-import { useImperativeHandle, useRef, useState } from "react"
-import Demo from "./Demo"
+import { useImperativeHandle, useRef, useState } from 'react'
+import Demo from './Demo'
 
 export default function UseImperativeHandleDemo() {
   const ref = useRef<{ focus: () => void }>()
-  const [msg, setMsg] = useState("")
+  const [msg, setMsg] = useState('')
 
   function FancyInput(props: { inputRef: { current: { focus: () => void } | null } }) {
     const realInput = useRef<HTMLInputElement>()
@@ -11,7 +11,7 @@ export default function UseImperativeHandleDemo() {
     useImperativeHandle(props.inputRef, () => ({
       focus: () => {
         realInput.current?.focus()
-        setMsg("Focused via imperative handle!")
+        setMsg('Focused via imperative handle!')
       },
     }))
 

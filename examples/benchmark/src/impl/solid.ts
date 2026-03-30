@@ -12,10 +12,10 @@
  *
  * Solid renders synchronously, so await tick() is just a layout flush.
  */
-import { createComponent, createEffect, createSelector, createSignal, For } from "solid-js"
-import { insert, render, template } from "solid-js/web"
-import type { BenchSuite } from "../runner"
-import { bench, buildRowsWith, tick } from "../runner"
+import { createComponent, createEffect, createSelector, createSignal, For } from 'solid-js'
+import { insert, render, template } from 'solid-js/web'
+import type { BenchSuite } from '../runner'
+import { bench, buildRowsWith, tick } from '../runner'
 
 type SolidRow = { id: number; label: () => string; setLabel: (s: string) => void }
 
@@ -27,10 +27,10 @@ function mkRows(n: number): SolidRow[] {
 }
 
 // Pre-compiled template — same as what Solid's JSX compiler emits
-const _tmpl$ = template("<tr><td></td><td></td></tr>")
+const _tmpl$ = template('<tr><td></td><td></td></tr>')
 
 export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "SolidJS", container, results: [] }
+  const suite: BenchSuite = { framework: 'SolidJS', container, results: [] }
 
   const [rows, setRows] = createSignal<SolidRow[]>([])
   const [selectedId, setSelected] = createSignal<number | null>(null)
@@ -39,8 +39,8 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   const isSelected = createSelector(selectedId)
 
   const dispose = render(() => {
-    const table = document.createElement("table")
-    const tbody = document.createElement("tbody")
+    const table = document.createElement('table')
+    const tbody = document.createElement('tbody')
     table.appendChild(tbody)
 
     insert(
@@ -66,7 +66,7 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
             })
             // O(1) selection via createSelector — only 2 effects fire per change
             createEffect(() => {
-              el.className = isSelected(row.id) ? "selected" : ""
+              el.className = isSelected(row.id) ? 'selected' : ''
             })
             return el
           },
@@ -77,12 +77,12 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     return table
   }, container)
 
-  await bench("create 1,000 rows", suite, async () => {
+  await bench('create 1,000 rows', suite, async () => {
     setRows(mkRows(1_000))
     await tick()
   })
 
-  await bench("replace all rows", suite, async () => {
+  await bench('replace all rows', suite, async () => {
     setRows(mkRows(1_000))
     await tick()
   })
@@ -90,12 +90,12 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   // Store original labels for reset
   let originalLabels: string[] = []
   await bench(
-    "partial update (every 10th)",
+    'partial update (every 10th)',
     suite,
     async () => {
       const cur = rows()
       for (let i = 0; i < cur.length; i += 10) {
-        cur[i]?.setLabel(`${cur[i]?.label() ?? ""} !!!`)
+        cur[i]?.setLabel(`${cur[i]?.label() ?? ''} !!!`)
       }
       await tick()
     },
@@ -116,13 +116,13 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   originalLabels = rows().map((r) => r.label())
   await tick()
 
-  await bench("select row", suite, async () => {
+  await bench('select row', suite, async () => {
     const r = rows()
     setSelected(r[Math.floor(r.length / 2)]?.id ?? null)
     await tick()
   })
 
-  await bench("swap rows", suite, async () => {
+  await bench('swap rows', suite, async () => {
     const updated = [...rows()]
     if (updated.length >= 999) {
       const tmp = updated[1]
@@ -136,7 +136,7 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
     await tick()
   })
 
-  await bench("clear rows", suite, async () => {
+  await bench('clear rows', suite, async () => {
     setRows([])
     await tick()
   })
@@ -144,7 +144,7 @@ export async function runSolid(container: HTMLElement): Promise<BenchSuite> {
   setRows(mkRows(1_000))
   await tick()
 
-  await bench("create 10,000 rows", suite, async () => {
+  await bench('create 10,000 rows', suite, async () => {
     setRows(mkRows(10_000))
     await tick()
   })

@@ -1,5 +1,5 @@
-import { get, isEmpty, set } from "@pyreon/ui-core"
-import type { Dimensions, DimensionValue, MultiKeys } from "../types/dimensions"
+import { get, isEmpty, set } from '@pyreon/ui-core'
+import type { Dimensions, DimensionValue, MultiKeys } from '../types/dimensions'
 
 // --------------------------------------------------------
 // Is value a valid key
@@ -15,7 +15,7 @@ export const isValidKey: IsValidKey = (value) =>
 /** Determines if a dimension value is a multi-key config object, returning [isMulti, propName]. */
 type IsMultiKey = (value: string | Record<string, unknown>) => [boolean, string]
 export const isMultiKey: IsMultiKey = (value) => {
-  if (typeof value === "object" && value !== null) return [true, get(value, "propName") as string]
+  if (typeof value === 'object' && value !== null) return [true, get(value, 'propName') as string]
   return [false, value]
 }
 
@@ -81,7 +81,7 @@ type GetDimensionsValues = <T extends Dimensions, K extends keyof T>(obj: T) => 
 
 export const getDimensionsValues = (<T extends Dimensions>(obj: T) =>
   getValues(obj).map((item: DimensionValue) => {
-    if (typeof item === "object") {
+    if (typeof item === 'object') {
       return item.propName as string
     }
 
@@ -97,7 +97,7 @@ type GetMultipleDimensions = <T extends Dimensions>(obj: T) => MultiKeys<T>
 export const getMultipleDimensions: GetMultipleDimensions = (obj) =>
   getValues(obj).reduce(
     (accumulator, value: DimensionValue) => {
-      if (typeof value === "object") {
+      if (typeof value === 'object') {
         if (value.multi === true) accumulator[value.propName] = true
       }
 
@@ -116,7 +116,7 @@ type GetTransformDimensions = <T extends Dimensions>(obj: T) => TransformKeys
 export const getTransformDimensions: GetTransformDimensions = (obj) =>
   getValues(obj).reduce(
     (accumulator, value: DimensionValue) => {
-      if (typeof value === "object") {
+      if (typeof value === 'object') {
         if (value.transform === true) accumulator[value.propName] = true
       }
 

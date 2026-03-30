@@ -1,12 +1,12 @@
-import { signal } from "@pyreon/reactivity"
-import { mount } from "@pyreon/runtime-dom"
-import { useVirtualizer, useWindowVirtualizer } from "../index"
+import { signal } from '@pyreon/reactivity'
+import { mount } from '@pyreon/runtime-dom'
+import { useVirtualizer, useWindowVirtualizer } from '../index'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function mountWith<T>(fn: () => T): { result: T; unmount: () => void } {
   let result: T | undefined
-  const el = document.createElement("div")
+  const el = document.createElement('div')
   document.body.appendChild(el)
   const Wrapper = () => {
     result = fn()
@@ -24,20 +24,20 @@ function mountWith<T>(fn: () => T): { result: T; unmount: () => void } {
 
 /** Create a mock scroll container with a known size. */
 function createScrollContainer(height = 200): HTMLDivElement {
-  const container = document.createElement("div")
+  const container = document.createElement('div')
   // happy-dom doesn't have real layout, but we can set properties
-  Object.defineProperty(container, "offsetHeight", { value: height })
-  Object.defineProperty(container, "offsetWidth", { value: 300 })
-  Object.defineProperty(container, "scrollHeight", { value: 10000 })
-  Object.defineProperty(container, "clientHeight", { value: height })
+  Object.defineProperty(container, 'offsetHeight', { value: height })
+  Object.defineProperty(container, 'offsetWidth', { value: 300 })
+  Object.defineProperty(container, 'scrollHeight', { value: 10000 })
+  Object.defineProperty(container, 'clientHeight', { value: height })
   document.body.appendChild(container)
   return container
 }
 
 // ─── useVirtualizer ──────────────────────────────────────────────────────────
 
-describe("useVirtualizer", () => {
-  it("creates a virtualizer with virtual items", () => {
+describe('useVirtualizer', () => {
+  it('creates a virtualizer with virtual items', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -54,7 +54,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("returns correct total size", () => {
+  it('returns correct total size', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -70,7 +70,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("reactive count — updates when count signal changes", () => {
+  it('reactive count — updates when count signal changes', () => {
     const container = createScrollContainer()
     const count = signal(100)
     const { result: virt, unmount } = mountWith(() =>
@@ -89,7 +89,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("reactive estimateSize — updates total size", () => {
+  it('reactive estimateSize — updates total size', () => {
     const container = createScrollContainer()
     const itemSize = signal(50)
     const { result: virt, unmount } = mountWith(() =>
@@ -110,7 +110,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("exposes the virtualizer instance", () => {
+  it('exposes the virtualizer instance', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -121,14 +121,14 @@ describe("useVirtualizer", () => {
     )
 
     expect(virt.instance).toBeDefined()
-    expect(typeof virt.instance.scrollToIndex).toBe("function")
-    expect(typeof virt.instance.scrollToOffset).toBe("function")
-    expect(typeof virt.instance.measureElement).toBe("function")
+    expect(typeof virt.instance.scrollToIndex).toBe('function')
+    expect(typeof virt.instance.scrollToOffset).toBe('function')
+    expect(typeof virt.instance.measureElement).toBe('function')
     unmount()
     container.remove()
   })
 
-  it("virtual items have correct structure", () => {
+  it('virtual items have correct structure', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -141,17 +141,17 @@ describe("useVirtualizer", () => {
     const items = virt.virtualItems()
     if (items.length > 0) {
       const item = items[0]!
-      expect(typeof item.index).toBe("number")
-      expect(typeof item.start).toBe("number")
-      expect(typeof item.end).toBe("number")
-      expect(typeof item.size).toBe("number")
+      expect(typeof item.index).toBe('number')
+      expect(typeof item.start).toBe('number')
+      expect(typeof item.end).toBe('number')
+      expect(typeof item.size).toBe('number')
       expect(typeof item.key).toBeDefined()
     }
     unmount()
     container.remove()
   })
 
-  it("overscan controls extra items rendered", () => {
+  it('overscan controls extra items rendered', () => {
     const container = createScrollContainer(200)
     const { result: small, unmount: unmount1 } = mountWith(() =>
       useVirtualizer(() => ({
@@ -178,7 +178,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("gap option affects total size", () => {
+  it('gap option affects total size', () => {
     const container = createScrollContainer()
     const { result: noGap, unmount: unmount1 } = mountWith(() =>
       useVirtualizer(() => ({
@@ -206,7 +206,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("horizontal mode works", () => {
+  it('horizontal mode works', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -223,7 +223,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("padding affects total size", () => {
+  it('padding affects total size', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -241,7 +241,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("isScrolling starts as false", () => {
+  it('isScrolling starts as false', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -256,7 +256,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("enabled: false produces empty virtual items", () => {
+  it('enabled: false produces empty virtual items', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -273,7 +273,7 @@ describe("useVirtualizer", () => {
     container.remove()
   })
 
-  it("onChange callback updates signals when triggered", () => {
+  it('onChange callback updates signals when triggered', () => {
     const container = createScrollContainer()
     const onChangeSpy = vi.fn()
     const { result: virt, unmount } = mountWith(() =>
@@ -293,15 +293,15 @@ describe("useVirtualizer", () => {
     }
 
     expect(virt.virtualItems()).toBeDefined()
-    expect(typeof virt.totalSize()).toBe("number")
-    expect(typeof virt.isScrolling()).toBe("boolean")
+    expect(typeof virt.totalSize()).toBe('number')
+    expect(typeof virt.isScrolling()).toBe('boolean')
     // The user's onChange should have been forwarded
     expect(onChangeSpy).toHaveBeenCalled()
     unmount()
     container.remove()
   })
 
-  it("onChange callback works without user-provided onChange", () => {
+  it('onChange callback works without user-provided onChange', () => {
     const container = createScrollContainer()
     const { result: virt, unmount } = mountWith(() =>
       useVirtualizer(() => ({
@@ -326,27 +326,27 @@ describe("useVirtualizer", () => {
 
 // ─── useWindowVirtualizer ─────────────────────────────────────────────────────
 
-describe("useWindowVirtualizer", () => {
+describe('useWindowVirtualizer', () => {
   beforeEach(() => {
     // Ensure window has layout-like properties for happy-dom
-    Object.defineProperty(window, "innerHeight", {
+    Object.defineProperty(window, 'innerHeight', {
       value: 768,
       writable: true,
       configurable: true,
     })
-    Object.defineProperty(window, "innerWidth", {
+    Object.defineProperty(window, 'innerWidth', {
       value: 1024,
       writable: true,
       configurable: true,
     })
-    Object.defineProperty(window, "scrollY", {
+    Object.defineProperty(window, 'scrollY', {
       value: 0,
       writable: true,
       configurable: true,
     })
   })
 
-  it("creates an instance and returns virtualItems, totalSize, isScrolling signals", () => {
+  it('creates an instance and returns virtualItems, totalSize, isScrolling signals', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 1000,
@@ -357,12 +357,12 @@ describe("useWindowVirtualizer", () => {
     expect(virt.instance).toBeDefined()
     expect(virt.virtualItems()).toBeDefined()
     expect(Array.isArray(virt.virtualItems())).toBe(true)
-    expect(typeof virt.totalSize()).toBe("number")
+    expect(typeof virt.totalSize()).toBe('number')
     expect(virt.isScrolling()).toBe(false)
     unmount()
   })
 
-  it("returns correct total size", () => {
+  it('returns correct total size', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 100,
@@ -374,7 +374,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("reactive count — updates when count signal changes", () => {
+  it('reactive count — updates when count signal changes', () => {
     const count = signal(100)
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
@@ -390,7 +390,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("reactive estimateSize — updates total size after measure()", () => {
+  it('reactive estimateSize — updates total size after measure()', () => {
     const itemSize = signal(50)
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
@@ -407,7 +407,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("exposes instance methods (scrollToIndex, scrollToOffset, measureElement)", () => {
+  it('exposes instance methods (scrollToIndex, scrollToOffset, measureElement)', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 50,
@@ -415,13 +415,13 @@ describe("useWindowVirtualizer", () => {
       })),
     )
 
-    expect(typeof virt.instance.scrollToIndex).toBe("function")
-    expect(typeof virt.instance.scrollToOffset).toBe("function")
-    expect(typeof virt.instance.measureElement).toBe("function")
+    expect(typeof virt.instance.scrollToIndex).toBe('function')
+    expect(typeof virt.instance.scrollToOffset).toBe('function')
+    expect(typeof virt.instance.measureElement).toBe('function')
     unmount()
   })
 
-  it("virtual items have correct structure", () => {
+  it('virtual items have correct structure', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 1000,
@@ -432,16 +432,16 @@ describe("useWindowVirtualizer", () => {
     const items = virt.virtualItems()
     if (items.length > 0) {
       const item = items[0]!
-      expect(typeof item.index).toBe("number")
-      expect(typeof item.start).toBe("number")
-      expect(typeof item.end).toBe("number")
-      expect(typeof item.size).toBe("number")
+      expect(typeof item.index).toBe('number')
+      expect(typeof item.start).toBe('number')
+      expect(typeof item.end).toBe('number')
+      expect(typeof item.size).toBe('number')
       expect(typeof item.key).toBeDefined()
     }
     unmount()
   })
 
-  it("gap option affects total size", () => {
+  it('gap option affects total size', () => {
     const { result: noGap, unmount: unmount1 } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 10,
@@ -465,7 +465,7 @@ describe("useWindowVirtualizer", () => {
     unmount2()
   })
 
-  it("padding affects total size", () => {
+  it('padding affects total size', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 10,
@@ -480,7 +480,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("horizontal mode works", () => {
+  it('horizontal mode works', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 100,
@@ -494,7 +494,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("enabled: false produces empty virtual items", () => {
+  it('enabled: false produces empty virtual items', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 100,
@@ -508,7 +508,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("calls user-provided onChange callback", () => {
+  it('calls user-provided onChange callback', () => {
     const onChangeSpy = vi.fn()
     const count = signal(10)
     const { result: virt, unmount } = mountWith(() =>
@@ -527,7 +527,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("overscan controls extra items rendered", () => {
+  it('overscan controls extra items rendered', () => {
     const { result: small, unmount: unmount1 } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 1000,
@@ -549,7 +549,7 @@ describe("useWindowVirtualizer", () => {
     unmount2()
   })
 
-  it("onChange callback updates signals when triggered directly", () => {
+  it('onChange callback updates signals when triggered directly', () => {
     const onChangeSpy = vi.fn()
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
@@ -566,13 +566,13 @@ describe("useWindowVirtualizer", () => {
     }
 
     expect(virt.virtualItems()).toBeDefined()
-    expect(typeof virt.totalSize()).toBe("number")
-    expect(typeof virt.isScrolling()).toBe("boolean")
+    expect(typeof virt.totalSize()).toBe('number')
+    expect(typeof virt.isScrolling()).toBe('boolean')
     expect(onChangeSpy).toHaveBeenCalled()
     unmount()
   })
 
-  it("onChange works without user-provided onChange", () => {
+  it('onChange works without user-provided onChange', () => {
     const { result: virt, unmount } = mountWith(() =>
       useWindowVirtualizer(() => ({
         count: 100,
@@ -589,7 +589,7 @@ describe("useWindowVirtualizer", () => {
     unmount()
   })
 
-  it("handles missing document/window gracefully", () => {
+  it('handles missing document/window gracefully', () => {
     const origDoc = globalThis.document
     const origWin = globalThis.window
     try {

@@ -15,9 +15,9 @@ import { useStorage, useCookie, useSessionStorage, useIndexedDB } from '@pyreon/
 
 // localStorage — persistent, cross-tab synced
 const theme = useStorage('theme', 'light')
-theme()            // read reactively
-theme.set('dark')  // updates signal + localStorage
-theme.remove()     // remove from storage
+theme() // read reactively
+theme.set('dark') // updates signal + localStorage
+theme.remove() // remove from storage
 
 // Cookie — SSR-readable, configurable expiry
 const locale = useCookie('locale', 'en', { maxAge: 365 * 86400 })
@@ -47,13 +47,13 @@ const secret = useEncryptedStorage('api-key', '')
 
 ### Hooks
 
-| Hook | Backend | Description |
-| --- | --- | --- |
-| `useStorage(key, default, options?)` | localStorage | Persistent, cross-tab synced |
-| `useSessionStorage(key, default, options?)` | sessionStorage | Tab-scoped |
-| `useCookie(key, default, options?)` | document.cookie | SSR-readable, configurable expiry |
-| `useIndexedDB(key, default, options?)` | IndexedDB | Large data, debounced writes |
-| `useMemoryStorage(key, default)` | in-memory | SSR/testing |
+| Hook                                        | Backend         | Description                       |
+| ------------------------------------------- | --------------- | --------------------------------- |
+| `useStorage(key, default, options?)`        | localStorage    | Persistent, cross-tab synced      |
+| `useSessionStorage(key, default, options?)` | sessionStorage  | Tab-scoped                        |
+| `useCookie(key, default, options?)`         | document.cookie | SSR-readable, configurable expiry |
+| `useIndexedDB(key, default, options?)`      | IndexedDB       | Large data, debounced writes      |
+| `useMemoryStorage(key, default)`            | in-memory       | SSR/testing                       |
 
 All hooks return `StorageSignal<T>` — extends `Signal<T>` with `.remove()`.
 

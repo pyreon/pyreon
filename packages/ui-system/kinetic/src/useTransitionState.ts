@@ -1,6 +1,6 @@
-import { createRef } from "@pyreon/core"
-import { runUntracked, signal, watch } from "@pyreon/reactivity"
-import type { TransitionStage, TransitionStateResult } from "./types"
+import { createRef } from '@pyreon/core'
+import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import type { TransitionStage, TransitionStateResult } from './types'
 
 export type UseTransitionState = (options: {
   show: () => boolean
@@ -12,7 +12,7 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
   // When appear=true and show starts true, mount the element (stage='entered')
   // but defer the enter animation until the ref is connected.
   const needsAppear = appear && initialShow
-  const stage = signal<TransitionStage>(initialShow ? "entered" : "hidden")
+  const stage = signal<TransitionStage>(initialShow ? 'entered' : 'hidden')
   const elementRef = createRef<HTMLElement>()
   let isInitialMount = true
   let appearTriggered = false
@@ -22,7 +22,7 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
     elementRef.current = node
     if (node && needsAppear && !appearTriggered) {
       appearTriggered = true
-      stage.set("entering")
+      stage.set('entering')
     }
   }
 
@@ -36,10 +36,10 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
       }
 
       const currentStage = runUntracked(() => stage())
-      if (showVal && (currentStage === "hidden" || currentStage === "leaving")) {
-        stage.set("entering")
-      } else if (!showVal && (currentStage === "entered" || currentStage === "entering")) {
-        stage.set("leaving")
+      if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
+        stage.set('entering')
+      } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {
+        stage.set('leaving')
       }
     },
     { immediate: true },
@@ -47,14 +47,14 @@ const useTransitionState: UseTransitionState = ({ show, appear = false }) => {
 
   const complete = () => {
     const current = stage()
-    if (current === "entering") stage.set("entered")
-    if (current === "leaving") stage.set("hidden")
+    if (current === 'entering') stage.set('entered')
+    if (current === 'leaving') stage.set('hidden')
   }
 
   return {
     stage,
     ref: refCallback,
-    shouldMount: () => stage() !== "hidden",
+    shouldMount: () => stage() !== 'hidden',
     complete,
   }
 }

@@ -1,5 +1,5 @@
-import { useId } from "react"
-import Demo from "./Demo"
+import { useId } from 'react'
+import Demo from './Demo'
 
 export default function UseIdDemo() {
   const id1 = useId()

@@ -1,4 +1,4 @@
-import { ref } from "vue"
+import { ref } from 'vue'
 
 export default function Demo(props: { title: string; apis: string; code: string; children?: any }) {
   const showCode = ref(false)
@@ -15,7 +15,7 @@ export default function Demo(props: { title: string; apis: string; code: string;
               showCode.value = !showCode.value
             }}
           >
-            {showCode.value ? "Hide Code" : "Show Code"}
+            {showCode.value ? 'Hide Code' : 'Show Code'}
           </button>
         </div>
       </div>

@@ -1,10 +1,10 @@
-import { computed, signal } from "@pyreon/reactivity"
-import type { Patch } from "@pyreon/state-tree"
-import { applySnapshot, getSnapshot, model, onPatch } from "@pyreon/state-tree"
+import { computed, signal } from '@pyreon/reactivity'
+import type { Patch } from '@pyreon/state-tree'
+import { applySnapshot, getSnapshot, model, onPatch } from '@pyreon/state-tree'
 
 const TodoList = model({
   state: {
-    title: "My Todos",
+    title: 'My Todos',
     nextId: 1,
   },
   views: (self) => ({
@@ -17,9 +17,9 @@ const TodoList = model({
 })
 
 export function StateTreeDemo() {
-  const list = TodoList.create({ title: "Shopping List" })
+  const list = TodoList.create({ title: 'Shopping List' })
   const patches = signal<Patch[]>([])
-  const savedSnapshot = signal<string>("")
+  const savedSnapshot = signal<string>('')
 
   onPatch(list, (patch) => {
     patches.update((p) => [...p.slice(-9), patch])
@@ -45,7 +45,7 @@ export function StateTreeDemo() {
         <p>Next ID: {() => list.nextId()}</p>
         <div class="row" style="margin-top: 8px">
           <button onClick={() => list.bumpId()}>Bump ID</button>
-          <button onClick={() => list.setTitle("Shopping List")}>Reset Title</button>
+          <button onClick={() => list.setTitle('Shopping List')}>Reset Title</button>
         </div>
       </div>
 
@@ -85,10 +85,10 @@ export function StateTreeDemo() {
         <div class="log">
           {() =>
             patches().length === 0
-              ? "No patches yet."
+              ? 'No patches yet.'
               : patches()
                   .map((p) => JSON.stringify(p))
-                  .join("\n")
+                  .join('\n')
           }
         </div>
       </div>

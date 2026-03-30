@@ -1,7 +1,7 @@
-import type { Configuration } from "./configuration"
-import type { DefaultDimensions, Dimensions } from "./dimensions"
-import type { RocketStyleComponent } from "./rocketstyle"
-import type { ElementType, ExtractProps, TObj } from "./utils"
+import type { Configuration } from './configuration'
+import type { DefaultDimensions, Dimensions } from './dimensions'
+import type { RocketStyleComponent } from './rocketstyle'
+import type { ElementType, ExtractProps, TObj } from './utils'
 
 export type RocketComponent<
   C extends ElementType = ElementType,

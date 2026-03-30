@@ -1,19 +1,19 @@
-import type { SchemaValidateFn } from "@pyreon/form"
-import { useForm as _useForm } from "@pyreon/form"
-import type { QueryKey } from "@pyreon/query"
-import { useMutation as _useMutation, useQuery as _useQuery, useQueryClient } from "@pyreon/query"
-import { batch, signal } from "@pyreon/reactivity"
-import { defineStore } from "@pyreon/store"
-import type { ColumnDef, SortingState } from "@pyreon/table"
+import type { SchemaValidateFn } from '@pyreon/form'
+import { useForm as _useForm } from '@pyreon/form'
+import type { QueryKey } from '@pyreon/query'
+import { useMutation as _useMutation, useQuery as _useQuery, useQueryClient } from '@pyreon/query'
+import { batch, signal } from '@pyreon/reactivity'
+import { defineStore } from '@pyreon/store'
+import type { ColumnDef, SortingState } from '@pyreon/table'
 import {
   useTable as _useTable,
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
-} from "@pyreon/table"
-import { zodSchema } from "@pyreon/validation"
-import { defaultInitialValues, extractFields } from "./schema"
+} from '@pyreon/table'
+import { zodSchema } from '@pyreon/validation'
+import { defaultInitialValues, extractFields } from './schema'
 import type {
   Feature,
   FeatureConfig,
@@ -21,7 +21,7 @@ import type {
   FeatureStore,
   FeatureTableOptions,
   ListOptions,
-} from "./types"
+} from './types'
 
 // ─── Fetch wrapper ────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
     const res = await baseFetcher(url, init)
 
     if (!res.ok) {
-      let message = `${init?.method ?? "GET"} ${url} failed: ${res.status}`
+      let message = `${init?.method ?? 'GET'} ${url} failed: ${res.status}`
       try {
         const body = await res.json()
         if (body?.message) message = body.message
@@ -41,7 +41,7 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
           })
         }
       } catch (e) {
-        if (e instanceof Error && "errors" in e) throw e
+        if (e instanceof Error && 'errors' in e) throw e
       }
       throw Object.assign(new Error(message), { status: res.status })
     }
@@ -54,7 +54,7 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
     list<T>(url: string, params?: Record<string, string | number | boolean>): Promise<T[]> {
       const query = params
         ? `?${new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()}`
-        : ""
+        : ''
       return request<T[]>(`${url}${query}`)
     },
     getById<T>(url: string, id: string | number): Promise<T> {
@@ -62,20 +62,20 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
     },
     create<T>(url: string, data: unknown): Promise<T> {
       return request<T>(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
     update<T>(url: string, id: string | number, data: unknown): Promise<T> {
       return request<T>(`${url}/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
     delete(url: string, id: string | number): Promise<void> {
-      return request<void>(`${url}/${id}`, { method: "DELETE" })
+      return request<void>(`${url}/${id}`, { method: 'DELETE' })
     },
   }
 }
@@ -90,9 +90,9 @@ function createValidator<TValues extends Record<string, unknown>>(
 
   if (
     schema &&
-    typeof schema === "object" &&
-    "safeParseAsync" in schema &&
-    typeof (schema as Record<string, unknown>).safeParseAsync === "function"
+    typeof schema === 'object' &&
+    'safeParseAsync' in schema &&
+    typeof (schema as Record<string, unknown>).safeParseAsync === 'function'
   ) {
     return zodSchema(schema as Parameters<typeof zodSchema>[0]) as SchemaValidateFn<TValues>
   }
@@ -104,7 +104,7 @@ function createValidator<TValues extends Record<string, unknown>>(
 
 function resolvePageValue(page: number | (() => number) | undefined): number | undefined {
   if (page === undefined) return undefined
-  if (typeof page === "function") return page()
+  if (typeof page === 'function') return page()
   return page
 }
 
@@ -197,7 +197,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
           params.pageSize = pageSize
         }
 
-        const queryKeyParts: unknown[] = [...queryKeyBase, "list", params]
+        const queryKeyParts: unknown[] = [...queryKeyBase, 'list', params]
 
         return {
           queryKey: queryKeyParts as QueryKey,
@@ -219,7 +219,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
 
     useSearch(searchTerm, options?: ListOptions) {
       return _useQuery(() => ({
-        queryKey: [...queryKeyBase, "search", searchTerm()],
+        queryKey: [...queryKeyBase, 'search', searchTerm()],
         queryFn: () => http.list<TValues>(api, { ...options?.params, q: searchTerm() }),
         enabled: searchTerm().length > 0,
         ...(options?.staleTime != null ? { staleTime: options.staleTime } : {}),
@@ -249,7 +249,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
           await client.cancelQueries({ queryKey: [name, variables.id] })
           const previous = client.getQueryData([name, variables.id])
           client.setQueryData([name, variables.id], (old: unknown) => {
-            if (old && typeof old === "object") {
+            if (old && typeof old === 'object') {
               return { ...old, ...variables.data }
             }
             return variables.data
@@ -267,7 +267,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
           })
           client.invalidateQueries({ queryKey: [name, variables.id] })
         },
-      }) as ReturnType<Feature<TValues>["useUpdate"]>
+      }) as ReturnType<Feature<TValues>['useUpdate']>
     },
 
     useDelete() {
@@ -285,7 +285,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     // ─── Form ───────────────────────────────────────────────────────
 
     useForm(options?: FeatureFormOptions<TValues>) {
-      const mode = options?.mode ?? "create"
+      const mode = options?.mode ?? 'create'
       const mergedInitial = {
         ...initialValues,
         ...(options?.initialValues ?? {}),
@@ -294,11 +294,11 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       const form = _useForm<TValues>({
         initialValues: mergedInitial,
         ...(validate != null ? { schema: validate } : {}),
-        validateOn: options?.validateOn ?? "blur",
+        validateOn: options?.validateOn ?? 'blur',
         onSubmit: async (values) => {
           try {
             let result: unknown
-            if (mode === "edit" && options?.id !== undefined) {
+            if (mode === 'edit' && options?.id !== undefined) {
               result = await http.update<TValues>(api, options.id, values)
             } else {
               result = await http.create<TValues>(api, values)
@@ -312,7 +312,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       })
 
       // Auto-fetch in edit mode
-      if (mode === "edit" && options?.id !== undefined) {
+      if (mode === 'edit' && options?.id !== undefined) {
         form.isSubmitting.set(true)
         http.getById<TValues>(api, options.id).then(
           (data) => {
@@ -349,10 +349,10 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       }))
 
       const sorting = signal<SortingState>([])
-      const globalFilter = signal("")
+      const globalFilter = signal('')
 
       const table = _useTable(() => ({
-        data: typeof data === "function" ? data() : data,
+        data: typeof data === 'function' ? data() : data,
         columns,
         state: {
           sorting: sorting(),
@@ -360,14 +360,14 @@ export function defineFeature<TValues extends Record<string, unknown>>(
         },
         onSortingChange: (updater: unknown) => {
           sorting.set(
-            typeof updater === "function"
+            typeof updater === 'function'
               ? (updater as (prev: SortingState) => SortingState)(sorting())
               : (updater as SortingState),
           )
         },
         onGlobalFilterChange: (updater: unknown) => {
           globalFilter.set(
-            typeof updater === "function"
+            typeof updater === 'function'
               ? (updater as (prev: string) => string)(globalFilter())
               : (updater as string),
           )

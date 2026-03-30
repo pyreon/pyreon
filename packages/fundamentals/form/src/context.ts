@@ -1,6 +1,6 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import type { FormState } from "./types"
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
+import type { FormState } from './types'
 
 const FormContext = createContext<FormState<Record<string, unknown>> | null>(null)
 
@@ -27,7 +27,7 @@ export function FormProvider<TValues extends Record<string, unknown>>(
   provide(FormContext, props.form as FormState<Record<string, unknown>>)
 
   const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode
+  return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
 
 /**
@@ -45,7 +45,7 @@ export function useFormContext<
 >(): FormState<TValues> {
   const form = useContext(FormContext)
   if (!form) {
-    throw new Error("[@pyreon/form] useFormContext() must be used within a <FormProvider>.")
+    throw new Error('[@pyreon/form] useFormContext() must be used within a <FormProvider>.')
   }
   // Generic narrowing: context stores FormState<Record<string, unknown>>
   // but callers narrow to their specific TValues at the call site.

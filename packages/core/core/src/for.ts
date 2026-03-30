@@ -1,10 +1,10 @@
-import type { NativeItem, Props, VNode } from "./types"
+import type { NativeItem, Props, VNode } from './types'
 
 /**
  * Symbol used as the VNode type for a For list — runtime-dom handles it
  * via mountFor, bypassing the generic VNode reconciler.
  */
-export const ForSymbol: unique symbol = Symbol("pyreon.For")
+export const ForSymbol: unique symbol = Symbol('pyreon.For')
 
 export interface ForProps<T> {
   each: () => T[]

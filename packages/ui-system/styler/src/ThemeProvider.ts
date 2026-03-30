@@ -11,8 +11,8 @@
  *     }
  *   }
  */
-import type { VNode, VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
+import type { VNode, VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
 
 // biome-ignore lint/suspicious/noEmptyInterface: augmentable via module declaration merging
 export interface DefaultTheme {}

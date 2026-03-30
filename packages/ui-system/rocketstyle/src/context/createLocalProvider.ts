@@ -1,8 +1,8 @@
-import { provide } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { PseudoProps } from "../types/pseudo"
-import type { ComponentFn } from "../types/utils"
-import { localContext } from "./localContext"
+import { provide } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import type { PseudoProps } from '../types/pseudo'
+import type { ComponentFn } from '../types/utils'
+import { localContext } from './localContext'
 
 type Props = PseudoProps & Record<string, any>
 

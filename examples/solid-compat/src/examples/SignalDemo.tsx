@@ -1,5 +1,5 @@
-import { createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function SignalDemo() {
   const [count, setCount] = createSignal(0)

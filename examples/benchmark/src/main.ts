@@ -1,17 +1,17 @@
-import { runPreact } from "./impl/preact"
-import { runPyreon } from "./impl/pyreon"
-import { runPyreonTpl } from "./impl/pyreon-tpl"
-import { runReact } from "./impl/react"
-import { runSolid } from "./impl/solid"
-import { runVanilla } from "./impl/vanilla"
-import { runVue } from "./impl/vue"
-import type { BenchSuite } from "./runner"
+import { runPreact } from './impl/preact'
+import { runPyreon } from './impl/pyreon'
+import { runPyreonTpl } from './impl/pyreon-tpl'
+import { runReact } from './impl/react'
+import { runSolid } from './impl/solid'
+import { runVanilla } from './impl/vanilla'
+import { runVue } from './impl/vue'
+import type { BenchSuite } from './runner'
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
-const statusEl = document.getElementById("status") as HTMLElement
-const tableEl = document.getElementById("results") as HTMLElement
-const runBtn = document.getElementById("run") as HTMLButtonElement
+const statusEl = document.getElementById('status') as HTMLElement
+const tableEl = document.getElementById('results') as HTMLElement
+const runBtn = document.getElementById('run') as HTMLButtonElement
 
 function setStatus(msg: string) {
   statusEl.textContent = msg
@@ -23,13 +23,13 @@ function fmt(ms: number): string {
 
 function score(ms: number): string {
   // Lower is better. Colour code: green < 16ms, yellow < 100ms, red ≥ 100ms
-  const cls = ms < 16 ? "fast" : ms < 100 ? "ok" : "slow"
+  const cls = ms < 16 ? 'fast' : ms < 100 ? 'ok' : 'slow'
   return `<span class="${cls}">${fmt(ms)}</span>`
 }
 
 function ratioCell(mean: number, best: number): string {
   const ratio = mean / best
-  const cls = ratio < 1.5 ? "fast" : ratio < 3 ? "ok" : "slow"
+  const cls = ratio < 1.5 ? 'fast' : ratio < 3 ? 'ok' : 'slow'
   return `<td><span class="${cls}">${ratio.toFixed(2)}\u00d7</span></td>`
 }
 
@@ -37,9 +37,9 @@ function buildSlowdownRow(name: string, subset: BenchSuite[], best: number): str
   let row = `<tr><td class="test-name">${name}</td>`
   for (const suite of subset) {
     const r = suite.results.find((x) => x.name === name)
-    row += r ? ratioCell(r.mean, best) : "<td>\u2014</td>"
+    row += r ? ratioCell(r.mean, best) : '<td>\u2014</td>'
   }
-  row += "</tr>"
+  row += '</tr>'
   return row
 }
 
@@ -52,15 +52,15 @@ function bestMean(name: string, subset: BenchSuite[]): number {
 
 function buildSlowdownTable(label: string, subset: BenchSuite[], testNames: string[]): string {
   let t = `<p class="note">${label} (lower = better, 1.00\u00d7 = fastest)</p>`
-  t += "<table><thead><tr><th>Test</th>"
+  t += '<table><thead><tr><th>Test</th>'
   for (const s of subset) {
     t += `<th>${s.framework}</th>`
   }
-  t += "</tr></thead><tbody>"
+  t += '</tr></thead><tbody>'
   for (const name of testNames) {
     t += buildSlowdownRow(name, subset, bestMean(name, subset))
   }
-  t += "</tbody></table>"
+  t += '</tbody></table>'
   return t
 }
 
@@ -90,12 +90,12 @@ function buildTable(suites: BenchSuite[]) {
 
   // Slowdown ratio tables
   if (suites.length > 1) {
-    html += buildSlowdownTable("Slowdown vs best (all)", suites, testNames)
+    html += buildSlowdownTable('Slowdown vs best (all)', suites, testNames)
 
     // Framework-only comparison (excludes vanilla raw DOM baseline)
-    const frameworkOnly = suites.filter((s) => s.framework !== "Vanilla JS")
+    const frameworkOnly = suites.filter((s) => s.framework !== 'Vanilla JS')
     if (frameworkOnly.length > 1) {
-      html += buildSlowdownTable("Slowdown vs best framework", frameworkOnly, testNames)
+      html += buildSlowdownTable('Slowdown vs best framework', frameworkOnly, testNames)
     }
   }
 
@@ -105,8 +105,8 @@ function buildTable(suites: BenchSuite[]) {
 // ─── Isolated containers ──────────────────────────────────────────────────────
 
 function makeContainer(): HTMLElement {
-  const el = document.createElement("div")
-  el.style.cssText = "position:absolute;left:-9999px;top:0;width:800px;visibility:hidden"
+  const el = document.createElement('div')
+  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;visibility:hidden'
   document.body.appendChild(el)
   return el
 }
@@ -117,20 +117,20 @@ function removeContainer(el: HTMLElement) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-runBtn.addEventListener("click", async () => {
+runBtn.addEventListener('click', async () => {
   runBtn.disabled = true
-  tableEl.innerHTML = ""
+  tableEl.innerHTML = ''
 
   const suites: BenchSuite[] = []
 
   const frameworks = [
-    { name: "Vanilla JS", run: runVanilla },
-    { name: "Preact", run: runPreact },
-    { name: "React 19", run: runReact },
-    { name: "Vue 3", run: runVue },
-    { name: "SolidJS", run: runSolid },
-    { name: "Pyreon", run: runPyreon },
-    { name: "Pyreon (compiled)", run: runPyreonTpl },
+    { name: 'Vanilla JS', run: runVanilla },
+    { name: 'Preact', run: runPreact },
+    { name: 'React 19', run: runReact },
+    { name: 'Vue 3', run: runVue },
+    { name: 'SolidJS', run: runSolid },
+    { name: 'Pyreon', run: runPyreon },
+    { name: 'Pyreon (compiled)', run: runPyreonTpl },
   ]
 
   // Randomize execution order to avoid GC pressure bias
@@ -159,6 +159,6 @@ runBtn.addEventListener("click", async () => {
     buildTable(suites)
   }
 
-  setStatus("Done ✓")
+  setStatus('Done ✓')
   runBtn.disabled = false
 })

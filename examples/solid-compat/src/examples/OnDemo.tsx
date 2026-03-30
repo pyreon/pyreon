@@ -1,10 +1,10 @@
-import { createEffect, createSignal, on, untrack } from "solid-js"
-import Demo from "./Demo"
+import { createEffect, createSignal, on, untrack } from 'solid-js'
+import Demo from './Demo'
 
 export default function OnDemo() {
   const [a, setA] = createSignal(1)
   const [b, setB] = createSignal(10)
-  const [result, setResult] = createSignal("(click a++ to start)")
+  const [result, setResult] = createSignal('(click a++ to start)')
 
   createEffect(
     on(

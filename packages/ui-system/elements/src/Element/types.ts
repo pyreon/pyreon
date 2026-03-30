@@ -1,5 +1,5 @@
-import type { ComponentFn, PyreonHTMLAttributes } from "@pyreon/core"
-import type { HTMLTags } from "@pyreon/ui-core"
+import type { ComponentFn, PyreonHTMLAttributes } from '@pyreon/core'
+import type { HTMLTags } from '@pyreon/ui-core'
 import type {
   AlignX,
   AlignY,
@@ -10,7 +10,7 @@ import type {
   PyreonStatic,
   Responsive,
   ResponsiveBoolType,
-} from "../types"
+} from '../types'
 
 export type Props = Partial<{
   /**

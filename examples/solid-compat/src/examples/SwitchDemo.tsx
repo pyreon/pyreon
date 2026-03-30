@@ -1,8 +1,8 @@
-import { createSignal, Match, Switch } from "solid-js"
-import Demo from "./Demo"
+import { createSignal, Match, Switch } from 'solid-js'
+import Demo from './Demo'
 
 export default function SwitchDemo() {
-  const [tab, setTab] = createSignal<"home" | "about" | "contact">("home")
+  const [tab, setTab] = createSignal<'home' | 'about' | 'contact'>('home')
 
   return (
     <Demo
@@ -22,34 +22,34 @@ export default function SwitchDemo() {
       <div class="row">
         <button
           type="button"
-          class={tab() === "home" ? "selected" : ""}
-          onClick={() => setTab("home")}
+          class={tab() === 'home' ? 'selected' : ''}
+          onClick={() => setTab('home')}
         >
           Home
         </button>
         <button
           type="button"
-          class={tab() === "about" ? "selected" : ""}
-          onClick={() => setTab("about")}
+          class={tab() === 'about' ? 'selected' : ''}
+          onClick={() => setTab('about')}
         >
           About
         </button>
         <button
           type="button"
-          class={tab() === "contact" ? "selected" : ""}
-          onClick={() => setTab("contact")}
+          class={tab() === 'contact' ? 'selected' : ''}
+          onClick={() => setTab('contact')}
         >
           Contact
         </button>
       </div>
       <Switch>
-        <Match when={() => tab() === "home"}>
+        <Match when={() => tab() === 'home'}>
           <p>Welcome home!</p>
         </Match>
-        <Match when={() => tab() === "about"}>
+        <Match when={() => tab() === 'about'}>
           <p>Learn more about Pyreon.</p>
         </Match>
-        <Match when={() => tab() === "contact"}>
+        <Match when={() => tab() === 'contact'}>
           <p>Get in touch with us.</p>
         </Match>
       </Switch>

@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { mount } from "@pyreon/runtime-dom"
-import { QueryClient } from "@tanstack/query-core"
-import { QueryClientProvider, type UseSSEResult, useSSE } from "../index"
+import { signal } from '@pyreon/reactivity'
+import { mount } from '@pyreon/runtime-dom'
+import { QueryClient } from '@tanstack/query-core'
+import { QueryClientProvider, type UseSSEResult, useSSE } from '../index'
 
 // ─── Mock EventSource ───────────────────────────────────────────────────────
 
@@ -66,11 +66,11 @@ class MockEventSourceClass {
 
   _simulateOpen() {
     this.readyState = MockEventSourceClass.OPEN
-    this.onopen?.({ type: "open" })
+    this.onopen?.({ type: 'open' })
   }
 
-  _simulateMessage(data: string, lastEventId = "") {
-    this.onmessage?.({ type: "message", data, lastEventId } as unknown as MessageEvent)
+  _simulateMessage(data: string, lastEventId = '') {
+    this.onmessage?.({ type: 'message', data, lastEventId } as unknown as MessageEvent)
   }
 
   _simulateNamedEvent(name: string, data: string) {
@@ -84,7 +84,7 @@ class MockEventSourceClass {
     if (closed) {
       this.readyState = MockEventSourceClass.CLOSED
     }
-    this.onerror?.({ type: "error" })
+    this.onerror?.({ type: 'error' })
   }
 }
 
@@ -106,7 +106,7 @@ function makeClient() {
 }
 
 function withProvider(client: QueryClient, component: () => void): () => void {
-  const el = document.createElement("div")
+  const el = document.createElement('div')
   document.body.appendChild(el)
   const unmount = mount(
     <QueryClientProvider client={client}>
@@ -129,66 +129,66 @@ function lastMockES(): MockEventSource {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("useSSE", () => {
+describe('useSSE', () => {
   beforeEach(() => {
     mockInstances = []
   })
 
-  it("connects to the EventSource URL", () => {
+  it('connects to the EventSource URL', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     expect(mockInstances).toHaveLength(1)
-    expect(lastMockES().url).toBe("http://example.com/events")
-    expect(sse!.status()).toBe("connecting")
+    expect(lastMockES().url).toBe('http://example.com/events')
+    expect(sse!.status()).toBe('connecting')
 
     unmount()
   })
 
-  it("status transitions to connected on open", () => {
+  it('status transitions to connected on open', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
-    expect(sse!.status()).toBe("connected")
+    expect(sse!.status()).toBe('connected')
 
     unmount()
   })
 
-  it("updates data signal on message", () => {
+  it('updates data signal on message', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
-    lastMockES()._simulateMessage("hello")
+    lastMockES()._simulateMessage('hello')
 
-    expect(sse!.data()).toBe("hello")
+    expect(sse!.data()).toBe('hello')
 
-    lastMockES()._simulateMessage("world")
-    expect(sse!.data()).toBe("world")
+    lastMockES()._simulateMessage('world')
+    expect(sse!.data()).toBe('world')
 
     unmount()
   })
 
-  it("calls onMessage with parsed data and queryClient", () => {
+  it('calls onMessage with parsed data and queryClient', () => {
     const client = makeClient()
     const messages: string[] = []
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         onMessage: (data, qc) => {
           messages.push(data)
           expect(qc).toBe(client)
@@ -197,20 +197,20 @@ describe("useSSE", () => {
     })
 
     lastMockES()._simulateOpen()
-    lastMockES()._simulateMessage("hello")
-    lastMockES()._simulateMessage("world")
+    lastMockES()._simulateMessage('hello')
+    lastMockES()._simulateMessage('world')
 
-    expect(messages).toEqual(["hello", "world"])
+    expect(messages).toEqual(['hello', 'world'])
     unmount()
   })
 
-  it("parses messages with parse option", () => {
+  it('parses messages with parse option', () => {
     const client = makeClient()
     let sse: UseSSEResult<{ value: number }> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         parse: JSON.parse,
       })
     })
@@ -223,60 +223,60 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("invalidates queries on message", () => {
+  it('invalidates queries on message', () => {
     const client = makeClient()
-    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         onMessage: (_data, qc) => {
-          qc.invalidateQueries({ queryKey: ["orders"] })
+          qc.invalidateQueries({ queryKey: ['orders'] })
         },
       })
     })
 
     lastMockES()._simulateOpen()
-    lastMockES()._simulateMessage("order-updated")
+    lastMockES()._simulateMessage('order-updated')
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["orders"] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['orders'] })
     unmount()
   })
 
-  it("listens to named events", () => {
+  it('listens to named events', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
-        events: "order-update",
+        url: 'http://example.com/events',
+        events: 'order-update',
       })
     })
 
     lastMockES()._simulateOpen()
 
     // Named event listener should be attached
-    expect(lastMockES().addEventListener).toHaveBeenCalledWith("order-update", expect.any(Function))
+    expect(lastMockES().addEventListener).toHaveBeenCalledWith('order-update', expect.any(Function))
 
     // Generic onmessage should NOT be set
     expect(lastMockES().onmessage).toBeNull()
 
     // Simulate named event
-    lastMockES()._simulateNamedEvent("order-update", "data1")
-    expect(sse!.data()).toBe("data1")
+    lastMockES()._simulateNamedEvent('order-update', 'data1')
+    expect(sse!.data()).toBe('data1')
 
     unmount()
   })
 
-  it("listens to multiple named events", () => {
+  it('listens to multiple named events', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
-        events: ["order-update", "user-update"],
+        url: 'http://example.com/events',
+        events: ['order-update', 'user-update'],
       })
     })
 
@@ -284,57 +284,57 @@ describe("useSSE", () => {
 
     expect(lastMockES().addEventListener).toHaveBeenCalledTimes(2)
 
-    lastMockES()._simulateNamedEvent("order-update", "order1")
-    expect(sse!.data()).toBe("order1")
+    lastMockES()._simulateNamedEvent('order-update', 'order1')
+    expect(sse!.data()).toBe('order1')
 
-    lastMockES()._simulateNamedEvent("user-update", "user1")
-    expect(sse!.data()).toBe("user1")
+    lastMockES()._simulateNamedEvent('user-update', 'user1')
+    expect(sse!.data()).toBe('user1')
 
     unmount()
   })
 
-  it("close() disconnects and sets status", () => {
+  it('close() disconnects and sets status', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
     sse!.close()
 
-    expect(sse!.status()).toBe("disconnected")
+    expect(sse!.status()).toBe('disconnected')
     expect(lastMockES().close).toHaveBeenCalled()
     unmount()
   })
 
-  it("status transitions to error on error", () => {
+  it('status transitions to error on error', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
     const errors: Event[] = []
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
         onError: (e) => errors.push(e),
       })
     })
 
     lastMockES()._simulateError()
-    expect(sse!.status()).toBe("error")
+    expect(sse!.status()).toBe('error')
     expect(sse!.error()).not.toBeNull()
     expect(errors).toHaveLength(1)
     unmount()
   })
 
-  it("auto-reconnects when EventSource closes", async () => {
+  it('auto-reconnects when EventSource closes', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 50,
       })
@@ -353,12 +353,12 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("does not reconnect when reconnect is false", async () => {
+  it('does not reconnect when reconnect is false', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
       })
     })
@@ -371,13 +371,13 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("does not reconnect after intentional close()", async () => {
+  it('does not reconnect after intentional close()', async () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 50,
       })
@@ -391,12 +391,12 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("respects maxReconnectAttempts", async () => {
+  it('respects maxReconnectAttempts', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 10,
         maxReconnectAttempts: 2,
@@ -424,13 +424,13 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("reconnect() resets attempts and reconnects", () => {
+  it('reconnect() resets attempts and reconnects', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
       })
     })
@@ -442,34 +442,34 @@ describe("useSSE", () => {
 
     sse!.reconnect()
     expect(mockInstances).toHaveLength(2)
-    expect(sse!.status()).toBe("connecting")
+    expect(sse!.status()).toBe('connecting')
 
     unmount()
   })
 
-  it("enabled: false prevents connection", () => {
+  it('enabled: false prevents connection', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         enabled: false,
       })
     })
 
     expect(mockInstances).toHaveLength(0)
-    expect(sse!.status()).toBe("disconnected")
+    expect(sse!.status()).toBe('disconnected')
     unmount()
   })
 
-  it("reactive enabled signal controls connection", () => {
+  it('reactive enabled signal controls connection', () => {
     const client = makeClient()
     const enabled = signal(false)
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         enabled: () => enabled(),
       })
     })
@@ -483,31 +483,31 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("reactive URL reconnects when URL changes", () => {
+  it('reactive URL reconnects when URL changes', () => {
     const client = makeClient()
-    const url = signal("http://example.com/events1")
+    const url = signal('http://example.com/events1')
 
     const unmount = withProvider(client, () => {
       useSSE({ url: () => url() })
     })
 
     expect(mockInstances).toHaveLength(1)
-    expect(lastMockES().url).toBe("http://example.com/events1")
+    expect(lastMockES().url).toBe('http://example.com/events1')
 
-    url.set("http://example.com/events2")
+    url.set('http://example.com/events2')
 
     expect(mockInstances).toHaveLength(2)
-    expect(lastMockES().url).toBe("http://example.com/events2")
+    expect(lastMockES().url).toBe('http://example.com/events2')
 
     unmount()
   })
 
-  it("passes withCredentials to EventSource", () => {
+  it('passes withCredentials to EventSource', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         withCredentials: true,
       })
     })
@@ -516,22 +516,22 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("withCredentials defaults to false", () => {
+  it('withCredentials defaults to false', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
-      useSSE({ url: "http://example.com/events" })
+      useSSE({ url: 'http://example.com/events' })
     })
 
     expect(lastMockES().withCredentials).toBe(false)
     unmount()
   })
 
-  it("cleans up on unmount", () => {
+  it('cleans up on unmount', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
-      useSSE({ url: "http://example.com/events" })
+      useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
@@ -541,15 +541,15 @@ describe("useSSE", () => {
     expect(es.close).toHaveBeenCalled()
   })
 
-  it("message handler that throws does not crash the subscription", () => {
+  it('message handler that throws does not crash the subscription', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         onMessage: () => {
-          throw new Error("handler boom")
+          throw new Error('handler boom')
         },
       })
     })
@@ -557,20 +557,20 @@ describe("useSSE", () => {
     lastMockES()._simulateOpen()
 
     // Should not throw — the error is caught internally
-    expect(() => lastMockES()._simulateMessage("test")).not.toThrow()
+    expect(() => lastMockES()._simulateMessage('test')).not.toThrow()
 
     // Subscription should still be connected
-    expect(sse!.status()).toBe("connected")
+    expect(sse!.status()).toBe('connected')
 
     unmount()
   })
 
-  it("no reconnect attempts after unmount", async () => {
+  it('no reconnect attempts after unmount', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 20,
       })
@@ -584,25 +584,25 @@ describe("useSSE", () => {
     expect(mockInstances).toHaveLength(1)
   })
 
-  it("data() starts as null", () => {
+  it('data() starts as null', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     expect(sse!.data()).toBeNull()
     unmount()
   })
 
-  it("error() starts as null and is set on error", () => {
+  it('error() starts as null and is set on error', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
       })
     })
@@ -615,13 +615,13 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("error is cleared on successful open", () => {
+  it('error is cleared on successful open', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
       })
     })
@@ -634,90 +634,90 @@ describe("useSSE", () => {
     lastMockES()._simulateOpen()
 
     expect(sse!.error()).toBeNull()
-    expect(sse!.status()).toBe("connected")
+    expect(sse!.status()).toBe('connected')
 
     unmount()
   })
 
   // ── lastEventId ──────────────────────────────────────────────────────────
 
-  it("lastEventId starts as empty string", () => {
+  it('lastEventId starts as empty string', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
-    expect(sse!.lastEventId()).toBe("")
+    expect(sse!.lastEventId()).toBe('')
     unmount()
   })
 
-  it("lastEventId is updated from message events", () => {
+  it('lastEventId is updated from message events', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
-    lastMockES()._simulateMessage("hello", "evt-1")
+    lastMockES()._simulateMessage('hello', 'evt-1')
 
-    expect(sse!.lastEventId()).toBe("evt-1")
+    expect(sse!.lastEventId()).toBe('evt-1')
 
-    lastMockES()._simulateMessage("world", "evt-2")
-    expect(sse!.lastEventId()).toBe("evt-2")
+    lastMockES()._simulateMessage('world', 'evt-2')
+    expect(sse!.lastEventId()).toBe('evt-2')
 
     unmount()
   })
 
-  it("lastEventId is not updated when lastEventId is empty", () => {
+  it('lastEventId is not updated when lastEventId is empty', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
-    lastMockES()._simulateMessage("hello", "evt-1")
-    expect(sse!.lastEventId()).toBe("evt-1")
+    lastMockES()._simulateMessage('hello', 'evt-1')
+    expect(sse!.lastEventId()).toBe('evt-1')
 
     // Message with empty lastEventId should not overwrite
-    lastMockES()._simulateMessage("world", "")
-    expect(sse!.lastEventId()).toBe("evt-1")
+    lastMockES()._simulateMessage('world', '')
+    expect(sse!.lastEventId()).toBe('evt-1')
 
     unmount()
   })
 
   // ── onOpen callback ──────────────────────────────────────────────────────
 
-  it("calls onOpen when connection opens", () => {
+  it('calls onOpen when connection opens', () => {
     const client = makeClient()
     const openEvents: Event[] = []
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         onOpen: (event) => openEvents.push(event),
       })
     })
 
     lastMockES()._simulateOpen()
     expect(openEvents).toHaveLength(1)
-    expect(openEvents[0]!.type).toBe("open")
+    expect(openEvents[0]!.type).toBe('open')
 
     unmount()
   })
 
-  it("onOpen is called on each reconnection open", async () => {
+  it('onOpen is called on each reconnection open', async () => {
     const client = makeClient()
     const openEvents: Event[] = []
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 10,
         onOpen: (event) => openEvents.push(event),
@@ -739,24 +739,24 @@ describe("useSSE", () => {
 
   // ── readyState ───────────────────────────────────────────────────────────
 
-  it("readyState starts as CLOSED (2)", () => {
+  it('readyState starts as CLOSED (2)', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events", enabled: false })
+      sse = useSSE({ url: 'http://example.com/events', enabled: false })
     })
 
     expect(sse!.readyState()).toBe(2)
     unmount()
   })
 
-  it("readyState transitions to CONNECTING (0) then OPEN (1)", () => {
+  it('readyState transitions to CONNECTING (0) then OPEN (1)', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     // After connect() but before open, readyState should be CONNECTING
@@ -768,12 +768,12 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("readyState becomes CLOSED (2) after close()", () => {
+  it('readyState becomes CLOSED (2) after close()', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
-      sse = useSSE({ url: "http://example.com/events" })
+      sse = useSSE({ url: 'http://example.com/events' })
     })
 
     lastMockES()._simulateOpen()
@@ -785,13 +785,13 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("readyState reflects CLOSED on terminal error", () => {
+  it('readyState reflects CLOSED on terminal error', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: false,
       })
     })
@@ -803,12 +803,12 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("resets reconnect count on successful connection", async () => {
+  it('resets reconnect count on successful connection', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSSE({
-        url: "http://example.com/events",
+        url: 'http://example.com/events',
         reconnect: true,
         reconnectDelay: 10,
         maxReconnectAttempts: 2,
@@ -834,14 +834,14 @@ describe("useSSE", () => {
     unmount()
   })
 
-  it("removes named event listeners on close", () => {
+  it('removes named event listeners on close', () => {
     const client = makeClient()
     let sse: UseSSEResult<string> | null = null
 
     const unmount = withProvider(client, () => {
       sse = useSSE({
-        url: "http://example.com/events",
-        events: ["order-update", "user-update"],
+        url: 'http://example.com/events',
+        events: ['order-update', 'user-update'],
       })
     })
 
@@ -849,8 +849,8 @@ describe("useSSE", () => {
     lastMockES()._simulateOpen()
     sse!.close()
 
-    expect(es.removeEventListener).toHaveBeenCalledWith("order-update", expect.any(Function))
-    expect(es.removeEventListener).toHaveBeenCalledWith("user-update", expect.any(Function))
+    expect(es.removeEventListener).toHaveBeenCalledWith('order-update', expect.any(Function))
+    expect(es.removeEventListener).toHaveBeenCalledWith('user-update', expect.any(Function))
 
     unmount()
   })

@@ -1,17 +1,17 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
 const DocTable = rocketstyle({
   dimensions: {
-    variants: "variant",
+    variants: 'variant',
   },
   useBooleans: true,
-})({ name: "DocTable", component: Element })
+})({ name: 'DocTable', component: Element })
   .theme({
     fontSize: 14,
-    borderColor: "#dddddd",
+    borderColor: '#dddddd',
   })
-  .statics({ _documentType: "table" as const })
+  .statics({ _documentType: 'table' as const })
   .attrs<{
     columns?: unknown[]
     rows?: unknown[]
@@ -22,7 +22,7 @@ const DocTable = rocketstyle({
     tag: string
     _documentProps: Record<string, unknown>
   }>((props) => ({
-    tag: "table",
+    tag: 'table',
     _documentProps: {
       columns: props.columns ?? [],
       rows: props.rows ?? [],

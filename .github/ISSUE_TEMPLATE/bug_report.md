@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Report a bug in Pyreon
-title: ""
+title: ''
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 ## Description

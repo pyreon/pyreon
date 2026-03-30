@@ -20,8 +20,8 @@ export function parseCssDimension(
   rootSize = DEFAULT_ROOT_SIZE,
 ): number | undefined {
   if (value == null) return undefined
-  if (typeof value === "number") return value
-  if (typeof value !== "string") return undefined
+  if (typeof value === 'number') return value
+  if (typeof value !== 'string') return undefined
 
   const trimmed = value.trim()
 
@@ -58,7 +58,7 @@ export function parseBoxModel(
   rootSize = DEFAULT_ROOT_SIZE,
 ): BoxModelResult {
   if (value == null) return undefined
-  if (typeof value === "number") return value
+  if (typeof value === 'number') return value
 
   const parts = value
     .trim()
@@ -83,10 +83,10 @@ export function parseBoxModel(
  */
 export function parseFontWeight(
   value: string | number | undefined,
-): "normal" | "bold" | number | undefined {
+): 'normal' | 'bold' | number | undefined {
   if (value == null) return undefined
-  if (typeof value === "number") return value
-  if (value === "normal" || value === "bold") return value
+  if (typeof value === 'number') return value
+  if (value === 'normal' || value === 'bold') return value
   const num = Number.parseInt(value, 10)
   if (!Number.isNaN(num)) return num
   return undefined
@@ -100,8 +100,8 @@ export function parseLineHeight(
   rootSize = DEFAULT_ROOT_SIZE,
 ): number | undefined {
   if (value == null) return undefined
-  if (typeof value === "number") return value
-  if (value === "normal") return undefined
+  if (typeof value === 'number') return value
+  if (value === 'normal') return undefined
 
   const dim = parseCssDimension(value, rootSize)
   if (dim != null) return dim

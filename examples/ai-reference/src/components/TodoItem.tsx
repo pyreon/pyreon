@@ -7,8 +7,8 @@
  *   - Signal for local toggle state
  *   - Event handler as plain function
  */
-import { signal } from "@pyreon/reactivity"
-import { RouterLink } from "@pyreon/router"
+import { signal } from '@pyreon/reactivity'
+import { RouterLink } from '@pyreon/router'
 
 interface Todo {
   id: number
@@ -25,7 +25,7 @@ export const TodoItem = (props: { todo: Todo }) => {
   }
 
   return (
-    <li class={checked() ? "completed" : ""}>
+    <li class={checked() ? 'completed' : ''}>
       <input type="checkbox" checked={checked()} onInput={toggle} />
       <RouterLink to={`/todo/${props.todo.id}`}>{props.todo.title}</RouterLink>
     </li>

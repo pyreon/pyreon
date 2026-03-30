@@ -1,4 +1,4 @@
-import { onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount } from '@pyreon/core'
 
 /**
  * Observes an element and calls `onIntersect` once it enters the viewport.
@@ -11,7 +11,7 @@ import { onMount, onUnmount } from "@pyreon/core"
 export function useIntersectionObserver(
   getElement: () => HTMLElement | undefined,
   onIntersect: () => void,
-  rootMargin = "200px",
+  rootMargin = '200px',
 ) {
   onMount(() => {
     const el = getElement()

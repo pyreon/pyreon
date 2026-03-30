@@ -1,77 +1,77 @@
-import { describe, expect, it } from "vitest"
-import * as unistyle from "../index"
+import { describe, expect, it } from 'vitest'
+import * as unistyle from '../index'
 
-describe("index exports", () => {
-  it("exports breakpoints", () => {
+describe('index exports', () => {
+  it('exports breakpoints', () => {
     expect(unistyle.breakpoints).toBeDefined()
-    expect(typeof unistyle.breakpoints).toBe("object")
+    expect(typeof unistyle.breakpoints).toBe('object')
   })
 
-  it("exports sortBreakpoints", () => {
+  it('exports sortBreakpoints', () => {
     expect(unistyle.sortBreakpoints).toBeDefined()
-    expect(typeof unistyle.sortBreakpoints).toBe("function")
+    expect(typeof unistyle.sortBreakpoints).toBe('function')
   })
 
-  it("exports createMediaQueries", () => {
+  it('exports createMediaQueries', () => {
     expect(unistyle.createMediaQueries).toBeDefined()
-    expect(typeof unistyle.createMediaQueries).toBe("function")
+    expect(typeof unistyle.createMediaQueries).toBe('function')
   })
 
-  it("exports makeItResponsive", () => {
+  it('exports makeItResponsive', () => {
     expect(unistyle.makeItResponsive).toBeDefined()
-    expect(typeof unistyle.makeItResponsive).toBe("function")
+    expect(typeof unistyle.makeItResponsive).toBe('function')
   })
 
-  it("exports normalizeTheme", () => {
+  it('exports normalizeTheme', () => {
     expect(unistyle.normalizeTheme).toBeDefined()
-    expect(typeof unistyle.normalizeTheme).toBe("function")
+    expect(typeof unistyle.normalizeTheme).toBe('function')
   })
 
-  it("exports transformTheme", () => {
+  it('exports transformTheme', () => {
     expect(unistyle.transformTheme).toBeDefined()
-    expect(typeof unistyle.transformTheme).toBe("function")
+    expect(typeof unistyle.transformTheme).toBe('function')
   })
 
-  it("exports styles", () => {
+  it('exports styles', () => {
     expect(unistyle.styles).toBeDefined()
-    expect(typeof unistyle.styles).toBe("function")
+    expect(typeof unistyle.styles).toBe('function')
   })
 
-  it("exports alignContent", () => {
+  it('exports alignContent', () => {
     expect(unistyle.alignContent).toBeDefined()
-    expect(typeof unistyle.alignContent).toBe("function")
+    expect(typeof unistyle.alignContent).toBe('function')
   })
 
-  it("exports extendCss", () => {
+  it('exports extendCss', () => {
     expect(unistyle.extendCss).toBeDefined()
-    expect(typeof unistyle.extendCss).toBe("function")
+    expect(typeof unistyle.extendCss).toBe('function')
   })
 
-  it("exports stripUnit", () => {
+  it('exports stripUnit', () => {
     expect(unistyle.stripUnit).toBeDefined()
-    expect(typeof unistyle.stripUnit).toBe("function")
+    expect(typeof unistyle.stripUnit).toBe('function')
   })
 
-  it("exports value", () => {
+  it('exports value', () => {
     expect(unistyle.value).toBeDefined()
-    expect(typeof unistyle.value).toBe("function")
+    expect(typeof unistyle.value).toBe('function')
   })
 
-  it("exports values", () => {
+  it('exports values', () => {
     expect(unistyle.values).toBeDefined()
-    expect(typeof unistyle.values).toBe("function")
+    expect(typeof unistyle.values).toBe('function')
   })
 
-  it("exports Provider", () => {
+  it('exports Provider', () => {
     expect(unistyle.Provider).toBeDefined()
-    expect(typeof unistyle.Provider).toBe("function")
+    expect(typeof unistyle.Provider).toBe('function')
   })
 
-  it("exports context", () => {
+  it('exports context', () => {
     expect(unistyle.context).toBeDefined()
   })
 
-  it("exports align content constants", () => {
+  it('exports align content constants', () => {
     expect(unistyle.ALIGN_CONTENT_DIRECTION).toBeDefined()
     expect(unistyle.ALIGN_CONTENT_MAP_X).toBeDefined()
     expect(unistyle.ALIGN_CONTENT_MAP_Y).toBeDefined()

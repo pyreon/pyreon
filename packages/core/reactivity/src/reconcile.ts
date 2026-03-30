@@ -19,7 +19,7 @@
  * diffed rather than replaced wholesale. Excess old elements are removed.
  */
 
-import { isStore } from "./store"
+import { isStore } from './store'
 
 type AnyObject = Record<PropertyKey, unknown>
 
@@ -49,9 +49,9 @@ function _reconcileArray(source: unknown[], target: unknown[], seen: WeakSet<obj
     if (
       i < targetLen &&
       sv !== null &&
-      typeof sv === "object" &&
+      typeof sv === 'object' &&
       tv !== null &&
-      typeof tv === "object"
+      typeof tv === 'object'
     ) {
       // Both sides are objects — recurse
       _reconcileInner(sv as object, tv as object, seen)
@@ -75,7 +75,7 @@ function _reconcileObject(source: AnyObject, target: AnyObject, seen: WeakSet<ob
     const sv = source[key]
     const tv = target[key]
 
-    if (sv !== null && typeof sv === "object" && tv !== null && typeof tv === "object") {
+    if (sv !== null && typeof sv === 'object' && tv !== null && typeof tv === 'object') {
       if (isStore(tv)) {
         // Both objects — recurse into the store node
         _reconcileInner(sv as object, tv as object, seen)

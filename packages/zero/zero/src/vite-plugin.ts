@@ -1,17 +1,17 @@
-import type { Plugin } from "vite"
-import { generateApiRouteModule } from "./api-routes"
-import { resolveConfig } from "./config"
-import { renderErrorOverlay } from "./error-overlay"
-import { generateMiddlewareModule, generateRouteModule, scanRouteFiles } from "./fs-router"
-import type { ZeroConfig } from "./types"
+import type { Plugin } from 'vite'
+import { generateApiRouteModule } from './api-routes'
+import { resolveConfig } from './config'
+import { renderErrorOverlay } from './error-overlay'
+import { generateMiddlewareModule, generateRouteModule, scanRouteFiles } from './fs-router'
+import type { ZeroConfig } from './types'
 
-const VIRTUAL_ROUTES_ID = "virtual:zero/routes"
+const VIRTUAL_ROUTES_ID = 'virtual:zero/routes'
 const RESOLVED_VIRTUAL_ROUTES_ID = `\0${VIRTUAL_ROUTES_ID}`
 
-const VIRTUAL_MIDDLEWARE_ID = "virtual:zero/route-middleware"
+const VIRTUAL_MIDDLEWARE_ID = 'virtual:zero/route-middleware'
 const RESOLVED_VIRTUAL_MIDDLEWARE_ID = `\0${VIRTUAL_MIDDLEWARE_ID}`
 
-const VIRTUAL_API_ROUTES_ID = "virtual:zero/api-routes"
+const VIRTUAL_API_ROUTES_ID = 'virtual:zero/api-routes'
 const RESOLVED_VIRTUAL_API_ROUTES_ID = `\0${VIRTUAL_API_ROUTES_ID}`
 
 /**
@@ -33,8 +33,8 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
   let root: string
 
   const plugin: Plugin & { _zeroConfig: ZeroConfig } = {
-    name: "pyreon-zero",
-    enforce: "pre",
+    name: 'pyreon-zero',
+    enforce: 'pre',
     _zeroConfig: userConfig,
 
     configResolved(resolvedConfig) {
@@ -82,8 +82,8 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
       // This runs as a late middleware (return function) so it wraps
       // Vite's own SSR handling and catches rendering failures.
       server.middlewares.use((req, res, next) => {
-        const accept = req.headers.accept ?? ""
-        if (!accept.includes("text/html")) return next()
+        const accept = req.headers.accept ?? ''
+        if (!accept.includes('text/html')) return next()
 
         // Monkey-patch res.end to catch errors from SSR rendering
         const originalEnd = res.end.bind(res)
@@ -96,12 +96,12 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
           server.ssrFixStacktrace(error)
           const html = renderErrorOverlay(error)
           res.statusCode = 500
-          res.setHeader("Content-Type", "text/html; charset=utf-8")
-          res.setHeader("Content-Length", Buffer.byteLength(html))
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.setHeader('Content-Length', Buffer.byteLength(html))
           originalEnd(html)
         }
 
-        res.on("error", handleError)
+        res.on('error', handleError)
 
         // Wrap next() in try/catch to handle synchronous errors
         try {
@@ -115,8 +115,8 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
       server.watcher.add(`${routesDir}/**/*.{tsx,jsx,ts,js}`)
 
       // Invalidate virtual modules when route files change
-      server.watcher.on("all", (event, path) => {
-        if (path.startsWith(routesDir) && (event === "add" || event === "unlink")) {
+      server.watcher.on('all', (event, path) => {
+        if (path.startsWith(routesDir) && (event === 'add' || event === 'unlink')) {
           for (const resolvedId of [
             RESOLVED_VIRTUAL_ROUTES_ID,
             RESOLVED_VIRTUAL_MIDDLEWARE_ID,
@@ -125,7 +125,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
             const mod = server.moduleGraph.getModuleById(resolvedId)
             if (mod) server.moduleGraph.invalidateModule(mod)
           }
-          server.ws.send({ type: "full-reload" })
+          server.ws.send({ type: 'full-reload' })
         }
       })
     },
@@ -133,7 +133,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
     config() {
       return {
         resolve: {
-          conditions: ["bun"],
+          conditions: ['bun'],
         },
         server: {
           port: config.port,

@@ -1,18 +1,18 @@
-import type { VNode } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import Collapse from "../Collapse"
-import CollapseRenderer from "../kinetic/CollapseRenderer"
-import type { KineticConfig } from "../kinetic/types"
+import type { VNode } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import Collapse from '../Collapse'
+import CollapseRenderer from '../kinetic/CollapseRenderer'
+import type { KineticConfig } from '../kinetic/types'
 
 let _reducedMotion = false
 
-vi.mock("../useReducedMotion", () => ({
+vi.mock('../useReducedMotion', () => ({
   useReducedMotion: () => () => _reducedMotion,
 }))
 
 // Mock scrollHeight
 const mockScrollHeight = (value: number) => {
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
     configurable: true,
     get() {
       return value
@@ -21,8 +21,8 @@ const mockScrollHeight = (value: number) => {
 }
 
 const fireTransitionEnd = (el: HTMLElement) => {
-  const event = new Event("transitionend", { bubbles: true })
-  Object.defineProperty(event, "target", { value: el })
+  const event = new Event('transitionend', { bubbles: true })
+  Object.defineProperty(event, 'target', { value: el })
   el.dispatchEvent(event)
 }
 
@@ -33,11 +33,11 @@ const fireTransitionEnd = (el: HTMLElement) => {
  */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 const setupCollapse = (props: Record<string, unknown>) => {
-  const wrapperEl = document.createElement("div")
-  const contentEl = document.createElement("div")
+  const wrapperEl = document.createElement('div')
+  const contentEl = document.createElement('div')
 
   // Mock offsetHeight for reflow forcing
-  Object.defineProperty(wrapperEl, "offsetHeight", {
+  Object.defineProperty(wrapperEl, 'offsetHeight', {
     configurable: true,
     get() {
       return 0
@@ -51,9 +51,9 @@ const setupCollapse = (props: Record<string, unknown>) => {
   if (vnode?.props) {
     const vnodeProps = vnode.props as Record<string, unknown>
     // wrapperRef is on the outer div
-    if (typeof vnodeProps.ref === "function") {
+    if (typeof vnodeProps.ref === 'function') {
       ;(vnodeProps.ref as (el: HTMLElement | null) => void)(wrapperEl)
-    } else if (vnodeProps.ref && typeof vnodeProps.ref === "object") {
+    } else if (vnodeProps.ref && typeof vnodeProps.ref === 'object') {
       ;(vnodeProps.ref as { current: HTMLElement | null }).current = wrapperEl
     }
   }
@@ -62,18 +62,18 @@ const setupCollapse = (props: Record<string, unknown>) => {
   if (vnode?.children) {
     const children = Array.isArray(vnode.children) ? vnode.children : [vnode.children]
     for (const child of children) {
-      if (child && typeof child === "object" && "type" in (child as object)) {
+      if (child && typeof child === 'object' && 'type' in (child as object)) {
         const showNode = child as any
         // Show's children contain <div ref={contentRef}>
         const showChildren = showNode.props?.children ?? showNode.children
         if (showChildren) {
           const sc = Array.isArray(showChildren) ? showChildren : [showChildren]
           for (const s of sc) {
-            if (s && typeof s === "object" && "props" in s) {
+            if (s && typeof s === 'object' && 'props' in s) {
               const ref = s.props?.ref
-              if (ref && typeof ref === "object") {
+              if (ref && typeof ref === 'object') {
                 ref.current = contentEl
-              } else if (typeof ref === "function") {
+              } else if (typeof ref === 'function') {
                 ref(contentEl)
               }
             }
@@ -86,7 +86,7 @@ const setupCollapse = (props: Record<string, unknown>) => {
   return { vnode, wrapperEl, contentEl }
 }
 
-describe("Collapse", () => {
+describe('Collapse', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockScrollHeight(200)
@@ -94,35 +94,35 @@ describe("Collapse", () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it("returns a VNode", () => {
+  it('returns a VNode', () => {
     const show = signal(true)
-    const child = { type: "div", props: {}, children: ["Hello"], key: undefined }
+    const child = { type: 'div', props: {}, children: ['Hello'], key: undefined }
     const vnode = Collapse({ show, children: child } as any)
     expect(vnode).not.toBeNull()
   })
 
-  it("fires onEnter callback when entering", () => {
+  it('fires onEnter callback when entering', () => {
     const show = signal(false)
     const onEnter = vi.fn()
 
     setupCollapse({
       show,
       onEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("fires onAfterEnter after transitionend", () => {
+  it('fires onAfterEnter after transitionend', () => {
     const show = signal(false)
     const onAfterEnter = vi.fn()
 
     const { wrapperEl } = setupCollapse({
       show,
       onAfterEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
@@ -132,28 +132,28 @@ describe("Collapse", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("fires onLeave callback when leaving", () => {
+  it('fires onLeave callback when leaving', () => {
     const show = signal(true)
     const onLeave = vi.fn()
 
     setupCollapse({
       show,
       onLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
     expect(onLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("fires onAfterLeave after transitionend", () => {
+  it('fires onAfterLeave after transitionend', () => {
     const show = signal(true)
     const onAfterLeave = vi.fn()
 
     const { wrapperEl } = setupCollapse({
       show,
       onAfterLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
@@ -163,65 +163,65 @@ describe("Collapse", () => {
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("animates height from 0 to scrollHeight on enter", () => {
+  it('animates height from 0 to scrollHeight on enter', () => {
     const show = signal(false)
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
 
-    expect(wrapperEl.style.height).toBe("200px")
-    expect(wrapperEl.style.transition).toBe("height 300ms ease")
+    expect(wrapperEl.style.height).toBe('200px')
+    expect(wrapperEl.style.transition).toBe('height 300ms ease')
   })
 
-  it("switches to height:auto after enter animation completes", () => {
+  it('switches to height:auto after enter animation completes', () => {
     const show = signal(false)
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
     fireTransitionEnd(wrapperEl)
 
-    expect(wrapperEl.style.height).toBe("auto")
-    expect(wrapperEl.style.overflow).toBe("")
-    expect(wrapperEl.style.transition).toBe("")
+    expect(wrapperEl.style.height).toBe('auto')
+    expect(wrapperEl.style.overflow).toBe('')
+    expect(wrapperEl.style.transition).toBe('')
   })
 
-  it("animates height to 0 on leave", () => {
+  it('animates height to 0 on leave', () => {
     const show = signal(true)
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
 
-    expect(wrapperEl.style.height).toBe("0px")
-    expect(wrapperEl.style.overflow).toBe("hidden")
+    expect(wrapperEl.style.height).toBe('0px')
+    expect(wrapperEl.style.overflow).toBe('hidden')
   })
 
-  it("uses custom transition property", () => {
+  it('uses custom transition property', () => {
     const show = signal(false)
 
     const { wrapperEl } = setupCollapse({
       show,
-      transition: "height 500ms ease-in-out",
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      transition: 'height 500ms ease-in-out',
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
 
-    expect(wrapperEl.style.transition).toBe("height 500ms ease-in-out")
+    expect(wrapperEl.style.transition).toBe('height 500ms ease-in-out')
   })
 
-  it("appear=true animates on initial mount", async () => {
+  it('appear=true animates on initial mount', async () => {
     const show = signal(true)
     const onEnter = vi.fn()
 
@@ -229,17 +229,17 @@ describe("Collapse", () => {
       show,
       appear: true,
       onEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     // appear defers via queueMicrotask so all refs are wired first
     await Promise.resolve()
 
     expect(onEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("200px")
+    expect(wrapperEl.style.height).toBe('200px')
   })
 
-  it("custom timeout completes leave when transitionend does not fire", () => {
+  it('custom timeout completes leave when transitionend does not fire', () => {
     const show = signal(true)
     const onAfterLeave = vi.fn()
 
@@ -247,7 +247,7 @@ describe("Collapse", () => {
       show,
       timeout: 800,
       onAfterLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
@@ -258,7 +258,7 @@ describe("Collapse", () => {
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("interrupts leave and starts entering when toggled back to show", () => {
+  it('interrupts leave and starts entering when toggled back to show', () => {
     const show = signal(true)
     const onEnter = vi.fn()
     const onLeave = vi.fn()
@@ -267,7 +267,7 @@ describe("Collapse", () => {
       show,
       onEnter,
       onLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     // Start leaving
@@ -277,10 +277,10 @@ describe("Collapse", () => {
     // Toggle back
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("200px")
+    expect(wrapperEl.style.height).toBe('200px')
   })
 
-  it("interrupts entering and starts leaving when toggled back to hide", () => {
+  it('interrupts entering and starts leaving when toggled back to hide', () => {
     const show = signal(false)
     const onEnter = vi.fn()
     const onLeave = vi.fn()
@@ -289,7 +289,7 @@ describe("Collapse", () => {
       show,
       onEnter,
       onLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     // Start entering
@@ -301,14 +301,14 @@ describe("Collapse", () => {
     expect(onLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("does not re-trigger entering if already entered", () => {
+  it('does not re-trigger entering if already entered', () => {
     const show = signal(false)
     const onEnter = vi.fn()
 
     const { wrapperEl } = setupCollapse({
       show,
       onEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
@@ -323,14 +323,14 @@ describe("Collapse", () => {
     expect(onEnter).toHaveBeenCalledTimes(2)
   })
 
-  it("does not re-trigger leaving if already hidden", () => {
+  it('does not re-trigger leaving if already hidden', () => {
     const show = signal(true)
     const onLeave = vi.fn()
 
     const { wrapperEl } = setupCollapse({
       show,
       onLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
@@ -343,7 +343,7 @@ describe("Collapse", () => {
     expect(onLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("appear=true fires onAfterEnter after transitionend", async () => {
+  it('appear=true fires onAfterEnter after transitionend', async () => {
     const show = signal(true)
     const onAfterEnter = vi.fn()
 
@@ -351,7 +351,7 @@ describe("Collapse", () => {
       show,
       appear: true,
       onAfterEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     await Promise.resolve()
@@ -361,28 +361,28 @@ describe("Collapse", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("leave transition sets height to scrollHeight first then to 0", () => {
+  it('leave transition sets height to scrollHeight first then to 0', () => {
     const show = signal(true)
 
     const { wrapperEl } = setupCollapse({
       show,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
 
     // After leaving, height should be 0
-    expect(wrapperEl.style.height).toBe("0px")
-    expect(wrapperEl.style.overflow).toBe("hidden")
-    expect(wrapperEl.style.transition).toBe("height 300ms ease")
+    expect(wrapperEl.style.height).toBe('0px')
+    expect(wrapperEl.style.overflow).toBe('hidden')
+    expect(wrapperEl.style.transition).toBe('height 300ms ease')
   })
 })
 
 // ─── CollapseRenderer (kinetic mode) ──────────────────────
 
 const makeCollapseConfig = (overrides: Partial<KineticConfig> = {}): KineticConfig => ({
-  tag: "div",
-  mode: "collapse",
+  tag: 'div',
+  mode: 'collapse',
   ...overrides,
 })
 
@@ -390,9 +390,9 @@ const makeCollapseConfig = (overrides: Partial<KineticConfig> = {}): KineticConf
 const wireWrapperRef = (vnode: VNode | null, el: HTMLElement) => {
   if (!vnode?.props) return
   const vnodeProps = vnode.props as Record<string, unknown>
-  if (typeof vnodeProps.ref === "function") {
+  if (typeof vnodeProps.ref === 'function') {
     ;(vnodeProps.ref as (el: HTMLElement | null) => void)(el)
-  } else if (vnodeProps.ref && typeof vnodeProps.ref === "object") {
+  } else if (vnodeProps.ref && typeof vnodeProps.ref === 'object') {
     ;(vnodeProps.ref as { current: HTMLElement | null }).current = el
   }
 }
@@ -402,17 +402,17 @@ const wireContentRef = (vnode: VNode | null, contentEl: HTMLElement) => {
   if (!vnode?.children) return
   const vnodeChildren = Array.isArray(vnode.children) ? vnode.children : [vnode.children]
   for (const c of vnodeChildren) {
-    if (!c || typeof c !== "object" || !("type" in (c as object))) continue
+    if (!c || typeof c !== 'object' || !('type' in (c as object))) continue
     const showNode = c as any
     const showChildren = showNode.props?.children ?? showNode.children
     if (!showChildren) continue
     const sc = Array.isArray(showChildren) ? showChildren : [showChildren]
     for (const s of sc) {
-      if (!s || typeof s !== "object" || !("props" in s)) continue
+      if (!s || typeof s !== 'object' || !('props' in s)) continue
       const ref = s.props?.ref
-      if (ref && typeof ref === "object") {
+      if (ref && typeof ref === 'object') {
         ref.current = contentEl
-      } else if (typeof ref === "function") {
+      } else if (typeof ref === 'function') {
         ref(contentEl)
       }
     }
@@ -433,10 +433,10 @@ const setupCollapseRenderer = (props: {
   callbacks?: Record<string, unknown>
   children?: VNode | VNode[]
 }) => {
-  const wrapperEl = document.createElement("div")
-  const contentEl = document.createElement("div")
+  const wrapperEl = document.createElement('div')
+  const contentEl = document.createElement('div')
 
-  Object.defineProperty(wrapperEl, "offsetHeight", {
+  Object.defineProperty(wrapperEl, 'offsetHeight', {
     configurable: true,
     get() {
       return 0
@@ -444,7 +444,7 @@ const setupCollapseRenderer = (props: {
   })
 
   const config = props.config ?? makeCollapseConfig()
-  const child: VNode = { type: "p", props: {}, children: ["Content"], key: null }
+  const child: VNode = { type: 'p', props: {}, children: ['Content'], key: null }
 
   const vnode = CollapseRenderer({
     config,
@@ -463,7 +463,7 @@ const setupCollapseRenderer = (props: {
   return { vnode, wrapperEl, contentEl }
 }
 
-describe("CollapseRenderer", () => {
+describe('CollapseRenderer', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockScrollHeight(200)
@@ -471,10 +471,10 @@ describe("CollapseRenderer", () => {
 
   afterEach(() => vi.useRealTimers())
 
-  it("returns a VNode with the config.tag", () => {
+  it('returns a VNode with the config.tag', () => {
     const show = signal(true)
-    const config = makeCollapseConfig({ tag: "section" })
-    const child: VNode = { type: "p", props: {}, children: ["Content"], key: null }
+    const config = makeCollapseConfig({ tag: 'section' })
+    const child: VNode = { type: 'p', props: {}, children: ['Content'], key: null }
 
     const vnode = CollapseRenderer({
       config,
@@ -485,10 +485,10 @@ describe("CollapseRenderer", () => {
     })
 
     expect(vnode).not.toBeNull()
-    expect(vnode?.type).toBe("section")
+    expect(vnode?.type).toBe('section')
   })
 
-  it("fires onEnter and animates height on entering", () => {
+  it('fires onEnter and animates height on entering', () => {
     const show = signal(false)
     const onEnter = vi.fn()
 
@@ -499,11 +499,11 @@ describe("CollapseRenderer", () => {
 
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("200px")
-    expect(wrapperEl.style.transition).toBe("height 300ms ease")
+    expect(wrapperEl.style.height).toBe('200px')
+    expect(wrapperEl.style.transition).toBe('height 300ms ease')
   })
 
-  it("fires onLeave and animates height to 0 on leaving", () => {
+  it('fires onLeave and animates height to 0 on leaving', () => {
     const show = signal(true)
     const onLeave = vi.fn()
 
@@ -514,11 +514,11 @@ describe("CollapseRenderer", () => {
 
     show.set(false)
     expect(onLeave).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("0px")
-    expect(wrapperEl.style.overflow).toBe("hidden")
+    expect(wrapperEl.style.height).toBe('0px')
+    expect(wrapperEl.style.overflow).toBe('hidden')
   })
 
-  it("fires onAfterEnter and sets height:auto after transitionend", () => {
+  it('fires onAfterEnter and sets height:auto after transitionend', () => {
     const show = signal(false)
     const onAfterEnter = vi.fn()
 
@@ -531,12 +531,12 @@ describe("CollapseRenderer", () => {
     fireTransitionEnd(wrapperEl)
 
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("auto")
-    expect(wrapperEl.style.overflow).toBe("")
-    expect(wrapperEl.style.transition).toBe("")
+    expect(wrapperEl.style.height).toBe('auto')
+    expect(wrapperEl.style.overflow).toBe('')
+    expect(wrapperEl.style.transition).toBe('')
   })
 
-  it("fires onAfterLeave after leave transitionend", () => {
+  it('fires onAfterLeave after leave transitionend', () => {
     const show = signal(true)
     const onAfterLeave = vi.fn()
 
@@ -551,22 +551,22 @@ describe("CollapseRenderer", () => {
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("uses custom transition from prop", () => {
+  it('uses custom transition from prop', () => {
     const show = signal(false)
 
     const { wrapperEl } = setupCollapseRenderer({
       show: () => show(),
-      transition: "height 500ms ease-in-out",
+      transition: 'height 500ms ease-in-out',
       callbacks: {},
     })
 
     show.set(true)
-    expect(wrapperEl.style.transition).toBe("height 500ms ease-in-out")
+    expect(wrapperEl.style.transition).toBe('height 500ms ease-in-out')
   })
 
-  it("uses config.transition as fallback", () => {
+  it('uses config.transition as fallback', () => {
     const show = signal(false)
-    const config = makeCollapseConfig({ transition: "height 700ms linear" })
+    const config = makeCollapseConfig({ transition: 'height 700ms linear' })
 
     const { wrapperEl } = setupCollapseRenderer({
       config,
@@ -575,10 +575,10 @@ describe("CollapseRenderer", () => {
     })
 
     show.set(true)
-    expect(wrapperEl.style.transition).toBe("height 700ms linear")
+    expect(wrapperEl.style.transition).toBe('height 700ms linear')
   })
 
-  it("appear=true triggers entering via ref proxy on initial mount", async () => {
+  it('appear=true triggers entering via ref proxy on initial mount', async () => {
     const show = signal(true)
     const onEnter = vi.fn()
 
@@ -592,10 +592,10 @@ describe("CollapseRenderer", () => {
     await Promise.resolve()
 
     expect(onEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("200px")
+    expect(wrapperEl.style.height).toBe('200px')
   })
 
-  it("timeout fallback completes enter when transitionend never fires", () => {
+  it('timeout fallback completes enter when transitionend never fires', () => {
     const show = signal(false)
     const onAfterEnter = vi.fn()
 
@@ -612,7 +612,7 @@ describe("CollapseRenderer", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("timeout fallback completes leave when transitionend never fires", () => {
+  it('timeout fallback completes leave when transitionend never fires', () => {
     const show = signal(true)
     const onAfterLeave = vi.fn()
 
@@ -629,7 +629,7 @@ describe("CollapseRenderer", () => {
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("interrupts leave and re-enters when show toggles back", () => {
+  it('interrupts leave and re-enters when show toggles back', () => {
     const show = signal(true)
     const onEnter = vi.fn()
     const onLeave = vi.fn()
@@ -644,10 +644,10 @@ describe("CollapseRenderer", () => {
 
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("200px")
+    expect(wrapperEl.style.height).toBe('200px')
   })
 
-  it("uses config.timeout as fallback", () => {
+  it('uses config.timeout as fallback', () => {
     const show = signal(false)
     const onAfterEnter = vi.fn()
     const config = makeCollapseConfig({ timeout: 400 })
@@ -663,7 +663,7 @@ describe("CollapseRenderer", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("uses config.appear as fallback", async () => {
+  it('uses config.appear as fallback', async () => {
     const show = signal(true)
     const onEnter = vi.fn()
     const config = makeCollapseConfig({ appear: true })
@@ -679,7 +679,7 @@ describe("CollapseRenderer", () => {
   })
 })
 
-describe("CollapseRenderer — reduced motion", () => {
+describe('CollapseRenderer — reduced motion', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockScrollHeight(200)
@@ -691,7 +691,7 @@ describe("CollapseRenderer — reduced motion", () => {
     _reducedMotion = false
   })
 
-  it("reduced motion: entering skips animation and sets height:auto immediately", () => {
+  it('reduced motion: entering skips animation and sets height:auto immediately', () => {
     const show = signal(false)
     const onEnter = vi.fn()
     const onAfterEnter = vi.fn()
@@ -705,11 +705,11 @@ describe("CollapseRenderer — reduced motion", () => {
 
     expect(onEnter).toHaveBeenCalledTimes(1)
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("auto")
-    expect(wrapperEl.style.overflow).toBe("")
+    expect(wrapperEl.style.height).toBe('auto')
+    expect(wrapperEl.style.overflow).toBe('')
   })
 
-  it("reduced motion: leaving skips animation and sets height:0 immediately", () => {
+  it('reduced motion: leaving skips animation and sets height:0 immediately', () => {
     const show = signal(true)
     const onLeave = vi.fn()
     const onAfterLeave = vi.fn()
@@ -723,12 +723,12 @@ describe("CollapseRenderer — reduced motion", () => {
 
     expect(onLeave).toHaveBeenCalledTimes(1)
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("0px")
-    expect(wrapperEl.style.overflow).toBe("hidden")
+    expect(wrapperEl.style.height).toBe('0px')
+    expect(wrapperEl.style.overflow).toBe('hidden')
   })
 })
 
-describe("Collapse — reduced motion", () => {
+describe('Collapse — reduced motion', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockScrollHeight(200)
@@ -740,7 +740,7 @@ describe("Collapse — reduced motion", () => {
     _reducedMotion = false
   })
 
-  it("reduced motion: entering skips animation and fires both callbacks", () => {
+  it('reduced motion: entering skips animation and fires both callbacks', () => {
     const show = signal(false)
     const onEnter = vi.fn()
     const onAfterEnter = vi.fn()
@@ -749,18 +749,18 @@ describe("Collapse — reduced motion", () => {
       show,
       onEnter,
       onAfterEnter,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(true)
 
     expect(onEnter).toHaveBeenCalledTimes(1)
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("auto")
-    expect(wrapperEl.style.overflow).toBe("")
+    expect(wrapperEl.style.height).toBe('auto')
+    expect(wrapperEl.style.overflow).toBe('')
   })
 
-  it("reduced motion: leaving skips animation and fires both callbacks", () => {
+  it('reduced motion: leaving skips animation and fires both callbacks', () => {
     const show = signal(true)
     const onLeave = vi.fn()
     const onAfterLeave = vi.fn()
@@ -769,14 +769,14 @@ describe("Collapse — reduced motion", () => {
       show,
       onLeave,
       onAfterLeave,
-      children: { type: "div", props: {}, children: ["Hello"], key: undefined },
+      children: { type: 'div', props: {}, children: ['Hello'], key: undefined },
     })
 
     show.set(false)
 
     expect(onLeave).toHaveBeenCalledTimes(1)
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
-    expect(wrapperEl.style.height).toBe("0px")
-    expect(wrapperEl.style.overflow).toBe("hidden")
+    expect(wrapperEl.style.height).toBe('0px')
+    expect(wrapperEl.style.overflow).toBe('hidden')
   })
 })

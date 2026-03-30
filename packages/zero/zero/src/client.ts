@@ -1,8 +1,8 @@
-import type { ComponentFn } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import type { RouteRecord } from "@pyreon/router"
-import { hydrateRoot, mount } from "@pyreon/runtime-dom"
-import { createApp } from "./app"
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import type { RouteRecord } from '@pyreon/router'
+import { hydrateRoot, mount } from '@pyreon/runtime-dom'
+import { createApp } from './app'
 
 // ─── Client entry factory ───────────────────────────────────────────────────
 
@@ -23,12 +23,12 @@ export interface StartClientOptions {
  * startClient({ routes })
  */
 export function startClient(options: StartClientOptions) {
-  const container = document.getElementById("app")
-  if (!container) throw new Error("[zero] Missing #app container element")
+  const container = document.getElementById('app')
+  if (!container) throw new Error('[zero] Missing #app container element')
 
   const { App } = createApp({
     routes: options.routes,
-    routerMode: "history",
+    routerMode: 'history',
     ...(options.layout ? { layout: options.layout } : {}),
   })
 

@@ -1,4 +1,4 @@
-import type { PluralRules } from "./types"
+import type { PluralRules } from './types'
 
 /**
  * Resolve the plural category for a given count and locale.
@@ -17,7 +17,7 @@ export function resolvePluralCategory(
   }
 
   // Use Intl.PluralRules if available
-  if (typeof Intl !== "undefined" && Intl.PluralRules) {
+  if (typeof Intl !== 'undefined' && Intl.PluralRules) {
     try {
       const pr = new Intl.PluralRules(locale)
       return pr.select(count)
@@ -27,5 +27,5 @@ export function resolvePluralCategory(
   }
 
   // Basic fallback
-  return count === 1 ? "one" : "other"
+  return count === 1 ? 'one' : 'other'
 }

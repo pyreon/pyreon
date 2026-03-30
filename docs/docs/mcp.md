@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/mcp"
+title: '@pyreon/mcp'
 description: Model Context Protocol server that gives AI coding assistants deep knowledge of Pyreon APIs, patterns, and project structure.
 ---
 
@@ -10,18 +10,23 @@ description: Model Context Protocol server that gives AI coding assistants deep 
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/mcp
 ```
+
 ```bash [bun]
 bun add @pyreon/mcp
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/mcp
 ```
+
 ```bash [yarn]
 yarn add @pyreon/mcp
 ```
+
 :::
 
 ## Quick Start
@@ -76,10 +81,10 @@ Look up any Pyreon API symbol. Returns the signature, a usage example, notes, an
 
 **Parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
+| Param     | Type     | Description                                                             |
+| --------- | -------- | ----------------------------------------------------------------------- |
 | `package` | `string` | Package name without scope (e.g., `"reactivity"`, `"core"`, `"router"`) |
-| `symbol` | `string` | Export name (e.g., `"signal"`, `"computed"`, `"createRouter"`) |
+| `symbol`  | `string` | Export name (e.g., `"signal"`, `"computed"`, `"createRouter"`)          |
 
 **Example call:**
 
@@ -88,6 +93,7 @@ Look up any Pyreon API symbol. Returns the signature, a usage example, notes, an
 ```
 
 **Response includes:**
+
 - TypeScript signature
 - Usage example with code
 - Notes on behavior
@@ -101,12 +107,13 @@ Check a code snippet for Pyreon anti-patterns and React-isms.
 
 **Parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `code` | `string` | The source code to validate |
+| Param      | Type      | Description                          |
+| ---------- | --------- | ------------------------------------ |
+| `code`     | `string`  | The source code to validate          |
 | `filename` | `string?` | Optional filename for parser context |
 
 **Detects issues like:**
+
 - `useState` / `useEffect` / `useMemo` usage (should be `signal` / `effect` / `computed`)
 - `.value` access on signals (should call `signal()`)
 - Missing `by` prop on `<For>`
@@ -120,12 +127,13 @@ Automatically convert React code to idiomatic Pyreon.
 
 **Parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `code` | `string` | React source code to migrate |
-| `filename` | `string?` | Optional filename |
+| Param      | Type      | Description                  |
+| ---------- | --------- | ---------------------------- |
+| `code`     | `string`  | React source code to migrate |
+| `filename` | `string?` | Optional filename            |
 
 **Transforms:**
+
 - `useState(x)` to `signal(x)`
 - `useMemo(() => x, [deps])` to `computed(() => x)`
 - `useEffect(() => &#123;...&#125;, [deps])` to `effect(() => &#123;...&#125;)`
@@ -141,11 +149,12 @@ Parse an error message into structured fix information.
 
 **Parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
+| Param   | Type     | Description                   |
+| ------- | -------- | ----------------------------- |
 | `error` | `string` | The error message to diagnose |
 
 **Response includes:**
+
 - Root cause explanation
 - Suggested fix (prose)
 - Fix code snippet (when applicable)
@@ -160,6 +169,7 @@ List all routes detected in the current project.
 **Parameters:** None
 
 Scans the project directory for `createRouter` calls and route definition arrays. For each route, reports:
+
 - Path pattern (e.g., `/user/:id`)
 - Route name (if set)
 - Whether it has a loader
@@ -173,6 +183,7 @@ List all components detected in the current project.
 **Parameters:** None
 
 Scans the project directory for exported component functions. For each component, reports:
+
 - Component name and file path
 - Props interface fields
 - Signal declarations within the component
@@ -183,16 +194,16 @@ Scans the project directory for exported component functions. For each component
 
 The `get_api` tool has entries for all public exports across these packages:
 
-| Package | Coverage |
-|---------|----------|
-| `@pyreon/reactivity` | signal, computed, effect, batch, watch, createStore, createResource, renderEffect, EffectScope |
-| `@pyreon/core` | h, Fragment, createContext, useContext, onMount, onUnmount, onUpdate, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, defineComponent, createRef |
-| `@pyreon/runtime-dom` | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, Portal, applyProp, applyProps |
-| `@pyreon/compiler` | transformJSX |
-| `@pyreon/router` | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useLoaderData |
-| `@pyreon/head` | useHead, HeadProvider |
-| `@pyreon/server` | createHandler, prerender, island, hydrateIslands, startClient |
-| `@pyreon/vite-plugin` | pyreon (Vite plugin factory) |
+| Package               | Coverage                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@pyreon/reactivity`  | signal, computed, effect, batch, watch, createStore, createResource, renderEffect, EffectScope                                                                     |
+| `@pyreon/core`        | h, Fragment, createContext, useContext, onMount, onUnmount, onUpdate, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, defineComponent, createRef |
+| `@pyreon/runtime-dom` | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, Portal, applyProp, applyProps                                                                          |
+| `@pyreon/compiler`    | transformJSX                                                                                                                                                       |
+| `@pyreon/router`      | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useLoaderData                                                          |
+| `@pyreon/head`        | useHead, HeadProvider                                                                                                                                              |
+| `@pyreon/server`      | createHandler, prerender, island, hydrateIslands, startClient                                                                                                      |
+| `@pyreon/vite-plugin` | pyreon (Vite plugin factory)                                                                                                                                       |
 
 ---
 
@@ -206,12 +217,12 @@ The project scanning tools (`get_routes`, `get_components`) use the same TypeScr
 
 ## Exports Summary
 
-| Export | Description |
-|--------|-------------|
-| CLI entry (`bin`) | Starts the MCP server on stdio transport |
-| `API_REFERENCE` | Structured API documentation database |
+| Export            | Description                                           |
+| ----------------- | ----------------------------------------------------- |
+| CLI entry (`bin`) | Starts the MCP server on stdio transport              |
+| `API_REFERENCE`   | Structured API documentation database                 |
 | `generateContext` | Project scanner (re-exported from `@pyreon/compiler`) |
-| `ProjectContext` | Type: scanned project metadata |
-| `RouteInfo` | Type: detected route information |
-| `ComponentInfo` | Type: detected component information |
-| `IslandInfo` | Type: detected island information |
+| `ProjectContext`  | Type: scanned project metadata                        |
+| `RouteInfo`       | Type: detected route information                      |
+| `ComponentInfo`   | Type: detected component information                  |
+| `IslandInfo`      | Type: detected island information                     |

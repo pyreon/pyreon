@@ -1,11 +1,11 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 /**
  * @pyreon/react-compat/dom
  *
  * Drop-in for `react-dom/client` — provides `createRoot` so you can keep
  * the same entry-point pattern as a React app.
  */
-import { mount } from "@pyreon/runtime-dom"
+import { mount } from '@pyreon/runtime-dom'
 
 /**
  * Drop-in for React 18's `createRoot(container).render(element)`.

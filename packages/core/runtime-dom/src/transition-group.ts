@@ -1,7 +1,7 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createRef, h, onMount, onUnmount } from "@pyreon/core"
-import { effect, runUntracked, signal } from "@pyreon/reactivity"
-import { mountChild } from "./mount"
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createRef, h, onMount, onUnmount } from '@pyreon/core'
+import { effect, runUntracked, signal } from '@pyreon/reactivity'
+import { mountChild } from './mount'
 
 export interface TransitionGroupProps<T = unknown> {
   /** Wrapper element tag. Default: "div" */
@@ -69,8 +69,8 @@ type ItemEntry = {
  * // .list-move { transition: transform 300ms ease; }
  */
 export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
-  const tag = props.tag ?? "div"
-  const n = props.name ?? "pyreon"
+  const tag = props.tag ?? 'div'
+  const n = props.name ?? 'pyreon'
   const cls = {
     ef: props.enterFrom ?? `${n}-enter-from`,
     ea: props.enterActive ?? `${n}-enter-active`,
@@ -95,13 +95,13 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
       const done = () => {
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
-      el.addEventListener("transitionend", done, { once: true })
-      el.addEventListener("animationend", done, { once: true })
+      el.addEventListener('transitionend', done, { once: true })
+      el.addEventListener('animationend', done, { once: true })
     })
   }
 
@@ -113,14 +113,14 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
       const done = () => {
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.la, cls.lt)
         props.onAfterLeave?.(el)
         onDone()
       }
-      el.addEventListener("transitionend", done, { once: true })
-      el.addEventListener("animationend", done, { once: true })
+      el.addEventListener('transitionend', done, { once: true })
+      el.addEventListener('animationend', done, { once: true })
     })
   }
 
@@ -152,7 +152,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       const itemRef = createRef<HTMLElement>()
       const rawVNode = runUntracked(() => props.render(item, i))
       const vnode: VNode =
-        typeof rawVNode.type === "string"
+        typeof rawVNode.type === 'string'
           ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
           : rawVNode
       const cleanup = mountChild(vnode, container, null)
@@ -166,15 +166,15 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   const startMoveAnimation = (el: HTMLElement) => {
     requestAnimationFrame(() => {
       el.classList.add(cls.mv)
-      el.style.transform = ""
-      el.style.transition = ""
+      el.style.transform = ''
+      el.style.transition = ''
       const done = () => {
-        el.removeEventListener("transitionend", done)
-        el.removeEventListener("animationend", done)
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
         el.classList.remove(cls.mv)
       }
-      el.addEventListener("transitionend", done, { once: true })
-      el.addEventListener("animationend", done, { once: true })
+      el.addEventListener('transitionend', done, { once: true })
+      el.addEventListener('animationend', done, { once: true })
     })
   }
 
@@ -186,7 +186,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
     const el = entry.ref.current
     el.style.transform = `translate(${dx}px, ${dy}px)`
-    el.style.transition = "none"
+    el.style.transition = 'none'
     startMoveAnimation(el)
   }
 

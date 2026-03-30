@@ -1,23 +1,23 @@
-import type { Adapter, AdapterBuildOptions } from "../types"
+import type { Adapter, AdapterBuildOptions } from '../types'
 
 /**
  * Node.js adapter — generates a standalone server entry using node:http.
  */
 export function nodeAdapter(): Adapter {
   return {
-    name: "node",
+    name: 'node',
     async build(options: AdapterBuildOptions) {
-      const { writeFile, cp, mkdir } = await import("node:fs/promises")
-      const { join } = await import("node:path")
+      const { writeFile, cp, mkdir } = await import('node:fs/promises')
+      const { join } = await import('node:path')
 
       const outDir = options.outDir
       await mkdir(outDir, { recursive: true })
 
       // Copy server and client builds
-      await cp(options.clientOutDir, join(outDir, "client"), {
+      await cp(options.clientOutDir, join(outDir, 'client'), {
         recursive: true,
       })
-      await cp(join(options.serverEntry, ".."), join(outDir, "server"), {
+      await cp(join(options.serverEntry, '..'), join(outDir, 'server'), {
         recursive: true,
       })
 
@@ -103,8 +103,8 @@ server.listen(${port}, () => {
 })
 `.trimStart()
 
-      await writeFile(join(outDir, "index.js"), serverEntry)
-      await writeFile(join(outDir, "package.json"), JSON.stringify({ type: "module" }, null, 2))
+      await writeFile(join(outDir, 'index.js'), serverEntry)
+      await writeFile(join(outDir, 'package.json'), JSON.stringify({ type: 'module' }, null, 2))
     },
   }
 }

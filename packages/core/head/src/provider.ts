@@ -1,7 +1,7 @@
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { provide } from "@pyreon/core"
-import type { HeadContextValue } from "./context"
-import { createHeadContext, HeadContext } from "./context"
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import { provide } from '@pyreon/core'
+import type { HeadContextValue } from './context'
+import { createHeadContext, HeadContext } from './context'
 
 export interface HeadProviderProps extends Props {
   context?: HeadContextValue | undefined
@@ -27,5 +27,5 @@ export const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
   provide(HeadContext, ctx)
 
   const ch = props.children
-  return typeof ch === "function" ? (ch as () => VNodeChild)() : ch
+  return typeof ch === 'function' ? (ch as () => VNodeChild)() : ch
 }

@@ -1,16 +1,16 @@
-import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine"
-import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
-import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element"
+import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
+import { draggable, dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-scroll/element'
 import {
   attachClosestEdge,
   type Edge,
   extractClosestEdge,
-} from "@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge"
-import { onCleanup, signal } from "@pyreon/reactivity"
-import type { DropEdge, UseSortableOptions, UseSortableResult } from "./types"
+} from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
+import { onCleanup, signal } from '@pyreon/reactivity'
+import type { DropEdge, UseSortableOptions, UseSortableResult } from './types'
 
-const SORT_KEY = "__pyreon_sortable_key"
-const SORT_ID = "__pyreon_sortable_id"
+const SORT_KEY = '__pyreon_sortable_key'
+const SORT_ID = '__pyreon_sortable_id'
 
 let _sortableCounter = 0
 
@@ -58,7 +58,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   const activeId = signal<string | number | null>(null)
   const overId = signal<string | number | null>(null)
   const overEdge = signal<DropEdge | null>(null)
-  const axis = options.axis ?? "vertical"
+  const axis = options.axis ?? 'vertical'
 
   const cleanups: (() => void)[] = []
 
@@ -80,7 +80,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
     // Determine insert position based on closest edge
     const rawInsert =
-      edge === "bottom" || edge === "right"
+      edge === 'bottom' || edge === 'right'
         ? dropIndex >= dragIndex
           ? dropIndex
           : dropIndex + 1
@@ -121,8 +121,8 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     const keyHandler = (e: KeyboardEvent) => {
       if (!e.altKey) return
 
-      const isUp = axis === "vertical" ? e.key === "ArrowUp" : e.key === "ArrowLeft"
-      const isDown = axis === "vertical" ? e.key === "ArrowDown" : e.key === "ArrowRight"
+      const isUp = axis === 'vertical' ? e.key === 'ArrowUp' : e.key === 'ArrowLeft'
+      const isDown = axis === 'vertical' ? e.key === 'ArrowDown' : e.key === 'ArrowRight'
       if (!isUp && !isDown) return
 
       const focused = document.activeElement as HTMLElement | null
@@ -148,7 +148,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
       // Restore focus after DOM update
       requestAnimationFrame(() => {
-        const items = el.querySelectorAll("[data-pyreon-sort-key]")
+        const items = el.querySelectorAll('[data-pyreon-sort-key]')
         for (const item of items) {
           if ((item as HTMLElement).dataset.pyreonSortKey === focusedKey) {
             ;(item as HTMLElement).focus()
@@ -158,18 +158,18 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
       })
     }
 
-    el.addEventListener("keydown", keyHandler)
-    cleanups.push(() => el.removeEventListener("keydown", keyHandler))
+    el.addEventListener('keydown', keyHandler)
+    cleanups.push(() => el.removeEventListener('keydown', keyHandler))
   }
 
   function itemRef(key: string | number): (el: HTMLElement) => void {
     return (el: HTMLElement) => {
       el.dataset.pyreonSortKey = String(key)
-      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "0")
-      el.setAttribute("role", "listitem")
-      el.setAttribute("aria-roledescription", "sortable item")
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0')
+      el.setAttribute('role', 'listitem')
+      el.setAttribute('aria-roledescription', 'sortable item')
 
-      const allowedEdges: Edge[] = axis === "vertical" ? ["top", "bottom"] : ["left", "right"]
+      const allowedEdges: Edge[] = axis === 'vertical' ? ['top', 'bottom'] : ['left', 'right']
 
       const cleanup = combine(
         draggable({

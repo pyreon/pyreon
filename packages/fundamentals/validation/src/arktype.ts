@@ -1,6 +1,6 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
-import { issuesToRecord } from "./utils"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
+import type { ValidationIssue } from './types'
+import { issuesToRecord } from './utils'
 
 /**
  * Minimal ArkType-compatible interfaces so we don't require arktype as a hard dep.
@@ -21,12 +21,12 @@ interface ArkErrors extends Array<ArkError> {
 type ArkTypeCallable = (data: unknown) => unknown
 
 function isArkErrors(result: unknown): result is ArkErrors {
-  return Array.isArray(result) && "summary" in (result as object)
+  return Array.isArray(result) && 'summary' in (result as object)
 }
 
 function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
   return errors.map((err) => ({
-    path: err.path.map(String).join("."),
+    path: err.path.map(String).join('.'),
     message: err.message,
   }))
 }
@@ -62,7 +62,7 @@ export function arktypeSchema<TValues extends Record<string, unknown>>(
       return issuesToRecord<TValues>(arkIssuesToGeneric(result))
     } catch (err) {
       return {
-        "": err instanceof Error ? err.message : String(err),
+        '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
   }

@@ -56,7 +56,7 @@ function safeRead(
 ): unknown {
   try {
     const val = obj[key]
-    return typeof val === "function" ? (val as () => unknown)() : fallback
+    return typeof val === 'function' ? (val as () => unknown)() : fallback
   } catch {
     return fallback
   }
@@ -68,12 +68,12 @@ function safeRead(
 export function getI18nSnapshot(name: string): Record<string, unknown> | undefined {
   const instance = getI18nInstance(name) as Record<string, unknown> | undefined
   if (!instance) return undefined
-  const ns = safeRead(instance, "loadedNamespaces", new Set())
+  const ns = safeRead(instance, 'loadedNamespaces', new Set())
   return {
-    locale: safeRead(instance, "locale"),
-    availableLocales: safeRead(instance, "availableLocales", []),
+    locale: safeRead(instance, 'locale'),
+    availableLocales: safeRead(instance, 'availableLocales', []),
     loadedNamespaces: ns instanceof Set ? [...ns] : [],
-    isLoading: safeRead(instance, "isLoading", false),
+    isLoading: safeRead(instance, 'isLoading', false),
   }
 }
 

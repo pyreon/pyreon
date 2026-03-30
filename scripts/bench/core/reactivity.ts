@@ -15,21 +15,21 @@ import {
   computed as preactComputed,
   effect as preactEffect,
   signal as preactSignal,
-} from "@preact/signals-core"
+} from '@preact/signals-core'
 import {
   batch as solidBatch,
   createEffect as solidEffect,
   createMemo as solidMemo,
   createRoot as solidRoot,
   createSignal as solidSignal,
-} from "solid-js"
+} from 'solid-js'
 import {
   batch as pyreonBatch,
   computed as pyreonComputed,
   effect as pyreonEffect,
   signal as pyreonSignal,
   createStore as pyreonStore,
-} from "../../../packages/core/reactivity/src/index"
+} from '../../../packages/core/reactivity/src/index'
 
 // ─── Benchmark harness ───────────────────────────────────────────────────────
 
@@ -58,9 +58,9 @@ function bench(label: string, fn: () => void, durationMs = 2000): BenchResult {
 }
 
 function printSection(title: string, results: BenchResult[]) {
-  console.log(`\n── ${title} ${"─".repeat(Math.max(0, 64 - title.length - 4))}`)
-  console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
-  console.log("-".repeat(64))
+  console.log(`\n── ${title} ${'─'.repeat(Math.max(0, 64 - title.length - 4))}`)
+  console.log(`${'test'.padEnd(36)}${'ops/sec'.padStart(14)}${'avg ns/op'.padStart(14)}`)
+  console.log('-'.repeat(64))
   for (const r of results) {
     console.log(
       `${r.label.padEnd(36)}${r.opsPerSec.toLocaleString().padStart(14)}${r.avgNs.toLocaleString().padStart(14)}`,
@@ -74,7 +74,7 @@ function benchSignalCRW() {
   const results: BenchResult[] = []
 
   results.push(
-    bench("Pyreon signal create+read+write", () => {
+    bench('Pyreon signal create+read+write', () => {
       const s = pyreonSignal(0)
       s()
       s.set(1)
@@ -83,7 +83,7 @@ function benchSignalCRW() {
   )
 
   results.push(
-    bench("Preact signal create+read+write", () => {
+    bench('Preact signal create+read+write', () => {
       const s = preactSignal(0)
       s.value
       s.value = 1
@@ -92,7 +92,7 @@ function benchSignalCRW() {
   )
 
   results.push(
-    bench("Solid signal create+read+write", () => {
+    bench('Solid signal create+read+write', () => {
       solidRoot((dispose) => {
         const [get, set] = solidSignal(0)
         get()
@@ -118,7 +118,7 @@ function benchComputed() {
     const c = pyreonComputed(() => a() * 3)
     const d = pyreonComputed(() => b() + c())
     results.push(
-      bench("Pyreon computed diamond", () => {
+      bench('Pyreon computed diamond', () => {
         for (let i = 0; i < 100; i++) {
           a.set(i)
           d()
@@ -134,7 +134,7 @@ function benchComputed() {
     const c = preactComputed(() => a.value * 3)
     const d = preactComputed(() => b.value + c.value)
     results.push(
-      bench("Preact computed diamond", () => {
+      bench('Preact computed diamond', () => {
         for (let i = 0; i < 100; i++) {
           a.value = i
           d.value
@@ -148,7 +148,7 @@ function benchComputed() {
     const c = solidMemo(() => a() * 3)
     const d = solidMemo(() => b() + c())
     results.push(
-      bench("Solid computed diamond", () => {
+      bench('Solid computed diamond', () => {
         for (let i = 0; i < 100; i++) {
           setA(i)
           d()
@@ -174,7 +174,7 @@ function benchEffect() {
       sink = s()
     })
     results.push(
-      bench("Pyreon effect propagation", () => {
+      bench('Pyreon effect propagation', () => {
         for (let i = 0; i < 100; i++) s.set(i)
       }),
     )
@@ -190,7 +190,7 @@ function benchEffect() {
       sink = s.value
     })
     results.push(
-      bench("Preact effect propagation", () => {
+      bench('Preact effect propagation', () => {
         for (let i = 0; i < 100; i++) s.value = i
       }),
     )
@@ -204,7 +204,7 @@ function benchEffect() {
       sink = s()
     })
     results.push(
-      bench("Solid effect propagation", () => {
+      bench('Solid effect propagation', () => {
         for (let i = 0; i < 100; i++) setS(i)
       }),
     )
@@ -228,7 +228,7 @@ function benchBatch() {
       sink = signals.reduce((sum, s) => sum + s(), 0)
     })
     results.push(
-      bench("Pyreon batch 50 signals", () => {
+      bench('Pyreon batch 50 signals', () => {
         pyreonBatch(() => {
           for (let i = 0; i < 50; i++) signals[i]!.set(i + Math.random())
         })
@@ -246,7 +246,7 @@ function benchBatch() {
       sink = signals.reduce((sum, s) => sum + s.value, 0)
     })
     results.push(
-      bench("Preact batch 50 signals", () => {
+      bench('Preact batch 50 signals', () => {
         preactBatch(() => {
           for (let i = 0; i < 50; i++) signals[i]!.value = i + Math.random()
         })
@@ -262,7 +262,7 @@ function benchBatch() {
       sink = signals.reduce((sum, [get]) => sum + get(), 0)
     })
     results.push(
-      bench("Solid batch 50 signals", () => {
+      bench('Solid batch 50 signals', () => {
         solidBatch(() => {
           for (let i = 0; i < 50; i++) signals[i]![1](i + Math.random())
         })
@@ -347,7 +347,7 @@ function benchStore() {
 
   const store = pyreonStore({ count: 0, items: [1, 2, 3], nested: { x: 0, y: 0 } })
   results.push(
-    bench("Pyreon store read+write", () => {
+    bench('Pyreon store read+write', () => {
       store.count = store.count + 1
       store.nested.x = store.count
       store.items[0] = store.count
@@ -426,16 +426,16 @@ function benchWide() {
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-console.log("Reactivity Benchmark (Bun)")
-console.log("Pyreon vs Preact Signals vs Solid")
-console.log(`${"=".repeat(70)}\n`)
+console.log('Reactivity Benchmark (Bun)')
+console.log('Pyreon vs Preact Signals vs Solid')
+console.log(`${'='.repeat(70)}\n`)
 
-printSection("Signal Create + Read + Write", benchSignalCRW())
-printSection("Computed Diamond (a→b,c→d, 100 updates)", benchComputed())
-printSection("Effect Propagation (100 updates)", benchEffect())
-printSection("Batch 50 Signals (1 effect)", benchBatch())
+printSection('Signal Create + Read + Write', benchSignalCRW())
+printSection('Computed Diamond (a→b,c→d, 100 updates)', benchComputed())
+printSection('Effect Propagation (100 updates)', benchEffect())
+printSection('Batch 50 Signals (1 effect)', benchBatch())
 printSection(`Deep Dependency Chain (depth 50, 100 updates)`, benchDeepChain())
-printSection("Wide Fan-Out (1 signal → 100 effects)", benchWide())
-printSection("Store Read + Write (Pyreon only)", benchStore())
+printSection('Wide Fan-Out (1 signal → 100 effects)', benchWide())
+printSection('Store Read + Write (Pyreon only)', benchStore())
 
 console.log()

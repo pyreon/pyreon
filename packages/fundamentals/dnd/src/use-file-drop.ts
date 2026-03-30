@@ -1,9 +1,9 @@
 import {
   dropTargetForExternal,
   monitorForExternal,
-} from "@atlaskit/pragmatic-drag-and-drop/external/adapter"
-import { containsFiles, getFiles } from "@atlaskit/pragmatic-drag-and-drop/external/file"
-import { onCleanup, signal } from "@pyreon/reactivity"
+} from '@atlaskit/pragmatic-drag-and-drop/external/adapter'
+import { containsFiles, getFiles } from '@atlaskit/pragmatic-drag-and-drop/external/file'
+import { onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseFileDropOptions {
   /** Element getter for the drop zone. */
@@ -55,10 +55,10 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
 
   function matchesAccept(file: File, accept: string[]): boolean {
     return accept.some((pattern) => {
-      if (pattern.startsWith(".")) {
+      if (pattern.startsWith('.')) {
         return file.name.toLowerCase().endsWith(pattern.toLowerCase())
       }
-      if (pattern.endsWith("/*")) {
+      if (pattern.endsWith('/*')) {
         return file.type.startsWith(pattern.slice(0, -1))
       }
       return file.type === pattern
@@ -88,7 +88,7 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
         element: el,
         canDrop: ({ source }) => {
           const disabled = options.disabled
-          if (typeof disabled === "function" ? disabled() : disabled) return false
+          if (typeof disabled === 'function' ? disabled() : disabled) return false
           return containsFiles({ source })
         },
         onDragEnter: () => isOver.set(true),

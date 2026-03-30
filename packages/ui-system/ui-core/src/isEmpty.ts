@@ -12,7 +12,7 @@ export type IsEmpty = <T extends Record<number | string, any> | any[] | null | u
 
 const isEmpty = (<T extends Record<number | string, any> | any[] | null | undefined>(param: T) => {
   if (!param) return true
-  if (typeof param !== "object") return true
+  if (typeof param !== 'object') return true
   if (Array.isArray(param)) return param.length === 0
   return Object.keys(param).length === 0
 }) as IsEmpty

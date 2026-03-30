@@ -1,5 +1,5 @@
-import { createContext } from "@pyreon/core"
-import type { Context as ContextType } from "../types"
+import { createContext } from '@pyreon/core'
+import type { Context as ContextType } from '../types'
 
 /**
  * Context for container-level grid configuration.

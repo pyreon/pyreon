@@ -1,19 +1,19 @@
-import type { KeyCombo } from "./types"
+import type { KeyCombo } from './types'
 
 // ─── Key aliases ─────────────────────────────────────────────────────────────
 
 const KEY_ALIASES: Record<string, string> = {
-  esc: "escape",
-  return: "enter",
-  del: "delete",
-  ins: "insert",
-  space: " ",
-  spacebar: " ",
-  up: "arrowup",
-  down: "arrowdown",
-  left: "arrowleft",
-  right: "arrowright",
-  plus: "+",
+  esc: 'escape',
+  return: 'enter',
+  del: 'delete',
+  ins: 'insert',
+  space: ' ',
+  spacebar: ' ',
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright',
+  plus: '+',
 }
 
 /**
@@ -21,26 +21,26 @@ const KEY_ALIASES: Record<string, string> = {
  * Supports aliases (esc, del, space, etc.) and mod (ctrl on Windows/Linux, meta on Mac).
  */
 export function parseShortcut(shortcut: string): KeyCombo {
-  const parts = shortcut.toLowerCase().trim().split("+")
+  const parts = shortcut.toLowerCase().trim().split('+')
   const combo: KeyCombo = {
     ctrl: false,
     shift: false,
     alt: false,
     meta: false,
-    key: "",
+    key: '',
   }
 
   for (const part of parts) {
     const p = part.trim()
-    if (p === "ctrl" || p === "control") {
+    if (p === 'ctrl' || p === 'control') {
       combo.ctrl = true
-    } else if (p === "shift") {
+    } else if (p === 'shift') {
       combo.shift = true
-    } else if (p === "alt") {
+    } else if (p === 'alt') {
       combo.alt = true
-    } else if (p === "meta" || p === "cmd" || p === "command") {
+    } else if (p === 'meta' || p === 'cmd' || p === 'command') {
       combo.meta = true
-    } else if (p === "mod") {
+    } else if (p === 'mod') {
       // mod = meta on Mac, ctrl elsewhere
       if (isMac()) {
         combo.meta = true
@@ -73,12 +73,12 @@ export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
  */
 export function formatCombo(combo: KeyCombo): string {
   const parts: string[] = []
-  if (combo.ctrl) parts.push("Ctrl")
-  if (combo.shift) parts.push("Shift")
-  if (combo.alt) parts.push("Alt")
-  if (combo.meta) parts.push(isMac() ? "⌘" : "Meta")
+  if (combo.ctrl) parts.push('Ctrl')
+  if (combo.shift) parts.push('Shift')
+  if (combo.alt) parts.push('Alt')
+  if (combo.meta) parts.push(isMac() ? '⌘' : 'Meta')
   parts.push(combo.key.length === 1 ? combo.key.toUpperCase() : capitalize(combo.key))
-  return parts.join("+")
+  return parts.join('+')
 }
 
 function capitalize(s: string): string {
@@ -86,6 +86,6 @@ function capitalize(s: string): string {
 }
 
 function isMac(): boolean {
-  if (typeof navigator === "undefined") return false
+  if (typeof navigator === 'undefined') return false
   return /mac|iphone|ipad|ipod/i.test(navigator.userAgent)
 }

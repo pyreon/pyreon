@@ -1,5 +1,5 @@
-import { children } from "solid-js"
-import Demo from "./Demo"
+import { children } from 'solid-js'
+import Demo from './Demo'
 
 function ColoredBox(props: { color: string; children?: any }) {
   const resolved = children(() => props.children)

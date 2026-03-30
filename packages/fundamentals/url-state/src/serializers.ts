@@ -1,26 +1,26 @@
-import type { ArrayFormat, Serializer } from "./types"
+import type { ArrayFormat, Serializer } from './types'
 
 /** Infer a serializer pair from the type of the default value. */
 export function inferSerializer<T>(
   defaultValue: T,
-  arrayFormat: ArrayFormat = "comma",
+  arrayFormat: ArrayFormat = 'comma',
 ): Serializer<T> {
   if (Array.isArray(defaultValue)) {
-    if (arrayFormat === "repeat") {
+    if (arrayFormat === 'repeat') {
       return {
-        serialize: (v: T) => (v as string[]).join("\0REPEAT\0"),
-        deserialize: (raw: string) => (raw === "" ? [] : raw.split("\0REPEAT\0")) as T,
+        serialize: (v: T) => (v as string[]).join('\0REPEAT\0'),
+        deserialize: (raw: string) => (raw === '' ? [] : raw.split('\0REPEAT\0')) as T,
       }
     }
     // comma (default)
     return {
-      serialize: (v: T) => (v as string[]).join(","),
-      deserialize: (raw: string) => (raw === "" ? [] : raw.split(",")) as T,
+      serialize: (v: T) => (v as string[]).join(','),
+      deserialize: (raw: string) => (raw === '' ? [] : raw.split(',')) as T,
     }
   }
 
   switch (typeof defaultValue) {
-    case "number":
+    case 'number':
       return {
         serialize: (v: T) => String(v),
         deserialize: (raw: string) => {
@@ -28,17 +28,17 @@ export function inferSerializer<T>(
           return (Number.isNaN(n) ? defaultValue : n) as T
         },
       }
-    case "boolean":
+    case 'boolean':
       return {
         serialize: (v: T) => String(v),
-        deserialize: (raw: string) => (raw === "true") as T,
+        deserialize: (raw: string) => (raw === 'true') as T,
       }
-    case "string":
+    case 'string':
       return {
         serialize: (v: T) => v as string,
         deserialize: (raw: string) => raw as T,
       }
-    case "object":
+    case 'object':
       return {
         serialize: (v: T) => JSON.stringify(v),
         deserialize: (raw: string) => JSON.parse(raw) as T,

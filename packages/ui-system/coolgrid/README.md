@@ -29,10 +29,7 @@ Provider({
   theme,
   children: Container({
     children: Row({
-      children: [
-        Col({ size: 8, children: 'Main content' }),
-        Col({ size: 4, children: 'Sidebar' }),
-      ],
+      children: [Col({ size: 8, children: 'Main content' }), Col({ size: 4, children: 'Sidebar' })],
     }),
   }),
 })
@@ -54,16 +51,16 @@ Container({
 })
 ```
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| columns | `number` | Number of grid columns (default: 12) |
-| gap | `number` | Space between columns |
-| gutter | `number` | Outer gutter (negative margin offset on Row) |
-| padding | `number` | Column inner padding |
-| width | `value \| function` | Override container max-width |
-| component | `ComponentFn` | Custom root element |
-| css | `ExtendCss` | Extend container styling |
-| contentAlignX | `AlignX` | Horizontal alignment of columns |
+| Prop          | Type                | Description                                  |
+| ------------- | ------------------- | -------------------------------------------- |
+| columns       | `number`            | Number of grid columns (default: 12)         |
+| gap           | `number`            | Space between columns                        |
+| gutter        | `number`            | Outer gutter (negative margin offset on Row) |
+| padding       | `number`            | Column inner padding                         |
+| width         | `value \| function` | Override container max-width                 |
+| component     | `ComponentFn`       | Custom root element                          |
+| css           | `ExtendCss`         | Extend container styling                     |
+| contentAlignX | `AlignX`            | Horizontal alignment of columns              |
 
 All configuration props cascade to Row and Col through context.
 
@@ -75,10 +72,7 @@ Flex wrapper with column management. Inherits Container config and can override 
 Row({
   size: { xs: 12, md: 6 },
   contentAlignX: 'center',
-  children: [
-    Col({ children: 'Column 1' }),
-    Col({ children: 'Column 2' }),
-  ],
+  children: [Col({ children: 'Column 1' }), Col({ children: 'Column 2' })],
 })
 ```
 
@@ -88,19 +82,16 @@ Setting `size` on Row applies it to all Cols inside:
 // All columns are 6 of 12
 Row({
   size: 6,
-  children: [
-    Col({ children: 'Half' }),
-    Col({ children: 'Half' }),
-  ],
+  children: [Col({ children: 'Half' }), Col({ children: 'Half' })],
 })
 ```
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| size | `number` | Default column size for all Cols inside |
-| component | `ComponentFn` | Custom row element |
-| css | `ExtendCss` | Extend row styling |
-| contentAlignX | `AlignX` | Override horizontal alignment |
+| Prop          | Type          | Description                             |
+| ------------- | ------------- | --------------------------------------- |
+| size          | `number`      | Default column size for all Cols inside |
+| component     | `ComponentFn` | Custom row element                      |
+| css           | `ExtendCss`   | Extend row styling                      |
+| contentAlignX | `AlignX`      | Override horizontal alignment           |
 
 ### Col
 
@@ -117,12 +108,12 @@ Col({ size: { xs: 12, sm: 6, lg: 4 }, children: 'Responsive' })
 Col({ size: { xs: 0, md: 6 }, children: 'Hidden on xs' })
 ```
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| size | `number` | Column span (e.g. 4 of 12) |
-| padding | `number` | Override column inner padding |
-| component | `ComponentFn` | Custom column element |
-| css | `ExtendCss` | Extend column styling |
+| Prop      | Type          | Description                   |
+| --------- | ------------- | ----------------------------- |
+| size      | `number`      | Column span (e.g. 4 of 12)    |
+| padding   | `number`      | Override column inner padding |
+| component | `ComponentFn` | Custom column element         |
+| css       | `ExtendCss`   | Extend column styling         |
 
 ## Configuration
 
@@ -139,7 +130,9 @@ Provider({
       wide: 1440,
     },
   },
-  children: [/* ... */],
+  children: [
+    /* ... */
+  ],
 })
 ```
 
@@ -149,10 +142,7 @@ Provider({
 Container({
   columns: 24,
   children: Row({
-    children: [
-      Col({ size: 16, children: 'Two thirds' }),
-      Col({ size: 8, children: 'One third' }),
-    ],
+    children: [Col({ size: 16, children: 'Two thirds' }), Col({ size: 8, children: 'One third' })],
   }),
 })
 ```
@@ -201,13 +191,13 @@ Col({ size: { xs: 12, md: 6, lg: 4 } })
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package            | Version  |
+| ------------------ | -------- |
+| @pyreon/core       | >= 0.0.1 |
 | @pyreon/reactivity | >= 0.0.1 |
-| @pyreon/ui-core | >= 0.0.1 |
-| @pyreon/unistyle | >= 0.0.1 |
-| @pyreon/styler | >= 0.0.1 |
+| @pyreon/ui-core    | >= 0.0.1 |
+| @pyreon/unistyle   | >= 0.0.1 |
+| @pyreon/styler     | >= 0.0.1 |
 
 ## License
 

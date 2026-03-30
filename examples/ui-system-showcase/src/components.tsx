@@ -1,6 +1,6 @@
-import { attrs } from "@pyreon/attrs"
-import { rocketstyle } from "@pyreon/rocketstyle"
-import { Badge, Btn } from "./primitives"
+import { attrs } from '@pyreon/attrs'
+import { rocketstyle } from '@pyreon/rocketstyle'
+import { Badge, Btn } from './primitives'
 
 // ─── Base button component ───────────────────────────────────────────────────
 
@@ -13,7 +13,7 @@ export const BaseButton = (props: {
   [key: string]: any
 }) => (
   <Btn
-    type={(props.type ?? "button") as "button" | "submit" | "reset"}
+    type={(props.type ?? 'button') as 'button' | 'submit' | 'reset'}
     style={props.style}
     onClick={props.onClick}
   >
@@ -23,35 +23,35 @@ export const BaseButton = (props: {
 
 // ─── Attrs components ────────────────────────────────────────────────────────
 
-export const PrimaryButton = attrs({ name: "PrimaryButton", component: BaseButton }).attrs({
-  style: { background: "var(--primary)", color: "#fff" },
+export const PrimaryButton = attrs({ name: 'PrimaryButton', component: BaseButton }).attrs({
+  style: { background: 'var(--primary)', color: '#fff' },
 } as any)
 
-export const DangerButton = attrs({ name: "DangerButton", component: BaseButton }).attrs({
-  style: { background: "var(--danger)", color: "#fff" },
+export const DangerButton = attrs({ name: 'DangerButton', component: BaseButton }).attrs({
+  style: { background: 'var(--danger)', color: '#fff' },
 } as any)
 
-export const GhostButton = attrs({ name: "GhostButton", component: BaseButton }).attrs({
+export const GhostButton = attrs({ name: 'GhostButton', component: BaseButton }).attrs({
   style: {
-    background: "transparent",
-    color: "var(--text)",
-    border: "1px solid var(--border)",
+    background: 'transparent',
+    color: 'var(--text)',
+    border: '1px solid var(--border)',
   },
 } as any)
 
 // ─── Rocketstyle components ─────────────────────────────────────────────────
 
-export const RsButton = rocketstyle()({ name: "RsButton", component: BaseButton })
-  .attrs({ type: "button" })
+export const RsButton = rocketstyle()({ name: 'RsButton', component: BaseButton })
+  .attrs({ type: 'button' })
   .theme({
-    backgroundColor: "var(--primary)",
-    color: "#fff",
-    hover: { backgroundColor: "var(--primary-hover)" },
+    backgroundColor: 'var(--primary)',
+    color: '#fff',
+    hover: { backgroundColor: 'var(--primary-hover)' },
   })
   .states({
-    success: { backgroundColor: "var(--success)", color: "#fff" },
-    danger: { backgroundColor: "var(--danger)", color: "#fff" },
-    warning: { backgroundColor: "var(--warning)", color: "#000" },
+    success: { backgroundColor: 'var(--success)', color: '#fff' },
+    danger: { backgroundColor: 'var(--danger)', color: '#fff' },
+    warning: { backgroundColor: 'var(--warning)', color: '#000' },
   })
   .sizes({
     sm: { paddingX: 8, paddingY: 4, fontSize: 12 },
@@ -70,12 +70,12 @@ export const RsButton = rocketstyle()({ name: "RsButton", component: BaseButton 
     },
   })) as any)
 
-export const RsBadge = rocketstyle()({ name: "RsBadge", component: Badge })
-  .theme({ backgroundColor: "var(--primary)", color: "#fff" })
+export const RsBadge = rocketstyle()({ name: 'RsBadge', component: Badge })
+  .theme({ backgroundColor: 'var(--primary)', color: '#fff' })
   .states({
-    success: { backgroundColor: "var(--success)", color: "#fff" },
-    danger: { backgroundColor: "var(--danger)", color: "#fff" },
-    warning: { backgroundColor: "var(--warning)", color: "#000" },
+    success: { backgroundColor: 'var(--success)', color: '#fff' },
+    danger: { backgroundColor: 'var(--danger)', color: '#fff' },
+    warning: { backgroundColor: 'var(--warning)', color: '#000' },
   })
   .styles((({ $rocketstyle: t }: any) => ({
     style: { background: t.backgroundColor, color: t.color },

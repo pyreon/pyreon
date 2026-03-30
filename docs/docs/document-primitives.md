@@ -10,18 +10,23 @@ description: Rocketstyle document components that render in the browser and expo
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/document-primitives
 ```
+
 ```bash [bun]
 bun add @pyreon/document-primitives
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/document-primitives
 ```
+
 ```bash [yarn]
 yarn add @pyreon/document-primitives
 ```
+
 :::
 
 ## Overview
@@ -32,37 +37,31 @@ These primitives mirror the JSX primitives from `@pyreon/document` but add desig
 
 ## Components
 
-| Component | Description |
-|---|---|
-| `DocDocument` | Root document container with metadata (title, author) |
-| `DocPage` | Page with size, orientation, margin, header, footer |
-| `DocSection` | Layout container with direction, gap, padding, background |
-| `DocRow` | Horizontal layout container |
-| `DocColumn` | Column within a row layout |
-| `DocHeading` | Heading levels h1--h6 |
-| `DocText` | Paragraph with bold, italic, color, size, align |
-| `DocLink` | Hyperlink |
-| `DocImage` | Image with width, height, alt, caption |
-| `DocTable` | Data table with columns, rows, striped, bordered |
-| `DocList` | Ordered or unordered list |
-| `DocListItem` | Individual list item |
-| `DocCode` | Code block with language |
-| `DocDivider` | Horizontal rule |
-| `DocSpacer` | Vertical gap |
-| `DocButton` | CTA button (VML in email, styled link in PDF) |
-| `DocQuote` | Block quote |
-| `DocPageBreak` | Force page break (PDF/DOCX) |
+| Component      | Description                                               |
+| -------------- | --------------------------------------------------------- |
+| `DocDocument`  | Root document container with metadata (title, author)     |
+| `DocPage`      | Page with size, orientation, margin, header, footer       |
+| `DocSection`   | Layout container with direction, gap, padding, background |
+| `DocRow`       | Horizontal layout container                               |
+| `DocColumn`    | Column within a row layout                                |
+| `DocHeading`   | Heading levels h1--h6                                     |
+| `DocText`      | Paragraph with bold, italic, color, size, align           |
+| `DocLink`      | Hyperlink                                                 |
+| `DocImage`     | Image with width, height, alt, caption                    |
+| `DocTable`     | Data table with columns, rows, striped, bordered          |
+| `DocList`      | Ordered or unordered list                                 |
+| `DocListItem`  | Individual list item                                      |
+| `DocCode`      | Code block with language                                  |
+| `DocDivider`   | Horizontal rule                                           |
+| `DocSpacer`    | Vertical gap                                              |
+| `DocButton`    | CTA button (VML in email, styled link in PDF)             |
+| `DocQuote`     | Block quote                                               |
+| `DocPageBreak` | Force page break (PDF/DOCX)                               |
 
 ## Usage
 
 ```tsx
-import {
-  DocDocument,
-  DocPage,
-  DocHeading,
-  DocText,
-  DocTable,
-} from '@pyreon/document-primitives'
+import { DocDocument, DocPage, DocHeading, DocText, DocTable } from '@pyreon/document-primitives'
 import { render } from '@pyreon/document'
 
 function Invoice({ data }) {
@@ -77,10 +76,12 @@ function Invoice({ data }) {
             { header: 'Qty', align: 'center' },
             { header: 'Price', align: 'right' },
           ]}
-          rows={data.items.map(i => [i.name, i.qty, `$${i.price}`])}
+          rows={data.items.map((i) => [i.name, i.qty, `$${i.price}`])}
           striped
         />
-        <DocText bold align="right" size={18}>Total: ${data.total}</DocText>
+        <DocText bold align="right" size={18}>
+          Total: ${data.total}
+        </DocText>
       </DocPage>
     </DocDocument>
   )

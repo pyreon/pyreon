@@ -1,7 +1,7 @@
-import type { ComponentFn, Props, VNode, VNodeChild } from "./types"
+import type { ComponentFn, Props, VNode, VNodeChild } from './types'
 
 /** Marker for fragment nodes — renders children without a wrapper element */
-export const Fragment: unique symbol = Symbol("Pyreon.Fragment")
+export const Fragment: unique symbol = Symbol('Pyreon.Fragment')
 
 /**
  * Hyperscript function — the compiled output of JSX.
@@ -14,8 +14,8 @@ export const Fragment: unique symbol = Symbol("Pyreon.Fragment")
 export const EMPTY_PROPS: Props = {} as Props
 
 /** Makes `children` optional in P (if present) so it can be passed as rest args to h(). */
-type PropsWithOptionalChildren<P extends Props> = Omit<P, "children"> &
-  ("children" extends keyof P ? { children?: P["children"] } : unknown)
+type PropsWithOptionalChildren<P extends Props> = Omit<P, 'children'> &
+  ('children' extends keyof P ? { children?: P['children'] } : unknown)
 
 // Overload: component with typed props — children is optional in the props object
 // because it can be passed as rest args. Extra keys are allowed via `& Props`.

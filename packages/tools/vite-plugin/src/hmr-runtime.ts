@@ -29,7 +29,7 @@ interface ModuleSignals {
   entries: Map<string, SignalLike>
 }
 
-const REGISTRY_KEY = "__pyreon_hmr_registry__"
+const REGISTRY_KEY = '__pyreon_hmr_registry__'
 
 type Registry = Map<string, Map<string, unknown>>
 

@@ -1,34 +1,34 @@
-import { popContext, pushContext } from "@pyreon/core"
-import { context } from "../context/context"
-import { localContext, useLocalContext } from "../context/localContext"
-import usePseudoState from "../hooks/usePseudoState"
-import useThemeAttrs from "../hooks/useTheme"
+import { popContext, pushContext } from '@pyreon/core'
+import { context } from '../context/context'
+import { localContext, useLocalContext } from '../context/localContext'
+import usePseudoState from '../hooks/usePseudoState'
+import useThemeAttrs from '../hooks/useTheme'
 
-describe("usePseudoState", () => {
-  it("returns initial state with all false", () => {
+describe('usePseudoState', () => {
+  it('returns initial state with all false', () => {
     const { state } = usePseudoState({})
     expect(state.hover).toBe(false)
     expect(state.focus).toBe(false)
     expect(state.pressed).toBe(false)
   })
 
-  it("returns event handlers", () => {
+  it('returns event handlers', () => {
     const { events } = usePseudoState({})
-    expect(typeof events.onMouseEnter).toBe("function")
-    expect(typeof events.onMouseLeave).toBe("function")
-    expect(typeof events.onMouseDown).toBe("function")
-    expect(typeof events.onMouseUp).toBe("function")
-    expect(typeof events.onFocus).toBe("function")
-    expect(typeof events.onBlur).toBe("function")
+    expect(typeof events.onMouseEnter).toBe('function')
+    expect(typeof events.onMouseLeave).toBe('function')
+    expect(typeof events.onMouseDown).toBe('function')
+    expect(typeof events.onMouseUp).toBe('function')
+    expect(typeof events.onFocus).toBe('function')
+    expect(typeof events.onBlur).toBe('function')
   })
 
-  it("sets hover on mouseEnter", () => {
+  it('sets hover on mouseEnter', () => {
     const { state, events } = usePseudoState({})
     events.onMouseEnter({} as any)
     expect(state.hover).toBe(true)
   })
 
-  it("clears hover and pressed on mouseLeave", () => {
+  it('clears hover and pressed on mouseLeave', () => {
     const { state, events } = usePseudoState({})
     events.onMouseEnter({} as any)
     events.onMouseDown({} as any)
@@ -40,7 +40,7 @@ describe("usePseudoState", () => {
     expect(state.pressed).toBe(false)
   })
 
-  it("sets pressed on mouseDown, clears on mouseUp", () => {
+  it('sets pressed on mouseDown, clears on mouseUp', () => {
     const { state, events } = usePseudoState({})
     events.onMouseDown({} as any)
     expect(state.pressed).toBe(true)
@@ -49,7 +49,7 @@ describe("usePseudoState", () => {
     expect(state.pressed).toBe(false)
   })
 
-  it("sets focus on focus, clears on blur", () => {
+  it('sets focus on focus, clears on blur', () => {
     const { state, events } = usePseudoState({})
     events.onFocus({} as any)
     expect(state.focus).toBe(true)
@@ -58,7 +58,7 @@ describe("usePseudoState", () => {
     expect(state.focus).toBe(false)
   })
 
-  it("calls user-provided event handlers", () => {
+  it('calls user-provided event handlers', () => {
     const onMouseEnter = vi.fn()
     const onMouseLeave = vi.fn()
     const onMouseDown = vi.fn()
@@ -92,7 +92,7 @@ describe("usePseudoState", () => {
   })
 })
 
-describe("useThemeAttrs", () => {
+describe('useThemeAttrs', () => {
   let pushed = false
 
   afterEach(() => {
@@ -102,21 +102,21 @@ describe("useThemeAttrs", () => {
     }
   })
 
-  it("returns default values when no context", () => {
+  it('returns default values when no context', () => {
     const result = useThemeAttrs({ inversed: false })
     expect(result.theme).toEqual({})
-    expect(result.mode).toBe("light")
+    expect(result.mode).toBe('light')
     expect(result.isLight).toBe(true)
   })
 
-  it("reads theme from context", () => {
+  it('reads theme from context', () => {
     pushContext(
       new Map([
         [
           context.id,
           {
             theme: { rootSize: 16 },
-            mode: "light",
+            mode: 'light',
             isDark: false,
             isLight: true,
           },
@@ -127,17 +127,17 @@ describe("useThemeAttrs", () => {
 
     const result = useThemeAttrs({ inversed: false })
     expect(result.theme).toEqual({ rootSize: 16 })
-    expect(result.mode).toBe("light")
+    expect(result.mode).toBe('light')
   })
 
-  it("inverts mode when inversed is true", () => {
+  it('inverts mode when inversed is true', () => {
     pushContext(
       new Map([
         [
           context.id,
           {
             theme: { rootSize: 16 },
-            mode: "light",
+            mode: 'light',
             isDark: false,
             isLight: true,
           },
@@ -147,19 +147,19 @@ describe("useThemeAttrs", () => {
     pushed = true
 
     const result = useThemeAttrs({ inversed: true })
-    expect(result.mode).toBe("dark")
+    expect(result.mode).toBe('dark')
     expect(result.isDark).toBe(true)
     expect(result.isLight).toBe(false)
   })
 
-  it("inverts dark to light", () => {
+  it('inverts dark to light', () => {
     pushContext(
       new Map([
         [
           context.id,
           {
             theme: {},
-            mode: "dark",
+            mode: 'dark',
             isDark: true,
             isLight: false,
           },
@@ -169,13 +169,13 @@ describe("useThemeAttrs", () => {
     pushed = true
 
     const result = useThemeAttrs({ inversed: true })
-    expect(result.mode).toBe("light")
+    expect(result.mode).toBe('light')
     expect(result.isDark).toBe(false)
     expect(result.isLight).toBe(true)
   })
 })
 
-describe("useLocalContext", () => {
+describe('useLocalContext', () => {
   let pushed = false
 
   afterEach(() => {
@@ -185,17 +185,17 @@ describe("useLocalContext", () => {
     }
   })
 
-  it("returns default pseudo when no consumer", () => {
+  it('returns default pseudo when no consumer', () => {
     const result = useLocalContext(null)
     expect(result).toEqual({ pseudo: {} })
   })
 
-  it("returns default pseudo when consumer is undefined", () => {
+  it('returns default pseudo when consumer is undefined', () => {
     const result = useLocalContext(undefined)
     expect(result).toEqual({ pseudo: {} })
   })
 
-  it("calls consumer with getter function", () => {
+  it('calls consumer with getter function', () => {
     pushContext(new Map([[localContext.id, { pseudo: { hover: true } }]]))
     pushed = true
 

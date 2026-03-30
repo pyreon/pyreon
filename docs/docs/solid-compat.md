@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/solid-compat"
+title: '@pyreon/solid-compat'
 description: SolidJS-compatible reactive API that runs on Pyreon's reactive engine.
 ---
 
@@ -10,18 +10,23 @@ description: SolidJS-compatible reactive API that runs on Pyreon's reactive engi
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/solid-compat
 ```
+
 ```bash [bun]
 bun add @pyreon/solid-compat
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/solid-compat
 ```
+
 ```bash [yarn]
 yarn add @pyreon/solid-compat
 ```
+
 :::
 
 ## Quick Start
@@ -49,7 +54,7 @@ const Counter = () => {
   return (
     <div>
       <p>Count: {count()}</p>
-      <button onClick={() => setCount(prev => prev + 1)}>+1</button>
+      <button onClick={() => setCount((prev) => prev + 1)}>+1</button>
       <Show when={() => count() > 5}>
         <p>High count!</p>
       </Show>
@@ -62,17 +67,17 @@ const Counter = () => {
 
 Since Pyreon and Solid share the same reactive paradigm, the API is nearly identical. The main differences are internal:
 
-| Behavior | SolidJS | @pyreon/solid-compat |
-|---|---|---|
-| Reactive engine | Solid's own signal implementation | Pyreon's `@pyreon/reactivity` |
-| `createComputed` | Deprecated legacy API | Alias for `createEffect` |
-| `createRenderEffect` | Runs before DOM paint | Same as `createEffect` -- no paint distinction in Pyreon |
-| `on()` | Explicit dependency helper | Supported -- returns a function for use inside `createEffect` |
-| `mergeProps` / `splitProps` | Preserves reactive getters | Same behavior -- preserves property descriptors |
-| Control flow | `<Show>`, `<For>`, `<Switch>`, `<Match>` | Re-exported from `@pyreon/core` -- same API |
-| `createStore` / `produce` | From `solid-js/store` | Use `@pyreon/reactivity`'s `createStore` and `reconcile` |
-| Transitions | `useTransition`, `startTransition` | Not available -- updates are synchronous |
-| `createResource` | Built-in async primitive | Use `@pyreon/reactivity`'s `createResource` |
+| Behavior                    | SolidJS                                  | @pyreon/solid-compat                                          |
+| --------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| Reactive engine             | Solid's own signal implementation        | Pyreon's `@pyreon/reactivity`                                 |
+| `createComputed`            | Deprecated legacy API                    | Alias for `createEffect`                                      |
+| `createRenderEffect`        | Runs before DOM paint                    | Same as `createEffect` -- no paint distinction in Pyreon      |
+| `on()`                      | Explicit dependency helper               | Supported -- returns a function for use inside `createEffect` |
+| `mergeProps` / `splitProps` | Preserves reactive getters               | Same behavior -- preserves property descriptors               |
+| Control flow                | `<Show>`, `<For>`, `<Switch>`, `<Match>` | Re-exported from `@pyreon/core` -- same API                   |
+| `createStore` / `produce`   | From `solid-js/store`                    | Use `@pyreon/reactivity`'s `createStore` and `reconcile`      |
+| Transitions                 | `useTransition`, `startTransition`       | Not available -- updates are synchronous                      |
+| `createResource`            | Built-in async primitive                 | Use `@pyreon/reactivity`'s `createResource`                   |
 
 ### Why This Layer Is Thin
 
@@ -103,9 +108,9 @@ Creates a reactive signal. Returns a `[getter, setter]` tuple -- the same patter
 ```tsx
 const [count, setCount] = createSignal(0)
 
-count()                    // read (tracked)
-setCount(5)                // set directly
-setCount(prev => prev + 1) // updater function
+count() // read (tracked)
+setCount(5) // set directly
+setCount((prev) => prev + 1) // updater function
 ```
 
 **Common signal patterns:**
@@ -113,17 +118,16 @@ setCount(prev => prev + 1) // updater function
 ```tsx
 // Boolean toggle
 const [open, setOpen] = createSignal(false)
-const toggle = () => setOpen(prev => !prev)
+const toggle = () => setOpen((prev) => !prev)
 
 // Array state
 const [items, setItems] = createSignal<string[]>([])
-const addItem = (item: string) => setItems(prev => [...prev, item])
-const removeItem = (index: number) => setItems(prev => prev.filter((_, i) => i !== index))
+const addItem = (item: string) => setItems((prev) => [...prev, item])
+const removeItem = (index: number) => setItems((prev) => prev.filter((_, i) => i !== index))
 
 // Object state
 const [user, setUser] = createSignal<User | null>(null)
-const updateName = (name: string) =>
-  setUser(prev => prev ? { ...prev, name } : null)
+const updateName = (name: string) => setUser((prev) => (prev ? { ...prev, name } : null))
 
 // Derived state via createMemo
 const [firstName, setFirstName] = createSignal('Alice')
@@ -140,7 +144,7 @@ function Parent() {
   return (
     <div>
       <Display count={count} />
-      <button onClick={() => setCount(prev => prev + 1)}>+1</button>
+      <button onClick={() => setCount((prev) => prev + 1)}>+1</button>
     </div>
   )
 }
@@ -181,9 +185,11 @@ function AutoScroll(props: { messages: () => Message[] }) {
     }
   })
 
-  return <div ref={containerRef} class="messages">
-    {() => props.messages().map(m => <p>{m.text}</p>)}
-  </div>
+  return (
+    <div ref={containerRef} class="messages">
+      {() => props.messages().map((m) => <p>{m.text}</p>)}
+    </div>
+  )
 }
 ```
 
@@ -198,7 +204,7 @@ function WebSocketComponent(props: { url: () => string }) {
     const ws = new WebSocket(wsUrl)
 
     ws.onmessage = (e) => {
-      setMessages(prev => [...prev, e.data])
+      setMessages((prev) => [...prev, e.data])
     }
 
     // In Solid, onCleanup is used inside createEffect
@@ -206,9 +212,7 @@ function WebSocketComponent(props: { url: () => string }) {
     onCleanup(() => ws.close())
   })
 
-  return <ul>
-    {() => messages().map(m => <li>{m}</li>)}
-  </ul>
+  return <ul>{() => messages().map((m) => <li>{m}</li>)}</ul>
 }
 ```
 
@@ -260,16 +264,19 @@ const [filter, setFilter] = createSignal<'all' | 'active' | 'done'>('all')
 const filteredTodos = createMemo(() => {
   const list = todos()
   switch (filter()) {
-    case 'active': return list.filter(t => !t.done)
-    case 'done': return list.filter(t => t.done)
-    default: return list
+    case 'active':
+      return list.filter((t) => !t.done)
+    case 'done':
+      return list.filter((t) => t.done)
+    default:
+      return list
   }
 })
 
 const stats = createMemo(() => ({
   total: todos().length,
-  active: todos().filter(t => !t.done).length,
-  done: todos().filter(t => t.done).length,
+  active: todos().filter((t) => !t.done).length,
+  done: todos().filter((t) => t.done).length,
 }))
 ```
 
@@ -284,14 +291,12 @@ const [page, setPage] = createSignal(0)
 // Each memo only recalculates when its direct deps change
 const searched = createMemo(() => {
   const q = search().toLowerCase()
-  return q ? products().filter(p => p.name.toLowerCase().includes(q)) : products()
+  return q ? products().filter((p) => p.name.toLowerCase().includes(q)) : products()
 })
 
 const sorted = createMemo(() => {
   const key = sort()
-  return [...searched()].sort((a, b) =>
-    a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0
-  )
+  return [...searched()].sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0))
 })
 
 const paginated = createMemo(() => {
@@ -313,7 +318,7 @@ function createRoot<T>(fn: (dispose: () => void) => T): T
 Creates a new reactive scope. The `dispose` callback stops all effects and computations created within the scope. Essential for top-level reactive code outside of components.
 
 ```tsx
-createRoot(dispose => {
+createRoot((dispose) => {
   const [count, setCount] = createSignal(0)
   createEffect(() => console.log(count()))
 
@@ -326,15 +331,17 @@ createRoot(dispose => {
 
 ```tsx
 // Global reactive state -- must be wrapped in createRoot
-const appState = createRoot(dispose => {
+const appState = createRoot((dispose) => {
   const [user, setUser] = createSignal<User | null>(null)
   const [theme, setTheme] = createSignal<'light' | 'dark'>('light')
 
   const isLoggedIn = createMemo(() => user() !== null)
 
   return {
-    user, setUser,
-    theme, setTheme,
+    user,
+    setUser,
+    theme,
+    setTheme,
     isLoggedIn,
     dispose, // for cleanup
   }
@@ -383,8 +390,8 @@ function AsyncLoader(props: { url: () => string }) {
     const url = props.url()
 
     fetch(url)
-      .then(r => r.json())
-      .then(result => {
+      .then((r) => r.json())
+      .then((result) => {
         // Run in the component's scope so effects are properly tracked
         runWithOwner(owner, () => {
           setData(result)
@@ -392,7 +399,7 @@ function AsyncLoader(props: { url: () => string }) {
       })
   })
 
-  return () => data() ? <DataView data={data} /> : <Loading />
+  return () => (data() ? <DataView data={data} /> : <Loading />)
 }
 ```
 
@@ -414,10 +421,12 @@ const [a, setA] = createSignal(1)
 const [b, setB] = createSignal(10)
 
 // Only tracks `a` -- changes to `b` do not re-run the effect
-createEffect(on(a, (value, prev) => {
-  console.log(`a changed from ${prev} to ${value}`)
-  console.log('b is', b()) // reading b does NOT create a dependency
-}))
+createEffect(
+  on(a, (value, prev) => {
+    console.log(`a changed from ${prev} to ${value}`)
+    console.log('b is', b()) // reading b does NOT create a dependency
+  }),
+)
 
 setA(2) // effect runs
 setB(20) // effect does NOT run
@@ -429,16 +438,15 @@ setB(20) // effect does NOT run
 const [firstName, setFirstName] = createSignal('Alice')
 const [lastName, setLastName] = createSignal('Smith')
 
-createEffect(on(
-  [firstName, lastName],
-  (values, prevValues) => {
+createEffect(
+  on([firstName, lastName], (values, prevValues) => {
     const [first, last] = values
     console.log(`Name: ${first} ${last}`)
     if (prevValues) {
       console.log(`Was: ${prevValues[0]} ${prevValues[1]}`)
     }
-  }
-))
+  }),
+)
 ```
 
 **Using `on` with accumulator pattern:**
@@ -446,11 +454,13 @@ createEffect(on(
 ```tsx
 const [count, setCount] = createSignal(0)
 
-createEffect(on(count, (value, _prev, accumulator) => {
-  const sum = (accumulator ?? 0) + value
-  console.log(`Running sum: ${sum}`)
-  return sum // returned value becomes `accumulator` on next run
-}))
+createEffect(
+  on(count, (value, _prev, accumulator) => {
+    const sum = (accumulator ?? 0) + value
+    console.log(`Running sum: ${sum}`)
+    return sum // returned value becomes `accumulator` on next run
+  }),
+)
 ```
 
 #### `untrack`
@@ -517,13 +527,15 @@ batch(() => {
 ```tsx
 function TodoItem(props: { todo: Todo; onToggle: () => void }) {
   return (
-    <div onClick={() => {
-      batch(() => {
-        props.onToggle()
-        setLastAction('toggle')
-        setLastActionTime(Date.now())
-      })
-    }}>
+    <div
+      onClick={() => {
+        batch(() => {
+          props.onToggle()
+          setLastAction('toggle')
+          setLastActionTime(Date.now())
+        })
+      }}
+    >
       {props.todo.text}
     </div>
   )
@@ -559,10 +571,11 @@ function WindowSize() {
   const [size, setSize] = createSignal({ width: 0, height: 0 })
 
   onMount(() => {
-    const update = () => setSize({
-      width: window.innerWidth,
-      height: window.innerHeight,
-    })
+    const update = () =>
+      setSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      })
     update()
     window.addEventListener('resize', update)
 
@@ -570,7 +583,11 @@ function WindowSize() {
     return () => window.removeEventListener('resize', update)
   })
 
-  return <p>Window: {() => size().width}x{() => size().height}</p>
+  return (
+    <p>
+      Window: {() => size().width}x{() => size().height}
+    </p>
+  )
 }
 ```
 
@@ -587,7 +604,7 @@ const Timer = () => {
   const [elapsed, setElapsed] = createSignal(0)
 
   onMount(() => {
-    const id = setInterval(() => setElapsed(prev => prev + 1), 1000)
+    const id = setInterval(() => setElapsed((prev) => prev + 1), 1000)
     onCleanup(() => clearInterval(id))
   })
 
@@ -602,13 +619,21 @@ function EventSource(props: { channel: string }) {
   const [events, setEvents] = createSignal<Event[]>([])
 
   const es = new window.EventSource(`/api/events/${props.channel}`)
-  es.onmessage = (e) => setEvents(prev => [...prev, JSON.parse(e.data)])
+  es.onmessage = (e) => setEvents((prev) => [...prev, JSON.parse(e.data)])
 
   onCleanup(() => es.close())
 
-  return <ul>
-    {() => events().map(e => <li>{e.type}: {e.data}</li>)}
-  </ul>
+  return (
+    <ul>
+      {() =>
+        events().map((e) => (
+          <li>
+            {e.type}: {e.data}
+          </li>
+        ))
+      }
+    </ul>
+  )
 }
 ```
 
@@ -647,7 +672,7 @@ function SelectableList(props: { items: () => Item[] }) {
       <For each={props.items} by={(item) => item.id}>
         {(item) => (
           <li
-            class={() => isSelected(item.id) ? 'selected' : ''}
+            class={() => (isSelected(item.id) ? 'selected' : '')}
             onClick={() => setSelectedId(item.id)}
           >
             {item.name}
@@ -686,10 +711,7 @@ function Button(rawProps: {
   children?: VNodeChild
   onClick?: (e: MouseEvent) => void
 }) {
-  const props = mergeProps(
-    { variant: 'primary', size: 'md', disabled: false } as const,
-    rawProps
-  )
+  const props = mergeProps({ variant: 'primary', size: 'md', disabled: false } as const, rawProps)
 
   return (
     <button
@@ -707,8 +729,12 @@ function Button(rawProps: {
 
 ```tsx
 const dynamicProps = {
-  get class() { return isActive() ? 'active' : 'inactive' },
-  get disabled() { return isLoading() },
+  get class() {
+    return isActive() ? 'active' : 'inactive'
+  },
+  get disabled() {
+    return isLoading()
+  },
 }
 
 const merged = mergeProps({ class: 'default' }, dynamicProps)
@@ -720,7 +746,7 @@ const merged = mergeProps({ class: 'default' }, dynamicProps)
 ```ts
 function splitProps<T, K extends (keyof T)[]>(
   props: T,
-  ...keys: K,
+  ...keys: K
 ): [Pick<T, K[number]>, Omit<T, K[number]>]
 ```
 
@@ -809,8 +835,8 @@ function FilteredSlot(props: { type: string; children: VNodeChild }) {
   const filtered = createMemo(() => {
     const items = resolved()
     if (!Array.isArray(items)) return items
-    return items.filter(item =>
-      typeof item === 'object' && item !== null && (item as any).type === props.type
+    return items.filter(
+      (item) => typeof item === 'object' && item !== null && (item as any).type === props.type,
     )
   })
 
@@ -837,17 +863,14 @@ const Settings = lazy(() => import('./Settings'))
 // Preload on hover
 function NavLink(props: { href: string; label: string; component: { preload: () => void } }) {
   return (
-    <a
-      href={props.href}
-      onMouseEnter={() => props.component.preload()}
-    >
+    <a href={props.href} onMouseEnter={() => props.component.preload()}>
       {props.label}
     </a>
   )
 }
 
 // Render with Suspense
-<Suspense fallback={<div class="skeleton" />}>
+;<Suspense fallback={<div class="skeleton" />}>
   <Switch>
     <Match when={() => page() === 'dashboard'}>
       <Dashboard />
@@ -878,7 +901,7 @@ function CounterProvider(props: { children: VNodeChild }) {
 
   const value = {
     count,
-    increment: () => setCount(prev => prev + 1),
+    increment: () => setCount((prev) => prev + 1),
   }
 
   return withContext(CounterContext, value, () => props.children)
@@ -939,9 +962,7 @@ function UserTable(props: { users: () => User[] }) {
   const [sortBy, setSortBy] = createSignal<keyof User>('name')
 
   const sortedUsers = createMemo(() =>
-    [...props.users()].sort((a, b) =>
-      String(a[sortBy()]).localeCompare(String(b[sortBy()]))
-    )
+    [...props.users()].sort((a, b) => String(a[sortBy()]).localeCompare(String(b[sortBy()]))),
   )
 
   return (
@@ -1030,12 +1051,14 @@ Shows a fallback while async children resolve.
 Catches errors in its subtree and renders a fallback.
 
 ```tsx
-<ErrorBoundary fallback={(err, reset) => (
-  <div class="error">
-    <p>Error: {String(err)}</p>
-    <button onClick={reset}>Retry</button>
-  </div>
-)}>
+<ErrorBoundary
+  fallback={(err, reset) => (
+    <div class="error">
+      <p>Error: {String(err)}</p>
+      <button onClick={reset}>Retry</button>
+    </div>
+  )}
+>
   <UnstableComponent />
 </ErrorBoundary>
 ```
@@ -1046,8 +1069,14 @@ Catches errors in its subtree and renders a fallback.
 
 ```tsx
 import {
-  createSignal, createMemo, createEffect,
-  batch, Show, For, Switch, Match
+  createSignal,
+  createMemo,
+  createEffect,
+  batch,
+  Show,
+  For,
+  Switch,
+  Match,
 } from '@pyreon/solid-compat'
 
 interface Todo {
@@ -1064,32 +1093,33 @@ function TodoApp() {
 
   const filteredTodos = createMemo(() => {
     switch (filter()) {
-      case 'active': return todos().filter(t => !t.done)
-      case 'done': return todos().filter(t => t.done)
-      default: return todos()
+      case 'active':
+        return todos().filter((t) => !t.done)
+      case 'done':
+        return todos().filter((t) => t.done)
+      default:
+        return todos()
     }
   })
 
-  const remaining = createMemo(() => todos().filter(t => !t.done).length)
+  const remaining = createMemo(() => todos().filter((t) => !t.done).length)
 
   const addTodo = (e: SubmitEvent) => {
     e.preventDefault()
     const text = input().trim()
     if (!text) return
     batch(() => {
-      setTodos(prev => [...prev, { id: nextId++, text, done: false }])
+      setTodos((prev) => [...prev, { id: nextId++, text, done: false }])
       setInput('')
     })
   }
 
   const toggleTodo = (id: number) => {
-    setTodos(prev => prev.map(t =>
-      t.id === id ? { ...t, done: !t.done } : t
-    ))
+    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
   const removeTodo = (id: number) => {
-    setTodos(prev => prev.filter(t => t.id !== id))
+    setTodos((prev) => prev.filter((t) => t.id !== id))
   }
 
   // Persist to localStorage
@@ -1109,29 +1139,28 @@ function TodoApp() {
       </form>
 
       <div class="filters">
+        <button class={() => (filter() === 'all' ? 'active' : '')} onClick={() => setFilter('all')}>
+          All
+        </button>
         <button
-          class={() => filter() === 'all' ? 'active' : ''}
-          onClick={() => setFilter('all')}
-        >All</button>
-        <button
-          class={() => filter() === 'active' ? 'active' : ''}
+          class={() => (filter() === 'active' ? 'active' : '')}
           onClick={() => setFilter('active')}
-        >Active ({remaining()})</button>
+        >
+          Active ({remaining()})
+        </button>
         <button
-          class={() => filter() === 'done' ? 'active' : ''}
+          class={() => (filter() === 'done' ? 'active' : '')}
           onClick={() => setFilter('done')}
-        >Done</button>
+        >
+          Done
+        </button>
       </div>
 
       <ul>
         <For each={filteredTodos} by={(t) => t.id}>
           {(todo) => (
             <li class={todo.done ? 'done' : ''}>
-              <input
-                type="checkbox"
-                checked={todo.done}
-                onChange={() => toggleTodo(todo.id)}
-              />
+              <input type="checkbox" checked={todo.done} onChange={() => toggleTodo(todo.id)} />
               <span>{todo.text}</span>
               <button onClick={() => removeTodo(todo.id)}>x</button>
             </li>
@@ -1140,7 +1169,9 @@ function TodoApp() {
       </ul>
 
       <Show when={() => todos().length > 0}>
-        <p class="footer">{remaining()} item{() => remaining() === 1 ? '' : 's'} left</p>
+        <p class="footer">
+          {remaining()} item{() => (remaining() === 1 ? '' : 's')} left
+        </p>
       </Show>
     </div>
   )
@@ -1152,10 +1183,10 @@ function TodoApp() {
 ```tsx
 function createLocalStorage<T>(
   key: string,
-  initialValue: T
+  initialValue: T,
 ): [() => T, (v: T | ((prev: T) => T)) => void] {
   const stored = localStorage.getItem(key)
-  const initial = stored ? JSON.parse(stored) as T : initialValue
+  const initial = stored ? (JSON.parse(stored) as T) : initialValue
   const [value, setValue] = createSignal<T>(initial)
 
   createEffect(() => {
@@ -1235,8 +1266,12 @@ If you use Solid's store primitives (`createStore`, `produce`, `reconcile`), mig
 import { createStore, produce } from 'solid-js/store'
 
 const [state, setState] = createStore({ count: 0, items: [] })
-setState('count', prev => prev + 1)
-setState(produce(s => { s.items.push({ id: 1, text: 'hello' }) }))
+setState('count', (prev) => prev + 1)
+setState(
+  produce((s) => {
+    s.items.push({ id: 1, text: 'hello' })
+  }),
+)
 
 // After (Pyreon)
 import { createStore } from '@pyreon/reactivity'
@@ -1247,6 +1282,7 @@ state.items.push({ id: 1, text: 'hello' })
 ```
 
 Key differences:
+
 - Pyreon's `createStore` returns a single proxy object (not a `[state, setState]` tuple)
 - Mutations are direct JavaScript (no path-based setter, no `produce`)
 - `reconcile` is a separate function: `reconcile(newData, state)`

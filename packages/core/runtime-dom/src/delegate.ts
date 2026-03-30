@@ -11,7 +11,7 @@
  * - Faster initial mount (~0.4-0.8ms savings on 1000-row benchmarks)
  */
 
-import { batch } from "@pyreon/reactivity"
+import { batch } from '@pyreon/reactivity'
 
 /**
  * Events that are delegated (common bubbling events).
@@ -19,29 +19,29 @@ import { batch } from "@pyreon/reactivity"
  * are NOT delegated — they must use addEventListener.
  */
 export const DELEGATED_EVENTS = new Set([
-  "click",
-  "dblclick",
-  "contextmenu",
-  "focusin",
-  "focusout",
-  "input",
-  "change",
-  "keydown",
-  "keyup",
-  "mousedown",
-  "mouseup",
-  "mousemove",
-  "mouseover",
-  "mouseout",
-  "pointerdown",
-  "pointerup",
-  "pointermove",
-  "pointerover",
-  "pointerout",
-  "touchstart",
-  "touchend",
-  "touchmove",
-  "submit",
+  'click',
+  'dblclick',
+  'contextmenu',
+  'focusin',
+  'focusout',
+  'input',
+  'change',
+  'keydown',
+  'keyup',
+  'mousedown',
+  'mouseup',
+  'mousemove',
+  'mouseover',
+  'mouseout',
+  'pointerdown',
+  'pointerup',
+  'pointermove',
+  'pointerover',
+  'pointerout',
+  'touchstart',
+  'touchend',
+  'touchmove',
+  'submit',
 ])
 
 /**
@@ -69,7 +69,7 @@ export function setupDelegation(container: Element): void {
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
         const handler = el[prop]
-        if (typeof handler === "function") {
+        if (typeof handler === 'function') {
           batch(() => handler(e))
           // Don't break — allow ancestor handlers too (consistent with addEventListener)
           // But if stopPropagation was called, stop walking

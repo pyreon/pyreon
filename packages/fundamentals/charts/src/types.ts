@@ -1,7 +1,7 @@
-import type { Props } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import type { ComposeOption, EChartsOption, SetOptionOpts } from "echarts"
-import type { ECharts } from "echarts/core"
+import type { Props } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import type { ComposeOption, EChartsOption, SetOptionOpts } from 'echarts'
+import type { ECharts } from 'echarts/core'
 
 // ─── Re-export ECharts types for consumer convenience ────────────────────────
 
@@ -30,7 +30,7 @@ export type {
   TreemapSeriesOption,
   TreeSeriesOption,
   VisualMapComponentOption,
-} from "echarts"
+} from 'echarts'
 export type { ComposeOption, ECharts, EChartsOption, SetOptionOpts }
 
 // ─── Event types (duck-typed to avoid echarts dual-package type conflicts) ───
@@ -60,7 +60,7 @@ export interface UseChartConfig {
   /** ECharts theme — 'dark', a registered theme name, or a theme object */
   theme?: string | Record<string, unknown>
   /** Renderer — 'canvas' (default, best performance) or 'svg' */
-  renderer?: "canvas" | "svg"
+  renderer?: 'canvas' | 'svg'
   /** ECharts locale — 'EN' (default), 'ZH', etc. */
   locale?: string
   /** Whether to replace all options instead of merging — default: false */
@@ -103,7 +103,7 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
   /** ECharts theme */
   theme?: string | Record<string, unknown>
   /** Renderer — 'canvas' (default) or 'svg' */
-  renderer?: "canvas" | "svg"
+  renderer?: 'canvas' | 'svg'
   /** CSS style for the container div */
   style?: string
   /** CSS class for the container div */

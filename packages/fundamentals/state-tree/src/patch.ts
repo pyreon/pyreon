@@ -1,10 +1,10 @@
-import type { Signal } from "@pyreon/reactivity"
-import { batch } from "@pyreon/reactivity"
-import { instanceMeta, isModelInstance } from "./registry"
-import type { Patch, PatchListener } from "./types"
+import type { Signal } from '@pyreon/reactivity'
+import { batch } from '@pyreon/reactivity'
+import { instanceMeta, isModelInstance } from './registry'
+import type { Patch, PatchListener } from './types'
 
 /** Property names that must never be used as patch path segments. */
-const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"])
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 // ─── Tracked signal ───────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export function trackedSignal<T>(
       // For model instances, emit the snapshot rather than the live object
       // so patches are always plain JSON-serializable values.
       const patchValue = isModelInstance(newValue) ? snapshotValue(newValue as object) : newValue
-      emitPatch({ op: "replace", path, value: patchValue })
+      emitPatch({ op: 'replace', path, value: patchValue })
     }
   }
 
@@ -76,7 +76,7 @@ function snapshotValue(instance: object): Record<string, unknown> {
  */
 export function onPatch(instance: object, listener: PatchListener): () => void {
   const meta = instanceMeta.get(instance)
-  if (!meta) throw new Error("[@pyreon/state-tree] onPatch: not a model instance")
+  if (!meta) throw new Error('[@pyreon/state-tree] onPatch: not a model instance')
   meta.patchListeners.add(listener)
   return () => meta.patchListeners.delete(listener)
 }
@@ -105,13 +105,13 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
 
   batch(() => {
     for (const p of patches) {
-      if (p.op !== "replace") {
+      if (p.op !== 'replace') {
         throw new Error(`[@pyreon/state-tree] applyPatch: unsupported op "${p.op}"`)
       }
 
-      const segments = p.path.split("/").filter(Boolean)
+      const segments = p.path.split('/').filter(Boolean)
       if (segments.length === 0) {
-        throw new Error("[@pyreon/state-tree] applyPatch: empty path")
+        throw new Error('[@pyreon/state-tree] applyPatch: empty path')
       }
 
       // Walk to the target instance for nested paths
@@ -125,11 +125,11 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
         if (!meta)
           throw new Error(`[@pyreon/state-tree] applyPatch: not a model instance at "${segment}"`)
         const sig = (target as Record<string, Signal<unknown>>)[segment]
-        if (!sig || typeof sig.peek !== "function") {
+        if (!sig || typeof sig.peek !== 'function') {
           throw new Error(`[@pyreon/state-tree] applyPatch: unknown state key "${segment}"`)
         }
         const nested = sig.peek()
-        if (!nested || typeof nested !== "object" || !isModelInstance(nested)) {
+        if (!nested || typeof nested !== 'object' || !isModelInstance(nested)) {
           throw new Error(
             `[@pyreon/state-tree] applyPatch: "${segment}" is not a nested model instance`,
           )
@@ -142,13 +142,13 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
         throw new Error(`[@pyreon/state-tree] applyPatch: reserved property name "${lastKey}"`)
       }
       const meta = instanceMeta.get(target)
-      if (!meta) throw new Error("[@pyreon/state-tree] applyPatch: not a model instance")
+      if (!meta) throw new Error('[@pyreon/state-tree] applyPatch: not a model instance')
       if (!meta.stateKeys.includes(lastKey)) {
         throw new Error(`[@pyreon/state-tree] applyPatch: unknown state key "${lastKey}"`)
       }
 
       const sig = (target as Record<string, Signal<unknown>>)[lastKey]
-      if (sig && typeof sig.set === "function") {
+      if (sig && typeof sig.set === 'function') {
         sig.set(p.value)
       }
     }

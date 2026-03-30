@@ -1,16 +1,16 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isDestructuring } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isDestructuring } from '../../utils/ast'
 
 function containsJSXReturn(node: any): boolean {
   if (!node) return false
   // Arrow with expression body returning JSX
-  if (node.type === "JSXElement" || node.type === "JSXFragment") return true
-  if (node.type === "ParenthesizedExpression") return containsJSXReturn(node.expression)
+  if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
+  if (node.type === 'ParenthesizedExpression') return containsJSXReturn(node.expression)
 
   // Block body — look for return statements with JSX
-  if (node.type === "BlockStatement") {
+  if (node.type === 'BlockStatement') {
     for (const stmt of node.body ?? []) {
-      if (stmt.type === "ReturnStatement" && containsJSXReturn(stmt.argument)) {
+      if (stmt.type === 'ReturnStatement' && containsJSXReturn(stmt.argument)) {
         return true
       }
     }
@@ -20,11 +20,11 @@ function containsJSXReturn(node: any): boolean {
 
 export const noPropsDestructure: Rule = {
   meta: {
-    id: "pyreon/no-props-destructure",
-    category: "jsx",
+    id: 'pyreon/no-props-destructure',
+    category: 'jsx',
     description:
-      "Disallow destructuring props in component functions — it breaks signal reactivity.",
-    severity: "error",
+      'Disallow destructuring props in component functions — it breaks signal reactivity.',
+    severity: 'error',
     fixable: false,
   },
   create(context) {
@@ -57,7 +57,7 @@ function checkFunction(node: any, context: any) {
   if (containsJSXReturn(body)) {
     context.report({
       message:
-        "Destructured props in a component function — this breaks signal reactivity. Use `props.x` or `splitProps()` instead.",
+        'Destructured props in a component function — this breaks signal reactivity. Use `props.x` or `splitProps()` instead.',
       span: getSpan(firstParam),
     })
   }

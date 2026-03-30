@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/head"
+title: '@pyreon/head'
 description: Declarative document head management for title, meta tags, scripts, styles, and more.
 ---
 
@@ -10,18 +10,23 @@ description: Declarative document head management for title, meta tags, scripts,
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/head
 ```
+
 ```bash [bun]
 bun add @pyreon/head
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/head
 ```
+
 ```bash [yarn]
 yarn add @pyreon/head
 ```
+
 :::
 
 ## Quick Start
@@ -31,26 +36,26 @@ yarn add @pyreon/head
 For CSR, wrap your application in a `HeadProvider` and use `useHead` in any descendant component:
 
 ```tsx
-import { createHeadContext, HeadProvider, useHead } from "@pyreon/head"
-import { mount } from "@pyreon/runtime-dom"
+import { createHeadContext, HeadProvider, useHead } from '@pyreon/head'
+import { mount } from '@pyreon/runtime-dom'
 
 const headCtx = createHeadContext()
 
 function App() {
   useHead({
-    title: "My App",
-    meta: [
-      { name: "description", content: "A Pyreon application" },
-    ],
-    htmlAttrs: { lang: "en" },
+    title: 'My App',
+    meta: [{ name: 'description', content: 'A Pyreon application' }],
+    htmlAttrs: { lang: 'en' },
   })
 
   return <div>Hello World</div>
 }
 
 mount(
-  <HeadProvider context={headCtx}><App /></HeadProvider>,
-  document.getElementById("app")!
+  <HeadProvider context={headCtx}>
+    <App />
+  </HeadProvider>,
+  document.getElementById('app')!,
 )
 ```
 
@@ -59,17 +64,17 @@ mount(
 For SSR, use `renderWithHead` which automatically creates and injects a head context:
 
 ```tsx
-import { renderWithHead } from "@pyreon/head"
+import { renderWithHead } from '@pyreon/head'
 
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
 
 const htmlAttrStr = Object.entries(htmlAttrs)
   .map(([k, v]) => `${k}="${v}"`)
-  .join(" ")
+  .join(' ')
 
 const bodyAttrStr = Object.entries(bodyAttrs)
   .map(([k, v]) => `${k}="${v}"`)
-  .join(" ")
+  .join(' ')
 
 const page = `<!DOCTYPE html>
 <html ${htmlAttrStr}>
@@ -94,15 +99,13 @@ When you pass a plain object, the tags are registered once on mount and removed 
 ```tsx
 function AboutPage() {
   useHead({
-    title: "About Us",
+    title: 'About Us',
     meta: [
-      { name: "description", content: "Learn more about our company" },
-      { property: "og:title", content: "About Us" },
-      { property: "og:description", content: "Learn more about our company" },
+      { name: 'description', content: 'Learn more about our company' },
+      { property: 'og:title', content: 'About Us' },
+      { property: 'og:description', content: 'Learn more about our company' },
     ],
-    link: [
-      { rel: "canonical", href: "https://example.com/about" },
-    ],
+    link: [{ rel: 'canonical', href: 'https://example.com/about' }],
   })
 
   return <h1>About Us</h1>
@@ -117,13 +120,11 @@ Pass a function to make head tags reactive -- they update whenever signals insid
 import { signal } from '@pyreon/reactivity'
 
 function ProductPage() {
-  const product = signal({ name: "Widget", price: 9.99 })
+  const product = signal({ name: 'Widget', price: 9.99 })
 
   useHead(() => ({
     title: `${product().name} - $${product().price}`,
-    meta: [
-      { name: "description", content: `Buy ${product().name} for $${product().price}` },
-    ],
+    meta: [{ name: 'description', content: `Buy ${product().name} for $${product().price}` }],
   }))
 
   return <h1>{product().name}</h1>
@@ -165,7 +166,7 @@ interface UseHeadInput {
 Set the document title:
 
 ```tsx
-useHead({ title: "My Page Title" })
+useHead({ title: 'My Page Title' })
 ```
 
 The title is rendered as a `<title>` tag and also updates `document.title` on the client. Titles are deduplicated by the key `"title"` -- if multiple components set a title, the innermost (last-registered) wins.
@@ -177,13 +178,13 @@ Use `titleTemplate` to apply a consistent suffix or prefix to all page titles. S
 ```tsx
 // Root layout -- sets the template
 function Layout({ children }) {
-  useHead({ titleTemplate: "%s | My App" })
+  useHead({ titleTemplate: '%s | My App' })
   return <div>{children}</div>
 }
 
 // Page component -- sets just the title
 function AboutPage() {
-  useHead({ title: "About" })
+  useHead({ title: 'About' })
   // Rendered title: "About | My App"
   return <h1>About</h1>
 }
@@ -198,7 +199,7 @@ For more control, use a function that receives the raw title and returns the fin
 ```tsx
 useHead({
   titleTemplate: (title) => {
-    if (!title) return "My App"         // no page title set
+    if (!title) return 'My App' // no page title set
     return `${title} — My App`
   },
 })
@@ -209,8 +210,8 @@ This is useful for handling edge cases like empty titles or special pages:
 ```tsx
 useHead({
   titleTemplate: (title) => {
-    if (title === "Home") return "My App"  // Home page gets just the app name
-    return title ? `${title} | My App` : "My App"
+    if (title === 'Home') return 'My App' // Home page gets just the app name
+    return title ? `${title} | My App` : 'My App'
   },
 })
 ```
@@ -224,11 +225,11 @@ Set `<meta>` tags using the `meta` array. Each entry is a record of attribute na
 ```tsx
 useHead({
   meta: [
-    { charset: "UTF-8" },
-    { name: "viewport", content: "width=device-width, initial-scale=1" },
-    { name: "description", content: "A detailed page description for SEO" },
-    { name: "author", content: "Jane Doe" },
-    { name: "robots", content: "index, follow" },
+    { charset: 'UTF-8' },
+    { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+    { name: 'description', content: 'A detailed page description for SEO' },
+    { name: 'author', content: 'Jane Doe' },
+    { name: 'robots', content: 'index, follow' },
   ],
 })
 ```
@@ -238,13 +239,13 @@ useHead({
 ```tsx
 useHead({
   meta: [
-    { property: "og:type", content: "website" },
-    { property: "og:title", content: "My Page Title" },
-    { property: "og:description", content: "A description of the page" },
-    { property: "og:image", content: "https://example.com/image.jpg" },
-    { property: "og:url", content: "https://example.com/page" },
-    { property: "og:site_name", content: "My Site" },
-    { property: "og:locale", content: "en_US" },
+    { property: 'og:type', content: 'website' },
+    { property: 'og:title', content: 'My Page Title' },
+    { property: 'og:description', content: 'A description of the page' },
+    { property: 'og:image', content: 'https://example.com/image.jpg' },
+    { property: 'og:url', content: 'https://example.com/page' },
+    { property: 'og:site_name', content: 'My Site' },
+    { property: 'og:locale', content: 'en_US' },
   ],
 })
 ```
@@ -254,12 +255,12 @@ useHead({
 ```tsx
 useHead({
   meta: [
-    { name: "twitter:card", content: "summary_large_image" },
-    { name: "twitter:site", content: "@mysite" },
-    { name: "twitter:creator", content: "@author" },
-    { name: "twitter:title", content: "My Page Title" },
-    { name: "twitter:description", content: "A description of the page" },
-    { name: "twitter:image", content: "https://example.com/image.jpg" },
+    { name: 'twitter:card', content: 'summary_large_image' },
+    { name: 'twitter:site', content: '@mysite' },
+    { name: 'twitter:creator', content: '@author' },
+    { name: 'twitter:title', content: 'My Page Title' },
+    { name: 'twitter:description', content: 'A description of the page' },
+    { name: 'twitter:image', content: 'https://example.com/image.jpg' },
   ],
 })
 ```
@@ -271,12 +272,12 @@ Meta tags are deduplicated by their `name` or `property` attribute. If multiple 
 ```tsx
 // Layout (outer)
 useHead({
-  meta: [{ name: "description", content: "Default description" }],
+  meta: [{ name: 'description', content: 'Default description' }],
 })
 
 // Page (inner -- wins)
 useHead({
-  meta: [{ name: "description", content: "Page-specific description" }],
+  meta: [{ name: 'description', content: 'Page-specific description' }],
 })
 // Result: only "Page-specific description" is rendered
 ```
@@ -288,10 +289,10 @@ Set `<link>` tags using the `link` array:
 ```tsx
 useHead({
   link: [
-    { rel: "canonical", href: "https://example.com/page" },
-    { rel: "icon", type: "image/png", href: "/favicon.png" },
-    { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-    { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+    { rel: 'canonical', href: 'https://example.com/page' },
+    { rel: 'icon', type: 'image/png', href: '/favicon.png' },
+    { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+    { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
   ],
 })
 ```
@@ -301,8 +302,8 @@ useHead({
 ```tsx
 useHead({
   link: [
-    { rel: "stylesheet", href: "/styles/main.css" },
-    { rel: "stylesheet", href: "/styles/theme.css" },
+    { rel: 'stylesheet', href: '/styles/main.css' },
+    { rel: 'stylesheet', href: '/styles/theme.css' },
   ],
 })
 ```
@@ -312,8 +313,8 @@ Multiple stylesheets with different `href` values are kept (they have different 
 ```tsx
 useHead({
   link: [
-    { rel: "stylesheet", href: "/a.css" },
-    { rel: "stylesheet", href: "/b.css" },
+    { rel: 'stylesheet', href: '/a.css' },
+    { rel: 'stylesheet', href: '/b.css' },
   ],
 })
 // Both <link> tags are rendered
@@ -324,11 +325,11 @@ useHead({
 ```tsx
 useHead({
   link: [
-    { rel: "preconnect", href: "https://fonts.googleapis.com" },
-    { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
-    { rel: "preload", as: "font", type: "font/woff2", href: "/fonts/Inter.woff2", crossorigin: "" },
-    { rel: "preload", as: "image", href: "/hero.webp" },
-    { rel: "dns-prefetch", href: "https://analytics.example.com" },
+    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+    { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+    { rel: 'preload', as: 'font', type: 'font/woff2', href: '/fonts/Inter.woff2', crossorigin: '' },
+    { rel: 'preload', as: 'image', href: '/hero.webp' },
+    { rel: 'dns-prefetch', href: 'https://analytics.example.com' },
   ],
 })
 ```
@@ -337,9 +338,7 @@ useHead({
 
 ```tsx
 useHead({
-  link: [
-    { rel: "canonical", href: "https://example.com/page" },
-  ],
+  link: [{ rel: 'canonical', href: 'https://example.com/page' }],
 })
 ```
 
@@ -356,8 +355,8 @@ Inject `<script>` tags using the `script` array:
 ```tsx
 useHead({
   script: [
-    { src: "https://cdn.example.com/analytics.js", async: "true" },
-    { src: "https://cdn.example.com/widget.js", defer: "true" },
+    { src: 'https://cdn.example.com/analytics.js', async: 'true' },
+    { src: 'https://cdn.example.com/widget.js', defer: 'true' },
   ],
 })
 ```
@@ -390,10 +389,10 @@ Script content is not HTML-escaped in SSR output (since it is raw JavaScript). H
 useHead({
   script: [
     {
-      src: "https://cdn.example.com/sdk.js",
-      async: "true",
-      crossorigin: "anonymous",
-      "data-api-key": "abc123",
+      src: 'https://cdn.example.com/sdk.js',
+      async: 'true',
+      crossorigin: 'anonymous',
+      'data-api-key': 'abc123',
     },
   ],
 })
@@ -406,8 +405,8 @@ Inject inline `<style>` tags:
 ```tsx
 useHead({
   style: [
-    { children: "body { margin: 0; font-family: system-ui, sans-serif; }" },
-    { children: ".dark { background: #1a1a1a; color: #fff; }" },
+    { children: 'body { margin: 0; font-family: system-ui, sans-serif; }' },
+    { children: '.dark { background: #1a1a1a; color: #fff; }' },
   ],
 })
 ```
@@ -418,8 +417,8 @@ useHead({
 useHead({
   style: [
     {
-      children: "@media print { .no-print { display: none; } }",
-      media: "print",
+      children: '@media print { .no-print { display: none; } }',
+      media: 'print',
     },
   ],
 })
@@ -432,7 +431,7 @@ Inject `<noscript>` content for users with JavaScript disabled:
 ```tsx
 useHead({
   noscript: [
-    { children: "<p>This application requires JavaScript to run.</p>" },
+    { children: '<p>This application requires JavaScript to run.</p>' },
     { children: '<link rel="stylesheet" href="/noscript.css" />' },
   ],
 })
@@ -445,16 +444,16 @@ The `jsonLd` property provides a convenience for emitting `<script type="applica
 ```tsx
 useHead({
   jsonLd: {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: "Widget Pro",
-    description: "The finest widget available",
-    image: "https://example.com/widget.jpg",
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: 'Widget Pro',
+    description: 'The finest widget available',
+    image: 'https://example.com/widget.jpg',
     offers: {
-      "@type": "Offer",
-      price: "29.99",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
+      '@type': 'Offer',
+      price: '29.99',
+      priceCurrency: 'USD',
+      availability: 'https://schema.org/InStock',
     },
   },
 })
@@ -465,15 +464,15 @@ useHead({
 ```tsx
 useHead({
   jsonLd: {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    name: "My Company",
-    url: "https://example.com",
-    logo: "https://example.com/logo.png",
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'My Company',
+    url: 'https://example.com',
+    logo: 'https://example.com/logo.png',
     contactPoint: {
-      "@type": "ContactPoint",
-      telephone: "+1-555-0100",
-      contactType: "customer service",
+      '@type': 'ContactPoint',
+      telephone: '+1-555-0100',
+      contactType: 'customer service',
     },
   },
 })
@@ -485,11 +484,11 @@ useHead({
 function ArticlePage({ article }) {
   useHead({
     jsonLd: {
-      "@context": "https://schema.org",
-      "@type": "Article",
+      '@context': 'https://schema.org',
+      '@type': 'Article',
       headline: article.title,
       author: {
-        "@type": "Person",
+        '@type': 'Person',
         name: article.author,
       },
       datePublished: article.publishedAt,
@@ -507,12 +506,12 @@ function ArticlePage({ article }) {
 ```tsx
 useHead({
   jsonLd: {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: "https://example.com" },
-      { "@type": "ListItem", position: 2, name: "Products", item: "https://example.com/products" },
-      { "@type": "ListItem", position: 3, name: "Widget Pro" },
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://example.com' },
+      { '@type': 'ListItem', position: 2, name: 'Products', item: 'https://example.com/products' },
+      { '@type': 'ListItem', position: 3, name: 'Widget Pro' },
     ],
   },
 })
@@ -524,12 +523,12 @@ JSON-LD tags are deduplicated by the key `"jsonld"` -- if multiple components se
 useHead({
   script: [
     {
-      type: "application/ld+json",
-      children: JSON.stringify({ "@type": "Organization", /* ... */ }),
+      type: 'application/ld+json',
+      children: JSON.stringify({ '@type': 'Organization' /* ... */ }),
     },
     {
-      type: "application/ld+json",
-      children: JSON.stringify({ "@type": "WebPage", /* ... */ }),
+      type: 'application/ld+json',
+      children: JSON.stringify({ '@type': 'WebPage' /* ... */ }),
     },
   ],
 })
@@ -541,7 +540,7 @@ Set the `<base>` tag for relative URL resolution:
 
 ```tsx
 useHead({
-  base: { href: "https://example.com/" },
+  base: { href: 'https://example.com/' },
 })
 ```
 
@@ -553,8 +552,8 @@ Set attributes on the `<html>` and `<body>` elements:
 
 ```tsx
 useHead({
-  htmlAttrs: { lang: "en", dir: "ltr" },
-  bodyAttrs: { class: "dark-mode" },
+  htmlAttrs: { lang: 'en', dir: 'ltr' },
+  bodyAttrs: { class: 'dark-mode' },
 })
 ```
 
@@ -569,15 +568,15 @@ function App() {
   const theme = signal<'light' | 'dark'>('light')
 
   useHead(() => ({
-    htmlAttrs: { lang: "en" },
+    htmlAttrs: { lang: 'en' },
     bodyAttrs: {
       class: theme() === 'dark' ? 'dark-mode' : 'light-mode',
-      "data-theme": theme(),
+      'data-theme': theme(),
     },
   }))
 
   return (
-    <button onClick={() => theme.update(t => t === 'light' ? 'dark' : 'light')}>
+    <button onClick={() => theme.update((t) => (t === 'light' ? 'dark' : 'light'))}>
       Toggle Theme
     </button>
   )
@@ -601,10 +600,10 @@ When multiple components set `htmlAttrs` or `bodyAttrs`, the attributes are merg
 
 ```tsx
 // Layout
-useHead({ htmlAttrs: { lang: "en", dir: "ltr" } })
+useHead({ htmlAttrs: { lang: 'en', dir: 'ltr' } })
 
 // Page (overrides dir but keeps lang)
-useHead({ htmlAttrs: { dir: "rtl" } })
+useHead({ htmlAttrs: { dir: 'rtl' } })
 // Result: <html lang="en" dir="rtl">
 ```
 
@@ -616,16 +615,16 @@ Tags are deduplicated by their `key`. When multiple components register a tag wi
 
 ### Key Generation Rules
 
-| Tag Type | Key | Example |
-| --- | --- | --- |
-| `title` | `"title"` | Always `"title"` |
-| `meta` | `name` or `property` attribute | `"description"`, `"og:title"` |
-| `link` | `rel` + `href` combination | `"link-canonical-https://..."` |
-| `script` | `src` attribute | `"https://cdn.example.com/sdk.js"` |
-| `style` | Auto-generated index | `"style-0"`, `"style-1"` |
-| `noscript` | Auto-generated index | `"noscript-0"` |
-| `jsonLd` | `"jsonld"` | Always `"jsonld"` |
-| `base` | `"base"` | Always `"base"` |
+| Tag Type   | Key                            | Example                            |
+| ---------- | ------------------------------ | ---------------------------------- |
+| `title`    | `"title"`                      | Always `"title"`                   |
+| `meta`     | `name` or `property` attribute | `"description"`, `"og:title"`      |
+| `link`     | `rel` + `href` combination     | `"link-canonical-https://..."`     |
+| `script`   | `src` attribute                | `"https://cdn.example.com/sdk.js"` |
+| `style`    | Auto-generated index           | `"style-0"`, `"style-1"`           |
+| `noscript` | Auto-generated index           | `"noscript-0"`                     |
+| `jsonLd`   | `"jsonld"`                     | Always `"jsonld"`                  |
+| `base`     | `"base"`                       | Always `"base"`                    |
 
 ### Deduplication Example
 
@@ -633,8 +632,8 @@ Tags are deduplicated by their `key`. When multiple components register a tag wi
 // Parent layout
 function Layout({ children }) {
   useHead({
-    title: "My App",
-    meta: [{ name: "description", content: "Default description" }],
+    title: 'My App',
+    meta: [{ name: 'description', content: 'Default description' }],
   })
   return <div>{children}</div>
 }
@@ -642,8 +641,8 @@ function Layout({ children }) {
 // Child page (innermost wins)
 function ProductPage() {
   useHead({
-    title: "Widget Pro",
-    meta: [{ name: "description", content: "Buy Widget Pro" }],
+    title: 'Widget Pro',
+    meta: [{ name: 'description', content: 'Buy Widget Pro' }],
   })
   return <h1>Widget Pro</h1>
 }
@@ -666,17 +665,13 @@ function NotificationBadge() {
   const unreadCount = signal(0)
 
   useHead(() => ({
-    title: unreadCount() > 0
-      ? `(${unreadCount()}) My App`
-      : "My App",
+    title: unreadCount() > 0 ? `(${unreadCount()}) My App` : 'My App',
   }))
 
   return (
     <div>
       <span>Unread: {unreadCount()}</span>
-      <button onClick={() => unreadCount.update(n => n + 1)}>
-        New Message
-      </button>
+      <button onClick={() => unreadCount.update((n) => n + 1)}>New Message</button>
     </div>
   )
 }
@@ -685,17 +680,17 @@ function NotificationBadge() {
 The DOM sync is incremental -- existing elements are matched by key, attributes are patched in place, new elements are added, and stale ones are removed:
 
 ```tsx
-const description = signal("initial description")
+const description = signal('initial description')
 
 function Page() {
   useHead(() => ({
-    meta: [{ name: "description", content: description() }],
+    meta: [{ name: 'description', content: description() }],
   }))
   return <div />
 }
 
 // After mount: <meta name="description" content="initial description" />
-description.set("updated description")
+description.set('updated description')
 // Same DOM element is reused, only content attribute is patched
 ```
 
@@ -704,7 +699,7 @@ description.set("updated description")
 The `HeadProvider` component provides a head context to all descendant components. Required for CSR -- `useHead()` is a silent no-op without it.
 
 ```tsx
-import { createHeadContext, HeadProvider } from "@pyreon/head"
+import { createHeadContext, HeadProvider } from '@pyreon/head'
 
 const headCtx = createHeadContext()
 
@@ -733,7 +728,7 @@ The `HeadProvider` pushes the context frame synchronously during its setup phase
 Create a head context that stores and deduplicates all registered head tags:
 
 ```ts
-import { createHeadContext } from "@pyreon/head"
+import { createHeadContext } from '@pyreon/head'
 
 const ctx = createHeadContext()
 ```
@@ -776,7 +771,7 @@ interface HeadEntry {
 
 ```ts
 interface HeadTag {
-  tag: "title" | "meta" | "link" | "script" | "style" | "base" | "noscript"
+  tag: 'title' | 'meta' | 'link' | 'script' | 'style' | 'base' | 'noscript'
   key?: string
   props?: Record<string, string>
   children?: string
@@ -788,7 +783,7 @@ interface HeadTag {
 `renderWithHead` renders a Pyreon app to HTML and extracts all head tags into a serialized string:
 
 ```tsx
-import { renderWithHead } from "@pyreon/head"
+import { renderWithHead } from '@pyreon/head'
 
 const result = await renderWithHead(<App />)
 ```
@@ -816,11 +811,11 @@ async function renderPage(App: ComponentFn): Promise<string> {
 
   const htmlAttrStr = Object.entries(htmlAttrs)
     .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)
-    .join("")
+    .join('')
 
   const bodyAttrStr = Object.entries(bodyAttrs)
     .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)
-    .join("")
+    .join('')
 
   return `<!DOCTYPE html>
 <html${htmlAttrStr}>
@@ -854,14 +849,14 @@ On the server:
 Title text and meta content are HTML-escaped (`&`, `<`, `>`, `"`):
 
 ```tsx
-useHead({ title: "A & B <script>" })
+useHead({ title: 'A & B <script>' })
 // SSR output: <title>A &amp; B &lt;script&gt;</title>
 ```
 
 Script and style content is NOT escaped (it is raw JavaScript/CSS), but closing tags are escaped:
 
 ```tsx
-useHead({ script: [{ children: "var x = 1 < 2 && 3 > 1" }] })
+useHead({ script: [{ children: 'var x = 1 < 2 && 3 > 1' }] })
 // SSR output: <script>var x = 1 < 2 && 3 > 1</script>
 ```
 
@@ -884,8 +879,8 @@ When a component unmounts, its registered tags are removed from the context and 
 Combine `@pyreon/head` with `@pyreon/router` for per-page meta tags:
 
 ```tsx
-import { useHead } from "@pyreon/head"
-import { useRoute } from "@pyreon/router"
+import { useHead } from '@pyreon/head'
+import { useRoute } from '@pyreon/router'
 
 function BlogPost() {
   const route = useRoute()
@@ -895,18 +890,16 @@ function BlogPost() {
     const post = getPostBySlug(slug)
 
     return {
-      title: post?.title ?? "Loading...",
+      title: post?.title ?? 'Loading...',
       meta: [
-        { name: "description", content: post?.excerpt ?? "" },
-        { property: "og:title", content: post?.title ?? "" },
-        { property: "og:description", content: post?.excerpt ?? "" },
-        { property: "og:image", content: post?.coverImage ?? "" },
-        { property: "og:type", content: "article" },
-        { name: "twitter:card", content: "summary_large_image" },
+        { name: 'description', content: post?.excerpt ?? '' },
+        { property: 'og:title', content: post?.title ?? '' },
+        { property: 'og:description', content: post?.excerpt ?? '' },
+        { property: 'og:image', content: post?.coverImage ?? '' },
+        { property: 'og:type', content: 'article' },
+        { name: 'twitter:card', content: 'summary_large_image' },
       ],
-      link: [
-        { rel: "canonical", href: `https://example.com/blog/${slug}` },
-      ],
+      link: [{ rel: 'canonical', href: `https://example.com/blog/${slug}` }],
     }
   })
 
@@ -919,34 +912,37 @@ function BlogPost() {
 ### SEO-Optimized Layout
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { createHeadContext, HeadProvider, useHead } from "@pyreon/head"
+import { defineComponent } from '@pyreon/core'
+import { createHeadContext, HeadProvider, useHead } from '@pyreon/head'
 
 // Root layout with global head configuration
 const RootLayout = defineComponent(({ children }) => {
   useHead({
-    titleTemplate: "%s | My SaaS App",
+    titleTemplate: '%s | My SaaS App',
     meta: [
-      { charset: "UTF-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { name: "theme-color", content: "#4f46e5" },
-      { property: "og:site_name", content: "My SaaS App" },
-      { name: "twitter:site", content: "@mysaasapp" },
+      { charset: 'UTF-8' },
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+      { name: 'theme-color', content: '#4f46e5' },
+      { property: 'og:site_name', content: 'My SaaS App' },
+      { name: 'twitter:site', content: '@mysaasapp' },
     ],
     link: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
-      { rel: "icon", type: "image/png", href: "/favicon.png" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossorigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" },
+      { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+      { rel: 'icon', type: 'image/png', href: '/favicon.png' },
+      { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' },
+      {
+        rel: 'stylesheet',
+        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap',
+      },
     ],
-    htmlAttrs: { lang: "en" },
+    htmlAttrs: { lang: 'en' },
     jsonLd: {
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      name: "My SaaS App",
-      url: "https://app.example.com",
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: 'My SaaS App',
+      url: 'https://app.example.com',
     },
   })
 
@@ -956,15 +952,16 @@ const RootLayout = defineComponent(({ children }) => {
 // Individual page with specific meta
 const PricingPage = defineComponent(() => {
   useHead({
-    title: "Pricing",
+    title: 'Pricing',
     meta: [
-      { name: "description", content: "Simple, transparent pricing for teams of all sizes." },
-      { property: "og:title", content: "Pricing" },
-      { property: "og:description", content: "Simple, transparent pricing for teams of all sizes." },
+      { name: 'description', content: 'Simple, transparent pricing for teams of all sizes.' },
+      { property: 'og:title', content: 'Pricing' },
+      {
+        property: 'og:description',
+        content: 'Simple, transparent pricing for teams of all sizes.',
+      },
     ],
-    link: [
-      { rel: "canonical", href: "https://app.example.com/pricing" },
-    ],
+    link: [{ rel: 'canonical', href: 'https://app.example.com/pricing' }],
   })
 
   return () => <main class="pricing">{/* ... */}</main>
@@ -975,9 +972,11 @@ const headCtx = createHeadContext()
 
 mount(
   <HeadProvider context={headCtx}>
-    <RootLayout><PricingPage /></RootLayout>
+    <RootLayout>
+      <PricingPage />
+    </RootLayout>
   </HeadProvider>,
-  document.getElementById("app")!
+  document.getElementById('app')!,
 )
 ```
 
@@ -988,13 +987,11 @@ const Dashboard = defineComponent(() => {
   const notifications = signal(0)
 
   useHead(() => ({
-    title: notifications() > 0
-      ? `(${notifications()}) Dashboard`
-      : "Dashboard",
+    title: notifications() > 0 ? `(${notifications()}) Dashboard` : 'Dashboard',
   }))
 
   // Simulate receiving notifications
-  setInterval(() => notifications.update(n => n + 1), 5000)
+  setInterval(() => notifications.update((n) => n + 1), 5000)
 
   return () => (
     <main>
@@ -1007,21 +1004,21 @@ const Dashboard = defineComponent(() => {
 
 ## Exports Summary
 
-| Export | Type | Description |
-| --- | --- | --- |
-| `useHead` | Function | Register head tags from a component |
-| `HeadProvider` | Component | Provide head context to component tree (CSR) |
-| `createHeadContext` | Function | Create a head context store |
-| `HeadContext` | Context | The Pyreon context object (for advanced use) |
-| `renderWithHead` | Function | SSR: render app with head extraction |
+| Export              | Type      | Description                                  |
+| ------------------- | --------- | -------------------------------------------- |
+| `useHead`           | Function  | Register head tags from a component          |
+| `HeadProvider`      | Component | Provide head context to component tree (CSR) |
+| `createHeadContext` | Function  | Create a head context store                  |
+| `HeadContext`       | Context   | The Pyreon context object (for advanced use) |
+| `renderWithHead`    | Function  | SSR: render app with head extraction         |
 
 ## Type Exports
 
-| Type | Description |
-| --- | --- |
-| `UseHeadInput` | Input object for `useHead` |
-| `HeadTag` | A single head tag definition |
-| `HeadEntry` | An entry containing tags and attributes |
-| `HeadContextValue` | The context value interface |
-| `HeadProviderProps` | Props for `HeadProvider` |
-| `RenderWithHeadResult` | Return type of `renderWithHead` |
+| Type                   | Description                             |
+| ---------------------- | --------------------------------------- |
+| `UseHeadInput`         | Input object for `useHead`              |
+| `HeadTag`              | A single head tag definition            |
+| `HeadEntry`            | An entry containing tags and attributes |
+| `HeadContextValue`     | The context value interface             |
+| `HeadProviderProps`    | Props for `HeadProvider`                |
+| `RenderWithHeadResult` | Return type of `renderWithHead`         |

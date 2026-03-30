@@ -1,5 +1,5 @@
-import createKineticComponent from "./kinetic/createKineticComponent"
-import type { KineticComponent } from "./kinetic/types"
+import createKineticComponent from './kinetic/createKineticComponent'
+import type { KineticComponent } from './kinetic/types'
 
 /**
  * Creates a reusable animated component via immutable chaining.
@@ -19,7 +19,7 @@ import type { KineticComponent } from "./kinetic/types"
  * const AnimatedList = kinetic('ul').preset(fade).group()
  * ```
  */
-const kinetic = <Tag extends string>(tag: Tag): KineticComponent<Tag, "transition"> =>
-  createKineticComponent<Tag, "transition">({ tag, mode: "transition" })
+const kinetic = <Tag extends string>(tag: Tag): KineticComponent<Tag, 'transition'> =>
+  createKineticComponent<Tag, 'transition'>({ tag, mode: 'transition' })
 
 export default kinetic

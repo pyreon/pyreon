@@ -1,17 +1,17 @@
-import BatchDemo from "./examples/BatchDemo"
-import ContextDemo from "./examples/ContextDemo"
-import ErrorDemo from "./examples/ErrorDemo"
-import LazyDemo from "./examples/LazyDemo"
-import MemoDemo from "./examples/MemoDemo"
-import PortalDemo from "./examples/PortalDemo"
-import TransitionDemo from "./examples/TransitionDemo"
-import UseEffectDemo from "./examples/UseEffectDemo"
-import UseIdDemo from "./examples/UseIdDemo"
-import UseImperativeHandleDemo from "./examples/UseImperativeHandleDemo"
-import UseMemoDemo from "./examples/UseMemoDemo"
-import UseReducerDemo from "./examples/UseReducerDemo"
-import UseRefDemo from "./examples/UseRefDemo"
-import UseStateDemo from "./examples/UseStateDemo"
+import BatchDemo from './examples/BatchDemo'
+import ContextDemo from './examples/ContextDemo'
+import ErrorDemo from './examples/ErrorDemo'
+import LazyDemo from './examples/LazyDemo'
+import MemoDemo from './examples/MemoDemo'
+import PortalDemo from './examples/PortalDemo'
+import TransitionDemo from './examples/TransitionDemo'
+import UseEffectDemo from './examples/UseEffectDemo'
+import UseIdDemo from './examples/UseIdDemo'
+import UseImperativeHandleDemo from './examples/UseImperativeHandleDemo'
+import UseMemoDemo from './examples/UseMemoDemo'
+import UseReducerDemo from './examples/UseReducerDemo'
+import UseRefDemo from './examples/UseRefDemo'
+import UseStateDemo from './examples/UseStateDemo'
 
 export default function App() {
   return (

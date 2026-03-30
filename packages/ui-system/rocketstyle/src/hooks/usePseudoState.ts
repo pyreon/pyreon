@@ -1,5 +1,5 @@
-import { signal } from "@pyreon/reactivity"
-import type { PseudoActions, PseudoState } from "../types/pseudo"
+import { signal } from '@pyreon/reactivity'
+import type { PseudoActions, PseudoState } from '../types/pseudo'
 
 type UsePseudoState = ({
   onMouseEnter,
@@ -9,7 +9,7 @@ type UsePseudoState = ({
   onFocus,
   onBlur,
 }: Partial<PseudoActions>) => {
-  state: Pick<PseudoState, "hover" | "focus" | "pressed">
+  state: Pick<PseudoState, 'hover' | 'focus' | 'pressed'>
   events: PseudoActions
 }
 

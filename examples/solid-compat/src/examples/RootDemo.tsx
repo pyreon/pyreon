@@ -1,8 +1,8 @@
-import { createRoot, createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createRoot, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function RootDemo() {
-  const [result, setResult] = createSignal("")
+  const [result, setResult] = createSignal('')
 
   const run = () => {
     createRoot((dispose) => {

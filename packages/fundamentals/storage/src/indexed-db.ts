@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { getEntry, removeEntry, setEntry } from "./registry"
-import type { IndexedDBOptions, StorageSignal } from "./types"
-import { deserialize, isBrowser, serialize } from "./utils"
+import { signal } from '@pyreon/reactivity'
+import { getEntry, removeEntry, setEntry } from './registry'
+import type { IndexedDBOptions, StorageSignal } from './types'
+import { deserialize, isBrowser, serialize } from './utils'
 
 // ─── Database management ─────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
 
 function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readonly")
+    const tx = db.transaction(storeName, 'readonly')
     const store = tx.objectStore(storeName)
     const request = store.get(key)
     request.onsuccess = () =>
@@ -43,7 +43,7 @@ function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string
 
 function idbSet(db: IDBDatabase, storeName: string, key: string, value: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite")
+    const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
     const request = store.put(value, key)
     request.onsuccess = () => resolve()
@@ -53,7 +53,7 @@ function idbSet(db: IDBDatabase, storeName: string, key: string, value: string):
 
 function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite")
+    const tx = db.transaction(storeName, 'readwrite')
     const store = tx.objectStore(storeName)
     const request = store.delete(key)
     request.onsuccess = () => resolve()
@@ -83,17 +83,17 @@ export function useIndexedDB<T>(
   options: IndexedDBOptions<T> = {},
 ): StorageSignal<T> {
   // Return existing signal if already registered
-  const existing = getEntry<T>("indexeddb", key)
+  const existing = getEntry<T>('indexeddb', key)
   if (existing) return existing.signal
 
-  const dbName = options.dbName ?? "pyreon-storage"
-  const storeName = options.storeName ?? "kv"
+  const dbName = options.dbName ?? 'pyreon-storage'
+  const storeName = options.storeName ?? 'kv'
   const debounceMs = options.debounceMs ?? 100
 
   const sig = signal<T>(defaultValue)
 
   // Async initial load
-  if (isBrowser() && typeof indexedDB !== "undefined") {
+  if (isBrowser() && typeof indexedDB !== 'undefined') {
     openDB(dbName, storeName)
       .then((db) => idbGet(db, storeName, key))
       .then((raw) => {
@@ -116,7 +116,7 @@ export function useIndexedDB<T>(
     const value = pendingValue
     pendingValue = undefined
 
-    if (!isBrowser() || typeof indexedDB === "undefined") return
+    if (!isBrowser() || typeof indexedDB === 'undefined') return
 
     openDB(dbName, storeName)
       .then((db) => idbSet(db, storeName, key, serialize(value, options.serializer)))
@@ -139,7 +139,7 @@ export function useIndexedDB<T>(
   storageSig.direct = (updater: () => void) => sig.direct(updater)
   storageSig.debug = () => sig.debug()
 
-  Object.defineProperty(storageSig, "label", {
+  Object.defineProperty(storageSig, 'label', {
     get: () => sig.label,
     set: (v: string | undefined) => {
       sig.label = v
@@ -161,7 +161,7 @@ export function useIndexedDB<T>(
     pendingValue = undefined
     if (writeTimer !== null) clearTimeout(writeTimer)
 
-    if (isBrowser() && typeof indexedDB !== "undefined") {
+    if (isBrowser() && typeof indexedDB !== 'undefined') {
       openDB(dbName, storeName)
         .then((db) => idbDelete(db, storeName, key))
         .catch(() => {
@@ -169,10 +169,10 @@ export function useIndexedDB<T>(
         })
     }
 
-    removeEntry("indexeddb", key)
+    removeEntry('indexeddb', key)
   }
 
-  setEntry("indexeddb", key, storageSig, defaultValue)
+  setEntry('indexeddb', key, storageSig, defaultValue)
 
   return storageSig
 }

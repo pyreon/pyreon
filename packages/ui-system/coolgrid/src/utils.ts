@@ -1,5 +1,5 @@
-import { omit } from "@pyreon/ui-core"
-import { CONTEXT_KEYS } from "./constants"
+import { omit } from '@pyreon/ui-core'
+import { CONTEXT_KEYS } from './constants'
 
 /** Checks whether a value is a finite number. */
 export const isNumber = (value: unknown): value is number => Number.isFinite(value)

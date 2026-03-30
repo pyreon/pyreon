@@ -5,11 +5,11 @@
  * the same approach a skilled developer would use without a framework.
  * Full rebuild is only used for create/replace/clear where it's necessary.
  */
-import type { BenchSuite, Row } from "../runner"
-import { bench, buildRows, tick } from "../runner"
+import type { BenchSuite, Row } from '../runner'
+import { bench, buildRows, tick } from '../runner'
 
 export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "Vanilla JS", container, results: [] }
+  const suite: BenchSuite = { framework: 'Vanilla JS', container, results: [] }
 
   let rows: Row[] = []
   let trElements: HTMLElement[] = []
@@ -19,18 +19,18 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
 
   function renderAll(newRows: Row[]) {
     rows = newRows
-    container.innerHTML = ""
-    const table = document.createElement("table")
-    tbody = document.createElement("tbody")
+    container.innerHTML = ''
+    const table = document.createElement('table')
+    tbody = document.createElement('tbody')
     trElements = new Array(rows.length)
     labelTds = new Array(rows.length)
     selectedTr = null
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] as Row
-      const tr = document.createElement("tr")
-      const td1 = document.createElement("td")
-      const td2 = document.createElement("td")
+      const tr = document.createElement('tr')
+      const td1 = document.createElement('td')
+      const td2 = document.createElement('td')
       td1.textContent = String(row.id)
       td2.textContent = row.label
       tr.appendChild(td1)
@@ -44,18 +44,18 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     container.appendChild(table)
   }
 
-  await bench("create 1,000 rows", suite, async () => {
+  await bench('create 1,000 rows', suite, async () => {
     renderAll(buildRows(1_000))
   })
 
-  await bench("replace all rows", suite, async () => {
+  await bench('replace all rows', suite, async () => {
     renderAll(buildRows(1_000))
   })
 
   // Store original labels for reset
   let originalLabels: string[] = rows.map((r) => r.label)
   await bench(
-    "partial update (every 10th)",
+    'partial update (every 10th)',
     suite,
     async () => {
       for (let i = 0; i < rows.length; i += 10) {
@@ -81,13 +81,13 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   originalLabels = rows.map((r) => r.label)
   await tick()
 
-  await bench("select row", suite, async () => {
-    if (selectedTr) selectedTr.className = ""
+  await bench('select row', suite, async () => {
+    if (selectedTr) selectedTr.className = ''
     selectedTr = trElements[500] as HTMLElement
-    selectedTr.className = "selected"
+    selectedTr.className = 'selected'
   })
 
-  await bench("swap rows", suite, async () => {
+  await bench('swap rows', suite, async () => {
     if (rows.length < 999 || !tbody) return
     // Swap data
     const tmp = rows[1] as Row
@@ -107,7 +107,7 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
     tbody.insertBefore(trElements[998] as HTMLElement, ref999)
   })
 
-  await bench("clear rows", suite, async () => {
+  await bench('clear rows', suite, async () => {
     renderAll([])
   })
 
@@ -115,7 +115,7 @@ export async function runVanilla(container: HTMLElement): Promise<BenchSuite> {
   renderAll(buildRows(1_000))
   await tick()
 
-  await bench("create 10,000 rows", suite, async () => {
+  await bench('create 10,000 rows', suite, async () => {
     renderAll(buildRows(10_000))
   })
 

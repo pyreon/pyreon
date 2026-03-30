@@ -1,5 +1,5 @@
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import type { HTMLTags } from "@pyreon/ui-core"
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import type { HTMLTags } from '@pyreon/ui-core'
 
 export type MaybeNull = undefined | null
 export type TObj = Record<string, unknown>
@@ -75,5 +75,5 @@ export type Props = Partial<{
    */
   itemKey?:
     | keyof ObjectValue
-    | ((item: SimpleValue | Omit<ObjectValue, "component">, index: number) => SimpleValue)
+    | ((item: SimpleValue | Omit<ObjectValue, 'component'>, index: number) => SimpleValue)
 }>

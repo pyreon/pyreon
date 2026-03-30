@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from "./types"
+import type { VNodeChild } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -31,12 +31,12 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
   const t: Toast = {
     id,
     message,
-    type: options.type ?? "info",
+    type: options.type ?? 'info',
     duration: options.duration ?? DEFAULT_DURATION,
     dismissible: options.dismissible ?? true,
     action: options.action,
     onDismiss: options.onDismiss,
-    state: "entering",
+    state: 'entering',
     timer: undefined,
     remaining: 0,
     timerStart: 0,
@@ -71,7 +71,7 @@ function dismiss(id?: string): void {
 
 function updateToast(
   id: string,
-  updates: Partial<Pick<Toast, "message" | "type" | "duration">>,
+  updates: Partial<Pick<Toast, 'message' | 'type' | 'duration'>>,
 ): void {
   const current = _toasts()
   const idx = current.findIndex((item) => item.id === id)
@@ -136,32 +136,32 @@ export function toast(message: string | VNodeChild, options?: ToastOptions): str
 }
 
 function shortcut(type: ToastType) {
-  return (message: string | VNodeChild, options?: Omit<ToastOptions, "type">): string =>
+  return (message: string | VNodeChild, options?: Omit<ToastOptions, 'type'>): string =>
     addToast(message, { ...options, type })
 }
 
 /** Show a success toast. */
-toast.success = shortcut("success")
+toast.success = shortcut('success')
 
 /** Show an error toast. */
-toast.error = shortcut("error")
+toast.error = shortcut('error')
 
 /** Show a warning toast. */
-toast.warning = shortcut("warning")
+toast.warning = shortcut('warning')
 
 /** Show an info toast. */
-toast.info = shortcut("info")
+toast.info = shortcut('info')
 
 /** Show a persistent loading toast. Returns id for later update/dismiss. */
 toast.loading = (
   message: string | VNodeChild,
-  options?: Omit<ToastOptions, "type" | "duration">,
-): string => addToast(message, { ...options, type: "info", duration: 0 })
+  options?: Omit<ToastOptions, 'type' | 'duration'>,
+): string => addToast(message, { ...options, type: 'info', duration: 0 })
 
 /** Update an existing toast (message, type, duration). */
 toast.update = (
   id: string,
-  updates: Partial<Pick<ToastOptions, "type" | "duration">> & { message?: string | VNodeChild },
+  updates: Partial<Pick<ToastOptions, 'type' | 'duration'>> & { message?: string | VNodeChild },
 ): void => updateToast(id, updates)
 
 /** Dismiss a specific toast by id, or all toasts if no id is given. */
@@ -181,16 +181,16 @@ toast.promise = function toastPromise<T>(
   promise: Promise<T>,
   opts: ToastPromiseOptions<T>,
 ): Promise<T> {
-  const id = addToast(opts.loading, { type: "info", duration: 0 })
+  const id = addToast(opts.loading, { type: 'info', duration: 0 })
 
   promise.then(
     (data) => {
-      const msg = typeof opts.success === "function" ? opts.success(data) : opts.success
-      updateToast(id, { message: msg, type: "success", duration: DEFAULT_DURATION })
+      const msg = typeof opts.success === 'function' ? opts.success(data) : opts.success
+      updateToast(id, { message: msg, type: 'success', duration: DEFAULT_DURATION })
     },
     (err: unknown) => {
-      const msg = typeof opts.error === "function" ? opts.error(err) : opts.error
-      updateToast(id, { message: msg, type: "error", duration: DEFAULT_DURATION })
+      const msg = typeof opts.error === 'function' ? opts.error(err) : opts.error
+      updateToast(id, { message: msg, type: 'error', duration: DEFAULT_DURATION })
     },
   )
 

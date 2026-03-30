@@ -1,5 +1,5 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 /**
  * Subscribe to a CSS media query, returns a reactive boolean.
@@ -15,12 +15,12 @@ export function useMediaQuery(query: string): () => boolean {
   onMount(() => {
     mql = window.matchMedia(query)
     matches.set(mql.matches)
-    mql.addEventListener("change", onChange)
+    mql.addEventListener('change', onChange)
     return undefined
   })
 
   onUnmount(() => {
-    mql?.removeEventListener("change", onChange)
+    mql?.removeEventListener('change', onChange)
   })
 
   return matches

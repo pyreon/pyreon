@@ -7,7 +7,7 @@
  * - Labels reset between partial update runs to avoid accumulation
  * - Framework execution order randomized to avoid GC pressure bias
  */
-import { GlobalRegistrator } from "@happy-dom/global-registrator"
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
 GlobalRegistrator.register()
 
@@ -24,71 +24,71 @@ const [
   Solid,
   SolidWeb,
 ] = await Promise.all([
-  import("@pyreon/core"),
-  import("@pyreon/reactivity"),
-  import("@pyreon/runtime-dom"),
-  import("react"),
-  import("react-dom/client"),
-  import("vue"),
-  import("preact"),
-  import("preact/hooks"),
-  import("preact/compat"),
-  import("solid-js"),
+  import('@pyreon/core'),
+  import('@pyreon/reactivity'),
+  import('@pyreon/runtime-dom'),
+  import('react'),
+  import('react-dom/client'),
+  import('vue'),
+  import('preact'),
+  import('preact/hooks'),
+  import('preact/compat'),
+  import('solid-js'),
   // Import the browser DOM bundle directly — avoids Bun resolving the server build
   // when the "browser" export condition is not active.
-  import("solid-js/web/dist/web.js"),
+  import('solid-js/web/dist/web.js'),
 ])
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
 const ADJ = [
-  "pretty",
-  "large",
-  "big",
-  "small",
-  "tall",
-  "short",
-  "long",
-  "handsome",
-  "plain",
-  "quaint",
-  "clean",
-  "elegant",
-  "easy",
-  "angry",
-  "crazy",
-  "helpful",
-  "mushy",
-  "odd",
-  "unsightly",
-  "adorable",
+  'pretty',
+  'large',
+  'big',
+  'small',
+  'tall',
+  'short',
+  'long',
+  'handsome',
+  'plain',
+  'quaint',
+  'clean',
+  'elegant',
+  'easy',
+  'angry',
+  'crazy',
+  'helpful',
+  'mushy',
+  'odd',
+  'unsightly',
+  'adorable',
 ]
 const COLS = [
-  "red",
-  "yellow",
-  "blue",
-  "green",
-  "pink",
-  "brown",
-  "purple",
-  "white",
-  "black",
-  "orange",
+  'red',
+  'yellow',
+  'blue',
+  'green',
+  'pink',
+  'brown',
+  'purple',
+  'white',
+  'black',
+  'orange',
 ]
 const NOUN = [
-  "table",
-  "chair",
-  "house",
-  "bbq",
-  "desk",
-  "car",
-  "pony",
-  "cookie",
-  "sandwich",
-  "burger",
-  "pizza",
-  "mouse",
-  "keyboard",
+  'table',
+  'chair',
+  'house',
+  'bbq',
+  'desk',
+  'car',
+  'pony',
+  'cookie',
+  'sandwich',
+  'burger',
+  'pizza',
+  'mouse',
+  'keyboard',
 ]
 function pick<T>(a: T[]) {
   return a[Math.floor(Math.random() * a.length)] as T
@@ -136,7 +136,7 @@ function tick() {
   return new Promise((r) => setTimeout(r, 0))
 }
 function makeEl(): HTMLElement {
-  const e = document.createElement("div")
+  const e = document.createElement('div')
   document.body.appendChild(e)
   _benchContainer = e
   return e
@@ -149,8 +149,8 @@ function append(label: string) {
 
 async function runVanilla(): Promise<Record<string, number>> {
   const el = makeEl()
-  const table = document.createElement("table")
-  const tbody = document.createElement("tbody")
+  const table = document.createElement('table')
+  const tbody = document.createElement('tbody')
   table.appendChild(tbody)
   el.appendChild(table)
 
@@ -161,14 +161,14 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   function renderAll(rows: Row[]) {
     data = rows
-    tbody.innerHTML = ""
+    tbody.innerHTML = ''
     rowEls = new Array(rows.length)
     labelEls = new Array(rows.length)
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] as Row
-      const tr = document.createElement("tr")
-      const td1 = document.createElement("td")
-      const td2 = document.createElement("td")
+      const tr = document.createElement('tr')
+      const td1 = document.createElement('td')
+      const td2 = document.createElement('td')
       td1.textContent = String(row.id)
       td2.textContent = row.label
       tr.appendChild(td1)
@@ -182,7 +182,7 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   const r: Record<string, number> = {}
   r.create1k = await bench(() => renderAll(makeRows(1_000)))
-  r._verify = el.querySelectorAll("tr").length
+  r._verify = el.querySelectorAll('tr').length
   r.replaceAll = await bench(() => renderAll(makeRows(1_000)))
 
   // Targeted partial update — only touch the 100 affected text nodes
@@ -213,9 +213,9 @@ async function runVanilla(): Promise<Record<string, number>> {
 
   // Targeted select — O(1) className toggle on 2 elements
   r.selectRow = await bench(() => {
-    if (selectedTr) selectedTr.className = ""
+    if (selectedTr) selectedTr.className = ''
     selectedTr = rowEls[500] as HTMLElement
-    selectedTr.className = "selected"
+    selectedTr.className = 'selected'
   })
 
   // Targeted swap — move 2 DOM nodes
@@ -236,7 +236,7 @@ async function runVanilla(): Promise<Record<string, number>> {
   })
 
   r.clear = await bench(() => {
-    tbody.innerHTML = ""
+    tbody.innerHTML = ''
     data = []
     rowEls = []
     labelEls = []
@@ -246,7 +246,7 @@ async function runVanilla(): Promise<Record<string, number>> {
   renderAll(makeRows(1_000))
   r.create10k = await bench(() => renderAll(makeRows(10_000)))
   data = []
-  tbody.innerHTML = ""
+  tbody.innerHTML = ''
   el.remove()
   return r
 }
@@ -272,20 +272,20 @@ async function runPyreon(): Promise<Record<string, number>> {
 
   const unmount = mount(
     h(
-      "table",
+      'table',
       null,
       h(
-        "tbody",
+        'tbody',
         null,
         For<RR>({
           each: rowsSig,
           by: (item) => item.id,
           children: (row) =>
             h(
-              "tr",
-              { class: () => (isSelected(row.id) ? "selected" : "") },
-              h("td", null, String(row.id)),
-              h("td", null, () => row.label()),
+              'tr',
+              { class: () => (isSelected(row.id) ? 'selected' : '') },
+              h('td', null, String(row.id)),
+              h('td', null, () => row.label()),
             ),
         }),
       ),
@@ -296,7 +296,7 @@ async function runPyreon(): Promise<Record<string, number>> {
   const cur = () => rowsSig()
   const r: Record<string, number> = {}
   r.create1k = await bench(() => rowsSig.set(makeRR(1_000)))
-  r._verify = el.querySelectorAll("tr").length
+  r._verify = el.querySelectorAll('tr').length
   r.replaceAll = await bench(() => rowsSig.set(makeRR(1_000)))
 
   // Partial update with label reset
@@ -368,16 +368,16 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
 
   const unmount = mount(
     h(
-      "table",
+      'table',
       null,
       h(
-        "tbody",
+        'tbody',
         null,
         For<RR>({
           each: rowsSig,
           by: (item) => item.id,
           children: (row) =>
-            _tpl("<tr><td></td><td></td></tr>", (__root) => {
+            _tpl('<tr><td></td><td></td></tr>', (__root) => {
               const __e0 = __root.children[0] as HTMLElement
               const __e1 = __root.children[1] as HTMLElement
 
@@ -385,13 +385,13 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
               __e0.textContent = String(row.id)
 
               // _bindText: direct signal→TextNode subscription (no effect)
-              const __t0 = document.createTextNode("")
+              const __t0 = document.createTextNode('')
               __e1.appendChild(__t0)
               const __d0 = _bindText(row.label as unknown as Parameters<typeof _bindText>[0], __t0)
 
               // _bind: single renderEffect for className (selector dependency)
               const __d1 = _bind(() => {
-                __root.className = isSelected(row.id) ? "selected" : ""
+                __root.className = isSelected(row.id) ? 'selected' : ''
               })
 
               return () => {
@@ -408,7 +408,7 @@ async function runPyreonTpl(): Promise<Record<string, number>> {
   const cur = () => rowsSig()
   const r: Record<string, number> = {}
   r.create1k = await bench(() => rowsSig.set(makeRR(1_000)))
-  r._verify = el.querySelectorAll("tr").length
+  r._verify = el.querySelectorAll('tr').length
   r.replaceAll = await bench(() => rowsSig.set(makeRR(1_000)))
 
   // Partial update with label reset
@@ -457,10 +457,10 @@ async function runReact(): Promise<Record<string, number>> {
 
   const RowItem = memo(({ row, sel }: { row: Row; sel: boolean }) =>
     rc(
-      "tr",
-      { className: sel ? "selected" : undefined },
-      rc("td", null, row.id),
-      rc("td", null, row.label),
+      'tr',
+      { className: sel ? 'selected' : undefined },
+      rc('td', null, row.id),
+      rc('td', null, row.label),
     ),
   )
 
@@ -473,10 +473,10 @@ async function runReact(): Promise<Record<string, number>> {
     _setData = setData
     _setSel = setSel
     return rc(
-      "table",
+      'table',
       null,
       rc(
-        "tbody",
+        'tbody',
         null,
         data.map((row) => rc(RowItem, { key: row.id, row, sel: row.id === sid })),
       ),
@@ -562,14 +562,14 @@ async function runVue(): Promise<Record<string, number>> {
 
   const App = defineComponent({
     setup: () => () =>
-      hv("table", null, [
+      hv('table', null, [
         hv(
-          "tbody",
+          'tbody',
           null,
           data.value.map((row) =>
-            hv("tr", { key: row.id, class: { selected: row.id === selId.value } }, [
-              hv("td", null, String(row.id)),
-              hv("td", null, row.label),
+            hv('tr', { key: row.id, class: { selected: row.id === selId.value } }, [
+              hv('td', null, String(row.id)),
+              hv('td', null, row.label),
             ]),
           ),
         ),
@@ -655,10 +655,10 @@ async function runPreact(): Promise<Record<string, number>> {
 
   const RowItem = pmemo(({ row, sel }: { row: Row; sel: boolean }) =>
     ph(
-      "tr",
-      { className: sel ? "selected" : undefined },
-      ph("td", null, row.id),
-      ph("td", null, row.label),
+      'tr',
+      { className: sel ? 'selected' : undefined },
+      ph('td', null, row.id),
+      ph('td', null, row.label),
     ),
   )
 
@@ -671,10 +671,10 @@ async function runPreact(): Promise<Record<string, number>> {
     _setData = setData
     _setSel = setSel
     return ph(
-      "table",
+      'table',
       null,
       ph(
-        "tbody",
+        'tbody',
         null,
         data.map((row) => ph(RowItem, { key: row.id, row, sel: row.id === sid })),
       ),
@@ -755,7 +755,7 @@ async function _runSolid(): Promise<Record<string, number>> {
   const { render: sr, insert, template: solidTemplate } = SolidWeb
 
   // Pre-compiled template — same as what Solid's JSX compiler emits
-  const _tmpl$ = solidTemplate("<tr><td></td><td></td></tr>")
+  const _tmpl$ = solidTemplate('<tr><td></td><td></td></tr>')
 
   type SRow = { id: number; label: () => string; setLabel: (s: string) => void }
   function mkSRows(n: number): SRow[] {
@@ -772,8 +772,8 @@ async function _runSolid(): Promise<Record<string, number>> {
   const isSelected = solidCreateSelector(selectedId)
 
   const dispose = sr(() => {
-    const table = document.createElement("table")
-    const tbody = document.createElement("tbody")
+    const table = document.createElement('table')
+    const tbody = document.createElement('tbody')
     table.appendChild(tbody)
     insert(
       tbody,
@@ -797,7 +797,7 @@ async function _runSolid(): Promise<Record<string, number>> {
             })
             // O(1) selection via createSelector
             createEffect(() => {
-              tr.className = isSelected(row.id) ? "selected" : ""
+              tr.className = isSelected(row.id) ? 'selected' : ''
             })
             return tr
           },
@@ -812,7 +812,7 @@ async function _runSolid(): Promise<Record<string, number>> {
     setRows(mkSRows(1_000))
     await tick()
   })
-  r._verify = el.querySelectorAll("tr").length
+  r._verify = el.querySelectorAll('tr').length
   r.replaceAll = await bench(async () => {
     setRows(mkSRows(1_000))
     await tick()
@@ -873,13 +873,13 @@ async function _runSolid(): Promise<Record<string, number>> {
 // ─── Output ───────────────────────────────────────────────────────────────────
 
 const TESTS: [string, string][] = [
-  ["create1k", "create 1k rows  "],
-  ["replaceAll", "replace all rows "],
-  ["partialUpd", "partial update   "],
-  ["selectRow", "select row       "],
-  ["swapRows", "swap rows        "],
-  ["clear", "clear rows       "],
-  ["create10k", "create 10k rows  "],
+  ['create1k', 'create 1k rows  '],
+  ['replaceAll', 'replace all rows '],
+  ['partialUpd', 'partial update   '],
+  ['selectRow', 'select row       '],
+  ['swapRows', 'swap rows        '],
+  ['clear', 'clear rows       '],
+  ['create10k', 'create 10k rows  '],
 ]
 
 function fmtMs(ms: number, w = 9): string {
@@ -891,8 +891,8 @@ function printResults(all: Record<string, Record<string, number>>) {
   const W = 12
   const LABEL = 20
 
-  console.log(`\n${"".padEnd(LABEL)}${fws.map((f) => f.padStart(W)).join("")}`)
-  console.log("─".repeat(LABEL + W * fws.length))
+  console.log(`\n${''.padEnd(LABEL)}${fws.map((f) => f.padStart(W)).join('')}`)
+  console.log('─'.repeat(LABEL + W * fws.length))
 
   for (const [key, label] of TESTS) {
     const vals = fws.map((f) => all[f]?.[key] ?? 0)
@@ -904,12 +904,12 @@ function printResults(all: Record<string, Record<string, number>>) {
       if (v > min * 2) return `\x1b[33m${s}\x1b[0m`
       return s
     })
-    console.log(`${label}${cells.join("")}`)
+    console.log(`${label}${cells.join('')}`)
   }
 
   const printSlowdown = (title: string, subset: string[]) => {
-    console.log(`\n${title.padEnd(LABEL)}${subset.map((f) => f.padStart(W)).join("")}`)
-    console.log("─".repeat(LABEL + W * subset.length))
+    console.log(`\n${title.padEnd(LABEL)}${subset.map((f) => f.padStart(W)).join('')}`)
+    console.log('─'.repeat(LABEL + W * subset.length))
 
     for (const [key, label] of TESTS) {
       const vals = subset.map((f) => all[f]?.[key] ?? 0)
@@ -922,16 +922,16 @@ function printResults(all: Record<string, Record<string, number>>) {
         if (ratio > 2) return `\x1b[33m${s}\x1b[0m`
         return s
       })
-      console.log(`${label}${cells.join("")}`)
+      console.log(`${label}${cells.join('')}`)
     }
   }
 
-  printSlowdown("slowdown vs best", fws)
+  printSlowdown('slowdown vs best', fws)
 
   // Framework-only comparison (excludes vanilla raw DOM baseline)
-  const frameworkOnly = fws.filter((f) => f !== "Vanilla JS")
+  const frameworkOnly = fws.filter((f) => f !== 'Vanilla JS')
   if (frameworkOnly.length > 1) {
-    printSlowdown("vs best framework", frameworkOnly)
+    printSlowdown('vs best framework', frameworkOnly)
   }
 
   console.log()
@@ -941,12 +941,12 @@ function printResults(all: Record<string, Record<string, number>>) {
 
 // Randomize framework execution order to avoid GC pressure bias
 const frameworks: Array<{ name: string; run: () => Promise<Record<string, number>> }> = [
-  { name: "Vanilla JS", run: runVanilla },
-  { name: "Pyreon", run: runPyreon },
-  { name: "Pyreon (compiled)", run: runPyreonTpl },
-  { name: "Preact", run: runPreact },
-  { name: "React 19", run: runReact },
-  { name: "Vue 3", run: runVue },
+  { name: 'Vanilla JS', run: runVanilla },
+  { name: 'Pyreon', run: runPyreon },
+  { name: 'Pyreon (compiled)', run: runPyreonTpl },
+  { name: 'Preact', run: runPreact },
+  { name: 'React 19', run: runReact },
+  { name: 'Vue 3', run: runVue },
   // SolidJS excluded — renders 0 DOM rows in happy-dom (lazy/deferred rendering)
   // { name: "SolidJS", run: _runSolid },
 ]
@@ -966,13 +966,13 @@ const results: Record<string, Record<string, number>> = {}
 for (const { name, run } of frameworks) {
   process.stdout.write(`  ${name.padEnd(12)}… `)
   results[name] = await run()
-  console.log("✓")
+  console.log('✓')
 }
 
 // Verify all frameworks actually rendered rows
-console.log("DOM verification (rows after create1k):")
+console.log('DOM verification (rows after create1k):')
 for (const [name, r] of Object.entries(results)) {
-  console.log(`  ${name}: ${r._verify ?? "n/a"} rows`)
+  console.log(`  ${name}: ${r._verify ?? 'n/a'} rows`)
 }
 
 printResults(results)

@@ -1,6 +1,6 @@
-import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
-import { onCleanup, signal } from "@pyreon/reactivity"
-import type { DragData, UseDroppableOptions, UseDroppableResult } from "./types"
+import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { onCleanup, signal } from '@pyreon/reactivity'
+import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
 
 /**
  * Make an element a drop target with signal-driven state.
@@ -36,7 +36,7 @@ export function useDroppable<T extends DragData = DragData>(
       element: el,
       getData: () => {
         if (!options.data) return {}
-        return typeof options.data === "function" ? (options.data as () => T)() : options.data
+        return typeof options.data === 'function' ? (options.data as () => T)() : options.data
       },
       canDrop: ({ source }) => {
         if (!options.canDrop) return true

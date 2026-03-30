@@ -1,4 +1,4 @@
-import type { Props, VNode, VNodeChild, VNodeChildAtom } from "./types"
+import type { Props, VNode, VNodeChild, VNodeChildAtom } from './types'
 
 // ─── Show ─────────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ export interface SwitchProps extends Props {
 function isMatchVNode(branch: VNodeChild): branch is VNode {
   return (
     branch !== null &&
-    typeof branch === "object" &&
+    typeof branch === 'object' &&
     !Array.isArray(branch) &&
     (branch as VNode).type === Match
   )
@@ -83,7 +83,7 @@ function resolveMatchChildren(matchVNode: VNode): VNodeChildAtom {
   return matchVNode.children as unknown as VNodeChildAtom
 }
 
-function normalizeBranches(children: SwitchProps["children"]): VNodeChild[] {
+function normalizeBranches(children: SwitchProps['children']): VNodeChild[] {
   if (Array.isArray(children)) return children
   if (children != null) return [children]
   return []
@@ -105,4 +105,4 @@ export function Switch(props: SwitchProps): VNode | null {
 }
 
 // Keep MatchSymbol export for any code that was using it
-export const MatchSymbol: unique symbol = Symbol("pyreon.Match")
+export const MatchSymbol: unique symbol = Symbol('pyreon.Match')

@@ -8,5 +8,5 @@ export default function About() {
 }
 
 export const meta = {
-  title: "About",
+  title: 'About',
 }

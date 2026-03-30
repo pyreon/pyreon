@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/reactivity"
+title: '@pyreon/reactivity'
 description: Signals-based reactive primitives powering Pyreon's fine-grained reactivity system.
 ---
 
@@ -10,18 +10,23 @@ description: Signals-based reactive primitives powering Pyreon's fine-grained re
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/reactivity
 ```
+
 ```bash [bun]
 bun add @pyreon/reactivity
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/reactivity
 ```
+
 ```bash [yarn]
 yarn add @pyreon/reactivity
 ```
+
 :::
 
 ## Signals
@@ -29,7 +34,7 @@ yarn add @pyreon/reactivity
 A signal is a reactive container for a value. Reading a signal inside an effect automatically subscribes that effect to the signal. When the signal's value changes, all subscribed effects re-run. Signals use `Object.is` for equality -- setting a signal to the same value is a no-op.
 
 ```ts
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 const count = signal(0)
 
@@ -73,12 +78,12 @@ interface SignalDebugInfo<T> {
 ### Signal Options
 
 ```ts
-const name = signal("Alice", { name: "userName" })
+const name = signal('Alice', { name: 'userName' })
 console.log(name.debug())
 // { name: "userName", value: "Alice", subscriberCount: 0 }
 
 // You can also set the label after creation
-name.label = "currentUserName"
+name.label = 'currentUserName'
 ```
 
 The `name` option sets a debug label that appears in devtools, `debug()` output, and signal tracing.
@@ -101,7 +106,7 @@ effect(() => {
 })
 
 other.set(200) // effect does NOT re-run
-count.set(1)   // effect re-runs, reads other.peek() which is 200
+count.set(1) // effect re-runs, reads other.peek() which is 200
 ```
 
 ### Direct Subscriptions
@@ -112,7 +117,7 @@ For cases where you need a fixed subscription without the overhead of an effect 
 const count = signal(0)
 
 const unsubscribe = count.subscribe(() => {
-  console.log("count changed to:", count.peek())
+  console.log('count changed to:', count.peek())
 })
 
 count.set(1) // logs "count changed to: 1"
@@ -133,13 +138,13 @@ Signals are implemented as function objects with state stored as properties. Onl
 const items = signal<string[]>([])
 
 // Add an item
-items.update(arr => [...arr, "new item"])
+items.update((arr) => [...arr, 'new item'])
 
 // Remove by index
-items.update(arr => arr.filter((_, i) => i !== 2))
+items.update((arr) => arr.filter((_, i) => i !== 2))
 
 // Sort
-items.update(arr => [...arr].sort())
+items.update((arr) => [...arr].sort())
 ```
 
 #### Signal Maps
@@ -148,14 +153,14 @@ items.update(arr => [...arr].sort())
 const users = signal(new Map<string, User>())
 
 // Add a user
-users.update(map => {
+users.update((map) => {
   const next = new Map(map)
   next.set(user.id, user)
   return next
 })
 
 // Delete a user
-users.update(map => {
+users.update((map) => {
   const next = new Map(map)
   next.delete(userId)
   return next
@@ -165,15 +170,15 @@ users.update(map => {
 #### Derived State Trees
 
 ```ts
-const firstName = signal("Alice")
-const lastName = signal("Smith")
+const firstName = signal('Alice')
+const lastName = signal('Smith')
 const fullName = computed(() => `${firstName()} ${lastName()}`)
 const greeting = computed(() => `Hello, ${fullName()}!`)
 const uppercaseGreeting = computed(() => greeting().toUpperCase())
 
 // Changing firstName propagates through the chain:
 // firstName -> fullName -> greeting -> uppercaseGreeting
-firstName.set("Bob")
+firstName.set('Bob')
 console.log(uppercaseGreeting()) // "HELLO, BOB SMITH!"
 ```
 
@@ -182,15 +187,15 @@ console.log(uppercaseGreeting()) // "HELLO, BOB SMITH!"
 A computed value derives from other reactive sources. It is lazy by default -- it only recalculates when read, and only if its dependencies have changed.
 
 ```ts
-import { signal, computed } from "@pyreon/reactivity"
+import { signal, computed } from '@pyreon/reactivity'
 
-const firstName = signal("Alice")
-const lastName = signal("Smith")
+const firstName = signal('Alice')
+const lastName = signal('Smith')
 
 const fullName = computed(() => `${firstName()} ${lastName()}`)
 
 console.log(fullName()) // "Alice Smith"
-firstName.set("Bob")
+firstName.set('Bob')
 console.log(fullName()) // "Bob Smith"
 ```
 
@@ -213,16 +218,18 @@ By default, a computed notifies downstream whenever any dependency changes. Use 
 const items = signal([3, 1, 4, 1, 5])
 
 const sorted = computed(
-  () => items().slice().sort((a, b) => a - b),
+  () =>
+    items()
+      .slice()
+      .sort((a, b) => a - b),
   {
-    equals: (prev, next) =>
-      prev.length === next.length && prev.every((v, i) => v === next[i]),
-  }
+    equals: (prev, next) => prev.length === next.length && prev.every((v, i) => v === next[i]),
+  },
 )
 
 // Downstream effects only fire when the sorted result actually changes
 effect(() => {
-  console.log("Sorted:", sorted())
+  console.log('Sorted:', sorted())
 })
 
 // This triggers the effect (sorted output changes)
@@ -252,14 +259,14 @@ Computed values support dynamic dependencies -- the set of dependencies can chan
 
 ```ts
 const showDetails = signal(false)
-const summary = signal("Brief")
-const details = signal("Full details here")
+const summary = signal('Brief')
+const details = signal('Full details here')
 
 const display = computed(() => {
   if (showDetails()) {
     return details() // tracked only when showDetails is true
   }
-  return summary()   // tracked only when showDetails is false
+  return summary() // tracked only when showDetails is false
 })
 ```
 
@@ -288,12 +295,12 @@ console.log(total()) // 324
 An effect runs a function and automatically re-runs it whenever any signal or computed it reads changes. Effects run synchronously on creation and re-run synchronously on each dependency change.
 
 ```ts
-import { signal, effect } from "@pyreon/reactivity"
+import { signal, effect } from '@pyreon/reactivity'
 
 const count = signal(0)
 
 const e = effect(() => {
-  console.log("Count is:", count())
+  console.log('Count is:', count())
 })
 // Immediately logs "Count is: 0"
 
@@ -318,19 +325,19 @@ Effects support dynamic dependency tracking. Dependencies are re-evaluated on ea
 
 ```ts
 const showDetails = signal(false)
-const details = signal("hidden content")
+const details = signal('hidden content')
 
 effect(() => {
   if (showDetails()) {
     console.log(details()) // only tracked when showDetails is true
   } else {
-    console.log("Details hidden")
+    console.log('Details hidden')
   }
 })
 
-details.set("new content") // effect does NOT re-run (not currently tracked)
-showDetails.set(true)      // effect re-runs, now tracks details
-details.set("updated")     // effect re-runs (now tracked)
+details.set('new content') // effect does NOT re-run (not currently tracked)
+showDetails.set(true) // effect re-runs, now tracks details
+details.set('updated') // effect re-runs (now tracked)
 ```
 
 ### Nested Effect Patterns
@@ -345,7 +352,7 @@ const outer = effect(() => {
   if (enabled()) {
     // This inner effect is created fresh each time enabled() changes to true
     const inner = effect(() => {
-      console.log("Count:", count())
+      console.log('Count:', count())
     })
     // Important: clean up the inner effect when the outer re-runs
     // In practice, use EffectScope for automatic cleanup
@@ -358,7 +365,7 @@ const outer = effect(() => {
 Use `onCleanup` from `@pyreon/core` inside an effect to register a cleanup function. The cleanup runs before each re-execution and on final disposal:
 
 ```ts
-import { onCleanup } from "@pyreon/core"
+import { onCleanup } from '@pyreon/core'
 
 effect(() => {
   const q = query()
@@ -378,25 +385,25 @@ watch(
     const controller = new AbortController()
     fetch(`/search?q=${q}`, { signal: controller.signal })
     return () => controller.abort() // cleanup runs before next invocation
-  }
+  },
 )
 ```
 
 ### Conditional Tracking Patterns
 
 ```ts
-const logLevel = signal<"debug" | "info" | "error">("info")
+const logLevel = signal<'debug' | 'info' | 'error'>('info')
 const debugData = signal({ calls: 0, lastArgs: null })
 const errorCount = signal(0)
 
 effect(() => {
   const level = logLevel()
-  if (level === "debug") {
+  if (level === 'debug') {
     // Only tracks debugData when in debug mode
-    console.log("Debug:", debugData())
-  } else if (level === "error") {
+    console.log('Debug:', debugData())
+  } else if (level === 'error') {
     // Only tracks errorCount when in error mode
-    console.log("Errors:", errorCount())
+    console.log('Errors:', errorCount())
   }
 })
 ```
@@ -406,7 +413,7 @@ effect(() => {
 Unhandled errors inside effects are caught and reported via a configurable error handler:
 
 ```ts
-import { setErrorHandler } from "@pyreon/reactivity"
+import { setErrorHandler } from '@pyreon/reactivity'
 
 setErrorHandler((err) => {
   myErrorReporter.capture(err)
@@ -420,7 +427,7 @@ The default error handler logs to `console.error`. This ensures errors inside ef
 A lightweight effect variant designed for DOM render bindings. It skips `EffectScope` registration, error handler overhead, and `onUpdate` notification. Returns a dispose function directly (not an Effect object, saving one allocation):
 
 ```ts
-import { renderEffect } from "@pyreon/reactivity"
+import { renderEffect } from '@pyreon/reactivity'
 
 const dispose = renderEffect(() => {
   el.textContent = String(count())
@@ -432,12 +439,12 @@ dispose()
 
 `renderEffect` stores its dependencies in a local array instead of the global WeakMap, saving approximately 200ns per effect creation and disposal compared to `effect()`.
 
-### _bind
+### \_bind
 
 A compiler-internal static-dep binding. Tracks dependencies only on the first run and never re-tracks on subsequent runs. This makes re-runs faster because they skip cleanup, re-tracking, and tracking context save/restore entirely.
 
 ```ts
-import { _bind } from "@pyreon/reactivity"
+import { _bind } from '@pyreon/reactivity'
 
 const dispose = _bind(() => {
   el.className = className()
@@ -451,10 +458,10 @@ This is used by the Pyreon compiler for template expressions where dependencies 
 Batch multiple signal updates into a single notification pass. Effects that depend on multiple updated signals only run once after the batch completes, not once per signal change.
 
 ```ts
-import { signal, effect, batch } from "@pyreon/reactivity"
+import { signal, effect, batch } from '@pyreon/reactivity'
 
-const first = signal("Alice")
-const last = signal("Smith")
+const first = signal('Alice')
+const last = signal('Smith')
 
 effect(() => {
   console.log(`${first()} ${last()}`)
@@ -464,8 +471,8 @@ effect(() => {
 // Without batch: would log twice ("Bob Smith" then "Bob Jones")
 // With batch: logs once with final values
 batch(() => {
-  first.set("Bob")
-  last.set("Jones")
+  first.set('Bob')
+  last.set('Jones')
 })
 // logs "Bob Jones" (once)
 ```
@@ -476,12 +483,12 @@ Batches can be nested. Notifications only flush after the outermost batch comple
 
 ```ts
 batch(() => {
-  first.set("Alice")
+  first.set('Alice')
   batch(() => {
-    last.set("Johnson")
+    last.set('Johnson')
     // No flush yet -- inner batch completed but outer is still open
   })
-  first.set("Bob")
+  first.set('Bob')
   // No flush yet
 })
 // Now the outermost batch ends -- effects run once with final values
@@ -503,7 +510,7 @@ const result = batch(() => {
 Returns a Promise that resolves after all pending microtasks have flushed. Useful for reading the DOM after signal updates have settled:
 
 ```ts
-import { nextTick } from "@pyreon/reactivity"
+import { nextTick } from '@pyreon/reactivity'
 
 count.set(42)
 await nextTick()
@@ -524,7 +531,7 @@ nextTick().then(() => {
 Watch a reactive source and run a callback whenever it changes. More explicit than `effect` -- you specify exactly what to watch and get both old and new values. The callback also supports returning a cleanup function.
 
 ```ts
-import { signal, watch } from "@pyreon/reactivity"
+import { signal, watch } from '@pyreon/reactivity'
 
 const userId = signal(1)
 
@@ -534,7 +541,7 @@ const stop = watch(
     console.log(`Changed from ${oldId} to ${newId}`)
     const data = await fetch(`/api/user/${newId}`)
     setUser(await data.json())
-  }
+  },
 )
 
 userId.set(2) // logs "Changed from 1 to 2"
@@ -566,7 +573,7 @@ const count = signal(0)
 const stop = watch(
   () => count(),
   (value, prev) => console.log(`${prev} -> ${value}`),
-  { immediate: true }
+  { immediate: true },
 )
 // Immediately logs "undefined -> 0"
 
@@ -586,23 +593,25 @@ const stop = watch(
     fetch(`/api/search?q=${encodeURIComponent(query)}`, {
       signal: controller.signal,
     })
-      .then(r => r.json())
-      .then(data => results.set(data))
+      .then((r) => r.json())
+      .then((data) => results.set(data))
       .catch(() => {}) // ignore abort errors
 
     return () => controller.abort() // cancel previous request
-  }
+  },
 )
 ```
 
 ### Watch vs Effect
 
 Use `watch` when you need:
+
 - Old and new values
 - A cleanup function between runs
 - Explicit control over what is watched (the source expression)
 
 Use `effect` when you need:
+
 - Simple reactive side effects
 - Auto-tracked dependencies without specifying a source
 
@@ -619,7 +628,7 @@ watch(
     console.log(`User changed from ${oldId} to ${newId}`)
     const cleanup = setupUserSubscription(newId)
     return cleanup
-  }
+  },
 )
 ```
 
@@ -630,22 +639,22 @@ A lightweight reactive cell -- a class-based alternative to `signal()`. Cells us
 Use cells when you need reactive state with manual subscriptions rather than automatic tracking. They are ideal for keyed list reconcilers and internal framework plumbing.
 
 ```ts
-import { cell, Cell } from "@pyreon/reactivity"
+import { cell, Cell } from '@pyreon/reactivity'
 
 const count = cell(0)
 
-count.peek()    // read the value
-count.set(5)    // set a new value
-count.update(n => n + 1)
+count.peek() // read the value
+count.set(5) // set a new value
+count.update((n) => n + 1)
 
 // Subscribe to changes (returns unsubscribe function)
 const unsub = count.subscribe(() => {
-  console.log("changed to:", count.peek())
+  console.log('changed to:', count.peek())
 })
 
 // Fire-and-forget subscription (no unsubscribe returned, saves 1 allocation)
 count.listen(() => {
-  console.log("changed!")
+  console.log('changed!')
 })
 ```
 
@@ -668,41 +677,41 @@ function cell<T>(value: T): Cell<T>
 Cells optimize for the common case of a single listener. When only one subscriber exists, the cell stores it directly (no `Set` allocation). When a second subscriber is added, the cell promotes to a `Set`:
 
 ```ts
-const c = cell("hello")
-c.listen(fn1)  // stored as single listener -- no Set
-c.listen(fn2)  // promotes to Set({ fn1, fn2 })
+const c = cell('hello')
+c.listen(fn1) // stored as single listener -- no Set
+c.listen(fn2) // promotes to Set({ fn1, fn2 })
 ```
 
 ### Cell vs Signal
 
-| Feature | Signal | Cell |
-|---------|--------|------|
-| Allocation | 1 closure (function object with properties) | 1 object (class instance) |
+| Feature            | Signal                                      | Cell                                       |
+| ------------------ | ------------------------------------------- | ------------------------------------------ |
+| Allocation         | 1 closure (function object with properties) | 1 object (class instance)                  |
 | Automatic tracking | Yes -- `signal()` call registers dependency | No -- must use `subscribe()` or `listen()` |
-| Use inside effects | Yes | Not directly (use `subscribe`) |
-| Methods | Shared via assignment | On prototype |
-| Best for | General reactive state | Internal framework state, list item labels |
+| Use inside effects | Yes                                         | Not directly (use `subscribe`)             |
+| Methods            | Shared via assignment                       | On prototype                               |
+| Best for           | General reactive state                      | Internal framework state, list item labels |
 
 ## createStore
 
 A deep reactive Proxy store. Wraps a plain object or array in a Proxy that creates a fine-grained signal for every property. Direct mutations trigger only the signals for the mutated properties -- not the entire tree.
 
 ```ts
-import { createStore, isStore } from "@pyreon/reactivity"
+import { createStore, isStore } from '@pyreon/reactivity'
 
 const state = createStore({
   count: 0,
-  user: { name: "Alice", age: 30 },
-  items: [{ id: 1, text: "hello" }],
+  user: { name: 'Alice', age: 30 },
+  items: [{ id: 1, text: 'hello' }],
 })
 
-effect(() => console.log(state.count))  // tracks state.count only
-state.count++                           // only the count effect re-runs
-state.user.name = "Bob"                 // only name-tracking effects re-run
-state.items[0].text = "world"           // only text-tracking effects re-run
+effect(() => console.log(state.count)) // tracks state.count only
+state.count++ // only the count effect re-runs
+state.user.name = 'Bob' // only name-tracking effects re-run
+state.items[0].text = 'world' // only text-tracking effects re-run
 
 isStore(state) // true
-isStore({})    // false
+isStore({}) // false
 ```
 
 ### Store Features
@@ -719,24 +728,24 @@ isStore({})    // false
 const state = createStore({
   user: {
     profile: {
-      name: "Alice",
+      name: 'Alice',
       address: {
-        city: "Portland",
-        state: "OR",
+        city: 'Portland',
+        state: 'OR',
       },
     },
     preferences: {
-      theme: "dark",
+      theme: 'dark',
       notifications: true,
     },
   },
 })
 
 // Deep mutation -- only city-tracking effects re-run
-state.user.profile.address.city = "Seattle"
+state.user.profile.address.city = 'Seattle'
 
 // Nested object replacement -- creates new proxy for the new object
-state.user.preferences = { theme: "light", notifications: false }
+state.user.preferences = { theme: 'light', notifications: false }
 ```
 
 ### Array Operations
@@ -744,13 +753,13 @@ state.user.preferences = { theme: "light", notifications: false }
 ```ts
 const state = createStore({
   items: [
-    { id: 1, name: "Item 1" },
-    { id: 2, name: "Item 2" },
+    { id: 1, name: 'Item 1' },
+    { id: 2, name: 'Item 2' },
   ],
 })
 
 // Push -- triggers length signal and adds index signal
-state.items.push({ id: 3, name: "Item 3" })
+state.items.push({ id: 3, name: 'Item 3' })
 
 // Pop -- triggers length signal
 state.items.pop()
@@ -759,21 +768,21 @@ state.items.pop()
 state.items.splice(0, 1) // remove first item
 
 // Direct index assignment
-state.items[0].name = "Updated"
+state.items[0].name = 'Updated'
 
 // Sort in place (modifies indices)
 state.items.sort((a, b) => a.name.localeCompare(b.name))
 
 // Filter and replace
-const filtered = state.items.filter(item => item.id !== 2)
+const filtered = state.items.filter((item) => item.id !== 2)
 state.items.length = 0
-filtered.forEach(item => state.items.push(item))
+filtered.forEach((item) => state.items.push(item))
 ```
 
 ### Delete Properties
 
 ```ts
-const state = createStore({ temp: "value", keep: "this" })
+const state = createStore({ temp: 'value', keep: 'this' })
 delete state.temp // signal for "temp" fires with undefined, then is removed
 ```
 
@@ -782,29 +791,29 @@ delete state.temp // signal for "temp" fires with undefined, then is removed
 ```ts
 const appState = createStore({
   todos: [] as Array<{ id: number; text: string; done: boolean }>,
-  filter: "all" as "all" | "active" | "done",
+  filter: 'all' as 'all' | 'active' | 'done',
 })
 
 // This effect only re-runs when filter changes
 effect(() => {
-  console.log("Filter is:", appState.filter)
+  console.log('Filter is:', appState.filter)
 })
 
 // This effect only re-runs when todos array length changes
 effect(() => {
-  console.log("Todo count:", appState.todos.length)
+  console.log('Todo count:', appState.todos.length)
 })
 
 // This effect only re-runs when the first todo's text changes
 effect(() => {
   if (appState.todos.length > 0) {
-    console.log("First todo:", appState.todos[0].text)
+    console.log('First todo:', appState.todos[0].text)
   }
 })
 
 // Mutate -- only the relevant effects fire
-appState.todos.push({ id: 1, text: "Buy milk", done: false })
-appState.todos[0].done = true  // none of the above effects fire (they don't read .done)
+appState.todos.push({ id: 1, text: 'Buy milk', done: false })
+appState.todos[0].done = true // none of the above effects fire (they don't read .done)
 ```
 
 ## reconcile
@@ -812,18 +821,15 @@ appState.todos[0].done = true  // none of the above effects fire (they don't rea
 Surgically diff new state into an existing `createStore` proxy. Instead of replacing the store root (which would trigger all downstream effects), `reconcile` walks both the new value and the store in parallel and only updates signals whose values actually changed.
 
 ```ts
-import { createStore, reconcile } from "@pyreon/reactivity"
+import { createStore, reconcile } from '@pyreon/reactivity'
 
 const state = createStore({
-  user: { name: "Alice", age: 30 },
+  user: { name: 'Alice', age: 30 },
   items: [] as Array<{ id: number; text: string }>,
 })
 
 // API response arrives -- only changed properties trigger updates
-reconcile(
-  { user: { name: "Alice", age: 31 }, items: [{ id: 1, text: "Hello" }] },
-  state
-)
+reconcile({ user: { name: 'Alice', age: 31 }, items: [{ id: 1, text: 'Hello' }] }, state)
 // Only state.user.age signal fires (name unchanged)
 // state.items[0] is newly created
 ```
@@ -847,10 +853,7 @@ async function fetchUsers(page: number) {
   const data = await response.json()
 
   // Surgically update only what changed
-  reconcile(
-    { users: data.users, pagination: { page, total: data.total } },
-    state
-  )
+  reconcile({ users: data.users, pagination: { page, total: data.total } }, state)
 }
 ```
 
@@ -878,19 +881,19 @@ Both `source` (the new data) and `target` (the store proxy) must be the same sha
 Async data primitive. Reactively fetches data whenever the source signal changes. Handles loading state, errors, and request cancellation (stale requests are ignored) automatically.
 
 ```ts
-import { signal, createResource } from "@pyreon/reactivity"
+import { signal, createResource } from '@pyreon/reactivity'
 
 const userId = signal(1)
 
 const user = createResource(
   () => userId(),
-  (id) => fetch(`/api/user/${id}`).then(r => r.json())
+  (id) => fetch(`/api/user/${id}`).then((r) => r.json()),
 )
 
 // Reactive signals:
-user.data()     // the fetched user (undefined while loading)
-user.loading()  // true while in flight
-user.error()    // last error, or undefined
+user.data() // the fetched user (undefined while loading)
+user.loading() // true while in flight
+user.error() // last error, or undefined
 
 // Manual refetch with current source value:
 user.refetch()
@@ -910,17 +913,14 @@ interface Resource<T> {
   refetch(): void
 }
 
-function createResource<T, P>(
-  source: () => P,
-  fetcher: (param: P) => Promise<T>,
-): Resource<T>
+function createResource<T, P>(source: () => P, fetcher: (param: P) => Promise<T>): Resource<T>
 ```
 
 ### Resource with Components
 
 ```tsx
-import { signal, createResource } from "@pyreon/reactivity"
-import { Show, Switch, Match } from "@pyreon/core"
+import { signal, createResource } from '@pyreon/reactivity'
+import { Show, Switch, Match } from '@pyreon/core'
 
 function UserProfile() {
   const userId = signal(1)
@@ -931,7 +931,7 @@ function UserProfile() {
       const res = await fetch(`/api/users/${id}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return res.json()
-    }
+    },
   )
 
   return (
@@ -963,32 +963,31 @@ function UserProfile() {
 `createResource` uses a request ID counter to discard stale responses. If `source()` changes while a previous fetch is in flight, the old response is ignored when it resolves:
 
 ```ts
-const searchQuery = signal("react")
+const searchQuery = signal('react')
 const results = createResource(
   () => searchQuery(),
-  (q) => fetch(`/api/search?q=${q}`).then(r => r.json())
+  (q) => fetch(`/api/search?q=${q}`).then((r) => r.json()),
 )
 
 // User types quickly:
-searchQuery.set("reac")
-searchQuery.set("react")
-searchQuery.set("reacti")
-searchQuery.set("reactiv")
-searchQuery.set("reactive")
+searchQuery.set('reac')
+searchQuery.set('react')
+searchQuery.set('reacti')
+searchQuery.set('reactiv')
+searchQuery.set('reactive')
 // Only the "reactive" response is stored in data -- earlier responses are discarded
 ```
 
 ### Resource with Dependent Sources
 
 ```ts
-const category = signal("electronics")
+const category = signal('electronics')
 const page = signal(1)
 
 const products = createResource(
   // Source reads both -- refetches when either changes
   () => ({ category: category(), page: page() }),
-  ({ category, page }) =>
-    fetch(`/api/products?cat=${category}&page=${page}`).then(r => r.json())
+  ({ category, page }) => fetch(`/api/products?cat=${category}&page=${page}`).then((r) => r.json()),
 )
 ```
 
@@ -997,7 +996,7 @@ const products = createResource(
 Create an O(1) equality selector for efficient list selection. Unlike a plain `() => source() === value` comparison (which re-runs **all** subscribers on every change), `createSelector` only triggers the **two** affected subscribers -- the deselected and newly selected items.
 
 ```ts
-import { signal, createSelector, effect } from "@pyreon/reactivity"
+import { signal, createSelector, effect } from '@pyreon/reactivity'
 
 const selectedId = signal(1)
 const isSelected = createSelector(() => selectedId())
@@ -1005,7 +1004,7 @@ const isSelected = createSelector(() => selectedId())
 // In each list row -- only 2 effects fire per selection change:
 effect(() => {
   const active = isSelected(row.id)
-  row.el.classList.toggle("selected", active)
+  row.el.classList.toggle('selected', active)
 })
 ```
 
@@ -1027,7 +1026,7 @@ function SelectableList(props: { items: () => Item[] }) {
         by: (item) => item.id,
         children: (item) => (
           <li
-            class={() => isSelected(item.id) ? "item selected" : "item"}
+            class={() => (isSelected(item.id) ? 'item selected' : 'item')}
             onClick={() => selectedId.set(item.id)}
           >
             {item.name}
@@ -1051,7 +1050,7 @@ const isSelected = (id: number) => selectedIds().has(id)
 
 // Toggle selection
 function toggleSelect(id: number) {
-  selectedIds.update(set => {
+  selectedIds.update((set) => {
     const next = new Set(set)
     if (next.has(id)) next.delete(id)
     else next.add(id)
@@ -1071,7 +1070,7 @@ function createSelector<T>(source: () => T): (value: T) => boolean
 An `EffectScope` automatically tracks effects and computeds created within it and disposes them all at once. This is used internally by the component system (each component gets its own scope) but can also be used standalone for managing reactive subscriptions outside of components.
 
 ```ts
-import { effectScope, signal, effect, computed, setCurrentScope } from "@pyreon/reactivity"
+import { effectScope, signal, effect, computed, setCurrentScope } from '@pyreon/reactivity'
 
 const scope = effectScope()
 
@@ -1150,10 +1149,10 @@ function startTracking() {
     const position = signal({ x: 0, y: 0 })
 
     effect(() => {
-      sendAnalytics("cursor", position())
+      sendAnalytics('cursor', position())
     })
 
-    window.addEventListener("mousemove", (e) => {
+    window.addEventListener('mousemove', (e) => {
       position.set({ x: e.clientX, y: e.clientY })
     })
   })
@@ -1172,7 +1171,7 @@ Scopes can notify registered update hooks after reactive effects re-run. The not
 const scope = effectScope()
 
 scope.addUpdateHook(() => {
-  console.log("A reactive update occurred in this scope")
+  console.log('A reactive update occurred in this scope')
 })
 
 scope.runInScope(() => {
@@ -1180,7 +1179,7 @@ scope.runInScope(() => {
   effect(() => void count()) // reads count
 
   count.set(1) // triggers the effect, which triggers notifyEffectRan,
-               // which schedules the update hook via microtask
+  // which schedules the update hook via microtask
 })
 ```
 
@@ -1189,7 +1188,7 @@ scope.runInScope(() => {
 Run a function without registering any reactive dependencies. Useful inside effects when you need to read a signal without subscribing to it. `untrack` is a shorter alias for `runUntracked` -- both are identical.
 
 ```ts
-import { runUntracked, untrack, signal, effect } from "@pyreon/reactivity"
+import { runUntracked, untrack, signal, effect } from '@pyreon/reactivity'
 
 const a = signal(1)
 const b = signal(2)
@@ -1201,7 +1200,7 @@ effect(() => {
 })
 
 b.set(10) // effect does NOT re-run
-a.set(2)  // effect re-runs, reads b's current value (10), logs 12
+a.set(2) // effect re-runs, reads b's current value (10), logs 12
 ```
 
 ### Common Use Cases
@@ -1234,12 +1233,12 @@ Development-only tools for tracing signal updates and understanding reactive beh
 Register a listener that fires on every signal write. Returns a dispose function.
 
 ```ts
-import { onSignalUpdate } from "@pyreon/reactivity"
+import { onSignalUpdate } from '@pyreon/reactivity'
 
 const dispose = onSignalUpdate((event) => {
-  console.log(`${event.name ?? "anonymous"}: ${event.prev} -> ${event.next}`)
-  console.log("Stack:", event.stack)
-  console.log("Time:", event.timestamp)
+  console.log(`${event.name ?? 'anonymous'}: ${event.prev} -> ${event.next}`)
+  console.log('Stack:', event.stack)
+  console.log('Time:', event.timestamp)
 })
 
 // Later: stop tracing
@@ -1251,7 +1250,7 @@ dispose()
 Trace the next signal update. Logs which signals fire and what changed. Call before triggering a state change to see what updates and why:
 
 ```ts
-import { why } from "@pyreon/reactivity"
+import { why } from '@pyreon/reactivity'
 
 why()
 count.set(5)
@@ -1265,9 +1264,9 @@ count.set(5)
 Print a signal's current state to the console:
 
 ```ts
-import { inspectSignal, signal } from "@pyreon/reactivity"
+import { inspectSignal, signal } from '@pyreon/reactivity'
 
-const count = signal(42, { name: "count" })
+const count = signal(42, { name: 'count' })
 inspectSignal(count)
 // Console group:
 //   Signal "count"
@@ -1280,12 +1279,12 @@ inspectSignal(count)
 ### Reactive Form State
 
 ```ts
-import { signal, computed, effect } from "@pyreon/reactivity"
+import { signal, computed, effect } from '@pyreon/reactivity'
 
 function createFormField<T>(initial: T, validate: (v: T) => string | null) {
   const value = signal(initial)
   const touched = signal(false)
-  const error = computed(() => touched() ? validate(value()) : null)
+  const error = computed(() => (touched() ? validate(value()) : null))
   const valid = computed(() => error() === null)
 
   return {
@@ -1305,26 +1304,24 @@ function createFormField<T>(initial: T, validate: (v: T) => string | null) {
 }
 
 // Usage
-const email = createFormField("", (v) =>
-  v.includes("@") ? null : "Invalid email"
-)
-const password = createFormField("", (v) =>
-  v.length >= 8 ? null : "Must be at least 8 characters"
+const email = createFormField('', (v) => (v.includes('@') ? null : 'Invalid email'))
+const password = createFormField('', (v) =>
+  v.length >= 8 ? null : 'Must be at least 8 characters',
 )
 
 const formValid = computed(() => email.valid() && password.valid())
 
 effect(() => {
-  console.log("Form valid:", formValid())
-  console.log("Email error:", email.error())
-  console.log("Password error:", password.error())
+  console.log('Form valid:', formValid())
+  console.log('Email error:', email.error())
+  console.log('Password error:', password.error())
 })
 ```
 
 ### Reactive API Layer
 
 ```ts
-import { signal, createResource, batch } from "@pyreon/reactivity"
+import { signal, createResource, batch } from '@pyreon/reactivity'
 
 function createApi<T>(baseUrl: string) {
   const items = signal<T[]>([])
@@ -1351,57 +1348,56 @@ function createApi<T>(baseUrl: string) {
 
   async function create(item: Partial<T>) {
     const res = await fetch(baseUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(item),
     })
     const created = await res.json()
-    items.update(list => [...list, created])
+    items.update((list) => [...list, created])
     return created
   }
 
   async function remove(id: string) {
-    await fetch(`${baseUrl}/${id}`, { method: "DELETE" })
-    items.update(list => list.filter((item: any) => item.id !== id))
+    await fetch(`${baseUrl}/${id}`, { method: 'DELETE' })
+    items.update((list) => list.filter((item: any) => item.id !== id))
   }
 
   return { items, loading, error, fetchAll, create, remove }
 }
 
 // Usage
-const todosApi = createApi<Todo>("/api/todos")
+const todosApi = createApi<Todo>('/api/todos')
 todosApi.fetchAll()
 
 effect(() => {
-  if (todosApi.loading()) console.log("Loading todos...")
-  else console.log("Todos:", todosApi.items().length)
+  if (todosApi.loading()) console.log('Loading todos...')
+  else console.log('Todos:', todosApi.items().length)
 })
 ```
 
 ### Reactive Computed Chains with Memoization
 
 ```ts
-import { signal, computed } from "@pyreon/reactivity"
+import { signal, computed } from '@pyreon/reactivity'
 
 const rawProducts = signal<Product[]>([])
-const searchQuery = signal("")
-const sortBy = signal<"name" | "price" | "rating">("name")
-const sortDirection = signal<"asc" | "desc">("asc")
+const searchQuery = signal('')
+const sortBy = signal<'name' | 'price' | 'rating'>('name')
+const sortDirection = signal<'asc' | 'desc'>('asc')
 
 // Each computed only re-evaluates when its direct dependencies change
 const filteredProducts = computed(() => {
   const query = searchQuery().toLowerCase()
   if (!query) return rawProducts()
-  return rawProducts().filter(p =>
-    p.name.toLowerCase().includes(query) ||
-    p.description.toLowerCase().includes(query)
+  return rawProducts().filter(
+    (p) => p.name.toLowerCase().includes(query) || p.description.toLowerCase().includes(query),
   )
 })
 
 const sortedProducts = computed(() => {
   const products = filteredProducts()
   const key = sortBy()
-  const dir = sortDirection() === "asc" ? 1 : -1
+  const dir = sortDirection() === 'asc' ? 1 : -1
   return [...products].sort((a, b) => {
     if (a[key] < b[key]) return -1 * dir
     if (a[key] > b[key]) return 1 * dir
@@ -1415,15 +1411,13 @@ const paginatedProducts = computed(() => {
   return sortedProducts().slice(page * perPage, (page + 1) * perPage)
 })
 
-const totalPages = computed(() =>
-  Math.ceil(sortedProducts().length / 20)
-)
+const totalPages = computed(() => Math.ceil(sortedProducts().length / 20))
 ```
 
 ### Undo/Redo with Signals
 
 ```ts
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 function createUndoable<T>(initial: T) {
   const current = signal(initial)
@@ -1443,22 +1437,22 @@ function createUndoable<T>(initial: T) {
 
   function undo() {
     if (!canUndo()) return
-    index.update(i => i - 1)
+    index.update((i) => i - 1)
     current.set(history()[index()])
   }
 
   function redo() {
     if (!canRedo()) return
-    index.update(i => i + 1)
+    index.update((i) => i + 1)
     current.set(history()[index()])
   }
 
   return { current, set, undo, redo, canUndo, canRedo }
 }
 
-const editor = createUndoable("")
-editor.set("Hello")
-editor.set("Hello, World")
+const editor = createUndoable('')
+editor.set('Hello')
+editor.set('Hello, World')
 editor.undo() // current() === "Hello"
 editor.redo() // current() === "Hello, World"
 ```

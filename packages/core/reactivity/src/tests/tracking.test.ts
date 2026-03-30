@@ -1,11 +1,11 @@
-import { batch } from "../batch"
-import { effect, renderEffect } from "../effect"
-import { signal } from "../signal"
-import { runUntracked } from "../tracking"
+import { batch } from '../batch'
+import { effect, renderEffect } from '../effect'
+import { signal } from '../signal'
+import { runUntracked } from '../tracking'
 
-describe("tracking", () => {
-  describe("notifySubscribers", () => {
-    test("multi-subscriber notification without batching (snapshot path)", () => {
+describe('tracking', () => {
+  describe('notifySubscribers', () => {
+    test('multi-subscriber notification without batching (snapshot path)', () => {
       const s = signal(0)
       let runs1 = 0
       let runs2 = 0
@@ -28,7 +28,7 @@ describe("tracking", () => {
       expect(runs2).toBe(2)
     })
 
-    test("multi-subscriber notification during batching", () => {
+    test('multi-subscriber notification during batching', () => {
       const s = signal(0)
       let runs1 = 0
       let runs2 = 0
@@ -50,7 +50,7 @@ describe("tracking", () => {
       expect(runs2).toBe(2)
     })
 
-    test("single subscriber batching path", () => {
+    test('single subscriber batching path', () => {
       const s = signal(0)
       let runs = 0
 
@@ -67,8 +67,8 @@ describe("tracking", () => {
     })
   })
 
-  describe("runUntracked", () => {
-    test("signal reads inside runUntracked do not create dependencies", () => {
+  describe('runUntracked', () => {
+    test('signal reads inside runUntracked do not create dependencies', () => {
       const s = signal(0)
       let runs = 0
 
@@ -82,7 +82,7 @@ describe("tracking", () => {
       expect(runs).toBe(1) // not re-run
     })
 
-    test("restores tracking context after runUntracked", () => {
+    test('restores tracking context after runUntracked', () => {
       const tracked = signal(0)
       const untracked = signal(0)
       let runs = 0
@@ -105,8 +105,8 @@ describe("tracking", () => {
     })
   })
 
-  describe("trackSubscriber with depsCollector", () => {
-    test("renderEffect uses fast deps collector path", () => {
+  describe('trackSubscriber with depsCollector', () => {
+    test('renderEffect uses fast deps collector path', () => {
       const s = signal(0)
       let runs = 0
 
@@ -124,8 +124,8 @@ describe("tracking", () => {
     })
   })
 
-  describe("cleanupEffect", () => {
-    test("effect dynamically tracks/untracks deps on re-run", () => {
+  describe('cleanupEffect', () => {
+    test('effect dynamically tracks/untracks deps on re-run', () => {
       const cond = signal(true)
       const a = signal(0)
       const b = signal(0)

@@ -1,5 +1,5 @@
-import { computed, effect } from "@pyreon/reactivity"
-import type { Patch } from "../index"
+import { computed, effect } from '@pyreon/reactivity'
+import type { Patch } from '../index'
 import {
   addMiddleware,
   applyPatch,
@@ -9,7 +9,7 @@ import {
   onPatch,
   resetAllHooks,
   resetHook,
-} from "../index"
+} from '../index'
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ const Counter = model({
 })
 
 const Profile = model({
-  state: { name: "", bio: "" },
+  state: { name: '', bio: '' },
   actions: (self) => ({
     rename: (n: string) => self.name.set(n),
     setBio: (b: string) => self.bio.set(b),
@@ -35,7 +35,7 @@ const Profile = model({
 })
 
 const App = model({
-  state: { profile: Profile, title: "My App" },
+  state: { profile: Profile, title: 'My App' },
   actions: (self) => ({
     setTitle: (t: string) => self.title.set(t),
   }),
@@ -43,7 +43,7 @@ const App = model({
 
 // ─── getSnapshot — JSON-serializable output ────────────────────────────────
 
-describe("getSnapshot — JSON-serializable output", () => {
+describe('getSnapshot — JSON-serializable output', () => {
   it("returns a plain object that can be JSON.stringify'd and parsed back", () => {
     const c = Counter.create({ count: 42 })
     const snap = getSnapshot(c)
@@ -52,47 +52,47 @@ describe("getSnapshot — JSON-serializable output", () => {
     expect(parsed).toEqual({ count: 42 })
   })
 
-  it("snapshot contains no signal functions", () => {
+  it('snapshot contains no signal functions', () => {
     const c = Counter.create({ count: 5 })
     const snap = getSnapshot(c)
     for (const val of Object.values(snap)) {
-      expect(typeof val).not.toBe("function")
+      expect(typeof val).not.toBe('function')
     }
   })
 
-  it("nested model snapshot is fully serializable", () => {
+  it('nested model snapshot is fully serializable', () => {
     const app = App.create({
-      profile: { name: "Alice", bio: "dev" },
-      title: "Test",
+      profile: { name: 'Alice', bio: 'dev' },
+      title: 'Test',
     })
     const snap = getSnapshot(app)
     const json = JSON.stringify(snap)
     const parsed = JSON.parse(json)
     expect(parsed).toEqual({
-      profile: { name: "Alice", bio: "dev" },
-      title: "Test",
+      profile: { name: 'Alice', bio: 'dev' },
+      title: 'Test',
     })
   })
 
-  it("snapshot does not include views or actions", () => {
+  it('snapshot does not include views or actions', () => {
     const c = Counter.create({ count: 3 })
     const snap = getSnapshot(c)
     expect(snap).toEqual({ count: 3 })
-    expect(snap).not.toHaveProperty("doubled")
-    expect(snap).not.toHaveProperty("inc")
+    expect(snap).not.toHaveProperty('doubled')
+    expect(snap).not.toHaveProperty('inc')
   })
 })
 
 // ─── applySnapshot — restores model state ──────────────────────────────────
 
-describe("applySnapshot — restores model state", () => {
-  it("restores a complete snapshot", () => {
+describe('applySnapshot — restores model state', () => {
+  it('restores a complete snapshot', () => {
     const c = Counter.create({ count: 99 })
     applySnapshot(c, { count: 0 })
     expect(c.count()).toBe(0)
   })
 
-  it("restores partial snapshot — only specified keys", () => {
+  it('restores partial snapshot — only specified keys', () => {
     const M = model({ state: { a: 1, b: 2, c: 3 } })
     const m = M.create({ a: 10, b: 20, c: 30 })
     applySnapshot(m, { b: 99 })
@@ -101,24 +101,24 @@ describe("applySnapshot — restores model state", () => {
     expect(m.c()).toBe(30)
   })
 
-  it("restores nested model state recursively", () => {
+  it('restores nested model state recursively', () => {
     const app = App.create({
-      profile: { name: "Alice", bio: "dev" },
-      title: "Old",
+      profile: { name: 'Alice', bio: 'dev' },
+      title: 'Old',
     })
     applySnapshot(app, {
-      profile: { name: "Bob", bio: "engineer" },
-      title: "New",
+      profile: { name: 'Bob', bio: 'engineer' },
+      title: 'New',
     })
-    expect(app.profile().name()).toBe("Bob")
-    expect(app.profile().bio()).toBe("engineer")
-    expect(app.title()).toBe("New")
+    expect(app.profile().name()).toBe('Bob')
+    expect(app.profile().bio()).toBe('engineer')
+    expect(app.title()).toBe('New')
   })
 
-  it("roundtrips: getSnapshot -> applySnapshot produces same state", () => {
+  it('roundtrips: getSnapshot -> applySnapshot produces same state', () => {
     const app = App.create({
-      profile: { name: "Carol", bio: "designer" },
-      title: "Portfolio",
+      profile: { name: 'Carol', bio: 'designer' },
+      title: 'Portfolio',
     })
     const snap = getSnapshot(app)
 
@@ -127,7 +127,7 @@ describe("applySnapshot — restores model state", () => {
     expect(getSnapshot(app2)).toEqual(snap)
   })
 
-  it("batches updates — effect fires once for multi-field snapshot", () => {
+  it('batches updates — effect fires once for multi-field snapshot', () => {
     const M = model({ state: { x: 0, y: 0, z: 0 } })
     const m = M.create()
     let effectRuns = 0
@@ -145,19 +145,19 @@ describe("applySnapshot — restores model state", () => {
 
 // ─── onPatch — listener receives correct format ────────────────────────────
 
-describe("onPatch — patch format", () => {
-  it("patch has op, path, and value fields", () => {
+describe('onPatch — patch format', () => {
+  it('patch has op, path, and value fields', () => {
     const c = Counter.create()
     const patches: Patch[] = []
     onPatch(c, (p) => patches.push(p))
     c.inc()
     expect(patches).toHaveLength(1)
-    expect(patches[0]).toHaveProperty("op", "replace")
-    expect(patches[0]).toHaveProperty("path", "/count")
-    expect(patches[0]).toHaveProperty("value", 1)
+    expect(patches[0]).toHaveProperty('op', 'replace')
+    expect(patches[0]).toHaveProperty('path', '/count')
+    expect(patches[0]).toHaveProperty('value', 1)
   })
 
-  it("path uses JSON pointer format with leading slash", () => {
+  it('path uses JSON pointer format with leading slash', () => {
     const c = Counter.create()
     const patches: Patch[] = []
     onPatch(c, (p) => patches.push(p))
@@ -165,16 +165,16 @@ describe("onPatch — patch format", () => {
     expect(patches[0]!.path).toMatch(/^\//)
   })
 
-  it("nested model patches have composite paths", () => {
-    const app = App.create({ profile: { name: "A", bio: "" }, title: "" })
+  it('nested model patches have composite paths', () => {
+    const app = App.create({ profile: { name: 'A', bio: '' }, title: '' })
     const patches: Patch[] = []
     onPatch(app, (p) => patches.push(p))
 
-    app.profile().rename("B")
-    expect(patches[0]!.path).toBe("/profile/name")
+    app.profile().rename('B')
+    expect(patches[0]!.path).toBe('/profile/name')
   })
 
-  it("value contains new value after mutation, not old", () => {
+  it('value contains new value after mutation, not old', () => {
     const c = Counter.create({ count: 10 })
     const patches: Patch[] = []
     onPatch(c, (p) => patches.push(p))
@@ -183,7 +183,7 @@ describe("onPatch — patch format", () => {
     expect(patches[0]!.value).toBe(15)
   })
 
-  it("emits patches for each signal write in sequence", () => {
+  it('emits patches for each signal write in sequence', () => {
     const c = Counter.create()
     const patches: Patch[] = []
     onPatch(c, (p) => patches.push(p))
@@ -199,32 +199,32 @@ describe("onPatch — patch format", () => {
 
 // ─── applyPatch — applies patches correctly ────────────────────────────────
 
-describe("applyPatch — applies patches", () => {
-  it("applies a single replace patch to top-level field", () => {
+describe('applyPatch — applies patches', () => {
+  it('applies a single replace patch to top-level field', () => {
     const c = Counter.create()
-    applyPatch(c, { op: "replace", path: "/count", value: 42 })
+    applyPatch(c, { op: 'replace', path: '/count', value: 42 })
     expect(c.count()).toBe(42)
   })
 
-  it("applies array of patches in order", () => {
+  it('applies array of patches in order', () => {
     const c = Counter.create()
     applyPatch(c, [
-      { op: "replace", path: "/count", value: 5 },
-      { op: "replace", path: "/count", value: 10 },
+      { op: 'replace', path: '/count', value: 5 },
+      { op: 'replace', path: '/count', value: 10 },
     ])
     expect(c.count()).toBe(10)
   })
 
-  it("applies patches to nested model instances", () => {
+  it('applies patches to nested model instances', () => {
     const app = App.create({
-      profile: { name: "A", bio: "b" },
-      title: "t",
+      profile: { name: 'A', bio: 'b' },
+      title: 't',
     })
-    applyPatch(app, { op: "replace", path: "/profile/name", value: "B" })
-    expect(app.profile().name()).toBe("B")
+    applyPatch(app, { op: 'replace', path: '/profile/name', value: 'B' })
+    expect(app.profile().name()).toBe('B')
   })
 
-  it("roundtrip: record patches with onPatch, replay on fresh instance", () => {
+  it('roundtrip: record patches with onPatch, replay on fresh instance', () => {
     const original = Counter.create()
     const patches: Patch[] = []
     onPatch(original, (p) => patches.push({ ...p }))
@@ -239,36 +239,36 @@ describe("applyPatch — applies patches", () => {
     expect(getSnapshot(replica)).toEqual(getSnapshot(original))
   })
 
-  it("throws for unsupported op", () => {
+  it('throws for unsupported op', () => {
     const c = Counter.create()
-    expect(() => applyPatch(c, { op: "add" as any, path: "/count", value: 1 })).toThrow(
-      "unsupported op",
+    expect(() => applyPatch(c, { op: 'add' as any, path: '/count', value: 1 })).toThrow(
+      'unsupported op',
     )
   })
 
-  it("throws for empty path", () => {
+  it('throws for empty path', () => {
     const c = Counter.create()
-    expect(() => applyPatch(c, { op: "replace", path: "", value: 1 })).toThrow("empty path")
+    expect(() => applyPatch(c, { op: 'replace', path: '', value: 1 })).toThrow('empty path')
   })
 
-  it("throws for unknown key", () => {
+  it('throws for unknown key', () => {
     const c = Counter.create()
-    expect(() => applyPatch(c, { op: "replace", path: "/unknown", value: 1 })).toThrow(
-      "unknown state key",
+    expect(() => applyPatch(c, { op: 'replace', path: '/unknown', value: 1 })).toThrow(
+      'unknown state key',
     )
   })
 
-  it("throws for non-model instance", () => {
-    expect(() => applyPatch({}, { op: "replace", path: "/x", value: 1 })).toThrow(
-      "not a model instance",
+  it('throws for non-model instance', () => {
+    expect(() => applyPatch({}, { op: 'replace', path: '/x', value: 1 })).toThrow(
+      'not a model instance',
     )
   })
 })
 
 // ─── addMiddleware — intercepts actions ────────────────────────────────────
 
-describe("addMiddleware — intercepts actions", () => {
-  it("captures action name and args", () => {
+describe('addMiddleware — intercepts actions', () => {
+  it('captures action name and args', () => {
     const c = Counter.create()
     const calls: { name: string; args: unknown[] }[] = []
     addMiddleware(c, (call, next) => {
@@ -276,10 +276,10 @@ describe("addMiddleware — intercepts actions", () => {
       return next(call)
     })
     c.add(5)
-    expect(calls).toEqual([{ name: "add", args: [5] }])
+    expect(calls).toEqual([{ name: 'add', args: [5] }])
   })
 
-  it("middleware can block action by not calling next", () => {
+  it('middleware can block action by not calling next', () => {
     const c = Counter.create()
     addMiddleware(c, () => {
       /* intentionally block */
@@ -288,10 +288,10 @@ describe("addMiddleware — intercepts actions", () => {
     expect(c.count()).toBe(0)
   })
 
-  it("middleware can modify args", () => {
+  it('middleware can modify args', () => {
     const c = Counter.create()
     addMiddleware(c, (call, next) => {
-      if (call.name === "add") {
+      if (call.name === 'add') {
         return next({ ...call, args: [(call.args[0] as number) * 3] })
       }
       return next(call)
@@ -300,7 +300,7 @@ describe("addMiddleware — intercepts actions", () => {
     expect(c.count()).toBe(15) // 5 * 3
   })
 
-  it("unsub removes the middleware", () => {
+  it('unsub removes the middleware', () => {
     const c = Counter.create()
     const log: string[] = []
     const unsub = addMiddleware(c, (call, next) => {
@@ -315,30 +315,30 @@ describe("addMiddleware — intercepts actions", () => {
     expect(log).toHaveLength(1) // no new entries
   })
 
-  it("multiple middlewares execute in Koa-style onion order", () => {
+  it('multiple middlewares execute in Koa-style onion order', () => {
     const c = Counter.create()
     const log: string[] = []
     addMiddleware(c, (call, next) => {
-      log.push("A:before")
+      log.push('A:before')
       const r = next(call)
-      log.push("A:after")
+      log.push('A:after')
       return r
     })
     addMiddleware(c, (call, next) => {
-      log.push("B:before")
+      log.push('B:before')
       const r = next(call)
-      log.push("B:after")
+      log.push('B:after')
       return r
     })
     c.inc()
-    expect(log).toEqual(["A:before", "B:before", "B:after", "A:after"])
+    expect(log).toEqual(['A:before', 'B:before', 'B:after', 'A:after'])
   })
 })
 
 // ─── Nested model composition ──────────────────────────────────────────────
 
-describe("nested model composition", () => {
-  it("deeply nested models work correctly", () => {
+describe('nested model composition', () => {
+  it('deeply nested models work correctly', () => {
     const Leaf = model({
       state: { val: 0 },
       actions: (self) => ({
@@ -346,26 +346,26 @@ describe("nested model composition", () => {
       }),
     })
     const Branch = model({
-      state: { leaf: Leaf, tag: "" },
+      state: { leaf: Leaf, tag: '' },
       actions: (self) => ({
         setTag: (t: string) => self.tag.set(t),
       }),
     })
     const Root = model({
-      state: { branch: Branch, name: "root" },
+      state: { branch: Branch, name: 'root' },
     })
 
     const root = Root.create({
-      branch: { leaf: { val: 42 }, tag: "test" },
-      name: "myRoot",
+      branch: { leaf: { val: 42 }, tag: 'test' },
+      name: 'myRoot',
     })
 
     expect(root.branch().leaf().val()).toBe(42)
-    expect(root.branch().tag()).toBe("test")
-    expect(root.name()).toBe("myRoot")
+    expect(root.branch().tag()).toBe('test')
+    expect(root.name()).toBe('myRoot')
   })
 
-  it("nested model patches propagate up with correct paths", () => {
+  it('nested model patches propagate up with correct paths', () => {
     const Leaf = model({
       state: { val: 0 },
       actions: (self) => ({
@@ -385,11 +385,11 @@ describe("nested model composition", () => {
 
     root.branch().leaf().setVal(99)
     expect(patches).toHaveLength(1)
-    expect(patches[0]!.path).toBe("/branch/leaf/val")
+    expect(patches[0]!.path).toBe('/branch/leaf/val')
     expect(patches[0]!.value).toBe(99)
   })
 
-  it("nested getSnapshot serializes all levels", () => {
+  it('nested getSnapshot serializes all levels', () => {
     const Leaf = model({ state: { x: 1 } })
     const Mid = model({ state: { leaf: Leaf, y: 2 } })
     const Top = model({ state: { mid: Mid, z: 3 } })
@@ -401,53 +401,53 @@ describe("nested model composition", () => {
     })
   })
 
-  it("applyPatch to deeply nested path works", () => {
+  it('applyPatch to deeply nested path works', () => {
     const Leaf = model({ state: { x: 0 } })
     const Mid = model({ state: { leaf: Leaf } })
     const Top = model({ state: { mid: Mid } })
 
     const top = Top.create()
-    applyPatch(top, { op: "replace", path: "/mid/leaf/x", value: 999 })
+    applyPatch(top, { op: 'replace', path: '/mid/leaf/x', value: 999 })
     expect(top.mid().leaf().x()).toBe(999)
   })
 })
 
 // ─── asHook — singleton hook ───────────────────────────────────────────────
 
-describe("asHook — creates singleton hook", () => {
+describe('asHook — creates singleton hook', () => {
   afterEach(() => resetAllHooks())
 
-  it("returns the same instance every time", () => {
-    const useC = Counter.asHook("hook-same")
+  it('returns the same instance every time', () => {
+    const useC = Counter.asHook('hook-same')
     const a = useC()
     const b = useC()
     expect(a).toBe(b)
   })
 
-  it("state mutations persist across calls", () => {
-    const useC = Counter.asHook("hook-persist")
+  it('state mutations persist across calls', () => {
+    const useC = Counter.asHook('hook-persist')
     useC().add(10)
     expect(useC().count()).toBe(10)
   })
 
-  it("different ids yield independent instances", () => {
-    const useA = Counter.asHook("hook-id-a")
-    const useB = Counter.asHook("hook-id-b")
+  it('different ids yield independent instances', () => {
+    const useA = Counter.asHook('hook-id-a')
+    const useB = Counter.asHook('hook-id-b')
     useA().add(5)
     expect(useA().count()).toBe(5)
     expect(useB().count()).toBe(0)
   })
 
-  it("resetHook clears specific singleton", () => {
-    const useC = Counter.asHook("hook-reset-2")
+  it('resetHook clears specific singleton', () => {
+    const useC = Counter.asHook('hook-reset-2')
     useC().add(100)
-    resetHook("hook-reset-2")
+    resetHook('hook-reset-2')
     expect(useC().count()).toBe(0)
   })
 
-  it("resetAllHooks clears all singletons", () => {
-    const useA = Counter.asHook("hook-all-1")
-    const useB = Counter.asHook("hook-all-2")
+  it('resetAllHooks clears all singletons', () => {
+    const useA = Counter.asHook('hook-all-1')
+    const useB = Counter.asHook('hook-all-2')
     useA().add(5)
     useB().add(10)
 
@@ -460,8 +460,8 @@ describe("asHook — creates singleton hook", () => {
 
 // ─── Effect reactivity ─────────────────────────────────────────────────────
 
-describe("effect reactivity with model instances", () => {
-  it("effect tracks signal reads from model instance", () => {
+describe('effect reactivity with model instances', () => {
+  it('effect tracks signal reads from model instance', () => {
     const c = Counter.create()
     const observed: number[] = []
     effect(() => {
@@ -472,7 +472,7 @@ describe("effect reactivity with model instances", () => {
     expect(observed).toEqual([0, 1, 2])
   })
 
-  it("effect tracks computed views", () => {
+  it('effect tracks computed views', () => {
     const c = Counter.create({ count: 1 })
     const observed: number[] = []
     effect(() => {

@@ -1,4 +1,4 @@
-import type { Signal } from "@pyreon/reactivity"
+import type { Signal } from '@pyreon/reactivity'
 
 // ─── Storage Signal ──────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ export interface CookieOptions<T> extends StorageOptions<T> {
   /** HTTPS only — default: false */
   secure?: boolean
   /** SameSite policy — default: 'lax' */
-  sameSite?: "strict" | "lax" | "none"
+  sameSite?: 'strict' | 'lax' | 'none'
 }
 
 // ─── IndexedDB Options ───────────────────────────────────────────────────────

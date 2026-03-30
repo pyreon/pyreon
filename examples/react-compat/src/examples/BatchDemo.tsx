@@ -1,9 +1,9 @@
-import { batch, useEffect, useState } from "react"
-import Demo from "./Demo"
+import { batch, useEffect, useState } from 'react'
+import Demo from './Demo'
 
 export default function BatchDemo() {
-  const [first, setFirst] = useState("John")
-  const [last, setLast] = useState("Doe")
+  const [first, setFirst] = useState('John')
+  const [last, setLast] = useState('Doe')
   const [effectRuns, setEffectRuns] = useState(0)
 
   useEffect(() => {
@@ -31,8 +31,8 @@ batch(() => {
         type="button"
         onClick={() => {
           batch(() => {
-            setFirst((f) => (f === "John" ? "Jane" : "John"))
-            setLast((l) => (l === "Doe" ? "Smith" : "Doe"))
+            setFirst((f) => (f === 'John' ? 'Jane' : 'John'))
+            setLast((l) => (l === 'Doe' ? 'Smith' : 'Doe'))
           })
         }}
       >

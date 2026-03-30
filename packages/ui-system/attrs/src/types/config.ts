@@ -1,4 +1,4 @@
-import type { ElementType } from "./utils"
+import type { ElementType } from './utils'
 
 /** A component that has been enhanced by attrs — identified by the `IS_ATTRS` marker. */
 export type AttrsComponentType = ElementType & {

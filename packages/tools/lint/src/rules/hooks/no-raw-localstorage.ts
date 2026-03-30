@@ -1,26 +1,26 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan } from '../../utils/ast'
 
-const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"])
-const STORAGE_METHODS = new Set(["getItem", "setItem", "removeItem"])
+const STORAGE_OBJECTS = new Set(['localStorage', 'sessionStorage'])
+const STORAGE_METHODS = new Set(['getItem', 'setItem', 'removeItem'])
 
 export const noRawLocalStorage: Rule = {
   meta: {
-    id: "pyreon/no-raw-localstorage",
-    category: "hooks",
-    description: "Suggest useStorage() instead of raw localStorage/sessionStorage access.",
-    severity: "info",
+    id: 'pyreon/no-raw-localstorage',
+    category: 'hooks',
+    description: 'Suggest useStorage() instead of raw localStorage/sessionStorage access.',
+    severity: 'info',
     fixable: false,
   },
   create(context) {
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         const callee = node.callee
-        if (!callee || callee.type !== "MemberExpression") return
+        if (!callee || callee.type !== 'MemberExpression') return
         if (
-          callee.object?.type === "Identifier" &&
+          callee.object?.type === 'Identifier' &&
           STORAGE_OBJECTS.has(callee.object.name) &&
-          callee.property?.type === "Identifier" &&
+          callee.property?.type === 'Identifier' &&
           STORAGE_METHODS.has(callee.property.name)
         ) {
           context.report({

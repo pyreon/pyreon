@@ -1,4 +1,4 @@
-import useRootSize from "./useRootSize"
+import useRootSize from './useRootSize'
 
 export type UseSpacing = (base?: number | undefined) => (multiplier: number) => string
 

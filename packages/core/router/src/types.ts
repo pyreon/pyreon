@@ -1,4 +1,4 @@
-import type { ComponentFn } from "@pyreon/core"
+import type { ComponentFn } from '@pyreon/core'
 
 export type { ComponentFn }
 
@@ -51,7 +51,7 @@ export interface RouteMeta {
   /** If true, guards can redirect to login */
   requiresAuth?: boolean
   /** Scroll behavior for this route */
-  scrollBehavior?: "top" | "restore" | "none"
+  scrollBehavior?: 'top' | 'restore' | 'none'
 }
 
 // ─── Resolved route ───────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export interface ResolvedRoute<
 
 // ─── Lazy component ───────────────────────────────────────────────────────────
 
-export const LAZY_SYMBOL = Symbol("pyreon.lazy")
+export const LAZY_SYMBOL = Symbol('pyreon.lazy')
 
 export interface LazyComponent {
   readonly [LAZY_SYMBOL]: true
@@ -95,7 +95,7 @@ export function lazy(
 }
 
 export function isLazy(c: RouteComponent): c is LazyComponent {
-  return typeof c === "object" && c !== null && (c as LazyComponent)[LAZY_SYMBOL] === true
+  return typeof c === 'object' && c !== null && (c as LazyComponent)[LAZY_SYMBOL] === true
 }
 
 export type RouteComponent = ComponentFn | LazyComponent
@@ -186,12 +186,12 @@ export type ScrollBehaviorFn = (
   to: ResolvedRoute,
   from: ResolvedRoute,
   savedPosition: number | null,
-) => "top" | "restore" | "none" | number
+) => 'top' | 'restore' | 'none' | number
 
 export interface RouterOptions {
   routes: RouteRecord[]
   /** "hash" (default) uses location.hash; "history" uses pushState */
-  mode?: "hash" | "history"
+  mode?: 'hash' | 'history'
   /**
    * Base path for the application. Used when deploying to a sub-path
    * (e.g. `"/app"` for `https://example.com/app/`).
@@ -203,7 +203,7 @@ export interface RouterOptions {
    * Global scroll behavior. Per-route meta.scrollBehavior takes precedence.
    * Default: "top"
    */
-  scrollBehavior?: ScrollBehaviorFn | "top" | "restore" | "none"
+  scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
   /**
    * Initial URL for SSR. On the server, window.location is unavailable;
    * pass the request URL here so the router resolves the correct route.
@@ -231,7 +231,7 @@ export interface RouterOptions {
    *   - `"add"` — ensures paths always end with `/`
    *   - `"ignore"` — no normalization
    */
-  trailingSlash?: "strip" | "add" | "ignore"
+  trailingSlash?: 'strip' | 'add' | 'ignore'
 }
 
 // ─── Router interface ─────────────────────────────────────────────────────────
@@ -278,11 +278,11 @@ export interface Router {
 
 // ─── Internal router instance ─────────────────────────────────────────────────
 
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 export interface RouterInstance extends Router {
   routes: RouteRecord[]
-  mode: "hash" | "history"
+  mode: 'hash' | 'history'
   /** Normalized base path (e.g. "/app"), empty string if none */
   _base: string
   _currentPath: Signal<string>
@@ -291,8 +291,8 @@ export interface RouterInstance extends Router {
   _loadingSignal: Signal<number>
   _resolve(rawPath: string): ResolvedRoute
   _scrollPositions: Map<string, number>
-  _scrollBehavior: RouterOptions["scrollBehavior"]
-  _onError: RouterOptions["onError"]
+  _scrollBehavior: RouterOptions['scrollBehavior']
+  _onError: RouterOptions['onError']
   _maxCacheSize: number
   /**
    * Current RouterView nesting depth. Incremented by each RouterView as it

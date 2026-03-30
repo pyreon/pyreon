@@ -6,10 +6,10 @@
  * cannot see them as always-null. Timing uses rAF → setTimeout(0) to wait for
  * React's DefaultLane commit before stopping the clock.
  */
-import * as React from "react"
-import * as ReactDOM from "react-dom/client"
-import type { BenchSuite, Row } from "../runner"
-import { bench, buildRows } from "../runner"
+import * as React from 'react'
+import * as ReactDOM from 'react-dom/client'
+import type { BenchSuite, Row } from '../runner'
+import { bench, buildRows } from '../runner'
 
 const { createElement: r, useState, useEffect, memo } = React
 
@@ -25,10 +25,10 @@ interface Setters {
 
 const RowItem = memo(function RowItemInner({ row, selected }: { row: Row; selected: boolean }) {
   return r(
-    "tr",
-    { className: selected ? "selected" : undefined },
-    r("td", null, row.id),
-    r("td", null, row.label),
+    'tr',
+    { className: selected ? 'selected' : undefined },
+    r('td', null, row.id),
+    r('td', null, row.label),
   )
 })
 
@@ -42,10 +42,10 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
   }, [])
 
   return r(
-    "table",
+    'table',
     null,
     r(
-      "tbody",
+      'tbody',
       null,
       ...rows.map((row) => r(RowItem, { key: row.id, row, selected: row.id === selectedId })),
     ),
@@ -53,7 +53,7 @@ function App({ onMounted }: { onMounted: (setters: Setters) => void }) {
 }
 
 export async function runReact(container: HTMLElement): Promise<BenchSuite> {
-  const suite: BenchSuite = { framework: "React 19", container, results: [] }
+  const suite: BenchSuite = { framework: 'React 19', container, results: [] }
   const root = ReactDOM.createRoot(container)
 
   // Capture setters via Promise — value is unknown at bundle time, so Rollup cannot
@@ -78,19 +78,19 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
 
   let currentRows: Row[] = []
 
-  await bench("create 1,000 rows", suite, async () => {
+  await bench('create 1,000 rows', suite, async () => {
     currentRows = buildRows(1_000)
     await setRows(currentRows)
   })
 
-  await bench("replace all rows", suite, async () => {
+  await bench('replace all rows', suite, async () => {
     currentRows = buildRows(1_000)
     await setRows(currentRows)
   })
 
   let originalLabels: string[] = currentRows.map((row) => row.label)
   await bench(
-    "partial update (every 10th)",
+    'partial update (every 10th)',
     suite,
     async () => {
       const updated = [...currentRows]
@@ -116,11 +116,11 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   await setRows(currentRows)
   originalLabels = currentRows.map((row) => row.label)
 
-  await bench("select row", suite, async () => {
+  await bench('select row', suite, async () => {
     await setSelected(currentRows[Math.floor(currentRows.length / 2)]?.id ?? null)
   })
 
-  await bench("swap rows", suite, async () => {
+  await bench('swap rows', suite, async () => {
     const updated = [...currentRows]
     if (updated.length >= 999) {
       const tmp = updated[1]
@@ -134,7 +134,7 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
     await setRows(currentRows)
   })
 
-  await bench("clear rows", suite, async () => {
+  await bench('clear rows', suite, async () => {
     currentRows = []
     await setRows([])
   })
@@ -142,7 +142,7 @@ export async function runReact(container: HTMLElement): Promise<BenchSuite> {
   currentRows = buildRows(1_000)
   await setRows(currentRows)
 
-  await bench("create 10,000 rows", suite, async () => {
+  await bench('create 10,000 rows', suite, async () => {
     currentRows = buildRows(10_000)
     await setRows(currentRows)
   })

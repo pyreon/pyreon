@@ -1,22 +1,22 @@
-import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from "./types"
+import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from './types'
 
 // ─── ELK algorithm mapping ───────────────────────────────────────────────────
 
 const ELK_ALGORITHMS: Record<LayoutAlgorithm, string> = {
-  layered: "org.eclipse.elk.layered",
-  force: "org.eclipse.elk.force",
-  stress: "org.eclipse.elk.stress",
-  tree: "org.eclipse.elk.mrtree",
-  radial: "org.eclipse.elk.radial",
-  box: "org.eclipse.elk.box",
-  rectpacking: "org.eclipse.elk.rectpacking",
+  layered: 'org.eclipse.elk.layered',
+  force: 'org.eclipse.elk.force',
+  stress: 'org.eclipse.elk.stress',
+  tree: 'org.eclipse.elk.mrtree',
+  radial: 'org.eclipse.elk.radial',
+  box: 'org.eclipse.elk.box',
+  rectpacking: 'org.eclipse.elk.rectpacking',
 }
 
 const ELK_DIRECTIONS: Record<string, string> = {
-  UP: "UP",
-  DOWN: "DOWN",
-  LEFT: "LEFT",
-  RIGHT: "RIGHT",
+  UP: 'UP',
+  DOWN: 'DOWN',
+  LEFT: 'LEFT',
+  RIGHT: 'RIGHT',
 }
 
 // ─── Lazy-loaded ELK instance ────────────────────────────────────────────────
@@ -28,7 +28,7 @@ async function getELK(): Promise<any> {
   if (elkInstance) return elkInstance
   if (elkPromise) return elkPromise
 
-  elkPromise = import("elkjs/lib/elk.bundled.js").then((mod) => {
+  elkPromise = import('elkjs/lib/elk.bundled.js').then((mod) => {
     const ELK = mod.default || mod
     elkInstance = new ELK()
     return elkInstance
@@ -69,32 +69,32 @@ function toElkGraph(
   options: LayoutOptions,
 ): ElkGraph {
   const layoutOptions: Record<string, string> = {
-    "elk.algorithm": ELK_ALGORITHMS[algorithm] ?? ELK_ALGORITHMS.layered,
+    'elk.algorithm': ELK_ALGORITHMS[algorithm] ?? ELK_ALGORITHMS.layered,
   }
 
   if (options.direction) {
-    layoutOptions["elk.direction"] = ELK_DIRECTIONS[options.direction] ?? "DOWN"
+    layoutOptions['elk.direction'] = ELK_DIRECTIONS[options.direction] ?? 'DOWN'
   }
 
   if (options.nodeSpacing !== undefined) {
-    layoutOptions["elk.spacing.nodeNode"] = String(options.nodeSpacing)
+    layoutOptions['elk.spacing.nodeNode'] = String(options.nodeSpacing)
   }
 
   if (options.layerSpacing !== undefined) {
-    layoutOptions["elk.layered.spacing.nodeNodeBetweenLayers"] = String(options.layerSpacing)
+    layoutOptions['elk.layered.spacing.nodeNodeBetweenLayers'] = String(options.layerSpacing)
   }
 
   if (options.edgeRouting) {
     const routingMap: Record<string, string> = {
-      orthogonal: "ORTHOGONAL",
-      splines: "SPLINES",
-      polyline: "POLYLINE",
+      orthogonal: 'ORTHOGONAL',
+      splines: 'SPLINES',
+      polyline: 'POLYLINE',
     }
-    layoutOptions["elk.edgeRouting"] = routingMap[options.edgeRouting] ?? "ORTHOGONAL"
+    layoutOptions['elk.edgeRouting'] = routingMap[options.edgeRouting] ?? 'ORTHOGONAL'
   }
 
   return {
-    id: "root",
+    id: 'root',
     layoutOptions,
     children: nodes.map((node) => ({
       id: node.id,
@@ -130,7 +130,7 @@ function toElkGraph(
 export async function computeLayout(
   nodes: FlowNode[],
   edges: FlowEdge[],
-  algorithm: LayoutAlgorithm = "layered",
+  algorithm: LayoutAlgorithm = 'layered',
   options: LayoutOptions = {},
 ): Promise<Array<{ id: string; position: { x: number; y: number } }>> {
   const elk = await getELK()

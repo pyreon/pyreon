@@ -5,10 +5,10 @@
  * rewrites JSX to imports from this file automatically:
  *   <div class="x" />  →  jsx("div", { class: "x" })
  */
-import { Fragment, h } from "./h"
-import type { RefProp } from "./ref"
-import type { ClassValue } from "./style"
-import type { ComponentFn, Props, VNode, VNodeChild } from "./types"
+import { Fragment, h } from './h'
+import type { RefProp } from './ref'
+import type { ClassValue } from './style'
+import type { ComponentFn, Props, VNode, VNodeChild } from './types'
 
 export { Fragment }
 
@@ -20,7 +20,7 @@ export function jsx(
   const { children, ...rest } = props
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     // Component: keep children in props.children so the component function can access them.
     // Children must NOT be spread as h() rest args because mountComponent only passes vnode.props.
     const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
@@ -37,7 +37,7 @@ export const jsxs = jsx
 
 // ─── JSX types ────────────────────────────────────────────────────────────────
 
-type Booleanish = boolean | "true" | "false"
+type Booleanish = boolean | 'true' | 'false'
 export type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
 export type StyleValue = string | CSSProperties
 
@@ -58,68 +58,68 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   tabIndex?: number | (() => number) | undefined
   title?: string | (() => string) | undefined
   lang?: string | undefined
-  dir?: "ltr" | "rtl" | "auto" | undefined
+  dir?: 'ltr' | 'rtl' | 'auto' | undefined
   hidden?: boolean | (() => boolean) | undefined
   draggable?: Booleanish | undefined
-  contentEditable?: Booleanish | "inherit" | "plaintext-only" | undefined
+  contentEditable?: Booleanish | 'inherit' | 'plaintext-only' | undefined
   spellCheck?: Booleanish | undefined
-  autoCapitalize?: "off" | "on" | "sentences" | "words" | "characters" | undefined
-  translate?: "yes" | "no" | undefined
-  enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | undefined
+  autoCapitalize?: 'off' | 'on' | 'sentences' | 'words' | 'characters' | undefined
+  translate?: 'yes' | 'no' | undefined
+  enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send' | undefined
   inputMode?:
-    | "none"
-    | "text"
-    | "decimal"
-    | "numeric"
-    | "tel"
-    | "search"
-    | "email"
-    | "url"
+    | 'none'
+    | 'text'
+    | 'decimal'
+    | 'numeric'
+    | 'tel'
+    | 'search'
+    | 'email'
+    | 'url'
     | undefined
   is?: string | undefined
   slot?: string | undefined
   part?: string | undefined
-  popover?: "auto" | "manual" | undefined
+  popover?: 'auto' | 'manual' | undefined
   popoverTarget?: string | undefined
-  popoverTargetAction?: "toggle" | "show" | "hide" | undefined
+  popoverTargetAction?: 'toggle' | 'show' | 'hide' | undefined
   inert?: boolean | undefined
   // ARIA
-  "aria-label"?: string | (() => string) | undefined
-  "aria-hidden"?: Booleanish | (() => Booleanish) | undefined
-  "aria-disabled"?: Booleanish | (() => Booleanish) | undefined
-  "aria-expanded"?: Booleanish | (() => Booleanish) | undefined
-  "aria-selected"?: Booleanish | (() => Booleanish) | undefined
-  "aria-checked"?: Booleanish | "mixed" | (() => Booleanish | "mixed") | undefined
-  "aria-current"?: Booleanish | "page" | "step" | "location" | "date" | "time" | undefined
-  "aria-live"?: "off" | "assertive" | "polite" | undefined
-  "aria-atomic"?: Booleanish | undefined
-  "aria-busy"?: Booleanish | undefined
-  "aria-controls"?: string | undefined
-  "aria-describedby"?: string | undefined
-  "aria-labelledby"?: string | undefined
-  "aria-placeholder"?: string | undefined
-  "aria-required"?: Booleanish | (() => Booleanish) | undefined
-  "aria-invalid"?: Booleanish | "grammar" | "spelling" | undefined
-  "aria-valuemin"?: number | undefined
-  "aria-valuemax"?: number | undefined
-  "aria-valuenow"?: number | undefined
-  "aria-valuetext"?: string | undefined
-  "aria-haspopup"?: Booleanish | "menu" | "listbox" | "tree" | "grid" | "dialog" | undefined
-  "aria-posinset"?: number | undefined
-  "aria-setsize"?: number | undefined
-  "aria-level"?: number | undefined
-  "aria-multiline"?: Booleanish | undefined
-  "aria-multiselectable"?: Booleanish | undefined
-  "aria-orientation"?: "horizontal" | "vertical" | undefined
-  "aria-readonly"?: Booleanish | (() => Booleanish) | undefined
-  "aria-sort"?: "none" | "ascending" | "descending" | "other" | undefined
-  "aria-autocomplete"?: "none" | "inline" | "list" | "both" | undefined
-  "aria-colcount"?: number | undefined
-  "aria-colindex"?: number | undefined
-  "aria-colspan"?: number | undefined
-  "aria-rowcount"?: number | undefined
-  "aria-rowindex"?: number | undefined
-  "aria-rowspan"?: number | undefined
+  'aria-label'?: string | (() => string) | undefined
+  'aria-hidden'?: Booleanish | (() => Booleanish) | undefined
+  'aria-disabled'?: Booleanish | (() => Booleanish) | undefined
+  'aria-expanded'?: Booleanish | (() => Booleanish) | undefined
+  'aria-selected'?: Booleanish | (() => Booleanish) | undefined
+  'aria-checked'?: Booleanish | 'mixed' | (() => Booleanish | 'mixed') | undefined
+  'aria-current'?: Booleanish | 'page' | 'step' | 'location' | 'date' | 'time' | undefined
+  'aria-live'?: 'off' | 'assertive' | 'polite' | undefined
+  'aria-atomic'?: Booleanish | undefined
+  'aria-busy'?: Booleanish | undefined
+  'aria-controls'?: string | undefined
+  'aria-describedby'?: string | undefined
+  'aria-labelledby'?: string | undefined
+  'aria-placeholder'?: string | undefined
+  'aria-required'?: Booleanish | (() => Booleanish) | undefined
+  'aria-invalid'?: Booleanish | 'grammar' | 'spelling' | undefined
+  'aria-valuemin'?: number | undefined
+  'aria-valuemax'?: number | undefined
+  'aria-valuenow'?: number | undefined
+  'aria-valuetext'?: string | undefined
+  'aria-haspopup'?: Booleanish | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog' | undefined
+  'aria-posinset'?: number | undefined
+  'aria-setsize'?: number | undefined
+  'aria-level'?: number | undefined
+  'aria-multiline'?: Booleanish | undefined
+  'aria-multiselectable'?: Booleanish | undefined
+  'aria-orientation'?: 'horizontal' | 'vertical' | undefined
+  'aria-readonly'?: Booleanish | (() => Booleanish) | undefined
+  'aria-sort'?: 'none' | 'ascending' | 'descending' | 'other' | undefined
+  'aria-autocomplete'?: 'none' | 'inline' | 'list' | 'both' | undefined
+  'aria-colcount'?: number | undefined
+  'aria-colindex'?: number | undefined
+  'aria-colspan'?: number | undefined
+  'aria-rowcount'?: number | undefined
+  'aria-rowindex'?: number | undefined
+  'aria-rowspan'?: number | undefined
   // DOM lifecycle ref — object ref or callback ref
   ref?: RefProp<E> | undefined
   // Key for list reconciliation
@@ -210,7 +210,7 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   accept?: string | undefined
   autoComplete?: string | undefined
   autoFocus?: boolean | undefined
-  capture?: "user" | "environment" | string | undefined
+  capture?: 'user' | 'environment' | string | undefined
   form?: string | undefined
   formNoValidate?: boolean | undefined
   list?: string | undefined
@@ -226,13 +226,13 @@ export interface AnchorAttributes extends PyreonHTMLAttributes<HTMLAnchorElement
   hreflang?: string | undefined
   ping?: string | undefined
   referrerPolicy?: string | undefined
-  target?: "_blank" | "_self" | "_parent" | "_top" | string | undefined
+  target?: '_blank' | '_self' | '_parent' | '_top' | string | undefined
   rel?: string | undefined
   download?: string | boolean | undefined
 }
 
 export interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement> {
-  type?: "button" | "submit" | "reset" | undefined
+  type?: 'button' | 'submit' | 'reset' | undefined
   disabled?: boolean | (() => boolean) | undefined
   name?: string | undefined
   value?: string | undefined
@@ -258,7 +258,7 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   name?: string | undefined
   autoFocus?: boolean | undefined
   form?: string | undefined
-  wrap?: "hard" | "soft" | undefined
+  wrap?: 'hard' | 'soft' | undefined
 }
 
 export interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement> {
@@ -282,7 +282,7 @@ interface OptionAttributes extends PyreonHTMLAttributes<HTMLOptionElement> {
 
 export interface FormAttributes extends PyreonHTMLAttributes<HTMLFormElement> {
   action?: string | undefined
-  method?: "get" | "post" | undefined
+  method?: 'get' | 'post' | undefined
   encType?: string | undefined
   noValidate?: boolean | undefined
   target?: string | undefined
@@ -297,13 +297,13 @@ export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   alt?: string | (() => string) | undefined
   width?: number | string | (() => number | string) | undefined
   height?: number | string | (() => number | string) | undefined
-  loading?: "lazy" | "eager" | undefined
-  decoding?: "auto" | "async" | "sync" | undefined
-  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  loading?: 'lazy' | 'eager' | undefined
+  decoding?: 'auto' | 'async' | 'sync' | undefined
+  crossOrigin?: 'anonymous' | 'use-credentials' | undefined
   referrerPolicy?: string | undefined
   srcSet?: string | (() => string) | undefined
   sizes?: string | (() => string) | undefined
-  fetchPriority?: "high" | "low" | "auto" | undefined
+  fetchPriority?: 'high' | 'low' | 'auto' | undefined
 }
 
 interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
@@ -315,9 +315,9 @@ interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
   muted?: boolean | undefined
   loop?: boolean | undefined
   poster?: string | (() => string) | undefined
-  preload?: "none" | "metadata" | "auto" | undefined
+  preload?: 'none' | 'metadata' | 'auto' | undefined
   playsInline?: boolean | undefined
-  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  crossOrigin?: 'anonymous' | 'use-credentials' | undefined
   disablePictureInPicture?: boolean | undefined
   disableRemotePlayback?: boolean | undefined
 }
@@ -328,8 +328,8 @@ interface AudioAttributes extends PyreonHTMLAttributes<HTMLAudioElement> {
   autoPlay?: boolean | undefined
   muted?: boolean | undefined
   loop?: boolean | undefined
-  preload?: "none" | "metadata" | "auto" | undefined
-  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  preload?: 'none' | 'metadata' | 'auto' | undefined
+  crossOrigin?: 'anonymous' | 'use-credentials' | undefined
 }
 
 interface LabelAttributes extends PyreonHTMLAttributes<HTMLLabelElement> {
@@ -341,7 +341,7 @@ interface LabelAttributes extends PyreonHTMLAttributes<HTMLLabelElement> {
 interface ThAttributes extends PyreonHTMLAttributes<HTMLTableCellElement> {
   colSpan?: number | undefined
   rowSpan?: number | undefined
-  scope?: "col" | "row" | "colgroup" | "rowgroup" | undefined
+  scope?: 'col' | 'row' | 'colgroup' | 'rowgroup' | undefined
   abbr?: string | undefined
   headers?: string | undefined
 }
@@ -362,7 +362,7 @@ interface IframeAttributes extends PyreonHTMLAttributes<HTMLIFrameElement> {
   height?: number | string | undefined
   allow?: string | undefined
   allowFullScreen?: boolean | undefined
-  loading?: "lazy" | "eager" | undefined
+  loading?: 'lazy' | 'eager' | undefined
   name?: string | undefined
   sandbox?: string | undefined
   referrerPolicy?: string | undefined
@@ -375,7 +375,7 @@ interface LinkAttributes extends PyreonHTMLAttributes<HTMLLinkElement> {
   type?: string | undefined
   as?: string | undefined
   media?: string | undefined
-  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  crossOrigin?: 'anonymous' | 'use-credentials' | undefined
   integrity?: string | undefined
   referrerPolicy?: string | undefined
 }
@@ -393,7 +393,7 @@ interface ScriptAttributes extends PyreonHTMLAttributes<HTMLScriptElement> {
   type?: string | undefined
   async?: boolean | undefined
   defer?: boolean | undefined
-  crossOrigin?: "anonymous" | "use-credentials" | undefined
+  crossOrigin?: 'anonymous' | 'use-credentials' | undefined
   integrity?: string | undefined
   noModule?: boolean | undefined
   referrerPolicy?: string | undefined
@@ -432,7 +432,7 @@ interface DialogAttributes extends PyreonHTMLAttributes<HTMLDialogElement> {
 interface OlAttributes extends PyreonHTMLAttributes<HTMLOListElement> {
   start?: number | undefined
   reversed?: boolean | undefined
-  type?: "1" | "a" | "A" | "i" | "I" | undefined
+  type?: '1' | 'a' | 'A' | 'i' | 'I' | undefined
 }
 
 interface CanvasAttributes extends PyreonHTMLAttributes<HTMLCanvasElement> {
@@ -445,12 +445,12 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   xmlns?: string | undefined
   fill?: string | (() => string) | undefined
   stroke?: string | (() => string) | undefined
-  "stroke-width"?: string | number | undefined
-  "stroke-linecap"?: "butt" | "round" | "square" | undefined
-  "stroke-linejoin"?: "miter" | "round" | "bevel" | undefined
-  "fill-rule"?: "nonzero" | "evenodd" | undefined
-  "clip-rule"?: "nonzero" | "evenodd" | undefined
-  "clip-path"?: string | undefined
+  'stroke-width'?: string | number | undefined
+  'stroke-linecap'?: 'butt' | 'round' | 'square' | undefined
+  'stroke-linejoin'?: 'miter' | 'round' | 'bevel' | undefined
+  'fill-rule'?: 'nonzero' | 'evenodd' | undefined
+  'clip-rule'?: 'nonzero' | 'evenodd' | undefined
+  'clip-path'?: string | undefined
   d?: string | undefined
   cx?: string | number | undefined
   cy?: string | number | undefined
@@ -468,38 +468,38 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   transform?: string | (() => string) | undefined
   opacity?: string | number | (() => string | number) | undefined
   points?: string | undefined
-  "font-size"?: string | number | undefined
-  "text-anchor"?: "start" | "middle" | "end" | undefined
-  "dominant-baseline"?: string | undefined
+  'font-size'?: string | number | undefined
+  'text-anchor'?: 'start' | 'middle' | 'end' | undefined
+  'dominant-baseline'?: string | undefined
   // Gradient & pattern
-  gradientUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  gradientUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
   gradientTransform?: string | undefined
-  patternUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
-  patternContentUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  patternUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
+  patternContentUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
   patternTransform?: string | undefined
-  spreadMethod?: "pad" | "reflect" | "repeat" | undefined
+  spreadMethod?: 'pad' | 'reflect' | 'repeat' | undefined
   // Marker
   markerWidth?: string | number | undefined
   markerHeight?: string | number | undefined
-  markerUnits?: "strokeWidth" | "userSpaceOnUse" | undefined
+  markerUnits?: 'strokeWidth' | 'userSpaceOnUse' | undefined
   orient?: string | number | undefined
   refX?: string | number | undefined
   refY?: string | number | undefined
   // Clipping & masking
-  maskUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
-  maskContentUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
-  clipPathUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  maskUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
+  maskContentUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
+  clipPathUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
   // Filter
-  filterUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
-  primitiveUnits?: "userSpaceOnUse" | "objectBoundingBox" | undefined
+  filterUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
+  primitiveUnits?: 'userSpaceOnUse' | 'objectBoundingBox' | undefined
   // Presentation
   preserveAspectRatio?: string | undefined
-  "color-interpolation"?: string | undefined
-  "color-interpolation-filters"?: string | undefined
-  "shape-rendering"?: string | undefined
-  "image-rendering"?: string | undefined
-  "text-rendering"?: string | undefined
-  "pointer-events"?: string | undefined
+  'color-interpolation'?: string | undefined
+  'color-interpolation-filters'?: string | undefined
+  'shape-rendering'?: string | undefined
+  'image-rendering'?: string | undefined
+  'text-rendering'?: string | undefined
+  'pointer-events'?: string | undefined
   visibility?: string | undefined
   display?: string | undefined
   overflow?: string | undefined
@@ -508,10 +508,10 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   dx?: string | number | undefined
   dy?: string | number | undefined
   textLength?: string | number | undefined
-  lengthAdjust?: "spacing" | "spacingAndGlyphs" | undefined
-  "writing-mode"?: string | undefined
-  "letter-spacing"?: string | number | undefined
-  "word-spacing"?: string | number | undefined
+  lengthAdjust?: 'spacing' | 'spacingAndGlyphs' | undefined
+  'writing-mode'?: string | undefined
+  'letter-spacing'?: string | number | undefined
+  'word-spacing'?: string | number | undefined
   // Path
   pathLength?: number | undefined
   // Use/href
@@ -521,14 +521,14 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
 declare global {
   namespace JSX {
     /** The type that JSX expressions evaluate to */
-    type Element = import("./types").VNode
+    type Element = import('./types').VNode
 
     /**
      * Valid JSX tag types — intrinsic strings + component functions.
      * Components may return VNode, null, strings, functions (reactive getters), etc.
      * (TS 5.1+ feature)
      */
-    type ElementType = keyof IntrinsicElements | ((props: any) => import("./types").VNodeChild)
+    type ElementType = keyof IntrinsicElements | ((props: any) => import('./types').VNodeChild)
 
     /** Props that can be passed to any JSX element (intrinsic or component) */
     interface IntrinsicAttributes {
@@ -668,8 +668,8 @@ declare global {
       radialGradient: SvgAttributes
       stop: SvgAttributes & {
         offset?: string | number
-        "stop-color"?: string
-        "stop-opacity"?: string | number
+        'stop-color'?: string
+        'stop-opacity'?: string | number
       }
       // Interactive / embedding
       details: DetailsAttributes

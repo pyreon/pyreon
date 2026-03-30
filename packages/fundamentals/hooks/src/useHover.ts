@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 export interface UseHoverResult {
   /** Reactive boolean — true when element is hovered */

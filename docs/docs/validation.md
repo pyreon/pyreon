@@ -12,82 +12,107 @@ All adapters normalize library-specific validation errors into a common `Validat
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/validation
 ```
+
 ```bash [bun]
 bun add @pyreon/validation
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/validation
 ```
+
 ```bash [yarn]
 yarn add @pyreon/validation
 ```
+
 :::
 
 You also need at least one schema library installed:
 
 ::: code-group
+
 ```bash [npm]
 npm install zod
 ```
+
 ```bash [bun]
 bun add zod
 ```
+
 ```bash [pnpm]
 pnpm add zod
 ```
+
 ```bash [yarn]
 yarn add zod
 ```
+
 :::
 
 ::: code-group
+
 ```bash [npm]
 npm install valibot
 ```
+
 ```bash [bun]
 bun add valibot
 ```
+
 ```bash [pnpm]
 pnpm add valibot
 ```
+
 ```bash [yarn]
 yarn add valibot
 ```
+
 :::
 
 ::: code-group
+
 ```bash [npm]
 npm install arktype
 ```
+
 ```bash [bun]
 bun add arktype
 ```
+
 ```bash [pnpm]
 pnpm add arktype
 ```
+
 ```bash [yarn]
 yarn add arktype
 ```
+
 :::
 
 And `@pyreon/form` for integration:
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/form
 ```
+
 ```bash [bun]
 bun add @pyreon/form
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/form
 ```
+
 ```bash [yarn]
 yarn add @pyreon/form
 ```
+
 :::
 
 ---
@@ -145,18 +170,18 @@ The Zod adapter provides `zodSchema` for form-level validation and `zodField` fo
 Create a form-level `SchemaValidateFn` from a Zod object schema. The adapter calls `schema.safeParseAsync(values)`, extracts any `ZodIssue` objects, converts their `path` arrays to dot-separated strings, and returns a field-error record.
 
 ```ts
-import { z } from "zod"
-import { zodSchema } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { z } from 'zod'
+import { zodSchema } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const schema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  age: z.number().min(18, "Must be at least 18"),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  age: z.number().min(18, 'Must be at least 18'),
 })
 
 const form = useForm({
-  initialValues: { email: "", password: "", age: 0 },
+  initialValues: { email: '', password: '', age: 0 },
   schema: zodSchema(schema),
   onSubmit: async (values) => {
     // values is typed and validated
@@ -180,16 +205,16 @@ When validation passes, `zodSchema` returns an empty object `&#123;&#125;`. When
 Create a per-field `ValidateFn` from a Zod schema. Returns the first error message on failure, or `undefined` on success.
 
 ```ts
-import { z } from "zod"
-import { zodField } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { z } from 'zod'
+import { zodField } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const form = useForm({
-  initialValues: { email: "", username: "", age: 0 },
+  initialValues: { email: '', username: '', age: 0 },
   validators: {
-    email: zodField(z.string().email("Invalid email")),
-    username: zodField(z.string().min(3, "Too short").max(20, "Too long")),
-    age: zodField(z.number().min(0, "Must be positive")),
+    email: zodField(z.string().email('Invalid email')),
+    username: zodField(z.string().min(3, 'Too short').max(20, 'Too long')),
+    age: zodField(z.number().min(0, 'Must be positive')),
   },
   onSubmit: async (values) => {
     /* ... */
@@ -203,13 +228,13 @@ const form = useForm({
 
 ```ts
 const addressSchema = z.object({
-  street: z.string().min(1, "Street is required"),
-  city: z.string().min(1, "City is required"),
-  zip: z.string().regex(/^\d{5}$/, "Must be a 5-digit ZIP code"),
+  street: z.string().min(1, 'Street is required'),
+  city: z.string().min(1, 'City is required'),
+  zip: z.string().regex(/^\d{5}$/, 'Must be a 5-digit ZIP code'),
 })
 
 const schema = z.object({
-  name: z.string().min(1, "Name is required"),
+  name: z.string().min(1, 'Name is required'),
   address: addressSchema,
 })
 
@@ -221,7 +246,7 @@ const schema = z.object({
 
 ```ts
 const schema = z.object({
-  tags: z.array(z.string().min(1, "Tag cannot be empty")).min(1, "At least one tag"),
+  tags: z.array(z.string().min(1, 'Tag cannot be empty')).min(1, 'At least one tag'),
   scores: z.array(z.number().min(0).max(100)),
 })
 
@@ -232,21 +257,22 @@ const schema = z.object({
 **Refinements (sync and async):**
 
 ```ts
-const schema = z.object({
-  password: z.string().min(8),
-  confirmPassword: z.string(),
-}).refine(
-  (data) => data.password === data.confirmPassword,
-  {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  }
-)
+const schema = z
+  .object({
+    password: z.string().min(8),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
 
 const form = useForm({
-  initialValues: { password: "", confirmPassword: "" },
+  initialValues: { password: '', confirmPassword: '' },
   schema: zodSchema(schema),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -254,13 +280,16 @@ const form = useForm({
 
 ```ts
 const schema = z.object({
-  username: z.string().min(3).refine(
-    async (username) => {
-      const exists = await checkUsernameExists(username)
-      return !exists
-    },
-    { message: "Username is already taken" }
-  ),
+  username: z
+    .string()
+    .min(3)
+    .refine(
+      async (username) => {
+        const exists = await checkUsernameExists(username)
+        return !exists
+      },
+      { message: 'Username is already taken' },
+    ),
   email: z.string().email(),
 })
 ```
@@ -271,22 +300,28 @@ Since `zodSchema` uses `safeParseAsync`, async refinements work automatically.
 
 ```ts
 const schema = z.object({
-  email: z.string().email().transform((s) => s.toLowerCase()),
-  age: z.string().transform((s) => parseInt(s, 10)).pipe(z.number().min(18)),
+  email: z
+    .string()
+    .email()
+    .transform((s) => s.toLowerCase()),
+  age: z
+    .string()
+    .transform((s) => parseInt(s, 10))
+    .pipe(z.number().min(18)),
 })
 ```
 
 **Discriminated unions:**
 
 ```ts
-const schema = z.discriminatedUnion("type", [
+const schema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal("email"),
-    email: z.string().email("Invalid email"),
+    type: z.literal('email'),
+    email: z.string().email('Invalid email'),
   }),
   z.object({
-    type: z.literal("phone"),
-    phone: z.string().regex(/^\+?[\d\s-]+$/, "Invalid phone number"),
+    type: z.literal('phone'),
+    phone: z.string().regex(/^\+?[\d\s-]+$/, 'Invalid phone number'),
   }),
 ])
 ```
@@ -314,17 +349,17 @@ Valibot uses standalone functions rather than methods on schema objects. Because
 ### valibotSchema -- Form-Level Validation
 
 ```ts
-import * as v from "valibot"
-import { valibotSchema } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import * as v from 'valibot'
+import { valibotSchema } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const schema = v.object({
-  email: v.pipe(v.string(), v.email("Invalid email")),
-  password: v.pipe(v.string(), v.minLength(8, "Too short")),
+  email: v.pipe(v.string(), v.email('Invalid email')),
+  password: v.pipe(v.string(), v.minLength(8, 'Too short')),
 })
 
 const form = useForm({
-  initialValues: { email: "", password: "" },
+  initialValues: { email: '', password: '' },
   schema: valibotSchema(schema, v.safeParseAsync),
   onSubmit: async (values) => {
     /* ... */
@@ -336,32 +371,30 @@ You can also use the synchronous `v.safeParse` if your schema has no async valid
 
 ```ts
 const form = useForm({
-  initialValues: { email: "", password: "" },
+  initialValues: { email: '', password: '' },
   schema: valibotSchema(schema, v.safeParse),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
 ### valibotField -- Per-Field Validation
 
 ```ts
-import * as v from "valibot"
-import { valibotField } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import * as v from 'valibot'
+import { valibotField } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const form = useForm({
-  initialValues: { email: "", website: "" },
+  initialValues: { email: '', website: '' },
   validators: {
-    email: valibotField(
-      v.pipe(v.string(), v.email("Invalid email")),
-      v.safeParseAsync,
-    ),
-    website: valibotField(
-      v.pipe(v.string(), v.url("Invalid URL")),
-      v.safeParseAsync,
-    ),
+    email: valibotField(v.pipe(v.string(), v.email('Invalid email')), v.safeParseAsync),
+    website: valibotField(v.pipe(v.string(), v.url('Invalid URL')), v.safeParseAsync),
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -371,11 +404,11 @@ const form = useForm({
 
 ```ts
 const schema = v.object({
-  name: v.pipe(v.string(), v.minLength(1, "Name is required")),
+  name: v.pipe(v.string(), v.minLength(1, 'Name is required')),
   address: v.object({
-    street: v.pipe(v.string(), v.minLength(1, "Street is required")),
-    city: v.pipe(v.string(), v.minLength(1, "City is required")),
-    zip: v.pipe(v.string(), v.regex(/^\d{5}$/, "Invalid ZIP")),
+    street: v.pipe(v.string(), v.minLength(1, 'Street is required')),
+    city: v.pipe(v.string(), v.minLength(1, 'City is required')),
+    zip: v.pipe(v.string(), v.regex(/^\d{5}$/, 'Invalid ZIP')),
   }),
 })
 ```
@@ -385,8 +418,8 @@ const schema = v.object({
 ```ts
 const schema = v.object({
   tags: v.pipe(
-    v.array(v.pipe(v.string(), v.minLength(1, "Tag cannot be empty"))),
-    v.minLength(1, "At least one tag required"),
+    v.array(v.pipe(v.string(), v.minLength(1, 'Tag cannot be empty'))),
+    v.minLength(1, 'At least one tag required'),
   ),
 })
 ```
@@ -399,10 +432,7 @@ const schema = v.pipe(
     password: v.pipe(v.string(), v.minLength(8)),
     confirmPassword: v.string(),
   }),
-  v.check(
-    (data) => data.password === data.confirmPassword,
-    "Passwords do not match"
-  ),
+  v.check((data) => data.password === data.confirmPassword, 'Passwords do not match'),
 )
 ```
 
@@ -410,8 +440,8 @@ const schema = v.pipe(
 
 ```ts
 const schema = v.object({
-  nickname: v.optional(v.pipe(v.string(), v.minLength(2, "Too short"))),
-  bio: v.nullable(v.pipe(v.string(), v.maxLength(500, "Too long"))),
+  nickname: v.optional(v.pipe(v.string(), v.minLength(2, 'Too short'))),
+  bio: v.nullable(v.pipe(v.string(), v.maxLength(500, 'Too long'))),
   middleName: v.nullish(v.string()),
 })
 ```
@@ -440,17 +470,17 @@ ArkType uses a function-call syntax for validation. The adapter accepts any call
 ### arktypeSchema -- Form-Level Validation
 
 ```ts
-import { type } from "arktype"
-import { arktypeSchema } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { type } from 'arktype'
+import { arktypeSchema } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const schema = type({
-  email: "string.email",
-  password: "string >= 8",
+  email: 'string.email',
+  password: 'string >= 8',
 })
 
 const form = useForm({
-  initialValues: { email: "", password: "" },
+  initialValues: { email: '', password: '' },
   schema: arktypeSchema(schema),
   onSubmit: async (values) => {
     /* ... */
@@ -461,17 +491,19 @@ const form = useForm({
 ### arktypeField -- Per-Field Validation
 
 ```ts
-import { type } from "arktype"
-import { arktypeField } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { type } from 'arktype'
+import { arktypeField } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const form = useForm({
-  initialValues: { email: "", count: 0 },
+  initialValues: { email: '', count: 0 },
   validators: {
-    email: arktypeField(type("string.email")),
-    count: arktypeField(type("number >= 0")),
+    email: arktypeField(type('string.email')),
+    count: arktypeField(type('number >= 0')),
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -481,11 +513,11 @@ const form = useForm({
 
 ```ts
 const schema = type({
-  name: "string >= 1",
+  name: 'string >= 1',
   address: {
-    street: "string >= 1",
-    city: "string >= 1",
-    zip: "/^\\d{5}$/",
+    street: 'string >= 1',
+    city: 'string >= 1',
+    zip: '/^\\d{5}$/',
   },
 })
 ```
@@ -494,8 +526,8 @@ const schema = type({
 
 ```ts
 const schema = type({
-  tags: "string[] >= 1",
-  scores: "(number >= 0 & number <= 100)[]",
+  tags: 'string[] >= 1',
+  scores: '(number >= 0 & number <= 100)[]',
 })
 ```
 
@@ -504,7 +536,7 @@ const schema = type({
 ```ts
 const schema = type({
   status: "'active' | 'inactive' | 'pending'",
-  priority: "1 | 2 | 3 | 4 | 5",
+  priority: '1 | 2 | 3 | 4 | 5',
 })
 ```
 
@@ -512,10 +544,10 @@ const schema = type({
 
 ```ts
 const schema = type({
-  email: "string.email",
-  url: "string.url",
-  uuid: "string.uuid",
-  date: "string.date.iso",
+  email: 'string.email',
+  url: 'string.url',
+  uuid: 'string.uuid',
+  date: 'string.date.iso',
 })
 ```
 
@@ -540,11 +572,11 @@ Convert an array of `ValidationIssue` objects into a flat record mapping field n
 ### Basic Usage
 
 ```ts
-import { issuesToRecord } from "@pyreon/validation"
+import { issuesToRecord } from '@pyreon/validation'
 
 const errors = issuesToRecord([
-  { path: "email", message: "Invalid email" },
-  { path: "password", message: "Too short" },
+  { path: 'email', message: 'Invalid email' },
+  { path: 'password', message: 'Too short' },
 ])
 // => { email: "Invalid email", password: "Too short" }
 ```
@@ -555,9 +587,9 @@ When multiple issues exist for the same field path, the first message wins:
 
 ```ts
 const errors = issuesToRecord([
-  { path: "email", message: "Invalid email" },
-  { path: "email", message: "Already taken" },
-  { path: "password", message: "Too short" },
+  { path: 'email', message: 'Invalid email' },
+  { path: 'email', message: 'Already taken' },
+  { path: 'password', message: 'Too short' },
 ])
 // => { email: "Invalid email", password: "Too short" }
 // "Already taken" is ignored because "email" already has an error
@@ -569,9 +601,9 @@ Nested paths are stored as-is (dot-separated strings). The adapter is responsibl
 
 ```ts
 const errors = issuesToRecord([
-  { path: "address.city", message: "City is required" },
-  { path: "address.zip", message: "Invalid ZIP" },
-  { path: "tags.0", message: "Tag cannot be empty" },
+  { path: 'address.city', message: 'City is required' },
+  { path: 'address.zip', message: 'Invalid ZIP' },
+  { path: 'tags.0', message: 'Tag cannot be empty' },
 ])
 // => { "address.city": "City is required", "address.zip": "Invalid ZIP", "tags.0": "Tag cannot be empty" }
 ```
@@ -594,23 +626,23 @@ You can use both schema-level and per-field validators on the same form. Field v
 This is useful when you want a schema for structural validation and custom per-field logic for things like cross-field checks:
 
 ```ts
-import { z } from "zod"
-import { zodSchema } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { z } from 'zod'
+import { zodSchema } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const form = useForm({
-  initialValues: { email: "", password: "", confirmPassword: "" },
+  initialValues: { email: '', password: '', confirmPassword: '' },
   validators: {
     // Custom cross-field validation at the field level
     confirmPassword: (value, allValues) =>
-      value !== allValues.password ? "Passwords must match" : undefined,
+      value !== allValues.password ? 'Passwords must match' : undefined,
   },
   schema: zodSchema(
     z.object({
-      email: z.string().email("Invalid email"),
-      password: z.string().min(8, "At least 8 characters"),
+      email: z.string().email('Invalid email'),
+      password: z.string().min(8, 'At least 8 characters'),
       confirmPassword: z.string(),
-    })
+    }),
   ),
   onSubmit: async (values) => {
     /* ... */
@@ -623,24 +655,26 @@ const form = useForm({
 You can use different validation libraries for the schema and field validators. For example, use a Zod schema for the form shape and ArkType for a specific field:
 
 ```ts
-import { z } from "zod"
-import { type } from "arktype"
-import { zodSchema } from "@pyreon/validation"
-import { arktypeField } from "@pyreon/validation"
-import { useForm } from "@pyreon/form"
+import { z } from 'zod'
+import { type } from 'arktype'
+import { zodSchema } from '@pyreon/validation'
+import { arktypeField } from '@pyreon/validation'
+import { useForm } from '@pyreon/form'
 
 const form = useForm({
-  initialValues: { email: "", website: "" },
+  initialValues: { email: '', website: '' },
   validators: {
-    website: arktypeField(type("string.url")),
+    website: arktypeField(type('string.url')),
   },
   schema: zodSchema(
     z.object({
       email: z.string().email(),
       website: z.string(),
-    })
+    }),
   ),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -654,15 +688,18 @@ All three adapters pass through the error messages from their respective schema 
 
 ```ts
 const schema = z.object({
-  email: z.string({
-    required_error: "Email is required",
-    invalid_type_error: "Email must be a string",
-  }).email("Please enter a valid email address"),
-  age: z.number().min(18, "You must be at least 18 years old"),
-  username: z.string()
-    .min(3, "Username must be at least 3 characters")
-    .max(20, "Username cannot exceed 20 characters")
-    .regex(/^[a-z0-9_]+$/, "Username can only contain lowercase letters, numbers, and underscores"),
+  email: z
+    .string({
+      required_error: 'Email is required',
+      invalid_type_error: 'Email must be a string',
+    })
+    .email('Please enter a valid email address'),
+  age: z.number().min(18, 'You must be at least 18 years old'),
+  username: z
+    .string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(20, 'Username cannot exceed 20 characters')
+    .regex(/^[a-z0-9_]+$/, 'Username can only contain lowercase letters, numbers, and underscores'),
 })
 ```
 
@@ -671,13 +708,13 @@ const schema = z.object({
 ```ts
 const schema = v.object({
   email: v.pipe(
-    v.string("Email must be a string"),
-    v.nonEmpty("Email is required"),
-    v.email("Please enter a valid email address"),
+    v.string('Email must be a string'),
+    v.nonEmpty('Email is required'),
+    v.email('Please enter a valid email address'),
   ),
   age: v.pipe(
-    v.number("Age must be a number"),
-    v.minValue(18, "You must be at least 18 years old"),
+    v.number('Age must be a number'),
+    v.minValue(18, 'You must be at least 18 years old'),
   ),
 })
 ```
@@ -688,8 +725,8 @@ ArkType generates error messages automatically based on the type definition. For
 
 ```ts
 const schema = type({
-  email: "string.email",
-  age: "number >= 18",
+  email: 'string.email',
+  age: 'number >= 18',
 })
 
 // ArkType generates messages like:
@@ -707,21 +744,26 @@ All adapters support async validation. The Zod and Valibot adapters use async pa
 
 ```ts
 const schema = z.object({
-  username: z.string().min(3).refine(
-    async (username) => {
-      const response = await fetch(`/api/check-username?u=${username}`)
-      const { available } = await response.json()
-      return available
-    },
-    { message: "Username is already taken" }
-  ),
+  username: z
+    .string()
+    .min(3)
+    .refine(
+      async (username) => {
+        const response = await fetch(`/api/check-username?u=${username}`)
+        const { available } = await response.json()
+        return available
+      },
+      { message: 'Username is already taken' },
+    ),
   email: z.string().email(),
 })
 
 const form = useForm({
-  initialValues: { username: "", email: "" },
+  initialValues: { username: '', email: '' },
   schema: zodSchema(schema),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -731,19 +773,21 @@ const form = useForm({
 const schema = v.objectAsync({
   email: v.pipeAsync(
     v.string(),
-    v.email("Invalid email"),
+    v.email('Invalid email'),
     v.checkAsync(async (email) => {
       const response = await fetch(`/api/check-email?e=${email}`)
       const { available } = await response.json()
       return available
-    }, "Email is already registered"),
+    }, 'Email is already registered'),
   ),
 })
 
 const form = useForm({
-  initialValues: { email: "" },
+  initialValues: { email: '' },
   schema: valibotSchema(schema, v.safeParseAsync),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -753,16 +797,18 @@ You can also use async validation at the field level by providing a custom async
 
 ```ts
 const form = useForm({
-  initialValues: { email: "" },
+  initialValues: { email: '' },
   validators: {
     email: async (value, _allValues) => {
-      if (!value.includes("@")) return "Invalid email"
+      if (!value.includes('@')) return 'Invalid email'
       const response = await fetch(`/api/check-email?e=${value}`)
       const { available } = await response.json()
-      return available ? undefined : "Email is already registered"
+      return available ? undefined : 'Email is already registered'
     },
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -783,18 +829,20 @@ const schema = z
     maxAge: z.number(),
   })
   .refine((data) => new Date(data.endDate) > new Date(data.startDate), {
-    message: "End date must be after start date",
-    path: ["endDate"],
+    message: 'End date must be after start date',
+    path: ['endDate'],
   })
   .refine((data) => data.maxAge > data.minAge, {
-    message: "Max age must be greater than min age",
-    path: ["maxAge"],
+    message: 'Max age must be greater than min age',
+    path: ['maxAge'],
   })
 
 const form = useForm({
-  initialValues: { startDate: "", endDate: "", minAge: 0, maxAge: 100 },
+  initialValues: { startDate: '', endDate: '', minAge: 0, maxAge: 100 },
   schema: zodSchema(schema),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -804,12 +852,14 @@ Field-level validators receive the full form values as the second argument, enab
 
 ```ts
 const form = useForm({
-  initialValues: { password: "", confirmPassword: "" },
+  initialValues: { password: '', confirmPassword: '' },
   validators: {
     confirmPassword: (value, allValues) =>
-      value !== allValues.password ? "Passwords must match" : undefined,
+      value !== allValues.password ? 'Passwords must match' : undefined,
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -823,15 +873,17 @@ const schema = z.object({
 })
 
 const form = useForm({
-  initialValues: { email: "", password: "", confirmPassword: "" },
+  initialValues: { email: '', password: '', confirmPassword: '' },
   validators: {
     // Cross-field at field level (runs first)
     confirmPassword: (value, allValues) =>
-      value !== allValues.password ? "Passwords must match" : undefined,
+      value !== allValues.password ? 'Passwords must match' : undefined,
   },
   // Structural validation at schema level (runs second)
   schema: zodSchema(schema),
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -842,53 +894,58 @@ const form = useForm({
 Here is a full registration form using `@pyreon/form` with `@pyreon/validation` and Zod:
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { useForm } from "@pyreon/form"
-import { z } from "zod"
-import { zodSchema, zodField } from "@pyreon/validation"
+import { defineComponent } from '@pyreon/core'
+import { useForm } from '@pyreon/form'
+import { z } from 'zod'
+import { zodSchema, zodField } from '@pyreon/validation'
 
-const registrationSchema = z.object({
-  username: z.string().min(3, "At least 3 characters").max(20, "At most 20 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "At least 8 characters"),
-  confirmPassword: z.string(),
-  age: z.number().min(18, "Must be at least 18"),
-  acceptTerms: z.boolean().refine((v) => v === true, "You must accept the terms"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-})
+const registrationSchema = z
+  .object({
+    username: z.string().min(3, 'At least 3 characters').max(20, 'At most 20 characters'),
+    email: z.string().email('Invalid email address'),
+    password: z.string().min(8, 'At least 8 characters'),
+    confirmPassword: z.string(),
+    age: z.number().min(18, 'Must be at least 18'),
+    acceptTerms: z.boolean().refine((v) => v === true, 'You must accept the terms'),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
 
 const RegistrationForm = defineComponent(() => {
   const form = useForm({
     initialValues: {
-      username: "",
-      email: "",
-      password: "",
-      confirmPassword: "",
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
       age: 0,
       acceptTerms: false,
     },
     schema: zodSchema(registrationSchema),
     onSubmit: async (values) => {
-      await fetch("/api/register", {
-        method: "POST",
+      await fetch('/api/register', {
+        method: 'POST',
         body: JSON.stringify(values),
       })
     },
   })
 
   return () => (
-    <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit() }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        form.handleSubmit()
+      }}
+    >
       <div>
         <label>Username</label>
         <input
           value={form.fields.username.value()}
           onInput={(e) => form.fields.username.setValue(e.target.value)}
         />
-        {form.fields.username.error() && (
-          <span class="error">{form.fields.username.error()}</span>
-        )}
+        {form.fields.username.error() && <span class="error">{form.fields.username.error()}</span>}
       </div>
 
       <div>
@@ -898,9 +955,7 @@ const RegistrationForm = defineComponent(() => {
           value={form.fields.email.value()}
           onInput={(e) => form.fields.email.setValue(e.target.value)}
         />
-        {form.fields.email.error() && (
-          <span class="error">{form.fields.email.error()}</span>
-        )}
+        {form.fields.email.error() && <span class="error">{form.fields.email.error()}</span>}
       </div>
 
       <div>
@@ -910,9 +965,7 @@ const RegistrationForm = defineComponent(() => {
           value={form.fields.password.value()}
           onInput={(e) => form.fields.password.setValue(e.target.value)}
         />
-        {form.fields.password.error() && (
-          <span class="error">{form.fields.password.error()}</span>
-        )}
+        {form.fields.password.error() && <span class="error">{form.fields.password.error()}</span>}
       </div>
 
       <div>
@@ -934,9 +987,7 @@ const RegistrationForm = defineComponent(() => {
           value={form.fields.age.value()}
           onInput={(e) => form.fields.age.setValue(Number(e.target.value))}
         />
-        {form.fields.age.error() && (
-          <span class="error">{form.fields.age.error()}</span>
-        )}
+        {form.fields.age.error() && <span class="error">{form.fields.age.error()}</span>}
       </div>
 
       <div>
@@ -954,7 +1005,7 @@ const RegistrationForm = defineComponent(() => {
       </div>
 
       <button type="submit" disabled={form.isSubmitting()}>
-        {form.isSubmitting() ? "Registering..." : "Register"}
+        {form.isSubmitting() ? 'Registering...' : 'Register'}
       </button>
     </form>
   )
@@ -970,7 +1021,7 @@ All adapters follow the same pattern: normalize library-specific errors into `Va
 ### The Types
 
 ```ts
-import type { SchemaValidateFn, ValidateFn, ValidationIssue } from "@pyreon/validation"
+import type { SchemaValidateFn, ValidateFn, ValidationIssue } from '@pyreon/validation'
 ```
 
 - `SchemaValidateFn<TValues>` -- `(values: TValues) => Promise<Partial<Record<keyof TValues, string>>> | Partial<Record<keyof TValues, string>>>`
@@ -980,9 +1031,9 @@ import type { SchemaValidateFn, ValidateFn, ValidationIssue } from "@pyreon/vali
 ### Schema Adapter Template
 
 ```ts
-import type { SchemaValidateFn } from "@pyreon/validation"
-import { issuesToRecord } from "@pyreon/validation"
-import type { ValidationIssue } from "@pyreon/validation"
+import type { SchemaValidateFn } from '@pyreon/validation'
+import { issuesToRecord } from '@pyreon/validation'
+import type { ValidationIssue } from '@pyreon/validation'
 
 interface MyLibrarySchema<T = unknown> {
   validate(data: unknown): { ok: boolean; errors?: Array<{ field: string; msg: string }> }
@@ -1009,7 +1060,7 @@ export function myLibrarySchema<TValues extends Record<string, unknown>>(
 ### Field Adapter Template
 
 ```ts
-import type { ValidateFn } from "@pyreon/validation"
+import type { ValidateFn } from '@pyreon/validation'
 
 interface MyLibraryFieldSchema<T = unknown> {
   validate(value: unknown): { ok: boolean; errors?: Array<{ msg: string }> }
@@ -1042,42 +1093,42 @@ export function myLibraryField<T>(schema: MyLibraryFieldSchema<T>): ValidateFn<T
 
 ### Zod
 
-| Function | Signature | Description |
-|---|---|---|
+| Function            | Signature                                                            | Description                                                                                                           |
+| ------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `zodSchema(schema)` | `<TValues>(schema: ZodSchema<TValues>) => SchemaValidateFn<TValues>` | Create a form-level validator from a Zod object schema. Uses `safeParseAsync`. Duck-typed to work with Zod v3 and v4. |
-| `zodField(schema)` | `<T>(schema: ZodSchema<T>) => ValidateFn<T>` | Create a per-field validator from a Zod schema. Returns first error message. Duck-typed to work with Zod v3 and v4. |
+| `zodField(schema)`  | `<T>(schema: ZodSchema<T>) => ValidateFn<T>`                         | Create a per-field validator from a Zod schema. Returns first error message. Duck-typed to work with Zod v3 and v4.   |
 
 ### Valibot
 
-| Function | Signature | Description |
-|---|---|---|
+| Function                             | Signature                                                     | Description                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `valibotSchema(schema, safeParseFn)` | `<TValues>(schema, safeParseFn) => SchemaValidateFn<TValues>` | Create a form-level validator from a Valibot schema. Pass `v.safeParseAsync` or `v.safeParse`. |
-| `valibotField(schema, safeParseFn)` | `<T>(schema, safeParseFn) => ValidateFn<T>` | Create a per-field validator from a Valibot schema. Returns first error message. |
+| `valibotField(schema, safeParseFn)`  | `<T>(schema, safeParseFn) => ValidateFn<T>`                   | Create a per-field validator from a Valibot schema. Returns first error message.               |
 
 ### ArkType
 
-| Function | Signature | Description |
-|---|---|---|
-| `arktypeSchema(schema)` | `<TValues>(schema: ArkTypeCallable) => SchemaValidateFn<TValues>` | Create a form-level validator from an ArkType schema. Synchronous. Accepts any callable. |
-| `arktypeField(schema)` | `<T>(schema: ArkTypeCallable) => ValidateFn<T>` | Create a per-field validator from an ArkType schema. Returns first error message. Accepts any callable. |
+| Function                | Signature                                                         | Description                                                                                             |
+| ----------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `arktypeSchema(schema)` | `<TValues>(schema: ArkTypeCallable) => SchemaValidateFn<TValues>` | Create a form-level validator from an ArkType schema. Synchronous. Accepts any callable.                |
+| `arktypeField(schema)`  | `<T>(schema: ArkTypeCallable) => ValidateFn<T>`                   | Create a per-field validator from an ArkType schema. Returns first error message. Accepts any callable. |
 
 ### Utility
 
-| Function | Signature | Description |
-|---|---|---|
+| Function                 | Signature                                                                        | Description                                                                          |
+| ------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `issuesToRecord(issues)` | `<TValues>(issues: ValidationIssue[]) => Partial<Record<keyof TValues, string>>` | Convert `ValidationIssue[]` to a flat field-error record. First error per path wins. |
 
 ---
 
 ## Type Exports
 
-| Type | Definition | Description |
-|---|---|---|
-| `ValidationIssue` | `&#123; path: string; message: string &#125;` | Normalized validation issue with dot-separated path |
-| `SchemaValidateFn<TValues>` | `(values: TValues) => MaybePromise<Partial<Record<keyof TValues, string>>>` | Form-level validator function type |
-| `ValidateFn<T>` | `(value: T, allValues: Record<string, unknown>) => MaybePromise<string \| undefined>` | Per-field validator function type |
-| `ValidationError` | `string \| undefined` | A single field's error value |
-| `SchemaAdapter<TSchema>` | `<TValues>(schema: TSchema) => SchemaValidateFn<TValues>` | Generic schema adapter type |
-| `FieldAdapter<TSchema>` | `<T>(schema: TSchema) => ValidateFn<T>` | Generic field adapter type |
+| Type                        | Definition                                                                            | Description                                         |
+| --------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `ValidationIssue`           | `&#123; path: string; message: string &#125;`                                         | Normalized validation issue with dot-separated path |
+| `SchemaValidateFn<TValues>` | `(values: TValues) => MaybePromise<Partial<Record<keyof TValues, string>>>`           | Form-level validator function type                  |
+| `ValidateFn<T>`             | `(value: T, allValues: Record<string, unknown>) => MaybePromise<string \| undefined>` | Per-field validator function type                   |
+| `ValidationError`           | `string \| undefined`                                                                 | A single field's error value                        |
+| `SchemaAdapter<TSchema>`    | `<TValues>(schema: TSchema) => SchemaValidateFn<TValues>`                             | Generic schema adapter type                         |
+| `FieldAdapter<TSchema>`     | `<T>(schema: TSchema) => ValidateFn<T>`                                               | Generic field adapter type                          |
 
 The `SchemaValidateFn`, `ValidateFn`, and `ValidationError` types are re-exported from `@pyreon/form` for convenience, so you can import them from either package.

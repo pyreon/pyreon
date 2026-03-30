@@ -14,12 +14,12 @@ bun add @pyreon/react-compat
 // Replace:
 // import { useState, useEffect } from "react"
 // With:
-import { useState, useEffect } from "@pyreon/react-compat"
+import { useState, useEffect } from '@pyreon/react-compat'
 
 function Counter() {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    console.log("count changed:", count())
+    console.log('count changed:', count())
   })
   return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
 }
@@ -28,17 +28,17 @@ function Counter() {
 ### Using Refs and Context
 
 ```tsx
-import { useRef, useEffect, createContext, useContext } from "@pyreon/react-compat"
+import { useRef, useEffect, createContext, useContext } from '@pyreon/react-compat'
 
-const ThemeContext = createContext("light")
+const ThemeContext = createContext('light')
 
 function ThemeDisplay() {
   const theme = useContext(ThemeContext)
   const divRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    console.log("mounted, div is:", divRef.current)
-    return () => console.log("unmounted")
+    console.log('mounted, div is:', divRef.current)
+    return () => console.log('unmounted')
   }, [])
 
   return <div ref={divRef}>Current theme: {theme}</div>
@@ -56,14 +56,16 @@ function App() {
 ### Reducer Pattern
 
 ```tsx
-import { useReducer } from "@pyreon/react-compat"
+import { useReducer } from '@pyreon/react-compat'
 
-type Action = { type: "increment" } | { type: "decrement" }
+type Action = { type: 'increment' } | { type: 'decrement' }
 
 function reducer(state: number, action: Action) {
   switch (action.type) {
-    case "increment": return state + 1
-    case "decrement": return state - 1
+    case 'increment':
+      return state + 1
+    case 'decrement':
+      return state - 1
   }
 }
 
@@ -72,8 +74,8 @@ function Counter() {
   return (
     <div>
       <span>{count}</span>
-      <button onClick={() => dispatch({ type: "increment" })}>+</button>
-      <button onClick={() => dispatch({ type: "decrement" })}>-</button>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
     </div>
   )
 }
@@ -82,9 +84,9 @@ function Counter() {
 ### Lazy Loading
 
 ```tsx
-import { lazy, Suspense } from "@pyreon/react-compat"
+import { lazy, Suspense } from '@pyreon/react-compat'
 
-const HeavyChart = lazy(() => import("./HeavyChart"))
+const HeavyChart = lazy(() => import('./HeavyChart'))
 
 function Dashboard() {
   return (

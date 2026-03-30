@@ -9,18 +9,18 @@
  *   - onMount with cleanup
  */
 
-import { onMount, Show } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { computed, effect, signal } from "@pyreon/reactivity"
-import { useRoute } from "@pyreon/router"
+import { onMount, Show } from '@pyreon/core'
+import { useHead } from '@pyreon/head'
+import { computed, effect, signal } from '@pyreon/reactivity'
+import { useRoute } from '@pyreon/router'
 
 export const UserProfile = () => {
-  const route = useRoute<"/user/:id">()
-  const name = signal("")
-  const email = signal("")
+  const route = useRoute<'/user/:id'>()
+  const name = signal('')
+  const email = signal('')
   const saving = signal(false)
 
-  const isValid = computed(() => name().length > 0 && email().includes("@"))
+  const isValid = computed(() => name().length > 0 && email().includes('@'))
 
   useHead(() => ({ title: `User ${route().params.id}` }))
 
@@ -52,7 +52,7 @@ export const UserProfile = () => {
     if (!isValid()) return
     saving.set(true)
     await fetch(`/api/user/${route().params.id}`, {
-      method: "PUT",
+      method: 'PUT',
       body: JSON.stringify({ name: name(), email: email() }),
     })
     saving.set(false)
@@ -77,7 +77,7 @@ export const UserProfile = () => {
         </Show>
 
         <button type="submit" disabled={!isValid() || saving()}>
-          {saving() ? "Saving..." : "Save"}
+          {saving() ? 'Saving...' : 'Save'}
         </button>
       </form>
     </div>

@@ -1,18 +1,18 @@
-import { Cell, cell } from "../cell"
+import { Cell, cell } from '../cell'
 
-describe("Cell", () => {
-  test("stores and reads initial value", () => {
+describe('Cell', () => {
+  test('stores and reads initial value', () => {
     const c = cell(42)
     expect(c.peek()).toBe(42)
   })
 
-  test("set() updates value", () => {
-    const c = cell("hello")
-    c.set("world")
-    expect(c.peek()).toBe("world")
+  test('set() updates value', () => {
+    const c = cell('hello')
+    c.set('world')
+    expect(c.peek()).toBe('world')
   })
 
-  test("set() skips when value is the same (Object.is)", () => {
+  test('set() skips when value is the same (Object.is)', () => {
     const c = cell(1)
     let calls = 0
     c.listen(() => calls++)
@@ -20,23 +20,23 @@ describe("Cell", () => {
     expect(calls).toBe(0)
   })
 
-  test("update() applies function to current value", () => {
+  test('update() applies function to current value', () => {
     const c = cell(10)
     c.update((v) => v + 5)
     expect(c.peek()).toBe(15)
   })
 
-  test("listen() fires on set()", () => {
-    const c = cell("a")
+  test('listen() fires on set()', () => {
+    const c = cell('a')
     let fired = false
     c.listen(() => {
       fired = true
     })
-    c.set("b")
+    c.set('b')
     expect(fired).toBe(true)
   })
 
-  test("listen() single-listener fast path (no Set allocated)", () => {
+  test('listen() single-listener fast path (no Set allocated)', () => {
     const c = cell(0)
     let count = 0
     c.listen(() => count++)
@@ -47,7 +47,7 @@ describe("Cell", () => {
     expect(count).toBe(1)
   })
 
-  test("listen() promotes to Set with multiple listeners", () => {
+  test('listen() promotes to Set with multiple listeners', () => {
     const c = cell(0)
     let a = 0
     let b = 0
@@ -60,7 +60,7 @@ describe("Cell", () => {
     expect(b).toBe(1)
   })
 
-  test("subscribe() returns working unsubscribe (single listener)", () => {
+  test('subscribe() returns working unsubscribe (single listener)', () => {
     const c = cell(0)
     let count = 0
     const unsub = c.subscribe(() => count++)
@@ -71,7 +71,7 @@ describe("Cell", () => {
     expect(count).toBe(1) // no more notifications
   })
 
-  test("subscribe() returns working unsubscribe (multi listener)", () => {
+  test('subscribe() returns working unsubscribe (multi listener)', () => {
     const c = cell(0)
     let a = 0
     let b = 0
@@ -86,12 +86,12 @@ describe("Cell", () => {
     expect(b).toBe(1) // unsubscribed
   })
 
-  test("cell() factory returns Cell instance", () => {
-    const c = cell("x")
+  test('cell() factory returns Cell instance', () => {
+    const c = cell('x')
     expect(c).toBeInstanceOf(Cell)
   })
 
-  test("multiple rapid updates notify correctly", () => {
+  test('multiple rapid updates notify correctly', () => {
     const c = cell(0)
     const values: number[] = []
     c.listen(() => values.push(c.peek()))
@@ -101,7 +101,7 @@ describe("Cell", () => {
     expect(values).toEqual([1, 2, 3])
   })
 
-  test("NaN equality (Object.is)", () => {
+  test('NaN equality (Object.is)', () => {
     const c = cell(Number.NaN)
     let calls = 0
     c.listen(() => calls++)
@@ -109,7 +109,7 @@ describe("Cell", () => {
     expect(calls).toBe(0) // Object.is(NaN, NaN) is true
   })
 
-  test("subscribe() unsubscribe works after promotion to Set (regression)", () => {
+  test('subscribe() unsubscribe works after promotion to Set (regression)', () => {
     // Bug: first subscriber's disposer became stale after second subscriber
     // promoted _l → _s. The disposer checked _l which was now null.
     const c = cell(0)
@@ -135,7 +135,7 @@ describe("Cell", () => {
     expect(count2).toBe(2)
   })
 
-  test("subscribe() unsubscribe order: second before first", () => {
+  test('subscribe() unsubscribe order: second before first', () => {
     const c = cell(0)
     let count1 = 0
     let count2 = 0

@@ -7,20 +7,20 @@
  * component+data prop pattern.
  */
 
-import type { VNode, VNodeChild } from "@pyreon/core"
-import { Fragment } from "@pyreon/core"
-import { isEmpty, render } from "@pyreon/ui-core"
-import type { ExtendedProps, ObjectValue, Props, SimpleValue } from "./types"
+import type { VNode, VNodeChild } from '@pyreon/core'
+import { Fragment } from '@pyreon/core'
+import { isEmpty, render } from '@pyreon/ui-core'
+import type { ExtendedProps, ObjectValue, Props, SimpleValue } from './types'
 
 type ClassifiedData =
-  | { type: "simple"; data: SimpleValue[] }
-  | { type: "complex"; data: ObjectValue[] }
+  | { type: 'simple'; data: SimpleValue[] }
+  | { type: 'complex'; data: ObjectValue[] }
   | null
 
 const classifyData = (data: unknown[]): ClassifiedData => {
   const items = data.filter(
     (item) =>
-      item != null && !(typeof item === "object" && isEmpty(item as Record<string, unknown>)),
+      item != null && !(typeof item === 'object' && isEmpty(item as Record<string, unknown>)),
   )
 
   if (items.length === 0) return null
@@ -29,9 +29,9 @@ const classifyData = (data: unknown[]): ClassifiedData => {
   let isComplex = true
 
   for (const item of items) {
-    if (typeof item === "string" || typeof item === "number") {
+    if (typeof item === 'string' || typeof item === 'number') {
       isComplex = false
-    } else if (typeof item === "object") {
+    } else if (typeof item === 'object') {
       isSimple = false
     } else {
       isSimple = false
@@ -39,20 +39,20 @@ const classifyData = (data: unknown[]): ClassifiedData => {
     }
   }
 
-  if (isSimple) return { type: "simple", data: items as SimpleValue[] }
-  if (isComplex) return { type: "complex", data: items as ObjectValue[] }
+  if (isSimple) return { type: 'simple', data: items as SimpleValue[] }
+  if (isComplex) return { type: 'complex', data: items as ObjectValue[] }
   return null
 }
 
 const RESERVED_PROPS = [
-  "children",
-  "component",
-  "wrapComponent",
-  "data",
-  "itemKey",
-  "valueName",
-  "itemProps",
-  "wrapProps",
+  'children',
+  'component',
+  'wrapComponent',
+  'data',
+  'itemKey',
+  'valueName',
+  'itemProps',
+  'wrapProps',
 ] as const
 
 type AttachItemProps = ({ i, length }: { i: number; length: number }) => ExtendedProps
@@ -82,12 +82,12 @@ const Component = (props: Props) => {
     itemProps,
   } = props
 
-  const injectItemProps = typeof itemProps === "function" ? itemProps : () => itemProps
+  const injectItemProps = typeof itemProps === 'function' ? itemProps : () => itemProps
 
-  const injectWrapItemProps = typeof wrapProps === "function" ? wrapProps : () => wrapProps
+  const injectWrapItemProps = typeof wrapProps === 'function' ? wrapProps : () => wrapProps
 
   const getKey = (item: string | number, index: number) => {
-    if (typeof itemKey === "function") return itemKey(item, index)
+    if (typeof itemKey === 'function') return itemKey(item, index)
     return index
   }
 
@@ -130,8 +130,8 @@ const Component = (props: Props) => {
 
     // if children is Fragment — check VNode type
     if (
-      typeof children === "object" &&
-      "type" in (children as VNode) &&
+      typeof children === 'object' &&
+      'type' in (children as VNode) &&
       (children as VNode).type === Fragment
     ) {
       const fragmentChildren = (children as VNode).children as VNodeChild[]
@@ -154,7 +154,7 @@ const Component = (props: Props) => {
 
     return simpleData.map((item, i) => {
       const key = getKey(item, i)
-      const keyName = valueName ?? "children"
+      const keyName = valueName ?? 'children'
       const extendedProps = attachItemProps({
         i,
         length,
@@ -186,8 +186,8 @@ const Component = (props: Props) => {
   // --------------------------------------------------------
   const getObjectKey = (item: ObjectValue, index: number) => {
     if (!itemKey) return item.key ?? item.id ?? item.itemId ?? index
-    if (typeof itemKey === "function") return itemKey(item, index)
-    if (typeof itemKey === "string") return item[itemKey]
+    if (typeof itemKey === 'function') return itemKey(item, index)
+    if (typeof itemKey === 'string') return item[itemKey]
 
     return index
   }
@@ -236,7 +236,7 @@ const Component = (props: Props) => {
     if (component && Array.isArray(data)) {
       const classified = classifyData(data)
       if (!classified) return null
-      if (classified.type === "simple") return renderSimpleArray(classified.data) as VNodeChild
+      if (classified.type === 'simple') return renderSimpleArray(classified.data) as VNodeChild
       return renderComplexArray(classified.data) as VNodeChild
     }
 

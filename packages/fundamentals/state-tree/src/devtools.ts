@@ -3,7 +3,7 @@
  * Import: `import { ... } from "@pyreon/state-tree/devtools"`
  */
 
-import { getSnapshot } from "./snapshot"
+import { getSnapshot } from './snapshot'
 
 // Track active model instances (devtools-only, opt-in)
 const _activeModels = new Map<string, WeakRef<object>>()

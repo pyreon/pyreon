@@ -1,4 +1,4 @@
-import { value } from "../../units"
+import { value } from '../../units'
 
 type PropertyValue = string | number | null | undefined
 type PV = PropertyValue
@@ -62,14 +62,14 @@ const formatShorthand = (corners: PV[], calc: (p: PV) => any) => {
 }
 
 const CORNER_CSS = [
-  "border-top-left-radius",
-  "border-top-right-radius",
-  "border-bottom-right-radius",
-  "border-bottom-left-radius",
+  'border-top-left-radius',
+  'border-top-right-radius',
+  'border-bottom-right-radius',
+  'border-bottom-left-radius',
 ] as const
 
 const formatIndividual = (corners: PV[], calc: (p: PV) => any) => {
-  let output = ""
+  let output = ''
   for (let i = 0; i < corners.length; i++) {
     if (isValidValue(corners[i])) output += `${CORNER_CSS[i]}: ${calc(corners[i])};`
   }

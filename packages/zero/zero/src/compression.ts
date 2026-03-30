@@ -1,4 +1,4 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Compression middleware ─────────────────────────────────────────────────
 
@@ -6,7 +6,7 @@ export interface CompressionConfig {
   /** Minimum response size in bytes to compress. Default: `1024` (1KB) */
   threshold?: number
   /** Encoding preference order. Default: `["gzip", "deflate"]` */
-  encodings?: ("gzip" | "deflate")[]
+  encodings?: ('gzip' | 'deflate')[]
 }
 
 /**
@@ -23,10 +23,10 @@ export interface CompressionConfig {
  * compressionMiddleware({ threshold: 512, encodings: ["gzip"] })
  */
 export function compressionMiddleware(config: CompressionConfig = {}): Middleware {
-  const { threshold = 1024, encodings = ["gzip", "deflate"] } = config
+  const { threshold = 1024, encodings = ['gzip', 'deflate'] } = config
 
   return (ctx: MiddlewareContext) => {
-    const acceptEncoding = ctx.req.headers.get("accept-encoding") ?? ""
+    const acceptEncoding = ctx.req.headers.get('accept-encoding') ?? ''
 
     // Find the best supported encoding
     const encoding = encodings.find((enc) => acceptEncoding.includes(enc))
@@ -35,7 +35,7 @@ export function compressionMiddleware(config: CompressionConfig = {}): Middlewar
     // Store the encoding choice for post-processing
     ctx.locals.__compressionEncoding = encoding
     ctx.locals.__compressionThreshold = threshold
-    ctx.headers.append("Vary", "Accept-Encoding")
+    ctx.headers.append('Vary', 'Accept-Encoding')
   }
 }
 
@@ -49,16 +49,16 @@ export function compressionMiddleware(config: CompressionConfig = {}): Middlewar
  */
 export async function compressResponse(
   response: Response,
-  encoding: "gzip" | "deflate",
+  encoding: 'gzip' | 'deflate',
   threshold: number,
 ): Promise<Response> {
-  const contentType = response.headers.get("content-type") ?? ""
+  const contentType = response.headers.get('content-type') ?? ''
 
   // Only compress text-based content
   if (!isCompressible(contentType)) return response
 
   // Skip if already encoded
-  if (response.headers.get("content-encoding")) return response
+  if (response.headers.get('content-encoding')) return response
 
   const body = await response.arrayBuffer()
 
@@ -68,9 +68,9 @@ export async function compressResponse(
   const compressed = await compress(body, encoding)
 
   const headers = new Headers(response.headers)
-  headers.set("Content-Encoding", encoding)
-  headers.delete("Content-Length")
-  headers.append("Vary", "Accept-Encoding")
+  headers.set('Content-Encoding', encoding)
+  headers.delete('Content-Length')
+  headers.append('Vary', 'Accept-Encoding')
 
   return new Response(compressed, {
     status: response.status,
@@ -80,12 +80,12 @@ export async function compressResponse(
 }
 
 const COMPRESSIBLE_TYPES = [
-  "text/",
-  "application/json",
-  "application/javascript",
-  "application/xml",
-  "application/xhtml+xml",
-  "image/svg+xml",
+  'text/',
+  'application/json',
+  'application/javascript',
+  'application/xml',
+  'application/xhtml+xml',
+  'image/svg+xml',
 ]
 
 /** Check if a content type is compressible. Exported for testing. */
@@ -93,8 +93,8 @@ export function isCompressible(contentType: string): boolean {
   return COMPRESSIBLE_TYPES.some((t) => contentType.includes(t))
 }
 
-async function compress(data: ArrayBuffer, encoding: "gzip" | "deflate"): Promise<ArrayBuffer> {
-  const format = encoding === "gzip" ? "gzip" : "deflate"
+async function compress(data: ArrayBuffer, encoding: 'gzip' | 'deflate'): Promise<ArrayBuffer> {
+  const format = encoding === 'gzip' ? 'gzip' : 'deflate'
   const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
   return new Response(stream).arrayBuffer()
 }

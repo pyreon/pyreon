@@ -1,4 +1,4 @@
-import { onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount } from '@pyreon/core'
 
 /**
  * Listen for a specific key press.
@@ -6,9 +6,9 @@ import { onMount, onUnmount } from "@pyreon/core"
 export function useKeyboard(
   key: string,
   handler: (event: KeyboardEvent) => void,
-  options?: { event?: "keydown" | "keyup"; target?: EventTarget },
+  options?: { event?: 'keydown' | 'keyup'; target?: EventTarget },
 ): void {
-  const eventName = options?.event ?? "keydown"
+  const eventName = options?.event ?? 'keydown'
 
   const listener = (e: Event) => {
     const ke = e as KeyboardEvent

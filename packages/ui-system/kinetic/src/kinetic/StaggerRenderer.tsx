@@ -1,9 +1,9 @@
-import type { VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import type { CSSProperties, TransitionCallbacks } from "../types"
-import { cloneVNode } from "../utils"
-import TransitionItem from "./TransitionItem"
-import type { KineticConfig } from "./types"
+import type { VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import type { CSSProperties, TransitionCallbacks } from '../types'
+import { cloneVNode } from '../utils'
+import TransitionItem from './TransitionItem'
+import type { KineticConfig } from './types'
 
 type StaggerRendererProps = {
   config: KineticConfig
@@ -18,7 +18,7 @@ type StaggerRendererProps = {
 }
 
 const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === "object" && "type" in (child as object)
+  child != null && typeof child === 'object' && 'type' in (child as object)
 
 /**
  * Renders children with staggered enter/exit animation.
@@ -73,8 +73,8 @@ const StaggerRenderer = ({
         {cloneVNode(child, {
           style: {
             ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
-            "--stagger-index": staggerIndex,
-            "--stagger-interval": `${effectiveInterval}ms`,
+            '--stagger-index': staggerIndex,
+            '--stagger-interval': `${effectiveInterval}ms`,
             transitionDelay: `${delay}ms`,
           } as CSSProperties,
         })}

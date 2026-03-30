@@ -1,48 +1,48 @@
-import { For } from "@pyreon/core"
-import BatchDemo from "./examples/BatchDemo"
-import ComputedDemo from "./examples/ComputedDemo"
-import CreateAppDemo from "./examples/CreateAppDemo"
-import DefineComponentDemo from "./examples/DefineComponentDemo"
-import HFragmentDemo from "./examples/HFragmentDemo"
-import LifecycleDemo from "./examples/LifecycleDemo"
-import NextTickDemo from "./examples/NextTickDemo"
-import ProvideInjectDemo from "./examples/ProvideInjectDemo"
-import ReactiveDemo from "./examples/ReactiveDemo"
-import RefDemo from "./examples/RefDemo"
-import ToRefDemo from "./examples/ToRefDemo"
-import WatchDemo from "./examples/WatchDemo"
-import WatchEffectDemo from "./examples/WatchEffectDemo"
+import { For } from '@pyreon/core'
+import BatchDemo from './examples/BatchDemo'
+import ComputedDemo from './examples/ComputedDemo'
+import CreateAppDemo from './examples/CreateAppDemo'
+import DefineComponentDemo from './examples/DefineComponentDemo'
+import HFragmentDemo from './examples/HFragmentDemo'
+import LifecycleDemo from './examples/LifecycleDemo'
+import NextTickDemo from './examples/NextTickDemo'
+import ProvideInjectDemo from './examples/ProvideInjectDemo'
+import ReactiveDemo from './examples/ReactiveDemo'
+import RefDemo from './examples/RefDemo'
+import ToRefDemo from './examples/ToRefDemo'
+import WatchDemo from './examples/WatchDemo'
+import WatchEffectDemo from './examples/WatchEffectDemo'
 
 // ─── All APIs ────────────────────────────────────────────────────────────────
 
 const ALL_APIS = [
-  "ref",
-  "shallowRef",
-  "triggerRef",
-  "isRef",
-  "unref",
-  "computed",
-  "reactive",
-  "shallowReactive",
-  "readonly",
-  "toRaw",
-  "toRef",
-  "toRefs",
-  "watch",
-  "watchEffect",
-  "onMounted",
-  "onUnmounted",
-  "onUpdated",
-  "onBeforeMount",
-  "onBeforeUnmount",
-  "nextTick",
-  "provide",
-  "inject",
-  "defineComponent",
-  "h",
-  "Fragment",
-  "createApp",
-  "batch",
+  'ref',
+  'shallowRef',
+  'triggerRef',
+  'isRef',
+  'unref',
+  'computed',
+  'reactive',
+  'shallowReactive',
+  'readonly',
+  'toRaw',
+  'toRef',
+  'toRefs',
+  'watch',
+  'watchEffect',
+  'onMounted',
+  'onUnmounted',
+  'onUpdated',
+  'onBeforeMount',
+  'onBeforeUnmount',
+  'nextTick',
+  'provide',
+  'inject',
+  'defineComponent',
+  'h',
+  'Fragment',
+  'createApp',
+  'batch',
 ]
 
 // ─── App ─────────────────────────────────────────────────────────────────────

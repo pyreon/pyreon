@@ -1,26 +1,26 @@
-import { signal } from "@pyreon/reactivity"
-import { useCookie, useMemoryStorage, useSessionStorage, useStorage } from "@pyreon/storage"
+import { signal } from '@pyreon/reactivity'
+import { useCookie, useMemoryStorage, useSessionStorage, useStorage } from '@pyreon/storage'
 
 export function StorageDemo() {
   // localStorage — persists across tabs and sessions
-  const theme = useStorage("playground-theme", "light")
-  const fontSize = useStorage("playground-font-size", 16)
-  const sidebarOpen = useStorage("playground-sidebar", true)
+  const theme = useStorage('playground-theme', 'light')
+  const fontSize = useStorage('playground-font-size', 16)
+  const sidebarOpen = useStorage('playground-sidebar', true)
 
   // sessionStorage — tab-scoped
-  const wizardStep = useSessionStorage("playground-wizard-step", 1)
+  const wizardStep = useSessionStorage('playground-wizard-step', 1)
 
   // Cookie — configurable expiry
-  const locale = useCookie("playground-locale", "en", {
+  const locale = useCookie('playground-locale', 'en', {
     maxAge: 60 * 60 * 24 * 365,
-    path: "/",
+    path: '/',
   })
 
   // Memory storage — ephemeral, SSR-safe
-  const tempNote = useMemoryStorage("playground-temp", "")
+  const tempNote = useMemoryStorage('playground-temp', '')
 
   // Signal deduplication demo
-  const themeAgain = useStorage("playground-theme", "light")
+  const themeAgain = useStorage('playground-theme', 'light')
   const isSameInstance = theme === themeAgain
 
   // Log of changes
@@ -41,7 +41,7 @@ export function StorageDemo() {
           <button
             type="button"
             onClick={() => {
-              const next = theme() === "light" ? "dark" : "light"
+              const next = theme() === 'light' ? 'dark' : 'light'
               theme.set(next)
               addLog(`Theme → ${next}`)
             }}
@@ -80,13 +80,13 @@ export function StorageDemo() {
             type="button"
             onClick={() => {
               sidebarOpen.update((v) => !v)
-              addLog(`Sidebar → ${sidebarOpen() ? "open" : "closed"}`)
+              addLog(`Sidebar → ${sidebarOpen() ? 'open' : 'closed'}`)
             }}
           >
             Toggle Sidebar
           </button>
           <span>
-            Sidebar: <strong>{() => (sidebarOpen() ? "Open" : "Closed")}</strong>
+            Sidebar: <strong>{() => (sidebarOpen() ? 'Open' : 'Closed')}</strong>
           </span>
         </div>
       </div>
@@ -121,7 +121,7 @@ export function StorageDemo() {
             type="button"
             onClick={() => {
               wizardStep.set(1)
-              addLog("Wizard reset")
+              addLog('Wizard reset')
             }}
           >
             Reset
@@ -132,11 +132,11 @@ export function StorageDemo() {
       <div class="section">
         <h3>Cookie — Locale</h3>
         <div class="row">
-          {["en", "de", "fr", "ja"].map((lang) => (
+          {['en', 'de', 'fr', 'ja'].map((lang) => (
             <button
               type="button"
               key={lang}
-              class={locale() === lang ? "active" : ""}
+              class={locale() === lang ? 'active' : ''}
               onClick={() => {
                 locale.set(lang)
                 addLog(`Locale cookie → ${lang}`)
@@ -161,7 +161,7 @@ export function StorageDemo() {
           style="width: 100%; padding: 8px; margin-bottom: 8px"
         />
         <p>
-          Value: <strong>{() => tempNote() || "(empty)"}</strong> — lost on page refresh (memory
+          Value: <strong>{() => tempNote() || '(empty)'}</strong> — lost on page refresh (memory
           only)
         </p>
       </div>
@@ -169,7 +169,7 @@ export function StorageDemo() {
       <div class="section">
         <h3>Signal Deduplication</h3>
         <p>
-          Same key returns same signal: <strong>{isSameInstance ? "true" : "false"}</strong>
+          Same key returns same signal: <strong>{isSameInstance ? 'true' : 'false'}</strong>
         </p>
         <p style="font-size: 13px; opacity: 0.7">
           Calling <code>useStorage('playground-theme', 'light')</code> twice returns the exact same
@@ -184,7 +184,7 @@ export function StorageDemo() {
             type="button"
             onClick={() => {
               theme.remove()
-              addLog("Removed theme")
+              addLog('Removed theme')
             }}
           >
             Remove Theme
@@ -193,7 +193,7 @@ export function StorageDemo() {
             type="button"
             onClick={() => {
               fontSize.remove()
-              addLog("Removed font size")
+              addLog('Removed font size')
             }}
           >
             Remove Font Size
@@ -202,7 +202,7 @@ export function StorageDemo() {
             type="button"
             onClick={() => {
               locale.remove()
-              addLog("Removed locale cookie")
+              addLog('Removed locale cookie')
             }}
           >
             Remove Locale
@@ -215,8 +215,8 @@ export function StorageDemo() {
         <div class="log">
           {() =>
             log().length === 0
-              ? "Interact with the controls above to see changes."
-              : log().join("\n")
+              ? 'Interact with the controls above to see changes.'
+              : log().join('\n')
           }
         </div>
       </div>

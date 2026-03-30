@@ -1,5 +1,5 @@
-import type { EdgePathResult, FlowNode, XYPosition } from "./types"
-import { Position } from "./types"
+import type { EdgePathResult, FlowNode, XYPosition } from './types'
+import { Position } from './types'
 
 /**
  * Auto-detect the best handle position based on relative node positions.
@@ -280,7 +280,7 @@ export function getWaypointPath(params: {
   const allPoints = [{ x: sourceX, y: sourceY }, ...waypoints, { x: targetX, y: targetY }]
 
   const segments = allPoints.map((p) => `${p.x},${p.y}`)
-  const path = `M${segments.join(" L")}`
+  const path = `M${segments.join(' L')}`
 
   // Label at the middle waypoint
   const midIdx = Math.floor(waypoints.length / 2)
@@ -305,7 +305,7 @@ export function getEdgePath(
   targetPosition: Position,
 ): EdgePathResult {
   switch (type) {
-    case "smoothstep":
+    case 'smoothstep':
       return getSmoothStepPath({
         sourceX,
         sourceY,
@@ -314,9 +314,9 @@ export function getEdgePath(
         targetY,
         targetPosition,
       })
-    case "straight":
+    case 'straight':
       return getStraightPath({ sourceX, sourceY, targetX, targetY })
-    case "step":
+    case 'step':
       return getStepPath({
         sourceX,
         sourceY,

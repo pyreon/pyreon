@@ -1,7 +1,7 @@
-import type { Props, VNodeChild } from "@pyreon/core"
-import { createRef, h, onMount } from "@pyreon/core"
-import { effect } from "@pyreon/reactivity"
-import { mountChild } from "./mount"
+import type { Props, VNodeChild } from '@pyreon/core'
+import { createRef, h, onMount } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
+import { mountChild } from './mount'
 
 export interface KeepAliveProps extends Props {
   /**
@@ -57,7 +57,7 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
       }
 
       // Show/hide without unmounting — state is fully preserved
-      container.style.display = isActive ? "" : "none"
+      container.style.display = isActive ? '' : 'none'
     })
 
     return () => {
@@ -68,5 +68,5 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
 
   // `display: contents` makes the wrapper transparent to layout
   // (children appear as if directly in the parent flow)
-  return h("div", { ref: containerRef, style: "display: contents" })
+  return h('div', { ref: containerRef, style: 'display: contents' })
 }

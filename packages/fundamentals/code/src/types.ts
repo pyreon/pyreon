@@ -1,32 +1,32 @@
-import type { Extension } from "@codemirror/state"
-import type { EditorView } from "@codemirror/view"
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { Extension } from '@codemirror/state'
+import type { EditorView } from '@codemirror/view'
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 // ─── Editor config ───────────────────────────────────────────────────────────
 
 export type EditorLanguage =
-  | "javascript"
-  | "typescript"
-  | "jsx"
-  | "tsx"
-  | "html"
-  | "css"
-  | "json"
-  | "markdown"
-  | "python"
-  | "rust"
-  | "sql"
-  | "xml"
-  | "yaml"
-  | "cpp"
-  | "java"
-  | "go"
-  | "php"
-  | "ruby"
-  | "shell"
-  | "plain"
+  | 'javascript'
+  | 'typescript'
+  | 'jsx'
+  | 'tsx'
+  | 'html'
+  | 'css'
+  | 'json'
+  | 'markdown'
+  | 'python'
+  | 'rust'
+  | 'sql'
+  | 'xml'
+  | 'yaml'
+  | 'cpp'
+  | 'java'
+  | 'go'
+  | 'php'
+  | 'ruby'
+  | 'shell'
+  | 'plain'
 
-export type EditorTheme = "light" | "dark" | Extension
+export type EditorTheme = 'light' | 'dark' | Extension
 
 export interface EditorConfig {
   /** Initial value */
@@ -146,7 +146,7 @@ export interface Diagnostic {
   /** End position (character offset) */
   to: number
   /** Severity */
-  severity: "error" | "warning" | "info" | "hint"
+  severity: 'error' | 'warning' | 'info' | 'hint'
   /** Message */
   message: string
   /** Optional source (e.g., "typescript", "eslint") */
@@ -212,7 +212,7 @@ export interface TabbedEditorConfig {
   /** Theme — 'light', 'dark', or custom */
   theme?: EditorTheme
   /** Editor config applied to all tabs */
-  editorConfig?: Omit<EditorConfig, "value" | "language" | "theme">
+  editorConfig?: Omit<EditorConfig, 'value' | 'language' | 'theme'>
 }
 
 export interface TabbedEditorInstance {

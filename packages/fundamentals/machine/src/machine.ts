@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 import type {
   EnterCallback,
   InferEvents,
@@ -8,7 +8,7 @@ import type {
   MachineEvent,
   TransitionCallback,
   TransitionConfig,
-} from "./types"
+} from './types'
 
 /**
  * Create a reactive state machine — a constrained signal with type-safe transitions.
@@ -63,7 +63,7 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     const transition = stateConfig.on[event] as TransitionConfig<TState> | undefined
     if (!transition) return null
 
-    if (typeof transition === "string") {
+    if (typeof transition === 'string') {
       return transition
     }
 

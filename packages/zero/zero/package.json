@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/zero",
   "version": "0.11.5",
-  "description": "Pyreon Zero \u2014 zero-config full-stack framework powered by Pyreon and Vite",
+  "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
   "author": "Vit Bokisch",
   "repository": {
@@ -9,7 +9,6 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/zero"
   },
-  "type": "module",
   "files": [
     "lib",
     "!lib/analysis",
@@ -18,6 +17,7 @@
     "LICENSE",
     "README.md"
   ],
+  "type": "module",
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -113,7 +113,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@pyreon/core": "workspace:^",

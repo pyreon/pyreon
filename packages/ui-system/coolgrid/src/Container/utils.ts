@@ -1,4 +1,4 @@
-import { get } from "@pyreon/ui-core"
+import { get } from '@pyreon/ui-core'
 
 /**
  * Resolves the container max-width map using a three-layer fallback:
@@ -10,4 +10,4 @@ type GetContainerWidth = (
 ) => ReturnType<typeof get>
 
 export const getContainerWidth: GetContainerWidth = (props, theme) =>
-  get(props, "width") || get(theme, "grid.container") || get(theme, "coolgrid.container")
+  get(props, 'width') || get(theme, 'grid.container') || get(theme, 'coolgrid.container')

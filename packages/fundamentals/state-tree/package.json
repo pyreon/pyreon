@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/state-tree",
   "version": "0.11.5",
-  "description": "Structured reactive state tree \u2014 composable models with snapshots, patches, and middleware",
+  "description": "Structured reactive state tree — composable models with snapshots, patches, and middleware",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/state-tree#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/state-tree"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/state-tree#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -22,6 +19,7 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -37,19 +35,21 @@
       "types": "./lib/types/devtools.d.ts"
     }
   },
-  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "lint": "oxlint ."
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
   }
 }

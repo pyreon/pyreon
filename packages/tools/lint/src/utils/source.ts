@@ -1,4 +1,4 @@
-import type { SourceLocation } from "../types"
+import type { SourceLocation } from '../types'
 
 /**
  * Fast offset→line/column conversion using binary search over precomputed line starts.
@@ -9,7 +9,7 @@ export class LineIndex {
   constructor(sourceText: string) {
     this.lineStarts = [0]
     for (let i = 0; i < sourceText.length; i++) {
-      if (sourceText[i] === "\n") {
+      if (sourceText[i] === '\n') {
         this.lineStarts.push(i + 1)
       }
     }

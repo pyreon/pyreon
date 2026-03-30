@@ -11,7 +11,7 @@
  * For signals, import from "@pyreon/preact-compat/signals".
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import {
   createRef,
   Fragment,
@@ -19,9 +19,9 @@ import {
   createContext as pyreonCreateContext,
   h as pyreonH,
   useContext,
-} from "@pyreon/core"
-import { batch, signal } from "@pyreon/reactivity"
-import { hydrateRoot, mount } from "@pyreon/runtime-dom"
+} from '@pyreon/core'
+import { batch, signal } from '@pyreon/reactivity'
+import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 
 // ─── Core JSX ────────────────────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export class Component<
     batch(() => {
       const current = this._stateSignal()
       const update =
-        typeof partial === "function" ? (partial as (prev: S) => Partial<S>)(current) : partial
+        typeof partial === 'function' ? (partial as (prev: S) => Partial<S>)(current) : partial
       const next = { ...current, ...update } as S
       this.state = next
       this._stateSignal.set(next)
@@ -160,7 +160,7 @@ export function toChildArray(children: NestedChildren): VNodeChild[] {
 }
 
 function flatten(value: NestedChildren, out: VNodeChild[]): void {
-  if (value == null || typeof value === "boolean") return
+  if (value == null || typeof value === 'boolean') return
   if (Array.isArray(value)) {
     for (const child of value) {
       flatten(child, out)
@@ -178,10 +178,10 @@ function flatten(value: NestedChildren, out: VNodeChild[]): void {
 export function isValidElement(x: unknown): x is VNode {
   return (
     x !== null &&
-    typeof x === "object" &&
-    "type" in (x as Record<string, unknown>) &&
-    "props" in (x as Record<string, unknown>) &&
-    "children" in (x as Record<string, unknown>)
+    typeof x === 'object' &&
+    'type' in (x as Record<string, unknown>) &&
+    'props' in (x as Record<string, unknown>) &&
+    'children' in (x as Record<string, unknown>)
   )
 }
 

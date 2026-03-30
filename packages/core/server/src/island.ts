@@ -52,12 +52,12 @@
  *   - "never"          — never hydrate (render-only, no client JS)
  */
 
-import type { ComponentFn, Props, VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
+import type { ComponentFn, Props, VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type HydrationStrategy = "load" | "idle" | "visible" | "never" | `media(${string})`
+export type HydrationStrategy = 'load' | 'idle' | 'visible' | 'never' | `media(${string})`
 
 export interface IslandOptions {
   /** Unique name — must match the key in the client-side hydrateIslands() registry */
@@ -86,19 +86,19 @@ export function island<P extends Props = Props>(
   loader: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>,
   options: IslandOptions,
 ): ComponentFn<P> & IslandMeta {
-  const { name, hydrate = "load" } = options
+  const { name, hydrate = 'load' } = options
 
   const IslandWrapper = async function IslandWrapper(props: P): Promise<VNode | null> {
     const mod = await loader()
-    const Comp = typeof mod === "function" ? mod : mod.default
+    const Comp = typeof mod === 'function' ? mod : mod.default
     const serializedProps = serializeIslandProps(props)
 
     return h(
-      "pyreon-island",
+      'pyreon-island',
       {
-        "data-component": name,
-        "data-props": serializedProps,
-        "data-hydrate": hydrate,
+        'data-component': name,
+        'data-props': serializedProps,
+        'data-hydrate': hydrate,
       },
       h(Comp, props),
     )
@@ -125,9 +125,9 @@ function serializeIslandProps(props: Record<string, unknown>): string {
   const clean: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(props)) {
     // Skip non-serializable or internal props
-    if (key === "children") continue
-    if (typeof value === "function") continue
-    if (typeof value === "symbol") continue
+    if (key === 'children') continue
+    if (typeof value === 'function') continue
+    if (typeof value === 'symbol') continue
     if (value === undefined) continue
     clean[key] = value
   }

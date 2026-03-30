@@ -1,4 +1,4 @@
-import type { MultiKeys } from "../types/dimensions"
+import type { MultiKeys } from '../types/dimensions'
 
 // --------------------------------------------------------
 // remove undefined props
@@ -91,7 +91,7 @@ export const calculateStylingAttrs: CalculateStylingAttrs =
       }
       // assign when it's only a string or number otherwise it's considered
       // as invalid param
-      else if (t === "string" || t === "number") {
+      else if (t === 'string' || t === 'number') {
         result[item] = pickedProp
       } else {
         result[item] = undefined

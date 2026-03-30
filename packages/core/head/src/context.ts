@@ -1,10 +1,10 @@
-import { createContext } from "@pyreon/core"
+import { createContext } from '@pyreon/core'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface HeadTag {
   /** HTML tag name */
-  tag: "title" | "meta" | "link" | "script" | "style" | "base" | "noscript"
+  tag: 'title' | 'meta' | 'link' | 'script' | 'style' | 'base' | 'noscript'
   /**
    * Deduplication key. Tags with the same key replace each other;
    * innermost component (last added) wins.
@@ -26,7 +26,7 @@ export interface MetaTag {
   /** Open Graph / social property (e.g. "og:title", "twitter:card") */
   property?: string
   /** HTTP equivalent header (e.g. "refresh", "content-type") */
-  "http-equiv"?: string
+  'http-equiv'?: string
   /** Value associated with name, property, or http-equiv */
   content?: string
   /** Document character encoding (e.g. "utf-8") */
@@ -60,7 +60,7 @@ export interface LinkTag {
   /** Title for the link (used for alternate stylesheets) */
   title?: string
   /** Fetch priority hint */
-  fetchpriority?: "high" | "low" | "auto"
+  fetchpriority?: 'high' | 'low' | 'auto'
   /** Referrer policy */
   referrerpolicy?: string
   /** Image source set for preloading responsive images */
@@ -116,7 +116,7 @@ export interface BaseTag {
   /** Base URL for relative URLs in the document */
   href?: string
   /** Default target for links and forms */
-  target?: "_blank" | "_self" | "_parent" | "_top"
+  target?: '_blank' | '_self' | '_parent' | '_top'
 }
 
 export interface UseHeadInput {

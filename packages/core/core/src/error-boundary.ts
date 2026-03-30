@@ -1,10 +1,10 @@
-import { signal } from "@pyreon/reactivity"
-import { popErrorBoundary, pushErrorBoundary } from "./component"
-import { onUnmount } from "./lifecycle"
-import { reportError } from "./telemetry"
-import type { VNodeChild, VNodeChildAtom } from "./types"
+import { signal } from '@pyreon/reactivity'
+import { popErrorBoundary, pushErrorBoundary } from './component'
+import { onUnmount } from './lifecycle'
+import { reportError } from './telemetry'
+import type { VNodeChild, VNodeChildAtom } from './types'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 /**
  * ErrorBoundary — catches errors thrown by child components and renders a
@@ -37,10 +37,10 @@ export function ErrorBoundary(props: {
   fallback: (err: unknown, reset: () => void) => VNodeChild
   children?: VNodeChild
 }): VNodeChild {
-  if (__DEV__ && typeof props.fallback !== "function") {
+  if (__DEV__ && typeof props.fallback !== 'function') {
     // biome-ignore lint/suspicious/noConsole: dev-only warning
     console.warn(
-      "[Pyreon] <ErrorBoundary> expects `fallback` to be a function: (err, reset) => VNode. " +
+      '[Pyreon] <ErrorBoundary> expects `fallback` to be a function: (err, reset) => VNode. ' +
         `Received ${typeof props.fallback}.`,
     )
   }
@@ -51,7 +51,7 @@ export function ErrorBoundary(props: {
   const handler = (err: unknown): boolean => {
     if (error.peek() !== null) return false // already in error state — let outer boundary catch it
     error.set(err)
-    reportError({ component: "ErrorBoundary", phase: "render", error: err, timestamp: Date.now() })
+    reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
     return true
   }
 
@@ -63,6 +63,6 @@ export function ErrorBoundary(props: {
     const err = error()
     if (err != null) return props.fallback(err, reset) as VNodeChildAtom
     const ch = props.children
-    return (typeof ch === "function" ? ch() : ch) as VNodeChildAtom
+    return (typeof ch === 'function' ? ch() : ch) as VNodeChildAtom
   }
 }

@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock @pyreon/core partially - keep real exports but stub lifecycle hooks
-vi.mock("@pyreon/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@pyreon/core")>()
+vi.mock('@pyreon/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@pyreon/core')>()
   return {
     ...actual,
     onMount: (fn: () => void) => fn(),
@@ -12,42 +12,42 @@ vi.mock("@pyreon/core", async (importOriginal) => {
   }
 })
 
-import { useThrottledCallback } from "../useThrottledCallback"
+import { useThrottledCallback } from '../useThrottledCallback'
 
-describe("useThrottledCallback", () => {
+describe('useThrottledCallback', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it("calls immediately on first invocation (leading)", () => {
+  it('calls immediately on first invocation (leading)', () => {
     const fn = vi.fn()
     const throttled = useThrottledCallback(fn, 100)
 
-    throttled("a")
+    throttled('a')
     expect(fn).toHaveBeenCalledTimes(1)
-    expect(fn).toHaveBeenCalledWith("a")
+    expect(fn).toHaveBeenCalledWith('a')
   })
 
-  it("throttles subsequent calls", () => {
+  it('throttles subsequent calls', () => {
     const fn = vi.fn()
     const throttled = useThrottledCallback(fn, 100)
 
-    throttled("a")
-    throttled("b")
-    throttled("c")
+    throttled('a')
+    throttled('b')
+    throttled('c')
 
     expect(fn).toHaveBeenCalledTimes(1)
 
     vi.advanceTimersByTime(100)
     expect(fn).toHaveBeenCalledTimes(2)
-    expect(fn).toHaveBeenLastCalledWith("c")
+    expect(fn).toHaveBeenLastCalledWith('c')
   })
 
-  it("cancel stops pending trailing call", () => {
+  it('cancel stops pending trailing call', () => {
     const fn = vi.fn()
     const throttled = useThrottledCallback(fn, 100)
 
-    throttled("a")
-    throttled("b")
+    throttled('a')
+    throttled('b')
     throttled.cancel()
 
     vi.advanceTimersByTime(200)

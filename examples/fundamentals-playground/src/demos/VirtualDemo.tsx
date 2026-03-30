@@ -1,5 +1,5 @@
-import { signal } from "@pyreon/reactivity"
-import { useVirtualizer } from "@pyreon/virtual"
+import { signal } from '@pyreon/reactivity'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const items = Array.from({ length: 10000 }, (_, i) => ({
   id: i,

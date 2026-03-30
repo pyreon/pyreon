@@ -1,7 +1,7 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { AttrsCb } from "./attrs"
-import type { ConfigAttrs } from "./config"
-import type { DefaultProps } from "./configuration"
+import type { VNodeChild } from '@pyreon/core'
+import type { AttrsCb } from './attrs'
+import type { ConfigAttrs } from './config'
+import type { DefaultProps } from './configuration'
 import type {
   DimensionCallbackParam,
   DimensionProps,
@@ -11,14 +11,14 @@ import type {
   ExtractDimensions,
   MultiKeys,
   TDKP,
-} from "./dimensions"
-import type { ComposeParam } from "./hoc"
-import type { Styles, StylesCb } from "./styles"
-import type { Theme, ThemeCb, ThemeModeKeys } from "./theme"
-import type { ElementType, ExtractProps, MergeTypes, TObj } from "./utils"
+} from './dimensions'
+import type { ComposeParam } from './hoc'
+import type { Styles, StylesCb } from './styles'
+import type { Theme, ThemeCb, ThemeModeKeys } from './theme'
+import type { ElementType, ExtractProps, MergeTypes, TObj } from './utils'
 
 export type InnerComponentProps = {
-  "data-rocketstyle"?: string | undefined
+  'data-rocketstyle'?: string | undefined
 } & Record<string, any>
 
 export type RocketStyleComponent<

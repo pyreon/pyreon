@@ -3,9 +3,9 @@
  * value types (single | array | breakpoint-map) for layout props like
  * alignment and direction, plus utility types for merging prop objects.
  */
-import type { ComponentFn } from "@pyreon/core"
-import type { BreakpointKeys, config, render } from "@pyreon/ui-core"
-import type { MakeItResponsiveStyles } from "@pyreon/unistyle"
+import type { ComponentFn } from '@pyreon/core'
+import type { BreakpointKeys, config, render } from '@pyreon/ui-core'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
 
 export type ResponsiveStylesCallback = MakeItResponsiveStyles
 
@@ -29,13 +29,13 @@ export type CssCallback = (css: typeof config.css) => ReturnType<typeof css>
 
 export type Css = CssCallback | ReturnType<typeof config.css> | string
 
-export type Content = Parameters<typeof render>["0"]
+export type Content = Parameters<typeof render>['0']
 
-export type ContentAlignX = "left" | "center" | "right" | "spaceBetween" | "spaceAround" | "block"
+export type ContentAlignX = 'left' | 'center' | 'right' | 'spaceBetween' | 'spaceAround' | 'block'
 
-export type ContentAlignY = "top" | "center" | "bottom" | "spaceBetween" | "spaceAround" | "block"
+export type ContentAlignY = 'top' | 'center' | 'bottom' | 'spaceBetween' | 'spaceAround' | 'block'
 
-export type ContentDirection = "inline" | "rows" | "reverseInline" | "reverseRows"
+export type ContentDirection = 'inline' | 'rows' | 'reverseInline' | 'reverseRows'
 
 export type ContentBoolean = boolean
 export type ContentSimpleValue = string | number

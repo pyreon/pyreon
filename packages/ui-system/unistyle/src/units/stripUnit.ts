@@ -9,7 +9,7 @@ export type StripUnit = <V extends string | number, UR extends boolean = false>(
 const stripUnit = ((value: string | number, unitReturn?: boolean) => {
   const cssRegex = /^([+-]?(?:\d+|\d*\.\d+))([a-z]*|%)$/
 
-  if (typeof value !== "string") return unitReturn ? [value, undefined] : value
+  if (typeof value !== 'string') return unitReturn ? [value, undefined] : value
 
   const matchedValue = value.match(cssRegex)
 

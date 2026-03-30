@@ -10,31 +10,36 @@ description: Foundational layout components including Element, Text, List, Overl
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/elements
 ```
+
 ```bash [bun]
 bun add @pyreon/elements
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/elements
 ```
+
 ```bash [yarn]
 yarn add @pyreon/elements
 ```
+
 :::
 
 ## Overview
 
 The package exports five components, each solving a specific layout concern:
 
-| Component | Purpose |
-|---|---|
+| Component | Purpose                                                    |
+| --------- | ---------------------------------------------------------- |
 | `Element` | Flex layout with three content slots (before, main, after) |
-| `Text` | Simple text rendering with semantic tag support |
-| `List` | Data-driven list renderer with positional metadata |
-| `Overlay` | Headless trigger + content toggle pattern |
-| `Portal` | Render children into a different DOM location |
+| `Text`    | Simple text rendering with semantic tag support            |
+| `List`    | Data-driven list renderer with positional metadata         |
+| `Overlay` | Headless trigger + content toggle pattern                  |
+| `Portal`  | Render children into a different DOM location              |
 
 All components are plain functions -- they accept a props object and return `VNodeChild`. They work with Pyreon's `h()` function and can be composed together to build complex UIs.
 
@@ -87,9 +92,7 @@ This renders the following DOM structure:
   <span style="flex-shrink: 0;">
     <img src="/icon.svg" alt="" />
   </span>
-  <span style="flex: 1; min-width: 0;">
-    Messages
-  </span>
+  <span style="flex: 1; min-width: 0;"> Messages </span>
   <span style="flex-shrink: 0;">
     <span class="badge">3</span>
   </span>
@@ -113,20 +116,20 @@ When only `children` is provided (no `beforeContent` or `afterContent`), the wra
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `tag` | `string` | `'div'` | HTML tag to render. Any valid HTML tag: `'div'`, `'button'`, `'a'`, `'nav'`, `'section'`, `'li'`, etc. |
-| `children` | `VNodeChild` | -- | Main content slot. Takes priority as the center of the three-slot layout. |
-| `beforeContent` | `VNodeChild` | -- | Content rendered before the main slot. Commonly used for icons, avatars, or leading visuals. |
-| `afterContent` | `VNodeChild` | -- | Content rendered after the main slot. Commonly used for badges, arrows, action buttons, or trailing metadata. |
-| `direction` | `'inline' \| 'rows'` | `'inline'` | Flex direction. `'inline'` maps to `flex-direction: row`, `'rows'` maps to `flex-direction: column`. |
-| `alignX` | `'left' \| 'center' \| 'right'` | -- | Horizontal alignment. In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`. |
-| `alignY` | `'top' \| 'center' \| 'bottom'` | `'center'` (inline) / -- (rows) | Vertical alignment. In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`. |
-| `gap` | `number` | -- | Gap between slots in pixels. Rendered as `gap: Npx` on the flex container. |
-| `block` | `boolean` | `false` | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent. |
-| `equalCols` | `boolean` | `false` | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
-| `class` | `string` | -- | CSS class name applied to the outer element. |
-| `style` | `string \| Record<string, string \| number>` | -- | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended. |
+| Prop            | Type                                         | Default                         | Description                                                                                                                                                                 |
+| --------------- | -------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tag`           | `string`                                     | `'div'`                         | HTML tag to render. Any valid HTML tag: `'div'`, `'button'`, `'a'`, `'nav'`, `'section'`, `'li'`, etc.                                                                      |
+| `children`      | `VNodeChild`                                 | --                              | Main content slot. Takes priority as the center of the three-slot layout.                                                                                                   |
+| `beforeContent` | `VNodeChild`                                 | --                              | Content rendered before the main slot. Commonly used for icons, avatars, or leading visuals.                                                                                |
+| `afterContent`  | `VNodeChild`                                 | --                              | Content rendered after the main slot. Commonly used for badges, arrows, action buttons, or trailing metadata.                                                               |
+| `direction`     | `'inline' \| 'rows'`                         | `'inline'`                      | Flex direction. `'inline'` maps to `flex-direction: row`, `'rows'` maps to `flex-direction: column`.                                                                        |
+| `alignX`        | `'left' \| 'center' \| 'right'`              | --                              | Horizontal alignment. In `inline` direction, maps to `justify-content`. In `rows` direction, maps to `align-items`.                                                         |
+| `alignY`        | `'top' \| 'center' \| 'bottom'`              | `'center'` (inline) / -- (rows) | Vertical alignment. In `inline` direction, maps to `align-items` (defaults to `center`). In `rows` direction, maps to `justify-content`.                                    |
+| `gap`           | `number`                                     | --                              | Gap between slots in pixels. Rendered as `gap: Npx` on the flex container.                                                                                                  |
+| `block`         | `boolean`                                    | `false`                         | When `true`, uses `display: flex` instead of `display: inline-flex`. Makes the element take full width of its parent.                                                       |
+| `equalCols`     | `boolean`                                    | `false`                         | When `true`, all three slots get `flex: 1; min-width: 0`, dividing the space equally instead of the default behavior where before/after shrink-wrap and the center expands. |
+| `class`         | `string`                                     | --                              | CSS class name applied to the outer element.                                                                                                                                |
+| `style`         | `string \| Record<string, string \| number>` | --                              | Inline styles merged with computed flex styles. Can be a CSS string or an object. Object styles are merged with the computed styles; string styles are appended.            |
 
 Element also passes through any valid HTML attributes: `id`, `role`, `tabindex`, `title`, `href`, `src`, `alt`, `type`, `name`, `value`, `disabled`, `hidden`, `draggable`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 
@@ -136,19 +139,19 @@ Understanding how `alignX` and `alignY` map to CSS flex properties in each direc
 
 **Inline direction** (`direction: 'inline'`, which is the default):
 
-| Prop | CSS Property | `'left'` / `'top'` | `'center'` | `'right'` / `'bottom'` |
-|---|---|---|---|---|
-| `alignX` | `justify-content` | `flex-start` | `center` | `flex-end` |
-| `alignY` | `align-items` | `flex-start` | `center` | `flex-end` |
+| Prop     | CSS Property      | `'left'` / `'top'` | `'center'` | `'right'` / `'bottom'` |
+| -------- | ----------------- | ------------------ | ---------- | ---------------------- |
+| `alignX` | `justify-content` | `flex-start`       | `center`   | `flex-end`             |
+| `alignY` | `align-items`     | `flex-start`       | `center`   | `flex-end`             |
 
 Default `alignY` in inline mode is `'center'`, so content is vertically centered by default.
 
 **Rows direction** (`direction: 'rows'`):
 
-| Prop | CSS Property | `'left'` / `'top'` | `'center'` | `'right'` / `'bottom'` |
-|---|---|---|---|---|
-| `alignX` | `align-items` | `flex-start` | `center` | `flex-end` |
-| `alignY` | `justify-content` | `flex-start` | `center` | `flex-end` |
+| Prop     | CSS Property      | `'left'` / `'top'` | `'center'` | `'right'` / `'bottom'` |
+| -------- | ----------------- | ------------------ | ---------- | ---------------------- |
+| `alignX` | `align-items`     | `flex-start`       | `center`   | `flex-end`             |
+| `alignY` | `justify-content` | `flex-start`       | `center`   | `flex-end`             |
 
 Default `alignX` in rows mode is `stretch` (no explicit `alignX` means `align-items: stretch`).
 
@@ -352,14 +355,14 @@ import { h } from '@pyreon/core'
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `tag` | `string` | `'span'` (or `'p'` if `paragraph`) | HTML tag to render. When `paragraph` is `true` and no `tag` is provided, defaults to `'p'`. Otherwise defaults to `'span'`. |
-| `paragraph` | `boolean` | `false` | Shorthand for setting the tag to `'p'`. Ignored if an explicit `tag` is provided. |
-| `label` | `string` | -- | Text content provided as a prop. Used when no `children` are passed. Useful when text comes from data rather than child nodes. |
-| `children` | `VNodeChild` | -- | Content to render. Takes priority over `label` when both are provided. |
-| `class` | `string` | -- | CSS class name. |
-| `style` | `string` | -- | Inline style string. |
+| Prop        | Type         | Default                            | Description                                                                                                                    |
+| ----------- | ------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `tag`       | `string`     | `'span'` (or `'p'` if `paragraph`) | HTML tag to render. When `paragraph` is `true` and no `tag` is provided, defaults to `'p'`. Otherwise defaults to `'span'`.    |
+| `paragraph` | `boolean`    | `false`                            | Shorthand for setting the tag to `'p'`. Ignored if an explicit `tag` is provided.                                              |
+| `label`     | `string`     | --                                 | Text content provided as a prop. Used when no `children` are passed. Useful when text comes from data rather than child nodes. |
+| `children`  | `VNodeChild` | --                                 | Content to render. Takes priority over `label` when both are provided.                                                         |
+| `class`     | `string`     | --                                 | CSS class name.                                                                                                                |
+| `style`     | `string`     | --                                 | Inline style string.                                                                                                           |
 
 Text also passes through: `id`, `role`, `title`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 
@@ -507,14 +510,14 @@ const items = [
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `data` | `T[]` | (required) | Array of items to iterate. Can be any type -- objects, strings, numbers, etc. |
-| `children` | `(item: T, meta: ItemMeta) => VNodeChild` | (required) | Render function called for each item. Receives the item and positional metadata. Return value becomes the rendered output for that item. |
-| `keyFn` | `(item: T, index: number) => string \| number` | -- | Optional key extractor function. When provided, used to generate stable keys for list items. |
-| `tag` | `string` | -- | Wrapper element tag. When provided, all rendered items are wrapped in this element. Common values: `'ul'`, `'ol'`, `'div'`, `'nav'`, `'section'`. When omitted, items render as a flat Fragment. |
-| `class` | `string` | -- | CSS class for the wrapper element. Only applies when `tag` is set. |
-| `style` | `string` | -- | Inline styles for the wrapper element. Only applies when `tag` is set. |
+| Prop       | Type                                           | Default    | Description                                                                                                                                                                                      |
+| ---------- | ---------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `data`     | `T[]`                                          | (required) | Array of items to iterate. Can be any type -- objects, strings, numbers, etc.                                                                                                                    |
+| `children` | `(item: T, meta: ItemMeta) => VNodeChild`      | (required) | Render function called for each item. Receives the item and positional metadata. Return value becomes the rendered output for that item.                                                         |
+| `keyFn`    | `(item: T, index: number) => string \| number` | --         | Optional key extractor function. When provided, used to generate stable keys for list items.                                                                                                     |
+| `tag`      | `string`                                       | --         | Wrapper element tag. When provided, all rendered items are wrapped in this element. Common values: `'ul'`, `'ol'`, `'div'`, `'nav'`, `'section'`. When omitted, items render as a flat Fragment. |
+| `class`    | `string`                                       | --         | CSS class for the wrapper element. Only applies when `tag` is set.                                                                                                                               |
+| `style`    | `string`                                       | --         | Inline styles for the wrapper element. Only applies when `tag` is set.                                                                                                                           |
 
 The wrapper element also passes through: `id`, `role`, `ref`, `key`, and any `on*` event handlers, `data-*` attributes, or `aria-*` attributes.
 
@@ -522,13 +525,13 @@ The wrapper element also passes through: `id`, `role`, `ref`, `key`, and any `on
 
 The second argument to the render function provides positional metadata about each item:
 
-| Property | Type | Description |
-|---|---|---|
-| `index` | `number` | Zero-based index of the item in the array. |
-| `first` | `boolean` | `true` only for the first item (index 0). |
-| `last` | `boolean` | `true` only for the last item (index === data.length - 1). |
-| `odd` | `boolean` | `true` when the index is odd (1, 3, 5, ...). |
-| `even` | `boolean` | `true` when the index is even (0, 2, 4, ...). Note: the first item (index 0) is considered even. |
+| Property | Type      | Description                                                                                      |
+| -------- | --------- | ------------------------------------------------------------------------------------------------ |
+| `index`  | `number`  | Zero-based index of the item in the array.                                                       |
+| `first`  | `boolean` | `true` only for the first item (index 0).                                                        |
+| `last`   | `boolean` | `true` only for the last item (index === data.length - 1).                                       |
+| `odd`    | `boolean` | `true` when the index is odd (1, 3, 5, ...).                                                     |
+| `even`   | `boolean` | `true` when the index is even (0, 2, 4, ...). Note: the first item (index 0) is considered even. |
 
 For a single-item array, both `first` and `last` are `true`.
 
@@ -792,21 +795,21 @@ import { h } from '@pyreon/core'
 
 ### Props
 
-| Prop | Type | Description |
-|---|---|---|
-| `trigger` | `(ctx: OverlayContext) => VNode \| null` | Render function for the trigger element. Called once when the component mounts. Receives the overlay context for controlling open/close state. |
+| Prop      | Type                                     | Description                                                                                                                                                 |
+| --------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `trigger` | `(ctx: OverlayContext) => VNode \| null` | Render function for the trigger element. Called once when the component mounts. Receives the overlay context for controlling open/close state.              |
 | `content` | `(ctx: OverlayContext) => VNode \| null` | Render function for the overlay content. Called reactively each time the overlay opens. Receives the same context object as the trigger. Can return `null`. |
 
 ### OverlayContext
 
 Both `trigger` and `content` receive the same context object:
 
-| Property | Type | Description |
-|---|---|---|
+| Property | Type            | Description                                                                                                                                              |
+| -------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `isOpen` | `() => boolean` | Reactive signal that returns the current open state. Call it inside reactive contexts (like child render functions) to re-render when the state changes. |
-| `open` | `() => void` | Opens the overlay. Sets `isOpen` to `true`. Idempotent -- calling it when already open has no effect. |
-| `close` | `() => void` | Closes the overlay. Sets `isOpen` to `false`. Idempotent -- calling it when already closed has no effect. |
-| `toggle` | `() => void` | Toggles the overlay. Flips `isOpen` from `true` to `false` or vice versa. |
+| `open`   | `() => void`    | Opens the overlay. Sets `isOpen` to `true`. Idempotent -- calling it when already open has no effect.                                                    |
+| `close`  | `() => void`    | Closes the overlay. Sets `isOpen` to `false`. Idempotent -- calling it when already closed has no effect.                                                |
+| `toggle` | `() => void`    | Toggles the overlay. Flips `isOpen` from `true` to `false` or vice versa.                                                                                |
 
 ### How It Works
 
@@ -1041,11 +1044,11 @@ const container = document.getElementById('portal-root')!
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `target` | `HTMLElement` | `document.body` | The DOM element to append the portal container into. |
-| `tag` | `string` | `'div'` | Tag for the portal container element that gets created and appended to the target. |
-| `children` | `VNodeChild` | -- | Content to render inside the portal container. |
+| Prop       | Type          | Default         | Description                                                                        |
+| ---------- | ------------- | --------------- | ---------------------------------------------------------------------------------- |
+| `target`   | `HTMLElement` | `document.body` | The DOM element to append the portal container into.                               |
+| `tag`      | `string`      | `'div'`         | Tag for the portal container element that gets created and appended to the target. |
+| `children` | `VNodeChild`  | --              | Content to render inside the portal container.                                     |
 
 ### How It Works
 
@@ -1271,25 +1274,25 @@ function SettingsPanel(props: { groups: SettingGroup[] }) {
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `Element` | Component | Flex layout with before/main/after slots |
-| `Text` | Component | Simple text rendering component |
-| `List` | Component | Data-driven list renderer with positional metadata |
-| `Overlay` | Component | Headless trigger + content open/close pattern |
-| `Portal` | Component | Render children into a different DOM location |
+| Export    | Type      | Description                                        |
+| --------- | --------- | -------------------------------------------------- |
+| `Element` | Component | Flex layout with before/main/after slots           |
+| `Text`    | Component | Simple text rendering component                    |
+| `List`    | Component | Data-driven list renderer with positional metadata |
+| `Overlay` | Component | Headless trigger + content open/close pattern      |
+| `Portal`  | Component | Render children into a different DOM location      |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `ElementProps` | Props for `Element`. Includes `tag`, `beforeContent`, `children`, `afterContent`, `direction`, `alignX`, `alignY`, `gap`, `block`, `equalCols`, `class`, `style`, and pass-through HTML attributes. |
-| `AlignX` | `'left' \| 'center' \| 'right'` |
-| `AlignY` | `'top' \| 'center' \| 'bottom'` |
-| `Direction` | `'inline' \| 'rows'` |
-| `TextProps` | Props for `Text`. Includes `tag`, `paragraph`, `label`, `children`, `class`, `style`, and pass-through HTML attributes. |
-| `ListProps<T>` | Props for `List`. Generic over the item type `T`. Includes `data`, `children` (render function), `keyFn`, `tag`, `class`, `style`, and pass-through HTML attributes. |
-| `ItemMeta` | Positional metadata: `index`, `first`, `last`, `odd`, `even`. |
-| `OverlayProps` | Props for `Overlay`. Includes `trigger` and `content` render functions. |
-| `OverlayContext` | Context object with `isOpen`, `open`, `close`, `toggle`. Shared between trigger and content. |
-| `PortalProps` | Props for `Portal`. Includes `target`, `tag`, `children`. |
+| Type             | Description                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ElementProps`   | Props for `Element`. Includes `tag`, `beforeContent`, `children`, `afterContent`, `direction`, `alignX`, `alignY`, `gap`, `block`, `equalCols`, `class`, `style`, and pass-through HTML attributes. |
+| `AlignX`         | `'left' \| 'center' \| 'right'`                                                                                                                                                                     |
+| `AlignY`         | `'top' \| 'center' \| 'bottom'`                                                                                                                                                                     |
+| `Direction`      | `'inline' \| 'rows'`                                                                                                                                                                                |
+| `TextProps`      | Props for `Text`. Includes `tag`, `paragraph`, `label`, `children`, `class`, `style`, and pass-through HTML attributes.                                                                             |
+| `ListProps<T>`   | Props for `List`. Generic over the item type `T`. Includes `data`, `children` (render function), `keyFn`, `tag`, `class`, `style`, and pass-through HTML attributes.                                |
+| `ItemMeta`       | Positional metadata: `index`, `first`, `last`, `odd`, `even`.                                                                                                                                       |
+| `OverlayProps`   | Props for `Overlay`. Includes `trigger` and `content` render functions.                                                                                                                             |
+| `OverlayContext` | Context object with `isOpen`, `open`, `close`, `toggle`. Shared between trigger and content.                                                                                                        |
+| `PortalProps`    | Props for `Portal`. Includes `target`, `tag`, `children`.                                                                                                                                           |

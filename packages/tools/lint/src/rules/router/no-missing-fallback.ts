@@ -1,27 +1,27 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
-import { extractImportInfo } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan } from '../../utils/ast'
+import { extractImportInfo } from '../../utils/imports'
 
 function isCatchAllPath(value: string): boolean {
-  return value === "*" || value.endsWith("*")
+  return value === '*' || value.endsWith('*')
 }
 
 function getPathValue(prop: any): string | null {
   const key = prop.key
   if (!key) return null
-  const keyName = key.type === "Identifier" ? key.name : null
-  if (keyName !== "path") return null
+  const keyName = key.type === 'Identifier' ? key.name : null
+  if (keyName !== 'path') return null
   const val = prop.value
-  if (val?.type === "Literal" && typeof val.value === "string") {
+  if (val?.type === 'Literal' && typeof val.value === 'string') {
     return val.value
   }
   return null
 }
 
 function hasPathProperty(obj: any): boolean {
-  if (!obj || obj.type !== "ObjectExpression") return false
+  if (!obj || obj.type !== 'ObjectExpression') return false
   for (const prop of obj.properties ?? []) {
-    if (prop.type !== "Property") continue
+    if (prop.type !== 'Property') continue
     if (getPathValue(prop) !== null) return true
   }
   return false
@@ -29,9 +29,9 @@ function hasPathProperty(obj: any): boolean {
 
 function hasCatchAllRoute(elements: any[]): boolean {
   for (const elem of elements) {
-    if (!elem || elem.type !== "ObjectExpression") continue
+    if (!elem || elem.type !== 'ObjectExpression') continue
     for (const prop of elem.properties ?? []) {
-      if (prop.type !== "Property") continue
+      if (prop.type !== 'Property') continue
       const pathVal = getPathValue(prop)
       if (pathVal !== null && isCatchAllPath(pathVal)) return true
     }
@@ -41,11 +41,11 @@ function hasCatchAllRoute(elements: any[]): boolean {
 
 export const noMissingFallback: Rule = {
   meta: {
-    id: "pyreon/no-missing-fallback",
-    category: "router",
+    id: 'pyreon/no-missing-fallback',
+    category: 'router',
     description:
       'Warn when route config has no catch-all route (`path: "*"` or `path: "/:rest*"`).',
-    severity: "warn",
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -56,7 +56,7 @@ export const noMissingFallback: Rule = {
     const callbacks: VisitorCallbacks = {
       ImportDeclaration(node: any) {
         const info = extractImportInfo(node)
-        if (info && info.source === "@pyreon/router") {
+        if (info && info.source === '@pyreon/router') {
           importsRouter = true
         }
       },
@@ -73,7 +73,7 @@ export const noMissingFallback: Rule = {
           foundCatchAll = true
         }
       },
-      "Program:exit"() {
+      'Program:exit'() {
         if (!importsRouter || !routeArraySpan || foundCatchAll) return
         context.report({
           message:

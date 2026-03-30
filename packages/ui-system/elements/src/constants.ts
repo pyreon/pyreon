@@ -1,1 +1,1 @@
-export const PKG_NAME = "@pyreon/elements" as const
+export const PKG_NAME = '@pyreon/elements' as const

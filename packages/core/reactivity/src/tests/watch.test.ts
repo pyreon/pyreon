@@ -1,8 +1,8 @@
-import { signal } from "../signal"
-import { watch } from "../watch"
+import { signal } from '../signal'
+import { watch } from '../watch'
 
-describe("watch", () => {
-  test("calls callback when source changes", () => {
+describe('watch', () => {
+  test('calls callback when source changes', () => {
     const s = signal(1)
     const calls: [number, number | undefined][] = []
 
@@ -25,7 +25,7 @@ describe("watch", () => {
     ])
   })
 
-  test("immediate option calls callback on first run", () => {
+  test('immediate option calls callback on first run', () => {
     const s = signal(1)
     const calls: [number, number | undefined][] = []
 
@@ -40,7 +40,7 @@ describe("watch", () => {
     expect(calls).toEqual([[1, undefined]])
   })
 
-  test("stop function disposes the watcher", () => {
+  test('stop function disposes the watcher', () => {
     const s = signal(1)
     let callCount = 0
 
@@ -60,7 +60,7 @@ describe("watch", () => {
     expect(callCount).toBe(1) // no more calls
   })
 
-  test("cleanup function is called before each re-run", () => {
+  test('cleanup function is called before each re-run', () => {
     const s = signal(1)
     const log: string[] = []
 
@@ -73,13 +73,13 @@ describe("watch", () => {
     )
 
     s.set(2)
-    expect(log).toEqual(["run-2"])
+    expect(log).toEqual(['run-2'])
 
     s.set(3)
-    expect(log).toEqual(["run-2", "cleanup-2", "run-3"])
+    expect(log).toEqual(['run-2', 'cleanup-2', 'run-3'])
   })
 
-  test("cleanup function from immediate is called on next change", () => {
+  test('cleanup function from immediate is called on next change', () => {
     const s = signal(1)
     const log: string[] = []
 
@@ -92,13 +92,13 @@ describe("watch", () => {
       { immediate: true },
     )
 
-    expect(log).toEqual(["run-1"])
+    expect(log).toEqual(['run-1'])
 
     s.set(2)
-    expect(log).toEqual(["run-1", "cleanup-1", "run-2"])
+    expect(log).toEqual(['run-1', 'cleanup-1', 'run-2'])
   })
 
-  test("cleanup is called on stop", () => {
+  test('cleanup is called on stop', () => {
     const s = signal(1)
     const log: string[] = []
 
@@ -111,13 +111,13 @@ describe("watch", () => {
     )
 
     s.set(2)
-    expect(log).toEqual(["run-2"])
+    expect(log).toEqual(['run-2'])
 
     stop()
-    expect(log).toEqual(["run-2", "cleanup-2"])
+    expect(log).toEqual(['run-2', 'cleanup-2'])
   })
 
-  test("callback returning non-function does not set cleanup", () => {
+  test('callback returning non-function does not set cleanup', () => {
     const s = signal(1)
     let callCount = 0
 
@@ -134,7 +134,7 @@ describe("watch", () => {
     expect(callCount).toBe(2)
   })
 
-  test("stop without cleanup does not throw", () => {
+  test('stop without cleanup does not throw', () => {
     const s = signal(1)
     const stop = watch(
       () => s(),
@@ -144,8 +144,8 @@ describe("watch", () => {
     stop() // no cleanup function was set, should not throw
   })
 
-  test("oldValue tracks previous value across multiple changes", () => {
-    const s = signal("a")
+  test('oldValue tracks previous value across multiple changes', () => {
+    const s = signal('a')
     const history: [string, string | undefined][] = []
 
     watch(
@@ -155,18 +155,18 @@ describe("watch", () => {
       },
     )
 
-    s.set("b")
-    s.set("c")
-    s.set("d")
+    s.set('b')
+    s.set('c')
+    s.set('d')
 
     expect(history).toEqual([
-      ["b", "a"],
-      ["c", "b"],
-      ["d", "c"],
+      ['b', 'a'],
+      ['c', 'b'],
+      ['d', 'c'],
     ])
   })
 
-  test("oldValue is undefined on immediate first call", () => {
+  test('oldValue is undefined on immediate first call', () => {
     const s = signal(42)
     let receivedOld: number | undefined = -1
 
@@ -181,7 +181,7 @@ describe("watch", () => {
     expect(receivedOld).toBeUndefined()
   })
 
-  test("watch with derived source (computed-like)", () => {
+  test('watch with derived source (computed-like)', () => {
     const a = signal(1)
     const b = signal(10)
     const calls: [number, number | undefined][] = []
@@ -203,7 +203,7 @@ describe("watch", () => {
     ])
   })
 
-  test("stop prevents cleanup from running on future changes", () => {
+  test('stop prevents cleanup from running on future changes', () => {
     const s = signal(1)
     const log: string[] = []
 
@@ -216,17 +216,17 @@ describe("watch", () => {
     )
 
     s.set(2)
-    expect(log).toEqual(["run-2"])
+    expect(log).toEqual(['run-2'])
 
     stop()
-    expect(log).toEqual(["run-2", "cleanup-2"])
+    expect(log).toEqual(['run-2', 'cleanup-2'])
 
     // Further changes should not trigger anything
     s.set(3)
-    expect(log).toEqual(["run-2", "cleanup-2"])
+    expect(log).toEqual(['run-2', 'cleanup-2'])
   })
 
-  test("watch does not fire when value stays the same", () => {
+  test('watch does not fire when value stays the same', () => {
     const s = signal(1)
     let callCount = 0
 

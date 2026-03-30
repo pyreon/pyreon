@@ -1,8 +1,8 @@
-import type { ConsumerCb } from "./config"
-import type { Dimensions, MultiKeys } from "./dimensions"
-import type { PseudoProps } from "./pseudo"
-import type { StylesCbArray } from "./styles"
-import type { ArrayOfKeys, ArrayOfValues, ElementType, TFn } from "./utils"
+import type { ConsumerCb } from './config'
+import type { Dimensions, MultiKeys } from './dimensions'
+import type { PseudoProps } from './pseudo'
+import type { StylesCbArray } from './styles'
+import type { ArrayOfKeys, ArrayOfValues, ElementType, TFn } from './utils'
 
 export type __ROCKETSTYLE__ = {
   dimensions: Record<string, string>

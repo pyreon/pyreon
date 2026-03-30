@@ -1,9 +1,9 @@
-import type { VNodeChild } from "@pyreon/core"
-import { effect } from "@pyreon/reactivity"
-import type { EChartsOption } from "echarts"
-import type { ECElementEvent } from "echarts/core"
-import type { ChartProps } from "./types"
-import { useChart } from "./use-chart"
+import type { VNodeChild } from '@pyreon/core'
+import { effect } from '@pyreon/reactivity'
+import type { EChartsOption } from 'echarts'
+import type { ECElementEvent } from 'echarts/core'
+import type { ChartProps } from './types'
+import { useChart } from './use-chart'
 
 /**
  * Handler type that bridges our duck-typed ChartEventParams with
@@ -52,9 +52,9 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
     // Handlers are duck-typed ChartEventParams — cast through unknown
     // to ECHandler because echarts/core and echarts export incompatible
     // private class types for ECElementEvent.
-    if (props.onClick) inst.on("click", props.onClick as unknown as ECHandler)
-    if (props.onMouseover) inst.on("mouseover", props.onMouseover as unknown as ECHandler)
-    if (props.onMouseout) inst.on("mouseout", props.onMouseout as unknown as ECHandler)
+    if (props.onClick) inst.on('click', props.onClick as unknown as ECHandler)
+    if (props.onMouseover) inst.on('mouseover', props.onMouseover as unknown as ECHandler)
+    if (props.onMouseout) inst.on('mouseout', props.onMouseout as unknown as ECHandler)
   })
 
   return () => <div ref={chart.ref} style={props.style} class={props.class} />

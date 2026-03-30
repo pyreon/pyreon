@@ -1,6 +1,6 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -8,16 +8,16 @@ import type {
   InfiniteQueryObserverResult,
   QueryKey,
   QueryObserverResult,
-} from "@tanstack/query-core"
-import { InfiniteQueryObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from '@tanstack/query-core'
+import { InfiniteQueryObserver } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 export interface UseInfiniteQueryResult<TQueryFnData, TError = DefaultError> {
   /** Raw signal — full observer result. */
   result: Signal<InfiniteQueryObserverResult<InfiniteData<TQueryFnData>, TError>>
   data: Signal<InfiniteData<TQueryFnData> | undefined>
   error: Signal<TError | null>
-  status: Signal<"pending" | "error" | "success">
+  status: Signal<'pending' | 'error' | 'success'>
   isPending: Signal<boolean>
   isLoading: Signal<boolean>
   isFetching: Signal<boolean>

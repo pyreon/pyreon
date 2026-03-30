@@ -1,6 +1,6 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import { useQueryClient } from "./query-client"
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
+import { useQueryClient } from './query-client'
 
 // ─── Context ────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ export function QueryErrorResetBoundary(props: QueryErrorResetBoundaryProps): VN
     reset: () => {
       // Reset all active queries that are in error state so they refetch.
       client.refetchQueries({
-        predicate: (query) => query.state.status === "error",
+        predicate: (query) => query.state.status === 'error',
       })
     },
   }
@@ -50,7 +50,7 @@ export function QueryErrorResetBoundary(props: QueryErrorResetBoundaryProps): VN
   provide(QueryErrorResetBoundaryContext, value)
 
   const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode
+  return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
 
 // ─── useQueryErrorResetBoundary ──────────────────────────────────────────────
@@ -76,7 +76,7 @@ export function useQueryErrorResetBoundary(): ErrorResetBoundaryValue {
   return {
     reset: () => {
       client.refetchQueries({
-        predicate: (query) => query.state.status === "error",
+        predicate: (query) => query.state.status === 'error',
       })
     },
   }

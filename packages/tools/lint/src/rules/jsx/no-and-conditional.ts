@@ -1,12 +1,12 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isLogicalAndWithJSX } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isLogicalAndWithJSX } from '../../utils/ast'
 
 export const noAndConditional: Rule = {
   meta: {
-    id: "pyreon/no-and-conditional",
-    category: "jsx",
-    description: "Prefer <Show> over `&&` with JSX in expression containers.",
-    severity: "warn",
+    id: 'pyreon/no-and-conditional',
+    category: 'jsx',
+    description: 'Prefer <Show> over `&&` with JSX in expression containers.',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -15,14 +15,14 @@ export const noAndConditional: Rule = {
       JSXExpressionContainer() {
         jsxExpressionDepth++
       },
-      "JSXExpressionContainer:exit"() {
+      'JSXExpressionContainer:exit'() {
         jsxExpressionDepth--
       },
       LogicalExpression(node: any) {
         if (jsxExpressionDepth === 0) return
         if (!isLogicalAndWithJSX(node)) return
         context.report({
-          message: "`&&` with JSX — use `<Show>` for conditional rendering.",
+          message: '`&&` with JSX — use `<Show>` for conditional rendering.',
           span: getSpan(node),
         })
       },

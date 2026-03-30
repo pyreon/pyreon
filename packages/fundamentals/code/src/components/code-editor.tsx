@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { CodeEditorProps, EditorInstance } from "../types"
+import type { VNodeChild } from '@pyreon/core'
+import type { CodeEditorProps, EditorInstance } from '../types'
 
 /**
  * Code editor component — mounts a CodeMirror 6 instance.
@@ -30,9 +30,9 @@ export function CodeEditor(props: CodeEditorProps): VNodeChild {
     }
   }
 
-  const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ""}`
+  const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ''}`
 
   return (
-    <div ref={containerRef} class={`pyreon-code-editor ${props.class ?? ""}`} style={baseStyle} />
+    <div ref={containerRef} class={`pyreon-code-editor ${props.class ?? ''}`} style={baseStyle} />
   )
 }

@@ -1,5 +1,5 @@
-import { createContext, useContext } from "@pyreon/core"
-import type { PseudoState } from "../types/pseudo"
+import { createContext, useContext } from '@pyreon/core'
+import type { PseudoState } from '../types/pseudo'
 
 type LocalContext = Partial<
   {

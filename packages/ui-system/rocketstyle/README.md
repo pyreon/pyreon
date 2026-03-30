@@ -78,12 +78,12 @@ Button({ danger: true, lg: true, label: 'Delete' })
 
 A dimension is a named axis of style variation. The factory ships with four defaults:
 
-| Dimension | Prop name | Multi | Example |
-| --------- | --------- | ----- | ------- |
-| `states` | `state` | no | `primary`, `danger`, `success` |
-| `sizes` | `size` | no | `sm`, `md`, `lg` |
-| `variants` | `variant` | no | `outlined`, `filled` |
-| `multiple` | — | yes | `rounded`, `shadow` |
+| Dimension  | Prop name | Multi | Example                        |
+| ---------- | --------- | ----- | ------------------------------ |
+| `states`   | `state`   | no    | `primary`, `danger`, `success` |
+| `sizes`    | `size`    | no    | `sm`, `md`, `lg`               |
+| `variants` | `variant` | no    | `outlined`, `filled`           |
+| `multiple` | —         | yes   | `rounded`, `shadow`            |
 
 Each dimension creates a chain method (`.states()`, `.sizes()`, etc.) and a corresponding prop on the component.
 
@@ -127,7 +127,9 @@ Factory initializer. Returns a function that accepts component configuration.
 
 ```ts
 const factory = rocketstyle({
-  dimensions: { /* custom dimensions */ },
+  dimensions: {
+    /* custom dimensions */
+  },
   useBooleans: true,
 })
 
@@ -200,15 +202,15 @@ Button.states((theme, mode, css) => ({
 Define the CSS template using `@pyreon/styler`'s `css` tagged template.
 
 ```ts
-Button.styles((css) => css`
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s;
+Button.styles(
+  (css) => css`
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
 
-  ${({ $rocketstyle }) =>
-    makeItResponsive({ theme: $rocketstyle, styles, css })
-  }
-`)
+    ${({ $rocketstyle }) => makeItResponsive({ theme: $rocketstyle, styles, css })}
+  `,
+)
 ```
 
 ### .config(options)
@@ -254,11 +256,11 @@ Define your own dimensions by passing them to the factory:
 ```ts
 const rocketButton = rocketstyle({
   dimensions: {
-    intent: 'intent',                    // prop: intent="primary"
-    size: 'size',                        // prop: size="lg"
+    intent: 'intent', // prop: intent="primary"
+    size: 'size', // prop: size="lg"
     appearance: {
       propName: 'appearance',
-      multi: true,                       // allows multiple values
+      multi: true, // allows multiple values
     },
   },
 })
@@ -308,9 +310,10 @@ const ButtonIcon = rocketstyle()({
   component: Element,
 })
   .config({
-    consumer: (ctx) => ctx(({ pseudo }) => ({
-      state: pseudo.hover ? 'active' : 'default',
-    })),
+    consumer: (ctx) =>
+      ctx(({ pseudo }) => ({
+        state: pseudo.hover ? 'active' : 'default',
+      })),
   })
   .states({
     default: { color: '#666' },
@@ -318,10 +321,7 @@ const ButtonIcon = rocketstyle()({
   })
 
 // Icon reacts to parent's hover state
-ButtonGroup({ state: 'primary', children: [
-  ButtonIcon({}),
-  'Label',
-]})
+ButtonGroup({ state: 'primary', children: [ButtonIcon({}), 'Label'] })
 ```
 
 ## Light / Dark Mode
@@ -339,12 +339,12 @@ Use `inversed: true` in `.config()` to flip the mode for a component subtree.
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | * |
-| @pyreon/reactivity | * |
-| @pyreon/ui-core | * |
-| @pyreon/styler | * |
+| Package            | Version |
+| ------------------ | ------- |
+| @pyreon/core       | \*      |
+| @pyreon/reactivity | \*      |
+| @pyreon/ui-core    | \*      |
+| @pyreon/styler     | \*      |
 
 ## License
 

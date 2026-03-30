@@ -8,14 +8,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
-    "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/router": "workspace:*"
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/vite-plugin": "workspace:*",

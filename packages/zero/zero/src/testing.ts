@@ -1,6 +1,6 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
-import type { ApiHandler, ApiRouteEntry } from "./api-routes"
-import { createApiMiddleware } from "./api-routes"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
+import type { ApiHandler, ApiRouteEntry } from './api-routes'
+import { createApiMiddleware } from './api-routes'
 
 // ─── Test helpers for Zero applications ─────────────────────────────────────
 
@@ -21,14 +21,14 @@ export function createTestContext(
     body?: unknown
   } = {},
 ): MiddlewareContext {
-  const { method = "GET", headers = {}, body } = options
+  const { method = 'GET', headers = {}, body } = options
   const url = new URL(`http://localhost${path}`)
 
   const requestHeaders: Record<string, string> = { ...headers }
   let requestBody: string | undefined
 
   if (body !== undefined) {
-    requestHeaders["Content-Type"] = "application/json"
+    requestHeaders['Content-Type'] = 'application/json'
     requestBody = JSON.stringify(body)
   }
 
@@ -107,7 +107,7 @@ export function createTestApiServer(routes: ApiRouteEntry[]) {
       const ctx = createTestContext(path, options)
       const result = await middleware(ctx)
       if (!result) {
-        return new Response("Not Found", { status: 404 })
+        return new Response('Not Found', { status: 404 })
       }
       return result
     },
@@ -138,7 +138,7 @@ export function createMockHandler(
     calls.push({ path: ctx.path, params: ctx.params })
     return new Response(JSON.stringify(body), {
       status,
-      headers: { "Content-Type": "application/json", ...headers },
+      headers: { 'Content-Type': 'application/json', ...headers },
     })
   }
 

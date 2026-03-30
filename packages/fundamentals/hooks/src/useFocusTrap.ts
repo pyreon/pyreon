@@ -1,4 +1,4 @@
-import { onMount, onUnmount } from "@pyreon/core"
+import { onMount, onUnmount } from '@pyreon/core'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -8,7 +8,7 @@ const FOCUSABLE =
  */
 export function useFocusTrap(getEl: () => HTMLElement | null): void {
   const listener = (e: KeyboardEvent) => {
-    if (e.key !== "Tab") return
+    if (e.key !== 'Tab') return
     const el = getEl()
     if (!el) return
 
@@ -32,11 +32,11 @@ export function useFocusTrap(getEl: () => HTMLElement | null): void {
   }
 
   onMount(() => {
-    document.addEventListener("keydown", listener)
+    document.addEventListener('keydown', listener)
     return undefined
   })
 
   onUnmount(() => {
-    document.removeEventListener("keydown", listener)
+    document.removeEventListener('keydown', listener)
   })
 }

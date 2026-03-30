@@ -28,8 +28,8 @@
  * })
  */
 
-import { mkdir, writeFile } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 
 export interface PrerenderOptions {
   /** SSR handler created by createHandler() */
@@ -69,15 +69,15 @@ export interface PrerenderResult {
  * Paths like "/about" become `outDir/about/index.html`.
  */
 export async function prerender(options: PrerenderOptions): Promise<PrerenderResult> {
-  const { handler, outDir, origin = "http://localhost", onPage } = options
+  const { handler, outDir, origin = 'http://localhost', onPage } = options
 
   const start = Date.now()
 
   // Resolve paths (may be async)
-  const paths = typeof options.paths === "function" ? await options.paths() : options.paths
+  const paths = typeof options.paths === 'function' ? await options.paths() : options.paths
 
   let pages = 0
-  const errors: PrerenderResult["errors"] = []
+  const errors: PrerenderResult['errors'] = []
 
   async function renderPage(path: string): Promise<void> {
     const url = new URL(path, origin)
@@ -110,7 +110,7 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
     }
 
     await mkdir(dirname(filePath), { recursive: true })
-    await writeFile(filePath, html, "utf-8")
+    await writeFile(filePath, html, 'utf-8')
     pages++
   }
 
@@ -137,7 +137,7 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
 }
 
 function resolveOutputPath(outDir: string, path: string): string {
-  if (path === "/") return join(outDir, "index.html")
-  if (path.endsWith(".html")) return join(outDir, path)
-  return join(outDir, path, "index.html")
+  if (path === '/') return join(outDir, 'index.html')
+  if (path.endsWith('.html')) return join(outDir, path)
+  return join(outDir, path, 'index.html')
 }

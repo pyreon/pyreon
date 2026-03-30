@@ -1,5 +1,5 @@
-import { signal } from "@pyreon/reactivity"
-import isEqual from "./isEqual"
+import { signal } from '@pyreon/reactivity'
+import isEqual from './isEqual'
 
 /**
  * Returns a referentially stable version of `value`. The returned reference

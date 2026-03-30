@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/preact-compat"
+title: '@pyreon/preact-compat'
 description: Preact-compatible API layer with hooks and signals, running on Pyreon's reactive engine.
 ---
 
@@ -10,18 +10,23 @@ description: Preact-compatible API layer with hooks and signals, running on Pyre
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/preact-compat
 ```
+
 ```bash [bun]
 bun add @pyreon/preact-compat
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/preact-compat
 ```
+
 ```bash [yarn]
 yarn add @pyreon/preact-compat
 ```
+
 :::
 
 ## Quick Start
@@ -64,17 +69,17 @@ render(<Counter />, document.getElementById('app')!)
 
 ## Key Differences from Preact
 
-| Behavior | Preact | @pyreon/preact-compat |
-|---|---|---|
-| Component execution | Re-runs render on every state change | Runs **once** (setup phase) |
-| `useState` getter | Returns the value directly | Returns a **getter function** -- call `count()` to read |
-| `useEffect` deps | Controls when the effect re-runs | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
-| `useCallback` | Memoizes across renders | **No-op** -- returns `fn` as-is |
-| `useMemo` | Returns the memoized value | Returns a **getter function** -- call `value()` to read |
-| `useLayoutEffect` | Fires synchronously before paint | Same as `useEffect` |
-| Signals `.value` | Native Preact Signals API | Wrapped Pyreon signals with the same `.value` interface |
-| Class components | Full lifecycle support | `setState` and `forceUpdate` work; lifecycle methods are not called |
-| Hooks rules | Must be called at top level | **No restrictions** -- call anywhere in component setup |
+| Behavior            | Preact                               | @pyreon/preact-compat                                                 |
+| ------------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| Component execution | Re-runs render on every state change | Runs **once** (setup phase)                                           |
+| `useState` getter   | Returns the value directly           | Returns a **getter function** -- call `count()` to read               |
+| `useEffect` deps    | Controls when the effect re-runs     | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
+| `useCallback`       | Memoizes across renders              | **No-op** -- returns `fn` as-is                                       |
+| `useMemo`           | Returns the memoized value           | Returns a **getter function** -- call `value()` to read               |
+| `useLayoutEffect`   | Fires synchronously before paint     | Same as `useEffect`                                                   |
+| Signals `.value`    | Native Preact Signals API            | Wrapped Pyreon signals with the same `.value` interface               |
+| Class components    | Full lifecycle support               | `setState` and `forceUpdate` work; lifecycle methods are not called   |
+| Hooks rules         | Must be called at top level          | **No restrictions** -- call anywhere in component setup               |
 
 ### Reading State
 
@@ -103,7 +108,7 @@ function Timer() {
       // In Preact, this would capture the initial value without deps
       // In Pyreon, count() always returns the current value
       console.log('Count:', count())
-      setCount(prev => prev + 1)
+      setCount((prev) => prev + 1)
     }, 1000)
     return () => clearInterval(id)
   }, [])
@@ -128,7 +133,7 @@ console.log(count.value)
 import { signal, computed, effect } from '@pyreon/preact-compat/signals'
 
 const count = signal(0)
-count.value++          // same API
+count.value++ // same API
 console.log(count.value) // same API
 ```
 
@@ -136,11 +141,11 @@ console.log(count.value) // same API
 
 `@pyreon/preact-compat` mirrors Preact's multi-module structure:
 
-| Import | Provides |
-|---|---|
-| `@pyreon/preact-compat` | Core API: `h`, `render`, `hydrate`, `Fragment`, `Component`, `createContext`, `createRef`, `cloneElement`, `toChildArray`, `isValidElement`, `options` |
-| `@pyreon/preact-compat/hooks` | Hooks: `useState`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer`, `useId`, `useContext`, `useErrorBoundary` |
-| `@pyreon/preact-compat/signals` | Signals: `signal`, `computed`, `effect`, `batch` |
+| Import                          | Provides                                                                                                                                               |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@pyreon/preact-compat`         | Core API: `h`, `render`, `hydrate`, `Fragment`, `Component`, `createContext`, `createRef`, `cloneElement`, `toChildArray`, `isValidElement`, `options` |
+| `@pyreon/preact-compat/hooks`   | Hooks: `useState`, `useEffect`, `useLayoutEffect`, `useMemo`, `useCallback`, `useRef`, `useReducer`, `useId`, `useContext`, `useErrorBoundary`         |
+| `@pyreon/preact-compat/signals` | Signals: `signal`, `computed`, `effect`, `batch`                                                                                                       |
 
 ## Core API (`@pyreon/preact-compat`)
 
@@ -252,7 +257,7 @@ class Counter extends Component<{}, { count: number }> {
     return (
       <div>
         <p>Count: {this.state.count}</p>
-        <button onClick={() => this.setState(prev => ({ count: prev.count + 1 }))}>
+        <button onClick={() => this.setState((prev) => ({ count: prev.count + 1 }))}>
           Increment
         </button>
       </div>
@@ -272,15 +277,15 @@ class Form extends Component<{}, { name: string; email: string; submitted: boole
 
   render() {
     return (
-      <form onSubmit={(e: SubmitEvent) => {
-        e.preventDefault()
-        this.setState({ submitted: true })
-      }}>
+      <form
+        onSubmit={(e: SubmitEvent) => {
+          e.preventDefault()
+          this.setState({ submitted: true })
+        }}
+      >
         <input
           value={this.state.name}
-          onInput={(e: InputEvent) =>
-            this.setState({ name: (e.target as HTMLInputElement).value })
-          }
+          onInput={(e: InputEvent) => this.setState({ name: (e.target as HTMLInputElement).value })}
         />
         <input
           value={this.state.email}
@@ -306,7 +311,11 @@ function cloneElement(vnode: VNode, props?: Props, ...children: VNodeChild[]): V
 Clones a VNode with merged props. If new children are provided, they replace the original children. The key can be overridden via props.
 
 ```tsx
-const original = <div class="a" id="x">child</div>
+const original = (
+  <div class="a" id="x">
+    child
+  </div>
+)
 const cloned = cloneElement(original, { class: 'b' })
 // cloned.props.class === 'b', cloned.props.id === 'x'
 
@@ -323,9 +332,7 @@ const withNewKey = cloneElement(original, { key: 'new-key' })
 function Toolbar(props: { children: VNode[] }) {
   return (
     <div class="toolbar">
-      {props.children.map(child =>
-        cloneElement(child, { class: 'toolbar-button' })
-      )}
+      {props.children.map((child) => cloneElement(child, { class: 'toolbar-button' }))}
     </div>
   )
 }
@@ -408,7 +415,7 @@ render(
   <LocaleProvider locale="es">
     <Greeting /> {/* renders "Hola!" */}
   </LocaleProvider>,
-  document.getElementById('app')!
+  document.getElementById('app')!,
 )
 ```
 
@@ -439,7 +446,9 @@ An empty object exposed for compatibility with Preact plugins that inspect `opti
 
 ```tsx
 // This will not throw, but the hook will not be called
-options.vnode = (vnode) => { /* not called */ }
+options.vnode = (vnode) => {
+  /* not called */
+}
 ```
 
 ## Hooks (`@pyreon/preact-compat/hooks`)
@@ -457,7 +466,7 @@ const [name, setName] = useState('Alice')
 console.log(name()) // 'Alice'
 
 setName('Bob')
-setName(prev => prev + '!')
+setName((prev) => prev + '!')
 
 // Lazy initializer
 const [cache, setCache] = useState(() => buildInitialCache())
@@ -469,7 +478,7 @@ const [cache, setCache] = useState(() => buildInitialCache())
 // Toggle
 function useToggle(initial = false) {
   const [value, setValue] = useState(initial)
-  const toggle = () => setValue(prev => !prev)
+  const toggle = () => setValue((prev) => !prev)
   return [value, toggle] as const
 }
 
@@ -479,8 +488,8 @@ function useBoundedCounter(min: number, max: number, initial: number) {
 
   return {
     count,
-    increment: () => setCount(prev => Math.min(max, prev + 1)),
-    decrement: () => setCount(prev => Math.max(min, prev - 1)),
+    increment: () => setCount((prev) => Math.min(max, prev + 1)),
+    decrement: () => setCount((prev) => Math.max(min, prev - 1)),
     reset: () => setCount(initial),
   }
 }
@@ -514,7 +523,7 @@ useEffect(() => {
 // Runs once on mount
 useEffect(() => {
   const ws = new WebSocket('/stream')
-  ws.onmessage = (e) => setMessages(prev => [...prev, JSON.parse(e.data)])
+  ws.onmessage = (e) => setMessages((prev) => [...prev, JSON.parse(e.data)])
   return () => ws.close()
 }, [])
 ```
@@ -534,15 +543,15 @@ function UserProfile(props: { userId: () => number }) {
 
     const controller = new AbortController()
     fetch(`/api/users/${id}`, { signal: controller.signal })
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
       })
-      .then(data => {
+      .then((data) => {
         setUser(data)
         setLoading(false)
       })
-      .catch(err => {
+      .catch((err) => {
         if (err.name !== 'AbortError') {
           setError(String(err))
           setLoading(false)
@@ -584,12 +593,8 @@ console.log(sum()) // 6
 
 // Filtered + sorted list
 const [filter, setFilter] = useState('')
-const filteredItems = useMemo(() =>
-  items().filter(item => item.name.includes(filter()))
-)
-const sortedItems = useMemo(() =>
-  [...filteredItems()].sort((a, b) => a.name.localeCompare(b.name))
-)
+const filteredItems = useMemo(() => items().filter((item) => item.name.includes(filter())))
+const sortedItems = useMemo(() => [...filteredItems()].sort((a, b) => a.name.localeCompare(b.name)))
 ```
 
 ### `useCallback`
@@ -630,18 +635,25 @@ function useReducer<S, A>(
 Returns `[getter, dispatch]`. Dispatch applies the reducer and updates the underlying signal.
 
 ```tsx
-type Action = { type: 'add'; text: string } | { type: 'remove'; id: number } | { type: 'toggle'; id: number }
+type Action =
+  | { type: 'add'; text: string }
+  | { type: 'remove'; id: number }
+  | { type: 'toggle'; id: number }
 
-interface Todo { id: number; text: string; done: boolean }
+interface Todo {
+  id: number
+  text: string
+  done: boolean
+}
 
 function todoReducer(state: Todo[], action: Action): Todo[] {
   switch (action.type) {
     case 'add':
       return [...state, { id: Date.now(), text: action.text, done: false }]
     case 'remove':
-      return state.filter(t => t.id !== action.id)
+      return state.filter((t) => t.id !== action.id)
     case 'toggle':
-      return state.map(t => t.id === action.id ? { ...t, done: !t.done } : t)
+      return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))
   }
 }
 
@@ -650,18 +662,18 @@ function TodoApp() {
 
   return (
     <div>
-      <button onClick={() => dispatch({ type: 'add', text: 'New todo' })}>
-        Add
-      </button>
+      <button onClick={() => dispatch({ type: 'add', text: 'New todo' })}>Add</button>
       <ul>
-        {() => todos().map(todo =>
-          <li
-            onClick={() => dispatch({ type: 'toggle', id: todo.id })}
-            style={todo.done ? 'text-decoration: line-through' : ''}
-          >
-            {todo.text}
-          </li>
-        )}
+        {() =>
+          todos().map((todo) => (
+            <li
+              onClick={() => dispatch({ type: 'toggle', id: todo.id })}
+              style={todo.done ? 'text-decoration: line-through' : ''}
+            >
+              {todo.text}
+            </li>
+          ))
+        }
       </ul>
     </div>
   )
@@ -709,14 +721,15 @@ function SafeZone(props: { children: VNodeChild }) {
     return true // handled
   })
 
-  return () => error()
-    ? (
-        <div class="error">
-          <p>Error: {error()}</p>
-          <button onClick={() => setError(null)}>Dismiss</button>
-        </div>
-      )
-    : props.children
+  return () =>
+    error() ? (
+      <div class="error">
+        <p>Error: {error()}</p>
+        <button onClick={() => setError(null)}>Dismiss</button>
+      </div>
+    ) : (
+      props.children
+    )
 }
 ```
 
@@ -730,8 +743,8 @@ This module provides a Preact Signals-compatible API with `.value` accessors, ba
 function signal<T>(initial: T): WritableSignal<T>
 
 interface WritableSignal<T> {
-  value: T       // get (tracked) / set
-  peek(): T      // get (untracked)
+  value: T // get (tracked) / set
+  peek(): T // get (untracked)
 }
 ```
 
@@ -741,8 +754,8 @@ Create a writable signal with `.value` accessor syntax.
 import { signal } from '@pyreon/preact-compat/signals'
 
 const count = signal(0)
-count.value++          // write
-console.log(count.value)  // read (tracked)
+count.value++ // write
+console.log(count.value) // read (tracked)
 console.log(count.peek()) // read (untracked)
 ```
 
@@ -759,15 +772,16 @@ const filter = signal<'all' | 'active' | 'done'>('all')
 const filteredTodos = computed(() => {
   const list = todos.value
   switch (filter.value) {
-    case 'active': return list.filter(t => !t.done)
-    case 'done': return list.filter(t => t.done)
-    default: return list
+    case 'active':
+      return list.filter((t) => !t.done)
+    case 'done':
+      return list.filter((t) => t.done)
+    default:
+      return list
   }
 })
 
-const remaining = computed(() =>
-  todos.value.filter(t => !t.done).length
-)
+const remaining = computed(() => todos.value.filter((t) => !t.done).length)
 
 function TodoApp() {
   effect(() => {
@@ -778,9 +792,9 @@ function TodoApp() {
     <div>
       <p>{remaining.value} remaining</p>
       <ul>
-        {filteredTodos.value.map(todo =>
+        {filteredTodos.value.map((todo) => (
           <li key={todo.id}>{todo.text}</li>
-        )}
+        ))}
       </ul>
     </div>
   )
@@ -888,7 +902,7 @@ console.log(count.value)
 // Native Pyreon style
 import { signal } from '@pyreon/reactivity'
 const count = signal(0)
-count.update(n => n + 1)
+count.update((n) => n + 1)
 console.log(count())
 ```
 
@@ -935,7 +949,7 @@ class Timer extends Component {
 
   componentDidMount() {
     this.interval = setInterval(() => {
-      this.setState(prev => ({ seconds: prev.seconds + 1 }))
+      this.setState((prev) => ({ seconds: prev.seconds + 1 }))
     }, 1000)
   }
 
@@ -957,7 +971,7 @@ function Timer() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      setSeconds(prev => prev + 1)
+      setSeconds((prev) => prev + 1)
     }, 1000)
     return () => clearInterval(id)
   }, [])
@@ -974,18 +988,14 @@ import { signal, computed } from '@preact/signals'
 
 const cart = signal<CartItem[]>([])
 const totalPrice = computed(() =>
-  cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  cart.value.reduce((sum, item) => sum + item.price * item.quantity, 0),
 )
-const itemCount = computed(() =>
-  cart.value.reduce((sum, item) => sum + item.quantity, 0)
-)
+const itemCount = computed(() => cart.value.reduce((sum, item) => sum + item.quantity, 0))
 
 function addToCart(item: CartItem) {
-  const existing = cart.value.find(i => i.id === item.id)
+  const existing = cart.value.find((i) => i.id === item.id)
   if (existing) {
-    cart.value = cart.value.map(i =>
-      i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
-    )
+    cart.value = cart.value.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i))
   } else {
     cart.value = [...cart.value, { ...item, quantity: 1 }]
   }
@@ -1005,7 +1015,7 @@ Libraries that depend on Preact internals may not work. Libraries that use the p
 export default defineConfig({
   resolve: {
     alias: {
-      'preact': '@pyreon/preact-compat',
+      preact: '@pyreon/preact-compat',
       'preact/hooks': '@pyreon/preact-compat/hooks',
       '@preact/signals': '@pyreon/preact-compat/signals',
     },

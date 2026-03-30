@@ -1,4 +1,4 @@
-import type { Adapter, AdapterBuildOptions } from "../types"
+import type { Adapter, AdapterBuildOptions } from '../types'
 
 /**
  * Static adapter — just copies the client build output.
@@ -6,9 +6,9 @@ import type { Adapter, AdapterBuildOptions } from "../types"
  */
 export function staticAdapter(): Adapter {
   return {
-    name: "static",
+    name: 'static',
     async build(options: AdapterBuildOptions) {
-      const { cp, mkdir } = await import("node:fs/promises")
+      const { cp, mkdir } = await import('node:fs/promises')
 
       await mkdir(options.outDir, { recursive: true })
       await cp(options.clientOutDir, options.outDir, { recursive: true })

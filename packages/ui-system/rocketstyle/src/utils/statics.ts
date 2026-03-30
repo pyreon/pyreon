@@ -1,5 +1,5 @@
-import { isEmpty } from "@pyreon/ui-core"
-import { STATIC_KEYS } from "../constants"
+import { isEmpty } from '@pyreon/ui-core'
+import { STATIC_KEYS } from '../constants'
 
 // --------------------------------------------------------
 // helpers for create statics chaining methods on component

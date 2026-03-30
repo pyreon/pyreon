@@ -24,21 +24,21 @@
  * AsyncLocalStorage-backed provider so each request gets isolated store state.
  */
 
-export type { Signal } from "@pyreon/reactivity"
-export { batch, computed, effect, signal } from "@pyreon/reactivity"
+export type { Signal } from '@pyreon/reactivity'
+export { batch, computed, effect, signal } from '@pyreon/reactivity'
 
-import { batch } from "@pyreon/reactivity"
+import { batch } from '@pyreon/reactivity'
 
-export { setRegistryProvider as setStoreRegistryProvider } from "./registry"
+export { setRegistryProvider as setStoreRegistryProvider } from './registry'
 
-import { _notifyChange } from "./devtools"
-import { getRegistry } from "./registry"
+import { _notifyChange } from './devtools'
+import { getRegistry } from './registry'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface MutationInfo {
   storeId: string
-  type: "direct" | "patch"
+  type: 'direct' | 'patch'
   events: { key: string; newValue: unknown; oldValue: unknown }[]
 }
 
@@ -88,15 +88,15 @@ interface SignalLike {
 }
 
 function isSignalLike(v: unknown): v is SignalLike {
-  if (typeof v !== "function") return false
+  if (typeof v !== 'function') return false
   const fn = v as unknown as Record<string, unknown>
-  return typeof fn.set === "function" && typeof fn.peek === "function"
+  return typeof fn.set === 'function' && typeof fn.peek === 'function'
 }
 
 function isComputedLike(v: unknown): boolean {
-  if (typeof v !== "function") return false
+  if (typeof v !== 'function') return false
   const fn = v as unknown as Record<string, unknown>
-  return typeof fn.dispose === "function" && !isSignalLike(v)
+  return typeof fn.dispose === 'function' && !isSignalLike(v)
 }
 
 // ─── Plugin system ───────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export function defineStore<T extends Record<string, unknown>>(
         initialValues.set(key, val.peek())
       } else if (isComputedLike(val)) {
         // computed — skip, just pass through
-      } else if (typeof val === "function") {
+      } else if (typeof val === 'function') {
         actionKeys.push(key)
       }
     }
@@ -145,7 +145,7 @@ export function defineStore<T extends Record<string, unknown>>(
     // ─── subscribe infrastructure ───────────────────────────────────────
     const subscribers = new Set<SubscribeCallback>()
     let patchInProgress = false
-    let patchEvents: MutationInfo["events"] = []
+    let patchEvents: MutationInfo['events'] = []
 
     function getState(): Record<string, unknown> {
       const state: Record<string, unknown> = {}
@@ -163,7 +163,7 @@ export function defineStore<T extends Record<string, unknown>>(
       if (subscribers.size === 0) return
       const mutation: MutationInfo = {
         storeId: id,
-        type: "direct",
+        type: 'direct',
         events: [{ key, newValue, oldValue }],
       }
       const state = getState()
@@ -210,7 +210,7 @@ export function defineStore<T extends Record<string, unknown>>(
 
           // Handle async actions: if the result is a thenable, wait for
           // resolution before calling after/onError callbacks.
-          if (result != null && typeof (result as Record<string, unknown>).then === "function") {
+          if (result != null && typeof (result as Record<string, unknown>).then === 'function') {
             return (result as Promise<unknown>).then(
               (resolved) => {
                 for (const cb of afterCbs) cb(resolved)
@@ -258,7 +258,7 @@ export function defineStore<T extends Record<string, unknown>>(
         patchEvents = []
 
         batch(() => {
-          if (typeof partialOrFn === "function") {
+          if (typeof partialOrFn === 'function') {
             // Functional form: pass an object with the actual signals so user calls .set()
             const signalMap: Record<string, any> = {}
             for (const key of signalKeys) {
@@ -268,7 +268,7 @@ export function defineStore<T extends Record<string, unknown>>(
           } else {
             // Object form: set values directly (skip reserved proto keys)
             for (const [key, value] of Object.entries(partialOrFn)) {
-              if (key === "__proto__" || key === "constructor" || key === "prototype") continue
+              if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
               if (signalKeys.includes(key)) {
                 ;(raw[key] as SignalLike).set(value)
               }
@@ -282,7 +282,7 @@ export function defineStore<T extends Record<string, unknown>>(
         if (subscribers.size > 0 && patchEvents.length > 0) {
           const mutation: MutationInfo = {
             storeId: id,
-            type: "patch",
+            type: 'patch',
             events: patchEvents,
           }
           const state = getState()
@@ -296,7 +296,7 @@ export function defineStore<T extends Record<string, unknown>>(
         if (options?.immediate) {
           const mutation: MutationInfo = {
             storeId: id,
-            type: "direct",
+            type: 'direct',
             events: [],
           }
           callback(mutation, getState())

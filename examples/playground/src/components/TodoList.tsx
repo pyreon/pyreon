@@ -1,5 +1,5 @@
-import { For } from "@pyreon/core"
-import { computed, signal } from "@pyreon/reactivity"
+import { For } from '@pyreon/core'
+import { computed, signal } from '@pyreon/reactivity'
 
 interface Todo {
   id: number
@@ -9,11 +9,11 @@ interface Todo {
 
 export function TodoList() {
   const todos = signal<Todo[]>([
-    { id: 1, text: "Build Pyreon framework", done: true },
-    { id: 2, text: "Write tests", done: true },
-    { id: 3, text: "Build the playground", done: false },
+    { id: 1, text: 'Build Pyreon framework', done: true },
+    { id: 2, text: 'Write tests', done: true },
+    { id: 3, text: 'Build the playground', done: false },
   ])
-  const input = signal("")
+  const input = signal('')
 
   const remaining = computed(() => todos().filter((t) => !t.done).length)
 
@@ -21,7 +21,7 @@ export function TodoList() {
     const text = input().trim()
     if (!text) return
     todos.update((list) => [...list, { id: Date.now(), text, done: false }])
-    input.set("")
+    input.set('')
   }
 
   const toggle = (id: number) => {
@@ -33,7 +33,7 @@ export function TodoList() {
   }
 
   const handleKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") addTodo()
+    if (e.key === 'Enter') addTodo()
   }
 
   return (
@@ -57,7 +57,7 @@ export function TodoList() {
       <ul class="todo-list">
         <For each={todos} by={(todo) => todo.id}>
           {(todo) => (
-            <li class={todo.done ? "done" : ""}>
+            <li class={todo.done ? 'done' : ''}>
               <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} />
               <span>{todo.text}</span>
               <button type="button" class="remove" onClick={() => remove(todo.id)}>

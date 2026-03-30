@@ -8,8 +8,8 @@
  *   pyreon context                  — Generate .pyreon/context.json for AI tools
  */
 
-import { generateContext } from "./context"
-import { type DoctorOptions, doctor } from "./doctor"
+import { generateContext } from './context'
+import { type DoctorOptions, doctor } from './doctor'
 
 const args = process.argv.slice(2)
 const command = args[0]
@@ -29,21 +29,21 @@ function printUsage(): void {
 }
 
 async function main(): Promise<void> {
-  if (!command || command === "--help" || command === "-h") {
+  if (!command || command === '--help' || command === '-h') {
     printUsage()
     return
   }
 
-  if (command === "--version" || command === "-v") {
-    console.log("0.4.0")
+  if (command === '--version' || command === '-v') {
+    console.log('0.4.0')
     return
   }
 
-  if (command === "doctor") {
+  if (command === 'doctor') {
     const options: DoctorOptions = {
-      fix: args.includes("--fix"),
-      json: args.includes("--json"),
-      ci: args.includes("--ci"),
+      fix: args.includes('--fix'),
+      json: args.includes('--json'),
+      ci: args.includes('--ci'),
       cwd: process.cwd(),
     }
     const exitCode = await doctor(options)
@@ -53,8 +53,8 @@ async function main(): Promise<void> {
     return
   }
 
-  if (command === "context") {
-    const outIdx = args.indexOf("--out")
+  if (command === 'context') {
+    const outIdx = args.indexOf('--out')
     const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined
     await generateContext({ cwd: process.cwd(), outPath })
     return
@@ -70,6 +70,6 @@ main().catch((err) => {
   process.exit(1)
 })
 
-export type { ContextOptions, ProjectContext } from "./context"
-export type { DoctorOptions } from "./doctor"
+export type { ContextOptions, ProjectContext } from './context'
+export type { DoctorOptions } from './doctor'
 export { doctor, generateContext }

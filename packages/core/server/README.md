@@ -13,14 +13,14 @@ bun add @pyreon/server
 Create a request handler that renders your Pyreon app on the server:
 
 ```ts
-import { createHandler } from "@pyreon/server"
-import { App } from "./App"
-import { routes } from "./routes"
+import { createHandler } from '@pyreon/server'
+import { App } from './App'
+import { routes } from './routes'
 
 const handler = createHandler({
   App,
   routes,
-  template: await Bun.file("index.html").text(),
+  template: await Bun.file('index.html').text(),
 })
 
 Bun.serve({ fetch: handler, port: 3000 })
@@ -31,13 +31,13 @@ Bun.serve({ fetch: handler, port: 3000 })
 Pre-render pages to static HTML files:
 
 ```ts
-import { createHandler, prerender } from "@pyreon/server"
+import { createHandler, prerender } from '@pyreon/server'
 
 const handler = createHandler({ App, routes })
 const result = await prerender({
   handler,
-  paths: ["/", "/about", "/blog"],
-  outDir: "dist",
+  paths: ['/', '/about', '/blog'],
+  outDir: 'dist',
 })
 console.log(`Generated ${result.pages} pages in ${result.elapsed}ms`)
 ```
@@ -48,25 +48,25 @@ Render mostly-static pages with interactive islands that hydrate independently:
 
 ```ts
 // Server
-import { island } from "@pyreon/server"
+import { island } from '@pyreon/server'
 
-const Counter = island(() => import("./Counter"), {
-  name: "Counter",
-  hydrate: "visible",  // load | idle | visible | media(query) | never
+const Counter = island(() => import('./Counter'), {
+  name: 'Counter',
+  hydrate: 'visible', // load | idle | visible | media(query) | never
 })
 ```
 
 ```ts
 // Client entry
-import { startClient, hydrateIslands } from "@pyreon/server/client"
+import { startClient, hydrateIslands } from '@pyreon/server/client'
 
 // Full app hydration
-startClient({ App, routes, container: "#app" })
+startClient({ App, routes, container: '#app' })
 
 // Or island-only hydration
 hydrateIslands({
-  Counter: () => import("./Counter"),
-  Search: () => import("./Search"),
+  Counter: () => import('./Counter'),
+  Search: () => import('./Search'),
 })
 ```
 

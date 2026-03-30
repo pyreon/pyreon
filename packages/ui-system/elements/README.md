@@ -45,25 +45,25 @@ When only content is present (no beforeContent/afterContent), Element optimizes 
 
 **Content props** (rendered in priority order: children > content > label):
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| children | `VNode` | Standard children |
-| content | `VNode` | Alternative to children |
-| label | `VNode` | Alternative to children/content |
+| Prop          | Type    | Description                           |
+| ------------- | ------- | ------------------------------------- |
+| children      | `VNode` | Standard children                     |
+| content       | `VNode` | Alternative to children               |
+| label         | `VNode` | Alternative to children/content       |
 | beforeContent | `VNode` | Content rendered before the main slot |
-| afterContent | `VNode` | Content rendered after the main slot |
+| afterContent  | `VNode` | Content rendered after the main slot  |
 
 **Layout props** (all responsive):
 
-| Prop | Type | Default | Description |
-| ---- | ---- | ------- | ----------- |
-| tag | `HTMLTags` | `'div'` | HTML element tag |
-| block | `boolean` | — | `flex` vs `inline-flex` |
+| Prop      | Type        | Default    | Description                                                    |
+| --------- | ----------- | ---------- | -------------------------------------------------------------- |
+| tag       | `HTMLTags`  | `'div'`    | HTML element tag                                               |
+| block     | `boolean`   | —          | `flex` vs `inline-flex`                                        |
 | direction | `Direction` | `'inline'` | `'inline'` \| `'rows'` \| `'reverseInline'` \| `'reverseRows'` |
-| alignX | `AlignX` | `'left'` | Horizontal alignment |
-| alignY | `AlignY` | `'center'` | Vertical alignment |
-| gap | `number` | — | Gap between content sections |
-| equalCols | `boolean` | — | Equal width/height for before/after |
+| alignX    | `AlignX`    | `'left'`   | Horizontal alignment                                           |
+| alignY    | `AlignY`    | `'center'` | Vertical alignment                                             |
+| gap       | `number`    | —          | Gap between content sections                                   |
+| equalCols | `boolean`   | —          | Equal width/height for before/after                            |
 
 Each section (content, beforeContent, afterContent) has its own direction, alignX, and alignY props prefixed with the section name:
 
@@ -88,12 +88,12 @@ Text({ paragraph: true, children: 'This renders as a p tag.' })
 Text({ tag: 'strong', label: 'Bold text' })
 ```
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| tag | `HTMLTextTags` | `'h1'`–`'h6'`, `'p'`, `'span'`, `'strong'`, `'em'`, etc. |
-| paragraph | `boolean` | Shorthand for `tag="p"` |
-| children / label | `VNode` | Text content |
-| css | `ExtendCss` | Extend styling |
+| Prop             | Type           | Description                                              |
+| ---------------- | -------------- | -------------------------------------------------------- |
+| tag              | `HTMLTextTags` | `'h1'`–`'h6'`, `'p'`, `'span'`, `'strong'`, `'em'`, etc. |
+| paragraph        | `boolean`      | Shorthand for `tag="p"`                                  |
+| children / label | `VNode`        | Text content                                             |
+| css              | `ExtendCss`    | Extend styling                                           |
 
 ### List
 
@@ -112,7 +112,10 @@ List({
 // Object data with positional metadata
 List({
   component: ListItem,
-  data: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }],
+  data: [
+    { id: 1, name: 'Alice' },
+    { id: 2, name: 'Bob' },
+  ],
   itemKey: 'id',
   itemProps: (item, { first, last, odd, even, index }) => ({
     highlighted: first,
@@ -130,15 +133,15 @@ List({
 })
 ```
 
-| Prop | Type | Description |
-| ---- | ---- | ----------- |
-| data | `Array` | Array of strings, numbers, or objects |
-| component | `ComponentFn` | Component to render for each item |
-| valueName | `string` | Prop name for scalar values (default: `'children'`) |
-| itemKey | `string \| function` | Key extraction for list items |
-| itemProps | `object \| function` | Extra props injected into each item |
-| wrapComponent | `ComponentFn` | Wrapper around each item |
-| rootElement | `boolean` | Wrap list in an Element (enables direction, gap, etc.) |
+| Prop          | Type                 | Description                                            |
+| ------------- | -------------------- | ------------------------------------------------------ |
+| data          | `Array`              | Array of strings, numbers, or objects                  |
+| component     | `ComponentFn`        | Component to render for each item                      |
+| valueName     | `string`             | Prop name for scalar values (default: `'children'`)    |
+| itemKey       | `string \| function` | Key extraction for list items                          |
+| itemProps     | `object \| function` | Extra props injected into each item                    |
+| wrapComponent | `ComponentFn`        | Wrapper around each item                               |
+| rootElement   | `boolean`            | Wrap list in an Element (enables direction, gap, etc.) |
 
 **Positional metadata** passed to `itemProps` callback:
 
@@ -182,12 +185,12 @@ Element({ direction: { xs: 'rows', md: 'inline', lg: 'inline' } })
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package            | Version  |
+| ------------------ | -------- |
+| @pyreon/core       | >= 0.0.1 |
 | @pyreon/reactivity | >= 0.0.1 |
-| @pyreon/ui-core | >= 0.0.1 |
-| @pyreon/unistyle | >= 0.0.1 |
+| @pyreon/ui-core    | >= 0.0.1 |
+| @pyreon/unistyle   | >= 0.0.1 |
 
 ## License
 

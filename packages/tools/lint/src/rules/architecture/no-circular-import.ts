@@ -1,16 +1,16 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
-import { isPyreonImport } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan } from '../../utils/ast'
+import { isPyreonImport } from '../../utils/imports'
 
 const LAYER_ORDER: Record<string, number> = {
-  "@pyreon/reactivity": 0,
-  "@pyreon/core": 1,
-  "@pyreon/compiler": 1,
-  "@pyreon/runtime-dom": 2,
-  "@pyreon/runtime-server": 2,
-  "@pyreon/router": 3,
-  "@pyreon/head": 4,
-  "@pyreon/server": 5,
+  '@pyreon/reactivity': 0,
+  '@pyreon/core': 1,
+  '@pyreon/compiler': 1,
+  '@pyreon/runtime-dom': 2,
+  '@pyreon/runtime-server': 2,
+  '@pyreon/router': 3,
+  '@pyreon/head': 4,
+  '@pyreon/server': 5,
 }
 
 function getLayer(source: string): number | null {
@@ -19,7 +19,7 @@ function getLayer(source: string): number | null {
 
 function getFileLayer(filePath: string): number | null {
   for (const [pkg, layer] of Object.entries(LAYER_ORDER)) {
-    const pkgName = pkg.replace("@pyreon/", "")
+    const pkgName = pkg.replace('@pyreon/', '')
     if (filePath.includes(`/packages/core/${pkgName}/`)) return layer
   }
   return null
@@ -27,10 +27,10 @@ function getFileLayer(filePath: string): number | null {
 
 export const noCircularImport: Rule = {
   meta: {
-    id: "pyreon/no-circular-import",
-    category: "architecture",
-    description: "Enforce package layer order to prevent circular imports between core packages.",
-    severity: "error",
+    id: 'pyreon/no-circular-import',
+    category: 'architecture',
+    description: 'Enforce package layer order to prevent circular imports between core packages.',
+    severity: 'error',
     fixable: false,
   },
   create(context) {

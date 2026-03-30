@@ -1,10 +1,10 @@
-import type { VNode } from "@pyreon/core"
-import { createRef, h, Show } from "@pyreon/core"
-import { runUntracked, signal, watch } from "@pyreon/reactivity"
-import type { CSSProperties, TransitionCallbacks, TransitionStage } from "../types"
-import useAnimationEnd from "../useAnimationEnd"
-import { useReducedMotion } from "../useReducedMotion"
-import type { KineticConfig } from "./types"
+import type { VNode } from '@pyreon/core'
+import { createRef, h, Show } from '@pyreon/core'
+import { runUntracked, signal, watch } from '@pyreon/reactivity'
+import type { CSSProperties, TransitionCallbacks, TransitionStage } from '../types'
+import useAnimationEnd from '../useAnimationEnd'
+import { useReducedMotion } from '../useReducedMotion'
+import type { KineticConfig } from './types'
 
 type CollapseRendererProps = {
   config: KineticConfig
@@ -38,11 +38,11 @@ const CollapseRenderer = ({
 
   const effectiveAppear = appear ?? config.appear ?? false
   const effectiveTimeout = timeout ?? config.timeout ?? 5000
-  const effectiveTransition = transition ?? config.transition ?? "height 300ms ease"
+  const effectiveTransition = transition ?? config.transition ?? 'height 300ms ease'
 
   const initialShow = show()
   const needsAppear = effectiveAppear && initialShow
-  const stage = signal<TransitionStage>(initialShow ? "entered" : "hidden")
+  const stage = signal<TransitionStage>(initialShow ? 'entered' : 'hidden')
   let isInitialMount = true
   let appearTriggered = false
 
@@ -50,7 +50,7 @@ const CollapseRenderer = ({
   if (needsAppear) {
     const orig = wrapperRef
     const proxy = { current: null as HTMLElement | null }
-    Object.defineProperty(proxy, "current", {
+    Object.defineProperty(proxy, 'current', {
       get() {
         return orig.current
       },
@@ -58,7 +58,7 @@ const CollapseRenderer = ({
         orig.current = node
         if (node && !appearTriggered) {
           appearTriggered = true
-          queueMicrotask(() => stage.set("entering"))
+          queueMicrotask(() => stage.set('entering'))
         }
       },
     })
@@ -76,10 +76,10 @@ const CollapseRenderer = ({
       }
 
       const currentStage = runUntracked(() => stage())
-      if (showVal && (currentStage === "hidden" || currentStage === "leaving")) {
-        stage.set("entering")
-      } else if (!showVal && (currentStage === "entered" || currentStage === "entering")) {
-        stage.set("leaving")
+      if (showVal && (currentStage === 'hidden' || currentStage === 'leaving')) {
+        stage.set('entering')
+      } else if (!showVal && (currentStage === 'entered' || currentStage === 'entering')) {
+        stage.set('leaving')
       }
     },
     { immediate: true },
@@ -94,44 +94,44 @@ const CollapseRenderer = ({
       if (!wrapper || !content) return
 
       if (reducedMotion()) {
-        if (currentStage === "entering") {
+        if (currentStage === 'entering') {
           callbacks.onEnter?.()
-          wrapper.style.height = "auto"
-          wrapper.style.overflow = ""
+          wrapper.style.height = 'auto'
+          wrapper.style.overflow = ''
           callbacks.onAfterEnter?.()
-          stage.set("entered")
-        } else if (currentStage === "leaving") {
+          stage.set('entered')
+        } else if (currentStage === 'leaving') {
           callbacks.onLeave?.()
-          wrapper.style.height = "0px"
-          wrapper.style.overflow = "hidden"
+          wrapper.style.height = '0px'
+          wrapper.style.overflow = 'hidden'
           callbacks.onAfterLeave?.()
-          stage.set("hidden")
+          stage.set('hidden')
         }
         return
       }
 
-      if (currentStage === "entering") {
+      if (currentStage === 'entering') {
         callbacks.onEnter?.()
         const height = content.scrollHeight
-        wrapper.style.transition = "none"
-        wrapper.style.height = "0px"
-        wrapper.style.overflow = "hidden"
+        wrapper.style.transition = 'none'
+        wrapper.style.height = '0px'
+        wrapper.style.overflow = 'hidden'
         // Force reflow
         void wrapper.offsetHeight
         wrapper.style.transition = effectiveTransition
         wrapper.style.height = `${height}px`
       }
 
-      if (currentStage === "leaving") {
+      if (currentStage === 'leaving') {
         callbacks.onLeave?.()
         const height = content.scrollHeight
-        wrapper.style.transition = "none"
+        wrapper.style.transition = 'none'
         wrapper.style.height = `${height}px`
-        wrapper.style.overflow = "hidden"
+        wrapper.style.overflow = 'hidden'
         // Force reflow
         void wrapper.offsetHeight
         wrapper.style.transition = effectiveTransition
-        wrapper.style.height = "0px"
+        wrapper.style.height = '0px'
       }
     },
     { immediate: true },
@@ -139,31 +139,31 @@ const CollapseRenderer = ({
 
   useAnimationEnd({
     ref: wrapperRef,
-    active: () => (stage() === "entering" || stage() === "leaving") && !reducedMotion(),
+    active: () => (stage() === 'entering' || stage() === 'leaving') && !reducedMotion(),
     timeout: effectiveTimeout,
     onEnd: () => {
       const wrapper = wrapperRef.current
-      if (stage() === "entering") {
+      if (stage() === 'entering') {
         if (wrapper) {
-          wrapper.style.height = "auto"
-          wrapper.style.overflow = ""
-          wrapper.style.transition = ""
+          wrapper.style.height = 'auto'
+          wrapper.style.overflow = ''
+          wrapper.style.transition = ''
         }
         callbacks.onAfterEnter?.()
-        stage.set("entered")
-      } else if (stage() === "leaving") {
+        stage.set('entered')
+      } else if (stage() === 'leaving') {
         callbacks.onAfterLeave?.()
-        stage.set("hidden")
+        stage.set('hidden')
       }
     },
   })
 
-  const shouldRender = () => stage() !== "hidden"
+  const shouldRender = () => stage() !== 'hidden'
 
   const wrapperStyle: CSSProperties = {
     ...((htmlProps.style as CSSProperties) ?? {}),
-    ...(stage() !== "entered" ? { overflow: "hidden" } : {}),
-    ...(stage() === "hidden" ? { height: "0px" } : stage() === "entered" ? { height: "auto" } : {}),
+    ...(stage() !== 'entered' ? { overflow: 'hidden' } : {}),
+    ...(stage() === 'hidden' ? { height: '0px' } : stage() === 'entered' ? { height: 'auto' } : {}),
   }
 
   return h(

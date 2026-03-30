@@ -1,10 +1,10 @@
-import type { RouteRecord } from "@pyreon/router"
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
-import { createHandler } from "@pyreon/server"
-import type { ApiRouteEntry } from "./api-routes"
-import { createApiMiddleware } from "./api-routes"
-import { createApp } from "./app"
-import type { RouteMiddlewareEntry, ZeroConfig } from "./types"
+import type { RouteRecord } from '@pyreon/router'
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
+import { createHandler } from '@pyreon/server'
+import type { ApiRouteEntry } from './api-routes'
+import { createApiMiddleware } from './api-routes'
+import { createApp } from './app'
+import type { RouteMiddlewareEntry, ZeroConfig } from './types'
 
 // ─── Server entry factory ───────────────────────────────────────────────────
 
@@ -44,14 +44,14 @@ function createRouteMiddlewareDispatcher(entries: RouteMiddlewareEntry[]): Middl
 
 /** Simple URL pattern matcher supporting :param and :param* segments. */
 export function matchPattern(pattern: string, path: string): boolean {
-  const patternParts = pattern.split("/").filter(Boolean)
-  const pathParts = path.split("/").filter(Boolean)
+  const patternParts = pattern.split('/').filter(Boolean)
+  const pathParts = path.split('/').filter(Boolean)
 
   for (let i = 0; i < patternParts.length; i++) {
     const pp = patternParts[i]
     if (!pp) continue
-    if (pp.endsWith("*")) return true // catch-all matches everything after
-    if (pp.startsWith(":")) continue // dynamic segment matches anything
+    if (pp.endsWith('*')) return true // catch-all matches everything after
+    if (pp.startsWith(':')) continue // dynamic segment matches anything
     if (pp !== pathParts[i]) return false
   }
 
@@ -89,14 +89,14 @@ export function createServer(options: CreateServerOptions) {
 
   const { App } = createApp({
     routes: options.routes,
-    routerMode: "history",
+    routerMode: 'history',
   })
 
   return createHandler({
     App,
     routes: options.routes,
     middleware: allMiddleware,
-    mode: config.ssr?.mode ?? "string",
+    mode: config.ssr?.mode ?? 'string',
     ...(options.template ? { template: options.template } : {}),
     ...(options.clientEntry ? { clientEntry: options.clientEntry } : {}),
   })

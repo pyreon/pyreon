@@ -1,8 +1,8 @@
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
-import { createRef, h, onUnmount, provide, useContext } from "@pyreon/core"
-import { LoaderDataContext, prefetchLoaderData } from "./loader"
-import { isLazy, RouterContext, setActiveRouter } from "./router"
-import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from "./types"
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
+import { createRef, h, onUnmount, provide, useContext } from '@pyreon/core'
+import { LoaderDataContext, prefetchLoaderData } from './loader'
+import { isLazy, RouterContext, setActiveRouter } from './router'
+import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 
 // Track prefetched paths per router to avoid duplicate fetches
 const _prefetched = new WeakMap<RouterInstance, Set<string>>()
@@ -100,7 +100,7 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
     return renderLazyRoute(router, record, raw)
   }
 
-  return h("div", { "data-pyreon-router-view": true }, child as unknown as VNodeChild)
+  return h('div', { 'data-pyreon-router-view': true }, child as unknown as VNodeChild)
 }
 
 // ─── RouterLink ───────────────────────────────────────────────────────────────
@@ -121,13 +121,13 @@ export interface RouterLinkProps extends Props {
    *   - "viewport" — prefetch when the link scrolls into the viewport
    *   - "none" — no prefetching
    */
-  prefetch?: "hover" | "viewport" | "none"
+  prefetch?: 'hover' | 'viewport' | 'none'
   children?: VNodeChild | null
 }
 
 export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   const router = useContext(RouterContext)
-  const prefetchMode = props.prefetch ?? "hover"
+  const prefetchMode = props.prefetch ?? 'hover'
 
   const handleClick = (e: MouseEvent) => {
     e.preventDefault()
@@ -140,29 +140,29 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   const handleMouseEnter = () => {
-    if (prefetchMode !== "hover" || !router) return
+    if (prefetchMode !== 'hover' || !router) return
     prefetchRoute(router as RouterInstance, props.to)
   }
 
   const inst = router as RouterInstance | null
-  const href = inst?.mode === "history" ? `${inst._base}${props.to}` : `#${props.to}`
+  const href = inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
 
   const activeClass = (): string => {
-    if (!router) return ""
+    if (!router) return ''
     const current = router.currentRoute().path
     const target = props.to
     const isExact = current === target
     const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
 
     const classes: string[] = []
-    if (isActive) classes.push(props.activeClass ?? "router-link-active")
-    if (isExact) classes.push(props.exactActiveClass ?? "router-link-exact-active")
-    return classes.join(" ").trim()
+    if (isActive) classes.push(props.activeClass ?? 'router-link-active')
+    if (isExact) classes.push(props.exactActiveClass ?? 'router-link-exact-active')
+    return classes.join(' ').trim()
   }
 
   // Viewport prefetching — observe link visibility with IntersectionObserver
   const ref = createRef<Element>()
-  if (prefetchMode === "viewport" && router && typeof IntersectionObserver !== "undefined") {
+  if (prefetchMode === 'viewport' && router && typeof IntersectionObserver !== 'undefined') {
     const observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
@@ -180,7 +180,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   return h(
-    "a",
+    'a',
     { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
     props.children ?? props.to,
   )
@@ -214,7 +214,7 @@ function renderLazyRoute(
     raw
       .loader()
       .then((mod) => {
-        const resolved = typeof mod === "function" ? mod : mod.default
+        const resolved = typeof mod === 'function' ? mod : mod.default
         cacheSet(router, record, resolved)
         router._loadingSignal.update((n) => n + 1)
       })
@@ -224,7 +224,7 @@ function renderLazyRoute(
             tryLoad(attempt + 1),
           )
         }
-        if (typeof window !== "undefined" && isStaleChunk(err)) {
+        if (typeof window !== 'undefined' && isStaleChunk(err)) {
           window.location.reload()
           return
         }
@@ -247,7 +247,7 @@ function renderWithLoader(
   router: RouterInstance,
   record: RouteRecord,
   Comp: ComponentFn,
-  route: Pick<ResolvedRoute, "params" | "query" | "meta">,
+  route: Pick<ResolvedRoute, 'params' | 'query' | 'meta'>,
 ): VNodeChild {
   const routeProps = { params: route.params, query: route.query, meta: route.meta }
   if (!record.loader) {
@@ -285,9 +285,9 @@ function cacheSet(router: RouterInstance, record: RouteRecord, comp: ComponentFn
  * `/admin` is a prefix of `/admin/users` but NOT of `/admin-panel`.
  */
 function isSegmentPrefix(current: string, target: string): boolean {
-  if (target === "/") return false
-  const cs = current.split("/").filter(Boolean)
-  const ts = target.split("/").filter(Boolean)
+  if (target === '/') return false
+  const cs = current.split('/').filter(Boolean)
+  const ts = target.split('/').filter(Boolean)
   if (ts.length > cs.length) return false
   return ts.every((seg, i) => seg === cs[i])
 }
@@ -298,7 +298,7 @@ function isSegmentPrefix(current: string, target: string): boolean {
  * so the user gets the new bundle instead of a broken loading state.
  */
 function isStaleChunk(err: unknown): boolean {
-  if (err instanceof TypeError && String(err.message).includes("Failed to fetch")) return true
+  if (err instanceof TypeError && String(err.message).includes('Failed to fetch')) return true
   if (err instanceof SyntaxError) return true
   return false
 }

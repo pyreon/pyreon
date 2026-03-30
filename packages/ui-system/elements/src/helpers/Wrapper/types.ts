@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { HTMLTags } from "@pyreon/ui-core"
+import type { VNodeChild } from '@pyreon/core'
+import type { HTMLTags } from '@pyreon/ui-core'
 import type {
   AlignX,
   AlignY,
@@ -11,7 +11,7 @@ import type {
   Direction,
   ExtendCss,
   ResponsiveBoolType,
-} from "../../types"
+} from '../../types'
 
 export type Reference = unknown
 

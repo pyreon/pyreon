@@ -1,19 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { useInterval } from "../useInterval"
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useInterval } from '../useInterval'
 
 // Mock onUnmount since it requires component lifecycle context
-vi.mock("@pyreon/core", () => ({
+vi.mock('@pyreon/core', () => ({
   onMount: (fn: () => void) => fn(),
   onUnmount: (_fn: () => void) => {
     /* no-op */
   },
 }))
 
-describe("useInterval", () => {
+describe('useInterval', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it("calls callback at the specified interval", () => {
+  it('calls callback at the specified interval', () => {
     const fn = vi.fn()
     useInterval(fn, 100)
 
@@ -24,7 +24,7 @@ describe("useInterval", () => {
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
-  it("does not call callback when delay is null", () => {
+  it('does not call callback when delay is null', () => {
     const fn = vi.fn()
     useInterval(fn, null)
 
@@ -32,7 +32,7 @@ describe("useInterval", () => {
     expect(fn).not.toHaveBeenCalled()
   })
 
-  it("calls the latest callback", () => {
+  it('calls the latest callback', () => {
     let value = 0
     let currentCb = () => {
       value = 1

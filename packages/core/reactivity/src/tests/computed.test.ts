@@ -1,15 +1,15 @@
-import { computed } from "../computed"
-import { effect } from "../effect"
-import { signal } from "../signal"
+import { computed } from '../computed'
+import { effect } from '../effect'
+import { signal } from '../signal'
 
-describe("computed", () => {
-  test("computes derived value", () => {
+describe('computed', () => {
+  test('computes derived value', () => {
     const s = signal(2)
     const doubled = computed(() => s() * 2)
     expect(doubled()).toBe(4)
   })
 
-  test("updates when dependency changes", () => {
+  test('updates when dependency changes', () => {
     const s = signal(3)
     const tripled = computed(() => s() * 3)
     expect(tripled()).toBe(9)
@@ -17,7 +17,7 @@ describe("computed", () => {
     expect(tripled()).toBe(12)
   })
 
-  test("is lazy — does not compute until read", () => {
+  test('is lazy — does not compute until read', () => {
     let computations = 0
     const s = signal(0)
     const c = computed(() => {
@@ -29,7 +29,7 @@ describe("computed", () => {
     expect(computations).toBe(1)
   })
 
-  test("is memoized — does not recompute on repeated reads", () => {
+  test('is memoized — does not recompute on repeated reads', () => {
     let computations = 0
     const s = signal(5)
     const c = computed(() => {
@@ -42,7 +42,7 @@ describe("computed", () => {
     expect(computations).toBe(1)
   })
 
-  test("recomputes only when dirty", () => {
+  test('recomputes only when dirty', () => {
     let computations = 0
     const s = signal(1)
     const c = computed(() => {
@@ -58,7 +58,7 @@ describe("computed", () => {
     expect(computations).toBe(2) // still memoized
   })
 
-  test("chains correctly", () => {
+  test('chains correctly', () => {
     const base = signal(2)
     const doubled = computed(() => base() * 2)
     const quadrupled = computed(() => doubled() * 2)
@@ -67,7 +67,7 @@ describe("computed", () => {
     expect(quadrupled()).toBe(12)
   })
 
-  test("dispose stops recomputation", () => {
+  test('dispose stops recomputation', () => {
     const s = signal(1)
     let computations = 0
     const c = computed(() => {
@@ -82,7 +82,7 @@ describe("computed", () => {
     // (the computed is no longer subscribed to s)
   })
 
-  test("custom equals skips downstream notification when equal", () => {
+  test('custom equals skips downstream notification when equal', () => {
     const s = signal(3)
     let downstream = 0
 
@@ -106,7 +106,7 @@ describe("computed", () => {
     expect(c()).toBe(1)
   })
 
-  test("custom equals with array comparison", () => {
+  test('custom equals with array comparison', () => {
     const items = signal([1, 2, 3])
     let downstream = 0
 
@@ -130,7 +130,7 @@ describe("computed", () => {
     expect(downstream).toBe(2)
   })
 
-  test("computed used as dependency inside an effect (subscribe path)", () => {
+  test('computed used as dependency inside an effect (subscribe path)', () => {
     const s = signal(10)
     const c = computed(() => s() + 1)
     let result = 0
@@ -144,7 +144,7 @@ describe("computed", () => {
     expect(result).toBe(21)
   })
 
-  test("._v returns cached value", () => {
+  test('._v returns cached value', () => {
     const s = signal(5)
     const doubled = computed(() => s() * 2)
     // First access triggers computation
@@ -154,7 +154,7 @@ describe("computed", () => {
     expect(doubled._v).toBe(14)
   })
 
-  test(".direct() fires updater on recompute", () => {
+  test('.direct() fires updater on recompute', () => {
     const s = signal(1)
     const doubled = computed(() => s() * 2)
     doubled() // initialize
@@ -176,7 +176,7 @@ describe("computed", () => {
     expect(called).toBe(2) // disposed, no more calls
   })
 
-  test(".direct() works with equals option", () => {
+  test('.direct() works with equals option', () => {
     const s = signal(1)
     const clamped = computed(() => Math.min(s(), 10), {
       equals: (a, b) => a === b,
@@ -198,8 +198,8 @@ describe("computed", () => {
     expect(called).toBe(2) // equals suppresses
   })
 
-  describe("_v with equals after disposal", () => {
-    test("_v returns last cached value after dispose()", () => {
+  describe('_v with equals after disposal', () => {
+    test('_v returns last cached value after dispose()', () => {
       const s = signal(5)
       const doubled = computed(() => s() * 2)
       expect(doubled._v).toBe(10) // triggers initial computation
@@ -215,7 +215,7 @@ describe("computed", () => {
       expect(doubled._v).toBe(14)
     })
 
-    test("computed with equals: _v only updates when equality check fails", () => {
+    test('computed with equals: _v only updates when equality check fails', () => {
       const s = signal(3)
       const floored = computed(() => Math.floor(s() / 10), {
         equals: (a, b) => a === b,
@@ -233,7 +233,7 @@ describe("computed", () => {
       expect(floored._v).toBe(1)
     })
 
-    test("multiple .direct() updaters on computed, dispose one", () => {
+    test('multiple .direct() updaters on computed, dispose one', () => {
       const s = signal(1)
       const doubled = computed(() => s() * 2)
       doubled() // initialize
@@ -267,8 +267,8 @@ describe("computed", () => {
     })
   })
 
-  describe("diamond pattern cleanup", () => {
-    test("a -> b, c -> d diamond: d only recomputes once per a change", () => {
+  describe('diamond pattern cleanup', () => {
+    test('a -> b, c -> d diamond: d only recomputes once per a change', () => {
       const a = signal(1)
       const b = computed(() => a() + 1)
       const c = computed(() => a() + 2)
@@ -288,7 +288,7 @@ describe("computed", () => {
       expect(dComputations).toBe(2)
     })
 
-    test("dispose middle node in diamond, verify no stale subscriptions", () => {
+    test('dispose middle node in diamond, verify no stale subscriptions', () => {
       const a = signal(1)
       const b = computed(() => a() * 2)
       const c = computed(() => a() * 3)

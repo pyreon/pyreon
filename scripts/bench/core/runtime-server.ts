@@ -11,31 +11,31 @@
  * Usage: bun scripts/bench/core/runtime-server.ts
  */
 
-import type { ComponentFn, VNode } from "../../../packages/core/core/src/index"
-import { h } from "../../../packages/core/core/src/index"
+import type { ComponentFn, VNode } from '../../../packages/core/core/src/index'
+import { h } from '../../../packages/core/core/src/index'
 import {
   RouterLink,
   RouterProvider,
   RouterView,
-} from "../../../packages/core/router/src/components"
-import { createRouter } from "../../../packages/core/router/src/router"
-import type { RouteRecord } from "../../../packages/core/router/src/types"
-import { renderToString } from "../../../packages/core/runtime-server/src/index"
+} from '../../../packages/core/router/src/components'
+import { createRouter } from '../../../packages/core/router/src/router'
+import type { RouteRecord } from '../../../packages/core/router/src/types'
+import { renderToString } from '../../../packages/core/runtime-server/src/index'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function Text(text: string): ComponentFn {
-  return () => h("div", null, text)
+  return () => h('div', null, text)
 }
 
 // ─── Scenario 1: Empty ──────────────────────────────────────────────────────
 
 function buildEmpty(): { app: VNode; label: string } {
-  const EmptyPage: ComponentFn = () => h("div", null, "hello")
-  const routes: RouteRecord[] = [{ path: "/", component: EmptyPage }]
-  const router = createRouter({ routes, mode: "history", url: "/" })
+  const EmptyPage: ComponentFn = () => h('div', null, 'hello')
+  const routes: RouteRecord[] = [{ path: '/', component: EmptyPage }]
+  const router = createRouter({ routes, mode: 'history', url: '/' })
   return {
-    label: "empty",
+    label: 'empty',
     app: h(RouterProvider, { router }, h(RouterView, null)),
   }
 }
@@ -44,19 +44,19 @@ function buildEmpty(): { app: VNode; label: string } {
 
 function buildSimple(): { app: VNode; label: string } {
   const routes: RouteRecord[] = [
-    { path: "/", component: Text("Home") },
-    { path: "/about", component: Text("About") },
-    { path: "/pricing", component: Text("Pricing") },
-    { path: "/blog", component: Text("Blog") },
-    { path: "/contact", component: Text("Contact") },
+    { path: '/', component: Text('Home') },
+    { path: '/about', component: Text('About') },
+    { path: '/pricing', component: Text('Pricing') },
+    { path: '/blog', component: Text('Blog') },
+    { path: '/contact', component: Text('Contact') },
   ]
   const paths = routes.map((r) => r.path)
-  const Nav: ComponentFn = () => h("nav", null, ...paths.map((p) => h(RouterLink, { to: p }, p)))
-  const Layout: ComponentFn = (props) => h("div", null, h(Nav, null), props.children as VNode)
+  const Nav: ComponentFn = () => h('nav', null, ...paths.map((p) => h(RouterLink, { to: p }, p)))
+  const Layout: ComponentFn = (props) => h('div', null, h(Nav, null), props.children as VNode)
 
-  const router = createRouter({ routes, mode: "history", url: "/" })
+  const router = createRouter({ routes, mode: 'history', url: '/' })
   return {
-    label: "simple (5 routes)",
+    label: 'simple (5 routes)',
     app: h(RouterProvider, { router }, h(Layout, null, h(RouterView, null))),
   }
 }
@@ -72,14 +72,14 @@ function buildLinks100(): { app: VNode; label: string } {
     links.push(h(RouterLink, { to: path }, `Page ${i}`))
   }
   // Catch-all
-  routes.push({ path: "(.*)", component: Text("404") })
+  routes.push({ path: '(.*)', component: Text('404') })
 
-  const Nav: ComponentFn = () => h("nav", null, ...links)
-  const Layout: ComponentFn = (props) => h("div", null, h(Nav, null), props.children as VNode)
+  const Nav: ComponentFn = () => h('nav', null, ...links)
+  const Layout: ComponentFn = (props) => h('div', null, h(Nav, null), props.children as VNode)
 
-  const router = createRouter({ routes, mode: "history", url: "/page/0" })
+  const router = createRouter({ routes, mode: 'history', url: '/page/0' })
   return {
-    label: "links-100",
+    label: 'links-100',
     app: h(RouterProvider, { router }, h(Layout, null, h(RouterView, null))),
   }
 }
@@ -88,22 +88,22 @@ function buildLinks100(): { app: VNode; label: string } {
 
 function buildLayouts26(): { app: VNode; label: string } {
   // Build 26 levels of nested layouts, each with a :param
-  const Leaf: ComponentFn = () => h("div", { className: "leaf" }, "Leaf content")
+  const Leaf: ComponentFn = () => h('div', { className: 'leaf' }, 'Leaf content')
 
   function makeLayout(depth: number): ComponentFn {
     return () =>
       h(
-        "div",
+        'div',
         { className: `layout-${depth}` },
-        h("h2", null, `Level ${depth}`),
-        h("div", { className: "content" }, h(RouterView, null)),
+        h('h2', null, `Level ${depth}`),
+        h('div', { className: 'content' }, h(RouterView, null)),
       )
   }
 
   // Build nested route tree: /l0/:p0/l1/:p1/.../l25/:p25
   function buildNested(depth: number): RouteRecord[] {
     if (depth >= 26) {
-      return [{ path: "leaf", component: Leaf }]
+      return [{ path: 'leaf', component: Leaf }]
     }
     return [
       {
@@ -121,12 +121,12 @@ function buildLayouts26(): { app: VNode; label: string } {
   for (let i = 0; i < 26; i++) {
     segments.push(`l${i}`, `v${i}`)
   }
-  segments.push("leaf")
-  const url = `/${segments.join("/")}`
+  segments.push('leaf')
+  const url = `/${segments.join('/')}`
 
-  const router = createRouter({ routes, mode: "history", url })
+  const router = createRouter({ routes, mode: 'history', url })
   return {
-    label: "layouts-26-params",
+    label: 'layouts-26-params',
     app: h(RouterProvider, { router }, h(RouterView, null)),
   }
 }
@@ -175,19 +175,19 @@ async function benchSSR(
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
 const scenarios = [
-  { build: buildEmpty, label: "empty" },
-  { build: buildSimple, label: "simple (5 routes)" },
-  { build: buildLinks100, label: "links-100" },
-  { build: buildLayouts26, label: "layouts-26-params" },
+  { build: buildEmpty, label: 'empty' },
+  { build: buildSimple, label: 'simple (5 routes)' },
+  { build: buildLinks100, label: 'links-100' },
+  { build: buildLayouts26, label: 'layouts-26-params' },
 ]
 
-console.log("SSR Throughput Benchmark (Bun)")
-console.log(`${"=".repeat(70)}\n`)
+console.log('SSR Throughput Benchmark (Bun)')
+console.log(`${'='.repeat(70)}\n`)
 
 console.log(
-  `${"scenario".padEnd(26)}${"renders/sec".padStart(14)}${"avg ms".padStart(12)}${"avg bytes".padStart(14)}`,
+  `${'scenario'.padEnd(26)}${'renders/sec'.padStart(14)}${'avg ms'.padStart(12)}${'avg bytes'.padStart(14)}`,
 )
-console.log("-".repeat(66))
+console.log('-'.repeat(66))
 
 for (const { build, label } of scenarios) {
   const result = await benchSSR(label, build)

@@ -1,4 +1,4 @@
-import { effect } from "./effect"
+import { effect } from './effect'
 
 export interface WatchOptions {
   /** If true, call the callback immediately with the current value on setup. Default: false. */
@@ -44,7 +44,7 @@ export function watch<T>(
       oldVal = newVal
       if (opts.immediate) {
         const result = callback(newVal, undefined)
-        if (typeof result === "function") cleanupFn = result
+        if (typeof result === 'function') cleanupFn = result
       }
       return
     }
@@ -55,7 +55,7 @@ export function watch<T>(
     }
 
     const result = callback(newVal, oldVal)
-    if (typeof result === "function") cleanupFn = result
+    if (typeof result === 'function') cleanupFn = result
     oldVal = newVal
   })
 

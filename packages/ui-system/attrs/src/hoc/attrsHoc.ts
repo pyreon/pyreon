@@ -1,11 +1,11 @@
-import type { Configuration } from "../types/configuration"
-import type { ComponentFn } from "../types/utils"
-import { calculateChainOptions, removeUndefinedProps } from "../utils/attrs"
+import type { Configuration } from '../types/configuration'
+import type { ComponentFn } from '../types/utils'
+import { calculateChainOptions, removeUndefinedProps } from '../utils/attrs'
 
 export type AttrsStyleHOC = ({
   attrs,
   priorityAttrs,
-}: Pick<Configuration, "attrs" | "priorityAttrs">) => (
+}: Pick<Configuration, 'attrs' | 'priorityAttrs'>) => (
   WrappedComponent: ComponentFn<any>,
 ) => ComponentFn<any>
 

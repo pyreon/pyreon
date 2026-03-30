@@ -1,7 +1,7 @@
-import { existsSync } from "node:fs"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { basename, extname, join } from "node:path"
-import type { Plugin } from "vite"
+import { existsSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
+import type { Plugin } from 'vite'
 
 let sharpWarned = false
 function warnSharpMissing() {
@@ -9,7 +9,7 @@ function warnSharpMissing() {
   sharpWarned = true
   // biome-ignore lint/suspicious/noConsole: intentional build-time warning
   console.warn(
-    "\n[zero:image] sharp not installed — images will not be optimized. Install for full support: bun add -D sharp\n",
+    '\n[zero:image] sharp not installed — images will not be optimized. Install for full support: bun add -D sharp\n',
   )
 }
 
@@ -44,7 +44,7 @@ export interface ImagePluginConfig {
   include?: RegExp
 }
 
-export type ImageFormat = "webp" | "avif" | "jpeg" | "png"
+export type ImageFormat = 'webp' | 'avif' | 'jpeg' | 'png'
 
 /** Per-format source set for <picture> <source> elements. */
 export interface FormatSource {
@@ -99,39 +99,39 @@ const IMAGE_EXT_RE = /\.(jpe?g|png|webp|avif)$/i
  */
 export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
   const defaultWidths = config.widths ?? [640, 1024, 1920]
-  const defaultFormats = config.formats ?? ["webp"]
+  const defaultFormats = config.formats ?? ['webp']
   const quality = config.quality ?? 80
   const placeholderSize = config.placeholderSize ?? 16
-  const outSubDir = config.outDir ?? "assets/img"
+  const outSubDir = config.outDir ?? 'assets/img'
   const include = config.include ?? IMAGE_EXT_RE
 
-  let root = ""
-  let outDir = ""
+  let root = ''
+  let outDir = ''
   let isBuild = false
 
   return {
-    name: "pyreon-zero-images",
-    enforce: "pre",
+    name: 'pyreon-zero-images',
+    enforce: 'pre',
 
     configResolved(resolvedConfig) {
       root = resolvedConfig.root
       outDir = resolvedConfig.build.outDir
-      isBuild = resolvedConfig.command === "build"
+      isBuild = resolvedConfig.command === 'build'
     },
 
     async resolveId(id) {
       // Handle ?optimize query on image imports
-      if (id.includes("?optimize") && include.test(id.split("?")[0]!)) {
+      if (id.includes('?optimize') && include.test(id.split('?')[0]!)) {
         return `\0virtual:zero-image:${id}`
       }
       return null
     },
 
     async load(id) {
-      if (!id.startsWith("\0virtual:zero-image:")) return null
+      if (!id.startsWith('\0virtual:zero-image:')) return null
 
-      const rawPath = id.replace("\0virtual:zero-image:", "").split("?")[0] ?? id
-      const absPath = rawPath.startsWith("/") ? join(root, "public", rawPath) : rawPath
+      const rawPath = id.replace('\0virtual:zero-image:', '').split('?')[0] ?? id
+      const absPath = rawPath.startsWith('/') ? join(root, 'public', rawPath) : rawPath
 
       if (!isBuild) {
         const result = await loadDevImage(absPath, rawPath, placeholderSize)
@@ -161,16 +161,16 @@ async function loadDevImage(
   placeholderSize: number,
 ): Promise<ProcessedImage> {
   const metadata = await getImageMetadata(absPath)
-  const publicPath = rawPath.startsWith("/") ? rawPath : `/@fs/${absPath}`
+  const publicPath = rawPath.startsWith('/') ? rawPath : `/@fs/${absPath}`
 
   return {
     src: publicPath,
-    srcset: "",
+    srcset: '',
     width: metadata.width,
     height: metadata.height,
     placeholder: await generateBlurPlaceholder(absPath, placeholderSize),
     formats: [],
-    sources: [{ src: publicPath, width: metadata.width, format: "original" }],
+    sources: [{ src: publicPath, width: metadata.width, format: 'original' }],
   }
 }
 
@@ -178,13 +178,13 @@ async function emitProcessedSources(
   processed: ProcessedImage,
   outSubDir: string,
   ctx: {
-    emitFile: (f: { type: "asset"; fileName: string; source: Uint8Array }) => void
+    emitFile: (f: { type: 'asset'; fileName: string; source: Uint8Array }) => void
   },
 ) {
   for (const source of processed.sources) {
     const fileName = join(outSubDir, basename(source.src))
     const content = await readFile(source.src)
-    ctx.emitFile({ type: "asset", fileName, source: content })
+    ctx.emitFile({ type: 'asset', fileName, source: content })
     source.src = `/${fileName}`
   }
 }
@@ -201,11 +201,11 @@ function rebuildFormatSrcsets(processed: ProcessedImage, fallbackPath: string) {
   }
   processed.formats = [...formatGroups.entries()].map(([fmt, entries]) => ({
     type: `image/${fmt}`,
-    srcset: entries.join(", "),
+    srcset: entries.join(', '),
   }))
 
   const lastFormat = processed.formats.at(-1)
-  processed.srcset = lastFormat?.srcset ?? ""
+  processed.srcset = lastFormat?.srcset ?? ''
   processed.src = processed.sources.at(-1)?.src ?? fallbackPath
 }
 
@@ -257,8 +257,8 @@ async function processImage(absPath: string, opts: ProcessOptions): Promise<Proc
   }
 
   const formats: FormatSource[] = [...formatGroups.entries()].map(([fmt, group]) => ({
-    type: `image/${fmt === "jpeg" ? "jpeg" : fmt}`,
-    srcset: group.map((s) => `${s.src} ${s.width}w`).join(", "),
+    type: `image/${fmt === 'jpeg' ? 'jpeg' : fmt}`,
+    srcset: group.map((s) => `${s.src} ${s.width}w`).join(', '),
   }))
 
   // Fallback: last format's srcset
@@ -270,7 +270,7 @@ async function processImage(absPath: string, opts: ProcessOptions): Promise<Proc
 
   return {
     src: fallbackSources[fallbackSources.length - 1]?.src ?? absPath,
-    srcset: fallbackFormat?.srcset ?? "",
+    srcset: fallbackFormat?.srcset ?? '',
     width: metadata.width,
     height: metadata.height,
     placeholder,
@@ -293,23 +293,23 @@ async function getImageMetadata(absPath: string): Promise<ImageMetadata> {
   const buffer = await readFile(absPath)
   const ext = extname(absPath).toLowerCase()
 
-  if (ext === ".png") {
+  if (ext === '.png') {
     // PNG: width at bytes 16-19, height at 20-23 (big-endian)
     const width = buffer.readUInt32BE(16)
     const height = buffer.readUInt32BE(20)
-    return { width, height, format: "png" }
+    return { width, height, format: 'png' }
   }
 
-  if (ext === ".jpg" || ext === ".jpeg") {
+  if (ext === '.jpg' || ext === '.jpeg') {
     // JPEG: scan for SOF markers
     const dimensions = parseJpegDimensions(buffer)
-    return { ...dimensions, format: "jpeg" }
+    return { ...dimensions, format: 'jpeg' }
   }
 
-  if (ext === ".webp") {
+  if (ext === '.webp') {
     // WebP: VP8 header
     const dimensions = parseWebPDimensions(buffer)
-    return { ...dimensions, format: "webp" }
+    return { ...dimensions, format: 'webp' }
   }
 
   // Fallback
@@ -343,21 +343,21 @@ export function parseWebPDimensions(buffer: Buffer): {
   height: number
 } {
   // RIFF header: bytes 0-3 = "RIFF", 8-11 = "WEBP"
-  const chunk = buffer.toString("ascii", 12, 16)
-  if (chunk === "VP8 ") {
+  const chunk = buffer.toString('ascii', 12, 16)
+  if (chunk === 'VP8 ') {
     // Lossy VP8
     const width = buffer.readUInt16LE(26) & 0x3fff
     const height = buffer.readUInt16LE(28) & 0x3fff
     return { width, height }
   }
-  if (chunk === "VP8L") {
+  if (chunk === 'VP8L') {
     // Lossless VP8L
     const bits = buffer.readUInt32LE(21)
     const width = (bits & 0x3fff) + 1
     const height = ((bits >> 14) & 0x3fff) + 1
     return { width, height }
   }
-  if (chunk === "VP8X") {
+  if (chunk === 'VP8X') {
     // Extended VP8X
     const width = 1 + ((buffer[24]! | (buffer[25]! << 8) | (buffer[26]! << 16)) & 0xffffff)
     const height = 1 + ((buffer[27]! | (buffer[28]! << 8) | (buffer[29]! << 16)) & 0xffffff)
@@ -379,20 +379,20 @@ async function resizeImage(
 ): Promise<void> {
   try {
     // Try sharp (the standard Node.js image processing library)
-    const sharp = await import("sharp").then((m) => m.default ?? m)
+    const sharp = await import('sharp').then((m) => m.default ?? m)
     let pipeline = sharp(input).resize(width)
 
     switch (format) {
-      case "webp":
+      case 'webp':
         pipeline = pipeline.webp({ quality })
         break
-      case "avif":
+      case 'avif':
         pipeline = pipeline.avif({ quality })
         break
-      case "jpeg":
+      case 'jpeg':
         pipeline = pipeline.jpeg({ quality, mozjpeg: true })
         break
-      case "png":
+      case 'png':
         pipeline = pipeline.png({ compressionLevel: 9 })
         break
     }
@@ -411,14 +411,14 @@ async function resizeImage(
  */
 async function generateBlurPlaceholder(input: string, size: number): Promise<string> {
   try {
-    const sharp = await import("sharp").then((m) => m.default ?? m)
+    const sharp = await import('sharp').then((m) => m.default ?? m)
     const buffer = await sharp(input)
-      .resize(size, size, { fit: "inside" })
+      .resize(size, size, { fit: 'inside' })
       .blur(2)
       .webp({ quality: 20 })
       .toBuffer()
 
-    return `data:image/webp;base64,${buffer.toString("base64")}`
+    return `data:image/webp;base64,${buffer.toString('base64')}`
   } catch {
     // sharp not available — return a transparent placeholder
     return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E"

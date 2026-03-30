@@ -1,5 +1,5 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 export interface Size {
   width: number

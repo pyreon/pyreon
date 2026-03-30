@@ -1,18 +1,18 @@
-import type { VNodeChild } from "@pyreon/core"
-import { For, Portal } from "@pyreon/core"
-import { computed, effect, onCleanup } from "@pyreon/reactivity"
-import { toastStyles } from "./styles"
-import { _pauseAll, _resumeAll, _toasts, toast } from "./toast"
-import type { Toast, ToasterProps, ToastPosition } from "./types"
+import type { VNodeChild } from '@pyreon/core'
+import { For, Portal } from '@pyreon/core'
+import { computed, effect, onCleanup } from '@pyreon/reactivity'
+import { toastStyles } from './styles'
+import { _pauseAll, _resumeAll, _toasts, toast } from './toast'
+import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
 
 function injectStyles(): void {
-  if (typeof document === "undefined") return
-  if (document.querySelector("style[data-pyreon-toast]")) return
+  if (typeof document === 'undefined') return
+  if (document.querySelector('style[data-pyreon-toast]')) return
 
-  const style = document.createElement("style")
-  style.setAttribute("data-pyreon-toast", "")
+  const style = document.createElement('style')
+  style.setAttribute('data-pyreon-toast', '')
   style.textContent = toastStyles
   document.head.appendChild(style)
 }
@@ -20,21 +20,21 @@ function injectStyles(): void {
 // ─── Position helpers ────────────────────────────────────────────────────────
 
 function getContainerStyle(position: ToastPosition, gap: number, offset: number): string {
-  const [vertical, horizontal] = position.split("-") as [string, string]
+  const [vertical, horizontal] = position.split('-') as [string, string]
 
   let style = `gap: ${gap}px;`
 
-  if (vertical === "top") {
+  if (vertical === 'top') {
     style += ` top: ${offset}px;`
   } else {
     style += ` bottom: ${offset}px;`
-    style += " flex-direction: column-reverse;"
+    style += ' flex-direction: column-reverse;'
   }
 
-  if (horizontal === "left") {
+  if (horizontal === 'left') {
     style += ` left: ${offset}px;`
-  } else if (horizontal === "center") {
-    style += " left: 50%; transform: translateX(-50%);"
+  } else if (horizontal === 'center') {
+    style += ' left: 50%; transform: translateX(-50%);'
   } else {
     style += ` right: ${offset}px;`
   }
@@ -60,7 +60,7 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  * ```
  */
 export function Toaster(props?: ToasterProps): VNodeChild {
-  const position = props?.position ?? "top-right"
+  const position = props?.position ?? 'top-right'
   const max = props?.max ?? 5
   const gap = props?.gap ?? 8
   const offset = props?.offset ?? 16
@@ -71,16 +71,16 @@ export function Toaster(props?: ToasterProps): VNodeChild {
   // Only runs when there are actually entering toasts (early return guard).
   effect(() => {
     const toasts = _toasts()
-    const hasEntering = toasts.some((t) => t.state === "entering")
+    const hasEntering = toasts.some((t) => t.state === 'entering')
     if (!hasEntering) return
 
     const raf = requestAnimationFrame(() => {
       const current = _toasts()
       let changed = false
       const next = current.map((t) => {
-        if (t.state === "entering") {
+        if (t.state === 'entering') {
           changed = true
-          return { ...t, state: "visible" as const }
+          return { ...t, state: 'visible' as const }
         }
         return t
       })
@@ -117,11 +117,11 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
 function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
   const stateClass =
-    t.state === "entering"
-      ? " pyreon-toast--entering"
-      : t.state === "exiting"
-        ? " pyreon-toast--exiting"
-        : ""
+    t.state === 'entering'
+      ? ' pyreon-toast--entering'
+      : t.state === 'exiting'
+        ? ' pyreon-toast--exiting'
+        : ''
 
   return (
     <div
@@ -131,7 +131,7 @@ function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
       data-toast-id={t.id}
     >
       <div class="pyreon-toast__message">
-        {typeof t.message === "string" ? t.message : t.message}
+        {typeof t.message === 'string' ? t.message : t.message}
       </div>
       {t.action && (
         <button type="button" class="pyreon-toast__action" onClick={t.action.onClick}>

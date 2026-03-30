@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 /**
  * Google Chat renderer — outputs Card V2 JSON for Google Chat API.
@@ -7,13 +7,13 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === 'string' ? { header: col } : col
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
-    .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
+    .join('')
 }
 
 interface CardWidget {
@@ -25,23 +25,23 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
   const widgets: CardWidget[] = []
 
   switch (node.type) {
-    case "document":
-    case "page":
-    case "section":
-    case "row":
-    case "column":
+    case 'document':
+    case 'page':
+    case 'section':
+    case 'row':
+    case 'column':
       for (const child of node.children) {
-        if (typeof child !== "string") {
+        if (typeof child !== 'string') {
           widgets.push(...nodeToWidgets(child))
         }
       }
       break
 
-    case "heading": {
+    case 'heading': {
       const text = getTextContent(node.children)
       widgets.push({
         decoratedText: {
-          topLabel: "",
+          topLabel: '',
           text: `<b>${text}</b>`,
           wrapText: true,
         },
@@ -49,7 +49,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "text": {
+    case 'text': {
       let text = getTextContent(node.children)
       if (p.bold) text = `<b>${text}</b>`
       if (p.italic) text = `<i>${text}</i>`
@@ -60,7 +60,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "link": {
+    case 'link': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
       widgets.push({
@@ -69,26 +69,26 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "image": {
+    case 'image': {
       const src = sanitizeImageSrc(p.src as string)
-      if (src.startsWith("http")) {
+      if (src.startsWith('http')) {
         widgets.push({
           image: {
             imageUrl: src,
-            altText: (p.alt as string) ?? "Image",
+            altText: (p.alt as string) ?? 'Image',
           },
         })
       }
       break
     }
 
-    case "table": {
+    case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
       const rows = (p.rows ?? []) as (string | number)[][]
 
       // Google Chat Cards don't have native tables — use grid or formatted text
-      const header = columns.map((c) => `<b>${c.header}</b>`).join(" | ")
-      const body = rows.map((row) => row.map((c) => String(c ?? "")).join(" | ")).join("\n")
+      const header = columns.map((c) => `<b>${c.header}</b>`).join(' | ')
+      const body = rows.map((row) => row.map((c) => String(c ?? '')).join(' | ')).join('\n')
 
       widgets.push({
         textParagraph: { text: `${header}\n${body}` },
@@ -96,22 +96,22 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "list": {
+    case 'list': {
       const ordered = p.ordered as boolean | undefined
       const items = node.children
-        .filter((c): c is DocNode => typeof c !== "string")
+        .filter((c): c is DocNode => typeof c !== 'string')
         .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : "•"
+          const prefix = ordered ? `${i + 1}.` : '•'
           return `${prefix} ${getTextContent(item.children)}`
         })
-        .join("\n")
+        .join('\n')
       widgets.push({
         textParagraph: { text: items },
       })
       break
     }
 
-    case "code": {
+    case 'code': {
       const text = getTextContent(node.children)
       widgets.push({
         textParagraph: {
@@ -121,16 +121,16 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "divider":
-    case "page-break":
+    case 'divider':
+    case 'page-break':
       widgets.push({ divider: {} })
       break
 
-    case "spacer":
+    case 'spacer':
       // No direct equivalent — skip
       break
 
-    case "button": {
+    case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
       widgets.push({
@@ -152,7 +152,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
     }
 
-    case "quote": {
+    case 'quote': {
       const text = getTextContent(node.children)
       widgets.push({
         textParagraph: { text: `<i>"${text}"</i>` },
@@ -169,10 +169,10 @@ export const googleChatRenderer: DocumentRenderer = {
     const widgets = nodeToWidgets(node)
 
     // Extract title from first heading or document title
-    let title = (node.props.title as string) ?? ""
+    let title = (node.props.title as string) ?? ''
     if (!title) {
       const firstHeading = node.children.find(
-        (c): c is DocNode => typeof c !== "string" && c.type === "heading",
+        (c): c is DocNode => typeof c !== 'string' && c.type === 'heading',
       )
       if (firstHeading) title = getTextContent(firstHeading.children)
     }
@@ -180,7 +180,7 @@ export const googleChatRenderer: DocumentRenderer = {
     const card = {
       cardsV2: [
         {
-          cardId: "document",
+          cardId: 'document',
           card: {
             header: title
               ? { title, subtitle: (node.props.subject as string) ?? undefined }

@@ -1,6 +1,6 @@
-import { onUnmount } from "@pyreon/core"
-import type { Computed } from "@pyreon/reactivity"
-import { batch, computed, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import type { Computed } from '@pyreon/reactivity'
+import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import {
   createTable,
   type RowData,
@@ -9,7 +9,7 @@ import {
   type TableOptionsResolved,
   type TableState,
   type Updater,
-} from "@tanstack/table-core"
+} from '@tanstack/table-core'
 
 export type UseTableOptions<TData extends RowData> = () => TableOptions<TData>
 
@@ -79,7 +79,7 @@ export function useTable<TData extends RowData>(
         ...userOpts.state,
       },
       onStateChange: (updater: Updater<TableState>) => {
-        const newState = typeof updater === "function" ? updater(tableState.peek()) : updater
+        const newState = typeof updater === 'function' ? updater(tableState.peek()) : updater
 
         stateChanged = true
         batch(() => {

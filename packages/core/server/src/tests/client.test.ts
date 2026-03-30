@@ -2,100 +2,100 @@
  * @vitest-environment happy-dom
  */
 
-import type { ComponentFn } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import { hydrateIslands, startClient } from "../client"
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { hydrateIslands, startClient } from '../client'
 
 // ─── startClient ────────────────────────────────────────────────────────────
 
-describe("startClient", () => {
+describe('startClient', () => {
   beforeEach(() => {
-    document.body.innerHTML = ""
+    document.body.innerHTML = ''
     delete (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
   })
 
-  test("throws when container is not found", () => {
-    const App: ComponentFn = () => h("div", null, "app")
+  test('throws when container is not found', () => {
+    const App: ComponentFn = () => h('div', null, 'app')
     expect(() => startClient({ App, routes: [] })).toThrow('Container "#app" not found')
   })
 
-  test("throws with custom container selector not found", () => {
-    const App: ComponentFn = () => h("div", null, "app")
-    expect(() => startClient({ App, routes: [], container: "#missing" })).toThrow(
+  test('throws with custom container selector not found', () => {
+    const App: ComponentFn = () => h('div', null, 'app')
+    expect(() => startClient({ App, routes: [], container: '#missing' })).toThrow(
       'Container "#missing" not found',
     )
   })
 
-  test("mounts app into empty container", () => {
+  test('mounts app into empty container', () => {
     document.body.innerHTML = '<div id="app"></div>'
-    const App: ComponentFn = () => h("div", null, "Hello")
-    const cleanup = startClient({ App, routes: [{ path: "/", component: App }] })
-    expect(typeof cleanup).toBe("function")
+    const App: ComponentFn = () => h('div', null, 'Hello')
+    const cleanup = startClient({ App, routes: [{ path: '/', component: App }] })
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("hydrates app when container has SSR content", () => {
+  test('hydrates app when container has SSR content', () => {
     document.body.innerHTML = '<div id="app"><div>SSR Content</div></div>'
-    const App: ComponentFn = () => h("div", null, "SSR Content")
-    const cleanup = startClient({ App, routes: [{ path: "/", component: App }] })
-    expect(typeof cleanup).toBe("function")
+    const App: ComponentFn = () => h('div', null, 'SSR Content')
+    const cleanup = startClient({ App, routes: [{ path: '/', component: App }] })
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("hydrates loader data from window global", () => {
+  test('hydrates loader data from window global', () => {
     document.body.innerHTML = '<div id="app"></div>'
     ;(window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__ = {
-      "/": { items: [1, 2] },
+      '/': { items: [1, 2] },
     }
-    const App: ComponentFn = () => h("div", null, "app")
-    const cleanup = startClient({ App, routes: [{ path: "/", component: App }] })
-    expect(typeof cleanup).toBe("function")
+    const App: ComponentFn = () => h('div', null, 'app')
+    const cleanup = startClient({ App, routes: [{ path: '/', component: App }] })
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("ignores non-object loader data", () => {
+  test('ignores non-object loader data', () => {
     document.body.innerHTML = '<div id="app"></div>'
-    ;(window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__ = "invalid"
-    const App: ComponentFn = () => h("div", null, "app")
-    const cleanup = startClient({ App, routes: [{ path: "/", component: App }] })
-    expect(typeof cleanup).toBe("function")
+    ;(window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__ = 'invalid'
+    const App: ComponentFn = () => h('div', null, 'app')
+    const cleanup = startClient({ App, routes: [{ path: '/', component: App }] })
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("accepts Element directly as container", () => {
+  test('accepts Element directly as container', () => {
     document.body.innerHTML = '<div id="custom"></div>'
-    const el = document.getElementById("custom")!
-    const App: ComponentFn = () => h("div", null, "app")
-    const cleanup = startClient({ App, routes: [{ path: "/", component: App }], container: el })
-    expect(typeof cleanup).toBe("function")
+    const el = document.getElementById('custom')!
+    const App: ComponentFn = () => h('div', null, 'app')
+    const cleanup = startClient({ App, routes: [{ path: '/', component: App }], container: el })
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 })
 
 // ─── hydrateIslands ─────────────────────────────────────────────────────────
 
-describe("hydrateIslands", () => {
+describe('hydrateIslands', () => {
   beforeEach(() => {
-    document.body.innerHTML = ""
+    document.body.innerHTML = ''
   })
 
-  test("returns cleanup function with no islands on page", () => {
+  test('returns cleanup function with no islands on page', () => {
     const cleanup = hydrateIslands({})
-    expect(typeof cleanup).toBe("function")
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("skips islands without data-component attribute", () => {
-    document.body.innerHTML = "<pyreon-island></pyreon-island>"
+  test('skips islands without data-component attribute', () => {
+    document.body.innerHTML = '<pyreon-island></pyreon-island>'
     const cleanup = hydrateIslands({})
-    expect(typeof cleanup).toBe("function")
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("warns and skips islands with no matching loader", () => {
+  test('warns and skips islands with no matching loader', () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Missing" data-props="{}"></pyreon-island>'
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const cleanup = hydrateIslands({})
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining('No loader registered for island "Missing"'),
@@ -109,22 +109,22 @@ describe("hydrateIslands", () => {
       '<pyreon-island data-component="Counter" data-props=\'{"count":5}\'></pyreon-island>'
 
     const Counter: ComponentFn = (props) =>
-      h("button", null, `Count: ${(props as Record<string, unknown>).count}`)
+      h('button', null, `Count: ${(props as Record<string, unknown>).count}`)
 
     const cleanup = hydrateIslands({
       Counter: () => Promise.resolve({ default: Counter }),
     })
     // Give async hydration time to resolve
     await new Promise((r) => setTimeout(r, 50))
-    expect(typeof cleanup).toBe("function")
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
-  test("hydrates island with direct function module", async () => {
+  test('hydrates island with direct function module', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Widget" data-props="{}"></pyreon-island>'
 
-    const Widget: ComponentFn = () => h("div", null, "widget")
+    const Widget: ComponentFn = () => h('div', null, 'widget')
 
     const cleanup = hydrateIslands({
       Widget: () => Promise.resolve({ default: Widget }),
@@ -137,14 +137,14 @@ describe("hydrateIslands", () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Lazy" data-hydrate="idle" data-props="{}"></pyreon-island>'
 
-    const Lazy: ComponentFn = () => h("div", null, "lazy")
+    const Lazy: ComponentFn = () => h('div', null, 'lazy')
 
     const cleanup = hydrateIslands({
       Lazy: () => Promise.resolve({ default: Lazy }),
     })
     // Wait for idle callback or timeout fallback
     await new Promise((r) => setTimeout(r, 300))
-    expect(typeof cleanup).toBe("function")
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
@@ -155,7 +155,7 @@ describe("hydrateIslands", () => {
     let called = false
     const Static: ComponentFn = () => {
       called = true
-      return h("div", null, "static")
+      return h('div', null, 'static')
     }
 
     const cleanup = hydrateIslands({
@@ -170,12 +170,12 @@ describe("hydrateIslands", () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Visible" data-hydrate="visible" data-props="{}"></pyreon-island>'
 
-    const Visible: ComponentFn = () => h("div", null, "visible")
+    const Visible: ComponentFn = () => h('div', null, 'visible')
 
     const cleanup = hydrateIslands({
       Visible: () => Promise.resolve({ default: Visible }),
     })
-    expect(typeof cleanup).toBe("function")
+    expect(typeof cleanup).toBe('function')
     cleanup()
   })
 
@@ -183,7 +183,7 @@ describe("hydrateIslands", () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Responsive" data-hydrate="media(all)" data-props="{}"></pyreon-island>'
 
-    const Responsive: ComponentFn = () => h("div", null, "responsive")
+    const Responsive: ComponentFn = () => h('div', null, 'responsive')
 
     const cleanup = hydrateIslands({
       Responsive: () => Promise.resolve({ default: Responsive }),
@@ -201,7 +201,7 @@ describe("hydrateIslands", () => {
     let hydrated = false
     const Responsive: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "responsive")
+      return h('div', null, 'responsive')
     }
 
     const cleanup = hydrateIslands({
@@ -213,71 +213,71 @@ describe("hydrateIslands", () => {
     cleanup()
   })
 
-  test("handles invalid island props JSON gracefully", async () => {
+  test('handles invalid island props JSON gracefully', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Bad" data-props="not valid json"></pyreon-island>'
 
-    const Bad: ComponentFn = () => h("div", null, "bad")
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const Bad: ComponentFn = () => h('div', null, 'bad')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const cleanup = hydrateIslands({
       Bad: () => Promise.resolve({ default: Bad }),
     })
     await new Promise((r) => setTimeout(r, 50))
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid island props JSON"),
+      expect.stringContaining('Invalid island props JSON'),
       expect.anything(),
     )
     errorSpy.mockRestore()
     cleanup()
   })
 
-  test("handles island props that parse to non-object", async () => {
+  test('handles island props that parse to non-object', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Arr" data-props="[1,2,3]"></pyreon-island>'
 
-    const Arr: ComponentFn = () => h("div", null)
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const Arr: ComponentFn = () => h('div', null)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const cleanup = hydrateIslands({
       Arr: () => Promise.resolve({ default: Arr }),
     })
     await new Promise((r) => setTimeout(r, 50))
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid island props JSON"),
+      expect.stringContaining('Invalid island props JSON'),
       expect.anything(),
     )
     errorSpy.mockRestore()
     cleanup()
   })
 
-  test("handles island props that parse to null", async () => {
+  test('handles island props that parse to null', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Null" data-props="null"></pyreon-island>'
 
-    const Null: ComponentFn = () => h("div", null)
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const Null: ComponentFn = () => h('div', null)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const cleanup = hydrateIslands({
       Null: () => Promise.resolve({ default: Null }),
     })
     await new Promise((r) => setTimeout(r, 50))
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Invalid island props JSON"),
+      expect.stringContaining('Invalid island props JSON'),
       expect.anything(),
     )
     errorSpy.mockRestore()
     cleanup()
   })
 
-  test("handles loader failure gracefully", async () => {
+  test('handles loader failure gracefully', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Fail" data-props="{}"></pyreon-island>'
 
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const cleanup = hydrateIslands({
-      Fail: () => Promise.reject(new Error("import failed")),
+      Fail: () => Promise.reject(new Error('import failed')),
     })
     await new Promise((r) => setTimeout(r, 50))
     expect(errorSpy).toHaveBeenCalledWith(
@@ -288,10 +288,10 @@ describe("hydrateIslands", () => {
     cleanup()
   })
 
-  test("uses default empty props when data-props is missing", async () => {
+  test('uses default empty props when data-props is missing', async () => {
     document.body.innerHTML = '<pyreon-island data-component="NoProps"></pyreon-island>'
 
-    const NoProps: ComponentFn = () => h("div", null, "no-props")
+    const NoProps: ComponentFn = () => h('div', null, 'no-props')
 
     const cleanup = hydrateIslands({
       NoProps: () => Promise.resolve({ default: NoProps }),
@@ -304,7 +304,7 @@ describe("hydrateIslands", () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Default" data-props="{}"></pyreon-island>'
 
-    const Default: ComponentFn = () => h("div", null, "default")
+    const Default: ComponentFn = () => h('div', null, 'default')
 
     const cleanup = hydrateIslands({
       Default: () => Promise.resolve({ default: Default }),
@@ -313,14 +313,14 @@ describe("hydrateIslands", () => {
     cleanup()
   })
 
-  test("cleanup cancels idle callbacks", async () => {
+  test('cleanup cancels idle callbacks', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="IdleCancel" data-hydrate="idle" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const IdleCancel: ComponentFn = () => {
       hydrated = true
-      return h("div", null)
+      return h('div', null)
     }
 
     const cleanup = hydrateIslands({
@@ -332,11 +332,11 @@ describe("hydrateIslands", () => {
     expect(hydrated).toBe(false)
   })
 
-  test("handles unknown strategy as fallback (immediate hydration)", async () => {
+  test('handles unknown strategy as fallback (immediate hydration)', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Unknown" data-hydrate="custom-unknown" data-props="{}"></pyreon-island>'
 
-    const Unknown: ComponentFn = () => h("div", null, "unknown")
+    const Unknown: ComponentFn = () => h('div', null, 'unknown')
 
     const cleanup = hydrateIslands({
       Unknown: () => Promise.resolve({ default: Unknown }),
@@ -345,14 +345,14 @@ describe("hydrateIslands", () => {
     cleanup()
   })
 
-  test("multiple islands hydrate independently", async () => {
+  test('multiple islands hydrate independently', async () => {
     document.body.innerHTML = `
       <pyreon-island data-component="A" data-props='{"id":1}'></pyreon-island>
       <pyreon-island data-component="B" data-props='{"id":2}'></pyreon-island>
     `
 
-    const A: ComponentFn = () => h("div", null, "a")
-    const B: ComponentFn = () => h("div", null, "b")
+    const A: ComponentFn = () => h('div', null, 'a')
+    const B: ComponentFn = () => h('div', null, 'b')
 
     const cleanup = hydrateIslands({
       A: () => Promise.resolve({ default: A }),
@@ -362,14 +362,14 @@ describe("hydrateIslands", () => {
     cleanup()
   })
 
-  test("observeVisibility falls back to immediate callback when IntersectionObserver is missing", async () => {
+  test('observeVisibility falls back to immediate callback when IntersectionObserver is missing', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="Fallback" data-hydrate="visible" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const Fallback: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "fallback")
+      return h('div', null, 'fallback')
     }
 
     // Remove IntersectionObserver to trigger fallback
@@ -386,14 +386,14 @@ describe("hydrateIslands", () => {
     ;(window as unknown as Record<string, unknown>).IntersectionObserver = origIO
   })
 
-  test("visible strategy: IntersectionObserver fires when element becomes visible", async () => {
+  test('visible strategy: IntersectionObserver fires when element becomes visible', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="VisObs" data-hydrate="visible" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const VisObs: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "vis")
+      return h('div', null, 'vis')
     }
 
     // Mock IntersectionObserver to call callback with isIntersecting: true
@@ -421,7 +421,7 @@ describe("hydrateIslands", () => {
         return null
       }
       get rootMargin() {
-        return ""
+        return ''
       }
       get thresholds() {
         return []
@@ -438,14 +438,14 @@ describe("hydrateIslands", () => {
     globalThis.IntersectionObserver = origIO
   })
 
-  test("visible strategy: IntersectionObserver entry not intersecting does not hydrate", async () => {
+  test('visible strategy: IntersectionObserver entry not intersecting does not hydrate', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="VisNoInt" data-hydrate="visible" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const VisNoInt: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "vis")
+      return h('div', null, 'vis')
     }
 
     const origIO = globalThis.IntersectionObserver
@@ -467,7 +467,7 @@ describe("hydrateIslands", () => {
         return null
       }
       get rootMargin() {
-        return ""
+        return ''
       }
       get thresholds() {
         return []
@@ -484,14 +484,14 @@ describe("hydrateIslands", () => {
     globalThis.IntersectionObserver = origIO
   })
 
-  test("media strategy: deferred match fires onChange handler", async () => {
+  test('media strategy: deferred match fires onChange handler', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="MediaDeferred" data-hydrate="media((min-width: 99999px))" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const MediaDeferred: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "media")
+      return h('div', null, 'media')
     }
 
     // Mock matchMedia to initially not match, then trigger change
@@ -531,14 +531,14 @@ describe("hydrateIslands", () => {
     window.matchMedia = origMatchMedia
   })
 
-  test("media strategy: onChange handler ignores non-matching events", async () => {
+  test('media strategy: onChange handler ignores non-matching events', async () => {
     document.body.innerHTML =
       '<pyreon-island data-component="MediaNoMatch" data-hydrate="media((min-width: 99999px))" data-props="{}"></pyreon-island>'
 
     let hydrated = false
     const MediaNoMatch: ComponentFn = () => {
       hydrated = true
-      return h("div", null, "media")
+      return h('div', null, 'media')
     }
 
     const origMatchMedia = window.matchMedia

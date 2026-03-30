@@ -14,9 +14,9 @@
  * triggers re-renders.
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { Fragment, h, onUnmount } from "@pyreon/core"
-import { runUntracked, signal } from "@pyreon/reactivity"
+import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
+import { Fragment, h, onUnmount } from '@pyreon/core'
+import { runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }
 
@@ -71,7 +71,7 @@ function runLayoutEffects(entries: EffectEntry[]): void {
   for (const entry of entries) {
     if (entry.cleanup) entry.cleanup()
     const cleanup = entry.fn()
-    entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+    entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
   }
 }
 
@@ -82,7 +82,7 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
       if (ctx.unmounted) return
       if (entry.cleanup) entry.cleanup()
       const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+      entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
     }
   })
 }
@@ -161,7 +161,7 @@ export function jsx(
   const { children, ...rest } = props
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     // Wrap Vue-style component for re-render support
     const wrapped = wrapCompatComponent(type)
     const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey

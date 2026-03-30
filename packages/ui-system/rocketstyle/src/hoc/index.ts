@@ -1,3 +1,3 @@
-import rocketstyleAttrsHoc from "./rocketstyleAttrsHoc"
+import rocketstyleAttrsHoc from './rocketstyleAttrsHoc'
 
 export { rocketstyleAttrsHoc }

@@ -1,12 +1,12 @@
-import { GlobalRegistrator } from "@happy-dom/global-registrator"
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
 GlobalRegistrator.register()
 
 // Test 1: how fast is isConnected on detached nodes?
-const parent = document.createElement("div")
+const parent = document.createElement('div')
 const children: HTMLElement[] = []
 for (let i = 0; i < 5000; i++) {
-  const el = document.createElement("span")
+  const el = document.createElement('span')
   parent.appendChild(el)
   children.push(el)
 }
@@ -34,11 +34,11 @@ console.log(`5000 el.parentNode reads (detached): ${(t3 - t2).toFixed(2)}ms`)
 
 // Test 3: removeChild on detached nodes (after range deletion)
 // Re-create structure
-const parent2 = document.createElement("div")
+const parent2 = document.createElement('div')
 const children2: HTMLElement[] = []
 for (let i = 0; i < 1000; i++) {
-  const span = document.createElement("span")
-  const inner = document.createElement("em")
+  const span = document.createElement('span')
+  const inner = document.createElement('em')
   span.appendChild(inner)
   parent2.appendChild(span)
   children2.push(span)
@@ -59,11 +59,11 @@ const t5 = performance.now()
 console.log(`1000 removeChild on detached subtree: ${(t5 - t4).toFixed(2)}ms`)
 
 // Test 4: Does NOT calling removeChild save time?
-const parent3 = document.createElement("div")
+const parent3 = document.createElement('div')
 const children3: HTMLElement[] = []
 for (let i = 0; i < 1000; i++) {
-  const span = document.createElement("span")
-  const inner = document.createElement("em")
+  const span = document.createElement('span')
+  const inner = document.createElement('em')
   span.appendChild(inner)
   parent3.appendChild(span)
   children3.push(span)

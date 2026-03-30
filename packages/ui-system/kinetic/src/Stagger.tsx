@@ -1,10 +1,10 @@
-import type { VNode } from "@pyreon/core"
-import Transition from "./Transition"
-import type { CSSProperties, StaggerProps } from "./types"
-import { cloneVNode } from "./utils"
+import type { VNode } from '@pyreon/core'
+import Transition from './Transition'
+import type { CSSProperties, StaggerProps } from './types'
+import { cloneVNode } from './utils'
 
 const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === "object" && "type" in (child as object)
+  child != null && typeof child === 'object' && 'type' in (child as object)
 
 const Stagger = ({
   show,
@@ -37,8 +37,8 @@ const Stagger = ({
             {cloneVNode(child, {
               style: {
                 ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
-                "--stagger-index": staggerIndex,
-                "--stagger-interval": `${interval}ms`,
+                '--stagger-index': staggerIndex,
+                '--stagger-interval': `${interval}ms`,
                 transitionDelay: `${delay}ms`,
               } as CSSProperties,
             })}

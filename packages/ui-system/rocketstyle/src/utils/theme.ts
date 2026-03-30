@@ -1,17 +1,17 @@
-import { config, isEmpty, merge } from "@pyreon/ui-core"
-import type { ThemeModeCallback } from "../types/theme"
-import { removeNullableValues } from "./collection"
-import { isMultiKey } from "./dimensions"
+import { config, isEmpty, merge } from '@pyreon/ui-core'
+import type { ThemeModeCallback } from '../types/theme'
+import { removeNullableValues } from './collection'
+import { isMultiKey } from './dimensions'
 
 // --------------------------------------------------------
 // Theme Mode Callback
 // --------------------------------------------------------
-const MODE_CALLBACK_BRAND = Symbol.for("pyreon.themeModeCallback")
+const MODE_CALLBACK_BRAND = Symbol.for('pyreon.themeModeCallback')
 
 /** Creates a mode-switching function that returns the light or dark value based on the active mode. */
 export const themeModeCallback: ThemeModeCallback = (light, dark) => {
   const fn = (mode: string) => {
-    if (!mode || mode === "light") return light
+    if (!mode || mode === 'light') return light
     return dark
   }
   ;(fn as unknown as Record<string, unknown>).__brand = MODE_CALLBACK_BRAND
@@ -24,7 +24,7 @@ export const themeModeCallback: ThemeModeCallback = (light, dark) => {
 /** Detects whether a value is a `themeModeCallback` function via Symbol brand. */
 type IsModeCallback = (value: unknown) => boolean
 const isModeCallback: IsModeCallback = (value: unknown) =>
-  typeof value === "function" &&
+  typeof value === 'function' &&
   (value as unknown as Record<string, unknown>).__brand === MODE_CALLBACK_BRAND
 
 // --------------------------------------------------------
@@ -136,7 +136,7 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
 
     const mergeValue = (item: string) => {
       const val = keyTheme[item]
-      if (isTransform && typeof val === "function") {
+      if (isTransform && typeof val === 'function') {
         deferredTransforms.push(val)
       } else {
         finalTheme = merge({}, finalTheme, val)
@@ -171,7 +171,7 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
  */
 export type GetThemeByMode = (
   object: Record<string, any>,
-  mode: "light" | "dark",
+  mode: 'light' | 'dark',
 ) => Partial<{
   baseTheme: Record<string, unknown>
   themes: Record<string, unknown>
@@ -182,7 +182,7 @@ export const getThemeByMode: GetThemeByMode = (object, mode) =>
     (acc, key) => {
       const value = object[key]
 
-      if (typeof value === "object" && value !== null) {
+      if (typeof value === 'object' && value !== null) {
         acc[key] = getThemeByMode(value, mode)
       } else if (isModeCallback(value)) {
         acc[key] = value(mode)

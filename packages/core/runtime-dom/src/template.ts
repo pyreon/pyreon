@@ -1,5 +1,5 @@
-import type { NativeItem } from "@pyreon/core"
-import { renderEffect } from "@pyreon/reactivity"
+import type { NativeItem } from '@pyreon/core'
+import { renderEffect } from '@pyreon/reactivity'
 
 /**
  * Creates a row/item factory backed by HTML template cloning.
@@ -30,7 +30,7 @@ export function createTemplate<T>(
   html: string,
   bind: (el: HTMLElement, item: T) => (() => void) | null,
 ): (item: T) => NativeItem {
-  const tmpl = document.createElement("template")
+  const tmpl = document.createElement('template')
   tmpl.innerHTML = html
   const proto = tmpl.content.firstElementChild as HTMLElement
 
@@ -67,7 +67,7 @@ export function _bindText(
   if (source.direct) {
     const textUpdate = () => {
       const v = source._v
-      node.data = v == null || v === false ? "" : String(v as string | number)
+      node.data = v == null || v === false ? '' : String(v as string | number)
     }
     textUpdate()
     return source.direct(textUpdate)
@@ -76,7 +76,7 @@ export function _bindText(
   const fn = source as unknown as () => unknown
   return renderEffect(() => {
     const v = fn()
-    node.data = v == null || v === false ? "" : String(v as string | number)
+    node.data = v == null || v === false ? '' : String(v as string | number)
   })
 }
 
@@ -143,7 +143,7 @@ const _tplCache = new Map<string, HTMLTemplateElement>()
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
   let tpl = _tplCache.get(html)
   if (!tpl) {
-    tpl = document.createElement("template")
+    tpl = document.createElement('template')
     tpl.innerHTML = html
     _tplCache.set(html, tpl)
   }

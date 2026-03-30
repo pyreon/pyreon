@@ -1,6 +1,6 @@
-import type { VNode } from "@pyreon/core"
-import StaggerRenderer from "../kinetic/StaggerRenderer"
-import type { KineticConfig } from "../kinetic/types"
+import type { VNode } from '@pyreon/core'
+import StaggerRenderer from '../kinetic/StaggerRenderer'
+import type { KineticConfig } from '../kinetic/types'
 
 // Mock rAF for deterministic testing
 let rafCallbacks: (() => void)[] = []
@@ -12,37 +12,37 @@ beforeEach(() => {
   rafCallbacks = []
 
   vi.stubGlobal(
-    "requestAnimationFrame",
+    'requestAnimationFrame',
     vi.fn((cb: () => void) => {
       rafCallbacks.push(cb)
       return rafCallbacks.length
     }),
   )
 
-  vi.stubGlobal("cancelAnimationFrame", vi.fn())
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  vi.stubGlobal("requestAnimationFrame", originalRaf)
-  vi.stubGlobal("cancelAnimationFrame", originalCaf)
+  vi.stubGlobal('requestAnimationFrame', originalRaf)
+  vi.stubGlobal('cancelAnimationFrame', originalCaf)
 })
 
 const makeConfig = (overrides: Partial<KineticConfig> = {}): KineticConfig => ({
-  tag: "div",
-  mode: "stagger",
-  enter: "s-enter",
-  enterFrom: "s-enter-from",
-  enterTo: "s-enter-to",
-  leave: "s-leave",
-  leaveFrom: "s-leave-from",
-  leaveTo: "s-leave-to",
+  tag: 'div',
+  mode: 'stagger',
+  enter: 's-enter',
+  enterFrom: 's-enter-from',
+  enterTo: 's-enter-to',
+  leave: 's-leave',
+  leaveFrom: 's-leave-from',
+  leaveTo: 's-leave-to',
   ...overrides,
 })
 
 const makeChild = (key: string | number, text: string): VNode => ({
-  type: "span",
-  props: { "data-testid": `child-${key}` },
+  type: 'span',
+  props: { 'data-testid': `child-${key}` },
   children: [text],
   key,
 })
@@ -59,23 +59,23 @@ const extractStaggerChild = (tiVNode: VNode): VNode | null => {
   if (props?.children) {
     const pc = Array.isArray(props.children) ? props.children : [props.children]
     for (const c of pc) {
-      if (c && typeof c === "object" && "type" in (c as object)) return c as VNode
+      if (c && typeof c === 'object' && 'type' in (c as object)) return c as VNode
     }
   }
   // Fallback: check vnode.children (classic runtime)
   if (tiVNode.children) {
     const ch = Array.isArray(tiVNode.children) ? tiVNode.children : [tiVNode.children]
     for (const c of ch) {
-      if (c && typeof c === "object" && "type" in (c as object)) return c as VNode
+      if (c && typeof c === 'object' && 'type' in (c as object)) return c as VNode
     }
   }
   return null
 }
 
-describe("StaggerRenderer", () => {
-  it("returns a VNode wrapping children in config.tag", () => {
+describe('StaggerRenderer', () => {
+  it('returns a VNode wrapping children in config.tag', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -86,12 +86,12 @@ describe("StaggerRenderer", () => {
     })
 
     expect(vnode).not.toBeNull()
-    expect(vnode?.type).toBe("div")
+    expect(vnode?.type).toBe('div')
   })
 
-  it("uses custom tag from config", () => {
-    const config = makeConfig({ tag: "ul" })
-    const children = [makeChild("a", "Alpha")]
+  it('uses custom tag from config', () => {
+    const config = makeConfig({ tag: 'ul' })
+    const children = [makeChild('a', 'Alpha')]
 
     const vnode = StaggerRenderer({
       config,
@@ -101,29 +101,29 @@ describe("StaggerRenderer", () => {
       children,
     })
 
-    expect(vnode?.type).toBe("ul")
+    expect(vnode?.type).toBe('ul')
   })
 
-  it("passes htmlProps to the wrapper element", () => {
+  it('passes htmlProps to the wrapper element', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha")]
+    const children = [makeChild('a', 'Alpha')]
 
     const vnode = StaggerRenderer({
       config,
-      htmlProps: { "data-testid": "stagger-wrapper", class: "my-stagger" },
+      htmlProps: { 'data-testid': 'stagger-wrapper', class: 'my-stagger' },
       show: () => true,
       callbacks: {},
       children,
     })
 
     const props = vnode?.props as Record<string, unknown>
-    expect(props?.["data-testid"]).toBe("stagger-wrapper")
-    expect(props?.class).toBe("my-stagger")
+    expect(props?.['data-testid']).toBe('stagger-wrapper')
+    expect(props?.class).toBe('my-stagger')
   })
 
-  it("wraps each child in a TransitionItem", () => {
+  it('wraps each child in a TransitionItem', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -139,13 +139,13 @@ describe("StaggerRenderer", () => {
 
     for (const child of childArray) {
       const childVNode = child as VNode
-      expect(typeof childVNode.type).toBe("function")
+      expect(typeof childVNode.type).toBe('function')
     }
   })
 
-  it("injects --stagger-index CSS custom property on each child", () => {
+  it('injects --stagger-index CSS custom property on each child', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -162,13 +162,13 @@ describe("StaggerRenderer", () => {
       const childProps = clonedChild?.props as Record<string, unknown>
       const style = childProps?.style as Record<string, unknown>
 
-      expect(style?.["--stagger-index"]).toBe(i)
+      expect(style?.['--stagger-index']).toBe(i)
     }
   })
 
-  it("injects --stagger-interval CSS custom property on each child", () => {
+  it('injects --stagger-interval CSS custom property on each child', () => {
     const config = makeConfig({ interval: 100 })
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -186,13 +186,13 @@ describe("StaggerRenderer", () => {
       const childProps = clonedChild?.props as Record<string, unknown>
       const style = childProps?.style as Record<string, unknown>
 
-      expect(style?.["--stagger-interval"]).toBe("100ms")
+      expect(style?.['--stagger-interval']).toBe('100ms')
     }
   })
 
-  it("applies transitionDelay based on interval * index", () => {
+  it('applies transitionDelay based on interval * index', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -214,9 +214,9 @@ describe("StaggerRenderer", () => {
     }
   })
 
-  it("uses default interval of 50ms when not specified", () => {
+  it('uses default interval of 50ms when not specified', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -233,13 +233,13 @@ describe("StaggerRenderer", () => {
     const childProps = clonedChild?.props as Record<string, unknown>
     const style = childProps?.style as Record<string, unknown>
 
-    expect(style?.transitionDelay).toBe("50ms")
-    expect(style?.["--stagger-interval"]).toBe("50ms")
+    expect(style?.transitionDelay).toBe('50ms')
+    expect(style?.['--stagger-interval']).toBe('50ms')
   })
 
-  it("reverseLeave reverses stagger index order on leave", () => {
+  it('reverseLeave reverses stagger index order on leave', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     // show=false with reverseLeave=true
     const vnode = StaggerRenderer({
@@ -263,14 +263,14 @@ describe("StaggerRenderer", () => {
       const childProps = clonedChild?.props as Record<string, unknown>
       const style = childProps?.style as Record<string, unknown>
 
-      expect(style?.["--stagger-index"]).toBe(expectedStaggerIndex)
+      expect(style?.['--stagger-index']).toBe(expectedStaggerIndex)
       expect(style?.transitionDelay).toBe(`${expectedStaggerIndex * 100}ms`)
     }
   })
 
-  it("does not reverse stagger index when show is true even if reverseLeave is true", () => {
+  it('does not reverse stagger index when show is true even if reverseLeave is true', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -290,20 +290,20 @@ describe("StaggerRenderer", () => {
       const childProps = clonedChild?.props as Record<string, unknown>
       const style = childProps?.style as Record<string, unknown>
 
-      expect(style?.["--stagger-index"]).toBe(i)
+      expect(style?.['--stagger-index']).toBe(i)
     }
   })
 
-  it("passes transition class config to TransitionItem children", () => {
+  it('passes transition class config to TransitionItem children', () => {
     const config = makeConfig({
-      enter: "custom-enter",
-      enterFrom: "custom-from",
-      enterTo: "custom-to",
-      leave: "custom-leave",
-      leaveFrom: "custom-lfrom",
-      leaveTo: "custom-lto",
+      enter: 'custom-enter',
+      enterFrom: 'custom-from',
+      enterTo: 'custom-to',
+      leave: 'custom-leave',
+      leaveFrom: 'custom-lfrom',
+      leaveTo: 'custom-lto',
     })
-    const children = [makeChild("a", "Alpha")]
+    const children = [makeChild('a', 'Alpha')]
 
     const vnode = StaggerRenderer({
       config,
@@ -316,24 +316,24 @@ describe("StaggerRenderer", () => {
     const wrapperChildren = vnode?.children as VNode[]
     const tiProps = wrapperChildren[0]?.props as Record<string, unknown>
 
-    expect(tiProps.enter).toBe("custom-enter")
-    expect(tiProps.enterFrom).toBe("custom-from")
-    expect(tiProps.enterTo).toBe("custom-to")
-    expect(tiProps.leave).toBe("custom-leave")
-    expect(tiProps.leaveFrom).toBe("custom-lfrom")
-    expect(tiProps.leaveTo).toBe("custom-lto")
+    expect(tiProps.enter).toBe('custom-enter')
+    expect(tiProps.enterFrom).toBe('custom-from')
+    expect(tiProps.enterTo).toBe('custom-to')
+    expect(tiProps.leave).toBe('custom-leave')
+    expect(tiProps.leaveFrom).toBe('custom-lfrom')
+    expect(tiProps.leaveTo).toBe('custom-lto')
   })
 
-  it("passes style transition config to TransitionItem children", () => {
+  it('passes style transition config to TransitionItem children', () => {
     const config = makeConfig({
       enterStyle: { opacity: 0 },
       enterToStyle: { opacity: 1 },
-      enterTransition: "opacity 300ms ease",
+      enterTransition: 'opacity 300ms ease',
       leaveStyle: { opacity: 1 },
       leaveToStyle: { opacity: 0 },
-      leaveTransition: "opacity 200ms ease-in",
+      leaveTransition: 'opacity 200ms ease-in',
     })
-    const children = [makeChild("a", "Alpha")]
+    const children = [makeChild('a', 'Alpha')]
 
     const vnode = StaggerRenderer({
       config,
@@ -348,15 +348,15 @@ describe("StaggerRenderer", () => {
 
     expect(tiProps.enterStyle).toEqual({ opacity: 0 })
     expect(tiProps.enterToStyle).toEqual({ opacity: 1 })
-    expect(tiProps.enterTransition).toBe("opacity 300ms ease")
+    expect(tiProps.enterTransition).toBe('opacity 300ms ease')
     expect(tiProps.leaveStyle).toEqual({ opacity: 1 })
     expect(tiProps.leaveToStyle).toEqual({ opacity: 0 })
-    expect(tiProps.leaveTransition).toBe("opacity 200ms ease-in")
+    expect(tiProps.leaveTransition).toBe('opacity 200ms ease-in')
   })
 
-  it("adjusts timeout per child based on stagger delay", () => {
+  it('adjusts timeout per child based on stagger delay', () => {
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -378,10 +378,10 @@ describe("StaggerRenderer", () => {
     }
   })
 
-  it("only fires onAfterLeave on the last child (normal order)", () => {
+  it('only fires onAfterLeave on the last child (normal order)', () => {
     const onAfterLeave = vi.fn()
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -404,10 +404,10 @@ describe("StaggerRenderer", () => {
     }
   })
 
-  it("fires onAfterLeave on the first child when reverseLeave is true", () => {
+  it('fires onAfterLeave on the first child when reverseLeave is true', () => {
     const onAfterLeave = vi.fn()
     const config = makeConfig()
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta"), makeChild("c", "Charlie")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta'), makeChild('c', 'Charlie')]
 
     const vnode = StaggerRenderer({
       config,
@@ -431,9 +431,9 @@ describe("StaggerRenderer", () => {
     }
   })
 
-  it("uses config.interval when interval prop is not provided", () => {
+  it('uses config.interval when interval prop is not provided', () => {
     const config = makeConfig({ interval: 200 })
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -448,13 +448,13 @@ describe("StaggerRenderer", () => {
     const childProps = clonedChild?.props as Record<string, unknown>
     const style = childProps?.style as Record<string, unknown>
 
-    expect(style?.transitionDelay).toBe("200ms")
-    expect(style?.["--stagger-interval"]).toBe("200ms")
+    expect(style?.transitionDelay).toBe('200ms')
+    expect(style?.['--stagger-interval']).toBe('200ms')
   })
 
-  it("interval prop overrides config.interval", () => {
+  it('interval prop overrides config.interval', () => {
     const config = makeConfig({ interval: 200 })
-    const children = [makeChild("a", "Alpha"), makeChild("b", "Beta")]
+    const children = [makeChild('a', 'Alpha'), makeChild('b', 'Beta')]
 
     const vnode = StaggerRenderer({
       config,
@@ -470,17 +470,17 @@ describe("StaggerRenderer", () => {
     const childProps = clonedChild?.props as Record<string, unknown>
     const style = childProps?.style as Record<string, unknown>
 
-    expect(style?.transitionDelay).toBe("300ms")
-    expect(style?.["--stagger-interval"]).toBe("300ms")
+    expect(style?.transitionDelay).toBe('300ms')
+    expect(style?.['--stagger-interval']).toBe('300ms')
   })
 
-  it("preserves existing style on child when injecting stagger styles", () => {
+  it('preserves existing style on child when injecting stagger styles', () => {
     const config = makeConfig()
     const childWithStyle: VNode = {
-      type: "span",
-      props: { style: { color: "red", fontWeight: "bold" } },
-      children: ["Styled"],
-      key: "styled",
+      type: 'span',
+      props: { style: { color: 'red', fontWeight: 'bold' } },
+      children: ['Styled'],
+      key: 'styled',
     }
 
     const vnode = StaggerRenderer({
@@ -498,17 +498,17 @@ describe("StaggerRenderer", () => {
     const style = childProps?.style as Record<string, unknown>
 
     // Original styles preserved
-    expect(style?.color).toBe("red")
-    expect(style?.fontWeight).toBe("bold")
+    expect(style?.color).toBe('red')
+    expect(style?.fontWeight).toBe('bold')
     // Stagger styles injected
-    expect(style?.["--stagger-index"]).toBe(0)
-    expect(style?.["--stagger-interval"]).toBe("50ms")
-    expect(style?.transitionDelay).toBe("0ms")
+    expect(style?.['--stagger-index']).toBe(0)
+    expect(style?.['--stagger-interval']).toBe('50ms')
+    expect(style?.transitionDelay).toBe('0ms')
   })
 
-  it("filters out non-VNode children", () => {
+  it('filters out non-VNode children', () => {
     const config = makeConfig()
-    const validChild = makeChild("a", "Alpha")
+    const validChild = makeChild('a', 'Alpha')
     // Simulate non-VNode values in children array
     const children = [validChild, null as unknown as VNode, undefined as unknown as VNode]
 

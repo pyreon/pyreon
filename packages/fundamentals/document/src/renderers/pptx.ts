@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc, sanitizeXmlColor } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc, sanitizeXmlColor } from '../sanitize'
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 /**
  * PPTX renderer — lazy-loads pptxgenjs on first use.
@@ -21,13 +21,13 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === 'string' ? { header: col } : col
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
-    .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
+    .join('')
 }
 
 /** Vertical position tracker for placing elements on a slide. */
@@ -73,7 +73,7 @@ function processNode(node: DocNode, ctx: SlideContext): void {
   const p = node.props
 
   switch (node.type) {
-    case "heading": {
+    case 'heading': {
       const level = (p.level as number) ?? 1
       const fontSize = HEADING_SIZES[level] ?? 20
       ctx.slide.addText(getTextContent(node.children), {
@@ -83,14 +83,14 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         h: 0.6,
         fontSize,
         bold: true,
-        color: sanitizeXmlColor((p.color as string) ?? "#000000"),
-        align: (p.align as string) ?? "left",
+        color: sanitizeXmlColor((p.color as string) ?? '#000000'),
+        align: (p.align as string) ?? 'left',
       })
       ctx.y += 0.7
       break
     }
 
-    case "text": {
+    case 'text': {
       const text = getTextContent(node.children)
       ctx.slide.addText(text, {
         x: CONTENT_MARGIN,
@@ -100,21 +100,21 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         fontSize: (p.size as number) ?? 14,
         bold: p.bold ?? false,
         italic: p.italic ?? false,
-        underline: p.underline ? { style: "sng" } : undefined,
-        strike: p.strikethrough ? "sngStrike" : undefined,
-        color: sanitizeXmlColor((p.color as string) ?? "#333333"),
-        align: (p.align as string) ?? "left",
+        underline: p.underline ? { style: 'sng' } : undefined,
+        strike: p.strikethrough ? 'sngStrike' : undefined,
+        color: sanitizeXmlColor((p.color as string) ?? '#333333'),
+        align: (p.align as string) ?? 'left',
       })
       ctx.y += 0.5
       break
     }
 
-    case "image": {
+    case 'image': {
       const src = sanitizeImageSrc(p.src as string)
       const w = Math.min(((p.width as number) ?? 400) / 96, CONTENT_WIDTH)
       const h = ((p.height as number) ?? 300) / 96
 
-      if (src.startsWith("data:")) {
+      if (src.startsWith('data:')) {
         ctx.slide.addImage({
           data: src,
           x: CONTENT_MARGIN,
@@ -128,7 +128,7 @@ function processNode(node: DocNode, ctx: SlideContext): void {
       break
     }
 
-    case "table": {
+    case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
       const rows = (p.rows ?? []) as (string | number)[][]
       const hs = p.headerStyle as { background?: string; color?: string } | undefined
@@ -137,20 +137,20 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         text: col.header,
         options: {
           bold: true,
-          fill: { color: sanitizeXmlColor(hs?.background ?? "#f5f5f5") },
-          color: sanitizeXmlColor(hs?.color ?? "#000000"),
-          align: col.align ?? "left",
+          fill: { color: sanitizeXmlColor(hs?.background ?? '#f5f5f5') },
+          color: sanitizeXmlColor(hs?.color ?? '#000000'),
+          align: col.align ?? 'left',
           fontSize: 12,
         },
       }))
 
       const dataRows = rows.map((row, rowIdx) =>
         columns.map((col, colIdx) => ({
-          text: String(row[colIdx] ?? ""),
+          text: String(row[colIdx] ?? ''),
           options: {
-            align: col.align ?? "left",
+            align: col.align ?? 'left',
             fontSize: 11,
-            fill: p.striped && rowIdx % 2 === 1 ? { color: "F9F9F9" } : undefined,
+            fill: p.striped && rowIdx % 2 === 1 ? { color: 'F9F9F9' } : undefined,
           },
         })),
       )
@@ -163,16 +163,16 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         x: CONTENT_MARGIN,
         y: ctx.y,
         w: CONTENT_WIDTH,
-        border: { pt: 0.5, color: "DDDDDD" },
+        border: { pt: 0.5, color: 'DDDDDD' },
         rowH: rowHeight,
       })
       ctx.y += tableHeight + 0.2
       break
     }
 
-    case "list": {
+    case 'list': {
       const items = node.children
-        .filter((c): c is DocNode => typeof c !== "string")
+        .filter((c): c is DocNode => typeof c !== 'string')
         .map((item) => getTextContent(item.children))
 
       const isOrdered = p.ordered as boolean
@@ -191,7 +191,7 @@ function processNode(node: DocNode, ctx: SlideContext): void {
       break
     }
 
-    case "code": {
+    case 'code': {
       const text = getTextContent(node.children)
       ctx.slide.addText(text, {
         x: CONTENT_MARGIN,
@@ -199,15 +199,15 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         w: CONTENT_WIDTH,
         h: 0.5,
         fontSize: 10,
-        fontFace: "Courier New",
-        fill: { color: "F5F5F5" },
-        color: "333333",
+        fontFace: 'Courier New',
+        fill: { color: 'F5F5F5' },
+        color: '333333',
       })
       ctx.y += 0.6
       break
     }
 
-    case "quote": {
+    case 'quote': {
       const text = getTextContent(node.children)
       ctx.slide.addText(text, {
         x: CONTENT_MARGIN + 0.3,
@@ -216,28 +216,28 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         h: 0.5,
         fontSize: 13,
         italic: true,
-        color: "555555",
+        color: '555555',
       })
       ctx.y += 0.6
       break
     }
 
-    case "link": {
+    case 'link': {
       ctx.slide.addText(getTextContent(node.children), {
         x: CONTENT_MARGIN,
         y: ctx.y,
         w: CONTENT_WIDTH,
         h: 0.4,
         fontSize: 13,
-        color: "4F46E5",
-        underline: { style: "sng" },
+        color: '4F46E5',
+        underline: { style: 'sng' },
         hyperlink: { url: sanitizeHref(p.href as string) },
       })
       ctx.y += 0.5
       break
     }
 
-    case "button": {
+    case 'button': {
       ctx.slide.addText(getTextContent(node.children), {
         x: CONTENT_MARGIN,
         y: ctx.y,
@@ -245,41 +245,41 @@ function processNode(node: DocNode, ctx: SlideContext): void {
         h: 0.5,
         fontSize: 14,
         bold: true,
-        color: sanitizeXmlColor((p.color as string) ?? "#ffffff"),
+        color: sanitizeXmlColor((p.color as string) ?? '#ffffff'),
         fill: {
-          color: sanitizeXmlColor((p.background as string) ?? "#4f46e5"),
+          color: sanitizeXmlColor((p.background as string) ?? '#4f46e5'),
         },
-        align: "center",
+        align: 'center',
         hyperlink: { url: sanitizeHref(p.href as string) },
       })
       ctx.y += 0.6
       break
     }
 
-    case "spacer": {
+    case 'spacer': {
       ctx.y += ((p.height as number) ?? 12) / 72
       break
     }
 
-    case "divider": {
+    case 'divider': {
       // Render as a thin line using a text element with top border
-      ctx.slide.addText("", {
+      ctx.slide.addText('', {
         x: CONTENT_MARGIN,
         y: ctx.y,
         w: CONTENT_WIDTH,
         h: 0.02,
-        fill: { color: sanitizeXmlColor((p.color as string) ?? "#DDDDDD") },
+        fill: { color: sanitizeXmlColor((p.color as string) ?? '#DDDDDD') },
       })
       ctx.y += 0.2
       break
     }
 
     // Container types — recurse into children
-    case "section":
-    case "row":
-    case "column":
+    case 'section':
+    case 'row':
+    case 'column':
       for (const child of node.children) {
-        if (typeof child !== "string") {
+        if (typeof child !== 'string') {
           processNode(child, ctx)
         }
       }
@@ -295,7 +295,7 @@ function processSlide(pageNode: DocNode, pptx: PptxGen): void {
   const ctx: SlideContext = { slide, y: CONTENT_MARGIN }
 
   for (const child of pageNode.children) {
-    if (typeof child !== "string") {
+    if (typeof child !== 'string') {
       processNode(child, ctx)
     }
   }
@@ -305,7 +305,7 @@ export const pptxRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<Uint8Array> {
     let PptxGenJS: any
     try {
-      PptxGenJS = await import("pptxgenjs")
+      PptxGenJS = await import('pptxgenjs')
     } catch {
       throw new Error(
         '[@pyreon/document] PPTX renderer requires "pptxgenjs" package. Install it: bun add pptxgenjs',
@@ -323,7 +323,7 @@ export const pptxRenderer: DocumentRenderer = {
     // Collect pages — each becomes a slide
     const pages: DocNode[] = []
     for (const child of node.children) {
-      if (typeof child !== "string" && child.type === "page") {
+      if (typeof child !== 'string' && child.type === 'page') {
         pages.push(child)
       }
     }
@@ -331,7 +331,7 @@ export const pptxRenderer: DocumentRenderer = {
     // If no explicit pages, treat entire document content as one slide
     if (pages.length === 0) {
       const syntheticPage: DocNode = {
-        type: "page",
+        type: 'page',
         props: {},
         children: node.children,
       }
@@ -342,7 +342,7 @@ export const pptxRenderer: DocumentRenderer = {
       processSlide(page, pptx)
     }
 
-    const output = await pptx.write("arraybuffer")
+    const output = await pptx.write('arraybuffer')
     return new Uint8Array(output as ArrayBuffer)
   },
 }

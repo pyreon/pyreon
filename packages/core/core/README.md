@@ -11,11 +11,11 @@ bun add @pyreon/core
 ## Quick Start
 
 ```tsx
-import { onMount, onUnmount, createContext, useContext } from "@pyreon/core"
+import { onMount, onUnmount, createContext, useContext } from '@pyreon/core'
 
 function Counter() {
   onMount(() => {
-    console.log("mounted")
+    console.log('mounted')
   })
 
   return <div>Hello Pyreon</div>

@@ -13,8 +13,8 @@
  *   renderToStream(vnode)   → ReadableStream<string>
  */
 
-import { AsyncLocalStorage } from "node:async_hooks"
-import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from "@pyreon/core"
+import { AsyncLocalStorage } from 'node:async_hooks'
+import type { ClassValue, ComponentFn, ForProps, VNode, VNodeChild } from '@pyreon/core'
 import {
   cx,
   ForSymbol,
@@ -23,9 +23,9 @@ import {
   runWithHooks,
   Suspense,
   setContextStackProvider,
-} from "@pyreon/core"
+} from '@pyreon/core'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 // ─── Streaming Suspense context ───────────────────────────────────────────────
 // Tracks in-flight async Suspense boundary resolutions within a single stream.
@@ -81,7 +81,7 @@ function withStoreContext<T>(fn: () => T): T {
 
 /** Render a VNode tree to an HTML string. Supports async component functions. */
 export async function renderToString(root: VNode | null): Promise<string> {
-  if (root === null) return ""
+  if (root === null) return ''
   // Each call gets a fresh isolated context stack and (optionally) store registry
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
@@ -147,13 +147,13 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children } = vnode.props as unknown as ForProps<unknown>
-    enqueue("<!--pyreon-for-->")
+    enqueue('<!--pyreon-for-->')
     for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
-    enqueue("<!--/pyreon-for-->")
+    enqueue('<!--/pyreon-for-->')
     return
   }
 
-  if (typeof vnode.type === "function") {
+  if (typeof vnode.type === 'function') {
     await streamComponentNode(vnode, enqueue)
     return
   }
@@ -172,7 +172,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     if (resolved !== null) await streamNode(resolved, enqueue)
   } catch (err) {
     if (__DEV__) {
-      const name = (vnode.type as ComponentFn).name || "Anonymous"
+      const name = (vnode.type as ComponentFn).name || 'Anonymous'
       console.error(`[Pyreon SSR] Error rendering <${name}>:`, err)
     }
     // Inside a Suspense child resolution, re-throw so the boundary can catch and
@@ -180,7 +180,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     // error and emit a marker so the stream can continue.
     const ctx = _streamCtxAls.getStore()
     if (ctx && ctx.suspenseDepth > 0) throw err
-    enqueue("<!--pyreon-error-->")
+    enqueue('<!--pyreon-error-->')
   }
 }
 
@@ -205,15 +205,15 @@ async function streamNode(
   node: VNodeChild | null | (() => VNodeChild),
   enqueue: (s: string) => void,
 ): Promise<void> {
-  if (typeof node === "function") {
+  if (typeof node === 'function') {
     return streamNode((node as () => VNodeChild)(), enqueue)
   }
   if (node == null || node === false) return
-  if (typeof node === "string") {
+  if (typeof node === 'string') {
     enqueue(escapeHtml(node))
     return
   }
-  if (typeof node === "number" || typeof node === "boolean") {
+  if (typeof node === 'number' || typeof node === 'boolean') {
     enqueue(String(node))
     return
   }
@@ -227,8 +227,8 @@ async function streamNode(
 
 // Inline swap helper emitted once per stream, before the first <template>
 const SUSPENSE_SWAP_FN =
-  "<script>function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);" +
-  "if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}</script>"
+  '<script>function __NS(s,t){var e=document.getElementById(s),l=document.getElementById(t);' +
+  'if(e&&l){e.replaceWith(l.content.cloneNode(!0));l.remove()}}</script>'
 
 /**
  * Stream a Suspense boundary: emit fallback immediately, then resolve children
@@ -257,7 +257,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // Stream the fallback synchronously (no await on children)
   mainEnqueue(`<div id="pyreon-s-${id}">`)
   await streamNode(fallback ?? null, enqueue)
-  mainEnqueue("</div>")
+  mainEnqueue('</div>')
 
   // Capture the context store for the async resolution so it inherits context
   const ctxStore = _contextAls.getStore() ?? []
@@ -270,7 +270,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         ctx.suspenseDepth++
         const buf: string[] = []
         await streamNode(children ?? null, (s) => buf.push(s))
-        mainEnqueue(`<template id="pyreon-t-${id}">${buf.join("")}</template>`)
+        mainEnqueue(`<template id="pyreon-t-${id}">${buf.join('')}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {
         if (__DEV__) {
@@ -291,17 +291,17 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
 async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string> {
   // Reactive accessor — call it synchronously (snapshot)
-  if (typeof node === "function") {
+  if (typeof node === 'function') {
     return renderNode((node as () => VNodeChild)())
   }
 
-  if (node == null || node === false) return ""
+  if (node == null || node === false) return ''
 
-  if (typeof node === "string") return escapeHtml(node)
-  if (typeof node === "number" || typeof node === "boolean") return String(node)
+  if (typeof node === 'string') return escapeHtml(node)
+  if (typeof node === 'number' || typeof node === 'boolean') return String(node)
 
   if (Array.isArray(node)) {
-    let html = ""
+    let html = ''
     for (const child of node) html += await renderNode(child)
     return html
   }
@@ -314,13 +314,13 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children } = vnode.props as unknown as ForProps<unknown>
-    let forHtml = "<!--pyreon-for-->"
+    let forHtml = '<!--pyreon-for-->'
     for (const item of each()) forHtml += await renderNode(children(item) as VNodeChild)
-    forHtml += "<!--/pyreon-for-->"
+    forHtml += '<!--/pyreon-for-->'
     return forHtml
   }
 
-  if (typeof vnode.type === "function") {
+  if (typeof vnode.type === 'function') {
     return renderComponent(vnode as VNode & { type: ComponentFn })
   }
 
@@ -328,7 +328,7 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
 }
 
 async function renderChildren(children: VNodeChild[]): Promise<string> {
-  let html = ""
+  let html = ''
   for (const child of children) html += await renderNode(child)
   return html
 }
@@ -339,11 +339,11 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
   // Async component function (async function Component()) — await the promise
   if (output instanceof Promise) {
     const resolved = await output
-    if (resolved === null) return ""
+    if (resolved === null) return ''
     return renderNode(resolved)
   }
 
-  if (output === null) return ""
+  if (output === null) return ''
   return renderNode(output)
 }
 
@@ -358,11 +358,11 @@ async function renderElement(vnode: VNode): Promise<string> {
   }
 
   if (isVoidElement(tag)) {
-    html += " />"
+    html += ' />'
     return html
   }
 
-  html += ">"
+  html += '>'
 
   for (const child of vnode.children) {
     html += await renderNode(child)
@@ -372,11 +372,11 @@ async function renderElement(vnode: VNode): Promise<string> {
   return html
 }
 
-const SSR_URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"])
+const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 function renderPropSkipped(key: string): boolean {
-  if (key === "key" || key === "ref") return true
+  if (key === 'key' || key === 'ref') return true
   if (/^on[A-Z]/.test(key)) return true
   return false
 }
@@ -385,12 +385,12 @@ function renderPropValue(key: string, value: unknown): string | null {
   if (value === null || value === undefined || value === false) return null
   if (value === true) return escapeHtml(toAttrName(key))
 
-  if (key === "class") {
+  if (key === 'class') {
     const cls = cx(value as ClassValue)
     return cls ? `class="${escapeHtml(cls)}"` : null
   }
 
-  if (key === "style") {
+  if (key === 'style') {
     const style = normalizeStyle(value)
     return style ? `style="${escapeHtml(style)}"` : null
   }
@@ -401,11 +401,11 @@ function renderPropValue(key: string, value: unknown): string | null {
 function renderProp(key: string, value: unknown): string | null {
   if (renderPropSkipped(key)) return null
 
-  if (typeof value === "function") {
+  if (typeof value === 'function') {
     return renderProp(key, (value as () => unknown)())
   }
 
-  if (SSR_URL_ATTRS.has(key) && typeof value === "string" && SSR_UNSAFE_URL_RE.test(value)) {
+  if (SSR_URL_ATTRS.has(key) && typeof value === 'string' && SSR_UNSAFE_URL_RE.test(value)) {
     return null
   }
 
@@ -415,20 +415,20 @@ function renderProp(key: string, value: unknown): string | null {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const VOID_ELEMENTS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ])
 
 function isVoidElement(tag: string): boolean {
@@ -437,19 +437,27 @@ function isVoidElement(tag: string): boolean {
 
 /** camelCase prop → kebab-case HTML attribute (e.g. className → class, htmlFor → for) */
 function toAttrName(key: string): string {
-  if (key === "className") return "class"
-  if (key === "htmlFor") return "for"
+  if (key === 'className') return 'class'
+  if (key === 'htmlFor') return 'for'
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
+function isStyleObject(value: unknown): value is Record<string, unknown> {
+  if (!value) return false
+  return typeof value === 'object'
+}
+
 function normalizeStyle(value: unknown): string {
-  if (typeof value === "string") return value
-  if (typeof value === "object" && value !== null) {
-    return Object.entries(value as Record<string, unknown>)
-      .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
-      .join("; ")
+  if (typeof value === 'string') return value
+  if (isStyleObject(value)) {
+    const proto = Object.getPrototypeOf(value)
+    if (proto === Object.prototype || proto === null) {
+      return Object.entries(value)
+        .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
+        .join('; ')
+    }
   }
-  return ""
+  return ''
 }
 
 function toKebab(str: string): string {
@@ -457,11 +465,11 @@ function toKebab(str: string): string {
 }
 
 const ESCAPE_MAP: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
 }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)

@@ -1,16 +1,16 @@
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
-import { AstCache } from "./cache"
-import { createIgnoreFilter } from "./config/ignore"
-import { loadConfig, loadConfigFromPath } from "./config/loader"
-import { getPreset } from "./config/presets"
-import { allRules } from "./rules/index"
-import { applyFixes, lintFile } from "./runner"
-import type { LintConfig, LintFileResult, LintOptions, LintResult, RuleMeta } from "./types"
-import { hasJsExtension } from "./utils/index"
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { AstCache } from './cache'
+import { createIgnoreFilter } from './config/ignore'
+import { loadConfig, loadConfigFromPath } from './config/loader'
+import { getPreset } from './config/presets'
+import { allRules } from './rules/index'
+import { applyFixes, lintFile } from './runner'
+import type { LintConfig, LintFileResult, LintOptions, LintResult, RuleMeta } from './types'
+import { hasJsExtension } from './utils/index'
 
 function isHiddenOrVendor(entry: string): boolean {
-  return entry.startsWith(".") || entry === "node_modules" || entry === "lib" || entry === "dist"
+  return entry.startsWith('.') || entry === 'node_modules' || entry === 'lib' || entry === 'dist'
 }
 
 function matchesPatterns(
@@ -90,10 +90,10 @@ function buildConfig(options: LintOptions): {
   exclude: string[] | undefined
   isIgnored: (filePath: string) => boolean
 } {
-  const cwd = resolve(".")
+  const cwd = resolve('.')
   const fileConfig = options.config ? loadConfigFromPath(options.config) : loadConfig(cwd)
 
-  const presetName = options.preset ?? fileConfig?.preset ?? "recommended"
+  const presetName = options.preset ?? fileConfig?.preset ?? 'recommended'
   const config = getPreset(presetName)
 
   // Merge config file rule overrides
@@ -146,16 +146,16 @@ function applyFixesToFile(fileResult: LintFileResult, source: string): void {
   const fixable = fileResult.diagnostics.filter((d) => d.fix)
   if (fixable.length === 0) return
   const fixed = applyFixes(source, fileResult.diagnostics)
-  writeFileSync(fileResult.filePath, fixed, "utf-8")
+  writeFileSync(fileResult.filePath, fixed, 'utf-8')
   fileResult.fixedSource = fixed
   fileResult.diagnostics = fileResult.diagnostics.filter((d) => !d.fix)
 }
 
 function countDiagnostics(fileResult: LintFileResult, results: LintResult): void {
   for (const d of fileResult.diagnostics) {
-    if (d.severity === "error") results.totalErrors++
-    else if (d.severity === "warn") results.totalWarnings++
-    else if (d.severity === "info") results.totalInfos++
+    if (d.severity === 'error') results.totalErrors++
+    else if (d.severity === 'warn') results.totalWarnings++
+    else if (d.severity === 'info') results.totalInfos++
   }
 }
 
@@ -185,7 +185,7 @@ export function lint(options: LintOptions): LintResult {
   for (const filePath of files) {
     let source: string
     try {
-      source = readFileSync(filePath, "utf-8")
+      source = readFileSync(filePath, 'utf-8')
     } catch {
       continue
     }
@@ -194,7 +194,7 @@ export function lint(options: LintOptions): LintResult {
       applyFixesToFile(fileResult, source)
     }
     if (options.quiet) {
-      fileResult.diagnostics = fileResult.diagnostics.filter((d) => d.severity === "error")
+      fileResult.diagnostics = fileResult.diagnostics.filter((d) => d.severity === 'error')
     }
     countDiagnostics(fileResult, results)
     results.files.push(fileResult)

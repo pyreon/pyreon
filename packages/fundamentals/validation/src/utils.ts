@@ -1,5 +1,5 @@
-import type { ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
+import type { ValidationError } from '@pyreon/form'
+import type { ValidationIssue } from './types'
 
 /**
  * Convert an array of validation issues into a flat field → error record.

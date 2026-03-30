@@ -1,5 +1,5 @@
-import { batch, computed, signal } from "@pyreon/reactivity"
-import { computeLayout } from "./layout"
+import { batch, computed, signal } from '@pyreon/reactivity'
+import { computeLayout } from './layout'
 import type {
   Connection,
   FlowConfig,
@@ -10,15 +10,15 @@ import type {
   LayoutOptions,
   NodeChange,
   XYPosition,
-} from "./types"
+} from './types'
 
 /**
  * Generate a unique edge id from source/target.
  */
 function edgeId(edge: FlowEdge): string {
   if (edge.id) return edge.id
-  const sh = edge.sourceHandle ? `-${edge.sourceHandle}` : ""
-  const th = edge.targetHandle ? `-${edge.targetHandle}` : ""
+  const sh = edge.sourceHandle ? `-${edge.sourceHandle}` : ''
+  const th = edge.targetHandle ? `-${edge.targetHandle}` : ''
   return `e-${edge.source}${sh}-${edge.target}${th}`
 }
 
@@ -51,7 +51,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
   const {
     nodes: initialNodes = [],
     edges: initialEdges = [],
-    defaultEdgeType = "bezier",
+    defaultEdgeType = 'bezier',
     minZoom = 0.1,
     maxZoom = 4,
     snapToGrid = false,
@@ -119,7 +119,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
         return next
       })
     })
-    emitNodeChanges([{ type: "remove", id }])
+    emitNodeChanges([{ type: 'remove', id }])
   }
 
   function updateNode(id: string, update: Partial<FlowNode>): void {
@@ -139,7 +139,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     pos = clampToExtent(pos, node?.width, node?.height)
 
     nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, position: pos } : n)))
-    emitNodeChanges([{ type: "position", id, position: pos }])
+    emitNodeChanges([{ type: 'position', id, position: pos }])
   }
 
   // ── Edge operations ──────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     const sourceNode = getNode(connection.source)
     if (!sourceNode) return false
 
-    const sourceType = sourceNode.type ?? "default"
+    const sourceType = sourceNode.type ?? 'default'
     const rule = connectionRules[sourceType]
     if (!rule) return true // no rule = allow
 
@@ -195,7 +195,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     const targetNode = getNode(connection.target)
     if (!targetNode) return false
 
-    const targetType = targetNode.type ?? "default"
+    const targetType = targetNode.type ?? 'default'
     return rule.outputs.includes(targetType)
   }
 
@@ -354,7 +354,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
   // ── Layout ───────────────────────────────────────────────────────────────
 
   async function layout(
-    algorithm: LayoutAlgorithm = "layered",
+    algorithm: LayoutAlgorithm = 'layered',
     options: LayoutOptions = {},
   ): Promise<void> {
     const currentNodes = nodes.peek()

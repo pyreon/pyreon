@@ -1,6 +1,6 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
-import { issuesToRecord } from "./utils"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
+import type { ValidationIssue } from './types'
+import { issuesToRecord } from './utils'
 
 /**
  * Minimal Zod-compatible interfaces so we don't require zod as a hard dep.
@@ -28,7 +28,7 @@ interface ZodSchema<T = unknown> {
 
 function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
-    path: issue.path.map(String).join("."),
+    path: issue.path.map(String).join('.'),
     message: issue.message,
   }))
 }
@@ -62,7 +62,7 @@ export function zodSchema<TValues extends Record<string, unknown>>(
       return issuesToRecord<TValues>(zodIssuesToGeneric(result.error!.issues))
     } catch (err) {
       return {
-        "": err instanceof Error ? err.message : String(err),
+        '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
   }

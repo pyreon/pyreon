@@ -1,4 +1,4 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 import {
   createContext,
   createRef,
@@ -12,9 +12,9 @@ import {
   Show,
   Suspense,
   useContext,
-} from "@pyreon/core"
-import { useHead } from "@pyreon/head/use-head"
-import { batch, computed, effect, signal } from "@pyreon/reactivity"
+} from '@pyreon/core'
+import { useHead } from '@pyreon/head/use-head'
+import { batch, computed, effect, signal } from '@pyreon/reactivity'
 
 // ─── Code Block ──────────────────────────────────────────────────────────────
 // Collapsible source code viewer for each demo.
@@ -25,7 +25,7 @@ function CodeBlock(props: { code: string }) {
   return (
     <>
       <button type="button" class="code-toggle" onClick={() => open.update((v) => !v)}>
-        {() => (open() ? "▾ Hide Source" : "▸ View Source")}
+        {() => (open() ? '▾ Hide Source' : '▸ View Source')}
       </button>
       <Show when={() => open()}>
         <pre class="code-block">{props.code}</pre>
@@ -46,7 +46,7 @@ function _SuspenseDemo() {
 
     onMount(() => {
       const timer = setTimeout(() => {
-        data.set("Loaded after 1.5s delay!")
+        data.set('Loaded after 1.5s delay!')
       }, 1500)
       return () => clearTimeout(timer)
     })
@@ -61,7 +61,7 @@ function _SuspenseDemo() {
         Suspense shows fallback UI while async content loads. Click to trigger.
       </p>
       <button type="button" onClick={() => shouldLoad.set(true)}>
-        {() => (shouldLoad() ? "Loading..." : "Load async content")}
+        {() => (shouldLoad() ? 'Loading...' : 'Load async content')}
       </button>
       <Show when={() => shouldLoad()}>
         <Suspense fallback={<div class="demo-box">Loading content...</div>}>
@@ -101,7 +101,7 @@ function ErrorBoundaryDemo() {
 
   function BrokenComponent() {
     if (shouldError()) {
-      throw new Error("Component crashed!")
+      throw new Error('Component crashed!')
     }
     return <p>All good — no errors.</p>
   }
@@ -178,7 +178,7 @@ function PortalDemo() {
               role="dialog"
               onClick={() => showModal.set(false)}
               onKeyDown={(e: KeyboardEvent) => {
-                if (e.key === "Escape") showModal.set(false)
+                if (e.key === 'Escape') showModal.set(false)
               }}
             >
               {/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation */}
@@ -243,8 +243,8 @@ function NotificationBell() {
 
   return (
     <span class="demo-meta">
-      Notifications: {() => count()}{" "}
-      {() => (count() > 0 ? `(${ctx.notifications().join(", ")})` : "")}
+      Notifications: {() => count()}{' '}
+      {() => (count() > 0 ? `(${ctx.notifications().join(', ')})` : '')}
     </span>
   )
 }
@@ -309,7 +309,7 @@ function NotificationBell() {
 function UpdateHookDemo() {
   const value = signal(0)
   const updateCount = signal(0)
-  const lastUpdate = signal("")
+  const lastUpdate = signal('')
   const history = signal<number[]>([])
 
   // onUpdate fires after effect() re-runs — so we need an effect that tracks `value`
@@ -333,9 +333,9 @@ function UpdateHookDemo() {
           Increment ({() => value()})
         </button>
       </div>
-      <p class="demo-meta">effect history: {() => history().join(" → ")}</p>
+      <p class="demo-meta">effect history: {() => history().join(' → ')}</p>
       <p class="demo-meta">onUpdate fired: {() => updateCount()} times</p>
-      <p class="demo-meta">Last update: {() => lastUpdate() || "never"}</p>
+      <p class="demo-meta">Last update: {() => lastUpdate() || 'never'}</p>
       <CodeBlock
         code={`const value = signal(0)
 const updateCount = signal(0)
@@ -430,23 +430,23 @@ function RefDemo() {
   onMount(() => {
     const canvas = canvasRef.current
     if (!canvas) return undefined
-    const ctx = canvas.getContext("2d")
+    const ctx = canvas.getContext('2d')
     if (!ctx) return undefined
 
     // Draw initial text via ref
-    ctx.fillStyle = "#1a1a1f"
+    ctx.fillStyle = '#1a1a1f'
     ctx.fillRect(0, 0, 200, 60)
-    ctx.fillStyle = "#7c6af7"
-    ctx.font = "14px monospace"
-    ctx.fillText("Canvas ref works!", 30, 35)
+    ctx.fillStyle = '#7c6af7'
+    ctx.font = '14px monospace'
+    ctx.fillText('Canvas ref works!', 30, 35)
     return undefined
   })
 
   const drawOnCanvas = () => {
     clickCount.update((n) => n + 1)
-    const ctx = canvasRef.current?.getContext("2d")
+    const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
-    const colors = ["#7c6af7", "#f06060", "#4ecdc4", "#ffe66d"]
+    const colors = ['#7c6af7', '#f06060', '#4ecdc4', '#ffe66d']
     ctx.fillStyle = colors[clickCount() % colors.length] as string
     const x = Math.random() * 160 + 20
     const y = Math.random() * 30 + 15
@@ -472,13 +472,13 @@ function RefDemo() {
         <button
           type="button"
           onClick={() => {
-            const ctx = canvasRef.current?.getContext("2d")
+            const ctx = canvasRef.current?.getContext('2d')
             if (!ctx) return
-            ctx.fillStyle = "#1a1a1f"
+            ctx.fillStyle = '#1a1a1f'
             ctx.fillRect(0, 0, 200, 60)
-            ctx.fillStyle = "#7c6af7"
-            ctx.font = "14px monospace"
-            ctx.fillText("Canvas cleared!", 35, 35)
+            ctx.fillStyle = '#7c6af7'
+            ctx.font = '14px monospace'
+            ctx.fillText('Canvas cleared!', 35, 35)
             clickCount.set(0)
           }}
         >
@@ -549,7 +549,7 @@ function DynamicListDemo() {
 
   const reverse = () => {
     items.update((list) => [...list].reverse())
-    log("Reversed list")
+    log('Reversed list')
   }
 
   const swap = () => {
@@ -563,7 +563,7 @@ function DynamicListDemo() {
       copy[i] = tmp
       return copy
     })
-    log("Swapped first & last")
+    log('Swapped first & last')
   }
 
   return (
@@ -609,7 +609,7 @@ function DynamicListDemo() {
         />
       </ul>
       <p class="demo-meta">Count: {() => items().length}</p>
-      <pre class="log-output">{() => opLog().join("\n")}</pre>
+      <pre class="log-output">{() => opLog().join('\n')}</pre>
       <CodeBlock
         code={`const items = signal([
   { id: 1, label: "Item 1" },
@@ -669,7 +669,7 @@ function EffectCleanupDemo() {
           2s
         </button>
         <button type="button" onClick={() => running.update((r) => !r)}>
-          {() => (running() ? "Pause" : "Resume")}
+          {() => (running() ? 'Pause' : 'Resume')}
         </button>
         <button type="button" onClick={() => ticks.set(0)}>
           Reset
@@ -705,7 +705,7 @@ effect(() => {
 // Tab-based view switching with Show.
 
 function TabSwitchDemo() {
-  const tab = signal<"info" | "settings" | "data">("info")
+  const tab = signal<'info' | 'settings' | 'data'>('info')
 
   return (
     <div class="demo-section">
@@ -716,35 +716,35 @@ function TabSwitchDemo() {
       <div class="demo-row">
         <button
           type="button"
-          style={() => (tab() === "info" ? "border-color: var(--accent)" : "")}
-          onClick={() => tab.set("info")}
+          style={() => (tab() === 'info' ? 'border-color: var(--accent)' : '')}
+          onClick={() => tab.set('info')}
         >
           Info
         </button>
         <button
           type="button"
-          style={() => (tab() === "settings" ? "border-color: var(--accent)" : "")}
-          onClick={() => tab.set("settings")}
+          style={() => (tab() === 'settings' ? 'border-color: var(--accent)' : '')}
+          onClick={() => tab.set('settings')}
         >
           Settings
         </button>
         <button
           type="button"
-          style={() => (tab() === "data" ? "border-color: var(--accent)" : "")}
-          onClick={() => tab.set("data")}
+          style={() => (tab() === 'data' ? 'border-color: var(--accent)' : '')}
+          onClick={() => tab.set('data')}
         >
           Data
         </button>
       </div>
-      <Show when={() => tab() === "info"}>
+      <Show when={() => tab() === 'info'}>
         <div class="demo-box">
           <p>This is the info panel. Other tabs are not in the DOM.</p>
         </div>
       </Show>
-      <Show when={() => tab() === "settings"}>
+      <Show when={() => tab() === 'settings'}>
         <SettingsPanel />
       </Show>
-      <Show when={() => tab() === "data"}>
+      <Show when={() => tab() === 'data'}>
         <DataPanel />
       </Show>
       <CodeBlock
@@ -768,7 +768,7 @@ function TabSwitchDemo() {
 }
 
 function SettingsPanel() {
-  const theme = signal("dark")
+  const theme = signal('dark')
   const fontSize = signal(15)
 
   onMount(() => undefined)
@@ -811,10 +811,10 @@ function DataPanel() {
       value: Math.floor(Math.random() * 100),
     })),
   )
-  const sortDir = signal<"asc" | "desc">("asc")
+  const sortDir = signal<'asc' | 'desc'>('asc')
 
   const sorted = computed(() =>
-    [...rows()].sort((a, b) => (sortDir() === "asc" ? a.value - b.value : b.value - a.value)),
+    [...rows()].sort((a, b) => (sortDir() === 'asc' ? a.value - b.value : b.value - a.value)),
   )
 
   return (
@@ -822,7 +822,7 @@ function DataPanel() {
       <p>
         Data table — {() => rows().length} rows, sorted {() => sortDir()}.
       </p>
-      <button type="button" onClick={() => sortDir.update((d) => (d === "asc" ? "desc" : "asc"))}>
+      <button type="button" onClick={() => sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'))}>
         Toggle Sort
       </button>
       <ul class="user-list" style="max-height: 200px; overflow-y: auto">
@@ -844,7 +844,7 @@ function DataPanel() {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export function Advanced() {
-  useHead(() => ({ title: "Advanced Demos — Pyreon" }))
+  useHead(() => ({ title: 'Advanced Demos — Pyreon' }))
 
   return (
     <div class="showcase">

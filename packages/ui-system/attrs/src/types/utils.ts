@@ -1,4 +1,4 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 
 // ─── Base Types ───────────────────────────────────────────────
 

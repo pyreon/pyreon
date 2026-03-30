@@ -1,12 +1,12 @@
-import type { ClassValue, Props } from "@pyreon/core"
-import { cx, normalizeStyleValue, toKebabCase } from "@pyreon/core"
+import type { ClassValue, Props } from '@pyreon/core'
+import { cx, normalizeStyleValue, toKebabCase } from '@pyreon/core'
 
-import { batch, renderEffect } from "@pyreon/reactivity"
-import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
+import { batch, renderEffect } from '@pyreon/reactivity'
+import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
 
 type Cleanup = () => void
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 // ─── Configurable sanitizer ──────────────────────────────────────────────────
 
@@ -36,75 +36,75 @@ export function setSanitizer(fn: SanitizeFn | null): void {
 
 // Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)
 const SAFE_TAGS = new Set([
-  "a",
-  "abbr",
-  "address",
-  "article",
-  "aside",
-  "b",
-  "bdi",
-  "bdo",
-  "blockquote",
-  "br",
-  "caption",
-  "cite",
-  "code",
-  "col",
-  "colgroup",
-  "dd",
-  "del",
-  "details",
-  "dfn",
-  "div",
-  "dl",
-  "dt",
-  "em",
-  "figcaption",
-  "figure",
-  "footer",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "header",
-  "hr",
-  "i",
-  "ins",
-  "kbd",
-  "li",
-  "main",
-  "mark",
-  "nav",
-  "ol",
-  "p",
-  "pre",
-  "q",
-  "rp",
-  "rt",
-  "ruby",
-  "s",
-  "samp",
-  "section",
-  "small",
-  "span",
-  "strong",
-  "sub",
-  "summary",
-  "sup",
-  "table",
-  "tbody",
-  "td",
-  "tfoot",
-  "th",
-  "thead",
-  "time",
-  "tr",
-  "u",
-  "ul",
-  "var",
-  "wbr",
+  'a',
+  'abbr',
+  'address',
+  'article',
+  'aside',
+  'b',
+  'bdi',
+  'bdo',
+  'blockquote',
+  'br',
+  'caption',
+  'cite',
+  'code',
+  'col',
+  'colgroup',
+  'dd',
+  'del',
+  'details',
+  'dfn',
+  'div',
+  'dl',
+  'dt',
+  'em',
+  'figcaption',
+  'figure',
+  'footer',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hr',
+  'i',
+  'ins',
+  'kbd',
+  'li',
+  'main',
+  'mark',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'section',
+  'small',
+  'span',
+  'strong',
+  'sub',
+  'summary',
+  'sup',
+  'table',
+  'tbody',
+  'td',
+  'tfoot',
+  'th',
+  'thead',
+  'time',
+  'tr',
+  'u',
+  'ul',
+  'var',
+  'wbr',
 ])
 
 // Attributes that can carry executable code
@@ -116,7 +116,7 @@ const UNSAFE_ATTR_RE = /^on/i
  * and blocks javascript:/data: URLs in href/src/action attributes.
  */
 function fallbackSanitize(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html")
+  const doc = new DOMParser().parseFromString(html, 'text/html')
   sanitizeNode(doc.body)
   return doc.body.innerHTML
 }
@@ -173,7 +173,7 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
   let first: Cleanup | null = null
   let cleanups: Cleanup[] | null = null
   for (const key in props) {
-    if (key === "key" || key === "ref" || key === "children") continue
+    if (key === 'key' || key === 'ref' || key === 'children') continue
     const c = applyProp(el, key, props[key])
     if (c) {
       if (!first) {
@@ -203,7 +203,7 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  * Bind an event handler (onClick → "click") with batching + delegation support.
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
-  if (typeof value !== "function") {
+  if (typeof value !== 'function') {
     if (__DEV__) {
       console.warn(
         `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
@@ -233,8 +233,8 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
   // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer
-  if (key === "innerHTML") {
-    if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === "function") {
+  if (key === 'innerHTML') {
+    if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === 'function') {
       ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(value as string)
     } else {
       ;(el as HTMLElement).innerHTML = sanitizeHtml(value as string)
@@ -242,10 +242,10 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     return null
   }
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
-  if (key === "dangerouslySetInnerHTML") {
+  if (key === 'dangerouslySetInnerHTML') {
     if (__DEV__) {
       console.warn(
-        "[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.",
+        '[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.',
       )
     }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
@@ -255,7 +255,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // Reactive prop — function that returns the actual value
   // Uses renderEffect (lighter than effect — no scope registration, no WeakMap)
   // since lifecycle is managed by mountElement's cleanup array.
-  if (typeof value === "function") {
+  if (typeof value === 'function') {
     const dispose = renderEffect(() => setStaticProp(el, key, (value as () => unknown)()))
     return dispose
   }
@@ -265,42 +265,42 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 }
 
 // Attributes that carry URLs and must be guarded against javascript:/data: injection.
-const URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"])
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
 const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 /** Apply a style prop (string or object). */
 function applyStyleProp(el: HTMLElement, value: unknown): void {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     el.style.cssText = value
-  } else if (value != null && typeof value === "object") {
+  } else if (value != null && typeof value === 'object') {
     const obj = value as Record<string, unknown>
     for (const k in obj) {
       const css = normalizeStyleValue(k, obj[k])
-      el.style.setProperty(k.startsWith("--") ? k : toKebabCase(k), css)
+      el.style.setProperty(k.startsWith('--') ? k : toKebabCase(k), css)
     }
   }
 }
 
 function applyClassProp(el: Element, value: unknown): void {
-  const resolved = typeof value === "string" ? value : cx(value as ClassValue)
-  el.setAttribute("class", resolved || "")
+  const resolved = typeof value === 'string' ? value : cx(value as ClassValue)
+  el.setAttribute('class', resolved || '')
 }
 
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
-  if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
+  if (URL_ATTRS.has(key) && typeof value === 'string' && UNSAFE_URL_RE.test(value)) {
     if (__DEV__) {
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
     }
     return
   }
 
-  if (key === "class" || key === "className") {
+  if (key === 'class' || key === 'className') {
     applyClassProp(el, value)
     return
   }
 
-  if (key === "style") {
+  if (key === 'style') {
     applyStyleProp(el as HTMLElement, value)
     return
   }
@@ -310,8 +310,8 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
-  if (typeof value === "boolean") {
-    if (value) el.setAttribute(key, "")
+  if (typeof value === 'boolean') {
+    if (value) el.setAttribute(key, '')
     else el.removeAttribute(key)
     return
   }

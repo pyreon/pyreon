@@ -1,20 +1,20 @@
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
-import { MergeView } from "@codemirror/merge"
-import { EditorState, type Extension } from "@codemirror/state"
-import { EditorView } from "@codemirror/view"
-import type { VNodeChild } from "@pyreon/core"
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { watch } from "@pyreon/reactivity"
-import { loadLanguage } from "../languages"
-import { resolveTheme } from "../themes"
-import type { DiffEditorProps } from "../types"
+import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { MergeView } from '@codemirror/merge'
+import { EditorState, type Extension } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import type { VNodeChild } from '@pyreon/core'
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { watch } from '@pyreon/reactivity'
+import { loadLanguage } from '../languages'
+import { resolveTheme } from '../themes'
+import type { DiffEditorProps } from '../types'
 
 const readText = (value: string | Signal<string>): string =>
-  typeof value === "string" ? value : value()
+  typeof value === 'string' ? value : value()
 
 const isSignal = (value: string | Signal<string>): value is Signal<string> =>
-  typeof value === "function"
+  typeof value === 'function'
 
 /**
  * Side-by-side or inline diff editor using @codemirror/merge.
@@ -34,7 +34,7 @@ const isSignal = (value: string | Signal<string>): value is Signal<string> =>
  * ```
  */
 export function DiffEditor(props: DiffEditorProps): VNodeChild {
-  const { original, modified, language = "plain", theme = "light", readOnly = true } = props
+  const { original, modified, language = 'plain', theme = 'light', readOnly = true } = props
 
   let mergeView: MergeView | null = null
   const cleanups: (() => void)[] = []
@@ -57,7 +57,7 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
     const modifiedText = readText(modified)
 
     // Clear previous content
-    ;(el as HTMLElement).innerHTML = ""
+    ;(el as HTMLElement).innerHTML = ''
 
     mergeView = new MergeView({
       a: { doc: originalText, extensions },
@@ -96,9 +96,9 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
     mergeView = null
   })
 
-  const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ""}`
+  const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ''}`
 
   return (
-    <div ref={containerRef} class={`pyreon-diff-editor ${props.class ?? ""}`} style={baseStyle} />
+    <div ref={containerRef} class={`pyreon-diff-editor ${props.class ?? ''}`} style={baseStyle} />
   )
 }

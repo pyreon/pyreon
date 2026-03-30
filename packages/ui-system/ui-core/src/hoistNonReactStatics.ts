@@ -25,7 +25,7 @@ const hoistNonReactStatics = <T, S>(
   source: S,
   excludeList?: Record<string, true>,
 ): T => {
-  if (typeof source === "string") return target
+  if (typeof source === 'string') return target
 
   const proto = Object.getPrototypeOf(source)
   if (proto && proto !== Object.prototype) {

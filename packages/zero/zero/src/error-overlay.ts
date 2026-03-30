@@ -3,8 +3,8 @@
  * Renders a styled HTML page with the error stack trace.
  */
 export function renderErrorOverlay(error: Error): string {
-  const title = escapeHtml(error.message || "Unknown error")
-  const stack = escapeHtml(error.stack || "")
+  const title = escapeHtml(error.message || 'Unknown error')
+  const stack = escapeHtml(error.stack || '')
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -96,17 +96,17 @@ export function renderErrorOverlay(error: Error): string {
 
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 function formatStack(stack: string): string {
   return stack
-    .split("\n")
+    .split('\n')
     .map((line) => {
-      if (line.includes("at ")) {
+      if (line.includes('at ')) {
         const fileMatch = line.match(/\(([^)]+)\)/)
         if (fileMatch) {
           return line.replace(fileMatch[0], `(<span class="file">${fileMatch[1]}</span>)`)
@@ -114,5 +114,5 @@ function formatStack(stack: string): string {
       }
       return line
     })
-    .join("\n")
+    .join('\n')
 }

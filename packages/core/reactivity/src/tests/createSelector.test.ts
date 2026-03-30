@@ -1,9 +1,9 @@
-import { createSelector } from "../createSelector"
-import { effect } from "../effect"
-import { signal } from "../signal"
+import { createSelector } from '../createSelector'
+import { effect } from '../effect'
+import { signal } from '../signal'
 
-describe("createSelector", () => {
-  test("returns true for the currently selected value", () => {
+describe('createSelector', () => {
+  test('returns true for the currently selected value', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -14,7 +14,7 @@ describe("createSelector", () => {
     expect(result).toBe(true)
   })
 
-  test("returns false for non-selected values", () => {
+  test('returns false for non-selected values', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -25,7 +25,7 @@ describe("createSelector", () => {
     expect(result).toBe(false)
   })
 
-  test("only notifies affected subscribers when selection changes", () => {
+  test('only notifies affected subscribers when selection changes', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -57,7 +57,7 @@ describe("createSelector", () => {
     expect(runs3).toBe(1) // unaffected
   })
 
-  test("does not notify when source changes to the same value", () => {
+  test('does not notify when source changes to the same value', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -71,7 +71,7 @@ describe("createSelector", () => {
     expect(runs).toBe(1)
   })
 
-  test("works when changing to a value with no subscribers", () => {
+  test('works when changing to a value with no subscribers', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -86,7 +86,7 @@ describe("createSelector", () => {
     expect(runs).toBe(2) // old bucket (1) notified
   })
 
-  test("reuses host objects for the same value", () => {
+  test('reuses host objects for the same value', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -108,7 +108,7 @@ describe("createSelector", () => {
     expect(result2).toBe(false)
   })
 
-  test("tracks correctly outside an effect (no activeEffect)", () => {
+  test('tracks correctly outside an effect (no activeEffect)', () => {
     const selected = signal(1)
     const isSelected = createSelector(() => selected())
 
@@ -117,8 +117,8 @@ describe("createSelector", () => {
     expect(isSelected(2)).toBe(false)
   })
 
-  describe("large subscriber sets", () => {
-    test("many subscribers (20+), only affected buckets notified", () => {
+  describe('large subscriber sets', () => {
+    test('many subscribers (20+), only affected buckets notified', () => {
       const selected = signal(0)
       const isSelected = createSelector(() => selected())
 
@@ -151,8 +151,8 @@ describe("createSelector", () => {
       expect(unaffectedAfterSecond).toBe(true)
     })
 
-    test("selector with undefined and null values", () => {
-      const selected = signal<string | null | undefined>("a")
+    test('selector with undefined and null values', () => {
+      const selected = signal<string | null | undefined>('a')
       const isSelected = createSelector(() => selected())
 
       let nullRuns = 0
@@ -168,7 +168,7 @@ describe("createSelector", () => {
         undefRuns++
       })
       effect(() => {
-        isSelected("a")
+        isSelected('a')
         aRuns++
       })
 
@@ -189,7 +189,7 @@ describe("createSelector", () => {
       expect(aRuns).toBe(2) // unaffected
     })
 
-    test("rapid selector changes", () => {
+    test('rapid selector changes', () => {
       const selected = signal(0)
       const isSelected = createSelector(() => selected())
 

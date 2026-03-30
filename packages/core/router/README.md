@@ -11,18 +11,20 @@ bun add @pyreon/router
 ## Quick Start
 
 ```tsx
-import { createRouter, RouterProvider, RouterView, RouterLink } from "@pyreon/router"
+import { createRouter, RouterProvider, RouterView, RouterLink } from '@pyreon/router'
 
 const router = createRouter({
   routes: [
-    { path: "/", component: Home },
-    { path: "/user/:id", component: UserPage, name: "user" },
-    { path: "/admin", component: AdminLayout, children: [
-      { path: "users", component: AdminUsers },
-    ]},
-    { path: "/old-path", redirect: "/new-path" },
-    { path: "/dashboard", component: lazy(() => import("./Dashboard")) },
-    { path: "(.*)", component: NotFound },
+    { path: '/', component: Home },
+    { path: '/user/:id', component: UserPage, name: 'user' },
+    {
+      path: '/admin',
+      component: AdminLayout,
+      children: [{ path: 'users', component: AdminUsers }],
+    },
+    { path: '/old-path', redirect: '/new-path' },
+    { path: '/dashboard', component: lazy(() => import('./Dashboard')) },
+    { path: '(.*)', component: NotFound },
   ],
 })
 
@@ -38,7 +40,7 @@ const App = () => (
 Route parameters are inferred from path strings:
 
 ```tsx
-const route = useRoute<"/user/:id">()
+const route = useRoute<'/user/:id'>()
 route().params.id // string
 ```
 
@@ -46,7 +48,7 @@ route().params.id // string
 
 ```tsx
 const router = useRouter()
-router.push({ name: "user", params: { id: "42" } })
+router.push({ name: 'user', params: { id: '42' } })
 ```
 
 ## RouterLink
@@ -59,7 +61,7 @@ router.push({ name: "user", params: { id: "42" } })
 ## Data Loaders
 
 ```tsx
-import { useLoaderData, prefetchLoaderData } from "@pyreon/router"
+import { useLoaderData, prefetchLoaderData } from '@pyreon/router'
 
 const data = useLoaderData<typeof loader>()
 ```

@@ -25,8 +25,11 @@ bun add @pyreon/attrs
 import attrs from '@pyreon/attrs'
 import { Element } from '@pyreon/elements'
 
-const Button = attrs({ name: 'Button', component: Element })
-  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+const Button = attrs({ name: 'Button', component: Element }).attrs({
+  tag: 'button',
+  alignX: 'center',
+  alignY: 'center',
+})
 
 // Renders Element with tag="button", alignX="center", alignY="center"
 Button({ label: 'Click me' })
@@ -43,7 +46,7 @@ Creates an attrs-enhanced component.
 
 ```ts
 const Component = attrs({
-  name: 'ComponentName',    // required — sets displayName
+  name: 'ComponentName', // required — sets displayName
   component: BaseComponent, // required — the Pyreon component to wrap
 })
 ```
@@ -110,11 +113,13 @@ const WithoutTracking = Enhanced.compose({ withTracking: null })
 Attach metadata accessible via the `.meta` property.
 
 ```ts
-const Button = attrs({ name: 'Button', component: Element })
-  .statics({ category: 'action', sizes: ['sm', 'md', 'lg'] })
+const Button = attrs({ name: 'Button', component: Element }).statics({
+  category: 'action',
+  sizes: ['sm', 'md', 'lg'],
+})
 
 Button.meta.category // => 'action'
-Button.meta.sizes    // => ['sm', 'md', 'lg']
+Button.meta.sizes // => ['sm', 'md', 'lg']
 ```
 
 ### isAttrsComponent(value)
@@ -125,7 +130,7 @@ Runtime type guard.
 import { isAttrsComponent } from '@pyreon/attrs'
 
 isAttrsComponent(Button) // => true
-isAttrsComponent('div')  // => false
+isAttrsComponent('div') // => false
 ```
 
 ### getDefaultAttrs()
@@ -143,9 +148,9 @@ Each `.attrs<P>()` call adds `P` to the component's prop types through `MergeTyp
 ```ts
 const Base = attrs({ name: 'Base', component: Element })
 
-const Typed = Base
-  .attrs<{ variant: 'primary' | 'secondary' }>({ variant: 'primary' })
-  .attrs<{ size?: 'sm' | 'md' | 'lg' }>({})
+const Typed = Base.attrs<{ variant: 'primary' | 'secondary' }>({ variant: 'primary' }).attrs<{
+  size?: 'sm' | 'md' | 'lg'
+}>({})
 
 // Typed accepts: Element props + { variant, size? }
 Typed({ variant: 'secondary', size: 'lg', label: 'Hello' })
@@ -161,9 +166,9 @@ type ExtendedProps = typeof Typed.$$extendedTypes
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package         | Version  |
+| --------------- | -------- |
+| @pyreon/core    | >= 0.0.1 |
 | @pyreon/ui-core | >= 0.0.1 |
 
 ## License

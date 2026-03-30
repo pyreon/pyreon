@@ -1,5 +1,5 @@
-import { sanitizeHref } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref } from '../sanitize'
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
 
 /**
  * WhatsApp renderer — outputs formatted text using WhatsApp's markup.
@@ -7,32 +7,32 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === 'string' ? { header: col } : col
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
-    .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
+    .join('')
 }
 
 function renderNode(node: DocNode): string {
   const p = node.props
 
   switch (node.type) {
-    case "document":
-    case "page":
-    case "section":
-    case "row":
-    case "column":
-      return node.children.map((c) => (typeof c === "string" ? c : renderNode(c))).join("")
+    case 'document':
+    case 'page':
+    case 'section':
+    case 'row':
+    case 'column':
+      return node.children.map((c) => (typeof c === 'string' ? c : renderNode(c))).join('')
 
-    case "heading": {
+    case 'heading': {
       const text = getTextContent(node.children)
       return `*${text}*\n\n`
     }
 
-    case "text": {
+    case 'text': {
       let text = getTextContent(node.children)
       if (p.bold) text = `*${text}*`
       if (p.italic) text = `_${text}_`
@@ -40,64 +40,64 @@ function renderNode(node: DocNode): string {
       return `${text}\n\n`
     }
 
-    case "link": {
+    case 'link': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
       return `${text}: ${href}\n\n`
     }
 
-    case "image":
+    case 'image':
       // WhatsApp doesn't support inline images in text
-      return ""
+      return ''
 
-    case "table": {
+    case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
       const rows = (p.rows ?? []) as (string | number)[][]
 
-      const header = columns.map((c) => `*${c.header}*`).join(" | ")
-      const body = rows.map((row) => row.map((c) => String(c ?? "")).join(" | ")).join("\n")
+      const header = columns.map((c) => `*${c.header}*`).join(' | ')
+      const body = rows.map((row) => row.map((c) => String(c ?? '')).join(' | ')).join('\n')
 
       let result = `${header}\n${body}\n\n`
       if (p.caption) result = `_${p.caption}_\n${result}`
       return result
     }
 
-    case "list": {
+    case 'list': {
       const ordered = p.ordered as boolean | undefined
       return `${node.children
-        .filter((c): c is DocNode => typeof c !== "string")
+        .filter((c): c is DocNode => typeof c !== 'string')
         .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : "•"
+          const prefix = ordered ? `${i + 1}.` : '•'
           return `${prefix} ${getTextContent(item.children)}`
         })
-        .join("\n")}\n\n`
+        .join('\n')}\n\n`
     }
 
-    case "code": {
+    case 'code': {
       const text = getTextContent(node.children)
       return `\`\`\`${text}\`\`\`\n\n`
     }
 
-    case "divider":
-    case "page-break":
-      return "───────────\n\n"
+    case 'divider':
+    case 'page-break':
+      return '───────────\n\n'
 
-    case "spacer":
-      return "\n"
+    case 'spacer':
+      return '\n'
 
-    case "button": {
+    case 'button': {
       const href = sanitizeHref(p.href as string)
       const text = getTextContent(node.children)
       return `*${text}*: ${href}\n\n`
     }
 
-    case "quote": {
+    case 'quote': {
       const text = getTextContent(node.children)
       return `> ${text}\n\n`
     }
 
     default:
-      return ""
+      return ''
   }
 }
 

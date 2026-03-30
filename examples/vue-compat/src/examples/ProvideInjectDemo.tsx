@@ -1,21 +1,21 @@
-import { inject, provide, ref } from "vue"
-import Demo from "./Demo"
+import { inject, provide, ref } from 'vue'
+import Demo from './Demo'
 
-const THEME_KEY = Symbol("theme")
+const THEME_KEY = Symbol('theme')
 
 function ThemeProvider(props: { children?: any }) {
-  const theme = ref("dark")
+  const theme = ref('dark')
   provide(THEME_KEY, theme)
   return (
     <>
       <div class="row">
-        <button type="button" onClick={() => (theme.value = "dark")}>
+        <button type="button" onClick={() => (theme.value = 'dark')}>
           Dark
         </button>
-        <button type="button" onClick={() => (theme.value = "light")}>
+        <button type="button" onClick={() => (theme.value = 'light')}>
           Light
         </button>
-        <button type="button" onClick={() => (theme.value = "auto")}>
+        <button type="button" onClick={() => (theme.value = 'auto')}>
           Auto
         </button>
       </div>
@@ -28,7 +28,7 @@ function ThemeConsumer() {
   const theme = inject<{ value: string }>(THEME_KEY)
   return (
     <p>
-      Injected theme: <strong>{theme ? theme.value : "none"}</strong>
+      Injected theme: <strong>{theme ? theme.value : 'none'}</strong>
     </p>
   )
 }

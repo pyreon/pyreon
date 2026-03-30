@@ -1,4 +1,4 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── CORS middleware ────────────────────────────────────────────────────────
 
@@ -17,8 +17,8 @@ export interface CorsConfig {
   maxAge?: number
 }
 
-const DEFAULT_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-const DEFAULT_HEADERS = ["Content-Type", "Authorization"]
+const DEFAULT_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+const DEFAULT_HEADERS = ['Content-Type', 'Authorization']
 
 /**
  * CORS middleware — handles preflight requests and sets appropriate
@@ -37,7 +37,7 @@ const DEFAULT_HEADERS = ["Content-Type", "Authorization"]
  */
 export function corsMiddleware(config: CorsConfig = {}): Middleware {
   const {
-    origin = "*",
+    origin = '*',
     methods = DEFAULT_METHODS,
     allowedHeaders = DEFAULT_HEADERS,
     exposedHeaders = [],
@@ -46,45 +46,45 @@ export function corsMiddleware(config: CorsConfig = {}): Middleware {
   } = config
 
   return (ctx: MiddlewareContext) => {
-    const requestOrigin = ctx.req.headers.get("origin") ?? ""
+    const requestOrigin = ctx.req.headers.get('origin') ?? ''
     const resolvedOrigin = resolveOrigin(origin, requestOrigin)
 
     if (!resolvedOrigin) return
 
     // Set CORS headers on all responses
-    ctx.headers.set("Access-Control-Allow-Origin", resolvedOrigin)
+    ctx.headers.set('Access-Control-Allow-Origin', resolvedOrigin)
     if (credentials) {
-      ctx.headers.set("Access-Control-Allow-Credentials", "true")
+      ctx.headers.set('Access-Control-Allow-Credentials', 'true')
     }
     if (exposedHeaders.length > 0) {
-      ctx.headers.set("Access-Control-Expose-Headers", exposedHeaders.join(", "))
+      ctx.headers.set('Access-Control-Expose-Headers', exposedHeaders.join(', '))
     }
-    if (resolvedOrigin !== "*") {
-      ctx.headers.append("Vary", "Origin")
+    if (resolvedOrigin !== '*') {
+      ctx.headers.append('Vary', 'Origin')
     }
 
     // Handle preflight
-    if (ctx.req.method === "OPTIONS") {
+    if (ctx.req.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
         headers: {
-          "Access-Control-Allow-Origin": resolvedOrigin,
-          "Access-Control-Allow-Methods": methods.join(", "),
-          "Access-Control-Allow-Headers": allowedHeaders.join(", "),
-          "Access-Control-Max-Age": String(maxAge),
-          ...(credentials ? { "Access-Control-Allow-Credentials": "true" } : {}),
+          'Access-Control-Allow-Origin': resolvedOrigin,
+          'Access-Control-Allow-Methods': methods.join(', '),
+          'Access-Control-Allow-Headers': allowedHeaders.join(', '),
+          'Access-Control-Max-Age': String(maxAge),
+          ...(credentials ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
         },
       })
     }
   }
 }
 
-function resolveOrigin(config: CorsConfig["origin"], requestOrigin: string): string | null {
-  if (config === "*") return "*"
-  if (typeof config === "string") {
+function resolveOrigin(config: CorsConfig['origin'], requestOrigin: string): string | null {
+  if (config === '*') return '*'
+  if (typeof config === 'string') {
     return config === requestOrigin ? config : null
   }
-  if (typeof config === "function") {
+  if (typeof config === 'function') {
     return config(requestOrigin) ? requestOrigin : null
   }
   if (Array.isArray(config)) {

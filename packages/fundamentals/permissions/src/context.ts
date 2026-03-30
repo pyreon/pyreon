@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import type { Permissions } from "./types"
+import type { VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
+import type { Permissions } from './types'
 
 const PermissionsContext = createContext<Permissions | null>(null)
 
@@ -40,7 +40,7 @@ export function usePermissions(): Permissions {
   const instance = useContext(PermissionsContext)
   if (!instance) {
     throw new Error(
-      "[@pyreon/permissions] usePermissions() must be used within <PermissionsProvider>.",
+      '[@pyreon/permissions] usePermissions() must be used within <PermissionsProvider>.',
     )
   }
   return instance

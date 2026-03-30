@@ -1,5 +1,5 @@
-import { setCurrentHooks } from "./lifecycle"
-import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from "./types"
+import { setCurrentHooks } from './lifecycle'
+import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from './types'
 
 /**
  * Identity wrapper — marks a function as a Pyreon component and preserves its type.

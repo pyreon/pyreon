@@ -13,24 +13,24 @@
  * Usage: bun scripts/bench/core/head.ts
  */
 
-import { createHead, renderSSRHead } from "unhead/server"
-import type { VNode } from "../../../packages/core/core/src/index"
-import { h } from "../../../packages/core/core/src/index"
-import type { HeadEntry, HeadTag } from "../../../packages/core/head/src/context"
-import { createHeadContext } from "../../../packages/core/head/src/context"
-import { renderWithHead } from "../../../packages/core/head/src/ssr"
+import { createHead, renderSSRHead } from 'unhead/server'
+import type { VNode } from '../../../packages/core/core/src/index'
+import { h } from '../../../packages/core/core/src/index'
+import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
+import { createHeadContext } from '../../../packages/core/head/src/context'
+import { renderWithHead } from '../../../packages/core/head/src/ssr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeApp(): VNode {
-  return h("div", null, h("h1", null, "Benchmark"), h("p", null, "Hello world"))
+  return h('div', null, h('h1', null, 'Benchmark'), h('p', null, 'Hello world'))
 }
 
 function makePyreonTags(count: number): HeadTag[] {
-  const tags: HeadTag[] = [{ tag: "title", key: "title", children: "Benchmark Page" }]
+  const tags: HeadTag[] = [{ tag: 'title', key: 'title', children: 'Benchmark Page' }]
   for (let i = 0; i < count; i++) {
     tags.push({
-      tag: "meta",
+      tag: 'meta',
       key: `meta-${i}`,
       props: {
         name: `description-${i}`,
@@ -44,9 +44,9 @@ function makePyreonTags(count: number): HeadTag[] {
 function makePyreonEntry(tagCount: number): HeadEntry {
   return {
     tags: makePyreonTags(tagCount),
-    titleTemplate: "%s | Pyreon App",
-    htmlAttrs: { lang: "en", dir: "ltr" },
-    bodyAttrs: { class: "dark" },
+    titleTemplate: '%s | Pyreon App',
+    htmlAttrs: { lang: 'en', dir: 'ltr' },
+    bodyAttrs: { class: 'dark' },
   }
 }
 
@@ -58,7 +58,7 @@ function makeUnheadInput(count: number): { title: string; meta: Record<string, s
       content: `Content for meta tag ${i} with <special> & "chars"`,
     })
   }
-  return { title: "Benchmark Page", meta }
+  return { title: 'Benchmark Page', meta }
 }
 
 // ─── Benchmark harness ───────────────────────────────────────────────────────
@@ -160,16 +160,16 @@ async function benchPyreonHeadOnly(tagCount: number): Promise<BenchResult> {
 
 // ─── Run ─────────────────────────────────────────────────────────────────────
 
-console.log("Head Package Benchmark (Bun)")
-console.log("Pyreon vs Unhead (Vue/Nuxt)")
-console.log(`${"=".repeat(70)}\n`)
+console.log('Head Package Benchmark (Bun)')
+console.log('Pyreon vs Unhead (Vue/Nuxt)')
+console.log(`${'='.repeat(70)}\n`)
 
 const tagCounts = [5, 20, 50]
 
 // Section 1: Pyreon resolve (cached vs dirty)
-console.log("── Pyreon Context Resolve ──────────────────────────────────────────")
-console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
-console.log("-".repeat(64))
+console.log('── Pyreon Context Resolve ──────────────────────────────────────────')
+console.log(`${'test'.padEnd(36)}${'ops/sec'.padStart(14)}${'avg ns/op'.padStart(14)}`)
+console.log('-'.repeat(64))
 
 for (const count of tagCounts) {
   for (const r of [benchResolveCached(count), benchResolveDirty(count)]) {
@@ -180,9 +180,9 @@ for (const count of tagCounts) {
 }
 
 // Section 2: Head-only SSR serialization (both)
-console.log("\n── Head SSR Serialization (head-only, no app render) ─────────────")
-console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
-console.log("-".repeat(64))
+console.log('\n── Head SSR Serialization (head-only, no app render) ─────────────')
+console.log(`${'test'.padEnd(36)}${'ops/sec'.padStart(14)}${'avg ns/op'.padStart(14)}`)
+console.log('-'.repeat(64))
 
 for (const count of tagCounts) {
   const pyreon = await benchPyreonHeadOnly(count)
@@ -195,9 +195,9 @@ for (const count of tagCounts) {
 }
 
 // Section 3: Full renderWithHead (Pyreon only — includes renderToString)
-console.log("\n── Full SSR (renderToString + head) ────────────────────────────────")
-console.log(`${"test".padEnd(36)}${"ops/sec".padStart(14)}${"avg ns/op".padStart(14)}`)
-console.log("-".repeat(64))
+console.log('\n── Full SSR (renderToString + head) ────────────────────────────────')
+console.log(`${'test'.padEnd(36)}${'ops/sec'.padStart(14)}${'avg ns/op'.padStart(14)}`)
+console.log('-'.repeat(64))
 
 for (const count of tagCounts) {
   const r = await benchPyreonSSR(count)

@@ -10,18 +10,23 @@ description: Collection of reactive hooks for DOM interactions, media queries, f
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/hooks
 ```
+
 ```bash [bun]
 bun add @pyreon/hooks
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/hooks
 ```
+
 ```bash [yarn]
 yarn add @pyreon/hooks
 ```
+
 :::
 
 ## useToggle
@@ -36,18 +41,18 @@ function useToggle(initial?: boolean): UseToggleResult
 
 ### Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
+| Parameter | Type      | Default | Description          |
+| --------- | --------- | ------- | -------------------- |
 | `initial` | `boolean` | `false` | Initial toggle state |
 
 ### Returns: `UseToggleResult`
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `value` | `() => boolean` | Reactive boolean getter |
-| `toggle` | `() => void` | Flip the current value |
-| `setTrue` | `() => void` | Set to `true` |
-| `setFalse` | `() => void` | Set to `false` |
+| Property   | Type            | Description             |
+| ---------- | --------------- | ----------------------- |
+| `value`    | `() => boolean` | Reactive boolean getter |
+| `toggle`   | `() => void`    | Flip the current value  |
+| `setTrue`  | `() => void`    | Set to `true`           |
+| `setFalse` | `() => void`    | Set to `false`          |
 
 ### Example
 
@@ -56,13 +61,13 @@ import { useToggle } from '@pyreon/hooks'
 
 const { value, toggle, setTrue, setFalse } = useToggle(false)
 
-value()    // false
+value() // false
 toggle()
-value()    // true
+value() // true
 setFalse()
-value()    // false
+value() // false
 setTrue()
-value()    // true
+value() // true
 ```
 
 ### Disclosure Pattern
@@ -76,10 +81,7 @@ const Accordion = defineComponent<{ title: string }>((props) => {
 
   return () => (
     <div class="accordion">
-      <button
-        onClick={toggle}
-        aria-expanded={isOpen()}
-      >
+      <button onClick={toggle} aria-expanded={isOpen()}>
         {props.title}
         <span class={isOpen() ? 'arrow-up' : 'arrow-down'} />
       </button>
@@ -120,9 +122,9 @@ function usePrevious<T>(getter: () => T): () => T | undefined
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getter` | `() => T` | A reactive getter (signal or function that reads signals) |
+| Parameter | Type      | Description                                               |
+| --------- | --------- | --------------------------------------------------------- |
+| `getter`  | `() => T` | A reactive getter (signal or function that reads signals) |
 
 ### Returns
 
@@ -137,13 +139,13 @@ import { signal } from '@pyreon/reactivity'
 const count = signal(0)
 const prev = usePrevious(count)
 
-prev()  // undefined (no previous value yet)
+prev() // undefined (no previous value yet)
 count.set(1)
-prev()  // 0
+prev() // 0
 count.set(5)
-prev()  // 1
-count.set(5)  // same value
-prev()  // 5 (tracks every call, even if value doesn't change)
+prev() // 1
+count.set(5) // same value
+prev() // 5 (tracks every call, even if value doesn't change)
 ```
 
 ### Animation Direction Example
@@ -162,8 +164,8 @@ const Carousel = defineComponent(() => {
   return () => (
     <div class={`carousel slide-${direction()}`}>
       <div class="slide">{slides[currentSlide()]}</div>
-      <button onClick={() => currentSlide.update(n => n - 1)}>Prev</button>
-      <button onClick={() => currentSlide.update(n => n + 1)}>Next</button>
+      <button onClick={() => currentSlide.update((n) => n - 1)}>Prev</button>
+      <button onClick={() => currentSlide.update((n) => n + 1)}>Next</button>
     </div>
   )
 })
@@ -185,10 +187,7 @@ const Editor = defineComponent(() => {
 
   return () => (
     <div>
-      <textarea
-        value={text()}
-        onInput={(e) => text.set(e.target.value)}
-      />
+      <textarea value={text()} onInput={(e) => text.set(e.target.value)} />
       <button onClick={undo} disabled={previousText() === undefined}>
         Undo
       </button>
@@ -209,10 +208,10 @@ function useDebouncedValue<T>(getter: () => T, delayMs: number): () => T
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getter` | `() => T` | A reactive getter to debounce |
-| `delayMs` | `number` | Debounce delay in milliseconds |
+| Parameter | Type      | Description                    |
+| --------- | --------- | ------------------------------ |
+| `getter`  | `() => T` | A reactive getter to debounce  |
+| `delayMs` | `number`  | Debounce delay in milliseconds |
 
 ### Returns
 
@@ -264,7 +263,9 @@ const SearchPage = defineComponent(() => {
       />
       {query() !== debouncedQuery() && <span class="spinner" />}
       <ul>
-        {results().map((r) => <li key={r.id}>{r.title}</li>)}
+        {results().map((r) => (
+          <li key={r.id}>{r.title}</li>
+        ))}
       </ul>
     </div>
   )
@@ -310,11 +311,11 @@ function useHover(): UseHoverResult
 
 ### Returns: `UseHoverResult`
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `hovered` | `() => boolean` | Reactive hover state |
-| `props.onMouseEnter` | `() => void` | Handler to set hovered to true |
-| `props.onMouseLeave` | `() => void` | Handler to set hovered to false |
+| Property             | Type            | Description                     |
+| -------------------- | --------------- | ------------------------------- |
+| `hovered`            | `() => boolean` | Reactive hover state            |
+| `props.onMouseEnter` | `() => void`    | Handler to set hovered to true  |
+| `props.onMouseLeave` | `() => void`    | Handler to set hovered to false |
 
 ### Example
 
@@ -361,9 +362,7 @@ const HoverCard = defineComponent(() => {
       {...hoverProps}
       style={{
         transform: hovered() ? 'translateY(-4px)' : 'none',
-        boxShadow: hovered()
-          ? '0 8px 24px rgba(0,0,0,0.15)'
-          : '0 2px 8px rgba(0,0,0,0.08)',
+        boxShadow: hovered() ? '0 8px 24px rgba(0,0,0,0.15)' : '0 2px 8px rgba(0,0,0,0.08)',
         transition: 'all 0.2s ease',
       }}
     >
@@ -386,11 +385,11 @@ function useFocus(): UseFocusResult
 
 ### Returns: `UseFocusResult`
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `focused` | `() => boolean` | Reactive focus state |
-| `props.onFocus` | `() => void` | Handler to set focused to true |
-| `props.onBlur` | `() => void` | Handler to set focused to false |
+| Property        | Type            | Description                     |
+| --------------- | --------------- | ------------------------------- |
+| `focused`       | `() => boolean` | Reactive focus state            |
+| `props.onFocus` | `() => void`    | Handler to set focused to true  |
+| `props.onBlur`  | `() => void`    | Handler to set focused to false |
 
 ### Example
 
@@ -414,9 +413,7 @@ const FloatingLabelInput = defineComponent<{ label: string }>((props) => {
 
   return () => (
     <div class={`input-wrapper ${focused() ? 'focused' : ''}`}>
-      <label class={focused() ? 'label-float' : 'label-default'}>
-        {props.label}
-      </label>
+      <label class={focused() ? 'label-float' : 'label-default'}>{props.label}</label>
       <input {...focusProps} />
     </div>
   )
@@ -430,18 +427,15 @@ Call a handler function when a click (or touch) occurs outside the referenced el
 ### Signature
 
 ```ts
-function useClickOutside(
-  getEl: () => HTMLElement | null,
-  handler: () => void,
-): void
+function useClickOutside(getEl: () => HTMLElement | null, handler: () => void): void
 ```
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getEl` | `() => HTMLElement \| null` | Getter returning the target element |
-| `handler` | `() => void` | Called when a click occurs outside the element |
+| Parameter | Type                        | Description                                    |
+| --------- | --------------------------- | ---------------------------------------------- |
+| `getEl`   | `() => HTMLElement \| null` | Getter returning the target element            |
+| `handler` | `() => void`                | Called when a click occurs outside the element |
 
 ### Example
 
@@ -452,7 +446,9 @@ let dropdownEl: HTMLElement | null = null
 
 useClickOutside(
   () => dropdownEl,
-  () => { /* close the dropdown */ }
+  () => {
+    /* close the dropdown */
+  },
 )
 ```
 
@@ -467,14 +463,25 @@ const DropdownMenu = defineComponent(() => {
 
   return () => (
     <div ref={(el) => (menuEl = el)} class="dropdown">
-      <button onClick={toggle}>
-        Menu {isOpen() ? '▲' : '▼'}
-      </button>
+      <button onClick={toggle}>Menu {isOpen() ? '▲' : '▼'}</button>
       {isOpen() && (
         <ul class="dropdown-menu">
-          <li><a href="/profile">Profile</a></li>
-          <li><a href="/settings">Settings</a></li>
-          <li><button onClick={() => { logout(); close(); }}>Logout</button></li>
+          <li>
+            <a href="/profile">Profile</a>
+          </li>
+          <li>
+            <a href="/settings">Settings</a>
+          </li>
+          <li>
+            <button
+              onClick={() => {
+                logout()
+                close()
+              }}
+            >
+              Logout
+            </button>
+          </li>
         </ul>
       )}
     </div>
@@ -523,12 +530,12 @@ function useKeyboard(
 
 ### Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `key` | `string` | (required) | The `KeyboardEvent.key` value to match (e.g., `"Escape"`, `"Enter"`, `"ArrowDown"`) |
-| `handler` | `(event: KeyboardEvent) => void` | (required) | Called when the key matches |
-| `options.event` | `'keydown' \| 'keyup'` | `'keydown'` | Which keyboard event to listen for |
-| `options.target` | `EventTarget` | `document` | The target to attach the listener to |
+| Parameter        | Type                             | Default     | Description                                                                         |
+| ---------------- | -------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| `key`            | `string`                         | (required)  | The `KeyboardEvent.key` value to match (e.g., `"Escape"`, `"Enter"`, `"ArrowDown"`) |
+| `handler`        | `(event: KeyboardEvent) => void` | (required)  | Called when the key matches                                                         |
+| `options.event`  | `'keydown' \| 'keyup'`           | `'keydown'` | Which keyboard event to listen for                                                  |
+| `options.target` | `EventTarget`                    | `document`  | The target to attach the listener to                                                |
 
 ### Example
 
@@ -541,10 +548,14 @@ useKeyboard('Escape', () => {
 })
 
 // Submit on Enter with keyup
-useKeyboard('Enter', (e) => {
-  e.preventDefault()
-  submitForm()
-}, { event: 'keyup' })
+useKeyboard(
+  'Enter',
+  (e) => {
+    e.preventDefault()
+    submitForm()
+  },
+  { event: 'keyup' },
+)
 ```
 
 ### Keyboard Shortcut Example
@@ -586,12 +597,12 @@ const ListNavigator = defineComponent(() => {
 
   useKeyboard('ArrowDown', (e) => {
     e.preventDefault()
-    activeIndex.update(i => Math.min(i + 1, items.length - 1))
+    activeIndex.update((i) => Math.min(i + 1, items.length - 1))
   })
 
   useKeyboard('ArrowUp', (e) => {
     e.preventDefault()
-    activeIndex.update(i => Math.max(i - 1, 0))
+    activeIndex.update((i) => Math.max(i - 1, 0))
   })
 
   useKeyboard('Enter', () => {
@@ -628,9 +639,9 @@ function useFocusTrap(getEl: () => HTMLElement | null): void
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getEl` | `() => HTMLElement \| null` | Getter returning the container element |
+| Parameter | Type                        | Description                            |
+| --------- | --------------------------- | -------------------------------------- |
+| `getEl`   | `() => HTMLElement \| null` | Getter returning the container element |
 
 ### Example
 
@@ -654,7 +665,9 @@ const Modal = defineComponent<{ onClose: () => void }>((props) => {
   const { lock, unlock } = useScrollLock()
 
   // Lock scroll when modal opens, unlock when it closes
-  onMount(() => { lock() })
+  onMount(() => {
+    lock()
+  })
   onUnmount(unlock)
 
   return () => (
@@ -690,9 +703,9 @@ function useElementSize(getEl: () => HTMLElement | null): () => Size
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getEl` | `() => HTMLElement \| null` | Getter returning the element to observe |
+| Parameter | Type                        | Description                             |
+| --------- | --------------------------- | --------------------------------------- |
+| `getEl`   | `() => HTMLElement \| null` | Getter returning the element to observe |
 
 ### Returns
 
@@ -708,8 +721,8 @@ let containerEl: HTMLElement | null = null
 const size = useElementSize(() => containerEl)
 
 // In a reactive context:
-size().width   // current width in pixels
-size().height  // current height in pixels
+size().width // current width in pixels
+size().height // current height in pixels
 ```
 
 ### Responsive Container Example
@@ -741,7 +754,9 @@ const ResponsiveGrid = defineComponent(() => {
           <div class="grid-item">{item.name}</div>
         ))}
       </div>
-      <p class="debug">Container: {size().width}x{size().height}px ({columns()} columns)</p>
+      <p class="debug">
+        Container: {size().width}x{size().height}px ({columns()} columns)
+      </p>
     </div>
   )
 })
@@ -781,9 +796,9 @@ function useWindowResize(throttleMs?: number): () => WindowSize
 
 ### Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `throttleMs` | `number` | `200` | Throttle interval in milliseconds |
+| Parameter    | Type     | Default | Description                       |
+| ------------ | -------- | ------- | --------------------------------- |
+| `throttleMs` | `number` | `200`   | Throttle interval in milliseconds |
 
 ### Returns
 
@@ -796,8 +811,8 @@ import { useWindowResize } from '@pyreon/hooks'
 
 const windowSize = useWindowResize(200)
 
-windowSize().width   // window.innerWidth
-windowSize().height  // window.innerHeight
+windowSize().width // window.innerWidth
+windowSize().height // window.innerHeight
 ```
 
 ### Responsive Layout Example
@@ -816,7 +831,9 @@ const ResponsiveLayout = defineComponent(() => {
     <div class={`layout layout-${layout()}`}>
       {layout() === 'desktop' && <Sidebar />}
       <main>
-        <p>Window: {windowSize().width} x {windowSize().height}</p>
+        <p>
+          Window: {windowSize().width} x {windowSize().height}
+        </p>
         {props.children}
       </main>
     </div>
@@ -836,9 +853,9 @@ function useMediaQuery(query: string): () => boolean
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `query` | `string` | A CSS media query string (e.g., `"(min-width: 768px)"`) |
+| Parameter | Type     | Description                                             |
+| --------- | -------- | ------------------------------------------------------- |
+| `query`   | `string` | A CSS media query string (e.g., `"(min-width: 768px)"`) |
 
 ### Returns
 
@@ -850,7 +867,7 @@ function useMediaQuery(query: string): () => boolean
 import { useMediaQuery } from '@pyreon/hooks'
 
 const isWide = useMediaQuery('(min-width: 1024px)')
-isWide()  // true or false
+isWide() // true or false
 
 const isPortrait = useMediaQuery('(orientation: portrait)')
 const supportsHover = useMediaQuery('(hover: hover)')
@@ -901,8 +918,8 @@ function useBreakpoint(breakpoints?: BreakpointMap): () => string
 
 ### Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
+| Parameter     | Type            | Default                                                    | Description                                         |
+| ------------- | --------------- | ---------------------------------------------------------- | --------------------------------------------------- |
 | `breakpoints` | `BreakpointMap` | `&#123; xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 &#125;` | Map of breakpoint names to minimum widths in pixels |
 
 ### Returns
@@ -911,14 +928,14 @@ function useBreakpoint(breakpoints?: BreakpointMap): () => string
 
 ### Default Breakpoints
 
-| Name | Min Width |
-| --- | --- |
-| `xs` | 0px |
-| `sm` | 576px |
-| `md` | 768px |
-| `lg` | 992px |
-| `xl` | 1200px |
-| `xxl` | 1400px |
+| Name  | Min Width |
+| ----- | --------- |
+| `xs`  | 0px       |
+| `sm`  | 576px     |
+| `md`  | 768px     |
+| `lg`  | 992px     |
+| `xl`  | 1200px    |
+| `xxl` | 1400px    |
 
 ### Example
 
@@ -926,7 +943,7 @@ function useBreakpoint(breakpoints?: BreakpointMap): () => string
 import { useBreakpoint } from '@pyreon/hooks'
 
 const bp = useBreakpoint()
-bp()  // 'xs' | 'sm' | 'md' | 'lg' | 'xl'
+bp() // 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 ```
 
 ### Custom Breakpoints
@@ -938,7 +955,7 @@ const bp = useBreakpoint({
   desktop: 1024,
   wide: 1440,
 })
-bp()  // 'mobile' | 'tablet' | 'desktop' | 'wide'
+bp() // 'mobile' | 'tablet' | 'desktop' | 'wide'
 ```
 
 ### Responsive Component Example
@@ -971,16 +988,22 @@ const ProductGrid = defineComponent(() => {
 
   const columns = () => {
     switch (bp()) {
-      case 'xl': return 4
-      case 'lg': return 3
-      case 'md': return 2
-      default: return 1
+      case 'xl':
+        return 4
+      case 'lg':
+        return 3
+      case 'md':
+        return 2
+      default:
+        return 1
     }
   }
 
   return () => (
     <div style={{ gridTemplateColumns: `repeat(${columns()}, 1fr)` }}>
-      {products.map((p) => <ProductCard product={p} />)}
+      {products.map((p) => (
+        <ProductCard product={p} />
+      ))}
     </div>
   )
 })
@@ -1006,7 +1029,7 @@ function useColorScheme(): () => 'light' | 'dark'
 import { useColorScheme } from '@pyreon/hooks'
 
 const scheme = useColorScheme()
-scheme()  // 'light' or 'dark'
+scheme() // 'light' or 'dark'
 ```
 
 ### Theme Toggling Example
@@ -1025,7 +1048,7 @@ const ThemeProvider = defineComponent(() => {
   // Sync theme to body class
   useHead(() => ({
     bodyAttrs: { class: `theme-${activeTheme()}` },
-    htmlAttrs: { "data-theme": activeTheme() },
+    htmlAttrs: { 'data-theme': activeTheme() },
   }))
 
   return () => (
@@ -1050,12 +1073,7 @@ const ThemeProvider = defineComponent(() => {
 const Logo = defineComponent(() => {
   const scheme = useColorScheme()
 
-  return () => (
-    <img
-      src={scheme() === 'dark' ? '/logo-light.svg' : '/logo-dark.svg'}
-      alt="Logo"
-    />
-  )
+  return () => <img src={scheme() === 'dark' ? '/logo-light.svg' : '/logo-dark.svg'} alt="Logo" />
 })
 ```
 
@@ -1079,7 +1097,7 @@ function useReducedMotion(): () => boolean
 import { useReducedMotion } from '@pyreon/hooks'
 
 const prefersReduced = useReducedMotion()
-prefersReduced()  // true or false
+prefersReduced() // true or false
 ```
 
 ### Accessible Animation Example
@@ -1093,12 +1111,8 @@ const AnimatedCard = defineComponent(() => {
     <div
       {...hoverProps}
       style={{
-        transition: prefersReduced()
-          ? 'none'
-          : 'transform 0.3s ease, box-shadow 0.3s ease',
-        transform: hovered() && !prefersReduced()
-          ? 'scale(1.05)'
-          : 'scale(1)',
+        transition: prefersReduced() ? 'none' : 'transform 0.3s ease, box-shadow 0.3s ease',
+        transform: hovered() && !prefersReduced() ? 'scale(1.05)' : 'scale(1)',
       }}
     >
       Content
@@ -1139,9 +1153,9 @@ function useScrollLock(): { lock: () => void; unlock: () => void }
 
 ### Returns
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `lock` | `() => void` | Lock scrolling (increments lock count) |
+| Property | Type         | Description                              |
+| -------- | ------------ | ---------------------------------------- |
+| `lock`   | `() => void` | Lock scrolling (increments lock count)   |
 | `unlock` | `() => void` | Unlock scrolling (decrements lock count) |
 
 ### Example
@@ -1151,8 +1165,8 @@ import { useScrollLock } from '@pyreon/hooks'
 
 const { lock, unlock } = useScrollLock()
 
-lock()    // body overflow set to 'hidden'
-unlock()  // body overflow restored
+lock() // body overflow set to 'hidden'
+unlock() // body overflow restored
 ```
 
 Multiple calls to `lock()` from the same hook instance are idempotent -- calling `lock()` when already locked is a no-op. The same applies to `unlock()`.
@@ -1163,7 +1177,9 @@ Multiple calls to `lock()` from the same hook instance are idempotent -- calling
 const FullScreenOverlay = defineComponent<{ onClose: () => void }>((props) => {
   const { lock, unlock } = useScrollLock()
 
-  onMount(() => { lock() })
+  onMount(() => {
+    lock()
+  })
   onUnmount(unlock)
 
   return () => (
@@ -1212,10 +1228,10 @@ function useIntersection(
 
 ### Parameters
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `getEl` | `() => HTMLElement \| null` | Getter returning the element to observe |
-| `options` | `IntersectionObserverInit` | Standard IntersectionObserver options (`root`, `rootMargin`, `threshold`) |
+| Parameter | Type                        | Description                                                               |
+| --------- | --------------------------- | ------------------------------------------------------------------------- |
+| `getEl`   | `() => HTMLElement \| null` | Getter returning the element to observe                                   |
+| `options` | `IntersectionObserverInit`  | Standard IntersectionObserver options (`root`, `rootMargin`, `threshold`) |
 
 ### Returns
 
@@ -1253,10 +1269,7 @@ const LazyImage = defineComponent<{ src: string; alt: string }>((props) => {
 
   return () => (
     <div ref={(el) => (imgEl = el)} class="lazy-image-wrapper">
-      {loaded()
-        ? <img src={props.src} alt={props.alt} />
-        : <div class="placeholder" />
-      }
+      {loaded() ? <img src={props.src} alt={props.alt} /> : <div class="placeholder" />}
     </div>
   )
 })
@@ -1285,7 +1298,9 @@ const InfiniteList = defineComponent(() => {
 
   return () => (
     <div>
-      {items().map((item) => <ItemCard item={item} key={item.id} />)}
+      {items().map((item) => (
+        <ItemCard item={item} key={item.id} />
+      ))}
       <div ref={(el) => (sentinelEl = el)} class="scroll-sentinel">
         {isLoading() && <Spinner />}
       </div>
@@ -1307,10 +1322,7 @@ const AnimateOnScroll = defineComponent(() => {
   })
 
   return () => (
-    <section
-      ref={(el) => (sectionEl = el)}
-      class={hasAppeared() ? 'animate-in' : 'animate-hidden'}
-    >
+    <section ref={(el) => (sectionEl = el)} class={hasAppeared() ? 'animate-in' : 'animate-hidden'}>
       {props.children}
     </section>
   )
@@ -1341,7 +1353,9 @@ const AccessibleModal = defineComponent<{
 
   // Lock page scroll
   const { lock, unlock } = useScrollLock()
-  onMount(() => { lock() })
+  onMount(() => {
+    lock()
+  })
   onUnmount(unlock)
 
   // Respect reduced motion
@@ -1388,8 +1402,7 @@ const Dashboard = defineComponent(() => {
         {!isMobile && <Sidebar />}
         <main>
           <p>
-            {windowSize().width}x{windowSize().height} |
-            {bp()} | {scheme()} |
+            {windowSize().width}x{windowSize().height} |{bp()} | {scheme()} |
             {prefersReduced() ? 'reduced motion' : 'full motion'}
           </p>
           {isMobile && <MobileNav />}
@@ -1412,9 +1425,7 @@ const SmartTooltip = defineComponent<{ text: string }>((props) => {
   return () => (
     <span class="tooltip-trigger" {...hoverProps}>
       {props.children}
-      {debouncedHover() && (
-        <div class="tooltip">{props.text}</div>
-      )}
+      {debouncedHover() && <div class="tooltip">{props.text}</div>}
     </span>
   )
 })
@@ -1422,32 +1433,32 @@ const SmartTooltip = defineComponent<{ text: string }>((props) => {
 
 ## API Reference
 
-| Hook | Signature | Description |
-| --- | --- | --- |
-| `useToggle` | `(initial?) => UseToggleResult` | Boolean toggle with `toggle`, `setTrue`, `setFalse` |
-| `usePrevious` | `(getter) => () => T \| undefined` | Track the previous value of a reactive getter |
-| `useDebouncedValue` | `(getter, delayMs) => () => T` | Debounce a reactive value |
-| `useHover` | `() => UseHoverResult` | Track hover state with spreadable props |
-| `useFocus` | `() => UseFocusResult` | Track focus/blur state with spreadable props |
-| `useClickOutside` | `(getEl, handler) => void` | Call handler on clicks outside an element |
-| `useKeyboard` | `(key, handler, options?) => void` | Listen for specific key presses |
-| `useFocusTrap` | `(getEl) => void` | Trap Tab focus within a container |
-| `useElementSize` | `(getEl) => () => Size` | Observe element dimensions via ResizeObserver |
-| `useWindowResize` | `(throttleMs?) => () => WindowSize` | Track window size with throttling |
-| `useMediaQuery` | `(query) => () => boolean` | Subscribe to a CSS media query |
-| `useBreakpoint` | `(breakpoints?) => () => string` | Get the active breakpoint name |
-| `useColorScheme` | `() => () => 'light' \| 'dark'` | Detect light/dark mode preference |
-| `useReducedMotion` | `() => () => boolean` | Detect reduced-motion preference |
-| `useScrollLock` | `() => &#123; lock, unlock &#125;` | Lock/unlock page scrolling |
-| `useIntersection` | `(getEl, options?) => () => IntersectionObserverEntry \| null` | Observe element intersection |
+| Hook                | Signature                                                      | Description                                         |
+| ------------------- | -------------------------------------------------------------- | --------------------------------------------------- |
+| `useToggle`         | `(initial?) => UseToggleResult`                                | Boolean toggle with `toggle`, `setTrue`, `setFalse` |
+| `usePrevious`       | `(getter) => () => T \| undefined`                             | Track the previous value of a reactive getter       |
+| `useDebouncedValue` | `(getter, delayMs) => () => T`                                 | Debounce a reactive value                           |
+| `useHover`          | `() => UseHoverResult`                                         | Track hover state with spreadable props             |
+| `useFocus`          | `() => UseFocusResult`                                         | Track focus/blur state with spreadable props        |
+| `useClickOutside`   | `(getEl, handler) => void`                                     | Call handler on clicks outside an element           |
+| `useKeyboard`       | `(key, handler, options?) => void`                             | Listen for specific key presses                     |
+| `useFocusTrap`      | `(getEl) => void`                                              | Trap Tab focus within a container                   |
+| `useElementSize`    | `(getEl) => () => Size`                                        | Observe element dimensions via ResizeObserver       |
+| `useWindowResize`   | `(throttleMs?) => () => WindowSize`                            | Track window size with throttling                   |
+| `useMediaQuery`     | `(query) => () => boolean`                                     | Subscribe to a CSS media query                      |
+| `useBreakpoint`     | `(breakpoints?) => () => string`                               | Get the active breakpoint name                      |
+| `useColorScheme`    | `() => () => 'light' \| 'dark'`                                | Detect light/dark mode preference                   |
+| `useReducedMotion`  | `() => () => boolean`                                          | Detect reduced-motion preference                    |
+| `useScrollLock`     | `() => &#123; lock, unlock &#125;`                             | Lock/unlock page scrolling                          |
+| `useIntersection`   | `(getEl, options?) => () => IntersectionObserverEntry \| null` | Observe element intersection                        |
 
 ## Type Exports
 
-| Type | Description |
-| --- | --- |
+| Type              | Description                                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------------------- |
 | `UseToggleResult` | `&#123; value: () => boolean; toggle: () => void; setTrue: () => void; setFalse: () => void &#125;` |
-| `UseHoverResult` | `&#123; hovered: () => boolean; props: &#123; onMouseEnter, onMouseLeave &#125; &#125;` |
-| `UseFocusResult` | `&#123; focused: () => boolean; props: &#123; onFocus, onBlur &#125; &#125;` |
-| `Size` | `&#123; width: number; height: number &#125;` |
-| `WindowSize` | `&#123; width: number; height: number &#125;` |
-| `BreakpointMap` | `Record<string, number>` |
+| `UseHoverResult`  | `&#123; hovered: () => boolean; props: &#123; onMouseEnter, onMouseLeave &#125; &#125;`             |
+| `UseFocusResult`  | `&#123; focused: () => boolean; props: &#123; onFocus, onBlur &#125; &#125;`                        |
+| `Size`            | `&#123; width: number; height: number &#125;`                                                       |
+| `WindowSize`      | `&#123; width: number; height: number &#125;`                                                       |
+| `BreakpointMap`   | `Record<string, number>`                                                                            |

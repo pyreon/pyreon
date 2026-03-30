@@ -1,19 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { useTimeout } from "../useTimeout"
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useTimeout } from '../useTimeout'
 
 // Mock onUnmount since it requires component lifecycle context
-vi.mock("@pyreon/core", () => ({
+vi.mock('@pyreon/core', () => ({
   onMount: (fn: () => void) => fn(),
   onUnmount: (_fn: () => void) => {
     /* no-op */
   },
 }))
 
-describe("useTimeout", () => {
+describe('useTimeout', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it("calls callback after delay", () => {
+  it('calls callback after delay', () => {
     const fn = vi.fn()
     useTimeout(fn, 200)
 
@@ -21,7 +21,7 @@ describe("useTimeout", () => {
     expect(fn).toHaveBeenCalledTimes(1)
   })
 
-  it("does not call callback when delay is null", () => {
+  it('does not call callback when delay is null', () => {
     const fn = vi.fn()
     useTimeout(fn, null)
 
@@ -29,7 +29,7 @@ describe("useTimeout", () => {
     expect(fn).not.toHaveBeenCalled()
   })
 
-  it("clear() prevents the callback", () => {
+  it('clear() prevents the callback', () => {
     const fn = vi.fn()
     const { clear } = useTimeout(fn, 200)
 
@@ -38,7 +38,7 @@ describe("useTimeout", () => {
     expect(fn).not.toHaveBeenCalled()
   })
 
-  it("reset() restarts the timer", () => {
+  it('reset() restarts the timer', () => {
     const fn = vi.fn()
     const { reset } = useTimeout(fn, 200)
 

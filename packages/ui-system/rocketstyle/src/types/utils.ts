@@ -1,4 +1,4 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 
 export type TObj = Record<string, unknown>
 export type TFn = (...args: any) => any

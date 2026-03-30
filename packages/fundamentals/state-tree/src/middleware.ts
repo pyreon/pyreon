@@ -1,5 +1,5 @@
-import { instanceMeta } from "./registry"
-import type { ActionCall, InstanceMeta, MiddlewareFn } from "./types"
+import { instanceMeta } from './registry'
+import type { ActionCall, InstanceMeta, MiddlewareFn } from './types'
 
 // ─── Action runner ────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ export function runAction(
  */
 export function addMiddleware(instance: object, middleware: MiddlewareFn): () => void {
   const meta = instanceMeta.get(instance)
-  if (!meta) throw new Error("[@pyreon/state-tree] addMiddleware: not a model instance")
+  if (!meta) throw new Error('[@pyreon/state-tree] addMiddleware: not a model instance')
   meta.middlewares.push(middleware)
   return () => {
     const idx = meta.middlewares.indexOf(middleware)

@@ -1,5 +1,5 @@
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import { renderToCanvas } from "./render-impl"
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { renderToCanvas } from './render-impl'
 
 /**
  * Preview entry — Storybook loads this in the preview iframe.
@@ -21,7 +21,7 @@ export function render<TArgs extends Record<string, unknown>>(
   const Component = context.component
   if (!Component) {
     throw new Error(
-      "[@pyreon/storybook] No component provided. Either set `component` in your meta or provide a `render` function.",
+      '[@pyreon/storybook] No component provided. Either set `component` in your meta or provide a `render` function.',
     )
   }
   return <Component {...args} />

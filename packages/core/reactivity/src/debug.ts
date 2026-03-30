@@ -8,7 +8,7 @@
  * when unused.
  */
 
-import type { Signal, SignalDebugInfo } from "./signal"
+import type { Signal, SignalDebugInfo } from './signal'
 
 // ─── Signal update tracing ───────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next:
     name: sig.label,
     prev,
     next,
-    stack: new Error().stack ?? "",
+    stack: new Error().stack ?? '',
     timestamp: performance.now(),
   }
   for (const l of _traceListeners) l(event)
@@ -90,10 +90,10 @@ export function why(): void {
 
   const dispose = onSignalUpdate((e) => {
     const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
-    const _name = e.name ? `"${e.name}"` : "(anonymous signal)"
+    const _name = e.name ? `"${e.name}"` : '(anonymous signal)'
 
     console.log(
-      `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? "" : "s"})`,
+      `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? '' : 's'})`,
     )
     _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
   })
@@ -102,7 +102,7 @@ export function why(): void {
   queueMicrotask(() => {
     dispose()
     if (_whyLog.length === 0) {
-      console.log("[pyreon:why] No signal updates detected")
+      console.log('[pyreon:why] No signal updates detected')
     }
     _whyActive = false
     _whyLog = []
@@ -125,9 +125,9 @@ export function why(): void {
 export function inspectSignal<T>(sig: Signal<T>): SignalDebugInfo<T> {
   const info = sig.debug()
 
-  console.group(`🔍 Signal ${info.name ? `"${info.name}"` : "(anonymous)"}`)
-  console.log("value:", info.value)
-  console.log("subscribers:", info.subscriberCount)
+  console.group(`🔍 Signal ${info.name ? `"${info.name}"` : '(anonymous)'}`)
+  console.log('value:', info.value)
+  console.log('subscribers:', info.subscriberCount)
   console.groupEnd()
 
   return info

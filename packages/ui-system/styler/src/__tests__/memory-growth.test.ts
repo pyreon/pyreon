@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { createSheet } from "../sheet"
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createSheet } from '../sheet'
 
-describe("memory growth", () => {
-  describe("bounded cache prevents unbounded growth (DOM mode)", () => {
-    it("cache stays bounded with maxCacheSize", () => {
+describe('memory growth', () => {
+  describe('bounded cache prevents unbounded growth (DOM mode)', () => {
+    it('cache stays bounded with maxCacheSize', () => {
       const maxSize = 50
       const s = createSheet({ maxCacheSize: maxSize })
 
@@ -14,7 +14,7 @@ describe("memory growth", () => {
       expect(s.cacheSize).toBeLessThanOrEqual(maxSize * 1.5)
     })
 
-    it("cache eviction preserves recent entries", () => {
+    it('cache eviction preserves recent entries', () => {
       const maxSize = 20
       const s = createSheet({ maxCacheSize: maxSize })
 
@@ -33,7 +33,7 @@ describe("memory growth", () => {
       }
     })
 
-    it("handles rapid insertions without memory issues", () => {
+    it('handles rapid insertions without memory issues', () => {
       const s = createSheet({ maxCacheSize: 100 })
       const iterations = 1000
 
@@ -46,14 +46,14 @@ describe("memory growth", () => {
     })
   })
 
-  describe("default cache (large limit, DOM mode)", () => {
+  describe('default cache (large limit, DOM mode)', () => {
     beforeEach(() => {
-      document.querySelectorAll("style[data-pyreon-styler]").forEach((el) => {
+      document.querySelectorAll('style[data-pyreon-styler]').forEach((el) => {
         el.remove()
       })
     })
 
-    it("default cache handles many unique rules", () => {
+    it('default cache handles many unique rules', () => {
       const s = createSheet()
 
       for (let i = 0; i < 500; i++) {
@@ -63,7 +63,7 @@ describe("memory growth", () => {
       expect(s.cacheSize).toBe(500)
     })
 
-    it("deduplication prevents growth from repeated rules", () => {
+    it('deduplication prevents growth from repeated rules', () => {
       const s = createSheet()
 
       for (let cycle = 0; cycle < 100; cycle++) {
@@ -76,7 +76,7 @@ describe("memory growth", () => {
     })
   })
 
-  describe("SSR mode memory", () => {
+  describe('SSR mode memory', () => {
     let originalDocument: typeof document
 
     beforeEach(() => {
@@ -89,7 +89,7 @@ describe("memory growth", () => {
       globalThis.document = originalDocument
     })
 
-    it("reset prevents SSR buffer accumulation across requests", () => {
+    it('reset prevents SSR buffer accumulation across requests', () => {
       const s = createSheet()
 
       for (let i = 0; i < 100; i++) {
@@ -98,13 +98,13 @@ describe("memory growth", () => {
       expect(s.getStyles().length).toBeGreaterThan(0)
 
       s.reset()
-      expect(s.getStyles()).toBe("")
+      expect(s.getStyles()).toBe('')
 
-      s.insert("req2-single: value;")
-      expect(s.getStyles()).not.toContain("req1-prop")
+      s.insert('req2-single: value;')
+      expect(s.getStyles()).not.toContain('req1-prop')
     })
 
-    it("keyframes cache does not grow unboundedly", () => {
+    it('keyframes cache does not grow unboundedly', () => {
       const s = createSheet({ maxCacheSize: 20 })
 
       for (let i = 0; i < 50; i++) {
@@ -114,7 +114,7 @@ describe("memory growth", () => {
       expect(s.cacheSize).toBeLessThanOrEqual(50)
     })
 
-    it("global rules cache does not grow unboundedly", () => {
+    it('global rules cache does not grow unboundedly', () => {
       const s = createSheet({ maxCacheSize: 20 })
 
       for (let i = 0; i < 50; i++) {
@@ -124,7 +124,7 @@ describe("memory growth", () => {
       expect(s.cacheSize).toBeLessThanOrEqual(50)
     })
 
-    it("SSR buffer grows with unique rules (expected behavior)", () => {
+    it('SSR buffer grows with unique rules (expected behavior)', () => {
       const s = createSheet()
       const ruleCount = 100
 
@@ -138,11 +138,11 @@ describe("memory growth", () => {
       }
     })
 
-    it("SSR buffer does not duplicate identical rules", () => {
+    it('SSR buffer does not duplicate identical rules', () => {
       const s = createSheet()
 
       for (let cycle = 0; cycle < 10; cycle++) {
-        s.insert("color: red;")
+        s.insert('color: red;')
       }
 
       const matches = s.getStyles().match(/color: red;/g)

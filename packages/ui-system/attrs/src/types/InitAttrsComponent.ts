@@ -1,6 +1,6 @@
-import type { AttrsComponent } from "./AttrsComponent"
-import type { Configuration } from "./configuration"
-import type { ElementType, ExtractProps } from "./utils"
+import type { AttrsComponent } from './AttrsComponent'
+import type { Configuration } from './configuration'
+import type { ElementType, ExtractProps } from './utils'
 
 /**
  * Type of the internal `attrsComponent` factory function.

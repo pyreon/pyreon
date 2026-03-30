@@ -1,9 +1,9 @@
-import type { FormState, SchemaValidateFn } from "@pyreon/form"
-import type { QueryKey, UseMutationResult, UseQueryResult } from "@pyreon/query"
-import type { Computed, Signal } from "@pyreon/reactivity"
-import type { StoreApi } from "@pyreon/store"
-import type { SortingState } from "@pyreon/table"
-import type { FieldInfo } from "./schema"
+import type { FormState, SchemaValidateFn } from '@pyreon/form'
+import type { QueryKey, UseMutationResult, UseQueryResult } from '@pyreon/query'
+import type { Computed, Signal } from '@pyreon/reactivity'
+import type { StoreApi } from '@pyreon/store'
+import type { SortingState } from '@pyreon/table'
+import type { FieldInfo } from './schema'
 
 /**
  * Duck-typed schema inference. Matches Zod (`_output`), Valibot, ArkType
@@ -57,13 +57,13 @@ export interface ListOptions {
  */
 export interface FeatureFormOptions<TValues extends Record<string, unknown>> {
   /** 'create' (default) or 'edit'. Edit mode uses PUT instead of POST. */
-  mode?: "create" | "edit"
+  mode?: 'create' | 'edit'
   /** Item ID — required when mode is 'edit'. Used to PUT to api/:id and auto-fetch data. */
   id?: string | number
   /** Override initial values (merged with feature defaults). */
   initialValues?: Partial<TValues>
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
-  validateOn?: "blur" | "change" | "submit"
+  validateOn?: 'blur' | 'change' | 'submit'
   /** Callback after successful create/update. */
   onSuccess?: (result: unknown) => void
   /** Callback on submit error. */
@@ -87,7 +87,7 @@ export interface FeatureTableOptions<TValues extends Record<string, unknown>> {
  */
 export interface FeatureTableResult<TValues extends Record<string, unknown>> {
   /** The reactive TanStack Table instance. */
-  table: Computed<import("@pyreon/table").Table<TValues>>
+  table: Computed<import('@pyreon/table').Table<TValues>>
   /** Sorting state signal — bind to UI controls. */
   sorting: Signal<SortingState>
   /** Global filter signal — bind to search input. */

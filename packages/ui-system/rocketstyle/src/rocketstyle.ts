@@ -1,21 +1,21 @@
-import { compose, config, hoistNonReactStatics, omit, pick, render } from "@pyreon/ui-core"
-import { LocalThemeManager } from "./cache"
-import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS } from "./constants"
-import createLocalProvider from "./context/createLocalProvider"
-import { useLocalContext } from "./context/localContext"
-import { rocketstyleAttrsHoc } from "./hoc"
-import { useTheme } from "./hooks"
-import type { Configuration, ExtendedConfiguration } from "./types/configuration"
-import type { RocketComponent } from "./types/rocketComponent"
-import type { InnerComponentProps, RocketStyleComponent } from "./types/rocketstyle"
-import type { ComponentFn } from "./types/utils"
-import { calculateChainOptions, calculateStylingAttrs, pickStyledAttrs } from "./utils/attrs"
-import { chainOptions, chainOrOptions, chainReservedKeyOptions } from "./utils/chaining"
-import { calculateHocsFuncs } from "./utils/compose"
-import { getDimensionsMap } from "./utils/dimensions"
-import { createStaticsChainingEnhancers, createStaticsEnhancers } from "./utils/statics"
-import { calculateStyles } from "./utils/styles"
-import { getDimensionThemes, getTheme, getThemeByMode, getThemeFromChain } from "./utils/theme"
+import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
+import { LocalThemeManager } from './cache'
+import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS } from './constants'
+import createLocalProvider from './context/createLocalProvider'
+import { useLocalContext } from './context/localContext'
+import { rocketstyleAttrsHoc } from './hoc'
+import { useTheme } from './hooks'
+import type { Configuration, ExtendedConfiguration } from './types/configuration'
+import type { RocketComponent } from './types/rocketComponent'
+import type { InnerComponentProps, RocketStyleComponent } from './types/rocketstyle'
+import type { ComponentFn } from './types/utils'
+import { calculateChainOptions, calculateStylingAttrs, pickStyledAttrs } from './utils/attrs'
+import { chainOptions, chainOrOptions, chainReservedKeyOptions } from './utils/chaining'
+import { calculateHocsFuncs } from './utils/compose'
+import { getDimensionsMap } from './utils/dimensions'
+import { createStaticsChainingEnhancers, createStaticsEnhancers } from './utils/statics'
+import { calculateStyles } from './utils/styles'
+import { getDimensionThemes, getTheme, getThemeByMode, getThemeFromChain } from './utils/theme'
 
 /**
  * Core rocketstyle component factory. Creates a fully-featured Pyreon component
@@ -215,8 +215,8 @@ const rocketComponent: RocketComponent = (options) => {
       }
 
       // development debugging
-      if (process.env.NODE_ENV !== "production") {
-        finalProps["data-rocketstyle"] = componentName
+      if (process.env.NODE_ENV !== 'production') {
+        finalProps['data-rocketstyle'] = componentName
 
         if (options.DEBUG) {
           const debugPayload = {
@@ -285,12 +285,12 @@ const rocketComponent: RocketComponent = (options) => {
       }
 
       if (priority) {
-        result.priorityAttrs = attrs as ExtendedConfiguration["priorityAttrs"]
+        result.priorityAttrs = attrs as ExtendedConfiguration['priorityAttrs']
 
         return cloneAndEnhance(options, result)
       }
 
-      result.attrs = attrs as ExtendedConfiguration["attrs"]
+      result.attrs = attrs as ExtendedConfiguration['attrs']
 
       return cloneAndEnhance(options, result)
     },
@@ -326,8 +326,8 @@ const rocketComponent: RocketComponent = (options) => {
         {
           render,
           mode,
-          isDark: mode === "light",
-          isLight: mode === "dark",
+          isDark: mode === 'light',
+          isLight: mode === 'dark',
         },
       ]),
   })

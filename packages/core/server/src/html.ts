@@ -36,26 +36,26 @@ export interface CompiledTemplate {
 }
 
 export function compileTemplate(template: string): CompiledTemplate {
-  if (!template.includes("<!--pyreon-app-->")) {
-    throw new Error("[pyreon/server] Template must contain <!--pyreon-app--> placeholder")
+  if (!template.includes('<!--pyreon-app-->')) {
+    throw new Error('[pyreon/server] Template must contain <!--pyreon-app--> placeholder')
   }
-  const [beforeHead, afterHead] = splitOnce(template, "<!--pyreon-head-->")
-  const [betweenHeadApp, afterApp] = splitOnce(afterHead, "<!--pyreon-app-->")
-  const [betweenAppScripts, afterScripts] = splitOnce(afterApp, "<!--pyreon-scripts-->")
+  const [beforeHead, afterHead] = splitOnce(template, '<!--pyreon-head-->')
+  const [betweenHeadApp, afterApp] = splitOnce(afterHead, '<!--pyreon-app-->')
+  const [betweenAppScripts, afterScripts] = splitOnce(afterApp, '<!--pyreon-scripts-->')
   return { parts: [beforeHead, betweenHeadApp, betweenAppScripts, afterScripts] }
 }
 
 function splitOnce(str: string, delimiter: string): [string, string] {
   const idx = str.indexOf(delimiter)
-  if (idx === -1) return [str, ""]
+  if (idx === -1) return [str, '']
   return [str.slice(0, idx), str.slice(idx + delimiter.length)]
 }
 
 export function processTemplate(template: string, data: TemplateData): string {
   return template
-    .replace("<!--pyreon-head-->", data.head)
-    .replace("<!--pyreon-app-->", data.app)
-    .replace("<!--pyreon-scripts-->", data.scripts)
+    .replace('<!--pyreon-head-->', data.head)
+    .replace('<!--pyreon-app-->', data.app)
+    .replace('<!--pyreon-scripts-->', data.scripts)
 }
 
 /** Fast path using a pre-compiled template */
@@ -79,13 +79,13 @@ export function buildScripts(
 
   if (loaderData && Object.keys(loaderData).length > 0) {
     // Escape </script> inside JSON to prevent premature tag close
-    const json = JSON.stringify(loaderData).replace(/<\//g, "<\\/")
+    const json = JSON.stringify(loaderData).replace(/<\//g, '<\\/')
     parts.push(`<script>window.__PYREON_LOADER_DATA__=${json}</script>`)
   }
 
   parts.push(`<script type="module" src="${clientEntry}"></script>`)
 
-  return parts.join("\n  ")
+  return parts.join('\n  ')
 }
 
 /** Pre-build the static client entry script tag (invariant across requests) */
@@ -99,7 +99,7 @@ export function buildScriptsFast(
   loaderData: Record<string, unknown> | null,
 ): string {
   if (loaderData && Object.keys(loaderData).length > 0) {
-    const json = JSON.stringify(loaderData).replace(/<\//g, "<\\/")
+    const json = JSON.stringify(loaderData).replace(/<\//g, '<\\/')
     return `<script>window.__PYREON_LOADER_DATA__=${json}</script>\n  ${clientEntryTag}`
   }
   return clientEntryTag

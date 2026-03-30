@@ -1,5 +1,5 @@
-import { mount } from "@pyreon/runtime-dom"
-import { QueryClient } from "@tanstack/query-core"
+import { mount } from '@pyreon/runtime-dom'
+import { QueryClient } from '@tanstack/query-core'
 import {
   QueryClientProvider,
   QuerySuspense,
@@ -10,7 +10,7 @@ import {
   useQuery,
   useQueryClient,
   useSuspenseQuery,
-} from "../index"
+} from '../index'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -32,27 +32,27 @@ function deferred<T>() {
 
 // ─── useInfiniteQuery — additional ───────────────────────────────────────────
 
-describe("useInfiniteQuery — additional", () => {
+describe('useInfiniteQuery — additional', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("isFetchingNextPage is true during fetchNextPage", async () => {
+  it('isFetchingNextPage is true during fetchNextPage', async () => {
     const { promise: pagePromise, resolve: resolveNextPage } = deferred<string>()
     let callCount = 0
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-fetching-next"],
+            queryKey: ['inf-fetching-next'],
             queryFn: ({ pageParam }: { pageParam: number }) => {
               callCount++
-              if (callCount === 1) return Promise.resolve("page-0")
+              if (callCount === 1) return Promise.resolve('page-0')
               return pagePromise
             },
             initialPageParam: 0,
@@ -77,26 +77,26 @@ describe("useInfiniteQuery — additional", () => {
     expect(query!.isFetching()).toBe(true)
 
     // Resolve and verify
-    resolveNextPage("page-1")
+    resolveNextPage('page-1')
     await nextPromise
     await new Promise((r) => setTimeout(r, 10))
     expect(query!.isFetchingNextPage()).toBe(false)
-    expect(query!.data()?.pages).toEqual(["page-0", "page-1"])
+    expect(query!.data()?.pages).toEqual(['page-0', 'page-1'])
 
     unmount()
     el.remove()
   })
 
-  it("hasNextPage is false when getNextPageParam returns undefined", async () => {
+  it('hasNextPage is false when getNextPageParam returns undefined', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-no-next"],
-            queryFn: () => Promise.resolve("only-page"),
+            queryKey: ['inf-no-next'],
+            queryFn: () => Promise.resolve('only-page'),
             initialPageParam: 0,
             getNextPageParam: () => undefined, // No more pages
           }))
@@ -108,20 +108,20 @@ describe("useInfiniteQuery — additional", () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(query!.hasNextPage()).toBe(false)
-    expect(query!.data()?.pages).toEqual(["only-page"])
+    expect(query!.data()?.pages).toEqual(['only-page'])
     unmount()
     el.remove()
   })
 
-  it("multiple fetchNextPage calls accumulate pages", async () => {
+  it('multiple fetchNextPage calls accumulate pages', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-multi-fetch"],
+            queryKey: ['inf-multi-fetch'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`p${pageParam}`),
             initialPageParam: 0,
             getNextPageParam: (_last: string, _all: string[], lastParam: number) =>
@@ -134,7 +134,7 @@ describe("useInfiniteQuery — additional", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["p0"])
+    expect(query!.data()?.pages).toEqual(['p0'])
 
     // Fetch pages 1, 2, 3 sequentially
     for (let i = 1; i <= 3; i++) {
@@ -142,12 +142,12 @@ describe("useInfiniteQuery — additional", () => {
       await new Promise((r) => setTimeout(r, 10))
     }
 
-    expect(query!.data()?.pages).toEqual(["p0", "p1", "p2", "p3"])
+    expect(query!.data()?.pages).toEqual(['p0', 'p1', 'p2', 'p3'])
     expect(query!.hasNextPage()).toBe(true) // page 4 is available
 
     await query!.fetchNextPage()
     await new Promise((r) => setTimeout(r, 10))
-    expect(query!.data()?.pages).toEqual(["p0", "p1", "p2", "p3", "p4"])
+    expect(query!.data()?.pages).toEqual(['p0', 'p1', 'p2', 'p3', 'p4'])
     expect(query!.hasNextPage()).toBe(false) // No more pages
     unmount()
     el.remove()
@@ -156,23 +156,23 @@ describe("useInfiniteQuery — additional", () => {
 
 // ─── useSuspenseQuery — additional ───────────────────────────────────────────
 
-describe("useSuspenseQuery — suspense behavior", () => {
+describe('useSuspenseQuery — suspense behavior', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("isPending is true while query is loading", async () => {
+  it('isPending is true while query is loading', async () => {
     const { promise, resolve } = deferred<string>()
     let query: ReturnType<typeof useSuspenseQuery<string>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["suspense-pending"],
+            queryKey: ['suspense-pending'],
             queryFn: () => promise,
           }))
           return null
@@ -184,33 +184,33 @@ describe("useSuspenseQuery — suspense behavior", () => {
     expect(query!.isPending()).toBe(true)
     expect(query!.isSuccess()).toBe(false)
 
-    resolve("loaded")
+    resolve('loaded')
     await promise
     await new Promise((r) => setTimeout(r, 10))
 
     expect(query!.isPending()).toBe(false)
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.data()).toBe("loaded")
+    expect(query!.data()).toBe('loaded')
     unmount()
     el.remove()
   })
 
-  it("QuerySuspense with multiple queries waits for all", async () => {
+  it('QuerySuspense with multiple queries waits for all', async () => {
     const d1 = deferred<string>()
     const d2 = deferred<number>()
     let childCalled = false
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           const q1 = useSuspenseQuery(() => ({
-            queryKey: ["multi-s1"],
+            queryKey: ['multi-s1'],
             queryFn: () => d1.promise,
           }))
           const q2 = useSuspenseQuery(() => ({
-            queryKey: ["multi-s2"],
+            queryKey: ['multi-s2'],
             queryFn: () => d2.promise,
           }))
           return (
@@ -227,7 +227,7 @@ describe("useSuspenseQuery — suspense behavior", () => {
     )
 
     // Only first resolves — children should not render
-    d1.resolve("first")
+    d1.resolve('first')
     await d1.promise
     await new Promise((r) => setTimeout(r, 10))
     expect(childCalled).toBe(false)
@@ -241,16 +241,16 @@ describe("useSuspenseQuery — suspense behavior", () => {
     el.remove()
   })
 
-  it("QuerySuspense renders null fallback when not provided", async () => {
+  it('QuerySuspense renders null fallback when not provided', async () => {
     let query: ReturnType<typeof useSuspenseQuery<string>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["suspense-no-fallback"],
+            queryKey: ['suspense-no-fallback'],
             queryFn: () =>
               new Promise(() => {
                 /* never resolves */
@@ -270,12 +270,12 @@ describe("useSuspenseQuery — suspense behavior", () => {
 
 // ─── QueryClientProvider context ─────────────────────────────────────────────
 
-describe("QueryClientProvider — context behavior", () => {
-  it("useQueryClient returns the provided client", () => {
+describe('QueryClientProvider — context behavior', () => {
+  it('useQueryClient returns the provided client', () => {
     const client = makeClient()
     let received: QueryClient | null = null
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -292,13 +292,13 @@ describe("QueryClientProvider — context behavior", () => {
     el.remove()
   })
 
-  it("nested providers override outer client", () => {
+  it('nested providers override outer client', () => {
     const outerClient = makeClient()
     const innerClient = makeClient()
     let outerReceived: QueryClient | null = null
     let innerReceived: QueryClient | null = null
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={outerClient}>
@@ -324,32 +324,32 @@ describe("QueryClientProvider — context behavior", () => {
     el.remove()
   })
 
-  it("useQueryClient throws descriptive error without provider", () => {
-    expect(() => useQueryClient()).toThrow("No QueryClient found")
+  it('useQueryClient throws descriptive error without provider', () => {
+    expect(() => useQueryClient()).toThrow('No QueryClient found')
   })
 })
 
 // ─── useIsFetching / useIsMutating — additional ──────────────────────────────
 
-describe("useIsFetching — additional", () => {
-  it("counts multiple concurrent queries", async () => {
+describe('useIsFetching — additional', () => {
+  it('counts multiple concurrent queries', async () => {
     const client = makeClient()
     const d1 = deferred<string>()
     const d2 = deferred<string>()
     let isFetching: (() => number) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           isFetching = useIsFetching()
           useQuery(() => ({
-            queryKey: ["concurrent-1"],
+            queryKey: ['concurrent-1'],
             queryFn: () => d1.promise,
           }))
           useQuery(() => ({
-            queryKey: ["concurrent-2"],
+            queryKey: ['concurrent-2'],
             queryFn: () => d2.promise,
           }))
           return null
@@ -362,13 +362,13 @@ describe("useIsFetching — additional", () => {
     // Both queries should be fetching
     expect(isFetching!()).toBeGreaterThanOrEqual(2)
 
-    d1.resolve("done1")
+    d1.resolve('done1')
     await d1.promise
     await new Promise((r) => setTimeout(r, 10))
     // One still fetching
     expect(isFetching!()).toBeGreaterThanOrEqual(1)
 
-    d2.resolve("done2")
+    d2.resolve('done2')
     await d2.promise
     await new Promise((r) => setTimeout(r, 10))
     expect(isFetching!()).toBe(0)
@@ -377,26 +377,26 @@ describe("useIsFetching — additional", () => {
     el.remove()
   })
 
-  it("useIsFetching with query key filter", async () => {
+  it('useIsFetching with query key filter', async () => {
     const client = makeClient()
     const d1 = deferred<string>()
     const d2 = deferred<string>()
     let allFetching: (() => number) | undefined
     let userFetching: (() => number) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           allFetching = useIsFetching()
-          userFetching = useIsFetching({ queryKey: ["user"] })
+          userFetching = useIsFetching({ queryKey: ['user'] })
           useQuery(() => ({
-            queryKey: ["user", "1"],
+            queryKey: ['user', '1'],
             queryFn: () => d1.promise,
           }))
           useQuery(() => ({
-            queryKey: ["posts"],
+            queryKey: ['posts'],
             queryFn: () => d2.promise,
           }))
           return null
@@ -409,13 +409,13 @@ describe("useIsFetching — additional", () => {
     expect(allFetching!()).toBeGreaterThanOrEqual(2)
     expect(userFetching!()).toBe(1) // Only the user query
 
-    d1.resolve("user-data")
+    d1.resolve('user-data')
     await d1.promise
     await new Promise((r) => setTimeout(r, 10))
     expect(userFetching!()).toBe(0)
     expect(allFetching!()).toBeGreaterThanOrEqual(1) // posts still fetching
 
-    d2.resolve("posts-data")
+    d2.resolve('posts-data')
     await d2.promise
     await new Promise((r) => setTimeout(r, 10))
     expect(allFetching!()).toBe(0)
@@ -425,8 +425,8 @@ describe("useIsFetching — additional", () => {
   })
 })
 
-describe("useIsMutating — additional", () => {
-  it("counts multiple concurrent mutations", async () => {
+describe('useIsMutating — additional', () => {
+  it('counts multiple concurrent mutations', async () => {
     const client = makeClient()
     const d1 = deferred<void>()
     const d2 = deferred<void>()
@@ -434,7 +434,7 @@ describe("useIsMutating — additional", () => {
     let mut1: ReturnType<typeof useMutation<void, Error, void>> | undefined
     let mut2: ReturnType<typeof useMutation<void, Error, void>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>

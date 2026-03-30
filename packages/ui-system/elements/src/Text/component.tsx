@@ -5,11 +5,11 @@
  * a static `isText` flag so other components can detect text children.
  */
 
-import type { PyreonHTMLAttributes, VNodeChild } from "@pyreon/core"
-import type { HTMLTextTags } from "@pyreon/ui-core"
-import { PKG_NAME } from "../constants"
-import type { ExtendCss, PyreonComponent } from "../types"
-import Styled from "./styled"
+import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
+import type { HTMLTextTags } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import type { ExtendCss, PyreonComponent } from '../types'
+import Styled from './styled'
 
 export type Props = Partial<{
   /**
@@ -40,7 +40,7 @@ const Component: PyreonComponent<Props> & {
 } = ({ paragraph, label, children, tag, css, ref, ...props }) => {
   let finalTag: string | undefined
 
-  if (paragraph) finalTag = "p"
+  if (paragraph) finalTag = 'p'
   else {
     finalTag = tag
   }

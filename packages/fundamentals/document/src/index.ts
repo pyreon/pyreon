@@ -28,9 +28,9 @@
  */
 
 // Builder
-export { createDocument } from "./builder"
+export { createDocument } from './builder'
 // Download (browser)
-export { download } from "./download"
+export { download } from './download'
 // Primitives
 export {
   Button,
@@ -52,15 +52,10 @@ export {
   Spacer,
   Table,
   Text,
-} from "./nodes"
+} from './nodes'
 
 // Render
-export {
-  _resetRenderers,
-  registerRenderer,
-  render,
-  unregisterRenderer,
-} from "./render"
+export { _resetRenderers, registerRenderer, render, unregisterRenderer } from './render'
 
 // Types
 export type {
@@ -93,4 +88,4 @@ export type {
   TableColumn,
   TableProps,
   TextProps,
-} from "./types"
+} from './types'

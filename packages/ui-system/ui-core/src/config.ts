@@ -1,6 +1,6 @@
-import type { StyledFunction } from "@pyreon/styler"
-import { css, keyframes, styled } from "@pyreon/styler"
-import type { HTMLTags } from "./html"
+import type { StyledFunction } from '@pyreon/styler'
+import { css, keyframes, styled } from '@pyreon/styler'
+import type { HTMLTags } from './html'
 
 /**
  * Describes the shape of the CSS-in-JS engine.
@@ -19,7 +19,7 @@ interface PlatformConfig {
   createMediaQueries?: (props: {
     breakpoints: Record<string, number>
     rootSize: number
-    css: CSSEngineConnector["css"]
+    css: CSSEngineConnector['css']
   }) => Record<string, (...args: any[]) => any>
 }
 
@@ -36,9 +36,9 @@ class Configuration {
   css = css
   styled: StyledFunction = styled
   keyframes = keyframes
-  component: string | HTMLTags = "div"
-  textComponent: string | HTMLTags = "span"
-  createMediaQueries: PlatformConfig["createMediaQueries"] = undefined
+  component: string | HTMLTags = 'div'
+  textComponent: string | HTMLTags = 'span'
+  createMediaQueries: PlatformConfig['createMediaQueries'] = undefined
 
   init = (props: InitConfig) => {
     if (props.css) this.css = props.css

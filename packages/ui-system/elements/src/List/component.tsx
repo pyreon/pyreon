@@ -5,13 +5,13 @@
  * is wrapped in an Element that receives all non-iterator props (e.g.,
  * layout, alignment, css), allowing the list to be styled as a single block.
  */
-import { omit, pick } from "@pyreon/ui-core"
-import { PKG_NAME } from "../constants"
-import type { ElementProps, PyreonElement } from "../Element"
-import { Element } from "../Element"
-import type { Props as IteratorProps } from "../helpers/Iterator"
-import Iterator from "../helpers/Iterator"
-import type { MergeTypes } from "../types"
+import { omit, pick } from '@pyreon/ui-core'
+import { PKG_NAME } from '../constants'
+import type { ElementProps, PyreonElement } from '../Element'
+import { Element } from '../Element'
+import type { Props as IteratorProps } from '../helpers/Iterator'
+import Iterator from '../helpers/Iterator'
+import type { MergeTypes } from '../types'
 
 type ListProps = {
   /**

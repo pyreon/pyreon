@@ -1,7 +1,7 @@
-import { createContext, onUnmount, useContext } from "@pyreon/core"
-import { computed, signal } from "@pyreon/reactivity"
-import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from "./match"
-import { ScrollManager } from "./scroll"
+import { createContext, onUnmount, useContext } from '@pyreon/core'
+import { computed, signal } from '@pyreon/reactivity'
+import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
+import { ScrollManager } from './scroll'
 import {
   type AfterEachHook,
   type Blocker,
@@ -16,13 +16,13 @@ import {
   type Router,
   type RouterInstance,
   type RouterOptions,
-} from "./types"
+} from './types'
 
 // Evaluated once at module load — collapses to `true` in browser / happy-dom,
 // `false` on the server. Using a constant avoids per-call `typeof` branches
 // that are uncoverable in test environments.
-const _isBrowser = typeof window !== "undefined"
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const _isBrowser = typeof window !== 'undefined'
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
@@ -51,19 +51,19 @@ export function useRouter(): Router {
   const router = useContext(RouterContext) ?? _activeRouter
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return router
 }
 
 export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
-  import("./types").ExtractParams<TPath> & Record<string, string>,
+  import('./types').ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
   const router = useContext(RouterContext) ?? _activeRouter
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return router.currentRoute as never
 }
@@ -82,7 +82,7 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   // Register as a global guard that only fires when leaving the current route
   const currentMatched = router.currentRoute().matched
@@ -111,7 +111,7 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   const currentMatched = router.currentRoute().matched
   const wrappedGuard: NavigationGuard = (to, from) => {
@@ -143,7 +143,7 @@ export function useBlocker(fn: BlockerFn): Blocker {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   router._blockers.add(fn)
 
@@ -154,13 +154,13 @@ export function useBlocker(fn: BlockerFn): Blocker {
       }
     : null
   if (beforeUnloadHandler) {
-    window.addEventListener("beforeunload", beforeUnloadHandler)
+    window.addEventListener('beforeunload', beforeUnloadHandler)
   }
 
   const remove = () => {
     router._blockers.delete(fn)
     if (beforeUnloadHandler) {
-      window.removeEventListener("beforeunload", beforeUnloadHandler)
+      window.removeEventListener('beforeunload', beforeUnloadHandler)
     }
   }
 
@@ -202,14 +202,14 @@ export function useIsActive(path: string, exact = false): () => boolean {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return () => {
     const current = router.currentRoute().path
     if (exact) {
       return matchSegments(current, path, true)
     }
-    if (path === "/") return current === "/"
+    if (path === '/') return current === '/'
     // Segment-aware prefix: /admin matches /admin/users but NOT /admin-panel
     return matchSegments(current, path, false)
   }
@@ -217,14 +217,14 @@ export function useIsActive(path: string, exact = false): () => boolean {
 
 /** Match current path segments against a pattern that may contain `:param` segments. */
 function matchSegments(current: string, pattern: string, exact: boolean): boolean {
-  const cs = current.split("/").filter(Boolean)
-  const ps = pattern.split("/").filter(Boolean)
+  const cs = current.split('/').filter(Boolean)
+  const ps = pattern.split('/').filter(Boolean)
   if (exact) {
     if (cs.length !== ps.length) return false
-    return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
+    return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
   }
   if (ps.length > cs.length) return false
-  return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
+  return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
 }
 
 export function useSearchParams<T extends Record<string, string>>(
@@ -233,7 +233,7 @@ export function useSearchParams<T extends Record<string, string>>(
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   const get = (): T => {
     const query = router.currentRoute().query
@@ -254,15 +254,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
   const {
     routes,
-    mode = "hash",
+    mode = 'hash',
     scrollBehavior,
     onError,
     maxCacheSize = 100,
-    trailingSlash = "strip",
+    trailingSlash = 'strip',
   } = opts
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
-  const base = mode === "history" ? normalizeBase(opts.base ?? "") : ""
+  const base = mode === 'history' ? normalizeBase(opts.base ?? '') : ''
 
   // Pre-built O(1) name → record index. Computed once at startup.
   const nameIndex = buildNameIndex(routes)
@@ -280,21 +280,21 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const getInitialLocation = (): string => {
     // SSR: use explicitly provided url (strip base if present)
     if (opts.url) return stripBase(opts.url, base)
-    if (!_isBrowser) return "/"
-    if (mode === "history") {
+    if (!_isBrowser) return '/'
+    if (mode === 'history') {
       return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
-    return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
+    return hash.startsWith('#') ? hash.slice(1) || '/' : '/'
   }
 
   const getCurrentLocation = (): string => {
     if (!_isBrowser) return currentPath()
-    if (mode === "history") {
+    if (mode === 'history') {
       return stripBase(window.location.pathname, base) + window.location.search
     }
     const hash = window.location.hash
-    return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
+    return hash.startsWith('#') ? hash.slice(1) || '/' : '/'
   }
 
   // ── Signals ───────────────────────────────────────────────────────────────
@@ -307,12 +307,12 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   let _hashchangeHandler: (() => void) | null = null
 
   if (_isBrowser) {
-    if (mode === "history") {
+    if (mode === 'history') {
       _popstateHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener("popstate", _popstateHandler)
+      window.addEventListener('popstate', _popstateHandler)
     } else {
       _hashchangeHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener("hashchange", _hashchangeHandler)
+      window.addEventListener('hashchange', _hashchangeHandler)
     }
   }
 
@@ -322,9 +322,9 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   // ── Navigation ────────────────────────────────────────────────────────────
 
   type GuardOutcome =
-    | { action: "continue" }
-    | { action: "cancel" }
-    | { action: "redirect"; target: string }
+    | { action: 'continue' }
+    | { action: 'cancel' }
+    | { action: 'redirect'; target: string }
 
   async function evaluateGuard(
     guard: NavigationGuard,
@@ -333,15 +333,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     gen: number,
   ): Promise<GuardOutcome> {
     const result = await runGuard(guard, to, from)
-    if (gen !== _navGen) return { action: "cancel" }
-    if (result === false) return { action: "cancel" }
-    if (typeof result === "string") return { action: "redirect", target: result }
-    return { action: "continue" }
+    if (gen !== _navGen) return { action: 'cancel' }
+    if (result === false) return { action: 'cancel' }
+    if (typeof result === 'string') return { action: 'redirect', target: result }
+    return { action: 'continue' }
   }
 
   async function runRouteGuards(
     records: RouteRecord[],
-    guardKey: "beforeLeave" | "beforeEnter",
+    guardKey: 'beforeLeave' | 'beforeEnter',
     to: ResolvedRoute,
     from: ResolvedRoute,
     gen: number,
@@ -352,10 +352,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       const routeGuards = Array.isArray(raw) ? raw : [raw]
       for (const guard of routeGuards) {
         const outcome = await evaluateGuard(guard, to, from, gen)
-        if (outcome.action !== "continue") return outcome
+        if (outcome.action !== 'continue') return outcome
       }
     }
-    return { action: "continue" }
+    return { action: 'continue' }
   }
 
   async function runGlobalGuards(
@@ -366,9 +366,9 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   ): Promise<GuardOutcome> {
     for (const guard of globalGuards) {
       const outcome = await evaluateGuard(guard, to, from, gen)
-      if (outcome.action !== "continue") return outcome
+      if (outcome.action !== 'continue') return outcome
     }
-    return { action: "continue" }
+    return { action: 'continue' }
   }
 
   function processLoaderResult(
@@ -377,7 +377,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     ac: AbortController,
     to: ResolvedRoute,
   ): boolean {
-    if (result.status === "fulfilled") {
+    if (result.status === 'fulfilled') {
       router._loaderData.set(record, result.value)
       return true
     }
@@ -392,18 +392,18 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
   function syncBrowserUrl(path: string, replace: boolean): void {
     if (!_isBrowser) return
-    const url = mode === "history" ? `${base}${path}` : `#${path}`
+    const url = mode === 'history' ? `${base}${path}` : `#${path}`
     if (replace) {
-      window.history.replaceState(null, "", url)
+      window.history.replaceState(null, '', url)
     } else {
-      window.history.pushState(null, "", url)
+      window.history.pushState(null, '', url)
     }
   }
 
   function resolveRedirect(to: ResolvedRoute): string | null {
     const leaf = to.matched[to.matched.length - 1]
     if (!leaf?.redirect) return null
-    return sanitizePath(typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect)
+    return sanitizePath(typeof leaf.redirect === 'function' ? leaf.redirect(to) : leaf.redirect)
   }
 
   async function runAllGuards(
@@ -411,11 +411,11 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     from: ResolvedRoute,
     gen: number,
   ): Promise<GuardOutcome> {
-    const leaveOutcome = await runRouteGuards(from.matched, "beforeLeave", to, from, gen)
-    if (leaveOutcome.action !== "continue") return leaveOutcome
+    const leaveOutcome = await runRouteGuards(from.matched, 'beforeLeave', to, from, gen)
+    if (leaveOutcome.action !== 'continue') return leaveOutcome
 
-    const enterOutcome = await runRouteGuards(to.matched, "beforeEnter", to, from, gen)
-    if (enterOutcome.action !== "continue") return enterOutcome
+    const enterOutcome = await runRouteGuards(to.matched, 'beforeEnter', to, from, gen)
+    if (enterOutcome.action !== 'continue') return enterOutcome
 
     return runGlobalGuards(guards, to, from, gen)
   }
@@ -521,12 +521,12 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     to: ResolvedRoute,
     from: ResolvedRoute,
     gen: number,
-  ): Promise<"continue" | "cancel"> {
+  ): Promise<'continue' | 'cancel'> {
     for (const blocker of router._blockers) {
       const blocked = await blocker(to, from)
-      if (gen !== _navGen || blocked) return "cancel"
+      if (gen !== _navGen || blocked) return 'cancel'
     }
-    return "continue"
+    return 'continue'
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: navigation is inherently multi-step
@@ -536,7 +536,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         // biome-ignore lint/suspicious/noConsole: dev-only warning
         console.warn(
           `[Pyreon] Navigation to "${rawPath}" aborted: redirect depth exceeded 10 levels. ` +
-            "This likely indicates a redirect loop in your route configuration.",
+            'This likely indicates a redirect loop in your route configuration.',
         )
       }
       return
@@ -556,15 +556,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     }
 
     const blockerResult = await checkBlockers(to, from, gen)
-    if (blockerResult !== "continue") {
+    if (blockerResult !== 'continue') {
       loadingSignal.update((n) => n - 1)
       return
     }
 
     const guardOutcome = await runAllGuards(to, from, gen)
-    if (guardOutcome.action !== "continue") {
+    if (guardOutcome.action !== 'continue') {
       loadingSignal.update((n) => n - 1)
-      if (guardOutcome.action === "redirect") {
+      if (guardOutcome.action === 'redirect') {
         return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1)
       }
       return
@@ -620,7 +620,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
     ) {
-      if (typeof location === "string") {
+      if (typeof location === 'string') {
         const resolved = resolveRelativePath(location, currentPath())
         return navigate(sanitizePath(resolved), false)
       }
@@ -638,7 +638,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         | string
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
     ) {
-      if (typeof location === "string") {
+      if (typeof location === 'string') {
         const resolved = resolveRelativePath(location, currentPath())
         return navigate(sanitizePath(resolved), true)
       }
@@ -687,11 +687,11 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
 
     destroy() {
       if (_popstateHandler) {
-        window.removeEventListener("popstate", _popstateHandler)
+        window.removeEventListener('popstate', _popstateHandler)
         _popstateHandler = null
       }
       if (_hashchangeHandler) {
-        window.removeEventListener("hashchange", _hashchangeHandler)
+        window.removeEventListener('hashchange', _hashchangeHandler)
         _hashchangeHandler = null
       }
       guards.length = 0
@@ -743,47 +743,47 @@ function resolveNamedPath(
 ): string {
   const record = index.get(name)
   if (!record) {
-    return "/"
+    return '/'
   }
   let path = buildPath(record.path, params)
   const qs = Object.entries(query)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&")
+    .join('&')
   if (qs) path += `?${qs}`
   return path
 }
 
 /** Normalize a base path: ensure leading `/`, strip trailing `/`. */
 function normalizeBase(raw: string): string {
-  if (!raw) return ""
+  if (!raw) return ''
   let b = raw
-  if (!b.startsWith("/")) b = `/${b}`
-  if (b.endsWith("/")) b = b.slice(0, -1)
+  if (!b.startsWith('/')) b = `/${b}`
+  if (b.endsWith('/')) b = b.slice(0, -1)
   return b
 }
 
 /** Strip the base prefix from a full URL path. Returns the app-relative path. */
 function stripBase(path: string, base: string): string {
   if (!base) return path
-  if (path === base || path === `${base}/`) return "/"
+  if (path === base || path === `${base}/`) return '/'
   if (path.startsWith(`${base}/`)) return path.slice(base.length)
   return path
 }
 
 /** Normalize trailing slash on a path according to the configured strategy. */
-function normalizeTrailingSlash(path: string, strategy: "strip" | "add" | "ignore"): string {
-  if (strategy === "ignore" || path === "/") return path
+function normalizeTrailingSlash(path: string, strategy: 'strip' | 'add' | 'ignore'): string {
+  if (strategy === 'ignore' || path === '/') return path
   // Split off query string + hash so we only touch the path portion
-  const qIdx = path.indexOf("?")
-  const hIdx = path.indexOf("#")
+  const qIdx = path.indexOf('?')
+  const hIdx = path.indexOf('#')
   const endIdx = qIdx >= 0 ? qIdx : hIdx >= 0 ? hIdx : path.length
   const pathPart = path.slice(0, endIdx)
   const suffix = path.slice(endIdx)
-  if (strategy === "strip") {
-    return pathPart.length > 1 && pathPart.endsWith("/") ? pathPart.slice(0, -1) + suffix : path
+  if (strategy === 'strip') {
+    return pathPart.length > 1 && pathPart.endsWith('/') ? pathPart.slice(0, -1) + suffix : path
   }
   // strategy === "add"
-  return !pathPart.endsWith("/") ? `${pathPart}/${suffix}` : path
+  return !pathPart.endsWith('/') ? `${pathPart}/${suffix}` : path
 }
 
 /**
@@ -791,32 +791,32 @@ function normalizeTrailingSlash(path: string, strategy: "strip" | "add" | "ignor
  * Non-relative paths are returned as-is.
  */
 function resolveRelativePath(to: string, from: string): string {
-  if (!to.startsWith("./") && !to.startsWith("../") && to !== "." && to !== "..") return to
+  if (!to.startsWith('./') && !to.startsWith('../') && to !== '.' && to !== '..') return to
 
   // Split current path into segments, drop the last segment (file-like resolution)
-  const fromSegments = from.split("/").filter(Boolean)
+  const fromSegments = from.split('/').filter(Boolean)
   fromSegments.pop()
 
-  const toSegments = to.split("/").filter(Boolean)
+  const toSegments = to.split('/').filter(Boolean)
   for (const seg of toSegments) {
-    if (seg === "..") {
+    if (seg === '..') {
       fromSegments.pop()
-    } else if (seg !== ".") {
+    } else if (seg !== '.') {
       fromSegments.push(seg)
     }
   }
-  return `/${fromSegments.join("/")}`
+  return `/${fromSegments.join('/')}`
 }
 
 /** Block unsafe navigation targets: javascript/data/vbscript URIs and absolute URLs. */
 function sanitizePath(path: string): string {
   const trimmed = path.trim()
   if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
-    return "/"
+    return '/'
   }
   // Block absolute URLs and protocol-relative URLs — router only handles same-origin paths
   if (/^\/\/|^https?:/i.test(trimmed)) {
-    return "/"
+    return '/'
   }
   return path
 }

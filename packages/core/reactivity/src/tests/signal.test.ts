@@ -1,26 +1,26 @@
-import { batch } from "../batch"
-import { effect } from "../effect"
-import { signal } from "../signal"
+import { batch } from '../batch'
+import { effect } from '../effect'
+import { signal } from '../signal'
 
-describe("signal", () => {
-  test("reads initial value", () => {
+describe('signal', () => {
+  test('reads initial value', () => {
     const s = signal(42)
     expect(s()).toBe(42)
   })
 
-  test("set updates value", () => {
+  test('set updates value', () => {
     const s = signal(0)
     s.set(10)
     expect(s()).toBe(10)
   })
 
-  test("update transforms value", () => {
+  test('update transforms value', () => {
     const s = signal(5)
     s.update((n) => n * 2)
     expect(s()).toBe(10)
   })
 
-  test("set with same value does not notify", () => {
+  test('set with same value does not notify', () => {
     const s = signal(1)
     let calls = 0
     effect(() => {
@@ -34,20 +34,20 @@ describe("signal", () => {
     expect(calls).toBe(2)
   })
 
-  test("works with objects", () => {
+  test('works with objects', () => {
     const s = signal({ x: 1 })
     s.update((o) => ({ ...o, x: 2 }))
     expect(s().x).toBe(2)
   })
 
-  test("works with null and undefined", () => {
+  test('works with null and undefined', () => {
     const s = signal<string | null>(null)
     expect(s()).toBeNull()
-    s.set("hello")
-    expect(s()).toBe("hello")
+    s.set('hello')
+    expect(s()).toBe('hello')
   })
 
-  test("peek reads value without tracking", () => {
+  test('peek reads value without tracking', () => {
     const s = signal(42)
     let count = 0
     effect(() => {
@@ -60,7 +60,7 @@ describe("signal", () => {
     expect(s.peek()).toBe(100)
   })
 
-  test("subscribe adds a static listener", () => {
+  test('subscribe adds a static listener', () => {
     const s = signal(0)
     let notified = 0
     const unsub = s.subscribe(() => {
@@ -77,34 +77,34 @@ describe("signal", () => {
     expect(notified).toBe(2) // unsubscribed
   })
 
-  test("subscribe disposer is safe to call multiple times", () => {
+  test('subscribe disposer is safe to call multiple times', () => {
     const s = signal(0)
     const unsub = s.subscribe(() => {})
     unsub()
     unsub() // should not throw
   })
 
-  test("label getter returns name from options", () => {
-    const s = signal(0, { name: "counter" })
-    expect(s.label).toBe("counter")
+  test('label getter returns name from options', () => {
+    const s = signal(0, { name: 'counter' })
+    expect(s.label).toBe('counter')
   })
 
-  test("label setter updates the name", () => {
+  test('label setter updates the name', () => {
     const s = signal(0)
     expect(s.label).toBeUndefined()
-    s.label = "renamed"
-    expect(s.label).toBe("renamed")
+    s.label = 'renamed'
+    expect(s.label).toBe('renamed')
   })
 
-  test("debug() returns signal info", () => {
-    const s = signal(42, { name: "test" })
+  test('debug() returns signal info', () => {
+    const s = signal(42, { name: 'test' })
     const info = s.debug()
-    expect(info.name).toBe("test")
+    expect(info.name).toBe('test')
     expect(info.value).toBe(42)
     expect(info.subscriberCount).toBe(0)
   })
 
-  test("debug() reports subscriber count", () => {
+  test('debug() reports subscriber count', () => {
     const s = signal(0)
     s.subscribe(() => {})
     s.subscribe(() => {})
@@ -112,15 +112,15 @@ describe("signal", () => {
     expect(info.subscriberCount).toBe(2)
   })
 
-  test("signal without options has undefined name", () => {
+  test('signal without options has undefined name', () => {
     const s = signal(0)
     expect(s.label).toBeUndefined()
     const info = s.debug()
     expect(info.name).toBeUndefined()
   })
 
-  describe("direct updater disposal", () => {
-    test("disposed direct updater is not called on subsequent updates", () => {
+  describe('direct updater disposal', () => {
+    test('disposed direct updater is not called on subsequent updates', () => {
       const s = signal(0)
       let called = 0
       const dispose = s.direct(() => {
@@ -135,7 +135,7 @@ describe("signal", () => {
       expect(called).toBe(1) // not called after disposal
     })
 
-    test("multiple direct updaters, dispose one, others still fire", () => {
+    test('multiple direct updaters, dispose one, others still fire', () => {
       const s = signal(0)
       let calls1 = 0
       let calls2 = 0
@@ -163,22 +163,22 @@ describe("signal", () => {
       expect(calls3).toBe(2) // still active
     })
 
-    test("direct updater slot is null after disposal", () => {
+    test('direct updater slot is null after disposal', () => {
       const s = signal(0)
       const dispose = s.direct(() => {})
 
       // Access internal _d array via cast
       const internal = s as unknown as { _d: ((() => void) | null)[] | null }
       expect(internal._d).not.toBeNull()
-      expect(internal._d![0]).toBeTypeOf("function")
+      expect(internal._d![0]).toBeTypeOf('function')
 
       dispose()
       expect(internal._d![0]).toBeNull()
     })
   })
 
-  describe("signal.direct() for template binding", () => {
-    test("direct updater is called synchronously on signal change", () => {
+  describe('signal.direct() for template binding', () => {
+    test('direct updater is called synchronously on signal change', () => {
       const s = signal(0)
       const values: number[] = []
       s.direct(() => {
@@ -191,7 +191,7 @@ describe("signal", () => {
       expect(values).toEqual([1, 2])
     })
 
-    test("direct updaters are batch-aware", () => {
+    test('direct updaters are batch-aware', () => {
       const s = signal(0)
       let calls = 0
       s.direct(() => {
@@ -207,7 +207,7 @@ describe("signal", () => {
       expect(calls).toBe(1)
     })
 
-    test("direct updater with no prior direct array initializes lazily", () => {
+    test('direct updater with no prior direct array initializes lazily', () => {
       const s = signal(0)
       const internal = s as unknown as { _d: ((() => void) | null)[] | null }
       expect(internal._d).toBeNull()
@@ -217,14 +217,14 @@ describe("signal", () => {
     })
   })
 
-  describe("signal misuse warning in dev", () => {
-    test("warns when signal is called with arguments", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+  describe('signal misuse warning in dev', () => {
+    test('warns when signal is called with arguments', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const s = signal(42)
       // Call signal with an argument (common mistake — trying to set via call)
       ;(s as unknown as (v: number) => number)(99)
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("signal() was called with an argument"),
+        expect.stringContaining('signal() was called with an argument'),
       )
       // Value should not change — the argument is ignored
       expect(s()).toBe(42)

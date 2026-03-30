@@ -1,4 +1,4 @@
-import type { LoaderContext } from "@pyreon/zero"
+import type { LoaderContext } from '@pyreon/zero'
 
 export async function loader(ctx: LoaderContext) {
   return { userId: ctx.params.id, name: `User ${ctx.params.id}` }
@@ -9,5 +9,5 @@ export default function UserPage() {
 }
 
 export const meta = {
-  title: "User",
+  title: 'User',
 }

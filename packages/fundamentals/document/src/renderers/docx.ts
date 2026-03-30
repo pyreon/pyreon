@@ -1,4 +1,4 @@
-import { sanitizeHref, sanitizeXmlColor } from "../sanitize"
+import { sanitizeHref, sanitizeXmlColor } from '../sanitize'
 import type {
   DocChild,
   DocNode,
@@ -7,20 +7,20 @@ import type {
   PageSize,
   RenderOptions,
   TableColumn,
-} from "../types"
+} from '../types'
 
 /**
  * DOCX renderer — lazy-loads the 'docx' npm package on first use.
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === 'string' ? { header: col } : col
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
-    .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
+    .join('')
 }
 
 /** Parse a data URL and return the base64 data and media type, or null for external URLs. */
@@ -46,7 +46,7 @@ function getPageSize(
   }
   const dims = sizes[size]
   if (!dims) return undefined
-  if (orientation === "landscape") {
+  if (orientation === 'landscape') {
     return { width: dims.height, height: dims.width }
   }
   return dims
@@ -57,7 +57,7 @@ function getPageMargins(
   margin?: number | [number, number] | [number, number, number, number],
 ): object | undefined {
   if (margin == null) return undefined
-  if (typeof margin === "number") {
+  if (typeof margin === 'number') {
     const twips = margin * 20
     return { top: twips, right: twips, bottom: twips, left: twips }
   }
@@ -80,15 +80,15 @@ function getPageMargins(
 /** Map percentage column width to DOCX table column width. */
 function getColumnWidth(width?: number | string): { size: number; type: unknown } | undefined {
   if (width == null) return undefined
-  if (typeof width === "number") return undefined
+  if (typeof width === 'number') return undefined
   const match = width.match(/^(\d+)%$/)
   if (!match) return undefined
-  return { size: Number.parseInt(match[1]!, 10) * 100, type: "pct" as unknown }
+  return { size: Number.parseInt(match[1]!, 10) * 100, type: 'pct' as unknown }
 }
 
 /** Shared context passed to per-node-type render helpers. */
 interface DocxCtx {
-  docx: typeof import("docx")
+  docx: typeof import('docx')
   children: unknown[]
   alignmentMap: (align?: string) => unknown
   processListItems: (n: DocNode, listRef: string, level: number, ordered: boolean) => void
@@ -135,7 +135,7 @@ function renderTextNode(ctx: DocxCtx, n: DocNode): void {
           ...(p.underline ? { underline: {} } : {}),
           ...(p.strikethrough != null ? { strike: p.strikethrough as boolean } : {}),
           ...(p.size != null ? { size: (p.size as number) * 2 } : {}),
-          color: sanitizeXmlColor(p.color as string, "333333"),
+          color: sanitizeXmlColor(p.color as string, '333333'),
         }),
       ],
       alignment: alignmentMap(p.align as string) as any,
@@ -155,7 +155,7 @@ function renderLink(ctx: DocxCtx, n: DocNode): void {
           children: [
             new docx.TextRun({
               text: getTextContent(n.children),
-              color: sanitizeXmlColor(p.color as string, "4f46e5"),
+              color: sanitizeXmlColor(p.color as string, '4f46e5'),
               underline: { type: docx.UnderlineType.SINGLE },
             }),
           ],
@@ -178,9 +178,9 @@ function renderImage(ctx: DocxCtx, n: DocNode): void {
       new docx.Paragraph({
         children: [
           new docx.ImageRun({
-            data: Buffer.from(parsed.data, "base64"),
+            data: Buffer.from(parsed.data, 'base64'),
             transformation: { width: imgWidth, height: imgHeight },
-            type: parsed.mime === "image/png" ? "png" : "jpg",
+            type: parsed.mime === 'image/png' ? 'png' : 'jpg',
           }),
         ],
         alignment: alignmentMap(p.align as string) as any,
@@ -194,7 +194,7 @@ function renderImage(ctx: DocxCtx, n: DocNode): void {
               text: p.caption as string,
               italics: true,
               size: 20,
-              color: "666666",
+              color: '666666',
             }),
           ],
           alignment: alignmentMap(p.align as string) as any,
@@ -203,15 +203,15 @@ function renderImage(ctx: DocxCtx, n: DocNode): void {
       )
     }
   } else {
-    const alt = (p.alt as string) ?? "Image"
-    const caption = p.caption ? ` — ${p.caption}` : ""
+    const alt = (p.alt as string) ?? 'Image'
+    const caption = p.caption ? ` — ${p.caption}` : ''
     children.push(
       new docx.Paragraph({
         children: [
           new docx.TextRun({
             text: `[${alt}${caption}]`,
             italics: true,
-            color: "999999",
+            color: '999999',
           }),
         ],
       }),
@@ -227,7 +227,7 @@ function renderDocxTable(ctx: DocxCtx, n: DocNode): void {
   const hs = p.headerStyle as { background?: string; color?: string } | undefined
   const bordered = p.bordered as boolean | undefined
   const borderStyle = bordered
-    ? { style: docx.BorderStyle.SINGLE, size: 1, color: "DDDDDD" }
+    ? { style: docx.BorderStyle.SINGLE, size: 1, color: 'DDDDDD' }
     : undefined
   const cellBorders = borderStyle
     ? {
@@ -277,12 +277,12 @@ function renderDocxTable(ctx: DocxCtx, n: DocNode): void {
             new docx.TableCell({
               children: [
                 new docx.Paragraph({
-                  children: [new docx.TextRun({ text: String(row[colIdx] ?? "") })],
+                  children: [new docx.TextRun({ text: String(row[colIdx] ?? '') })],
                   alignment: alignmentMap(col.align) as any,
                 }),
               ],
               ...(p.striped && rowIdx % 2 === 1
-                ? { shading: { fill: "F9F9F9", type: docx.ShadingType.SOLID } }
+                ? { shading: { fill: 'F9F9F9', type: docx.ShadingType.SOLID } }
                 : {}),
               ...(cellBorders != null ? { borders: cellBorders } : {}),
               width: getColumnWidth(col.width as string | undefined) as any,
@@ -312,7 +312,7 @@ function renderDocxTable(ctx: DocxCtx, n: DocNode): void {
       width: { size: 100, type: docx.WidthType.PERCENTAGE },
     }),
   )
-  children.push(new docx.Paragraph({ text: "", spacing: { after: 120 } }))
+  children.push(new docx.Paragraph({ text: '', spacing: { after: 120 } }))
 }
 
 function renderList(ctx: DocxCtx, n: DocNode): void {
@@ -320,14 +320,14 @@ function renderList(ctx: DocxCtx, n: DocNode): void {
   const ordered = n.props.ordered as boolean | undefined
   const listRef = nextListId()
   processListItems(n, listRef, 0, ordered ?? false)
-  children.push(new docx.Paragraph({ text: "", spacing: { after: 60 } }))
+  children.push(new docx.Paragraph({ text: '', spacing: { after: 60 } }))
 }
 
 function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
   const { docx, children } = ctx
   const p = n.props
   const text = getTextContent(n.children)
-  if (n.type === "button") {
+  if (n.type === 'button') {
     children.push(
       new docx.Paragraph({
         children: [
@@ -337,7 +337,7 @@ function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
               new docx.TextRun({
                 text,
                 bold: true,
-                color: "4F46E5",
+                color: '4F46E5',
                 underline: { type: docx.UnderlineType.SINGLE },
               }),
             ],
@@ -349,13 +349,13 @@ function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
   } else {
     children.push(
       new docx.Paragraph({
-        children: [new docx.TextRun({ text, italics: true, color: "555555" })],
+        children: [new docx.TextRun({ text, italics: true, color: '555555' })],
         indent: { left: 720 },
         border: {
           left: {
             style: docx.BorderStyle.SINGLE,
             size: 6,
-            color: sanitizeXmlColor(p.borderColor as string, "DDDDDD"),
+            color: sanitizeXmlColor(p.borderColor as string, 'DDDDDD'),
           },
         },
         spacing: { after: 120 },
@@ -366,9 +366,9 @@ function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
 
 export const docxRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<Uint8Array> {
-    let docx: typeof import("docx")
+    let docx: typeof import('docx')
     try {
-      docx = await import("docx")
+      docx = await import('docx')
     } catch {
       throw new Error(
         '[@pyreon/document] DOCX renderer requires "docx" package. Install it: bun add docx',
@@ -389,13 +389,13 @@ export const docxRenderer: DocumentRenderer = {
     }
 
     function processListItems(n: DocNode, listRef: string, level: number, ordered: boolean): void {
-      const items = n.children.filter((c): c is DocNode => typeof c !== "string")
+      const items = n.children.filter((c): c is DocNode => typeof c !== 'string')
       for (const item of items) {
         const nestedList = item.children.find(
-          (c): c is DocNode => typeof c !== "string" && (c as DocNode).type === "list",
+          (c): c is DocNode => typeof c !== 'string' && (c as DocNode).type === 'list',
         )
         const textChildren = item.children.filter(
-          (c) => typeof c === "string" || (c as DocNode).type !== "list",
+          (c) => typeof c === 'string' || (c as DocNode).type !== 'list',
         )
         children.push(
           new docx.Paragraph({
@@ -420,73 +420,73 @@ export const docxRenderer: DocumentRenderer = {
 
     function processNode(n: DocNode): void {
       switch (n.type) {
-        case "document":
-        case "page":
-        case "section":
-        case "row":
-        case "column":
+        case 'document':
+        case 'page':
+        case 'section':
+        case 'row':
+        case 'column':
           for (const child of n.children) {
-            if (typeof child !== "string") processNode(child)
+            if (typeof child !== 'string') processNode(child)
             else children.push(new docx.Paragraph({ text: child }))
           }
           break
-        case "heading":
+        case 'heading':
           renderHeading(ctx, n)
           break
-        case "text":
+        case 'text':
           renderTextNode(ctx, n)
           break
-        case "link":
+        case 'link':
           renderLink(ctx, n)
           break
-        case "image":
+        case 'image':
           renderImage(ctx, n)
           break
-        case "table":
+        case 'table':
           renderDocxTable(ctx, n)
           break
-        case "list":
+        case 'list':
           renderList(ctx, n)
           break
-        case "code":
+        case 'code':
           children.push(
             new docx.Paragraph({
               children: [
                 new docx.TextRun({
                   text: getTextContent(n.children),
-                  font: "Courier New",
+                  font: 'Courier New',
                   size: 20,
                 }),
               ],
-              shading: { fill: "F5F5F5", type: docx.ShadingType.SOLID },
+              shading: { fill: 'F5F5F5', type: docx.ShadingType.SOLID },
               spacing: { after: 120 },
             }),
           )
           break
-        case "divider":
+        case 'divider':
           children.push(
             new docx.Paragraph({
               border: {
                 bottom: {
                   style: docx.BorderStyle.SINGLE,
                   size: (n.props.thickness as number | undefined) ?? 1,
-                  color: sanitizeXmlColor(n.props.color as string, "DDDDDD"),
+                  color: sanitizeXmlColor(n.props.color as string, 'DDDDDD'),
                 },
               },
               spacing: { before: 120, after: 120 },
             }),
           )
           break
-        case "spacer":
+        case 'spacer':
           children.push(
             new docx.Paragraph({
-              text: "",
+              text: '',
               spacing: { after: (n.props.height as number) * 20 },
             }),
           )
           break
-        case "button":
-        case "quote":
+        case 'button':
+        case 'quote':
           renderButtonOrQuote(ctx, n)
           break
       }
@@ -513,11 +513,11 @@ export const docxRenderer: DocumentRenderer = {
 
     // Extract page properties from first page node
     const pageNode =
-      node.type === "document"
+      node.type === 'document'
         ? (node.children.find(
-            (c): c is DocNode => typeof c !== "string" && (c as DocNode).type === "page",
+            (c): c is DocNode => typeof c !== 'string' && (c as DocNode).type === 'page',
           ) as DocNode | undefined)
-        : node.type === "page"
+        : node.type === 'page'
           ? node
           : undefined
 
@@ -536,7 +536,7 @@ export const docxRenderer: DocumentRenderer = {
       if (!text) return undefined
       return [
         new docx.Paragraph({
-          children: [new docx.TextRun({ text, size: 18, color: "999999" })],
+          children: [new docx.TextRun({ text, size: 18, color: '999999' })],
           alignment: docx.AlignmentType.CENTER,
         }),
       ]

@@ -1,6 +1,6 @@
-import type { ComponentFn } from "@pyreon/core"
-import type { NavigationGuard } from "@pyreon/router"
-import type { Middleware } from "@pyreon/server"
+import type { ComponentFn } from '@pyreon/core'
+import type { NavigationGuard } from '@pyreon/router'
+import type { Middleware } from '@pyreon/server'
 
 // ─── Route module conventions ────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ export interface RouteMeta {
 
 // ─── Rendering modes ─────────────────────────────────────────────────────────
 
-export type RenderMode = "ssr" | "ssg" | "spa" | "isr"
+export type RenderMode = 'ssr' | 'ssg' | 'spa' | 'isr'
 
 export interface ISRConfig {
   /** Revalidation interval in seconds. */
@@ -62,7 +62,7 @@ export interface ZeroConfig {
   /** SSR options. */
   ssr?: {
     /** Streaming mode. Default: "string" */
-    mode?: "string" | "stream"
+    mode?: 'string' | 'stream'
   }
 
   /** SSG options — only used when mode is "ssg". */
@@ -75,7 +75,7 @@ export interface ZeroConfig {
   isr?: ISRConfig
 
   /** Deploy adapter. Default: "node" */
-  adapter?: "node" | "bun" | "static"
+  adapter?: 'node' | 'bun' | 'static'
 
   /** Base URL path. Default: "/" */
   base?: string

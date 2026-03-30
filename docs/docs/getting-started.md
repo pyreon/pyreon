@@ -8,18 +8,23 @@ description: Install and configure Pyreon in your project.
 Install the core packages:
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 ```
+
 ```bash [bun]
 bun add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 ```
+
 ```bash [yarn]
 yarn add @pyreon/core @pyreon/reactivity @pyreon/runtime-dom @pyreon/vite-plugin
 ```
+
 :::
 
 ## Vite Setup
@@ -50,9 +55,7 @@ const App = defineComponent(() => {
   return () => (
     <div>
       <h1>Hello Pyreon!</h1>
-      <button onClick={() => count(count() + 1)}>
-        Clicks: {count()}
-      </button>
+      <button onClick={() => count(count() + 1)}>Clicks: {count()}</button>
       <p>Doubled: {doubled()}</p>
       <Show when={() => count() > 0}>
         <p>You've started clicking!</p>
@@ -86,18 +89,23 @@ mount(App, document.getElementById('app')!)
 For server-side rendering, install the server runtime:
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/runtime-server
 ```
+
 ```bash [bun]
 bun add @pyreon/runtime-server
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/runtime-server
 ```
+
 ```bash [yarn]
 yarn add @pyreon/runtime-server
 ```
+
 :::
 
 ```tsx title="src/entry-server.tsx"
@@ -123,18 +131,23 @@ export function render(res: WritableStream) {
 ## Adding Routing
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/router
 ```
+
 ```bash [bun]
 bun add @pyreon/router
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/router
 ```
+
 ```bash [yarn]
 yarn add @pyreon/router
 ```
+
 :::
 
 ```tsx title="src/router.ts"
@@ -172,18 +185,23 @@ export default defineComponent(() => {
 If you're coming from React, you can use familiar hooks:
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/react-compat
 ```
+
 ```bash [bun]
 bun add @pyreon/react-compat
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/react-compat
 ```
+
 ```bash [yarn]
 yarn add @pyreon/react-compat
 ```
+
 :::
 
 ```tsx
@@ -196,11 +214,7 @@ const Counter = memo(() => {
     document.title = `Count: ${count}`
   }, [count])
 
-  return (
-    <button onClick={() => setCount(count + 1)}>
-      Count: {count}
-    </button>
-  )
+  return <button onClick={() => setCount(count + 1)}>Count: {count}</button>
 })
 ```
 

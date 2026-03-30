@@ -1,5 +1,5 @@
-import { parseSync, Visitor } from "oxc-parser"
-import type { AstCache } from "./cache"
+import { parseSync, Visitor } from 'oxc-parser'
+import type { AstCache } from './cache'
 import type {
   Diagnostic,
   LintConfig,
@@ -8,21 +8,21 @@ import type {
   RuleContext,
   Severity,
   VisitorCallbacks,
-} from "./types"
-import { JS_EXTENSIONS } from "./utils/index"
-import { LineIndex } from "./utils/source"
+} from './types'
+import { JS_EXTENSIONS } from './utils/index'
+import { LineIndex } from './utils/source'
 
 function getExtension(filePath: string): string {
-  const lastDot = filePath.lastIndexOf(".")
-  return lastDot === -1 ? "" : filePath.slice(lastDot)
+  const lastDot = filePath.lastIndexOf('.')
+  return lastDot === -1 ? '' : filePath.slice(lastDot)
 }
 
-type OxcLang = "jsx" | "tsx" | "ts" | "js" | "dts"
+type OxcLang = 'jsx' | 'tsx' | 'ts' | 'js' | 'dts'
 
 function getLang(ext: string): OxcLang {
-  if (ext === ".tsx" || ext === ".jsx") return "tsx"
-  if (ext === ".ts" || ext === ".mts") return "ts"
-  return "js"
+  if (ext === '.tsx' || ext === '.jsx') return 'tsx'
+  if (ext === '.ts' || ext === '.mts') return 'ts'
+  return 'js'
 }
 
 function createRuleContext(
@@ -113,7 +113,7 @@ export function lintFile(
     lineIndex = new LineIndex(sourceText)
     try {
       const result = parseSync(filePath, sourceText, {
-        sourceType: "module",
+        sourceType: 'module',
         lang: getLang(ext),
       })
       program = result.program
@@ -129,7 +129,7 @@ export function lintFile(
   const allCallbacks: VisitorCallbacks[] = []
   for (const rule of rules) {
     const severity = config.rules[rule.meta.id]
-    if (severity === undefined || severity === "off") continue
+    if (severity === undefined || severity === 'off') continue
     const ctx = createRuleContext(rule, severity, diagnostics, lineIndex, sourceText, filePath)
     allCallbacks.push(rule.create(ctx))
   }

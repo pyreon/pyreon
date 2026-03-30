@@ -1,15 +1,15 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import { computed, signal } from "@pyreon/reactivity"
-import { ThemeContext } from "@pyreon/styler"
-import type { PyreonTheme } from "@pyreon/unistyle"
-import { enrichTheme } from "@pyreon/unistyle"
-import { context as coreContext } from "./context"
+import type { VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
+import { computed, signal } from '@pyreon/reactivity'
+import { ThemeContext } from '@pyreon/styler'
+import type { PyreonTheme } from '@pyreon/unistyle'
+import { enrichTheme } from '@pyreon/unistyle'
+import { context as coreContext } from './context'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type ThemeMode = "light" | "dark"
-export type ThemeModeInput = ThemeMode | "system"
+export type ThemeMode = 'light' | 'dark'
+export type ThemeModeInput = ThemeMode | 'system'
 
 export interface PyreonUIProps {
   /** Theme object with breakpoints, rootSize, and custom keys. */
@@ -27,7 +27,7 @@ export interface PyreonUIProps {
 
 // ─── System mode detection ──────────────────────────────────────────────────
 
-const _isBrowser = typeof window !== "undefined" && typeof matchMedia === "function"
+const _isBrowser = typeof window !== 'undefined' && typeof matchMedia === 'function'
 
 /** Reactive signal tracking the OS dark mode preference. Lazy-initialized on first use. */
 let _systemMode: ReturnType<typeof signal<ThemeMode>> | undefined
@@ -35,12 +35,12 @@ let _systemMode: ReturnType<typeof signal<ThemeMode>> | undefined
 function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
   if (_systemMode) return _systemMode
 
-  const prefersDark = _isBrowser && matchMedia("(prefers-color-scheme: dark)").matches
-  _systemMode = signal<ThemeMode>(prefersDark ? "dark" : "light")
+  const prefersDark = _isBrowser && matchMedia('(prefers-color-scheme: dark)').matches
+  _systemMode = signal<ThemeMode>(prefersDark ? 'dark' : 'light')
 
   if (_isBrowser) {
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-      _systemMode?.set(e.matches ? "dark" : "light")
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+      _systemMode?.set(e.matches ? 'dark' : 'light')
     })
   }
 
@@ -50,9 +50,9 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
 // ─── Mode context ───────────────────────────────────────────────────────────
 
 /** Context value is a getter — consumers call it to read the current mode reactively. */
-const ModeContext = createContext<() => ThemeMode>(() => "light")
+const ModeContext = createContext<() => ThemeMode>(() => 'light')
 
-const INVERSED: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "light" }
+const INVERSED: Record<ThemeMode, ThemeMode> = { light: 'dark', dark: 'light' }
 
 /**
  * Read the resolved color mode ("light" | "dark") from the nearest PyreonUI.
@@ -96,15 +96,15 @@ function autoInit(): void {
  * <PyreonUI theme={theme} mode="system">
  * ```
  */
-export function PyreonUI({ theme, mode = "light", inversed, children }: PyreonUIProps): VNodeChild {
+export function PyreonUI({ theme, mode = 'light', inversed, children }: PyreonUIProps): VNodeChild {
   autoInit()
 
   // Create a reactive mode getter that resolves "system" and applies inversion.
   // This getter is provided via context — consumers read it lazily in their
   // own reactive scopes, so mode changes propagate automatically.
   const resolveMode = (): ThemeMode => {
-    const raw = typeof mode === "function" ? mode() : mode
-    const resolved = raw === "system" ? getSystemMode()() : raw
+    const raw = typeof mode === 'function' ? mode() : mode
+    const resolved = raw === 'system' ? getSystemMode()() : raw
     return inversed ? INVERSED[resolved] : resolved
   }
 
@@ -128,10 +128,10 @@ export function PyreonUI({ theme, mode = "light", inversed, children }: PyreonUI
       return modeComputed()
     },
     get isDark() {
-      return modeComputed() === "dark"
+      return modeComputed() === 'dark'
     },
     get isLight() {
-      return modeComputed() === "light"
+      return modeComputed() === 'light'
     },
   })
 

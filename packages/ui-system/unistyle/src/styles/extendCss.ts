@@ -7,17 +7,17 @@ export type ExtendCss = (
 ) => string
 
 const simpleCss = (strings: TemplateStringsArray, ...values: any[]): string => {
-  let result = ""
+  let result = ''
   for (let i = 0; i < strings.length; i++) {
     result += strings[i]
-    if (i < values.length) result += String(values[i] ?? "")
+    if (i < values.length) result += String(values[i] ?? '')
   }
   return result
 }
 
 const extendCss: ExtendCss = (styles) => {
-  if (!styles) return ""
-  if (typeof styles === "function") {
+  if (!styles) return ''
+  if (typeof styles === 'function') {
     return styles(simpleCss)
   }
   return styles

@@ -1,6 +1,6 @@
-import type { DimensionBooleanAttrs, Dimensions, ExtractDimensions, TDKP } from "./dimensions"
-import type { PseudoState } from "./pseudo"
-import type { ElementType, TObj } from "./utils"
+import type { DimensionBooleanAttrs, Dimensions, ExtractDimensions, TDKP } from './dimensions'
+import type { PseudoState } from './pseudo'
+import type { ElementType, TObj } from './utils'
 
 // --------------------------------------------------------
 // CONFIG
@@ -11,7 +11,7 @@ export type RocketComponentType = ElementType & {
 }
 
 export type RocketProviderState<T extends RocketComponentType | TObj | unknown = unknown> =
-  T extends RocketComponentType ? Partial<T["$$rocketstyle"]> & { pseudo: PseudoState } : T
+  T extends RocketComponentType ? Partial<T['$$rocketstyle']> & { pseudo: PseudoState } : T
 
 export type ConsumerCtxCBValue<
   T extends RocketComponentType,

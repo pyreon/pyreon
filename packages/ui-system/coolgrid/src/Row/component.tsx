@@ -1,10 +1,10 @@
-import { provide, useContext } from "@pyreon/core"
-import { PKG_NAME } from "../constants"
-import { ContainerContext, RowContext } from "../context"
-import type { ElementType } from "../types"
-import useGridContext from "../useContext"
-import { omitCtxKeys } from "../utils"
-import Styled from "./styled"
+import { provide, useContext } from '@pyreon/core'
+import { PKG_NAME } from '../constants'
+import { ContainerContext, RowContext } from '../context'
+import type { ElementType } from '../types'
+import useGridContext from '../useContext'
+import { omitCtxKeys } from '../utils'
+import Styled from './styled'
 
 /**
  * Row component that reads inherited config from ContainerContext, merges
@@ -14,9 +14,9 @@ import Styled from "./styled"
  */
 
 const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== "production" ? { "data-coolgrid": "row" } : {}
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'row' } : {}
 
-const Component: ElementType<["containerWidth", "width", "rowComponent", "rowCss"]> = ({
+const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss']> = ({
   children,
   component,
   css,

@@ -1,13 +1,13 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
-import { extractImportInfo } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isCallTo } from '../../utils/ast'
+import { extractImportInfo } from '../../utils/imports'
 
 export const noThemeOutsideProvider: Rule = {
   meta: {
-    id: "pyreon/no-theme-outside-provider",
-    category: "styling",
-    description: "Warn when useTheme() is used without PyreonUI or ThemeProvider in the same file.",
-    severity: "warn",
+    id: 'pyreon/no-theme-outside-provider',
+    category: 'styling',
+    description: 'Warn when useTheme() is used without PyreonUI or ThemeProvider in the same file.',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -19,22 +19,22 @@ export const noThemeOutsideProvider: Rule = {
         const info = extractImportInfo(node)
         if (!info) return
         if (
-          info.specifiers.some((s) => s.imported === "PyreonUI" || s.imported === "ThemeProvider")
+          info.specifiers.some((s) => s.imported === 'PyreonUI' || s.imported === 'ThemeProvider')
         ) {
           hasProviderImport = true
         }
       },
       CallExpression(node: any) {
-        if (isCallTo(node, "useTheme")) {
+        if (isCallTo(node, 'useTheme')) {
           themeCalls.push({ span: getSpan(node) })
         }
       },
-      "Program:exit"() {
+      'Program:exit'() {
         if (hasProviderImport) return
         for (const call of themeCalls) {
           context.report({
             message:
-              "`useTheme()` without a `PyreonUI` or `ThemeProvider` import — the theme context may not be available.",
+              '`useTheme()` without a `PyreonUI` or `ThemeProvider` import — the theme context may not be available.',
             span: call.span,
           })
         }

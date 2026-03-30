@@ -1,13 +1,13 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { computed, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { computed, effect, signal } from '@pyreon/reactivity'
 import type {
   FieldRegisterProps,
   FieldState,
   FormState,
   UseFormOptions,
   ValidationError,
-} from "./types"
+} from './types'
 
 /**
  * Create a signal-based form. Returns reactive field states, form-level
@@ -30,7 +30,7 @@ import type {
 export function useForm<TValues extends Record<string, unknown>>(
   options: UseFormOptions<TValues>,
 ): FormState<TValues> {
-  const { initialValues, onSubmit, validators, schema, validateOn = "blur", debounceMs } = options
+  const { initialValues, onSubmit, validators, schema, validateOn = 'blur', debounceMs } = options
 
   // Build field states
   const fieldEntries = Object.entries(initialValues) as [
@@ -117,7 +117,7 @@ export function useForm<TValues extends Record<string, unknown>>(
       : runValidation
 
     // Auto-validate on change if configured
-    if (validateOn === "change") {
+    if (validateOn === 'change') {
       effect(() => {
         const v = valueSig()
         validateField(v)
@@ -136,7 +136,7 @@ export function useForm<TValues extends Record<string, unknown>>(
       },
       setTouched: () => {
         touchedSig.set(true)
-        if (validateOn === "blur") {
+        if (validateOn === 'blur') {
           validateField(valueSig.peek())
         }
       },
@@ -248,7 +248,7 @@ export function useForm<TValues extends Record<string, unknown>>(
   }
 
   const handleSubmit = async (e?: Event) => {
-    if (e && typeof e.preventDefault === "function") {
+    if (e && typeof e.preventDefault === 'function') {
       e.preventDefault()
     }
 
@@ -286,7 +286,7 @@ export function useForm<TValues extends Record<string, unknown>>(
   const setFieldValue = <K extends keyof TValues>(field: K, value: TValues[K]) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(", ")}`,
+        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}`,
       )
     }
     fields[field].setValue(value)
@@ -295,7 +295,7 @@ export function useForm<TValues extends Record<string, unknown>>(
   const setFieldError = (field: keyof TValues, error: ValidationError) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(", ")}`,
+        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}`,
       )
     }
     fields[field].error.set(error)
@@ -324,9 +324,9 @@ export function useForm<TValues extends Record<string, unknown>>(
 
   const register = <K extends keyof TValues & string>(
     field: K,
-    opts?: { type?: "checkbox" | "number" },
+    opts?: { type?: 'checkbox' | 'number' },
   ): FieldRegisterProps<TValues[K]> => {
-    const cacheKey = `${field}:${opts?.type ?? "text"}`
+    const cacheKey = `${field}:${opts?.type ?? 'text'}`
     const cached = registerCache.get(cacheKey)
     if (cached) return cached as FieldRegisterProps<TValues[K]>
 
@@ -335,9 +335,9 @@ export function useForm<TValues extends Record<string, unknown>>(
       value: fieldState.value,
       onInput: (e: Event) => {
         const target = e.target as HTMLInputElement
-        if (opts?.type === "checkbox") {
+        if (opts?.type === 'checkbox') {
           fieldState.setValue(target.checked as TValues[K])
-        } else if (opts?.type === "number") {
+        } else if (opts?.type === 'number') {
           const num = target.valueAsNumber
           fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
         } else {
@@ -349,7 +349,7 @@ export function useForm<TValues extends Record<string, unknown>>(
       },
     }
 
-    if (opts?.type === "checkbox") {
+    if (opts?.type === 'checkbox') {
       props.checked = computed(() => Boolean(fieldState.value()))
     }
 
@@ -395,7 +395,7 @@ function structuredEqual(a: unknown, b: unknown, depth = 0): boolean {
     return true
   }
 
-  if (typeof a === "object" && typeof b === "object") {
+  if (typeof a === 'object' && typeof b === 'object') {
     const aObj = a as Record<string, unknown>
     const bObj = b as Record<string, unknown>
     const aKeys = Object.keys(aObj)

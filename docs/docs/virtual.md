@@ -17,18 +17,23 @@ Both hooks return reactive signals that update automatically when the user scrol
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/virtual
 ```
+
 ```bash [bun]
 bun add @pyreon/virtual
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/virtual
 ```
+
 ```bash [yarn]
 yarn add @pyreon/virtual
 ```
+
 :::
 
 TanStack Virtual core is included as a dependency -- core utilities and types are re-exported from `@pyreon/virtual` for convenience, so you do not need to install `@tanstack/virtual-core` separately.
@@ -42,9 +47,9 @@ TanStack Virtual core is included as a dependency -- core utilities and types ar
 Create a virtualizer for an element-based scroll container. Options are passed as a function so reactive signals can be read inside -- the virtualizer updates automatically when those signals change.
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import { useVirtualizer } from "@pyreon/virtual"
+import { defineComponent } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const VirtualList = defineComponent(() => {
   const parentRef = signal<HTMLDivElement | null>(null)
@@ -56,25 +61,22 @@ const VirtualList = defineComponent(() => {
   }))
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "400px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '400px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
           <div
             key={item.index}
             style={{
-              position: "absolute",
+              position: 'absolute',
               top: 0,
               left: 0,
-              width: "100%",
+              width: '100%',
               height: `${item.size}px`,
               transform: `translateY(${item.start}px)`,
             }}
@@ -100,36 +102,36 @@ const VirtualList = defineComponent(() => {
 
 The return value from `useVirtualizer` provides:
 
-| Property | Type | Description |
-|---|---|---|
-| `instance` | `Virtualizer<TScrollElement, TItemElement>` | The underlying TanStack Virtual instance with all methods |
-| `virtualItems` | `Signal<VirtualItem[]>` | Reactive list of currently visible virtual items |
-| `totalSize` | `Signal<number>` | Total scrollable size in pixels (height for vertical, width for horizontal) |
-| `isScrolling` | `Signal<boolean>` | Whether the user is currently scrolling |
+| Property       | Type                                        | Description                                                                 |
+| -------------- | ------------------------------------------- | --------------------------------------------------------------------------- |
+| `instance`     | `Virtualizer<TScrollElement, TItemElement>` | The underlying TanStack Virtual instance with all methods                   |
+| `virtualItems` | `Signal<VirtualItem[]>`                     | Reactive list of currently visible virtual items                            |
+| `totalSize`    | `Signal<number>`                            | Total scrollable size in pixels (height for vertical, width for horizontal) |
+| `isScrolling`  | `Signal<boolean>`                           | Whether the user is currently scrolling                                     |
 
 ### UseVirtualizerOptions
 
 The options function should return a `VirtualizerOptions` object. The adapter automatically provides defaults for `observeElementRect`, `observeElementOffset`, and `scrollToFn` -- you can override them if needed.
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `count` | `number` | *required* | Total number of items |
-| `getScrollElement` | `() => Element \| null` | *required* | Returns the scroll container element |
-| `estimateSize` | `(index: number) => number` | *required* | Estimated size of each item in pixels |
-| `overscan` | `number` | `1` | Number of extra items to render outside the visible area |
-| `horizontal` | `boolean` | `false` | Enable horizontal virtualization |
-| `gap` | `number` | `0` | Gap between items in pixels |
-| `paddingStart` | `number` | `0` | Padding before the first item in pixels |
-| `paddingEnd` | `number` | `0` | Padding after the last item in pixels |
-| `enabled` | `boolean` | `true` | Enable/disable the virtualizer |
-| `onChange` | `(instance, sync) => void` | -- | Callback on virtualizer state change |
-| `rangeExtractor` | `(range: Range) => number[]` | `defaultRangeExtractor` | Custom function to extract which indices to render |
-| `keyExtractor` | `(index: number) => Key` | `defaultKeyExtractor` | Custom function to extract a key for each item |
-| `measureElement` | `(el: TItemElement) => number` | -- | Custom measurement function for dynamic sizing |
-| `scrollMargin` | `number` | `0` | Offset to apply to scroll position calculations |
-| `observeElementRect` | `(instance, cb) => () => void` | `observeElementRect` | Custom rect observer (auto-provided) |
-| `observeElementOffset` | `(instance, cb) => () => void` | `observeElementOffset` | Custom offset observer (auto-provided) |
-| `scrollToFn` | `(offset, options, instance) => void` | `elementScroll` | Custom scroll function (auto-provided) |
+| Option                 | Type                                  | Default                 | Description                                              |
+| ---------------------- | ------------------------------------- | ----------------------- | -------------------------------------------------------- |
+| `count`                | `number`                              | _required_              | Total number of items                                    |
+| `getScrollElement`     | `() => Element \| null`               | _required_              | Returns the scroll container element                     |
+| `estimateSize`         | `(index: number) => number`           | _required_              | Estimated size of each item in pixels                    |
+| `overscan`             | `number`                              | `1`                     | Number of extra items to render outside the visible area |
+| `horizontal`           | `boolean`                             | `false`                 | Enable horizontal virtualization                         |
+| `gap`                  | `number`                              | `0`                     | Gap between items in pixels                              |
+| `paddingStart`         | `number`                              | `0`                     | Padding before the first item in pixels                  |
+| `paddingEnd`           | `number`                              | `0`                     | Padding after the last item in pixels                    |
+| `enabled`              | `boolean`                             | `true`                  | Enable/disable the virtualizer                           |
+| `onChange`             | `(instance, sync) => void`            | --                      | Callback on virtualizer state change                     |
+| `rangeExtractor`       | `(range: Range) => number[]`          | `defaultRangeExtractor` | Custom function to extract which indices to render       |
+| `keyExtractor`         | `(index: number) => Key`              | `defaultKeyExtractor`   | Custom function to extract a key for each item           |
+| `measureElement`       | `(el: TItemElement) => number`        | --                      | Custom measurement function for dynamic sizing           |
+| `scrollMargin`         | `number`                              | `0`                     | Offset to apply to scroll position calculations          |
+| `observeElementRect`   | `(instance, cb) => () => void`        | `observeElementRect`    | Custom rect observer (auto-provided)                     |
+| `observeElementOffset` | `(instance, cb) => () => void`        | `observeElementOffset`  | Custom offset observer (auto-provided)                   |
+| `scrollToFn`           | `(offset, options, instance) => void` | `elementScroll`         | Custom scroll function (auto-provided)                   |
 
 ### Reactive Options
 
@@ -140,9 +142,9 @@ const count = signal(100)
 const itemSize = signal(50)
 
 const virtual = useVirtualizer(() => ({
-  count: count(),           // tracked
+  count: count(), // tracked
   getScrollElement: () => parentRef(),
-  estimateSize: () => itemSize(),  // tracked
+  estimateSize: () => itemSize(), // tracked
 }))
 
 // Later: updating count re-renders the virtualizer
@@ -165,8 +167,8 @@ const virtual = useVirtualizer(() => ({
   getScrollElement: () => parentRef(),
   estimateSize: () => 35,
   onChange: (instance, isSync) => {
-    console.log("Visible range:", instance.range)
-    console.log("Is syncing:", isSync)
+    console.log('Visible range:', instance.range)
+    console.log('Is syncing:', isSync)
   },
 }))
 ```
@@ -209,8 +211,8 @@ isActive.set(false)
 Create a virtualizer that uses the browser window as the scroll container. You do not need to provide a scroll element -- the adapter automatically handles `getScrollElement`, `observeElementRect`, `observeElementOffset`, `scrollToFn`, and `initialOffset`.
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { useWindowVirtualizer } from "@pyreon/virtual"
+import { defineComponent } from '@pyreon/core'
+import { useWindowVirtualizer } from '@pyreon/virtual'
 
 const WindowVirtualList = defineComponent(() => {
   const virtual = useWindowVirtualizer(() => ({
@@ -222,18 +224,18 @@ const WindowVirtualList = defineComponent(() => {
     <div
       style={{
         height: `${virtual.totalSize()}px`,
-        width: "100%",
-        position: "relative",
+        width: '100%',
+        position: 'relative',
       }}
     >
       {virtual.virtualItems().map((item) => (
         <div
           key={item.index}
           style={{
-            position: "absolute",
+            position: 'absolute',
             top: 0,
             left: 0,
-            width: "100%",
+            width: '100%',
             height: `${item.size}px`,
             transform: `translateY(${item.start}px)`,
           }}
@@ -248,24 +250,24 @@ const WindowVirtualList = defineComponent(() => {
 
 ### UseWindowVirtualizerResult
 
-| Property | Type | Description |
-|---|---|---|
-| `instance` | `Virtualizer<Window, TItemElement>` | The underlying virtualizer instance |
-| `virtualItems` | `Signal<VirtualItem[]>` | Reactive list of visible virtual items |
-| `totalSize` | `Signal<number>` | Total scrollable size in pixels |
-| `isScrolling` | `Signal<boolean>` | Whether the user is currently scrolling |
+| Property       | Type                                | Description                             |
+| -------------- | ----------------------------------- | --------------------------------------- |
+| `instance`     | `Virtualizer<Window, TItemElement>` | The underlying virtualizer instance     |
+| `virtualItems` | `Signal<VirtualItem[]>`             | Reactive list of visible virtual items  |
+| `totalSize`    | `Signal<number>`                    | Total scrollable size in pixels         |
+| `isScrolling`  | `Signal<boolean>`                   | Whether the user is currently scrolling |
 
 ### Window Virtualizer Defaults
 
 The window virtualizer automatically provides:
 
-| Option | Default |
-|---|---|
-| `getScrollElement` | `() => window` (with SSR safety check) |
-| `observeElementRect` | `observeWindowRect` |
-| `observeElementOffset` | `observeWindowOffset` |
-| `scrollToFn` | `windowScroll` |
-| `initialOffset` | `window.scrollY` (with SSR safety check) |
+| Option                 | Default                                  |
+| ---------------------- | ---------------------------------------- |
+| `getScrollElement`     | `() => window` (with SSR safety check)   |
+| `observeElementRect`   | `observeWindowRect`                      |
+| `observeElementOffset` | `observeWindowOffset`                    |
+| `scrollToFn`           | `windowScroll`                           |
+| `initialOffset`        | `window.scrollY` (with SSR safety check) |
 
 All of these can be overridden if needed:
 
@@ -275,7 +277,7 @@ const virtual = useWindowVirtualizer(() => ({
   estimateSize: () => 50,
   // Custom scroll function for smooth scrolling
   scrollToFn: (offset, options, instance) => {
-    window.scrollTo({ top: offset, behavior: "smooth" })
+    window.scrollTo({ top: offset, behavior: 'smooth' })
   },
 }))
 ```
@@ -283,11 +285,13 @@ const virtual = useWindowVirtualizer(() => ({
 ### When to Use Window vs. Element Virtualization
 
 Use **`useWindowVirtualizer`** when:
+
 - The list is the main content of the page
 - You want the browser scrollbar to control scrolling
 - The list takes up the full viewport height
 
 Use **`useVirtualizer`** when:
+
 - The list is inside a fixed-height container
 - You have multiple scrollable areas on the same page
 - The list is inside a modal, sidebar, or panel
@@ -317,7 +321,7 @@ const virtual = useVirtualizer(() => ({
 For items whose size is determined by their content (and cannot be known upfront), use dynamic measurement. The virtualizer measures each element after it is rendered:
 
 ```tsx
-import { useVirtualizer, measureElement } from "@pyreon/virtual"
+import { useVirtualizer, measureElement } from '@pyreon/virtual'
 
 const VirtualList = defineComponent(() => {
   const parentRef = signal<HTMLDivElement | null>(null)
@@ -331,15 +335,12 @@ const VirtualList = defineComponent(() => {
   }))
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "400px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '400px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
@@ -348,16 +349,14 @@ const VirtualList = defineComponent(() => {
             data-index={item.index}
             ref={(el) => virtual.instance.measureElement(el)}
             style={{
-              position: "absolute",
+              position: 'absolute',
               top: 0,
               left: 0,
-              width: "100%",
+              width: '100%',
               transform: `translateY(${item.start}px)`,
             }}
           >
-            <div style={{ padding: "10px" }}>
-              {items()[item.index].content}
-            </div>
+            <div style={{ padding: '10px' }}>{items()[item.index].content}</div>
           </div>
         ))}
       </div>
@@ -388,7 +387,7 @@ estimateSize: () => 180
 // Best: different estimates per item type
 estimateSize: (index) => {
   const item = items()[index]
-  return item.type === "header" ? 60 : item.type === "image" ? 300 : 100
+  return item.type === 'header' ? 60 : item.type === 'image' ? 300 : 100
 }
 ```
 
@@ -413,25 +412,25 @@ const HorizontalList = defineComponent(() => {
     <div
       ref={(el) => parentRef.set(el)}
       style={{
-        width: "600px",
-        overflow: "auto",
+        width: '600px',
+        overflow: 'auto',
       }}
     >
       <div
         style={{
           width: `${virtual.totalSize()}px`,
-          height: "200px",
-          position: "relative",
+          height: '200px',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
           <div
             key={item.index}
             style={{
-              position: "absolute",
+              position: 'absolute',
               top: 0,
               left: 0,
-              height: "100%",
+              height: '100%',
               width: `${item.size}px`,
               transform: `translateX(${item.start}px)`,
             }}
@@ -486,13 +485,13 @@ const VirtualGrid = defineComponent(() => {
   return () => (
     <div
       ref={(el) => parentRef.set(el)}
-      style={{ height: "500px", width: "800px", overflow: "auto" }}
+      style={{ height: '500px', width: '800px', overflow: 'auto' }}
     >
       <div
         style={{
           height: `${rowVirtualizer.totalSize()}px`,
           width: `${columnVirtualizer.totalSize()}px`,
-          position: "relative",
+          position: 'relative',
         }}
       >
         {rowVirtualizer.virtualItems().map((virtualRow) => (
@@ -501,7 +500,7 @@ const VirtualGrid = defineComponent(() => {
               <div
                 key={`${virtualRow.index}-${virtualColumn.index}`}
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   top: 0,
                   left: 0,
                   width: `${virtualColumn.size}px`,
@@ -576,20 +575,20 @@ Use the virtualizer instance methods to programmatically scroll to specific item
 virtual.instance.scrollToIndex(500)
 
 // Scroll with specific alignment
-virtual.instance.scrollToIndex(500, { align: "start" })
-virtual.instance.scrollToIndex(500, { align: "center" })
-virtual.instance.scrollToIndex(500, { align: "end" })
-virtual.instance.scrollToIndex(500, { align: "auto" })
+virtual.instance.scrollToIndex(500, { align: 'start' })
+virtual.instance.scrollToIndex(500, { align: 'center' })
+virtual.instance.scrollToIndex(500, { align: 'end' })
+virtual.instance.scrollToIndex(500, { align: 'auto' })
 ```
 
 Alignment options:
 
-| Align | Behavior |
-|---|---|
-| `"auto"` | Scrolls the minimum amount to make the item visible |
-| `"start"` | Aligns the item to the start (top/left) of the container |
-| `"center"` | Centers the item in the container |
-| `"end"` | Aligns the item to the end (bottom/right) of the container |
+| Align      | Behavior                                                   |
+| ---------- | ---------------------------------------------------------- |
+| `"auto"`   | Scrolls the minimum amount to make the item visible        |
+| `"start"`  | Aligns the item to the start (top/left) of the container   |
+| `"center"` | Centers the item in the container                          |
+| `"end"`    | Aligns the item to the end (bottom/right) of the container |
 
 ### Scroll to Offset
 
@@ -598,7 +597,7 @@ Alignment options:
 virtual.instance.scrollToOffset(1000)
 
 // With smooth scrolling behavior
-virtual.instance.scrollToOffset(1000, { behavior: "smooth" })
+virtual.instance.scrollToOffset(1000, { behavior: 'smooth' })
 ```
 
 ### Practical Scroll-To Examples
@@ -612,7 +611,7 @@ const scrollToTop = () => virtual.instance.scrollToOffset(0)
 **Jump to bottom:**
 
 ```tsx
-const scrollToBottom = () => virtual.instance.scrollToIndex(count - 1, { align: "end" })
+const scrollToBottom = () => virtual.instance.scrollToIndex(count - 1, { align: 'end' })
 ```
 
 **Search and scroll to result:**
@@ -621,7 +620,7 @@ const scrollToBottom = () => virtual.instance.scrollToIndex(count - 1, { align: 
 const searchAndScroll = (query: string) => {
   const index = items().findIndex((item) => item.name.includes(query))
   if (index >= 0) {
-    virtual.instance.scrollToIndex(index, { align: "center" })
+    virtual.instance.scrollToIndex(index, { align: 'center' })
   }
 }
 ```
@@ -632,12 +631,12 @@ const searchAndScroll = (query: string) => {
 const selectedIndex = signal(0)
 
 const handleKeyDown = (e: KeyboardEvent) => {
-  if (e.key === "ArrowDown") {
+  if (e.key === 'ArrowDown') {
     selectedIndex.set(Math.min(selectedIndex() + 1, count - 1))
-    virtual.instance.scrollToIndex(selectedIndex(), { align: "auto" })
-  } else if (e.key === "ArrowUp") {
+    virtual.instance.scrollToIndex(selectedIndex(), { align: 'auto' })
+  } else if (e.key === 'ArrowUp') {
     selectedIndex.set(Math.max(selectedIndex() - 1, 0))
-    virtual.instance.scrollToIndex(selectedIndex(), { align: "auto" })
+    virtual.instance.scrollToIndex(selectedIndex(), { align: 'auto' })
   }
 }
 ```
@@ -649,9 +648,9 @@ const handleKeyDown = (e: KeyboardEvent) => {
 Detect when the user scrolls near the bottom and load more data:
 
 ```tsx
-import { defineComponent } from "@pyreon/core"
-import { signal, computed } from "@pyreon/reactivity"
-import { useVirtualizer } from "@pyreon/virtual"
+import { defineComponent } from '@pyreon/core'
+import { signal, computed } from '@pyreon/reactivity'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const InfiniteList = defineComponent(() => {
   const parentRef = signal<HTMLDivElement | null>(null)
@@ -690,25 +689,22 @@ const InfiniteList = defineComponent(() => {
   }))
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "500px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '500px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
           <div
             key={item.index}
             style={{
-              position: "absolute",
+              position: 'absolute',
               top: 0,
               left: 0,
-              width: "100%",
+              width: '100%',
               height: `${item.size}px`,
               transform: `translateY(${item.start}px)`,
             }}
@@ -717,7 +713,7 @@ const InfiniteList = defineComponent(() => {
           </div>
         ))}
       </div>
-      {isLoading() && <div style={{ padding: "10px", textAlign: "center" }}>Loading...</div>}
+      {isLoading() && <div style={{ padding: '10px', textAlign: 'center' }}>Loading...</div>}
     </div>
   )
 })
@@ -732,15 +728,15 @@ Combine virtualization with `@pyreon/query` for server-fetched data.
 ### Basic Query + Virtualization
 
 ```tsx
-import { useQuery } from "@pyreon/query"
-import { useVirtualizer } from "@pyreon/virtual"
+import { useQuery } from '@pyreon/query'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const DataList = defineComponent(() => {
   const parentRef = signal<HTMLDivElement | null>(null)
 
   const query = useQuery(() => ({
-    queryKey: ["large-dataset"],
-    queryFn: () => fetch("/api/items").then((r) => r.json()),
+    queryKey: ['large-dataset'],
+    queryFn: () => fetch('/api/items').then((r) => r.json()),
   }))
 
   const virtual = useVirtualizer(() => ({
@@ -754,25 +750,22 @@ const DataList = defineComponent(() => {
       {query.isLoading() && <p>Loading...</p>}
       {query.isError() && <p>Error: {query.error()?.message}</p>}
       {query.isSuccess() && (
-        <div
-          ref={(el) => parentRef.set(el)}
-          style={{ height: "500px", overflow: "auto" }}
-        >
+        <div ref={(el) => parentRef.set(el)} style={{ height: '500px', overflow: 'auto' }}>
           <div
             style={{
               height: `${virtual.totalSize()}px`,
-              width: "100%",
-              position: "relative",
+              width: '100%',
+              position: 'relative',
             }}
           >
             {virtual.virtualItems().map((item) => (
               <div
                 key={item.index}
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   top: 0,
                   left: 0,
-                  width: "100%",
+                  width: '100%',
                   height: `${item.size}px`,
                   transform: `translateY(${item.start}px)`,
                 }}
@@ -791,23 +784,21 @@ const DataList = defineComponent(() => {
 ### Infinite Query + Virtualization
 
 ```tsx
-import { useInfiniteQuery } from "@pyreon/query"
-import { useVirtualizer } from "@pyreon/virtual"
+import { useInfiniteQuery } from '@pyreon/query'
+import { useVirtualizer } from '@pyreon/virtual'
 
 const InfiniteQueryList = defineComponent(() => {
   const parentRef = signal<HTMLDivElement | null>(null)
 
   const query = useInfiniteQuery(() => ({
-    queryKey: ["infinite-items"],
+    queryKey: ['infinite-items'],
     queryFn: ({ pageParam = 0 }) =>
       fetch(`/api/items?offset=${pageParam}&limit=50`).then((r) => r.json()),
     getNextPageParam: (lastPage, allPages) =>
       lastPage.length === 50 ? allPages.length * 50 : undefined,
   }))
 
-  const allItems = computed(() =>
-    query.data()?.pages.flatMap((page) => page) ?? []
-  )
+  const allItems = computed(() => query.data()?.pages.flatMap((page) => page) ?? [])
 
   const virtual = useVirtualizer(() => ({
     count: allItems().length,
@@ -827,25 +818,22 @@ const InfiniteQueryList = defineComponent(() => {
   }))
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "500px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '500px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
           <div
             key={item.index}
             style={{
-              position: "absolute",
+              position: 'absolute',
               top: 0,
               left: 0,
-              width: "100%",
+              width: '100%',
               height: `${item.size}px`,
               transform: `translateY(${item.start}px)`,
             }}
@@ -854,9 +842,7 @@ const InfiniteQueryList = defineComponent(() => {
           </div>
         ))}
       </div>
-      {query.isFetchingNextPage() && (
-        <p style={{ textAlign: "center" }}>Loading more...</p>
-      )}
+      {query.isFetchingNextPage() && <p style={{ textAlign: 'center' }}>Loading more...</p>}
     </div>
   )
 })
@@ -870,7 +856,7 @@ const InfiniteQueryList = defineComponent(() => {
 
 ```tsx
 interface ListItem {
-  type: "header" | "item" | "separator"
+  type: 'header' | 'item' | 'separator'
   content: string
 }
 
@@ -884,53 +870,62 @@ const MixedList = defineComponent(() => {
     estimateSize: (index) => {
       const item = items()[index]
       switch (item.type) {
-        case "header": return 60
-        case "separator": return 20
-        case "item": return 45
+        case 'header':
+          return 60
+        case 'separator':
+          return 20
+        case 'item':
+          return 45
       }
     },
   }))
 
   const renderItem = (item: ListItem, virtualItem: VirtualItem) => {
     switch (item.type) {
-      case "header":
+      case 'header':
         return (
           <div
             style={{
-              position: "absolute",
-              top: 0, left: 0, width: "100%",
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
               height: `${virtualItem.size}px`,
               transform: `translateY(${virtualItem.start}px)`,
-              fontWeight: "bold",
-              fontSize: "18px",
-              padding: "15px 10px",
-              backgroundColor: "#f5f5f5",
+              fontWeight: 'bold',
+              fontSize: '18px',
+              padding: '15px 10px',
+              backgroundColor: '#f5f5f5',
             }}
           >
             {item.content}
           </div>
         )
-      case "separator":
+      case 'separator':
         return (
           <div
             style={{
-              position: "absolute",
-              top: 0, left: 0, width: "100%",
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
               height: `${virtualItem.size}px`,
               transform: `translateY(${virtualItem.start}px)`,
-              borderBottom: "1px solid #eee",
+              borderBottom: '1px solid #eee',
             }}
           />
         )
-      case "item":
+      case 'item':
         return (
           <div
             style={{
-              position: "absolute",
-              top: 0, left: 0, width: "100%",
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
               height: `${virtualItem.size}px`,
               transform: `translateY(${virtualItem.start}px)`,
-              padding: "10px",
+              padding: '10px',
             }}
           >
             {item.content}
@@ -940,21 +935,16 @@ const MixedList = defineComponent(() => {
   }
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "500px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '500px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((virtualItem) => (
-          <div key={virtualItem.index}>
-            {renderItem(items()[virtualItem.index], virtualItem)}
-          </div>
+          <div key={virtualItem.index}>{renderItem(items()[virtualItem.index], virtualItem)}</div>
         ))}
       </div>
     </div>
@@ -989,15 +979,12 @@ const ExpandableList = defineComponent(() => {
   }
 
   return () => (
-    <div
-      ref={(el) => parentRef.set(el)}
-      style={{ height: "500px", overflow: "auto" }}
-    >
+    <div ref={(el) => parentRef.set(el)} style={{ height: '500px', overflow: 'auto' }}>
       <div
         style={{
           height: `${virtual.totalSize()}px`,
-          width: "100%",
-          position: "relative",
+          width: '100%',
+          position: 'relative',
         }}
       >
         {virtual.virtualItems().map((item) => (
@@ -1006,20 +993,22 @@ const ExpandableList = defineComponent(() => {
             data-index={item.index}
             ref={(el) => virtual.instance.measureElement(el)}
             style={{
-              position: "absolute",
-              top: 0, left: 0, width: "100%",
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
               transform: `translateY(${item.start}px)`,
             }}
           >
             <div
               onClick={() => toggleItem(item.index)}
-              style={{ cursor: "pointer", padding: "10px" }}
+              style={{ cursor: 'pointer', padding: '10px' }}
             >
               Item {item.index}
               {expandedItems().has(item.index) && (
-                <div style={{ padding: "10px", color: "#666" }}>
-                  Expanded content for item {item.index}. This content
-                  has variable height and will be measured dynamically.
+                <div style={{ padding: '10px', color: '#666' }}>
+                  Expanded content for item {item.index}. This content has variable height and will
+                  be measured dynamically.
                 </div>
               )}
             </div>
@@ -1056,20 +1045,20 @@ The virtualizer may re-render visible items frequently during scrolling. Keep ea
 
 ```tsx
 // Avoid: expensive computation inside the render
-{virtual.virtualItems().map((item) => (
-  <div key={item.index}>
-    {expensiveComputation(data[item.index])} {/* runs on every scroll */}
-  </div>
-))}
+{
+  virtual.virtualItems().map((item) => (
+    <div key={item.index}>
+      {expensiveComputation(data[item.index])} {/* runs on every scroll */}
+    </div>
+  ))
+}
 
 // Better: pre-compute data outside the render loop
 const processedData = computed(() => data().map(expensiveComputation))
 
-{virtual.virtualItems().map((item) => (
-  <div key={item.index}>
-    {processedData()[item.index]}
-  </div>
-))}
+{
+  virtual.virtualItems().map((item) => <div key={item.index}>{processedData()[item.index]}</div>)
+}
 ```
 
 ### 3. Use Absolute Positioning with transform
@@ -1138,13 +1127,13 @@ return () => (
     role="list"
     aria-label="Items list"
     aria-rowcount={items().length}
-    style={{ height: "500px", overflow: "auto" }}
+    style={{ height: '500px', overflow: 'auto' }}
   >
     <div
       style={{
         height: `${virtual.totalSize()}px`,
-        width: "100%",
-        position: "relative",
+        width: '100%',
+        position: 'relative',
       }}
     >
       {virtual.virtualItems().map((item) => (
@@ -1155,8 +1144,10 @@ return () => (
           aria-setsize={items().length}
           aria-posinset={item.index + 1}
           style={{
-            position: "absolute",
-            top: 0, left: 0, width: "100%",
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
             height: `${item.size}px`,
             transform: `translateY(${item.start}px)`,
           }}
@@ -1178,25 +1169,25 @@ const focusedIndex = signal(0)
 
 const handleKeyDown = (e: KeyboardEvent) => {
   switch (e.key) {
-    case "ArrowDown":
+    case 'ArrowDown':
       e.preventDefault()
       focusedIndex.set(Math.min(focusedIndex() + 1, count - 1))
-      virtual.instance.scrollToIndex(focusedIndex(), { align: "auto" })
+      virtual.instance.scrollToIndex(focusedIndex(), { align: 'auto' })
       break
-    case "ArrowUp":
+    case 'ArrowUp':
       e.preventDefault()
       focusedIndex.set(Math.max(focusedIndex() - 1, 0))
-      virtual.instance.scrollToIndex(focusedIndex(), { align: "auto" })
+      virtual.instance.scrollToIndex(focusedIndex(), { align: 'auto' })
       break
-    case "Home":
+    case 'Home':
       e.preventDefault()
       focusedIndex.set(0)
       virtual.instance.scrollToIndex(0)
       break
-    case "End":
+    case 'End':
       e.preventDefault()
       focusedIndex.set(count - 1)
-      virtual.instance.scrollToIndex(count - 1, { align: "end" })
+      virtual.instance.scrollToIndex(count - 1, { align: 'end' })
       break
   }
 }
@@ -1214,28 +1205,28 @@ The following are re-exported from `@tanstack/virtual-core` for convenience:
 
 ### Functions
 
-| Export | Description |
-|---|---|
-| `Virtualizer` | The core virtualizer class |
-| `defaultKeyExtractor` | Default key extractor: `(index) => index` |
-| `defaultRangeExtractor` | Default range extractor for determining which indices to render |
-| `observeElementOffset` | Observer for element scroll offset changes |
-| `observeElementRect` | Observer for element bounding rect changes |
-| `observeWindowOffset` | Observer for window scroll offset changes |
-| `observeWindowRect` | Observer for window bounding rect changes |
-| `elementScroll` | Default element scroll function |
-| `windowScroll` | Default window scroll function |
-| `measureElement` | Dynamic element measurement utility using `getBoundingClientRect` |
+| Export                  | Description                                                       |
+| ----------------------- | ----------------------------------------------------------------- |
+| `Virtualizer`           | The core virtualizer class                                        |
+| `defaultKeyExtractor`   | Default key extractor: `(index) => index`                         |
+| `defaultRangeExtractor` | Default range extractor for determining which indices to render   |
+| `observeElementOffset`  | Observer for element scroll offset changes                        |
+| `observeElementRect`    | Observer for element bounding rect changes                        |
+| `observeWindowOffset`   | Observer for window scroll offset changes                         |
+| `observeWindowRect`     | Observer for window bounding rect changes                         |
+| `elementScroll`         | Default element scroll function                                   |
+| `windowScroll`          | Default window scroll function                                    |
+| `measureElement`        | Dynamic element measurement utility using `getBoundingClientRect` |
 
 ### Types
 
-| Type | Description |
-|---|---|
-| `VirtualizerOptions` | Full options object for the Virtualizer class |
-| `VirtualItem` | Represents a single virtual item with `index`, `key`, `start`, `end`, `size`, and `lane` |
-| `Range` | Represents a visible range with `startIndex`, `endIndex`, `overscan`, and `count` |
-| `Rect` | Represents a rectangle with `width` and `height` |
-| `ScrollToOptions` | Options for scroll-to methods: `align` and `behavior` |
+| Type                 | Description                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `VirtualizerOptions` | Full options object for the Virtualizer class                                            |
+| `VirtualItem`        | Represents a single virtual item with `index`, `key`, `start`, `end`, `size`, and `lane` |
+| `Range`              | Represents a visible range with `startIndex`, `endIndex`, `overscan`, and `count`        |
+| `Rect`               | Represents a rectangle with `width` and `height`                                         |
+| `ScrollToOptions`    | Options for scroll-to methods: `align` and `behavior`                                    |
 
 ---
 
@@ -1257,22 +1248,22 @@ Create a reactive virtualizer for window-based scrolling.
 
 ### VirtualItem Properties
 
-| Property | Type | Description |
-|---|---|---|
-| `index` | `number` | The index of this item in the original list |
-| `key` | `string \| number` | Unique key for this item (from `keyExtractor`) |
-| `start` | `number` | Pixel offset from the start of the scrollable area |
-| `end` | `number` | Pixel offset of the end of this item (`start + size`) |
-| `size` | `number` | Size of this item in pixels (estimated or measured) |
-| `lane` | `number` | Lane index for multi-lane layouts |
+| Property | Type               | Description                                           |
+| -------- | ------------------ | ----------------------------------------------------- |
+| `index`  | `number`           | The index of this item in the original list           |
+| `key`    | `string \| number` | Unique key for this item (from `keyExtractor`)        |
+| `start`  | `number`           | Pixel offset from the start of the scrollable area    |
+| `end`    | `number`           | Pixel offset of the end of this item (`start + size`) |
+| `size`   | `number`           | Size of this item in pixels (estimated or measured)   |
+| `lane`   | `number`           | Lane index for multi-lane layouts                     |
 
 ### Instance Methods
 
-| Method | Description |
-|---|---|
-| `scrollToIndex(index, options?)` | Scroll to a specific item index |
-| `scrollToOffset(offset, options?)` | Scroll to a specific pixel offset |
-| `measureElement(el)` | Measure a DOM element and update the item's cached size |
-| `measure()` | Invalidate all size measurements and recalculate |
-| `getVirtualItems()` | Get the current list of virtual items (non-reactive) |
-| `getTotalSize()` | Get the current total size (non-reactive) |
+| Method                             | Description                                             |
+| ---------------------------------- | ------------------------------------------------------- |
+| `scrollToIndex(index, options?)`   | Scroll to a specific item index                         |
+| `scrollToOffset(offset, options?)` | Scroll to a specific pixel offset                       |
+| `measureElement(el)`               | Measure a DOM element and update the item's cached size |
+| `measure()`                        | Invalidate all size measurements and recalculate        |
+| `getVirtualItems()`                | Get the current list of virtual items (non-reactive)    |
+| `getTotalSize()`                   | Get the current total size (non-reactive)               |

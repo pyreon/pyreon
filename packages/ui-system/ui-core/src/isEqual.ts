@@ -18,7 +18,7 @@ const isObjectEqual = (a: Record<string, unknown>, b: Record<string, unknown>): 
 
 const isEqual = (a: unknown, b: unknown): boolean => {
   if (Object.is(a, b)) return true
-  if (typeof a !== typeof b || a == null || b == null || typeof a !== "object") return false
+  if (typeof a !== typeof b || a == null || b == null || typeof a !== 'object') return false
   if (Array.isArray(a)) return Array.isArray(b) && isArrayEqual(a, b)
   if (Array.isArray(b)) return false
   return isObjectEqual(a as Record<string, unknown>, b as Record<string, unknown>)

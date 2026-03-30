@@ -47,7 +47,7 @@ export class EffectScope {
         try {
           fn()
         } catch (err) {
-          console.error("[pyreon] onUpdate hook error:", err)
+          console.error('[pyreon] onUpdate hook error:', err)
         }
       }
     })

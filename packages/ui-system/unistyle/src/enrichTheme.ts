@@ -1,5 +1,5 @@
-import { config, isEmpty } from "@pyreon/ui-core"
-import { createMediaQueries, sortBreakpoints } from "./responsive"
+import { config, isEmpty } from '@pyreon/ui-core'
+import { createMediaQueries, sortBreakpoints } from './responsive'
 
 export type PyreonTheme = {
   rootSize?: number
@@ -24,7 +24,7 @@ export type PyreonTheme = {
  */
 export function enrichTheme<T extends PyreonTheme>(
   theme: T,
-): T & Required<Pick<PyreonTheme, "__PYREON__">> {
+): T & Required<Pick<PyreonTheme, '__PYREON__'>> {
   const { breakpoints, rootSize = 16 } = theme
 
   const sortedBreakpoints =

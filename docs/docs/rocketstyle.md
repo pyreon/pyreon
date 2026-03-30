@@ -10,18 +10,23 @@ description: Multi-dimensional style composition for Pyreon components -- themes
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/rocketstyle
 ```
+
 ```bash [bun]
 bun add @pyreon/rocketstyle
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/rocketstyle
 ```
+
 ```bash [yarn]
 yarn add @pyreon/rocketstyle
 ```
+
 :::
 
 ## Overview
@@ -69,12 +74,12 @@ const Button = rocketstyle(BaseButton)
 
 Rocketstyle supports four built-in dimension types:
 
-| Dimension | Description |
-|---|---|
-| `theme` | Visual theme (e.g., primary, secondary, danger) |
-| `size` | Size scale (e.g., sm, md, lg, xl) |
+| Dimension | Description                                         |
+| --------- | --------------------------------------------------- |
+| `theme`   | Visual theme (e.g., primary, secondary, danger)     |
+| `size`    | Size scale (e.g., sm, md, lg, xl)                   |
 | `variant` | Structural variation (e.g., outlined, filled, text) |
-| `state` | Interactive state (e.g., disabled, loading, active) |
+| `state`   | Interactive state (e.g., disabled, loading, active) |
 
 Each dimension is defined by calling the corresponding method on the rocketstyle builder and passing a map of named values to style objects or callbacks.
 
@@ -83,14 +88,13 @@ Each dimension is defined by calling the corresponding method on the rocketstyle
 Dimension values can be static objects or dynamic callbacks that receive the component's props and theme:
 
 ```tsx
-const Card = rocketstyle(BaseCard)
-  .theme({
-    light: { background: '#fff', color: '#333' },
-    dark: (props) => ({
-      background: props.elevated ? '#2d2d2d' : '#1a1a1a',
-      color: '#e0e0e0',
-    }),
-  })
+const Card = rocketstyle(BaseCard).theme({
+  light: { background: '#fff', color: '#333' },
+  dark: (props) => ({
+    background: props.elevated ? '#2d2d2d' : '#1a1a1a',
+    color: '#e0e0e0',
+  }),
+})
 ```
 
 ## Chaining with Attrs
@@ -116,7 +120,7 @@ Rocketstyle components can be configured at the tree level using the built-in `P
 ```tsx
 import { Provider } from '@pyreon/rocketstyle'
 
-<Provider value={{ theme: 'dark', size: 'sm' }}>
+;<Provider value={{ theme: 'dark', size: 'sm' }}>
   {/* All rocketstyle components inside inherit these defaults */}
   <Button>Uses dark theme, sm size</Button>
   <Card>Also dark and small</Card>
@@ -129,23 +133,23 @@ Rocketstyle is designed to work with `@pyreon/styler`. Dimension style objects a
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `rocketstyle` | Function | Wraps a component and returns a multi-dimension style builder |
-| `Provider` | Component | Context provider for tree-level dimension defaults |
-| `context` | Context | The raw Pyreon context object used by Provider |
-| `isRocketComponent` | Function | Type guard to check if a value is a rocketstyle component |
+| Export              | Type      | Description                                                   |
+| ------------------- | --------- | ------------------------------------------------------------- |
+| `rocketstyle`       | Function  | Wraps a component and returns a multi-dimension style builder |
+| `Provider`          | Component | Context provider for tree-level dimension defaults            |
+| `context`           | Context   | The raw Pyreon context object used by Provider                |
+| `isRocketComponent` | Function  | Type guard to check if a value is a rocketstyle component     |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `Rocketstyle` | The builder interface with `.theme()`, `.size()`, `.variant()`, `.state()`, `.attrs()` |
-| `RocketStyleComponent` | A component produced by the rocketstyle builder |
-| `Dimensions` | Map of dimension names to their value definitions |
-| `DimensionProps` | Props auto-generated from dimension definitions |
-| `ThemeMode` | Theme mode configuration type |
-| `StylesCb` | Style callback signature: `(props) => StyleObject` |
+| Type                   | Description                                                                            |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `Rocketstyle`          | The builder interface with `.theme()`, `.size()`, `.variant()`, `.state()`, `.attrs()` |
+| `RocketStyleComponent` | A component produced by the rocketstyle builder                                        |
+| `Dimensions`           | Map of dimension names to their value definitions                                      |
+| `DimensionProps`       | Props auto-generated from dimension definitions                                        |
+| `ThemeMode`            | Theme mode configuration type                                                          |
+| `StylesCb`             | Style callback signature: `(props) => StyleObject`                                     |
 
 ## Key Features
 

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react"
-import Demo from "./Demo"
+import { useCallback, useMemo, useState } from 'react'
+import Demo from './Demo'
 
 export default function UseMemoDemo() {
   const [count, setCount] = useState(1)
@@ -24,7 +24,7 @@ const increment = useCallback(() =>
 );`}
     >
       <p>
-        Count: <strong>{count}</strong> | Doubled: <strong>{doubled}</strong> | Quadrupled:{" "}
+        Count: <strong>{count}</strong> | Doubled: <strong>{doubled}</strong> | Quadrupled:{' '}
         <strong>{quadrupled}</strong>
       </p>
       <button type="button" onClick={increment}>

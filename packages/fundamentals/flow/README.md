@@ -52,16 +52,16 @@ Create a reactive flow instance with signal-based state.
 
 ### Components
 
-| Component | Description |
-| --- | --- |
-| `<Flow>` | Main container with pan/zoom via pointer events + CSS transforms |
-| `<Background>` | Dot or line grid background |
-| `<MiniMap>` | Overview minimap |
-| `<Controls>` | Zoom/fit buttons |
-| `<Handle>` | Connection handle on nodes |
-| `<Panel>` | Overlay panel positioned relative to the flow |
-| `<NodeResizer>` | Resize handle for nodes |
-| `<NodeToolbar>` | Toolbar attached to a node |
+| Component       | Description                                                      |
+| --------------- | ---------------------------------------------------------------- |
+| `<Flow>`        | Main container with pan/zoom via pointer events + CSS transforms |
+| `<Background>`  | Dot or line grid background                                      |
+| `<MiniMap>`     | Overview minimap                                                 |
+| `<Controls>`    | Zoom/fit buttons                                                 |
+| `<Handle>`      | Connection handle on nodes                                       |
+| `<Panel>`       | Overlay panel positioned relative to the flow                    |
+| `<NodeResizer>` | Resize handle for nodes                                          |
+| `<NodeToolbar>` | Toolbar attached to a node                                       |
 
 ### Edge Paths
 

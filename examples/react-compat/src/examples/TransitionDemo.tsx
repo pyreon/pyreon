@@ -1,5 +1,5 @@
-import { useDeferredValue, useState, useTransition } from "react"
-import Demo from "./Demo"
+import { useDeferredValue, useState, useTransition } from 'react'
+import Demo from './Demo'
 
 export default function TransitionDemo() {
   const [isPending, startTransition] = useTransition()

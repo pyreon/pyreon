@@ -1,4 +1,4 @@
-import { CSSResult, type Interpolation } from "./resolve"
+import { CSSResult, type Interpolation } from './resolve'
 
 /**
  * Tagged template function for CSS. Captures the template strings and

@@ -1,4 +1,4 @@
-import type { FileRoute, RenderMode } from "./types"
+import type { FileRoute, RenderMode } from './types'
 
 // ─── File-system route conventions ──────────────────────────────────────────
 //
@@ -25,7 +25,7 @@ import type { FileRoute, RenderMode } from "./types"
 //   _loading    → loading component
 //   (group)     → route group (directory ignored in URL)
 
-const ROUTE_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"]
+const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
 
 /**
  * Parse a set of file paths (relative to routes dir) into FileRoute objects.
@@ -33,7 +33,7 @@ const ROUTE_EXTENSIONS = [".tsx", ".jsx", ".ts", ".js"]
  * @param files Array of file paths like ["index.tsx", "users/[id].tsx"]
  * @param defaultMode Default rendering mode from config
  */
-export function parseFileRoutes(files: string[], defaultMode: RenderMode = "ssr"): FileRoute[] {
+export function parseFileRoutes(files: string[], defaultMode: RenderMode = 'ssr'): FileRoute[] {
   return files
     .filter((f) => ROUTE_EXTENSIONS.some((ext) => f.endsWith(ext)))
     .map((filePath) => parseFilePath(filePath, defaultMode))
@@ -51,19 +51,19 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
   }
 
   const fileName = getFileName(route)
-  const isLayout = fileName === "_layout"
-  const isError = fileName === "_error"
-  const isLoading = fileName === "_loading"
-  const isCatchAll = route.includes("[...")
+  const isLayout = fileName === '_layout'
+  const isError = fileName === '_error'
+  const isLoading = fileName === '_loading'
+  const isCatchAll = route.includes('[...')
 
   // Get directory path (strip groups for consistent grouping)
-  const parts = route.split("/")
+  const parts = route.split('/')
   parts.pop() // remove filename
-  const dirPath = parts.filter((s) => !(s.startsWith("(") && s.endsWith(")"))).join("/")
+  const dirPath = parts.filter((s) => !(s.startsWith('(') && s.endsWith(')'))).join('/')
 
   // Convert file path to URL pattern
   const urlPath = filePathToUrlPath(route)
-  const depth = urlPath === "/" ? 0 : urlPath.split("/").filter(Boolean).length
+  const depth = urlPath === '/' ? 0 : urlPath.split('/').filter(Boolean).length
 
   return {
     filePath,
@@ -91,18 +91,18 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
  *   "_layout"          → "/"              (layout marker)
  */
 export function filePathToUrlPath(filePath: string): string {
-  const segments = filePath.split("/")
+  const segments = filePath.split('/')
   const urlSegments: string[] = []
 
   for (const seg of segments) {
     // Skip route groups "(name)"
-    if (seg.startsWith("(") && seg.endsWith(")")) continue
+    if (seg.startsWith('(') && seg.endsWith(')')) continue
 
     // Skip special files
-    if (seg === "_layout" || seg === "_error" || seg === "_loading") continue
+    if (seg === '_layout' || seg === '_error' || seg === '_loading') continue
 
     // "index" maps to the parent path
-    if (seg === "index") continue
+    if (seg === 'index') continue
 
     // Catch-all: [...param] → :param*
     const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
@@ -121,8 +121,8 @@ export function filePathToUrlPath(filePath: string): string {
     urlSegments.push(seg)
   }
 
-  const path = `/${urlSegments.join("/")}`
-  return path || "/"
+  const path = `/${urlSegments.join('/')}`
+  return path || '/'
 }
 
 /** Sort routes: static before dynamic, catch-all last. */
@@ -132,16 +132,16 @@ function sortRoutes(a: FileRoute, b: FileRoute): number {
   // Layouts go first within same depth
   if (a.isLayout !== b.isLayout) return a.isLayout ? -1 : 1
   // Static segments before dynamic
-  const aDynamic = a.urlPath.includes(":")
-  const bDynamic = b.urlPath.includes(":")
+  const aDynamic = a.urlPath.includes(':')
+  const bDynamic = b.urlPath.includes(':')
   if (aDynamic !== bDynamic) return aDynamic ? 1 : -1
   // Alphabetical
   return a.urlPath.localeCompare(b.urlPath)
 }
 
 function getFileName(filePath: string): string {
-  const parts = filePath.split("/")
-  return parts[parts.length - 1] ?? ""
+  const parts = filePath.split('/')
+  return parts[parts.length - 1] ?? ''
 }
 
 // ─── Route generation (for Vite plugin) ─────────────────────────────────────
@@ -175,7 +175,7 @@ function getOrCreateChild(node: RouteNode, segment: string): RouteNode {
 function resolveNode(root: RouteNode, dirPath: string): RouteNode {
   let node = root
   if (dirPath) {
-    for (const segment of dirPath.split("/")) {
+    for (const segment of dirPath.split('/')) {
       node = getOrCreateChild(node, segment)
     }
   }
@@ -208,10 +208,10 @@ export function generateRouteModule(files: string[], routesDir: string): string 
   const imports: string[] = []
   let importCounter = 0
 
-  function nextImport(filePath: string, exportName = "default"): string {
+  function nextImport(filePath: string, exportName = 'default'): string {
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
-    if (exportName === "default") {
+    if (exportName === 'default') {
       imports.push(`import ${name} from "${fullPath}"`)
     } else {
       imports.push(`import { ${exportName} as ${name} } from "${fullPath}"`)
@@ -225,7 +225,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     const opts: string[] = []
     if (loadingName) opts.push(`loading: ${loadingName}`)
     if (errorName) opts.push(`error: ${errorName}`)
-    const optsStr = opts.length > 0 ? `, { ${opts.join(", ")} }` : ""
+    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
     imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
     return name
   }
@@ -260,7 +260,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
       props.push(`${indent}  errorComponent: ${mod}.error`)
     }
 
-    return `${indent}{\n${props.join(",\n")}\n${indent}}`
+    return `${indent}{\n${props.join(',\n')}\n${indent}}`
   }
 
   function wrapWithLayout(
@@ -271,7 +271,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
   ): string {
     const layout = node.layout as FileRoute
     const layoutMod = nextModuleImport(layout.filePath)
-    const layoutComp = nextImport(layout.filePath, "layout")
+    const layoutComp = nextImport(layout.filePath, 'layout')
 
     const props: string[] = [
       `${indent}path: ${JSON.stringify(layout.urlPath)}`,
@@ -284,17 +284,17 @@ export function generateRouteModule(files: string[], routesDir: string): string 
       props.push(`${indent}errorComponent: ${errorName}`)
     }
     if (children.length > 0) {
-      props.push(`${indent}children: [\n${children.join(",\n")}\n${indent}]`)
+      props.push(`${indent}children: [\n${children.join(',\n')}\n${indent}]`)
     }
 
-    return `${indent}{\n${props.map((p) => `  ${p}`).join(",\n")}\n${indent}}`
+    return `${indent}{\n${props.map((p) => `  ${p}`).join(',\n')}\n${indent}}`
   }
 
   /**
    * Generate route definitions for a tree node.
    */
   function generateNode(node: RouteNode, depth: number): string[] {
-    const indent = "  ".repeat(depth + 1)
+    const indent = '  '.repeat(depth + 1)
 
     const errorName = node.error ? nextImport(node.error.filePath) : undefined
     const loadingName = node.loading ? nextImport(node.loading.filePath) : undefined
@@ -320,9 +320,9 @@ export function generateRouteModule(files: string[], routesDir: string): string 
 
   return [
     `import { lazy } from "@pyreon/router"`,
-    "",
+    '',
     ...imports,
-    "",
+    '',
     // Filter out undefined properties at runtime
     `function clean(routes) {`,
     `  return routes.map(r => {`,
@@ -332,11 +332,11 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     `    return c`,
     `  })`,
     `}`,
-    "",
+    '',
     `export const routes = clean([`,
-    routeDefs.join(",\n"),
+    routeDefs.join(',\n'),
     `])`,
-  ].join("\n")
+  ].join('\n')
 }
 
 /**
@@ -359,11 +359,11 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
 
   return [
     ...imports,
-    "",
+    '',
     `export const routeMiddleware = [`,
-    entries.join(",\n"),
+    entries.join(',\n'),
     `].filter(e => e.middleware)`,
-  ].join("\n")
+  ].join('\n')
 }
 
 /**
@@ -371,8 +371,8 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
  * Returns paths relative to the routes directory.
  */
 export async function scanRouteFiles(routesDir: string): Promise<string[]> {
-  const { readdir } = await import("node:fs/promises")
-  const { join, relative } = await import("node:path")
+  const { readdir } = await import('node:fs/promises')
+  const { join, relative } = await import('node:path')
 
   const files: string[] = []
 

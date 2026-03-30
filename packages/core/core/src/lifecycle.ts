@@ -1,6 +1,6 @@
-import type { CleanupFn, LifecycleHooks } from "./types"
+import type { CleanupFn, LifecycleHooks } from './types'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 // The currently-executing component's hook storage, set by the renderer
 // before calling the component function, cleared immediately after.
@@ -30,7 +30,7 @@ function warnOutsideSetup(hookName: string): void {
  */
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
 export function onMount(fn: () => CleanupFn | void | undefined) {
-  warnOutsideSetup("onMount")
+  warnOutsideSetup('onMount')
   _current?.mount.push(fn)
 }
 
@@ -38,7 +38,7 @@ export function onMount(fn: () => CleanupFn | void | undefined) {
  * Register a callback to run when the component is removed from the DOM.
  */
 export function onUnmount(fn: () => void) {
-  warnOutsideSetup("onUnmount")
+  warnOutsideSetup('onUnmount')
   _current?.unmount.push(fn)
 }
 
@@ -46,7 +46,7 @@ export function onUnmount(fn: () => void) {
  * Register a callback to run after each reactive update.
  */
 export function onUpdate(fn: () => void) {
-  warnOutsideSetup("onUpdate")
+  warnOutsideSetup('onUpdate')
   _current?.update.push(fn)
 }
 
@@ -64,6 +64,6 @@ export function onUpdate(fn: () => void) {
  * })
  */
 export function onErrorCaptured(fn: (err: unknown) => boolean | undefined) {
-  warnOutsideSetup("onErrorCaptured")
+  warnOutsideSetup('onErrorCaptured')
   _current?.error.push(fn)
 }

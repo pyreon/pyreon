@@ -1,4 +1,4 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 /** A nested dictionary of translation strings. */
 export type TranslationDictionary = {

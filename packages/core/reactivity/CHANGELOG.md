@@ -43,7 +43,6 @@
 ### Minor Changes
 
 - ### Performance
-
   - **2x faster signal creation** — removed `Object.defineProperty` that forced V8 dictionary mode
   - **Event delegation** — `el.__ev_click` instead of `addEventListener` for compiled templates
   - **`_bindText`** — direct signal→TextNode subscription with zero effect overhead
@@ -57,7 +56,6 @@
   - **Nested `_tpl` support** — compiler emits nested `cloneNode(true)` templates
 
   ### Features
-
   - **True React compatibility** — `useState`, `useEffect`, `useMemo` with re-render model matching React semantics
   - **True Preact compatibility** — hooks with re-render model matching Preact semantics
   - **True Vue compatibility** — `ref`, `reactive`, `watch`, `computed` with re-render model matching Vue semantics
@@ -66,7 +64,6 @@
   ### Benchmark Results (Chromium)
 
   Pyreon (compiled) is fastest framework on 6 of 7 tests:
-
   - Create 1,000 rows: 9ms (1.00x) vs Solid 10ms, Vue 11ms, React 33ms
   - Replace all rows: 10ms (1.00x) vs Solid 10ms, Vue 11ms, React 31ms
   - Partial update: 5ms (1.00x) vs Solid 6ms, Vue 7ms, React 6ms
@@ -78,7 +75,6 @@
 ### Patch Changes
 
 - Release 0.2.1
-
   - feat(vite-plugin): add `compat` option for zero-change framework migration
   - fix: resolve `workspace:^` dependencies correctly during publish
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option
@@ -89,7 +85,6 @@
 ### Minor Changes
 
 - Release 0.2.0
-
   - fix(vite-plugin): use `oxc` instead of deprecated `esbuild` option for Vite 8
   - fix(vite-plugin): bump vite peer dependency to `>=8.0.0`
 

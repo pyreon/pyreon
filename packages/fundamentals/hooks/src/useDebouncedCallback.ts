@@ -1,4 +1,4 @@
-import { onUnmount } from "@pyreon/core"
+import { onUnmount } from '@pyreon/core'
 
 type DebouncedFn<T extends (...args: any[]) => any> = {
   (...args: Parameters<T>): void

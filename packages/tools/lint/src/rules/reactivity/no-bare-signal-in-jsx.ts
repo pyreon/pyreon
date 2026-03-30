@@ -1,15 +1,15 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan } from '../../utils/ast'
 
 const SKIP_PREFIXES = /^(use|get|is|has|[A-Z])/
 
 export const noBareSignalInJsx: Rule = {
   meta: {
-    id: "pyreon/no-bare-signal-in-jsx",
-    category: "reactivity",
+    id: 'pyreon/no-bare-signal-in-jsx',
+    category: 'reactivity',
     description:
-      "Disallow bare signal calls in JSX text positions. Wrap in `() =>` for reactivity.",
-    severity: "error",
+      'Disallow bare signal calls in JSX text positions. Wrap in `() =>` for reactivity.',
+    severity: 'error',
     fixable: true,
   },
   create(context) {
@@ -18,21 +18,21 @@ export const noBareSignalInJsx: Rule = {
       JSXElement() {
         jsxDepth++
       },
-      "JSXElement:exit"() {
+      'JSXElement:exit'() {
         jsxDepth--
       },
       JSXFragment() {
         jsxDepth++
       },
-      "JSXFragment:exit"() {
+      'JSXFragment:exit'() {
         jsxDepth--
       },
       JSXExpressionContainer(node: any) {
         if (jsxDepth === 0) return
         const expr = node.expression
-        if (!expr || expr.type !== "CallExpression") return
+        if (!expr || expr.type !== 'CallExpression') return
         const callee = expr.callee
-        if (!callee || callee.type !== "Identifier") return
+        if (!callee || callee.type !== 'Identifier') return
 
         const name: string = callee.name
         if (SKIP_PREFIXES.test(name)) return

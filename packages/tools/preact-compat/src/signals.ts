@@ -5,13 +5,13 @@
  * Wraps Pyreon's signal/computed in `{ value }` accessor objects.
  */
 
-import type { Effect } from "@pyreon/reactivity"
+import type { Effect } from '@pyreon/reactivity'
 import {
   batch as pyreonBatch,
   computed as pyreonComputed,
   effect as pyreonEffect,
   signal as pyreonSignal,
-} from "@pyreon/reactivity"
+} from '@pyreon/reactivity'
 
 // ─── Signal ──────────────────────────────────────────────────────────────────
 

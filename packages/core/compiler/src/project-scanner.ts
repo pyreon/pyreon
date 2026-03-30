@@ -2,8 +2,8 @@
  * Project scanner — extracts route, component, and island information from source files.
  */
 
-import * as fs from "node:fs"
-import * as path from "node:path"
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
 export interface RouteInfo {
   path: string
@@ -29,7 +29,7 @@ export interface IslandInfo {
 }
 
 export interface ProjectContext {
-  framework: "pyreon"
+  framework: 'pyreon'
   version: string
   generatedAt: string
   routes: RouteInfo[]
@@ -42,7 +42,7 @@ export function generateContext(cwd: string): ProjectContext {
   const version = readVersion(cwd)
 
   return {
-    framework: "pyreon",
+    framework: 'pyreon',
     version,
     generatedAt: new Date().toISOString(),
     routes: extractRoutes(files, cwd),
@@ -53,8 +53,8 @@ export function generateContext(cwd: string): ProjectContext {
 
 function collectSourceFiles(cwd: string): string[] {
   const results: string[] = []
-  const extensions = new Set([".tsx", ".jsx", ".ts", ".js"])
-  const ignoreDirs = new Set(["node_modules", "dist", "lib", ".pyreon", ".git", "build"])
+  const extensions = new Set(['.tsx', '.jsx', '.ts', '.js'])
+  const ignoreDirs = new Set(['node_modules', 'dist', 'lib', '.pyreon', '.git', 'build'])
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: simple recursive walker
   function walk(dir: string): void {
@@ -65,7 +65,7 @@ function collectSourceFiles(cwd: string): string[] {
       return
     }
     for (const entry of entries) {
-      if (entry.name.startsWith(".") && entry.isDirectory()) continue
+      if (entry.name.startsWith('.') && entry.isDirectory()) continue
       if (ignoreDirs.has(entry.name) && entry.isDirectory()) continue
       const fullPath = path.join(dir, entry.name)
       if (entry.isDirectory()) {
@@ -86,7 +86,7 @@ function extractRoutes(files: string[], _cwd: string): RouteInfo[] {
   for (const file of files) {
     let code: string
     try {
-      code = fs.readFileSync(file, "utf-8")
+      code = fs.readFileSync(file, 'utf-8')
     } catch {
       continue
     }
@@ -95,11 +95,11 @@ function extractRoutes(files: string[], _cwd: string): RouteInfo[] {
       /(?:createRouter\s*\(\s*\[|(?:const|let)\s+routes\s*(?::\s*RouteRecord\[\])?\s*=\s*\[)([\s\S]*?)\]/g
     let match: RegExpExecArray | null
     for (match = routeArrayRe.exec(code); match; match = routeArrayRe.exec(code)) {
-      const block = match[1] ?? ""
+      const block = match[1] ?? ''
       const routeObjRe = /path\s*:\s*["']([^"']+)["']/g
       let routeMatch: RegExpExecArray | null
       for (routeMatch = routeObjRe.exec(block); routeMatch; routeMatch = routeObjRe.exec(block)) {
-        const routePath = routeMatch[1] ?? ""
+        const routePath = routeMatch[1] ?? ''
         const surroundingStart = Math.max(0, routeMatch.index - 50)
         const surroundingEnd = Math.min(block.length, routeMatch.index + 200)
         const surrounding = block.slice(surroundingStart, surroundingEnd)
@@ -124,7 +124,7 @@ function extractComponents(files: string[], cwd: string): ComponentInfo[] {
   for (const file of files) {
     let code: string
     try {
-      code = fs.readFileSync(file, "utf-8")
+      code = fs.readFileSync(file, 'utf-8')
     } catch {
       continue
     }
@@ -134,12 +134,12 @@ function extractComponents(files: string[], cwd: string): ComponentInfo[] {
     let match: RegExpExecArray | null
 
     for (match = componentRe.exec(code); match; match = componentRe.exec(code)) {
-      const name = match[1] ?? "Unknown"
-      const propsStr = match[2] ?? ""
+      const name = match[1] ?? 'Unknown'
+      const propsStr = match[2] ?? ''
       const props = propsStr
         .split(/[,;]/)
-        .map((p) => p.trim().replace(/[{}]/g, "").trim().split(":")[0]?.split("=")[0]?.trim() ?? "")
-        .filter((p) => p && p !== "props")
+        .map((p) => p.trim().replace(/[{}]/g, '').trim().split(':')[0]?.split('=')[0]?.trim() ?? '')
+        .filter((p) => p && p !== 'props')
 
       const bodyStart = match.index + match[0].length
       const body = code.slice(bodyStart, Math.min(code.length, bodyStart + 2000))
@@ -169,7 +169,7 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
   for (const file of files) {
     let code: string
     try {
-      code = fs.readFileSync(file, "utf-8")
+      code = fs.readFileSync(file, 'utf-8')
     } catch {
       continue
     }
@@ -182,7 +182,7 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
         islands.push({
           name: match[1],
           file: path.relative(cwd, file),
-          hydrate: match[2] ?? "load",
+          hydrate: match[2] ?? 'load',
         })
       }
     }
@@ -203,13 +203,13 @@ function extractParams(routePath: string): string[] {
 
 function readVersion(cwd: string): string {
   try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"))
+    const pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8'))
     const deps: Record<string, unknown> = { ...pkg.dependencies, ...pkg.devDependencies }
     for (const [name, ver] of Object.entries(deps)) {
-      if (name.startsWith("@pyreon/") && typeof ver === "string") return ver.replace(/^[\^~]/, "")
+      if (name.startsWith('@pyreon/') && typeof ver === 'string') return ver.replace(/^[\^~]/, '')
     }
-    return (pkg.version as string) || "unknown"
+    return (pkg.version as string) || 'unknown'
   } catch {
-    return "unknown"
+    return 'unknown'
   }
 }

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs"
-import { join, relative, resolve } from "node:path"
+import { existsSync, readFileSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 
 /**
  * Create a filter function that returns true if a file path should be ignored.
@@ -22,10 +22,10 @@ export function createIgnoreFilter(
   const resolvedCwd = resolve(cwd)
 
   // Load .pyreonlintignore
-  loadPatternsFromFile(join(resolvedCwd, ".pyreonlintignore"), patterns)
+  loadPatternsFromFile(join(resolvedCwd, '.pyreonlintignore'), patterns)
 
   // Load .gitignore
-  loadPatternsFromFile(join(resolvedCwd, ".gitignore"), patterns)
+  loadPatternsFromFile(join(resolvedCwd, '.gitignore'), patterns)
 
   // Load extra ignore file if provided
   if (extraIgnore) {
@@ -38,7 +38,7 @@ export function createIgnoreFilter(
   return (filePath: string): boolean => {
     const rel = relative(resolvedCwd, resolve(filePath))
     // Normalize to forward slashes
-    const normalized = rel.replace(/\\/g, "/")
+    const normalized = rel.replace(/\\/g, '/')
 
     for (const matcher of matchers) {
       if (matcher(normalized)) return true
@@ -50,11 +50,11 @@ export function createIgnoreFilter(
 function loadPatternsFromFile(filePath: string, patterns: string[]): void {
   if (!existsSync(filePath)) return
   try {
-    const content = readFileSync(filePath, "utf-8")
-    for (const line of content.split("\n")) {
+    const content = readFileSync(filePath, 'utf-8')
+    for (const line of content.split('\n')) {
       const trimmed = line.trim()
       // Skip empty lines and comments
-      if (!trimmed || trimmed.startsWith("#")) continue
+      if (!trimmed || trimmed.startsWith('#')) continue
       patterns.push(trimmed)
     }
   } catch {
@@ -72,12 +72,12 @@ function compileMatcher(pattern: string): (path: string) => boolean {
   let anchored = false
 
   // Negated patterns (not supported — just skip them)
-  if (p.startsWith("!")) {
+  if (p.startsWith('!')) {
     return () => false
   }
 
   // Leading slash means anchored to root
-  if (p.startsWith("/")) {
+  if (p.startsWith('/')) {
     anchored = true
     p = p.slice(1)
   }
@@ -85,7 +85,7 @@ function compileMatcher(pattern: string): (path: string) => boolean {
   // Trailing slash means only match directories (we treat all paths as files, so strip it
   // and match as a prefix)
   let dirOnly = false
-  if (p.endsWith("/")) {
+  if (p.endsWith('/')) {
     dirOnly = true
     p = p.slice(0, -1)
   }
@@ -110,7 +110,7 @@ function compileMatcher(pattern: string): (path: string) => boolean {
     if (regex.test(path)) return true
 
     // Also try matching against just the filename
-    const lastSlash = path.lastIndexOf("/")
+    const lastSlash = path.lastIndexOf('/')
     if (lastSlash !== -1) {
       const basename = path.slice(lastSlash + 1)
       return regex.test(basename)
@@ -121,26 +121,26 @@ function compileMatcher(pattern: string): (path: string) => boolean {
 }
 
 const GLOB_CHAR_MAP: Record<string, string> = {
-  "?": "[^/]",
-  ".": "\\.",
-  "/": "/",
+  '?': '[^/]',
+  '.': '\\.',
+  '/': '/',
 }
 
 function handleStar(glob: string, pos: number): { pattern: string; advance: number } {
-  if (glob[pos + 1] === "*") {
-    if (glob[pos + 2] === "/") return { pattern: "(?:.*/)?", advance: 3 }
-    return { pattern: ".*", advance: 2 }
+  if (glob[pos + 1] === '*') {
+    if (glob[pos + 2] === '/') return { pattern: '(?:.*/)?', advance: 3 }
+    return { pattern: '.*', advance: 2 }
   }
-  return { pattern: "[^/]*", advance: 1 }
+  return { pattern: '[^/]*', advance: 1 }
 }
 
 function globToRegex(glob: string): RegExp {
-  let result = "^"
+  let result = '^'
   let i = 0
 
   while (i < glob.length) {
     const ch = glob[i] as string
-    if (ch === "*") {
+    if (ch === '*') {
       const star = handleStar(glob, i)
       result += star.pattern
       i += star.advance
@@ -150,10 +150,10 @@ function globToRegex(glob: string): RegExp {
     }
   }
 
-  result += "$"
+  result += '$'
   return new RegExp(result)
 }
 
 function escapeRegex(str: string): string {
-  return str.replace(/[\\^$+{}[\]|()]/g, "\\$&")
+  return str.replace(/[\\^$+{}[\]|()]/g, '\\$&')
 }

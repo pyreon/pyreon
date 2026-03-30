@@ -1,12 +1,12 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
-import type { QueryClient } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
+import type { QueryClient } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SSEStatus = "connecting" | "connected" | "disconnected" | "error"
+export type SSEStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface UseSSEOptions<T = string> {
   /** EventSource URL — can be a signal for reactive URLs */
@@ -78,9 +78,9 @@ export interface UseSSEResult<T> {
 export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   const queryClient = useQueryClient()
   const data = signal<T | null>(null)
-  const status = signal<SSEStatus>("disconnected")
+  const status = signal<SSEStatus>('disconnected')
   const error = signal<Event | null>(null)
-  const lastEventId = signal("")
+  const lastEventId = signal('')
   const readyState = signal<number>(2) // Start as CLOSED until connected
 
   let es: EventSource | null = null
@@ -98,18 +98,18 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     : null
 
   function getUrl(): string {
-    return typeof options.url === "function" ? options.url() : options.url
+    return typeof options.url === 'function' ? options.url() : options.url
   }
 
   function isEnabled(): boolean {
     if (options.enabled === undefined) return true
-    return typeof options.enabled === "function" ? options.enabled() : options.enabled
+    return typeof options.enabled === 'function' ? options.enabled() : options.enabled
   }
 
   function handleMessage(event: MessageEvent): void {
     try {
       // Track lastEventId from the SSE spec
-      if (event.lastEventId !== undefined && event.lastEventId !== "") {
+      if (event.lastEventId !== undefined && event.lastEventId !== '') {
         lastEventId.set(event.lastEventId)
       }
       const parsed = options.parse ? options.parse(event.data as string) : (event.data as T)
@@ -146,7 +146,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   }
 
   function handleError(event: Event): void {
-    status.set("error")
+    status.set('error')
     error.set(event)
     readyState.set(es?.readyState ?? EventSource.CLOSED)
     options.onError?.(event)
@@ -172,11 +172,11 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     }
 
     if (!isEnabled()) {
-      status.set("disconnected")
+      status.set('disconnected')
       return
     }
 
-    status.set("connecting")
+    status.set('connecting')
 
     try {
       es = new EventSource(getUrl(), {
@@ -184,7 +184,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
       })
       readyState.set(EventSource.CONNECTING)
     } catch {
-      status.set("error")
+      status.set('error')
       readyState.set(EventSource.CLOSED)
       scheduleReconnect()
       return
@@ -192,7 +192,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
 
     es.onopen = (event: Event) => {
       batch(() => {
-        status.set("connected")
+        status.set('connected')
         error.set(null)
         readyState.set(EventSource.OPEN)
         reconnectAttempts = 0
@@ -230,7 +230,7 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
       es.close()
       es = null
     }
-    status.set("disconnected")
+    status.set('disconnected')
     readyState.set(EventSource.CLOSED)
   }
 
@@ -243,8 +243,8 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   // Track reactive URL and enabled state
   effect(() => {
     // Read reactive values to subscribe to changes
-    if (typeof options.url === "function") options.url()
-    if (typeof options.enabled === "function") options.enabled()
+    if (typeof options.url === 'function') options.url()
+    if (typeof options.enabled === 'function') options.enabled()
 
     intentionalClose = false
     reconnectAttempts = 0

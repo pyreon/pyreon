@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { VNodeChild } from '@pyreon/core'
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 // ─── Position & Geometry ─────────────────────────────────────────────────────
 
@@ -25,13 +25,13 @@ export interface Viewport {
 
 // ─── Handle ──────────────────────────────────────────────────────────────────
 
-export type HandleType = "source" | "target"
+export type HandleType = 'source' | 'target'
 
 export enum Position {
-  Top = "top",
-  Right = "right",
-  Bottom = "bottom",
-  Left = "left",
+  Top = 'top',
+  Right = 'right',
+  Bottom = 'bottom',
+  Left = 'left',
 }
 
 export interface HandleConfig {
@@ -71,7 +71,7 @@ export interface FlowNode<TData = Record<string, unknown>> {
 
 // ─── Edge ────────────────────────────────────────────────────────────────────
 
-export type EdgeType = "bezier" | "smoothstep" | "straight" | "step"
+export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step'
 
 export interface FlowEdge {
   id?: string
@@ -104,10 +104,10 @@ export type ConnectionRule = Record<string, { outputs: string[] }>
 // ─── Node Change Events ──────────────────────────────────────────────────────
 
 export type NodeChange =
-  | { type: "position"; id: string; position: XYPosition }
-  | { type: "dimensions"; id: string; dimensions: Dimensions }
-  | { type: "select"; id: string; selected: boolean }
-  | { type: "remove"; id: string }
+  | { type: 'position'; id: string; position: XYPosition }
+  | { type: 'dimensions'; id: string; dimensions: Dimensions }
+  | { type: 'select'; id: string; selected: boolean }
+  | { type: 'remove'; id: string }
 
 // ─── Edge path result ────────────────────────────────────────────────────────
 
@@ -390,23 +390,23 @@ export interface FlowInstance {
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
 export type LayoutAlgorithm =
-  | "layered"
-  | "force"
-  | "stress"
-  | "tree"
-  | "radial"
-  | "box"
-  | "rectpacking"
+  | 'layered'
+  | 'force'
+  | 'stress'
+  | 'tree'
+  | 'radial'
+  | 'box'
+  | 'rectpacking'
 
 export interface LayoutOptions {
   /** Layout direction — default: 'DOWN' */
-  direction?: "UP" | "DOWN" | "LEFT" | "RIGHT"
+  direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /** Spacing between nodes — default: 50 */
   nodeSpacing?: number
   /** Spacing between layers — default: 80 */
   layerSpacing?: number
   /** Edge routing — default: 'orthogonal' */
-  edgeRouting?: "orthogonal" | "splines" | "polyline"
+  edgeRouting?: 'orthogonal' | 'splines' | 'polyline'
   /** Whether to animate the layout transition — default: true */
   animate?: boolean
   /** Animation duration in ms — default: 300 */
@@ -423,7 +423,7 @@ export interface FlowProps {
 }
 
 export interface BackgroundProps {
-  variant?: "dots" | "lines" | "cross"
+  variant?: 'dots' | 'lines' | 'cross'
   gap?: number
   size?: number
   color?: string
@@ -443,11 +443,11 @@ export interface ControlsProps {
   showZoomOut?: boolean
   showFitView?: boolean
   showLock?: boolean
-  position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 }
 
 export interface PanelProps {
-  position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   style?: string
   class?: string
   children?: VNodeChild

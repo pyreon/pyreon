@@ -71,7 +71,9 @@ const Text = styled('p')`
 Render as a different element at runtime:
 
 ```ts
-const Box = styled('div')`padding: 16px;`
+const Box = styled('div')`
+  padding: 16px;
+`
 
 // Renders as a <section>
 Box({ as: 'section', children: 'Content' })
@@ -83,7 +85,7 @@ Props prefixed with `$` are not forwarded to the DOM:
 
 ```ts
 const Box = styled('div')`
-  color: ${(p) => p.$active ? 'blue' : 'gray'};
+  color: ${(p) => (p.$active ? 'blue' : 'gray')};
 `
 
 // $active is used for styling but won't appear on the <div>
@@ -122,10 +124,12 @@ Supports conditional patterns:
 ```ts
 const Box = styled('div')`
   display: flex;
-  ${(props) => props.$bordered && css`
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-  `};
+  ${(props) =>
+    props.$bordered &&
+    css`
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+    `};
 `
 ```
 
@@ -253,29 +257,29 @@ const Card = styled('div')`
 
 ### Bundle Size
 
-| Library | Minified | Gzipped |
-|---------|--------:|--------:|
-| goober | 2.32 KB | 1.31 KB |
-| **@pyreon/styler** | **10.13 KB** | **3.81 KB** |
-| styled-components | 44.93 KB | 17.89 KB |
-| @emotion/react + styled | 48.26 KB | 16.59 KB |
+| Library                 |     Minified |     Gzipped |
+| ----------------------- | -----------: | ----------: |
+| goober                  |      2.32 KB |     1.31 KB |
+| **@pyreon/styler**      | **10.13 KB** | **3.81 KB** |
+| styled-components       |     44.93 KB |    17.89 KB |
+| @emotion/react + styled |     48.26 KB |    16.59 KB |
 
 ### Performance (ops/sec, higher is better)
 
-| Benchmark | styler | styled-components | @emotion | goober |
-|-----------|-------:|-------------------:|---------:|-------:|
-| css() creation | **25.2M** | 9.0M | 2.2M | 26K |
-| css() with interpolations | **24.9M** | 5.6M | 2.3M | 28K |
-| Template resolution | **21.4M** | 3.9M | — | — |
-| Nested composition | **8.3M** | 2.2M | 1.4M | 8K |
-| SSR renderToString | **307K** | 69K | 192K | 18K |
-| styled() factory | **17.3M** | 109K | 933K | 18.2M |
+| Benchmark                 |    styler | styled-components | @emotion | goober |
+| ------------------------- | --------: | ----------------: | -------: | -----: |
+| css() creation            | **25.2M** |              9.0M |     2.2M |    26K |
+| css() with interpolations | **24.9M** |              5.6M |     2.3M |    28K |
+| Template resolution       | **21.4M** |              3.9M |        — |      — |
+| Nested composition        |  **8.3M** |              2.2M |     1.4M |     8K |
+| SSR renderToString        |  **307K** |               69K |     192K |    18K |
+| styled() factory          | **17.3M** |              109K |     933K |  18.2M |
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package            | Version  |
+| ------------------ | -------- |
+| @pyreon/core       | >= 0.0.1 |
 | @pyreon/reactivity | >= 0.0.1 |
 
 ## License

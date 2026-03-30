@@ -1,4 +1,4 @@
-import { computed, signal } from "@pyreon/reactivity"
+import { computed, signal } from '@pyreon/reactivity'
 
 export function Counter() {
   const count = signal(0)

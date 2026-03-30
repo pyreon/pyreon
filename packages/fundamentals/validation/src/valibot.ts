@@ -1,6 +1,6 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
-import { issuesToRecord } from "./utils"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
+import type { ValidationIssue } from './types'
+import { issuesToRecord } from './utils'
 
 /**
  * Minimal Valibot-compatible interfaces so we don't require valibot as a hard dep.
@@ -31,7 +31,7 @@ type GenericSafeParseFn = Function
 
 function valibotIssuesToGeneric(issues: ValibotIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
-    path: issue.path?.map((p) => String(p.key)).join(".") ?? "",
+    path: issue.path?.map((p) => String(p.key)).join('.') ?? '',
     message: issue.message,
   }))
 }
@@ -74,7 +74,7 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
       return issuesToRecord<TValues>(valibotIssuesToGeneric(result.issues ?? []))
     } catch (err) {
       return {
-        "": err instanceof Error ? err.message : String(err),
+        '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
   }

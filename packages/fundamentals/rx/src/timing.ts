@@ -1,5 +1,5 @@
-import { effect, signal } from "@pyreon/reactivity"
-import type { ReadableSignal } from "./types"
+import { effect, signal } from '@pyreon/reactivity'
+import type { ReadableSignal } from './types'
 
 /**
  * Debounce a signal — emits the latest value after `ms` of silence.

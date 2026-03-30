@@ -5,28 +5,28 @@ import {
   propagateError,
   pushErrorBoundary,
   runWithHooks,
-} from "../component"
-import { h } from "../h"
-import { onErrorCaptured, onMount, onUnmount, onUpdate } from "../lifecycle"
-import type { ComponentFn, LifecycleHooks, VNode } from "../types"
+} from '../component'
+import { h } from '../h'
+import { onErrorCaptured, onMount, onUnmount, onUpdate } from '../lifecycle'
+import type { ComponentFn, LifecycleHooks, VNode } from '../types'
 
-describe("defineComponent", () => {
-  test("returns the exact same function (identity)", () => {
-    const fn: ComponentFn = () => h("div", null)
+describe('defineComponent', () => {
+  test('returns the exact same function (identity)', () => {
+    const fn: ComponentFn = () => h('div', null)
     expect(defineComponent(fn)).toBe(fn)
   })
 
-  test("preserves typed props", () => {
+  test('preserves typed props', () => {
     const Comp = defineComponent<{ count: number }>((props) => {
-      return h("span", null, String(props.count))
+      return h('span', null, String(props.count))
     })
     const node = Comp({ count: 10 })
-    expect((node as VNode).type).toBe("span")
+    expect((node as VNode).type).toBe('span')
   })
 })
 
-describe("runWithHooks", () => {
-  test("captures all lifecycle hook types", () => {
+describe('runWithHooks', () => {
+  test('captures all lifecycle hook types', () => {
     const mountFn = () => undefined
     const unmountFn = () => {}
     const updateFn = () => {}
@@ -37,7 +37,7 @@ describe("runWithHooks", () => {
       onUnmount(unmountFn)
       onUpdate(updateFn)
       onErrorCaptured(errorFn)
-      return h("div", null)
+      return h('div', null)
     }
 
     const { vnode, hooks } = runWithHooks(Comp, {})
@@ -48,51 +48,51 @@ describe("runWithHooks", () => {
     expect(hooks.error).toContain(errorFn)
   })
 
-  test("returns null vnode for component returning null", () => {
+  test('returns null vnode for component returning null', () => {
     const { vnode } = runWithHooks(() => null, {})
     expect(vnode).toBeNull()
   })
 
-  test("returns string vnode for component returning string", () => {
-    const { vnode } = runWithHooks(() => "hello", {})
-    expect(vnode).toBe("hello")
+  test('returns string vnode for component returning string', () => {
+    const { vnode } = runWithHooks(() => 'hello', {})
+    expect(vnode).toBe('hello')
   })
 
-  test("clears hooks context after execution", () => {
-    const Comp: ComponentFn = () => h("div", null)
+  test('clears hooks context after execution', () => {
+    const Comp: ComponentFn = () => h('div', null)
     runWithHooks(Comp, {})
     // After runWithHooks, lifecycle hooks should be no-ops
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onMount(() => {})
     expect(warnSpy).toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
-  test("clears hooks context even when component throws", () => {
+  test('clears hooks context even when component throws', () => {
     const Comp: ComponentFn = () => {
-      throw new Error("boom")
+      throw new Error('boom')
     }
-    expect(() => runWithHooks(Comp, {})).toThrow("boom")
+    expect(() => runWithHooks(Comp, {})).toThrow('boom')
     // Should still be cleared
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onMount(() => {})
     expect(warnSpy).toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
-  test("passes props to component function", () => {
+  test('passes props to component function', () => {
     let received: unknown = null
     runWithHooks(
       ((props: { msg: string }) => {
         received = props
         return null
       }) as ComponentFn,
-      { msg: "hello" },
+      { msg: 'hello' },
     )
-    expect(received).toEqual({ msg: "hello" })
+    expect(received).toEqual({ msg: 'hello' })
   })
 
-  test("captures multiple hooks of same type", () => {
+  test('captures multiple hooks of same type', () => {
     const Comp: ComponentFn = () => {
       onMount(() => undefined)
       onMount(() => undefined)
@@ -105,8 +105,8 @@ describe("runWithHooks", () => {
     expect(hooks.unmount).toHaveLength(2)
   })
 
-  test("empty hooks when component registers none", () => {
-    const { hooks } = runWithHooks(() => h("div", null), {})
+  test('empty hooks when component registers none', () => {
+    const { hooks } = runWithHooks(() => h('div', null), {})
     expect(hooks.mount).toHaveLength(0)
     expect(hooks.unmount).toHaveLength(0)
     expect(hooks.update).toHaveLength(0)
@@ -114,38 +114,38 @@ describe("runWithHooks", () => {
   })
 })
 
-describe("propagateError", () => {
-  test("returns true when handler returns true", () => {
+describe('propagateError', () => {
+  test('returns true when handler returns true', () => {
     const hooks: LifecycleHooks = {
       mount: [],
       unmount: [],
       update: [],
       error: [() => true],
     }
-    expect(propagateError(new Error("test"), hooks)).toBe(true)
+    expect(propagateError(new Error('test'), hooks)).toBe(true)
   })
 
-  test("returns false when no handlers", () => {
+  test('returns false when no handlers', () => {
     const hooks: LifecycleHooks = {
       mount: [],
       unmount: [],
       update: [],
       error: [],
     }
-    expect(propagateError(new Error("test"), hooks)).toBe(false)
+    expect(propagateError(new Error('test'), hooks)).toBe(false)
   })
 
-  test("returns false when handler returns undefined", () => {
+  test('returns false when handler returns undefined', () => {
     const hooks: LifecycleHooks = {
       mount: [],
       unmount: [],
       update: [],
       error: [() => undefined],
     }
-    expect(propagateError(new Error("test"), hooks)).toBe(false)
+    expect(propagateError(new Error('test'), hooks)).toBe(false)
   })
 
-  test("stops at first handler returning true", () => {
+  test('stops at first handler returning true', () => {
     let secondCalled = false
     const hooks: LifecycleHooks = {
       mount: [],
@@ -159,11 +159,11 @@ describe("propagateError", () => {
         },
       ],
     }
-    expect(propagateError("err", hooks)).toBe(true)
+    expect(propagateError('err', hooks)).toBe(true)
     expect(secondCalled).toBe(false)
   })
 
-  test("continues to next handler when first returns undefined", () => {
+  test('continues to next handler when first returns undefined', () => {
     const calls: number[] = []
     const hooks: LifecycleHooks = {
       mount: [],
@@ -180,11 +180,11 @@ describe("propagateError", () => {
         },
       ],
     }
-    expect(propagateError("err", hooks)).toBe(true)
+    expect(propagateError('err', hooks)).toBe(true)
     expect(calls).toEqual([1, 2])
   })
 
-  test("passes the error to each handler", () => {
+  test('passes the error to each handler', () => {
     const errors: unknown[] = []
     const hooks: LifecycleHooks = {
       mount: [],
@@ -201,37 +201,37 @@ describe("propagateError", () => {
         },
       ],
     }
-    const testErr = new Error("propagated")
+    const testErr = new Error('propagated')
     propagateError(testErr, hooks)
     expect(errors).toEqual([testErr, testErr])
   })
 })
 
-describe("pushErrorBoundary / popErrorBoundary / dispatchToErrorBoundary", () => {
+describe('pushErrorBoundary / popErrorBoundary / dispatchToErrorBoundary', () => {
   afterEach(() => {
     // Clean up any leftover boundaries — pop until empty
     // dispatchToErrorBoundary returns false when stack is empty
-    while (dispatchToErrorBoundary("cleanup-probe")) {
+    while (dispatchToErrorBoundary('cleanup-probe')) {
       popErrorBoundary()
     }
   })
 
-  test("dispatches to the most recently pushed boundary", () => {
+  test('dispatches to the most recently pushed boundary', () => {
     let caught: unknown = null
     pushErrorBoundary((err) => {
       caught = err
       return true
     })
-    expect(dispatchToErrorBoundary("test-error")).toBe(true)
-    expect(caught).toBe("test-error")
+    expect(dispatchToErrorBoundary('test-error')).toBe(true)
+    expect(caught).toBe('test-error')
     popErrorBoundary()
   })
 
-  test("returns false when no boundary is registered", () => {
-    expect(dispatchToErrorBoundary("no-boundary")).toBe(false)
+  test('returns false when no boundary is registered', () => {
+    expect(dispatchToErrorBoundary('no-boundary')).toBe(false)
   })
 
-  test("nested boundaries — innermost catches first", () => {
+  test('nested boundaries — innermost catches first', () => {
     const caught: string[] = []
     pushErrorBoundary((err) => {
       caught.push(`outer: ${err}`)
@@ -241,17 +241,17 @@ describe("pushErrorBoundary / popErrorBoundary / dispatchToErrorBoundary", () =>
       caught.push(`inner: ${err}`)
       return true
     })
-    dispatchToErrorBoundary("test")
-    expect(caught).toEqual(["inner: test"])
+    dispatchToErrorBoundary('test')
+    expect(caught).toEqual(['inner: test'])
     popErrorBoundary()
 
     // After popping inner, outer should catch
-    dispatchToErrorBoundary("test2")
-    expect(caught).toEqual(["inner: test", "outer: test2"])
+    dispatchToErrorBoundary('test2')
+    expect(caught).toEqual(['inner: test', 'outer: test2'])
     popErrorBoundary()
   })
 
-  test("boundary handler returning false does not propagate to outer", () => {
+  test('boundary handler returning false does not propagate to outer', () => {
     // dispatchToErrorBoundary only calls the innermost handler
     let outerCalled = false
     pushErrorBoundary(() => {
@@ -259,23 +259,23 @@ describe("pushErrorBoundary / popErrorBoundary / dispatchToErrorBoundary", () =>
       return true
     })
     pushErrorBoundary(() => false)
-    const result = dispatchToErrorBoundary("test")
+    const result = dispatchToErrorBoundary('test')
     expect(result).toBe(false)
     expect(outerCalled).toBe(false) // outer not called — only innermost is checked
     popErrorBoundary()
     popErrorBoundary()
   })
 
-  test("push and pop maintain stack correctly", () => {
+  test('push and pop maintain stack correctly', () => {
     const results: boolean[] = []
     pushErrorBoundary(() => true)
     pushErrorBoundary(() => true)
     pushErrorBoundary(() => true)
     popErrorBoundary()
     popErrorBoundary()
-    results.push(dispatchToErrorBoundary("x"))
+    results.push(dispatchToErrorBoundary('x'))
     popErrorBoundary()
-    results.push(dispatchToErrorBoundary("y"))
+    results.push(dispatchToErrorBoundary('y'))
     expect(results).toEqual([true, false])
   })
 })

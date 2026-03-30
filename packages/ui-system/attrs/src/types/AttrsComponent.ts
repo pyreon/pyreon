@@ -1,15 +1,15 @@
-import type { VNode } from "@pyreon/core"
-import type { AttrsCb } from "./attrs"
-import type { ConfigAttrs } from "./config"
-import type { ComposeParam } from "./hoc"
-import type { ElementType, ExtractProps, MergeTypes, TObj } from "./utils"
+import type { VNode } from '@pyreon/core'
+import type { AttrsCb } from './attrs'
+import type { ConfigAttrs } from './config'
+import type { ComposeParam } from './hoc'
+import type { ElementType, ExtractProps, MergeTypes, TObj } from './utils'
 
 /**
  * Props passed to the inner enhanced component.
  * In Pyreon there's no forwardRef — ref flows as a normal prop.
  */
 export type InnerComponentProps = {
-  "data-attrs"?: string | undefined
+  'data-attrs'?: string | undefined
 }
 
 /**

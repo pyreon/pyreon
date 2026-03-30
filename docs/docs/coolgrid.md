@@ -10,18 +10,23 @@ description: Responsive 12-column grid system with Container, Row, and Col compo
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/coolgrid
 ```
+
 ```bash [bun]
 bun add @pyreon/coolgrid
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/coolgrid
 ```
+
 ```bash [yarn]
 yarn add @pyreon/coolgrid
 ```
+
 :::
 
 ## Quick Start
@@ -29,11 +34,17 @@ yarn add @pyreon/coolgrid
 ```tsx
 import { Container, Row, Col } from '@pyreon/coolgrid'
 
-<Container maxWidth={1140} gap={24} gutter={16}>
+;<Container maxWidth={1140} gap={24} gutter={16}>
   <Row>
-    <Col xs={12} md={6} lg={4}>Column 1</Col>
-    <Col xs={12} md={6} lg={4}>Column 2</Col>
-    <Col xs={12} md={12} lg={4}>Column 3</Col>
+    <Col xs={12} md={6} lg={4}>
+      Column 1
+    </Col>
+    <Col xs={12} md={6} lg={4}>
+      Column 2
+    </Col>
+    <Col xs={12} md={12} lg={4}>
+      Column 3
+    </Col>
   </Row>
 </Container>
 ```
@@ -48,20 +59,20 @@ This creates a three-column layout that stacks to two columns at medium screens 
 
 Coolgrid uses a 12-column grid by default. Each column's width is expressed as a fraction of 12. This gives you a flexible set of layout widths:
 
-| Columns | Width | Common Use |
-|---|---|---|
-| 1 | 8.33% | Narrow gutter or icon column |
-| 2 | 16.67% | Small sidebar |
-| 3 | 25% | Quarter width |
-| 4 | 33.33% | One-third |
-| 5 | 41.67% | -- |
-| 6 | 50% | Half width |
-| 7 | 58.33% | -- |
-| 8 | 66.67% | Two-thirds |
-| 9 | 75% | Three-quarters |
-| 10 | 83.33% | Wide content |
-| 11 | 91.67% | Nearly full |
-| 12 | 100% | Full width |
+| Columns | Width  | Common Use                   |
+| ------- | ------ | ---------------------------- |
+| 1       | 8.33%  | Narrow gutter or icon column |
+| 2       | 16.67% | Small sidebar                |
+| 3       | 25%    | Quarter width                |
+| 4       | 33.33% | One-third                    |
+| 5       | 41.67% | --                           |
+| 6       | 50%    | Half width                   |
+| 7       | 58.33% | --                           |
+| 8       | 66.67% | Two-thirds                   |
+| 9       | 75%    | Three-quarters               |
+| 10      | 83.33% | Wide content                 |
+| 11      | 91.67% | Nearly full                  |
+| 12      | 100%   | Full width                   |
 
 You can customize the column count to any number (e.g., 24 columns for finer control) by passing a `columns` prop to Container or Row.
 
@@ -102,27 +113,24 @@ The outermost grid wrapper. Centers content horizontally with auto margins, cons
 ```tsx
 import { Container } from '@pyreon/coolgrid'
 
-<Container
-  maxWidth={1140}
-  columns={12}
-  gap={24}
-  gutter={16}
->{children}</Container>
+;<Container maxWidth={1140} columns={12} gap={24} gutter={16}>
+  {children}
+</Container>
 ```
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
+| Prop       | Type               | Default  | Description                                                                                                                                           |
+| ---------- | ------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `maxWidth` | `string \| number` | `'100%'` | Maximum width of the container. Numbers are converted to pixels (e.g., `1140` becomes `'1140px'`). Strings are used as-is (e.g., `'80vw'`, `'100%'`). |
-| `columns` | `number` | `12` | Number of grid columns. All child Rows and Cols inherit this value unless overridden. |
-| `gap` | `number` | `0` | Gap between columns in pixels. Creates visual spacing between columns using the padding/negative-margin technique. |
-| `gutter` | `number` | `0` | Horizontal padding on the container in pixels. Prevents content from touching the viewport edges. Applied as `padding-left` and `padding-right`. |
-| `padding` | `number` | `0` | Additional padding value passed through context. Available to child components but not directly applied to the Container's style. |
-| `tag` | `string` | `'div'` | HTML tag for the container element. |
-| `class` | `string` | -- | CSS class name. |
-| `style` | `string` | -- | Additional inline styles appended to the computed styles. |
-| `children` | `VNodeChild` | -- | Content, typically one or more Row components. |
+| `columns`  | `number`           | `12`     | Number of grid columns. All child Rows and Cols inherit this value unless overridden.                                                                 |
+| `gap`      | `number`           | `0`      | Gap between columns in pixels. Creates visual spacing between columns using the padding/negative-margin technique.                                    |
+| `gutter`   | `number`           | `0`      | Horizontal padding on the container in pixels. Prevents content from touching the viewport edges. Applied as `padding-left` and `padding-right`.      |
+| `padding`  | `number`           | `0`      | Additional padding value passed through context. Available to child components but not directly applied to the Container's style.                     |
+| `tag`      | `string`           | `'div'`  | HTML tag for the container element.                                                                                                                   |
+| `class`    | `string`           | --       | CSS class name.                                                                                                                                       |
+| `style`    | `string`           | --       | Additional inline styles appended to the computed styles.                                                                                             |
+| `children` | `VNodeChild`       | --       | Content, typically one or more Row components.                                                                                                        |
 
 ### Rendered Output
 
@@ -187,38 +195,38 @@ import { Row } from '@pyreon/coolgrid'
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `gap` | `number` | inherited from Container | Override the Container's gap for this row only. Affects the negative margins on this row and the padding on its columns. |
-| `columns` | `number` | inherited from Container | Override the column count for this row only. Affects width calculations for its columns. |
-| `alignX` | `'left' \| 'center' \| 'right' \| 'between' \| 'around' \| 'evenly'` | -- | Horizontal alignment of columns within the row. Maps to `justify-content`. |
-| `alignY` | `'top' \| 'center' \| 'bottom' \| 'stretch'` | -- | Vertical alignment of columns within the row. Maps to `align-items`. |
-| `tag` | `string` | `'div'` | HTML tag. |
-| `class` | `string` | -- | CSS class. |
-| `style` | `string` | -- | Additional inline styles. |
-| `children` | `VNodeChild` | -- | Content, typically one or more Col components. |
+| Prop       | Type                                                                 | Default                  | Description                                                                                                              |
+| ---------- | -------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `gap`      | `number`                                                             | inherited from Container | Override the Container's gap for this row only. Affects the negative margins on this row and the padding on its columns. |
+| `columns`  | `number`                                                             | inherited from Container | Override the column count for this row only. Affects width calculations for its columns.                                 |
+| `alignX`   | `'left' \| 'center' \| 'right' \| 'between' \| 'around' \| 'evenly'` | --                       | Horizontal alignment of columns within the row. Maps to `justify-content`.                                               |
+| `alignY`   | `'top' \| 'center' \| 'bottom' \| 'stretch'`                         | --                       | Vertical alignment of columns within the row. Maps to `align-items`.                                                     |
+| `tag`      | `string`                                                             | `'div'`                  | HTML tag.                                                                                                                |
+| `class`    | `string`                                                             | --                       | CSS class.                                                                                                               |
+| `style`    | `string`                                                             | --                       | Additional inline styles.                                                                                                |
+| `children` | `VNodeChild`                                                         | --                       | Content, typically one or more Col components.                                                                           |
 
 ### Alignment
 
 The `alignX` prop maps to `justify-content`:
 
-| Value | CSS | Description |
-|---|---|---|
-| `'left'` | `flex-start` | Columns packed to the left |
-| `'center'` | `center` | Columns centered |
-| `'right'` | `flex-end` | Columns packed to the right |
+| Value       | CSS             | Description                                |
+| ----------- | --------------- | ------------------------------------------ |
+| `'left'`    | `flex-start`    | Columns packed to the left                 |
+| `'center'`  | `center`        | Columns centered                           |
+| `'right'`   | `flex-end`      | Columns packed to the right                |
 | `'between'` | `space-between` | Equal space between columns, none at edges |
-| `'around'` | `space-around` | Equal space around each column |
-| `'evenly'` | `space-evenly` | Equal space between and around columns |
+| `'around'`  | `space-around`  | Equal space around each column             |
+| `'evenly'`  | `space-evenly`  | Equal space between and around columns     |
 
 The `alignY` prop maps to `align-items`:
 
-| Value | CSS | Description |
-|---|---|---|
-| `'top'` | `flex-start` | Columns aligned to the top |
-| `'center'` | `center` | Columns vertically centered |
-| `'bottom'` | `flex-end` | Columns aligned to the bottom |
-| `'stretch'` | `stretch` | Columns stretch to fill the row height |
+| Value       | CSS          | Description                            |
+| ----------- | ------------ | -------------------------------------- |
+| `'top'`     | `flex-start` | Columns aligned to the top             |
+| `'center'`  | `center`     | Columns vertically centered            |
+| `'bottom'`  | `flex-end`   | Columns aligned to the bottom          |
+| `'stretch'` | `stretch`    | Columns stretch to fill the row height |
 
 ### Rendered Output
 
@@ -249,9 +257,9 @@ Row can override the Container's `columns` and `gap` settings. The overridden va
   </Row>
   {/* This row overrides to 24 columns and 32px gap */}
   <Row columns={24} gap={32}>
-    <Col xs={6}>Quarter</Col>  {/* 6/24 = 25% */}
-    <Col xs={12}>Half</Col>    {/* 12/24 = 50% */}
-    <Col xs={6}>Quarter</Col>  {/* 6/24 = 25% */}
+    <Col xs={6}>Quarter</Col> {/* 6/24 = 25% */}
+    <Col xs={12}>Half</Col> {/* 12/24 = 50% */}
+    <Col xs={6}>Quarter</Col> {/* 6/24 = 25% */}
   </Row>
 </Container>
 ```
@@ -320,34 +328,34 @@ import { Col } from '@pyreon/coolgrid'
 
 ### Props
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `xs` | `number` | total columns | Column span at the base (smallest) breakpoint. This is the only span value used for inline style width calculation. If not provided, defaults to the total column count (100% width). |
-| `sm` | `number` | -- | Column span at the `sm` breakpoint. Accepted as a prop for use with responsive styling systems like Unistyle, but not used for inline style calculation. |
-| `md` | `number` | -- | Column span at the `md` breakpoint. Same note as `sm`. |
-| `lg` | `number` | -- | Column span at the `lg` breakpoint. Same note as `sm`. |
-| `xl` | `number` | -- | Column span at the `xl` breakpoint. Same note as `sm`. |
-| `offset` | `number` | -- | Column offset. Adds `margin-left` as a percentage of the total columns. For example, `offset: 3` in a 12-column grid adds `margin-left: 25%`. An offset of `0` is treated as no offset. |
-| `order` | `number` | -- | CSS `order` property for visual reordering. Lower values appear first. Can be negative. |
-| `tag` | `string` | `'div'` | HTML tag. |
-| `class` | `string` | -- | CSS class. |
-| `style` | `string` | -- | Additional inline styles appended to the computed styles. |
-| `children` | `VNodeChild` | -- | Column content. |
+| Prop       | Type         | Default       | Description                                                                                                                                                                             |
+| ---------- | ------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xs`       | `number`     | total columns | Column span at the base (smallest) breakpoint. This is the only span value used for inline style width calculation. If not provided, defaults to the total column count (100% width).   |
+| `sm`       | `number`     | --            | Column span at the `sm` breakpoint. Accepted as a prop for use with responsive styling systems like Unistyle, but not used for inline style calculation.                                |
+| `md`       | `number`     | --            | Column span at the `md` breakpoint. Same note as `sm`.                                                                                                                                  |
+| `lg`       | `number`     | --            | Column span at the `lg` breakpoint. Same note as `sm`.                                                                                                                                  |
+| `xl`       | `number`     | --            | Column span at the `xl` breakpoint. Same note as `sm`.                                                                                                                                  |
+| `offset`   | `number`     | --            | Column offset. Adds `margin-left` as a percentage of the total columns. For example, `offset: 3` in a 12-column grid adds `margin-left: 25%`. An offset of `0` is treated as no offset. |
+| `order`    | `number`     | --            | CSS `order` property for visual reordering. Lower values appear first. Can be negative.                                                                                                 |
+| `tag`      | `string`     | `'div'`       | HTML tag.                                                                                                                                                                               |
+| `class`    | `string`     | --            | CSS class.                                                                                                                                                                              |
+| `style`    | `string`     | --            | Additional inline styles appended to the computed styles.                                                                                                                               |
+| `children` | `VNodeChild` | --            | Column content.                                                                                                                                                                         |
 
 ### Width Calculation
 
 Column width is computed as `(span / columns) * 100%`. In a 12-column grid:
 
-| `xs` | Width | Fraction |
-|---|---|---|
-| 1 | 8.33% | 1/12 |
-| 2 | 16.67% | 1/6 |
-| 3 | 25% | 1/4 |
-| 4 | 33.33% | 1/3 |
-| 6 | 50% | 1/2 |
-| 8 | 66.67% | 2/3 |
-| 9 | 75% | 3/4 |
-| 12 | 100% | Full |
+| `xs` | Width  | Fraction |
+| ---- | ------ | -------- |
+| 1    | 8.33%  | 1/12     |
+| 2    | 16.67% | 1/6      |
+| 3    | 25%    | 1/4      |
+| 4    | 33.33% | 1/3      |
+| 6    | 50%    | 1/2      |
+| 8    | 66.67% | 2/3      |
+| 9    | 75%    | 3/4      |
+| 12   | 100%   | Full     |
 
 If no `xs` prop is provided, the column defaults to the full column count (100% width).
 
@@ -394,8 +402,12 @@ The `order` prop controls visual ordering without changing the DOM order. This i
 <Row>
   {/* DOM order: sidebar first, content second */}
   {/* Visual order: content first (order 1), sidebar second (order 2) */}
-  <Col xs={12} md={4} order={2}>Sidebar</Col>
-  <Col xs={12} md={8} order={1}>Main Content</Col>
+  <Col xs={12} md={4} order={2}>
+    Sidebar
+  </Col>
+  <Col xs={12} md={8} order={1}>
+    Main Content
+  </Col>
 </Row>
 ```
 
@@ -403,8 +415,12 @@ Negative order values are supported:
 
 ```tsx
 <Row>
-  <Col xs={6} order={0}>Second</Col>
-  <Col xs={6} order={-1}>First (negative order)</Col>
+  <Col xs={6} order={0}>
+    Second
+  </Col>
+  <Col xs={6} order={-1}>
+    First (negative order)
+  </Col>
 </Row>
 ```
 
@@ -444,11 +460,11 @@ The configuration object that flows through the grid context:
 
 ```ts
 interface GridConfig {
-  columns: number                  // Number of grid columns (default: 12)
-  containerWidth: string | number  // Max width of the container
-  gap: number                      // Gap between columns in pixels
-  gutter: number                   // Container horizontal padding in pixels
-  padding: number                  // Additional padding value
+  columns: number // Number of grid columns (default: 12)
+  containerWidth: string | number // Max width of the container
+  gap: number // Gap between columns in pixels
+  gutter: number // Container horizontal padding in pixels
+  padding: number // Additional padding value
 }
 ```
 
@@ -456,25 +472,25 @@ interface GridConfig {
 
 The default breakpoints follow the Bootstrap 4 standard:
 
-| Breakpoint | Min Width | Typical Device |
-|---|---|---|
-| `xs` | 0px | Extra small phones |
-| `sm` | 576px | Small phones (landscape) |
-| `md` | 768px | Tablets |
-| `lg` | 992px | Laptops/desktops |
-| `xl` | 1200px | Large desktops |
+| Breakpoint | Min Width | Typical Device           |
+| ---------- | --------- | ------------------------ |
+| `xs`       | 0px       | Extra small phones       |
+| `sm`       | 576px     | Small phones (landscape) |
+| `md`       | 768px     | Tablets                  |
+| `lg`       | 992px     | Laptops/desktops         |
+| `xl`       | 1200px    | Large desktops           |
 
 ### Default Container Widths
 
 Each breakpoint has a recommended container max-width:
 
 | Breakpoint | Container Width |
-|---|---|
-| `xs` | `100%` |
-| `sm` | `540px` |
-| `md` | `720px` |
-| `lg` | `960px` |
-| `xl` | `1140px` |
+| ---------- | --------------- |
+| `xs`       | `100%`          |
+| `sm`       | `540px`         |
+| `md`       | `720px`         |
+| `lg`       | `960px`         |
+| `xl`       | `1140px`        |
 
 ### Custom Column Counts
 
@@ -521,8 +537,12 @@ While 12 columns is the default, you can use any column count. Common alternativ
 ```tsx
 <Container maxWidth={960} gap={24}>
   <Row>
-    <Col xs={12} md={8}>Main content</Col>
-    <Col xs={12} md={4}>Sidebar</Col>
+    <Col xs={12} md={8}>
+      Main content
+    </Col>
+    <Col xs={12} md={4}>
+      Sidebar
+    </Col>
   </Row>
 </Container>
 ```
@@ -532,7 +552,9 @@ While 12 columns is the default, you can use any column count. Common alternativ
 ```tsx
 <Container maxWidth={1140}>
   <Row alignX="center">
-    <Col xs={12} md={8} lg={6}>Centered content</Col>
+    <Col xs={12} md={8} lg={6}>
+      Centered content
+    </Col>
   </Row>
 </Container>
 ```
@@ -542,11 +564,11 @@ While 12 columns is the default, you can use any column count. Common alternativ
 ```tsx
 <Container maxWidth={1200} gap={16} gutter={16}>
   <Row>
-    {items.map(item =>
+    {items.map((item) => (
       <Col xs={12} sm={6} lg={4} xl={3}>
         <div class="card">{item.title}</div>
       </Col>
-    )}
+    ))}
   </Row>
 </Container>
 ```
@@ -601,14 +623,14 @@ function DashboardLayout(props: {
     <Container maxWidth={1400} gap={24} gutter={24}>
       {/* Stats row -- 4 equal columns */}
       <Row>
-        {props.stats.map(stat =>
+        {props.stats.map((stat) => (
           <Col xs={6} lg={3}>
             <div class="stat-card">
               <div class="stat-value">{stat.value}</div>
               <div class="stat-label">{stat.label}</div>
             </div>
           </Col>
-        )}
+        ))}
       </Row>
       {/* Chart + Activity */}
       <Row>
@@ -677,18 +699,10 @@ function SidebarLayout(props: {
   return (
     <Container maxWidth={1200} gap={24} gutter={16}>
       <Row>
-        <Col
-          xs={12}
-          md={3}
-          order={isRight ? 2 : 1}
-        >
+        <Col xs={12} md={3} order={isRight ? 2 : 1}>
           <aside class="sidebar">{props.sidebar}</aside>
         </Col>
-        <Col
-          xs={12}
-          md={9}
-          order={isRight ? 1 : 2}
-        >
+        <Col xs={12} md={9} order={isRight ? 1 : 2}>
           <main>{props.content}</main>
         </Col>
       </Row>
@@ -759,7 +773,10 @@ Use `alignY: 'stretch'` on the Row to make all columns the same height:
         style="height: 100%; display: flex; flex-direction: column; padding: 16px; border: 1px solid #ddd; border-radius: 8px;"
       >
         <h3>Longer Title Here</h3>
-        <p style="flex: 1;">This card has much more content that makes it taller than the others. The other cards will stretch to match.</p>
+        <p style="flex: 1;">
+          This card has much more content that makes it taller than the others. The other cards will
+          stretch to match.
+        </p>
         <button>Action</button>
       </div>
     </Col>
@@ -842,20 +859,20 @@ The Col will read the Row's config from context. You lose the centering and gutt
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `Container` | Component | Outermost grid wrapper with centering, max-width, and gutters. Provides grid config via context. |
-| `Row` | Component | Flex row container for columns. Reads Container context, provides Row context. Supports alignment overrides. |
-| `Col` | Component | Grid column with span, offset, and order. Reads Row context for gap and column count. |
-| `defaultBreakpoints` | Object | Default breakpoint map: `&#123; xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 &#125;` |
-| `defaultContainerWidths` | Object | Default max-widths per breakpoint: `&#123; xs: '100%', sm: 540, md: 720, lg: 960, xl: 1140 &#125;` |
-| `defaultGridConfig` | Object | Default GridConfig: `&#123; columns: 12, containerWidth: '100%', gap: 0, gutter: 0, padding: 0 &#125;` |
+| Export                   | Type      | Description                                                                                                  |
+| ------------------------ | --------- | ------------------------------------------------------------------------------------------------------------ |
+| `Container`              | Component | Outermost grid wrapper with centering, max-width, and gutters. Provides grid config via context.             |
+| `Row`                    | Component | Flex row container for columns. Reads Container context, provides Row context. Supports alignment overrides. |
+| `Col`                    | Component | Grid column with span, offset, and order. Reads Row context for gap and column count.                        |
+| `defaultBreakpoints`     | Object    | Default breakpoint map: `&#123; xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 &#125;`                           |
+| `defaultContainerWidths` | Object    | Default max-widths per breakpoint: `&#123; xs: '100%', sm: 540, md: 720, lg: 960, xl: 1140 &#125;`           |
+| `defaultGridConfig`      | Object    | Default GridConfig: `&#123; columns: 12, containerWidth: '100%', gap: 0, gutter: 0, padding: 0 &#125;`       |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `ContainerProps` | Props for `Container`. Includes `maxWidth`, `columns`, `gap`, `gutter`, `padding`, `tag`, `class`, `style`, `children`. |
-| `RowProps` | Props for `Row`. Includes `gap`, `columns`, `alignX`, `alignY`, `tag`, `class`, `style`, `children`. |
-| `ColProps` | Props for `Col`. Includes `xs`, `sm`, `md`, `lg`, `xl`, `offset`, `order`, `tag`, `class`, `style`, `children`. |
-| `GridConfig` | Grid configuration object: `&#123; columns, containerWidth, gap, gutter, padding &#125;`. Flows through context from Container to Row to Col. |
+| Type             | Description                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ContainerProps` | Props for `Container`. Includes `maxWidth`, `columns`, `gap`, `gutter`, `padding`, `tag`, `class`, `style`, `children`.                       |
+| `RowProps`       | Props for `Row`. Includes `gap`, `columns`, `alignX`, `alignY`, `tag`, `class`, `style`, `children`.                                          |
+| `ColProps`       | Props for `Col`. Includes `xs`, `sm`, `md`, `lg`, `xl`, `offset`, `order`, `tag`, `class`, `style`, `children`.                               |
+| `GridConfig`     | Grid configuration object: `&#123; columns, containerWidth, gap, gutter, padding &#125;`. Flows through context from Container to Row to Col. |

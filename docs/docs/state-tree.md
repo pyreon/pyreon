@@ -10,18 +10,23 @@ description: MobX-State-Tree-inspired reactive models with snapshots, patches, a
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/state-tree
 ```
+
 ```bash [bun]
 bun add @pyreon/state-tree
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/state-tree
 ```
+
 ```bash [yarn]
 yarn add @pyreon/state-tree
 ```
+
 :::
 
 ## Quick Start
@@ -36,17 +41,17 @@ const Counter = model({
     doubled: computed(() => self.count() * 2),
   }),
   actions: (self) => ({
-    increment: () => self.count.update(c => c + 1),
-    decrement: () => self.count.update(c => c - 1),
+    increment: () => self.count.update((c) => c + 1),
+    decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
   }),
 })
 
 const counter = Counter.create({ count: 5 })
 counter.increment()
-counter.count()    // 6
-counter.doubled()  // 12
-getSnapshot(counter)  // { count: 6 }
+counter.count() // 6
+counter.doubled() // 12
+getSnapshot(counter) // { count: 6 }
 ```
 
 ## Defining a Model
@@ -67,8 +72,8 @@ const Counter = model({
     doubled: computed(() => self.count() * 2),
   }),
   actions: (self) => ({
-    increment: () => self.count.update(c => c + 1),
-    decrement: () => self.count.update(c => c - 1),
+    increment: () => self.count.update((c) => c + 1),
+    decrement: () => self.count.update((c) => c - 1),
     reset: () => self.count.set(0),
   }),
 })
@@ -95,11 +100,12 @@ const Settings = model({
   },
   actions: (self) => ({
     setName: (name: string) => self.name.set(name),
-    addTag: (tag: string) => self.tags.update(t => [...t, tag]),
-    toggleTheme: () => self.config.update(c => ({
-      ...c,
-      theme: c.theme === 'light' ? 'dark' : 'light',
-    })),
+    addTag: (tag: string) => self.tags.update((t) => [...t, tag]),
+    toggleTheme: () =>
+      self.config.update((c) => ({
+        ...c,
+        theme: c.theme === 'light' ? 'dark' : 'light',
+      })),
     select: (id: string | null) => self.selectedId.set(id),
   }),
 })
@@ -113,16 +119,16 @@ Every state field is a signal. Call it to read, use `.set()` for replacement, an
 const counter = Counter.create({ count: 5 })
 
 // Read (creates a reactive dependency)
-counter.count()       // 5
+counter.count() // 5
 
 // Read without subscribing
-counter.count.peek()  // 5
+counter.count.peek() // 5
 
 // Replace value
 counter.count.set(10)
 
 // Transform current value
-counter.count.update(c => c + 1)   // 11
+counter.count.update((c) => c + 1) // 11
 ```
 
 ### Models Without Views or Actions
@@ -135,7 +141,7 @@ const Config = model({
 })
 
 const config = Config.create()
-config.theme()     // "light"
+config.theme() // "light"
 config.theme.set('dark')
 ```
 
@@ -145,14 +151,14 @@ Call `.create()` on a model definition to create an independent instance. Pass a
 
 ```ts
 const counter = Counter.create()
-counter.count()     // 0
+counter.count() // 0
 
 const counter2 = Counter.create({ count: 10 })
-counter2.count()    // 10
-counter2.doubled()  // 20
+counter2.count() // 10
+counter2.doubled() // 20
 
 counter2.increment()
-counter2.count()    // 11
+counter2.count() // 11
 ```
 
 ### Partial Initialization
@@ -165,8 +171,8 @@ const NamedCounter = model({
 })
 
 const c = NamedCounter.create({ count: 10 })
-c.count()  // 10
-c.label()  // "default" — not overridden
+c.count() // 10
+c.label() // "default" — not overridden
 ```
 
 ### Independent Instances
@@ -178,8 +184,8 @@ const a = Counter.create()
 const b = Counter.create()
 
 a.increment()
-a.count()  // 1
-b.count()  // 0  — independent
+a.count() // 1
+b.count() // 0  — independent
 ```
 
 ## Computed Views
@@ -198,20 +204,20 @@ const Counter = model({
     label: computed(() => `Count is ${self.count()}`),
   }),
   actions: (self) => ({
-    increment: () => self.count.update(c => c + 1),
-    decrement: () => self.count.update(c => c - 1),
+    increment: () => self.count.update((c) => c + 1),
+    decrement: () => self.count.update((c) => c - 1),
   }),
 })
 
 const counter = Counter.create({ count: 5 })
-counter.doubled()     // 10
-counter.isPositive()  // true
-counter.label()       // "Count is 5"
+counter.doubled() // 10
+counter.isPositive() // true
+counter.label() // "Count is 5"
 
 // Views are reactive — they update automatically
 counter.increment()
-counter.doubled()     // 12
-counter.label()       // "Count is 6"
+counter.doubled() // 12
+counter.label() // "Count is 6"
 ```
 
 ### Views in Effects
@@ -253,9 +259,9 @@ const CartItem = model({
 })
 
 const item = CartItem.create({ price: 100, quantity: 3 })
-item.subtotal()  // 300
-item.tax()       // 30
-item.total()     // 330
+item.subtotal() // 300
+item.tax() // 30
+item.total() // 330
 ```
 
 ## Actions
@@ -269,7 +275,7 @@ const Todo = model({
   state: { text: '', done: false },
   actions: (self) => ({
     setText: (text: string) => self.text.set(text),
-    toggle: () => self.done.update(d => !d),
+    toggle: () => self.done.update((d) => !d),
     complete: () => self.done.set(true),
   }),
 })
@@ -283,16 +289,16 @@ Actions can accept any number of arguments:
 const Counter = model({
   state: { count: 0 },
   actions: (self) => ({
-    add: (n: number) => self.count.update(c => c + n),
-    addMultiple: (a: number, b: number) => self.count.update(c => c + a + b),
+    add: (n: number) => self.count.update((c) => c + n),
+    addMultiple: (a: number, b: number) => self.count.update((c) => c + a + b),
   }),
 })
 
 const counter = Counter.create()
 counter.add(5)
-counter.count()  // 5
+counter.count() // 5
 counter.addMultiple(3, 7)
-counter.count()  // 15
+counter.count() // 15
 ```
 
 ### Actions Calling Other Actions
@@ -313,7 +319,7 @@ const Counter = model({
 
 const c = Counter.create()
 c.doubleInc()
-c.x()  // 2
+c.x() // 2
 ```
 
 ### Async Actions
@@ -364,7 +370,7 @@ const Profile = model({
 const App = model({
   state: {
     title: 'My App',
-    profile: Profile,  // nested model definition
+    profile: Profile, // nested model definition
   },
   actions: (self) => ({
     setTitle: (title: string) => self.title.set(title),
@@ -382,16 +388,16 @@ const app = App.create({
 })
 
 // Access the nested instance via .peek() (it is stored in a signal)
-app.profile.peek().name()   // "Alice"
-app.profile.peek().email()  // "alice@example.com"
+app.profile.peek().name() // "Alice"
+app.profile.peek().email() // "alice@example.com"
 ```
 
 When no snapshot is provided for a nested model, its defaults are used:
 
 ```ts
 const app = App.create()
-app.profile.peek().name()   // ""
-app.title()                 // "My App"
+app.profile.peek().name() // ""
+app.title() // "My App"
 ```
 
 ### Nested Actions
@@ -401,7 +407,7 @@ Nested instances retain their own actions:
 ```ts
 const app = App.create({ profile: { name: 'Alice', email: '' } })
 app.profile.peek().setName('Bob')
-app.profile.peek().name()  // "Bob"
+app.profile.peek().name() // "Bob"
 ```
 
 ### Nested Snapshots and Patches
@@ -433,8 +439,8 @@ const useCounterA = Counter.asHook('counter-a')
 const useCounterB = Counter.asHook('counter-b')
 
 useCounterA().increment()
-useCounterA().count()  // 1
-useCounterB().count()  // 0  — independent
+useCounterA().count() // 1
+useCounterB().count() // 0  — independent
 ```
 
 ### Resetting Hooks
@@ -454,7 +460,7 @@ resetAllHooks()
 Resetting a non-existent hook ID is a silent no-op:
 
 ```ts
-resetHook('no-such-hook')  // no error
+resetHook('no-such-hook') // no error
 ```
 
 ## Snapshots
@@ -471,14 +477,14 @@ import { getSnapshot } from '@pyreon/state-tree'
 const counter = Counter.create({ count: 5 })
 counter.increment()
 
-getSnapshot(counter)  // { count: 6 }
+getSnapshot(counter) // { count: 6 }
 ```
 
 The returned snapshot contains only plain values -- no signals, no functions:
 
 ```ts
 const snap = getSnapshot(counter)
-typeof snap.count  // "number", not "function"
+typeof snap.count // "number", not "function"
 ```
 
 ### Nested Snapshots
@@ -500,7 +506,7 @@ const counter = Counter.create()
 counter.increment()
 counter.increment()
 counter.increment()
-getSnapshot(counter)  // { count: 3 }
+getSnapshot(counter) // { count: 3 }
 ```
 
 ### `applySnapshot(instance, snapshot)`
@@ -511,7 +517,7 @@ Restore a model instance from a plain-object snapshot. All signal writes are bat
 import { applySnapshot } from '@pyreon/state-tree'
 
 applySnapshot(counter, { count: 0 })
-counter.count()  // 0
+counter.count() // 0
 ```
 
 ### Partial Snapshots
@@ -523,8 +529,8 @@ const NamedCounter = model({ state: { count: 0, label: 'x' } })
 const c = NamedCounter.create({ count: 5, label: 'hello' })
 
 applySnapshot(c, { count: 99 })
-c.count()  // 99
-c.label()  // "hello" — unchanged
+c.count() // 99
+c.label() // "hello" — unchanged
 ```
 
 ### Batched Updates
@@ -543,7 +549,7 @@ effect(() => {
   m.b()
   effectRuns++
 })
-effectRuns = 0  // reset after initial run
+effectRuns = 0 // reset after initial run
 
 applySnapshot(m, { a: 1, b: 2 })
 // effectRuns === 1  (not 2)
@@ -557,9 +563,9 @@ applySnapshot(m, { a: 1, b: 2 })
 const app = App.create({ profile: { name: 'Alice', email: '' }, title: 'old' })
 
 applySnapshot(app, { profile: { name: 'Carol', email: 'carol@test.com' }, title: 'new' })
-app.profile.peek().name()   // "Carol"
-app.profile.peek().email()  // "carol@test.com"
-app.title()                 // "new"
+app.profile.peek().name() // "Carol"
+app.profile.peek().email() // "carol@test.com"
+app.title() // "new"
 ```
 
 ### Snapshot Serialization for Persistence
@@ -573,10 +579,11 @@ const TodoList = model({
     filter: 'all' as 'all' | 'active' | 'done',
   },
   actions: (self) => ({
-    addItem: (text: string) => self.items.update(i => [...i, { text, done: false }]),
-    toggleItem: (idx: number) => self.items.update(i =>
-      i.map((item, i2) => i2 === idx ? { ...item, done: !item.done } : item)
-    ),
+    addItem: (text: string) => self.items.update((i) => [...i, { text, done: false }]),
+    toggleItem: (idx: number) =>
+      self.items.update((i) =>
+        i.map((item, i2) => (i2 === idx ? { ...item, done: !item.done } : item)),
+      ),
     setFilter: (f: 'all' | 'active' | 'done') => self.filter.set(f),
   }),
 })
@@ -601,7 +608,7 @@ function restore(store: ReturnType<typeof TodoList.create>) {
 Both `getSnapshot` and `applySnapshot` throw if called on a non-model-instance:
 
 ```ts
-getSnapshot({})       // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
+getSnapshot({}) // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
 applySnapshot({}, {}) // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
 ```
 
@@ -623,7 +630,7 @@ const unsub = onPatch(counter, (patch) => {
 
 counter.increment()
 
-unsub()  // stop listening
+unsub() // stop listening
 ```
 
 ### Patch Values
@@ -650,7 +657,7 @@ const counter = Counter.create()
 const patches: Patch[] = []
 onPatch(counter, (p) => patches.push(p))
 
-counter.count.set(0)  // same as default
+counter.count.set(0) // same as default
 // patches: [] — empty, no change detected
 ```
 
@@ -704,6 +711,7 @@ applyPatch(user, { op: 'replace', path: '/profile/name', value: 'Alice' })
 Only `"replace"` operations are supported (matching the patches emitted by `onPatch`). Paths use JSON pointer format: `"/count"` for top-level properties, `"/profile/name"` for nested model instances.
 
 **Use cases:**
+
 - **Undo/redo** -- replay recorded patches
 - **Time-travel debugging** -- apply saved patch sequences
 - **Remote sync** -- apply patches received from a server
@@ -744,10 +752,12 @@ const store = TodoList.create()
 
 onPatch(store, (patch) => {
   // Send each mutation to a server for real-time sync
-  websocket.send(JSON.stringify({
-    type: 'PATCH',
-    payload: patch,
-  }))
+  websocket.send(
+    JSON.stringify({
+      type: 'PATCH',
+      payload: patch,
+    }),
+  )
 })
 ```
 
@@ -789,18 +799,18 @@ function withUndoRedo<T extends object>(instance: T) {
 const counter = Counter.create()
 const { undo, redo, canUndo, canRedo } = withUndoRedo(counter)
 
-counter.increment()  // count: 1
-counter.increment()  // count: 2
-counter.increment()  // count: 3
+counter.increment() // count: 1
+counter.increment() // count: 2
+counter.increment() // count: 3
 
 undo()
-counter.count()  // 2
+counter.count() // 2
 
 undo()
-counter.count()  // 1
+counter.count() // 1
 
 redo()
-counter.count()  // 2
+counter.count() // 2
 ```
 
 ### Patch Type
@@ -808,7 +818,7 @@ counter.count()  // 2
 ```ts
 interface Patch {
   op: 'replace'
-  path: string    // JSON pointer, e.g. "/count" or "/profile/name"
+  path: string // JSON pointer, e.g. "/count" or "/profile/name"
   value: unknown
 }
 ```
@@ -874,7 +884,7 @@ addMiddleware(counter, (_call, _next) => {
 })
 
 counter.increment()
-counter.count()  // 0 — action was prevented
+counter.count() // 0 — action was prevented
 ```
 
 ### Conditional Blocking
@@ -936,26 +946,23 @@ const unsub = addMiddleware(counter, (call, next) => {
 })
 
 unsub()
-counter.increment()  // no log output — middleware removed
+counter.increment() // no log output — middleware removed
 ```
 
 ### ActionCall Type
 
 ```ts
 interface ActionCall {
-  name: string     // Action name, e.g. "increment"
-  args: unknown[]  // Arguments passed to the action
-  path: string     // JSON-pointer-style path, e.g. "/increment"
+  name: string // Action name, e.g. "increment"
+  args: unknown[] // Arguments passed to the action
+  path: string // JSON-pointer-style path, e.g. "/increment"
 }
 ```
 
 ### MiddlewareFn Type
 
 ```ts
-type MiddlewareFn = (
-  call: ActionCall,
-  next: (call: ActionCall) => unknown,
-) => unknown
+type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown
 ```
 
 ## Testing Models
@@ -974,8 +981,8 @@ const Counter = model({
     doubled: computed(() => self.count() * 2),
   }),
   actions: (self) => ({
-    inc: () => self.count.update(c => c + 1),
-    add: (n: number) => self.count.update(c => c + n),
+    inc: () => self.count.update((c) => c + 1),
+    add: (n: number) => self.count.update((c) => c + n),
     reset: () => self.count.set(0),
   }),
 })
@@ -1015,9 +1022,7 @@ describe('Counter', () => {
     onPatch(counter, (p) => patches.push(p))
 
     counter.add(5)
-    expect(patches).toEqual([
-      { op: 'replace', path: '/count', value: 5 },
-    ])
+    expect(patches).toEqual([{ op: 'replace', path: '/count', value: 5 }])
   })
 })
 ```
@@ -1037,7 +1042,7 @@ it('hook returns singleton', () => {
   const useCounter = Counter.asHook('test-counter')
   const a = useCounter()
   const b = useCounter()
-  expect(a).toBe(b)  // same instance
+  expect(a).toBe(b) // same instance
 })
 
 it('hook is fresh after reset', () => {
@@ -1046,7 +1051,7 @@ it('hook is fresh after reset', () => {
   expect(useCounter().count()).toBe(10)
 
   resetAllHooks()
-  expect(useCounter().count()).toBe(0)  // fresh instance
+  expect(useCounter().count()).toBe(0) // fresh instance
 })
 ```
 
@@ -1066,7 +1071,7 @@ const TodoItem = model({
     done: false,
   },
   actions: (self) => ({
-    toggle: () => self.done.update(d => !d),
+    toggle: () => self.done.update((d) => !d),
     setText: (text: string) => self.text.set(text),
   }),
 })
@@ -1083,31 +1088,32 @@ const TodoList = model({
       const items = self.items()
       const filter = self.filter()
       switch (filter) {
-        case 'active': return items.filter(i => !i.done)
-        case 'done': return items.filter(i => i.done)
-        default: return items
+        case 'active':
+          return items.filter((i) => !i.done)
+        case 'done':
+          return items.filter((i) => i.done)
+        default:
+          return items
       }
     }),
-    activeCount: computed(() => self.items().filter(i => !i.done).length),
-    doneCount: computed(() => self.items().filter(i => i.done).length),
+    activeCount: computed(() => self.items().filter((i) => !i.done).length),
+    doneCount: computed(() => self.items().filter((i) => i.done).length),
     totalCount: computed(() => self.items().length),
   }),
   actions: (self) => ({
     addItem: (text: string) => {
       const id = `todo-${self.nextId.peek()}`
-      self.nextId.update(n => n + 1)
-      self.items.update(items => [...items, { id, text, done: false }])
+      self.nextId.update((n) => n + 1)
+      self.items.update((items) => [...items, { id, text, done: false }])
     },
     removeItem: (id: string) => {
-      self.items.update(items => items.filter(i => i.id !== id))
+      self.items.update((items) => items.filter((i) => i.id !== id))
     },
     toggleItem: (id: string) => {
-      self.items.update(items =>
-        items.map(i => i.id === id ? { ...i, done: !i.done } : i)
-      )
+      self.items.update((items) => items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)))
     },
     clearDone: () => {
-      self.items.update(items => items.filter(i => !i.done))
+      self.items.update((items) => items.filter((i) => !i.done))
     },
     setFilter: (filter: 'all' | 'active' | 'done') => {
       self.filter.set(filter)
@@ -1153,15 +1159,15 @@ todos.addItem('Write docs')
 todos.addItem('Review PR')
 
 todos.toggleItem('todo-1')
-todos.activeCount()   // 2
-todos.doneCount()     // 1
+todos.activeCount() // 2
+todos.doneCount() // 1
 
 todos.setFilter('active')
-todos.filteredItems()  // only undone items
+todos.filteredItems() // only undone items
 
-undo()  // un-sets the filter
-undo()  // un-toggles todo-1
-redo()  // re-toggles todo-1
+undo() // un-sets the filter
+undo() // un-toggles todo-1
+redo() // re-toggles todo-1
 ```
 
 ## TypeScript Inference Patterns
@@ -1177,7 +1183,7 @@ const Counter = model({
     doubled: computed(() => self.count() * 2),
   }),
   actions: (self) => ({
-    inc: () => self.count.update(c => c + 1),
+    inc: () => self.count.update((c) => c + 1),
   }),
 })
 
@@ -1270,28 +1276,28 @@ Destroy all hook singletons.
 
 ## Type Exports
 
-| Type | Description |
-| --- | --- |
-| `ModelDefinition` | The class returned by `model()` |
-| `ModelInstance` | The instance type returned by `.create()` and hooks |
-| `ModelSelf` | The `self` type inside actions and views |
-| `StateShape` | Constraint for state objects (`Record<string, unknown>`) |
-| `Snapshot` | Plain JS snapshot type (no signals, no model instances) |
-| `Patch` | JSON patch object (`&#123; op: 'replace', path, value &#125;`) |
-| `PatchListener` | Callback for `onPatch`: `(patch: Patch) => void` |
-| `ActionCall` | Descriptor passed to middleware: `&#123; name, args, path &#125;` |
-| `MiddlewareFn` | Middleware function signature: `(call, next) => unknown` |
+| Type              | Description                                                       |
+| ----------------- | ----------------------------------------------------------------- |
+| `ModelDefinition` | The class returned by `model()`                                   |
+| `ModelInstance`   | The instance type returned by `.create()` and hooks               |
+| `ModelSelf`       | The `self` type inside actions and views                          |
+| `StateShape`      | Constraint for state objects (`Record<string, unknown>`)          |
+| `Snapshot`        | Plain JS snapshot type (no signals, no model instances)           |
+| `Patch`           | JSON patch object (`&#123; op: 'replace', path, value &#125;`)    |
+| `PatchListener`   | Callback for `onPatch`: `(patch: Patch) => void`                  |
+| `ActionCall`      | Descriptor passed to middleware: `&#123; name, args, path &#125;` |
+| `MiddlewareFn`    | Middleware function signature: `(call, next) => unknown`          |
 
 ## Error Handling
 
 All public functions that accept a model instance (`getSnapshot`, `applySnapshot`, `onPatch`, `applyPatch`, `addMiddleware`) validate their input and throw a descriptive error if called on a non-model-instance:
 
 ```ts
-getSnapshot({})        // Error: [@pyreon/state-tree] getSnapshot: not a model instance
-applySnapshot({}, {})  // Error: [@pyreon/state-tree] applySnapshot: not a model instance
-onPatch({}, () => {})  // Error: [@pyreon/state-tree] onPatch: not a model instance
-applyPatch({}, {})     // Error: [@pyreon/state-tree] applyPatch: not a model instance
-addMiddleware({}, fn)  // Error: [@pyreon/state-tree] addMiddleware: not a model instance
+getSnapshot({}) // Error: [@pyreon/state-tree] getSnapshot: not a model instance
+applySnapshot({}, {}) // Error: [@pyreon/state-tree] applySnapshot: not a model instance
+onPatch({}, () => {}) // Error: [@pyreon/state-tree] onPatch: not a model instance
+applyPatch({}, {}) // Error: [@pyreon/state-tree] applyPatch: not a model instance
+addMiddleware({}, fn) // Error: [@pyreon/state-tree] addMiddleware: not a model instance
 ```
 
 ## Internals

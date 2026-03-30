@@ -10,18 +10,23 @@ description: Reactive TanStack Table adapter with fine-grained signal integratio
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/table
 ```
+
 ```bash [bun]
 bun add @pyreon/table
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/table
 ```
+
 ```bash [yarn]
 yarn add @pyreon/table
 ```
+
 :::
 
 TanStack Table core is included as a dependency -- all exports from `@tanstack/table-core` are re-exported for convenience.
@@ -33,12 +38,7 @@ Use `useTable` to create a reactive table instance. Options are passed as a func
 ```tsx
 import { defineComponent } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import {
-  useTable,
-  flexRender,
-  getCoreRowModel,
-  createColumnHelper,
-} from '@pyreon/table'
+import { useTable, flexRender, getCoreRowModel, createColumnHelper } from '@pyreon/table'
 
 interface Person {
   name: string
@@ -69,28 +69,30 @@ const PeopleTable = defineComponent(() => {
   return () => (
     <table>
       <thead>
-        {table().getHeaderGroups().map((headerGroup) => (
-          <tr key={headerGroup.id}>
-            {headerGroup.headers.map((header) => (
-              <th key={header.id}>
-                {header.isPlaceholder
-                  ? null
-                  : flexRender(header.column.columnDef.header, header.getContext())}
-              </th>
-            ))}
-          </tr>
-        ))}
+        {table()
+          .getHeaderGroups()
+          .map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <th key={header.id}>
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
       </thead>
       <tbody>
-        {table().getRowModel().rows.map((row) => (
-          <tr key={row.id}>
-            {row.getVisibleCells().map((cell) => (
-              <td key={cell.id}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            ))}
-          </tr>
-        ))}
+        {table()
+          .getRowModel()
+          .rows.map((row) => (
+            <tr key={row.id}>
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+              ))}
+            </tr>
+          ))}
       </tbody>
     </table>
   )
@@ -100,9 +102,7 @@ const PeopleTable = defineComponent(() => {
 ## `useTable`
 
 ```ts
-function useTable<TData extends RowData>(
-  options: () => TableOptions<TData>,
-): Computed<Table<TData>>
+function useTable<TData extends RowData>(options: () => TableOptions<TData>): Computed<Table<TData>>
 ```
 
 Creates a reactive TanStack Table instance. Returns a `Computed<Table<TData>>` -- a read-only signal that holds the table instance. Read it in effects or templates to track state changes.
@@ -135,7 +135,10 @@ const table = useTable(() => ({
 }))
 
 // Table updates automatically when data or columns change:
-data.set([{ name: 'Alice', age: 30 }, { name: 'Bob', age: 25 }])
+data.set([
+  { name: 'Alice', age: 30 },
+  { name: 'Bob', age: 25 },
+])
 // table() now returns 2 rows
 
 columns.set([{ accessorKey: 'name', header: 'Name' }])
@@ -158,13 +161,13 @@ const table = useTable(() => ({
 }))
 
 const rowCount = computed(() => table().getRowModel().rows.length)
-rowCount()  // 3
+rowCount() // 3
 
 data.set([...defaultData, { name: 'Diana', age: 28 }])
-rowCount()  // 4
+rowCount() // 4
 
 data.set([defaultData[0]])
-rowCount()  // 1
+rowCount() // 1
 ```
 
 ### State Change Callbacks
@@ -179,9 +182,7 @@ const table = useTable(() => ({
   columns,
   state: { sorting: sorting() },
   onSortingChange: (updater) => {
-    sorting.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    sorting.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
@@ -194,9 +195,7 @@ TanStack Table state change callbacks receive an `Updater<T>` which can be eithe
 
 ```ts
 onSortingChange: (updater) => {
-  sorting.update((prev) =>
-    typeof updater === 'function' ? updater(prev) : updater
-  )
+  sorting.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
 }
 ```
 
@@ -399,11 +398,7 @@ const columns = [
 Enable sorting by adding `getSortedRowModel`:
 
 ```tsx
-import {
-  useTable,
-  getCoreRowModel,
-  getSortedRowModel,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, getSortedRowModel } from '@pyreon/table'
 
 const table = useTable(() => ({
   data: data(),
@@ -417,8 +412,8 @@ With the adapter's built-in state management, sorting works automatically. Toggl
 
 ```ts
 // Toggle sorting on the "age" column
-table().getColumn('age')!.toggleSorting(false)  // ascending
-table().getColumn('age')!.toggleSorting(true)   // descending
+table().getColumn('age')!.toggleSorting(false) // ascending
+table().getColumn('age')!.toggleSorting(true) // descending
 
 // Check current sort state
 table().getState().sorting
@@ -439,9 +434,7 @@ const table = useTable(() => ({
   columns,
   state: { sorting: sorting() },
   onSortingChange: (updater) => {
-    sorting.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    sorting.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
@@ -484,7 +477,7 @@ const columns = [
   }),
   columnHelper.accessor('age', {
     header: ({ column }) => <SortableHeader column={column} label="Age" />,
-    sortingFn: 'basic',  // numeric sorting
+    sortingFn: 'basic', // numeric sorting
   }),
 ]
 ```
@@ -510,11 +503,7 @@ columnHelper.accessor('priority', {
 Filter individual columns with `getFilteredRowModel`:
 
 ```tsx
-import {
-  useTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, getFilteredRowModel } from '@pyreon/table'
 import type { ColumnFiltersState } from '@pyreon/table'
 
 const columnFilters = signal<ColumnFiltersState>([])
@@ -524,9 +513,7 @@ const table = useTable(() => ({
   columns,
   state: { columnFilters: columnFilters() },
   onColumnFiltersChange: (updater) => {
-    columnFilters.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    columnFilters.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
   getFilteredRowModel: getFilteredRowModel(),
@@ -619,18 +606,20 @@ function ColumnFilter({ column }) {
 }
 
 // In the header:
-{table().getHeaderGroups().map((headerGroup) => (
-  <tr key={headerGroup.id}>
-    {headerGroup.headers.map((header) => (
-      <th key={header.id}>
-        {flexRender(header.column.columnDef.header, header.getContext())}
-        {header.column.getCanFilter() && (
-          <ColumnFilter column={header.column} />
-        )}
-      </th>
-    ))}
-  </tr>
-))}
+{
+  table()
+    .getHeaderGroups()
+    .map((headerGroup) => (
+      <tr key={headerGroup.id}>
+        {headerGroup.headers.map((header) => (
+          <th key={header.id}>
+            {flexRender(header.column.columnDef.header, header.getContext())}
+            {header.column.getCanFilter() && <ColumnFilter column={header.column} />}
+          </th>
+        ))}
+      </tr>
+    ))
+}
 ```
 
 ## Pagination
@@ -638,11 +627,7 @@ function ColumnFilter({ column }) {
 ### Client-Side Pagination
 
 ```tsx
-import {
-  useTable,
-  getCoreRowModel,
-  getPaginationRowModel,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, getPaginationRowModel } from '@pyreon/table'
 import type { PaginationState } from '@pyreon/table'
 
 const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 10 })
@@ -652,9 +637,7 @@ const table = useTable(() => ({
   columns,
   state: { pagination: pagination() },
   onPaginationChange: (updater) => {
-    pagination.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    pagination.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
   getPaginationRowModel: getPaginationRowModel(),
@@ -678,17 +661,17 @@ const table = useTable(() => ({
   getPaginationRowModel: getPaginationRowModel(),
 }))
 
-table().getRowModel().rows.length  // 10 (first page)
-table().getCanNextPage()           // true
-table().getCanPreviousPage()       // false
+table().getRowModel().rows.length // 10 (first page)
+table().getCanNextPage() // true
+table().getCanPreviousPage() // false
 
 table().nextPage()
-table().getRowModel().rows.length  // 10 (second page)
-table().getRowModel().rows[0].original.name  // "Person 10"
+table().getRowModel().rows.length // 10 (second page)
+table().getRowModel().rows[0].original.name // "Person 10"
 
 table().nextPage()
-table().getRowModel().rows.length  // 5 (last page, only 5 remaining)
-table().getCanNextPage()           // false
+table().getRowModel().rows.length // 5 (last page, only 5 remaining)
+table().getCanNextPage() // false
 ```
 
 ### Pagination Controls
@@ -697,31 +680,19 @@ table().getCanNextPage()           // false
 function PaginationControls({ table }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-      <button
-        onClick={() => table().firstPage()}
-        disabled={!table().getCanPreviousPage()}
-      >
+      <button onClick={() => table().firstPage()} disabled={!table().getCanPreviousPage()}>
         {'<<'}
       </button>
-      <button
-        onClick={() => table().previousPage()}
-        disabled={!table().getCanPreviousPage()}
-      >
+      <button onClick={() => table().previousPage()} disabled={!table().getCanPreviousPage()}>
         {'<'}
       </button>
       <span>
         Page {table().getState().pagination.pageIndex + 1} of {table().getPageCount()}
       </span>
-      <button
-        onClick={() => table().nextPage()}
-        disabled={!table().getCanNextPage()}
-      >
+      <button onClick={() => table().nextPage()} disabled={!table().getCanNextPage()}>
         {'>'}
       </button>
-      <button
-        onClick={() => table().lastPage()}
-        disabled={!table().getCanNextPage()}
-      >
+      <button onClick={() => table().lastPage()} disabled={!table().getCanNextPage()}>
         {'>>'}
       </button>
       <select
@@ -746,7 +717,7 @@ function PaginationControls({ table }) {
 table().setPageSize(25)
 
 // Go to a specific page
-table().setPageIndex(2)  // third page (zero-indexed)
+table().setPageIndex(2) // third page (zero-indexed)
 ```
 
 ### Server-Side Pagination
@@ -761,9 +732,7 @@ const totalRows = signal(0)
 const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 20 })
 
 async function fetchPage(pageIndex: number, pageSize: number) {
-  const response = await fetch(
-    `/api/people?page=${pageIndex}&size=${pageSize}`
-  )
+  const response = await fetch(`/api/people?page=${pageIndex}&size=${pageSize}`)
   const result = await response.json()
   data.set(result.items)
   totalRows.set(result.total)
@@ -778,9 +747,7 @@ const table = useTable(() => ({
   pageCount: Math.ceil(totalRows() / pagination().pageSize),
   state: { pagination: pagination() },
   onPaginationChange: (updater) => {
-    const newPagination = typeof updater === 'function'
-      ? updater(pagination.peek())
-      : updater
+    const newPagination = typeof updater === 'function' ? updater(pagination.peek()) : updater
     pagination.set(newPagination)
     fetchPage(newPagination.pageIndex, newPagination.pageSize)
   },
@@ -801,9 +768,7 @@ const table = useTable(() => ({
   columns,
   state: { rowSelection: rowSelection() },
   onRowSelectionChange: (updater) => {
-    rowSelection.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    rowSelection.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   enableRowSelection: true,
   getCoreRowModel: getCoreRowModel(),
@@ -822,13 +787,13 @@ const table = useTable(() => ({
   enableRowSelection: true,
 }))
 
-table().getSelectedRowModel().rows  // []
+table().getSelectedRowModel().rows // []
 
 table().getRowModel().rows[0].toggleSelected(true)
-table().getSelectedRowModel().rows  // [first row]
+table().getSelectedRowModel().rows // [first row]
 
 table().getRowModel().rows[0].toggleSelected(false)
-table().getSelectedRowModel().rows  // []
+table().getSelectedRowModel().rows // []
 ```
 
 ### Selection Checkbox Column
@@ -865,7 +830,7 @@ const columns = [
 const selectedRows = table().getSelectedRowModel().rows
 
 // Get selected row data
-const selectedData = selectedRows.map(row => row.original)
+const selectedData = selectedRows.map((row) => row.original)
 
 // Check how many are selected
 const selectedCount = Object.keys(table().getState().rowSelection).length
@@ -894,9 +859,7 @@ const table = useTable(() => ({
   columns,
   state: { columnVisibility: columnVisibility() },
   onColumnVisibilityChange: (updater) => {
-    columnVisibility.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    columnVisibility.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
 }))
@@ -911,14 +874,14 @@ const table = useTable(() => ({
   getCoreRowModel: getCoreRowModel(),
 }))
 
-table().getVisibleFlatColumns().length  // 2
+table().getVisibleFlatColumns().length // 2
 
 table().getColumn('age')!.toggleVisibility(false)
-table().getVisibleFlatColumns().length  // 1
-table().getVisibleFlatColumns()[0].id   // "name"
+table().getVisibleFlatColumns().length // 1
+table().getVisibleFlatColumns()[0].id // "name"
 
 table().getColumn('age')!.toggleVisibility(true)
-table().getVisibleFlatColumns().length  // 2
+table().getVisibleFlatColumns().length // 2
 ```
 
 ### Column Visibility Toggle UI
@@ -935,16 +898,18 @@ function ColumnToggle({ table }) {
         />
         Toggle All
       </label>
-      {table().getAllLeafColumns().map((column) => (
-        <label key={column.id} style={{ display: 'block' }}>
-          <input
-            type="checkbox"
-            checked={column.getIsVisible()}
-            onChange={column.getToggleVisibilityHandler()}
-          />
-          {column.id}
-        </label>
-      ))}
+      {table()
+        .getAllLeafColumns()
+        .map((column) => (
+          <label key={column.id} style={{ display: 'block' }}>
+            <input
+              type="checkbox"
+              checked={column.getIsVisible()}
+              onChange={column.getToggleVisibilityHandler()}
+            />
+            {column.id}
+          </label>
+        ))}
     </div>
   )
 }
@@ -964,9 +929,7 @@ const table = useTable(() => ({
   columns,
   state: { columnOrder: columnOrder() },
   onColumnOrderChange: (updater) => {
-    columnOrder.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    columnOrder.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
 }))
@@ -982,11 +945,7 @@ columnOrder.set(['email', 'name', 'age'])
 For hierarchical data with sub-rows:
 
 ```tsx
-import {
-  useTable,
-  getCoreRowModel,
-  getExpandedRowModel,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, getExpandedRowModel } from '@pyreon/table'
 import type { ExpandedState } from '@pyreon/table'
 
 const expanded = signal<ExpandedState>({})
@@ -996,9 +955,7 @@ const table = useTable(() => ({
   columns,
   state: { expanded: expanded() },
   onExpandedChange: (updater) => {
-    expanded.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    expanded.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getSubRows: (row) => row.children,
   getCoreRowModel: getCoreRowModel(),
@@ -1028,12 +985,7 @@ columnHelper.display({
 Group rows by column values:
 
 ```tsx
-import {
-  useTable,
-  getCoreRowModel,
-  getGroupedRowModel,
-  getExpandedRowModel,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, getGroupedRowModel, getExpandedRowModel } from '@pyreon/table'
 import type { GroupingState } from '@pyreon/table'
 
 const grouping = signal<GroupingState>([])
@@ -1043,9 +995,7 @@ const table = useTable(() => ({
   columns,
   state: { grouping: grouping() },
   onGroupingChange: (updater) => {
-    grouping.update((prev) =>
-      typeof updater === 'function' ? updater(prev) : updater
-    )
+    grouping.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   getCoreRowModel: getCoreRowModel(),
   getGroupedRowModel: getGroupedRowModel(),
@@ -1094,16 +1044,16 @@ const columns = [
     cell: (info) => {
       const stock = info.getValue()
       return (
-        <span style={{ color: stock < 10 ? 'red' : stock < 50 ? 'orange' : 'green' }}>
-          {stock}
-        </span>
+        <span style={{ color: stock < 10 ? 'red' : stock < 50 ? 'orange' : 'green' }}>{stock}</span>
       )
     },
   }),
 ]
 
 const ProductTable = defineComponent(() => {
-  const data = signal<Product[]>([/* ... */])
+  const data = signal<Product[]>([
+    /* ... */
+  ])
   const sorting = signal<SortingState>([])
   const columnFilters = signal<ColumnFiltersState>([])
   const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 20 })
@@ -1117,13 +1067,13 @@ const ProductTable = defineComponent(() => {
       pagination: pagination(),
     },
     onSortingChange: (updater) => {
-      sorting.update(prev => typeof updater === 'function' ? updater(prev) : updater)
+      sorting.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
     },
     onColumnFiltersChange: (updater) => {
-      columnFilters.update(prev => typeof updater === 'function' ? updater(prev) : updater)
+      columnFilters.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
     },
     onPaginationChange: (updater) => {
-      pagination.update(prev => typeof updater === 'function' ? updater(prev) : updater)
+      pagination.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
     },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -1135,58 +1085,54 @@ const ProductTable = defineComponent(() => {
     <div>
       <table>
         <thead>
-          {table().getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th key={header.id}>
-                  {header.isPlaceholder ? null : (
-                    <div>
-                      <button onClick={header.column.getToggleSortingHandler()}>
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() === 'asc' ? ' ↑' : ''}
-                        {header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
-                      </button>
-                      {header.column.getCanFilter() && (
-                        <input
-                          type="text"
-                          value={(header.column.getFilterValue() ?? '') as string}
-                          onInput={(e) => header.column.setFilterValue(e.target.value)}
-                          placeholder="Filter..."
-                        />
-                      )}
-                    </div>
-                  )}
-                </th>
-              ))}
-            </tr>
-          ))}
+          {table()
+            .getHeaderGroups()
+            .map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id}>
+                    {header.isPlaceholder ? null : (
+                      <div>
+                        <button onClick={header.column.getToggleSortingHandler()}>
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.column.getIsSorted() === 'asc' ? ' ↑' : ''}
+                          {header.column.getIsSorted() === 'desc' ? ' ↓' : ''}
+                        </button>
+                        {header.column.getCanFilter() && (
+                          <input
+                            type="text"
+                            value={(header.column.getFilterValue() ?? '') as string}
+                            onInput={(e) => header.column.setFilterValue(e.target.value)}
+                            placeholder="Filter..."
+                          />
+                        )}
+                      </div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
         </thead>
         <tbody>
-          {table().getRowModel().rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table()
+            .getRowModel()
+            .rows.map((row) => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
-        <button
-          onClick={() => table().previousPage()}
-          disabled={!table().getCanPreviousPage()}
-        >
+        <button onClick={() => table().previousPage()} disabled={!table().getCanPreviousPage()}>
           Previous
         </button>
         <span>
           Page {table().getState().pagination.pageIndex + 1} of {table().getPageCount()}
         </span>
-        <button
-          onClick={() => table().nextPage()}
-          disabled={!table().getCanNextPage()}
-        >
+        <button onClick={() => table().nextPage()} disabled={!table().getCanNextPage()}>
           Next
         </button>
       </div>
@@ -1202,11 +1148,7 @@ Combine `useTable` with `@pyreon/query` for server-driven tables:
 ```tsx
 import { signal } from '@pyreon/reactivity'
 import { useQuery } from '@pyreon/query'
-import {
-  useTable,
-  getCoreRowModel,
-  createColumnHelper,
-} from '@pyreon/table'
+import { useTable, getCoreRowModel, createColumnHelper } from '@pyreon/table'
 import type { SortingState, PaginationState } from '@pyreon/table'
 
 interface ApiResponse {
@@ -1247,10 +1189,10 @@ const table = useTable(() => ({
     pagination: pagination(),
   },
   onSortingChange: (updater) => {
-    sorting.update(prev => typeof updater === 'function' ? updater(prev) : updater)
+    sorting.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   onPaginationChange: (updater) => {
-    pagination.update(prev => typeof updater === 'function' ? updater(prev) : updater)
+    pagination.update((prev) => (typeof updater === 'function' ? updater(prev) : updater))
   },
   manualPagination: true,
   manualSorting: true,
@@ -1390,7 +1332,8 @@ const columns = [
   columnHelper.accessor('department', {
     header: ({ column }) => (
       <button onClick={() => column.toggleSorting()}>
-        Department {column.getIsSorted() === 'asc' ? '↑' : column.getIsSorted() === 'desc' ? '↓' : ''}
+        Department{' '}
+        {column.getIsSorted() === 'asc' ? '↑' : column.getIsSorted() === 'desc' ? '↓' : ''}
       </button>
     ),
   }),
@@ -1414,13 +1357,15 @@ const columns = [
       }
       const { bg, text } = colors[status]
       return (
-        <span style={{
-          padding: '2px 8px',
-          borderRadius: '9999px',
-          fontSize: '12px',
-          background: bg,
-          color: text,
-        }}>
+        <span
+          style={{
+            padding: '2px 8px',
+            borderRadius: '9999px',
+            fontSize: '12px',
+            background: bg,
+            color: text,
+          }}
+        >
           {status}
         </span>
       )
@@ -1439,7 +1384,9 @@ const columns = [
 ]
 
 const EmployeeTable = defineComponent(() => {
-  const data = signal<Employee[]>([/* ... employee data ... */])
+  const data = signal<Employee[]>([
+    /* ... employee data ... */
+  ])
   const sorting = signal<SortingState>([])
   const columnFilters = signal<ColumnFiltersState>([])
   const pagination = signal<PaginationState>({ pageIndex: 0, pageSize: 10 })
@@ -1456,11 +1403,11 @@ const EmployeeTable = defineComponent(() => {
       rowSelection: rowSelection(),
       globalFilter: globalFilter(),
     },
-    onSortingChange: (u) => sorting.update(p => typeof u === 'function' ? u(p) : u),
-    onColumnFiltersChange: (u) => columnFilters.update(p => typeof u === 'function' ? u(p) : u),
-    onPaginationChange: (u) => pagination.update(p => typeof u === 'function' ? u(p) : u),
-    onRowSelectionChange: (u) => rowSelection.update(p => typeof u === 'function' ? u(p) : u),
-    onGlobalFilterChange: (u) => globalFilter.update(p => typeof u === 'function' ? u(p) : u),
+    onSortingChange: (u) => sorting.update((p) => (typeof u === 'function' ? u(p) : u)),
+    onColumnFiltersChange: (u) => columnFilters.update((p) => (typeof u === 'function' ? u(p) : u)),
+    onPaginationChange: (u) => pagination.update((p) => (typeof u === 'function' ? u(p) : u)),
+    onRowSelectionChange: (u) => rowSelection.update((p) => (typeof u === 'function' ? u(p) : u)),
+    onGlobalFilterChange: (u) => globalFilter.update((p) => (typeof u === 'function' ? u(p) : u)),
     enableRowSelection: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -1468,9 +1415,7 @@ const EmployeeTable = defineComponent(() => {
     getPaginationRowModel: getPaginationRowModel(),
   }))
 
-  const selectedCount = computed(() =>
-    Object.keys(table().getState().rowSelection).length
-  )
+  const selectedCount = computed(() => Object.keys(table().getState().rowSelection).length)
 
   return () => (
     <div>
@@ -1492,45 +1437,71 @@ const EmployeeTable = defineComponent(() => {
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            {table().getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th key={header.id} style={{ padding: '8px 12px', textAlign: 'left', borderBottom: '2px solid #e0e0e0' }}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
+            {table()
+              .getHeaderGroups()
+              .map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      style={{
+                        padding: '8px 12px',
+                        textAlign: 'left',
+                        borderBottom: '2px solid #e0e0e0',
+                      }}
+                    >
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  ))}
+                </tr>
+              ))}
           </thead>
           <tbody>
-            {table().getRowModel().rows.map((row) => (
-              <tr key={row.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} style={{ padding: '8px 12px' }}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {table()
+              .getRowModel()
+              .rows.map((row) => (
+                <tr key={row.id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} style={{ padding: '8px 12px' }}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
 
       {/* Pagination */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 0',
+        }}
+      >
         <span style={{ fontSize: '14px', color: '#666' }}>
           Showing {table().getRowModel().rows.length} of {data().length} rows
         </span>
         <div style={{ display: 'flex', gap: '4px' }}>
-          <button onClick={() => table().firstPage()} disabled={!table().getCanPreviousPage()}>{'<<'}</button>
-          <button onClick={() => table().previousPage()} disabled={!table().getCanPreviousPage()}>{'<'}</button>
+          <button onClick={() => table().firstPage()} disabled={!table().getCanPreviousPage()}>
+            {'<<'}
+          </button>
+          <button onClick={() => table().previousPage()} disabled={!table().getCanPreviousPage()}>
+            {'<'}
+          </button>
           <span style={{ padding: '0 8px' }}>
             Page {table().getState().pagination.pageIndex + 1} of {table().getPageCount()}
           </span>
-          <button onClick={() => table().nextPage()} disabled={!table().getCanNextPage()}>{'>'}</button>
-          <button onClick={() => table().lastPage()} disabled={!table().getCanNextPage()}>{'>>'}</button>
+          <button onClick={() => table().nextPage()} disabled={!table().getCanNextPage()}>
+            {'>'}
+          </button>
+          <button onClick={() => table().lastPage()} disabled={!table().getCanNextPage()}>
+            {'>>'}
+          </button>
         </div>
       </div>
     </div>

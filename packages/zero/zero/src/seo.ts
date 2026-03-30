@@ -1,5 +1,5 @@
-import type { Middleware } from "@pyreon/server"
-import type { Plugin } from "vite"
+import type { Middleware } from '@pyreon/server'
+import type { Plugin } from 'vite'
 
 // ─── SEO utilities ──────────────────────────────────────────────────────────
 //
@@ -29,37 +29,37 @@ export interface SitemapEntry {
   lastmod?: string
 }
 
-export type ChangeFreq = "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never"
+export type ChangeFreq = 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never'
 
 /**
  * Generate a sitemap.xml string from route file paths.
  */
 export function generateSitemap(routeFiles: string[], config: SitemapConfig): string {
-  const { origin, exclude = [], changefreq = "weekly", priority = 0.7 } = config
+  const { origin, exclude = [], changefreq = 'weekly', priority = 0.7 } = config
 
   const paths = routeFiles
     .filter((f) => {
       // Exclude layout, error, loading files
       const name = f
-        .split("/")
+        .split('/')
         .pop()
-        ?.replace(/\.\w+$/, "")
-      return name !== "_layout" && name !== "_error" && name !== "_loading"
+        ?.replace(/\.\w+$/, '')
+      return name !== '_layout' && name !== '_error' && name !== '_loading'
     })
     .map((f) => {
       // Convert file path to URL
       let path = f
-        .replace(/\.\w+$/, "")
-        .replace(/\/index$/, "/")
-        .replace(/^index$/, "/")
+        .replace(/\.\w+$/, '')
+        .replace(/\/index$/, '/')
+        .replace(/^index$/, '/')
 
       // Skip dynamic routes — they need additionalPaths
-      if (path.includes("[")) return null
+      if (path.includes('[')) return null
 
       // Strip route groups
-      path = path.replace(/\([\w-]+\)\//g, "")
+      path = path.replace(/\([\w-]+\)\//g, '')
 
-      if (!path.startsWith("/")) path = `/${path}`
+      if (!path.startsWith('/')) path = `/${path}`
       return path
     })
     .filter((p): p is string => p !== null)
@@ -72,14 +72,14 @@ export function generateSitemap(routeFiles: string[], config: SitemapConfig): st
 
   const entries = allPaths
     .map((entry) => {
-      const loc = `${origin}${entry.path === "/" ? "" : entry.path}`
+      const loc = `${origin}${entry.path === '/' ? '' : entry.path}`
       return `  <url>
     <loc>${escapeXml(loc)}</loc>
     <changefreq>${entry.changefreq ?? changefreq}</changefreq>
-    <priority>${entry.priority ?? priority}</priority>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ""}
+    <priority>${entry.priority ?? priority}</priority>${entry.lastmod ? `\n    <lastmod>${entry.lastmod}</lastmod>` : ''}
   </url>`
     })
-    .join("\n")
+    .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -89,11 +89,11 @@ ${entries}
 
 function escapeXml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 // ─── Robots.txt ─────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ export interface RobotsRule {
  * Generate a robots.txt string.
  */
 export function generateRobots(config: RobotsConfig = {}): string {
-  const { rules = [{ userAgent: "*", allow: ["/"] }], sitemap, host } = config
+  const { rules = [{ userAgent: '*', allow: ['/'] }], sitemap, host } = config
   const lines: string[] = []
 
   for (const rule of rules) {
@@ -130,27 +130,27 @@ export function generateRobots(config: RobotsConfig = {}): string {
       for (const path of rule.disallow) lines.push(`Disallow: ${path}`)
     }
     if (rule.crawlDelay) lines.push(`Crawl-delay: ${rule.crawlDelay}`)
-    lines.push("")
+    lines.push('')
   }
 
   if (sitemap) lines.push(`Sitemap: ${sitemap}`)
   if (host) lines.push(`Host: ${host}`)
 
-  return lines.join("\n")
+  return lines.join('\n')
 }
 
 // ─── Structured data (JSON-LD) ──────────────────────────────────────────────
 
 export type JsonLdType =
-  | "WebSite"
-  | "WebPage"
-  | "Article"
-  | "BlogPosting"
-  | "Product"
-  | "Organization"
-  | "Person"
-  | "BreadcrumbList"
-  | "FAQPage"
+  | 'WebSite'
+  | 'WebPage'
+  | 'Article'
+  | 'BlogPosting'
+  | 'Product'
+  | 'Organization'
+  | 'Person'
+  | 'BreadcrumbList'
+  | 'FAQPage'
   | (string & {})
 
 /**
@@ -167,7 +167,7 @@ export type JsonLdType =
  */
 export function jsonLd(data: Record<string, unknown>): string {
   const ld = {
-    "@context": "https://schema.org",
+    '@context': 'https://schema.org',
     ...data,
   }
   return `<script type="application/ld+json">${JSON.stringify(ld)}</script>`
@@ -202,13 +202,13 @@ export interface SeoPluginConfig {
  */
 export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
   return {
-    name: "pyreon-zero-seo",
-    apply: "build",
+    name: 'pyreon-zero-seo',
+    apply: 'build',
 
     async generateBundle(_, _bundle) {
       // Generate sitemap.xml
       if (config.sitemap) {
-        const { scanRouteFiles } = await import("./fs-router")
+        const { scanRouteFiles } = await import('./fs-router')
         const routesDir = `${process.cwd()}/src/routes`
 
         try {
@@ -216,8 +216,8 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
           const sitemap = generateSitemap(files, config.sitemap)
 
           this.emitFile({
-            type: "asset",
-            fileName: "sitemap.xml",
+            type: 'asset',
+            fileName: 'sitemap.xml',
             source: sitemap,
           })
         } catch {
@@ -230,8 +230,8 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
         const robots = generateRobots(config.robots)
 
         this.emitFile({
-          type: "asset",
-          fileName: "robots.txt",
+          type: 'asset',
+          fileName: 'robots.txt',
           source: robots,
         })
       }
@@ -247,21 +247,21 @@ export function seoPlugin(config: SeoPluginConfig = {}): Plugin {
  */
 export function seoMiddleware(config: SeoPluginConfig = {}): Middleware {
   return async (ctx) => {
-    if (ctx.url.pathname === "/robots.txt" && config.robots) {
+    if (ctx.url.pathname === '/robots.txt' && config.robots) {
       return new Response(generateRobots(config.robots), {
-        headers: { "Content-Type": "text/plain" },
+        headers: { 'Content-Type': 'text/plain' },
       })
     }
 
-    if (ctx.url.pathname === "/sitemap.xml" && config.sitemap) {
+    if (ctx.url.pathname === '/sitemap.xml' && config.sitemap) {
       try {
-        const { scanRouteFiles } = await import("./fs-router")
+        const { scanRouteFiles } = await import('./fs-router')
         const routesDir = `${process.cwd()}/src/routes`
         const files = await scanRouteFiles(routesDir)
         const sitemap = generateSitemap(files, config.sitemap)
 
         return new Response(sitemap, {
-          headers: { "Content-Type": "application/xml" },
+          headers: { 'Content-Type': 'application/xml' },
         })
       } catch {
         // Sitemap generation failed — continue to rendering

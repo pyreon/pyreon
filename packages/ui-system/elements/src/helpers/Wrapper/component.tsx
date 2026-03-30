@@ -4,12 +4,12 @@
  * fix (parent + child Styled) because these HTML elements do not natively
  * support `display: flex` consistently across browsers.
  */
-import { IS_DEVELOPMENT } from "../../utils"
-import Styled from "./styled"
-import type { Props } from "./types"
-import { isWebFixNeeded } from "./utils"
+import { IS_DEVELOPMENT } from '../../utils'
+import Styled from './styled'
+import type { Props } from './types'
+import { isWebFixNeeded } from './utils'
 
-const DEV_PROPS: Record<string, string> = IS_DEVELOPMENT ? { "data-pyr-element": "Element" } : {}
+const DEV_PROPS: Record<string, string> = IS_DEVELOPMENT ? { 'data-pyr-element': 'Element' } : {}
 
 const Component = ({
   children,
@@ -64,7 +64,7 @@ const Component = ({
     )
   }
 
-  const asTag = isInline ? "span" : "div"
+  const asTag = isInline ? 'span' : 'div'
 
   return (
     <Styled {...COMMON_PROPS} $element={parentFixElement}>

@@ -1,11 +1,11 @@
-import type { DocNode, ExtractOptions } from "@pyreon/connector-document"
-import { extractDocumentTree } from "@pyreon/connector-document"
+import type { DocNode, ExtractOptions } from '@pyreon/connector-document'
+import { extractDocumentTree } from '@pyreon/connector-document'
 
 export interface DocumentExportOptions extends ExtractOptions {
   /** Theme object to provide during extraction. */
   theme?: Record<string, unknown>
   /** Mode: 'light' or 'dark'. */
-  mode?: "light" | "dark"
+  mode?: 'light' | 'dark'
 }
 
 export interface DocumentExport {

@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { getEntry, removeEntry, setEntry } from "./registry"
-import type { StorageBackend, StorageOptions, StorageSignal } from "./types"
-import { deserialize, serialize } from "./utils"
+import { signal } from '@pyreon/reactivity'
+import { getEntry, removeEntry, setEntry } from './registry'
+import type { StorageBackend, StorageOptions, StorageSignal } from './types'
+import { deserialize, serialize } from './utils'
 
 // ─── createStorage ───────────────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ export function createStorage(
   backend: StorageBackend,
   backendName?: string,
 ): <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T> {
-  const name = backendName ?? "custom"
+  const name = backendName ?? 'custom'
 
   return function useCustomStorage<T>(
     key: string,
@@ -56,7 +56,7 @@ export function createStorage(
     storageSig.direct = (updater: () => void) => sig.direct(updater)
     storageSig.debug = () => sig.debug()
 
-    Object.defineProperty(storageSig, "label", {
+    Object.defineProperty(storageSig, 'label', {
       get: () => sig.label,
       set: (v: string | undefined) => {
         sig.label = v
@@ -115,5 +115,5 @@ export const useMemoryStorage = createStorage(
       remove: (key: string) => store.delete(key),
     }
   })(),
-  "memory",
+  'memory',
 )

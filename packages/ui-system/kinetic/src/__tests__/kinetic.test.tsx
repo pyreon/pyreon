@@ -1,14 +1,14 @@
-import type { VNode, VNodeChild } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import type { VNode, VNodeChild } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 let _reducedMotion = false
 
-vi.mock("../useReducedMotion", () => ({
+vi.mock('../useReducedMotion', () => ({
   useReducedMotion: () => () => _reducedMotion,
 }))
 
-import { kinetic } from "../index"
-import { fade, slideUp } from "../presets"
+import { kinetic } from '../index'
+import { fade, slideUp } from '../presets'
 
 // Mock rAF for deterministic testing
 let rafCallbacks: (() => void)[] = []
@@ -20,20 +20,20 @@ beforeEach(() => {
   rafCallbacks = []
 
   vi.stubGlobal(
-    "requestAnimationFrame",
+    'requestAnimationFrame',
     vi.fn((cb: () => void) => {
       rafCallbacks.push(cb)
       return rafCallbacks.length
     }),
   )
 
-  vi.stubGlobal("cancelAnimationFrame", vi.fn())
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
 })
 
 afterEach(() => {
   vi.useRealTimers()
-  vi.stubGlobal("requestAnimationFrame", originalRaf)
-  vi.stubGlobal("cancelAnimationFrame", originalCaf)
+  vi.stubGlobal('requestAnimationFrame', originalRaf)
+  vi.stubGlobal('cancelAnimationFrame', originalCaf)
 })
 
 const flushRaf = () => {
@@ -43,8 +43,8 @@ const flushRaf = () => {
 }
 
 const fireTransitionEnd = (el: HTMLElement) => {
-  const event = new Event("transitionend", { bubbles: true })
-  Object.defineProperty(event, "target", { value: el })
+  const event = new Event('transitionend', { bubbles: true })
+  Object.defineProperty(event, 'target', { value: el })
   el.dispatchEvent(event)
 }
 
@@ -59,9 +59,9 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   const visitNode = (node: VNode) => {
     const props = node.props as Record<string, unknown>
-    if (typeof props?.ref === "function") {
+    if (typeof props?.ref === 'function') {
       ;(props.ref as (element: HTMLElement | null) => void)(el)
-    } else if (props?.ref && typeof props.ref === "object") {
+    } else if (props?.ref && typeof props.ref === 'object') {
       ;(props.ref as { current: HTMLElement | null }).current = el
     }
 
@@ -69,7 +69,7 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
     if (node.children) {
       const children = Array.isArray(node.children) ? node.children : [node.children]
       for (const child of children) {
-        if (child && typeof child === "object" && "type" in (child as object)) {
+        if (child && typeof child === 'object' && 'type' in (child as object)) {
           visitNode(child as VNode)
         }
       }
@@ -79,7 +79,7 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
     if (props?.children) {
       const pChildren = Array.isArray(props.children) ? props.children : [props.children]
       for (const child of pChildren) {
-        if (child && typeof child === "object" && "type" in (child as object)) {
+        if (child && typeof child === 'object' && 'type' in (child as object)) {
           visitNode(child as VNode)
         }
       }
@@ -88,8 +88,8 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
     // Visit fallback on Show
     if (
       props?.fallback &&
-      typeof props.fallback === "object" &&
-      "type" in (props.fallback as object)
+      typeof props.fallback === 'object' &&
+      'type' in (props.fallback as object)
     ) {
       visitNode(props.fallback as VNode)
     }
@@ -105,8 +105,8 @@ const wireRef = (vnode: VNode | null, el: HTMLElement) => {
  * but do NOT recurse into framework components like Show.
  */
 const resolveComponent = (vnode: VNodeChild): VNode | null => {
-  if (!vnode || typeof vnode !== "object" || !("type" in vnode)) return null
-  if (typeof vnode.type === "function") {
+  if (!vnode || typeof vnode !== 'object' || !('type' in vnode)) return null
+  if (typeof vnode.type === 'function') {
     const props = vnode.props as Record<string, unknown>
     const children = vnode.children
     // Call the component function with props (children merged in)
@@ -114,7 +114,7 @@ const resolveComponent = (vnode: VNodeChild): VNode | null => {
       ...props,
       ...(children != null ? { children } : {}),
     })
-    if (!result || typeof result !== "object" || !("type" in result)) return null
+    if (!result || typeof result !== 'object' || !('type' in result)) return null
     return result
   }
   return vnode
@@ -122,85 +122,85 @@ const resolveComponent = (vnode: VNodeChild): VNode | null => {
 
 // ─── Transition Mode (default) ────────────────────────────
 
-describe("kinetic() — transition mode", () => {
-  it("returns a VNode when show=true", () => {
-    const FadeDiv = kinetic("div").preset(fade)
+describe('kinetic() — transition mode', () => {
+  it('returns a VNode when show=true', () => {
+    const FadeDiv = kinetic('div').preset(fade)
     const show = signal(true)
-    const vnode = FadeDiv({ show, children: "Hello" })
+    const vnode = FadeDiv({ show, children: 'Hello' })
     expect(vnode).not.toBeNull()
   })
 
-  it("fires onEnter callback when entering", () => {
+  it('fires onEnter callback when entering', () => {
     const onEnter = vi.fn()
     const show = signal(false)
-    const Slide = kinetic("div")
-      .enter({ opacity: 0, transform: "translateY(16px)" })
-      .enterTo({ opacity: 1, transform: "translateY(0)" })
-      .enterTransition("all 300ms ease")
+    const Slide = kinetic('div')
+      .enter({ opacity: 0, transform: 'translateY(16px)' })
+      .enterTo({ opacity: 1, transform: 'translateY(0)' })
+      .enterTransition('all 300ms ease')
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(Slide({ show, onEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(Slide({ show, onEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("applies enterStyle on entering", () => {
+  it('applies enterStyle on entering', () => {
     const show = signal(false)
-    const Slide = kinetic("div")
-      .enter({ opacity: 0, transform: "translateY(16px)" })
-      .enterTo({ opacity: 1, transform: "translateY(0)" })
-      .enterTransition("all 300ms ease")
+    const Slide = kinetic('div')
+      .enter({ opacity: 0, transform: 'translateY(16px)' })
+      .enterTo({ opacity: 1, transform: 'translateY(0)' })
+      .enterTransition('all 300ms ease')
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(Slide({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(Slide({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
 
-    expect(el.style.opacity).toBe("0")
-    expect(el.style.transition).toBe("all 300ms ease")
+    expect(el.style.opacity).toBe('0')
+    expect(el.style.transition).toBe('all 300ms ease')
 
     flushRaf()
     flushRaf()
 
-    expect(el.style.opacity).toBe("1")
+    expect(el.style.opacity).toBe('1')
   })
 
-  it("applies class-based transitions via .enterClass()", () => {
+  it('applies class-based transitions via .enterClass()', () => {
     const show = signal(false)
-    const ClassFade = kinetic("div")
-      .enterClass({ active: "t-enter", from: "t-from", to: "t-to" })
-      .leaveClass({ active: "t-leave", from: "t-lfrom", to: "t-lto" })
+    const ClassFade = kinetic('div')
+      .enterClass({ active: 't-enter', from: 't-from', to: 't-to' })
+      .leaveClass({ active: 't-leave', from: 't-lfrom', to: 't-lto' })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(ClassFade({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(ClassFade({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
 
-    expect(el.classList.contains("t-enter")).toBe(true)
-    expect(el.classList.contains("t-from")).toBe(true)
+    expect(el.classList.contains('t-enter')).toBe(true)
+    expect(el.classList.contains('t-from')).toBe(true)
 
     flushRaf()
     flushRaf()
 
-    expect(el.classList.contains("t-from")).toBe(false)
-    expect(el.classList.contains("t-to")).toBe(true)
+    expect(el.classList.contains('t-from')).toBe(false)
+    expect(el.classList.contains('t-to')).toBe(true)
   })
 
-  it("fires lifecycle callbacks at correct times", () => {
+  it('fires lifecycle callbacks at correct times', () => {
     const onEnter = vi.fn()
     const onAfterEnter = vi.fn()
     const onLeave = vi.fn()
     const onAfterLeave = vi.fn()
     const show = signal(false)
 
-    const FadeDiv = kinetic("div").preset(fade)
-    const el = document.createElement("div")
+    const FadeDiv = kinetic('div').preset(fade)
+    const el = document.createElement('div')
     const vnode = resolveComponent(
-      FadeDiv({ show, onEnter, onAfterEnter, onLeave, onAfterLeave, children: "Hello" }),
+      FadeDiv({ show, onEnter, onAfterEnter, onLeave, onAfterLeave, children: 'Hello' }),
     )
     wireRef(vnode, el)
 
@@ -226,13 +226,13 @@ describe("kinetic() — transition mode", () => {
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
 
-  it("timeout fallback completes transition", () => {
+  it('timeout fallback completes transition', () => {
     const onAfterEnter = vi.fn()
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade).config({ timeout: 1000 })
+    const FadeDiv = kinetic('div').preset(fade).config({ timeout: 1000 })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onAfterEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onAfterEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
@@ -245,13 +245,13 @@ describe("kinetic() — transition mode", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("appear=true animates on initial mount", () => {
+  it('appear=true animates on initial mount', () => {
     const onEnter = vi.fn()
     const show = signal(true)
-    const FadeDiv = kinetic("div").preset(fade).config({ appear: true }).on({ onEnter })
+    const FadeDiv = kinetic('div').preset(fade).config({ appear: true }).on({ onEnter })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     expect(onEnter).toHaveBeenCalledTimes(1)
@@ -260,9 +260,9 @@ describe("kinetic() — transition mode", () => {
 
 // ─── Chain Immutability ────────────────────────────────────
 
-describe("kinetic() — chaining", () => {
-  it("chain is immutable (each method returns new component)", () => {
-    const Base = kinetic("div")
+describe('kinetic() — chaining', () => {
+  it('chain is immutable (each method returns new component)', () => {
+    const Base = kinetic('div')
     const WithFade = Base.preset(fade)
     const WithSlide = Base.preset(slideUp)
 
@@ -271,41 +271,41 @@ describe("kinetic() — chaining", () => {
     expect(WithFade).not.toBe(Base)
   })
 
-  it(".preset() merges preset properties into config", () => {
+  it('.preset() merges preset properties into config', () => {
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade)
+    const FadeDiv = kinetic('div').preset(fade)
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
 
-    expect(el.style.opacity).toBe("0")
-    expect(el.style.transition).toBe("opacity 300ms ease-out")
+    expect(el.style.opacity).toBe('0')
+    expect(el.style.transition).toBe('opacity 300ms ease-out')
   })
 
-  it(".on() callbacks from chain are used when runtime callbacks not provided", () => {
+  it('.on() callbacks from chain are used when runtime callbacks not provided', () => {
     const onEnter = vi.fn()
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade).on({ onEnter })
+    const FadeDiv = kinetic('div').preset(fade).on({ onEnter })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
     expect(onEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("runtime props override chain config", () => {
+  it('runtime props override chain config', () => {
     const chainOnEnter = vi.fn()
     const runtimeOnEnter = vi.fn()
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade).on({ onEnter: chainOnEnter })
+    const FadeDiv = kinetic('div').preset(fade).on({ onEnter: chainOnEnter })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onEnter: runtimeOnEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onEnter: runtimeOnEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
@@ -314,17 +314,17 @@ describe("kinetic() — chaining", () => {
     expect(chainOnEnter).not.toHaveBeenCalled()
   })
 
-  it("displayName is set correctly", () => {
-    const FadeDiv = kinetic("div").preset(fade)
-    expect(FadeDiv.displayName).toBe("kinetic(div)")
+  it('displayName is set correctly', () => {
+    const FadeDiv = kinetic('div').preset(fade)
+    expect(FadeDiv.displayName).toBe('kinetic(div)')
   })
 })
 
 // ─── Collapse Mode ─────────────────────────────────────────
 
-describe("kinetic() — collapse mode", () => {
+describe('kinetic() — collapse mode', () => {
   const mockScrollHeight = (value: number) => {
-    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
       configurable: true,
       get() {
         return value
@@ -336,15 +336,15 @@ describe("kinetic() — collapse mode", () => {
     mockScrollHeight(200)
   })
 
-  it("fires onEnter on entering and onAfterEnter after transitionend", () => {
+  it('fires onEnter on entering and onAfterEnter after transitionend', () => {
     const onEnter = vi.fn()
     const onAfterEnter = vi.fn()
     const show = signal(false)
-    const Accordion = kinetic("div").collapse()
+    const Accordion = kinetic('div').collapse()
 
-    const wrapperEl = document.createElement("div")
-    const contentEl = document.createElement("div")
-    Object.defineProperty(wrapperEl, "offsetHeight", {
+    const wrapperEl = document.createElement('div')
+    const contentEl = document.createElement('div')
+    Object.defineProperty(wrapperEl, 'offsetHeight', {
       configurable: true,
       get: () => 0,
     })
@@ -354,7 +354,7 @@ describe("kinetic() — collapse mode", () => {
         show,
         onEnter,
         onAfterEnter,
-        children: { type: "p", props: {}, children: ["Content"], key: null },
+        children: { type: 'p', props: {}, children: ['Content'], key: null },
       }),
     )
 
@@ -369,10 +369,10 @@ describe("kinetic() — collapse mode", () => {
       if (node.children) {
         const children = Array.isArray(node.children) ? node.children : [node.children]
         for (const child of children) {
-          if (child && typeof child === "object" && "type" in (child as object)) {
+          if (child && typeof child === 'object' && 'type' in (child as object)) {
             const cNode = child as VNode
             const props = cNode.props as Record<string, unknown>
-            if (props?.ref && typeof props.ref === "object" && cNode.type === "div") {
+            if (props?.ref && typeof props.ref === 'object' && cNode.type === 'div') {
               ;(props.ref as { current: HTMLElement | null }).current = contentEl
             }
             findContentRef(cNode)
@@ -384,10 +384,10 @@ describe("kinetic() — collapse mode", () => {
       if (props?.children) {
         const pc = Array.isArray(props.children) ? props.children : [props.children]
         for (const p of pc) {
-          if (p && typeof p === "object" && "type" in (p as object)) {
+          if (p && typeof p === 'object' && 'type' in (p as object)) {
             const pNode = p as VNode
             const pProps = pNode.props as Record<string, unknown>
-            if (pProps?.ref && typeof pProps.ref === "object") {
+            if (pProps?.ref && typeof pProps.ref === 'object') {
               ;(pProps.ref as { current: HTMLElement | null }).current = contentEl
             }
           }
@@ -408,67 +408,67 @@ describe("kinetic() — collapse mode", () => {
 
 // ─── Transition mode — leave with styles ─────────────────────
 
-describe("kinetic() — transition leave styles", () => {
-  it("applies leaveStyle and leaveTransition on leaving", () => {
+describe('kinetic() — transition leave styles', () => {
+  it('applies leaveStyle and leaveTransition on leaving', () => {
     const show = signal(true)
-    const Slide = kinetic("div")
+    const Slide = kinetic('div')
       .enter({ opacity: 0 })
       .enterTo({ opacity: 1 })
-      .enterTransition("opacity 300ms ease")
+      .enterTransition('opacity 300ms ease')
       .leave({ opacity: 1 })
       .leaveTo({ opacity: 0 })
-      .leaveTransition("opacity 200ms ease-in")
+      .leaveTransition('opacity 200ms ease-in')
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(Slide({ show, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(Slide({ show, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(false)
 
-    expect(el.style.opacity).toBe("1")
-    expect(el.style.transition).toBe("opacity 200ms ease-in")
+    expect(el.style.opacity).toBe('1')
+    expect(el.style.transition).toBe('opacity 200ms ease-in')
 
     flushRaf()
     flushRaf()
 
-    expect(el.style.opacity).toBe("0")
+    expect(el.style.opacity).toBe('0')
   })
 })
 
 // ─── Config defaults ──────────────────────────────────────
 
-describe("kinetic() — config defaults and overrides", () => {
-  it("appear from config is used when runtime appear not provided", () => {
+describe('kinetic() — config defaults and overrides', () => {
+  it('appear from config is used when runtime appear not provided', () => {
     const onEnter = vi.fn()
     const show = signal(true)
-    const FadeDiv = kinetic("div").preset(fade).config({ appear: true })
+    const FadeDiv = kinetic('div').preset(fade).config({ appear: true })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     expect(onEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("runtime appear overrides config appear", () => {
+  it('runtime appear overrides config appear', () => {
     const onEnter = vi.fn()
     const show = signal(true)
-    const FadeDiv = kinetic("div").preset(fade).config({ appear: true })
+    const FadeDiv = kinetic('div').preset(fade).config({ appear: true })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, appear: false, onEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, appear: false, onEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     expect(onEnter).not.toHaveBeenCalled()
   })
 
-  it("timeout from config is used as fallback", () => {
+  it('timeout from config is used as fallback', () => {
     const onAfterEnter = vi.fn()
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade).config({ timeout: 200 })
+    const FadeDiv = kinetic('div').preset(fade).config({ timeout: 200 })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onAfterEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onAfterEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
@@ -482,13 +482,13 @@ describe("kinetic() — config defaults and overrides", () => {
     expect(onAfterEnter).toHaveBeenCalledTimes(1)
   })
 
-  it("runtime timeout overrides config timeout", () => {
+  it('runtime timeout overrides config timeout', () => {
     const onAfterEnter = vi.fn()
     const show = signal(false)
-    const FadeDiv = kinetic("div").preset(fade).config({ timeout: 200 })
+    const FadeDiv = kinetic('div').preset(fade).config({ timeout: 200 })
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, timeout: 500, onAfterEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, timeout: 500, onAfterEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
@@ -507,16 +507,16 @@ describe("kinetic() — config defaults and overrides", () => {
 
 // ─── DisplayName ───────────────────────────────────────────
 
-describe("kinetic() — displayName", () => {
-  it("uses tag string for displayName", () => {
-    const FadeDiv = kinetic("div").preset(fade)
-    expect(FadeDiv.displayName).toBe("kinetic(div)")
+describe('kinetic() — displayName', () => {
+  it('uses tag string for displayName', () => {
+    const FadeDiv = kinetic('div').preset(fade)
+    expect(FadeDiv.displayName).toBe('kinetic(div)')
   })
 })
 
 // ─── Reduced Motion ───────────────────────────────────────
 
-describe("kinetic() — transition reduced motion", () => {
+describe('kinetic() — transition reduced motion', () => {
   beforeEach(() => {
     _reducedMotion = true
   })
@@ -525,14 +525,14 @@ describe("kinetic() — transition reduced motion", () => {
     _reducedMotion = false
   })
 
-  it("reduced motion: entering fires onEnter and onAfterEnter immediately without rAF", () => {
+  it('reduced motion: entering fires onEnter and onAfterEnter immediately without rAF', () => {
     const show = signal(false)
     const onEnter = vi.fn()
     const onAfterEnter = vi.fn()
-    const FadeDiv = kinetic("div").preset(fade)
+    const FadeDiv = kinetic('div').preset(fade)
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onEnter, onAfterEnter, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onEnter, onAfterEnter, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(true)
@@ -543,14 +543,14 @@ describe("kinetic() — transition reduced motion", () => {
     expect(rafCallbacks.length).toBe(0)
   })
 
-  it("reduced motion: leaving fires onLeave and onAfterLeave immediately without rAF", () => {
+  it('reduced motion: leaving fires onLeave and onAfterLeave immediately without rAF', () => {
     const show = signal(true)
     const onLeave = vi.fn()
     const onAfterLeave = vi.fn()
-    const FadeDiv = kinetic("div").preset(fade)
+    const FadeDiv = kinetic('div').preset(fade)
 
-    const el = document.createElement("div")
-    const vnode = resolveComponent(FadeDiv({ show, onLeave, onAfterLeave, children: "Hello" }))
+    const el = document.createElement('div')
+    const vnode = resolveComponent(FadeDiv({ show, onLeave, onAfterLeave, children: 'Hello' }))
     wireRef(vnode, el)
 
     show.set(false)

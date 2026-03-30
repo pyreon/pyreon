@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 type UseControllableStateOptions<T> = {
   value?: T | undefined
@@ -28,7 +28,7 @@ export const useControllableState: UseControllableState = ({ value, defaultValue
 
   const setValue = (next: any) => {
     const current = isControlled ? value : internal()
-    const nextValue = typeof next === "function" ? next(current) : next
+    const nextValue = typeof next === 'function' ? next(current) : next
     if (!isControlled) internal.set(nextValue)
     onChangeFn?.(nextValue)
   }

@@ -1,6 +1,6 @@
 // ── Severity & Diagnostics ──────────────────────────────────────────────────
 
-export type Severity = "error" | "warn" | "info" | "off"
+export type Severity = 'error' | 'warn' | 'info' | 'off'
 
 export interface SourceLocation {
   line: number
@@ -29,18 +29,18 @@ export interface Diagnostic {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 export type RuleCategory =
-  | "reactivity"
-  | "jsx"
-  | "lifecycle"
-  | "performance"
-  | "ssr"
-  | "architecture"
-  | "store"
-  | "form"
-  | "styling"
-  | "hooks"
-  | "accessibility"
-  | "router"
+  | 'reactivity'
+  | 'jsx'
+  | 'lifecycle'
+  | 'performance'
+  | 'ssr'
+  | 'architecture'
+  | 'store'
+  | 'form'
+  | 'styling'
+  | 'hooks'
+  | 'accessibility'
+  | 'router'
 
 export interface RuleMeta {
   id: string
@@ -53,7 +53,7 @@ export interface RuleMeta {
 // ── Rule Context & Visitor ──────────────────────────────────────────────────
 
 export interface RuleContext {
-  report(diagnostic: Omit<Diagnostic, "ruleId" | "severity" | "loc">): void
+  report(diagnostic: Omit<Diagnostic, 'ruleId' | 'severity' | 'loc'>): void
   getSourceText(): string
   getFilePath(): string
 }
@@ -86,7 +86,7 @@ export interface LintConfigFile {
   exclude?: string[] | undefined
 }
 
-export type PresetName = "recommended" | "strict" | "app" | "lib"
+export type PresetName = 'recommended' | 'strict' | 'app' | 'lib'
 
 // ── Results ─────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@
  * Import: `import { ... } from "@pyreon/store/devtools"`
  */
 
-import { getRegistry } from "./registry"
+import { getRegistry } from './registry'
 
 const _listeners = new Set<() => void>()
 
@@ -20,8 +20,8 @@ export function getRegisteredStores(): string[] {
 /** Get a store API by ID (or undefined if not registered). */
 export function getStoreById(
   id: string,
-): import("./index").StoreApi<Record<string, unknown>> | undefined {
-  return getRegistry().get(id) as import("./index").StoreApi<Record<string, unknown>> | undefined
+): import('./index').StoreApi<Record<string, unknown>> | undefined {
+  return getRegistry().get(id) as import('./index').StoreApi<Record<string, unknown>> | undefined
 }
 
 /** Subscribe to store registry changes (store added/removed). Returns unsubscribe. */

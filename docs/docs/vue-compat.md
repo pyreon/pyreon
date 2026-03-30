@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/vue-compat"
+title: '@pyreon/vue-compat'
 description: Vue 3 Composition API that runs on Pyreon's fine-grained reactive engine.
 ---
 
@@ -10,18 +10,23 @@ description: Vue 3 Composition API that runs on Pyreon's fine-grained reactive e
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/vue-compat
 ```
+
 ```bash [bun]
 bun add @pyreon/vue-compat
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/vue-compat
 ```
+
 ```bash [yarn]
 yarn add @pyreon/vue-compat
 ```
+
 :::
 
 ## Quick Start
@@ -71,19 +76,19 @@ createApp(Counter).mount('#app')
 
 ## Key Differences from Vue 3
 
-| Behavior | Vue 3 | @pyreon/vue-compat |
-|---|---|---|
-| Reactive engine | Vue's Proxy-based reactivity | Pyreon's signal-based reactivity |
-| `deep` option in `watch()` | Controls deep observation | **Ignored** -- Pyreon tracks dependencies automatically |
-| `computed` setter | Supported via getter/setter object | **Not supported** -- throws on write |
-| `shallowRef` | Separate shallow implementation | Identical to `ref()` -- Pyreon signals are inherently shallow |
-| `shallowReactive` | Separate shallow implementation | Same as `reactive()` in practice |
-| `readonly` | Vue's full readonly reactive proxy | Simple Proxy that throws on set/delete |
-| `defineComponent` | Supports Options API and Composition API | **Composition API only** (setup function) |
-| Templates | `<template>` with compilation | Not supported -- use JSX or `h()` render functions |
-| Components | Run setup once, re-render via template | Run setup **once**, return a render function |
-| Plugins / directives | `app.use()`, `v-model`, `v-if`, etc. | Not supported |
-| Lifecycle timing | `beforeMount` vs `mounted` distinction | No distinction -- both map to `onMount` |
+| Behavior                   | Vue 3                                    | @pyreon/vue-compat                                            |
+| -------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| Reactive engine            | Vue's Proxy-based reactivity             | Pyreon's signal-based reactivity                              |
+| `deep` option in `watch()` | Controls deep observation                | **Ignored** -- Pyreon tracks dependencies automatically       |
+| `computed` setter          | Supported via getter/setter object       | **Not supported** -- throws on write                          |
+| `shallowRef`               | Separate shallow implementation          | Identical to `ref()` -- Pyreon signals are inherently shallow |
+| `shallowReactive`          | Separate shallow implementation          | Same as `reactive()` in practice                              |
+| `readonly`                 | Vue's full readonly reactive proxy       | Simple Proxy that throws on set/delete                        |
+| `defineComponent`          | Supports Options API and Composition API | **Composition API only** (setup function)                     |
+| Templates                  | `<template>` with compilation            | Not supported -- use JSX or `h()` render functions            |
+| Components                 | Run setup once, re-render via template   | Run setup **once**, return a render function                  |
+| Plugins / directives       | `app.use()`, `v-model`, `v-if`, etc.     | Not supported                                                 |
+| Lifecycle timing           | `beforeMount` vs `mounted` distinction   | No distinction -- both map to `onMount`                       |
 
 ## API Reference
 
@@ -103,9 +108,9 @@ Creates a reactive ref backed by a Pyreon signal. Access the value via `.value` 
 
 ```tsx
 const count = ref(0)
-count.value         // read (tracked)
-count.value = 5     // write (triggers updates)
-count.value++       // also works
+count.value // read (tracked)
+count.value = 5 // write (triggers updates)
+count.value++ // also works
 ```
 
 Refs can hold any type, including objects, arrays, and `null`:
@@ -181,8 +186,8 @@ Force-triggers a ref's subscribers even if the value has not changed. Useful aft
 
 ```tsx
 const list = ref([1, 2, 3])
-list.value.push(4)   // mutation -- ref doesn't detect this
-triggerRef(list)      // manually trigger subscribers
+list.value.push(4) // mutation -- ref doesn't detect this
+triggerRef(list) // manually trigger subscribers
 ```
 
 Internally, `triggerRef` works by briefly setting the underlying signal to a different value and then restoring it, which forces all subscribers to re-evaluate.
@@ -213,11 +218,11 @@ Returns `true` if the value is a ref (created by `ref()` or `computed()`). Uses 
 ```tsx
 import { ref, computed, isRef } from '@pyreon/vue-compat'
 
-isRef(ref(0))              // true
-isRef(computed(() => 42))  // true
-isRef(0)                   // false
-isRef({ value: 0 })        // false -- plain object, not a ref
-isRef(null)                // false
+isRef(ref(0)) // true
+isRef(computed(() => 42)) // true
+isRef(0) // false
+isRef({ value: 0 }) // false -- plain object, not a ref
+isRef(null) // false
 ```
 
 #### `unref`
@@ -234,8 +239,8 @@ function formatName(name: string | Ref<string>) {
 }
 
 // Works with both:
-formatName('Alice')          // "Hello, Alice!"
-formatName(ref('Bob'))       // "Hello, Bob!"
+formatName('Alice') // "Hello, Alice!"
+formatName(ref('Bob')) // "Hello, Bob!"
 ```
 
 A more complete example with generic utilities:
@@ -249,7 +254,7 @@ function clampValue(value: number | Ref<number>, min: number, max: number): numb
 
 const count = ref(150)
 clampValue(count, 0, 100) // 100
-clampValue(42, 0, 100)    // 42
+clampValue(42, 0, 100) // 42
 ```
 
 ### Computed
@@ -270,7 +275,7 @@ Creates a readonly computed ref backed by Pyreon's `computed()`. The `.value` pr
 const count = ref(2)
 const doubled = computed(() => count.value * 2)
 
-doubled.value      // 4
+doubled.value // 4
 doubled.value = 10 // throws: "Cannot set value of a computed ref"
 ```
 
@@ -330,7 +335,7 @@ Creates a deeply reactive proxy backed by Pyreon's `createStore()`. Each propert
 ```tsx
 const state = reactive({ count: 0, user: { name: 'Alice' } })
 
-state.count++          // triggers effects that read state.count
+state.count++ // triggers effects that read state.count
 state.user.name = 'Bob' // triggers effects that read state.user.name
 ```
 
@@ -401,7 +406,7 @@ Returns a proxy that throws on any mutation attempt (set or delete). Useful for 
 
 ```tsx
 const config = readonly({ apiUrl: '/api', debug: false })
-config.apiUrl     // '/api' -- reads work normally
+config.apiUrl // '/api' -- reads work normally
 config.apiUrl = '/v2' // throws: 'Cannot set property "apiUrl" on a readonly object'
 ```
 
@@ -515,10 +520,10 @@ Creates a ref linked to a property of a reactive object. Reading/writing the ref
 const state = reactive({ name: 'Alice', age: 30 })
 const nameRef = toRef(state, 'name')
 
-nameRef.value          // 'Alice'
-nameRef.value = 'Bob'  // state.name is now 'Bob'
+nameRef.value // 'Alice'
+nameRef.value = 'Bob' // state.name is now 'Bob'
 state.name = 'Charlie'
-nameRef.value          // 'Charlie'
+nameRef.value // 'Charlie'
 ```
 
 Passing reactive properties to composables:
@@ -599,8 +604,8 @@ function watch<T>(
 ): () => void
 
 interface WatchOptions {
-  immediate?: boolean  // Fire cb immediately with current value
-  deep?: boolean       // Ignored in Pyreon
+  immediate?: boolean // Fire cb immediately with current value
+  deep?: boolean // Ignored in Pyreon
 }
 ```
 
@@ -644,9 +649,13 @@ When `immediate: true`, the callback fires synchronously with the current value 
 ```tsx
 const count = ref(5)
 
-watch(count, (val, oldVal) => {
-  console.log(`val=${val}, oldVal=${oldVal}`)
-}, { immediate: true })
+watch(
+  count,
+  (val, oldVal) => {
+    console.log(`val=${val}, oldVal=${oldVal}`)
+  },
+  { immediate: true },
+)
 // Immediately logs: "val=5, oldVal=undefined"
 
 count.value = 10
@@ -689,8 +698,8 @@ const count = ref(0)
 const stop = watch(count, (val) => console.log(val))
 
 count.value = 1 // logs 1
-stop()           // dispose the watcher
-count.value = 2  // nothing -- watcher is disposed
+stop() // dispose the watcher
+count.value = 2 // nothing -- watcher is disposed
 ```
 
 #### `watchEffect`
@@ -748,8 +757,8 @@ watchEffect(() => {
 
   const controller = new AbortController()
   fetch(`/api/search?q=${query}`, { signal: controller.signal })
-    .then(r => r.json())
-    .then(data => console.log(data))
+    .then((r) => r.json())
+    .then((data) => console.log(data))
 
   // Note: Pyreon does not have a cleanup callback like Vue 3's onCleanup.
   // If you need cancellation, use watch() and manage the AbortController manually.
@@ -758,12 +767,12 @@ watchEffect(() => {
 
 **`watch` vs `watchEffect`:**
 
-| Feature | `watch` | `watchEffect` |
-|---------|---------|---------------|
-| Source | Explicit ref or getter | Implicit -- tracks all reads |
-| Runs immediately | Only with `&#123; immediate: true &#125;` | Always |
-| Old/new values | Yes | No |
-| Use case | React to specific changes | Sync side effects with state |
+| Feature          | `watch`                                   | `watchEffect`                |
+| ---------------- | ----------------------------------------- | ---------------------------- |
+| Source           | Explicit ref or getter                    | Implicit -- tracks all reads |
+| Runs immediately | Only with `&#123; immediate: true &#125;` | Always                       |
+| Old/new values   | Yes                                       | No                           |
+| Use case         | React to specific changes                 | Sync side effects with state |
 
 ### Lifecycle Hooks
 
@@ -819,7 +828,11 @@ const WindowSize = defineComponent({
     onMounted(() => window.addEventListener('resize', handler))
     onUnmounted(() => window.removeEventListener('resize', handler))
 
-    return () => <p>Window: {width.value} x {height.value}</p>
+    return () => (
+      <p>
+        Window: {width.value} x {height.value}
+      </p>
+    )
   },
 })
 ```
@@ -847,7 +860,9 @@ const AutoScroll = defineComponent({
 
     return () => (
       <div id="messages">
-        {messages.value.map(msg => <p>{msg}</p>)}
+        {messages.value.map((msg) => (
+          <p>{msg}</p>
+        ))}
       </div>
     )
   },
@@ -872,17 +887,17 @@ Maps to `onUnmount`. Pyreon does not have a separate pre-unmount phase, so `onBe
 
 #### Lifecycle Hook Summary
 
-| Vue 3 Hook | Pyreon Mapping | Notes |
-|------------|----------------|-------|
-| `onBeforeMount` | `onMount` | No separate pre-mount phase |
-| `onMounted` | `onMount` | Identical to `onBeforeMount` in Pyreon |
-| `onBeforeUnmount` | `onUnmount` | No separate pre-unmount phase |
-| `onUnmounted` | `onUnmount` | Identical to `onBeforeUnmount` in Pyreon |
-| `onUpdated` | `onUpdate` | Fires after reactive updates |
-| `onBeforeUpdate` | Not available | Use `watch`/`watchEffect` instead |
-| `onErrorCaptured` | Not available | Use try/catch in setup |
-| `onActivated` | Not available | No `<KeepAlive>` equivalent |
-| `onDeactivated` | Not available | No `<KeepAlive>` equivalent |
+| Vue 3 Hook        | Pyreon Mapping | Notes                                    |
+| ----------------- | -------------- | ---------------------------------------- |
+| `onBeforeMount`   | `onMount`      | No separate pre-mount phase              |
+| `onMounted`       | `onMount`      | Identical to `onBeforeMount` in Pyreon   |
+| `onBeforeUnmount` | `onUnmount`    | No separate pre-unmount phase            |
+| `onUnmounted`     | `onUnmount`    | Identical to `onBeforeUnmount` in Pyreon |
+| `onUpdated`       | `onUpdate`     | Fires after reactive updates             |
+| `onBeforeUpdate`  | Not available  | Use `watch`/`watchEffect` instead        |
+| `onErrorCaptured` | Not available  | Use try/catch in setup                   |
+| `onActivated`     | Not available  | No `<KeepAlive>` equivalent              |
+| `onDeactivated`   | Not available  | No `<KeepAlive>` equivalent              |
 
 ### Async
 
@@ -1010,11 +1025,13 @@ const ThemedButton = defineComponent({
     const locale = inject<string>(LocaleKey, 'en-US')
 
     return () => (
-      <button style={{
-        color: theme?.color,
-        fontSize: `${theme?.fontSize}px`,
-        fontFamily: theme?.fontFamily,
-      }}>
+      <button
+        style={{
+          color: theme?.color,
+          fontSize: `${theme?.fontSize}px`,
+          fontFamily: theme?.fontFamily,
+        }}
+      >
         {locale}
       </button>
     )
@@ -1100,15 +1117,20 @@ const UserCard = defineComponent<UserCardProps>({
   name: 'UserCard',
   setup(props) {
     const initials = computed(() =>
-      props.name.split(' ').map(n => n[0]).join('').toUpperCase()
+      props.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase(),
     )
 
     return () => (
       <div class="user-card">
-        {props.avatar
-          ? <img src={props.avatar} alt={props.name} />
-          : <div class="avatar-placeholder">{initials.value}</div>
-        }
+        {props.avatar ? (
+          <img src={props.avatar} alt={props.name} />
+        ) : (
+          <div class="avatar-placeholder">{initials.value}</div>
+        )}
         <h3>{props.name}</h3>
         <p>{props.email}</p>
       </div>
@@ -1155,7 +1177,9 @@ Re-export of Pyreon's `h()` and `Fragment` for manual render function usage.
 
 ```tsx
 // <div class="card"><p>Hello</p></div>
-<div class="card"><p>Hello</p></div>
+<div class="card">
+  <p>Hello</p>
+</div>
 ```
 
 **Components:**
@@ -1183,19 +1207,17 @@ const items = ['Apple', 'Banana', 'Cherry']
 **Event handlers:**
 
 ```tsx
-<button
-  onClick={() => count.value++}
-  onMouseEnter={() => console.log('hover')}
->Click me</button>
+<button onClick={() => count.value++} onMouseEnter={() => console.log('hover')}>
+  Click me
+</button>
 ```
 
 **Style and class:**
 
 ```tsx
-<div
-  class="container active"
-  style={{ backgroundColor: 'blue', padding: '16px' }}
->Content</div>
+<div class="container active" style={{ backgroundColor: 'blue', padding: '16px' }}>
+  Content
+</div>
 ```
 
 In most cases, JSX is more ergonomic than `h()`. Use `h()` when you need programmatic VNode construction or when building utility libraries.
@@ -1303,9 +1325,15 @@ function useCounter(initial = 0) {
   const count = ref(initial)
   const doubled = computed(() => count.value * 2)
 
-  function increment() { count.value++ }
-  function decrement() { count.value-- }
-  function reset() { count.value = initial }
+  function increment() {
+    count.value++
+  }
+  function decrement() {
+    count.value--
+  }
+  function reset() {
+    count.value = initial
+  }
 
   return { count, doubled, increment, decrement, reset }
 }
@@ -1317,7 +1345,9 @@ const Counter = defineComponent({
 
     return () => (
       <div>
-        <p>Count: {count.value} (doubled: {doubled.value})</p>
+        <p>
+          Count: {count.value} (doubled: {doubled.value})
+        </p>
         <button onClick={decrement}>-</button>
         <button onClick={increment}>+</button>
         <button onClick={reset}>Reset</button>
@@ -1415,7 +1445,9 @@ const UserList = defineComponent({
         {error.value && <p>Error: {error.value.message}</p>}
         {users.value && (
           <ul>
-            {users.value.map(u => <li>{u.name}</li>)}
+            {users.value.map((u) => (
+              <li>{u.name}</li>
+            ))}
           </ul>
         )}
         <button onClick={refetch}>Refresh</button>
@@ -1432,9 +1464,15 @@ import { ref } from '@pyreon/vue-compat'
 
 function useToggle(initial = false) {
   const value = ref(initial)
-  function toggle() { value.value = !value.value }
-  function setTrue() { value.value = true }
-  function setFalse() { value.value = false }
+  function toggle() {
+    value.value = !value.value
+  }
+  function setTrue() {
+    value.value = true
+  }
+  function setFalse() {
+    value.value = false
+  }
   return { value, toggle, setTrue, setFalse }
 }
 
@@ -1547,28 +1585,29 @@ const MyComp = defineComponent({
     const show = ref(true)
     const items = ref(['a', 'b', 'c'])
 
-    return () => (
+    return () =>
       show.value && (
         <div>
-          {items.value.map(item => <p>{item}</p>)}
+          {items.value.map((item) => (
+            <p>{item}</p>
+          ))}
         </div>
       )
-    )
   },
 })
 ```
 
 **3. Replace Vue directives with JSX patterns:**
 
-| Vue Directive | JSX Equivalent |
-|---------------|----------------|
-| `v-if="cond"` | `&#123;cond && <Comp />&#125;` |
-| `v-else` | Ternary: `&#123;cond ? <A /> : <B />&#125;` |
-| `v-show="cond"` | `style=&#123;&#123; display: cond ? '' : 'none' &#125;&#125;` |
-| `v-for="item in items"` | `&#123;items.map(item => <Comp />)&#125;` |
-| `v-model="val"` | `value=&#123;val.value&#125; :onInput='...'` |
-| `v-on:click="fn"` | `onClick=&#123;fn&#125;` |
-| `v-bind:class="cls"` | `class=&#123;cls&#125;` |
+| Vue Directive           | JSX Equivalent                                                |
+| ----------------------- | ------------------------------------------------------------- |
+| `v-if="cond"`           | `&#123;cond && <Comp />&#125;`                                |
+| `v-else`                | Ternary: `&#123;cond ? <A /> : <B />&#125;`                   |
+| `v-show="cond"`         | `style=&#123;&#123; display: cond ? '' : 'none' &#125;&#125;` |
+| `v-for="item in items"` | `&#123;items.map(item => <Comp />)&#125;`                     |
+| `v-model="val"`         | `value=&#123;val.value&#125; :onInput='...'`                  |
+| `v-on:click="fn"`       | `onClick=&#123;fn&#125;`                                      |
+| `v-bind:class="cls"`    | `class=&#123;cls&#125;`                                       |
 
 **4. Replace Options API with Composition API:**
 
@@ -1585,11 +1624,15 @@ const Counter = defineComponent({
   setup() {
     const count = ref(0)
     const doubled = computed(() => count.value * 2)
-    function increment() { count.value++ }
+    function increment() {
+      count.value++
+    }
 
     return () => (
       <div>
-        <p>{count.value} x 2 = {doubled.value}</p>
+        <p>
+          {count.value} x 2 = {doubled.value}
+        </p>
         <button onClick={increment}>+1</button>
       </div>
     )
@@ -1656,35 +1699,35 @@ createApp(App).mount('#app')
 
 ## Complete Exports
 
-| Export | Type | Description |
-|--------|------|-------------|
-| `ref` | Function | Create a reactive ref |
-| `shallowRef` | Function | Create a shallow ref (identical to `ref`) |
-| `triggerRef` | Function | Force-trigger ref subscribers |
-| `isRef` | Function | Check if a value is a ref |
-| `unref` | Function | Unwrap a ref or return as-is |
-| `computed` | Function | Create a readonly computed ref |
-| `reactive` | Function | Create a deeply reactive proxy |
+| Export            | Type     | Description                                          |
+| ----------------- | -------- | ---------------------------------------------------- |
+| `ref`             | Function | Create a reactive ref                                |
+| `shallowRef`      | Function | Create a shallow ref (identical to `ref`)            |
+| `triggerRef`      | Function | Force-trigger ref subscribers                        |
+| `isRef`           | Function | Check if a value is a ref                            |
+| `unref`           | Function | Unwrap a ref or return as-is                         |
+| `computed`        | Function | Create a readonly computed ref                       |
+| `reactive`        | Function | Create a deeply reactive proxy                       |
 | `shallowReactive` | Function | Create a shallow reactive proxy (same as `reactive`) |
-| `readonly` | Function | Create a readonly proxy |
-| `toRaw` | Function | Get the raw object behind a proxy |
-| `toRef` | Function | Create a ref linked to a reactive property |
-| `toRefs` | Function | Convert all properties to refs |
-| `watch` | Function | Watch a source and run a callback on change |
-| `watchEffect` | Function | Run a function reactively |
-| `onMounted` | Function | Lifecycle: after mount |
-| `onUnmounted` | Function | Lifecycle: on unmount |
-| `onUpdated` | Function | Lifecycle: after update |
-| `onBeforeMount` | Function | Lifecycle: before mount (same as `onMounted`) |
-| `onBeforeUnmount` | Function | Lifecycle: before unmount (same as `onUnmounted`) |
-| `nextTick` | Function | Wait for reactive flush |
-| `provide` | Function | Provide a value to descendants |
-| `inject` | Function | Inject a value from ancestors |
-| `defineComponent` | Function | Define a component |
-| `h` | Function | Create virtual DOM nodes |
-| `Fragment` | Symbol | Fragment for multiple root elements |
-| `createApp` | Function | Create an application instance |
-| `batch` | Function | Batch multiple reactive writes |
-| `Ref` | Type | Ref interface |
-| `ComputedRef` | Type | Computed ref interface |
-| `WatchOptions` | Type | Watch options interface |
+| `readonly`        | Function | Create a readonly proxy                              |
+| `toRaw`           | Function | Get the raw object behind a proxy                    |
+| `toRef`           | Function | Create a ref linked to a reactive property           |
+| `toRefs`          | Function | Convert all properties to refs                       |
+| `watch`           | Function | Watch a source and run a callback on change          |
+| `watchEffect`     | Function | Run a function reactively                            |
+| `onMounted`       | Function | Lifecycle: after mount                               |
+| `onUnmounted`     | Function | Lifecycle: on unmount                                |
+| `onUpdated`       | Function | Lifecycle: after update                              |
+| `onBeforeMount`   | Function | Lifecycle: before mount (same as `onMounted`)        |
+| `onBeforeUnmount` | Function | Lifecycle: before unmount (same as `onUnmounted`)    |
+| `nextTick`        | Function | Wait for reactive flush                              |
+| `provide`         | Function | Provide a value to descendants                       |
+| `inject`          | Function | Inject a value from ancestors                        |
+| `defineComponent` | Function | Define a component                                   |
+| `h`               | Function | Create virtual DOM nodes                             |
+| `Fragment`        | Symbol   | Fragment for multiple root elements                  |
+| `createApp`       | Function | Create an application instance                       |
+| `batch`           | Function | Batch multiple reactive writes                       |
+| `Ref`             | Type     | Ref interface                                        |
+| `ComputedRef`     | Type     | Computed ref interface                               |
+| `WatchOptions`    | Type     | Watch options interface                              |

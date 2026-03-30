@@ -1,5 +1,5 @@
-import { batch, computed, signal } from "@pyreon/reactivity"
-import type { PermissionMap, Permissions, PermissionValue } from "./types"
+import { batch, computed, signal } from '@pyreon/reactivity'
+import type { PermissionMap, Permissions, PermissionValue } from './types'
 
 /**
  * Resolve a permission key against the map.
@@ -9,7 +9,7 @@ import type { PermissionMap, Permissions, PermissionValue } from "./types"
  * Safely evaluate a permission value. Predicates that throw are treated as denied.
  */
 function evaluate(value: PermissionValue, context?: unknown): boolean {
-  if (typeof value === "function") {
+  if (typeof value === 'function') {
     try {
       return value(context)
     } catch {
@@ -27,7 +27,7 @@ function resolve(map: Map<string, PermissionValue>, key: string, context?: unkno
   }
 
   // 2. Wildcard match — 'posts.read' matches 'posts.*'
-  const dotIndex = key.lastIndexOf(".")
+  const dotIndex = key.lastIndexOf('.')
   if (dotIndex !== -1) {
     const prefix = key.slice(0, dotIndex)
     const wildcard = map.get(`${prefix}.*`)
@@ -37,7 +37,7 @@ function resolve(map: Map<string, PermissionValue>, key: string, context?: unkno
   }
 
   // 3. Global wildcard
-  const global = map.get("*")
+  const global = map.get('*')
   if (global !== undefined) {
     return evaluate(global, context)
   }
@@ -128,7 +128,7 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     const keys: string[] = []
     for (const [key, value] of store.peek()) {
       // Static true or predicate (capability exists)
-      if (value === true || typeof value === "function") {
+      if (value === true || typeof value === 'function') {
         keys.push(key)
       }
     }

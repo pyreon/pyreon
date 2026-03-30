@@ -4,8 +4,8 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-} from "@pyreon/query"
-import { signal } from "@pyreon/reactivity"
+} from '@pyreon/query'
+import { signal } from '@pyreon/reactivity'
 
 interface User {
   id: number
@@ -14,8 +14,8 @@ interface User {
 }
 
 let mockUsers: User[] = [
-  { id: 1, name: "Alice", email: "alice@example.com" },
-  { id: 2, name: "Bob", email: "bob@example.com" },
+  { id: 1, name: 'Alice', email: 'alice@example.com' },
+  { id: 2, name: 'Bob', email: 'bob@example.com' },
 ]
 let nextId = 3
 
@@ -37,20 +37,20 @@ const queryClient = new QueryClient({
 
 function QueryContent() {
   const client = useQueryClient()
-  const nameInput = signal("")
-  const emailInput = signal("")
+  const nameInput = signal('')
+  const emailInput = signal('')
 
   const { data, isPending, isFetching, refetch } = useQuery(() => ({
-    queryKey: ["users"],
+    queryKey: ['users'],
     queryFn: fetchUsers,
   }))
 
   const mutation = useMutation({
     mutationFn: createUser,
     onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["users"] })
-      nameInput.set("")
-      emailInput.set("")
+      client.invalidateQueries({ queryKey: ['users'] })
+      nameInput.set('')
+      emailInput.set('')
     },
   })
 
@@ -84,7 +84,7 @@ function QueryContent() {
               </table>
               <div class="row" style="margin-top: 8px">
                 <button onClick={() => refetch()}>
-                  {() => (isFetching() ? "Refreshing..." : "Refresh")}
+                  {() => (isFetching() ? 'Refreshing...' : 'Refresh')}
                 </button>
                 <span class="badge gray">{() => `${users.length} users`}</span>
               </div>
@@ -117,7 +117,7 @@ function QueryContent() {
           disabled={mutation.isPending() || !nameInput() || !emailInput()}
           onClick={() => mutation.mutate({ name: nameInput(), email: emailInput() })}
         >
-          {() => (mutation.isPending() ? "Creating..." : "Add User")}
+          {() => (mutation.isPending() ? 'Creating...' : 'Add User')}
         </button>
         {() =>
           mutation.isError() ? (

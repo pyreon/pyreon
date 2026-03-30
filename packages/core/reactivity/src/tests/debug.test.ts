@@ -1,35 +1,35 @@
-import { _notifyTraceListeners, inspectSignal, isTracing, onSignalUpdate, why } from "../debug"
-import { signal } from "../signal"
+import { _notifyTraceListeners, inspectSignal, isTracing, onSignalUpdate, why } from '../debug'
+import { signal } from '../signal'
 
-describe("debug", () => {
-  describe("onSignalUpdate / isTracing", () => {
-    test("isTracing is false by default", () => {
+describe('debug', () => {
+  describe('onSignalUpdate / isTracing', () => {
+    test('isTracing is false by default', () => {
       expect(isTracing()).toBe(false)
     })
 
-    test("registering a listener enables tracing", () => {
+    test('registering a listener enables tracing', () => {
       const dispose = onSignalUpdate(() => {})
       expect(isTracing()).toBe(true)
       dispose()
       expect(isTracing()).toBe(false)
     })
 
-    test("listener receives signal update events", () => {
+    test('listener receives signal update events', () => {
       const events: { name: string | undefined; prev: unknown; next: unknown }[] = []
       const dispose = onSignalUpdate((e) => {
         events.push({ name: e.name, prev: e.prev, next: e.next })
       })
 
-      const s = signal(1, { name: "count" })
+      const s = signal(1, { name: 'count' })
       s.set(2)
 
       expect(events.length).toBe(1)
-      expect(events[0]).toEqual({ name: "count", prev: 1, next: 2 })
+      expect(events[0]).toEqual({ name: 'count', prev: 1, next: 2 })
 
       dispose()
     })
 
-    test("dispose removes only the specific listener", () => {
+    test('dispose removes only the specific listener', () => {
       let calls1 = 0
       let calls2 = 0
       const dispose1 = onSignalUpdate(() => calls1++)
@@ -50,20 +50,20 @@ describe("debug", () => {
       expect(isTracing()).toBe(false)
     })
 
-    test("dispose is safe to call when listeners already null", () => {
+    test('dispose is safe to call when listeners already null', () => {
       const dispose = onSignalUpdate(() => {})
       dispose()
       expect(isTracing()).toBe(false)
       dispose() // should not throw — _traceListeners is null
     })
 
-    test("_notifyTraceListeners does nothing when no listeners", () => {
+    test('_notifyTraceListeners does nothing when no listeners', () => {
       const s = signal(0)
       // Should not throw
       _notifyTraceListeners(s, 0, 1)
     })
 
-    test("event includes stack and timestamp", () => {
+    test('event includes stack and timestamp', () => {
       let event: { stack: string; timestamp: number } | undefined
       const dispose = onSignalUpdate((e) => {
         event = { stack: e.stack, timestamp: e.timestamp }
@@ -73,20 +73,20 @@ describe("debug", () => {
       s.set(1)
 
       expect(event).toBeDefined()
-      expect(typeof event?.stack).toBe("string")
-      expect(typeof event?.timestamp).toBe("number")
+      expect(typeof event?.stack).toBe('string')
+      expect(typeof event?.timestamp).toBe('number')
 
       dispose()
     })
   })
 
-  describe("why", () => {
-    test("logs signal updates to console", async () => {
+  describe('why', () => {
+    test('logs signal updates to console', async () => {
       const logs: unknown[][] = []
       const origLog = console.log
       console.log = (...args: unknown[]) => logs.push(args)
 
-      const s = signal(1, { name: "test" })
+      const s = signal(1, { name: 'test' })
       why()
       s.set(2)
 
@@ -109,21 +109,21 @@ describe("debug", () => {
 
       const noUpdateLog =
         logs.find((args) =>
-          typeof args[0] === "string" ? args[0].includes("No signal") : false,
+          typeof args[0] === 'string' ? args[0].includes('No signal') : false,
         ) ||
-        logs.find((args) => (typeof args[1] === "string" ? args[1].includes("No signal") : false))
+        logs.find((args) => (typeof args[1] === 'string' ? args[1].includes('No signal') : false))
       expect(noUpdateLog).toBeDefined()
       console.log = origLog
     })
 
-    test("calling why() twice is ignored (already active)", async () => {
+    test('calling why() twice is ignored (already active)', async () => {
       const logs: unknown[][] = []
       const origLog = console.log
       console.log = (...args: unknown[]) => logs.push(args)
 
       why()
       why() // should be ignored
-      const s = signal(0, { name: "x" })
+      const s = signal(0, { name: 'x' })
       s.set(1)
 
       await new Promise((r) => queueMicrotask(() => r(undefined)))
@@ -131,7 +131,7 @@ describe("debug", () => {
       console.log = origLog
     })
 
-    test("logs anonymous signal name when no name is set", async () => {
+    test('logs anonymous signal name when no name is set', async () => {
       const logs: unknown[][] = []
       const origLog = console.log
       console.log = (...args: unknown[]) => logs.push(args)
@@ -143,15 +143,15 @@ describe("debug", () => {
       await new Promise((r) => queueMicrotask(() => r(undefined)))
 
       const anonLog = logs.find((args) =>
-        args.some((a) => typeof a === "string" && a.includes("anonymous")),
+        args.some((a) => typeof a === 'string' && a.includes('anonymous')),
       )
       expect(anonLog).toBeDefined()
       console.log = origLog
     })
   })
 
-  describe("inspectSignal", () => {
-    test("prints signal info and returns debug info", () => {
+  describe('inspectSignal', () => {
+    test('prints signal info and returns debug info', () => {
       const groupCalls: unknown[][] = []
       const logCalls: unknown[][] = []
       const origGroup = console.group
@@ -161,10 +161,10 @@ describe("debug", () => {
       console.log = (...args: unknown[]) => logCalls.push(args)
       console.groupEnd = () => {}
 
-      const s = signal(42, { name: "count" })
+      const s = signal(42, { name: 'count' })
       const info = inspectSignal(s)
 
-      expect(info.name).toBe("count")
+      expect(info.name).toBe('count')
       expect(info.value).toBe(42)
       expect(info.subscriberCount).toBe(0)
       expect(groupCalls.length).toBe(1)
@@ -175,7 +175,7 @@ describe("debug", () => {
       console.groupEnd = origEnd
     })
 
-    test("handles anonymous signal", () => {
+    test('handles anonymous signal', () => {
       const origGroup = console.group
       const origLog = console.log
       const origEnd = console.groupEnd

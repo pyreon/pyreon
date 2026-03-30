@@ -1,9 +1,9 @@
-import { batch, nextTick } from "../batch"
-import { effect } from "../effect"
-import { signal } from "../signal"
+import { batch, nextTick } from '../batch'
+import { effect } from '../effect'
+import { signal } from '../signal'
 
-describe("batch", () => {
-  test("defers notifications until end of batch", () => {
+describe('batch', () => {
+  test('defers notifications until end of batch', () => {
     const a = signal(1)
     const b = signal(2)
     let runs = 0
@@ -22,7 +22,7 @@ describe("batch", () => {
     expect(runs).toBe(2)
   })
 
-  test("effect sees final values after batch", () => {
+  test('effect sees final values after batch', () => {
     const s = signal(0)
     let seen = 0
     effect(() => {
@@ -36,7 +36,7 @@ describe("batch", () => {
     expect(seen).toBe(3)
   })
 
-  test("nested batches flush at outermost end", () => {
+  test('nested batches flush at outermost end', () => {
     const s = signal(0)
     let runs = 0
     effect(() => {
@@ -55,7 +55,7 @@ describe("batch", () => {
     expect(runs).toBe(2)
   })
 
-  test("batch propagates exceptions and still flushes", () => {
+  test('batch propagates exceptions and still flushes', () => {
     const s = signal(0)
     let seen = 0
     effect(() => {
@@ -66,15 +66,15 @@ describe("batch", () => {
     expect(() => {
       batch(() => {
         s.set(42)
-        throw new Error("boom")
+        throw new Error('boom')
       })
-    }).toThrow("boom")
+    }).toThrow('boom')
 
     // The batch should still have flushed notifications in the finally block
     expect(seen).toBe(42)
   })
 
-  test("batch with no signal changes is a no-op", () => {
+  test('batch with no signal changes is a no-op', () => {
     let runs = 0
     const s = signal(0)
     effect(() => {
@@ -89,7 +89,7 @@ describe("batch", () => {
     expect(runs).toBe(1)
   })
 
-  test("batch deduplicates same subscriber across multiple signals", () => {
+  test('batch deduplicates same subscriber across multiple signals', () => {
     const a = signal(1)
     const b = signal(2)
     let runs = 0
@@ -109,7 +109,7 @@ describe("batch", () => {
     expect(runs).toBe(2)
   })
 
-  test("notifications enqueued during flush land in alternate set", () => {
+  test('notifications enqueued during flush land in alternate set', () => {
     const a = signal(0)
     const b = signal(0)
     const log: string[] = []
@@ -128,11 +128,11 @@ describe("batch", () => {
       a.set(1)
     })
 
-    expect(log).toContain("a=1")
-    expect(log).toContain("b=10")
+    expect(log).toContain('a=1')
+    expect(log).toContain('b=10')
   })
 
-  test("nextTick resolves after microtasks flush", async () => {
+  test('nextTick resolves after microtasks flush', async () => {
     const s = signal(0)
     let seen = 0
     effect(() => {

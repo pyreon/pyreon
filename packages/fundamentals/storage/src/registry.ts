@@ -1,4 +1,4 @@
-import type { StorageSignal } from "./types"
+import type { StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
 

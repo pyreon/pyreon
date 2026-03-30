@@ -1,6 +1,6 @@
-import type { config } from "@pyreon/ui-core"
-import type { PseudoState } from "./pseudo"
-import type { TObj } from "./utils"
+import type { config } from '@pyreon/ui-core'
+import type { PseudoState } from './pseudo'
+import type { TObj } from './utils'
 
 // biome-ignore lint/suspicious/noEmptyInterface: this is an interface to be extended in consuming projects
 export interface StylesDefault {}

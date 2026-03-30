@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo, isSetCall } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from '../../types'
+import { getSpan, isCallTo, isSetCall } from '../../utils/ast'
 
 interface ScopeInfo {
   setCalls: Array<{ span: { start: number; end: number } }>
@@ -10,10 +10,10 @@ interface ScopeInfo {
 
 export const noUnbatchedUpdates: Rule = {
   meta: {
-    id: "pyreon/no-unbatched-updates",
-    category: "reactivity",
-    description: "Warn when 3+ .set() calls occur in the same function without batch().",
-    severity: "warn",
+    id: 'pyreon/no-unbatched-updates',
+    category: 'reactivity',
+    description: 'Warn when 3+ .set() calls occur in the same function without batch().',
+    severity: 'warn',
     fixable: false,
   },
   create(context) {
@@ -39,24 +39,24 @@ export const noUnbatchedUpdates: Rule = {
       FunctionDeclaration(node: any) {
         enterScope(node)
       },
-      "FunctionDeclaration:exit"() {
+      'FunctionDeclaration:exit'() {
         exitScope()
       },
       FunctionExpression(node: any) {
         enterScope(node)
       },
-      "FunctionExpression:exit"() {
+      'FunctionExpression:exit'() {
         exitScope()
       },
       ArrowFunctionExpression(node: any) {
         enterScope(node)
       },
-      "ArrowFunctionExpression:exit"() {
+      'ArrowFunctionExpression:exit'() {
         exitScope()
       },
       CallExpression(node: any) {
         const currentScope = scopeStack.length > 0 ? scopeStack[scopeStack.length - 1] : undefined
-        if (isCallTo(node, "batch")) {
+        if (isCallTo(node, 'batch')) {
           batchDepth++
           if (currentScope) {
             currentScope.hasBatch = true
@@ -66,8 +66,8 @@ export const noUnbatchedUpdates: Rule = {
           currentScope.setCalls.push({ span: getSpan(node) })
         }
       },
-      "CallExpression:exit"(node: any) {
-        if (isCallTo(node, "batch")) {
+      'CallExpression:exit'(node: any) {
+        if (isCallTo(node, 'batch')) {
           batchDepth--
         }
       },

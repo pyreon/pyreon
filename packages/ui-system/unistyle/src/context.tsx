@@ -1,9 +1,9 @@
-import type { VNode } from "@pyreon/core"
-import { provide } from "@pyreon/core"
-import { ThemeContext } from "@pyreon/styler"
-import { Provider as CoreProvider, context } from "@pyreon/ui-core"
-import type { PyreonTheme } from "./enrichTheme"
-import { enrichTheme } from "./enrichTheme"
+import type { VNode } from '@pyreon/core'
+import { provide } from '@pyreon/core'
+import { ThemeContext } from '@pyreon/styler'
+import { Provider as CoreProvider, context } from '@pyreon/ui-core'
+import type { PyreonTheme } from './enrichTheme'
+import { enrichTheme } from './enrichTheme'
 
 export type TProvider = {
   theme: PyreonTheme

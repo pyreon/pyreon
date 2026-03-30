@@ -1,5 +1,5 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 export interface WindowSize {
   width: number
@@ -11,8 +11,8 @@ export interface WindowSize {
  */
 export function useWindowResize(throttleMs = 200): () => WindowSize {
   const size = signal<WindowSize>({
-    width: typeof window !== "undefined" ? window.innerWidth : 0,
-    height: typeof window !== "undefined" ? window.innerHeight : 0,
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
   })
 
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -26,12 +26,12 @@ export function useWindowResize(throttleMs = 200): () => WindowSize {
   }
 
   onMount(() => {
-    window.addEventListener("resize", onResize)
+    window.addEventListener('resize', onResize)
     return undefined
   })
 
   onUnmount(() => {
-    window.removeEventListener("resize", onResize)
+    window.removeEventListener('resize', onResize)
     if (timer !== undefined) clearTimeout(timer)
   })
 

@@ -4,8 +4,8 @@
  * closing in response to click/hover events that belong to the child.
  */
 
-import type { VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
+import { createContext, provide, useContext } from '@pyreon/core'
 
 export interface OverlayContext {
   blocked: boolean | (() => boolean)

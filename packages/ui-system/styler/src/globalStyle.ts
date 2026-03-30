@@ -10,11 +10,11 @@
  *     *, *::before, *::after { box-sizing: border-box; }
  *   `
  */
-import type { ComponentFn } from "@pyreon/core"
-import { type Interpolation, normalizeCSS, resolve } from "./resolve"
-import { isDynamic } from "./shared"
-import { sheet } from "./sheet"
-import { useTheme } from "./ThemeProvider"
+import type { ComponentFn } from '@pyreon/core'
+import { type Interpolation, normalizeCSS, resolve } from './resolve'
+import { isDynamic } from './shared'
+import { sheet } from './sheet'
+import { useTheme } from './ThemeProvider'
 
 export const createGlobalStyle = (
   strings: TemplateStringsArray,

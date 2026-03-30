@@ -1,5 +1,5 @@
-import { allRules } from "../rules/index"
-import type { LintConfig, PresetName, Severity } from "../types"
+import { allRules } from '../rules/index'
+import type { LintConfig, PresetName, Severity } from '../types'
 
 /** Build a config where every rule uses its default severity. */
 function buildRecommended(): LintConfig {
@@ -15,7 +15,7 @@ function buildStrict(): LintConfig {
   const base = buildRecommended()
   const rules: Record<string, Severity> = {}
   for (const [id, sev] of Object.entries(base.rules)) {
-    rules[id] = sev === "warn" ? "error" : sev
+    rules[id] = sev === 'warn' ? 'error' : sev
   }
   return { rules }
 }
@@ -26,10 +26,10 @@ function buildApp(): LintConfig {
   return {
     rules: {
       ...base.rules,
-      "pyreon/dev-guard-warnings": "off",
-      "pyreon/no-error-without-prefix": "off",
-      "pyreon/no-circular-import": "off",
-      "pyreon/no-cross-layer-import": "off",
+      'pyreon/dev-guard-warnings': 'off',
+      'pyreon/no-error-without-prefix': 'off',
+      'pyreon/no-circular-import': 'off',
+      'pyreon/no-cross-layer-import': 'off',
     },
   }
 }
@@ -40,10 +40,10 @@ function buildLib(): LintConfig {
   return {
     rules: {
       ...base.rules,
-      "pyreon/no-circular-import": "error",
-      "pyreon/no-cross-layer-import": "error",
-      "pyreon/dev-guard-warnings": "error",
-      "pyreon/no-error-without-prefix": "error",
+      'pyreon/no-circular-import': 'error',
+      'pyreon/no-cross-layer-import': 'error',
+      'pyreon/dev-guard-warnings': 'error',
+      'pyreon/no-error-without-prefix': 'error',
     },
   }
 }

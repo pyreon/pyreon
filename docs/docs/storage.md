@@ -10,18 +10,23 @@ Reactive signal-backed persistence across all client-side storage backends. Ever
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/storage
 ```
+
 ```bash [bun]
 bun add @pyreon/storage
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/storage
 ```
+
 ```bash [yarn]
 yarn add @pyreon/storage
 ```
+
 :::
 
 Peer dependencies: `@pyreon/reactivity`
@@ -32,8 +37,8 @@ Peer dependencies: `@pyreon/reactivity`
 import { useStorage } from '@pyreon/storage'
 
 const theme = useStorage('theme', 'light')
-theme()            // 'light' (or stored value)
-theme.set('dark')  // updates signal + localStorage
+theme() // 'light' (or stored value)
+theme.set('dark') // updates signal + localStorage
 ```
 
 ## Storage Backends
@@ -94,14 +99,14 @@ const consent = useCookie('cookie-consent', false, {
 
 #### Cookie Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `maxAge` | `number` | — | Max age in seconds |
-| `expires` | `Date` | — | Expiry date (alternative to maxAge) |
-| `path` | `string` | `'/'` | Cookie path |
-| `domain` | `string` | — | Cookie domain |
-| `secure` | `boolean` | `false` | HTTPS only |
-| `sameSite` | `'strict' \| 'lax' \| 'none'` | `'lax'` | SameSite policy |
+| Option     | Type                          | Default | Description                         |
+| ---------- | ----------------------------- | ------- | ----------------------------------- |
+| `maxAge`   | `number`                      | —       | Max age in seconds                  |
+| `expires`  | `Date`                        | —       | Expiry date (alternative to maxAge) |
+| `path`     | `string`                      | `'/'`   | Cookie path                         |
+| `domain`   | `string`                      | —       | Cookie domain                       |
+| `secure`   | `boolean`                     | `false` | HTTPS only                          |
+| `sameSite` | `'strict' \| 'lax' \| 'none'` | `'lax'` | SameSite policy                     |
 
 #### SSR Support
 
@@ -132,11 +137,11 @@ draft.set({ title: 'My Post', body: '...10KB of content...' })
 
 #### IndexedDB Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `dbName` | `string` | `'pyreon-storage'` | Database name |
-| `storeName` | `string` | `'kv'` | Object store name |
-| `debounceMs` | `number` | `100` | Write debounce in ms |
+| Option       | Type     | Default            | Description          |
+| ------------ | -------- | ------------------ | -------------------- |
+| `dbName`     | `string` | `'pyreon-storage'` | Database name        |
+| `storeName`  | `string` | `'kv'`             | Object store name    |
+| `debounceMs` | `number` | `100`              | Write debounce in ms |
 
 ### Custom Backend — `createStorage()`
 
@@ -212,13 +217,13 @@ const value = useStorage('key', 'fallback', {
 ```tsx
 import { removeStorage, clearStorage } from '@pyreon/storage'
 
-removeStorage('theme')                     // from localStorage
+removeStorage('theme') // from localStorage
 removeStorage('step', { type: 'session' }) // from sessionStorage
-removeStorage('locale', { type: 'cookie' })// delete cookie
+removeStorage('locale', { type: 'cookie' }) // delete cookie
 
-clearStorage()          // all managed localStorage entries
+clearStorage() // all managed localStorage entries
 clearStorage('session') // all managed sessionStorage entries
-clearStorage('all')     // everything
+clearStorage('all') // everything
 ```
 
 ## StorageSignal Type
@@ -227,7 +232,7 @@ All hooks return `StorageSignal<T>` — a full `Signal<T>` with an added `.remov
 
 ```ts
 interface StorageSignal<T> extends Signal<T> {
-  remove(): void  // Clear from storage, reset to default
+  remove(): void // Clear from storage, reset to default
 }
 ```
 

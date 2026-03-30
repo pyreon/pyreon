@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/router"
+title: '@pyreon/router'
 description: Type-safe client-side router with nested routes, navigation guards, data loaders, and scroll restoration.
 ---
 
@@ -10,32 +10,37 @@ description: Type-safe client-side router with nested routes, navigation guards,
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/router
 ```
+
 ```bash [bun]
 bun add @pyreon/router
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/router
 ```
+
 ```bash [yarn]
 yarn add @pyreon/router
 ```
+
 :::
 
 ## Quick Start
 
 ```tsx
-import { createRouter, RouterProvider, RouterView, RouterLink } from "@pyreon/router"
-import { mount } from "@pyreon/runtime-dom"
+import { createRouter, RouterProvider, RouterView, RouterLink } from '@pyreon/router'
+import { mount } from '@pyreon/runtime-dom'
 
 const router = createRouter({
   routes: [
-    { path: "/", component: Home },
-    { path: "/about", component: About },
-    { path: "/user/:id", component: UserPage, name: "user" },
-    { path: "(.*)", component: NotFound },
+    { path: '/', component: Home },
+    { path: '/about', component: About },
+    { path: '/user/:id', component: UserPage, name: 'user' },
+    { path: '(.*)', component: NotFound },
   ],
 })
 
@@ -51,7 +56,7 @@ function App() {
   )
 }
 
-mount(<App />, document.getElementById("app")!)
+mount(<App />, document.getElementById('app')!)
 ```
 
 ## createRouter
@@ -61,17 +66,17 @@ Create a router instance. Accepts a `RouterOptions` object or a shorthand array 
 ```ts
 const router = createRouter({
   routes: [
-    { path: "/", component: Home },
-    { path: "/about", component: About },
+    { path: '/', component: Home },
+    { path: '/about', component: About },
   ],
-  mode: "history",          // "hash" (default) or "history"
-  scrollBehavior: "restore", // "top" | "restore" | "none" | ScrollBehaviorFn
+  mode: 'history', // "hash" (default) or "history"
+  scrollBehavior: 'restore', // "top" | "restore" | "none" | ScrollBehaviorFn
 })
 
 // Shorthand -- just pass the routes array:
 const router = createRouter([
-  { path: "/", component: Home },
-  { path: "/about", component: About },
+  { path: '/', component: Home },
+  { path: '/about', component: About },
 ])
 ```
 
@@ -80,35 +85,35 @@ const router = createRouter([
 ```ts
 interface RouterOptions {
   routes: RouteRecord[]
-  mode?: "hash" | "history"
+  mode?: 'hash' | 'history'
   base?: string
-  scrollBehavior?: ScrollBehaviorFn | "top" | "restore" | "none"
-  trailingSlash?: "strip" | "add" | "ignore"
+  scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
+  trailingSlash?: 'strip' | 'add' | 'ignore'
   url?: string
   onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   maxCacheSize?: number
 }
 ```
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `routes` | `RouteRecord[]` | required | Route definitions |
-| `mode` | `"hash" \| "history"` | `"hash"` | URL mode |
-| `base` | `string` | `""` | Base path for sub-path deployments (e.g. `"/app"`). Must start with `/`. Only applies in history mode. |
-| `scrollBehavior` | `ScrollBehaviorFn \| "top" \| "restore" \| "none"` | `"top"` | Scroll behavior on navigation |
-| `trailingSlash` | `"strip" \| "add" \| "ignore"` | `"strip"` | Trailing slash handling: `"strip"` removes trailing slashes before matching, `"add"` ensures paths end with `/`, `"ignore"` does no normalization. |
-| `url` | `string` | - | Initial URL for SSR (when `window.location` is unavailable) |
-| `onError` | `(err, route) => undefined \| false` | - | Global loader error handler. Return `false` to cancel navigation. |
-| `maxCacheSize` | `number` | `100` | Max number of resolved lazy components to cache (LRU eviction) |
+| Option           | Type                                               | Default   | Description                                                                                                                                        |
+| ---------------- | -------------------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `routes`         | `RouteRecord[]`                                    | required  | Route definitions                                                                                                                                  |
+| `mode`           | `"hash" \| "history"`                              | `"hash"`  | URL mode                                                                                                                                           |
+| `base`           | `string`                                           | `""`      | Base path for sub-path deployments (e.g. `"/app"`). Must start with `/`. Only applies in history mode.                                             |
+| `scrollBehavior` | `ScrollBehaviorFn \| "top" \| "restore" \| "none"` | `"top"`   | Scroll behavior on navigation                                                                                                                      |
+| `trailingSlash`  | `"strip" \| "add" \| "ignore"`                     | `"strip"` | Trailing slash handling: `"strip"` removes trailing slashes before matching, `"add"` ensures paths end with `/`, `"ignore"` does no normalization. |
+| `url`            | `string`                                           | -         | Initial URL for SSR (when `window.location` is unavailable)                                                                                        |
+| `onError`        | `(err, route) => undefined \| false`               | -         | Global loader error handler. Return `false` to cancel navigation.                                                                                  |
+| `maxCacheSize`   | `number`                                           | `100`     | Max number of resolved lazy components to cache (LRU eviction)                                                                                     |
 
 **Hash mode vs history mode:**
 
 ```ts
 // Hash mode (default): URLs like /#/about
-const router = createRouter({ routes, mode: "hash" })
+const router = createRouter({ routes, mode: 'hash' })
 
 // History mode: clean URLs like /about (requires server-side fallback)
-const router = createRouter({ routes, mode: "history" })
+const router = createRouter({ routes, mode: 'history' })
 ```
 
 Hash mode uses `window.location.hash` and listens to `hashchange` events. History mode uses `pushState`/`replaceState` and listens to `popstate` events. History mode requires your server to serve the app for all routes (SPA fallback).
@@ -120,8 +125,8 @@ When deploying to a sub-path like `https://example.com/app/`, set the `base` opt
 ```ts
 const router = createRouter({
   routes,
-  mode: "history",
-  base: "/app",
+  mode: 'history',
+  base: '/app',
 })
 
 // router.push("/about") navigates to /app/about
@@ -132,13 +137,13 @@ const router = createRouter({
 
 ```ts
 // Strip trailing slashes (default) — /about/ becomes /about
-createRouter({ routes, trailingSlash: "strip" })
+createRouter({ routes, trailingSlash: 'strip' })
 
 // Always add trailing slash — /about becomes /about/
-createRouter({ routes, trailingSlash: "add" })
+createRouter({ routes, trailingSlash: 'add' })
 
 // No normalization — match paths exactly as-is
-createRouter({ routes, trailingSlash: "ignore" })
+createRouter({ routes, trailingSlash: 'ignore' })
 ```
 
 **Error handling:**
@@ -174,20 +179,20 @@ interface RouteRecord<TPath extends string = string> {
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `path` | `string` | Path pattern with `:param` segments |
-| `component` | `ComponentFn \| LazyComponent` | Component to render, or a `lazy()` wrapper |
-| `name` | `string` | Optional name for named navigation |
-| `meta` | `RouteMeta` | Route metadata (title, auth, scroll, custom fields) |
-| `redirect` | `string \| (to) => string` | Redirect target, evaluated before guards |
-| `beforeEnter` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route |
-| `beforeLeave` | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route |
-| `alias` | `string \| string[]` | Alternative path(s) that render the same component and share guards, loaders, and metadata |
-| `children` | `RouteRecord[]` | Nested child routes |
-| `loader` | `RouteLoaderFn` | Data loader function |
-| `staleWhileRevalidate` | `boolean` | When true, show cached loader data immediately and revalidate in the background |
-| `errorComponent` | `ComponentFn` | Component shown when the loader fails |
+| Field                  | Type                                   | Description                                                                                |
+| ---------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `path`                 | `string`                               | Path pattern with `:param` segments                                                        |
+| `component`            | `ComponentFn \| LazyComponent`         | Component to render, or a `lazy()` wrapper                                                 |
+| `name`                 | `string`                               | Optional name for named navigation                                                         |
+| `meta`                 | `RouteMeta`                            | Route metadata (title, auth, scroll, custom fields)                                        |
+| `redirect`             | `string \| (to) => string`             | Redirect target, evaluated before guards                                                   |
+| `beforeEnter`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before entering this route                                                    |
+| `beforeLeave`          | `NavigationGuard \| NavigationGuard[]` | Guard(s) run before leaving this route                                                     |
+| `alias`                | `string \| string[]`                   | Alternative path(s) that render the same component and share guards, loaders, and metadata |
+| `children`             | `RouteRecord[]`                        | Nested child routes                                                                        |
+| `loader`               | `RouteLoaderFn`                        | Data loader function                                                                       |
+| `staleWhileRevalidate` | `boolean`                              | When true, show cached loader data immediately and revalidate in the background            |
+| `errorComponent`       | `ComponentFn`                          | Component shown when the loader fails                                                      |
 
 ### Path Patterns
 
@@ -239,15 +244,15 @@ Params suffixed with `?` match zero or one segments. The param type becomes `str
 Optional params work with `ExtractParams` type inference:
 
 ```ts
-type Params = ExtractParams<"/user/:id?">
+type Params = ExtractParams<'/user/:id?'>
 // { id?: string | undefined }
 ```
 
 When building paths with `buildPath()`, optional segments are omitted when no value is provided:
 
 ```ts
-buildPath("/user/:id?", {})          // "/user"
-buildPath("/user/:id?", { id: "42" }) // "/user/42"
+buildPath('/user/:id?', {}) // "/user"
+buildPath('/user/:id?', { id: '42' }) // "/user/42"
 ```
 
 **Wildcard (catch-all):**
@@ -266,11 +271,11 @@ Routes are matched in definition order. The first match wins. Place more specifi
 
 ```ts
 const routes = [
-  { path: "/", component: Home },
-  { path: "/user/me", component: MyProfile },     // specific
-  { path: "/user/:id", component: UserProfile },   // dynamic
-  { path: "/user/:id/posts", component: UserPosts },
-  { path: "(.*)", component: NotFound },           // catch-all last
+  { path: '/', component: Home },
+  { path: '/user/me', component: MyProfile }, // specific
+  { path: '/user/:id', component: UserProfile }, // dynamic
+  { path: '/user/:id/posts', component: UserPosts },
+  { path: '(.*)', component: NotFound }, // catch-all last
 ]
 ```
 
@@ -279,31 +284,31 @@ const routes = [
 Route params are automatically inferred from the path string using the `ExtractParams` type:
 
 ```ts
-import { useRoute } from "@pyreon/router"
+import { useRoute } from '@pyreon/router'
 
 // Inside a route with path "/user/:id/posts/:postId":
-const route = useRoute<"/user/:id/posts/:postId">()
+const route = useRoute<'/user/:id/posts/:postId'>()
 
-route().params.id      // string (typed!)
-route().params.postId  // string (typed!)
+route().params.id // string (typed!)
+route().params.postId // string (typed!)
 // route().params.foo  // TypeScript error -- "foo" does not exist
 ```
 
 The `ExtractParams` utility type works at compile time:
 
 ```ts
-import type { ExtractParams } from "@pyreon/router"
+import type { ExtractParams } from '@pyreon/router'
 
-type UserParams = ExtractParams<"/user/:id">
+type UserParams = ExtractParams<'/user/:id'>
 // { id: string }
 
-type PostParams = ExtractParams<"/user/:id/posts/:postId">
+type PostParams = ExtractParams<'/user/:id/posts/:postId'>
 // { id: string; postId: string }
 
-type FileParams = ExtractParams<"/files/:path*">
+type FileParams = ExtractParams<'/files/:path*'>
 // { path: string }
 
-type HomeParams = ExtractParams<"/">
+type HomeParams = ExtractParams<'/'>
 // Record<never, never> (empty object)
 ```
 
@@ -314,13 +319,13 @@ Child routes are rendered inside the parent's component via a nested `RouterView
 ```tsx
 const routes = [
   {
-    path: "/admin",
+    path: '/admin',
     component: AdminLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: "users", component: AdminUsers },       // matches /admin/users
-      { path: "settings", component: AdminSettings },  // matches /admin/settings
-      { path: "users/:id", component: AdminUserDetail }, // matches /admin/users/42
+      { path: 'users', component: AdminUsers }, // matches /admin/users
+      { path: 'settings', component: AdminSettings }, // matches /admin/settings
+      { path: 'users/:id', component: AdminUserDetail }, // matches /admin/users/42
     ],
   },
 ]
@@ -344,18 +349,18 @@ Routes can be nested to any depth. Each level needs its own `RouterView`.
 ```tsx
 const routes = [
   {
-    path: "/dashboard",
+    path: '/dashboard',
     component: DashboardLayout,
     children: [
       {
-        path: "analytics",
+        path: 'analytics',
         component: AnalyticsLayout,
         children: [
-          { path: "overview", component: AnalyticsOverview },   // /dashboard/analytics/overview
-          { path: "reports", component: AnalyticsReports },     // /dashboard/analytics/reports
+          { path: 'overview', component: AnalyticsOverview }, // /dashboard/analytics/overview
+          { path: 'reports', component: AnalyticsReports }, // /dashboard/analytics/reports
         ],
       },
-      { path: "settings", component: DashboardSettings },      // /dashboard/settings
+      { path: 'settings', component: DashboardSettings }, // /dashboard/settings
     ],
   },
 ]
@@ -389,22 +394,22 @@ Attach metadata to routes via the `meta` property. Metadata is merged from root 
 
 ```ts
 interface RouteMeta {
-  title?: string         // Sets document.title on navigation
-  description?: string   // Page description (for meta tags)
+  title?: string // Sets document.title on navigation
+  description?: string // Page description (for meta tags)
   requiresAuth?: boolean // Guards can check this
-  scrollBehavior?: "top" | "restore" | "none"
+  scrollBehavior?: 'top' | 'restore' | 'none'
 }
 ```
 
 ```ts
 const routes = [
   {
-    path: "/admin",
+    path: '/admin',
     component: AdminLayout,
-    meta: { requiresAuth: true, title: "Admin" },
+    meta: { requiresAuth: true, title: 'Admin' },
     children: [
-      { path: "users", component: AdminUsers, meta: { title: "Admin - Users" } },
-      { path: "settings", component: AdminSettings, meta: { title: "Admin - Settings" } },
+      { path: 'users', component: AdminUsers, meta: { title: 'Admin - Users' } },
+      { path: 'settings', component: AdminSettings, meta: { title: 'Admin - Settings' } },
     ],
   },
 ]
@@ -422,11 +427,11 @@ Add custom fields to `RouteMeta` for your app:
 
 ```ts
 // globals.d.ts
-declare module "@pyreon/router" {
+declare module '@pyreon/router' {
   interface RouteMeta {
-    requiresRole?: "admin" | "user" | "guest"
+    requiresRole?: 'admin' | 'user' | 'guest'
     breadcrumb?: string
-    transition?: "fade" | "slide"
+    transition?: 'fade' | 'slide'
     cacheable?: boolean
   }
 }
@@ -437,18 +442,18 @@ Then use the custom fields in your route definitions:
 ```ts
 const routes = [
   {
-    path: "/admin",
+    path: '/admin',
     component: AdminLayout,
     meta: {
       requiresAuth: true,
-      requiresRole: "admin",
-      breadcrumb: "Admin",
+      requiresRole: 'admin',
+      breadcrumb: 'Admin',
     },
     children: [
       {
-        path: "users",
+        path: 'users',
         component: AdminUsers,
-        meta: { breadcrumb: "Users", transition: "slide" },
+        meta: { breadcrumb: 'Users', transition: 'slide' },
       },
     ],
   },
@@ -470,18 +475,18 @@ Redirects are evaluated before guards. The router detects circular redirects (ma
 ```ts
 const routes = [
   // Redirect /home to /
-  { path: "/home", redirect: "/" },
+  { path: '/home', redirect: '/' },
 
   // Redirect with param forwarding
-  { path: "/profile/:id", redirect: (to) => `/user/${to.params.id}` },
+  { path: '/profile/:id', redirect: (to) => `/user/${to.params.id}` },
 
   // Redirect preserving query params
-  { path: "/search-old", redirect: (to) => `/search?q=${to.query.q ?? ""}` },
+  { path: '/search-old', redirect: (to) => `/search?q=${to.query.q ?? ''}` },
 
   // Actual routes
-  { path: "/", component: Home },
-  { path: "/user/:id", component: UserPage },
-  { path: "/search", component: SearchPage },
+  { path: '/', component: Home },
+  { path: '/user/:id', component: UserPage },
+  { path: '/search', component: SearchPage },
 ]
 ```
 
@@ -492,14 +497,14 @@ Aliases let a route be reachable from multiple paths. The alias renders the same
 ```ts
 const routes = [
   {
-    path: "/user/:id",
+    path: '/user/:id',
     component: UserProfile,
-    alias: "/profile/:id",  // single alias
+    alias: '/profile/:id', // single alias
   },
   {
-    path: "/settings",
+    path: '/settings',
     component: Settings,
-    alias: ["/preferences", "/config"],  // multiple aliases
+    alias: ['/preferences', '/config'], // multiple aliases
   },
 ]
 ```
@@ -513,10 +518,10 @@ When `staleWhileRevalidate: true` is set on a route with a loader, the router sh
 ```ts
 const routes = [
   {
-    path: "/feed",
+    path: '/feed',
     component: Feed,
     loader: async ({ signal }) => {
-      const res = await fetch("/api/feed", { signal })
+      const res = await fetch('/api/feed', { signal })
       return res.json()
     },
     staleWhileRevalidate: true,
@@ -546,6 +551,7 @@ interface RouterProviderProps {
 ```
 
 `RouterProvider` does several things:
+
 1. Pushes the router into Pyreon's context stack so `useRouter()` and `useRoute()` work in descendants.
 2. Sets a module-level fallback so `useRouter()` works from event handlers outside the component tree.
 3. Cleans up on unmount: removes event listeners, clears caches, aborts in-flight navigations.
@@ -556,7 +562,7 @@ Renders the matched route component at the current nesting level. Place one at e
 
 ```tsx
 interface RouterViewProps {
-  router?: Router  // optional -- uses context by default
+  router?: Router // optional -- uses context by default
 }
 ```
 
@@ -595,7 +601,7 @@ interface RouterLinkProps {
   activeClass?: string
   exactActiveClass?: string
   exact?: boolean
-  prefetch?: "hover" | "viewport" | "none"
+  prefetch?: 'hover' | 'viewport' | 'none'
   children?: VNodeChild | null
 }
 ```
@@ -621,14 +627,14 @@ interface RouterLinkProps {
 </RouterLink>
 ```
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `to` | `string` | required | Navigation target path |
-| `replace` | `boolean` | `false` | Use `replace` instead of `push` |
-| `activeClass` | `string` | `"router-link-active"` | Class when link is active (current path starts with link target) |
-| `exactActiveClass` | `string` | `"router-link-exact-active"` | Class on exact path match |
-| `exact` | `boolean` | `false` | Only apply activeClass on exact match |
-| `prefetch` | `"hover" \| "viewport" \| "none"` | `"hover"` | Prefetch strategy for loader data |
+| Prop               | Type                              | Default                      | Description                                                      |
+| ------------------ | --------------------------------- | ---------------------------- | ---------------------------------------------------------------- |
+| `to`               | `string`                          | required                     | Navigation target path                                           |
+| `replace`          | `boolean`                         | `false`                      | Use `replace` instead of `push`                                  |
+| `activeClass`      | `string`                          | `"router-link-active"`       | Class when link is active (current path starts with link target) |
+| `exactActiveClass` | `string`                          | `"router-link-exact-active"` | Class on exact path match                                        |
+| `exact`            | `boolean`                         | `false`                      | Only apply activeClass on exact match                            |
+| `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`                    | Prefetch strategy for loader data                                |
 
 **Active class behavior:**
 
@@ -650,6 +656,7 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 **Navigation behavior:**
 
 `RouterLink` renders a standard `<a>` tag with an `onClick` handler that calls `e.preventDefault()` and uses `router.push()` (or `router.replace()` if `replace` is set). The `href` attribute is set correctly for both hash and history mode:
+
 - Hash mode: `href="#/about"`
 - History mode: `href="/about"`
 
@@ -696,12 +703,12 @@ function useRouter(): Router
 ```
 
 ```tsx
-import { useRouter } from "@pyreon/router"
+import { useRouter } from '@pyreon/router'
 
 function MyComponent() {
   const router = useRouter()
 
-  const goHome = () => router.push("/")
+  const goHome = () => router.push('/')
   const goBack = () => router.back()
   const isLoading = () => router.loading()
 
@@ -726,7 +733,7 @@ function useRoute<TPath extends string = string>(): () => ResolvedRoute<ExtractP
 ```
 
 ```tsx
-import { useRoute } from "@pyreon/router"
+import { useRoute } from '@pyreon/router'
 
 function Breadcrumb() {
   const route = useRoute()
@@ -735,7 +742,9 @@ function Breadcrumb() {
     <nav>
       <span>{route().path}</span>
       {Object.entries(route().query).map(([k, v]) => (
-        <span>{k}={v}</span>
+        <span>
+          {k}={v}
+        </span>
       ))}
     </nav>
   )
@@ -746,7 +755,7 @@ function Breadcrumb() {
 
 ```tsx
 function UserProfile() {
-  const route = useRoute<"/user/:id">()
+  const route = useRoute<'/user/:id'>()
 
   return <p>User ID: {route().params.id}</p>
   // route().params.id is typed as string
@@ -760,12 +769,12 @@ interface ResolvedRoute<
   P extends Record<string, string> = Record<string, string>,
   Q extends Record<string, string> = Record<string, string>,
 > {
-  path: string           // The matched path (without query or hash)
-  params: P              // Extracted route params
-  query: Q               // Parsed query string
-  hash: string           // Hash fragment (without #)
+  path: string // The matched path (without query or hash)
+  params: P // Extracted route params
+  query: Q // Parsed query string
+  hash: string // Hash fragment (without #)
   matched: RouteRecord[] // All matched records from root to leaf
-  meta: RouteMeta        // Merged metadata from all matched records
+  meta: RouteMeta // Merged metadata from all matched records
 }
 ```
 
@@ -780,17 +789,14 @@ function useSearchParams<T extends Record<string, string>>(
 ```
 
 ```tsx
-import { useSearchParams } from "@pyreon/router"
+import { useSearchParams } from '@pyreon/router'
 
 function SearchPage() {
-  const [query, setQuery] = useSearchParams({ q: "", page: "1" })
+  const [query, setQuery] = useSearchParams({ q: '', page: '1' })
 
   return (
     <div>
-      <input
-        value={query().q}
-        onInput={(e) => setQuery({ q: e.currentTarget.value })}
-      />
+      <input value={query().q} onInput={(e) => setQuery({ q: e.currentTarget.value })} />
       <p>Page: {query().page}</p>
       <button onClick={() => setQuery({ page: String(Number(query().page) + 1) })}>
         Next Page
@@ -809,23 +815,20 @@ Register a navigation blocker to prevent the user from leaving a page:
 ```ts
 function useBlocker(fn: BlockerFn): { remove(): void }
 
-type BlockerFn = (
-  to: ResolvedRoute,
-  from: ResolvedRoute,
-) => boolean | Promise<boolean>
+type BlockerFn = (to: ResolvedRoute, from: ResolvedRoute) => boolean | Promise<boolean>
 ```
 
 Return `true` (or resolve to `true`) to block navigation. The blocker also installs a `beforeunload` handler to catch tab closures.
 
 ```tsx
-import { useBlocker } from "@pyreon/router"
+import { useBlocker } from '@pyreon/router'
 
 function Editor() {
   const dirty = signal(false)
 
   useBlocker((to, from) => {
     if (!dirty()) return false
-    return !window.confirm("You have unsaved changes. Leave anyway?")
+    return !window.confirm('You have unsaved changes. Leave anyway?')
   })
 
   return <textarea onInput={() => dirty.set(true)} />
@@ -843,7 +846,7 @@ function onBeforeRouteLeave(guard: NavigationGuard): () => void
 ```
 
 ```tsx
-import { onBeforeRouteLeave } from "@pyreon/router"
+import { onBeforeRouteLeave } from '@pyreon/router'
 
 function EditorPage() {
   onBeforeRouteLeave((to, from) => {
@@ -867,7 +870,7 @@ function onBeforeRouteUpdate(guard: NavigationGuard): () => void
 ```
 
 ```tsx
-import { onBeforeRouteUpdate } from "@pyreon/router"
+import { onBeforeRouteUpdate } from '@pyreon/router'
 
 function UserProfile() {
   onBeforeRouteUpdate(async (to, from) => {
@@ -892,25 +895,25 @@ The router provides several navigation methods:
 const router = useRouter()
 
 // Navigate by path
-await router.push("/user/42")
+await router.push('/user/42')
 
 // Navigate by name with params
-await router.push({ name: "user", params: { id: "42" } })
+await router.push({ name: 'user', params: { id: '42' } })
 
 // Navigate by name with query
-await router.push({ name: "search", query: { q: "pyreon" } })
+await router.push({ name: 'search', query: { q: 'pyreon' } })
 
 // Replace current history entry (no new entry in browser history)
-await router.replace("/new-path")
+await router.replace('/new-path')
 
 // Replace with named route
-await router.replace({ name: "user", params: { id: "42" } })
+await router.replace({ name: 'user', params: { id: '42' } })
 
 // Go back / forward / arbitrary delta
 router.back()
 router.forward()
 router.go(-2) // go back 2 steps
-router.go(1)  // same as forward()
+router.go(1) // same as forward()
 ```
 
 **Named navigation:**
@@ -919,19 +922,19 @@ Named routes avoid hardcoding paths. Give routes a `name` and navigate with an o
 
 ```ts
 const routes = [
-  { path: "/user/:id", component: UserPage, name: "user" },
-  { path: "/user/:id/posts/:postId", component: PostPage, name: "post" },
+  { path: '/user/:id', component: UserPage, name: 'user' },
+  { path: '/user/:id/posts/:postId', component: PostPage, name: 'post' },
 ]
 
 // Navigate by name
-router.push({ name: "user", params: { id: "42" } })
+router.push({ name: 'user', params: { id: '42' } })
 // => /user/42
 
-router.push({ name: "post", params: { id: "42", postId: "7" } })
+router.push({ name: 'post', params: { id: '42', postId: '7' } })
 // => /user/42/posts/7
 
 // With query params
-router.push({ name: "user", params: { id: "42" }, query: { tab: "posts" } })
+router.push({ name: 'user', params: { id: '42' }, query: { tab: 'posts' } })
 // => /user/42?tab=posts
 ```
 
@@ -944,7 +947,7 @@ If a named route does not exist, the router logs a warning and navigates to `/`.
 ```tsx
 async function handleLogin() {
   await authenticate()
-  await router.push("/dashboard")
+  await router.push('/dashboard')
   // Navigation is complete, dashboard is rendered
 }
 ```
@@ -954,8 +957,8 @@ async function handleLogin() {
 The router blocks `javascript:` and `data:` URIs in navigation targets. Attempting to navigate to such a URI logs a warning and redirects to `/`.
 
 ```ts
-router.push("javascript:alert(1)") // blocked, navigates to /
-router.push("data:text/html,...")   // blocked, navigates to /
+router.push('javascript:alert(1)') // blocked, navigates to /
+router.push('data:text/html,...') // blocked, navigates to /
 ```
 
 ### Navigation Guards
@@ -977,7 +980,7 @@ Each group runs in order. If any guard cancels or redirects, subsequent guards d
 const removeGuard = router.beforeEach(async (to, from) => {
   // Check authentication
   if (to.meta.requiresAuth && !isAuthenticated()) {
-    return "/login" // redirect to login
+    return '/login' // redirect to login
   }
   // return undefined or true to allow
   // return false to cancel
@@ -1003,10 +1006,10 @@ removeHook()
 ```ts
 const routes = [
   {
-    path: "/admin",
+    path: '/admin',
     component: AdminLayout,
     beforeEnter: (to, from) => {
-      if (!isAdmin()) return "/unauthorized"
+      if (!isAdmin()) return '/unauthorized'
     },
     beforeLeave: (to, from) => {
       if (hasUnsavedChanges()) return false // cancel navigation
@@ -1036,12 +1039,12 @@ const routes = [
 
 #### Guard Return Values
 
-| Return | Effect |
-|--------|--------|
-| `undefined` | Allow navigation |
-| `true` | Allow navigation |
-| `false` | Cancel navigation |
-| `string` | Redirect to that path |
+| Return      | Effect                |
+| ----------- | --------------------- |
+| `undefined` | Allow navigation      |
+| `true`      | Allow navigation      |
+| `false`     | Cancel navigation     |
+| `string`    | Redirect to that path |
 
 #### Async Guards
 
@@ -1051,7 +1054,7 @@ Guards can be async. The router awaits each guard before proceeding. If a newer 
 router.beforeEach(async (to, from) => {
   // Async check
   const allowed = await checkPermission(to.path)
-  if (!allowed) return "/forbidden"
+  if (!allowed) return '/forbidden'
 })
 ```
 
@@ -1104,9 +1107,9 @@ function UsersError() {
 
 ```ts
 interface LoaderContext {
-  params: Record<string, string>   // Route params
-  query: Record<string, string>    // Query string params
-  signal: AbortSignal              // Aborted when a newer navigation starts
+  params: Record<string, string> // Route params
+  query: Record<string, string> // Query string params
+  signal: AbortSignal // Aborted when a newer navigation starts
 }
 ```
 
@@ -1163,7 +1166,7 @@ Each route in the matched stack can have its own loader. All loaders run in para
 ```tsx
 const routes = [
   {
-    path: "/org/:orgId",
+    path: '/org/:orgId',
     component: OrgLayout,
     loader: async ({ params, signal }) => {
       const res = await fetch(`/api/orgs/${params.orgId}`, { signal })
@@ -1171,7 +1174,7 @@ const routes = [
     },
     children: [
       {
-        path: "members",
+        path: 'members',
         component: OrgMembers,
         loader: async ({ params, signal }) => {
           const res = await fetch(`/api/orgs/${params.orgId}/members`, { signal })
@@ -1196,7 +1199,9 @@ function OrgMembers() {
   const members = useLoaderData<Member[]>()
   return (
     <ul>
-      {members.map(m => <li>{m.name}</li>)}
+      {members.map((m) => (
+        <li>{m.name}</li>
+      ))}
     </ul>
   )
 }
@@ -1209,12 +1214,8 @@ For SSR, prefetch loader data before rendering, serialize it into the HTML, and 
 **Server:**
 
 ```tsx
-import {
-  createRouter,
-  prefetchLoaderData,
-  serializeLoaderData,
-} from "@pyreon/router"
-import { renderToString } from "@pyreon/runtime-server"
+import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import { renderToString } from '@pyreon/runtime-server'
 
 // In your SSR handler:
 const router = createRouter({ routes, url: req.url })
@@ -1244,15 +1245,15 @@ const page = `
 **Client:**
 
 ```tsx
-import { createRouter, hydrateLoaderData } from "@pyreon/router"
-import { mount } from "@pyreon/runtime-dom"
+import { createRouter, hydrateLoaderData } from '@pyreon/router'
+import { mount } from '@pyreon/runtime-dom'
 
 const router = createRouter({ routes })
 
 // Hydrate loader data so initial render uses server-fetched data
 hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
 
-mount(<App />, document.getElementById("app")!)
+mount(<App />, document.getElementById('app')!)
 ```
 
 `serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders.
@@ -1262,22 +1263,19 @@ mount(<App />, document.getElementById("app")!)
 Use the `lazy()` helper for code-splitting route components:
 
 ```ts
-import { lazy } from "@pyreon/router"
+import { lazy } from '@pyreon/router'
 
 const routes = [
   {
-    path: "/dashboard",
-    component: lazy(
-      () => import("./pages/Dashboard"),
-      {
-        loading: LoadingSpinner,  // shown while loading
-        error: LoadError,         // shown if all retries fail
-      }
-    ),
+    path: '/dashboard',
+    component: lazy(() => import('./pages/Dashboard'), {
+      loading: LoadingSpinner, // shown while loading
+      error: LoadError, // shown if all retries fail
+    }),
   },
   {
-    path: "/settings",
-    component: lazy(() => import("./pages/Settings")),
+    path: '/settings',
+    component: lazy(() => import('./pages/Settings')),
     // No loading or error component -- renders null while loading
   },
 ]
@@ -1307,9 +1305,7 @@ function LoadError() {
   return (
     <div class="error">
       <p>Failed to load this page.</p>
-      <button onClick={() => window.location.reload()}>
-        Reload
-      </button>
+      <button onClick={() => window.location.reload()}>Reload</button>
     </div>
   )
 }
@@ -1321,11 +1317,11 @@ The `lazy()` loader function should return either a component function directly 
 
 ```ts
 // Default export (standard ESM module)
-lazy(() => import("./pages/Dashboard"))
+lazy(() => import('./pages/Dashboard'))
 // The router extracts mod.default
 
 // Direct component export
-lazy(() => import("./pages/Dashboard").then(m => m.DashboardPage))
+lazy(() => import('./pages/Dashboard').then((m) => m.DashboardPage))
 // The router uses the function directly
 ```
 
@@ -1336,17 +1332,17 @@ Control scroll position on navigation:
 ```ts
 const router = createRouter({
   routes,
-  scrollBehavior: "restore",
+  scrollBehavior: 'restore',
 })
 ```
 
 ### Scroll Options
 
-| Value | Behavior |
-|-------|----------|
-| `"top"` (default) | Scroll to top on every navigation |
-| `"restore"` | Restore saved scroll position, fall back to top |
-| `"none"` | Don't touch scroll position |
+| Value             | Behavior                                        |
+| ----------------- | ----------------------------------------------- |
+| `"top"` (default) | Scroll to top on every navigation               |
+| `"restore"`       | Restore saved scroll position, fall back to top |
+| `"none"`          | Don't touch scroll position                     |
 
 The scroll manager saves `window.scrollY` before each navigation and restores it after the navigation commits.
 
@@ -1370,22 +1366,22 @@ type ScrollBehaviorFn = (
   to: ResolvedRoute,
   from: ResolvedRoute,
   savedPosition: number | null,
-) => "top" | "restore" | "none" | number
+) => 'top' | 'restore' | 'none' | number
 
 const router = createRouter({
   routes,
   scrollBehavior: (to, from, savedPosition) => {
     // Restore position for back/forward navigation
-    if (savedPosition !== null) return "restore"
+    if (savedPosition !== null) return 'restore'
 
     // Don't scroll for hash navigation
-    if (to.hash) return "none"
+    if (to.hash) return 'none'
 
     // Scroll to a specific position
-    if (to.path === "/long-page") return 500
+    if (to.path === '/long-page') return 500
 
     // Default: scroll to top
-    return "top"
+    return 'top'
   },
 })
 ```
@@ -1470,7 +1466,7 @@ function App() {
 const router = createRouter({ routes })
 
 await router.isReady()
-mount(<App />, document.getElementById("app")!)
+mount(<App />, document.getElementById('app')!)
 ```
 
 **The `destroy` method:**
@@ -1482,7 +1478,7 @@ Call `destroy()` to clean up the router: remove `popstate`/`hashchange` listener
 ### Query String Utilities
 
 ```ts
-import { parseQuery, parseQueryMulti, stringifyQuery } from "@pyreon/router"
+import { parseQuery, parseQueryMulti, stringifyQuery } from '@pyreon/router'
 ```
 
 #### `parseQuery`
@@ -1490,13 +1486,13 @@ import { parseQuery, parseQueryMulti, stringifyQuery } from "@pyreon/router"
 Parses a query string into a `Record<string, string>`. Duplicate keys are overwritten (last wins).
 
 ```ts
-parseQuery("name=Alice&age=30")
+parseQuery('name=Alice&age=30')
 // { name: "Alice", age: "30" }
 
-parseQuery("key=value&empty&encoded=%20hello")
+parseQuery('key=value&empty&encoded=%20hello')
 // { key: "value", empty: "", encoded: " hello" }
 
-parseQuery("")
+parseQuery('')
 // {}
 ```
 
@@ -1505,13 +1501,13 @@ parseQuery("")
 Parses a query string preserving duplicate keys as arrays. Single-value keys remain strings.
 
 ```ts
-parseQueryMulti("color=red&color=blue&size=lg")
+parseQueryMulti('color=red&color=blue&size=lg')
 // { color: ["red", "blue"], size: "lg" }
 
-parseQueryMulti("tag=a&tag=b&tag=c")
+parseQueryMulti('tag=a&tag=b&tag=c')
 // { tag: ["a", "b", "c"] }
 
-parseQueryMulti("single=value")
+parseQueryMulti('single=value')
 // { single: "value" } -- not wrapped in an array
 ```
 
@@ -1520,10 +1516,10 @@ parseQueryMulti("single=value")
 Converts a query object to a query string with a leading `?`. Returns an empty string if the object is empty.
 
 ```ts
-stringifyQuery({ name: "Alice", age: "30" })
+stringifyQuery({ name: 'Alice', age: '30' })
 // "?name=Alice&age=30"
 
-stringifyQuery({ q: "hello world" })
+stringifyQuery({ q: 'hello world' })
 // "?q=hello%20world"
 
 stringifyQuery({})
@@ -1533,7 +1529,7 @@ stringifyQuery({})
 ### Route Resolution Utilities
 
 ```ts
-import { resolveRoute, buildPath, findRouteByName } from "@pyreon/router"
+import { resolveRoute, buildPath, findRouteByName } from '@pyreon/router'
 ```
 
 #### `resolveRoute`
@@ -1541,11 +1537,9 @@ import { resolveRoute, buildPath, findRouteByName } from "@pyreon/router"
 Resolve a raw path (including query string and hash) against the route tree. Returns a `ResolvedRoute`.
 
 ```ts
-const routes = [
-  { path: "/user/:id", component: User, name: "user" },
-]
+const routes = [{ path: '/user/:id', component: User, name: 'user' }]
 
-const resolved = resolveRoute("/user/42?tab=posts#section", routes)
+const resolved = resolveRoute('/user/42?tab=posts#section', routes)
 // {
 //   path: "/user/42",
 //   params: { id: "42" },
@@ -1559,7 +1553,7 @@ const resolved = resolveRoute("/user/42?tab=posts#section", routes)
 If no route matches, returns an empty resolved route:
 
 ```ts
-const resolved = resolveRoute("/nonexistent", routes)
+const resolved = resolveRoute('/nonexistent', routes)
 // { path: "/nonexistent", params: {}, query: {}, hash: "", matched: [], meta: {} }
 ```
 
@@ -1568,14 +1562,14 @@ const resolved = resolveRoute("/nonexistent", routes)
 Build a path string from a route pattern and params. Encodes param values.
 
 ```ts
-buildPath("/user/:id", { id: "42" })
+buildPath('/user/:id', { id: '42' })
 // "/user/42"
 
-buildPath("/user/:id/posts/:postId", { id: "42", postId: "7" })
+buildPath('/user/:id/posts/:postId', { id: '42', postId: '7' })
 // "/user/42/posts/7"
 
 // Splat params preserve slashes
-buildPath("/files/:path*", { path: "docs/readme.md" })
+buildPath('/files/:path*', { path: 'docs/readme.md' })
 // "/files/docs/readme.md"
 ```
 
@@ -1585,24 +1579,22 @@ Find a route record by name (recursive search, O(n)). Returns `null` if not foun
 
 ```ts
 const routes = [
-  { path: "/", component: Home },
-  { path: "/user/:id", component: User, name: "user" },
+  { path: '/', component: Home },
+  { path: '/user/:id', component: User, name: 'user' },
   {
-    path: "/admin",
+    path: '/admin',
     component: Admin,
-    children: [
-      { path: "settings", component: Settings, name: "admin-settings" },
-    ],
+    children: [{ path: 'settings', component: Settings, name: 'admin-settings' }],
   },
 ]
 
-findRouteByName("user", routes)
+findRouteByName('user', routes)
 // { path: "/user/:id", component: User, name: "user" }
 
-findRouteByName("admin-settings", routes)
+findRouteByName('admin-settings', routes)
 // { path: "settings", component: Settings, name: "admin-settings" }
 
-findRouteByName("nonexistent", routes)
+findRouteByName('nonexistent', routes)
 // null
 ```
 
@@ -1615,39 +1607,39 @@ For repeated lookups (e.g., inside navigation), the router internally uses `buil
 ```tsx
 // routes.ts
 const routes = [
-  { path: "/login", component: LoginPage },
+  { path: '/login', component: LoginPage },
   {
-    path: "/dashboard",
+    path: '/dashboard',
     component: DashboardLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: "overview", component: Overview },
-      { path: "settings", component: Settings },
+      { path: 'overview', component: Overview },
+      { path: 'settings', component: Settings },
     ],
   },
-  { path: "/", redirect: "/dashboard/overview" },
-  { path: "(.*)", component: NotFound },
+  { path: '/', redirect: '/dashboard/overview' },
+  { path: '(.*)', component: NotFound },
 ]
 
 // auth.ts
-import { createRouter } from "@pyreon/router"
+import { createRouter } from '@pyreon/router'
 
-const router = createRouter({ routes, mode: "history" })
+const router = createRouter({ routes, mode: 'history' })
 
 // Global auth guard
 router.beforeEach(async (to, from) => {
   if (to.meta.requiresAuth && !isAuthenticated()) {
     // Save the intended destination for post-login redirect
-    sessionStorage.setItem("redirect", to.path)
-    return "/login"
+    sessionStorage.setItem('redirect', to.path)
+    return '/login'
   }
 })
 
 // After login, redirect to saved destination
 async function handleLogin(credentials: Credentials) {
   await authenticate(credentials)
-  const redirect = sessionStorage.getItem("redirect") || "/dashboard/overview"
-  sessionStorage.removeItem("redirect")
+  const redirect = sessionStorage.getItem('redirect') || '/dashboard/overview'
+  sessionStorage.removeItem('redirect')
   await router.push(redirect)
 }
 ```
@@ -1656,21 +1648,21 @@ async function handleLogin(credentials: Credentials) {
 
 ```tsx
 // Extend RouteMeta
-declare module "@pyreon/router" {
+declare module '@pyreon/router' {
   interface RouteMeta {
-    requiredRole?: "admin" | "editor" | "viewer"
+    requiredRole?: 'admin' | 'editor' | 'viewer'
   }
 }
 
 const routes = [
   {
-    path: "/admin",
+    path: '/admin',
     component: AdminPanel,
-    meta: { requiresAuth: true, requiredRole: "admin" },
+    meta: { requiresAuth: true, requiredRole: 'admin' },
     beforeEnter: (to, from) => {
       const user = getCurrentUser()
       if (user?.role !== to.meta.requiredRole) {
-        return "/unauthorized"
+        return '/unauthorized'
       }
     },
   },
@@ -1681,7 +1673,7 @@ const routes = [
 
 ```tsx
 // Extend RouteMeta with breadcrumb labels
-declare module "@pyreon/router" {
+declare module '@pyreon/router' {
   interface RouteMeta {
     breadcrumb?: string
   }
@@ -1689,18 +1681,16 @@ declare module "@pyreon/router" {
 
 const routes = [
   {
-    path: "/products",
+    path: '/products',
     component: ProductsLayout,
-    meta: { breadcrumb: "Products" },
+    meta: { breadcrumb: 'Products' },
     children: [
-      { path: "", component: ProductList },
+      { path: '', component: ProductList },
       {
-        path: ":id",
+        path: ':id',
         component: ProductDetail,
-        meta: { breadcrumb: "Details" },
-        children: [
-          { path: "reviews", component: ProductReviews, meta: { breadcrumb: "Reviews" } },
-        ],
+        meta: { breadcrumb: 'Details' },
+        children: [{ path: 'reviews', component: ProductReviews, meta: { breadcrumb: 'Reviews' } }],
       },
     ],
   },
@@ -1711,18 +1701,18 @@ function Breadcrumbs() {
 
   return (
     <nav class="breadcrumbs">
-      {route().matched
-        .filter(r => r.meta?.breadcrumb)
+      {route()
+        .matched.filter((r) => r.meta?.breadcrumb)
         .map((r, i, arr) => (
           <span>
-            {i > 0 && " / "}
-            {i < arr.length - 1
-              ? <RouterLink to={buildPath(r.path, route().params)}>{r.meta!.breadcrumb}</RouterLink>
-              : <span>{r.meta!.breadcrumb}</span>
-            }
+            {i > 0 && ' / '}
+            {i < arr.length - 1 ? (
+              <RouterLink to={buildPath(r.path, route().params)}>{r.meta!.breadcrumb}</RouterLink>
+            ) : (
+              <span>{r.meta!.breadcrumb}</span>
+            )}
           </span>
-        ))
-      }
+        ))}
     </nav>
   )
 }
@@ -1732,10 +1722,10 @@ function Breadcrumbs() {
 
 ```tsx
 const routes = [
-  { path: "/", component: Home },
-  { path: "/about", component: About },
+  { path: '/', component: Home },
+  { path: '/about', component: About },
   // Catch-all: must be last
-  { path: "(.*)", component: NotFoundPage, meta: { title: "Page Not Found" } },
+  { path: '(.*)', component: NotFoundPage, meta: { title: 'Page Not Found' } },
 ]
 
 function NotFoundPage() {
@@ -1745,8 +1735,10 @@ function NotFoundPage() {
   return (
     <div class="not-found">
       <h1>404 - Page Not Found</h1>
-      <p>The page <code>{route().path}</code> does not exist.</p>
-      <button onClick={() => router.push("/")}>Go Home</button>
+      <p>
+        The page <code>{route().path}</code> does not exist.
+      </p>
+      <button onClick={() => router.push('/')}>Go Home</button>
     </div>
   )
 }
@@ -1757,12 +1749,12 @@ function NotFoundPage() {
 ```tsx
 const routes = [
   {
-    path: "/editor",
+    path: '/editor',
     component: Editor,
     beforeLeave: (to, from) => {
       // Check for unsaved changes before navigating away
       if (hasUnsavedChanges()) {
-        const confirmed = window.confirm("You have unsaved changes. Leave anyway?")
+        const confirmed = window.confirm('You have unsaved changes. Leave anyway?')
         if (!confirmed) return false // cancel navigation
       }
     },
@@ -1775,18 +1767,18 @@ const routes = [
 ```tsx
 const routes = [
   {
-    path: "/app",
+    path: '/app',
     component: AppLayout,
     children: [
-      { path: "inbox", component: Inbox, meta: { title: "Inbox" } },
-      { path: "sent", component: Sent, meta: { title: "Sent" } },
-      { path: "drafts", component: Drafts, meta: { title: "Drafts" } },
+      { path: 'inbox', component: Inbox, meta: { title: 'Inbox' } },
+      { path: 'sent', component: Sent, meta: { title: 'Sent' } },
+      { path: 'drafts', component: Drafts, meta: { title: 'Drafts' } },
       {
-        path: "settings",
+        path: 'settings',
         component: SettingsLayout,
         children: [
-          { path: "profile", component: ProfileSettings },
-          { path: "notifications", component: NotificationSettings },
+          { path: 'profile', component: ProfileSettings },
+          { path: 'notifications', component: NotificationSettings },
         ],
       },
     ],
@@ -1848,7 +1840,7 @@ function GlobalLoadingBar() {
       class="loading-bar"
       style={{
         opacity: router.loading() ? 1 : 0,
-        transition: "opacity 200ms",
+        transition: 'opacity 200ms',
       }}
     />
   )
@@ -1860,16 +1852,16 @@ function GlobalLoadingBar() {
 ```tsx
 const routes = [
   {
-    path: "/onboarding",
+    path: '/onboarding',
     redirect: () => {
       const step = getOnboardingStep()
-      if (step === "complete") return "/dashboard"
+      if (step === 'complete') return '/dashboard'
       return `/onboarding/step-${step}`
     },
   },
-  { path: "/onboarding/step-1", component: OnboardingStep1 },
-  { path: "/onboarding/step-2", component: OnboardingStep2 },
-  { path: "/onboarding/step-3", component: OnboardingStep3 },
+  { path: '/onboarding/step-1', component: OnboardingStep1 },
+  { path: '/onboarding/step-2', component: OnboardingStep2 },
+  { path: '/onboarding/step-3', component: OnboardingStep3 },
 ]
 ```
 
@@ -1904,8 +1896,8 @@ A typical SSR flow:
 
 ```tsx
 // Server
-import { createRouter, prefetchLoaderData, serializeLoaderData } from "@pyreon/router"
-import { renderToString } from "@pyreon/runtime-server"
+import { createRouter, prefetchLoaderData, serializeLoaderData } from '@pyreon/router'
+import { renderToString } from '@pyreon/runtime-server'
 
 export async function handleRequest(req: Request): Promise<Response> {
   const router = createRouter({ routes, url: new URL(req.url).pathname })
@@ -1913,12 +1905,15 @@ export async function handleRequest(req: Request): Promise<Response> {
   await prefetchLoaderData(router, new URL(req.url).pathname)
 
   const html = await renderToString(
-    <RouterProvider router={router}><RouterView /></RouterProvider>
+    <RouterProvider router={router}>
+      <RouterView />
+    </RouterProvider>,
   )
 
   const loaderData = JSON.stringify(serializeLoaderData(router))
 
-  return new Response(`
+  return new Response(
+    `
     <!DOCTYPE html>
     <html>
       <body>
@@ -1927,7 +1922,9 @@ export async function handleRequest(req: Request): Promise<Response> {
         <script type="module" src="/client.js"></script>
       </body>
     </html>
-  `, { headers: { "content-type": "text/html" } })
+  `,
+    { headers: { 'content-type': 'text/html' } },
+  )
 }
 ```
 

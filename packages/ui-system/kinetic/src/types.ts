@@ -1,10 +1,10 @@
-import type { Ref, VNode } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
+import type { Ref, VNode } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
 
 export type CSSProperties = Record<string, string | number | undefined>
 
 /** Internal lifecycle stages of a transition. */
-export type TransitionStage = "hidden" | "entering" | "entered" | "leaving"
+export type TransitionStage = 'hidden' | 'entering' | 'entered' | 'leaving'
 
 /** Class-based transition definition. */
 export type ClassTransitionProps = {

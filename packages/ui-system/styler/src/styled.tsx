@@ -15,13 +15,13 @@
  * through without transformation, so `&:hover`, `&::before`, etc. work
  * as-is in browsers supporting CSS Nesting (all modern browsers).
  */
-import type { ComponentFn, VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import { buildProps } from "./forward"
-import { type Interpolation, normalizeCSS, resolve } from "./resolve"
-import { isDynamic } from "./shared"
-import { sheet } from "./sheet"
-import { useTheme } from "./ThemeProvider"
+import type { ComponentFn, VNode } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { buildProps } from './forward'
+import { type Interpolation, normalizeCSS, resolve } from './resolve'
+import { isDynamic } from './shared'
+import { sheet } from './sheet'
+import { useTheme } from './ThemeProvider'
 
 type Tag = string | ComponentFn<any>
 
@@ -37,9 +37,9 @@ export interface StyledOptions {
 }
 
 const getDisplayName = (tag: Tag): string =>
-  typeof tag === "string"
+  typeof tag === 'string'
     ? tag
-    : (tag as ComponentFn<any> & { displayName?: string }).displayName || tag.name || "Component"
+    : (tag as ComponentFn<any> & { displayName?: string }).displayName || tag.name || 'Component'
 
 // Component cache: same template literal + tag + no options → same component.
 // WeakMap on `strings` (TemplateStringsArray is object-identity per source location).
@@ -86,11 +86,11 @@ const createStyledComponent = (
     const cssText = normalizeCSS(raw)
     const hasCss = cssText.length > 0
 
-    const staticClassName = hasCss ? sheet.insert(cssText, boost) : ""
+    const staticClassName = hasCss ? sheet.insert(cssText, boost) : ''
 
     const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
       const finalTag = rawProps.as || tag
-      const isDOM = typeof finalTag === "string"
+      const isDOM = typeof finalTag === 'string'
       const finalProps = buildProps(rawProps, staticClassName, isDOM, customFilter)
 
       return h(
@@ -129,10 +129,10 @@ const createStyledComponent = (
     const allProps = { ...rawProps, theme }
     const cssText = normalizeCSS(resolve(strings, values, allProps))
 
-    const className = cssText.length > 0 ? sheet.insert(cssText, boost) : ""
+    const className = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
 
     const finalTag = rawProps.as || tag
-    const isDOM = typeof finalTag === "string"
+    const isDOM = typeof finalTag === 'string'
     const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
     return h(
@@ -171,89 +171,89 @@ const proxyCache = new Map<string, (...args: any[]) => any>()
 type TagTemplateFn = (strings: TemplateStringsArray, ...values: Interpolation[]) => ComponentFn
 
 type HtmlTags =
-  | "a"
-  | "abbr"
-  | "address"
-  | "article"
-  | "aside"
-  | "audio"
-  | "b"
-  | "blockquote"
-  | "body"
-  | "br"
-  | "button"
-  | "canvas"
-  | "caption"
-  | "code"
-  | "col"
-  | "colgroup"
-  | "dd"
-  | "details"
-  | "div"
-  | "dl"
-  | "dt"
-  | "em"
-  | "fieldset"
-  | "figcaption"
-  | "figure"
-  | "footer"
-  | "form"
-  | "h1"
-  | "h2"
-  | "h3"
-  | "h4"
-  | "h5"
-  | "h6"
-  | "head"
-  | "header"
-  | "hr"
-  | "html"
-  | "i"
-  | "iframe"
-  | "img"
-  | "input"
-  | "label"
-  | "legend"
-  | "li"
-  | "link"
-  | "main"
-  | "mark"
-  | "menu"
-  | "meta"
-  | "nav"
-  | "ol"
-  | "optgroup"
-  | "option"
-  | "output"
-  | "p"
-  | "picture"
-  | "pre"
-  | "progress"
-  | "q"
-  | "section"
-  | "select"
-  | "small"
-  | "source"
-  | "span"
-  | "strong"
-  | "style"
-  | "sub"
-  | "summary"
-  | "sup"
-  | "svg"
-  | "table"
-  | "tbody"
-  | "td"
-  | "template"
-  | "textarea"
-  | "tfoot"
-  | "th"
-  | "thead"
-  | "time"
-  | "tr"
-  | "u"
-  | "ul"
-  | "video"
+  | 'a'
+  | 'abbr'
+  | 'address'
+  | 'article'
+  | 'aside'
+  | 'audio'
+  | 'b'
+  | 'blockquote'
+  | 'body'
+  | 'br'
+  | 'button'
+  | 'canvas'
+  | 'caption'
+  | 'code'
+  | 'col'
+  | 'colgroup'
+  | 'dd'
+  | 'details'
+  | 'div'
+  | 'dl'
+  | 'dt'
+  | 'em'
+  | 'fieldset'
+  | 'figcaption'
+  | 'figure'
+  | 'footer'
+  | 'form'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'h4'
+  | 'h5'
+  | 'h6'
+  | 'head'
+  | 'header'
+  | 'hr'
+  | 'html'
+  | 'i'
+  | 'iframe'
+  | 'img'
+  | 'input'
+  | 'label'
+  | 'legend'
+  | 'li'
+  | 'link'
+  | 'main'
+  | 'mark'
+  | 'menu'
+  | 'meta'
+  | 'nav'
+  | 'ol'
+  | 'optgroup'
+  | 'option'
+  | 'output'
+  | 'p'
+  | 'picture'
+  | 'pre'
+  | 'progress'
+  | 'q'
+  | 'section'
+  | 'select'
+  | 'small'
+  | 'source'
+  | 'span'
+  | 'strong'
+  | 'style'
+  | 'sub'
+  | 'summary'
+  | 'sup'
+  | 'svg'
+  | 'table'
+  | 'tbody'
+  | 'td'
+  | 'template'
+  | 'textarea'
+  | 'tfoot'
+  | 'th'
+  | 'thead'
+  | 'time'
+  | 'tr'
+  | 'u'
+  | 'ul'
+  | 'video'
 
 export type StyledFunction = ((tag: Tag, options?: StyledOptions) => TagTemplateFn) & {
   [K in HtmlTags]: TagTemplateFn
@@ -264,7 +264,7 @@ export type StyledFunction = ((tag: Tag, options?: StyledOptions) => TagTemplate
 // Proxy target uses `as any` because TS can't resolve Proxy<StyledFunction> with mapped types
 export const styled: StyledFunction = new Proxy(styledFactory as any, {
   get(_target: unknown, prop: string) {
-    if (prop === "prototype" || prop === "$$typeof") return undefined
+    if (prop === 'prototype' || prop === '$$typeof') return undefined
     // styled.div`...`, styled.span`...`, etc.
     let fn = proxyCache.get(prop)
     if (!fn) {

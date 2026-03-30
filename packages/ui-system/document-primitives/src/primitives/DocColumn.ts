@@ -1,11 +1,11 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
-const DocColumn = rocketstyle()({ name: "DocColumn", component: Element })
-  .statics({ _documentType: "column" as const })
+const DocColumn = rocketstyle()({ name: 'DocColumn', component: Element })
+  .statics({ _documentType: 'column' as const })
   .attrs<{ width?: number | string; tag: string; _documentProps: Record<string, unknown> }>(
     (props) => ({
-      tag: "div",
+      tag: 'div',
       _documentProps: props.width != null ? { width: props.width } : {},
     }),
   )

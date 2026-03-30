@@ -1,4 +1,4 @@
-import { onCleanup, signal } from "@pyreon/reactivity"
+import { onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseClipboardResult {
   /** Copy text to clipboard. Returns true on success. */
@@ -26,7 +26,7 @@ export interface UseClipboardResult {
 export function useClipboard(options?: { timeout?: number }): UseClipboardResult {
   const timeout = options?.timeout ?? 2000
   const copied = signal(false)
-  const text = signal("")
+  const text = signal('')
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const copy = async (value: string): Promise<boolean> => {

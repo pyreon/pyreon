@@ -1,5 +1,5 @@
-import { effect } from "./effect"
-import { trackSubscriber } from "./tracking"
+import { effect } from './effect'
+import { trackSubscriber } from './tracking'
 
 /**
  * Notify a subscriber bucket without snapshot allocation.

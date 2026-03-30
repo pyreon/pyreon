@@ -1,4 +1,4 @@
-import { onUnmount } from "@pyreon/core"
+import { onUnmount } from '@pyreon/core'
 
 export type UseTimeout = (
   callback: () => void,

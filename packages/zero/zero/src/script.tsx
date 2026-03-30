@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createRef, onMount, onUnmount } from "@pyreon/core"
-import { useIntersectionObserver } from "./utils/use-intersection-observer"
+import type { VNodeChild } from '@pyreon/core'
+import { createRef, onMount, onUnmount } from '@pyreon/core'
+import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Script optimization component ─────────────────────────────────────────
 //
@@ -29,11 +29,11 @@ export interface ScriptProps {
 }
 
 export type ScriptStrategy =
-  | "beforeHydration"
-  | "afterHydration"
-  | "onIdle"
-  | "onInteraction"
-  | "onViewport"
+  | 'beforeHydration'
+  | 'afterHydration'
+  | 'onIdle'
+  | 'onInteraction'
+  | 'onViewport'
 
 /**
  * Optimized script loading component.
@@ -55,7 +55,7 @@ export function Script(props: ScriptProps): VNodeChild {
     // Deduplication
     if (props.id && document.getElementById(props.id)) return
 
-    const script = document.createElement("script")
+    const script = document.createElement('script')
     if (props.src) script.src = props.src
     if (props.id) script.id = props.id
     script.async = props.async !== false
@@ -73,28 +73,28 @@ export function Script(props: ScriptProps): VNodeChild {
   }
 
   onMount(() => {
-    const strategy = props.strategy ?? "afterHydration"
+    const strategy = props.strategy ?? 'afterHydration'
 
     switch (strategy) {
-      case "beforeHydration":
+      case 'beforeHydration':
         // Already in HTML — do nothing
         break
 
-      case "afterHydration":
+      case 'afterHydration':
         // Load immediately after mount (hydration is complete)
         loadScript()
         break
 
-      case "onIdle":
-        if ("requestIdleCallback" in window) {
+      case 'onIdle':
+        if ('requestIdleCallback' in window) {
           requestIdleCallback(() => loadScript(), { timeout: 5000 })
         } else {
           setTimeout(loadScript, 200)
         }
         break
 
-      case "onInteraction": {
-        const events = ["click", "scroll", "keydown", "touchstart"]
+      case 'onInteraction': {
+        const events = ['click', 'scroll', 'keydown', 'touchstart']
         function handler() {
           for (const e of events) document.removeEventListener(e, handler)
           loadScript()
@@ -108,7 +108,7 @@ export function Script(props: ScriptProps): VNodeChild {
         break
       }
 
-      case "onViewport":
+      case 'onViewport':
         // Handled below via useIntersectionObserver on the sentinel element
         break
     }
@@ -116,16 +116,16 @@ export function Script(props: ScriptProps): VNodeChild {
   })
 
   const sentinelRef = createRef<HTMLElement>()
-  const strategy = props.strategy ?? "afterHydration"
+  const strategy = props.strategy ?? 'afterHydration'
 
-  if (strategy === "onViewport") {
+  if (strategy === 'onViewport') {
     useIntersectionObserver(
       () => sentinelRef.current ?? undefined,
       () => loadScript(),
     )
   }
 
-  if (strategy === "onViewport") {
+  if (strategy === 'onViewport') {
     return <div ref={sentinelRef} style="width:0;height:0;overflow:hidden" />
   }
 

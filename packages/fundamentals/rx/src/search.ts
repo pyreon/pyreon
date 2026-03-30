@@ -1,6 +1,6 @@
-import { computed } from "@pyreon/reactivity"
-import type { ReadableSignal } from "./types"
-import { isSignal } from "./types"
+import { computed } from '@pyreon/reactivity'
+import type { ReadableSignal } from './types'
+import { isSignal } from './types'
 
 /**
  * Search items by substring matching across specified keys.
@@ -25,7 +25,7 @@ export function search<T>(
     return arr.filter((item) =>
       keys.some((key) => {
         const val = item[key]
-        return typeof val === "string" && val.toLowerCase().includes(q)
+        return typeof val === 'string' && val.toLowerCase().includes(q)
       }),
     )
   }

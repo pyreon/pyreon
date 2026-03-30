@@ -184,12 +184,12 @@ const debouncedSearch = useDebouncedValue(searchTerm, 300)
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package            | Version  |
+| ------------------ | -------- |
+| @pyreon/core       | >= 0.0.1 |
 | @pyreon/reactivity | >= 0.0.1 |
-| @pyreon/styler | >= 0.0.1 |
-| @pyreon/ui-core | >= 0.0.1 |
+| @pyreon/styler     | >= 0.0.1 |
+| @pyreon/ui-core    | >= 0.0.1 |
 
 ## License
 

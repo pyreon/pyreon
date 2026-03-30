@@ -7,11 +7,11 @@
  * is coordinated through the overlay context.
  */
 
-import { signal } from "@pyreon/reactivity"
-import { throttle } from "@pyreon/ui-core"
-import { value } from "@pyreon/unistyle"
-import { IS_DEVELOPMENT } from "../utils"
-import Provider, { useOverlayContext } from "./context"
+import { signal } from '@pyreon/reactivity'
+import { throttle } from '@pyreon/ui-core'
+import { value } from '@pyreon/unistyle'
+import { IS_DEVELOPMENT } from '../utils'
+import Provider, { useOverlayContext } from './context'
 
 type OverlayPosition = Partial<{
   top: number | string
@@ -20,16 +20,16 @@ type OverlayPosition = Partial<{
   right: number | string
 }>
 
-type Align = "bottom" | "top" | "left" | "right"
-type AlignX = "left" | "center" | "right"
-type AlignY = "bottom" | "top" | "center"
+type Align = 'bottom' | 'top' | 'left' | 'right'
+type AlignX = 'left' | 'center' | 'right'
+type AlignY = 'bottom' | 'top' | 'center'
 
 export type UseOverlayProps = Partial<{
   isOpen: boolean
-  openOn: "click" | "hover" | "manual"
-  closeOn: "click" | "clickOnTrigger" | "clickOutsideContent" | "hover" | "manual"
-  type: "dropdown" | "tooltip" | "popover" | "modal" | "custom"
-  position: "absolute" | "fixed" | "relative" | "static"
+  openOn: 'click' | 'hover' | 'manual'
+  closeOn: 'click' | 'clickOnTrigger' | 'clickOutsideContent' | 'hover' | 'manual'
+  type: 'dropdown' | 'tooltip' | 'popover' | 'modal' | 'custom'
+  position: 'absolute' | 'fixed' | 'relative' | 'static'
   align: Align
   alignX: AlignX
   alignY: AlignY
@@ -64,7 +64,7 @@ const devWarn = (msg: string) => {
 const calcDropdownVertical = (
   c: DOMRect,
   t: DOMRect,
-  align: "top" | "bottom",
+  align: 'top' | 'bottom',
   alignX: AlignX,
   offsetX: number,
   offsetY: number,
@@ -81,30 +81,30 @@ const calcDropdownVertical = (
   const fitsLeft = leftPos + c.width <= window.innerWidth
   const fitsRight = rightPos >= 0
 
-  const useTop = sel(align === "top", fitsTop, !fitsBottom)
+  const useTop = sel(align === 'top', fitsTop, !fitsBottom)
   pos.top = sel(useTop, topPos, bottomPos)
-  const resolvedAlignY: AlignY = sel(useTop, "top", "bottom")
+  const resolvedAlignY: AlignY = sel(useTop, 'top', 'bottom')
 
   let resolvedAlignX: AlignX = alignX
-  if (alignX === "left") {
+  if (alignX === 'left') {
     pos.left = sel(fitsLeft, leftPos, rightPos)
-    resolvedAlignX = sel(fitsLeft, "left", "right")
-  } else if (alignX === "right") {
+    resolvedAlignX = sel(fitsLeft, 'left', 'right')
+  } else if (alignX === 'right') {
     pos.left = sel(fitsRight, rightPos, leftPos)
-    resolvedAlignX = sel(fitsRight, "right", "left")
+    resolvedAlignX = sel(fitsRight, 'right', 'left')
   } else {
     const center = t.left + (t.right - t.left) / 2 - c.width / 2
     const fitsCL = center >= 0
     const fitsCR = center + c.width <= window.innerWidth
 
     if (fitsCL && fitsCR) {
-      resolvedAlignX = "center"
+      resolvedAlignX = 'center'
       pos.left = center
     } else if (fitsCL) {
-      resolvedAlignX = "left"
+      resolvedAlignX = 'left'
       pos.left = leftPos
     } else if (fitsCR) {
-      resolvedAlignX = "right"
+      resolvedAlignX = 'right'
       pos.left = rightPos
     }
   }
@@ -115,7 +115,7 @@ const calcDropdownVertical = (
 const calcDropdownHorizontal = (
   c: DOMRect,
   t: DOMRect,
-  align: "left" | "right",
+  align: 'left' | 'right',
   alignY: AlignY,
   offsetX: number,
   offsetY: number,
@@ -132,30 +132,30 @@ const calcDropdownHorizontal = (
   const fitsTop = topPos + c.height <= window.innerHeight
   const fitsBottom = bottomPos >= 0
 
-  const useLeft = sel(align === "left", fitsLeft, !fitsRight)
+  const useLeft = sel(align === 'left', fitsLeft, !fitsRight)
   pos.left = sel(useLeft, leftPos, rightPos)
-  const resolvedAlignX: AlignX = sel(useLeft, "left", "right")
+  const resolvedAlignX: AlignX = sel(useLeft, 'left', 'right')
 
   let resolvedAlignY: AlignY = alignY
-  if (alignY === "top") {
+  if (alignY === 'top') {
     pos.top = sel(fitsTop, topPos, bottomPos)
-    resolvedAlignY = sel(fitsTop, "top", "bottom")
-  } else if (alignY === "bottom") {
+    resolvedAlignY = sel(fitsTop, 'top', 'bottom')
+  } else if (alignY === 'bottom') {
     pos.top = sel(fitsBottom, bottomPos, topPos)
-    resolvedAlignY = sel(fitsBottom, "bottom", "top")
+    resolvedAlignY = sel(fitsBottom, 'bottom', 'top')
   } else {
     const center = t.top + (t.bottom - t.top) / 2 - c.height / 2
     const fitsCT = center >= 0
     const fitsCB = center + c.height <= window.innerHeight
 
     if (fitsCT && fitsCB) {
-      resolvedAlignY = "center"
+      resolvedAlignY = 'center'
       pos.top = center
     } else if (fitsCT) {
-      resolvedAlignY = "top"
+      resolvedAlignY = 'top'
       pos.top = topPos
     } else if (fitsCB) {
-      resolvedAlignY = "bottom"
+      resolvedAlignY = 'bottom'
       pos.top = bottomPos
     }
   }
@@ -173,13 +173,13 @@ const calcModalPos = (
   const pos: OverlayPosition = {}
 
   switch (alignX) {
-    case "right":
+    case 'right':
       pos.right = offsetX
       break
-    case "left":
+    case 'left':
       pos.left = offsetX
       break
-    case "center":
+    case 'center':
       pos.left = window.innerWidth / 2 - c.width / 2
       break
     default:
@@ -187,13 +187,13 @@ const calcModalPos = (
   }
 
   switch (alignY) {
-    case "top":
+    case 'top':
       pos.top = offsetY
       break
-    case "center":
+    case 'center':
       pos.top = window.innerHeight / 2 - c.height / 2
       break
-    case "bottom":
+    case 'bottom':
       pos.bottom = offsetY
       break
     default:
@@ -210,10 +210,10 @@ const adjustForAncestor = (
   if (ancestor.top === 0 && ancestor.left === 0) return pos
 
   const result = { ...pos }
-  if (typeof result.top === "number") result.top -= ancestor.top
-  if (typeof result.bottom === "number") result.bottom += ancestor.top
-  if (typeof result.left === "number") result.left -= ancestor.left
-  if (typeof result.right === "number") result.right += ancestor.left
+  if (typeof result.top === 'number') result.top -= ancestor.top
+  if (typeof result.bottom === 'number') result.bottom += ancestor.top
+  if (typeof result.left === 'number') result.left -= ancestor.left
+  if (typeof result.right === 'number') result.right += ancestor.left
 
   return result
 }
@@ -235,13 +235,13 @@ const computePosition = (
   contentEl: HTMLElement | null,
   ancestorOffset: { top: number; left: number },
 ): ComputeResult => {
-  const isDropdown = ["dropdown", "tooltip", "popover"].includes(type)
+  const isDropdown = ['dropdown', 'tooltip', 'popover'].includes(type)
 
   if (isDropdown && (!triggerEl || !contentEl)) {
     devWarn(
       `[@pyreon/elements] Overlay (${type}): ` +
-        `${triggerEl ? "contentRef" : "triggerRef"} is not attached. ` +
-        "Position cannot be calculated without both refs.",
+        `${triggerEl ? 'contentRef' : 'triggerRef'} is not attached. ` +
+        'Position cannot be calculated without both refs.',
     )
     return { pos: {} }
   }
@@ -250,9 +250,9 @@ const computePosition = (
     const c = contentEl.getBoundingClientRect()
     const t = triggerEl.getBoundingClientRect()
     const result =
-      align === "top" || align === "bottom"
+      align === 'top' || align === 'bottom'
         ? calcDropdownVertical(c, t, align, alignX, offsetX, offsetY)
-        : calcDropdownHorizontal(c, t, align as "left" | "right", alignY, offsetX, offsetY)
+        : calcDropdownHorizontal(c, t, align as 'left' | 'right', alignY, offsetX, offsetY)
 
     return {
       pos: adjustForAncestor(result.pos, ancestorOffset),
@@ -261,11 +261,11 @@ const computePosition = (
     }
   }
 
-  if (type === "modal") {
+  if (type === 'modal') {
     if (!contentEl) {
       devWarn(
-        "[@pyreon/elements] Overlay (modal): contentRef is not attached. " +
-          "Modal position cannot be calculated without a content element.",
+        '[@pyreon/elements] Overlay (modal): contentRef is not attached. ' +
+          'Modal position cannot be calculated without a content element.',
       )
       return { pos: {} }
     }
@@ -288,38 +288,38 @@ const processVisibilityEvent = (
   showContent: () => void,
   hideContent: () => void,
 ) => {
-  if (!active && openOn === "click" && e.type === "click" && isTrigger(e)) {
+  if (!active && openOn === 'click' && e.type === 'click' && isTrigger(e)) {
     showContent()
     return
   }
 
   if (!active) return
 
-  if (closeOn === "hover" && e.type === "scroll") {
+  if (closeOn === 'hover' && e.type === 'scroll') {
     hideContent()
     return
   }
 
-  if (e.type !== "click") return
+  if (e.type !== 'click') return
 
-  if (closeOn === "click") {
+  if (closeOn === 'click') {
     hideContent()
-  } else if (closeOn === "clickOnTrigger" && isTrigger(e)) {
+  } else if (closeOn === 'clickOnTrigger' && isTrigger(e)) {
     hideContent()
-  } else if (closeOn === "clickOutsideContent" && !isContent(e)) {
+  } else if (closeOn === 'clickOutsideContent' && !isContent(e)) {
     hideContent()
   }
 }
 
 const useOverlay = ({
   isOpen = false,
-  openOn = "click",
-  closeOn = "click",
-  type = "dropdown",
-  position = "fixed",
-  align = "bottom",
-  alignX: propAlignX = "left",
-  alignY: propAlignY = "bottom",
+  openOn = 'click',
+  closeOn = 'click',
+  type = 'dropdown',
+  position = 'fixed',
+  align = 'bottom',
+  alignX: propAlignX = 'left',
+  alignY: propAlignY = 'bottom',
   offsetX = 0,
   offsetY = 0,
   throttleDelay = 200,
@@ -374,7 +374,7 @@ const useOverlay = ({
 
   // Position calculation helpers
   const getAncestorOffset = () => {
-    if (position !== "absolute" || !contentEl) {
+    if (position !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
     }
 
@@ -416,10 +416,10 @@ const useOverlay = ({
 
     el.style.position = position
 
-    el.style.top = values.top != null ? setValue(values.top) : ""
-    el.style.bottom = values.bottom != null ? setValue(values.bottom) : ""
-    el.style.left = values.left != null ? setValue(values.left) : ""
-    el.style.right = values.right != null ? setValue(values.right) : ""
+    el.style.top = values.top != null ? setValue(values.top) : ''
+    el.style.bottom = values.bottom != null ? setValue(values.bottom) : ''
+    el.style.left = values.left != null ? setValue(values.left) : ''
+    el.style.right = values.right != null ? setValue(values.right) : ''
   }
 
   const setContentPosition = () => {
@@ -464,26 +464,26 @@ const useOverlay = ({
 
     // Click-based open/close
     const enabledClick =
-      openOn === "click" || ["click", "clickOnTrigger", "clickOutsideContent"].includes(closeOn)
+      openOn === 'click' || ['click', 'clickOnTrigger', 'clickOutsideContent'].includes(closeOn)
 
     if (enabledClick) {
-      window.addEventListener("click", handleClick)
-      cleanups.push(() => window.removeEventListener("click", handleClick))
+      window.addEventListener('click', handleClick)
+      cleanups.push(() => window.removeEventListener('click', handleClick))
     }
 
     // ESC key
     if (closeOnEsc) {
       const handleEscKey = (e: KeyboardEvent) => {
-        if (e.key === "Escape" && active() && !blocked()) {
+        if (e.key === 'Escape' && active() && !blocked()) {
           hideContent()
         }
       }
-      window.addEventListener("keydown", handleEscKey)
-      cleanups.push(() => window.removeEventListener("keydown", handleEscKey))
+      window.addEventListener('keydown', handleEscKey)
+      cleanups.push(() => window.removeEventListener('keydown', handleEscKey))
     }
 
     // Hover-based open/close
-    const enabledHover = openOn === "hover" || closeOn === "hover"
+    const enabledHover = openOn === 'hover' || closeOn === 'hover'
     if (enabledHover) {
       const clearHoverTimeout = () => {
         if (hoverTimeout != null) {
@@ -499,11 +499,11 @@ const useOverlay = ({
 
       const onTriggerEnter = () => {
         clearHoverTimeout()
-        if (openOn === "hover" && !active()) showContent()
+        if (openOn === 'hover' && !active()) showContent()
       }
 
       const onTriggerLeave = () => {
-        if (closeOn === "hover" && active()) scheduleHide()
+        if (closeOn === 'hover' && active()) scheduleHide()
       }
 
       const onContentEnter = () => {
@@ -511,18 +511,18 @@ const useOverlay = ({
       }
 
       const onContentLeave = () => {
-        if (closeOn === "hover" && active()) scheduleHide()
+        if (closeOn === 'hover' && active()) scheduleHide()
       }
 
       // We need to defer listener attachment until refs are available
       const attachHoverListeners = () => {
         if (triggerEl) {
-          triggerEl.addEventListener("mouseenter", onTriggerEnter)
-          triggerEl.addEventListener("mouseleave", onTriggerLeave)
+          triggerEl.addEventListener('mouseenter', onTriggerEnter)
+          triggerEl.addEventListener('mouseleave', onTriggerLeave)
         }
         if (contentEl) {
-          contentEl.addEventListener("mouseenter", onContentEnter)
-          contentEl.addEventListener("mouseleave", onContentLeave)
+          contentEl.addEventListener('mouseenter', onContentEnter)
+          contentEl.addEventListener('mouseleave', onContentLeave)
         }
       }
 
@@ -531,18 +531,18 @@ const useOverlay = ({
       cleanups.push(() => {
         clearHoverTimeout()
         if (triggerEl) {
-          triggerEl.removeEventListener("mouseenter", onTriggerEnter)
-          triggerEl.removeEventListener("mouseleave", onTriggerLeave)
+          triggerEl.removeEventListener('mouseenter', onTriggerEnter)
+          triggerEl.removeEventListener('mouseleave', onTriggerLeave)
         }
         if (contentEl) {
-          contentEl.removeEventListener("mouseenter", onContentEnter)
-          contentEl.removeEventListener("mouseleave", onContentLeave)
+          contentEl.removeEventListener('mouseenter', onContentEnter)
+          contentEl.removeEventListener('mouseleave', onContentLeave)
         }
       })
     }
 
     // Resize/scroll repositioning
-    const shouldSetOverflow = type === "modal"
+    const shouldSetOverflow = type === 'modal'
 
     const onScroll = (e: Event) => {
       handleContentPosition()
@@ -551,37 +551,37 @@ const useOverlay = ({
 
     if (shouldSetOverflow) {
       modalOverflowCount++
-      if (modalOverflowCount === 1) document.body.style.overflow = "hidden"
+      if (modalOverflowCount === 1) document.body.style.overflow = 'hidden'
     }
 
-    window.addEventListener("resize", handleContentPosition)
-    window.addEventListener("scroll", onScroll, { passive: true })
+    window.addEventListener('resize', handleContentPosition)
+    window.addEventListener('scroll', onScroll, { passive: true })
     cleanups.push(() => {
       handleContentPosition.cancel()
       handleVisibility.cancel()
       if (shouldSetOverflow) {
         modalOverflowCount--
-        if (modalOverflowCount === 0) document.body.style.overflow = ""
+        if (modalOverflowCount === 0) document.body.style.overflow = ''
       }
-      window.removeEventListener("resize", handleContentPosition)
-      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener('resize', handleContentPosition)
+      window.removeEventListener('scroll', onScroll)
     })
 
     // Parent container scroll
     if (parentContainer) {
-      if (closeOn !== "hover") parentContainer.style.overflow = "hidden"
+      if (closeOn !== 'hover') parentContainer.style.overflow = 'hidden'
 
       const onParentScroll = (e: Event) => {
         handleContentPosition()
         handleVisibility(e)
       }
 
-      parentContainer.addEventListener("scroll", onParentScroll, {
+      parentContainer.addEventListener('scroll', onParentScroll, {
         passive: true,
       })
       cleanups.push(() => {
-        parentContainer.style.overflow = ""
-        parentContainer.removeEventListener("scroll", onParentScroll)
+        parentContainer.style.overflow = ''
+        parentContainer.removeEventListener('scroll', onParentScroll)
       })
     }
 

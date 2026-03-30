@@ -16,7 +16,7 @@ export type Preset = {
   leaveTo?: string | undefined
 }
 
-export type Direction = "up" | "down" | "left" | "right"
+export type Direction = 'up' | 'down' | 'left' | 'right'
 
 export type FadeOptions = {
   direction?: Direction

@@ -1,4 +1,4 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
 
 /** Re-export form types for convenience. */
 export type { SchemaValidateFn, ValidateFn, ValidationError }

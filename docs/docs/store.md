@@ -10,18 +10,23 @@ description: Global state management built on Pyreon's reactivity signals.
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/store
 ```
+
 ```bash [bun]
 bun add @pyreon/store
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/store
 ```
+
 ```bash [yarn]
 yarn add @pyreon/store
 ```
+
 :::
 
 ## Quick Start
@@ -33,8 +38,8 @@ const useCounter = defineStore('counter', () => {
   const count = signal(0)
   const doubled = computed(() => count() * 2)
 
-  const increment = () => count.update(n => n + 1)
-  const decrement = () => count.update(n => n - 1)
+  const increment = () => count.update((n) => n + 1)
+  const decrement = () => count.update((n) => n - 1)
 
   return { count, doubled, increment, decrement }
 })
@@ -42,8 +47,8 @@ const useCounter = defineStore('counter', () => {
 // Use it anywhere:
 const { store, patch, reset } = useCounter()
 store.increment()
-console.log(store.count())    // 1
-console.log(store.doubled())  // 2
+console.log(store.count()) // 1
+console.log(store.doubled()) // 2
 ```
 
 ## Core Concepts
@@ -64,8 +69,8 @@ const useCounter = defineStore('counter', () => {
   const isPositive = computed(() => count() > 0)
 
   // Actions — plain functions that mutate state
-  const increment = () => count.update(n => n + 1)
-  const decrement = () => count.update(n => n - 1)
+  const increment = () => count.update((n) => n + 1)
+  const decrement = () => count.update((n) => n - 1)
   const setTo = (value: number) => count.set(value)
 
   return { count, doubled, isPositive, increment, decrement, setTo }
@@ -80,8 +85,8 @@ const useB = defineStore('shared-id', () => ({ val: signal('second') }))
 
 const a = useA()
 const b = useB()
-console.log(a === b)              // true
-console.log(a.store.val())        // "first" — second setup never ran
+console.log(a === b) // true
+console.log(a.store.val()) // "first" — second setup never ran
 ```
 
 ### The StoreApi Pattern
@@ -92,13 +97,13 @@ Every store hook returns a `StoreApi<T>` object that separates user state from f
 const { store, id, state, patch, subscribe, onAction, reset, dispose } = useCounter()
 
 // User state is under `store`:
-store.count()        // read a signal
-store.increment()    // call an action
+store.count() // read a signal
+store.increment() // call an action
 
 // Framework methods are at the top level:
-patch({ count: 5 })  // batch-update signals
-subscribe(cb)        // listen to state changes
-reset()              // reset to initial values
+patch({ count: 5 }) // batch-update signals
+subscribe(cb) // listen to state changes
+reset() // reset to initial values
 ```
 
 This clear separation avoids naming collisions between your state and the framework API.
@@ -163,12 +168,12 @@ const Counter = defineComponent(() => {
 
 `@pyreon/store` re-exports all essential primitives from `@pyreon/reactivity` for convenience, so you do not need a separate import:
 
-| Export | Description |
-| --- | --- |
-| `signal(value)` | Create a reactive signal |
-| `computed(fn)` | Create a derived computed signal |
-| `effect(fn)` | Run a side effect that tracks signal dependencies |
-| `batch(fn)` | Batch multiple signal writes into a single notification flush |
+| Export          | Description                                                   |
+| --------------- | ------------------------------------------------------------- |
+| `signal(value)` | Create a reactive signal                                      |
+| `computed(fn)`  | Create a derived computed signal                              |
+| `effect(fn)`    | Run a side effect that tracks signal dependencies             |
+| `batch(fn)`     | Batch multiple signal writes into a single notification flush |
 
 ```ts
 import { signal, computed, effect, batch } from '@pyreon/store'
@@ -257,9 +262,15 @@ const useAuth = defineStore('auth', () => {
   }
 
   return {
-    user, token, loading, error,
-    isAuthenticated, displayName,
-    login, logout, restoreSession,
+    user,
+    token,
+    loading,
+    error,
+    isAuthenticated,
+    displayName,
+    login,
+    logout,
+    restoreSession,
   }
 })
 ```
@@ -282,12 +293,10 @@ const useCart = defineStore('cart', () => {
   const discount = signal(0)
 
   // Computed values
-  const itemCount = computed(() =>
-    items().reduce((sum, item) => sum + item.quantity, 0)
-  )
+  const itemCount = computed(() => items().reduce((sum, item) => sum + item.quantity, 0))
 
   const subtotal = computed(() =>
-    items().reduce((sum, item) => sum + item.price * item.quantity, 0)
+    items().reduce((sum, item) => sum + item.price * item.quantity, 0),
   )
 
   const total = computed(() => {
@@ -300,15 +309,13 @@ const useCart = defineStore('cart', () => {
   // Actions
   function addItem(product: Omit<CartItem, 'quantity'>, quantity = 1) {
     const current = items()
-    const existing = current.find(i => i.productId === product.productId)
+    const existing = current.find((i) => i.productId === product.productId)
 
     if (existing) {
       items.set(
-        current.map(i =>
-          i.productId === product.productId
-            ? { ...i, quantity: i.quantity + quantity }
-            : i
-        )
+        current.map((i) =>
+          i.productId === product.productId ? { ...i, quantity: i.quantity + quantity } : i,
+        ),
       )
     } else {
       items.set([...current, { ...product, quantity }])
@@ -316,7 +323,7 @@ const useCart = defineStore('cart', () => {
   }
 
   function removeItem(productId: string) {
-    items.set(items().filter(i => i.productId !== productId))
+    items.set(items().filter((i) => i.productId !== productId))
   }
 
   function updateQuantity(productId: string, quantity: number) {
@@ -324,11 +331,7 @@ const useCart = defineStore('cart', () => {
       removeItem(productId)
       return
     }
-    items.set(
-      items().map(i =>
-        i.productId === productId ? { ...i, quantity } : i
-      )
-    )
+    items.set(items().map((i) => (i.productId === productId ? { ...i, quantity } : i)))
   }
 
   function clearCart() {
@@ -353,9 +356,18 @@ const useCart = defineStore('cart', () => {
   }
 
   return {
-    items, couponCode, discount,
-    itemCount, subtotal, total, isEmpty,
-    addItem, removeItem, updateQuantity, clearCart, applyCoupon,
+    items,
+    couponCode,
+    discount,
+    itemCount,
+    subtotal,
+    total,
+    isEmpty,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    applyCoupon,
   }
 })
 ```
@@ -374,7 +386,7 @@ const useTheme = defineStore('theme', () => {
   const systemPrefersDark = signal(
     typeof window !== 'undefined'
       ? window.matchMedia('(prefers-color-scheme: dark)').matches
-      : false
+      : false,
   )
 
   const resolved = computed<ResolvedTheme>(() => {
@@ -477,8 +489,8 @@ const useTodos = defineStore('todos', () => {
   const items = signal<{ id: number; text: string; done: boolean }[]>([])
   const loading = signal(false)
 
-  const pending = computed(() => items().filter(t => !t.done))
-  const completed = computed(() => items().filter(t => t.done))
+  const pending = computed(() => items().filter((t) => !t.done))
+  const completed = computed(() => items().filter((t) => t.done))
 
   async function fetchAll() {
     loading.set(true)
@@ -499,13 +511,13 @@ const useTodos = defineStore('todos', () => {
   }
 
   async function toggle(id: number) {
-    const current = items().find(t => t.id === id)
+    const current = items().find((t) => t.id === id)
     if (!current) return
     await api.request(`/todos/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ done: !current.done }),
     })
-    items.set(items().map(t => t.id === id ? { ...t, done: !t.done } : t))
+    items.set(items().map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
   }
 
   return { items, loading, pending, completed, fetchAll, add, toggle }
@@ -560,9 +572,7 @@ const useTodos = defineStore('todos-optimistic', () => {
   async function toggle(id: string) {
     // Optimistically update the UI
     const previous = items()
-    items.set(previous.map(t =>
-      t.id === id ? { ...t, done: !t.done } : t
-    ))
+    items.set(previous.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
 
     try {
       await fetch(`/api/todos/${id}/toggle`, { method: 'POST' })
@@ -588,18 +598,14 @@ const useInventory = defineStore('inventory', () => {
   const totalProducts = computed(() => products().length)
 
   // Filtered computed
-  const inStock = computed(() => products().filter(p => p.stock > 0))
-  const outOfStock = computed(() => products().filter(p => p.stock === 0))
+  const inStock = computed(() => products().filter((p) => p.stock > 0))
+  const outOfStock = computed(() => products().filter((p) => p.stock === 0))
 
   // Aggregated computed
-  const totalValue = computed(() =>
-    products().reduce((sum, p) => sum + p.stock * p.price, 0)
-  )
+  const totalValue = computed(() => products().reduce((sum, p) => sum + p.stock * p.price, 0))
 
   // Computed from other computed
-  const lowStock = computed(() =>
-    inStock().filter(p => p.stock < 10)
-  )
+  const lowStock = computed(() => inStock().filter((p) => p.stock < 10))
 
   const summary = computed(() => ({
     total: totalProducts(),
@@ -611,7 +617,12 @@ const useInventory = defineStore('inventory', () => {
 
   return {
     products,
-    totalProducts, inStock, outOfStock, totalValue, lowStock, summary,
+    totalProducts,
+    inStock,
+    outOfStock,
+    totalValue,
+    lowStock,
+    summary,
   }
 })
 ```
@@ -631,10 +642,13 @@ const useSettings = defineStore('settings', () => {
 
   // Persist to localStorage whenever values change
   effect(() => {
-    localStorage.setItem('settings', JSON.stringify({
-      locale: locale(),
-      fontSize: fontSize(),
-    }))
+    localStorage.setItem(
+      'settings',
+      JSON.stringify({
+        locale: locale(),
+        fontSize: fontSize(),
+      }),
+    )
   })
 
   // Restore from localStorage on initialization
@@ -662,7 +676,7 @@ const useDebugStore = defineStore('debug-counter', () => {
     })
   }
 
-  const increment = () => count.update(n => n + 1)
+  const increment = () => count.update((n) => n + 1)
 
   return { count, increment }
 })
@@ -714,7 +728,7 @@ The store's return type is inferred automatically from the setup function. The h
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
   const doubled = computed(() => count() * 2)
-  const increment = () => count.update(n => n + 1)
+  const increment = () => count.update((n) => n + 1)
   return { count, doubled, increment }
 })
 
@@ -732,7 +746,7 @@ For cases where you need to reference the store's type elsewhere:
 ```ts
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
-  const increment = () => count.update(n => n + 1)
+  const increment = () => count.update((n) => n + 1)
   return { count, increment }
 })
 
@@ -788,14 +802,14 @@ function createCrudStore<T extends { id: string }>(name: string, apiPath: string
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
-      const created = await res.json() as T
+      const created = (await res.json()) as T
       items.set([...items(), created])
       return created
     }
 
     async function remove(id: string) {
       await fetch(`${apiPath}/${id}`, { method: 'DELETE' })
-      items.set(items().filter(i => i.id !== id))
+      items.set(items().filter((i) => i.id !== id))
     }
 
     function getById(id: string): T | undefined {
@@ -807,10 +821,17 @@ function createCrudStore<T extends { id: string }>(name: string, apiPath: string
 }
 
 // Usage:
-interface Product { id: string; name: string; price: number }
+interface Product {
+  id: string
+  name: string
+  price: number
+}
 const useProducts = createCrudStore<Product>('products', '/api/products')
 
-interface Category { id: string; label: string }
+interface Category {
+  id: string
+  label: string
+}
 const useCategories = createCrudStore<Category>('categories', '/api/categories')
 ```
 
@@ -872,12 +893,12 @@ Batch-update multiple signals in a single notification. Accepts either an object
 const { patch } = useUser()
 
 // Object form — sets matching signal keys
-patch({ firstName: "Alice", lastName: "Smith" })
+patch({ firstName: 'Alice', lastName: 'Smith' })
 
 // Function form — receives signal references for direct manipulation
 patch((signals) => {
-  signals.firstName.set("Alice")
-  signals.lastName.set("Smith")
+  signals.firstName.set('Alice')
+  signals.lastName.set('Smith')
 })
 ```
 
@@ -891,10 +912,10 @@ Listen to all state changes in the store. The callback receives the mutation inf
 const { subscribe } = useCounter()
 
 const unsubscribe = subscribe((mutation, state) => {
-  console.log(mutation.storeId)  // "counter"
-  console.log(mutation.type)     // "direct" or "patch"
-  console.log(mutation.events)   // [{ key: "count", oldValue: 0, newValue: 1 }]
-  console.log(state)             // { count: 1 }
+  console.log(mutation.storeId) // "counter"
+  console.log(mutation.type) // "direct" or "patch"
+  console.log(mutation.events) // [{ key: "count", oldValue: 0, newValue: 1 }]
+  console.log(state) // { count: 1 }
 })
 
 // Trigger immediately with current state:
@@ -954,7 +975,7 @@ dispose()
 Register global plugins that run when any store is first created. Plugins receive the full `StoreApi`:
 
 ```ts
-import { addStorePlugin } from "@pyreon/store"
+import { addStorePlugin } from '@pyreon/store'
 
 // Logger plugin
 addStorePlugin(({ store, id, subscribe }) => {
@@ -1078,7 +1099,7 @@ describe('useProducts', () => {
     ]
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ items: mockProducts }), { status: 200 })
+      new Response(JSON.stringify({ items: mockProducts }), { status: 200 }),
     )
 
     const { store } = useProducts()
@@ -1238,7 +1259,7 @@ Add an effect to log state changes during development:
 ```ts
 const useCounter = defineStore('counter', () => {
   const count = signal(0)
-  const increment = () => count.update(n => n + 1)
+  const increment = () => count.update((n) => n + 1)
 
   if (import.meta.env.DEV) {
     effect(() => {
@@ -1257,7 +1278,9 @@ const useCounter = defineStore('counter', () => {
 Build a simple inspector that snapshots all exposed state:
 
 ```ts
-function inspectStore<T extends Record<string, unknown>>(api: StoreApi<T>): Record<string, unknown> {
+function inspectStore<T extends Record<string, unknown>>(
+  api: StoreApi<T>,
+): Record<string, unknown> {
   return api.state
 }
 
@@ -1283,17 +1306,17 @@ Define a store with a unique ID and a setup function.
 
 The structured result returned by every store hook.
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `store` | `T` | The user-defined store state, computeds, and actions |
-| `id` | `string` | The store's unique identifier string |
-| `state` | `Record<string, unknown>` | Readonly snapshot of all signal values |
-| `patch(obj)` | `(partial: Record<string, unknown>) => void` | Batch-set signals from an object |
-| `patch(fn)` | `(fn: (signals) => void) => void` | Batch-set signals via function receiving signal refs |
-| `subscribe(cb, opts?)` | `(cb, opts?) => () => void` | Listen to state changes, returns unsubscribe |
-| `onAction(cb)` | `(cb) => () => void` | Intercept action calls with after/error hooks, returns unsubscribe |
-| `reset()` | `() => void` | Reset all signals to initial values |
-| `dispose()` | `() => void` | Tear down the store and remove from registry |
+| Property               | Type                                         | Description                                                        |
+| ---------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| `store`                | `T`                                          | The user-defined store state, computeds, and actions               |
+| `id`                   | `string`                                     | The store's unique identifier string                               |
+| `state`                | `Record<string, unknown>`                    | Readonly snapshot of all signal values                             |
+| `patch(obj)`           | `(partial: Record<string, unknown>) => void` | Batch-set signals from an object                                   |
+| `patch(fn)`            | `(fn: (signals) => void) => void`            | Batch-set signals via function receiving signal refs               |
+| `subscribe(cb, opts?)` | `(cb, opts?) => () => void`                  | Listen to state changes, returns unsubscribe                       |
+| `onAction(cb)`         | `(cb) => () => void`                         | Intercept action calls with after/error hooks, returns unsubscribe |
+| `reset()`              | `() => void`                                 | Reset all signals to initial values                                |
+| `dispose()`            | `() => void`                                 | Tear down the store and remove from registry                       |
 
 ### `setStoreRegistryProvider(fn)`
 
@@ -1319,10 +1342,10 @@ Register a global plugin that runs when any store is first created.
 
 ### Re-exported from `@pyreon/reactivity`
 
-| Export | Description |
-|--------|-------------|
+| Export          | Description                                                          |
+| --------------- | -------------------------------------------------------------------- |
 | `signal(value)` | Create a reactive signal with `.set()`, `.update()`, and getter call |
-| `computed(fn)` | Create a lazy, cached derived signal |
-| `effect(fn)` | Run a tracked side effect |
-| `batch(fn)` | Batch multiple writes into one flush |
-| `Signal` (type) | TypeScript type for signal instances |
+| `computed(fn)`  | Create a lazy, cached derived signal                                 |
+| `effect(fn)`    | Run a tracked side effect                                            |
+| `batch(fn)`     | Batch multiple writes into one flush                                 |
+| `Signal` (type) | TypeScript type for signal instances                                 |

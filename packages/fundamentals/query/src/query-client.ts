@@ -1,6 +1,6 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, onMount, provide, useContext } from "@pyreon/core"
-import type { QueryClient } from "@tanstack/query-core"
+import type { Props, VNode, VNodeChild } from '@pyreon/core'
+import { createContext, onMount, provide, useContext } from '@pyreon/core'
+import type { QueryClient } from '@tanstack/query-core'
 
 export interface QueryClientProviderProps extends Props {
   client: QueryClient
@@ -28,7 +28,7 @@ export function QueryClientProvider(props: QueryClientProviderProps): VNode {
   })
 
   const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode
+  return (typeof ch === 'function' ? (ch as () => VNodeChild)() : ch) as VNode
 }
 
 /**
@@ -39,7 +39,7 @@ export function useQueryClient(): QueryClient {
   const client = useContext(QueryClientContext)
   if (!client) {
     throw new Error(
-      "[@pyreon/query] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.",
+      '[@pyreon/query] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.',
     )
   }
   return client

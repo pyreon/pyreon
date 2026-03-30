@@ -1,5 +1,5 @@
-import { memo, useState } from "react"
-import Demo from "./Demo"
+import { memo, useState } from 'react'
+import Demo from './Demo'
 
 const ExpensiveChild = memo(function _ExpensiveChild(props: { value: number }) {
   return (

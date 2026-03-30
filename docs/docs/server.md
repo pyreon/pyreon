@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/server"
+title: '@pyreon/server'
 description: SSR handler, static site generation, island architecture, and middleware for Pyreon applications.
 ---
 
@@ -9,10 +9,10 @@ description: SSR handler, static site generation, island architecture, and middl
 
 The package has two entry points:
 
-| Entry | Import | Environment |
-|-------|--------|-------------|
-| Server | `@pyreon/server` | Node, Bun, Deno, Cloudflare Workers |
-| Client | `@pyreon/server/client` | Browser |
+| Entry  | Import                  | Environment                         |
+| ------ | ----------------------- | ----------------------------------- |
+| Server | `@pyreon/server`        | Node, Bun, Deno, Cloudflare Workers |
+| Client | `@pyreon/server/client` | Browser                             |
 
 **Server exports:** `createHandler`, `prerender`, `island`, `processTemplate`, `compileTemplate`, `processCompiledTemplate`, `buildScripts`, `buildScriptsFast`, `DEFAULT_TEMPLATE`
 
@@ -23,18 +23,23 @@ The package has two entry points:
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/server
 ```
+
 ```bash [bun]
 bun add @pyreon/server
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/server
 ```
+
 ```bash [yarn]
 yarn add @pyreon/server
 ```
+
 :::
 
 `@pyreon/server` depends on `@pyreon/core`, `@pyreon/reactivity`, `@pyreon/runtime-dom`, `@pyreon/runtime-server`, `@pyreon/router`, and `@pyreon/head` — all pulled automatically from the workspace.
@@ -71,7 +76,7 @@ interface HandlerOptions {
    *   "string" — full renderToString, complete HTML in one response (default)
    *   "stream" — progressive streaming via renderToStream (Suspense out-of-order)
    */
-  mode?: "string" | "stream"
+  mode?: 'string' | 'stream'
 }
 ```
 
@@ -90,18 +95,18 @@ Every incoming request goes through these steps:
 ### Basic example — Bun
 
 ```ts title="server.ts"
-import { createHandler } from "@pyreon/server"
-import { App } from "./src/App"
-import { routes } from "./src/routes"
+import { createHandler } from '@pyreon/server'
+import { App } from './src/App'
+import { routes } from './src/routes'
 
 const handler = createHandler({
   App,
   routes,
-  template: await Bun.file("index.html").text(),
+  template: await Bun.file('index.html').text(),
 })
 
 Bun.serve({ fetch: handler, port: 3000 })
-console.log("Listening on http://localhost:3000")
+console.log('Listening on http://localhost:3000')
 ```
 
 ### Custom template
@@ -111,26 +116,26 @@ The default template is a minimal HTML5 document. For production, provide your o
 ```html title="index.html"
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="/assets/style.css">
-  <!--pyreon-head-->
-</head>
-<body>
-  <div id="app"><!--pyreon-app--></div>
-  <!--pyreon-scripts-->
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/assets/style.css" />
+    <!--pyreon-head-->
+  </head>
+  <body>
+    <div id="app"><!--pyreon-app--></div>
+    <!--pyreon-scripts-->
+  </body>
 </html>
 ```
 
 The three comment placeholders are required:
 
-| Placeholder | Replaced with |
-|-------------|---------------|
-| `<!--pyreon-head-->` | Collected `<title>`, `<meta>`, `<link>` tags from `@pyreon/head` |
-| `<!--pyreon-app-->` | Rendered application HTML |
-| `<!--pyreon-scripts-->` | Client entry `<script>` tag + inline loader data |
+| Placeholder             | Replaced with                                                    |
+| ----------------------- | ---------------------------------------------------------------- |
+| `<!--pyreon-head-->`    | Collected `<title>`, `<meta>`, `<link>` tags from `@pyreon/head` |
+| `<!--pyreon-app-->`     | Rendered application HTML                                        |
+| `<!--pyreon-scripts-->` | Client entry `<script>` tag + inline loader data                 |
 
 ### Custom client entry
 
@@ -140,7 +145,7 @@ By default the handler injects `<script type="module" src="/src/entry-client.ts"
 const handler = createHandler({
   App,
   routes,
-  clientEntry: "/dist/client.js",
+  clientEntry: '/dist/client.js',
 })
 ```
 
@@ -152,7 +157,7 @@ Enable progressive streaming for large pages with Suspense boundaries:
 const handler = createHandler({
   App,
   routes,
-  mode: "stream",
+  mode: 'stream',
 })
 ```
 
@@ -171,7 +176,7 @@ If rendering throws, the handler catches the error, logs it to `console.error`, 
 
 ```ts
 // The handler never throws — it always returns a Response
-const res = await handler(new Request("http://localhost/broken"))
+const res = await handler(new Request('http://localhost/broken'))
 // res.status === 500
 // await res.text() === "Internal Server Error"
 ```
@@ -207,9 +212,9 @@ Return a `Response` to stop the middleware chain and skip rendering entirely:
 
 ```ts
 const authMiddleware: Middleware = async (ctx) => {
-  const token = ctx.req.headers.get("Authorization")
+  const token = ctx.req.headers.get('Authorization')
   if (!token) {
-    return new Response("Unauthorized", { status: 401 })
+    return new Response('Unauthorized', { status: 401 })
   }
   ctx.locals.user = await verifyToken(token)
 }
@@ -221,10 +226,10 @@ Middleware can set response headers via `ctx.headers`. These are included in the
 
 ```ts
 const cacheMiddleware: Middleware = (ctx) => {
-  if (ctx.path.startsWith("/static/")) {
-    ctx.headers.set("Cache-Control", "public, max-age=31536000, immutable")
+  if (ctx.path.startsWith('/static/')) {
+    ctx.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   } else {
-    ctx.headers.set("Cache-Control", "no-cache")
+    ctx.headers.set('Cache-Control', 'no-cache')
   }
 }
 ```
@@ -233,7 +238,7 @@ const cacheMiddleware: Middleware = (ctx) => {
 
 ```ts
 const trailingSlashMiddleware: Middleware = (ctx) => {
-  if (ctx.path !== "/" && ctx.path.endsWith("/")) {
+  if (ctx.path !== '/' && ctx.path.endsWith('/')) {
     const target = ctx.path.slice(0, -1) + ctx.url.search
     return Response.redirect(new URL(target, ctx.url.origin).href, 301)
   }
@@ -250,7 +255,7 @@ const timingMiddleware: Middleware = (ctx) => {
 }
 
 const geoMiddleware: Middleware = (ctx) => {
-  ctx.locals.country = ctx.req.headers.get("CF-IPCountry") ?? "unknown"
+  ctx.locals.country = ctx.req.headers.get('CF-IPCountry') ?? 'unknown'
 }
 ```
 
@@ -263,10 +268,10 @@ const handler = createHandler({
   App,
   routes,
   middleware: [
-    corsMiddleware,       // 1. CORS headers
-    rateLimitMiddleware,  // 2. Rate limiting
-    authMiddleware,       // 3. Authentication
-    cacheMiddleware,      // 4. Cache headers
+    corsMiddleware, // 1. CORS headers
+    rateLimitMiddleware, // 2. Rate limiting
+    authMiddleware, // 3. Authentication
+    cacheMiddleware, // 4. Cache headers
   ],
 })
 ```
@@ -274,27 +279,27 @@ const handler = createHandler({
 ### Static file middleware example
 
 ```ts
-import { existsSync } from "node:fs"
-import { readFile } from "node:fs/promises"
-import { join } from "node:path"
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
 const MIME_TYPES: Record<string, string> = {
-  ".js": "application/javascript",
-  ".css": "text/css",
-  ".html": "text/html",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.html': 'text/html',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
 }
 
 const staticMiddleware: Middleware = async (ctx) => {
-  const filePath = join("public", ctx.path)
+  const filePath = join('public', ctx.path)
   if (existsSync(filePath)) {
-    const ext = ctx.path.slice(ctx.path.lastIndexOf("."))
-    const contentType = MIME_TYPES[ext] ?? "application/octet-stream"
+    const ext = ctx.path.slice(ctx.path.lastIndexOf('.'))
+    const contentType = MIME_TYPES[ext] ?? 'application/octet-stream'
     const body = await readFile(filePath)
     return new Response(body, {
-      headers: { "Content-Type": contentType },
+      headers: { 'Content-Type': contentType },
     })
   }
 }
@@ -341,31 +346,31 @@ interface PrerenderResult {
 
 ### File output mapping
 
-| Path | Output file |
-|------|------------|
-| `/` | `outDir/index.html` |
-| `/about` | `outDir/about/index.html` |
-| `/blog/hello` | `outDir/blog/hello/index.html` |
-| `/feed.xml` | `outDir/feed.xml` (if path ends with extension) |
+| Path          | Output file                                     |
+| ------------- | ----------------------------------------------- |
+| `/`           | `outDir/index.html`                             |
+| `/about`      | `outDir/about/index.html`                       |
+| `/blog/hello` | `outDir/blog/hello/index.html`                  |
+| `/feed.xml`   | `outDir/feed.xml` (if path ends with extension) |
 
 ### Basic SSG build script
 
 ```ts title="ssg.ts"
-import { createHandler, prerender } from "@pyreon/server"
-import { App } from "./src/App"
-import { routes } from "./src/routes"
+import { createHandler, prerender } from '@pyreon/server'
+import { App } from './src/App'
+import { routes } from './src/routes'
 
 const handler = createHandler({ App, routes })
 
 const result = await prerender({
   handler,
-  paths: ["/", "/about", "/blog", "/contact"],
-  outDir: "dist",
+  paths: ['/', '/about', '/blog', '/contact'],
+  outDir: 'dist',
 })
 
 console.log(`Generated ${result.pages} pages in ${result.elapsed}ms`)
 if (result.errors.length > 0) {
-  console.error("Errors:", result.errors)
+  console.error('Errors:', result.errors)
   process.exit(1)
 }
 ```
@@ -375,25 +380,20 @@ if (result.errors.length > 0) {
 The `paths` option accepts an async function for dynamic route discovery:
 
 ```ts title="ssg.ts"
-import { createHandler, prerender } from "@pyreon/server"
-import { App } from "./src/App"
-import { routes } from "./src/routes"
+import { createHandler, prerender } from '@pyreon/server'
+import { App } from './src/App'
+import { routes } from './src/routes'
 
 const handler = createHandler({ App, routes })
 
 const result = await prerender({
   handler,
   paths: async () => {
-    const posts = await fetch("https://cms.example.com/api/posts")
-      .then(r => r.json())
+    const posts = await fetch('https://cms.example.com/api/posts').then((r) => r.json())
 
-    return [
-      "/",
-      "/about",
-      ...posts.map((p: { slug: string }) => `/blog/${p.slug}`),
-    ]
+    return ['/', '/about', ...posts.map((p: { slug: string }) => `/blog/${p.slug}`)]
   },
-  outDir: "dist",
+  outDir: 'dist',
 })
 ```
 
@@ -405,11 +405,11 @@ Use the `onPage` callback for progress logging, HTML post-processing, or conditi
 const result = await prerender({
   handler,
   paths: allPaths,
-  outDir: "dist",
+  outDir: 'dist',
   onPage: (path, html) => {
     console.log(`  ✓ ${path} (${html.length} bytes)`)
     // Return false to skip writing
-    if (html.includes("<!-- draft -->")) return false
+    if (html.includes('<!-- draft -->')) return false
   },
 })
 ```
@@ -427,10 +427,12 @@ Islands enable **partial hydration**: only interactive components ship JavaScrip
 ### How it works
 
 **Server side:**
+
 1. `island()` wraps an async component import and returns a `ComponentFn`.
 2. During SSR, the component renders inside a `<pyreon-island>` custom element with serialized props and hydration strategy as data attributes.
 
 **Client side:**
+
 1. `hydrateIslands()` scans the DOM for `<pyreon-island>` elements.
 2. For each island, it loads the component's JavaScript and hydrates it in place.
 3. Only components actually present in the HTML are loaded — unused components are tree-shaken.
@@ -446,11 +448,11 @@ interface IslandOptions {
 }
 
 type HydrationStrategy =
-  | "load"            // Hydrate immediately on page load
-  | "idle"            // Hydrate when the browser is idle (requestIdleCallback)
-  | "visible"         // Hydrate when the island scrolls into the viewport
-  | "never"           // Never hydrate (render-only, no client JS)
-  | `media(${string})`  // Hydrate when a media query matches
+  | 'load' // Hydrate immediately on page load
+  | 'idle' // Hydrate when the browser is idle (requestIdleCallback)
+  | 'visible' // Hydrate when the island scrolls into the viewport
+  | 'never' // Never hydrate (render-only, no client JS)
+  | `media(${string})` // Hydrate when a media query matches
 ```
 
 ### IslandMeta
@@ -468,31 +470,31 @@ interface IslandMeta {
 ### Server-side island definition
 
 ```tsx title="src/islands.ts"
-import { island } from "@pyreon/server"
+import { island } from '@pyreon/server'
 
 // Each island is a lazy-loaded component with a unique name
-export const Counter = island(() => import("./components/Counter"), {
-  name: "Counter",
+export const Counter = island(() => import('./components/Counter'), {
+  name: 'Counter',
 })
 
-export const SearchBar = island(() => import("./components/SearchBar"), {
-  name: "SearchBar",
-  hydrate: "idle",  // Not critical — hydrate when idle
+export const SearchBar = island(() => import('./components/SearchBar'), {
+  name: 'SearchBar',
+  hydrate: 'idle', // Not critical — hydrate when idle
 })
 
-export const Comments = island(() => import("./components/Comments"), {
-  name: "Comments",
-  hydrate: "visible",  // Below the fold — hydrate when visible
+export const Comments = island(() => import('./components/Comments'), {
+  name: 'Comments',
+  hydrate: 'visible', // Below the fold — hydrate when visible
 })
 
-export const VideoPlayer = island(() => import("./components/VideoPlayer"), {
-  name: "VideoPlayer",
-  hydrate: "media((min-width: 768px))",  // Only on desktop
+export const VideoPlayer = island(() => import('./components/VideoPlayer'), {
+  name: 'VideoPlayer',
+  hydrate: 'media((min-width: 768px))', // Only on desktop
 })
 
-export const Analytics = island(() => import("./components/Analytics"), {
-  name: "Analytics",
-  hydrate: "never",  // Server-render only, no client JS
+export const Analytics = island(() => import('./components/Analytics'), {
+  name: 'Analytics',
+  hydrate: 'never', // Server-render only, no client JS
 })
 ```
 
@@ -501,8 +503,8 @@ export const Analytics = island(() => import("./components/Analytics"), {
 Islands are used like normal components — they render during SSR and are hydrated on the client:
 
 ```tsx title="src/pages/BlogPost.tsx"
-import { defineComponent } from "@pyreon/core"
-import { Counter, Comments, SearchBar } from "../islands"
+import { defineComponent } from '@pyreon/core'
+import { Counter, Comments, SearchBar } from '../islands'
 
 export default defineComponent((props: { post: BlogPost }) => {
   return () => (
@@ -527,11 +529,7 @@ export default defineComponent((props: { post: BlogPost }) => {
 During SSR, each island produces a custom element wrapper:
 
 ```html
-<pyreon-island
-  data-component="Counter"
-  data-props='{"initial":0}'
-  data-hydrate="load"
->
+<pyreon-island data-component="Counter" data-props='{"initial":0}' data-hydrate="load">
   <!-- Server-rendered component HTML -->
   <button>Count: 0</button>
 </pyreon-island>
@@ -541,15 +539,15 @@ During SSR, each island produces a custom element wrapper:
 
 Island props are automatically serialized to JSON. Non-serializable values are stripped:
 
-| Prop type | Serialized? |
-|-----------|-------------|
-| Strings, numbers, booleans | Yes |
-| Objects, arrays | Yes (deep) |
-| `null` | Yes |
-| Functions | Stripped |
-| Symbols | Stripped |
-| `undefined` | Stripped |
-| `children` | Stripped (rendered separately) |
+| Prop type                  | Serialized?                    |
+| -------------------------- | ------------------------------ |
+| Strings, numbers, booleans | Yes                            |
+| Objects, arrays            | Yes (deep)                     |
+| `null`                     | Yes                            |
+| Functions                  | Stripped                       |
+| Symbols                    | Stripped                       |
+| `undefined`                | Stripped                       |
+| `children`                 | Stripped (rendered separately) |
 
 ### Hydration strategies in detail
 
@@ -558,9 +556,9 @@ Island props are automatically serialized to JSON. Non-serializable values are s
 Hydrates immediately when the page loads. Use for above-the-fold interactive elements:
 
 ```ts
-const Hero = island(() => import("./Hero"), {
-  name: "Hero",
-  hydrate: "load",
+const Hero = island(() => import('./Hero'), {
+  name: 'Hero',
+  hydrate: 'load',
 })
 ```
 
@@ -569,9 +567,9 @@ const Hero = island(() => import("./Hero"), {
 Hydrates during browser idle time via `requestIdleCallback`. Falls back to a 200ms `setTimeout` if `requestIdleCallback` is not available:
 
 ```ts
-const Newsletter = island(() => import("./Newsletter"), {
-  name: "Newsletter",
-  hydrate: "idle",
+const Newsletter = island(() => import('./Newsletter'), {
+  name: 'Newsletter',
+  hydrate: 'idle',
 })
 ```
 
@@ -580,9 +578,9 @@ const Newsletter = island(() => import("./Newsletter"), {
 Hydrates when the element scrolls into the viewport using `IntersectionObserver` with a 200px root margin. Falls back to immediate hydration if `IntersectionObserver` is not available:
 
 ```ts
-const Footer = island(() => import("./Footer"), {
-  name: "Footer",
-  hydrate: "visible",
+const Footer = island(() => import('./Footer'), {
+  name: 'Footer',
+  hydrate: 'visible',
 })
 ```
 
@@ -591,9 +589,9 @@ const Footer = island(() => import("./Footer"), {
 Hydrates when a CSS media query matches. Useful for responsive islands that only make sense at certain viewport sizes:
 
 ```ts
-const DesktopSidebar = island(() => import("./Sidebar"), {
-  name: "DesktopSidebar",
-  hydrate: "media((min-width: 1024px))",
+const DesktopSidebar = island(() => import('./Sidebar'), {
+  name: 'DesktopSidebar',
+  hydrate: 'media((min-width: 1024px))',
 })
 ```
 
@@ -602,9 +600,9 @@ const DesktopSidebar = island(() => import("./Sidebar"), {
 The component is server-rendered but never hydrated on the client. No JavaScript is loaded:
 
 ```ts
-const StaticChart = island(() => import("./Chart"), {
-  name: "StaticChart",
-  hydrate: "never",
+const StaticChart = island(() => import('./Chart'), {
+  name: 'StaticChart',
+  hydrate: 'never',
 })
 ```
 
@@ -619,9 +617,9 @@ The `@pyreon/server/client` entry provides two functions for client-side hydrati
 For traditional SSR where the entire app is interactive:
 
 ```ts title="src/entry-client.ts"
-import { startClient } from "@pyreon/server/client"
-import { App } from "./App"
-import { routes } from "./routes"
+import { startClient } from '@pyreon/server/client'
+import { App } from './App'
+import { routes } from './routes'
 
 const cleanup = startClient({ App, routes })
 ```
@@ -652,14 +650,14 @@ interface StartClientOptions {
 startClient({
   App,
   routes,
-  container: "#root",  // CSS selector
+  container: '#root', // CSS selector
 })
 
 // Or pass an element directly
 startClient({
   App,
   routes,
-  container: document.getElementById("root")!,
+  container: document.getElementById('root')!,
 })
 ```
 
@@ -671,7 +669,7 @@ When the server renders a page with route loaders, the loader results are serial
 // Server: route with loader
 const routes = [
   {
-    path: "/users/:id",
+    path: '/users/:id',
     component: UserPage,
     loader: async ({ params }) => {
       const user = await db.users.findById(params.id)
@@ -692,12 +690,12 @@ startClient({ App, routes })
 For island architecture where only specific components are interactive:
 
 ```ts title="src/entry-client.ts"
-import { hydrateIslands } from "@pyreon/server/client"
+import { hydrateIslands } from '@pyreon/server/client'
 
 const cleanup = hydrateIslands({
-  Counter: () => import("./components/Counter"),
-  SearchBar: () => import("./components/SearchBar"),
-  Comments: () => import("./components/Comments"),
+  Counter: () => import('./components/Counter'),
+  SearchBar: () => import('./components/SearchBar'),
+  Comments: () => import('./components/Comments'),
 })
 ```
 
@@ -724,7 +722,7 @@ These lower-level utilities are exported for advanced use cases (custom renderer
 A minimal HTML5 template with all three placeholders:
 
 ```ts
-import { DEFAULT_TEMPLATE } from "@pyreon/server"
+import { DEFAULT_TEMPLATE } from '@pyreon/server'
 
 console.log(DEFAULT_TEMPLATE)
 // <!DOCTYPE html>
@@ -746,7 +744,7 @@ console.log(DEFAULT_TEMPLATE)
 Replaces the three comment placeholders in an HTML template:
 
 ```ts
-import { processTemplate } from "@pyreon/server"
+import { processTemplate } from '@pyreon/server'
 
 const html = processTemplate(template, {
   head: '<title>My Page</title><meta name="description" content="...">',
@@ -770,9 +768,9 @@ interface TemplateData {
 Builds the script tags for client hydration:
 
 ```ts
-import { buildScripts } from "@pyreon/server"
+import { buildScripts } from '@pyreon/server'
 
-const scripts = buildScripts("/client.js", { users: [{ id: 1 }] })
+const scripts = buildScripts('/client.js', { users: [{ id: 1 }] })
 // <script>window.__PYREON_LOADER_DATA__={"users":[{"id":1}]}</script>
 // <script type="module" src="/client.js"></script>
 ```
@@ -784,7 +782,7 @@ If no loader data is present (empty object), only the module script is emitted. 
 Pre-split a template into parts at initialization time for faster per-request processing. This avoids repeated string scanning on every request — **up to 17x faster** than `processTemplate` on realistic templates (1KB+).
 
 ```ts
-import { compileTemplate, processCompiledTemplate } from "@pyreon/server"
+import { compileTemplate, processCompiledTemplate } from '@pyreon/server'
 
 // Once at startup:
 const compiled = compileTemplate(template)
@@ -814,10 +812,10 @@ Throws if the template does not contain `<!--pyreon-app-->`.
 A pre-optimized variant of `buildScripts` that accepts a pre-built client entry tag string instead of a path:
 
 ```ts
-import { buildClientEntryTag, buildScriptsFast } from "@pyreon/server"
+import { buildClientEntryTag, buildScriptsFast } from '@pyreon/server'
 
 // Once at startup:
-const clientEntryTag = buildClientEntryTag("/client.js")
+const clientEntryTag = buildClientEntryTag('/client.js')
 
 // Per request:
 const scripts = buildScriptsFast(clientEntryTag, loaderData)
@@ -851,21 +849,21 @@ my-app/
 ### Server entry
 
 ```ts title="src/server.ts"
-import { createHandler } from "@pyreon/server"
-import { App } from "./App"
-import { routes } from "./routes"
+import { createHandler } from '@pyreon/server'
+import { App } from './App'
+import { routes } from './routes'
 
-const template = await Bun.file("index.html").text()
+const template = await Bun.file('index.html').text()
 
 const handler = createHandler({
   App,
   routes,
   template,
-  clientEntry: "/src/entry-client.ts",
+  clientEntry: '/src/entry-client.ts',
   middleware: [
     // Add custom headers
     (ctx) => {
-      ctx.headers.set("X-Powered-By", "Pyreon")
+      ctx.headers.set('X-Powered-By', 'Pyreon')
     },
   ],
 })
@@ -881,9 +879,9 @@ console.log(`Server running at http://localhost:3000`)
 ### Client entry
 
 ```ts title="src/entry-client.ts"
-import { startClient } from "@pyreon/server/client"
-import { App } from "./App"
-import { routes } from "./routes"
+import { startClient } from '@pyreon/server/client'
+import { App } from './App'
+import { routes } from './routes'
 
 startClient({ App, routes })
 ```
@@ -891,20 +889,20 @@ startClient({ App, routes })
 ### Routes
 
 ```ts title="src/routes.ts"
-import type { RouteRecord } from "@pyreon/router"
+import type { RouteRecord } from '@pyreon/router'
 
 export const routes: RouteRecord[] = [
   {
-    path: "/",
-    component: () => import("./pages/Home"),
+    path: '/',
+    component: () => import('./pages/Home'),
     loader: async () => {
-      const res = await fetch("https://api.example.com/featured")
+      const res = await fetch('https://api.example.com/featured')
       return { featured: await res.json() }
     },
   },
   {
-    path: "/about",
-    component: () => import("./pages/About"),
+    path: '/about',
+    component: () => import('./pages/About'),
   },
 ]
 ```
@@ -959,11 +957,11 @@ Bun.serve({ fetch: handler, port: 3000 })
 ### Client (islands mode)
 
 ```ts title="src/entry-client.ts"
-import { hydrateIslands } from "@pyreon/server/client"
+import { hydrateIslands } from '@pyreon/server/client'
 
 hydrateIslands({
-  Counter: () => import("./components/Counter"),
-  Newsletter: () => import("./components/Newsletter"),
+  Counter: () => import('./components/Counter'),
+  Newsletter: () => import('./components/Newsletter'),
 })
 ```
 
@@ -972,28 +970,29 @@ hydrateIslands({
 ## Full Example — Static Site Generation
 
 ```ts title="ssg.ts"
-import { createHandler, prerender } from "@pyreon/server"
-import { App } from "./src/App"
-import { routes } from "./src/routes"
+import { createHandler, prerender } from '@pyreon/server'
+import { App } from './src/App'
+import { routes } from './src/routes'
 
 const handler = createHandler({ App, routes })
 
-console.log("Building static site...")
+console.log('Building static site...')
 
 const result = await prerender({
   handler,
   paths: async () => {
     // Static pages
-    const staticPaths = ["/", "/about", "/contact"]
+    const staticPaths = ['/', '/about', '/contact']
 
     // Dynamic blog posts from CMS
-    const posts = await fetch("https://cms.example.com/api/posts")
-      .then(r => r.json() as Promise<Array<{ slug: string }>>)
-    const blogPaths = posts.map(p => `/blog/${p.slug}`)
+    const posts = await fetch('https://cms.example.com/api/posts').then(
+      (r) => r.json() as Promise<Array<{ slug: string }>>,
+    )
+    const blogPaths = posts.map((p) => `/blog/${p.slug}`)
 
     return [...staticPaths, ...blogPaths]
   },
-  outDir: "dist",
+  outDir: 'dist',
   onPage: (path, html) => {
     const kb = (html.length / 1024).toFixed(1)
     console.log(`  ${path} → ${kb} KB`)
@@ -1003,7 +1002,7 @@ const result = await prerender({
 console.log(`\nDone! ${result.pages} pages in ${result.elapsed}ms`)
 
 if (result.errors.length > 0) {
-  console.error("\nFailed pages:")
+  console.error('\nFailed pages:')
   for (const { path, error } of result.errors) {
     console.error(`  ${path}: ${error}`)
   }
@@ -1038,7 +1037,7 @@ export default { fetch: handler }
 ### Node.js (with adapter)
 
 ```ts
-import { createServer } from "node:http"
+import { createServer } from 'node:http'
 
 createServer(async (req, res) => {
   const url = new URL(req.url!, `http://${req.headers.host}`)
@@ -1056,7 +1055,7 @@ createServer(async (req, res) => {
 ### Express
 
 ```ts
-import express from "express"
+import express from 'express'
 
 const app = express()
 
@@ -1082,38 +1081,38 @@ app.listen(3000)
 
 ### Server exports (`@pyreon/server`)
 
-| Export | Description |
-|--------|-------------|
-| `createHandler(options)` | Create an SSR request handler that returns a Web-standard fetch function |
-| `prerender(options)` | Pre-render routes to static HTML files |
-| `island(loader, options)` | Create an island component for partial hydration |
-| `processTemplate(template, data)` | Replace placeholders in an HTML template |
-| `compileTemplate(template)` | Pre-split template into parts for fast per-request processing |
-| `processCompiledTemplate(compiled, data)` | Assemble HTML from a pre-compiled template (17x faster on realistic templates) |
-| `buildScripts(clientEntry, loaderData)` | Build script tags for client hydration |
+| Export                                         | Description                                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `createHandler(options)`                       | Create an SSR request handler that returns a Web-standard fetch function              |
+| `prerender(options)`                           | Pre-render routes to static HTML files                                                |
+| `island(loader, options)`                      | Create an island component for partial hydration                                      |
+| `processTemplate(template, data)`              | Replace placeholders in an HTML template                                              |
+| `compileTemplate(template)`                    | Pre-split template into parts for fast per-request processing                         |
+| `processCompiledTemplate(compiled, data)`      | Assemble HTML from a pre-compiled template (17x faster on realistic templates)        |
+| `buildScripts(clientEntry, loaderData)`        | Build script tags for client hydration                                                |
 | `buildScriptsFast(clientEntryTag, loaderData)` | Build script tags with a pre-built entry tag (avoids per-request string construction) |
-| `buildClientEntryTag(clientEntry)` | Build the `<script type="module">` tag string once at startup |
-| `DEFAULT_TEMPLATE` | Minimal HTML5 template string with all placeholders |
+| `buildClientEntryTag(clientEntry)`             | Build the `<script type="module">` tag string once at startup                         |
+| `DEFAULT_TEMPLATE`                             | Minimal HTML5 template string with all placeholders                                   |
 
 ### Client exports (`@pyreon/server/client`)
 
-| Export | Description |
-|--------|-------------|
-| `startClient(options)` | Hydrate a full SSR app on the client, returns cleanup function |
+| Export                     | Description                                                     |
+| -------------------------- | --------------------------------------------------------------- |
+| `startClient(options)`     | Hydrate a full SSR app on the client, returns cleanup function  |
 | `hydrateIslands(registry)` | Hydrate island components on the page, returns cleanup function |
 
 ### Type exports
 
-| Type | From |
-|------|------|
-| `HandlerOptions` | `@pyreon/server` |
-| `TemplateData` | `@pyreon/server` |
-| `IslandOptions` | `@pyreon/server` |
-| `IslandMeta` | `@pyreon/server` |
-| `HydrationStrategy` | `@pyreon/server` |
-| `PrerenderOptions` | `@pyreon/server` |
-| `PrerenderResult` | `@pyreon/server` |
-| `Middleware` | `@pyreon/server` |
-| `MiddlewareContext` | `@pyreon/server` |
-| `CompiledTemplate` | `@pyreon/server` |
+| Type                 | From                    |
+| -------------------- | ----------------------- |
+| `HandlerOptions`     | `@pyreon/server`        |
+| `TemplateData`       | `@pyreon/server`        |
+| `IslandOptions`      | `@pyreon/server`        |
+| `IslandMeta`         | `@pyreon/server`        |
+| `HydrationStrategy`  | `@pyreon/server`        |
+| `PrerenderOptions`   | `@pyreon/server`        |
+| `PrerenderResult`    | `@pyreon/server`        |
+| `Middleware`         | `@pyreon/server`        |
+| `MiddlewareContext`  | `@pyreon/server`        |
+| `CompiledTemplate`   | `@pyreon/server`        |
 | `StartClientOptions` | `@pyreon/server/client` |

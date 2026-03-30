@@ -1,10 +1,10 @@
-import type { EditorLanguage } from "@pyreon/code"
-import { createEditor, getAvailableLanguages } from "@pyreon/code"
-import { computed, signal } from "@pyreon/reactivity"
+import type { EditorLanguage } from '@pyreon/code'
+import { createEditor, getAvailableLanguages } from '@pyreon/code'
+import { computed, signal } from '@pyreon/reactivity'
 
 const sampleFiles: Record<string, { language: EditorLanguage; value: string }> = {
-  "main.ts": {
-    language: "typescript",
+  'main.ts': {
+    language: 'typescript',
     value: `import { signal, computed, effect } from '@pyreon/reactivity'
 
 const count = signal(0)
@@ -17,8 +17,8 @@ effect(() => {
 count.set(5)
 count.update(n => n + 1)`,
   },
-  "styles.css": {
-    language: "css",
+  'styles.css': {
+    language: 'css',
     value: `.container {
   display: flex;
   gap: 16px;
@@ -39,8 +39,8 @@ count.update(n => n + 1)`,
   opacity: 0.8;
 }`,
   },
-  "config.json": {
-    language: "json",
+  'config.json': {
+    language: 'json',
     value: `{
   "name": "@pyreon/playground",
   "version": "0.1.0",
@@ -55,8 +55,8 @@ count.update(n => n + 1)`,
   }
 }`,
   },
-  "app.py": {
-    language: "python",
+  'app.py': {
+    language: 'python',
     value: `from dataclasses import dataclass
 from typing import Optional
 
@@ -83,16 +83,16 @@ for user in users:
 export function CodeDemo() {
   // Create a single editor instance
   const editor = createEditor({
-    value: sampleFiles["main.ts"]!.value,
-    language: "typescript",
-    theme: "dark",
+    value: sampleFiles['main.ts']!.value,
+    language: 'typescript',
+    theme: 'dark',
     minimap: false,
     lineNumbers: true,
-    placeholder: "Start typing...",
+    placeholder: 'Start typing...',
   })
 
   // Active file tracking
-  const activeFile = signal("main.ts")
+  const activeFile = signal('main.ts')
   const fileNames = Object.keys(sampleFiles)
 
   // Theme toggle
@@ -110,7 +110,7 @@ export function CodeDemo() {
 
   const selectionInfo = computed(() => {
     const s = editor.selection()
-    if (s.from === s.to) return "No selection"
+    if (s.from === s.to) return 'No selection'
     return `Selected ${s.to - s.from} chars`
   })
 
@@ -134,7 +134,7 @@ export function CodeDemo() {
             <button
               type="button"
               key={name}
-              class={activeFile() === name ? "active" : ""}
+              class={activeFile() === name ? 'active' : ''}
               onClick={() => {
                 const file = sampleFiles[name]!
                 activeFile.set(name)
@@ -164,7 +164,7 @@ export function CodeDemo() {
           <span>{() => selectionInfo()}</span>
           <span>{() => `${editor.lineCount()} lines`}</span>
           <span>{() => editor.language()}</span>
-          <span>{() => (editor.focused() ? "Focused" : "Blurred")}</span>
+          <span>{() => (editor.focused() ? 'Focused' : 'Blurred')}</span>
         </div>
       </div>
 
@@ -176,7 +176,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.undo()
-              addLog("Undo")
+              addLog('Undo')
             }}
           >
             Undo
@@ -185,7 +185,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.redo()
-              addLog("Redo")
+              addLog('Redo')
             }}
           >
             Redo
@@ -193,8 +193,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.insert("\n// Inserted by demo\n")
-              addLog("Inserted comment")
+              editor.insert('\n// Inserted by demo\n')
+              addLog('Inserted comment')
             }}
           >
             Insert Comment
@@ -203,7 +203,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.goToLine(1)
-              addLog("Go to line 1")
+              addLog('Go to line 1')
             }}
           >
             Go to Line 1
@@ -212,7 +212,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.selectAll()
-              addLog("Selected all")
+              addLog('Selected all')
             }}
           >
             Select All
@@ -221,7 +221,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.focus()
-              addLog("Focused editor")
+              addLog('Focused editor')
             }}
           >
             Focus
@@ -232,7 +232,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.foldAll()
-              addLog("Folded all")
+              addLog('Folded all')
             }}
           >
             Fold All
@@ -241,7 +241,7 @@ export function CodeDemo() {
             type="button"
             onClick={() => {
               editor.unfoldAll()
-              addLog("Unfolded all")
+              addLog('Unfolded all')
             }}
           >
             Unfold All
@@ -265,13 +265,13 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              const next = isDark() ? "light" : "dark"
+              const next = isDark() ? 'light' : 'dark'
               isDark.update((d) => !d)
               editor.theme.set(next)
               addLog(`Theme → ${next}`)
             }}
           >
-            {() => (isDark() ? "Switch to Light" : "Switch to Dark")}
+            {() => (isDark() ? 'Switch to Light' : 'Switch to Dark')}
           </button>
           <button
             type="button"
@@ -280,11 +280,11 @@ export function CodeDemo() {
               addLog(`Read-only → ${editor.readOnly()}`)
             }}
           >
-            {() => (editor.readOnly() ? "Make Editable" : "Make Read-Only")}
+            {() => (editor.readOnly() ? 'Make Editable' : 'Make Read-Only')}
           </button>
         </div>
         <p style="font-size: 13px; opacity: 0.7">
-          Available languages: <code>{languages.join(", ")}</code>
+          Available languages: <code>{languages.join(', ')}</code>
         </p>
       </div>
 
@@ -317,8 +317,8 @@ export function CodeDemo() {
         <div class="log">
           {() =>
             log().length === 0
-              ? "Use the controls above to interact with the editor."
-              : log().join("\n")
+              ? 'Use the controls above to interact with the editor.'
+              : log().join('\n')
           }
         </div>
       </div>

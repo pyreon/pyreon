@@ -5,9 +5,9 @@
  * and the resolved styled-component prop types.
  */
 
-import type { ComponentFn, VNodeChild } from "@pyreon/core"
-import type { BreakpointKeys, config } from "@pyreon/ui-core"
-import type { AlignContentAlignXKeys, extendCss } from "@pyreon/unistyle"
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import type { BreakpointKeys, config } from '@pyreon/ui-core'
+import type { AlignContentAlignXKeys, extendCss } from '@pyreon/unistyle'
 
 type CreateValueType<T> = T | T[] | Partial<Record<BreakpointKeys, T>>
 
@@ -22,12 +22,12 @@ export type ValueType = CreateValueType<number>
 export type ContainerWidth = CreateValueType<Value>
 
 export type ContentAlignX =
-  | "center"
-  | "left"
-  | "right"
-  | "spaceAround"
-  | "spaceBetween"
-  | "spaceEvenly"
+  | 'center'
+  | 'left'
+  | 'right'
+  | 'spaceAround'
+  | 'spaceBetween'
+  | 'spaceEvenly'
 
 export type ConfigurationProps = Partial<{
   size: ValueType

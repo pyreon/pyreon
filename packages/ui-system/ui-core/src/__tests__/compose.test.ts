@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest"
-import compose from "../compose"
+import { describe, expect, it } from 'vitest'
+import compose from '../compose'
 
-describe("compose", () => {
-  it("should compose two functions right-to-left", () => {
+describe('compose', () => {
+  it('should compose two functions right-to-left', () => {
     const double = (x: number) => x * 2
     const addOne = (x: number) => x + 1
     const composed = compose(addOne, double)
@@ -10,7 +10,7 @@ describe("compose", () => {
     expect(composed(3)).toBe(7)
   })
 
-  it("should compose three functions right-to-left", () => {
+  it('should compose three functions right-to-left', () => {
     const add = (x: number) => x + 1
     const mul = (x: number) => x * 3
     const sub = (x: number) => x - 2
@@ -18,15 +18,15 @@ describe("compose", () => {
     expect(compose(add, mul, sub)(5)).toBe(10)
   })
 
-  it("should work with a single function", () => {
+  it('should work with a single function', () => {
     const identity = (x: number) => x
     expect(compose(identity)(42)).toBe(42)
   })
 
-  it("should pass value through string transforms", () => {
+  it('should pass value through string transforms', () => {
     const upper = (s: string) => s.toUpperCase()
     const exclaim = (s: string) => `${s}!`
     // exclaim('hello') = 'hello!', upper('hello!') = 'HELLO!'
-    expect(compose(upper, exclaim)("hello")).toBe("HELLO!")
+    expect(compose(upper, exclaim)('hello')).toBe('HELLO!')
   })
 })

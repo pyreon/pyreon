@@ -1,5 +1,5 @@
-import { resolveStyles } from "./resolveStyles"
-import type { DocChild, DocNode, NodeType } from "./types"
+import { resolveStyles } from './resolveStyles'
+import type { DocChild, DocNode, NodeType } from './types'
 
 /** Marker interface: components with _documentType are extractable. */
 export interface DocumentMarker {
@@ -20,15 +20,15 @@ type VNodeLike = {
 }
 
 function isVNode(value: unknown): value is VNodeLike {
-  return value != null && typeof value === "object" && "type" in value && "props" in value
+  return value != null && typeof value === 'object' && 'type' in value && 'props' in value
 }
 
 function getDocumentType(fn: unknown): NodeType | undefined {
-  if (typeof fn !== "function") return undefined
+  if (typeof fn !== 'function') return undefined
   const meta = (fn as any).meta
   if (meta?._documentType) return meta._documentType as NodeType
   // Fallback: check directly on function (non-rocketstyle components)
-  if ("_documentType" in fn) return (fn as any)._documentType as NodeType
+  if ('_documentType' in fn) return (fn as any)._documentType as NodeType
   return undefined
 }
 
@@ -37,7 +37,7 @@ function flattenChildren(children: unknown[]): unknown[] {
   for (const child of children) {
     if (Array.isArray(child)) {
       result.push(...flattenChildren(child))
-    } else if (typeof child === "function") {
+    } else if (typeof child === 'function') {
       // Reactive getter — call to resolve
       const resolved = child()
       if (Array.isArray(resolved)) {
@@ -59,12 +59,12 @@ function extractChildren(children: unknown[], options: ExtractOptions): DocChild
   for (const child of flat) {
     if (child == null || child === false || child === true) continue
 
-    if (typeof child === "string") {
+    if (typeof child === 'string') {
       result.push(child)
       continue
     }
 
-    if (typeof child === "number") {
+    if (typeof child === 'number') {
       result.push(String(child))
       continue
     }
@@ -93,7 +93,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     const docProps: Record<string, unknown> = {}
 
     // Extract document-specific props from _documentProps
-    if (props._documentProps && typeof props._documentProps === "object") {
+    if (props._documentProps && typeof props._documentProps === 'object') {
       Object.assign(docProps, props._documentProps)
     }
 
@@ -120,7 +120,7 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
   }
 
   // Component function WITHOUT _documentType — call it to get its VNode output
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     const mergedProps = { ...props }
     if (children && children.length > 0) {
       mergedProps.children = children.length === 1 ? children[0] : children
@@ -133,13 +133,13 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     }
 
     // The component returned a primitive or null
-    if (typeof result === "string") return [result]
-    if (typeof result === "number") return [String(result)]
+    if (typeof result === 'string') return [result]
+    if (typeof result === 'number') return [String(result)]
     return null
   }
 
   // DOM element (string type like 'div', 'span') — transparent, extract children
-  if (typeof type === "string") {
+  if (typeof type === 'string') {
     const docChildren = extractChildren(children ?? [], options)
     // If there's text content in the DOM element, collect it
     if (docChildren.length > 0) return docChildren
@@ -168,14 +168,14 @@ export function extractDocumentTree(vnode: unknown, options: ExtractOptions = {}
 
     // Wrap loose children in a document node
     const children = Array.isArray(result) ? result : []
-    return { type: "document", props: {}, children }
+    return { type: 'document', props: {}, children }
   }
 
   // If passed a component function directly, call it
-  if (typeof vnode === "function") {
+  if (typeof vnode === 'function') {
     const result = (vnode as () => unknown)()
     return extractDocumentTree(result, options)
   }
 
-  return { type: "document", props: {}, children: [] }
+  return { type: 'document', props: {}, children: [] }
 }

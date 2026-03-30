@@ -3,5 +3,5 @@ export default function Home() {
 }
 
 export const meta = {
-  title: "Home",
+  title: 'Home',
 }

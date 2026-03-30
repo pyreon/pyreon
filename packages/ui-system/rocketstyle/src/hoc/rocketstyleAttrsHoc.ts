@@ -1,14 +1,14 @@
-import { render } from "@pyreon/ui-core"
-import { useTheme } from "../hooks"
-import type { Configuration } from "../types/configuration"
-import type { ComponentFn } from "../types/utils"
-import { calculateChainOptions, removeUndefinedProps } from "../utils/attrs"
+import { render } from '@pyreon/ui-core'
+import { useTheme } from '../hooks'
+import type { Configuration } from '../types/configuration'
+import type { ComponentFn } from '../types/utils'
+import { calculateChainOptions, removeUndefinedProps } from '../utils/attrs'
 
 export type RocketStyleHOC = ({
   inversed,
   attrs,
   priorityAttrs,
-}: Pick<Configuration, "inversed" | "attrs" | "priorityAttrs">) => (
+}: Pick<Configuration, 'inversed' | 'attrs' | 'priorityAttrs'>) => (
   WrappedComponent: ComponentFn<any>,
 ) => ComponentFn<any>
 

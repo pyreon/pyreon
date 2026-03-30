@@ -5,7 +5,7 @@
  * The renderer maintains the context stack as it walks the VNode tree.
  */
 
-import { onUnmount } from "./lifecycle"
+import { onUnmount } from './lifecycle'
 
 export interface Context<T> {
   readonly id: symbol
@@ -13,7 +13,7 @@ export interface Context<T> {
 }
 
 export function createContext<T>(defaultValue: T): Context<T> {
-  return { id: Symbol("PyreonContext"), defaultValue }
+  return { id: Symbol('PyreonContext'), defaultValue }
 }
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
@@ -37,7 +37,7 @@ function getStack(): Map<symbol, unknown>[] {
   return _stackProvider()
 }
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export function pushContext(values: Map<symbol, unknown>) {
   getStack().push(values)
@@ -48,7 +48,7 @@ export function popContext() {
   if (__DEV__ && stack.length === 0) {
     // biome-ignore lint/suspicious/noConsole: dev-only warning
     console.warn(
-      "[Pyreon] popContext() called on an empty context stack. This likely indicates a missing Provider.",
+      '[Pyreon] popContext() called on an empty context stack. This likely indicates a missing Provider.',
     )
     return
   }

@@ -26,7 +26,7 @@
  * and lifecycle hooks don't re-fire.
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import {
   ErrorBoundary,
   For,
@@ -37,8 +37,8 @@ import {
   Show,
   Suspense,
   Switch,
-} from "@pyreon/core"
-import { runUntracked, signal } from "@pyreon/reactivity"
+} from '@pyreon/core'
+import { runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }
 
@@ -93,7 +93,7 @@ function runLayoutEffects(entries: EffectEntry[]): void {
   for (const entry of entries) {
     if (entry.cleanup) entry.cleanup()
     const cleanup = entry.fn()
-    entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+    entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
   }
 }
 
@@ -104,7 +104,7 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
       if (ctx.unmounted) return
       if (entry.cleanup) entry.cleanup()
       const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+      entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
     }
   })
 }
@@ -119,7 +119,7 @@ interface ChildInstance {
 }
 
 // Internal prop keys for passing parent context info to child wrappers
-const _CHILD_INSTANCE = Symbol.for("pyreon.childInstance")
+const _CHILD_INSTANCE = Symbol.for('pyreon.childInstance')
 const noop = () => {
   /* noop */
 }
@@ -218,7 +218,7 @@ function wrapCompatComponent(solidComponent: Function): ComponentFn {
   }) as unknown as ComponentFn
 
   // Forward __loading from lazy components so Pyreon's Suspense can detect them
-  if ("__loading" in solidComponent) {
+  if ('__loading' in solidComponent) {
     ;(wrapped as unknown as Record<string, unknown>).__loading = (
       solidComponent as unknown as Record<string, unknown>
     ).__loading
@@ -272,7 +272,7 @@ export function jsx(
   const { children, ...rest } = props
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     if (_nativeComponents.has(type)) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)

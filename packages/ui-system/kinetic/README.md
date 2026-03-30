@@ -10,15 +10,16 @@ The result: GPU-composited 60/120 FPS animations with a 3.2KB footprint.
 
 ### How It Compares
 
-| Library | Gzipped | Engine | Enter/Exit | Stagger | List Recon. | Collapse | Reduced Motion |
-| ------- | ------- | ------ | ---------- | ------- | ----------- | -------- | -------------- |
-| **@pyreon/kinetic** | **3.2 KB** | CSS transitions | Yes | Yes | Yes | Yes | Yes |
-| Motion (framer-motion) | ~34 KB | JS (rAF + WAAPI) | Yes | Yes | Yes | Quirky | Yes |
-| @react-spring/web | ~16-24 KB | JS (spring physics) | Yes | Partial | Yes | Manual | Yes |
-| react-transition-group | ~5 KB | CSS classes | Yes | No | Yes | No | No |
-| AutoAnimate | ~2.5 KB | JS (FLIP) | Yes | No | Yes | No | Yes |
+| Library                | Gzipped    | Engine              | Enter/Exit | Stagger | List Recon. | Collapse | Reduced Motion |
+| ---------------------- | ---------- | ------------------- | ---------- | ------- | ----------- | -------- | -------------- |
+| **@pyreon/kinetic**    | **3.2 KB** | CSS transitions     | Yes        | Yes     | Yes         | Yes      | Yes            |
+| Motion (framer-motion) | ~34 KB     | JS (rAF + WAAPI)    | Yes        | Yes     | Yes         | Quirky   | Yes            |
+| @react-spring/web      | ~16-24 KB  | JS (spring physics) | Yes        | Partial | Yes         | Manual   | Yes            |
+| react-transition-group | ~5 KB      | CSS classes         | Yes        | No      | Yes         | No       | No             |
+| AutoAnimate            | ~2.5 KB    | JS (FLIP)           | Yes        | No      | Yes         | No       | Yes            |
 
 **Key advantages:**
+
 - **10x smaller than Motion** for CSS-transition use cases
 - **CSS-first**: `transform`/`opacity` run on GPU compositor thread, not main thread
 - **Only library** combining CSS transitions + stagger + collapse + list reconciliation
@@ -53,9 +54,9 @@ FadeDiv({ show: show(), children: 'Hello, world!' })
 Creates an animated component. `tag` can be any HTML element string or Pyreon component.
 
 ```ts
-kinetic('div')        // HTML element
-kinetic('section')    // Any HTML tag
-kinetic(MyComponent)  // Pyreon component
+kinetic('div') // HTML element
+kinetic('section') // Any HTML tag
+kinetic(MyComponent) // Pyreon component
 ```
 
 Returns a renderable Pyreon component with chain methods attached. Default mode: **transition**.
@@ -109,7 +110,7 @@ Height animation with `overflow: hidden`. Measures `scrollHeight` automatically.
 ```ts
 const Accordion = kinetic('div').collapse()
 const FancyAccordion = kinetic('section').collapse({
-  transition: 'height 400ms cubic-bezier(0.4, 0, 0.2, 1)'
+  transition: 'height 400ms cubic-bezier(0.4, 0, 0.2, 1)',
 })
 
 Accordion({ show: isExpanded, children: 'Expandable content' })
@@ -122,11 +123,14 @@ Staggered entrance/exit for child elements.
 ```ts
 const StaggerList = kinetic('ul').preset(slideUp).stagger({ interval: 75 })
 
-StaggerList({ show: isVisible, children: [
-  h('li', { key: '1' }, 'Item 1'),
-  h('li', { key: '2' }, 'Item 2'),
-  h('li', { key: '3' }, 'Item 3'),
-]})
+StaggerList({
+  show: isVisible,
+  children: [
+    h('li', { key: '1' }, 'Item 1'),
+    h('li', { key: '2' }, 'Item 2'),
+    h('li', { key: '3' }, 'Item 3'),
+  ],
+})
 ```
 
 #### Group
@@ -136,9 +140,7 @@ Key-based enter/exit — adding a child triggers enter animation, removing trigg
 ```ts
 const AnimatedList = kinetic('ul').preset(fade).group()
 
-AnimatedList({ children: items.map(item =>
-  h('li', { key: item.id }, item.text)
-)})
+AnimatedList({ children: items.map((item) => h('li', { key: item.id }, item.text)) })
 ```
 
 ### Inline Configuration
@@ -199,8 +201,9 @@ Kinetic and rocketstyle compose naturally:
 ```ts
 import rocketstyle from '@pyreon/rocketstyle'
 
-const Button = rocketstyle()({ component: 'button', name: 'Button' })
-  .theme({ primaryColor: 'blue' })
+const Button = rocketstyle()({ component: 'button', name: 'Button' }).theme({
+  primaryColor: 'blue',
+})
 
 const AnimatedButton = kinetic(Button).preset(fade)
 
@@ -210,9 +213,9 @@ AnimatedButton({ show: isVisible, primary: true, size: 'large', children: 'Click
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package            | Version  |
+| ------------------ | -------- |
+| @pyreon/core       | >= 0.0.1 |
 | @pyreon/reactivity | >= 0.0.1 |
 
 ## License

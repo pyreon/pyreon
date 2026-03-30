@@ -1,7 +1,7 @@
-import { effect } from "./effect"
-import type { Signal } from "./signal"
-import { signal } from "./signal"
-import { runUntracked } from "./tracking"
+import { effect } from './effect'
+import type { Signal } from './signal'
+import { signal } from './signal'
+import { runUntracked } from './tracking'
 
 export interface Resource<T> {
   /** The latest resolved value (undefined while loading or on error). */

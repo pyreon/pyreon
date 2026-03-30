@@ -1,39 +1,39 @@
-import { useField, useForm, useFormState } from "@pyreon/form"
-import { signal } from "@pyreon/reactivity"
+import { useField, useForm, useFormState } from '@pyreon/form'
+import { signal } from '@pyreon/reactivity'
 
 export function FormDemo() {
   const submitted = signal<string | null>(null)
 
   const form = useForm({
     initialValues: {
-      name: "",
-      email: "",
-      password: "",
+      name: '',
+      email: '',
+      password: '',
       newsletter: false,
     },
     validators: {
-      name: (v) => (!v ? "Name is required" : undefined),
+      name: (v) => (!v ? 'Name is required' : undefined),
       email: (v) => {
-        if (!v) return "Email is required"
-        if (!v.includes("@")) return "Must be a valid email"
+        if (!v) return 'Email is required'
+        if (!v.includes('@')) return 'Must be a valid email'
         return undefined
       },
       password: (v) => {
-        if (!v) return "Password is required"
-        if (v.length < 8) return "Must be at least 8 characters"
+        if (!v) return 'Password is required'
+        if (v.length < 8) return 'Must be at least 8 characters'
         return undefined
       },
     },
-    validateOn: "blur",
+    validateOn: 'blur',
     onSubmit: async (values) => {
       await new Promise((r) => setTimeout(r, 500))
       submitted.set(JSON.stringify(values, null, 2))
     },
   })
 
-  const name = useField(form, "name")
-  const email = useField(form, "email")
-  const password = useField(form, "password")
+  const name = useField(form, 'name')
+  const email = useField(form, 'email')
+  const password = useField(form, 'password')
   const state = useFormState(form)
 
   return (
@@ -66,14 +66,14 @@ export function FormDemo() {
 
           <div class="field">
             <label>
-              <input type="checkbox" {...form.register("newsletter", { type: "checkbox" })} />{" "}
+              <input type="checkbox" {...form.register('newsletter', { type: 'checkbox' })} />{' '}
               Subscribe to newsletter
             </label>
           </div>
 
           <div class="row">
             <button class="primary" type="submit" disabled={form.isSubmitting()}>
-              {() => (form.isSubmitting() ? "Submitting..." : "Register")}
+              {() => (form.isSubmitting() ? 'Submitting...' : 'Register')}
             </button>
             <button type="button" onClick={() => form.reset()}>
               Reset
@@ -88,11 +88,11 @@ export function FormDemo() {
       <div class="section">
         <h3>Form State</h3>
         <div class="row">
-          <span class={`badge ${state().isValid ? "green" : "red"}`}>
-            {() => (state().isValid ? "Valid" : "Invalid")}
+          <span class={`badge ${state().isValid ? 'green' : 'red'}`}>
+            {() => (state().isValid ? 'Valid' : 'Invalid')}
           </span>
-          <span class={`badge ${state().isDirty ? "blue" : "gray"}`}>
-            {() => (state().isDirty ? "Dirty" : "Pristine")}
+          <span class={`badge ${state().isDirty ? 'blue' : 'gray'}`}>
+            {() => (state().isDirty ? 'Dirty' : 'Pristine')}
           </span>
           <span class="badge gray">Submits: {() => state().submitCount}</span>
         </div>

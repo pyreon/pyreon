@@ -1,4 +1,4 @@
-import type { Computed } from "@pyreon/reactivity"
+import type { Computed } from '@pyreon/reactivity'
 
 // ─── Permission values ───────────────────────────────────────────────────────
 

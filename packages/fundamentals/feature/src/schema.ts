@@ -21,18 +21,18 @@ export interface FieldInfo {
 }
 
 export type FieldType =
-  | "string"
-  | "number"
-  | "boolean"
-  | "date"
-  | "enum"
-  | "array"
-  | "object"
-  | "reference"
-  | "unknown"
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'enum'
+  | 'array'
+  | 'object'
+  | 'reference'
+  | 'unknown'
 
 /** Symbol used to tag reference schema objects. */
-const REFERENCE_TAG = Symbol.for("pyreon:feature:reference")
+const REFERENCE_TAG = Symbol.for('pyreon:feature:reference')
 
 /**
  * Metadata carried by a reference schema.
@@ -61,7 +61,7 @@ export interface ReferenceSchema {
 export function isReference(value: unknown): value is ReferenceSchema {
   return (
     value !== null &&
-    typeof value === "object" &&
+    typeof value === 'object' &&
     (value as Record<symbol, unknown>)[REFERENCE_TAG] === true
   )
 }
@@ -93,7 +93,7 @@ export function reference(feature: { name: string }): ReferenceSchema {
     success: boolean
     error?: { issues: { message: string }[] }
   } {
-    if (typeof value === "string" || typeof value === "number") {
+    if (typeof value === 'string' || typeof value === 'number') {
       return { success: true }
     }
     return {
@@ -113,7 +113,7 @@ export function reference(feature: { name: string }): ReferenceSchema {
     _featureName: featureName,
     safeParse: validateRef,
     safeParseAsync: async (value: unknown) => validateRef(value),
-    _def: { typeName: "ZodString" },
+    _def: { typeName: 'ZodString' },
   }
 }
 
@@ -123,8 +123,8 @@ export function reference(feature: { name: string }): ReferenceSchema {
  */
 function nameToLabel(name: string): string {
   return name
-    .replace(/([a-z])([A-Z])/g, "$1 $2") // camelCase → camel Case
-    .replace(/[_-]/g, " ") // snake_case/kebab-case → spaces
+    .replace(/([a-z])([A-Z])/g, '$1 $2') // camelCase → camel Case
+    .replace(/[_-]/g, ' ') // snake_case/kebab-case → spaces
     .replace(/\b\w/g, (c) => c.toUpperCase()) // capitalize words
 }
 
@@ -141,14 +141,14 @@ function detectFieldType(zodField: unknown): {
   // Check for reference fields first
   if (isReference(zodField)) {
     return {
-      type: "reference",
+      type: 'reference',
       optional: false,
       referenceTo: zodField._featureName,
     }
   }
 
-  if (!zodField || typeof zodField !== "object") {
-    return { type: "unknown", optional: false }
+  if (!zodField || typeof zodField !== 'object') {
+    return { type: 'unknown', optional: false }
   }
 
   const field = zodField as Record<string, unknown>
@@ -161,13 +161,13 @@ function detectFieldType(zodField: unknown): {
   const getTypeName = (obj: Record<string, unknown>): string | undefined => {
     // v3 path
     const def = obj._def as Record<string, unknown> | undefined
-    if (def?.typeName && typeof def.typeName === "string") {
+    if (def?.typeName && typeof def.typeName === 'string') {
       return def.typeName
     }
     // v4 path
     const zod = obj._zod as Record<string, unknown> | undefined
     const zodDef = zod?.def as Record<string, unknown> | undefined
-    if (zodDef?.type && typeof zodDef.type === "string") {
+    if (zodDef?.type && typeof zodDef.type === 'string') {
       return zodDef.type
     }
     return undefined
@@ -177,15 +177,15 @@ function detectFieldType(zodField: unknown): {
 
   // Unwrap optional/nullable
   if (
-    typeName === "ZodOptional" ||
-    typeName === "ZodNullable" ||
-    typeName === "optional" ||
-    typeName === "nullable"
+    typeName === 'ZodOptional' ||
+    typeName === 'ZodNullable' ||
+    typeName === 'optional' ||
+    typeName === 'nullable'
   ) {
     optional = true
     const def = inner._def as Record<string, unknown> | undefined
     const innerType = def?.innerType ?? (inner._zod as Record<string, unknown>)?.def
-    if (innerType && typeof innerType === "object") {
+    if (innerType && typeof innerType === 'object') {
       inner = innerType as Record<string, unknown>
     }
   }
@@ -193,32 +193,32 @@ function detectFieldType(zodField: unknown): {
   const innerTypeName = getTypeName(inner) ?? typeName
 
   // Map Zod type names to our FieldType
-  if (!innerTypeName) return { type: "unknown", optional }
+  if (!innerTypeName) return { type: 'unknown', optional }
 
   const typeMap: Record<string, FieldType> = {
-    ZodString: "string",
-    ZodNumber: "number",
-    ZodBoolean: "boolean",
-    ZodDate: "date",
-    ZodEnum: "enum",
-    ZodNativeEnum: "enum",
-    ZodArray: "array",
-    ZodObject: "object",
+    ZodString: 'string',
+    ZodNumber: 'number',
+    ZodBoolean: 'boolean',
+    ZodDate: 'date',
+    ZodEnum: 'enum',
+    ZodNativeEnum: 'enum',
+    ZodArray: 'array',
+    ZodObject: 'object',
     // v4 names
-    string: "string",
-    number: "number",
-    boolean: "boolean",
-    date: "date",
-    enum: "enum",
-    array: "array",
-    object: "object",
+    string: 'string',
+    number: 'number',
+    boolean: 'boolean',
+    date: 'date',
+    enum: 'enum',
+    array: 'array',
+    object: 'object',
   }
 
-  const type = typeMap[innerTypeName] ?? "string"
+  const type = typeMap[innerTypeName] ?? 'string'
 
   // Extract enum values
   let enumValues: (string | number)[] | undefined
-  if (type === "enum") {
+  if (type === 'enum') {
     const def = inner._def as Record<string, unknown> | undefined
     if (def?.values && Array.isArray(def.values)) {
       enumValues = def.values as (string | number)[]
@@ -254,7 +254,7 @@ function detectFieldType(zodField: unknown): {
  * ```
  */
 export function extractFields(schema: unknown): FieldInfo[] {
-  if (!schema || typeof schema !== "object") return []
+  if (!schema || typeof schema !== 'object') return []
 
   const s = schema as Record<string, unknown>
 
@@ -264,7 +264,7 @@ export function extractFields(schema: unknown): FieldInfo[] {
   let shape: Record<string, unknown> | undefined
 
   // Try schema.shape (works for both v3 and v4)
-  if (s.shape && typeof s.shape === "object") {
+  if (s.shape && typeof s.shape === 'object') {
     shape = s.shape as Record<string, unknown>
   }
 
@@ -273,7 +273,7 @@ export function extractFields(schema: unknown): FieldInfo[] {
     const def = s._def as Record<string, unknown> | undefined
     if (def?.shape) {
       shape =
-        typeof def.shape === "function"
+        typeof def.shape === 'function'
           ? (def.shape as () => Record<string, unknown>)()
           : (def.shape as Record<string, unknown>)
     }
@@ -283,7 +283,7 @@ export function extractFields(schema: unknown): FieldInfo[] {
   if (!shape) {
     const zod = s._zod as Record<string, unknown> | undefined
     const zodDef = zod?.def as Record<string, unknown> | undefined
-    if (zodDef?.shape && typeof zodDef.shape === "object") {
+    if (zodDef?.shape && typeof zodDef.shape === 'object') {
       shape = zodDef.shape as Record<string, unknown>
     }
   }
@@ -311,23 +311,23 @@ export function defaultInitialValues(fields: FieldInfo[]): Record<string, unknow
   const values: Record<string, unknown> = {}
   for (const field of fields) {
     switch (field.type) {
-      case "string":
-        values[field.name] = ""
+      case 'string':
+        values[field.name] = ''
         break
-      case "number":
+      case 'number':
         values[field.name] = 0
         break
-      case "boolean":
+      case 'boolean':
         values[field.name] = false
         break
-      case "enum":
-        values[field.name] = field.enumValues?.[0] ?? ""
+      case 'enum':
+        values[field.name] = field.enumValues?.[0] ?? ''
         break
-      case "date":
-        values[field.name] = ""
+      case 'date':
+        values[field.name] = ''
         break
       default:
-        values[field.name] = ""
+        values[field.name] = ''
     }
   }
   return values

@@ -10,18 +10,23 @@ description: Signal-based form state management with validation, field arrays, a
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/form
 ```
+
 ```bash [bun]
 bun add @pyreon/form
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/form
 ```
+
 ```bash [yarn]
 yarn add @pyreon/form
 ```
+
 :::
 
 ## Basic Usage
@@ -35,8 +40,7 @@ const form = useForm({
   initialValues: { email: '', password: '', remember: false },
   validators: {
     email: (value) => (!value ? 'Email is required' : undefined),
-    password: (value) =>
-      value.length < 8 ? 'Password must be at least 8 characters' : undefined,
+    password: (value) => (value.length < 8 ? 'Password must be at least 8 characters' : undefined),
   },
   onSubmit: async (values) => {
     await loginApi(values)
@@ -74,7 +78,9 @@ const form = useForm({
     tags: ['default'] as string[],
     address: { city: '', zip: '' },
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -114,7 +120,9 @@ const form = useForm({
     confirmPassword: (value, allValues) =>
       value !== allValues.password ? 'Passwords must match' : undefined,
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -134,7 +142,9 @@ const form = useForm({
     }
     return errors
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -151,11 +161,11 @@ schema: async (values) => {
 
 Controls when field-level validation runs. Defaults to `'blur'`.
 
-| Value | Behavior |
-| --- | --- |
-| `'blur'` | Validate when a field is blurred (via `setTouched()` or `register()` onBlur) |
-| `'change'` | Validate on every value change (via an `effect` on the value signal) |
-| `'submit'` | Only validate when `handleSubmit` or `validate()` is called |
+| Value      | Behavior                                                                     |
+| ---------- | ---------------------------------------------------------------------------- |
+| `'blur'`   | Validate when a field is blurred (via `setTouched()` or `register()` onBlur) |
+| `'change'` | Validate on every value change (via an `effect` on the value signal)         |
+| `'submit'` | Only validate when `handleSubmit` or `validate()` is called                  |
 
 ```ts
 // Validate on every keystroke
@@ -165,7 +175,9 @@ const form = useForm({
     search: (v) => (v.length > 100 ? 'Too long' : undefined),
   },
   validateOn: 'change',
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 
 // Only validate on submit -- no intermediate validation
@@ -175,16 +187,18 @@ const form = useForm({
     email: (v) => (!v ? 'Required' : undefined),
   },
   validateOn: 'submit',
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
 With `validateOn: 'submit'`, neither blur nor value changes trigger validation. The user sees errors only after attempting to submit:
 
 ```ts
-form.fields.email.setTouched()  // no validation
-form.fields.email.setValue('x')  // no validation
-await form.handleSubmit()        // now validates and shows errors
+form.fields.email.setTouched() // no validation
+form.fields.email.setValue('x') // no validation
+await form.handleSubmit() // now validates and shows errors
 ```
 
 ### `debounceMs`
@@ -203,7 +217,9 @@ const form = useForm({
   },
   validateOn: 'change',
   debounceMs: 300,
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -223,7 +239,9 @@ The `register()` method returns props for binding an input element to a field. I
 const LoginForm = defineComponent(() => {
   const form = useForm({
     initialValues: { email: '', password: '' },
-    onSubmit: async (values) => { /* ... */ },
+    onSubmit: async (values) => {
+      /* ... */
+    },
   })
 
   return () => (
@@ -258,10 +276,10 @@ Pass `&#123; type: 'number' &#125;` to `register()` to use `valueAsNumber` on th
 
 ```ts
 interface FieldRegisterProps<T> {
-  value: Signal<T>             // the field's value signal (bind to input value)
-  onInput: (e: Event) => void  // updates field value and dirty state
-  onBlur: () => void           // marks field as touched, triggers blur validation
-  checked?: Accessor<boolean>  // only present for checkbox type
+  value: Signal<T> // the field's value signal (bind to input value)
+  onInput: (e: Event) => void // updates field value and dirty state
+  onBlur: () => void // marks field as touched, triggers blur validation
+  checked?: Accessor<boolean> // only present for checkbox type
 }
 ```
 
@@ -270,7 +288,7 @@ The returned props are memoized per field+type combination, so calling `register
 ```ts
 const first = form.register('email')
 const second = form.register('email')
-first === second  // true
+first === second // true
 ```
 
 ## Field State
@@ -283,10 +301,10 @@ Each field in `form.fields` has its own reactive state with fine-grained signals
 const { fields } = form
 
 // Reactive reads -- trigger re-render in components
-fields.email.value()    // current value (e.g., "alice@example.com")
-fields.email.error()    // validation error or undefined
-fields.email.touched()  // true after first blur
-fields.email.dirty()    // true if value differs from initial
+fields.email.value() // current value (e.g., "alice@example.com")
+fields.email.error() // validation error or undefined
+fields.email.touched() // true after first blur
+fields.email.dirty() // true if value differs from initial
 ```
 
 ### Updating Field State
@@ -304,15 +322,15 @@ fields.email.reset()
 
 ### FieldState Interface
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `value` | `Signal<T>` | Current field value |
-| `error` | `Signal<string \| undefined>` | Validation error message |
-| `touched` | `Signal<boolean>` | Whether the field has been blurred at least once |
-| `dirty` | `Signal<boolean>` | Whether the value differs from its initial value |
-| `setValue(value)` | `(value: T) => void` | Set the field value and update dirty state |
-| `setTouched()` | `() => void` | Mark as touched, trigger blur validation |
-| `reset()` | `() => void` | Reset to initial value, clear all state |
+| Property          | Type                          | Description                                      |
+| ----------------- | ----------------------------- | ------------------------------------------------ |
+| `value`           | `Signal<T>`                   | Current field value                              |
+| `error`           | `Signal<string \| undefined>` | Validation error message                         |
+| `touched`         | `Signal<boolean>`             | Whether the field has been blurred at least once |
+| `dirty`           | `Signal<boolean>`             | Whether the value differs from its initial value |
+| `setValue(value)` | `(value: T) => void`          | Set the field value and update dirty state       |
+| `setTouched()`    | `() => void`                  | Mark as touched, trigger blur validation         |
+| `reset()`         | `() => void`                  | Reset to initial value, clear all state          |
 
 ### Dirty Detection
 
@@ -325,16 +343,16 @@ const form = useForm({
 })
 
 form.fields.email.setValue('changed')
-form.fields.email.dirty()  // true
+form.fields.email.dirty() // true
 
 form.fields.email.setValue('original')
-form.fields.email.dirty()  // false
+form.fields.email.dirty() // false
 
 form.fields.tags.setValue(['a', 'b', 'c'])
-form.fields.tags.dirty()  // true
+form.fields.tags.dirty() // true
 
 form.fields.tags.setValue(['a', 'b'])
-form.fields.tags.dirty()  // false
+form.fields.tags.dirty() // false
 ```
 
 Object fields compare keys and values shallowly:
@@ -346,10 +364,10 @@ const form = useForm({
 })
 
 form.fields.address.setValue({ city: 'NYC', zip: '10001' })
-form.fields.address.dirty()  // false (same structure)
+form.fields.address.dirty() // false (same structure)
 
 form.fields.address.setValue({ city: 'LA', zip: '90001' })
-form.fields.address.dirty()  // true
+form.fields.address.dirty() // true
 ```
 
 ## Validation
@@ -376,7 +394,9 @@ const form = useForm({
     confirmPassword: (value, allValues) =>
       value !== allValues.password ? 'Passwords must match' : undefined,
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -387,8 +407,9 @@ The `schema` validator runs after all field-level validators:
 ```ts
 type SchemaValidateFn<TValues> = (
   values: TValues,
-) => Partial<Record<keyof TValues, string | undefined>>
-   | Promise<Partial<Record<keyof TValues, string | undefined>>>
+) =>
+  | Partial<Record<keyof TValues, string | undefined>>
+  | Promise<Partial<Record<keyof TValues, string | undefined>>>
 ```
 
 If both field validators and schema validator report errors for the same field, the schema validator's error takes precedence (it runs last).
@@ -409,7 +430,9 @@ const form = useForm({
       return available ? undefined : 'Username is taken'
     },
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -442,7 +465,9 @@ const form = useForm({
     }
     return errors
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -471,7 +496,9 @@ const form = useForm({
     }
     return errors
   },
-  onSubmit: async (values) => { /* ... */ },
+  onSubmit: async (values) => {
+    /* ... */
+  },
 })
 ```
 
@@ -485,7 +512,7 @@ const form = useForm({
   validators: {
     email: (v) => (!v.includes('@') ? 'Invalid email' : undefined),
   },
-  validateOn: 'blur',  // default
+  validateOn: 'blur', // default
   onSubmit: async () => {},
 })
 
@@ -531,24 +558,21 @@ const form = useForm({
 
 ## Form-Level State
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `isSubmitting` | `Signal<boolean>` | `true` while `onSubmit` is running |
-| `isValidating` | `Signal<boolean>` | `true` while async validation is running |
-| `isValid` | `Accessor<boolean>` | `true` when no field has an error (computed -- read-only) |
-| `isDirty` | `Accessor<boolean>` | `true` when any field value differs from initial (computed -- read-only) |
-| `submitCount` | `Signal<number>` | Number of times submit has been attempted |
-| `submitError` | `Signal<unknown>` | Error thrown by `onSubmit`, if any |
+| Property       | Type                | Description                                                              |
+| -------------- | ------------------- | ------------------------------------------------------------------------ |
+| `isSubmitting` | `Signal<boolean>`   | `true` while `onSubmit` is running                                       |
+| `isValidating` | `Signal<boolean>`   | `true` while async validation is running                                 |
+| `isValid`      | `Accessor<boolean>` | `true` when no field has an error (computed -- read-only)                |
+| `isDirty`      | `Accessor<boolean>` | `true` when any field value differs from initial (computed -- read-only) |
+| `submitCount`  | `Signal<number>`    | Number of times submit has been attempted                                |
+| `submitError`  | `Signal<unknown>`   | Error thrown by `onSubmit`, if any                                       |
 
 ### Tracking Submit State
 
 ```tsx
 const SubmitButton = defineComponent(() => {
   return () => (
-    <button
-      type="submit"
-      disabled={form.isSubmitting() || !form.isValid()}
-    >
+    <button type="submit" disabled={form.isSubmitting() || !form.isValid()}>
       {form.isSubmitting() ? 'Submitting...' : 'Submit'}
     </button>
   )
@@ -559,11 +583,7 @@ const SubmitButton = defineComponent(() => {
 
 ```tsx
 const ValidatingIndicator = defineComponent(() => {
-  return () => (
-    form.isValidating()
-      ? <span class="spinner">Validating...</span>
-      : null
-  )
+  return () => (form.isValidating() ? <span class="spinner">Validating...</span> : null)
 })
 ```
 
@@ -575,9 +595,7 @@ const SubmitError = defineComponent(() => {
     const err = form.submitError()
     if (!err) return null
     return (
-      <div class="error-banner">
-        {err instanceof Error ? err.message : 'An error occurred'}
-      </div>
+      <div class="error-banner">{err instanceof Error ? err.message : 'An error occurred'}</div>
     )
   }
 })
@@ -677,7 +695,9 @@ Set multiple field errors at once:
 
 ```ts
 // From a server response
-const response = await fetch('/api/register', { /* ... */ })
+const response = await fetch('/api/register', {
+  /* ... */
+})
 if (!response.ok) {
   const { errors } = await response.json()
   form.setErrors(errors)
@@ -719,17 +739,17 @@ import { useFieldArray } from '@pyreon/form'
 
 const tags = useFieldArray<string>(['typescript', 'pyreon'])
 
-tags.append('signals')     // add to end
-tags.prepend('reactive')   // add to start
-tags.insert(1, 'fast')     // insert at index
-tags.remove(0)             // remove at index
-tags.update(0, 'updated')  // update value at index
-tags.move(0, 2)            // move item from index 0 to index 2
-tags.swap(0, 1)            // swap items at indices 0 and 1
-tags.replace(['new', 'list'])  // replace all items
+tags.append('signals') // add to end
+tags.prepend('reactive') // add to start
+tags.insert(1, 'fast') // insert at index
+tags.remove(0) // remove at index
+tags.update(0, 'updated') // update value at index
+tags.move(0, 2) // move item from index 0 to index 2
+tags.swap(0, 1) // swap items at indices 0 and 1
+tags.replace(['new', 'list']) // replace all items
 
-tags.values()   // ['new', 'list']
-tags.length()   // 2
+tags.values() // ['new', 'list']
+tags.length() // 2
 ```
 
 ### Stable Keys
@@ -738,14 +758,14 @@ Each item in the field array has a stable numeric `key` for efficient keyed rend
 
 ```ts
 const arr = useFieldArray(['a', 'b'])
-const keys1 = arr.items().map(i => i.key)  // [0, 1]
+const keys1 = arr.items().map((i) => i.key) // [0, 1]
 
 arr.append('c')
-const keys2 = arr.items().map(i => i.key)  // [0, 1, 2]
+const keys2 = arr.items().map((i) => i.key) // [0, 1, 2]
 // First two keys are preserved
 
 arr.remove(1)
-const keys3 = arr.items().map(i => i.key)  // [0, 2]
+const keys3 = arr.items().map((i) => i.key) // [0, 2]
 // Original keys are maintained
 ```
 
@@ -755,7 +775,7 @@ Each item's `value` is a reactive signal. You can read it reactively or update i
 
 ```ts
 const item = arr.items()[0]
-item.value()          // read the value reactively
+item.value() // read the value reactively
 item.value.set('new') // update the value directly
 ```
 
@@ -769,10 +789,7 @@ const TagEditor = defineComponent(() => {
     <div>
       {tags.items().map((item, index) => (
         <div key={item.key} class="tag-row">
-          <input
-            value={item.value()}
-            onInput={(e) => tags.update(index, e.target.value)}
-          />
+          <input value={item.value()} onInput={(e) => tags.update(index, e.target.value)} />
           <button onClick={() => tags.remove(index)}>Remove</button>
         </div>
       ))}
@@ -794,9 +811,7 @@ interface Experience {
   startYear: number
 }
 
-const experiences = useFieldArray<Experience>([
-  { company: '', title: '', startYear: 2020 },
-])
+const experiences = useFieldArray<Experience>([{ company: '', title: '', startYear: 2020 }])
 
 // Add a new experience entry
 experiences.append({ company: '', title: '', startYear: 2024 })
@@ -813,37 +828,37 @@ const items = useFieldArray(['first', 'second', 'third'])
 
 // Move "first" to the end
 items.move(0, 2)
-items.values()  // ['second', 'third', 'first']
+items.values() // ['second', 'third', 'first']
 
 // Swap first and last
 items.swap(0, 2)
-items.values()  // ['first', 'third', 'second']
+items.values() // ['first', 'third', 'second']
 ```
 
 Operations on invalid indices are no-ops -- they do not throw.
 
 ### UseFieldArrayResult
 
-| Property / Method | Type | Description |
-| --- | --- | --- |
-| `items` | `Signal<FieldArrayItem<T>[]>` | Reactive list of items with stable keys |
-| `length` | `Computed<number>` | Number of items |
-| `append(value)` | `(value: T) => void` | Add item to the end |
-| `prepend(value)` | `(value: T) => void` | Add item to the start |
-| `insert(index, value)` | `(index: number, value: T) => void` | Insert at index |
-| `remove(index)` | `(index: number) => void` | Remove at index |
-| `update(index, value)` | `(index: number, value: T) => void` | Update item value at index |
-| `move(from, to)` | `(from: number, to: number) => void` | Move item between indices |
-| `swap(a, b)` | `(a: number, b: number) => void` | Swap two items |
-| `replace(values)` | `(values: T[]) => void` | Replace all items |
-| `values()` | `() => T[]` | Get all values as a plain array |
+| Property / Method      | Type                                 | Description                             |
+| ---------------------- | ------------------------------------ | --------------------------------------- |
+| `items`                | `Signal<FieldArrayItem<T>[]>`        | Reactive list of items with stable keys |
+| `length`               | `Computed<number>`                   | Number of items                         |
+| `append(value)`        | `(value: T) => void`                 | Add item to the end                     |
+| `prepend(value)`       | `(value: T) => void`                 | Add item to the start                   |
+| `insert(index, value)` | `(index: number, value: T) => void`  | Insert at index                         |
+| `remove(index)`        | `(index: number) => void`            | Remove at index                         |
+| `update(index, value)` | `(index: number, value: T) => void`  | Update item value at index              |
+| `move(from, to)`       | `(from: number, to: number) => void` | Move item between indices               |
+| `swap(a, b)`           | `(a: number, b: number) => void`     | Swap two items                          |
+| `replace(values)`      | `(values: T[]) => void`              | Replace all items                       |
+| `values()`             | `() => T[]`                          | Get all values as a plain array         |
 
 ### FieldArrayItem
 
 ```ts
 interface FieldArrayItem<T> {
-  key: number         // Stable key for keyed rendering
-  value: Signal<T>    // Reactive value signal
+  key: number // Stable key for keyed rendering
+  value: Signal<T> // Reactive value signal
 }
 ```
 
@@ -867,18 +882,18 @@ function EmailField({ form }) {
 
 **Returns `UseFieldResult<T>`:**
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `value` | `Signal<T>` | Current field value |
-| `error` | `Signal<ValidationError>` | Field error message |
-| `touched` | `Signal<boolean>` | Whether the field has been touched |
-| `dirty` | `Signal<boolean>` | Whether the value differs from initial |
-| `setValue` | `(value: T) => void` | Set the field value |
-| `setTouched` | `() => void` | Mark the field as touched |
-| `reset` | `() => void` | Reset to initial value |
-| `register` | `(opts?) => FieldRegisterProps` | Register props for input binding |
-| `hasError` | `Computed<boolean>` | Whether the field has an error |
-| `showError` | `Computed<boolean>` | Whether to display the error (touched + has error) |
+| Property     | Type                            | Description                                        |
+| ------------ | ------------------------------- | -------------------------------------------------- |
+| `value`      | `Signal<T>`                     | Current field value                                |
+| `error`      | `Signal<ValidationError>`       | Field error message                                |
+| `touched`    | `Signal<boolean>`               | Whether the field has been touched                 |
+| `dirty`      | `Signal<boolean>`               | Whether the value differs from initial             |
+| `setValue`   | `(value: T) => void`            | Set the field value                                |
+| `setTouched` | `() => void`                    | Mark the field as touched                          |
+| `reset`      | `() => void`                    | Reset to initial value                             |
+| `register`   | `(opts?) => FieldRegisterProps` | Register props for input binding                   |
+| `hasError`   | `Computed<boolean>`             | Whether the field has an error                     |
+| `showError`  | `Computed<boolean>`             | Whether to display the error (touched + has error) |
 
 ## useWatch
 
@@ -916,17 +931,17 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting)
 
 **`FormStateSummary` shape:**
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `isSubmitting` | `boolean` | Whether the form is submitting |
-| `isValidating` | `boolean` | Whether async validation is running |
-| `isValid` | `boolean` | Whether all fields are valid |
-| `isDirty` | `boolean` | Whether any field is dirty |
-| `submitCount` | `number` | Number of submit attempts |
-| `submitError` | `unknown` | Last submit error |
-| `touchedFields` | `Partial<Record<K, boolean>>` | Map of touched fields |
-| `dirtyFields` | `Partial<Record<K, boolean>>` | Map of dirty fields |
-| `errors` | `Partial<Record<K, ValidationError>>` | Map of field errors |
+| Property        | Type                                  | Description                         |
+| --------------- | ------------------------------------- | ----------------------------------- |
+| `isSubmitting`  | `boolean`                             | Whether the form is submitting      |
+| `isValidating`  | `boolean`                             | Whether async validation is running |
+| `isValid`       | `boolean`                             | Whether all fields are valid        |
+| `isDirty`       | `boolean`                             | Whether any field is dirty          |
+| `submitCount`   | `number`                              | Number of submit attempts           |
+| `submitError`   | `unknown`                             | Last submit error                   |
+| `touchedFields` | `Partial<Record<K, boolean>>`         | Map of touched fields               |
+| `dirtyFields`   | `Partial<Record<K, boolean>>`         | Map of dirty fields                 |
+| `errors`        | `Partial<Record<K, ValidationError>>` | Map of field errors                 |
 
 ## FormProvider + useFormContext
 
@@ -939,7 +954,9 @@ import { FormProvider, useFormContext, useForm } from '@pyreon/form'
 function SignupPage() {
   const form = useForm({
     initialValues: { email: '', password: '' },
-    onSubmit: async (values) => { /* ... */ },
+    onSubmit: async (values) => {
+      /* ... */
+    },
   })
   return (
     <FormProvider form={form}>
@@ -982,8 +999,7 @@ const LoginForm = defineComponent(() => {
         if (!v.includes('@')) return 'Invalid email address'
         return undefined
       },
-      password: (v) =>
-        !v ? 'Password is required' : undefined,
+      password: (v) => (!v ? 'Password is required' : undefined),
     },
     onSubmit: async (values) => {
       const res = await fetch('/api/login', {
@@ -1022,9 +1038,7 @@ const LoginForm = defineComponent(() => {
       </label>
 
       {form.submitError() && (
-        <div class="error-banner">
-          {(form.submitError() as Error).message}
-        </div>
+        <div class="error-banner">{(form.submitError() as Error).message}</div>
       )}
 
       <button type="submit" disabled={form.isSubmitting()}>
@@ -1068,7 +1082,7 @@ const RegistrationForm = defineComponent(() => {
         value !== all.password ? 'Passwords must match' : undefined,
     },
     validateOn: 'blur',
-    debounceMs: 500,  // debounce the async username check
+    debounceMs: 500, // debounce the async username check
     onSubmit: async (values) => {
       await fetch('/api/register', {
         method: 'POST',
@@ -1081,23 +1095,17 @@ const RegistrationForm = defineComponent(() => {
     <form onSubmit={form.handleSubmit}>
       <div class="field">
         <input placeholder="Username" {...form.register('username')} />
-        {form.fields.username.error() && (
-          <span class="error">{form.fields.username.error()}</span>
-        )}
+        {form.fields.username.error() && <span class="error">{form.fields.username.error()}</span>}
       </div>
 
       <div class="field">
         <input type="email" placeholder="Email" {...form.register('email')} />
-        {form.fields.email.error() && (
-          <span class="error">{form.fields.email.error()}</span>
-        )}
+        {form.fields.email.error() && <span class="error">{form.fields.email.error()}</span>}
       </div>
 
       <div class="field">
         <input type="password" placeholder="Password" {...form.register('password')} />
-        {form.fields.password.error() && (
-          <span class="error">{form.fields.password.error()}</span>
-        )}
+        {form.fields.password.error() && <span class="error">{form.fields.password.error()}</span>}
       </div>
 
       <div class="field">
@@ -1128,9 +1136,7 @@ interface Question {
 }
 
 const SurveyForm = defineComponent(() => {
-  const questions = useFieldArray<Question>([
-    { text: '', answer: '' },
-  ])
+  const questions = useFieldArray<Question>([{ text: '', answer: '' }])
 
   const form = useForm({
     initialValues: { title: '', description: '' },
@@ -1152,9 +1158,7 @@ const SurveyForm = defineComponent(() => {
   return () => (
     <form onSubmit={form.handleSubmit}>
       <input placeholder="Survey Title" {...form.register('title')} />
-      {form.fields.title.error() && (
-        <span class="error">{form.fields.title.error()}</span>
-      )}
+      {form.fields.title.error() && <span class="error">{form.fields.title.error()}</span>}
 
       <textarea placeholder="Description" {...form.register('description')} />
 
@@ -1188,10 +1192,7 @@ const SurveyForm = defineComponent(() => {
         </div>
       ))}
 
-      <button
-        type="button"
-        onClick={() => questions.append({ text: '', answer: '' })}
-      >
+      <button type="button" onClick={() => questions.append({ text: '', answer: '' })}>
         Add Question
       </button>
 
@@ -1236,9 +1237,9 @@ const form = useForm({
 ```ts
 const form = useForm({
   initialValues: {
-    name: '',          // string
-    age: 0,            // number
-    active: false,     // boolean
+    name: '', // string
+    age: 0, // number
+    active: false, // boolean
     tags: [] as string[], // string[]
   },
   onSubmit: async (values) => {
@@ -1247,10 +1248,10 @@ const form = useForm({
   },
 })
 
-form.fields.name.value()    // string
-form.fields.age.value()     // number
-form.fields.active.value()  // boolean
-form.fields.tags.value()    // string[]
+form.fields.name.value() // string
+form.fields.age.value() // number
+form.fields.active.value() // boolean
+form.fields.tags.value() // string[]
 
 // Type error: argument of type 'number' is not assignable to 'string'
 form.fields.name.setValue(42)
@@ -1271,7 +1272,9 @@ const form = useForm<ProfileForm>({
     name: (v) => (!v ? 'Required' : undefined),
     // TypeScript enforces that validator keys match ProfileForm keys
   },
-  onSubmit: async (values: ProfileForm) => { /* ... */ },
+  onSubmit: async (values: ProfileForm) => {
+    /* ... */
+  },
 })
 ```
 
@@ -1336,8 +1339,14 @@ Watch one or more field values reactively. Pass a single field name to get a sig
 
 ```ts
 function useWatch<TValues>(form: FormState<TValues>): Computed<TValues>
-function useWatch<TValues, K extends keyof TValues>(form: FormState<TValues>, field: K): Computed<TValues[K]>
-function useWatch<TValues, K extends keyof TValues>(form: FormState<TValues>, fields: K[]): Computed<TValues[K]>[]
+function useWatch<TValues, K extends keyof TValues>(
+  form: FormState<TValues>,
+  field: K,
+): Computed<TValues[K]>
+function useWatch<TValues, K extends keyof TValues>(
+  form: FormState<TValues>,
+  fields: K[],
+): Computed<TValues[K]>[]
 ```
 
 ### `useFormState(form, selector?)`
@@ -1346,7 +1355,10 @@ Subscribe to form-level state. Returns a computed signal of `FormStateSummary`, 
 
 ```ts
 function useFormState<TValues>(form: FormState<TValues>): Computed<FormStateSummary<TValues>>
-function useFormState<TValues, R>(form: FormState<TValues>, selector: (state: FormStateSummary<TValues>) => R): Computed<R>
+function useFormState<TValues, R>(
+  form: FormState<TValues>,
+  selector: (state: FormStateSummary<TValues>) => R,
+): Computed<R>
 ```
 
 ### `FormProvider` + `useFormContext()`

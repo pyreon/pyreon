@@ -1,4 +1,4 @@
-import type { HTMLTags } from "@pyreon/ui-core"
+import type { HTMLTags } from '@pyreon/ui-core'
 import type {
   AlignX,
   AlignY,
@@ -13,12 +13,12 @@ import type {
   ExtendCss,
   Responsive,
   ResponsiveBoolType,
-} from "../../types"
+} from '../../types'
 
 export interface Props {
   parentDirection: Direction | undefined
   gap: Responsive | undefined
-  contentType: "before" | "content" | "after" | undefined
+  contentType: 'before' | 'content' | 'after' | undefined
   children: Content
   tag: HTMLTags | undefined
   direction: Direction | undefined
@@ -31,14 +31,14 @@ export interface Props {
 export interface StyledProps {
   $element: Pick<
     Props,
-    "contentType" | "parentDirection" | "direction" | "alignX" | "alignY" | "equalCols" | "gap"
+    'contentType' | 'parentDirection' | 'direction' | 'alignX' | 'alignY' | 'equalCols' | 'gap'
   > & {
-    extraStyles: Props["extendCss"]
+    extraStyles: Props['extendCss']
   }
-  $contentType: Props["contentType"]
+  $contentType: Props['contentType']
 }
 
-export type ThemeProps = Pick<Props, "contentType"> & {
+export type ThemeProps = Pick<Props, 'contentType'> & {
   parentDirection: ContentDirection
   direction: ContentDirection
   alignX: ContentAlignX

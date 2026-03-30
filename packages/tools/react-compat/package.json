@@ -1,16 +1,16 @@
 {
   "name": "@pyreon/react-compat",
   "version": "0.11.5",
-  "description": "React-compatible API shim for Pyreon \u2014 write React-style hooks that run on Pyreon's reactive engine",
+  "description": "React-compatible API shim for Pyreon — write React-style hooks that run on Pyreon's reactive engine",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/react-compat#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/tools/react-compat"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/react-compat#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
   },
   "files": [
     "lib",
@@ -18,8 +18,8 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": false,
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -45,12 +45,15 @@
       "types": "./lib/types/jsx-runtime.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
@@ -61,8 +64,5 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "happy-dom": "^20.8.3"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

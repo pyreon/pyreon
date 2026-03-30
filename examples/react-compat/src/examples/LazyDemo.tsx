@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from "react"
-import Demo from "./Demo"
+import { lazy, Suspense, useState } from 'react'
+import Demo from './Demo'
 
 const LazyHeavy = lazy(
   () =>

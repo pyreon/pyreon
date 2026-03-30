@@ -1,4 +1,4 @@
-import { isEmpty, set } from "@pyreon/ui-core"
+import { isEmpty, set } from '@pyreon/ui-core'
 
 const removeUnexpectedKeys = (obj: Record<string, unknown>, keys: string[]) => {
   const result: Record<string, unknown> = {}
@@ -31,7 +31,7 @@ const transformTheme: TransformTheme = ({ theme, breakpoints }) => {
         if (indexBreakpoint == null) return
         set(result, [indexBreakpoint, key], child)
       })
-    } else if (typeof value === "object" && value !== null) {
+    } else if (typeof value === 'object' && value !== null) {
       Object.entries(value).forEach(([childKey, childValue]) => {
         set(result, [childKey, key], childValue)
       })

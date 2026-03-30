@@ -1,4 +1,4 @@
-import { isEmpty } from "@pyreon/ui-core"
+import { isEmpty } from '@pyreon/ui-core'
 
 /**
  * Strips keys with `undefined` values from a props object.

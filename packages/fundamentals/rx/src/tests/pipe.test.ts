@@ -1,9 +1,9 @@
-import { signal } from "@pyreon/reactivity"
-import { describe, expect, it } from "vitest"
-import { pipe } from "../pipe"
+import { signal } from '@pyreon/reactivity'
+import { describe, expect, it } from 'vitest'
+import { pipe } from '../pipe'
 
-describe("pipe — plain values", () => {
-  it("chains transforms", () => {
+describe('pipe — plain values', () => {
+  it('chains transforms', () => {
     const result = pipe(
       [3, 1, 4, 1, 5, 9],
       (arr) => arr.filter((n) => n > 2),
@@ -13,13 +13,13 @@ describe("pipe — plain values", () => {
     expect(result).toEqual([3, 4, 5])
   })
 
-  it("single transform", () => {
+  it('single transform', () => {
     expect(pipe([1, 2, 3], (arr) => arr.length)).toBe(3)
   })
 })
 
-describe("pipe — signal values", () => {
-  it("returns computed that tracks source", () => {
+describe('pipe — signal values', () => {
+  it('returns computed that tracks source', () => {
     const src = signal([3, 1, 4, 1, 5, 9])
     const result = pipe(
       src,
@@ -32,12 +32,12 @@ describe("pipe — signal values", () => {
     expect(result()).toEqual([10])
   })
 
-  it("supports type narrowing across steps", () => {
+  it('supports type narrowing across steps', () => {
     type User = { name: string; score: number }
     const users = signal<User[]>([
-      { name: "A", score: 5 },
-      { name: "B", score: 10 },
-      { name: "C", score: 3 },
+      { name: 'A', score: 5 },
+      { name: 'B', score: 10 },
+      { name: 'C', score: 3 },
     ])
 
     const topNames = pipe(
@@ -46,10 +46,10 @@ describe("pipe — signal values", () => {
       (items) => items.slice(0, 2),
       (items) => items.map((u) => u.name),
     )
-    expect(topNames()).toEqual(["B", "A"])
+    expect(topNames()).toEqual(['B', 'A'])
   })
 
-  it("supports 4 transforms", () => {
+  it('supports 4 transforms', () => {
     const src = signal([10, 5, 20, 3, 15, 8])
     const result = pipe(
       src,
@@ -67,7 +67,7 @@ describe("pipe — signal values", () => {
     expect(result()).toBe(150)
   })
 
-  it("supports 5 transforms", () => {
+  it('supports 5 transforms', () => {
     const src = signal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
     const result = pipe(
       src,
@@ -77,17 +77,17 @@ describe("pipe — signal values", () => {
       (arr) => arr.reduce((sum, n) => sum + n, 0), // 180
       (n) => `Total: ${n}`,
     )
-    expect(result()).toBe("Total: 180")
+    expect(result()).toBe('Total: 180')
   })
 
-  it("4+ transforms with plain values (non-signal)", () => {
+  it('4+ transforms with plain values (non-signal)', () => {
     const result = pipe(
       [5, 3, 8, 1, 9, 2],
       (arr) => arr.filter((n) => n > 3),
       (arr) => arr.sort((a, b) => b - a),
       (arr) => arr.slice(0, 2),
-      (arr) => arr.join("-"),
+      (arr) => arr.join('-'),
     )
-    expect(result).toBe("9-8")
+    expect(result).toBe('9-8')
   })
 })

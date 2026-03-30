@@ -1,10 +1,10 @@
-import type { VNode, VNodeChild } from "@pyreon/core"
+import type { VNode, VNodeChild } from '@pyreon/core'
 
 type MountFn = (child: VNodeChild, parent: Node, anchor: Node | null) => Cleanup
 
-import { effect, runUntracked } from "@pyreon/reactivity"
+import { effect, runUntracked } from '@pyreon/reactivity'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 type Cleanup = () => void
 
@@ -43,7 +43,7 @@ export function mountReactive(
   anchor: Node | null,
   mount: (child: VNodeChild, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
-  const marker = document.createComment("pyreon")
+  const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
   let currentCleanup: Cleanup = () => {
@@ -61,9 +61,9 @@ export function mountReactive(
       /* noop */
     }
     const value = accessor()
-    if (__DEV__ && typeof value === "function") {
+    if (__DEV__ && typeof value === 'function') {
       console.warn(
-        "[Pyreon] Reactive accessor returned a function instead of a value. Did you forget to call the signal?",
+        '[Pyreon] Reactive accessor returned a function instead of a value. Did you forget to call the signal?',
       )
     }
     if (value != null && value !== false) {
@@ -209,8 +209,8 @@ export function mountKeyedList(
   listAnchor: Node | null,
   mountVNode: (vnode: VNode, p: Node, a: Node | null) => Cleanup,
 ): Cleanup {
-  const startMarker = document.createComment("")
-  const tailMarker = document.createComment("")
+  const startMarker = document.createComment('')
+  const tailMarker = document.createComment('')
   parent.insertBefore(startMarker, listAnchor)
   parent.insertBefore(tailMarker, listAnchor)
 
@@ -255,7 +255,7 @@ export function mountKeyedList(
       const key = vnode.key
       if (key === null || key === undefined) continue
       if (cache.has(key)) continue
-      const anchor = document.createComment("")
+      const anchor = document.createComment('')
       _keyedAnchors.add(anchor)
       parent.insertBefore(anchor, tailMarker)
       const cleanup = mountVNode(vnode, parent, tailMarker)
@@ -427,13 +427,13 @@ function forLisReorder(
 export function mountFor<T>(
   source: () => T[],
   getKey: (item: T) => string | number,
-  renderItem: (item: T) => import("@pyreon/core").VNode | import("@pyreon/core").NativeItem,
+  renderItem: (item: T) => import('@pyreon/core').VNode | import('@pyreon/core').NativeItem,
   parent: Node,
   anchor: Node | null,
   mountChild: MountFn,
 ): Cleanup {
-  const startMarker = document.createComment("")
-  const tailMarker = document.createComment("")
+  const startMarker = document.createComment('')
+  const tailMarker = document.createComment('')
   parent.insertBefore(startMarker, anchor)
   parent.insertBefore(tailMarker, anchor)
 
@@ -453,8 +453,8 @@ export function mountFor<T>(
     if (!__DEV__ || !seen) return
     if (key == null) {
       console.warn(
-        "[Pyreon] <For> `by` function returned null/undefined. " +
-          "Keys must be strings or numbers. Check your `by` prop.",
+        '[Pyreon] <For> `by` function returned null/undefined. ' +
+          'Keys must be strings or numbers. Check your `by` prop.',
       )
     }
     if (seen.has(key)) {
@@ -472,18 +472,18 @@ export function mountFor<T>(
     before: Node | null,
   ) => {
     const result = renderItem(item)
-    if ((result as import("@pyreon/core").NativeItem).__isNative) {
-      const native = result as import("@pyreon/core").NativeItem
+    if ((result as import('@pyreon/core').NativeItem).__isNative) {
+      const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
       cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos })
       if (native.cleanup) cleanupCount++
       return
     }
     const priorLast = before ? before.previousSibling : container.lastChild
-    const cl = mountChild(result as import("@pyreon/core").VNode, container, before)
+    const cl = mountChild(result as import('@pyreon/core').VNode, container, before)
     const firstMounted = priorLast ? priorLast.nextSibling : container.firstChild
     if (!firstMounted || firstMounted === before) {
-      const ph = document.createComment("")
+      const ph = document.createComment('')
       container.insertBefore(ph, before)
       cache.set(key, { anchor: ph, cleanup: cl, pos })
     } else {

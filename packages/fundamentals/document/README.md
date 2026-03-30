@@ -20,15 +20,18 @@ const doc = (
       <Text>Q4 performance summary.</Text>
       <Table
         columns={['Region', 'Revenue']}
-        rows={[['US', '$1M'], ['EU', '$800K']]}
+        rows={[
+          ['US', '$1M'],
+          ['EU', '$800K'],
+        ]}
       />
     </Page>
   </Document>
 )
 
-await render(doc, 'pdf')    // PDF Uint8Array
-await render(doc, 'email')  // email-safe HTML string
-await render(doc, 'md')     // Markdown string
+await render(doc, 'pdf') // PDF Uint8Array
+await render(doc, 'email') // email-safe HTML string
+await render(doc, 'md') // Markdown string
 ```
 
 ## Browser Download

@@ -11,18 +11,16 @@ bun add @pyreon/head
 ## Quick Start
 
 ```tsx
-import { HeadProvider, useHead } from "@pyreon/head"
+import { HeadProvider, useHead } from '@pyreon/head'
 
 const App = () => {
   useHead({
-    title: "My App",
+    title: 'My App',
     meta: [
-      { name: "description", content: "A Pyreon application" },
-      { property: "og:title", content: "My App" },
+      { name: 'description', content: 'A Pyreon application' },
+      { property: 'og:title', content: 'My App' },
     ],
-    link: [
-      { rel: "canonical", href: "https://example.com" },
-    ],
+    link: [{ rel: 'canonical', href: 'https://example.com' }],
   })
 
   return <div>Hello</div>
@@ -41,7 +39,7 @@ const Root = () => (
 Use `renderWithHead` to capture head tags during server-side rendering:
 
 ```tsx
-import { renderWithHead } from "@pyreon/head"
+import { renderWithHead } from '@pyreon/head'
 
 const { html, head } = renderWithHead(<App />)
 // `head` contains the serialized <title>, <meta>, <link>, etc.

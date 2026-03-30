@@ -6,13 +6,13 @@
  * Usage: bun run scripts/publish.ts [--dry-run]
  */
 
-import { readdir, readFile, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 
-const PACKAGES_DIR = join(import.meta.dirname, "..", "packages")
-const dryRun = process.argv.includes("--dry-run")
-const otpArg = process.argv.find((a) => a.startsWith("--otp="))
-const otp = otpArg?.split("=")[1]
+const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
+const dryRun = process.argv.includes('--dry-run')
+const otpArg = process.argv.find((a) => a.startsWith('--otp='))
+const otp = otpArg?.split('=')[1]
 
 // Collect all package directories (packages/*/*)
 const packageDirs: { path: string; name: string }[] = []
@@ -27,7 +27,7 @@ for (const cat of categories.filter((d) => d.isDirectory())) {
 const versionMap = new Map<string, string>()
 for (const dir of packageDirs) {
   try {
-    const pkg = JSON.parse(await readFile(join(dir.path, "package.json"), "utf-8"))
+    const pkg = JSON.parse(await readFile(join(dir.path, 'package.json'), 'utf-8'))
     if (pkg.name) versionMap.set(pkg.name, pkg.version)
   } catch {
     // skip directories without package.json
@@ -40,14 +40,14 @@ function resolveWorkspaceDeps(
   if (!deps) return deps
   const resolved = { ...deps }
   for (const [name, range] of Object.entries(resolved)) {
-    if (range.startsWith("workspace:")) {
+    if (range.startsWith('workspace:')) {
       const version = versionMap.get(name)
       if (!version) {
         console.error(`Cannot resolve ${name}`)
         process.exit(1)
       }
-      const prefix = range.replace("workspace:", "")
-      resolved[name] = prefix === "*" ? version : `${prefix}${version}`
+      const prefix = range.replace('workspace:', '')
+      resolved[name] = prefix === '*' ? version : `${prefix}${version}`
     }
   }
   return resolved
@@ -58,14 +58,14 @@ const published: string[] = []
 const skipped: string[] = []
 
 for (const dir of packageDirs) {
-  const pkgPath = join(dir.path, "package.json")
-  const raw = await readFile(pkgPath, "utf-8")
+  const pkgPath = join(dir.path, 'package.json')
+  const raw = await readFile(pkgPath, 'utf-8')
   const pkg = JSON.parse(raw)
   if (pkg.private || !pkg.name) continue
 
-  const check = Bun.spawnSync(["npm", "view", `${pkg.name}@${pkg.version}`, "version"], {
-    stdout: "pipe",
-    stderr: "pipe",
+  const check = Bun.spawnSync(['npm', 'view', `${pkg.name}@${pkg.version}`, 'version'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
   })
   if (check.stdout.toString().trim() === pkg.version) {
     console.log(`⏭️  ${pkg.name}@${pkg.version} — already published`)
@@ -85,21 +85,14 @@ for (const dir of packageDirs) {
 
   try {
     const isCI = !!process.env.CI
-    const args = [
-      "bunx",
-      "npm",
-      "publish",
-      "--access",
-      "public",
-      "--ignore-scripts",
-    ]
-    if (isCI) args.push("--provenance")
+    const args = ['bunx', 'npm', 'publish', '--access', 'public', '--ignore-scripts']
+    if (isCI) args.push('--provenance')
     if (otp) args.push(`--otp=${otp}`)
-    if (dryRun) args.push("--dry-run")
+    if (dryRun) args.push('--dry-run')
     const result = Bun.spawnSync(args, {
       cwd: dir.path,
-      stdout: "inherit",
-      stderr: "inherit",
+      stdout: 'inherit',
+      stderr: 'inherit',
     })
     if (result.exitCode !== 0) {
       console.error(`❌ Failed to publish ${pkg.name}`)
@@ -112,9 +105,11 @@ for (const dir of packageDirs) {
   }
 }
 
-console.log(`\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}`)
+console.log(
+  `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}`,
+)
 if (failed.length > 0) {
-  console.error(`\n❌ Failed packages: ${failed.join(", ")}`)
+  console.error(`\n❌ Failed packages: ${failed.join(', ')}`)
   process.exit(1)
 }
-console.log("✅ Done")
+console.log('✅ Done')

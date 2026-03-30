@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { getEntry, removeEntry, setEntry } from "./registry"
-import type { StorageOptions, StorageSignal } from "./types"
-import { deserialize, getWebStorage, isBrowser, serialize } from "./utils"
+import { signal } from '@pyreon/reactivity'
+import { getEntry, removeEntry, setEntry } from './registry'
+import type { StorageOptions, StorageSignal } from './types'
+import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
@@ -11,9 +11,9 @@ function attachStorageListener(): void {
   if (listenerAttached || !isBrowser()) return
   listenerAttached = true
 
-  window.addEventListener("storage", (e) => {
+  window.addEventListener('storage', (e) => {
     if (!e.key) return
-    const entry = getEntry("local", e.key)
+    const entry = getEntry('local', e.key)
     if (!entry) return
 
     const newValue =
@@ -43,10 +43,10 @@ export function useStorage<T>(
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
   // Return existing signal if already registered
-  const existing = getEntry<T>("local", key)
+  const existing = getEntry<T>('local', key)
   if (existing) return existing.signal
 
-  const storage = getWebStorage("local")
+  const storage = getWebStorage('local')
 
   // Read initial value from storage
   let initialValue = defaultValue
@@ -60,9 +60,9 @@ export function useStorage<T>(
   const sig = signal<T>(initialValue)
 
   // Create the storage signal by extending the base signal
-  const storageSig = createStorageSignal(sig, key, defaultValue, "local", options)
+  const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
 
-  setEntry("local", key, storageSig, defaultValue)
+  setEntry('local', key, storageSig, defaultValue)
   attachStorageListener()
 
   return storageSig
@@ -78,7 +78,7 @@ export function createStorageSignal<T>(
   sig: ReturnType<typeof signal<T>>,
   key: string,
   defaultValue: T,
-  backend: "local" | "session",
+  backend: 'local' | 'session',
   options?: StorageOptions<T>,
 ): StorageSignal<T> {
   const storage = getWebStorage(backend)
@@ -92,7 +92,7 @@ export function createStorageSignal<T>(
   storageSig.direct = (updater: () => void) => sig.direct(updater)
   storageSig.debug = () => sig.debug()
 
-  Object.defineProperty(storageSig, "label", {
+  Object.defineProperty(storageSig, 'label', {
     get: () => sig.label,
     set: (v: string | undefined) => {
       sig.label = v

@@ -1,11 +1,11 @@
-import { batch, computed, effect, signal } from "@preact/signals"
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { batch, computed, effect, signal } from '@preact/signals'
+import { useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function SignalsDemo() {
   const count = signal(0)
   const doubled = computed(() => count.value * 2)
-  const [effectLog, setEffectLog] = useState("waiting...")
+  const [effectLog, setEffectLog] = useState('waiting...')
 
   const dispose = effect(() => {
     const c = count.value
@@ -68,7 +68,7 @@ batch(() => {
       </div>
       <p class="muted">
         {effectLog}
-        {disposed ? " (disposed)" : ""}
+        {disposed ? ' (disposed)' : ''}
       </p>
     </Demo>
   )

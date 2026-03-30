@@ -1,5 +1,5 @@
-import { config } from "@pyreon/ui-core"
-import type { StylesCbArray } from "../types/styles"
+import { config } from '@pyreon/ui-core'
+import type { StylesCbArray } from '../types/styles'
 
 // --------------------------------------------------------
 // Calculate styles

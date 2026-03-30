@@ -1,5 +1,5 @@
-import { createApp, ref } from "vue"
-import Demo from "./Demo"
+import { createApp, ref } from 'vue'
+import Demo from './Demo'
 
 export default function CreateAppDemo() {
   const mounted = ref(false)
@@ -23,7 +23,7 @@ unmount() // cleanup`}
           type="button"
           onClick={() => {
             if (!mounted.value) {
-              const el = document.getElementById("mini-app-target")
+              const el = document.getElementById('mini-app-target')
               if (el) {
                 const un = createApp(MiniApp).mount(el)
                 unmountFn.value = un
@@ -47,7 +47,7 @@ unmount() // cleanup`}
           Unmount
         </button>
       </div>
-      <p class="muted">{mounted.value ? "Mini app is mounted" : "Not mounted"}</p>
+      <p class="muted">{mounted.value ? 'Mini app is mounted' : 'Not mounted'}</p>
     </Demo>
   )
 }

@@ -10,18 +10,23 @@ description: CSS-in-JS engine for Pyreon with tagged templates, theming, keyfram
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/styler
 ```
+
 ```bash [bun]
 bun add @pyreon/styler
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/styler
 ```
+
 ```bash [yarn]
 yarn add @pyreon/styler
 ```
+
 :::
 
 ## Quick Start
@@ -69,8 +74,8 @@ Values interpolated into `css` templates can be:
 
 ```ts
 const dynamicStyles = css`
-  color: ${props => props.active ? 'blue' : 'gray'};
-  opacity: ${props => props.disabled ? 0.5 : 1};
+  color: ${(props) => (props.active ? 'blue' : 'gray')};
+  opacity: ${(props) => (props.disabled ? 0.5 : 1)};
 `
 ```
 
@@ -112,8 +117,8 @@ Use boolean/null returns for conditional inclusion:
 ```ts
 const styles = css`
   display: flex;
-  ${props => props.centered ? 'align-items: center; justify-content: center;' : false}
-  ${props => props.gap ? `gap: ${props.gap}px;` : null}
+  ${(props) => (props.centered ? 'align-items: center; justify-content: center;' : false)}
+  ${(props) => (props.gap ? `gap: ${props.gap}px;` : null)}
 `
 ```
 
@@ -136,13 +141,11 @@ The `CSSResult` class holds the raw template strings and values. It is the type 
 ```ts
 import { CSSResult } from '@pyreon/styler'
 
-const result = new CSSResult(
-  ['color: ', ';'],
-  ['red']
-)
+const result = new CSSResult(['color: ', ';'], ['red'])
 ```
 
 Properties:
+
 - `strings: TemplateStringsArray | string[]` -- the static template parts
 - `values: Interpolation[]` -- the interpolated values
 
@@ -153,7 +156,10 @@ Resolves a `CSSResult` into a plain CSS string. Optionally pass a props object t
 ```ts
 import { css, resolveCSS } from '@pyreon/styler'
 
-const result = css`color: red; font-size: 14px;`
+const result = css`
+  color: red;
+  font-size: 14px;
+`
 const cssString = resolveCSS(result)
 // => "color: red; font-size: 14px;"
 ```
@@ -161,12 +167,15 @@ const cssString = resolveCSS(result)
 With dynamic props:
 
 ```ts
-const result = css`color: ${props => props.color};`
+const result = css`
+  color: ${(props) => props.color};
+`
 const cssString = resolveCSS(result, { color: 'blue' })
 // => "color: blue;"
 ```
 
 During resolution:
+
 - Comments (both `/* ... */` and `//` line comments) are stripped
 - Whitespace is collapsed (newlines, tabs, multiple spaces become single spaces)
 - URLs containing `://` are preserved correctly
@@ -182,7 +191,7 @@ const Card = styled('div')`
   padding: 16px;
   border: 1px solid #ddd;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 `
 ```
 
@@ -351,7 +360,7 @@ When the CSS template resolves to an empty string (or only whitespace), no class
 const NoStyles = styled('div')``
 // Renders <div> with no class attribute
 
-const WhitespaceOnly = styled('div')`   `
+const WhitespaceOnly = styled('div')``
 // Same — no class generated
 ```
 
@@ -481,7 +490,8 @@ const slideInFromRight = keyframes`
 `
 
 const SlidePanel = styled('div')`
-  animation: ${props => props.direction === 'left' ? slideInFromLeft : slideInFromRight} 0.4s ease-out;
+  animation: ${(props) => (props.direction === 'left' ? slideInFromLeft : slideInFromRight)} 0.4s
+    ease-out;
 `
 ```
 
@@ -498,8 +508,8 @@ const Skeleton = styled('div')`
   background-size: 200% 100%;
   animation: ${shimmer} 1.5s ease-in-out infinite;
   border-radius: 4px;
-  height: ${props => props.height || '20px'};
-  width: ${props => props.width || '100%'};
+  height: ${(props) => props.height || '20px'};
+  width: ${(props) => props.width || '100%'};
 `
 ```
 
@@ -510,6 +520,7 @@ The singleton stylesheet manager that handles all CSS injection. You rarely need
 ### How It Works
 
 The `StyleSheet` class maintains:
+
 - A **cache** (`Map<string, string>`) that maps CSS strings to generated class names for deduplication
 - A **`<style>` element** (client-side) injected into `document.head` with a `data-nova-styler` attribute
 - An **SSR rules buffer** (server-side) that collects rules as strings
@@ -637,8 +648,8 @@ FNV-1a hash function that produces compact base-36 strings. Used internally for 
 ```ts
 import { hash } from '@pyreon/styler'
 
-hash('color: red;')         // => "1m3k5q7" (example)
-hash('display: flex;')      // => "a2b3c4d" (example)
+hash('color: red;') // => "1m3k5q7" (example)
+hash('display: flex;') // => "a2b3c4d" (example)
 ```
 
 The hash uses the standard FNV-1a algorithm with offset basis `2166136261` and prime `16777619`, then converts to base-36 for compact string representation.
@@ -646,6 +657,7 @@ The hash uses the standard FNV-1a algorithm with offset basis `2166136261` and p
 ### Deterministic Output
 
 The hash is deterministic -- the same input always produces the same output. This means:
+
 - The same CSS always gets the same class name
 - SSR and client hydration produce matching class names
 - No runtime randomness or counters
@@ -718,13 +730,14 @@ Access the theme inside styled component interpolations via `useTheme()` in the 
 
 ```ts
 const PrimaryButton = styled('button')`
-  background: ${props => props.theme?.colors?.primary || 'royalblue'};
+  background: ${(props) => props.theme?.colors?.primary || 'royalblue'};
   color: white;
-  padding: ${props => props.theme?.spacing?.sm || 8}px ${props => props.theme?.spacing?.md || 16}px;
+  padding: ${(props) => props.theme?.spacing?.sm || 8}px
+    ${(props) => props.theme?.spacing?.md || 16}px;
   border: none;
-  border-radius: ${props => props.theme?.radii?.sm || 4}px;
+  border-radius: ${(props) => props.theme?.radii?.sm || 4}px;
   cursor: pointer;
-  font-family: ${props => props.theme?.fonts?.body || 'system-ui'};
+  font-family: ${(props) => props.theme?.fonts?.body || 'system-ui'};
 `
 ```
 
@@ -769,9 +782,9 @@ After augmentation, `useTheme()` returns a fully typed theme object:
 
 ```ts
 const theme = useTheme()
-theme.colors.primary   // string -- type-safe
-theme.spacing.md       // number -- type-safe
-theme.colors.invalid   // TypeScript error
+theme.colors.primary // string -- type-safe
+theme.spacing.md // number -- type-safe
+theme.colors.invalid // TypeScript error
 ```
 
 ### Dark Mode Example
@@ -825,7 +838,7 @@ const InteractiveButton = styled('button')`
   &:hover {
     background: #4169e1;
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
   &:active {
@@ -1012,9 +1025,11 @@ const Input = styled('input')`
   line-height: 1.5;
   color: #333;
   background: white;
-  border: 1px solid ${props => props.error ? '#dc3545' : '#ccc'};
+  border: 1px solid ${(props) => (props.error ? '#dc3545' : '#ccc')};
   border-radius: 4px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 
   &::placeholder {
     color: #999;
@@ -1022,11 +1037,9 @@ const Input = styled('input')`
 
   &:focus {
     outline: none;
-    border-color: ${props => props.error ? '#dc3545' : 'royalblue'};
-    box-shadow: 0 0 0 3px ${props => props.error
-      ? 'rgba(220, 53, 69, 0.25)'
-      : 'rgba(65, 105, 225, 0.25)'
-    };
+    border-color: ${(props) => (props.error ? '#dc3545' : 'royalblue')};
+    box-shadow: 0 0 0 3px
+      ${(props) => (props.error ? 'rgba(220, 53, 69, 0.25)' : 'rgba(65, 105, 225, 0.25)')};
   }
 
   &:disabled {
@@ -1040,7 +1053,7 @@ const Label = styled('label')`
   margin-bottom: 4px;
   font-size: 14px;
   font-weight: 500;
-  color: ${props => props.error ? '#dc3545' : '#333'};
+  color: ${(props) => (props.error ? '#dc3545' : '#333')};
 `
 
 const ErrorMessage = styled('span')`
@@ -1099,7 +1112,7 @@ const Button = styled('button')`
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  background: ${props => props.primary ? 'royalblue' : '#e2e2e2'};
+  background: ${(props) => (props.primary ? 'royalblue' : '#e2e2e2')};
 `
 
 // More optimal: use a static base and compose styles via class
@@ -1116,7 +1129,7 @@ const baseButton = css`
 // Dynamic part is kept minimal
 const DynamicButton = styled('button')`
   ${baseButton}
-  background: ${props => props.primary ? 'royalblue' : '#e2e2e2'};
+  background: ${(props) => (props.primary ? 'royalblue' : '#e2e2e2')};
 `
 ```
 
@@ -1136,25 +1149,25 @@ This ensures consistent hashing regardless of how the template is formatted.
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `css` | Function | Tagged template for lazy CSS representation |
-| `CSSResult` | Class | Lazy CSS result holding template strings and interpolated values |
-| `resolveCSS` | Function | Resolves a `CSSResult` into a CSS string |
-| `hash` | Function | FNV-1a hash producing base-36 class name suffixes |
-| `keyframes` | Function | Define `@keyframes` and return the animation name |
-| `sheet` | Object | Singleton `StyleSheet` instance for CSS injection |
-| `styled` | Function | Create a styled component from an HTML tag |
-| `styledElements` | Proxy | Shorthand for `styled('div')`, `styled('span')`, etc. |
-| `ThemeContext` | Context | Pyreon context for theme distribution |
-| `useTheme` | Function | Access the current theme value |
+| Export           | Type     | Description                                                      |
+| ---------------- | -------- | ---------------------------------------------------------------- |
+| `css`            | Function | Tagged template for lazy CSS representation                      |
+| `CSSResult`      | Class    | Lazy CSS result holding template strings and interpolated values |
+| `resolveCSS`     | Function | Resolves a `CSSResult` into a CSS string                         |
+| `hash`           | Function | FNV-1a hash producing base-36 class name suffixes                |
+| `keyframes`      | Function | Define `@keyframes` and return the animation name                |
+| `sheet`          | Object   | Singleton `StyleSheet` instance for CSS injection                |
+| `styled`         | Function | Create a styled component from an HTML tag                       |
+| `styledElements` | Proxy    | Shorthand for `styled('div')`, `styled('span')`, etc.            |
+| `ThemeContext`   | Context  | Pyreon context for theme distribution                            |
+| `useTheme`       | Function | Access the current theme value                                   |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `Interpolation` | Union of valid interpolation types: `string \| number \| boolean \| null \| undefined \| InterpolationFn \| CSSResult` |
-| `InterpolationFn` | `(props: Record<string, unknown>) => Interpolation` |
-| `StyledOptions` | Options for `styled()`, including `shouldForwardProp` |
-| `StyleSheet` | Type of the `sheet` singleton |
-| `DefaultTheme` | Augmentable interface for theme typing |
+| Type              | Description                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `Interpolation`   | Union of valid interpolation types: `string \| number \| boolean \| null \| undefined \| InterpolationFn \| CSSResult` |
+| `InterpolationFn` | `(props: Record<string, unknown>) => Interpolation`                                                                    |
+| `StyledOptions`   | Options for `styled()`, including `shouldForwardProp`                                                                  |
+| `StyleSheet`      | Type of the `sheet` singleton                                                                                          |
+| `DefaultTheme`    | Augmentable interface for theme typing                                                                                 |

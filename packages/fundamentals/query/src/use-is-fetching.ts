@@ -1,8 +1,8 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { signal } from "@pyreon/reactivity"
-import type { MutationFilters, QueryFilters } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import type { MutationFilters, QueryFilters } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 /**
  * Returns a signal that tracks how many queries are currently in-flight.

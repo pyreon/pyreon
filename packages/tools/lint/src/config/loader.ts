@@ -1,8 +1,8 @@
-import { existsSync, readFileSync } from "node:fs"
-import { dirname, join, resolve } from "node:path"
-import type { LintConfigFile } from "../types"
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import type { LintConfigFile } from '../types'
 
-const CONFIG_FILENAMES = [".pyreonlintrc.json", ".pyreonlintrc", "pyreonlint.config.json"]
+const CONFIG_FILENAMES = ['.pyreonlintrc.json', '.pyreonlintrc', 'pyreonlint.config.json']
 
 /**
  * Load a lint config file from the given directory or its parents.
@@ -42,14 +42,14 @@ function searchDirectory(dir: string): LintConfigFile | null {
     const content = tryReadJson(join(dir, filename))
     if (content !== null) return content
   }
-  return extractPkgConfig(join(dir, "package.json"))
+  return extractPkgConfig(join(dir, 'package.json'))
 }
 
 function extractPkgConfig(pkgPath: string): LintConfigFile | null {
   const pkg = tryReadJson(pkgPath)
-  if (pkg === null || typeof pkg !== "object" || !("pyreonlint" in pkg)) return null
+  if (pkg === null || typeof pkg !== 'object' || !('pyreonlint' in pkg)) return null
   const field = (pkg as Record<string, unknown>).pyreonlint
-  if (field && typeof field === "object") return field as LintConfigFile
+  if (field && typeof field === 'object') return field as LintConfigFile
   return null
 }
 
@@ -63,7 +63,7 @@ export function loadConfigFromPath(filePath: string): LintConfigFile | null {
 function tryReadJson(filePath: string): any | null {
   if (!existsSync(filePath)) return null
   try {
-    const raw = readFileSync(filePath, "utf-8").trim()
+    const raw = readFileSync(filePath, 'utf-8').trim()
     if (!raw) return null
     return JSON.parse(raw)
   } catch {

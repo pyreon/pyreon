@@ -11,13 +11,13 @@ bun add @pyreon/reactivity
 ## Quick Start
 
 ```ts
-import { signal, computed, effect, batch } from "@pyreon/reactivity"
+import { signal, computed, effect, batch } from '@pyreon/reactivity'
 
 const count = signal(0)
 const doubled = computed(() => count() * 2)
 
 effect(() => {
-  console.log("doubled:", doubled())
+  console.log('doubled:', doubled())
 })
 
 batch(() => {

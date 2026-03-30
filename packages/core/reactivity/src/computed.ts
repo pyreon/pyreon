@@ -1,5 +1,5 @@
-import { _errorHandler } from "./effect"
-import { getCurrentScope } from "./scope"
+import { _errorHandler } from './effect'
+import { getCurrentScope } from './scope'
 import {
   cleanupEffect,
   notifySubscribers,
@@ -7,7 +7,7 @@ import {
   setSkipDepsCollection,
   trackSubscriber,
   withTracking,
-} from "./tracking"
+} from './tracking'
 
 export interface Computed<T> {
   (): T
@@ -103,7 +103,7 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     cleanupLocalDeps(deps, recompute)
   }
 
-  Object.defineProperty(read, "_v", {
+  Object.defineProperty(read, '_v', {
     get: () => {
       if (dirty) read() // ensure value is fresh
       return value
@@ -178,7 +178,7 @@ function computedWithEquals<T>(fn: () => T, equals: (prev: T, next: T) => boolea
     cleanupEffect(recompute)
   }
 
-  Object.defineProperty(read, "_v", {
+  Object.defineProperty(read, '_v', {
     get: () => {
       if (dirty) read()
       return value

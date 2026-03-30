@@ -1,40 +1,40 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createI18n, I18nProvider, Trans, useI18n } from "@pyreon/i18n"
-import { signal } from "@pyreon/reactivity"
+import type { VNodeChild } from '@pyreon/core'
+import { createI18n, I18nProvider, Trans, useI18n } from '@pyreon/i18n'
+import { signal } from '@pyreon/reactivity'
 
 const i18n = createI18n({
-  locale: "en",
-  fallbackLocale: "en",
+  locale: 'en',
+  fallbackLocale: 'en',
   messages: {
     en: {
-      greeting: "Hello, {{name}}!",
-      description: "You have been here for {{count}} seconds.",
-      items_one: "{{count}} item in cart",
-      items_other: "{{count}} items in cart",
-      rich: "Welcome to <bold>Pyreon</bold> i18n!",
-      nav: { home: "Home", about: "About", settings: "Settings" },
+      greeting: 'Hello, {{name}}!',
+      description: 'You have been here for {{count}} seconds.',
+      items_one: '{{count}} item in cart',
+      items_other: '{{count}} items in cart',
+      rich: 'Welcome to <bold>Pyreon</bold> i18n!',
+      nav: { home: 'Home', about: 'About', settings: 'Settings' },
     },
     de: {
-      greeting: "Hallo, {{name}}!",
-      description: "Du bist seit {{count}} Sekunden hier.",
-      items_one: "{{count}} Artikel im Warenkorb",
-      items_other: "{{count}} Artikel im Warenkorb",
-      rich: "Willkommen bei <bold>Pyreon</bold> i18n!",
-      nav: { home: "Startseite", about: "Uber uns", settings: "Einstellungen" },
+      greeting: 'Hallo, {{name}}!',
+      description: 'Du bist seit {{count}} Sekunden hier.',
+      items_one: '{{count}} Artikel im Warenkorb',
+      items_other: '{{count}} Artikel im Warenkorb',
+      rich: 'Willkommen bei <bold>Pyreon</bold> i18n!',
+      nav: { home: 'Startseite', about: 'Uber uns', settings: 'Einstellungen' },
     },
     ja: {
-      greeting: "{{name}}さん、こんにちは！",
-      description: "{{count}}秒間ここにいます。",
-      items_other: "カートに{{count}}個の商品",
-      rich: "<bold>Pyreon</bold> i18nへようこそ！",
-      nav: { home: "ホーム", about: "概要", settings: "設定" },
+      greeting: '{{name}}さん、こんにちは！',
+      description: '{{count}}秒間ここにいます。',
+      items_other: 'カートに{{count}}個の商品',
+      rich: '<bold>Pyreon</bold> i18nへようこそ！',
+      nav: { home: 'ホーム', about: '概要', settings: '設定' },
     },
   },
 })
 
 function I18nContent() {
   const { t, locale } = useI18n()
-  const name = signal("Alice")
+  const name = signal('Alice')
   const count = signal(1)
   const seconds = signal(0)
 
@@ -45,10 +45,10 @@ function I18nContent() {
       <div class="section">
         <h3>Locale Switcher</h3>
         <div class="row">
-          {["en", "de", "ja"].map((loc) => (
+          {['en', 'de', 'ja'].map((loc) => (
             <button
               key={loc}
-              class={locale() === loc ? "primary" : ""}
+              class={locale() === loc ? 'primary' : ''}
               onClick={() => locale.set(loc)}
             >
               {loc.toUpperCase()}
@@ -56,8 +56,8 @@ function I18nContent() {
           ))}
         </div>
         <p style="margin-top: 8px; color: #666">
-          Current: <strong>{() => locale()}</strong> | Available:{" "}
-          {() => i18n.availableLocales().join(", ")}
+          Current: <strong>{() => locale()}</strong> | Available:{' '}
+          {() => i18n.availableLocales().join(', ')}
         </p>
       </div>
 
@@ -70,8 +70,8 @@ function I18nContent() {
             onInput={(e: Event) => name.set((e.target as HTMLInputElement).value)}
           />
         </div>
-        <p style="font-size: 18px">{() => t("greeting", { name: name() })}</p>
-        <p style="color: #666">{() => t("description", { count: seconds() })}</p>
+        <p style="font-size: 18px">{() => t('greeting', { name: name() })}</p>
+        <p style="color: #666">{() => t('description', { count: seconds() })}</p>
       </div>
 
       <div class="section">
@@ -81,7 +81,7 @@ function I18nContent() {
           <span style="min-width: 30px; text-align: center">{() => count()}</span>
           <button onClick={() => count.update((c) => c + 1)}>+</button>
         </div>
-        <p>{() => t("items", { count: count() })}</p>
+        <p>{() => t('items', { count: count() })}</p>
       </div>
 
       <div class="section">
@@ -98,9 +98,9 @@ function I18nContent() {
       <div class="section">
         <h3>Nested Keys</h3>
         <div class="row">
-          <span class="badge blue">{() => t("nav.home")}</span>
-          <span class="badge blue">{() => t("nav.about")}</span>
-          <span class="badge blue">{() => t("nav.settings")}</span>
+          <span class="badge blue">{() => t('nav.home')}</span>
+          <span class="badge blue">{() => t('nav.about')}</span>
+          <span class="badge blue">{() => t('nav.settings')}</span>
         </div>
       </div>
     </div>

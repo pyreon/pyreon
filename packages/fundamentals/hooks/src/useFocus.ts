@@ -1,4 +1,4 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from '@pyreon/reactivity'
 
 export interface UseFocusResult {
   focused: () => boolean

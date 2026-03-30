@@ -56,14 +56,14 @@ export function getFormSnapshot(name: string): Record<string, unknown> | undefin
   const form = getFormInstance(name) as Record<string, unknown> | undefined
   if (!form) return undefined
   return {
-    values: typeof form.values === "function" ? (form.values as () => unknown)() : undefined,
-    errors: typeof form.errors === "function" ? (form.errors as () => unknown)() : undefined,
+    values: typeof form.values === 'function' ? (form.values as () => unknown)() : undefined,
+    errors: typeof form.errors === 'function' ? (form.errors as () => unknown)() : undefined,
     isSubmitting:
-      typeof form.isSubmitting === "function" ? (form.isSubmitting as () => unknown)() : undefined,
-    isValid: typeof form.isValid === "function" ? (form.isValid as () => unknown)() : undefined,
-    isDirty: typeof form.isDirty === "function" ? (form.isDirty as () => unknown)() : undefined,
+      typeof form.isSubmitting === 'function' ? (form.isSubmitting as () => unknown)() : undefined,
+    isValid: typeof form.isValid === 'function' ? (form.isValid as () => unknown)() : undefined,
+    isDirty: typeof form.isDirty === 'function' ? (form.isDirty as () => unknown)() : undefined,
     submitCount:
-      typeof form.submitCount === "function" ? (form.submitCount as () => unknown)() : undefined,
+      typeof form.submitCount === 'function' ? (form.submitCount as () => unknown)() : undefined,
   }
 }
 

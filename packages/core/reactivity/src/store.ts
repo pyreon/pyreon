@@ -13,18 +13,18 @@
  * state.items[0].text = "world"           // only text-tracking effects re-run
  */
 
-import { type Signal, signal } from "./signal"
+import { type Signal, signal } from './signal'
 
 // WeakMap: raw object → its reactive proxy (ensures each raw object gets one proxy)
 const proxyCache = new WeakMap<object, object>()
 
-const IS_STORE = Symbol("pyreon.store")
+const IS_STORE = Symbol('pyreon.store')
 
 /** Returns true if the value is a createStore proxy. */
 export function isStore(value: unknown): boolean {
   return (
     value !== null &&
-    typeof value === "object" &&
+    typeof value === 'object' &&
     (value as Record<symbol, unknown>)[IS_STORE] === true
   )
 }
@@ -58,10 +58,10 @@ function wrap(raw: object): object {
     get(target, key) {
       // Pass through the identity marker and non-string/number keys (symbols, etc.)
       if (key === IS_STORE) return true
-      if (typeof key === "symbol") return (target as Record<symbol, unknown>)[key]
+      if (typeof key === 'symbol') return (target as Record<symbol, unknown>)[key]
 
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
-      if (isArray && key === "length") return lengthSig?.()
+      if (isArray && key === 'length') return lengthSig?.()
 
       // Non-own properties: prototype methods (forEach, map, push, …)
       // These must be returned untracked so array methods work normally.
@@ -74,7 +74,7 @@ function wrap(raw: object): object {
       const value = getOrCreateSignal(key)()
 
       // Deep reactivity: wrap nested objects/arrays transparently
-      if (value !== null && typeof value === "object") {
+      if (value !== null && typeof value === 'object') {
         return wrap(value as object)
       }
 
@@ -82,7 +82,7 @@ function wrap(raw: object): object {
     },
 
     set(target, key, value) {
-      if (typeof key === "symbol") {
+      if (typeof key === 'symbol') {
         ;(target as Record<symbol, unknown>)[key] = value
         return true
       }
@@ -91,7 +91,7 @@ function wrap(raw: object): object {
       ;(target as Record<PropertyKey, unknown>)[key] = value
 
       // Array length set directly (e.g. arr.length = 0)
-      if (isArray && key === "length") {
+      if (isArray && key === 'length') {
         lengthSig?.set(value as number)
         return true
       }
@@ -113,7 +113,7 @@ function wrap(raw: object): object {
 
     deleteProperty(target, key) {
       delete (target as Record<PropertyKey, unknown>)[key]
-      if (typeof key !== "symbol" && propSignals.has(key)) {
+      if (typeof key !== 'symbol' && propSignals.has(key)) {
         propSignals.get(key)?.set(undefined)
         propSignals.delete(key)
       }

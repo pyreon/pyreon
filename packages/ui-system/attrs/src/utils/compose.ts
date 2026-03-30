@@ -10,5 +10,5 @@ type CalculateHocsFuncs = (options: Record<string, any>) => ((arg: any) => any)[
 
 export const calculateHocsFuncs: CalculateHocsFuncs = (options = {}) =>
   Object.values(options)
-    .filter((item) => typeof item === "function")
+    .filter((item) => typeof item === 'function')
     .reverse()

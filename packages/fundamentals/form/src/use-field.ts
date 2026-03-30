@@ -1,6 +1,6 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
-import { computed } from "@pyreon/reactivity"
-import type { FieldRegisterProps, FieldState, FormState, ValidationError } from "./types"
+import type { Computed, Signal } from '@pyreon/reactivity'
+import { computed } from '@pyreon/reactivity'
+import type { FieldRegisterProps, FieldState, FormState, ValidationError } from './types'
 
 export interface UseFieldResult<T> {
   /** Current field value (reactive signal). */
@@ -18,7 +18,7 @@ export interface UseFieldResult<T> {
   /** Reset the field to its initial value. */
   reset: () => void
   /** Register props for input binding. */
-  register: (opts?: { type?: "checkbox" }) => FieldRegisterProps<T>
+  register: (opts?: { type?: 'checkbox' }) => FieldRegisterProps<T>
   /** Whether the field has an error (computed). */
   hasError: Computed<boolean>
   /** Whether the field should show its error (touched + has error). */

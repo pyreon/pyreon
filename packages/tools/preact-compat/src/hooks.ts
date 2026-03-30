@@ -8,10 +8,10 @@
  * unchanged when paired with `pyreon({ compat: "preact" })` in your vite config.
  */
 
-import type { VNodeChild } from "@pyreon/core"
-import { onErrorCaptured, useContext } from "@pyreon/core"
-import type { EffectEntry } from "./jsx-runtime"
-import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
+import type { VNodeChild } from '@pyreon/core'
+import { onErrorCaptured, useContext } from '@pyreon/core'
+import type { EffectEntry } from './jsx-runtime'
+import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 export { useContext }
 
@@ -19,7 +19,7 @@ export { useContext }
 
 function requireCtx() {
   const ctx = getCurrentCtx()
-  if (!ctx) throw new Error("Hook called outside of a component render")
+  if (!ctx) throw new Error('Hook called outside of a component render')
   return ctx
 }
 
@@ -43,13 +43,13 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === "function" ? (initial as () => T)() : initial)
+    ctx.hooks.push(typeof initial === 'function' ? (initial as () => T)() : initial)
   }
 
   const value = ctx.hooks[idx] as T
   const setter = (v: T | ((prev: T) => T)) => {
     const current = ctx.hooks[idx] as T
-    const next = typeof v === "function" ? (v as (prev: T) => T)(current) : v
+    const next = typeof v === 'function' ? (v as (prev: T) => T)(current) : v
     if (Object.is(current, next)) return
     ctx.hooks[idx] = next
     ctx.scheduleRerender()
@@ -170,7 +170,7 @@ export function useReducer<S, A>(
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === "function" ? (initial as () => S)() : initial)
+    ctx.hooks.push(typeof initial === 'function' ? (initial as () => S)() : initial)
   }
 
   const state = ctx.hooks[idx] as S

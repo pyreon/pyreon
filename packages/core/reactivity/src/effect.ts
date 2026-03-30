@@ -1,5 +1,5 @@
-import { getCurrentScope } from "./scope"
-import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from "./tracking"
+import { getCurrentScope } from './scope'
+import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from './tracking'
 
 export interface Effect {
   dispose(): void
@@ -36,7 +36,7 @@ export function onCleanup(fn: () => void): void {
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
 export let _errorHandler: (err: unknown) => void = (err) => {
-  console.error("[pyreon] Unhandled effect error:", err)
+  console.error('[pyreon] Unhandled effect error:', err)
 }
 
 export function setErrorHandler(fn: (err: unknown) => void): void {
@@ -78,7 +78,7 @@ export function effect(fn: () => (() => void) | void): Effect {
       }
       cleanups = undefined
     }
-    if (typeof cleanup === "function") {
+    if (typeof cleanup === 'function') {
       try {
         cleanup()
       } catch (err) {

@@ -1,22 +1,22 @@
-import { computed, signal } from "@pyreon/reactivity"
-import { interpolate } from "./interpolation"
-import { resolvePluralCategory } from "./pluralization"
-import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from "./types"
+import { computed, signal } from '@pyreon/reactivity'
+import { interpolate } from './interpolation'
+import { resolvePluralCategory } from './pluralization'
+import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
 
 /**
  * Resolve a dot-separated key path in a nested dictionary.
  * E.g. "user.greeting" → dictionary.user.greeting
  */
 function resolveKey(dict: TranslationDictionary, keyPath: string): string | undefined {
-  const parts = keyPath.split(".")
+  const parts = keyPath.split('.')
   let current: TranslationDictionary | string = dict
 
   for (const part of parts) {
-    if (current == null || typeof current === "string") return undefined
+    if (current == null || typeof current === 'string') return undefined
     current = current[part] as TranslationDictionary | string
   }
 
-  return typeof current === "string" ? current : undefined
+  return typeof current === 'string' ? current : undefined
 }
 
 /**
@@ -31,13 +31,13 @@ function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
 
   for (const key of Object.keys(messages)) {
     const value = messages[key]
-    if (key.includes(".") && typeof value === "string") {
+    if (key.includes('.') && typeof value === 'string') {
       hasFlatKeys = true
-      const parts = key.split(".")
+      const parts = key.split('.')
       let current: TranslationDictionary = result
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i] as string
-        if (!(part in current) || typeof current[part] !== "object") {
+        if (!(part in current) || typeof current[part] !== 'object') {
           current[part] = {}
         }
         current = current[part] as TranslationDictionary
@@ -56,13 +56,13 @@ function nestFlatKeys(messages: TranslationDictionary): TranslationDictionary {
  */
 function deepMerge(target: TranslationDictionary, source: TranslationDictionary): void {
   for (const key of Object.keys(source)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") continue
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
     const sourceVal = source[key]
     const targetVal = target[key]
     if (
-      typeof sourceVal === "object" &&
+      typeof sourceVal === 'object' &&
       sourceVal !== null &&
-      typeof targetVal === "object" &&
+      typeof targetVal === 'object' &&
       targetVal !== null
     ) {
       deepMerge(targetVal as TranslationDictionary, sourceVal as TranslationDictionary)
@@ -103,7 +103,7 @@ function deepMerge(target: TranslationDictionary, source: TranslationDictionary)
  * i18n.t('auth:errors.invalid') // looks up "errors.invalid" in "auth" namespace
  */
 export function createI18n(options: I18nOptions): I18nInstance {
-  const { fallbackLocale, loader, defaultNamespace = "common", pluralRules, onMissingKey } = options
+  const { fallbackLocale, loader, defaultNamespace = 'common', pluralRules, onMissingKey } = options
 
   // ── Reactive state ──────────────────────────────────────────────────
 
@@ -172,14 +172,14 @@ export function createI18n(options: I18nOptions): I18nInstance {
     let namespace = defaultNamespace
     let keyPath = key
 
-    const colonIndex = key.indexOf(":")
+    const colonIndex = key.indexOf(':')
     if (colonIndex > 0) {
       namespace = key.slice(0, colonIndex)
       keyPath = key.slice(colonIndex + 1)
     }
 
     // Handle pluralization: if values contain `count`, try plural suffixes
-    if (values && "count" in values) {
+    if (values && 'count' in values) {
       const count = Number(values.count)
       const category = resolvePluralCategory(currentLocale, count, pluralRules)
 
@@ -257,7 +257,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
 
     let namespace = defaultNamespace
     let keyPath = key
-    const colonIndex = key.indexOf(":")
+    const colonIndex = key.indexOf(':')
     if (colonIndex > 0) {
       namespace = key.slice(0, colonIndex)
       keyPath = key.slice(colonIndex + 1)

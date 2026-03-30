@@ -10,18 +10,23 @@ Keyboard shortcut management with automatic lifecycle cleanup, scope-based activ
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/hotkeys
 ```
+
 ```bash [bun]
 bun add @pyreon/hotkeys
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/hotkeys
 ```
+
 ```bash [yarn]
 yarn add @pyreon/hotkeys
 ```
+
 :::
 
 Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
@@ -60,14 +65,14 @@ function App() {
 
 ### Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `scope` | `string` | `'global'` | Only fires when this scope is active |
-| `preventDefault` | `boolean` | `true` | Prevent default browser behavior |
-| `stopPropagation` | `boolean` | `false` | Stop event propagation |
-| `enableOnInputs` | `boolean` | `false` | Fire when input/textarea is focused |
-| `description` | `string` | — | For help dialogs |
-| `enabled` | `boolean \| () => boolean` | `true` | Dynamic enable/disable |
+| Option            | Type                       | Default    | Description                          |
+| ----------------- | -------------------------- | ---------- | ------------------------------------ |
+| `scope`           | `string`                   | `'global'` | Only fires when this scope is active |
+| `preventDefault`  | `boolean`                  | `true`     | Prevent default browser behavior     |
+| `stopPropagation` | `boolean`                  | `false`    | Stop event propagation               |
+| `enableOnInputs`  | `boolean`                  | `false`    | Fire when input/textarea is focused  |
+| `description`     | `string`                   | —          | For help dialogs                     |
+| `enabled`         | `boolean \| () => boolean` | `true`     | Dynamic enable/disable               |
 
 ## Scopes — `useHotkeyScope()`
 
@@ -117,29 +122,30 @@ unregister()
 
 ## Modifier Keys
 
-| Modifier | Keys |
-|----------|------|
-| `ctrl` | `ctrl`, `control` |
-| `shift` | `shift` |
-| `alt` | `alt` |
-| `meta` | `meta`, `cmd`, `command` |
-| `mod` | ⌘ on Mac, Ctrl elsewhere |
+| Modifier | Keys                     |
+| -------- | ------------------------ |
+| `ctrl`   | `ctrl`, `control`        |
+| `shift`  | `shift`                  |
+| `alt`    | `alt`                    |
+| `meta`   | `meta`, `cmd`, `command` |
+| `mod`    | ⌘ on Mac, Ctrl elsewhere |
 
 ## Key Aliases
 
-| Alias | Key |
-|-------|-----|
-| `esc` | `Escape` |
-| `return` | `Enter` |
-| `del` | `Delete` |
-| `ins` | `Insert` |
-| `space` | ` ` (space) |
-| `up/down/left/right` | Arrow keys |
-| `plus` | `+` |
+| Alias                | Key         |
+| -------------------- | ----------- |
+| `esc`                | `Escape`    |
+| `return`             | `Enter`     |
+| `del`                | `Delete`    |
+| `ins`                | `Insert`    |
+| `space`              | ` ` (space) |
+| `up/down/left/right` | Arrow keys  |
+| `plus`               | `+`         |
 
 ## Input Filtering
 
 By default, hotkeys are **ignored** when the user is typing in:
+
 - `<input>` elements
 - `<textarea>` elements
 - `<select>` elements
@@ -175,13 +181,20 @@ function ShortcutHelp() {
 
   return (
     <table>
-      <thead><tr><th>Shortcut</th><th>Description</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Shortcut</th>
+          <th>Description</th>
+        </tr>
+      </thead>
       <tbody>
         {hotkeys
-          .filter(h => h.description)
-          .map(h => (
+          .filter((h) => h.description)
+          .map((h) => (
             <tr>
-              <td><kbd>{formatCombo(parseShortcut(h.shortcut))}</kbd></td>
+              <td>
+                <kbd>{formatCombo(parseShortcut(h.shortcut))}</kbd>
+              </td>
               <td>{h.description}</td>
             </tr>
           ))}

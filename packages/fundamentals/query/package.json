@@ -2,18 +2,15 @@
   "name": "@pyreon/query",
   "version": "0.11.5",
   "description": "Pyreon adapter for TanStack Query",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/query#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/query"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/query#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -33,24 +30,27 @@
       "types": "./lib/types/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@tanstack/query-core": "^5.0.0"
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

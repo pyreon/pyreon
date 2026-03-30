@@ -33,7 +33,7 @@
  * granularity. Fine-grained nested wrapping is planned for a future pass.
  */
 
-import ts from "typescript"
+import ts from 'typescript'
 
 export interface CompilerWarning {
   /** Warning message */
@@ -43,7 +43,7 @@ export interface CompilerWarning {
   /** Source file column number (0-based) */
   column: number
   /** Warning code for filtering */
-  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop"
+  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
 }
 
 export interface TransformResult {
@@ -56,39 +56,39 @@ export interface TransformResult {
 }
 
 // Props that should never be wrapped in a reactive getter
-const SKIP_PROPS = new Set(["key", "ref"])
+const SKIP_PROPS = new Set(['key', 'ref'])
 // Event handler pattern: onClick, onInput, onMouseEnter, …
 const EVENT_RE = /^on[A-Z]/
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
-  "click",
-  "dblclick",
-  "contextmenu",
-  "focusin",
-  "focusout",
-  "input",
-  "change",
-  "keydown",
-  "keyup",
-  "mousedown",
-  "mouseup",
-  "mousemove",
-  "mouseover",
-  "mouseout",
-  "pointerdown",
-  "pointerup",
-  "pointermove",
-  "pointerover",
-  "pointerout",
-  "touchstart",
-  "touchend",
-  "touchmove",
-  "submit",
+  'click',
+  'dblclick',
+  'contextmenu',
+  'focusin',
+  'focusout',
+  'input',
+  'change',
+  'keydown',
+  'keyup',
+  'mousedown',
+  'mouseup',
+  'mousemove',
+  'mouseover',
+  'mouseout',
+  'pointerdown',
+  'pointerup',
+  'pointermove',
+  'pointerover',
+  'pointerout',
+  'touchstart',
+  'touchend',
+  'touchmove',
+  'submit',
 ])
 
-export function transformJSX(code: string, filename = "input.tsx"): TransformResult {
+export function transformJSX(code: string, filename = 'input.tsx'): TransformResult {
   const scriptKind =
-    filename.endsWith(".tsx") || filename.endsWith(".jsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TSX // default to TSX so JSX is always parsed
+    filename.endsWith('.tsx') || filename.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TSX // default to TSX so JSX is always parsed
 
   const sf = ts.createSourceFile(
     filename,
@@ -102,7 +102,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   const replacements: Replacement[] = []
   const warnings: CompilerWarning[] = []
 
-  function warn(node: ts.Node, message: string, warnCode: CompilerWarning["code"]): void {
+  function warn(node: ts.Node, message: string, warnCode: CompilerWarning['code']): void {
     const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf))
     warnings.push({ message, line: line + 1, column: character, code: warnCode })
   }
@@ -169,25 +169,25 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   /** Emit warnings for common JSX mistakes (e.g. <For> without by). */
   function checkForWarnings(node: ts.JsxElement | ts.JsxSelfClosingElement): void {
     const opening = ts.isJsxElement(node) ? node.openingElement : node
-    const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ""
-    if (tagName !== "For") return
+    const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ''
+    if (tagName !== 'For') return
     const hasBy = opening.attributes.properties.some(
-      (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === "by",
+      (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === 'by',
     )
     if (!hasBy) {
       warn(
         opening.tagName,
         `<For> without a "by" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.`,
-        "missing-key-on-for",
+        'missing-key-on-for',
       )
     }
   }
 
   /** Handle a JSX attribute node — wrap or hoist its value if needed. */
   function handleJsxAttribute(node: ts.JsxAttribute): void {
-    const name = ts.isIdentifier(node.name) ? node.name.text : ""
+    const name = ts.isIdentifier(node.name) ? node.name.text : ''
     const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
-    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ""
+    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ''
     const isComponentElement =
       tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
     if (isComponentElement) return
@@ -245,24 +245,24 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     lastPos = r.end
   }
   parts.push(code.slice(lastPos))
-  let result = parts.join("")
+  let result = parts.join('')
 
   // Prepend module-scope hoisted static VNode declarations
   if (hoists.length > 0) {
-    const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join("")
+    const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('')
     result = preamble + result
   }
 
   // Prepend template imports if _tpl() was emitted
   if (needsTplImport) {
-    const runtimeDomImports = ["_tpl"]
-    if (needsBindDirectImportGlobal) runtimeDomImports.push("_bindDirect")
-    if (needsBindTextImportGlobal) runtimeDomImports.push("_bindText")
+    const runtimeDomImports = ['_tpl']
+    if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
+    if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
-      : ""
+      : ''
     result =
-      `import { ${runtimeDomImports.join(", ")} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
+      `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
       result
   }
 
@@ -274,7 +274,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
     for (const attr of jsxAttrs(node)) {
       if (ts.isJsxSpreadAttribute(attr)) return true
-      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === "key")
+      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === 'key')
         return true
     }
     return false
@@ -354,7 +354,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
     /** Resolve the variable name for an element given its accessor path. */
     function resolveElementVar(accessor: string, hasDynamic: boolean): string {
-      if (accessor === "__root") return "__root"
+      if (accessor === '__root') return '__root'
       if (hasDynamic) {
         const v = nextVar()
         bindLines.push(`const ${v} = ${accessor}`)
@@ -372,7 +372,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
     /** Emit event handler bind line — delegated (expando) or addEventListener. */
     function emitEventListener(attr: ts.JsxAttribute, attrName: string, varName: string): void {
-      const eventName = (attrName[2] ?? "").toLowerCase() + attrName.slice(3)
+      const eventName = (attrName[2] ?? '').toLowerCase() + attrName.slice(3)
       if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
       if (!attr.initializer.expression) return
       const handler = sliceExpr(attr.initializer.expression)
@@ -390,7 +390,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       if (ts.isStringLiteral(exprNode)) return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
       if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
       if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
-      return "" // false/null/undefined → omit
+      return '' // false/null/undefined → omit
     }
 
     /**
@@ -431,8 +431,8 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
     /** Build a setter expression for an attribute. */
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
-      if (htmlAttrName === "class") return `${varName}.className = ${expr}`
-      if (htmlAttrName === "style") return `${varName}.style.cssText = ${expr}`
+      if (htmlAttrName === 'class') return `${varName}.className = ${expr}`
+      if (htmlAttrName === 'style') return `${varName}.style.cssText = ${expr}`
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
 
@@ -456,9 +456,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         needsBindDirectImport = true
         const d = nextDisp()
         const updater =
-          htmlAttrName === "class"
+          htmlAttrName === 'class'
             ? `(v) => { ${varName}.className = v == null ? "" : String(v) }`
-            : htmlAttrName === "style"
+            : htmlAttrName === 'style'
               ? `(v) => { if (typeof v === "string") ${varName}.style.cssText = v; else if (v) Object.assign(${varName}.style, v) }`
               : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
         bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
@@ -478,18 +478,18 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       if (staticHtml !== null) return staticHtml
 
       // style={{...}} → Object.assign(el.style, {...}) for object expressions
-      if (htmlAttrName === "style" && ts.isObjectLiteralExpression(exprNode)) {
+      if (htmlAttrName === 'style' && ts.isObjectLiteralExpression(exprNode)) {
         bindLines.push(`Object.assign(${varName}.style, ${sliceExpr(exprNode)})`)
-        return ""
+        return ''
       }
 
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
-      return ""
+      return ''
     }
 
     /** Emit side-effects for special attrs (ref, event). Returns true if handled. */
     function tryEmitSpecialAttr(attr: ts.JsxAttribute, attrName: string, varName: string): boolean {
-      if (attrName === "ref") {
+      if (attrName === 'ref') {
         emitRef(attr, varName)
         return true
       }
@@ -511,21 +511,21 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
       if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression)
         return emitAttrExpression(attr.initializer.expression, htmlAttrName, varName)
-      return ""
+      return ''
     }
 
     /** Process a single attribute, returning HTML to append. */
     function processOneAttr(attr: ts.JsxAttributeLike, varName: string): string {
-      if (!ts.isJsxAttribute(attr)) return ""
-      const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ""
-      if (attrName === "key") return ""
-      if (tryEmitSpecialAttr(attr, attrName, varName)) return ""
+      if (!ts.isJsxAttribute(attr)) return ''
+      const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ''
+      if (attrName === 'key') return ''
+      if (tryEmitSpecialAttr(attr, attrName, varName)) return ''
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName)
     }
 
     /** Process all attributes on an element, returning the HTML attribute string. */
     function processAttrs(el: ts.JsxElement | ts.JsxSelfClosingElement, varName: string): string {
-      let htmlAttrs = ""
+      let htmlAttrs = ''
       for (const attr of jsxAttrs(el)) htmlAttrs += processOneAttr(attr, varName)
       return htmlAttrs
     }
@@ -558,7 +558,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         // Collected into the combined _bind at the end
         reactiveBindExprs.push(`${tVar}.data = ${expr}`)
       }
-      return needsPlaceholder ? "<!>" : ""
+      return needsPlaceholder ? '<!>' : ''
     }
 
     /** Emit bind lines for a static text expression child. */
@@ -575,10 +575,10 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
         bindLines.push(
           `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
         )
-        return "<!>"
+        return '<!>'
       }
       bindLines.push(`${varName}.textContent = ${expr}`)
-      return ""
+      return ''
     }
 
     /** Process a single flat child, returning the HTML contribution or null on failure. */
@@ -590,8 +590,8 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       useMultiExpr: boolean,
       childNodeIdx: number,
     ): string | null {
-      if (child.kind === "text") return escapeHtmlText(child.text)
-      if (child.kind === "element") {
+      if (child.kind === 'text') return escapeHtmlText(child.text)
+      if (child.kind === 'element') {
         const childAccessor = useMixed
           ? `${parentRef}.childNodes[${childNodeIdx}]`
           : `${parentRef}.children[${child.elemIdx}]`
@@ -617,9 +617,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     function processChildren(el: ts.JsxElement, varName: string, accessor: string): string | null {
       const flatChildren = flattenChildren(el.children)
       const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
-      const parentRef = accessor === "__root" ? "__root" : varName
+      const parentRef = accessor === '__root' ? '__root' : varName
 
-      let html = ""
+      let html = ''
       let childNodeIdx = 0
 
       for (const child of flatChildren) {
@@ -661,14 +661,14 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       return html
     }
 
-    const html = processElement(node, "__root")
+    const html = processElement(node, '__root')
     if (html === null) return null
 
     if (needsBindTextImport) needsBindTextImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
 
     // Build bind function body
-    const escaped = html.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
     // Emit combined _bind for reactive attribute/text expressions that
     // weren't handled by _bindText. This merges N separate _bind calls into
@@ -679,7 +679,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     if (reactiveBindExprs.length > 0) {
       needsBindImportGlobal = true
       const combinedName = nextDisp()
-      const combinedBody = reactiveBindExprs.join("; ")
+      const combinedBody = reactiveBindExprs.join('; ')
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
     }
 
@@ -687,11 +687,11 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
       return `_tpl("${escaped}", () => null)`
     }
 
-    let body = bindLines.map((l) => `  ${l}`).join("\n")
+    let body = bindLines.map((l) => `  ${l}`).join('\n')
     if (disposerNames.length > 0) {
-      body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join("; ")} }`
+      body += `\n  return () => { ${disposerNames.map((d) => `${d}()`).join('; ')} }`
     } else {
-      body += "\n  return null"
+      body += '\n  return null'
     }
 
     return `_tpl("${escaped}", (__root) => {\n${body}\n})`
@@ -699,9 +699,9 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 
   /** Flat child descriptor for template children processing */
   type FlatChild =
-    | { kind: "text"; text: string }
-    | { kind: "element"; node: ts.JsxElement | ts.JsxSelfClosingElement; elemIdx: number }
-    | { kind: "expression"; expression: ts.Expression }
+    | { kind: 'text'; text: string }
+    | { kind: 'element'; node: ts.JsxElement | ts.JsxSelfClosingElement; elemIdx: number }
+    | { kind: 'expression'; expression: ts.Expression }
 
   /** Classify a single JSX child into a FlatChild descriptor. */
   function classifyJsxChild(
@@ -711,16 +711,16 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     recurse: (kids: ts.NodeArray<ts.JsxChild>) => void,
   ): void {
     if (ts.isJsxText(child)) {
-      const trimmed = child.text.replace(/\n\s*/g, "").trim()
-      if (trimmed) out.push({ kind: "text", text: trimmed })
+      const trimmed = child.text.replace(/\n\s*/g, '').trim()
+      if (trimmed) out.push({ kind: 'text', text: trimmed })
       return
     }
     if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-      out.push({ kind: "element", node: child, elemIdx: elemIdxRef.value++ })
+      out.push({ kind: 'element', node: child, elemIdx: elemIdxRef.value++ })
       return
     }
     if (ts.isJsxExpression(child)) {
-      if (child.expression) out.push({ kind: "expression", expression: child.expression })
+      if (child.expression) out.push({ kind: 'expression', expression: child.expression })
       return
     }
     if (ts.isJsxFragment(child)) recurse(child.children)
@@ -747,17 +747,17 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
     useMixed: boolean
     useMultiExpr: boolean
   } {
-    const hasElem = flatChildren.some((c) => c.kind === "element")
-    const hasNonElem = flatChildren.some((c) => c.kind !== "element")
-    const exprCount = flatChildren.filter((c) => c.kind === "expression").length
+    const hasElem = flatChildren.some((c) => c.kind === 'element')
+    const hasNonElem = flatChildren.some((c) => c.kind !== 'element')
+    const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
     return { useMixed: hasElem && hasNonElem, useMultiExpr: exprCount > 1 }
   }
 
   /** Check if a single attribute is dynamic (has ref, event, or non-static expression). */
   function attrIsDynamic(attr: ts.JsxAttributeLike): boolean {
     if (!ts.isJsxAttribute(attr)) return false
-    const name = ts.isIdentifier(attr.name) ? attr.name.text : ""
-    if (name === "ref") return true
+    const name = ts.isIdentifier(attr.name) ? attr.name.text : ''
+    if (name === 'ref') return true
     if (EVENT_RE.test(name)) return true
     if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return false
     const expr = attr.initializer.expression
@@ -781,7 +781,7 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
   /** Get tag name string */
   function jsxTagName(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
     const tag = ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName
-    return ts.isIdentifier(tag) ? tag.text : ""
+    return ts.isIdentifier(tag) ? tag.text : ''
   }
 
   /** Get attribute list */
@@ -797,25 +797,25 @@ export function transformJSX(code: string, filename = "input.tsx"): TransformRes
 // ─── Template constants ──────────────────────────────────────────────────────
 
 const VOID_ELEMENTS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ])
 
 const JSX_TO_HTML_ATTR: Record<string, string> = {
-  className: "class",
-  htmlFor: "for",
+  className: 'class',
+  htmlFor: 'for',
 }
 
 function isLowerCase(s: string): boolean {
@@ -830,11 +830,11 @@ function containsJSXInExpr(node: ts.Node): boolean {
 }
 
 function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
 }
 
 function escapeHtmlText(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 }
 
 // ─── Static JSX analysis ──────────────────────────────────────────────────────

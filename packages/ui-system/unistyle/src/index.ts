@@ -1,7 +1,7 @@
-import type { TProvider } from "./context"
-import Provider, { context } from "./context"
-import type { PyreonTheme } from "./enrichTheme"
-import { enrichTheme } from "./enrichTheme"
+import type { TProvider } from './context'
+import Provider, { context } from './context'
+import type { PyreonTheme } from './enrichTheme'
+import { enrichTheme } from './enrichTheme'
 import type {
   Breakpoints,
   CreateMediaQueries,
@@ -10,7 +10,7 @@ import type {
   NormalizeTheme,
   SortBreakpoints,
   TransformTheme,
-} from "./responsive"
+} from './responsive'
 import {
   breakpoints,
   createMediaQueries,
@@ -18,7 +18,7 @@ import {
   normalizeTheme,
   sortBreakpoints,
   transformTheme,
-} from "./responsive"
+} from './responsive'
 import type {
   AlignContent,
   AlignContentAlignXKeys,
@@ -27,7 +27,7 @@ import type {
   ExtendCss,
   Styles,
   StylesTheme,
-} from "./styles"
+} from './styles'
 import {
   ALIGN_CONTENT_DIRECTION,
   ALIGN_CONTENT_MAP_X,
@@ -35,10 +35,10 @@ import {
   alignContent,
   extendCss,
   styles,
-} from "./styles"
-import type { BrowserColors, Color, Defaults, PropertyValue, UnitValue } from "./types"
-import type { StripUnit, Value, Values } from "./units"
-import { stripUnit, value, values } from "./units"
+} from './styles'
+import type { BrowserColors, Color, Defaults, PropertyValue, UnitValue } from './types'
+import type { StripUnit, Value, Values } from './units'
+import { stripUnit, value, values } from './units'
 
 export type {
   AlignContent,

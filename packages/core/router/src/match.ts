@@ -1,4 +1,4 @@
-import type { ResolvedRoute, RouteMeta, RouteRecord } from "./types"
+import type { ResolvedRoute, RouteMeta, RouteRecord } from './types'
 
 // ─── Query string ─────────────────────────────────────────────────────────────
 
@@ -9,11 +9,11 @@ import type { ResolvedRoute, RouteMeta, RouteRecord } from "./types"
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return {}
   const result: Record<string, string> = {}
-  for (const part of qs.split("&")) {
-    const eqIdx = part.indexOf("=")
+  for (const part of qs.split('&')) {
+    const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
       const key = decodeURIComponent(part)
-      if (key) result[key] = ""
+      if (key) result[key] = ''
     } else {
       const key = decodeURIComponent(part.slice(0, eqIdx))
       const val = decodeURIComponent(part.slice(eqIdx + 1))
@@ -33,13 +33,13 @@ export function parseQuery(qs: string): Record<string, string> {
 export function parseQueryMulti(qs: string): Record<string, string | string[]> {
   if (!qs) return {}
   const result: Record<string, string | string[]> = {}
-  for (const part of qs.split("&")) {
-    const eqIdx = part.indexOf("=")
+  for (const part of qs.split('&')) {
+    const eqIdx = part.indexOf('=')
     let key: string
     let val: string
     if (eqIdx < 0) {
       key = decodeURIComponent(part)
-      val = ""
+      val = ''
     } else {
       key = decodeURIComponent(part.slice(0, eqIdx))
       val = decodeURIComponent(part.slice(eqIdx + 1))
@@ -62,7 +62,7 @@ export function stringifyQuery(query: Record<string, string>): string {
   for (const [k, v] of Object.entries(query)) {
     parts.push(v ? `${encodeURIComponent(k)}=${encodeURIComponent(v)}` : encodeURIComponent(k))
   }
-  return parts.length ? `?${parts.join("&")}` : ""
+  return parts.length ? `?${parts.join('&')}` : ''
 }
 
 // ─── Compiled route structures ───────────────────────────────────────────────
@@ -134,21 +134,21 @@ interface FlattenedRoute {
 const _compiledCache = new WeakMap<RouteRecord[], CompiledRoute[]>()
 
 function compileSegment(raw: string): CompiledSegment {
-  if (raw.endsWith("*") && raw.startsWith(":")) {
+  if (raw.endsWith('*') && raw.startsWith(':')) {
     return { raw, isParam: true, isSplat: true, isOptional: false, paramName: raw.slice(1, -1) }
   }
-  if (raw.endsWith("?") && raw.startsWith(":")) {
+  if (raw.endsWith('?') && raw.startsWith(':')) {
     return { raw, isParam: true, isSplat: false, isOptional: true, paramName: raw.slice(1, -1) }
   }
-  if (raw.startsWith(":")) {
+  if (raw.startsWith(':')) {
     return { raw, isParam: true, isSplat: false, isOptional: false, paramName: raw.slice(1) }
   }
-  return { raw, isParam: false, isSplat: false, isOptional: false, paramName: "" }
+  return { raw, isParam: false, isSplat: false, isOptional: false, paramName: '' }
 }
 
 function compileRoute(route: RouteRecord): CompiledRoute {
   const pattern = route.path
-  const isWildcard = pattern === "(.*)" || pattern === "*"
+  const isWildcard = pattern === '(.*)' || pattern === '*'
 
   if (isWildcard) {
     return {
@@ -163,9 +163,9 @@ function compileRoute(route: RouteRecord): CompiledRoute {
     }
   }
 
-  const segments = pattern.split("/").filter(Boolean).map(compileSegment)
+  const segments = pattern.split('/').filter(Boolean).map(compileSegment)
   const isStatic = segments.every((s) => !s.isParam)
-  const staticPath = isStatic ? `/${segments.map((s) => s.raw).join("/")}` : null
+  const staticPath = isStatic ? `/${segments.map((s) => s.raw).join('/')}` : null
   const first = segments.length > 0 ? segments[0] : undefined
   const firstSegment = first && !first.isParam ? first.raw : null
 
@@ -239,7 +239,7 @@ function makeFlatEntry(
     segmentCount: segments.length,
     matchedChain: chain,
     isStatic,
-    staticPath: isStatic ? `/${segments.map((s) => s.raw).join("/")}` : null,
+    staticPath: isStatic ? `/${segments.map((s) => s.raw).join('/')}` : null,
     meta,
     firstSegment: getFirstSegment(segments),
     hasSplat: segments.some((s) => s.isSplat),
@@ -369,7 +369,7 @@ function buildRouteIndex(routes: RouteRecord[], compiled: CompiledRoute[]): Rout
 /** Split path into segments without allocating a filtered array */
 function splitPath(path: string): string[] {
   // Fast path for common cases
-  if (path === "/") return []
+  if (path === '/') return []
   // Remove leading slash, split, no filter needed if path is clean
   const start = path.charCodeAt(0) === 47 /* / */ ? 1 : 0
   const end = path.length
@@ -390,7 +390,7 @@ function splitPath(path: string): string[] {
 
 /** Decode only if the segment contains a `%` character */
 function decodeSafe(s: string): string {
-  return s.indexOf("%") >= 0 ? decodeURIComponent(s) : s
+  return s.indexOf('%') >= 0 ? decodeURIComponent(s) : s
 }
 
 // ─── Path matching (compiled) ────────────────────────────────────────────────
@@ -411,28 +411,28 @@ function matchPatternSegment(
   params: Record<string, string>,
   pathParts: string[],
   i: number,
-): "splat" | "continue" | "fail" {
-  if (pp.endsWith("*") && pp.startsWith(":")) {
-    params[pp.slice(1, -1)] = pathParts.slice(i).map(decodeURIComponent).join("/")
-    return "splat"
+): 'splat' | 'continue' | 'fail' {
+  if (pp.endsWith('*') && pp.startsWith(':')) {
+    params[pp.slice(1, -1)] = pathParts.slice(i).map(decodeURIComponent).join('/')
+    return 'splat'
   }
-  if (pp.endsWith("?") && pp.startsWith(":")) {
+  if (pp.endsWith('?') && pp.startsWith(':')) {
     if (pt !== undefined) params[pp.slice(1, -1)] = decodeURIComponent(pt)
-    return "continue"
+    return 'continue'
   }
-  if (pt === undefined) return "fail"
-  if (pp.startsWith(":")) {
+  if (pt === undefined) return 'fail'
+  if (pp.startsWith(':')) {
     params[pp.slice(1)] = decodeURIComponent(pt)
-    return "continue"
+    return 'continue'
   }
-  return pp === pt ? "continue" : "fail"
+  return pp === pt ? 'continue' : 'fail'
 }
 
 export function matchPath(pattern: string, path: string): Record<string, string> | null {
-  if (pattern === "(.*)" || pattern === "*") return {}
+  if (pattern === '(.*)' || pattern === '*') return {}
 
-  const patternParts = pattern.split("/").filter(Boolean)
-  const pathParts = path.split("/").filter(Boolean)
+  const patternParts = pattern.split('/').filter(Boolean)
+  const pathParts = path.split('/').filter(Boolean)
 
   const params: Record<string, string> = {}
   for (let i = 0; i < patternParts.length; i++) {
@@ -443,8 +443,8 @@ export function matchPath(pattern: string, path: string): Record<string, string>
       pathParts,
       i,
     )
-    if (result === "splat") return params
-    if (result === "fail") return null
+    if (result === 'splat') return params
+    if (result === 'fail') return null
   }
 
   if (pathParts.length > patternParts.length) return null
@@ -460,7 +460,7 @@ function captureSplat(pathParts: string[], from: number, pathLen: number): strin
     const p = pathParts[j]
     if (p !== undefined) remaining.push(decodeSafe(p))
   }
-  return remaining.join("/")
+  return remaining.join('/')
 }
 
 // ─── Flattened route matching ─────────────────────────────────────────────────
@@ -534,13 +534,13 @@ interface MatchResult {
  * Uses flattened index for O(1) static lookup and first-segment dispatch.
  */
 export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRoute {
-  const qIdx = rawPath.indexOf("?")
+  const qIdx = rawPath.indexOf('?')
   const pathAndHash = qIdx >= 0 ? rawPath.slice(0, qIdx) : rawPath
-  const queryPart = qIdx >= 0 ? rawPath.slice(qIdx + 1) : ""
+  const queryPart = qIdx >= 0 ? rawPath.slice(qIdx + 1) : ''
 
-  const hIdx = pathAndHash.indexOf("#")
+  const hIdx = pathAndHash.indexOf('#')
   const cleanPath = hIdx >= 0 ? pathAndHash.slice(0, hIdx) : pathAndHash
-  const hash = hIdx >= 0 ? pathAndHash.slice(hIdx + 1) : ""
+  const hash = hIdx >= 0 ? pathAndHash.slice(hIdx + 1) : ''
 
   const query = parseQuery(queryPart)
 
@@ -627,13 +627,13 @@ export function buildPath(pattern: string, params: Record<string, string>): stri
   const built = pattern.replace(/\/:([^/]+)\?/g, (_match, key) => {
     const val = params[key]
     // Optional param — omit the entire segment if no value provided
-    if (!val) return ""
+    if (!val) return ''
     return `/${encodeURIComponent(val)}`
   })
   return built.replace(/:([^/]+)\*?/g, (match, key) => {
-    const val = params[key] ?? ""
+    const val = params[key] ?? ''
     // Splat params contain slashes — don't encode them
-    if (match.endsWith("*")) return val.split("/").map(encodeURIComponent).join("/")
+    if (match.endsWith('*')) return val.split('/').map(encodeURIComponent).join('/')
     return encodeURIComponent(val)
   })
 }

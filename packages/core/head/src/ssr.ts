@@ -1,10 +1,10 @@
-import type { ComponentFn, VNode } from "@pyreon/core"
-import { h, pushContext } from "@pyreon/core"
-import { renderToString } from "@pyreon/runtime-server"
-import type { HeadTag } from "./context"
-import { createHeadContext, HeadContext } from "./context"
+import type { ComponentFn, VNode } from '@pyreon/core'
+import { h, pushContext } from '@pyreon/core'
+import { renderToString } from '@pyreon/runtime-server'
+import type { HeadTag } from './context'
+import { createHeadContext, HeadContext } from './context'
 
-const VOID_TAGS = new Set(["meta", "link", "base"])
+const VOID_TAGS = new Set(['meta', 'link', 'base'])
 
 /**
  * Render a Pyreon app to an HTML fragment + a serialized <head> string.
@@ -46,7 +46,7 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
   const head = ctx
     .resolve()
     .map((tag) => serializeTag(tag, titleTemplate))
-    .join("\n  ")
+    .join('\n  ')
   return {
     html,
     head,
@@ -56,10 +56,10 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 }
 
 function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) => string)): string {
-  if (tag.tag === "title") {
-    const raw = tag.children || ""
+  if (tag.tag === 'title') {
+    const raw = tag.children || ''
     const title = titleTemplate
-      ? typeof titleTemplate === "function"
+      ? typeof titleTemplate === 'function'
         ? titleTemplate(raw)
         : titleTemplate.replace(/%s/g, raw)
       : raw
@@ -69,20 +69,20 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
   const attrs = props
     ? Object.entries(props)
         .map(([k, v]) => `${k}="${esc(v)}"`)
-        .join(" ")
-    : ""
+        .join(' ')
+    : ''
   const open = attrs ? `<${tag.tag} ${attrs}` : `<${tag.tag}`
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
-  const content = tag.children || ""
+  const content = tag.children || ''
   // Escape sequences that could break out of script/style/noscript blocks:
   // 1. Closing tags like </script> — use Unicode escape in the slash
   // 2. HTML comment openers <!-- that could confuse parsers
-  const body = content.replace(/<\/(script|style|noscript)/gi, "<\\/$1").replace(/<!--/g, "<\\!--")
+  const body = content.replace(/<\/(script|style|noscript)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')
   return `${open}>${body}</${tag.tag}>`
 }
 
 const ESC_RE = /[&<>"]/g
-const ESC_MAP: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }
+const ESC_MAP: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }
 
 function esc(s: string): string {
   return ESC_RE.test(s) ? s.replace(ESC_RE, (ch) => ESC_MAP[ch] as string) : s

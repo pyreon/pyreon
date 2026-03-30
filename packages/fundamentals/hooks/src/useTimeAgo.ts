@@ -1,6 +1,6 @@
-import { onCleanup, signal } from "@pyreon/reactivity"
+import { onCleanup, signal } from '@pyreon/reactivity'
 
-type TimeUnit = "second" | "minute" | "hour" | "day" | "week" | "month" | "year"
+type TimeUnit = 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'year'
 
 interface TimeInterval {
   unit: TimeUnit
@@ -8,13 +8,13 @@ interface TimeInterval {
 }
 
 const INTERVALS: TimeInterval[] = [
-  { unit: "year", seconds: 31536000 },
-  { unit: "month", seconds: 2592000 },
-  { unit: "week", seconds: 604800 },
-  { unit: "day", seconds: 86400 },
-  { unit: "hour", seconds: 3600 },
-  { unit: "minute", seconds: 60 },
-  { unit: "second", seconds: 1 },
+  { unit: 'year', seconds: 31536000 },
+  { unit: 'month', seconds: 2592000 },
+  { unit: 'week', seconds: 604800 },
+  { unit: 'day', seconds: 86400 },
+  { unit: 'hour', seconds: 3600 },
+  { unit: 'minute', seconds: 60 },
+  { unit: 'second', seconds: 1 },
 ]
 
 /**
@@ -40,7 +40,7 @@ export interface UseTimeAgoOptions {
  */
 const defaultFormatter = (() => {
   const rtf =
-    typeof Intl !== "undefined" ? new Intl.RelativeTimeFormat("en", { numeric: "auto" }) : undefined
+    typeof Intl !== 'undefined' ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }) : undefined
 
   return (value: number, unit: TimeUnit, isPast: boolean): string => {
     if (rtf) return rtf.format(isPast ? -value : value, unit)
@@ -58,19 +58,19 @@ function computeTimeAgo(
   formatter: (value: number, unit: TimeUnit, isPast: boolean) => string,
 ): string {
   const now = Date.now()
-  const target = typeof date === "number" ? date : date.getTime()
+  const target = typeof date === 'number' ? date : date.getTime()
   const diff = Math.abs(now - target)
   const diffSeconds = Math.floor(diff / 1000)
   const isPast = target < now
 
-  if (diffSeconds < 5) return "just now"
+  if (diffSeconds < 5) return 'just now'
 
   for (const { unit, seconds } of INTERVALS) {
     const value = Math.floor(diffSeconds / seconds)
     if (value >= 1) return formatter(value, unit, isPast)
   }
 
-  return "just now"
+  return 'just now'
 }
 
 /**
@@ -99,7 +99,7 @@ export function useTimeAgo(
   options?: UseTimeAgoOptions,
 ): () => string {
   const formatter = options?.formatter ?? defaultFormatter
-  const resolveDate = typeof date === "function" ? date : () => date
+  const resolveDate = typeof date === 'function' ? date : () => date
 
   const result = signal(computeTimeAgo(resolveDate(), formatter))
 
@@ -116,7 +116,7 @@ export function useTimeAgo(
     result.set(computeTimeAgo(d, formatter))
 
     // Schedule next update with adaptive interval
-    const target = typeof d === "number" ? d : d.getTime()
+    const target = typeof d === 'number' ? d : d.getTime()
     const diffSeconds = Math.floor(Math.abs(Date.now() - target) / 1000)
     const interval = options?.interval ?? getRefreshInterval(diffSeconds)
     timer = setTimeout(tick, interval)

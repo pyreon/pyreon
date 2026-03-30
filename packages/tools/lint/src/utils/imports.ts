@@ -1,65 +1,65 @@
-import type { ImportInfo } from "../types"
+import type { ImportInfo } from '../types'
 
 export type { ImportInfo }
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
-export const PYREON_PREFIX = "@pyreon/"
+export const PYREON_PREFIX = '@pyreon/'
 
 export const REACTIVITY_APIS = new Set([
-  "signal",
-  "computed",
-  "effect",
-  "batch",
-  "onCleanup",
-  "createSelector",
-  "createStore",
-  "untrack",
+  'signal',
+  'computed',
+  'effect',
+  'batch',
+  'onCleanup',
+  'createSelector',
+  'createStore',
+  'untrack',
 ])
 
-export const LIFECYCLE_APIS = new Set(["onMount", "onUnmount"])
+export const LIFECYCLE_APIS = new Set(['onMount', 'onUnmount'])
 
-export const CONTEXT_APIS = new Set(["createContext", "provide", "pushContext", "popContext"])
+export const CONTEXT_APIS = new Set(['createContext', 'provide', 'pushContext', 'popContext'])
 
 export const JSX_COMPONENTS = new Set([
-  "For",
-  "Show",
-  "Switch",
-  "Match",
-  "Dynamic",
-  "ErrorBoundary",
-  "Suspense",
-  "Portal",
+  'For',
+  'Show',
+  'Switch',
+  'Match',
+  'Dynamic',
+  'ErrorBoundary',
+  'Suspense',
+  'Portal',
 ])
 
 export const HEAVY_PACKAGES = new Set([
-  "@pyreon/charts",
-  "@pyreon/code",
-  "@pyreon/document",
-  "@pyreon/flow",
+  '@pyreon/charts',
+  '@pyreon/code',
+  '@pyreon/document',
+  '@pyreon/flow',
 ])
 
 export const BROWSER_GLOBALS = new Set([
-  "window",
-  "document",
-  "navigator",
-  "location",
-  "history",
-  "localStorage",
-  "sessionStorage",
-  "indexedDB",
-  "fetch",
-  "XMLHttpRequest",
-  "WebSocket",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-  "IntersectionObserver",
-  "MutationObserver",
-  "ResizeObserver",
-  "matchMedia",
-  "getComputedStyle",
-  "addEventListener",
-  "removeEventListener",
+  'window',
+  'document',
+  'navigator',
+  'location',
+  'history',
+  'localStorage',
+  'sessionStorage',
+  'indexedDB',
+  'fetch',
+  'XMLHttpRequest',
+  'WebSocket',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'IntersectionObserver',
+  'MutationObserver',
+  'ResizeObserver',
+  'matchMedia',
+  'getComputedStyle',
+  'addEventListener',
+  'removeEventListener',
 ])
 
 // ── Functions ───────────────────────────────────────────────────────────────
@@ -73,26 +73,26 @@ export function isPyreonPackage(source: string): boolean {
 }
 
 export function extractImportInfo(node: any): ImportInfo | null {
-  if (node.type !== "ImportDeclaration") return null
+  if (node.type !== 'ImportDeclaration') return null
 
   const source = node.source?.value as string
   if (!source) return null
 
-  const specifiers: ImportInfo["specifiers"] = []
+  const specifiers: ImportInfo['specifiers'] = []
   let isDefault = false
   let isNamespace = false
 
   for (const spec of node.specifiers ?? []) {
-    if (spec.type === "ImportDefaultSpecifier") {
+    if (spec.type === 'ImportDefaultSpecifier') {
       isDefault = true
-      specifiers.push({ imported: "default", local: spec.local?.name ?? "" })
-    } else if (spec.type === "ImportNamespaceSpecifier") {
+      specifiers.push({ imported: 'default', local: spec.local?.name ?? '' })
+    } else if (spec.type === 'ImportNamespaceSpecifier') {
       isNamespace = true
-      specifiers.push({ imported: "*", local: spec.local?.name ?? "" })
-    } else if (spec.type === "ImportSpecifier") {
+      specifiers.push({ imported: '*', local: spec.local?.name ?? '' })
+    } else if (spec.type === 'ImportSpecifier') {
       const imported =
-        spec.imported?.type === "Identifier" ? spec.imported.name : (spec.imported?.value ?? "")
-      specifiers.push({ imported, local: spec.local?.name ?? "" })
+        spec.imported?.type === 'Identifier' ? spec.imported.name : (spec.imported?.value ?? '')
+      specifiers.push({ imported, local: spec.local?.name ?? '' })
     }
   }
 

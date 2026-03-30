@@ -1,6 +1,6 @@
-import { computed } from "@pyreon/reactivity"
-import type { ReadableSignal } from "./types"
-import { isSignal } from "./types"
+import { computed } from '@pyreon/reactivity'
+import type { ReadableSignal } from './types'
+import { isSignal } from './types'
 
 /**
  * Pipe a signal through a chain of transform functions.

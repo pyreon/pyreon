@@ -1,16 +1,16 @@
 {
   "name": "@pyreon/head",
   "version": "0.11.5",
-  "description": "Head tag management for Pyreon \u2014 works in SSR and CSR",
+  "description": "Head tag management for Pyreon — works in SSR and CSR",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/head#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/head"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/head#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
   },
   "files": [
     "lib",
@@ -18,8 +18,8 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": false,
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -45,17 +45,25 @@
       "types": "./lib/types/ssr.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.8.3",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/runtime-server": "workspace:^"
   },
   "peerDependencies": {
     "@pyreon/runtime-server": "workspace:^"
@@ -64,13 +72,5 @@
     "@pyreon/runtime-server": {
       "optional": true
     }
-  },
-  "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.3",
-    "@pyreon/runtime-dom": "workspace:^",
-    "@pyreon/runtime-server": "workspace:^"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

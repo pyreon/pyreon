@@ -1,4 +1,4 @@
-import type { ISRConfig } from "./types"
+import type { ISRConfig } from './types'
 
 // ─── ISR Cache ───────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export function createISRHandler(
     revalidating.add(key)
 
     try {
-      const req = new Request(url.href, { method: "GET" })
+      const req = new Request(url.href, { method: 'GET' })
       const res = await handler(req)
       const html = await res.text()
       const headers: Record<string, string> = {}
@@ -46,7 +46,7 @@ export function createISRHandler(
 
   return async (req: Request): Promise<Response> => {
     // Only cache GET requests
-    if (req.method !== "GET") {
+    if (req.method !== 'GET') {
       return handler(req)
     }
 
@@ -66,9 +66,9 @@ export function createISRHandler(
         status: 200,
         headers: {
           ...entry.headers,
-          "content-type": "text/html; charset=utf-8",
-          "x-isr-cache": age > revalidateMs ? "STALE" : "HIT",
-          "x-isr-age": String(Math.round(age / 1000)),
+          'content-type': 'text/html; charset=utf-8',
+          'x-isr-cache': age > revalidateMs ? 'STALE' : 'HIT',
+          'x-isr-age': String(Math.round(age / 1000)),
         },
       })
     }
@@ -87,8 +87,8 @@ export function createISRHandler(
       status: 200,
       headers: {
         ...headers,
-        "content-type": "text/html; charset=utf-8",
-        "x-isr-cache": "MISS",
+        'content-type': 'text/html; charset=utf-8',
+        'x-isr-cache': 'MISS',
       },
     })
   }

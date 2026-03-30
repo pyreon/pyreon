@@ -1,11 +1,11 @@
-import { createSignal, For } from "solid-js"
-import Demo from "./Demo"
+import { createSignal, For } from 'solid-js'
+import Demo from './Demo'
 
 export default function ForDemo() {
   const [items, setItems] = createSignal([
-    { id: 1, text: "Learn Pyreon" },
-    { id: 2, text: "Build an app" },
-    { id: 3, text: "Ship it" },
+    { id: 1, text: 'Learn Pyreon' },
+    { id: 2, text: 'Build an app' },
+    { id: 3, text: 'Ship it' },
   ])
   let nextId = 4
 

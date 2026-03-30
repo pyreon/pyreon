@@ -1,4 +1,4 @@
-import { onCleanup, signal } from "@pyreon/reactivity"
+import { onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseDialogResult {
   /** Whether the dialog is currently open. */
@@ -60,7 +60,7 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
   const ref = (el: HTMLDialogElement) => {
     // Clean up previous element if ref is called again
     if (dialogEl && closeHandler) {
-      dialogEl.removeEventListener("close", closeHandler)
+      dialogEl.removeEventListener('close', closeHandler)
     }
 
     dialogEl = el
@@ -70,12 +70,12 @@ export function useDialog(options?: { onClose?: () => void }): UseDialogResult {
       options?.onClose?.()
     }
 
-    el.addEventListener("close", closeHandler)
+    el.addEventListener('close', closeHandler)
   }
 
   onCleanup(() => {
     if (dialogEl && closeHandler) {
-      dialogEl.removeEventListener("close", closeHandler)
+      dialogEl.removeEventListener('close', closeHandler)
     }
   })
 

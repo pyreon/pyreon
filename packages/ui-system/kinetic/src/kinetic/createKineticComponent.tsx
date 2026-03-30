@@ -1,24 +1,24 @@
-import type { VNode } from "@pyreon/core"
-import type { CSSProperties, TransitionCallbacks } from "../types"
-import CollapseRenderer from "./CollapseRenderer"
-import GroupRenderer from "./GroupRenderer"
-import StaggerRenderer from "./StaggerRenderer"
-import TransitionRenderer from "./TransitionRenderer"
-import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from "./types"
+import type { VNode } from '@pyreon/core'
+import type { CSSProperties, TransitionCallbacks } from '../types'
+import CollapseRenderer from './CollapseRenderer'
+import GroupRenderer from './GroupRenderer'
+import StaggerRenderer from './StaggerRenderer'
+import TransitionRenderer from './TransitionRenderer'
+import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from './types'
 
 /** Keys that are kinetic-specific and should not be forwarded as HTML attrs. */
 const KINETIC_KEYS = new Set([
-  "show",
-  "appear",
-  "unmount",
-  "timeout",
-  "transition",
-  "interval",
-  "reverseLeave",
-  "onEnter",
-  "onAfterEnter",
-  "onLeave",
-  "onAfterLeave",
+  'show',
+  'appear',
+  'unmount',
+  'timeout',
+  'transition',
+  'interval',
+  'reverseLeave',
+  'onEnter',
+  'onAfterEnter',
+  'onLeave',
+  'onAfterLeave',
 ])
 
 /**
@@ -26,7 +26,7 @@ const KINETIC_KEYS = new Set([
  * renderer based on config.mode, then attaches immutable chain methods
  * via Object.assign.
  */
-const createKineticComponent = <Tag extends string, Mode extends KineticMode = "transition">(
+const createKineticComponent = <Tag extends string, Mode extends KineticMode = 'transition'>(
   config: KineticConfig,
 ): KineticComponent<Tag, Mode> => {
   const Component = (props: Record<string, unknown>): VNode | null => {
@@ -74,7 +74,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
     // Extract children from htmlProps (it's not an HTML attribute)
     const { children, ...restHtml } = htmlProps
 
-    if (config.mode === "collapse") {
+    if (config.mode === 'collapse') {
       return (
         <CollapseRenderer
           config={config}
@@ -90,7 +90,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       )
     }
 
-    if (config.mode === "stagger") {
+    if (config.mode === 'stagger') {
       return (
         <StaggerRenderer
           config={config}
@@ -107,7 +107,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       )
     }
 
-    if (config.mode === "group") {
+    if (config.mode === 'group') {
       return (
         <GroupRenderer
           config={config}
@@ -191,20 +191,20 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       createKineticComponent<Tag, Mode>({ ...config, ...cbs }),
 
     collapse: (opts?: { transition?: string }) =>
-      createKineticComponent<Tag, "collapse">({
+      createKineticComponent<Tag, 'collapse'>({
         ...config,
-        mode: "collapse",
+        mode: 'collapse',
         ...opts,
       }),
 
     stagger: (opts?: { interval?: number; reverseLeave?: boolean }) =>
-      createKineticComponent<Tag, "stagger">({
+      createKineticComponent<Tag, 'stagger'>({
         ...config,
-        mode: "stagger",
+        mode: 'stagger',
         ...opts,
       }),
 
-    group: () => createKineticComponent<Tag, "group">({ ...config, mode: "group" }),
+    group: () => createKineticComponent<Tag, 'group'>({ ...config, mode: 'group' }),
   }) as unknown as KineticComponent<Tag, Mode>
 }
 

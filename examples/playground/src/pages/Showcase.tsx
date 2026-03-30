@@ -1,4 +1,4 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 import {
   createContext,
   createRef,
@@ -8,9 +8,9 @@ import {
   provide,
   Show,
   useContext,
-} from "@pyreon/core"
-import { useHead } from "@pyreon/head/use-head"
-import { batch, computed, createSelector, effect, signal } from "@pyreon/reactivity"
+} from '@pyreon/core'
+import { useHead } from '@pyreon/head/use-head'
+import { batch, computed, createSelector, effect, signal } from '@pyreon/reactivity'
 
 // ─── Code Block ──────────────────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ function CodeBlock(props: { code: string }) {
   return (
     <>
       <button type="button" class="code-toggle" onClick={() => open.update((v) => !v)}>
-        {() => (open() ? "▾ Hide Source" : "▸ View Source")}
+        {() => (open() ? '▾ Hide Source' : '▸ View Source')}
       </button>
       <Show when={() => open()}>
         <pre class="code-block">{props.code}</pre>
@@ -35,7 +35,7 @@ function CodeBlock(props: { code: string }) {
 const ThemeContext = createContext<{ accent: () => string; toggle: () => void }>(null as never)
 
 function ThemeProvider(props: { children?: VNodeChild }) {
-  const colors = ["#7c6af7", "#f06060", "#4ecdc4", "#ffe66d"] as const
+  const colors = ['#7c6af7', '#f06060', '#4ecdc4', '#ffe66d'] as const
   const index = signal(0)
   const accent = computed(() => colors[index() % colors.length] as string)
   const toggle = () => index.update((i) => i + 1)
@@ -88,7 +88,7 @@ function SignalsDemo() {
         </button>
       </div>
       <p class="demo-meta">doubled: {() => doubled()}</p>
-      <p class="demo-meta">history: {() => history().join(" → ")}</p>
+      <p class="demo-meta">history: {() => history().join(' → ')}</p>
       <CodeBlock
         code={`const count = signal(0)
 const doubled = computed(() => count() * 2)
@@ -111,8 +111,8 @@ effect(() => {
 // batch() groups multiple signal writes into a single reactive flush.
 
 function BatchDemo() {
-  const first = signal("Jane")
-  const last = signal("Doe")
+  const first = signal('Jane')
+  const last = signal('Doe')
   const renderCount = signal(0)
   const fullName = computed(() => {
     renderCount.update((n) => n + 1)
@@ -176,11 +176,11 @@ last.set("Jane")   // fullName recomputes → "Doe Jane"`}
 
 function ShowDemo() {
   const loggedIn = signal(false)
-  const username = signal("pyreon_user")
+  const username = signal('pyreon_user')
 
   return (
     <div class="demo-section">
-      <h3>{"<Show>"} — Conditional Rendering</h3>
+      <h3>{'<Show>'} — Conditional Rendering</h3>
       <p class="demo-desc">Efficiently swaps DOM branches. No virtual DOM diffing needed.</p>
       <Show
         when={() => loggedIn()}
@@ -240,10 +240,10 @@ interface User {
 
 function ForDemo() {
   const users = signal<User[]>([
-    { id: 1, name: "Alice", score: 92 },
-    { id: 2, name: "Bob", score: 87 },
-    { id: 3, name: "Carol", score: 95 },
-    { id: 4, name: "Dave", score: 78 },
+    { id: 1, name: 'Alice', score: 92 },
+    { id: 2, name: 'Bob', score: 87 },
+    { id: 3, name: 'Carol', score: 95 },
+    { id: 4, name: 'Dave', score: 78 },
   ])
 
   const sortByScore = () => users.update((list) => [...list].sort((a, b) => b.score - a.score))
@@ -262,7 +262,7 @@ function ForDemo() {
     })
 
   const addUser = () => {
-    const names = ["Eve", "Frank", "Grace", "Hank", "Ivy", "Jack"]
+    const names = ['Eve', 'Frank', 'Grace', 'Hank', 'Ivy', 'Jack']
     const name = names[Math.floor(Math.random() * names.length)] as string
     users.update((list) => [
       ...list,
@@ -278,7 +278,7 @@ function ForDemo() {
 
   return (
     <div class="demo-section">
-      <h3>{"<For>"} — Keyed List Reconciliation</h3>
+      <h3>{'<For>'} — Keyed List Reconciliation</h3>
       <p class="demo-desc">
         LIS-based reconciler moves DOM nodes minimally. createSelector gives O(1) row selection.
       </p>
@@ -302,10 +302,10 @@ function ForDemo() {
           by={(u) => u.id}
           children={(user) => (
             <li
-              class={() => (isSelected(user.id) ? "user-row selected" : "user-row")}
+              class={() => (isSelected(user.id) ? 'user-row selected' : 'user-row')}
               onClick={() => selectedId.set(user.id === selectedId() ? null : user.id)}
               onKeyDown={(e: KeyboardEvent) => {
-                if (e.key === "Enter" || e.key === " ")
+                if (e.key === 'Enter' || e.key === ' ')
                   selectedId.set(user.id === selectedId() ? null : user.id)
               }}
             >
@@ -356,27 +356,27 @@ function LifecycleDemo() {
     const canvasRef = createRef<HTMLCanvasElement>()
 
     onMount(() => {
-      addLog("TimerWidget mounted")
+      addLog('TimerWidget mounted')
       const id = setInterval(() => elapsed.update((n) => n + 1), 1000)
 
       // Draw on the canvas via ref
-      const ctx = canvasRef.current?.getContext("2d")
+      const ctx = canvasRef.current?.getContext('2d')
       if (ctx) {
-        ctx.fillStyle = "#7c6af7"
+        ctx.fillStyle = '#7c6af7'
         ctx.fillRect(0, 0, 120, 40)
-        ctx.fillStyle = "#fff"
-        ctx.font = "14px monospace"
-        ctx.fillText("ref works!", 10, 25)
+        ctx.fillStyle = '#fff'
+        ctx.font = '14px monospace'
+        ctx.fillText('ref works!', 10, 25)
       }
 
       // Return cleanup — runs on unmount
       return () => {
         clearInterval(id)
-        addLog("TimerWidget cleanup (interval cleared)")
+        addLog('TimerWidget cleanup (interval cleared)')
       }
     })
 
-    onUnmount(() => addLog("TimerWidget unmounted"))
+    onUnmount(() => addLog('TimerWidget unmounted'))
 
     return (
       <div class="demo-box">
@@ -393,12 +393,12 @@ function LifecycleDemo() {
         onMount returns a cleanup function. createRef provides typed DOM access.
       </p>
       <button type="button" onClick={() => visible.update((v) => !v)}>
-        {() => (visible() ? "Unmount widget" : "Mount widget")}
+        {() => (visible() ? 'Unmount widget' : 'Mount widget')}
       </button>
       <Show when={() => visible()}>
         <TimerWidget />
       </Show>
-      <pre class="log-output">{() => log().join("\n")}</pre>
+      <pre class="log-output">{() => log().join('\n')}</pre>
       <CodeBlock
         code={`function TimerWidget() {
   const elapsed = signal(0)
@@ -435,12 +435,12 @@ function LifecycleDemo() {
 // Reactive <title> and <meta> tags. Updates when signals change.
 
 function HeadDemo() {
-  const title = signal("Pyreon Showcase")
-  const description = signal("A comprehensive demo of the Pyreon framework")
+  const title = signal('Pyreon Showcase')
+  const description = signal('A comprehensive demo of the Pyreon framework')
 
   useHead(() => ({
     title: title(),
-    meta: [{ name: "description", content: description() }],
+    meta: [{ name: 'description', content: description() }],
   }))
 
   return (

@@ -1,7 +1,7 @@
-import type { VNodeChild } from "@pyreon/core"
-import { useContext } from "@pyreon/core"
-import { Provider as CoreProvider, context } from "@pyreon/ui-core"
-import { MODE_DEFAULT, THEME_MODES_INVERSED } from "../constants"
+import type { VNodeChild } from '@pyreon/core'
+import { useContext } from '@pyreon/core'
+import { Provider as CoreProvider, context } from '@pyreon/ui-core'
+import { MODE_DEFAULT, THEME_MODES_INVERSED } from '../constants'
 
 type Theme = {
   rootSize: number
@@ -11,7 +11,7 @@ type Theme = {
 export type TProvider = {
   children: VNodeChild
   theme?: Theme | undefined
-  mode?: "light" | "dark" | undefined
+  mode?: 'light' | 'dark' | undefined
   inversed?: boolean | undefined
   provider?: ((props: Record<string, unknown>) => VNodeChild) | undefined
 }
@@ -36,8 +36,8 @@ const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): V
 
   const result = RocketstyleProvider({
     mode: newMode,
-    isDark: newMode === "dark",
-    isLight: newMode === "light",
+    isDark: newMode === 'dark',
+    isLight: newMode === 'light',
     ...(theme !== undefined ? { theme } : {}),
     provider,
     children,

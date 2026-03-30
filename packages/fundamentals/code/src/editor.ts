@@ -3,7 +3,7 @@ import {
   closeBrackets,
   closeBracketsKeymap,
   completionKeymap,
-} from "@codemirror/autocomplete"
+} from '@codemirror/autocomplete'
 import {
   redo as cmRedo,
   undo as cmUndo,
@@ -11,7 +11,7 @@ import {
   history,
   historyKeymap,
   indentWithTab,
-} from "@codemirror/commands"
+} from '@codemirror/commands'
 import {
   bracketMatching,
   defaultHighlightStyle,
@@ -20,10 +20,10 @@ import {
   indentOnInput,
   indentUnit,
   syntaxHighlighting,
-} from "@codemirror/language"
-import { setDiagnostics as cmSetDiagnostics, lintKeymap } from "@codemirror/lint"
-import { highlightSelectionMatches, searchKeymap } from "@codemirror/search"
-import { Compartment, EditorState, type Extension } from "@codemirror/state"
+} from '@codemirror/language'
+import { setDiagnostics as cmSetDiagnostics, lintKeymap } from '@codemirror/lint'
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
   GutterMarker as CMGutterMarker,
   crosshairCursor,
@@ -41,12 +41,12 @@ import {
   rectangularSelection,
   ViewPlugin,
   type ViewUpdate,
-} from "@codemirror/view"
-import { computed, effect, signal } from "@pyreon/reactivity"
-import { loadLanguage } from "./languages"
-import { minimapExtension } from "./minimap"
-import { resolveTheme } from "./themes"
-import type { EditorConfig, EditorInstance, EditorLanguage, EditorTheme } from "./types"
+} from '@codemirror/view'
+import { computed, effect, signal } from '@pyreon/reactivity'
+import { loadLanguage } from './languages'
+import { minimapExtension } from './minimap'
+import { resolveTheme } from './themes'
+import type { EditorConfig, EditorInstance, EditorLanguage, EditorTheme } from './types'
 
 /**
  * Create a reactive code editor instance.
@@ -74,9 +74,9 @@ import type { EditorConfig, EditorInstance, EditorLanguage, EditorTheme } from "
  */
 export function createEditor(config: EditorConfig = {}): EditorInstance {
   const {
-    value: initialValue = "",
-    language: initialLanguage = "plain",
-    theme: initialTheme = "light",
+    value: initialValue = '',
+    language: initialLanguage = 'plain',
+    theme: initialTheme = 'light',
     lineNumbers: showLineNumbers = true,
     readOnly: initialReadOnly = false,
     foldGutter: showFoldGutter = true,
@@ -128,7 +128,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   const selection = computed(() => {
     docVersion()
     const v = view.peek()
-    if (!v) return { from: 0, to: 0, text: "" }
+    if (!v) return { from: 0, to: 0, text: '' }
     const sel = v.state.selection.main
     return {
       from: sel.from,
@@ -140,7 +140,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   const lineCount = computed(() => {
     docVersion()
     const v = view.peek()
-    return v ? v.state.doc.lines : initialValue.split("\n").length
+    return v ? v.state.doc.lines : initialValue.split('\n').length
   })
 
   // ── Line highlight support ──────────────────────────────────────────
@@ -191,30 +191,30 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
     constructor(opts: { class?: string; text?: string; title?: string }) {
       super()
-      this.markerText = opts.text ?? ""
-      this.markerTitle = opts.title ?? ""
-      this.markerClass = opts.class ?? ""
+      this.markerText = opts.text ?? ''
+      this.markerTitle = opts.title ?? ''
+      this.markerClass = opts.class ?? ''
     }
 
     override toDOM() {
-      const el = document.createElement("span")
+      const el = document.createElement('span')
       el.textContent = this.markerText
       el.title = this.markerTitle
       if (this.markerClass) el.className = this.markerClass
-      el.style.cssText = "cursor: pointer; display: inline-block; width: 100%; text-align: center;"
+      el.style.cssText = 'cursor: pointer; display: inline-block; width: 100%; text-align: center;'
       return el
     }
   }
 
   const gutterMarkerExtension = gutter({
-    class: "pyreon-code-gutter-markers",
+    class: 'pyreon-code-gutter-markers',
     lineMarker: (gutterView, line) => {
       const lineNo = gutterView.state.doc.lineAt(line.from).number
       const marker = gutterMarkers.get(lineNo)
       if (!marker) return null
       return new CustomGutterMarker(marker)
     },
-    initialSpacer: () => new CustomGutterMarker({ text: " " }),
+    initialSpacer: () => new CustomGutterMarker({ text: ' ' }),
   })
 
   // ── Build extensions ─────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       highlightSelectionMatches(),
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      indentUnit.of(" ".repeat(configTabSize)),
+      indentUnit.of(' '.repeat(configTabSize)),
 
       // Keymaps
       keymap.of([
@@ -283,10 +283,10 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     if (enableIndentGuides) {
       exts.push(
         EditorView.theme({
-          ".cm-line": {
-            backgroundImage: "linear-gradient(to right, #e5e7eb 1px, transparent 1px)",
+          '.cm-line': {
+            backgroundImage: 'linear-gradient(to right, #e5e7eb 1px, transparent 1px)',
             backgroundSize: `${configTabSize}ch 100%`,
-            backgroundPosition: "0 0",
+            backgroundPosition: '0 0',
           },
         }),
       )
@@ -425,20 +425,20 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   function foldAll(): void {
     const v = view.peek()
     if (!v) return
-    const { foldAll: foldAllCmd } = require("@codemirror/language")
+    const { foldAll: foldAllCmd } = require('@codemirror/language')
     foldAllCmd(v)
   }
 
   function unfoldAll(): void {
     const v = view.peek()
     if (!v) return
-    const { unfoldAll: unfoldAllCmd } = require("@codemirror/language")
+    const { unfoldAll: unfoldAllCmd } = require('@codemirror/language')
     unfoldAllCmd(v)
   }
 
   // ── Diagnostics ────────────────────────────────────────────────────
 
-  function setDiagnostics(diagnostics: import("./types").Diagnostic[]): void {
+  function setDiagnostics(diagnostics: import('./types').Diagnostic[]): void {
     const v = view.peek()
     if (!v) return
     v.dispatch(
@@ -447,7 +447,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         diagnostics.map((d) => ({
           from: d.from,
           to: d.to,
-          severity: d.severity === "hint" ? "info" : d.severity,
+          severity: d.severity === 'hint' ? 'info' : d.severity,
           message: d.message,
           ...(d.source != null ? { source: d.source } : {}),
         })),
@@ -478,7 +478,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   // ── Gutter markers ────────────────────────────────────────────────
 
-  function setGutterMarker(line: number, marker: import("./types").GutterMarker): void {
+  function setGutterMarker(line: number, marker: import('./types').GutterMarker): void {
     gutterMarkers.set(line, marker)
     const v = view.peek()
     if (v) v.dispatch({ effects: [] })
@@ -513,14 +513,14 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   function getLine(line: number): string {
     const v = view.peek()
-    if (!v) return ""
+    if (!v) return ''
     const clamped = Math.min(Math.max(1, line), v.state.doc.lines)
     return v.state.doc.line(clamped).text
   }
 
   function getWordAtCursor(): string {
     const v = view.peek()
-    if (!v) return ""
+    if (!v) return ''
     const pos = v.state.selection.main.head
     const line = v.state.doc.lineAt(pos)
     const col = pos - line.from
@@ -539,7 +539,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     const v = view.peek()
     if (!v) return
     v.dispatch({
-      effects: EditorView.scrollIntoView(pos, { y: "center" }),
+      effects: EditorView.scrollIntoView(pos, { y: 'center' }),
     })
   }
 
@@ -550,8 +550,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     if (!v) return
 
     // Use string concat to prevent Vite from statically analyzing these optional imports
-    const vimPkg = "@replit/codemirror-" + "vim"
-    const emacsPkg = "@replit/codemirror-" + "emacs"
+    const vimPkg = '@replit/codemirror-' + 'vim'
+    const emacsPkg = '@replit/codemirror-' + 'emacs'
 
     if (enableVim) {
       try {

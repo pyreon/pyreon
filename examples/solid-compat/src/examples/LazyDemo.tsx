@@ -1,5 +1,5 @@
-import { createSignal, lazy, Show, Suspense } from "solid-js"
-import Demo from "./Demo"
+import { createSignal, lazy, Show, Suspense } from 'solid-js'
+import Demo from './Demo'
 
 const LazyHeavy = lazy(
   () =>

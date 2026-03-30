@@ -1,7 +1,7 @@
-import { createContext, useContext } from "react"
-import Demo from "./Demo"
+import { createContext, useContext } from 'react'
+import Demo from './Demo'
 
-const ThemeContext = createContext<"light" | "dark">("light")
+const ThemeContext = createContext<'light' | 'dark'>('light')
 
 function ThemeDisplay() {
   const theme = useContext(ThemeContext)

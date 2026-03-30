@@ -1,4 +1,4 @@
-import { download } from "./download"
+import { download } from './download'
 import {
   Button,
   Code,
@@ -16,8 +16,8 @@ import {
   Spacer,
   Table,
   Text,
-} from "./nodes"
-import { render } from "./render"
+} from './nodes'
+import { render } from './render'
 import type {
   ButtonProps,
   CodeProps,
@@ -33,7 +33,7 @@ import type {
   RenderOptions,
   TableProps,
   TextProps,
-} from "./types"
+} from './types'
 
 /**
  * Create a document using the builder pattern — no JSX needed.
@@ -57,21 +57,21 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
   }
 
   const builder: DocumentBuilder = {
-    heading(text: string, p?: Omit<HeadingProps, "children">) {
+    heading(text: string, p?: Omit<HeadingProps, 'children'>) {
       sections.push(Heading({ ...p, children: text }))
       return builder
     },
 
-    text(text: string, p?: Omit<TextProps, "children">) {
+    text(text: string, p?: Omit<TextProps, 'children'>) {
       sections.push(Text({ ...p, children: text }))
       return builder
     },
 
-    paragraph(text: string, p?: Omit<TextProps, "children">) {
+    paragraph(text: string, p?: Omit<TextProps, 'children'>) {
       return builder.text(text, p)
     },
 
-    image(src: string, p?: Omit<ImageProps, "src">) {
+    image(src: string, p?: Omit<ImageProps, 'src'>) {
       sections.push(Image({ src, ...p }))
       return builder
     },
@@ -81,7 +81,7 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       return builder
     },
 
-    list(items: string[], p?: Omit<ListProps, "children">) {
+    list(items: string[], p?: Omit<ListProps, 'children'>) {
       sections.push(
         List({
           ...p,
@@ -91,7 +91,7 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       return builder
     },
 
-    code(text: string, p?: Omit<CodeProps, "children">) {
+    code(text: string, p?: Omit<CodeProps, 'children'>) {
       sections.push(Code({ ...p, children: text }))
       return builder
     },
@@ -106,17 +106,17 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       return builder
     },
 
-    quote(text: string, p?: Omit<QuoteProps, "children">) {
+    quote(text: string, p?: Omit<QuoteProps, 'children'>) {
       sections.push(Quote({ ...p, children: text }))
       return builder
     },
 
-    button(text: string, p: Omit<ButtonProps, "children">) {
+    button(text: string, p: Omit<ButtonProps, 'children'>) {
       sections.push(Button({ ...p, children: text }))
       return builder
     },
 
-    link(text: string, p: Omit<LinkProps, "children">) {
+    link(text: string, p: Omit<LinkProps, 'children'>) {
       sections.push(Link({ ...p, children: text }))
       return builder
     },
@@ -144,7 +144,7 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       // Try to get data URL from chart instance
       const inst = instance as { getDataURL?: (opts: unknown) => string }
       if (inst?.getDataURL) {
-        const dataUrl = inst.getDataURL({ type: "png", pixelRatio: 2 })
+        const dataUrl = inst.getDataURL({ type: 'png', pixelRatio: 2 })
         sections.push(
           Image({
             src: dataUrl,
@@ -156,9 +156,9 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       } else {
         sections.push(
           Text({
-            children: "[Chart]",
+            children: '[Chart]',
             italic: true,
-            color: "#999",
+            color: '#999',
           } as TextProps & { children: string }),
         )
       }
@@ -181,9 +181,9 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       } else {
         sections.push(
           Text({
-            children: "[Flow Diagram]",
+            children: '[Flow Diagram]',
             italic: true,
-            color: "#999",
+            color: '#999',
           } as TextProps & { children: string }),
         )
       }
@@ -195,75 +195,75 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
     },
 
     async toHtml(options?: RenderOptions) {
-      return render(getNode(), "html", options) as Promise<string>
+      return render(getNode(), 'html', options) as Promise<string>
     },
 
     async toPdf(options?: RenderOptions) {
-      return render(getNode(), "pdf", options) as Promise<Uint8Array>
+      return render(getNode(), 'pdf', options) as Promise<Uint8Array>
     },
 
     async toDocx(options?: RenderOptions) {
-      return render(getNode(), "docx", options) as Promise<Uint8Array>
+      return render(getNode(), 'docx', options) as Promise<Uint8Array>
     },
 
     async toEmail(options?: RenderOptions) {
-      return render(getNode(), "email", options) as Promise<string>
+      return render(getNode(), 'email', options) as Promise<string>
     },
 
     async toPptx(options?: RenderOptions) {
-      return render(getNode(), "pptx", options) as Promise<Uint8Array>
+      return render(getNode(), 'pptx', options) as Promise<Uint8Array>
     },
 
     async toXlsx(options?: RenderOptions) {
-      return render(getNode(), "xlsx", options) as Promise<Uint8Array>
+      return render(getNode(), 'xlsx', options) as Promise<Uint8Array>
     },
 
     async toMarkdown(options?: RenderOptions) {
-      return render(getNode(), "md", options) as Promise<string>
+      return render(getNode(), 'md', options) as Promise<string>
     },
 
     async toText(options?: RenderOptions) {
-      return render(getNode(), "text", options) as Promise<string>
+      return render(getNode(), 'text', options) as Promise<string>
     },
 
     async toCsv(options?: RenderOptions) {
-      return render(getNode(), "csv", options) as Promise<string>
+      return render(getNode(), 'csv', options) as Promise<string>
     },
 
     async toSlack(options?: RenderOptions) {
-      return render(getNode(), "slack", options) as Promise<string>
+      return render(getNode(), 'slack', options) as Promise<string>
     },
 
     async toSvg(options?: RenderOptions) {
-      return render(getNode(), "svg", options) as Promise<string>
+      return render(getNode(), 'svg', options) as Promise<string>
     },
 
     async toTeams(options?: RenderOptions) {
-      return render(getNode(), "teams", options) as Promise<string>
+      return render(getNode(), 'teams', options) as Promise<string>
     },
 
     async toDiscord(options?: RenderOptions) {
-      return render(getNode(), "discord", options) as Promise<string>
+      return render(getNode(), 'discord', options) as Promise<string>
     },
 
     async toTelegram(options?: RenderOptions) {
-      return render(getNode(), "telegram", options) as Promise<string>
+      return render(getNode(), 'telegram', options) as Promise<string>
     },
 
     async toNotion(options?: RenderOptions) {
-      return render(getNode(), "notion", options) as Promise<string>
+      return render(getNode(), 'notion', options) as Promise<string>
     },
 
     async toConfluence(options?: RenderOptions) {
-      return render(getNode(), "confluence", options) as Promise<string>
+      return render(getNode(), 'confluence', options) as Promise<string>
     },
 
     async toWhatsApp(options?: RenderOptions) {
-      return render(getNode(), "whatsapp", options) as Promise<string>
+      return render(getNode(), 'whatsapp', options) as Promise<string>
     },
 
     async toGoogleChat(options?: RenderOptions) {
-      return render(getNode(), "google-chat", options) as Promise<string>
+      return render(getNode(), 'google-chat', options) as Promise<string>
     },
 
     async download(filename: string, options?: RenderOptions) {

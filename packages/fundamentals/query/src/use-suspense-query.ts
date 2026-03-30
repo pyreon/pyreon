@@ -1,7 +1,7 @@
-import type { VNodeChild, VNodeChildAtom } from "@pyreon/core"
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   InfiniteData,
@@ -10,9 +10,9 @@ import type {
   QueryKey,
   QueryObserverOptions,
   QueryObserverResult,
-} from "@tanstack/query-core"
-import { InfiniteQueryObserver, QueryObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from '@tanstack/query-core'
+import { InfiniteQueryObserver, QueryObserver } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export interface UseSuspenseQueryResult<TData, TError = DefaultError> {
   /** Always TData — never undefined inside a QuerySuspense boundary. */
   data: Signal<TData>
   error: Signal<TError | null>
-  status: Signal<"pending" | "error" | "success">
+  status: Signal<'pending' | 'error' | 'success'>
   isPending: Signal<boolean>
   isFetching: Signal<boolean>
   isError: Signal<boolean>
@@ -39,7 +39,7 @@ export interface UseSuspenseInfiniteQueryResult<TQueryFnData, TError = DefaultEr
   /** Always InfiniteData<TQueryFnData> — never undefined inside a QuerySuspense boundary. */
   data: Signal<InfiniteData<TQueryFnData>>
   error: Signal<TError | null>
-  status: Signal<"pending" | "error" | "success">
+  status: Signal<'pending' | 'error' | 'success'>
   isFetching: Signal<boolean>
   isFetchingNextPage: Signal<boolean>
   isFetchingPreviousPage: Signal<boolean>
@@ -109,13 +109,13 @@ export function QuerySuspense(props: QuerySuspenseProps): VNodeChild {
     if (queries.some((q) => q.isPending())) {
       const fb = props.fallback
       return (
-        typeof fb === "function" ? (fb as () => VNodeChildAtom)() : (fb ?? null)
+        typeof fb === 'function' ? (fb as () => VNodeChildAtom)() : (fb ?? null)
       ) as VNodeChildAtom
     }
 
     // All success — render children
     const ch = props.children
-    return (typeof ch === "function" ? (ch as () => VNodeChildAtom)() : ch) as VNodeChildAtom
+    return (typeof ch === 'function' ? (ch as () => VNodeChildAtom)() : ch) as VNodeChildAtom
   }
 }
 
@@ -147,7 +147,7 @@ export function useSuspenseQuery<
   const resultSig = signal<QueryObserverResult<TData, TError>>(initial)
   const dataSig = signal<TData>(initial.data as TData)
   const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<"pending" | "error" | "success">(initial.status)
+  const statusSig = signal<'pending' | 'error' | 'success'>(initial.status)
   const isPending = signal(initial.isPending)
   const isFetching = signal(initial.isFetching)
   const isError = signal(initial.isError)

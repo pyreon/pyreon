@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
 declare const process: { env: { NODE_ENV?: string } } | undefined
 
-const __DEV__ = typeof process !== "undefined" && process?.env?.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production'
 
-import { enqueuePendingNotification, isBatching } from "./batch"
-import { _notifyTraceListeners, isTracing } from "./debug"
-import { notifySubscribers, trackSubscriber } from "./tracking"
+import { enqueuePendingNotification, isBatching } from './batch'
+import { _notifyTraceListeners, isTracing } from './debug'
+import { notifySubscribers, trackSubscriber } from './tracking'
 
 export interface SignalDebugInfo<T> {
   /** Signal name (set via options or inferred) */
@@ -153,9 +153,9 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
     if (__DEV__ && args.length > 0) {
       // biome-ignore lint/suspicious/noConsole: dev-only signal misuse warning
       console.warn(
-        "[Pyreon] signal() was called with an argument. " +
-          "Use signal.set(value) or signal.update(fn) to write. " +
-          "signal(value) only reads — the argument is ignored.",
+        '[Pyreon] signal() was called with an argument. ' +
+          'Use signal.set(value) or signal.update(fn) to write. ' +
+          'signal(value) only reads — the argument is ignored.',
       )
     }
     trackSubscriber(read as SignalFn<T>)

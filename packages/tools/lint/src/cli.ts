@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { lint, listRules } from "./lint"
-import { formatCompact, formatJSON, formatText } from "./reporter"
-import type { PresetName, Severity } from "./types"
-import { watchAndLint } from "./watcher"
+import { lint, listRules } from './lint'
+import { formatCompact, formatJSON, formatText } from './reporter'
+import type { PresetName, Severity } from './types'
+import { watchAndLint } from './watcher'
 
 // Read version from package.json at build time; fallback for dev
-const VERSION = "0.11.4"
+const VERSION = '0.11.4'
 
 function printUsage() {
   console.log(`
@@ -32,7 +32,7 @@ function printList() {
   const maxCat = Math.max(...rules.map((r) => r.category.length))
 
   for (const rule of rules) {
-    const fixLabel = rule.fixable ? " [fixable]" : ""
+    const fixLabel = rule.fixable ? ' [fixable]' : ''
     const id = rule.id.padEnd(maxId)
     const cat = rule.category.padEnd(maxCat)
     const sev = rule.severity.padEnd(5)
@@ -45,7 +45,7 @@ function printList() {
 interface CliArgs {
   preset: PresetName
   fix: boolean
-  format: "text" | "json" | "compact"
+  format: 'text' | 'json' | 'compact'
   quiet: boolean
   showList: boolean
   showHelp: boolean
@@ -58,21 +58,21 @@ interface CliArgs {
 }
 
 const BOOLEAN_FLAGS: Record<string, keyof CliArgs> = {
-  "--help": "showHelp",
-  "-h": "showHelp",
-  "--version": "showVersion",
-  "-v": "showVersion",
-  "--list": "showList",
-  "--fix": "fix",
-  "--quiet": "quiet",
-  "--watch": "watchMode",
+  '--help': 'showHelp',
+  '-h': 'showHelp',
+  '--version': 'showVersion',
+  '-v': 'showVersion',
+  '--list': 'showList',
+  '--fix': 'fix',
+  '--quiet': 'quiet',
+  '--watch': 'watchMode',
 }
 
 function parseArgs(argv: string[]): CliArgs {
   const result: CliArgs = {
-    preset: "recommended",
+    preset: 'recommended',
     fix: false,
-    format: "text",
+    format: 'text',
     quiet: false,
     showList: false,
     showHelp: false,
@@ -102,23 +102,23 @@ function parseArgs(argv: string[]): CliArgs {
 
 /** Returns number of extra args consumed (0 or 1). */
 function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArgs): number {
-  if (arg === "--preset") {
-    result.preset = (nextArg ?? "recommended") as PresetName
+  if (arg === '--preset') {
+    result.preset = (nextArg ?? 'recommended') as PresetName
     return 1
   }
-  if (arg === "--format") {
-    result.format = (nextArg ?? "text") as "text" | "json" | "compact"
+  if (arg === '--format') {
+    result.format = (nextArg ?? 'text') as 'text' | 'json' | 'compact'
     return 1
   }
-  if (arg === "--config") {
+  if (arg === '--config') {
     result.configPath = nextArg
     return 1
   }
-  if (arg === "--ignore") {
+  if (arg === '--ignore') {
     result.ignorePath = nextArg
     return 1
   }
-  if (arg === "--rule") {
+  if (arg === '--rule') {
     parseRuleOverride(nextArg, result.ruleOverrides)
     return 1
   }
@@ -130,7 +130,7 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
 
 function parseRuleOverride(val: string | undefined, overrides: Record<string, Severity>): void {
   if (!val) return
-  const eqIdx = val.lastIndexOf("=")
+  const eqIdx = val.lastIndexOf('=')
   if (eqIdx === -1) return
   const ruleId = val.slice(0, eqIdx)
   const severity = val.slice(eqIdx + 1) as Severity
@@ -156,7 +156,7 @@ function main() {
   }
 
   if (args.paths.length === 0) {
-    args.paths.push(".")
+    args.paths.push('.')
   }
 
   if (args.watchMode) {
@@ -183,9 +183,9 @@ function main() {
     ignore: args.ignorePath,
   })
 
-  if (args.format === "json") {
+  if (args.format === 'json') {
     console.log(formatJSON(result))
-  } else if (args.format === "compact") {
+  } else if (args.format === 'compact') {
     console.log(formatCompact(result))
   } else {
     const output = formatText(result)

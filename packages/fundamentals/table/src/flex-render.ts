@@ -1,4 +1,4 @@
-import type { RowData } from "@tanstack/table-core"
+import type { RowData } from '@tanstack/table-core'
 
 /**
  * Check whether a value is a Pyreon VNode (has type, props, children, key).
@@ -6,11 +6,11 @@ import type { RowData } from "@tanstack/table-core"
 function isVNode(value: unknown): boolean {
   return (
     value != null &&
-    typeof value === "object" &&
+    typeof value === 'object' &&
     !Array.isArray(value) &&
-    "type" in (value as Record<string, unknown>) &&
-    "props" in (value as Record<string, unknown>) &&
-    "children" in (value as Record<string, unknown>)
+    'type' in (value as Record<string, unknown>) &&
+    'props' in (value as Record<string, unknown>) &&
+    'children' in (value as Record<string, unknown>)
   )
 }
 
@@ -29,8 +29,8 @@ export function flexRender<_TData extends RowData, TValue>(
   props: TValue,
 ): unknown {
   if (component == null) return null
-  if (typeof component === "string" || typeof component === "number") return component
-  if (typeof component === "function") return (component as (p: TValue) => unknown)(props)
+  if (typeof component === 'string' || typeof component === 'number') return component
+  if (typeof component === 'function') return (component as (p: TValue) => unknown)(props)
   // Pass through VNodes and other objects as-is (the renderer handles them)
   if (isVNode(component)) return component
   return null

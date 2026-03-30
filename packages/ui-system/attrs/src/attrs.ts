@@ -1,12 +1,12 @@
-import { compose, hoistNonReactStatics, omit, pick } from "@pyreon/ui-core"
-import { attrsHoc } from "./hoc"
-import type { AttrsComponent as AttrsComponentType } from "./types/AttrsComponent"
-import type { Configuration, ExtendedConfiguration } from "./types/configuration"
-import type { InitAttrsComponent } from "./types/InitAttrsComponent"
-import { calculateChainOptions } from "./utils/attrs"
-import { chainOptions } from "./utils/chaining"
-import { calculateHocsFuncs } from "./utils/compose"
-import { createStaticsEnhancers } from "./utils/statics"
+import { compose, hoistNonReactStatics, omit, pick } from '@pyreon/ui-core'
+import { attrsHoc } from './hoc'
+import type { AttrsComponent as AttrsComponentType } from './types/AttrsComponent'
+import type { Configuration, ExtendedConfiguration } from './types/configuration'
+import type { InitAttrsComponent } from './types/InitAttrsComponent'
+import { calculateChainOptions } from './utils/attrs'
+import { chainOptions } from './utils/chaining'
+import { calculateHocsFuncs } from './utils/compose'
+import { createStaticsEnhancers } from './utils/statics'
 
 /**
  * Clones the current configuration and merges new options, then creates a
@@ -62,8 +62,8 @@ const attrsComponent: InitAttrsComponent = (options) => {
     const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
     const finalProps =
-      process.env.NODE_ENV !== "production"
-        ? { ...filteredProps, "data-attrs": componentName }
+      process.env.NODE_ENV !== 'production'
+        ? { ...filteredProps, 'data-attrs': componentName }
         : filteredProps
 
     return RenderComponent(finalProps)
@@ -97,12 +97,12 @@ const attrsComponent: InitAttrsComponent = (options) => {
       }
 
       if (priority) {
-        result.priorityAttrs = attrs as ExtendedConfiguration["priorityAttrs"]
+        result.priorityAttrs = attrs as ExtendedConfiguration['priorityAttrs']
 
         return cloneAndEnhance(options, result)
       }
 
-      result.attrs = attrs as ExtendedConfiguration["attrs"]
+      result.attrs = attrs as ExtendedConfiguration['attrs']
 
       return cloneAndEnhance(options, result)
     },

@@ -1,8 +1,8 @@
-import type { VNodeChild } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from "../edges"
-import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from "../types"
-import { Position } from "../types"
+import type { VNodeChild } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
+import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
+import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from '../types'
+import { Position } from '../types'
 
 // ─── Node type registry ──────────────────────────────────────────────────────
 
@@ -12,8 +12,8 @@ type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild
  * Default node renderer — simple labeled box.
  */
 function DefaultNode(props: NodeComponentProps) {
-  const borderColor = props.selected ? "#3b82f6" : "#ddd"
-  const cursor = props.dragging ? "grabbing" : "grab"
+  const borderColor = props.selected ? '#3b82f6' : '#ddd'
+  const cursor = props.dragging ? 'grabbing' : 'grab'
   return (
     <div
       style={`padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`}
@@ -38,8 +38,8 @@ interface ConnectionState {
 
 const emptyConnection: ConnectionState = {
   active: false,
-  sourceNodeId: "",
-  sourceHandleId: "",
+  sourceNodeId: '',
+  sourceHandleId: '',
   sourcePosition: Position.Right,
   sourceX: 0,
   sourceY: 0,
@@ -78,7 +78,7 @@ interface DragState {
 
 const emptyDrag: DragState = {
   active: false,
-  nodeId: "",
+  nodeId: '',
   startX: 0,
   startY: 0,
   startPositions: new Map(),
@@ -110,11 +110,11 @@ function EdgeLayer(props: {
           <marker
             id="flow-arrowhead"
             {...{
-              markerWidth: "10",
-              markerHeight: "7",
-              refX: "10",
-              refY: "3.5",
-              orient: "auto",
+              markerWidth: '10',
+              markerHeight: '7',
+              refX: '10',
+              refY: '3.5',
+              orient: 'auto',
             }}
           >
             <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
@@ -156,7 +156,7 @@ function EdgeLayer(props: {
                 waypoints: edge.waypoints,
               })
             : getEdgePath(
-                edge.type ?? "bezier",
+                edge.type ?? 'bezier',
                 sourcePos.x,
                 sourcePos.y,
                 sourcePosition,
@@ -190,11 +190,11 @@ function EdgeLayer(props: {
               <path
                 d={path}
                 fill="none"
-                stroke={isSelected ? "#3b82f6" : "#999"}
-                stroke-width={isSelected ? "2" : "1.5"}
+                stroke={isSelected ? '#3b82f6' : '#999'}
+                stroke-width={isSelected ? '2' : '1.5'}
                 marker-end="url(#flow-arrowhead)"
-                class={edge.animated ? "pyreon-flow-edge-animated" : ""}
-                style={`pointer-events: stroke; cursor: pointer; ${edge.style ?? ""}`}
+                class={edge.animated ? 'pyreon-flow-edge-animated' : ''}
+                style={`pointer-events: stroke; cursor: pointer; ${edge.style ?? ''}`}
                 onClick={() => {
                   if (edge.id) instance.selectEdge(edge.id)
                   instance._emit.edgeClick(edge)
@@ -218,7 +218,7 @@ function EdgeLayer(props: {
           <path
             d={
               getEdgePath(
-                "bezier",
+                'bezier',
                 conn.sourceX,
                 conn.sourceY,
                 conn.sourcePosition,
@@ -270,8 +270,8 @@ function NodeLayer(props: {
           return (
             <div
               key={node.id}
-              class={`pyreon-flow-node ${node.class ?? ""} ${isSelected ? "selected" : ""} ${isDragging ? "dragging" : ""}`}
-              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ""}`}
+              class={`pyreon-flow-node ${node.class ?? ''} ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
+              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ''}`}
               data-nodeid={node.id}
               onClick={(e: MouseEvent) => {
                 e.stopPropagation()
@@ -285,12 +285,12 @@ function NodeLayer(props: {
               onPointerDown={(e: PointerEvent) => {
                 // Check if clicking a handle
                 const target = e.target as HTMLElement
-                const handle = target.closest(".pyreon-flow-handle")
+                const handle = target.closest('.pyreon-flow-handle')
                 if (handle) {
-                  const hType = handle.getAttribute("data-handletype") ?? "source"
-                  const hId = handle.getAttribute("data-handleid") ?? "source"
+                  const hType = handle.getAttribute('data-handletype') ?? 'source'
+                  const hId = handle.getAttribute('data-handleid') ?? 'source'
                   const hPos =
-                    (handle.getAttribute("data-handleposition") as Position) ?? Position.Right
+                    (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
                   onHandlePointerDown(e, node.id, hType, hId, hPos)
                   return
                 }
@@ -319,7 +319,7 @@ function NodeLayer(props: {
 type EdgeTypeMap = Record<
   string,
   (props: {
-    edge: import("../types").FlowEdge
+    edge: import('../types').FlowEdge
     sourceX: number
     sourceY: number
     targetX: number
@@ -378,7 +378,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     y: null,
   })
 
-  const draggingNodeId = () => (dragState().active ? dragState().nodeId : "")
+  const draggingNodeId = () => (dragState().active ? dragState().nodeId : '')
 
   // ── Node dragging ──────────────────────────────────────────────────────
 
@@ -416,7 +416,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
 
     instance._emit.nodeDragStart(node)
 
-    const container = (e.currentTarget as HTMLElement).closest(".pyreon-flow") as HTMLElement
+    const container = (e.currentTarget as HTMLElement).closest('.pyreon-flow') as HTMLElement
     if (container) container.setPointerCapture(e.pointerId)
   }
 
@@ -450,7 +450,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       currentY: handlePos.y,
     })
 
-    const container = (e.target as HTMLElement).closest(".pyreon-flow") as HTMLElement
+    const container = (e.target as HTMLElement).closest('.pyreon-flow') as HTMLElement
     if (container) container.setPointerCapture(e.pointerId)
   }
 
@@ -491,8 +491,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     if (instance.config.pannable === false) return
 
     const target = e.target as HTMLElement
-    if (target.closest(".pyreon-flow-node")) return
-    if (target.closest(".pyreon-flow-handle")) return
+    if (target.closest('.pyreon-flow-node')) return
+    if (target.closest('.pyreon-flow-handle')) return
 
     // Shift+drag on empty space → selection box
     if (e.shiftKey && instance.config.multiSelect !== false) {
@@ -637,10 +637,10 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     if (conn.active) {
       // Check if we released over a handle target
       const target = e.target as HTMLElement
-      const handle = target.closest(".pyreon-flow-handle")
+      const handle = target.closest('.pyreon-flow-handle')
       if (handle) {
-        const targetNodeId = handle.closest(".pyreon-flow-node")?.getAttribute("data-nodeid") ?? ""
-        const targetHandleId = handle.getAttribute("data-handleid") ?? "target"
+        const targetNodeId = handle.closest('.pyreon-flow-node')?.getAttribute('data-nodeid') ?? ''
+        const targetHandleId = handle.getAttribute('data-handleid') ?? 'target'
 
         if (targetNodeId && targetNodeId !== conn.sourceNodeId) {
           const connection: Connection = {
@@ -670,31 +670,31 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   // ── Keyboard ───────────────────────────────────────────────────────────
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Delete" || e.key === "Backspace") {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
       const target = e.target as HTMLElement
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
       instance.pushHistory()
       instance.deleteSelected()
     }
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       instance.clearSelection()
       connectionState.set({ ...emptyConnection })
     }
-    if (e.key === "a" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'a' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       instance.selectAll()
     }
-    if (e.key === "c" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'c' && (e.metaKey || e.ctrlKey)) {
       instance.copySelected()
     }
-    if (e.key === "v" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'v' && (e.metaKey || e.ctrlKey)) {
       instance.paste()
     }
-    if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
       e.preventDefault()
       instance.undo()
     }
-    if (e.key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+    if (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault()
       instance.redo()
     }
@@ -780,12 +780,12 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     resizeObserver.observe(el)
   }
 
-  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ""}`
+  const containerStyle = `position: relative; width: 100%; height: 100%; overflow: hidden; outline: none; touch-action: none; ${props.style ?? ''}`
 
   return (
     <div
       ref={containerRef}
-      class={`pyreon-flow ${props.class ?? ""}`}
+      class={`pyreon-flow ${props.class ?? ''}`}
       style={containerStyle}
       tabIndex={0}
       onWheel={handleWheel}

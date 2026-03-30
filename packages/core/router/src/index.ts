@@ -41,10 +41,10 @@
  * router.push({ name: "user", params: { id: "42" } })
  */
 
-export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from "./components"
+export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from './components'
 // Components
-export { RouterLink, RouterProvider, RouterView } from "./components"
-export { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, useLoaderData } from "./loader"
+export { RouterLink, RouterProvider, RouterView } from './components'
+export { hydrateLoaderData, prefetchLoaderData, serializeLoaderData, useLoaderData } from './loader'
 // Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,
@@ -53,7 +53,7 @@ export {
   parseQueryMulti,
   resolveRoute,
   stringifyQuery,
-} from "./match"
+} from './match'
 // Router factory + hooks
 export {
   createRouter,
@@ -65,7 +65,7 @@ export {
   useRoute,
   useRouter,
   useSearchParams,
-} from "./router"
+} from './router'
 // Types
 // Data loaders
 export type {
@@ -85,6 +85,6 @@ export type {
   Router,
   RouterOptions,
   ScrollBehaviorFn,
-} from "./types"
+} from './types'
 // Lazy helper
-export { lazy } from "./types"
+export { lazy } from './types'

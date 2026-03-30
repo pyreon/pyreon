@@ -1,5 +1,5 @@
-import type { render } from "@pyreon/ui-core"
-import type { ThemeModeKeys } from "./theme"
+import type { render } from '@pyreon/ui-core'
+import type { ThemeModeKeys } from './theme'
 
 export type AttrsCb<A, T> = (
   props: Partial<A>,

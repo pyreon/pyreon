@@ -10,18 +10,23 @@ description: CSS-transition-based animation components for enter/leave transitio
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/kinetic
 ```
+
 ```bash [bun]
 bun add @pyreon/kinetic
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/kinetic
 ```
+
 ```bash [yarn]
 yarn add @pyreon/kinetic
 ```
+
 :::
 
 ## Overview
@@ -117,26 +122,23 @@ For zero-CSS setups, use inline style objects instead of class names:
 </kinetic.Stagger>
 ```
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
-| `interval` | `number` | `50` | Delay in ms between each child's animation start |
-| `reverseLeave` | `boolean` | `false` | Reverses stagger order on leave |
+| Prop           | Type      | Default | Description                                      |
+| -------------- | --------- | ------- | ------------------------------------------------ |
+| `interval`     | `number`  | `50`    | Delay in ms between each child's animation start |
+| `reverseLeave` | `boolean` | `false` | Reverses stagger order on leave                  |
 
 ## Collapse
 
 `Collapse` animates an element's height between `0` and `auto`, useful for accordion and disclosure patterns.
 
 ```tsx
-<kinetic.Collapse
-  show={() => expanded()}
-  transition="height 300ms ease"
->
+<kinetic.Collapse show={() => expanded()} transition="height 300ms ease">
   <div>Collapsible content that can be any height</div>
 </kinetic.Collapse>
 ```
 
-| Prop | Type | Default | Description |
-|---|---|---|---|
+| Prop         | Type     | Default               | Description                                       |
+| ------------ | -------- | --------------------- | ------------------------------------------------- |
 | `transition` | `string` | `"height 300ms ease"` | CSS transition shorthand for the height animation |
 
 ## Built-in Presets
@@ -189,12 +191,12 @@ useAnimationEnd(elementRef, () => {
 
 Every transition moves through four stages:
 
-| Stage | Description |
-|---|---|
-| `hidden` | Element is not mounted (or has `display: none` if `unmount=&#123;false&#125;`) |
-| `entering` | Enter classes/styles applied, animation in progress |
-| `entered` | Enter animation complete, element fully visible |
-| `leaving` | Leave classes/styles applied, animation in progress |
+| Stage      | Description                                                                    |
+| ---------- | ------------------------------------------------------------------------------ |
+| `hidden`   | Element is not mounted (or has `display: none` if `unmount=&#123;false&#125;`) |
+| `entering` | Enter classes/styles applied, animation in progress                            |
+| `entered`  | Enter animation complete, element fully visible                                |
+| `leaving`  | Leave classes/styles applied, animation in progress                            |
 
 ## Key Features
 

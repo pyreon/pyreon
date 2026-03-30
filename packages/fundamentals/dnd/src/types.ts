@@ -2,7 +2,7 @@
 export type DragData = Record<string, unknown>
 
 /** Position of a drop relative to the target element. */
-export type DropEdge = "top" | "bottom" | "left" | "right"
+export type DropEdge = 'top' | 'bottom' | 'left' | 'right'
 
 /** Drop location information. */
 export interface DropLocation {
@@ -66,7 +66,7 @@ export interface UseSortableOptions<T> {
   /** Called with the reordered items after a drop. */
   onReorder: (items: T[]) => void
   /** Sort axis. Default: "vertical". */
-  axis?: "vertical" | "horizontal"
+  axis?: 'vertical' | 'horizontal'
 }
 
 export interface UseSortableResult {

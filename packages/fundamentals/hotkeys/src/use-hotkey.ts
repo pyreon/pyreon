@@ -1,6 +1,6 @@
-import { onUnmount } from "@pyreon/core"
-import { registerHotkey } from "./registry"
-import type { HotkeyOptions } from "./types"
+import { onUnmount } from '@pyreon/core'
+import { registerHotkey } from './registry'
+import type { HotkeyOptions } from './types'
 
 /**
  * Register a keyboard shortcut scoped to a component's lifecycle.

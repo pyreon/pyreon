@@ -1,6 +1,6 @@
 // Global subscriber tracking context
 
-import { enqueuePendingNotification, isBatching } from "./batch"
+import { enqueuePendingNotification, isBatching } from './batch'
 
 let activeEffect: (() => void) | null = null
 

@@ -1,5 +1,5 @@
-import { createComputed, createRenderEffect, createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createComputed, createRenderEffect, createSignal } from 'solid-js'
+import Demo from './Demo'
 
 export default function RenderEffectDemo() {
   const [count, setCount] = createSignal(0)
@@ -34,8 +34,8 @@ createComputed(() => {
       <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <p class="muted">renderEffect: {renderLog().join(" | ")}</p>
-      <p class="muted">createComputed: {computedLog().join(" | ")}</p>
+      <p class="muted">renderEffect: {renderLog().join(' | ')}</p>
+      <p class="muted">createComputed: {computedLog().join(' | ')}</p>
     </Demo>
   )
 }

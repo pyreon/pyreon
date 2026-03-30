@@ -1,6 +1,6 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
-import { computed } from "@pyreon/reactivity"
-import type { FormState } from "./types"
+import type { Computed, Signal } from '@pyreon/reactivity'
+import { computed } from '@pyreon/reactivity'
+import type { FormState } from './types'
 
 /**
  * Watch specific field values reactively. Returns a computed signal

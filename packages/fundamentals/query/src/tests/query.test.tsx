@@ -1,6 +1,6 @@
-import { signal } from "@pyreon/reactivity"
-import { mount } from "@pyreon/runtime-dom"
-import { QueryClient } from "@tanstack/query-core"
+import { signal } from '@pyreon/reactivity'
+import { mount } from '@pyreon/runtime-dom'
+import { QueryClient } from '@tanstack/query-core'
 import {
   dehydrate,
   hydrate,
@@ -17,7 +17,7 @@ import {
   useQueryErrorResetBoundary,
   useSuspenseInfiniteQuery,
   useSuspenseQuery,
-} from "../index"
+} from '../index'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ function makeClient() {
 
 /** Mount a component inside a QueryClientProvider, return unmount fn. */
 function _withProvider(client: QueryClient, component: () => void): () => void {
-  const el = document.createElement("div")
+  const el = document.createElement('div')
   document.body.appendChild(el)
   const unmount = mount(
     <QueryClientProvider client={client}>
@@ -59,16 +59,16 @@ function deferred<T>() {
 
 // ─── QueryClientProvider / useQueryClient ────────────────────────────────────
 
-describe("QueryClientProvider / useQueryClient", () => {
-  it("useQueryClient throws when no provider is present", () => {
+describe('QueryClientProvider / useQueryClient', () => {
+  it('useQueryClient throws when no provider is present', () => {
     // Call directly outside any renderer — context stack is empty so it must throw.
-    expect(() => useQueryClient()).toThrow("[@pyreon/query]")
+    expect(() => useQueryClient()).toThrow('[@pyreon/query]')
   })
 
-  it("provides the QueryClient to descendants", () => {
+  it('provides the QueryClient to descendants', () => {
     const client = makeClient()
     let received: QueryClient | null = null
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -84,11 +84,11 @@ describe("QueryClientProvider / useQueryClient", () => {
     expect(received).toBe(client)
   })
 
-  it("inner provider overrides outer", () => {
+  it('inner provider overrides outer', () => {
     const outer = makeClient()
     const inner = makeClient()
     let received: QueryClient | null = null
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={outer}>
@@ -109,22 +109,22 @@ describe("QueryClientProvider / useQueryClient", () => {
 
 // ─── useQuery ─────────────────────────────────────────────────────────────────
 
-describe("useQuery", () => {
+describe('useQuery', () => {
   let client: QueryClient
 
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("starts in pending state when cache is empty", () => {
+  it('starts in pending state when cache is empty', () => {
     let query: ReturnType<typeof useQuery> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["test-pending"],
+            queryKey: ['test-pending'],
             queryFn: () =>
               new Promise(() => {
                 /* never resolves */
@@ -141,17 +141,17 @@ describe("useQuery", () => {
     el.remove()
   })
 
-  it("resolves to success state with data", async () => {
+  it('resolves to success state with data', async () => {
     const { promise, resolve } = deferred<{ name: string }>()
     let query: ReturnType<typeof useQuery<{ name: string }>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["test-success"],
+            queryKey: ['test-success'],
             queryFn: () => promise,
           }))
           return null
@@ -160,29 +160,29 @@ describe("useQuery", () => {
       el,
     )
 
-    resolve({ name: "Pyreon" })
+    resolve({ name: 'Pyreon' })
     await promise
 
     // Let the observer's internal promise chain flush
     await new Promise((r) => setTimeout(r, 0))
 
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.data()).toEqual({ name: "Pyreon" })
+    expect(query!.data()).toEqual({ name: 'Pyreon' })
     unmount()
     el.remove()
   })
 
-  it("captures errors in isError state", async () => {
+  it('captures errors in isError state', async () => {
     const { promise, reject } = deferred<never>()
     let query: ReturnType<typeof useQuery> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["test-error"],
+            queryKey: ['test-error'],
             queryFn: () => promise,
           }))
           return null
@@ -191,29 +191,29 @@ describe("useQuery", () => {
       el,
     )
 
-    reject(new Error("fetch failed"))
+    reject(new Error('fetch failed'))
     await promise.catch(() => {
       /* expected */
     })
     await new Promise((r) => setTimeout(r, 0))
 
     expect(query!.isError()).toBe(true)
-    expect((query!.error() as Error).message).toBe("fetch failed")
+    expect((query!.error() as Error).message).toBe('fetch failed')
     unmount()
     el.remove()
   })
 
-  it("respects enabled: false — does not fetch", async () => {
-    const queryFn = vi.fn(() => Promise.resolve("should not run"))
+  it('respects enabled: false — does not fetch', async () => {
+    const queryFn = vi.fn(() => Promise.resolve('should not run'))
     let query: ReturnType<typeof useQuery<string>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["test-disabled"],
+            queryKey: ['test-disabled'],
             queryFn,
             enabled: false,
           }))
@@ -231,18 +231,18 @@ describe("useQuery", () => {
     el.remove()
   })
 
-  it("reactive query key — refetches when signal changes", async () => {
+  it('reactive query key — refetches when signal changes', async () => {
     const calls: number[] = []
     const userId = signal(1)
     let query: ReturnType<typeof useQuery<string>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["user", userId()],
+            queryKey: ['user', userId()],
             queryFn: async () => {
               const id = userId()
               calls.push(id)
@@ -262,20 +262,20 @@ describe("useQuery", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(calls).toContain(2)
 
-    expect(query!.data()).toBe("user-2")
+    expect(query!.data()).toBe('user-2')
     unmount()
     el.remove()
   })
 
-  it("invalidateQueries triggers a refetch", async () => {
+  it('invalidateQueries triggers a refetch', async () => {
     let callCount = 0
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           useQuery(() => ({
-            queryKey: ["invalidate-test"],
+            queryKey: ['invalidate-test'],
             queryFn: async () => {
               callCount++
               return callCount
@@ -289,7 +289,7 @@ describe("useQuery", () => {
 
     await new Promise((r) => setTimeout(r, 10))
     const before = callCount
-    await client.invalidateQueries({ queryKey: ["invalidate-test"] })
+    await client.invalidateQueries({ queryKey: ['invalidate-test'] })
     await new Promise((r) => setTimeout(r, 10))
     expect(callCount).toBeGreaterThan(before)
     unmount()
@@ -299,20 +299,20 @@ describe("useQuery", () => {
 
 // ─── useMutation ──────────────────────────────────────────────────────────────
 
-describe("useMutation", () => {
+describe('useMutation', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("starts in idle state", () => {
+  it('starts in idle state', () => {
     let mut: ReturnType<typeof useMutation> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
-          mut = useMutation({ mutationFn: () => Promise.resolve("ok") })
+          mut = useMutation({ mutationFn: () => Promise.resolve('ok') })
           return null
         }}
       </QueryClientProvider>,
@@ -324,9 +324,9 @@ describe("useMutation", () => {
     el.remove()
   })
 
-  it("goes pending then success", async () => {
+  it('goes pending then success', async () => {
     let mut: ReturnType<typeof useMutation<string, Error, string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -340,25 +340,25 @@ describe("useMutation", () => {
       el,
     )
 
-    mut!.mutate("hello")
+    mut!.mutate('hello')
     await new Promise((r) => setTimeout(r, 10))
 
     expect(mut!.isSuccess()).toBe(true)
-    expect(mut!.data()).toBe("result:hello")
+    expect(mut!.data()).toBe('result:hello')
     unmount()
     el.remove()
   })
 
-  it("captures mutation error", async () => {
+  it('captures mutation error', async () => {
     let mut: ReturnType<typeof useMutation> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           mut = useMutation({
             mutationFn: async () => {
-              throw new Error("mutation failed")
+              throw new Error('mutation failed')
             },
           })
           return null
@@ -371,20 +371,20 @@ describe("useMutation", () => {
     await new Promise((r) => setTimeout(r, 10))
 
     expect(mut!.isError()).toBe(true)
-    expect((mut!.error() as Error).message).toBe("mutation failed")
+    expect((mut!.error() as Error).message).toBe('mutation failed')
     unmount()
     el.remove()
   })
 
-  it("reset() clears mutation state", async () => {
+  it('reset() clears mutation state', async () => {
     let mut: ReturnType<typeof useMutation<string, Error, void>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           mut = useMutation<string, Error, void>({
-            mutationFn: async () => "done",
+            mutationFn: async () => 'done',
           })
           return null
         }}
@@ -407,11 +407,11 @@ describe("useMutation", () => {
 
 // ─── useIsFetching / useIsMutating ────────────────────────────────────────────
 
-describe("useIsFetching", () => {
-  it("returns 0 when no queries are in-flight", () => {
+describe('useIsFetching', () => {
+  it('returns 0 when no queries are in-flight', () => {
     const client = makeClient()
     let count: (() => number) | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -427,20 +427,20 @@ describe("useIsFetching", () => {
     el.remove()
   })
 
-  it("increments while a query is fetching", async () => {
+  it('increments while a query is fetching', async () => {
     const client = makeClient()
     const { promise, resolve } = deferred<string>()
     const counts: number[] = []
     let isFetching: (() => number) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           isFetching = useIsFetching()
           useQuery(() => ({
-            queryKey: ["fetch-count"],
+            queryKey: ['fetch-count'],
             queryFn: () => promise,
           }))
           return null
@@ -453,7 +453,7 @@ describe("useIsFetching", () => {
     await new Promise((r) => setTimeout(r, 0))
     counts.push(isFetching!())
 
-    resolve("done")
+    resolve('done')
     await promise
     await new Promise((r) => setTimeout(r, 10))
     counts.push(isFetching!())
@@ -465,14 +465,14 @@ describe("useIsFetching", () => {
   })
 })
 
-describe("useIsMutating", () => {
-  it("returns 0 when idle, >0 while mutating", async () => {
+describe('useIsMutating', () => {
+  it('returns 0 when idle, >0 while mutating', async () => {
     const client = makeClient()
     const { promise, resolve } = deferred<void>()
     let isMutating: (() => number) | undefined
     let mut: ReturnType<typeof useMutation<void, Error, void>> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -500,13 +500,13 @@ describe("useIsMutating", () => {
 
 // ─── SSR: dehydrate / hydrate ─────────────────────────────────────────────────
 
-describe("dehydrate / hydrate", () => {
-  it("round-trips query data — prefetched data available without refetching", async () => {
+describe('dehydrate / hydrate', () => {
+  it('round-trips query data — prefetched data available without refetching', async () => {
     // Server: prefetch + serialize
     const serverClient = makeClient()
     await serverClient.prefetchQuery({
-      queryKey: ["ssr-user"],
-      queryFn: async () => ({ name: "SSR User" }),
+      queryKey: ['ssr-user'],
+      queryFn: async () => ({ name: 'SSR User' }),
     })
     const state = dehydrate(serverClient)
 
@@ -517,16 +517,16 @@ describe("dehydrate / hydrate", () => {
     let query: ReturnType<typeof useQuery<{ name: string }>> | undefined
     let callCount = 0
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={clientClient}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["ssr-user"],
+            queryKey: ['ssr-user'],
             queryFn: async () => {
               callCount++
-              return { name: "fresh" }
+              return { name: 'fresh' }
             },
             staleTime: Infinity, // treat hydrated data as fresh
           }))
@@ -538,7 +538,7 @@ describe("dehydrate / hydrate", () => {
 
     // Data should be immediately available from the hydrated cache
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.data()).toEqual({ name: "SSR User" })
+    expect(query!.data()).toEqual({ name: 'SSR User' })
     // queryFn should NOT have been called (data was in cache)
     expect(callCount).toBe(0)
     unmount()
@@ -548,19 +548,19 @@ describe("dehydrate / hydrate", () => {
 
 // ─── useQueries ───────────────────────────────────────────────────────────────
 
-describe("useQueries", () => {
-  it("returns results for all queries in the array", async () => {
+describe('useQueries', () => {
+  it('returns results for all queries in the array', async () => {
     const client = makeClient()
     let results: ReturnType<typeof useQueries> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           results = useQueries(() => [
-            { queryKey: ["a"], queryFn: async () => "alpha" },
-            { queryKey: ["b"], queryFn: async () => "beta" },
+            { queryKey: ['a'], queryFn: async () => 'alpha' },
+            { queryKey: ['b'], queryFn: async () => 'beta' },
           ])
           return null
         }}
@@ -571,26 +571,26 @@ describe("useQueries", () => {
     await new Promise((r) => setTimeout(r, 20))
     const res = results?.() ?? []
     expect(res).toHaveLength(2)
-    expect(res[0]!.data).toBe("alpha")
-    expect(res[1]!.data).toBe("beta")
+    expect(res[0]!.data).toBe('alpha')
+    expect(res[1]!.data).toBe('beta')
     unmount()
     el.remove()
   })
 
-  it("reactive — updates when the queries signal changes", async () => {
+  it('reactive — updates when the queries signal changes', async () => {
     const client = makeClient()
-    const { signal: sig } = await import("@pyreon/reactivity")
+    const { signal: sig } = await import('@pyreon/reactivity')
     const ids = sig([1])
     let results: ReturnType<typeof useQueries> | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           results = useQueries(() =>
             ids().map((id) => ({
-              queryKey: ["item", id],
+              queryKey: ['item', id],
               queryFn: async () => `item-${id}`,
             })),
           )
@@ -606,7 +606,7 @@ describe("useQueries", () => {
     ids.set([1, 2])
     await new Promise((r) => setTimeout(r, 20))
     expect(results?.()).toHaveLength(2)
-    expect(results!()[1]!.data).toBe("item-2")
+    expect(results!()[1]!.data).toBe('item-2')
     unmount()
     el.remove()
   })
@@ -614,23 +614,23 @@ describe("useQueries", () => {
 
 // ─── useSuspenseQuery / QuerySuspense ─────────────────────────────────────────
 
-describe("useSuspenseQuery + QuerySuspense", () => {
+describe('useSuspenseQuery + QuerySuspense', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("QuerySuspense shows fallback while pending, then children on success", async () => {
+  it('QuerySuspense shows fallback while pending, then children on success', async () => {
     const { promise, resolve } = deferred<string>()
     const rendered: string[] = []
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           const q = useSuspenseQuery(() => ({
-            queryKey: ["sq-pending"],
+            queryKey: ['sq-pending'],
             queryFn: () => promise,
           }))
           return (
@@ -650,25 +650,25 @@ describe("useSuspenseQuery + QuerySuspense", () => {
     await new Promise((r) => setTimeout(r, 0))
     expect(rendered).toHaveLength(0)
 
-    resolve("done")
+    resolve('done')
     await promise
     await new Promise((r) => setTimeout(r, 10))
-    expect(rendered.at(-1)).toBe("done")
+    expect(rendered.at(-1)).toBe('done')
     unmount()
     el.remove()
   })
 
-  it("QuerySuspense shows error fallback on query failure", async () => {
+  it('QuerySuspense shows error fallback on query failure', async () => {
     const { promise, reject } = deferred<never>()
     let errorMsg: string | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           const q = useSuspenseQuery(() => ({
-            queryKey: ["sq-error"],
+            queryKey: ['sq-error'],
             queryFn: () => promise,
           }))
           return (
@@ -688,32 +688,32 @@ describe("useSuspenseQuery + QuerySuspense", () => {
       el,
     )
 
-    reject(new Error("sq failed"))
+    reject(new Error('sq failed'))
     await promise.catch(() => {
       /* expected */
     })
     await new Promise((r) => setTimeout(r, 10))
-    expect(errorMsg).toBe("sq failed")
+    expect(errorMsg).toBe('sq failed')
     unmount()
     el.remove()
   })
 
-  it("multiple queries — children only render when all succeed", async () => {
+  it('multiple queries — children only render when all succeed', async () => {
     const d1 = deferred<string>()
     const d2 = deferred<string>()
     let childrenRendered = false
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           const q1 = useSuspenseQuery(() => ({
-            queryKey: ["mq1"],
+            queryKey: ['mq1'],
             queryFn: () => d1.promise,
           }))
           const q2 = useSuspenseQuery(() => ({
-            queryKey: ["mq2"],
+            queryKey: ['mq2'],
             queryFn: () => d2.promise,
           }))
           return (
@@ -729,13 +729,13 @@ describe("useSuspenseQuery + QuerySuspense", () => {
       el,
     )
 
-    d1.resolve("first")
+    d1.resolve('first')
     await d1.promise
     await new Promise((r) => setTimeout(r, 10))
     // q2 still pending — children should not render
     expect(childrenRendered).toBe(false)
 
-    d2.resolve("second")
+    d2.resolve('second')
     await d2.promise
     await new Promise((r) => setTimeout(r, 10))
     expect(childrenRendered).toBe(true)
@@ -746,14 +746,14 @@ describe("useSuspenseQuery + QuerySuspense", () => {
 
 // ─── QueryErrorResetBoundary / useQueryErrorResetBoundary ─────────────────────
 
-describe("QueryErrorResetBoundary", () => {
-  it("reset() re-triggers fetch for errored queries", async () => {
+describe('QueryErrorResetBoundary', () => {
+  it('reset() re-triggers fetch for errored queries', async () => {
     const client = makeClient()
     let callCount = 0
     let shouldFail = true
     let resetFn: (() => void) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -762,11 +762,11 @@ describe("QueryErrorResetBoundary", () => {
             const { reset } = useQueryErrorResetBoundary()
             resetFn = reset
             useQuery(() => ({
-              queryKey: ["reset-test"],
+              queryKey: ['reset-test'],
               queryFn: async () => {
                 callCount++
-                if (shouldFail) throw new Error("fail")
-                return "ok"
+                if (shouldFail) throw new Error('fail')
+                return 'ok'
               },
             }))
             return null
@@ -787,11 +787,11 @@ describe("QueryErrorResetBoundary", () => {
     el.remove()
   })
 
-  it("useQueryErrorResetBoundary works without explicit boundary", () => {
+  it('useQueryErrorResetBoundary works without explicit boundary', () => {
     const client = makeClient()
     let reset: (() => void) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -813,21 +813,21 @@ describe("QueryErrorResetBoundary", () => {
 
 // ─── useInfiniteQuery ─────────────────────────────────────────────────────────
 
-describe("useInfiniteQuery", () => {
+describe('useInfiniteQuery', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("starts in pending state", () => {
+  it('starts in pending state', () => {
     let query: ReturnType<typeof useInfiniteQuery> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-pending"],
+            queryKey: ['inf-pending'],
             queryFn: () =>
               new Promise(() => {
                 /* never resolves */
@@ -843,7 +843,7 @@ describe("useInfiniteQuery", () => {
     expect(query!.isPending()).toBe(true)
     expect(query!.isLoading()).toBe(true)
     expect(query!.data()).toBeUndefined()
-    expect(query!.status()).toBe("pending")
+    expect(query!.status()).toBe('pending')
     expect(query!.isSuccess()).toBe(false)
     expect(query!.isError()).toBe(false)
     expect(query!.error()).toBeNull()
@@ -855,15 +855,15 @@ describe("useInfiniteQuery", () => {
     el.remove()
   })
 
-  it("resolves to success with pages data", async () => {
+  it('resolves to success with pages data', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-success"],
+            queryKey: ['inf-success'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`page-${pageParam}`),
             initialPageParam: 0,
             getNextPageParam: (_last: string, _all: string[], lastParam: number) =>
@@ -877,8 +877,8 @@ describe("useInfiniteQuery", () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.status()).toBe("success")
-    expect(query!.data()?.pages).toEqual(["page-0"])
+    expect(query!.status()).toBe('success')
+    expect(query!.data()?.pages).toEqual(['page-0'])
     expect(query!.hasNextPage()).toBe(true)
     expect(query!.isPending()).toBe(false)
     expect(query!.isFetching()).toBe(false)
@@ -886,15 +886,15 @@ describe("useInfiniteQuery", () => {
     el.remove()
   })
 
-  it("fetchNextPage loads the next page", async () => {
+  it('fetchNextPage loads the next page', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-next"],
+            queryKey: ['inf-next'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`page-${pageParam}`),
             initialPageParam: 0,
             getNextPageParam: (_last: string, _all: string[], lastParam: number) =>
@@ -907,30 +907,30 @@ describe("useInfiniteQuery", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["page-0"])
+    expect(query!.data()?.pages).toEqual(['page-0'])
 
     await query!.fetchNextPage()
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["page-0", "page-1"])
+    expect(query!.data()?.pages).toEqual(['page-0', 'page-1'])
     expect(query!.hasNextPage()).toBe(true)
 
     await query!.fetchNextPage()
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["page-0", "page-1", "page-2"])
+    expect(query!.data()?.pages).toEqual(['page-0', 'page-1', 'page-2'])
     expect(query!.hasNextPage()).toBe(false)
     unmount()
     el.remove()
   })
 
-  it("fetchPreviousPage loads the previous page", async () => {
+  it('fetchPreviousPage loads the previous page', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-prev"],
+            queryKey: ['inf-prev'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`page-${pageParam}`),
             initialPageParam: 5,
             getNextPageParam: () => undefined,
@@ -948,21 +948,21 @@ describe("useInfiniteQuery", () => {
 
     await query!.fetchPreviousPage()
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toContain("page-4")
+    expect(query!.data()?.pages).toContain('page-4')
     unmount()
     el.remove()
   })
 
-  it("captures error state", async () => {
+  it('captures error state', async () => {
     let query: ReturnType<typeof useInfiniteQuery> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-error"],
-            queryFn: () => Promise.reject(new Error("inf failed")),
+            queryKey: ['inf-error'],
+            queryFn: () => Promise.reject(new Error('inf failed')),
             initialPageParam: 0,
             getNextPageParam: () => undefined,
           }))
@@ -974,25 +974,25 @@ describe("useInfiniteQuery", () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(query!.isError()).toBe(true)
-    expect(query!.status()).toBe("error")
-    expect((query!.error() as Error).message).toBe("inf failed")
+    expect(query!.status()).toBe('error')
+    expect((query!.error() as Error).message).toBe('inf failed')
     unmount()
     el.remove()
   })
 
-  it("refetch re-fetches the query", async () => {
+  it('refetch re-fetches the query', async () => {
     let callCount = 0
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-refetch"],
+            queryKey: ['inf-refetch'],
             queryFn: () => {
               callCount++
-              return Promise.resolve("data")
+              return Promise.resolve('data')
             },
             initialPageParam: 0,
             getNextPageParam: () => undefined,
@@ -1012,16 +1012,16 @@ describe("useInfiniteQuery", () => {
     el.remove()
   })
 
-  it("result signal contains full observer result", async () => {
+  it('result signal contains full observer result', async () => {
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-result"],
-            queryFn: () => Promise.resolve("val"),
+            queryKey: ['inf-result'],
+            queryFn: () => Promise.resolve('val'),
             initialPageParam: 0,
             getNextPageParam: () => undefined,
           }))
@@ -1033,22 +1033,22 @@ describe("useInfiniteQuery", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 20))
     const r = query!.result()
-    expect(r.status).toBe("success")
-    expect(r.data?.pages).toEqual(["val"])
+    expect(r.status).toBe('success')
+    expect(r.data?.pages).toEqual(['val'])
     unmount()
     el.remove()
   })
 
-  it("reactive options update observer", async () => {
-    const key = signal("a")
+  it('reactive options update observer', async () => {
+    const key = signal('a')
     let query: ReturnType<typeof useInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useInfiniteQuery(() => ({
-            queryKey: ["inf-reactive", key()],
+            queryKey: ['inf-reactive', key()],
             queryFn: () => Promise.resolve(`data-${key()}`),
             initialPageParam: 0,
             getNextPageParam: () => undefined,
@@ -1060,11 +1060,11 @@ describe("useInfiniteQuery", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["data-a"])
+    expect(query!.data()?.pages).toEqual(['data-a'])
 
-    key.set("b")
+    key.set('b')
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["data-b"])
+    expect(query!.data()?.pages).toEqual(['data-b'])
     unmount()
     el.remove()
   })
@@ -1072,21 +1072,21 @@ describe("useInfiniteQuery", () => {
 
 // ─── useSuspenseInfiniteQuery ────────────────────────────────────────────────
 
-describe("useSuspenseInfiniteQuery", () => {
+describe('useSuspenseInfiniteQuery', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("returns all fine-grained signals and resolves to success", async () => {
+  it('returns all fine-grained signals and resolves to success', async () => {
     let query: ReturnType<typeof useSuspenseInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseInfiniteQuery(() => ({
-            queryKey: ["sinf-1"],
+            queryKey: ['sinf-1'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`p${pageParam}`),
             initialPageParam: 0,
             getNextPageParam: (_l: string, _a: string[], lp: number) =>
@@ -1100,8 +1100,8 @@ describe("useSuspenseInfiniteQuery", () => {
 
     await new Promise((r) => setTimeout(r, 20))
     expect(query!.isSuccess()).toBe(true)
-    expect(query!.status()).toBe("success")
-    expect(query!.data()?.pages).toEqual(["p0"])
+    expect(query!.status()).toBe('success')
+    expect(query!.data()?.pages).toEqual(['p0'])
     expect(query!.error()).toBeNull()
     expect(query!.isError()).toBe(false)
     expect(query!.isFetching()).toBe(false)
@@ -1113,15 +1113,15 @@ describe("useSuspenseInfiniteQuery", () => {
     el.remove()
   })
 
-  it("fetchNextPage and fetchPreviousPage work", async () => {
+  it('fetchNextPage and fetchPreviousPage work', async () => {
     let query: ReturnType<typeof useSuspenseInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseInfiniteQuery(() => ({
-            queryKey: ["sinf-pages"],
+            queryKey: ['sinf-pages'],
             queryFn: ({ pageParam }: { pageParam: number }) => Promise.resolve(`p${pageParam}`),
             initialPageParam: 1,
             getNextPageParam: (_l: string, _a: string[], lp: number) =>
@@ -1138,28 +1138,28 @@ describe("useSuspenseInfiniteQuery", () => {
     await new Promise((r) => setTimeout(r, 20))
     await query!.fetchNextPage()
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toContain("p2")
+    expect(query!.data()?.pages).toContain('p2')
 
     await query!.fetchPreviousPage()
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toContain("p0")
+    expect(query!.data()?.pages).toContain('p0')
     unmount()
     el.remove()
   })
 
-  it("refetch works", async () => {
+  it('refetch works', async () => {
     let callCount = 0
     let query: ReturnType<typeof useSuspenseInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseInfiniteQuery(() => ({
-            queryKey: ["sinf-refetch"],
+            queryKey: ['sinf-refetch'],
             queryFn: () => {
               callCount++
-              return Promise.resolve("d")
+              return Promise.resolve('d')
             },
             initialPageParam: 0,
             getNextPageParam: () => undefined,
@@ -1179,16 +1179,16 @@ describe("useSuspenseInfiniteQuery", () => {
     el.remove()
   })
 
-  it("result signal contains full observer result", async () => {
+  it('result signal contains full observer result', async () => {
     let query: ReturnType<typeof useSuspenseInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseInfiniteQuery(() => ({
-            queryKey: ["sinf-result"],
-            queryFn: () => Promise.resolve("v"),
+            queryKey: ['sinf-result'],
+            queryFn: () => Promise.resolve('v'),
             initialPageParam: 0,
             getNextPageParam: () => undefined,
           }))
@@ -1199,21 +1199,21 @@ describe("useSuspenseInfiniteQuery", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.result().status).toBe("success")
+    expect(query!.result().status).toBe('success')
     unmount()
     el.remove()
   })
 
-  it("reactive options update observer", async () => {
-    const key = signal("x")
+  it('reactive options update observer', async () => {
+    const key = signal('x')
     let query: ReturnType<typeof useSuspenseInfiniteQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseInfiniteQuery(() => ({
-            queryKey: ["sinf-reactive", key()],
+            queryKey: ['sinf-reactive', key()],
             queryFn: () => Promise.resolve(`val-${key()}`),
             initialPageParam: 0,
             getNextPageParam: () => undefined,
@@ -1225,10 +1225,10 @@ describe("useSuspenseInfiniteQuery", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["val-x"])
-    key.set("y")
+    expect(query!.data()?.pages).toEqual(['val-x'])
+    key.set('y')
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()?.pages).toEqual(["val-y"])
+    expect(query!.data()?.pages).toEqual(['val-y'])
     unmount()
     el.remove()
   })
@@ -1236,22 +1236,22 @@ describe("useSuspenseInfiniteQuery", () => {
 
 // ─── useSuspenseQuery — additional coverage ──────────────────────────────────
 
-describe("useSuspenseQuery — additional", () => {
+describe('useSuspenseQuery — additional', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("data is typed as TData (never undefined) after success", async () => {
+  it('data is typed as TData (never undefined) after success', async () => {
     let query: ReturnType<typeof useSuspenseQuery<{ name: string }>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-data-type"],
-            queryFn: () => Promise.resolve({ name: "test" }),
+            queryKey: ['sq-data-type'],
+            queryFn: () => Promise.resolve({ name: 'test' }),
           }))
           return null
         }}
@@ -1260,30 +1260,30 @@ describe("useSuspenseQuery — additional", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data().name).toBe("test")
+    expect(query!.data().name).toBe('test')
     expect(query!.isSuccess()).toBe(true)
     expect(query!.isFetching()).toBe(false)
     expect(query!.isError()).toBe(false)
     expect(query!.error()).toBeNull()
-    expect(query!.status()).toBe("success")
-    expect(query!.result().status).toBe("success")
+    expect(query!.status()).toBe('success')
+    expect(query!.result().status).toBe('success')
     unmount()
     el.remove()
   })
 
-  it("refetch re-fetches the query", async () => {
+  it('refetch re-fetches the query', async () => {
     let callCount = 0
     let query: ReturnType<typeof useSuspenseQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-refetch"],
+            queryKey: ['sq-refetch'],
             queryFn: () => {
               callCount++
-              return Promise.resolve("ok")
+              return Promise.resolve('ok')
             },
           }))
           return null
@@ -1301,16 +1301,16 @@ describe("useSuspenseQuery — additional", () => {
     el.remove()
   })
 
-  it("reactive key changes trigger re-fetch", async () => {
-    const key = signal("k1")
+  it('reactive key changes trigger re-fetch', async () => {
+    const key = signal('k1')
     let query: ReturnType<typeof useSuspenseQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-reactive", key()],
+            queryKey: ['sq-reactive', key()],
             queryFn: () => Promise.resolve(`data-${key()}`),
           }))
           return null
@@ -1320,19 +1320,19 @@ describe("useSuspenseQuery — additional", () => {
     )
 
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()).toBe("data-k1")
+    expect(query!.data()).toBe('data-k1')
 
-    key.set("k2")
+    key.set('k2')
     await new Promise((r) => setTimeout(r, 20))
-    expect(query!.data()).toBe("data-k2")
+    expect(query!.data()).toBe('data-k2')
     unmount()
     el.remove()
   })
 
-  it("captures error state in suspense query", async () => {
+  it('captures error state in suspense query', async () => {
     const { promise, reject } = deferred<never>()
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
 
     let query: ReturnType<typeof useSuspenseQuery> | undefined
@@ -1340,7 +1340,7 @@ describe("useSuspenseQuery — additional", () => {
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-rethrow2"],
+            queryKey: ['sq-rethrow2'],
             queryFn: () => promise,
           }))
           return null
@@ -1349,7 +1349,7 @@ describe("useSuspenseQuery — additional", () => {
       el,
     )
 
-    reject(new Error("rethrow test"))
+    reject(new Error('rethrow test'))
     await promise.catch(() => {
       /* expected */
     })
@@ -1360,22 +1360,22 @@ describe("useSuspenseQuery — additional", () => {
     el.remove()
   })
 
-  it("QuerySuspense handles fallback as function", async () => {
+  it('QuerySuspense handles fallback as function', async () => {
     let query: ReturnType<typeof useSuspenseQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-fn-fallback"],
+            queryKey: ['sq-fn-fallback'],
             queryFn: () =>
               new Promise(() => {
                 /* never resolves */
               }),
           }))
           return (
-            <QuerySuspense query={query!} fallback={() => "loading fn"}>
+            <QuerySuspense query={query!} fallback={() => 'loading fn'}>
               {() => null}
             </QuerySuspense>
           )
@@ -1394,11 +1394,11 @@ describe("useSuspenseQuery — additional", () => {
 
 // ─── Coverage gap tests ──────────────────────────────────────────────────────
 
-describe("QueryClientProvider — VNode children branch", () => {
-  it("renders when children is a VNode (not a function)", () => {
+describe('QueryClientProvider — VNode children branch', () => {
+  it('renders when children is a VNode (not a function)', () => {
     const client = makeClient()
     let received: QueryClient | null = null
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     // Pass children as a direct VNode, not wrapped in a function
     const unmount = mount(
@@ -1415,10 +1415,10 @@ describe("QueryClientProvider — VNode children branch", () => {
     el.remove()
   })
 
-  it("renders when children is passed as a function returning VNode", () => {
+  it('renders when children is passed as a function returning VNode', () => {
     const client = makeClient()
     let received: QueryClient | null = null
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -1437,15 +1437,15 @@ describe("QueryClientProvider — VNode children branch", () => {
   })
 })
 
-describe("useMutation — mutateAsync", () => {
+describe('useMutation — mutateAsync', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("mutateAsync returns a promise that resolves with data", async () => {
+  it('mutateAsync returns a promise that resolves with data', async () => {
     let mut: ReturnType<typeof useMutation<string, Error, string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
@@ -1459,24 +1459,24 @@ describe("useMutation — mutateAsync", () => {
       el,
     )
 
-    const result = await mut!.mutateAsync("test")
-    expect(result).toBe("async-result:test")
+    const result = await mut!.mutateAsync('test')
+    expect(result).toBe('async-result:test')
     expect(mut!.isSuccess()).toBe(true)
-    expect(mut!.data()).toBe("async-result:test")
+    expect(mut!.data()).toBe('async-result:test')
     unmount()
     el.remove()
   })
 
-  it("mutateAsync rejects when mutation fails", async () => {
+  it('mutateAsync rejects when mutation fails', async () => {
     let mut: ReturnType<typeof useMutation<string, Error, void>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           mut = useMutation<string, Error, void>({
             mutationFn: async () => {
-              throw new Error("async-fail")
+              throw new Error('async-fail')
             },
           })
           return null
@@ -1485,31 +1485,31 @@ describe("useMutation — mutateAsync", () => {
       el,
     )
 
-    await expect(mut!.mutateAsync(undefined)).rejects.toThrow("async-fail")
+    await expect(mut!.mutateAsync(undefined)).rejects.toThrow('async-fail')
     await new Promise((r) => setTimeout(r, 0))
     expect(mut!.isError()).toBe(true)
-    expect((mut!.error() as Error).message).toBe("async-fail")
+    expect((mut!.error() as Error).message).toBe('async-fail')
     unmount()
     el.remove()
   })
 })
 
-describe("useQuery — refetch", () => {
+describe('useQuery — refetch', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("refetch re-fetches the query and returns updated result", async () => {
+  it('refetch re-fetches the query and returns updated result', async () => {
     let callCount = 0
     let query: ReturnType<typeof useQuery<string>> | undefined
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     const unmount = mount(
       <QueryClientProvider client={client}>
         {() => {
           query = useQuery(() => ({
-            queryKey: ["refetch-test"],
+            queryKey: ['refetch-test'],
             queryFn: async () => {
               callCount++
               return `call-${callCount}`
@@ -1522,24 +1522,24 @@ describe("useQuery — refetch", () => {
     )
 
     await new Promise((r) => setTimeout(r, 10))
-    expect(query!.data()).toBe("call-1")
+    expect(query!.data()).toBe('call-1')
 
     const result = await query!.refetch()
     await new Promise((r) => setTimeout(r, 10))
     expect(callCount).toBe(2)
-    expect(result.data).toBe("call-2")
-    expect(query!.data()).toBe("call-2")
+    expect(result.data).toBe('call-2')
+    expect(query!.data()).toBe('call-2')
     unmount()
     el.remove()
   })
 })
 
-describe("QueryErrorResetBoundary — VNode children branch", () => {
-  it("renders when children is a VNode (not a function)", async () => {
+describe('QueryErrorResetBoundary — VNode children branch', () => {
+  it('renders when children is a VNode (not a function)', async () => {
     const client = makeClient()
     let resetFn: (() => void) | undefined
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
     // Pass children as a direct VNode, not a function
     const unmount = mount(
@@ -1562,16 +1562,16 @@ describe("QueryErrorResetBoundary — VNode children branch", () => {
   })
 })
 
-describe("useSuspenseQuery — error without handler (QuerySuspense throw branch)", () => {
+describe('useSuspenseQuery — error without handler (QuerySuspense throw branch)', () => {
   let client: QueryClient
   beforeEach(() => {
     client = makeClient()
   })
 
-  it("QuerySuspense throws error when no error handler is provided", async () => {
+  it('QuerySuspense throws error when no error handler is provided', async () => {
     const { promise, reject } = deferred<never>()
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
 
     const _thrownError: unknown = null
@@ -1581,7 +1581,7 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-throw-no-handler"],
+            queryKey: ['sq-throw-no-handler'],
             queryFn: () => promise,
           }))
           // QuerySuspense with NO error handler — should throw
@@ -1595,7 +1595,7 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
       el,
     )
 
-    reject(new Error("unhandled suspense error"))
+    reject(new Error('unhandled suspense error'))
     await promise.catch(() => {
       /* expected */
     })
@@ -1603,7 +1603,7 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
 
     // The error state should be set on the query
     expect(query!.isError()).toBe(true)
-    expect((query!.error() as Error).message).toBe("unhandled suspense error")
+    expect((query!.error() as Error).message).toBe('unhandled suspense error')
 
     // Verify that calling the QuerySuspense render function directly would throw
     // by checking the query is in error state without an error handler
@@ -1612,10 +1612,10 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
     el.remove()
   })
 
-  it("QuerySuspense re-throws error to be caught externally", async () => {
+  it('QuerySuspense re-throws error to be caught externally', async () => {
     const { promise, reject } = deferred<never>()
 
-    const el = document.createElement("div")
+    const el = document.createElement('div')
     document.body.appendChild(el)
 
     let query: ReturnType<typeof useSuspenseQuery> | undefined
@@ -1624,7 +1624,7 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
       <QueryClientProvider client={client}>
         {() => {
           query = useSuspenseQuery(() => ({
-            queryKey: ["sq-rethrow-direct"],
+            queryKey: ['sq-rethrow-direct'],
             queryFn: () => promise,
           }))
           return null
@@ -1633,7 +1633,7 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
       el,
     )
 
-    reject(new Error("direct throw"))
+    reject(new Error('direct throw'))
     await promise.catch(() => {
       /* expected */
     })
@@ -1643,11 +1643,11 @@ describe("useSuspenseQuery — error without handler (QuerySuspense throw branch
     expect(() => {
       const renderFn = QuerySuspense({
         query: query!,
-        fallback: "loading",
+        fallback: 'loading',
         children: () => null,
       }) as () => unknown
       renderFn()
-    }).toThrow("direct throw")
+    }).toThrow('direct throw')
 
     unmount()
     el.remove()

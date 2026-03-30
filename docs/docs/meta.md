@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/meta"
+title: '@pyreon/meta'
 description: Barrel package re-exporting the full Pyreon fundamentals ecosystem for convenience.
 ---
 
@@ -10,18 +10,23 @@ description: Barrel package re-exporting the full Pyreon fundamentals ecosystem 
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/meta
 ```
+
 ```bash [bun]
 bun add @pyreon/meta
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/meta
 ```
+
 ```bash [yarn]
 yarn add @pyreon/meta
 ```
+
 :::
 
 ## Overview
@@ -41,7 +46,7 @@ bun add @pyreon/meta
 All exports are available directly:
 
 ```ts
-import { createStore, createForm, createQuery, createTable } from "@pyreon/meta";
+import { createStore, createForm, createQuery, createTable } from '@pyreon/meta'
 ```
 
 ### Used by `@pyreon/zero`

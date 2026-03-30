@@ -1,8 +1,8 @@
-import { mapArray } from "../map-array"
+import { mapArray } from '../map-array'
 
-describe("mapArray", () => {
-  describe("basic mapping", () => {
-    test("maps all items on first call", () => {
+describe('mapArray', () => {
+  describe('basic mapping', () => {
+    test('maps all items on first call', () => {
       const mapped = mapArray(
         () => [1, 2, 3],
         (item) => item,
@@ -11,7 +11,7 @@ describe("mapArray", () => {
       expect(mapped()).toEqual([10, 20, 30])
     })
 
-    test("returns empty array for empty source", () => {
+    test('returns empty array for empty source', () => {
       const mapped = mapArray(
         () => [],
         (item: number) => item,
@@ -20,18 +20,18 @@ describe("mapArray", () => {
       expect(mapped()).toEqual([])
     })
 
-    test("maps single item", () => {
+    test('maps single item', () => {
       const mapped = mapArray(
         () => [42],
         (item) => item,
         (item) => `value-${item}`,
       )
-      expect(mapped()).toEqual(["value-42"])
+      expect(mapped()).toEqual(['value-42'])
     })
   })
 
-  describe("caching behavior", () => {
-    test("caches results — map function called once per key", () => {
+  describe('caching behavior', () => {
+    test('caches results — map function called once per key', () => {
       let callCount = 0
       const items = [1, 2, 3]
       const mapped = mapArray(
@@ -55,7 +55,7 @@ describe("mapArray", () => {
       expect(callCount).toBe(3)
     })
 
-    test("only maps new keys when items are added", () => {
+    test('only maps new keys when items are added', () => {
       let callCount = 0
       let items = [1, 2, 3]
       const mapped = mapArray(
@@ -75,7 +75,7 @@ describe("mapArray", () => {
       expect(callCount).toBe(5) // only 4 and 5 are new
     })
 
-    test("does not re-map when items are removed", () => {
+    test('does not re-map when items are removed', () => {
       let callCount = 0
       let items = [1, 2, 3, 4, 5]
       const mapped = mapArray(
@@ -97,8 +97,8 @@ describe("mapArray", () => {
     })
   })
 
-  describe("key eviction", () => {
-    test("evicted keys are re-mapped when they return", () => {
+  describe('key eviction', () => {
+    test('evicted keys are re-mapped when they return', () => {
       let callCount = 0
       let items = [1, 2, 3]
       const mapped = mapArray(
@@ -124,7 +124,7 @@ describe("mapArray", () => {
       expect(callCount).toBe(4) // key 2 re-mapped
     })
 
-    test("evicts all keys when source becomes empty", () => {
+    test('evicts all keys when source becomes empty', () => {
       let callCount = 0
       let items: number[] = [1, 2, 3]
       const mapped = mapArray(
@@ -150,8 +150,8 @@ describe("mapArray", () => {
     })
   })
 
-  describe("reordering", () => {
-    test("reordered items use cached values (no re-mapping)", () => {
+  describe('reordering', () => {
+    test('reordered items use cached values (no re-mapping)', () => {
       let callCount = 0
       let items = [1, 2, 3]
       const mapped = mapArray(
@@ -172,7 +172,7 @@ describe("mapArray", () => {
       expect(callCount).toBe(3) // no new calls
     })
 
-    test("reverse order uses cached values", () => {
+    test('reverse order uses cached values', () => {
       let callCount = 0
       let items = [1, 2, 3, 4]
       const mapped = mapArray(
@@ -187,21 +187,21 @@ describe("mapArray", () => {
       mapped()
       items = [4, 3, 2, 1]
       const result = mapped()
-      expect(result).toEqual(["item-4", "item-3", "item-2", "item-1"])
+      expect(result).toEqual(['item-4', 'item-3', 'item-2', 'item-1'])
       expect(callCount).toBe(4) // initial 4 only
     })
   })
 
-  describe("string keys", () => {
-    test("works with string keys from objects", () => {
+  describe('string keys', () => {
+    test('works with string keys from objects', () => {
       interface User {
         id: string
         name: string
       }
       let callCount = 0
       let users: User[] = [
-        { id: "a", name: "Alice" },
-        { id: "b", name: "Bob" },
+        { id: 'a', name: 'Alice' },
+        { id: 'b', name: 'Bob' },
       ]
       const mapped = mapArray(
         () => users,
@@ -212,22 +212,22 @@ describe("mapArray", () => {
         },
       )
 
-      expect(mapped()).toEqual(["ALICE", "BOB"])
+      expect(mapped()).toEqual(['ALICE', 'BOB'])
       expect(callCount).toBe(2)
 
       // Add new user
       users = [
-        { id: "a", name: "Alice" },
-        { id: "b", name: "Bob" },
-        { id: "c", name: "Charlie" },
+        { id: 'a', name: 'Alice' },
+        { id: 'b', name: 'Bob' },
+        { id: 'c', name: 'Charlie' },
       ]
-      expect(mapped()).toEqual(["ALICE", "BOB", "CHARLIE"])
+      expect(mapped()).toEqual(['ALICE', 'BOB', 'CHARLIE'])
       expect(callCount).toBe(3)
     })
   })
 
-  describe("mixed additions and removals", () => {
-    test("simultaneous add and remove", () => {
+  describe('mixed additions and removals', () => {
+    test('simultaneous add and remove', () => {
       let callCount = 0
       let items = [1, 2, 3]
       const mapped = mapArray(
@@ -249,7 +249,7 @@ describe("mapArray", () => {
       expect(callCount).toBe(4) // only key 4 is new
     })
 
-    test("complete replacement of all items", () => {
+    test('complete replacement of all items', () => {
       let callCount = 0
       let items = [1, 2, 3]
       const mapped = mapArray(
@@ -271,8 +271,8 @@ describe("mapArray", () => {
     })
   })
 
-  describe("duplicate keys", () => {
-    test("duplicate keys in source share the same cached value", () => {
+  describe('duplicate keys', () => {
+    test('duplicate keys in source share the same cached value', () => {
       let callCount = 0
       const mapped = mapArray(
         () => [1, 1, 2],
@@ -291,12 +291,12 @@ describe("mapArray", () => {
     })
   })
 
-  describe("map function receives correct item", () => {
-    test("map receives the item, not the key", () => {
+  describe('map function receives correct item', () => {
+    test('map receives the item, not the key', () => {
       const received: Array<{ id: number; val: string }> = []
       const items = [
-        { id: 1, val: "a" },
-        { id: 2, val: "b" },
+        { id: 1, val: 'a' },
+        { id: 2, val: 'b' },
       ]
       const mapped = mapArray(
         () => items,

@@ -1,4 +1,4 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Rate limiting middleware ───────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
   }, windowMs)
 
   // Allow GC to clean up the interval
-  if (typeof cleanupInterval === "object" && "unref" in cleanupInterval) {
+  if (typeof cleanupInterval === 'object' && 'unref' in cleanupInterval) {
     cleanupInterval.unref()
   }
 
@@ -84,21 +84,21 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
     const resetSeconds = Math.ceil((entry.resetAt - now) / 1000)
 
     // Set rate limit headers on all responses
-    ctx.headers.set("X-RateLimit-Limit", String(max))
-    ctx.headers.set("X-RateLimit-Remaining", String(remaining))
-    ctx.headers.set("X-RateLimit-Reset", String(resetSeconds))
+    ctx.headers.set('X-RateLimit-Limit', String(max))
+    ctx.headers.set('X-RateLimit-Remaining', String(remaining))
+    ctx.headers.set('X-RateLimit-Reset', String(resetSeconds))
 
     if (entry.count > max) {
       if (onLimit) return onLimit(ctx)
 
-      return new Response(JSON.stringify({ error: "Too many requests" }), {
+      return new Response(JSON.stringify({ error: 'Too many requests' }), {
         status: 429,
         headers: {
-          "Content-Type": "application/json",
-          "Retry-After": String(resetSeconds),
-          "X-RateLimit-Limit": String(max),
-          "X-RateLimit-Remaining": "0",
-          "X-RateLimit-Reset": String(resetSeconds),
+          'Content-Type': 'application/json',
+          'Retry-After': String(resetSeconds),
+          'X-RateLimit-Limit': String(max),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(resetSeconds),
         },
       })
     }
@@ -107,15 +107,15 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
 
 function defaultKeyFn(ctx: MiddlewareContext): string {
   return (
-    ctx.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    ctx.req.headers.get("x-real-ip") ??
-    "unknown"
+    ctx.req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    ctx.req.headers.get('x-real-ip') ??
+    'unknown'
   )
 }
 
 /** Simple glob matching for path patterns. Supports trailing `*`. */
 function matchSimpleGlob(pattern: string, path: string): boolean {
-  if (pattern.endsWith("/*")) {
+  if (pattern.endsWith('/*')) {
     return path.startsWith(pattern.slice(0, -1))
   }
   return pattern === path

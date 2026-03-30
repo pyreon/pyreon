@@ -9,9 +9,9 @@
  *   `
  *   // fadeIn === "pyr-kf-abc123" (deterministic, hash-based)
  */
-import { hash } from "./hash"
-import { type Interpolation, normalizeCSS, resolve } from "./resolve"
-import { sheet } from "./sheet"
+import { hash } from './hash'
+import { type Interpolation, normalizeCSS, resolve } from './resolve'
+import { sheet } from './sheet'
 
 class KeyframesResult {
   readonly name: string

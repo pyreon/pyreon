@@ -1,5 +1,5 @@
-import { onUnmount } from "@pyreon/core"
-import { throttle } from "@pyreon/ui-core"
+import { onUnmount } from '@pyreon/core'
+import { throttle } from '@pyreon/ui-core'
 
 type ThrottledFn<T extends (...args: any[]) => any> = {
   (...args: Parameters<T>): void

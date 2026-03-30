@@ -1,10 +1,10 @@
-import { provide } from "@pyreon/core"
-import { PKG_NAME } from "../constants"
-import ContainerContext from "../context/ContainerContext"
-import type { ElementType } from "../types"
-import useGridContext from "../useContext"
-import { omitCtxKeys } from "../utils"
-import Styled from "./styled"
+import { provide } from '@pyreon/core'
+import { PKG_NAME } from '../constants'
+import ContainerContext from '../context/ContainerContext'
+import type { ElementType } from '../types'
+import useGridContext from '../useContext'
+import { omitCtxKeys } from '../utils'
+import Styled from './styled'
 
 /**
  * Container component that establishes the outermost grid boundary.
@@ -14,9 +14,9 @@ import Styled from "./styled"
  */
 
 const DEV_PROPS: Record<string, string> =
-  process.env.NODE_ENV !== "production" ? { "data-coolgrid": "container" } : {}
+  process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
 
-const Component: ElementType<["containerWidth"]> = ({
+const Component: ElementType<['containerWidth']> = ({
   children,
   component,
   css,
@@ -52,7 +52,7 @@ const Component: ElementType<["containerWidth"]> = ({
 
   const finalWidth = (() => {
     if (!width) return containerWidth
-    if (typeof width === "function") return width(containerWidth as Record<string, any>)
+    if (typeof width === 'function') return width(containerWidth as Record<string, any>)
     return width
   })()
 

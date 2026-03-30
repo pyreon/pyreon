@@ -10,18 +10,23 @@ description: Chainable component factory for composing default props, styles, an
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/attrs
 ```
+
 ```bash [bun]
 bun add @pyreon/attrs
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/attrs
 ```
+
 ```bash [yarn]
 yarn add @pyreon/attrs
 ```
+
 :::
 
 ## Overview
@@ -57,11 +62,10 @@ const LargePrimaryButton = PrimaryButton
 Pass a function to `.attrs()` to compute defaults based on incoming props:
 
 ```tsx
-const Input = attrs(BaseInput)
-  .attrs((props) => ({
-    'aria-invalid': props.error ? 'true' : undefined,
-    class: props.error ? 'input-error' : 'input',
-  }))
+const Input = attrs(BaseInput).attrs((props) => ({
+  'aria-invalid': props.error ? 'true' : undefined,
+  class: props.error ? 'input-error' : 'input',
+}))
 ```
 
 ## Chaining
@@ -69,15 +73,12 @@ const Input = attrs(BaseInput)
 Each `.attrs()` call creates a new component in the chain. Defaults are merged in order -- later calls override earlier ones for the same prop:
 
 ```tsx
-const Base = attrs(Component)
-  .attrs({ variant: 'default', size: 'md' })
+const Base = attrs(Component).attrs({ variant: 'default', size: 'md' })
 
-const Small = Base
-  .attrs({ size: 'sm' })
+const Small = Base.attrs({ size: 'sm' })
 // Effective defaults: { variant: 'default', size: 'sm' }
 
-const SmallPrimary = Small
-  .attrs({ variant: 'primary' })
+const SmallPrimary = Small.attrs({ variant: 'primary' })
 // Effective defaults: { variant: 'primary', size: 'sm' }
 ```
 
@@ -87,19 +88,19 @@ const SmallPrimary = Small
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `attrs` | Function | Wraps a component and returns a chainable attrs builder |
+| Export             | Type     | Description                                                  |
+| ------------------ | -------- | ------------------------------------------------------------ |
+| `attrs`            | Function | Wraps a component and returns a chainable attrs builder      |
 | `isAttrsComponent` | Function | Type guard to check if a value is an attrs-wrapped component |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `Attrs` | The attrs builder interface with the `.attrs()` method |
-| `AttrsComponent` | A component produced by the attrs chain |
-| `AttrsCb` | Callback signature for dynamic attrs: `(props) => Partial<Props>` |
-| `ConfigAttrs` | Internal configuration type for attrs layers |
+| Type             | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| `Attrs`          | The attrs builder interface with the `.attrs()` method            |
+| `AttrsComponent` | A component produced by the attrs chain                           |
+| `AttrsCb`        | Callback signature for dynamic attrs: `(props) => Partial<Props>` |
+| `ConfigAttrs`    | Internal configuration type for attrs layers                      |
 
 ## Key Features
 

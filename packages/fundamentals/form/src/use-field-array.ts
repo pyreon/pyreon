@@ -1,5 +1,5 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
-import { computed, signal } from "@pyreon/reactivity"
+import type { Computed, Signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 
 export interface FieldArrayItem<T> {
   /** Stable key for keyed rendering. */

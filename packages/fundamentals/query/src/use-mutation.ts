@@ -1,14 +1,14 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, signal } from '@pyreon/reactivity'
 import type {
   DefaultError,
   MutateFunction,
   MutationObserverOptions,
   MutationObserverResult,
-} from "@tanstack/query-core"
-import { MutationObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from '@tanstack/query-core'
+import { MutationObserver } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 export interface UseMutationResult<
   TData,
@@ -20,7 +20,7 @@ export interface UseMutationResult<
   result: Signal<MutationObserverResult<TData, TError, TVariables, TContext>>
   data: Signal<TData | undefined>
   error: Signal<TError | null>
-  status: Signal<"idle" | "pending" | "success" | "error">
+  status: Signal<'idle' | 'pending' | 'success' | 'error'>
   isPending: Signal<boolean>
   isSuccess: Signal<boolean>
   isError: Signal<boolean>
@@ -65,7 +65,7 @@ export function useMutation<
   const resultSig = signal<MutationObserverResult<TData, TError, TVariables, TContext>>(initial)
   const dataSig = signal<TData | undefined>(initial.data)
   const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<"idle" | "pending" | "success" | "error">(initial.status)
+  const statusSig = signal<'idle' | 'pending' | 'success' | 'error'>(initial.status)
   const isPending = signal(initial.isPending)
   const isSuccess = signal(initial.isSuccess)
   const isError = signal(initial.isError)

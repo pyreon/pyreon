@@ -1,9 +1,9 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
+import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /** HTTP methods supported by API routes. */
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
 /** Context passed to API route handlers. */
 export interface ApiContext {
@@ -48,8 +48,8 @@ export interface ApiRouteEntry {
  * Returns extracted params or null if no match.
  */
 export function matchApiRoute(pattern: string, path: string): Record<string, string> | null {
-  const patternParts = pattern.split("/").filter(Boolean)
-  const pathParts = path.split("/").filter(Boolean)
+  const patternParts = pattern.split('/').filter(Boolean)
+  const pathParts = path.split('/').filter(Boolean)
   const params: Record<string, string> = {}
 
   for (let i = 0; i < patternParts.length; i++) {
@@ -57,9 +57,9 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
     if (!pp) continue
 
     // Catch-all: :param*
-    if (pp.endsWith("*")) {
+    if (pp.endsWith('*')) {
       const paramName = pp.slice(1, -1)
-      params[paramName] = pathParts.slice(i).join("/")
+      params[paramName] = pathParts.slice(i).join('/')
       return params
     }
 
@@ -67,7 +67,7 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
     if (i >= pathParts.length) return null
 
     // Dynamic segment: :param
-    if (pp.startsWith(":")) {
+    if (pp.startsWith(':')) {
       params[pp.slice(1)] = pathParts[i]!
       continue
     }
@@ -81,7 +81,7 @@ export function matchApiRoute(pattern: string, path: string): Record<string, str
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
+const HTTP_METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']
 
 /**
  * Create a middleware that dispatches API route requests.
@@ -98,12 +98,12 @@ export function createApiMiddleware(routes: ApiRouteEntry[]): Middleware {
 
       if (!handler) {
         // Route matched but method not supported
-        const allowed = HTTP_METHODS.filter((m) => route.module[m]).join(", ")
+        const allowed = HTTP_METHODS.filter((m) => route.module[m]).join(', ')
         return new Response(null, {
           status: 405,
           headers: {
             Allow: allowed,
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
         })
       }
@@ -126,12 +126,12 @@ export function createApiMiddleware(routes: ApiRouteEntry[]): Middleware {
  * API routes are `.ts` or `.js` files inside an `api/` directory.
  */
 export function isApiRoute(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/")
+  const normalized = filePath.replace(/\\/g, '/')
   return (
-    normalized.startsWith("api/") &&
-    (normalized.endsWith(".ts") || normalized.endsWith(".js")) &&
-    !normalized.endsWith(".tsx") &&
-    !normalized.endsWith(".jsx")
+    normalized.startsWith('api/') &&
+    (normalized.endsWith('.ts') || normalized.endsWith('.js')) &&
+    !normalized.endsWith('.tsx') &&
+    !normalized.endsWith('.jsx')
   )
 }
 
@@ -147,18 +147,18 @@ export function isApiRoute(filePath: string): boolean {
 export function apiFilePathToPattern(filePath: string): string {
   let route = filePath
   // Remove extension
-  for (const ext of [".ts", ".js"]) {
+  for (const ext of ['.ts', '.js']) {
     if (route.endsWith(ext)) {
       route = route.slice(0, -ext.length)
       break
     }
   }
 
-  const segments = route.split("/")
+  const segments = route.split('/')
   const urlSegments: string[] = []
 
   for (const seg of segments) {
-    if (seg === "index") continue
+    if (seg === 'index') continue
 
     // Catch-all: [...param]
     const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
@@ -177,7 +177,7 @@ export function apiFilePathToPattern(filePath: string): string {
     urlSegments.push(seg)
   }
 
-  return `/${urlSegments.join("/")}`
+  return `/${urlSegments.join('/')}`
 }
 
 /**
@@ -188,7 +188,7 @@ export function generateApiRouteModule(files: string[], routesDir: string): stri
   const apiFiles = files.filter(isApiRoute)
 
   if (apiFiles.length === 0) {
-    return "export const apiRoutes = []\n"
+    return 'export const apiRoutes = []\n'
   }
 
   const imports: string[] = []
@@ -205,5 +205,5 @@ export function generateApiRouteModule(files: string[], routesDir: string): stri
     entries.push(`  { pattern: ${JSON.stringify(pattern)}, module: ${name} }`)
   }
 
-  return [...imports, "", "export const apiRoutes = [", entries.join(",\n"), "]"].join("\n")
+  return [...imports, '', 'export const apiRoutes = [', entries.join(',\n'), ']'].join('\n')
 }

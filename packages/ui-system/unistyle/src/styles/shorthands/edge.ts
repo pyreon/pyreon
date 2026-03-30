@@ -1,27 +1,27 @@
-import { value } from "../../units"
+import { value } from '../../units'
 
 type CssUnits =
-  | "px"
-  | "rem"
-  | "%"
-  | "em"
-  | "ex"
-  | "cm"
-  | "mm"
-  | "in"
-  | "pt"
-  | "pc"
-  | "ch"
-  | "vh"
-  | "vw"
-  | "vmin"
-  | "vmax"
+  | 'px'
+  | 'rem'
+  | '%'
+  | 'em'
+  | 'ex'
+  | 'cm'
+  | 'mm'
+  | 'in'
+  | 'pt'
+  | 'pc'
+  | 'ch'
+  | 'vh'
+  | 'vw'
+  | 'vmin'
+  | 'vmax'
 
 const isValidValue = (v: unknown) => !!v || v === 0
 
-type Property = "inset" | "margin" | "padding" | "border-width" | "border-style" | "border-color"
+type Property = 'inset' | 'margin' | 'padding' | 'border-width' | 'border-style' | 'border-color'
 type Value = string | number | null | undefined
-type Side = "top" | "bottom" | "left" | "right"
+type Side = 'top' | 'bottom' | 'left' | 'right'
 
 type EdgeValues = {
   full: Value
@@ -36,12 +36,12 @@ type EdgeValues = {
 type Definitions = Record<Property, { unit?: CssUnits; edgeCss: (side: Side) => string }>
 
 const definitions: Definitions = {
-  inset: { unit: "rem", edgeCss: (side) => side },
-  margin: { unit: "rem", edgeCss: (side) => `margin-${side}` },
-  padding: { unit: "rem", edgeCss: (side) => `padding-${side}` },
-  "border-width": { unit: "px", edgeCss: (side) => `border-${side}-width` },
-  "border-style": { edgeCss: (side) => `border-${side}-style` },
-  "border-color": { edgeCss: (side) => `border-${side}-color` },
+  inset: { unit: 'rem', edgeCss: (side) => side },
+  margin: { unit: 'rem', edgeCss: (side) => `margin-${side}` },
+  padding: { unit: 'rem', edgeCss: (side) => `padding-${side}` },
+  'border-width': { unit: 'px', edgeCss: (side) => `border-${side}-width` },
+  'border-style': { edgeCss: (side) => `border-${side}-style` },
+  'border-color': { edgeCss: (side) => `border-${side}-color` },
 }
 
 const hasAnyValue = (vals: EdgeValues) =>
@@ -84,11 +84,11 @@ const formatIndividual = (
   calc: (v: Value) => Value,
 ) => {
   const [t, r, b, l] = sides
-  let output = ""
-  if (isValidValue(t)) output += `${edgeCss("top")}: ${calc(t)};`
-  if (isValidValue(b)) output += `${edgeCss("bottom")}: ${calc(b)};`
-  if (isValidValue(l)) output += `${edgeCss("left")}: ${calc(l)};`
-  if (isValidValue(r)) output += `${edgeCss("right")}: ${calc(r)};`
+  let output = ''
+  if (isValidValue(t)) output += `${edgeCss('top')}: ${calc(t)};`
+  if (isValidValue(b)) output += `${edgeCss('bottom')}: ${calc(b)};`
+  if (isValidValue(l)) output += `${edgeCss('left')}: ${calc(l)};`
+  if (isValidValue(r)) output += `${edgeCss('right')}: ${calc(r)};`
   return output
 }
 

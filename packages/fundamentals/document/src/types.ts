@@ -1,24 +1,24 @@
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
 export type NodeType =
-  | "document"
-  | "page"
-  | "section"
-  | "row"
-  | "column"
-  | "heading"
-  | "text"
-  | "link"
-  | "image"
-  | "table"
-  | "list"
-  | "list-item"
-  | "page-break"
-  | "code"
-  | "divider"
-  | "spacer"
-  | "button"
-  | "quote"
+  | 'document'
+  | 'page'
+  | 'section'
+  | 'row'
+  | 'column'
+  | 'heading'
+  | 'text'
+  | 'link'
+  | 'image'
+  | 'table'
+  | 'list'
+  | 'list-item'
+  | 'page-break'
+  | 'code'
+  | 'divider'
+  | 'spacer'
+  | 'button'
+  | 'quote'
 
 /** A format-agnostic document node. */
 export interface DocNode {
@@ -36,12 +36,12 @@ export type DocChild = DocNode | string
 export interface ResolvedStyles {
   fontSize?: number
   fontFamily?: string
-  fontWeight?: "normal" | "bold" | number
-  fontStyle?: "normal" | "italic"
-  textDecoration?: "none" | "underline" | "line-through"
+  fontWeight?: 'normal' | 'bold' | number
+  fontStyle?: 'normal' | 'italic'
+  textDecoration?: 'none' | 'underline' | 'line-through'
   color?: string
   backgroundColor?: string
-  textAlign?: "left" | "center" | "right" | "justify"
+  textAlign?: 'left' | 'center' | 'right' | 'justify'
   lineHeight?: number
   letterSpacing?: number
   padding?: number | [number, number] | [number, number, number, number]
@@ -49,7 +49,7 @@ export interface ResolvedStyles {
   borderRadius?: number
   borderWidth?: number
   borderColor?: string
-  borderStyle?: "solid" | "dashed" | "dotted"
+  borderStyle?: 'solid' | 'dashed' | 'dotted'
   width?: number | string
   height?: number | string
   maxWidth?: number | string
@@ -67,8 +67,8 @@ export interface DocumentProps {
   children?: unknown
 }
 
-export type PageSize = "A4" | "A3" | "A5" | "letter" | "legal" | "tabloid"
-export type PageOrientation = "portrait" | "landscape"
+export type PageSize = 'A4' | 'A3' | 'A5' | 'letter' | 'legal' | 'tabloid'
+export type PageOrientation = 'portrait' | 'landscape'
 
 export interface PageProps {
   size?: PageSize
@@ -82,7 +82,7 @@ export interface PageProps {
 }
 
 export interface SectionProps {
-  direction?: "column" | "row"
+  direction?: 'column' | 'row'
   gap?: number
   padding?: number | [number, number] | [number, number, number, number]
   background?: string
@@ -93,20 +93,20 @@ export interface SectionProps {
 
 export interface RowProps {
   gap?: number
-  align?: "start" | "center" | "end" | "stretch"
+  align?: 'start' | 'center' | 'end' | 'stretch'
   children?: unknown
 }
 
 export interface ColumnProps {
   width?: number | string
-  align?: "start" | "center" | "end"
+  align?: 'start' | 'center' | 'end'
   children?: unknown
 }
 
 export interface HeadingProps {
   level?: 1 | 2 | 3 | 4 | 5 | 6
   color?: string
-  align?: "left" | "center" | "right"
+  align?: 'left' | 'center' | 'right'
   children?: unknown
 }
 
@@ -117,7 +117,7 @@ export interface TextProps {
   italic?: boolean
   underline?: boolean
   strikethrough?: boolean
-  align?: "left" | "center" | "right" | "justify"
+  align?: 'left' | 'center' | 'right' | 'justify'
   lineHeight?: number
   children?: unknown
 }
@@ -133,14 +133,14 @@ export interface ImageProps {
   width?: number
   height?: number
   alt?: string
-  align?: "left" | "center" | "right"
+  align?: 'left' | 'center' | 'right'
   caption?: string
 }
 
 export interface TableColumn {
   header: string
   width?: number | string
-  align?: "left" | "center" | "right"
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface TableProps {
@@ -187,7 +187,7 @@ export interface ButtonProps {
   color?: string
   borderRadius?: number
   padding?: number | [number, number]
-  align?: "left" | "center" | "right"
+  align?: 'left' | 'center' | 'right'
   children?: unknown
 }
 
@@ -199,24 +199,24 @@ export interface QuoteProps {
 // ─── Render Types ───────────────────────────────────────────────────────────
 
 export type OutputFormat =
-  | "html"
-  | "pdf"
-  | "docx"
-  | "pptx"
-  | "email"
-  | "xlsx"
-  | "md"
-  | "text"
-  | "csv"
-  | "svg"
-  | "slack"
-  | "teams"
-  | "discord"
-  | "telegram"
-  | "notion"
-  | "confluence"
-  | "whatsapp"
-  | "google-chat"
+  | 'html'
+  | 'pdf'
+  | 'docx'
+  | 'pptx'
+  | 'email'
+  | 'xlsx'
+  | 'md'
+  | 'text'
+  | 'csv'
+  | 'svg'
+  | 'slack'
+  | 'teams'
+  | 'discord'
+  | 'telegram'
+  | 'notion'
+  | 'confluence'
+  | 'whatsapp'
+  | 'google-chat'
 
 export interface RenderOptions {
   /** Custom styles to apply (overrides component styles). */
@@ -224,7 +224,7 @@ export interface RenderOptions {
   /** Base URL for relative image sources. */
   baseUrl?: string
   /** Text direction — 'ltr' (default) or 'rtl'. */
-  direction?: "ltr" | "rtl"
+  direction?: 'ltr' | 'rtl'
   /** Custom font configuration for PDF. */
   fonts?: Record<string, { normal?: string; bold?: string; italics?: string; bolditalics?: string }>
 }
@@ -239,18 +239,18 @@ export interface DocumentRenderer {
 // ─── Builder Types ──────────────────────────────────────────────────────────
 
 export interface DocumentBuilder {
-  heading(text: string, props?: Omit<HeadingProps, "children">): DocumentBuilder
-  text(text: string, props?: Omit<TextProps, "children">): DocumentBuilder
-  paragraph(text: string, props?: Omit<TextProps, "children">): DocumentBuilder
-  image(src: string, props?: Omit<ImageProps, "src">): DocumentBuilder
+  heading(text: string, props?: Omit<HeadingProps, 'children'>): DocumentBuilder
+  text(text: string, props?: Omit<TextProps, 'children'>): DocumentBuilder
+  paragraph(text: string, props?: Omit<TextProps, 'children'>): DocumentBuilder
+  image(src: string, props?: Omit<ImageProps, 'src'>): DocumentBuilder
   table(props: TableProps): DocumentBuilder
-  list(items: string[], props?: Omit<ListProps, "children">): DocumentBuilder
-  code(text: string, props?: Omit<CodeProps, "children">): DocumentBuilder
+  list(items: string[], props?: Omit<ListProps, 'children'>): DocumentBuilder
+  code(text: string, props?: Omit<CodeProps, 'children'>): DocumentBuilder
   divider(props?: DividerProps): DocumentBuilder
   spacer(height: number): DocumentBuilder
-  quote(text: string, props?: Omit<QuoteProps, "children">): DocumentBuilder
-  button(text: string, props: Omit<ButtonProps, "children">): DocumentBuilder
-  link(text: string, props: Omit<LinkProps, "children">): DocumentBuilder
+  quote(text: string, props?: Omit<QuoteProps, 'children'>): DocumentBuilder
+  button(text: string, props: Omit<ButtonProps, 'children'>): DocumentBuilder
+  link(text: string, props: Omit<LinkProps, 'children'>): DocumentBuilder
   pageBreak(): DocumentBuilder
   /** Add an arbitrary DocNode (or fragment returned by a helper function). */
   add(node: DocNode | DocNode[]): DocumentBuilder

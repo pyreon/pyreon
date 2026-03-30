@@ -30,10 +30,10 @@ const createMediaQueries: CreateMediaQueries = ((props: {
       const emSize = breakpointValue / rootSize
 
       acc[key] = (...args: [TemplateStringsArray, ...any[]]) => css`
-          @media only screen and (min-width: ${emSize}em) {
-            ${css(...args)};
-          }
-        `
+        @media only screen and (min-width: ${emSize}em) {
+          ${css(...args)};
+        }
+      `
     }
 
     return acc

@@ -1,6 +1,6 @@
-import { computed, signal } from "@pyreon/reactivity"
-import { createEditor } from "./editor"
-import type { EditorLanguage, Tab, TabbedEditorConfig, TabbedEditorInstance } from "./types"
+import { computed, signal } from '@pyreon/reactivity'
+import { createEditor } from './editor'
+import type { EditorLanguage, Tab, TabbedEditorConfig, TabbedEditorInstance } from './types'
 
 /**
  * Create a tabbed code editor — multiple files with tab management.
@@ -42,7 +42,7 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
   // ── State ──────────────────────────────────────────────────────────────
 
   const tabs = signal<Tab[]>(tabsWithIds)
-  const activeTabId = signal(tabsWithIds[0]?.id ?? "")
+  const activeTabId = signal(tabsWithIds[0]?.id ?? '')
 
   // Content cache — stores each tab's current content
   const contentCache = new Map<string, string>()
@@ -59,8 +59,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     Object.entries(editorConfig).filter(([_, v]) => v !== undefined),
   )
   const editor = createEditor({
-    value: firstTab?.value ?? "",
-    language: (firstTab?.language ?? "plain") as EditorLanguage,
+    value: firstTab?.value ?? '',
+    language: (firstTab?.language ?? 'plain') as EditorLanguage,
     ...(theme != null ? { theme } : {}),
     ...filteredConfig,
     onChange: (value) => {
@@ -106,7 +106,7 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
     // Restore target tab content
     const cached = contentCache.get(id)
     editor.value.set(cached ?? tab.value)
-    editor.language.set((tab.language ?? "plain") as EditorLanguage)
+    editor.language.set((tab.language ?? 'plain') as EditorLanguage)
   }
 
   function openTab(tab: Tab): void {
@@ -145,8 +145,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
         const nextTab = remaining[nextIndex]
         if (nextTab) switchTab(nextTab.id ?? nextTab.name)
       } else {
-        activeTabId.set("")
-        editor.value.set("")
+        activeTabId.set('')
+        editor.value.set('')
       }
     }
   }
@@ -183,8 +183,8 @@ export function createTabbedEditor(config: TabbedEditorConfig = {}): TabbedEdito
       const first = remaining[0]
       if (first) switchTab(first.id ?? first.name)
     } else {
-      activeTabId.set("")
-      editor.value.set("")
+      activeTabId.set('')
+      editor.value.set('')
     }
   }
 

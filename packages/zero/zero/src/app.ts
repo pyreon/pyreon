@@ -1,8 +1,8 @@
-import type { ComponentFn, Props } from "@pyreon/core"
-import { Fragment, h } from "@pyreon/core"
-import { HeadProvider } from "@pyreon/head"
-import type { RouteRecord } from "@pyreon/router"
-import { createRouter, RouterProvider, RouterView } from "@pyreon/router"
+import type { ComponentFn, Props } from '@pyreon/core'
+import { Fragment, h } from '@pyreon/core'
+import { HeadProvider } from '@pyreon/head'
+import type { RouteRecord } from '@pyreon/router'
+import { createRouter, RouterProvider, RouterView } from '@pyreon/router'
 
 // ─── App assembly ────────────────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ export interface CreateAppOptions {
   routes: RouteRecord[]
 
   /** Router mode. Default: "history" for SSR, "hash" for SPA. */
-  routerMode?: "hash" | "history"
+  routerMode?: 'hash' | 'history'
 
   /** Initial URL for SSR. */
   url?: string
@@ -31,9 +31,9 @@ export interface CreateAppOptions {
 export function createApp(options: CreateAppOptions) {
   const router = createRouter({
     routes: options.routes,
-    mode: options.routerMode ?? "history",
+    mode: options.routerMode ?? 'history',
     ...(options.url ? { url: options.url } : {}),
-    scrollBehavior: "top",
+    scrollBehavior: 'top',
   })
 
   const Layout = options.layout ?? DefaultLayout

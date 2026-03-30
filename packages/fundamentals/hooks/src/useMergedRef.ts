@@ -12,7 +12,7 @@ export const useMergedRef = <T>(...refs: (Ref<T> | undefined)[]): ((node: T | nu
   return (node: T | null) => {
     for (const ref of refs) {
       if (!ref) continue
-      if (typeof ref === "function") {
+      if (typeof ref === 'function') {
         ref(node)
       } else {
         ;(ref as RefObject<unknown>).current = node

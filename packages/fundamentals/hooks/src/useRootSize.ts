@@ -1,4 +1,4 @@
-import { useTheme } from "@pyreon/styler"
+import { useTheme } from '@pyreon/styler'
 
 type RootSizeResult = {
   rootSize: number

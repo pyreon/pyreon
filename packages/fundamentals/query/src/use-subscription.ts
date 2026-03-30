@@ -1,12 +1,12 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
-import type { QueryClient } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+import { onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
+import type { QueryClient } from '@tanstack/query-core'
+import { useQueryClient } from './query-client'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SubscriptionStatus = "connecting" | "connected" | "disconnected" | "error"
+export type SubscriptionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
 
 export interface UseSubscriptionOptions {
   /** WebSocket URL — can be a signal for reactive URLs */
@@ -68,7 +68,7 @@ export interface UseSubscriptionResult {
  */
 export function useSubscription(options: UseSubscriptionOptions): UseSubscriptionResult {
   const queryClient = useQueryClient()
-  const status = signal<SubscriptionStatus>("disconnected")
+  const status = signal<SubscriptionStatus>('disconnected')
 
   let ws: WebSocket | null = null
   let reconnectAttempts = 0
@@ -80,12 +80,12 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   const maxAttempts = options.maxReconnectAttempts ?? 10
 
   function getUrl(): string {
-    return typeof options.url === "function" ? options.url() : options.url
+    return typeof options.url === 'function' ? options.url() : options.url
   }
 
   function isEnabled(): boolean {
     if (options.enabled === undefined) return true
-    return typeof options.enabled === "function" ? options.enabled() : options.enabled
+    return typeof options.enabled === 'function' ? options.enabled() : options.enabled
   }
 
   function connect(): void {
@@ -100,23 +100,23 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     }
 
     if (!isEnabled()) {
-      status.set("disconnected")
+      status.set('disconnected')
       return
     }
 
-    status.set("connecting")
+    status.set('connecting')
 
     try {
       ws = options.protocols ? new WebSocket(getUrl(), options.protocols) : new WebSocket(getUrl())
     } catch {
-      status.set("error")
+      status.set('error')
       scheduleReconnect()
       return
     }
 
     ws.onopen = (event) => {
       batch(() => {
-        status.set("connected")
+        status.set('connected')
         reconnectAttempts = 0
       })
       options.onOpen?.(event)
@@ -131,7 +131,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     }
 
     ws.onclose = (event) => {
-      status.set("disconnected")
+      status.set('disconnected')
       options.onClose?.(event)
 
       if (!intentionalClose && reconnectEnabled) {
@@ -140,7 +140,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     }
 
     ws.onerror = (event) => {
-      status.set("error")
+      status.set('error')
       options.onError?.(event)
     }
   }
@@ -182,7 +182,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
       }
       ws = null
     }
-    status.set("disconnected")
+    status.set('disconnected')
   }
 
   function manualReconnect(): void {
@@ -194,8 +194,8 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   // Track reactive URL and enabled state
   effect(() => {
     // Read reactive values to subscribe to changes
-    if (typeof options.url === "function") options.url()
-    if (typeof options.enabled === "function") options.enabled()
+    if (typeof options.url === 'function') options.url()
+    if (typeof options.enabled === 'function') options.enabled()
 
     intentionalClose = false
     reconnectAttempts = 0

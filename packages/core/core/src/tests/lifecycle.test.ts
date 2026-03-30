@@ -5,25 +5,25 @@ import {
   onUnmount,
   onUpdate,
   setCurrentHooks,
-} from "../lifecycle"
-import type { LifecycleHooks } from "../types"
+} from '../lifecycle'
+import type { LifecycleHooks } from '../types'
 
-describe("setCurrentHooks / getCurrentHooks", () => {
+describe('setCurrentHooks / getCurrentHooks', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("getCurrentHooks returns null by default", () => {
+  test('getCurrentHooks returns null by default', () => {
     expect(getCurrentHooks()).toBeNull()
   })
 
-  test("setCurrentHooks sets the current hooks context", () => {
+  test('setCurrentHooks sets the current hooks context', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     expect(getCurrentHooks()).toBe(hooks)
   })
 
-  test("setCurrentHooks(null) clears the context", () => {
+  test('setCurrentHooks(null) clears the context', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     expect(getCurrentHooks()).toBe(hooks)
@@ -32,12 +32,12 @@ describe("setCurrentHooks / getCurrentHooks", () => {
   })
 })
 
-describe("onMount", () => {
+describe('onMount', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("registers callback on current hooks", () => {
+  test('registers callback on current hooks', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     const fn = () => undefined
@@ -46,7 +46,7 @@ describe("onMount", () => {
     expect(hooks.mount[0]).toBe(fn)
   })
 
-  test("multiple onMount calls accumulate", () => {
+  test('multiple onMount calls accumulate', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     onMount(() => undefined)
@@ -55,20 +55,20 @@ describe("onMount", () => {
     expect(hooks.mount).toHaveLength(3)
   })
 
-  test("warns when called outside component setup", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+  test('warns when called outside component setup', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onMount(() => {})
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("onMount() called outside component setup"),
+      expect.stringContaining('onMount() called outside component setup'),
     )
     warnSpy.mockRestore()
   })
 
-  test("is a no-op outside component setup (no crash)", () => {
+  test('is a no-op outside component setup (no crash)', () => {
     expect(() => onMount(() => {})).not.toThrow()
   })
 
-  test("accepts callback returning cleanup function", () => {
+  test('accepts callback returning cleanup function', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     const cleanup = () => {}
@@ -77,7 +77,7 @@ describe("onMount", () => {
     expect(hooks.mount[0]!()).toBe(cleanup)
   })
 
-  test("accepts callback returning void", () => {
+  test('accepts callback returning void', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     onMount(() => {})
@@ -86,12 +86,12 @@ describe("onMount", () => {
   })
 })
 
-describe("onUnmount", () => {
+describe('onUnmount', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("registers callback on current hooks", () => {
+  test('registers callback on current hooks', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     const fn = () => {}
@@ -100,22 +100,22 @@ describe("onUnmount", () => {
     expect(hooks.unmount[0]).toBe(fn)
   })
 
-  test("warns when called outside component setup", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+  test('warns when called outside component setup', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onUnmount(() => {})
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("onUnmount() called outside component setup"),
+      expect.stringContaining('onUnmount() called outside component setup'),
     )
     warnSpy.mockRestore()
   })
 })
 
-describe("onUpdate", () => {
+describe('onUpdate', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("registers callback on current hooks", () => {
+  test('registers callback on current hooks', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     const fn = () => {}
@@ -124,22 +124,22 @@ describe("onUpdate", () => {
     expect(hooks.update[0]).toBe(fn)
   })
 
-  test("warns when called outside component setup", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+  test('warns when called outside component setup', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onUpdate(() => {})
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("onUpdate() called outside component setup"),
+      expect.stringContaining('onUpdate() called outside component setup'),
     )
     warnSpy.mockRestore()
   })
 })
 
-describe("onErrorCaptured", () => {
+describe('onErrorCaptured', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("registers callback on current hooks", () => {
+  test('registers callback on current hooks', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     const fn = () => true
@@ -148,16 +148,16 @@ describe("onErrorCaptured", () => {
     expect(hooks.error[0]).toBe(fn)
   })
 
-  test("warns when called outside component setup", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+  test('warns when called outside component setup', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     onErrorCaptured(() => true)
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("onErrorCaptured() called outside component setup"),
+      expect.stringContaining('onErrorCaptured() called outside component setup'),
     )
     warnSpy.mockRestore()
   })
 
-  test("registered handler receives the error", () => {
+  test('registered handler receives the error', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     let captured: unknown = null
@@ -166,18 +166,18 @@ describe("onErrorCaptured", () => {
       return true
     })
     // Simulate calling the handler
-    const testError = new Error("test")
+    const testError = new Error('test')
     hooks.error[0]!(testError)
     expect(captured).toBe(testError)
   })
 })
 
-describe("lifecycle hooks interaction", () => {
+describe('lifecycle hooks interaction', () => {
   afterEach(() => {
     setCurrentHooks(null)
   })
 
-  test("all hook types can be registered in same context", () => {
+  test('all hook types can be registered in same context', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
 
@@ -192,7 +192,7 @@ describe("lifecycle hooks interaction", () => {
     expect(hooks.error).toHaveLength(1)
   })
 
-  test("hooks from different setCurrentHooks calls go to different stores", () => {
+  test('hooks from different setCurrentHooks calls go to different stores', () => {
     const hooks1: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     const hooks2: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
 

@@ -1,16 +1,16 @@
-import type { VNodeChild } from "@pyreon/core"
+import type { VNodeChild } from '@pyreon/core'
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
 export type ToastPosition =
-  | "top-left"
-  | "top-center"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-center"
-  | "bottom-right"
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
 
-export type ToastType = "info" | "success" | "warning" | "error"
+export type ToastType = 'info' | 'success' | 'warning' | 'error'
 
 export interface ToastOptions {
   /** Toast variant — controls styling. */
@@ -46,7 +46,7 @@ export interface ToastPromiseOptions<T> {
 
 // ─── Internal types ──────────────────────────────────────────────────────────
 
-export type ToastState = "entering" | "visible" | "exiting"
+export type ToastState = 'entering' | 'visible' | 'exiting'
 
 export interface Toast {
   id: string

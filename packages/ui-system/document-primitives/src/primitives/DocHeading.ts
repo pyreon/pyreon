@@ -1,15 +1,15 @@
-import { Text } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Text } from '@pyreon/elements'
+import rocketstyle from '@pyreon/rocketstyle'
 
 const DocHeading = rocketstyle({
   dimensions: {
-    levels: "level",
+    levels: 'level',
   },
   useBooleans: true,
-})({ name: "DocHeading", component: Text })
+})({ name: 'DocHeading', component: Text })
   .theme({
-    fontWeight: "bold",
-    color: "#1a1a2e",
+    fontWeight: 'bold',
+    color: '#1a1a2e',
     marginBottom: 12,
   })
   .levels({
@@ -20,10 +20,10 @@ const DocHeading = rocketstyle({
     h5: { fontSize: 16, lineHeight: 1.5 },
     h6: { fontSize: 14, lineHeight: 1.5 },
   })
-  .statics({ _documentType: "heading" as const })
+  .statics({ _documentType: 'heading' as const })
   .attrs<{ level?: string; tag: string; _documentProps: { level: number } }>((props) => {
-    const lvl = props.level ?? "h1"
-    const num = Number.parseInt(String(lvl).replace("h", ""), 10) || 1
+    const lvl = props.level ?? 'h1'
+    const num = Number.parseInt(String(lvl).replace('h', ''), 10) || 1
     return {
       tag: lvl,
       _documentProps: { level: num },

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "preact/hooks"
-import Demo from "./Demo"
+import { useCallback, useMemo, useState } from 'preact/hooks'
+import Demo from './Demo'
 
 export default function UseMemoDemo() {
   const [a, setA] = useState(3)

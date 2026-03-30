@@ -16,7 +16,7 @@ export interface ErrorContext {
   /** Component function name, or "Anonymous" */
   component: string
   /** Lifecycle phase where the error occurred */
-  phase: "setup" | "render" | "mount" | "unmount" | "effect"
+  phase: 'setup' | 'render' | 'mount' | 'unmount' | 'effect'
   /** The thrown value */
   error: unknown
   /** Unix timestamp (ms) */

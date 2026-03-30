@@ -1,5 +1,5 @@
 ---
-title: "@pyreon/react-compat"
+title: '@pyreon/react-compat'
 description: React-compatible hook API that runs on Pyreon's fine-grained reactive engine.
 ---
 
@@ -10,18 +10,23 @@ description: React-compatible hook API that runs on Pyreon's fine-grained reacti
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/react-compat
 ```
+
 ```bash [bun]
 bun add @pyreon/react-compat
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/react-compat
 ```
+
 ```bash [yarn]
 yarn add @pyreon/react-compat
 ```
+
 :::
 
 ## Quick Start
@@ -66,16 +71,16 @@ createRoot(document.getElementById('app')!).render(<Counter />)
 
 Understanding these differences is essential for a smooth migration:
 
-| Behavior | React | @pyreon/react-compat |
-|---|---|---|
-| Component execution | Re-runs on every render | Runs **once** (setup phase) |
-| `useState` getter | Returns the value directly | Returns a **getter function** -- call `count()` to read |
-| `useEffect` deps | Must specify deps array | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
-| `useCallback` / `memo` | Prevents re-creation on re-render | **No-op** -- components run once, so closures are never stale |
-| Hooks rules | Must be called at top level, not in loops/conditions | **No restrictions** -- call anywhere, in loops, in conditions |
-| `useMemo` | Returns the memoized value | Returns a **getter function** -- call `value()` to read |
-| `useLayoutEffect` | Fires synchronously before paint | Same as `useEffect` -- Pyreon has no paint distinction |
-| Concurrent mode | `useTransition`, `useDeferredValue` defer updates | **No-ops** -- all updates are synchronous |
+| Behavior               | React                                                | @pyreon/react-compat                                                  |
+| ---------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| Component execution    | Re-runs on every render                              | Runs **once** (setup phase)                                           |
+| `useState` getter      | Returns the value directly                           | Returns a **getter function** -- call `count()` to read               |
+| `useEffect` deps       | Must specify deps array                              | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
+| `useCallback` / `memo` | Prevents re-creation on re-render                    | **No-op** -- components run once, so closures are never stale         |
+| Hooks rules            | Must be called at top level, not in loops/conditions | **No restrictions** -- call anywhere, in loops, in conditions         |
+| `useMemo`              | Returns the memoized value                           | Returns a **getter function** -- call `value()` to read               |
+| `useLayoutEffect`      | Fires synchronously before paint                     | Same as `useEffect` -- Pyreon has no paint distinction                |
+| Concurrent mode        | `useTransition`, `useDeferredValue` defer updates    | **No-ops** -- all updates are synchronous                             |
 
 ### Reading State
 
@@ -142,7 +147,7 @@ function Timer() {
       // In React, this would always log 0 without deps
       // In Pyreon, count() always returns the current value
       console.log('Count is:', count())
-      setCount(prev => prev + 1)
+      setCount((prev) => prev + 1)
     }, 1000)
     return () => clearInterval(id)
   }, []) // empty deps -- mount-only
@@ -166,8 +171,8 @@ Creates a reactive signal. Returns a `[getter, setter]` tuple. The getter is a f
 ```tsx
 const [count, setCount] = useState(0)
 
-setCount(5)                  // set directly
-setCount(prev => prev + 1)   // updater function
+setCount(5) // set directly
+setCount((prev) => prev + 1) // updater function
 
 // Lazy initializer (runs once during setup)
 const [data, setData] = useState(() => expensiveComputation())
@@ -202,16 +207,19 @@ type Action = { type: 'inc' } | { type: 'dec' } | { type: 'reset'; value: number
 
 const reducer = (state: number, action: Action): number => {
   switch (action.type) {
-    case 'inc': return state + 1
-    case 'dec': return state - 1
-    case 'reset': return action.value
+    case 'inc':
+      return state + 1
+    case 'dec':
+      return state - 1
+    case 'reset':
+      return action.value
   }
 }
 
 const [count, dispatch] = useReducer(reducer, 0)
 
-dispatch({ type: 'inc' })         // count() === 1
-dispatch({ type: 'inc' })         // count() === 2
+dispatch({ type: 'inc' }) // count() === 1
+dispatch({ type: 'inc' }) // count() === 2
 dispatch({ type: 'reset', value: 0 }) // count() === 0
 ```
 
@@ -271,17 +279,16 @@ function ContactForm() {
     <form onSubmit={handleSubmit}>
       <input
         value={() => state().data.name ?? ''}
-        onInput={(e) => dispatch({
-          type: 'field',
-          name: 'name',
-          value: (e.target as HTMLInputElement).value,
-        })}
+        onInput={(e) =>
+          dispatch({
+            type: 'field',
+            name: 'name',
+            value: (e.target as HTMLInputElement).value,
+          })
+        }
       />
-      <button
-        type="submit"
-        disabled={() => state().status === 'submitting'}
-      >
-        {() => state().status === 'submitting' ? 'Sending...' : 'Send'}
+      <button type="submit" disabled={() => state().status === 'submitting'}>
+        {() => (state().status === 'submitting' ? 'Sending...' : 'Send')}
       </button>
       {() => state().error && <p class="error">{state().error}</p>}
     </form>
@@ -303,7 +310,7 @@ Runs a reactive side effect. The `deps` array is **ignored** -- Pyreon auto-trac
 useEffect(() => {
   const controller = new AbortController()
   fetch(`/api/user/${id()}`, { signal: controller.signal })
-    .then(res => res.json())
+    .then((res) => res.json())
     .then(setUser)
   return () => controller.abort()
 })
@@ -363,9 +370,7 @@ function LazyImage(props: { src: string }) {
   }, [])
 
   return (
-    <div ref={ref}>
-      {() => visible() ? <img src={props.src} /> : <div class="placeholder" />}
-    </div>
+    <div ref={ref}>{() => (visible() ? <img src={props.src} /> : <div class="placeholder" />)}</div>
   )
 }
 
@@ -424,21 +429,15 @@ function ProductList() {
   // Each computed only recalculates when its specific dependencies change
   const filtered = useMemo(() => {
     const q = search().toLowerCase()
-    return q
-      ? products().filter(p => p.name.toLowerCase().includes(q))
-      : products()
+    return q ? products().filter((p) => p.name.toLowerCase().includes(q)) : products()
   })
 
   const sorted = useMemo(() => {
     const key = sortBy()
-    return [...filtered()].sort((a, b) =>
-      a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0
-    )
+    return [...filtered()].sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0))
   })
 
-  const totalPrice = useMemo(() =>
-    sorted().reduce((sum, p) => sum + p.price, 0)
-  )
+  const totalPrice = useMemo(() => sorted().reduce((sum, p) => sum + p.price, 0))
 
   return (
     <div>
@@ -448,7 +447,13 @@ function ProductList() {
       />
       <p>Total: ${() => totalPrice().toFixed(2)}</p>
       <ul>
-        {() => sorted().map(p => <li>{p.name} - ${p.price}</li>)}
+        {() =>
+          sorted().map((p) => (
+            <li>
+              {p.name} - ${p.price}
+            </li>
+          ))
+        }
       </ul>
     </div>
   )
@@ -514,7 +519,7 @@ function Stopwatch() {
 
   const start = () => {
     intervalRef.current = window.setInterval(() => {
-      setElapsed(prev => prev + 1)
+      setElapsed((prev) => prev + 1)
     }, 1000)
   }
 
@@ -638,11 +643,11 @@ function ToastProvider(props: { children: VNodeChild }) {
     toasts,
     add(message, type = 'info') {
       const id = Math.random().toString(36).slice(2)
-      setToasts(prev => [...prev, { id, message, type }])
+      setToasts((prev) => [...prev, { id, message, type }])
       setTimeout(() => api.remove(id), 5000)
     },
     remove(id) {
-      setToasts(prev => prev.filter(t => t.id !== id))
+      setToasts((prev) => prev.filter((t) => t.id !== id))
     },
   }
 
@@ -651,12 +656,14 @@ function ToastProvider(props: { children: VNodeChild }) {
     <>
       {props.children}
       <div class="toast-container">
-        {() => toasts().map(toast => (
-          <div class={`toast toast-${toast.type}`}>
-            {toast.message}
-            <button onClick={() => api.remove(toast.id)}>&times;</button>
-          </div>
-        ))}
+        {() =>
+          toasts().map((toast) => (
+            <div class={`toast toast-${toast.type}`}>
+              {toast.message}
+              <button onClick={() => api.remove(toast.id)}>&times;</button>
+            </div>
+          ))
+        }
       </div>
     </>
   ))
@@ -719,12 +726,14 @@ function AccessibleCombobox() {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
       />
-      {() => open() && (
-        <ul id={listboxId} role="listbox" aria-labelledby={inputId}>
-          <li role="option">Option 1</li>
-          <li role="option">Option 2</li>
-        </ul>
-      )}
+      {() =>
+        open() && (
+          <ul id={listboxId} role="listbox" aria-labelledby={inputId}>
+            <li role="option">Option 1</li>
+            <li role="option">Option 2</li>
+          </ul>
+        )
+      }
     </div>
   )
 }
@@ -770,14 +779,15 @@ Renders `children` into a different DOM `target`, just like React's `createPorta
 
 ```tsx
 function Modal(props: { open: () => boolean; children: VNodeChild }) {
-  return () => props.open()
-    ? createPortal(
-        <div class="modal-overlay">
-          <div class="modal">{props.children}</div>
-        </div>,
-        document.getElementById('modal-root')!
-      )
-    : null
+  return () =>
+    props.open()
+      ? createPortal(
+          <div class="modal-overlay">
+            <div class="modal">{props.children}</div>
+          </div>,
+          document.getElementById('modal-root')!,
+        )
+      : null
 }
 ```
 
@@ -789,19 +799,23 @@ function Dropdown(props: { trigger: VNodeChild; children: VNodeChild }) {
   const triggerRef = useRef<HTMLDivElement>()
 
   return (
-    <div ref={triggerRef} onClick={() => setOpen(prev => !prev)}>
+    <div ref={triggerRef} onClick={() => setOpen((prev) => !prev)}>
       {props.trigger}
-      {() => open() && createPortal(
-        <div class="dropdown-menu" style={() => {
-          const rect = triggerRef.current?.getBoundingClientRect()
-          return rect
-            ? `position:fixed;top:${rect.bottom}px;left:${rect.left}px`
-            : ''
-        }}>
-          {props.children}
-        </div>,
-        document.body
-      )}
+      {() =>
+        open() &&
+        createPortal(
+          <div
+            class="dropdown-menu"
+            style={() => {
+              const rect = triggerRef.current?.getBoundingClientRect()
+              return rect ? `position:fixed;top:${rect.bottom}px;left:${rect.left}px` : ''
+            }}
+          >
+            {props.children}
+          </div>,
+          document.body,
+        )
+      }
     </div>
   )
 }
@@ -835,10 +849,14 @@ function App() {
       <Suspense fallback={<div class="loading-skeleton" />}>
         {() => {
           switch (page()) {
-            case 'dashboard': return <Dashboard />
-            case 'settings': return <Settings />
-            case 'profile': return <Profile />
-            default: return <div>Not found</div>
+            case 'dashboard':
+              return <Dashboard />
+            case 'settings':
+              return <Settings />
+            case 'profile':
+              return <Profile />
+            default:
+              return <div>Not found</div>
           }
         }}
       </Suspense>
@@ -854,12 +872,14 @@ Re-exported from `@pyreon/core`. `<Suspense>` shows a fallback while lazy childr
 ```tsx
 function App() {
   return (
-    <ErrorBoundary fallback={(err, reset) => (
-      <div>
-        <p>Error: {String(err)}</p>
-        <button onClick={reset}>Retry</button>
-      </div>
-    )}>
+    <ErrorBoundary
+      fallback={(err, reset) => (
+        <div>
+          <p>Error: {String(err)}</p>
+          <button onClick={reset}>Retry</button>
+        </div>
+      )}
+    >
       <Suspense fallback={<LoadingSkeleton />}>
         <Dashboard />
       </Suspense>
@@ -891,10 +911,7 @@ batch(() => {
 
 ```tsx
 async function fetchAndUpdate() {
-  const [user, posts] = await Promise.all([
-    fetchUser(),
-    fetchPosts(),
-  ])
+  const [user, posts] = await Promise.all([fetchUser(), fetchPosts()])
 
   // Multiple updates from async result -- batch them
   batch(() => {
@@ -922,9 +939,9 @@ function SelectableList(props: { items: Item[] }) {
 
   return (
     <ul>
-      {props.items.map(item => (
+      {props.items.map((item) => (
         <li
-          class={() => isSelected(item.id) ? 'selected' : ''}
+          class={() => (isSelected(item.id) ? 'selected' : '')}
           onClick={() => setSelectedId(item.id)}
         >
           {item.name}
@@ -975,9 +992,7 @@ function SafeWrapper(props: { children: VNodeChild }) {
     return true // handled
   })
 
-  return () => error()
-    ? <div class="error">{error()}</div>
-    : props.children
+  return () => (error() ? <div class="error">{error()}</div> : props.children)
 }
 ```
 
@@ -1074,7 +1089,9 @@ return <p>Total: {total()}</p>
 
 ```tsx
 // Before (React) -- memo and useCallback are needed
-const MemoChild = memo(({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Click</button>)
+const MemoChild = memo(({ onClick }: { onClick: () => void }) => (
+  <button onClick={onClick}>Click</button>
+))
 const Parent = () => {
   const handleClick = useCallback(() => console.log('clicked'), [])
   return <MemoChild onClick={handleClick} />
@@ -1123,11 +1140,11 @@ Libraries that depend on React internals (reconciler, fiber, etc.) will not work
 export default defineConfig({
   resolve: {
     alias: {
-      'react': '@pyreon/react-compat',
+      react: '@pyreon/react-compat',
       'react-dom': '@pyreon/react-compat/dom',
       'react-dom/client': '@pyreon/react-compat/dom',
-    }
-  }
+    },
+  },
 })
 ```
 

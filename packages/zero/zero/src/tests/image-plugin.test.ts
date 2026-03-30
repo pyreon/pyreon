@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest"
-import { parseJpegDimensions, parseWebPDimensions } from "../image-plugin"
+import { describe, expect, it } from 'vitest'
+import { parseJpegDimensions, parseWebPDimensions } from '../image-plugin'
 
-describe("parseJpegDimensions", () => {
+describe('parseJpegDimensions', () => {
   function makeJpeg(width: number, height: number): Buffer {
     // Minimal JPEG: SOI + SOF0 marker with dimensions
     // Layout: [0-1] SOI, [2-3] SOF0 marker, [4-5] segment length,
@@ -19,41 +19,41 @@ describe("parseJpegDimensions", () => {
     return buf
   }
 
-  it("parses dimensions from SOF0 marker", () => {
+  it('parses dimensions from SOF0 marker', () => {
     const result = parseJpegDimensions(makeJpeg(1920, 1080))
     expect(result).toEqual({ width: 1920, height: 1080 })
   })
 
-  it("parses small dimensions", () => {
+  it('parses small dimensions', () => {
     const result = parseJpegDimensions(makeJpeg(1, 1))
     expect(result).toEqual({ width: 1, height: 1 })
   })
 
-  it("parses square dimensions", () => {
+  it('parses square dimensions', () => {
     const result = parseJpegDimensions(makeJpeg(500, 500))
     expect(result).toEqual({ width: 500, height: 500 })
   })
 
-  it("returns 0x0 for empty buffer", () => {
+  it('returns 0x0 for empty buffer', () => {
     const result = parseJpegDimensions(Buffer.alloc(0))
     expect(result).toEqual({ width: 0, height: 0 })
   })
 
-  it("returns 0x0 for buffer without SOF marker", () => {
+  it('returns 0x0 for buffer without SOF marker', () => {
     const buf = Buffer.alloc(10, 0)
     const result = parseJpegDimensions(buf)
     expect(result).toEqual({ width: 0, height: 0 })
   })
 })
 
-describe("parseWebPDimensions", () => {
+describe('parseWebPDimensions', () => {
   function makeWebPLossy(width: number, height: number): Buffer {
     // RIFF + WEBP + VP8 header with dimensions
     const buf = Buffer.alloc(30, 0)
-    buf.write("RIFF", 0, "ascii")
+    buf.write('RIFF', 0, 'ascii')
     buf.writeUInt32LE(22, 4) // file size
-    buf.write("WEBP", 8, "ascii")
-    buf.write("VP8 ", 12, "ascii") // lossy
+    buf.write('WEBP', 8, 'ascii')
+    buf.write('VP8 ', 12, 'ascii') // lossy
     buf.writeUInt32LE(10, 16) // chunk size
     // VP8 bitstream: signature at 23-25, then dimensions
     buf[23] = 0x9d
@@ -67,10 +67,10 @@ describe("parseWebPDimensions", () => {
   function makeWebPLossless(width: number, height: number): Buffer {
     // RIFF + WEBP + VP8L header with dimensions
     const buf = Buffer.alloc(25, 0)
-    buf.write("RIFF", 0, "ascii")
+    buf.write('RIFF', 0, 'ascii')
     buf.writeUInt32LE(17, 4)
-    buf.write("WEBP", 8, "ascii")
-    buf.write("VP8L", 12, "ascii")
+    buf.write('WEBP', 8, 'ascii')
+    buf.write('VP8L', 12, 'ascii')
     buf.writeUInt32LE(5, 16) // chunk size
     buf[20] = 0x2f // signature
     // Dimensions packed: 14 bits width-1, 14 bits height-1
@@ -82,10 +82,10 @@ describe("parseWebPDimensions", () => {
   function makeWebPExtended(width: number, height: number): Buffer {
     // RIFF + WEBP + VP8X header with dimensions
     const buf = Buffer.alloc(30, 0)
-    buf.write("RIFF", 0, "ascii")
+    buf.write('RIFF', 0, 'ascii')
     buf.writeUInt32LE(22, 4)
-    buf.write("WEBP", 8, "ascii")
-    buf.write("VP8X", 12, "ascii")
+    buf.write('WEBP', 8, 'ascii')
+    buf.write('VP8X', 12, 'ascii')
     buf.writeUInt32LE(10, 16) // chunk size
     buf.writeUInt32LE(0, 20) // flags
     // Canvas width-1 at bytes 24-26 (3 bytes LE)
@@ -101,26 +101,26 @@ describe("parseWebPDimensions", () => {
     return buf
   }
 
-  it("parses lossy VP8 dimensions", () => {
+  it('parses lossy VP8 dimensions', () => {
     const result = parseWebPDimensions(makeWebPLossy(640, 480))
     expect(result).toEqual({ width: 640, height: 480 })
   })
 
-  it("parses lossless VP8L dimensions", () => {
+  it('parses lossless VP8L dimensions', () => {
     const result = parseWebPDimensions(makeWebPLossless(1024, 768))
     expect(result).toEqual({ width: 1024, height: 768 })
   })
 
-  it("parses extended VP8X dimensions", () => {
+  it('parses extended VP8X dimensions', () => {
     const result = parseWebPDimensions(makeWebPExtended(1920, 1080))
     expect(result).toEqual({ width: 1920, height: 1080 })
   })
 
-  it("returns 0x0 for unknown chunk type", () => {
+  it('returns 0x0 for unknown chunk type', () => {
     const buf = Buffer.alloc(20, 0)
-    buf.write("RIFF", 0, "ascii")
-    buf.write("WEBP", 8, "ascii")
-    buf.write("XXXX", 12, "ascii")
+    buf.write('RIFF', 0, 'ascii')
+    buf.write('WEBP', 8, 'ascii')
+    buf.write('XXXX', 12, 'ascii')
     const result = parseWebPDimensions(buf)
     expect(result).toEqual({ width: 0, height: 0 })
   })

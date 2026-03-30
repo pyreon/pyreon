@@ -3,12 +3,12 @@
  *
  * PATTERN: useHead for document title/meta
  */
-import { useHead } from "@pyreon/head"
+import { useHead } from '@pyreon/head'
 
 export const Home = () => {
   useHead({
-    title: "Home",
-    meta: [{ name: "description", content: "Pyreon AI reference app" }],
+    title: 'Home',
+    meta: [{ name: 'description', content: 'Pyreon AI reference app' }],
   })
 
   return (

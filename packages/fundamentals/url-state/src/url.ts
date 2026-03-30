@@ -1,4 +1,4 @@
-const _isBrowser = typeof window !== "undefined"
+const _isBrowser = typeof window !== 'undefined'
 
 /** Read a search param from the current URL. Returns `null` if not present. */
 export function getParam(key: string): string | null {
@@ -59,9 +59,9 @@ export function setParams(entries: Record<string, string | null>, replace: boole
   }
 
   if (replace) {
-    history.replaceState(null, "", url)
+    history.replaceState(null, '', url)
   } else {
-    history.pushState(null, "", url)
+    history.pushState(null, '', url)
   }
 }
 
@@ -90,9 +90,9 @@ export function setParamRepeated(key: string, values: string[] | null, replace: 
   }
 
   if (replace) {
-    history.replaceState(null, "", url)
+    history.replaceState(null, '', url)
   } else {
-    history.pushState(null, "", url)
+    history.pushState(null, '', url)
   }
 }
 

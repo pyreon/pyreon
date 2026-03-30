@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 let mountCallbacks: Array<() => unknown> = []
 let unmountCallbacks: Array<() => void> = []
 
-vi.mock("@pyreon/core", () => ({
+vi.mock('@pyreon/core', () => ({
   onMount: (fn: () => unknown) => {
     mountCallbacks.push(fn)
   },
@@ -12,9 +12,9 @@ vi.mock("@pyreon/core", () => ({
   },
 }))
 
-import { useIntersection } from "../useIntersection"
+import { useIntersection } from '../useIntersection'
 
-describe("useIntersection", () => {
+describe('useIntersection', () => {
   let intersectionCallback: ((entries: IntersectionObserverEntry[]) => void) | undefined
   let observeSpy: ReturnType<typeof vi.fn>
   let disconnectSpy: ReturnType<typeof vi.fn>
@@ -37,7 +37,7 @@ describe("useIntersection", () => {
         unobserve: vi.fn(),
         disconnect: disconnectSpy,
         root: options?.root ?? null,
-        rootMargin: options?.rootMargin ?? "0px",
+        rootMargin: options?.rootMargin ?? '0px',
         thresholds: Array.isArray(options?.threshold)
           ? options.threshold
           : [options?.threshold ?? 0],
@@ -46,13 +46,13 @@ describe("useIntersection", () => {
     }) as unknown as typeof IntersectionObserver
   })
 
-  it("returns null initially", () => {
+  it('returns null initially', () => {
     const entry = useIntersection(() => null)
     expect(entry()).toBeNull()
   })
 
-  it("observes the element on mount", () => {
-    const el = document.createElement("div")
+  it('observes the element on mount', () => {
+    const el = document.createElement('div')
     useIntersection(() => el)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -61,7 +61,7 @@ describe("useIntersection", () => {
     expect(observeSpy).toHaveBeenCalledWith(el)
   })
 
-  it("does not observe when element is null", () => {
+  it('does not observe when element is null', () => {
     useIntersection(() => null)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -70,8 +70,8 @@ describe("useIntersection", () => {
     expect(observeSpy).not.toHaveBeenCalled()
   })
 
-  it("updates entry when intersection changes", () => {
-    const el = document.createElement("div")
+  it('updates entry when intersection changes', () => {
+    const el = document.createElement('div')
     const entrySignal = useIntersection(() => el)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -92,9 +92,9 @@ describe("useIntersection", () => {
     expect(entrySignal()?.isIntersecting).toBe(true)
   })
 
-  it("passes options to IntersectionObserver", () => {
-    const el = document.createElement("div")
-    const options = { threshold: 0.5, rootMargin: "10px" }
+  it('passes options to IntersectionObserver', () => {
+    const el = document.createElement('div')
+    const options = { threshold: 0.5, rootMargin: '10px' }
     useIntersection(() => el, options)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -103,8 +103,8 @@ describe("useIntersection", () => {
     expect(IntersectionObserver).toHaveBeenCalledWith(expect.any(Function), options)
   })
 
-  it("disconnects observer on unmount", () => {
-    const el = document.createElement("div")
+  it('disconnects observer on unmount', () => {
+    const el = document.createElement('div')
     useIntersection(() => el)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -116,8 +116,8 @@ describe("useIntersection", () => {
     expect(disconnectSpy).toHaveBeenCalled()
   })
 
-  it("does not crash when callback has empty entries", () => {
-    const el = document.createElement("div")
+  it('does not crash when callback has empty entries', () => {
+    const el = document.createElement('div')
     const entrySignal = useIntersection(() => el)
     mountCallbacks.forEach((cb) => {
       cb()
@@ -128,8 +128,8 @@ describe("useIntersection", () => {
     expect(entrySignal()).toBeNull()
   })
 
-  it("updates to latest entry on subsequent intersections", () => {
-    const el = document.createElement("div")
+  it('updates to latest entry on subsequent intersections', () => {
+    const el = document.createElement('div')
     const entrySignal = useIntersection(() => el)
     mountCallbacks.forEach((cb) => {
       cb()

@@ -1,19 +1,19 @@
-import { popContext } from "@pyreon/core"
-import { afterEach, describe, expect, it, vi } from "vitest"
-import OverlayContextProvider, { useOverlayContext } from "../Overlay/context"
+import { popContext } from '@pyreon/core'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import OverlayContextProvider, { useOverlayContext } from '../Overlay/context'
 
-describe("Overlay context", () => {
-  it("useOverlayContext is a function", () => {
-    expect(typeof useOverlayContext).toBe("function")
+describe('Overlay context', () => {
+  it('useOverlayContext is a function', () => {
+    expect(typeof useOverlayContext).toBe('function')
   })
 
-  it("returns the default context (empty object) when called outside a provider", () => {
+  it('returns the default context (empty object) when called outside a provider', () => {
     const ctx = useOverlayContext()
     expect(ctx).toEqual({})
   })
 })
 
-describe("OverlayContextProvider component", () => {
+describe('OverlayContextProvider component', () => {
   afterEach(() => {
     try {
       popContext()
@@ -22,7 +22,7 @@ describe("OverlayContextProvider component", () => {
     }
   })
 
-  it("provides blocked/setBlocked/setUnblocked via context", () => {
+  it('provides blocked/setBlocked/setUnblocked via context', () => {
     const setBlocked = vi.fn()
     const setUnblocked = vi.fn()
 
@@ -30,7 +30,7 @@ describe("OverlayContextProvider component", () => {
       blocked: true,
       setBlocked,
       setUnblocked,
-      children: "child",
+      children: 'child',
     })
 
     const ctx = useOverlayContext()
@@ -39,18 +39,18 @@ describe("OverlayContextProvider component", () => {
     expect(ctx.setUnblocked).toBe(setUnblocked)
   })
 
-  it("renders children (returns a value)", () => {
+  it('renders children (returns a value)', () => {
     const result = OverlayContextProvider({
       blocked: false,
       setBlocked: vi.fn(),
       setUnblocked: vi.fn(),
-      children: "Hello overlay",
+      children: 'Hello overlay',
     })
 
     expect(result).toBeDefined()
   })
 
-  it("provides blocked as false", () => {
+  it('provides blocked as false', () => {
     OverlayContextProvider({
       blocked: false,
       setBlocked: vi.fn(),
@@ -62,7 +62,7 @@ describe("OverlayContextProvider component", () => {
     expect(ctx.blocked).toBe(false)
   })
 
-  it("provides blocked as a function when passed as a function", () => {
+  it('provides blocked as a function when passed as a function', () => {
     const blockedFn = () => true
 
     OverlayContextProvider({

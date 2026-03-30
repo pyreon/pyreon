@@ -1,22 +1,22 @@
-import * as fs from "node:fs"
-import * as os from "node:os"
-import * as path from "node:path"
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
-import { type DoctorOptions, doctor } from "../doctor"
+import { type DoctorOptions, doctor } from '../doctor'
 
 function makeTmpDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pyreon-doctor-"))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-doctor-'))
   return dir
 }
 
 function writeFile(dir: string, relPath: string, content: string): void {
   const full = path.join(dir, relPath)
   fs.mkdirSync(path.dirname(full), { recursive: true })
-  fs.writeFileSync(full, content, "utf-8")
+  fs.writeFileSync(full, content, 'utf-8')
 }
 
 function readFile(dir: string, relPath: string): string {
-  return fs.readFileSync(path.join(dir, relPath), "utf-8")
+  return fs.readFileSync(path.join(dir, relPath), 'utf-8')
 }
 
 function defaultOptions(cwd: string): DoctorOptions {
@@ -42,13 +42,13 @@ export function Counter() {
 }
 `
 
-describe("doctor", () => {
+describe('doctor', () => {
   let tmpDir: string
   let logSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     tmpDir = makeTmpDir()
-    logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
   })
 
   afterEach(() => {
@@ -58,59 +58,59 @@ describe("doctor", () => {
 
   // ─── detect-only mode ──────────────────────────────────────────────────
 
-  it("detects React patterns in files (no --fix)", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('detects React patterns in files (no --fix)', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const errorCount = await doctor(defaultOptions(tmpDir))
 
     expect(errorCount).toBeGreaterThan(0)
   })
 
-  it("reports correct file paths and diagnostic counts", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('reports correct file paths and diagnostic counts', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(false)
     expect(result.files.length).toBe(1)
-    expect(result.files[0].file).toBe(path.join("src", "App.tsx"))
+    expect(result.files[0].file).toBe(path.join('src', 'App.tsx'))
     expect(result.summary.filesWithIssues).toBe(1)
     expect(result.summary.totalErrors).toBeGreaterThan(0)
     // Should detect: react-import, use-state, use-effect-deps, class-name-prop
     const codes = result.files[0].diagnostics.map((d: { code: string }) => d.code)
-    expect(codes).toContain("react-import")
-    expect(codes).toContain("use-state")
-    expect(codes).toContain("class-name-prop")
+    expect(codes).toContain('react-import')
+    expect(codes).toContain('use-state')
+    expect(codes).toContain('class-name-prop')
   })
 
   // ─── --fix mode ────────────────────────────────────────────────────────
 
-  it("--fix mode rewrites files with migrations", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('--fix mode rewrites files with migrations', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const opts: DoctorOptions = { fix: true, json: false, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const updated = readFile(tmpDir, "src/App.tsx")
+    const updated = readFile(tmpDir, 'src/App.tsx')
     // React import should be removed or rewritten
     expect(updated).not.toContain('from "react"')
     // useState should be migrated to signal
-    expect(updated).toContain("signal")
+    expect(updated).toContain('signal')
     // className should be migrated to class
-    expect(updated).toContain("class=")
+    expect(updated).toContain('class=')
   })
 
-  it("--fix mode reports totalFixed in JSON output", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('--fix mode reports totalFixed in JSON output', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const opts: DoctorOptions = { fix: true, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
     expect(result.summary.totalFixed).toBeGreaterThan(0)
@@ -118,30 +118,30 @@ describe("doctor", () => {
 
   // ─── --json mode ───────────────────────────────────────────────────────
 
-  it("--json mode returns structured JSON output", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('--json mode returns structured JSON output', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
-    expect(result).toHaveProperty("passed")
-    expect(result).toHaveProperty("files")
-    expect(result).toHaveProperty("summary")
-    expect(result.summary).toHaveProperty("filesScanned")
-    expect(result.summary).toHaveProperty("filesWithIssues")
-    expect(result.summary).toHaveProperty("totalErrors")
-    expect(result.summary).toHaveProperty("totalFixable")
-    expect(result.summary).toHaveProperty("totalFixed")
+    expect(result).toHaveProperty('passed')
+    expect(result).toHaveProperty('files')
+    expect(result).toHaveProperty('summary')
+    expect(result.summary).toHaveProperty('filesScanned')
+    expect(result.summary).toHaveProperty('filesWithIssues')
+    expect(result.summary).toHaveProperty('totalErrors')
+    expect(result.summary).toHaveProperty('totalFixable')
+    expect(result.summary).toHaveProperty('totalFixed')
     expect(Array.isArray(result.files)).toBe(true)
   })
 
   // ─── --ci mode ─────────────────────────────────────────────────────────
 
-  it("--ci mode returns non-zero error count when issues found", async () => {
-    writeFile(tmpDir, "src/App.tsx", REACT_TSX)
+  it('--ci mode returns non-zero error count when issues found', async () => {
+    writeFile(tmpDir, 'src/App.tsx', REACT_TSX)
 
     const opts: DoctorOptions = { fix: false, json: false, ci: true, cwd: tmpDir }
     const errorCount = await doctor(opts)
@@ -149,8 +149,8 @@ describe("doctor", () => {
     expect(errorCount).toBeGreaterThan(0)
   })
 
-  it("--ci mode returns 0 when no issues found", async () => {
-    writeFile(tmpDir, "src/App.tsx", CLEAN_TSX)
+  it('--ci mode returns 0 when no issues found', async () => {
+    writeFile(tmpDir, 'src/App.tsx', CLEAN_TSX)
 
     const opts: DoctorOptions = { fix: false, json: false, ci: true, cwd: tmpDir }
     const errorCount = await doctor(opts)
@@ -160,16 +160,16 @@ describe("doctor", () => {
 
   // ─── skipping ──────────────────────────────────────────────────────────
 
-  it("skips node_modules and non-source files", async () => {
-    writeFile(tmpDir, "node_modules/some-pkg/index.tsx", REACT_TSX)
-    writeFile(tmpDir, "dist/bundle.tsx", REACT_TSX)
-    writeFile(tmpDir, "assets/readme.md", "# className something useState")
-    writeFile(tmpDir, "src/App.tsx", CLEAN_TSX)
+  it('skips node_modules and non-source files', async () => {
+    writeFile(tmpDir, 'node_modules/some-pkg/index.tsx', REACT_TSX)
+    writeFile(tmpDir, 'dist/bundle.tsx', REACT_TSX)
+    writeFile(tmpDir, 'assets/readme.md', '# className something useState')
+    writeFile(tmpDir, 'src/App.tsx', CLEAN_TSX)
 
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(true)
@@ -180,26 +180,26 @@ describe("doctor", () => {
 
   // ─── clean project ─────────────────────────────────────────────────────
 
-  it("clean project returns no issues", async () => {
-    writeFile(tmpDir, "src/App.tsx", CLEAN_TSX)
+  it('clean project returns no issues', async () => {
+    writeFile(tmpDir, 'src/App.tsx', CLEAN_TSX)
 
     const errorCount = await doctor(defaultOptions(tmpDir))
 
     expect(errorCount).toBe(0)
   })
 
-  it("clean project prints success message in human mode", async () => {
-    writeFile(tmpDir, "src/App.tsx", CLEAN_TSX)
+  it('clean project prints success message in human mode', async () => {
+    writeFile(tmpDir, 'src/App.tsx', CLEAN_TSX)
 
     await doctor(defaultOptions(tmpDir))
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("\n")
-    expect(output).toContain("No issues found")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n')
+    expect(output).toContain('No issues found')
   })
 
   // ─── hasReactPatterns pre-filter ────────────────────────────────────────
 
-  it("hasReactPatterns pre-filter skips non-React files efficiently", async () => {
+  it('hasReactPatterns pre-filter skips non-React files efficiently', async () => {
     // A file with Pyreon-only code should not produce diagnostics
     const pyreonOnly = `import { signal, computed, effect } from "@pyreon/reactivity"
 import { onMount } from "@pyreon/core"
@@ -212,12 +212,12 @@ export function App() {
   return <div class="app">{count()}</div>
 }
 `
-    writeFile(tmpDir, "src/App.tsx", pyreonOnly)
+    writeFile(tmpDir, 'src/App.tsx', pyreonOnly)
 
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
     expect(result.passed).toBe(true)
@@ -226,7 +226,7 @@ export function App() {
 
   // ─── empty directory ────────────────────────────────────────────────────
 
-  it("handles empty directory with no source files", async () => {
+  it('handles empty directory with no source files', async () => {
     const errorCount = await doctor(defaultOptions(tmpDir))
 
     expect(errorCount).toBe(0)
@@ -234,21 +234,21 @@ export function App() {
 
   // ─── multiple files ─────────────────────────────────────────────────────
 
-  it("scans multiple files and aggregates results", async () => {
-    writeFile(tmpDir, "src/A.tsx", REACT_TSX)
+  it('scans multiple files and aggregates results', async () => {
+    writeFile(tmpDir, 'src/A.tsx', REACT_TSX)
     writeFile(
       tmpDir,
-      "src/B.tsx",
+      'src/B.tsx',
       `import { useState } from "react"
 export function B() { const [x, setX] = useState(0); return <div>{x}</div> }
 `,
     )
-    writeFile(tmpDir, "src/C.tsx", CLEAN_TSX)
+    writeFile(tmpDir, 'src/C.tsx', CLEAN_TSX)
 
     const opts: DoctorOptions = { fix: false, json: true, ci: false, cwd: tmpDir }
     await doctor(opts)
 
-    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join("")
+    const output = logSpy.mock.calls.map((c: unknown[]) => c[0]).join('')
     const result = JSON.parse(output)
 
     expect(result.summary.filesScanned).toBe(3)

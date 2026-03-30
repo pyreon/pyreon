@@ -1,44 +1,44 @@
-import type { OutputFormat } from "@pyreon/document"
-import { createDocument, Document, Heading, Page, render, Table, Text } from "@pyreon/document"
-import { signal } from "@pyreon/reactivity"
+import type { OutputFormat } from '@pyreon/document'
+import { createDocument, Document, Heading, Page, render, Table, Text } from '@pyreon/document'
+import { signal } from '@pyreon/reactivity'
 
 const formats: { id: OutputFormat; label: string }[] = [
-  { id: "html", label: "HTML" },
-  { id: "md", label: "Markdown" },
-  { id: "text", label: "Plain Text" },
-  { id: "csv", label: "CSV" },
-  { id: "email", label: "Email HTML" },
-  { id: "slack", label: "Slack" },
+  { id: 'html', label: 'HTML' },
+  { id: 'md', label: 'Markdown' },
+  { id: 'text', label: 'Plain Text' },
+  { id: 'csv', label: 'CSV' },
+  { id: 'email', label: 'Email HTML' },
+  { id: 'slack', label: 'Slack' },
 ]
 
 export function DocumentDemo() {
   // ─── Builder pattern ─────────────────────────────────────────────────────
-  const activeFormat = signal<OutputFormat>("html")
+  const activeFormat = signal<OutputFormat>('html')
   const output = signal('Click "Render" to see output.')
   const rendering = signal(false)
 
   // Sample data
   const teamData = signal([
-    ["Alice", "Engineering", "$145K", "4.8"],
-    ["Bob", "Design", "$125K", "4.5"],
-    ["Carol", "Marketing", "$115K", "4.9"],
-    ["Dave", "Engineering", "$155K", "4.2"],
-    ["Eve", "Product", "$135K", "4.7"],
+    ['Alice', 'Engineering', '$145K', '4.8'],
+    ['Bob', 'Design', '$125K', '4.5'],
+    ['Carol', 'Marketing', '$115K', '4.9'],
+    ['Dave', 'Engineering', '$155K', '4.2'],
+    ['Eve', 'Product', '$135K', '4.7'],
   ])
 
   // Build document using builder pattern
   function buildReport() {
-    return createDocument({ title: "Q4 Team Report" })
-      .heading("Q4 Team Report")
-      .text("Annual performance review summary for all departments.")
+    return createDocument({ title: 'Q4 Team Report' })
+      .heading('Q4 Team Report')
+      .text('Annual performance review summary for all departments.')
       .divider()
-      .heading("Team Overview")
+      .heading('Team Overview')
       .table({
         columns: [
-          { header: "Name", key: "name" },
-          { header: "Department", key: "dept" },
-          { header: "Salary", key: "salary" },
-          { header: "Rating", key: "rating" },
+          { header: 'Name', key: 'name' },
+          { header: 'Department', key: 'dept' },
+          { header: 'Salary', key: 'salary' },
+          { header: 'Rating', key: 'rating' },
         ],
         rows: teamData().map((r) => ({
           name: r[0]!,
@@ -49,16 +49,16 @@ export function DocumentDemo() {
       })
       .text(`Total team members: ${teamData().length}`)
       .divider()
-      .heading("Notes")
+      .heading('Notes')
       .list([
-        "All ratings above 4.0 — strong quarter.",
-        "Engineering headcount increased by 2.",
-        "Marketing launched 3 new campaigns.",
+        'All ratings above 4.0 — strong quarter.',
+        'Engineering headcount increased by 2.',
+        'Marketing launched 3 new campaigns.',
       ])
-      .quote("Great teams build great products.")
+      .quote('Great teams build great products.')
       .divider()
-      .code("const avgRating = ratings.reduce((a, b) => a + b) / ratings.length")
-      .text("Report generated automatically by @pyreon/document.")
+      .code('const avgRating = ratings.reduce((a, b) => a + b) / ratings.length')
+      .text('Report generated automatically by @pyreon/document.')
   }
 
   // Render to selected format
@@ -68,7 +68,7 @@ export function DocumentDemo() {
       const doc = buildReport()
       const docNode = doc.build()
       const rendered = await render(docNode, activeFormat())
-      if (typeof rendered === "string") {
+      if (typeof rendered === 'string') {
         output.set(rendered)
       } else {
         output.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
@@ -81,36 +81,36 @@ export function DocumentDemo() {
   }
 
   // ─── JSX pattern demo ─────────────────────────────────────────────────────
-  const jsxOutput = signal("")
-  const jsxFormat = signal<OutputFormat>("html")
+  const jsxOutput = signal('')
+  const jsxFormat = signal<OutputFormat>('html')
 
   async function renderJsxDoc() {
     rendering.set(true)
     try {
       const doc = Document(
-        { title: "Invoice #1042" },
+        { title: 'Invoice #1042' },
         Page(
           {},
-          Heading({ level: 1 }, "Invoice #1042"),
-          Text({}, "Billed to: Acme Corp."),
-          Text({}, "Date: 2026-03-24"),
+          Heading({ level: 1 }, 'Invoice #1042'),
+          Text({}, 'Billed to: Acme Corp.'),
+          Text({}, 'Date: 2026-03-24'),
           Table({
             columns: [
-              { header: "Item", key: "item" },
-              { header: "Qty", key: "qty" },
-              { header: "Price", key: "price" },
+              { header: 'Item', key: 'item' },
+              { header: 'Qty', key: 'qty' },
+              { header: 'Price', key: 'price' },
             ],
             rows: [
-              { item: "Widget A", qty: "10", price: "$50" },
-              { item: "Widget B", qty: "5", price: "$75" },
-              { item: "Service Fee", qty: "1", price: "$25" },
+              { item: 'Widget A', qty: '10', price: '$50' },
+              { item: 'Widget B', qty: '5', price: '$75' },
+              { item: 'Service Fee', qty: '1', price: '$25' },
             ],
           }),
-          Text({ bold: true }, "Total: $600"),
+          Text({ bold: true }, 'Total: $600'),
         ),
       )
       const rendered = await render(doc, jsxFormat())
-      if (typeof rendered === "string") {
+      if (typeof rendered === 'string') {
         jsxOutput.set(rendered)
       } else {
         jsxOutput.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
@@ -145,7 +145,7 @@ export function DocumentDemo() {
             <button
               type="button"
               key={fmt.id}
-              class={activeFormat() === fmt.id ? "active" : ""}
+              class={activeFormat() === fmt.id ? 'active' : ''}
               onClick={() => {
                 activeFormat.set(fmt.id)
                 addLog(`Format → ${fmt.label}`)
@@ -164,7 +164,7 @@ export function DocumentDemo() {
             }}
             disabled={rendering()}
           >
-            {() => (rendering() ? "Rendering..." : "Render")}
+            {() => (rendering() ? 'Rendering...' : 'Render')}
           </button>
           <button
             type="button"
@@ -172,8 +172,8 @@ export function DocumentDemo() {
               teamData.update((d) => [
                 ...d,
                 [
-                  ["Frank", "Grace", "Hank", "Ivy"][Math.floor(Math.random() * 4)]!,
-                  ["Engineering", "Design", "Marketing", "Product"][Math.floor(Math.random() * 4)]!,
+                  ['Frank', 'Grace', 'Hank', 'Ivy'][Math.floor(Math.random() * 4)]!,
+                  ['Engineering', 'Design', 'Marketing', 'Product'][Math.floor(Math.random() * 4)]!,
                   `$${100 + Math.floor(Math.random() * 80)}K`,
                   (3.5 + Math.random() * 1.5).toFixed(1),
                 ],
@@ -205,8 +205,8 @@ export function DocumentDemo() {
         <h3>Node Functions — Invoice</h3>
         <p style="margin-bottom: 8px; font-size: 13px; opacity: 0.7">
           <code>
-            Document({"{}"}, Page({"{}"}, Heading({"{}"}, ...)))
-          </code>{" "}
+            Document({'{}'}, Page({'{}'}, Heading({'{}'}, ...)))
+          </code>{' '}
           — direct node construction for full control.
         </p>
         <div class="row" style="margin-bottom: 8px; flex-wrap: wrap">
@@ -214,7 +214,7 @@ export function DocumentDemo() {
             <button
               type="button"
               key={`jsx-${fmt.id}`}
-              class={jsxFormat() === fmt.id ? "active" : ""}
+              class={jsxFormat() === fmt.id ? 'active' : ''}
               onClick={() => {
                 jsxFormat.set(fmt.id)
                 addLog(`Invoice format → ${fmt.label}`)
@@ -233,7 +233,7 @@ export function DocumentDemo() {
           disabled={rendering()}
           style="margin-bottom: 8px"
         >
-          {() => (rendering() ? "Rendering..." : "Render Invoice")}
+          {() => (rendering() ? 'Rendering...' : 'Render Invoice')}
         </button>
         <pre style="background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; font-size: 13px; overflow-x: auto; max-height: 300px; white-space: pre-wrap; word-break: break-word">
           {() => jsxOutput() || 'Click "Render Invoice" to see output.'}
@@ -244,17 +244,17 @@ export function DocumentDemo() {
       <div class="section">
         <h3>Supported Formats</h3>
         <p style="font-size: 13px; opacity: 0.7; line-height: 1.6">
-          Text-based: <code>html</code>, <code>md</code>, <code>text</code>, <code>csv</code>,{" "}
+          Text-based: <code>html</code>, <code>md</code>, <code>text</code>, <code>csv</code>,{' '}
           <code>email</code>, <code>svg</code>
           <br />
           Binary: <code>pdf</code>, <code>docx</code>, <code>xlsx</code>, <code>pptx</code>
           <br />
-          Messaging: <code>slack</code>, <code>teams</code>, <code>discord</code>,{" "}
+          Messaging: <code>slack</code>, <code>teams</code>, <code>discord</code>,{' '}
           <code>telegram</code>, <code>whatsapp</code>, <code>google-chat</code>
           <br />
           Wikis: <code>notion</code>, <code>confluence</code>
           <br />
-          Custom: <code>registerRenderer('thermal', {"{ render(node) { ... } }"})</code>
+          Custom: <code>registerRenderer('thermal', {'{ render(node) { ... } }'})</code>
         </p>
       </div>
 
@@ -264,8 +264,8 @@ export function DocumentDemo() {
         <div class="log">
           {() =>
             log().length === 0
-              ? "Interact with the controls above to see changes."
-              : log().join("\n")
+              ? 'Interact with the controls above to see changes.'
+              : log().join('\n')
           }
         </div>
       </div>

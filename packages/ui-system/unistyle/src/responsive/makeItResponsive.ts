@@ -1,9 +1,9 @@
-import { isEmpty } from "@pyreon/ui-core"
-import type createMediaQueries from "./createMediaQueries"
-import normalizeTheme from "./normalizeTheme"
-import optimizeTheme from "./optimizeTheme"
-import type sortBreakpoints from "./sortBreakpoints"
-import transformTheme from "./transformTheme"
+import { isEmpty } from '@pyreon/ui-core'
+import type createMediaQueries from './createMediaQueries'
+import normalizeTheme from './normalizeTheme'
+import optimizeTheme from './optimizeTheme'
+import type sortBreakpoints from './sortBreakpoints'
+import transformTheme from './transformTheme'
 
 type Css = (strings: TemplateStringsArray, ...values: any[]) => any
 
@@ -51,11 +51,11 @@ const themeCache = new WeakMap<
 >()
 
 const makeItResponsive: MakeItResponsive =
-  ({ theme: customTheme, key = "", css, styles, normalize = true }) =>
+  ({ theme: customTheme, key = '', css, styles, normalize = true }) =>
   ({ theme = {}, ...props }) => {
     const internalTheme = customTheme || props[key]
 
-    if (isEmpty(internalTheme)) return ""
+    if (isEmpty(internalTheme)) return ''
 
     const { rootSize, breakpoints, __PYREON__, ...restTheme } = theme as Theme
 
@@ -105,7 +105,7 @@ const makeItResponsive: MakeItResponsive =
     return sortedBreakpoints.map((item: string) => {
       const breakpointTheme = optimizedTheme[item]
 
-      if (!breakpointTheme || !media) return ""
+      if (!breakpointTheme || !media) return ''
 
       const result = renderStyles(breakpointTheme)
 

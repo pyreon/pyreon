@@ -1,7 +1,7 @@
-import type { DefaultDimensions } from "../constants/defaultDimensions"
-import type { Css } from "./styles"
-import type { ThemeModeCallback } from "./theme"
-import type { CallBackParam, NullableKeys, ReturnCbParam, Spread, TObj, ValueOf } from "./utils"
+import type { DefaultDimensions } from '../constants/defaultDimensions'
+import type { Css } from './styles'
+import type { ThemeModeCallback } from './theme'
+import type { CallBackParam, NullableKeys, ReturnCbParam, Spread, TObj, ValueOf } from './utils'
 
 export type { DefaultDimensions }
 
@@ -10,7 +10,7 @@ export type ExtractNullableDimensionKeys<T> = {
 }
 
 export type ExtractDimensionKey<T extends DimensionValue> = T extends DimensionValueObj
-  ? T["propName"]
+  ? T['propName']
   : T
 
 export type ExtractDimensionMulti<T extends DimensionValue> = T extends DimensionValueObj

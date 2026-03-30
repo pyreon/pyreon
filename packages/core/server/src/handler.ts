@@ -24,17 +24,17 @@
  * Bun.serve({ fetch: handler })
  */
 
-import type { ComponentFn } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import { renderWithHead } from "@pyreon/head/ssr"
+import type { ComponentFn } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { renderWithHead } from '@pyreon/head/ssr'
 import {
   createRouter,
   prefetchLoaderData,
   type RouteRecord,
   RouterProvider,
   serializeLoaderData,
-} from "@pyreon/router"
-import { renderToStream, runWithRequestContext } from "@pyreon/runtime-server"
+} from '@pyreon/router'
+import { renderToStream, runWithRequestContext } from '@pyreon/runtime-server'
 import {
   buildClientEntryTag,
   buildScriptsFast,
@@ -42,10 +42,10 @@ import {
   compileTemplate,
   DEFAULT_TEMPLATE,
   processCompiledTemplate,
-} from "./html"
-import type { Middleware, MiddlewareContext } from "./middleware"
+} from './html'
+import type { Middleware, MiddlewareContext } from './middleware'
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export interface HandlerOptions {
   /** Root application component */
@@ -70,7 +70,7 @@ export interface HandlerOptions {
    *   "string" (default) — full renderToString, complete HTML in one response
    *   "stream" — progressive streaming via renderToStream (Suspense out-of-order)
    */
-  mode?: "string" | "stream"
+  mode?: 'string' | 'stream'
 }
 
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
@@ -78,9 +78,9 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     App,
     routes,
     template = DEFAULT_TEMPLATE,
-    clientEntry = "/src/entry-client.ts",
+    clientEntry = '/src/entry-client.ts',
     middleware = [],
-    mode = "string",
+    mode = 'string',
   } = options
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
@@ -96,7 +96,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       req,
       url,
       path,
-      headers: new Headers({ "Content-Type": "text/html; charset=utf-8" }),
+      headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
       locals: {},
     }
 
@@ -106,7 +106,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     }
 
     // ── Per-request router ────────────────────────────────────────────────────
-    const router = createRouter({ routes, mode: "history", url: path })
+    const router = createRouter({ routes, mode: 'history', url: path })
 
     return runWithRequestContext(async () => {
       try {
@@ -116,7 +116,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         // Build the VNode tree
         const app = h(RouterProvider, { router }, h(App, null))
 
-        if (mode === "stream") {
+        if (mode === 'stream') {
           return renderStreamResponse(app, router, compiled, clientEntryTag, ctx.headers)
         }
 
@@ -129,11 +129,11 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
       } catch (err) {
         if (__DEV__) {
-          console.error("[Pyreon Server] SSR render failed:", err)
+          console.error('[Pyreon Server] SSR render failed:', err)
         }
-        return new Response("Internal Server Error", {
+        return new Response('Internal Server Error', {
           status: 500,
-          headers: { "Content-Type": "text/plain" },
+          headers: { 'Content-Type': 'text/plain' },
         })
       }
     })
@@ -183,7 +183,7 @@ async function renderStreamResponse(
         push(shellTail)
       } catch (err) {
         if (__DEV__) {
-          console.error("[Pyreon Server] Stream render failed:", err)
+          console.error('[Pyreon Server] Stream render failed:', err)
         }
         // Emit an inline error indicator — status code is already sent (200)
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)

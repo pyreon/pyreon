@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { h as pyreonH } from "@pyreon/core"
-import { mount } from "@pyreon/runtime-dom"
+import type { VNodeChild } from '@pyreon/core'
+import { h as pyreonH } from '@pyreon/core'
+import { mount } from '@pyreon/runtime-dom'
 import {
   memo,
   useCallback,
@@ -12,7 +12,7 @@ import {
   useReducer,
   useRef,
   useState,
-} from "../hooks"
+} from '../hooks'
 import {
   Component,
   cloneElement,
@@ -27,13 +27,13 @@ import {
   render,
   toChildArray,
   useContext,
-} from "../index"
-import type { RenderContext } from "../jsx-runtime"
-import { beginRender, endRender, jsx } from "../jsx-runtime"
-import { batch, computed, signal, effect as signalEffect } from "../signals"
+} from '../index'
+import type { RenderContext } from '../jsx-runtime'
+import { beginRender, endRender, jsx } from '../jsx-runtime'
+import { batch, computed, signal, effect as signalEffect } from '../signals'
 
 function container(): HTMLElement {
-  const el = document.createElement("div")
+  const el = document.createElement('div')
   document.body.appendChild(el)
   return el
 }
@@ -73,133 +73,133 @@ function createHookRunner() {
   }
 }
 
-describe("@pyreon/preact-compat", () => {
+describe('@pyreon/preact-compat', () => {
   // ─── Core API ────────────────────────────────────────────────────────────
 
-  test("h() creates VNodes", () => {
-    const vnode = h("div", { class: "test" }, "hello")
-    expect(vnode.type).toBe("div")
-    expect(vnode.props.class).toBe("test")
-    expect(vnode.children).toContain("hello")
+  test('h() creates VNodes', () => {
+    const vnode = h('div', { class: 'test' }, 'hello')
+    expect(vnode.type).toBe('div')
+    expect(vnode.props.class).toBe('test')
+    expect(vnode.children).toContain('hello')
   })
 
-  test("createElement is alias for h", () => {
+  test('createElement is alias for h', () => {
     expect(createElement).toBe(h)
   })
 
-  test("Fragment is a symbol", () => {
-    expect(typeof Fragment).toBe("symbol")
+  test('Fragment is a symbol', () => {
+    expect(typeof Fragment).toBe('symbol')
   })
 
-  test("render() mounts to DOM", () => {
+  test('render() mounts to DOM', () => {
     const el = container()
-    render(h("span", null, "mounted"), el)
-    expect(el.innerHTML).toContain("mounted")
+    render(h('span', null, 'mounted'), el)
+    expect(el.innerHTML).toContain('mounted')
   })
 
-  test("hydrate() calls hydrateRoot", () => {
+  test('hydrate() calls hydrateRoot', () => {
     const el = container()
-    el.innerHTML = "<span>hydrated</span>"
-    hydrate(h("span", null, "hydrated"), el)
-    expect(el.innerHTML).toContain("hydrated")
+    el.innerHTML = '<span>hydrated</span>'
+    hydrate(h('span', null, 'hydrated'), el)
+    expect(el.innerHTML).toContain('hydrated')
   })
 
-  test("isValidElement detects VNodes", () => {
-    const vnode = h("div", null)
+  test('isValidElement detects VNodes', () => {
+    const vnode = h('div', null)
     expect(isValidElement(vnode)).toBe(true)
     expect(isValidElement(null)).toBe(false)
-    expect(isValidElement("string")).toBe(false)
+    expect(isValidElement('string')).toBe(false)
     expect(isValidElement(42)).toBe(false)
-    expect(isValidElement({ type: "div", props: {}, children: [] })).toBe(true)
+    expect(isValidElement({ type: 'div', props: {}, children: [] })).toBe(true)
   })
 
-  test("isValidElement returns false for objects missing required keys", () => {
-    expect(isValidElement({ type: "div" })).toBe(false)
-    expect(isValidElement({ type: "div", props: {} })).toBe(false)
+  test('isValidElement returns false for objects missing required keys', () => {
+    expect(isValidElement({ type: 'div' })).toBe(false)
+    expect(isValidElement({ type: 'div', props: {} })).toBe(false)
     expect(isValidElement({})).toBe(false)
     expect(isValidElement(undefined)).toBe(false)
   })
 
-  test("toChildArray flattens children", () => {
-    const result = toChildArray(["a", ["b", ["c"]], null, undefined, false, "d"] as VNodeChild[])
-    expect(result).toEqual(["a", "b", "c", "d"])
+  test('toChildArray flattens children', () => {
+    const result = toChildArray(['a', ['b', ['c']], null, undefined, false, 'd'] as VNodeChild[])
+    expect(result).toEqual(['a', 'b', 'c', 'd'])
   })
 
-  test("toChildArray handles single non-array child", () => {
-    const result = toChildArray("hello")
-    expect(result).toEqual(["hello"])
+  test('toChildArray handles single non-array child', () => {
+    const result = toChildArray('hello')
+    expect(result).toEqual(['hello'])
   })
 
-  test("toChildArray handles null/undefined/boolean at top level", () => {
+  test('toChildArray handles null/undefined/boolean at top level', () => {
     expect(toChildArray(null as unknown as VNodeChild)).toEqual([])
     expect(toChildArray(undefined as unknown as VNodeChild)).toEqual([])
     expect(toChildArray(false as unknown as VNodeChild)).toEqual([])
     expect(toChildArray(true as unknown as VNodeChild)).toEqual([])
   })
 
-  test("toChildArray handles number children", () => {
+  test('toChildArray handles number children', () => {
     const result = toChildArray([1, 2, 3] as VNodeChild[])
     expect(result).toEqual([1, 2, 3])
   })
 
-  test("cloneElement merges props", () => {
-    const original = h("div", { class: "a", id: "x" }, "child")
-    const cloned = cloneElement(original, { class: "b" })
-    expect(cloned.type).toBe("div")
-    expect(cloned.props.class).toBe("b")
-    expect(cloned.props.id).toBe("x")
-    expect(cloned.children).toContain("child")
+  test('cloneElement merges props', () => {
+    const original = h('div', { class: 'a', id: 'x' }, 'child')
+    const cloned = cloneElement(original, { class: 'b' })
+    expect(cloned.type).toBe('div')
+    expect(cloned.props.class).toBe('b')
+    expect(cloned.props.id).toBe('x')
+    expect(cloned.children).toContain('child')
   })
 
-  test("cloneElement replaces children when provided", () => {
-    const original = h("div", null, "old")
-    const cloned = cloneElement(original, undefined, "new")
-    expect(cloned.children).toContain("new")
-    expect(cloned.children).not.toContain("old")
+  test('cloneElement replaces children when provided', () => {
+    const original = h('div', null, 'old')
+    const cloned = cloneElement(original, undefined, 'new')
+    expect(cloned.children).toContain('new')
+    expect(cloned.children).not.toContain('old')
   })
 
-  test("cloneElement preserves key from original when not overridden", () => {
-    const original = h("div", { key: "original-key" }, "child")
-    const cloned = cloneElement(original, { class: "b" })
-    expect(cloned.key).toBe("original-key")
+  test('cloneElement preserves key from original when not overridden', () => {
+    const original = h('div', { key: 'original-key' }, 'child')
+    const cloned = cloneElement(original, { class: 'b' })
+    expect(cloned.key).toBe('original-key')
   })
 
-  test("cloneElement overrides key when provided in props", () => {
-    const original = h("div", { key: "original-key" }, "child")
-    const cloned = cloneElement(original, { key: "new-key" })
-    expect(cloned.key).toBe("new-key")
+  test('cloneElement overrides key when provided in props', () => {
+    const original = h('div', { key: 'original-key' }, 'child')
+    const cloned = cloneElement(original, { key: 'new-key' })
+    expect(cloned.key).toBe('new-key')
   })
 
-  test("cloneElement with no props passes empty override", () => {
-    const original = h("div", { id: "test" }, "child")
+  test('cloneElement with no props passes empty override', () => {
+    const original = h('div', { id: 'test' }, 'child')
     const cloned = cloneElement(original)
-    expect(cloned.props.id).toBe("test")
-    expect(cloned.children).toContain("child")
+    expect(cloned.props.id).toBe('test')
+    expect(cloned.children).toContain('child')
   })
 
-  test("createRef returns { current: null }", () => {
+  test('createRef returns { current: null }', () => {
     const ref = createRef()
     expect(ref.current).toBe(null)
   })
 
-  test("createContext/useContext work", () => {
-    const Ctx = createContext("default")
-    expect(useContext(Ctx)).toBe("default")
+  test('createContext/useContext work', () => {
+    const Ctx = createContext('default')
+    expect(useContext(Ctx)).toBe('default')
   })
 
-  test("options is an empty object", () => {
-    expect(typeof options).toBe("object")
+  test('options is an empty object', () => {
+    expect(typeof options).toBe('object')
     expect(Object.keys(options).length).toBe(0)
   })
 
-  test("Component class setState updates state with object", () => {
+  test('Component class setState updates state with object', () => {
     class Counter extends Component<Record<string, never>, { count: number }> {
       constructor(props: Record<string, never>) {
         super(props)
         this.state = { count: 0 }
       }
       override render() {
-        return h("span", null, String(this.state.count))
+        return h('span', null, String(this.state.count))
       }
     }
     const c = new Counter({})
@@ -208,14 +208,14 @@ describe("@pyreon/preact-compat", () => {
     expect(c.state.count).toBe(5)
   })
 
-  test("Component class setState with updater function", () => {
+  test('Component class setState with updater function', () => {
     class Counter extends Component<Record<string, never>, { count: number }> {
       constructor(props: Record<string, never>) {
         super(props)
         this.state = { count: 0 }
       }
       override render() {
-        return h("span", null, String(this.state.count))
+        return h('span', null, String(this.state.count))
       }
     }
     const c = new Counter({})
@@ -224,12 +224,12 @@ describe("@pyreon/preact-compat", () => {
     expect(c.state.count).toBe(6)
   })
 
-  test("Component class render() returns null by default", () => {
+  test('Component class render() returns null by default', () => {
     const c = new Component({})
     expect(c.render()).toBe(null)
   })
 
-  test("Component class forceUpdate triggers signal re-fire", () => {
+  test('Component class forceUpdate triggers signal re-fire', () => {
     class MyComp extends Component<Record<string, never>, { value: number }> {
       constructor(props: Record<string, never>) {
         super(props)
@@ -244,13 +244,13 @@ describe("@pyreon/preact-compat", () => {
 
 // ─── useState ─────────────────────────────────────────────────────────────────
 
-describe("useState", () => {
-  test("returns [value, setter] — value is the initial value", () => {
+describe('useState', () => {
+  test('returns [value, setter] — value is the initial value', () => {
     const [count] = withHookCtx(() => useState(0))
     expect(count).toBe(0)
   })
 
-  test("setter updates value on re-render", () => {
+  test('setter updates value on re-render', () => {
     const runner = createHookRunner()
     const [, setCount] = runner.run(() => useState(0))
     setCount(5)
@@ -258,7 +258,7 @@ describe("useState", () => {
     expect(count2).toBe(5)
   })
 
-  test("setter with function updater", () => {
+  test('setter with function updater', () => {
     const runner = createHookRunner()
     const [, setCount] = runner.run(() => useState(10))
     setCount((prev) => prev + 1)
@@ -266,7 +266,7 @@ describe("useState", () => {
     expect(count2).toBe(11)
   })
 
-  test("initializer function is called once", () => {
+  test('initializer function is called once', () => {
     let calls = 0
     const runner = createHookRunner()
     runner.run(() =>
@@ -285,7 +285,7 @@ describe("useState", () => {
     expect(calls).toBe(1)
   })
 
-  test("setter does nothing when value is the same (Object.is)", () => {
+  test('setter does nothing when value is the same (Object.is)', () => {
     const runner = createHookRunner()
     let rerenders = 0
     runner.ctx.scheduleRerender = () => {
@@ -298,7 +298,7 @@ describe("useState", () => {
     expect(rerenders).toBe(1)
   })
 
-  test("re-render in a component via compat JSX runtime", async () => {
+  test('re-render in a component via compat JSX runtime', async () => {
     const el = container()
     let renderCount = 0
     let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
@@ -307,44 +307,44 @@ describe("useState", () => {
       const [count, setCount] = useState(0)
       renderCount++
       triggerSet = setCount
-      return pyreonH("span", null, String(count))
+      return pyreonH('span', null, String(count))
     }
 
     const vnode = jsx(Counter, {})
     mount(vnode, el)
-    expect(el.textContent).toBe("0")
+    expect(el.textContent).toBe('0')
     const initialRenders = renderCount
 
     triggerSet(1)
     await new Promise<void>((r) => queueMicrotask(r))
     await new Promise<void>((r) => queueMicrotask(r))
-    expect(el.textContent).toBe("1")
+    expect(el.textContent).toBe('1')
     expect(renderCount).toBe(initialRenders + 1)
   })
 })
 
 // ─── useReducer ───────────────────────────────────────────────────────────────
 
-describe("useReducer", () => {
-  test("dispatch applies reducer", () => {
+describe('useReducer', () => {
+  test('dispatch applies reducer', () => {
     const runner = createHookRunner()
-    type Action = { type: "inc" } | { type: "dec" }
+    type Action = { type: 'inc' } | { type: 'dec' }
     const reducer = (state: number, action: Action) =>
-      action.type === "inc" ? state + 1 : state - 1
+      action.type === 'inc' ? state + 1 : state - 1
 
     const [state0, dispatch] = runner.run(() => useReducer(reducer, 0))
     expect(state0).toBe(0)
 
-    dispatch({ type: "inc" })
+    dispatch({ type: 'inc' })
     const [state1] = runner.run(() => useReducer(reducer, 0))
     expect(state1).toBe(1)
 
-    dispatch({ type: "dec" })
+    dispatch({ type: 'dec' })
     const [state2] = runner.run(() => useReducer(reducer, 0))
     expect(state2).toBe(0)
   })
 
-  test("initializer function is called once", () => {
+  test('initializer function is called once', () => {
     let calls = 0
     const runner = createHookRunner()
     const [state] = runner.run(() =>
@@ -370,22 +370,22 @@ describe("useReducer", () => {
     expect(calls).toBe(1)
   })
 
-  test("dispatch does nothing when reducer returns same state", () => {
+  test('dispatch does nothing when reducer returns same state', () => {
     const runner = createHookRunner()
     let rerenders = 0
     runner.ctx.scheduleRerender = () => {
       rerenders++
     }
     const [, dispatch] = runner.run(() => useReducer((_s: number, _a: string) => 5, 5))
-    dispatch("anything")
+    dispatch('anything')
     expect(rerenders).toBe(0)
   })
 })
 
 // ─── useEffect ────────────────────────────────────────────────────────────────
 
-describe("useEffect", () => {
-  test("effect runs after render via compat JSX runtime", async () => {
+describe('useEffect', () => {
+  test('effect runs after render via compat JSX runtime', async () => {
     const el = container()
     let effectRuns = 0
 
@@ -393,7 +393,7 @@ describe("useEffect", () => {
       useEffect(() => {
         effectRuns++
       })
-      return pyreonH("div", null, "test")
+      return pyreonH('div', null, 'test')
     }
 
     mount(jsx(Comp, {}), el)
@@ -401,7 +401,7 @@ describe("useEffect", () => {
     expect(effectRuns).toBeGreaterThanOrEqual(1)
   })
 
-  test("effect with empty deps runs once", async () => {
+  test('effect with empty deps runs once', async () => {
     const el = container()
     let effectRuns = 0
     let triggerSet: (v: number) => void = () => {}
@@ -412,7 +412,7 @@ describe("useEffect", () => {
       useEffect(() => {
         effectRuns++
       }, [])
-      return pyreonH("div", null, String(count))
+      return pyreonH('div', null, String(count))
     }
 
     mount(jsx(Comp, {}), el)
@@ -425,7 +425,7 @@ describe("useEffect", () => {
     expect(effectRuns).toBe(1)
   })
 
-  test("effect with deps re-runs when deps change", async () => {
+  test('effect with deps re-runs when deps change', async () => {
     const el = container()
     let effectRuns = 0
     let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
@@ -436,7 +436,7 @@ describe("useEffect", () => {
       useEffect(() => {
         effectRuns++
       }, [count])
-      return pyreonH("div", null, String(count))
+      return pyreonH('div', null, String(count))
     }
 
     mount(jsx(Comp, {}), el)
@@ -450,7 +450,7 @@ describe("useEffect", () => {
     expect(effectRuns).toBe(2)
   })
 
-  test("effect cleanup runs before re-execution", async () => {
+  test('effect cleanup runs before re-execution', async () => {
     const el = container()
     let cleanups = 0
     let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
@@ -463,7 +463,7 @@ describe("useEffect", () => {
           cleanups++
         }
       }, [count])
-      return pyreonH("div", null, String(count))
+      return pyreonH('div', null, String(count))
     }
 
     mount(jsx(Comp, {}), el)
@@ -477,7 +477,7 @@ describe("useEffect", () => {
     expect(cleanups).toBe(1)
   })
 
-  test("pendingEffects populated during render", () => {
+  test('pendingEffects populated during render', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useEffect(() => {})
@@ -485,7 +485,7 @@ describe("useEffect", () => {
     expect(runner.ctx.pendingEffects).toHaveLength(1)
   })
 
-  test("effect with same deps does not re-queue", () => {
+  test('effect with same deps does not re-queue', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useEffect(() => {}, [1, 2])
@@ -501,8 +501,8 @@ describe("useEffect", () => {
 
 // ─── useLayoutEffect ─────────────────────────────────────────────────────────
 
-describe("useLayoutEffect", () => {
-  test("layout effect runs synchronously during render in compat runtime", () => {
+describe('useLayoutEffect', () => {
+  test('layout effect runs synchronously during render in compat runtime', () => {
     const el = container()
     let effectRuns = 0
 
@@ -510,14 +510,14 @@ describe("useLayoutEffect", () => {
       useLayoutEffect(() => {
         effectRuns++
       })
-      return pyreonH("div", null, "layout")
+      return pyreonH('div', null, 'layout')
     }
 
     mount(jsx(Comp, {}), el)
     expect(effectRuns).toBeGreaterThanOrEqual(1)
   })
 
-  test("pendingLayoutEffects populated during render", () => {
+  test('pendingLayoutEffects populated during render', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useLayoutEffect(() => {})
@@ -525,7 +525,7 @@ describe("useLayoutEffect", () => {
     expect(runner.ctx.pendingLayoutEffects).toHaveLength(1)
   })
 
-  test("layout effect with same deps does not re-queue", () => {
+  test('layout effect with same deps does not re-queue', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useLayoutEffect(() => {}, [1])
@@ -541,13 +541,13 @@ describe("useLayoutEffect", () => {
 
 // ─── useMemo ──────────────────────────────────────────────────────────────────
 
-describe("useMemo", () => {
-  test("returns computed value", () => {
+describe('useMemo', () => {
+  test('returns computed value', () => {
     const value = withHookCtx(() => useMemo(() => 3 * 2, []))
     expect(value).toBe(6)
   })
 
-  test("recomputes when deps change", () => {
+  test('recomputes when deps change', () => {
     const runner = createHookRunner()
     const v1 = runner.run(() => useMemo(() => 10, [1]))
     expect(v1).toBe(10)
@@ -562,8 +562,8 @@ describe("useMemo", () => {
 
 // ─── useCallback ──────────────────────────────────────────────────────────────
 
-describe("useCallback", () => {
-  test("returns the same function when deps unchanged", () => {
+describe('useCallback', () => {
+  test('returns the same function when deps unchanged', () => {
     const runner = createHookRunner()
     const fn1 = () => 42
     const fn2 = () => 99
@@ -573,7 +573,7 @@ describe("useCallback", () => {
     expect(result1()).toBe(42)
   })
 
-  test("returns new function when deps change", () => {
+  test('returns new function when deps change', () => {
     const runner = createHookRunner()
     const fn1 = () => 42
     const fn2 = () => 99
@@ -587,24 +587,24 @@ describe("useCallback", () => {
 
 // ─── useRef ───────────────────────────────────────────────────────────────────
 
-describe("useRef", () => {
-  test("returns { current } with null default", () => {
+describe('useRef', () => {
+  test('returns { current } with null default', () => {
     const ref = withHookCtx(() => useRef<HTMLDivElement>())
     expect(ref.current).toBeNull()
   })
 
-  test("returns { current } with initial value", () => {
+  test('returns { current } with initial value', () => {
     const ref = withHookCtx(() => useRef(42))
     expect(ref.current).toBe(42)
   })
 
-  test("current is mutable", () => {
+  test('current is mutable', () => {
     const ref = withHookCtx(() => useRef(0))
     ref.current = 10
     expect(ref.current).toBe(10)
   })
 
-  test("same ref object persists across re-renders", () => {
+  test('same ref object persists across re-renders', () => {
     const runner = createHookRunner()
     const ref1 = runner.run(() => useRef(0))
     ref1.current = 99
@@ -616,27 +616,27 @@ describe("useRef", () => {
 
 // ─── memo ─────────────────────────────────────────────────────────────────────
 
-describe("memo", () => {
-  test("skips re-render when props are shallowly equal", () => {
+describe('memo', () => {
+  test('skips re-render when props are shallowly equal', () => {
     let renderCount = 0
     const MyComp = (props: { name: string }) => {
       renderCount++
-      return pyreonH("span", null, props.name)
+      return pyreonH('span', null, props.name)
     }
     const Memoized = memo(MyComp)
-    Memoized({ name: "a" })
+    Memoized({ name: 'a' })
     expect(renderCount).toBe(1)
-    Memoized({ name: "a" })
+    Memoized({ name: 'a' })
     expect(renderCount).toBe(1)
-    Memoized({ name: "b" })
+    Memoized({ name: 'b' })
     expect(renderCount).toBe(2)
   })
 
-  test("custom areEqual function", () => {
+  test('custom areEqual function', () => {
     let renderCount = 0
     const MyComp = (props: { x: number; y: number }) => {
       renderCount++
-      return pyreonH("span", null, String(props.x))
+      return pyreonH('span', null, String(props.x))
     }
     const Memoized = memo(MyComp, (prev, next) => prev.x === next.x)
     Memoized({ x: 1, y: 1 })
@@ -647,11 +647,11 @@ describe("memo", () => {
     expect(renderCount).toBe(2)
   })
 
-  test("different number of keys triggers re-render", () => {
+  test('different number of keys triggers re-render', () => {
     let renderCount = 0
     const MyComp = (_props: Record<string, unknown>) => {
       renderCount++
-      return pyreonH("span", null, "x")
+      return pyreonH('span', null, 'x')
     }
     const Memoized = memo(MyComp)
     Memoized({ a: 1 })
@@ -663,25 +663,25 @@ describe("memo", () => {
 
 // ─── useId ────────────────────────────────────────────────────────────────────
 
-describe("useId", () => {
-  test("returns a unique string within a component", () => {
+describe('useId', () => {
+  test('returns a unique string within a component', () => {
     const el = container()
     const ids: string[] = []
 
     const Comp = () => {
       ids.push(useId())
       ids.push(useId())
-      return pyreonH("div", null, "id-test")
+      return pyreonH('div', null, 'id-test')
     }
 
     mount(jsx(Comp, {}), el)
     expect(ids.length).toBeGreaterThanOrEqual(2)
     expect(ids[0]).not.toBe(ids[1])
-    expect(typeof ids[0]).toBe("string")
-    expect(ids[0]?.startsWith(":r")).toBe(true)
+    expect(typeof ids[0]).toBe('string')
+    expect(ids[0]?.startsWith(':r')).toBe(true)
   })
 
-  test("IDs are stable across re-renders", async () => {
+  test('IDs are stable across re-renders', async () => {
     const el = container()
     const idHistory: string[] = []
     let triggerSet: (v: number) => void = () => {}
@@ -691,7 +691,7 @@ describe("useId", () => {
       triggerSet = setCount
       const id = useId()
       idHistory.push(id)
-      return pyreonH("div", null, `${id}-${count}`)
+      return pyreonH('div', null, `${id}-${count}`)
     }
 
     mount(jsx(Comp, {}), el)
@@ -710,23 +710,23 @@ describe("useId", () => {
 
 // ─── useErrorBoundary ────────────────────────────────────────────────────────
 
-describe("useErrorBoundary", () => {
-  test("is exported as a function", () => {
-    expect(typeof useErrorBoundary).toBe("function")
+describe('useErrorBoundary', () => {
+  test('is exported as a function', () => {
+    expect(typeof useErrorBoundary).toBe('function')
   })
 })
 
 // ─── Signals ─────────────────────────────────────────────────────────────────
 
-describe("signals", () => {
-  test("signal() has .value accessor", () => {
+describe('signals', () => {
+  test('signal() has .value accessor', () => {
     const count = signal(0)
     expect(count.value).toBe(0)
     count.value = 5
     expect(count.value).toBe(5)
   })
 
-  test("computed() has .value accessor", () => {
+  test('computed() has .value accessor', () => {
     const count = signal(3)
     const doubled = computed(() => count.value * 2)
     expect(doubled.value).toBe(6)
@@ -734,7 +734,7 @@ describe("signals", () => {
     expect(doubled.value).toBe(20)
   })
 
-  test("computed() peek returns value", () => {
+  test('computed() peek returns value', () => {
     const count = signal(3)
     const doubled = computed(() => count.value * 2)
     expect(doubled.peek()).toBe(6)
@@ -742,7 +742,7 @@ describe("signals", () => {
     expect(doubled.peek()).toBe(20)
   })
 
-  test("effect() tracks signal reads", () => {
+  test('effect() tracks signal reads', () => {
     const count = signal(0)
     let observed = -1
     const dispose = signalEffect(() => {
@@ -756,7 +756,7 @@ describe("signals", () => {
     expect(observed).toBe(7)
   })
 
-  test("effect() with cleanup function", () => {
+  test('effect() with cleanup function', () => {
     const count = signal(0)
     let cleanups = 0
     const dispose = signalEffect(() => {
@@ -772,7 +772,7 @@ describe("signals", () => {
     expect(cleanups).toBe(2)
   })
 
-  test("effect() with non-function return (no cleanup)", () => {
+  test('effect() with non-function return (no cleanup)', () => {
     const count = signal(0)
     let runs = 0
     const dispose = signalEffect(() => {
@@ -785,7 +785,7 @@ describe("signals", () => {
     dispose()
   })
 
-  test("batch() coalesces updates", () => {
+  test('batch() coalesces updates', () => {
     const a = signal(1)
     const b = signal(2)
     let runs = 0
@@ -802,7 +802,7 @@ describe("signals", () => {
     expect(runs).toBe(2)
   })
 
-  test("signal peek() reads without tracking", () => {
+  test('signal peek() reads without tracking', () => {
     const count = signal(0)
     let observed = -1
     const dispose = signalEffect(() => {
@@ -817,91 +817,91 @@ describe("signals", () => {
 
 // ─── jsx-runtime ──────────────────────────────────────────────────────────────
 
-describe("jsx-runtime", () => {
-  test("jsx with string type creates element VNode", () => {
-    const vnode = jsx("div", { children: "hello" })
-    expect(vnode.type).toBe("div")
-    expect(vnode.children).toContain("hello")
+describe('jsx-runtime', () => {
+  test('jsx with string type creates element VNode', () => {
+    const vnode = jsx('div', { children: 'hello' })
+    expect(vnode.type).toBe('div')
+    expect(vnode.children).toContain('hello')
   })
 
-  test("jsx with key prop", () => {
-    const vnode = jsx("div", { children: "x" }, "my-key")
-    expect(vnode.props.key).toBe("my-key")
+  test('jsx with key prop', () => {
+    const vnode = jsx('div', { children: 'x' }, 'my-key')
+    expect(vnode.props.key).toBe('my-key')
   })
 
-  test("jsx with component wraps for re-render", () => {
-    const MyComp = () => pyreonH("span", null, "hi")
+  test('jsx with component wraps for re-render', () => {
+    const MyComp = () => pyreonH('span', null, 'hi')
     const vnode = jsx(MyComp, {})
     expect(vnode.type).not.toBe(MyComp)
-    expect(typeof vnode.type).toBe("function")
+    expect(typeof vnode.type).toBe('function')
   })
 
-  test("jsx with Fragment", () => {
+  test('jsx with Fragment', () => {
     const vnode = jsx(Fragment, {
-      children: [pyreonH("span", null, "a"), pyreonH("span", null, "b")],
+      children: [pyreonH('span', null, 'a'), pyreonH('span', null, 'b')],
     })
     expect(vnode.type).toBe(Fragment)
   })
 
-  test("jsx with single child (not array)", () => {
-    const vnode = jsx("div", { children: "text" })
+  test('jsx with single child (not array)', () => {
+    const vnode = jsx('div', { children: 'text' })
     expect(vnode.children).toHaveLength(1)
   })
 
-  test("jsx with no children", () => {
-    const vnode = jsx("div", {})
+  test('jsx with no children', () => {
+    const vnode = jsx('div', {})
     expect(vnode.children).toHaveLength(0)
   })
 
-  test("jsx component with children in props", () => {
-    const MyComp = (props: { children?: string }) => pyreonH("div", null, props.children ?? "")
-    const vnode = jsx(MyComp, { children: "child-text" })
-    expect(typeof vnode.type).toBe("function")
+  test('jsx component with children in props', () => {
+    const MyComp = (props: { children?: string }) => pyreonH('div', null, props.children ?? '')
+    const vnode = jsx(MyComp, { children: 'child-text' })
+    expect(typeof vnode.type).toBe('function')
   })
 })
 
 // ─── Hooks outside component ─────────────────────────────────────────────────
 
-describe("hooks outside component", () => {
-  test("useState throws when called outside render", () => {
-    expect(() => useState(0)).toThrow("Hook called outside")
+describe('hooks outside component', () => {
+  test('useState throws when called outside render', () => {
+    expect(() => useState(0)).toThrow('Hook called outside')
   })
 
-  test("useEffect throws when called outside render", () => {
-    expect(() => useEffect(() => {})).toThrow("Hook called outside")
+  test('useEffect throws when called outside render', () => {
+    expect(() => useEffect(() => {})).toThrow('Hook called outside')
   })
 
-  test("useRef throws when called outside render", () => {
-    expect(() => useRef(0)).toThrow("Hook called outside")
+  test('useRef throws when called outside render', () => {
+    expect(() => useRef(0)).toThrow('Hook called outside')
   })
 
-  test("useMemo throws when called outside render", () => {
-    expect(() => useMemo(() => 0, [])).toThrow("Hook called outside")
+  test('useMemo throws when called outside render', () => {
+    expect(() => useMemo(() => 0, [])).toThrow('Hook called outside')
   })
 
-  test("useId throws when called outside render", () => {
-    expect(() => useId()).toThrow("Hook called outside")
+  test('useId throws when called outside render', () => {
+    expect(() => useId()).toThrow('Hook called outside')
   })
 
-  test("useReducer throws when called outside render", () => {
-    expect(() => useReducer((s: number) => s, 0)).toThrow("Hook called outside")
+  test('useReducer throws when called outside render', () => {
+    expect(() => useReducer((s: number) => s, 0)).toThrow('Hook called outside')
   })
 })
 
 // ─── Edge cases ──────────────────────────────────────────────────────────────
 
-describe("edge cases", () => {
-  test("useState with string initial", () => {
-    const [val] = withHookCtx(() => useState("hello"))
-    expect(val).toBe("hello")
+describe('edge cases', () => {
+  test('useState with string initial', () => {
+    const [val] = withHookCtx(() => useState('hello'))
+    expect(val).toBe('hello')
   })
 
-  test("useReducer with non-function initial", () => {
-    const [state] = withHookCtx(() => useReducer((s: string, a: string) => s + a, "start"))
-    expect(state).toBe("start")
+  test('useReducer with non-function initial', () => {
+    const [state] = withHookCtx(() => useReducer((s: string, a: string) => s + a, 'start'))
+    expect(state).toBe('start')
   })
 
-  test("depsChanged handles different length arrays", () => {
+  test('depsChanged handles different length arrays', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useEffect(() => {}, [1, 2])
@@ -914,7 +914,7 @@ describe("edge cases", () => {
     expect(runner.ctx.pendingEffects).toHaveLength(1)
   })
 
-  test("depsChanged with undefined deps always re-runs", () => {
+  test('depsChanged with undefined deps always re-runs', () => {
     const runner = createHookRunner()
     runner.run(() => {
       useEffect(() => {})

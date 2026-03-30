@@ -1,7 +1,7 @@
-import { isEmpty } from "@pyreon/ui-core"
-import attrsComponent from "./attrs"
-import type { InitAttrsComponent } from "./types/InitAttrsComponent"
-import type { ElementType } from "./types/utils"
+import { isEmpty } from '@pyreon/ui-core'
+import attrsComponent from './attrs'
+import type { InitAttrsComponent } from './types/InitAttrsComponent'
+import type { ElementType } from './types/utils'
 
 /**
  * Public entry point for creating an attrs-enhanced component.
@@ -24,7 +24,7 @@ export type Attrs = <C extends ElementType>({
 
 const attrs: Attrs = ({ name, component }) => {
   // Validate required params in development — fail fast with clear errors.
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== 'production') {
     type Errors = Partial<{
       component: string
       name: string
@@ -32,11 +32,11 @@ const attrs: Attrs = ({ name, component }) => {
 
     const errors: Errors = {}
     if (!component) {
-      errors.component = "Parameter `component` is missing in params!"
+      errors.component = 'Parameter `component` is missing in params!'
     }
 
     if (!name) {
-      errors.name = "Parameter `name` is missing in params!"
+      errors.name = 'Parameter `name` is missing in params!'
     }
 
     if (!isEmpty(errors)) {

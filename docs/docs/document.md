@@ -10,18 +10,23 @@ description: Universal document rendering for Pyreon — one template, 14 output
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/document
 ```
+
 ```bash [bun]
 bun add @pyreon/document
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/document
 ```
+
 ```bash [yarn]
 yarn add @pyreon/document
 ```
+
 :::
 
 ## Quick Start — Builder Pattern
@@ -45,12 +50,12 @@ const doc = createDocument({ title: 'Sales Report' })
   .text('Total: $2.5M', { bold: true, align: 'right' })
 
 // Export to any format
-await doc.toPdf()       // PDF buffer
-await doc.toDocx()      // Word document
-await doc.toEmail()     // Outlook-safe HTML
-await doc.toSlack()     // Slack Block Kit JSON
-await doc.toNotion()    // Notion blocks
-await doc.download('report.pdf')  // Browser download
+await doc.toPdf() // PDF buffer
+await doc.toDocx() // Word document
+await doc.toEmail() // Outlook-safe HTML
+await doc.toSlack() // Slack Block Kit JSON
+await doc.toNotion() // Notion blocks
+await doc.download('report.pdf') // Browser download
 ```
 
 ## Quick Start — JSX Pattern
@@ -70,10 +75,12 @@ function Invoice({ data }) {
             { header: 'Qty', align: 'center' },
             { header: 'Price', align: 'right' },
           ]}
-          rows={data.items.map(i => [i.name, i.qty, `$${i.price}`])}
+          rows={data.items.map((i) => [i.name, i.qty, `$${i.price}`])}
           striped
         />
-        <Text bold align="right" size={18}>Total: ${data.total}</Text>
+        <Text bold align="right" size={18}>
+          Total: ${data.total}
+        </Text>
         <Button href={data.payUrl} background="#4f46e5" align="center">
           Pay Now
         </Button>
@@ -92,62 +99,62 @@ const docx = await render(<Invoice data={invoiceData} />, 'docx')
 
 ### Documents
 
-| Format | Method | Library | Lazy |
-|---|---|---|---|
-| HTML | `render(doc, 'html')` | Built-in | No |
-| PDF | `render(doc, 'pdf')` | pdfmake (~300KB) | Yes |
-| DOCX | `render(doc, 'docx')` | docx (~100KB) | Yes |
-| XLSX | `render(doc, 'xlsx')` | exceljs (~500KB) | Yes |
-| PPTX | `render(doc, 'pptx')` | pptxgenjs (~200KB) | Yes |
-| SVG | `render(doc, 'svg')` | Built-in | No |
+| Format | Method                | Library            | Lazy |
+| ------ | --------------------- | ------------------ | ---- |
+| HTML   | `render(doc, 'html')` | Built-in           | No   |
+| PDF    | `render(doc, 'pdf')`  | pdfmake (~300KB)   | Yes  |
+| DOCX   | `render(doc, 'docx')` | docx (~100KB)      | Yes  |
+| XLSX   | `render(doc, 'xlsx')` | exceljs (~500KB)   | Yes  |
+| PPTX   | `render(doc, 'pptx')` | pptxgenjs (~200KB) | Yes  |
+| SVG    | `render(doc, 'svg')`  | Built-in           | No   |
 
 ### Communication
 
-| Format | Method | Output |
-|---|---|---|
-| Email | `render(doc, 'email')` | Outlook-safe table-based HTML with VML buttons |
-| Slack | `render(doc, 'slack')` | Block Kit JSON |
-| Teams | `render(doc, 'teams')` | Adaptive Cards JSON |
-| Discord | `render(doc, 'discord')` | Embed JSON |
-| Telegram | `render(doc, 'telegram')` | HTML subset |
-| WhatsApp | `render(doc, 'whatsapp')` | Formatted text (`*bold*`, `_italic_`) |
-| Google Chat | `render(doc, 'google-chat')` | Card V2 JSON |
+| Format      | Method                       | Output                                         |
+| ----------- | ---------------------------- | ---------------------------------------------- |
+| Email       | `render(doc, 'email')`       | Outlook-safe table-based HTML with VML buttons |
+| Slack       | `render(doc, 'slack')`       | Block Kit JSON                                 |
+| Teams       | `render(doc, 'teams')`       | Adaptive Cards JSON                            |
+| Discord     | `render(doc, 'discord')`     | Embed JSON                                     |
+| Telegram    | `render(doc, 'telegram')`    | HTML subset                                    |
+| WhatsApp    | `render(doc, 'whatsapp')`    | Formatted text (`*bold*`, `_italic_`)          |
+| Google Chat | `render(doc, 'google-chat')` | Card V2 JSON                                   |
 
 ### Knowledge Bases
 
-| Format | Method | Output |
-|---|---|---|
-| Notion | `render(doc, 'notion')` | Block JSON for Notion API |
+| Format          | Method                      | Output                          |
+| --------------- | --------------------------- | ------------------------------- |
+| Notion          | `render(doc, 'notion')`     | Block JSON for Notion API       |
 | Confluence/Jira | `render(doc, 'confluence')` | Atlassian Document Format (ADF) |
 
 ### Data
 
-| Format | Method | Output |
-|---|---|---|
-| Markdown | `render(doc, 'md')` | Markdown with pipe tables |
-| Plain text | `render(doc, 'text')` | Aligned ASCII tables |
-| CSV | `render(doc, 'csv')` | Comma-separated values |
+| Format     | Method                | Output                    |
+| ---------- | --------------------- | ------------------------- |
+| Markdown   | `render(doc, 'md')`   | Markdown with pipe tables |
+| Plain text | `render(doc, 'text')` | Aligned ASCII tables      |
+| CSV        | `render(doc, 'csv')`  | Comma-separated values    |
 
 ## Primitives
 
-| Primitive | Description |
-|---|---|
-| `<Document>` | Root container with metadata (title, author) |
-| `<Page>` | Page with size, orientation, margin, header, footer |
-| `<Section>` | Layout container with direction, gap, padding, background |
-| `<Row>` / `<Column>` | Horizontal layout |
-| `<Heading>` | Headings h1–h6 |
-| `<Text>` | Paragraph with bold, italic, color, size, align |
-| `<Link>` | Hyperlink |
-| `<Image>` | Image with width, height, alt, caption |
-| `<Table>` | Data table with columns, rows, striped, bordered, headerStyle |
-| `<List>` / `<ListItem>` | Ordered or unordered list |
-| `<Code>` | Code block with language |
-| `<Divider>` | Horizontal rule |
-| `<Spacer>` | Vertical gap |
-| `<Button>` | CTA button (VML in email, styled link in PDF) |
-| `<Quote>` | Block quote |
-| `<PageBreak>` | Force page break (PDF/DOCX) |
+| Primitive               | Description                                                   |
+| ----------------------- | ------------------------------------------------------------- |
+| `<Document>`            | Root container with metadata (title, author)                  |
+| `<Page>`                | Page with size, orientation, margin, header, footer           |
+| `<Section>`             | Layout container with direction, gap, padding, background     |
+| `<Row>` / `<Column>`    | Horizontal layout                                             |
+| `<Heading>`             | Headings h1–h6                                                |
+| `<Text>`                | Paragraph with bold, italic, color, size, align               |
+| `<Link>`                | Hyperlink                                                     |
+| `<Image>`               | Image with width, height, alt, caption                        |
+| `<Table>`               | Data table with columns, rows, striped, bordered, headerStyle |
+| `<List>` / `<ListItem>` | Ordered or unordered list                                     |
+| `<Code>`                | Code block with language                                      |
+| `<Divider>`             | Horizontal rule                                               |
+| `<Spacer>`              | Vertical gap                                                  |
+| `<Button>`              | CTA button (VML in email, styled link in PDF)                 |
+| `<Quote>`               | Block quote                                                   |
+| `<PageBreak>`           | Force page break (PDF/DOCX)                                   |
 
 ## Table Options
 
@@ -158,10 +165,13 @@ const docx = await render(<Invoice data={invoiceData} />, 'docx')
     { header: 'Price', align: 'right', width: '25%' },
     { header: 'Qty', align: 'center', width: '25%' },
   ]}
-  rows={[['Widget', '$10', '5'], ['Gadget', '$20', '3']]}
-  striped              // alternating row colors
-  bordered             // cell borders
-  keepTogether         // avoid page breaks within table (PDF)
+  rows={[
+    ['Widget', '$10', '5'],
+    ['Gadget', '$20', '3'],
+  ]}
+  striped // alternating row colors
+  bordered // cell borders
+  keepTogether // avoid page breaks within table (PDF)
   headerStyle={{ background: '#1a1a2e', color: '#fff' }}
   caption="Order Items"
 />
@@ -213,8 +223,9 @@ await download(doc, 'slides.pptx')
 
 ```tsx
 await render(doc, 'html', {
-  direction: 'rtl',     // RTL text direction
-  fonts: {               // Custom PDF fonts
+  direction: 'rtl', // RTL text direction
+  fonts: {
+    // Custom PDF fonts
     MyFont: { normal: 'path/to/font.ttf' },
   },
 })

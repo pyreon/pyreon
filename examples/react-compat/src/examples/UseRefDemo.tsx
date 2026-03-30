@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react"
-import Demo from "./Demo"
+import { useEffect, useRef, useState } from 'react'
+import Demo from './Demo'
 
 export default function UseRefDemo() {
   const inputRef = useRef<HTMLInputElement>()
   const renderCount = useRef(0)
-  const [value, setValue] = useState("")
+  const [value, setValue] = useState('')
 
   useEffect(() => {
     renderCount.current = (renderCount.current ?? 0) + 1

@@ -1,17 +1,17 @@
-import type { Signal } from "@pyreon/reactivity"
-import { signal } from "@pyreon/reactivity"
-import { matchesCombo, parseShortcut } from "./parse"
-import type { HotkeyEntry, HotkeyOptions } from "./types"
+import type { Signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { matchesCombo, parseShortcut } from './parse'
+import type { HotkeyEntry, HotkeyOptions } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
 const entries: HotkeyEntry[] = []
-const activeScopes = signal<Set<string>>(new Set(["global"]))
+const activeScopes = signal<Set<string>>(new Set(['global']))
 let listenerAttached = false
 
 // ─── Input detection ─────────────────────────────────────────────────────────
 
-const INPUT_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"])
+const INPUT_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
 function isInputFocused(event: KeyboardEvent): boolean {
   const target = event.target as HTMLElement | null
@@ -25,10 +25,10 @@ function isInputFocused(event: KeyboardEvent): boolean {
 
 function attachListener(): void {
   if (listenerAttached) return
-  if (typeof window === "undefined") return
+  if (typeof window === 'undefined') return
   listenerAttached = true
 
-  window.addEventListener("keydown", (event) => {
+  window.addEventListener('keydown', (event) => {
     const scopes = activeScopes.peek()
 
     for (const entry of entries) {
@@ -37,7 +37,7 @@ function attachListener(): void {
 
       // Check enabled
       const enabled =
-        typeof entry.options.enabled === "function"
+        typeof entry.options.enabled === 'function'
           ? entry.options.enabled()
           : entry.options.enabled
       if (!enabled) continue
@@ -79,7 +79,7 @@ export function registerHotkey(
     combo: parseShortcut(shortcut),
     handler,
     options: {
-      scope: options?.scope ?? "global",
+      scope: options?.scope ?? 'global',
       preventDefault: options?.preventDefault !== false,
       stopPropagation: options?.stopPropagation === true,
       enableOnInputs: options?.enableOnInputs === true,
@@ -113,7 +113,7 @@ export function enableScope(scope: string): void {
  * Deactivate a hotkey scope. Cannot deactivate 'global'.
  */
 export function disableScope(scope: string): void {
-  if (scope === "global") return
+  if (scope === 'global') return
   const current = activeScopes.peek()
   if (!current.has(scope)) return
   const next = new Set(current)
@@ -147,5 +147,5 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
 
 export function _resetHotkeys(): void {
   entries.length = 0
-  activeScopes.set(new Set(["global"]))
+  activeScopes.set(new Set(['global']))
 }

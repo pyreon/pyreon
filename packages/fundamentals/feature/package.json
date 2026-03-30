@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/feature",
   "version": "0.11.5",
-  "description": "Schema-driven feature primitives \u2014 define once, get CRUD hooks, forms, tables, and stores",
+  "description": "Schema-driven feature primitives — define once, get CRUD hooks, forms, tables, and stores",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/feature#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/feature"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/feature#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -21,8 +18,8 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": false,
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -33,16 +30,15 @@
       "types": "./lib/types/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@pyreon/form": "workspace:^",
@@ -57,5 +53,9 @@
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

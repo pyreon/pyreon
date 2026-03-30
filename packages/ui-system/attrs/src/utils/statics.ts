@@ -1,4 +1,4 @@
-import { isEmpty } from "@pyreon/ui-core"
+import { isEmpty } from '@pyreon/ui-core'
 
 /**
  * Copies user-defined statics from `.statics()` into the component's

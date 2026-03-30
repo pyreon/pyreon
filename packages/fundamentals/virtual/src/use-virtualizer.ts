@@ -1,6 +1,6 @@
-import { onMount, onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import { onMount, onUnmount } from '@pyreon/core'
+import type { Signal } from '@pyreon/reactivity'
+import { batch, effect, signal } from '@pyreon/reactivity'
 import {
   elementScroll,
   observeElementOffset,
@@ -8,19 +8,19 @@ import {
   type VirtualItem,
   Virtualizer,
   type VirtualizerOptions,
-} from "@tanstack/virtual-core"
+} from '@tanstack/virtual-core'
 
 export type UseVirtualizerOptions<
   TScrollElement extends Element,
   TItemElement extends Element,
 > = () => Omit<
   VirtualizerOptions<TScrollElement, TItemElement>,
-  "observeElementRect" | "observeElementOffset" | "scrollToFn"
+  'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
 > &
   Partial<
     Pick<
       VirtualizerOptions<TScrollElement, TItemElement>,
-      "observeElementRect" | "observeElementOffset" | "scrollToFn"
+      'observeElementRect' | 'observeElementOffset' | 'scrollToFn'
     >
   >
 

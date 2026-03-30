@@ -21,7 +21,7 @@
  *             `import { ref, computed, watch } from "@pyreon/vue-compat"`
  */
 
-import type { ComponentFn, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import {
   createContext,
   Fragment,
@@ -32,7 +32,7 @@ import {
   pushContext,
   h as pyreonH,
   useContext,
-} from "@pyreon/core"
+} from '@pyreon/core'
 import {
   createStore,
   effect,
@@ -40,15 +40,15 @@ import {
   nextTick as pyreonNextTick,
   type Signal,
   signal,
-} from "@pyreon/reactivity"
-import { mount as pyreonMount } from "@pyreon/runtime-dom"
-import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
+} from '@pyreon/reactivity'
+import { mount as pyreonMount } from '@pyreon/runtime-dom'
+import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
-const V_IS_REF = Symbol("__v_isRef")
-const V_IS_READONLY = Symbol("__v_isReadonly")
-const V_RAW = Symbol("__v_raw")
+const V_IS_REF = Symbol('__v_isRef')
+const V_IS_READONLY = Symbol('__v_isReadonly')
+const V_RAW = Symbol('__v_raw')
 
 // ─── Ref ──────────────────────────────────────────────────────────────────────
 
@@ -133,7 +133,7 @@ export function triggerRef<T>(r: Ref<T>): void {
  */
 export function isRef(val: unknown): val is Ref {
   return (
-    val !== null && typeof val === "object" && (val as Record<symbol, unknown>)[V_IS_REF] === true
+    val !== null && typeof val === 'object' && (val as Record<symbol, unknown>)[V_IS_REF] === true
   )
 }
 
@@ -172,8 +172,8 @@ export function computed<T>(
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as ComputedRef<T>
 
-    const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
-    const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
+    const getter = typeof fnOrOptions === 'function' ? fnOrOptions : fnOrOptions.get
+    const setter = typeof fnOrOptions === 'object' ? fnOrOptions.set : undefined
     const c = pyreonComputed(getter)
     const { scheduleRerender } = ctx
     const r = {
@@ -183,7 +183,7 @@ export function computed<T>(
       },
       set value(v: T) {
         if (!setter) {
-          throw new Error("Cannot set value of a computed ref — computed refs are readonly")
+          throw new Error('Cannot set value of a computed ref — computed refs are readonly')
         }
         setter(v)
         scheduleRerender()
@@ -194,8 +194,8 @@ export function computed<T>(
   }
 
   // Outside component
-  const getter = typeof fnOrOptions === "function" ? fnOrOptions : fnOrOptions.get
-  const setter = typeof fnOrOptions === "object" ? fnOrOptions.set : undefined
+  const getter = typeof fnOrOptions === 'function' ? fnOrOptions : fnOrOptions.get
+  const setter = typeof fnOrOptions === 'object' ? fnOrOptions.set : undefined
   const c = pyreonComputed(getter)
   const r = {
     [V_IS_REF]: true as const,
@@ -204,7 +204,7 @@ export function computed<T>(
     },
     set value(v: T) {
       if (!setter) {
-        throw new Error("Cannot set value of a computed ref — computed refs are readonly")
+        throw new Error('Cannot set value of a computed ref — computed refs are readonly')
       }
       setter(v)
     },
@@ -664,18 +664,18 @@ interface ComponentOptions<P extends Props = Props> {
 export function defineComponent<P extends Props = Props>(
   options: ComponentOptions<P> | ((props: P) => VNodeChild),
 ): ComponentFn<P> {
-  if (typeof options === "function") {
+  if (typeof options === 'function') {
     return options as ComponentFn<P>
   }
   const comp = (props: P) => {
     const result = options.setup(props)
-    if (typeof result === "function") {
+    if (typeof result === 'function') {
       return (result as () => VNodeChild)()
     }
     return result
   }
   if (options.name) {
-    Object.defineProperty(comp, "name", { value: options.name })
+    Object.defineProperty(comp, 'name', { value: options.name })
   }
   return comp as ComponentFn<P>
 }
@@ -700,7 +700,7 @@ interface App {
 export function createApp(component: ComponentFn, props?: Props): App {
   return {
     mount(el: string | Element): () => void {
-      const container = typeof el === "string" ? document.querySelector(el) : el
+      const container = typeof el === 'string' ? document.querySelector(el) : el
       if (!container) {
         throw new Error(`Cannot find mount target: ${el}`)
       }
@@ -712,4 +712,4 @@ export function createApp(component: ComponentFn, props?: Props): App {
 
 // ─── Additional re-exports ────────────────────────────────────────────────────
 
-export { batch } from "@pyreon/reactivity"
+export { batch } from '@pyreon/reactivity'

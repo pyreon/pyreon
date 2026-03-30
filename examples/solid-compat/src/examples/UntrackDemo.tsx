@@ -1,10 +1,10 @@
-import { createEffect, createSignal, untrack } from "solid-js"
-import Demo from "./Demo"
+import { createEffect, createSignal, untrack } from 'solid-js'
+import Demo from './Demo'
 
 export default function UntrackDemo() {
   const [tracked, setTracked] = createSignal(0)
   const [untrackedVal, setUntrackedVal] = createSignal(0)
-  const [log, setLog] = createSignal("")
+  const [log, setLog] = createSignal('')
 
   createEffect(() => {
     const t = tracked()

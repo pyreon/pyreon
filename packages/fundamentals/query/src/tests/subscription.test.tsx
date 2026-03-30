@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { mount } from "@pyreon/runtime-dom"
-import { QueryClient } from "@tanstack/query-core"
-import { QueryClientProvider, type UseSubscriptionResult, useSubscription } from "../index"
+import { signal } from '@pyreon/reactivity'
+import { mount } from '@pyreon/runtime-dom'
+import { QueryClient } from '@tanstack/query-core'
+import { QueryClientProvider, type UseSubscriptionResult, useSubscription } from '../index'
 
 // ─── Mock WebSocket ──────────────────────────────────────────────────────────
 
@@ -54,20 +54,20 @@ class MockWebSocketClass {
 
   _simulateOpen() {
     this.readyState = MockWebSocketClass.OPEN
-    this.onopen?.({ type: "open" })
+    this.onopen?.({ type: 'open' })
   }
 
   _simulateMessage(data: string) {
-    this.onmessage?.({ type: "message", data } as unknown as MessageEvent)
+    this.onmessage?.({ type: 'message', data } as unknown as MessageEvent)
   }
 
-  _simulateClose(code = 1000, reason = "") {
+  _simulateClose(code = 1000, reason = '') {
     this.readyState = MockWebSocketClass.CLOSED
-    this.onclose?.({ type: "close", code, reason } as unknown as CloseEvent)
+    this.onclose?.({ type: 'close', code, reason } as unknown as CloseEvent)
   }
 
   _simulateError() {
-    this.onerror?.({ type: "error" })
+    this.onerror?.({ type: 'error' })
   }
 }
 
@@ -92,7 +92,7 @@ function makeClient() {
 }
 
 function withProvider(client: QueryClient, component: () => void): () => void {
-  const el = document.createElement("div")
+  const el = document.createElement('div')
   document.body.appendChild(el)
   const unmount = mount(
     <QueryClientProvider client={client}>
@@ -115,53 +115,53 @@ function lastMockWS(): MockWebSocket {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-describe("useSubscription", () => {
+describe('useSubscription', () => {
   beforeEach(() => {
     mockInstances = []
   })
 
-  it("connects to the WebSocket URL", () => {
+  it('connects to the WebSocket URL', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
 
     expect(mockInstances).toHaveLength(1)
-    expect(lastMockWS().url).toBe("wss://example.com/ws")
-    expect(sub!.status()).toBe("connecting")
+    expect(lastMockWS().url).toBe('wss://example.com/ws')
+    expect(sub!.status()).toBe('connecting')
 
     unmount()
   })
 
-  it("status transitions to connected on open", () => {
+  it('status transitions to connected on open', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
 
     lastMockWS()._simulateOpen()
-    expect(sub!.status()).toBe("connected")
+    expect(sub!.status()).toBe('connected')
 
     unmount()
   })
 
-  it("calls onMessage with event and queryClient", () => {
+  it('calls onMessage with event and queryClient', () => {
     const client = makeClient()
     const messages: string[] = []
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: (event, qc) => {
           messages.push(event.data as string)
           expect(qc).toBe(client)
@@ -170,75 +170,75 @@ describe("useSubscription", () => {
     })
 
     lastMockWS()._simulateOpen()
-    lastMockWS()._simulateMessage("hello")
-    lastMockWS()._simulateMessage("world")
+    lastMockWS()._simulateMessage('hello')
+    lastMockWS()._simulateMessage('world')
 
-    expect(messages).toEqual(["hello", "world"])
+    expect(messages).toEqual(['hello', 'world'])
     unmount()
   })
 
-  it("invalidates queries on message", () => {
+  it('invalidates queries on message', () => {
     const client = makeClient()
-    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: (_event, qc) => {
-          qc.invalidateQueries({ queryKey: ["orders"] })
+          qc.invalidateQueries({ queryKey: ['orders'] })
         },
       })
     })
 
     lastMockWS()._simulateOpen()
-    lastMockWS()._simulateMessage("order-updated")
+    lastMockWS()._simulateMessage('order-updated')
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["orders"] })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['orders'] })
     unmount()
   })
 
-  it("send() sends data through WebSocket", () => {
+  it('send() sends data through WebSocket', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
 
     lastMockWS()._simulateOpen()
-    sub!.send("test-message")
+    sub!.send('test-message')
 
-    expect(lastMockWS().send).toHaveBeenCalledWith("test-message")
+    expect(lastMockWS().send).toHaveBeenCalledWith('test-message')
     unmount()
   })
 
-  it("send() is a no-op when not connected", () => {
+  it('send() is a no-op when not connected', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
 
     // Still connecting — send should not throw
-    sub!.send("ignored")
+    sub!.send('ignored')
     expect(lastMockWS().send).not.toHaveBeenCalled()
     unmount()
   })
 
-  it("close() disconnects and sets status", () => {
+  it('close() disconnects and sets status', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
@@ -246,18 +246,18 @@ describe("useSubscription", () => {
     lastMockWS()._simulateOpen()
     sub!.close()
 
-    expect(sub!.status()).toBe("disconnected")
+    expect(sub!.status()).toBe('disconnected')
     expect(lastMockWS().close).toHaveBeenCalled()
     unmount()
   })
 
-  it("status transitions to disconnected on close", () => {
+  it('status transitions to disconnected on close', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
       })
@@ -266,18 +266,18 @@ describe("useSubscription", () => {
     lastMockWS()._simulateOpen()
     lastMockWS()._simulateClose()
 
-    expect(sub!.status()).toBe("disconnected")
+    expect(sub!.status()).toBe('disconnected')
     unmount()
   })
 
-  it("status transitions to error on error", () => {
+  it('status transitions to error on error', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
     const errors: Event[] = []
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
         onError: (e) => errors.push(e as Event),
@@ -285,18 +285,18 @@ describe("useSubscription", () => {
     })
 
     lastMockWS()._simulateError()
-    expect(sub!.status()).toBe("error")
+    expect(sub!.status()).toBe('error')
     expect(errors).toHaveLength(1)
     unmount()
   })
 
-  it("calls onOpen callback", () => {
+  it('calls onOpen callback', () => {
     const client = makeClient()
     let opened = false
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         onOpen: () => {
           opened = true
@@ -309,13 +309,13 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("calls onClose callback", () => {
+  it('calls onClose callback', () => {
     const client = makeClient()
     let closed = false
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
         onClose: () => {
@@ -330,12 +330,12 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("auto-reconnects on unexpected close", async () => {
+  it('auto-reconnects on unexpected close', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 50,
@@ -353,12 +353,12 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("does not reconnect when reconnect is false", async () => {
+  it('does not reconnect when reconnect is false', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
       })
@@ -372,13 +372,13 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("does not reconnect after intentional close()", async () => {
+  it('does not reconnect after intentional close()', async () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 50,
@@ -393,12 +393,12 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("respects maxReconnectAttempts", async () => {
+  it('respects maxReconnectAttempts', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 10,
@@ -427,13 +427,13 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("reconnect() resets attempts and reconnects", async () => {
+  it('reconnect() resets attempts and reconnects', async () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
       })
@@ -446,35 +446,35 @@ describe("useSubscription", () => {
 
     sub!.reconnect()
     expect(mockInstances).toHaveLength(2)
-    expect(sub!.status()).toBe("connecting")
+    expect(sub!.status()).toBe('connecting')
 
     unmount()
   })
 
-  it("enabled: false prevents connection", () => {
+  it('enabled: false prevents connection', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         enabled: false,
       })
     })
 
     expect(mockInstances).toHaveLength(0)
-    expect(sub!.status()).toBe("disconnected")
+    expect(sub!.status()).toBe('disconnected')
     unmount()
   })
 
-  it("reactive enabled signal controls connection", async () => {
+  it('reactive enabled signal controls connection', async () => {
     const client = makeClient()
     const enabled = signal(false)
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         enabled: () => enabled(),
       })
@@ -489,9 +489,9 @@ describe("useSubscription", () => {
     unmount()
   })
 
-  it("reactive URL reconnects when URL changes", () => {
+  it('reactive URL reconnects when URL changes', () => {
     const client = makeClient()
-    const url = signal("wss://example.com/ws1")
+    const url = signal('wss://example.com/ws1')
 
     const unmount = withProvider(client, () => {
       useSubscription({
@@ -501,37 +501,37 @@ describe("useSubscription", () => {
     })
 
     expect(mockInstances).toHaveLength(1)
-    expect(lastMockWS().url).toBe("wss://example.com/ws1")
+    expect(lastMockWS().url).toBe('wss://example.com/ws1')
 
-    url.set("wss://example.com/ws2")
+    url.set('wss://example.com/ws2')
 
     expect(mockInstances).toHaveLength(2)
-    expect(lastMockWS().url).toBe("wss://example.com/ws2")
+    expect(lastMockWS().url).toBe('wss://example.com/ws2')
 
     unmount()
   })
 
-  it("supports WebSocket protocols", () => {
+  it('supports WebSocket protocols', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
-        protocols: ["graphql-ws"],
+        url: 'wss://example.com/ws',
+        protocols: ['graphql-ws'],
         onMessage: noop,
       })
     })
 
-    expect(lastMockWS().protocols).toEqual(["graphql-ws"])
+    expect(lastMockWS().protocols).toEqual(['graphql-ws'])
     unmount()
   })
 
-  it("cleans up on unmount", () => {
+  it('cleans up on unmount', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
@@ -545,13 +545,13 @@ describe("useSubscription", () => {
 
   // ─── Error handling & cleanup ──────────────────────────────────────────────
 
-  it("reconnects after connection drop (simulated close)", async () => {
+  it('reconnects after connection drop (simulated close)', async () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 20,
@@ -560,30 +560,30 @@ describe("useSubscription", () => {
 
     // Establish connection then drop it
     lastMockWS()._simulateOpen()
-    expect(sub!.status()).toBe("connected")
+    expect(sub!.status()).toBe('connected')
 
     // Simulate unexpected connection drop
-    lastMockWS()._simulateClose(1006, "abnormal closure")
+    lastMockWS()._simulateClose(1006, 'abnormal closure')
 
     // Wait for reconnect attempt
     await new Promise((r) => setTimeout(r, 50))
 
     expect(mockInstances).toHaveLength(2)
-    expect(lastMockWS().url).toBe("wss://example.com/ws")
-    expect(sub!.status()).toBe("connecting")
+    expect(lastMockWS().url).toBe('wss://example.com/ws')
+    expect(sub!.status()).toBe('connecting')
 
     unmount()
   })
 
-  it("message handler that throws does not crash the subscription", () => {
+  it('message handler that throws does not crash the subscription', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: () => {
-          throw new Error("handler boom")
+          throw new Error('handler boom')
         },
       })
     })
@@ -591,20 +591,20 @@ describe("useSubscription", () => {
     lastMockWS()._simulateOpen()
 
     // Should not throw — the error is caught internally
-    expect(() => lastMockWS()._simulateMessage("test")).not.toThrow()
+    expect(() => lastMockWS()._simulateMessage('test')).not.toThrow()
 
     // Subscription should still be connected
-    expect(sub!.status()).toBe("connected")
+    expect(sub!.status()).toBe('connected')
 
     unmount()
   })
 
-  it("WebSocket is closed on unmount (cleanup)", () => {
+  it('WebSocket is closed on unmount (cleanup)', () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
       })
     })
@@ -620,12 +620,12 @@ describe("useSubscription", () => {
     expect(ws.readyState).toBe(MockWebSocketClass.CLOSED)
   })
 
-  it("no reconnect attempts after unmount", async () => {
+  it('no reconnect attempts after unmount', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 20,
@@ -640,13 +640,13 @@ describe("useSubscription", () => {
     expect(mockInstances).toHaveLength(1)
   })
 
-  it("send when disconnected does not crash", () => {
+  it('send when disconnected does not crash', () => {
     const client = makeClient()
     let sub: UseSubscriptionResult | null = null
 
     const unmount = withProvider(client, () => {
       sub = useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: false,
       })
@@ -655,22 +655,22 @@ describe("useSubscription", () => {
     lastMockWS()._simulateOpen()
     lastMockWS()._simulateClose()
 
-    expect(sub!.status()).toBe("disconnected")
+    expect(sub!.status()).toBe('disconnected')
 
     // Should not throw
-    expect(() => sub!.send("test")).not.toThrow()
+    expect(() => sub!.send('test')).not.toThrow()
     // The underlying WS send should not have been called (only the one from close)
     expect(lastMockWS().send).not.toHaveBeenCalled()
 
     unmount()
   })
 
-  it("resets reconnect count on successful connection", async () => {
+  it('resets reconnect count on successful connection', async () => {
     const client = makeClient()
 
     const unmount = withProvider(client, () => {
       useSubscription({
-        url: "wss://example.com/ws",
+        url: 'wss://example.com/ws',
         onMessage: noop,
         reconnect: true,
         reconnectDelay: 10,

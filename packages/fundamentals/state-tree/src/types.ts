@@ -1,9 +1,9 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
+import type { Computed, Signal } from '@pyreon/reactivity'
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
 /** Property key stamped on every ModelDefinition to distinguish it from plain objects. */
-export const MODEL_BRAND = "__pyreonMod" as const
+export const MODEL_BRAND = '__pyreonMod' as const
 
 // ─── State type helpers ───────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ export type Snapshot<TState extends StateShape> = {
 // ─── Patch ────────────────────────────────────────────────────────────────────
 
 export interface Patch {
-  op: "replace"
+  op: 'replace'
   path: string
   value: unknown
 }

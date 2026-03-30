@@ -1,5 +1,5 @@
-import { onUnmount } from "@pyreon/core"
-import { effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from '@pyreon/core'
+import { effect, signal } from '@pyreon/reactivity'
 
 /**
  * Return a debounced version of a reactive value.

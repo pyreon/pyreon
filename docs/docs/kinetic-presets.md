@@ -10,18 +10,23 @@ description: Library of 90+ ready-made CSS transition presets and factories for 
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/kinetic-presets
 ```
+
 ```bash [bun]
 bun add @pyreon/kinetic-presets
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/kinetic-presets
 ```
+
 ```bash [yarn]
 yarn add @pyreon/kinetic-presets
 ```
+
 :::
 
 ## Quick Start
@@ -54,20 +59,20 @@ Every preset is an object describing the enter and leave phases of a CSS transit
 ```ts
 type Preset = {
   // Inline style mode:
-  enterStyle?: CSSProperties     // Styles at the start of enter
-  enterToStyle?: CSSProperties   // Styles at the end of enter
-  enterTransition?: string       // CSS transition for the enter phase
-  leaveStyle?: CSSProperties     // Styles at the start of leave
-  leaveToStyle?: CSSProperties   // Styles at the end of leave
-  leaveTransition?: string       // CSS transition for the leave phase
+  enterStyle?: CSSProperties // Styles at the start of enter
+  enterToStyle?: CSSProperties // Styles at the end of enter
+  enterTransition?: string // CSS transition for the enter phase
+  leaveStyle?: CSSProperties // Styles at the start of leave
+  leaveToStyle?: CSSProperties // Styles at the end of leave
+  leaveTransition?: string // CSS transition for the leave phase
 
   // Class-based mode:
-  enter?: string         // Active class during enter
-  enterFrom?: string     // Class at start of enter
-  enterTo?: string       // Class at end of enter
-  leave?: string         // Active class during leave
-  leaveFrom?: string     // Class at start of leave
-  leaveTo?: string       // Class at end of leave
+  enter?: string // Active class during enter
+  enterFrom?: string // Class at start of enter
+  enterTo?: string // Class at end of enter
+  leave?: string // Active class during leave
+  leaveFrom?: string // Class at start of leave
+  leaveTo?: string // Class at end of leave
 }
 ```
 
@@ -143,22 +148,22 @@ const tooltipFade = createFade({
 
 **Options (FadeOptions):**
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `direction` | `'up' \| 'down' \| 'left' \| 'right'` | -- | Movement direction. Omit for opacity-only fade. |
-| `distance` | `number` | `16` | Translation distance in pixels |
-| `duration` | `number` | `300` | Enter duration in ms |
-| `leaveDuration` | `number` | `200` | Leave duration in ms |
-| `easing` | `string` | `'ease-out'` | Enter easing function |
-| `leaveEasing` | `string` | `'ease-in'` | Leave easing function |
+| Property        | Type                                  | Default      | Description                                     |
+| --------------- | ------------------------------------- | ------------ | ----------------------------------------------- |
+| `direction`     | `'up' \| 'down' \| 'left' \| 'right'` | --           | Movement direction. Omit for opacity-only fade. |
+| `distance`      | `number`                              | `16`         | Translation distance in pixels                  |
+| `duration`      | `number`                              | `300`        | Enter duration in ms                            |
+| `leaveDuration` | `number`                              | `200`        | Leave duration in ms                            |
+| `easing`        | `string`                              | `'ease-out'` | Enter easing function                           |
+| `leaveEasing`   | `string`                              | `'ease-in'`  | Leave easing function                           |
 
 **Direction Mapping:**
 
-| Direction | Enter Transform | Leave Transform |
-|---|---|---|
-| `'up'` | `translateY(distance)` to `translateY(0)` | `translateY(0)` to `translateY(distance)` |
-| `'down'` | `translateY(-distance)` to `translateY(0)` | `translateY(0)` to `translateY(-distance)` |
-| `'left'` | `translateX(distance)` to `translateX(0)` | `translateX(0)` to `translateX(distance)` |
+| Direction | Enter Transform                            | Leave Transform                            |
+| --------- | ------------------------------------------ | ------------------------------------------ |
+| `'up'`    | `translateY(distance)` to `translateY(0)`  | `translateY(0)` to `translateY(distance)`  |
+| `'down'`  | `translateY(-distance)` to `translateY(0)` | `translateY(0)` to `translateY(-distance)` |
+| `'left'`  | `translateX(distance)` to `translateX(0)`  | `translateX(0)` to `translateX(distance)`  |
 | `'right'` | `translateX(-distance)` to `translateX(0)` | `translateX(0)` to `translateX(-distance)` |
 
 ### createSlide
@@ -191,14 +196,14 @@ const sidebarSlide = createSlide({
 
 **Options (SlideOptions):**
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `direction` | `'up' \| 'down' \| 'left' \| 'right'` | `'up'` | Movement direction |
-| `distance` | `number` | `16` | Translation distance in pixels |
-| `duration` | `number` | `300` | Enter duration in ms |
-| `leaveDuration` | `number` | `200` | Leave duration in ms |
-| `easing` | `string` | `'ease-out'` | Enter easing function |
-| `leaveEasing` | `string` | `'ease-in'` | Leave easing function |
+| Property        | Type                                  | Default      | Description                    |
+| --------------- | ------------------------------------- | ------------ | ------------------------------ |
+| `direction`     | `'up' \| 'down' \| 'left' \| 'right'` | `'up'`       | Movement direction             |
+| `distance`      | `number`                              | `16`         | Translation distance in pixels |
+| `duration`      | `number`                              | `300`        | Enter duration in ms           |
+| `leaveDuration` | `number`                              | `200`        | Leave duration in ms           |
+| `easing`        | `string`                              | `'ease-out'` | Enter easing function          |
+| `leaveEasing`   | `string`                              | `'ease-in'`  | Leave easing function          |
 
 ### createScale
 
@@ -237,13 +242,13 @@ const bouncyScale = createScale({
 
 **Options (ScaleOptions):**
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `from` | `number` | `0.9` | Starting scale value (0 = invisible, 1 = full size) |
-| `duration` | `number` | `300` | Enter duration in ms |
-| `leaveDuration` | `number` | `200` | Leave duration in ms |
-| `easing` | `string` | `'ease-out'` | Enter easing |
-| `leaveEasing` | `string` | `'ease-in'` | Leave easing |
+| Property        | Type     | Default      | Description                                         |
+| --------------- | -------- | ------------ | --------------------------------------------------- |
+| `from`          | `number` | `0.9`        | Starting scale value (0 = invisible, 1 = full size) |
+| `duration`      | `number` | `300`        | Enter duration in ms                                |
+| `leaveDuration` | `number` | `200`        | Leave duration in ms                                |
+| `easing`        | `string` | `'ease-out'` | Enter easing                                        |
+| `leaveEasing`   | `string` | `'ease-in'`  | Leave easing                                        |
 
 ### createRotate
 
@@ -279,13 +284,13 @@ const wobble = createRotate({
 
 **Options (RotateOptions):**
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `degrees` | `number` | `15` | Rotation in degrees. Enter rotates from -degrees, leave rotates to +degrees. |
-| `duration` | `number` | `300` | Enter duration in ms |
-| `leaveDuration` | `number` | `200` | Leave duration in ms |
-| `easing` | `string` | `'ease-out'` | Enter easing |
-| `leaveEasing` | `string` | `'ease-in'` | Leave easing |
+| Property        | Type     | Default      | Description                                                                  |
+| --------------- | -------- | ------------ | ---------------------------------------------------------------------------- |
+| `degrees`       | `number` | `15`         | Rotation in degrees. Enter rotates from -degrees, leave rotates to +degrees. |
+| `duration`      | `number` | `300`        | Enter duration in ms                                                         |
+| `leaveDuration` | `number` | `200`        | Leave duration in ms                                                         |
+| `easing`        | `string` | `'ease-out'` | Enter easing                                                                 |
+| `leaveEasing`   | `string` | `'ease-in'`  | Leave easing                                                                 |
 
 ### createBlur
 
@@ -323,14 +328,14 @@ const overlayBlur = createBlur({ amount: 4, duration: 200 })
 
 **Options (BlurOptions):**
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `amount` | `number` | `8` | Blur amount in pixels |
-| `scale` | `number` | -- | Optional starting scale value. When set, adds `transform: scale(value)` to the hidden state. |
-| `duration` | `number` | `300` | Enter duration in ms |
-| `leaveDuration` | `number` | `200` | Leave duration in ms |
-| `easing` | `string` | `'ease-out'` | Enter easing |
-| `leaveEasing` | `string` | `'ease-in'` | Leave easing |
+| Property        | Type     | Default      | Description                                                                                  |
+| --------------- | -------- | ------------ | -------------------------------------------------------------------------------------------- |
+| `amount`        | `number` | `8`          | Blur amount in pixels                                                                        |
+| `scale`         | `number` | --           | Optional starting scale value. When set, adds `transform: scale(value)` to the hidden state. |
+| `duration`      | `number` | `300`        | Enter duration in ms                                                                         |
+| `leaveDuration` | `number` | `200`        | Leave duration in ms                                                                         |
+| `easing`        | `string` | `'ease-out'` | Enter easing                                                                                 |
+| `leaveEasing`   | `string` | `'ease-in'`  | Leave easing                                                                                 |
 
 ## Composition Utilities
 
@@ -352,13 +357,13 @@ const fancy = compose(fade, scaleIn, blurIn)
 
 **Merge behavior:**
 
-| Field | Merge Strategy |
-|---|---|
-| `enterStyle` / `enterToStyle` | Shallow object merge: `&#123; ...a, ...b &#125;` |
-| `leaveStyle` / `leaveToStyle` | Shallow object merge: `&#123; ...a, ...b &#125;` |
-| `enterTransition` / `leaveTransition` | Last preset wins |
-| `enter` / `enterFrom` / `enterTo` | Class names concatenated with space |
-| `leave` / `leaveFrom` / `leaveTo` | Class names concatenated with space |
+| Field                                 | Merge Strategy                                   |
+| ------------------------------------- | ------------------------------------------------ |
+| `enterStyle` / `enterToStyle`         | Shallow object merge: `&#123; ...a, ...b &#125;` |
+| `leaveStyle` / `leaveToStyle`         | Shallow object merge: `&#123; ...a, ...b &#125;` |
+| `enterTransition` / `leaveTransition` | Last preset wins                                 |
+| `enter` / `enterFrom` / `enterTo`     | Class names concatenated with space              |
+| `leave` / `leaveFrom` / `leaveTo`     | Class names concatenated with space              |
 
 #### Composing Inline and Class Presets
 
@@ -415,8 +420,8 @@ const bouncy = withEasing(scaleIn, 'cubic-bezier(0.34, 1.56, 0.64, 1)')
 // Different enter/leave easing
 const asymmetric = withEasing(
   fadeUp,
-  'cubic-bezier(0.22, 1, 0.36, 1)',   // Smooth deceleration for enter
-  'cubic-bezier(0.55, 0, 1, 0.45)',    // Quick acceleration for leave
+  'cubic-bezier(0.22, 1, 0.36, 1)', // Smooth deceleration for enter
+  'cubic-bezier(0.55, 0, 1, 0.45)', // Quick acceleration for leave
 )
 
 // Linear for progress indicators
@@ -452,9 +457,7 @@ import { withDelay, fadeUp } from '@pyreon/kinetic-presets'
 
 // Create staggered presets for a list of items
 function stagger(basePreset: Preset, count: number, delayStep: number) {
-  return Array.from({ length: count }, (_, i) =>
-    withDelay(basePreset, i * delayStep, 0)
-  )
+  return Array.from({ length: count }, (_, i) => withDelay(basePreset, i * delayStep, 0))
 }
 
 const staggeredFades = stagger(fadeUp, 5, 50)
@@ -485,34 +488,37 @@ const slideRight = reverse(slideLeft)
 
 **What gets swapped:**
 
-| Original | Becomes |
-|---|---|
-| `enterStyle` | `leaveStyle` |
-| `enterToStyle` | `leaveToStyle` |
+| Original          | Becomes           |
+| ----------------- | ----------------- |
+| `enterStyle`      | `leaveStyle`      |
+| `enterToStyle`    | `leaveToStyle`    |
 | `enterTransition` | `leaveTransition` |
-| `leaveStyle` | `enterStyle` |
-| `leaveToStyle` | `enterToStyle` |
+| `leaveStyle`      | `enterStyle`      |
+| `leaveToStyle`    | `enterToStyle`    |
 | `leaveTransition` | `enterTransition` |
-| `enter` | `leave` |
-| `enterFrom` | `leaveFrom` |
-| `enterTo` | `leaveTo` |
+| `enter`           | `leave`           |
+| `enterFrom`       | `leaveFrom`       |
+| `enterTo`         | `leaveTo`         |
 
 #### Chaining Utilities
 
 All utilities return a new `Preset` object, so they can be chained freely:
 
 ```ts
-import { compose, withDuration, withEasing, withDelay, reverse, fade, scaleIn } from '@pyreon/kinetic-presets'
+import {
+  compose,
+  withDuration,
+  withEasing,
+  withDelay,
+  reverse,
+  fade,
+  scaleIn,
+} from '@pyreon/kinetic-presets'
 
 const custom = withDelay(
-  withEasing(
-    withDuration(
-      compose(fade, scaleIn),
-      500, 300
-    ),
-    'cubic-bezier(0.34, 1.56, 0.64, 1)'
-  ),
-  100, 0
+  withEasing(withDuration(compose(fade, scaleIn), 500, 300), 'cubic-bezier(0.34, 1.56, 0.64, 1)'),
+  100,
+  0,
 )
 ```
 
@@ -524,21 +530,21 @@ All presets are available as named exports and also collected in the `presets` m
 
 Simple opacity fades, optionally combined with directional movement.
 
-| Preset | Enter Transform | Duration |
-|---|---|---|
-| `fade` | Opacity only | 300ms / 200ms |
-| `fadeUp` | `translateY(16px)` to `translateY(0)` | 300ms / 200ms |
-| `fadeDown` | `translateY(-16px)` to `translateY(0)` | 300ms / 200ms |
-| `fadeLeft` | `translateX(16px)` to `translateX(0)` | 300ms / 200ms |
-| `fadeRight` | `translateX(-16px)` to `translateX(0)` | 300ms / 200ms |
-| `fadeUpBig` | `translateY(48px)` to `translateY(0)` | 300ms / 200ms |
-| `fadeDownBig` | `translateY(-48px)` to `translateY(0)` | 300ms / 200ms |
-| `fadeLeftBig` | `translateX(48px)` to `translateX(0)` | 300ms / 200ms |
-| `fadeRightBig` | `translateX(-48px)` to `translateX(0)` | 300ms / 200ms |
-| `fadeScale` | `scale(0.95)` to `scale(1)` | 300ms / 200ms |
-| `fadeUpLeft` | `translate(16px, 16px)` to `translate(0, 0)` | 300ms / 200ms |
-| `fadeUpRight` | `translate(-16px, 16px)` to `translate(0, 0)` | 300ms / 200ms |
-| `fadeDownLeft` | `translate(16px, -16px)` to `translate(0, 0)` | 300ms / 200ms |
+| Preset          | Enter Transform                                | Duration      |
+| --------------- | ---------------------------------------------- | ------------- |
+| `fade`          | Opacity only                                   | 300ms / 200ms |
+| `fadeUp`        | `translateY(16px)` to `translateY(0)`          | 300ms / 200ms |
+| `fadeDown`      | `translateY(-16px)` to `translateY(0)`         | 300ms / 200ms |
+| `fadeLeft`      | `translateX(16px)` to `translateX(0)`          | 300ms / 200ms |
+| `fadeRight`     | `translateX(-16px)` to `translateX(0)`         | 300ms / 200ms |
+| `fadeUpBig`     | `translateY(48px)` to `translateY(0)`          | 300ms / 200ms |
+| `fadeDownBig`   | `translateY(-48px)` to `translateY(0)`         | 300ms / 200ms |
+| `fadeLeftBig`   | `translateX(48px)` to `translateX(0)`          | 300ms / 200ms |
+| `fadeRightBig`  | `translateX(-48px)` to `translateX(0)`         | 300ms / 200ms |
+| `fadeScale`     | `scale(0.95)` to `scale(1)`                    | 300ms / 200ms |
+| `fadeUpLeft`    | `translate(16px, 16px)` to `translate(0, 0)`   | 300ms / 200ms |
+| `fadeUpRight`   | `translate(-16px, 16px)` to `translate(0, 0)`  | 300ms / 200ms |
+| `fadeDownLeft`  | `translate(16px, -16px)` to `translate(0, 0)`  | 300ms / 200ms |
 | `fadeDownRight` | `translate(-16px, -16px)` to `translate(0, 0)` | 300ms / 200ms |
 
 ```ts
@@ -553,30 +559,30 @@ console.log(fadeUp.enterStyle)
 
 Slide transitions with directional movement and opacity.
 
-| Preset | Enter Transform | Duration |
-|---|---|---|
-| `slideUp` | `translateY(16px)` | 300ms / 200ms |
-| `slideDown` | `translateY(-16px)` | 300ms / 200ms |
-| `slideLeft` | `translateX(16px)` | 300ms / 200ms |
-| `slideRight` | `translateX(-16px)` | 300ms / 200ms |
-| `slideUpBig` | `translateY(48px)` | 300ms / 200ms |
-| `slideDownBig` | `translateY(-48px)` | 300ms / 200ms |
-| `slideLeftBig` | `translateX(48px)` | 300ms / 200ms |
+| Preset          | Enter Transform     | Duration      |
+| --------------- | ------------------- | ------------- |
+| `slideUp`       | `translateY(16px)`  | 300ms / 200ms |
+| `slideDown`     | `translateY(-16px)` | 300ms / 200ms |
+| `slideLeft`     | `translateX(16px)`  | 300ms / 200ms |
+| `slideRight`    | `translateX(-16px)` | 300ms / 200ms |
+| `slideUpBig`    | `translateY(48px)`  | 300ms / 200ms |
+| `slideDownBig`  | `translateY(-48px)` | 300ms / 200ms |
+| `slideLeftBig`  | `translateX(48px)`  | 300ms / 200ms |
 | `slideRightBig` | `translateX(-48px)` | 300ms / 200ms |
 
 ### Scales
 
 Scale transitions with opacity.
 
-| Preset | From Scale | Duration |
-|---|---|---|
-| `scaleIn` | `0.9` | 300ms / 200ms |
-| `scaleOut` | `1.1` | 300ms / 200ms |
-| `scaleUp` | `0.5` | 300ms / 200ms |
-| `scaleDown` | `1.5` | 300ms / 200ms |
-| `scaleInUp` | `0.9` + `translateY(16px)` | 300ms / 200ms |
-| `scaleInDown` | `0.9` + `translateY(-16px)` | 300ms / 200ms |
-| `scaleInLeft` | `0.9` + `translateX(16px)` | 300ms / 200ms |
+| Preset         | From Scale                  | Duration      |
+| -------------- | --------------------------- | ------------- |
+| `scaleIn`      | `0.9`                       | 300ms / 200ms |
+| `scaleOut`     | `1.1`                       | 300ms / 200ms |
+| `scaleUp`      | `0.5`                       | 300ms / 200ms |
+| `scaleDown`    | `1.5`                       | 300ms / 200ms |
+| `scaleInUp`    | `0.9` + `translateY(16px)`  | 300ms / 200ms |
+| `scaleInDown`  | `0.9` + `translateY(-16px)` | 300ms / 200ms |
+| `scaleInLeft`  | `0.9` + `translateX(16px)`  | 300ms / 200ms |
 | `scaleInRight` | `0.9` + `translateX(-16px)` | 300ms / 200ms |
 
 ```ts
@@ -591,30 +597,30 @@ console.log(scaleIn.enterStyle)
 
 Dramatic scale transitions from zero or double size.
 
-| Preset | From Scale | Duration |
-|---|---|---|
-| `zoomIn` | `0` | 400ms / 250ms |
-| `zoomOut` | `2` | 400ms / 250ms |
-| `zoomInUp` | `0.5` + `translateY(48px)` | 400ms / 250ms |
-| `zoomInDown` | `0.5` + `translateY(-48px)` | 400ms / 250ms |
-| `zoomInLeft` | `0.5` + `translateX(48px)` | 400ms / 250ms |
-| `zoomInRight` | `0.5` + `translateX(-48px)` | 400ms / 250ms |
-| `zoomOutUp` | `2` + `translateY(48px)` | 400ms / 250ms |
-| `zoomOutDown` | `2` + `translateY(-48px)` | 400ms / 250ms |
-| `zoomOutLeft` | `2` + `translateX(48px)` | 400ms / 250ms |
-| `zoomOutRight` | `2` + `translateX(-48px)` | 400ms / 250ms |
+| Preset         | From Scale                  | Duration      |
+| -------------- | --------------------------- | ------------- |
+| `zoomIn`       | `0`                         | 400ms / 250ms |
+| `zoomOut`      | `2`                         | 400ms / 250ms |
+| `zoomInUp`     | `0.5` + `translateY(48px)`  | 400ms / 250ms |
+| `zoomInDown`   | `0.5` + `translateY(-48px)` | 400ms / 250ms |
+| `zoomInLeft`   | `0.5` + `translateX(48px)`  | 400ms / 250ms |
+| `zoomInRight`  | `0.5` + `translateX(-48px)` | 400ms / 250ms |
+| `zoomOutUp`    | `2` + `translateY(48px)`    | 400ms / 250ms |
+| `zoomOutDown`  | `2` + `translateY(-48px)`   | 400ms / 250ms |
+| `zoomOutLeft`  | `2` + `translateX(48px)`    | 400ms / 250ms |
+| `zoomOutRight` | `2` + `translateX(-48px)`   | 400ms / 250ms |
 
 ### Flips
 
 3D flip transitions using `perspective` and `rotate3d`.
 
-| Preset | Rotation | Duration |
-|---|---|---|
-| `flipX` | `rotateX(90deg)` | 500ms / 300ms |
-| `flipXReverse` | `rotateX(-90deg)` | 500ms / 300ms |
-| `flipY` | `rotateY(90deg)` | 500ms / 300ms |
-| `flipYReverse` | `rotateY(-90deg)` | 500ms / 300ms |
-| `flipDiagonal` | `rotate3d(1,1,0, 90deg)` | 500ms / 300ms |
+| Preset                | Rotation                  | Duration      |
+| --------------------- | ------------------------- | ------------- |
+| `flipX`               | `rotateX(90deg)`          | 500ms / 300ms |
+| `flipXReverse`        | `rotateX(-90deg)`         | 500ms / 300ms |
+| `flipY`               | `rotateY(90deg)`          | 500ms / 300ms |
+| `flipYReverse`        | `rotateY(-90deg)`         | 500ms / 300ms |
+| `flipDiagonal`        | `rotate3d(1,1,0, 90deg)`  | 500ms / 300ms |
 | `flipDiagonalReverse` | `rotate3d(1,-1,0, 90deg)` | 500ms / 300ms |
 
 All flip presets use `perspective(600px)` for a realistic 3D effect.
@@ -630,16 +636,16 @@ console.log(flipX.enterStyle)
 
 2D rotation transitions.
 
-| Preset | Rotation | Duration |
-|---|---|---|
-| `rotateIn` | `-15deg` | 300ms / 200ms |
-| `rotateInReverse` | `15deg` | 300ms / 200ms |
-| `rotateInUp` | `-5deg` + `translateY(16px)` | 300ms / 200ms |
-| `rotateInDown` | `5deg` + `translateY(-16px)` | 300ms / 200ms |
-| `spinIn` | `-180deg` | 500ms / 300ms |
-| `spinInReverse` | `180deg` | 500ms / 300ms |
-| `scaleRotateIn` | `scale(0) rotate(-180deg)` | 500ms / 300ms |
-| `newspaperIn` | `scale(0) rotate(-720deg)` | 700ms / 400ms |
+| Preset            | Rotation                     | Duration      |
+| ----------------- | ---------------------------- | ------------- |
+| `rotateIn`        | `-15deg`                     | 300ms / 200ms |
+| `rotateInReverse` | `15deg`                      | 300ms / 200ms |
+| `rotateInUp`      | `-5deg` + `translateY(16px)` | 300ms / 200ms |
+| `rotateInDown`    | `5deg` + `translateY(-16px)` | 300ms / 200ms |
+| `spinIn`          | `-180deg`                    | 500ms / 300ms |
+| `spinInReverse`   | `180deg`                     | 500ms / 300ms |
+| `scaleRotateIn`   | `scale(0) rotate(-180deg)`   | 500ms / 300ms |
+| `newspaperIn`     | `scale(0) rotate(-720deg)`   | 700ms / 400ms |
 
 ```ts
 import { newspaperIn } from '@pyreon/kinetic-presets'
@@ -653,18 +659,18 @@ console.log(newspaperIn.enterStyle)
 
 Transitions using bouncy, spring-like easing curves.
 
-| Preset | Effect | Easing | Duration |
-|---|---|---|---|
-| `bounceIn` | `scale(0.5)` | `cubic-bezier(0.68, -0.55, 0.265, 1.55)` | 500ms / 200ms |
-| `bounceInUp` | `translateY(40px)` | Bounce | 500ms / 200ms |
-| `bounceInDown` | `translateY(-40px)` | Bounce | 500ms / 200ms |
-| `bounceInLeft` | `translateX(40px)` | Bounce | 500ms / 200ms |
-| `bounceInRight` | `translateX(-40px)` | Bounce | 500ms / 200ms |
-| `springIn` | `scale(0.8)` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | 400ms / 200ms |
-| `popIn` | `scale(0.3)` | Spring | 300ms / 200ms |
-| `rubberIn` | `scale(0.6)` | `cubic-bezier(0.175, 0.885, 0.32, 1.275)` | 500ms / 250ms |
-| `squishX` | `scaleX(1.4) scaleY(0.6)` | Spring | 400ms / 250ms |
-| `squishY` | `scaleX(0.6) scaleY(1.4)` | Spring | 400ms / 250ms |
+| Preset          | Effect                    | Easing                                    | Duration      |
+| --------------- | ------------------------- | ----------------------------------------- | ------------- |
+| `bounceIn`      | `scale(0.5)`              | `cubic-bezier(0.68, -0.55, 0.265, 1.55)`  | 500ms / 200ms |
+| `bounceInUp`    | `translateY(40px)`        | Bounce                                    | 500ms / 200ms |
+| `bounceInDown`  | `translateY(-40px)`       | Bounce                                    | 500ms / 200ms |
+| `bounceInLeft`  | `translateX(40px)`        | Bounce                                    | 500ms / 200ms |
+| `bounceInRight` | `translateX(-40px)`       | Bounce                                    | 500ms / 200ms |
+| `springIn`      | `scale(0.8)`              | `cubic-bezier(0.34, 1.56, 0.64, 1)`       | 400ms / 200ms |
+| `popIn`         | `scale(0.3)`              | Spring                                    | 300ms / 200ms |
+| `rubberIn`      | `scale(0.6)`              | `cubic-bezier(0.175, 0.885, 0.32, 1.275)` | 500ms / 250ms |
+| `squishX`       | `scaleX(1.4) scaleY(0.6)` | Spring                                    | 400ms / 250ms |
+| `squishY`       | `scaleX(0.6) scaleY(1.4)` | Spring                                    | 400ms / 250ms |
 
 ```ts
 import { bounceIn, springIn } from '@pyreon/kinetic-presets'
@@ -677,16 +683,16 @@ import { bounceIn, springIn } from '@pyreon/kinetic-presets'
 
 Blur-based transitions with optional scale and directional movement.
 
-| Preset | Blur | Additional Effect | Duration |
-|---|---|---|---|
-| `blurIn` | `8px` | -- | 300ms / 200ms |
-| `blurInUp` | `8px` | `translateY(16px)` | 300ms / 200ms |
-| `blurInDown` | `8px` | `translateY(-16px)` | 300ms / 200ms |
-| `blurInLeft` | `8px` | `translateX(16px)` | 300ms / 200ms |
+| Preset        | Blur  | Additional Effect   | Duration      |
+| ------------- | ----- | ------------------- | ------------- |
+| `blurIn`      | `8px` | --                  | 300ms / 200ms |
+| `blurInUp`    | `8px` | `translateY(16px)`  | 300ms / 200ms |
+| `blurInDown`  | `8px` | `translateY(-16px)` | 300ms / 200ms |
+| `blurInLeft`  | `8px` | `translateX(16px)`  | 300ms / 200ms |
 | `blurInRight` | `8px` | `translateX(-16px)` | 300ms / 200ms |
-| `blurScale` | `8px` | `scale(0.95)` | 300ms / 200ms |
-| `puffIn` | `4px` | `scale(1.5)` | 400ms / 250ms |
-| `puffOut` | `4px` | `scale(0.5)` | 400ms / 250ms |
+| `blurScale`   | `8px` | `scale(0.95)`       | 300ms / 200ms |
+| `puffIn`      | `4px` | `scale(1.5)`        | 400ms / 250ms |
+| `puffOut`     | `4px` | `scale(0.5)`        | 400ms / 250ms |
 
 ```ts
 import { blurIn, puffIn } from '@pyreon/kinetic-presets'
@@ -699,16 +705,16 @@ import { blurIn, puffIn } from '@pyreon/kinetic-presets'
 
 Clip-path reveal transitions. These use `clipPath` instead of `opacity` for unique visual effects.
 
-| Preset | Clip Animation | Duration |
-|---|---|---|
-| `clipTop` | Reveal from top edge | 400ms / 250ms |
-| `clipBottom` | Reveal from bottom edge | 400ms / 250ms |
-| `clipLeft` | Reveal from left edge | 400ms / 250ms |
-| `clipRight` | Reveal from right edge | 400ms / 250ms |
-| `clipCircle` | Circular reveal from center | 500ms / 300ms |
-| `clipCenter` | Expand from center point | 400ms / 250ms |
-| `clipDiamond` | Diamond-shaped reveal | 500ms / 300ms |
-| `clipCorner` | Expand from top-left corner | 500ms / 300ms |
+| Preset        | Clip Animation              | Duration      |
+| ------------- | --------------------------- | ------------- |
+| `clipTop`     | Reveal from top edge        | 400ms / 250ms |
+| `clipBottom`  | Reveal from bottom edge     | 400ms / 250ms |
+| `clipLeft`    | Reveal from left edge       | 400ms / 250ms |
+| `clipRight`   | Reveal from right edge      | 400ms / 250ms |
+| `clipCircle`  | Circular reveal from center | 500ms / 300ms |
+| `clipCenter`  | Expand from center point    | 400ms / 250ms |
+| `clipDiamond` | Diamond-shaped reveal       | 500ms / 300ms |
+| `clipCorner`  | Expand from top-left corner | 500ms / 300ms |
 
 ```ts
 import { clipCircle, clipDiamond } from '@pyreon/kinetic-presets'
@@ -727,49 +733,49 @@ console.log(clipDiamond.enterStyle)
 
 3D tilt transitions using `perspective` and subtle rotation.
 
-| Preset | Rotation | Duration |
-|---|---|---|
-| `perspectiveUp` | `rotateX(15deg)` | 300ms / 200ms |
-| `perspectiveDown` | `rotateX(-15deg)` | 300ms / 200ms |
-| `perspectiveLeft` | `rotateY(-15deg)` | 300ms / 200ms |
-| `perspectiveRight` | `rotateY(15deg)` | 300ms / 200ms |
+| Preset             | Rotation          | Duration      |
+| ------------------ | ----------------- | ------------- |
+| `perspectiveUp`    | `rotateX(15deg)`  | 300ms / 200ms |
+| `perspectiveDown`  | `rotateX(-15deg)` | 300ms / 200ms |
+| `perspectiveLeft`  | `rotateY(-15deg)` | 300ms / 200ms |
+| `perspectiveRight` | `rotateY(15deg)`  | 300ms / 200ms |
 
 All use `perspective(600px)` for realistic depth.
 
 ### Expand, Skew, and More
 
-| Preset | Description | Duration |
-|---|---|---|
-| `expandX` | Scale from `scaleX(0)` | 300ms / 200ms |
-| `expandY` | Scale from `scaleY(0)` | 300ms / 200ms |
-| `skewIn` | Skew from `-5deg` | 300ms / 200ms |
-| `skewInReverse` | Skew from `5deg` | 300ms / 200ms |
-| `skewInY` | Vertical skew from `-5deg` | 300ms / 200ms |
-| `skewInYReverse` | Vertical skew from `5deg` | 300ms / 200ms |
-| `drop` | From `translateY(-100%)` | 400ms / 250ms |
-| `rise` | From `translateY(100%)` | 400ms / 250ms |
+| Preset           | Description                | Duration      |
+| ---------------- | -------------------------- | ------------- |
+| `expandX`        | Scale from `scaleX(0)`     | 300ms / 200ms |
+| `expandY`        | Scale from `scaleY(0)`     | 300ms / 200ms |
+| `skewIn`         | Skew from `-5deg`          | 300ms / 200ms |
+| `skewInReverse`  | Skew from `5deg`           | 300ms / 200ms |
+| `skewInY`        | Vertical skew from `-5deg` | 300ms / 200ms |
+| `skewInYReverse` | Vertical skew from `5deg`  | 300ms / 200ms |
+| `drop`           | From `translateY(-100%)`   | 400ms / 250ms |
+| `rise`           | From `translateY(100%)`    | 400ms / 250ms |
 
 ### Complex Presets
 
 These presets combine multiple transforms for dramatic entrance effects.
 
-| Preset | Description | Duration |
-|---|---|---|
-| `backInUp` / `backInDown` | `scale(0.7)` + `translate(80px)` | 400ms / 250ms |
-| `backInLeft` / `backInRight` | `scale(0.7)` + `translate(80px)` | 400ms / 250ms |
-| `lightSpeedInLeft` / `lightSpeedInRight` | `translateX(100%)` + `skewX(30deg)` | 400ms / 250ms |
-| `rollInLeft` / `rollInRight` | `translateX(100%)` + `rotate(120deg)` | 500ms / 300ms |
-| `swingInTop` / `swingInBottom` | 3D swing with `transformOrigin` | 500ms / 300ms |
-| `swingInLeft` / `swingInRight` | 3D swing with `transformOrigin` | 500ms / 300ms |
-| `slitHorizontal` / `slitVertical` | 3D slit reveal with rotation + scale | 500ms / 300ms |
-| `swirlIn` / `swirlInReverse` | `rotate(540deg)` + `scale(0)` | 600ms / 400ms |
-| `flyInUp` / `flyInDown` | `translateY(100vh)` | 500ms / 300ms |
-| `flyInLeft` / `flyInRight` | `translateX(100vw)` | 500ms / 300ms |
-| `floatUp` / `floatDown` | `translate(32px)` + `scale(0.97)` | 500ms / 300ms |
-| `floatLeft` / `floatRight` | `translate(32px)` + `scale(0.97)` | 500ms / 300ms |
-| `pushInLeft` / `pushInRight` | `translate(48px)` + `scale(0.9)` | 300ms / 200ms |
-| `tiltInUp` / `tiltInDown` | 3D tilt + `translate(24px)` | 300ms / 200ms |
-| `tiltInLeft` / `tiltInRight` | 3D tilt + `translate(24px)` | 300ms / 200ms |
+| Preset                                   | Description                           | Duration      |
+| ---------------------------------------- | ------------------------------------- | ------------- |
+| `backInUp` / `backInDown`                | `scale(0.7)` + `translate(80px)`      | 400ms / 250ms |
+| `backInLeft` / `backInRight`             | `scale(0.7)` + `translate(80px)`      | 400ms / 250ms |
+| `lightSpeedInLeft` / `lightSpeedInRight` | `translateX(100%)` + `skewX(30deg)`   | 400ms / 250ms |
+| `rollInLeft` / `rollInRight`             | `translateX(100%)` + `rotate(120deg)` | 500ms / 300ms |
+| `swingInTop` / `swingInBottom`           | 3D swing with `transformOrigin`       | 500ms / 300ms |
+| `swingInLeft` / `swingInRight`           | 3D swing with `transformOrigin`       | 500ms / 300ms |
+| `slitHorizontal` / `slitVertical`        | 3D slit reveal with rotation + scale  | 500ms / 300ms |
+| `swirlIn` / `swirlInReverse`             | `rotate(540deg)` + `scale(0)`         | 600ms / 400ms |
+| `flyInUp` / `flyInDown`                  | `translateY(100vh)`                   | 500ms / 300ms |
+| `flyInLeft` / `flyInRight`               | `translateX(100vw)`                   | 500ms / 300ms |
+| `floatUp` / `floatDown`                  | `translate(32px)` + `scale(0.97)`     | 500ms / 300ms |
+| `floatLeft` / `floatRight`               | `translate(32px)` + `scale(0.97)`     | 500ms / 300ms |
+| `pushInLeft` / `pushInRight`             | `translate(48px)` + `scale(0.9)`      | 300ms / 200ms |
+| `tiltInUp` / `tiltInDown`                | 3D tilt + `translate(24px)`           | 300ms / 200ms |
+| `tiltInLeft` / `tiltInRight`             | 3D tilt + `translate(24px)`           | 300ms / 200ms |
 
 ```ts
 import { swingInTop, swirlIn, lightSpeedInLeft } from '@pyreon/kinetic-presets'
@@ -889,12 +895,9 @@ import { createFade, withDuration, withEasing } from '@pyreon/kinetic-presets'
 
 // Smooth page transition: slide up with deceleration
 const pageTransition = withEasing(
-  withDuration(
-    createFade({ direction: 'up', distance: 30 }),
-    400, 250
-  ),
-  'cubic-bezier(0.22, 1, 0.36, 1)',  // Smooth deceleration
-  'cubic-bezier(0.55, 0, 1, 0.45)',  // Quick acceleration out
+  withDuration(createFade({ direction: 'up', distance: 30 }), 400, 250),
+  'cubic-bezier(0.22, 1, 0.36, 1)', // Smooth deceleration
+  'cubic-bezier(0.55, 0, 1, 0.45)', // Quick acceleration out
 )
 ```
 
@@ -905,15 +908,9 @@ import { compose, createFade, createScale, withDuration, withEasing } from '@pyr
 
 // Modal: fade + scale with spring easing
 const modalTransition = withEasing(
-  withDuration(
-    compose(
-      createFade(),
-      createScale({ from: 0.95 })
-    ),
-    300, 200
-  ),
-  'cubic-bezier(0.34, 1.56, 0.64, 1)',  // Slight overshoot on enter
-  'ease-in',                              // Quick exit
+  withDuration(compose(createFade(), createScale({ from: 0.95 })), 300, 200),
+  'cubic-bezier(0.34, 1.56, 0.64, 1)', // Slight overshoot on enter
+  'ease-in', // Quick exit
 )
 
 // Overlay backdrop: simple fade
@@ -926,10 +923,7 @@ const backdropTransition = withDuration(createFade(), 200, 150)
 import { createFade, withDuration } from '@pyreon/kinetic-presets'
 
 // Fast, subtle animation for menus
-const dropdownTransition = withDuration(
-  createFade({ direction: 'down', distance: 8 }),
-  200, 150
-)
+const dropdownTransition = withDuration(createFade({ direction: 'down', distance: 8 }), 200, 150)
 ```
 
 ### Notification Toast
@@ -939,12 +933,9 @@ import { compose, createFade, createSlide, withEasing } from '@pyreon/kinetic-pr
 
 // Toast slides in from the right with a bounce
 const toastTransition = withEasing(
-  compose(
-    createFade(),
-    createSlide({ direction: 'right', distance: 100 })
-  ),
-  'cubic-bezier(0.34, 1.56, 0.64, 1)',  // Bouncy enter
-  'ease-in',                              // Quick dismiss
+  compose(createFade(), createSlide({ direction: 'right', distance: 100 })),
+  'cubic-bezier(0.34, 1.56, 0.64, 1)', // Bouncy enter
+  'ease-in', // Quick dismiss
 )
 ```
 
@@ -968,11 +959,9 @@ import { compose, createFade, createSlide, withDuration } from '@pyreon/kinetic-
 
 // Sidebar slides in from the left
 const sidebarTransition = withDuration(
-  compose(
-    createFade(),
-    createSlide({ direction: 'left', distance: 280 })
-  ),
-  300, 200
+  compose(createFade(), createSlide({ direction: 'left', distance: 280 })),
+  300,
+  200,
 )
 ```
 
@@ -983,11 +972,9 @@ import { compose, createScale, createBlur, withDuration } from '@pyreon/kinetic-
 
 // Full-size image zoom with blur
 const galleryTransition = withDuration(
-  compose(
-    createScale({ from: 0.8 }),
-    createBlur({ amount: 4 })
-  ),
-  400, 250
+  compose(createScale({ from: 0.8 }), createBlur({ amount: 4 })),
+  400,
+  250,
 )
 ```
 
@@ -997,13 +984,7 @@ const galleryTransition = withDuration(
 import { compose, createFade, createScale, withDuration } from '@pyreon/kinetic-presets'
 
 // Quick preview card animation
-const previewCard = withDuration(
-  compose(
-    createFade(),
-    createScale({ from: 0.98 })
-  ),
-  150, 100
-)
+const previewCard = withDuration(compose(createFade(), createScale({ from: 0.98 })), 150, 100)
 ```
 
 ## Creating Custom Presets from Factories
@@ -1051,11 +1032,7 @@ interface ShakeOptions {
   axis?: 'x' | 'y'
 }
 
-function createShakeIn({
-  distance = 10,
-  duration = 400,
-  axis = 'x',
-}: ShakeOptions = {}): Preset {
+function createShakeIn({ distance = 10, duration = 400, axis = 'x' }: ShakeOptions = {}): Preset {
   const translate = axis === 'x' ? 'translateX' : 'translateY'
   return {
     enterStyle: {
@@ -1091,10 +1068,7 @@ export const animations = {
   // UI elements
   tooltip: withDuration(createFade({ direction: 'down', distance: 4 }), 150, 100),
   dropdown: withDuration(createFade({ direction: 'down', distance: 8 }), 200, 150),
-  popover: withDuration(
-    compose(createFade(), createScale({ from: 0.95 })),
-    250, 180
-  ),
+  popover: withDuration(compose(createFade(), createScale({ from: 0.95 })), 250, 180),
 
   // Modals
   modal: withEasing(
@@ -1123,6 +1097,7 @@ export const animations = {
 The `transform` and `opacity` CSS properties are the most performant to animate because they can be handled entirely by the browser's compositor thread. All built-in presets use only these properties (plus `filter` for blur and `clipPath` for clip presets).
 
 Avoid animating:
+
 - `width`, `height`, `margin`, `padding` (trigger layout recalculation)
 - `top`, `left`, `right`, `bottom` (trigger layout recalculation)
 - `background-color` (triggers paint but not layout -- acceptable)
@@ -1159,8 +1134,7 @@ Respect `prefers-reduced-motion` for accessibility:
 import { fade, type Preset } from '@pyreon/kinetic-presets'
 
 const prefersReducedMotion =
-  typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // Use a simple fade (or no animation) for reduced motion
 function safePreset(preset: Preset): Preset {
@@ -1172,35 +1146,36 @@ function safePreset(preset: Preset): Preset {
 ### Avoid Animating Large Lists
 
 For lists with many items, consider:
+
 - Using `TransitionGroup` only for visible items (virtualized lists).
 - Using shorter durations for list item animations.
 - Disabling move animations for very large lists (they require `getBoundingClientRect` for each item).
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `createFade` | `(options?: FadeOptions) => Preset` | Factory for fade transitions |
-| `createSlide` | `(options?: SlideOptions) => Preset` | Factory for slide transitions |
-| `createScale` | `(options?: ScaleOptions) => Preset` | Factory for scale transitions |
-| `createRotate` | `(options?: RotateOptions) => Preset` | Factory for rotation transitions |
-| `createBlur` | `(options?: BlurOptions) => Preset` | Factory for blur transitions |
-| `compose` | `(...presets: Preset[]) => Preset` | Merge multiple presets into one |
-| `withDuration` | `(preset: Preset, enterMs: number, leaveMs?: number) => Preset` | Override transition duration |
-| `withEasing` | `(preset: Preset, enterEasing: string, leaveEasing?: string) => Preset` | Override transition easing |
-| `withDelay` | `(preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset` | Add transition delay |
-| `reverse` | `(preset: Preset) => Preset` | Swap enter/leave phases |
-| `presets` | `Record<string, Preset>` | Map of all 90+ built-in presets by name |
+| Export         | Type                                                                      | Description                             |
+| -------------- | ------------------------------------------------------------------------- | --------------------------------------- |
+| `createFade`   | `(options?: FadeOptions) => Preset`                                       | Factory for fade transitions            |
+| `createSlide`  | `(options?: SlideOptions) => Preset`                                      | Factory for slide transitions           |
+| `createScale`  | `(options?: ScaleOptions) => Preset`                                      | Factory for scale transitions           |
+| `createRotate` | `(options?: RotateOptions) => Preset`                                     | Factory for rotation transitions        |
+| `createBlur`   | `(options?: BlurOptions) => Preset`                                       | Factory for blur transitions            |
+| `compose`      | `(...presets: Preset[]) => Preset`                                        | Merge multiple presets into one         |
+| `withDuration` | `(preset: Preset, enterMs: number, leaveMs?: number) => Preset`           | Override transition duration            |
+| `withEasing`   | `(preset: Preset, enterEasing: string, leaveEasing?: string) => Preset`   | Override transition easing              |
+| `withDelay`    | `(preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset` | Add transition delay                    |
+| `reverse`      | `(preset: Preset) => Preset`                                              | Swap enter/leave phases                 |
+| `presets`      | `Record<string, Preset>`                                                  | Map of all 90+ built-in presets by name |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `Preset` | Transition preset with enter/leave styles, transitions, and classes |
-| `CSSProperties` | `Record<string, string \| number \| undefined>` |
-| `Direction` | `'up' \| 'down' \| 'left' \| 'right'` |
-| `FadeOptions` | Options for `createFade` |
-| `SlideOptions` | Options for `createSlide` |
-| `ScaleOptions` | Options for `createScale` |
-| `RotateOptions` | Options for `createRotate` |
-| `BlurOptions` | Options for `createBlur` |
+| Type            | Description                                                         |
+| --------------- | ------------------------------------------------------------------- |
+| `Preset`        | Transition preset with enter/leave styles, transitions, and classes |
+| `CSSProperties` | `Record<string, string \| number \| undefined>`                     |
+| `Direction`     | `'up' \| 'down' \| 'left' \| 'right'`                               |
+| `FadeOptions`   | Options for `createFade`                                            |
+| `SlideOptions`  | Options for `createSlide`                                           |
+| `ScaleOptions`  | Options for `createScale`                                           |
+| `RotateOptions` | Options for `createRotate`                                          |
+| `BlurOptions`   | Options for `createBlur`                                            |

@@ -10,9 +10,9 @@
  * existing renderer handles all DOM work.
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { Fragment, h } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
+import { Fragment, h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 
 export { Fragment }
 
@@ -65,7 +65,7 @@ function runLayoutEffects(entries: EffectEntry[]): void {
   for (const entry of entries) {
     if (entry.cleanup) entry.cleanup()
     const cleanup = entry.fn()
-    entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+    entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
   }
 }
 
@@ -76,7 +76,7 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
       if (ctx.unmounted) return
       if (entry.cleanup) entry.cleanup()
       const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+      entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
     }
   })
 }
@@ -146,7 +146,7 @@ export function jsx(
   const { children, ...rest } = props
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
-  if (typeof type === "function") {
+  if (typeof type === 'function') {
     // Wrap React-style component for re-render support
     const wrapped = wrapCompatComponent(type)
     const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
@@ -157,7 +157,7 @@ export function jsx(
   const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
 
   // Map className → class for React compat
-  if (typeof type === "string" && propsWithKey.className !== undefined) {
+  if (typeof type === 'string' && propsWithKey.className !== undefined) {
     propsWithKey.class = propsWithKey.className
     delete propsWithKey.className
   }
