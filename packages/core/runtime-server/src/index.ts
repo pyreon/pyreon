@@ -442,12 +442,16 @@ function toAttrName(key: string): string {
   return key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
 }
 
+function isStyleObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
 function normalizeStyle(value: unknown): string {
   if (typeof value === 'string') return value
-  if (typeof value === 'object' && value !== null) {
+  if (isStyleObject(value)) {
     const proto = Object.getPrototypeOf(value)
     if (proto === Object.prototype || proto === null) {
-      return Object.entries(value as Record<string, unknown>)
+      return Object.entries(value)
         .map(([k, v]) => `${toKebab(k)}: ${normalizeStyleValue(k, v)}`)
         .join('; ')
     }
