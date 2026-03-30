@@ -63,9 +63,32 @@ function toLspDiagnostics(diagnostics: Diagnostic[]): LspDiagnostic[] {
 // ─── Lint a document ───────────────────────────────────────────────────────
 
 function lintDocument(uri: string, text: string): LspDiagnostic[] {
-  const filePath = uri.replace('file://', '')
-  const result = lintFile(filePath, text, allRules, config, cache)
-  return toLspDiagnostics(result.diagnostics)
+  try {
+    const filePath = uri.replace('file://', '')
+    const result = lintFile(filePath, text, allRules, config, cache)
+    return toLspDiagnostics(result.diagnostics)
+  } catch {
+    // Parse errors, unsupported file types — return empty diagnostics
+    return []
+  }
+}
+
+// ─── Debounce ──────────────────────────────────────────────────────────────
+
+const DEBOUNCE_MS = 150
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function debounceLint(uri: string, text: string): void {
+  const existing = debounceTimers.get(uri)
+  if (existing) clearTimeout(existing)
+  debounceTimers.set(
+    uri,
+    setTimeout(() => {
+      debounceTimers.delete(uri)
+      const diagnostics = lintDocument(uri, text)
+      sendNotification('textDocument/publishDiagnostics', { uri, diagnostics })
+    }, DEBOUNCE_MS),
+  )
 }
 
 // ─── Message handling ──────────────────────────────────────────────────────
@@ -104,8 +127,8 @@ function handleMessage(msg: JsonRpcMessage): JsonRpcMessage | null {
     const text = msg.params.contentChanges[0]?.text
     if (text != null) {
       openDocuments.set(uri, text)
-      const diagnostics = lintDocument(uri, text)
-      sendNotification('textDocument/publishDiagnostics', { uri, diagnostics })
+      // Debounce: wait 150ms after last keystroke before linting
+      debounceLint(uri, text)
     }
     return null
   }

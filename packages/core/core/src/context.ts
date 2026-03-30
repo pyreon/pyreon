@@ -85,7 +85,12 @@ export function popContext() {
 /**
  * Read the nearest provided value for a context.
  * Falls back to `context.defaultValue` if none found.
+ *
+ * For ReactiveContext<T>, returns `() => T` — you MUST call the accessor.
+ * For regular Context<T>, returns `T` directly.
  */
+export function useContext<T>(context: ReactiveContext<T>): () => T
+export function useContext<T>(context: Context<T>): T
 export function useContext<T>(context: Context<T>): T {
   const stack = getStack()
   for (let i = stack.length - 1; i >= 0; i--) {
