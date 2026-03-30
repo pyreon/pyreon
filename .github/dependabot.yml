@@ -9,7 +9,7 @@ updates:
       day: 'monday'
     open-pull-requests-limit: 10
     reviewers:
-      - 'vitus-labs'
+      - 'vitbokisch'
     labels:
       - 'dependencies'
     commit-message:
