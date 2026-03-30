@@ -24,7 +24,14 @@ export const ThemeContext = createContext<Theme>({} as Theme)
 /** Hook to read the current theme from the nearest ThemeProvider. */
 export const useTheme = <T extends object = Theme>(): T => useContext(ThemeContext) as T
 
-/** Provides a theme object to all nested styled components via Pyreon context. */
+/**
+ * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
+ *
+ * Provides a theme object to all nested styled components via Pyreon context.
+ *
+ * @deprecated Prefer `<PyreonUI theme={theme}>` which provides theme to
+ * all three context layers (styler, core, mode) in one component.
+ */
 export function ThemeProvider({
   theme,
   children,

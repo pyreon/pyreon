@@ -11,9 +11,14 @@ export type TProvider = {
 }
 
 /**
+ * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
+ *
  * Unistyle Provider — wraps the core Provider and enriches the theme
  * with pre-computed sorted breakpoints and media-query tagged-template
  * helpers consumed by `makeItResponsive`.
+ *
+ * @deprecated Prefer `<PyreonUI theme={theme} mode="light">` which handles
+ * all three context layers (styler, core, mode) in one component.
  */
 function Provider(props: TProvider): VNode | null {
   const { theme, children } = props

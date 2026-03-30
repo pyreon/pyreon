@@ -36,8 +36,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 55 rules', () => {
-    expect(allRules.length).toBe(55)
+  it('should have 56 rules', () => {
+    expect(allRules.length).toBe(56)
   })
 
   it('should have unique rule IDs', () => {
@@ -77,7 +77,7 @@ describe('Rule metadata', () => {
     for (const rule of allRules) {
       counts[rule.meta.category] = (counts[rule.meta.category] ?? 0) + 1
     }
-    expect(counts.reactivity).toBe(8)
+    expect(counts.reactivity).toBe(9)
     expect(counts.jsx).toBe(11)
     expect(counts.lifecycle).toBe(4)
     expect(counts.performance).toBe(4)
@@ -1013,7 +1013,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(55)
+    expect(Object.keys(config.rules).length).toBe(56)
   })
 
   it('strict should promote all warns to errors', () => {

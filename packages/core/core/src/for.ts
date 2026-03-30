@@ -8,8 +8,14 @@ export const ForSymbol: unique symbol = Symbol('pyreon.For')
 
 export interface ForProps<T> {
   each: () => T[]
+  /** Keying function — use `by` not `key` (JSX extracts `key` for VNode reconciliation). */
   by: (item: T) => string | number
   children: (item: T) => VNode | NativeItem
+  /**
+   * @deprecated Use `by` instead of `key`. In Pyreon, `<For>` uses `by` for keying.
+   * JSX reserves `key` for VNode reconciliation — it won't reach the component.
+   */
+  key?: never
 }
 
 /**

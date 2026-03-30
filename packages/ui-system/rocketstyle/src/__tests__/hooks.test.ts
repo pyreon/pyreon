@@ -1,5 +1,5 @@
 import { popContext, pushContext } from '@pyreon/core'
-import { context } from '../context/context'
+import { buildThemeContextMap } from '@pyreon/test-utils'
 import { localContext, useLocalContext } from '../context/localContext'
 import usePseudoState from '../hooks/usePseudoState'
 import useThemeAttrs from '../hooks/useTheme'
@@ -110,19 +110,7 @@ describe('useThemeAttrs', () => {
   })
 
   it('reads theme from context', () => {
-    pushContext(
-      new Map([
-        [
-          context.id,
-          {
-            theme: { rootSize: 16 },
-            mode: 'light',
-            isDark: false,
-            isLight: true,
-          },
-        ],
-      ]),
-    )
+    pushContext(buildThemeContextMap())
     pushed = true
 
     const result = useThemeAttrs({ inversed: false })
@@ -131,19 +119,7 @@ describe('useThemeAttrs', () => {
   })
 
   it('inverts mode when inversed is true', () => {
-    pushContext(
-      new Map([
-        [
-          context.id,
-          {
-            theme: { rootSize: 16 },
-            mode: 'light',
-            isDark: false,
-            isLight: true,
-          },
-        ],
-      ]),
-    )
+    pushContext(buildThemeContextMap())
     pushed = true
 
     const result = useThemeAttrs({ inversed: true })
@@ -154,17 +130,12 @@ describe('useThemeAttrs', () => {
 
   it('inverts dark to light', () => {
     pushContext(
-      new Map([
-        [
-          context.id,
-          {
-            theme: {},
-            mode: 'dark',
-            isDark: true,
-            isLight: false,
-          },
-        ],
-      ]),
+      buildThemeContextMap({
+        theme: {},
+        mode: 'dark',
+        isDark: true,
+        isLight: false,
+      }),
     )
     pushed = true
 

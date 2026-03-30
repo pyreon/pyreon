@@ -41,6 +41,7 @@ import { noLargeForWithoutBy } from './performance/no-large-for-without-by'
 import { preferShowOverDisplay } from './performance/prefer-show-over-display'
 // Reactivity
 import { noBareSignalInJsx } from './reactivity/no-bare-signal-in-jsx'
+import { noContextDestructure } from './reactivity/no-context-destructure'
 import { noEffectAssignment } from './reactivity/no-effect-assignment'
 import { noNestedEffect } from './reactivity/no-nested-effect'
 import { noPeekInTracked } from './reactivity/no-peek-in-tracked'
@@ -68,8 +69,9 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (8)
+  // Reactivity (9)
   noBareSignalInJsx,
+  noContextDestructure,
   noSignalInLoop,
   noNestedEffect,
   noPeekInTracked,
@@ -144,6 +146,7 @@ export {
   noAndConditional,
   // Reactivity
   noBareSignalInJsx,
+  noContextDestructure,
   noChildrenAccess,
   // Architecture
   noCircularImport,

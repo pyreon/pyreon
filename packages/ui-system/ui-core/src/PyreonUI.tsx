@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, provide, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
@@ -49,8 +49,8 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
 
 // ─── Mode context ───────────────────────────────────────────────────────────
 
-/** Context value is a getter — consumers call it to read the current mode reactively. */
-const ModeContext = createContext<() => ThemeMode>(() => 'light')
+/** Reactive context — useContext(ModeContext) returns () => ThemeMode. */
+const ModeContext = createReactiveContext<ThemeMode>('light')
 
 const INVERSED: Record<ThemeMode, ThemeMode> = { light: 'dark', dark: 'light' }
 
@@ -119,21 +119,15 @@ export function PyreonUI({ theme, mode = 'light', inversed, children }: PyreonUI
   // 1. Styler ThemeContext — for styled() components and useTheme()
   provide(ThemeContext, enrichedTheme)
 
-  // 2. Core context — provide a reactive object with getters.
-  //    Rocketstyle reads mode/isDark/isLight from this context.
-  //    By providing getters, the values update when modeComputed changes.
-  provide(coreContext, {
+  // 2. Core context — provide a reactive getter function.
+  //    coreContext is a ReactiveContext, so provide(() => value).
+  //    Rocketstyle reads mode/isDark/isLight by calling the getter.
+  provide(coreContext, () => ({
     theme: enrichedTheme,
-    get mode() {
-      return modeComputed()
-    },
-    get isDark() {
-      return modeComputed() === 'dark'
-    },
-    get isLight() {
-      return modeComputed() === 'light'
-    },
-  })
+    mode: modeComputed(),
+    isDark: modeComputed() === 'dark',
+    isLight: modeComputed() === 'light',
+  }))
 
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())

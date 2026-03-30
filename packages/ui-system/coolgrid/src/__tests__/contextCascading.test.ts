@@ -22,8 +22,8 @@ const asVNode = (v: unknown) => v as VNode
 describe('Context cascading: Container -> Row -> Col', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: unistyle theme context returns empty theme
-    mockUseContext.mockReturnValue({ theme: {} })
+    // Default: unistyle theme context returns a ReactiveContext accessor
+    mockUseContext.mockReturnValue(() => ({ theme: {} }))
   })
 
   it('Container provides context with grid config', async () => {
@@ -53,7 +53,7 @@ describe('Context cascading: Container -> Row -> Col', () => {
         gutter: 8,
         padding: 4,
       })
-      .mockReturnValueOnce({ theme: {} })
+      .mockReturnValueOnce(() => ({ theme: {} }))
 
     Row({ children: 'test' })
 
@@ -69,7 +69,7 @@ describe('Context cascading: Container -> Row -> Col', () => {
     const Row = (await import('../Row')).default
 
     // 1st call: ContainerContext, 2nd call: unistyle theme
-    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 8 }).mockReturnValueOnce({ theme: {} })
+    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 8 }).mockReturnValueOnce(() => ({ theme: {} }))
 
     Row({ columns: 24, gap: 32, children: 'test' })
 
@@ -84,7 +84,7 @@ describe('Context cascading: Container -> Row -> Col', () => {
 
     // Col calls useContext twice:
     // 1st: RowContext, 2nd: unistyle theme inside useGridContext
-    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 20 }).mockReturnValueOnce({ theme: {} })
+    mockUseContext.mockReturnValueOnce({ columns: 12, gap: 20 }).mockReturnValueOnce(() => ({ theme: {} }))
 
     const result = asVNode(Col({ size: 4, children: 'test' }))
     expect(result.props.$coolgrid).toBeDefined()

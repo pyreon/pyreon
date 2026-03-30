@@ -5,6 +5,8 @@ export { loadConfig, loadConfigFromPath } from './config/loader'
 export { getPreset } from './config/presets'
 export { lint, listRules } from './lint'
 export { formatCompact, formatJSON, formatText } from './reporter'
+// LSP
+export { startLspServer } from './lsp/index'
 // Rules
 export { allRules } from './rules/index'
 export { applyFixes, lintFile } from './runner'

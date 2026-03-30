@@ -12,8 +12,35 @@ export interface Context<T> {
   readonly defaultValue: T
 }
 
+/** Branded marker for reactive contexts — distinguishes from regular Context at type level. */
+declare const REACTIVE_BRAND: unique symbol
+
+/**
+ * A context whose value is a reactive accessor `() => T`.
+ *
+ * When you `useContext(reactiveCtx)`, TypeScript returns `() => T` —
+ * you MUST call the accessor to read the value. This prevents the
+ * destructuring trap that breaks reactivity with getter-based objects.
+ *
+ * @example
+ * const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
+ * // Provider: provide(ModeCtx, () => modeSignal())
+ * // Consumer: const getMode = useContext(ModeCtx); getMode() // 'light'
+ */
+export interface ReactiveContext<T> extends Context<() => T> {
+  readonly [REACTIVE_BRAND]: T
+}
+
 export function createContext<T>(defaultValue: T): Context<T> {
   return { id: Symbol('PyreonContext'), defaultValue }
+}
+
+/**
+ * Create a reactive context. Consumers get `() => T` and must call it.
+ * This is the safe pattern for values that change over time (mode, locale, etc.).
+ */
+export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
+  return createContext<() => T>(() => defaultValue) as ReactiveContext<T>
 }
 
 // ─── Runtime context stack (managed by the renderer) ─────────────────────────
@@ -58,7 +85,12 @@ export function popContext() {
 /**
  * Read the nearest provided value for a context.
  * Falls back to `context.defaultValue` if none found.
+ *
+ * For ReactiveContext<T>, returns `() => T` — you MUST call the accessor.
+ * For regular Context<T>, returns `T` directly.
  */
+export function useContext<T>(context: ReactiveContext<T>): () => T
+export function useContext<T>(context: Context<T>): T
 export function useContext<T>(context: Context<T>): T {
   const stack = getStack()
   for (let i = stack.length - 1; i >= 0; i--) {

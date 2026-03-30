@@ -24,9 +24,11 @@ export type TProvider = {
  * In Pyreon, context is provided via provide() instead of React.Provider.
  */
 const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): VNodeChild => {
-  const ctx = useContext<TProvider>(context)
+  const getCtx = useContext(context)
+  const ctx = getCtx()
 
-  const { theme, mode, provider: RocketstyleProvider, children } = { ...ctx, ...props, provider }
+  const merged = { ...ctx, ...props, provider } as unknown as TProvider & Record<string, unknown>
+  const { theme, mode, provider: RocketstyleProvider, children } = merged
 
   let newMode = MODE_DEFAULT
 
@@ -34,7 +36,8 @@ const Provider = ({ provider = CoreProvider, inversed, ...props }: TProvider): V
     newMode = inversed ? THEME_MODES_INVERSED[mode] : mode
   }
 
-  const result = RocketstyleProvider({
+  const FinalProvider = RocketstyleProvider ?? CoreProvider
+  const result = FinalProvider({
     mode: newMode,
     isDark: newMode === 'dark',
     isLight: newMode === 'light',

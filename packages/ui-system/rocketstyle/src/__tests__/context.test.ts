@@ -8,7 +8,7 @@ vi.mock('@pyreon/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@pyreon/core')>()
   return {
     ...original,
-    useContext: vi.fn(() => ({})),
+    useContext: vi.fn(() => (() => ({}))),
   }
 })
 
@@ -33,7 +33,7 @@ const mockedCoreProvider = vi.mocked(CoreProvider)
 beforeEach(() => {
   vi.clearAllMocks()
   // Default: empty context
-  mockedUseContext.mockReturnValue({} as any)
+  mockedUseContext.mockReturnValue((() => ({})) as any)
   mockedCoreProvider.mockImplementation(((props: Record<string, unknown>) => ({
     type: 'div',
     props: { ...props, 'data-provider': 'core' },
@@ -44,7 +44,7 @@ beforeEach(() => {
 
 describe('Provider (context)', () => {
   it('uses MODE_DEFAULT (light) when no mode is provided', () => {
-    mockedUseContext.mockReturnValue({} as any)
+    mockedUseContext.mockReturnValue((() => ({})) as any)
 
     const children = { type: 'span', props: {}, children: ['Hello'], key: null }
     Provider({ children })
@@ -57,7 +57,7 @@ describe('Provider (context)', () => {
   })
 
   it('passes mode directly when inversed is false', () => {
-    mockedUseContext.mockReturnValue({ mode: 'dark' } as any)
+    mockedUseContext.mockReturnValue((() => ({ mode: 'dark' })) as any)
 
     const children = { type: 'span', props: {}, children: ['Hello'], key: null }
     Provider({ children, mode: 'dark', inversed: false })
@@ -173,10 +173,10 @@ describe('Provider (context)', () => {
   })
 
   it('merges context values with incoming props (props take precedence)', () => {
-    mockedUseContext.mockReturnValue({
+    mockedUseContext.mockReturnValue((() => ({
       mode: 'light',
       theme: { rootSize: 12 },
-    } as any)
+    })) as any)
 
     const overrideTheme = { rootSize: 20 }
     const children = { type: 'span', props: {}, children: ['Hello'], key: null }
@@ -188,7 +188,7 @@ describe('Provider (context)', () => {
   })
 
   it('uses context mode when no mode prop is given', () => {
-    mockedUseContext.mockReturnValue({ mode: 'dark' } as any)
+    mockedUseContext.mockReturnValue((() => ({ mode: 'dark' })) as any)
 
     const children = { type: 'span', props: {}, children: ['Hello'], key: null }
     Provider({ children })

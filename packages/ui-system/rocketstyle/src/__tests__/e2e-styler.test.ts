@@ -7,71 +7,14 @@
  * Unlike the React version which tested CSS injection in the DOM,
  * this Pyreon version tests the computed $rocketstyle output directly.
  */
-import { popContext, pushContext } from '@pyreon/core'
-import { config } from '@pyreon/ui-core'
-import { context } from '../context/context'
+import { ThemeCapture, getComputedTheme, initTestConfig } from '@pyreon/test-utils'
 import rocketstyle from '../init'
 
-// Mock styled that passes through the component unchanged
-const mockStyled = (component: any) => {
-  const taggedTemplate = (_strings: any, ..._args: any[]) => component
-  return taggedTemplate
-}
-
-const mockCss = (_strings: any, ..._args: any[]) => ''
-
-const originalStyled = config.styled
-const originalCss = config.css
-
+let cleanup: () => void
 beforeAll(() => {
-  config.init({
-    css: mockCss as any,
-    styled: mockStyled as any,
-    component: 'div',
-    textComponent: 'span',
-  })
+  cleanup = initTestConfig()
 })
-
-afterAll(() => {
-  config.styled = originalStyled
-  config.css = originalCss
-})
-
-/** Component that captures $rocketstyle for inspection */
-const ThemeCapture: any = ({ $rocketstyle, $rocketstate, ...rest }: any) => ({
-  type: 'div',
-  props: rest,
-  children: [],
-  key: null,
-  $rocketstyle,
-  $rocketstate,
-})
-ThemeCapture.displayName = 'ThemeCapture'
-
-/** Helper to render within theme context and return $rocketstyle */
-const getComputedTheme = (Component: any, props: Record<string, any> = {}) => {
-  pushContext(
-    new Map([
-      [
-        context.id,
-        {
-          theme: { rootSize: 16 },
-          mode: 'light',
-          isDark: false,
-          isLight: true,
-        },
-      ],
-    ]),
-  )
-  try {
-    const vnode = Component(props) as any
-    // $rocketstyle is a function accessor for reactive mode switching — call it to resolve
-    const rs = vnode.$rocketstyle
-    return typeof rs === 'function' ? rs() : rs
-  } finally {
-    popContext()
-  }
-}
+afterAll(() => cleanup())
 
 describe('e2e: rocketstyle theme computation', () => {
   it('base theme values are passed through', () => {

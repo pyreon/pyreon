@@ -41,6 +41,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@vitus-labs/tools-rolldown": "^1.15.3"
   },

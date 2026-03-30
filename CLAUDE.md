@@ -33,7 +33,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                            |
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
-| `@pyreon/lint`           | Pyreon-specific linter — 55 rules, 12 categories, config files, watch mode, AST cache                                                         |
+| `@pyreon/lint`           | Pyreon-specific linter — 56 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
+| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle                                        |
 
 ### UI System (Component Library)
 
@@ -302,14 +303,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `lint(options?)` — programmatic API: lint files, returns `LintResult` with counts
 - `lintFile(filePath, sourceText, rules, config)` — lint a single file
-- `listRules()` — returns metadata for all 55 rules
+- `listRules()` — returns metadata for all 56 rules
 - `applyFixes(sourceText, diagnostics)` — apply auto-fixes
 - `loadConfig(cwd)` — load `.pyreonlintrc.json` / `package.json` `"pyreonlint"` field
 - `createIgnoreFilter(cwd)` — load `.pyreonlintignore` + `.gitignore` patterns
 - `AstCache` — FNV-1a hash-keyed AST cache for repeat runs
 - `watchAndLint(options)` — file watcher with 100ms debounce, re-lints changed files
 - CLI: `pyreon-lint [--preset recommended|strict|app|lib] [--fix] [--format text|json|compact] [--quiet] [--list] [--watch] [--config path] [--ignore path] [--rule id=severity] [path...]`
-- 55 rules across 12 categories: reactivity (8), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
+- 56 rules across 12 categories: reactivity (9), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
 - 4 presets: `recommended`, `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)
 - Powered by `oxc-parser` — ESTree/TS-ESTree AST with Visitor
 
@@ -400,8 +401,19 @@ Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 
 ### Context providing pattern
 
+Two context types:
+- `createContext<T>(default)` — static context, `useContext()` returns `T`, safe to destructure
+- `createReactiveContext<T>(default)` — reactive context, `useContext()` returns `() => T`, must call to read
+
 `provide(ctx, value)` — pushes context and auto-cleans up on unmount.
 Low-level: `pushContext(new Map([[ctx.id, value]]))` + `onUnmount(() => popContext())`.
+
+For reactive values (mode, locale, etc.), always use `createReactiveContext`:
+```tsx
+const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
+// Provider: provide(ModeCtx, () => modeSignal())
+// Consumer: const getMode = useContext(ModeCtx); getMode() // 'light'
+```
 
 ### onMount signature
 
@@ -457,12 +469,13 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-50 packages across 4 categories under `packages/`:
+51 packages across 5 categories under `packages/`:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
 - `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
+- `packages/internals/` — 1 package: test-utils (private, not published)
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 

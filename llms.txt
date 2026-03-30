@@ -178,22 +178,35 @@ import { mount } from "@pyreon/runtime-dom"
 mount(<App />, document.getElementById("app")!)
 ```
 
-## Common Mistakes
+## Common Mistakes — NEVER DO THIS
 
+### Signals
 - `{count}` → `{count()}` — signals are functions, call them to read
 - `signal(5)` → `signal.set(5)` — calling signal with args does NOT write (dev mode warns)
-- `key={...}` on `<For>` → use `by={...}` prop instead
 - `.value` → signals are callable, not `.value` getters (that's Vue)
 - `useState` → `signal()`, `useEffect` → `effect()` or `onMount()`
-- `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
-- `class="a b"` works, but for conditional classes use `class={["a", cond && "b"]}` or `cx()`
-- `(e.target as HTMLInputElement)` → use `TargetedEvent<HTMLInputElement>` for typed `currentTarget`
-- `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
-- `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `memo(Component)` → not needed, components run once in Pyreon
+
+### JSX
+- `key={...}` on `<For>` → use `by={...}` prop (`key` is reserved for VNode reconciliation)
+- `className` → `class`, `htmlFor` → `for` (standard HTML attributes)
+- `onChange` on `<input>` → `onInput` for keypress-by-keypress (native DOM events)
 - `.map()` in JSX → use `<For>` for reactive list rendering
-- `const { mode } = useContext(ctx)` → loses reactivity! Keep reference: `const ctx = useContext(Ctx)` then `ctx.mode`
+- `class="a b"` works, but for conditional classes use `class={["a", cond && "b"]}` or `cx()`
+
+### Reactivity
+- `const { mode } = useContext(ctx)` → BREAKS REACTIVITY! Destructuring captures the value once. Keep the reference: `const ctx = useContext(Ctx)` then read `ctx.mode` inside reactive scopes
 - `<Comp title={signal()}` → static (evaluated once). For reactive props, pass the signal and read inside the component
+- `effect(() => { effect(() => ...) })` → NEVER nest effects. Use `computed()` for derived values
+- `.peek()` inside effects/computeds → bypasses tracking, creates stale reads
+
+### Providers
+- Use `<PyreonUI theme={theme} mode="light">` — this is the ONLY provider you need
+- Do NOT use `UnistyleProvider`, `ThemeProvider`, or `CoreProvider` directly — they are internal
+
+### Other
+- `(e.target as HTMLInputElement)` → use `TargetedEvent<HTMLInputElement>` for typed `currentTarget`
+- `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
 
 ## UI System (12 packages)
@@ -251,7 +264,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/toast — Toast notifications (toast(), toast.success/error/warning/info/loading, Toaster component, a11y)
 - @pyreon/url-state — URL-synced state (useUrlState with auto type coercion, schema mode, SSR-safe)
 - @pyreon/storybook — Storybook renderer for Pyreon components
-- @pyreon/lint — Pyreon-specific linter — 55 rules (reactivity, JSX, SSR, performance, architecture, router, etc.), config files, watch mode, AST cache, CLI + API, powered by oxc-parser
+- @pyreon/lint — Pyreon-specific linter — 56 rules (reactivity, JSX, SSR, performance, architecture, router, etc.), config files, watch mode, AST cache, CLI + API, powered by oxc-parser
 
 ## Key Ecosystem Patterns
 
