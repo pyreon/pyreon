@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { lint, listRules } from './lint'
+import { startLspServer } from './lsp/index'
 import { formatCompact, formatJSON, formatText } from './reporter'
 import type { PresetName, Severity } from './types'
 import { watchAndLint } from './watcher'
@@ -21,6 +22,7 @@ function printUsage() {
     --config <path>    Config file path
     --ignore <path>    Ignore file path
     --watch            Watch mode — re-lint on file changes
+    --lsp              Start LSP server (stdin/stdout JSON-RPC)
     --help, -h         Show this help
     --version, -v      Show version
 `)
@@ -51,6 +53,7 @@ interface CliArgs {
   showHelp: boolean
   showVersion: boolean
   watchMode: boolean
+  lspMode: boolean
   configPath: string | undefined
   ignorePath: string | undefined
   ruleOverrides: Record<string, Severity>
@@ -66,6 +69,7 @@ const BOOLEAN_FLAGS: Record<string, keyof CliArgs> = {
   '--fix': 'fix',
   '--quiet': 'quiet',
   '--watch': 'watchMode',
+  '--lsp': 'lspMode',
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -78,6 +82,7 @@ function parseArgs(argv: string[]): CliArgs {
     showHelp: false,
     showVersion: false,
     watchMode: false,
+    lspMode: false,
     configPath: undefined,
     ignorePath: undefined,
     ruleOverrides: {},
@@ -153,6 +158,11 @@ function main() {
   if (args.showList) {
     printList()
     process.exit(0)
+  }
+
+  if (args.lspMode) {
+    startLspServer()
+    return
   }
 
   if (args.paths.length === 0) {

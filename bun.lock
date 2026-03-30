@@ -790,6 +790,15 @@
         "storybook": ">=8.0.0",
       },
     },
+    "packages/tools/test-utils": {
+      "name": "@pyreon/test-utils",
+      "version": "0.11.5",
+      "dependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+      },
+    },
     "packages/tools/typescript": {
       "name": "@pyreon/typescript",
       "version": "0.11.5",
@@ -1756,6 +1765,8 @@
     "@pyreon/styler": ["@pyreon/styler@workspace:packages/ui-system/styler"],
 
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
+
+    "@pyreon/test-utils": ["@pyreon/test-utils@workspace:packages/tools/test-utils"],
 
     "@pyreon/toast": ["@pyreon/toast@workspace:packages/fundamentals/toast"],
 

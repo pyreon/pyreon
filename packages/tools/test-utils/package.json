@@ -1,0 +1,38 @@
+{
+  "name": "@pyreon/test-utils",
+  "version": "0.11.5",
+  "description": "Testing utilities for Pyreon UI system components",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/test-utils"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
+    "@pyreon/rocketstyle": "workspace:^"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

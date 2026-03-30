@@ -1,10 +1,11 @@
 // @pyreon/core — component model, VNode types, lifecycle hooks
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
-export type { Context, ContextSnapshot } from './context'
+export type { Context, ContextSnapshot, ReactiveContext } from './context'
 export {
   captureContextStack,
   createContext,
+  createReactiveContext,
   popContext,
   provide,
   pushContext,

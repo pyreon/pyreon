@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, provide, useContext } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
@@ -49,8 +49,8 @@ function getSystemMode(): ReturnType<typeof signal<ThemeMode>> {
 
 // ─── Mode context ───────────────────────────────────────────────────────────
 
-/** Context value is a getter — consumers call it to read the current mode reactively. */
-const ModeContext = createContext<() => ThemeMode>(() => 'light')
+/** Reactive context — useContext(ModeContext) returns () => ThemeMode. */
+const ModeContext = createReactiveContext<ThemeMode>('light')
 
 const INVERSED: Record<ThemeMode, ThemeMode> = { light: 'dark', dark: 'light' }
 
