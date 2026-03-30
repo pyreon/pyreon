@@ -469,12 +469,13 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-50 packages across 4 categories under `packages/`:
+51 packages across 5 categories under `packages/`:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
 - `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
+- `packages/internals/` — 1 package: test-utils (private, not published)
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 

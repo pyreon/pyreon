@@ -31,8 +31,8 @@ const config: LintConfig = getPreset('recommended')
 
 interface JsonRpcMessage {
   jsonrpc: '2.0'
-  id?: number | string
-  method?: string
+  id?: number | string | undefined
+  method?: string | undefined
   params?: any
   result?: any
 }

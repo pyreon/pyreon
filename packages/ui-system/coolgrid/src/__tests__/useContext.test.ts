@@ -13,19 +13,19 @@ vi.mock('@pyreon/core', async (importOriginal) => {
 describe('useGridContext', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Default: empty theme context
-    mockUseContext.mockReturnValue({ theme: {} })
+    // Default: coreContext is ReactiveContext — mock returns () => value
+    mockUseContext.mockReturnValue(() => ({ theme: {} }))
   })
 
   it('returns props merged with theme grid context', async () => {
-    mockUseContext.mockReturnValue({
+    mockUseContext.mockReturnValue(() => ({
       theme: {
         grid: {
           columns: 12,
           container: { xs: '100%', md: 720 },
         },
       },
-    })
+    }))
     const useGridContext = (await import('../useContext')).default
     const result = useGridContext({ gap: 16 })
     expect(result.gap).toBe(16)
@@ -33,32 +33,32 @@ describe('useGridContext', () => {
   })
 
   it('props override theme values', async () => {
-    mockUseContext.mockReturnValue({
+    mockUseContext.mockReturnValue(() => ({
       theme: {
         grid: { columns: 12 },
       },
-    })
+    }))
     const useGridContext = (await import('../useContext')).default
     const result = useGridContext({ columns: 24 })
     expect(result.columns).toBe(24)
   })
 
   it('falls back to coolgrid namespace in theme', async () => {
-    mockUseContext.mockReturnValue({
+    mockUseContext.mockReturnValue(() => ({
       theme: {
         coolgrid: {
           columns: 16,
           container: { xs: '100%' },
         },
       },
-    })
+    }))
     const useGridContext = (await import('../useContext')).default
     const result = useGridContext({})
     expect(result.columns).toBe(16)
   })
 
   it('returns empty context when no theme or props', async () => {
-    mockUseContext.mockReturnValue({ theme: {} })
+    mockUseContext.mockReturnValue(() => ({ theme: {} }))
     const useGridContext = (await import('../useContext')).default
     const result = useGridContext({})
     expect(result).toBeDefined()

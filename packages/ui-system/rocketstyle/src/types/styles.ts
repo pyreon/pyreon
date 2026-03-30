@@ -15,13 +15,16 @@ export type OptionStyles = ((css: Css) => ReturnType<Css>)[]
 /**
  * Props available inside `.styles()` interpolation functions.
  *
- * - `$rocketstyle` — reactive theme accessor. Call it to get the resolved theme:
- *   `props.$rocketstyle()` returns the CSS object for the current mode.
+ * - `$rocketstyle` — resolved theme object (the styled() runtime resolves
+ *   the reactive accessor before calling interpolation functions)
  * - `$rocketstate` — active dimension values + pseudo state
+ *
+ * Note: internally, rocketstyle passes $rocketstyle as a `() => CSS` accessor
+ * to DynamicStyled for reactive class swapping. But by the time interpolation
+ * functions run, it's always been resolved to a plain CSS object.
  */
 export type RocketStyleInterpolationProps<CSS extends TObj = TObj> = {
-  /** Reactive theme accessor — call `$rocketstyle()` to resolve the current theme. */
-  $rocketstyle: (() => CSS) | CSS
+  $rocketstyle: CSS
   $rocketstate: Record<string, string | string[]> & {
     pseudo: Partial<PseudoState>
   }
