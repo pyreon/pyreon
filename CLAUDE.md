@@ -453,7 +453,7 @@ cd docs && bun run preview   # preview production build
 - VitePress v1, Vue 3 components for custom UI
 - Deployed via GitHub Pages
 - Workspace member: `"docs"` in root `package.json` workspaces
-- Has `lint` script (biome), no typecheck (VitePress/Vue)
+- Has `lint` script (oxlint), no typecheck (VitePress/Vue)
 
 ## Monorepo Structure
 
@@ -497,7 +497,7 @@ Rule of thumb:
 
 - `ComponentFn<{ name: string }>` not assignable → solved by generic h()
 - `@pyreon/reactivity` missing from deps → add to package.json + `bun install`
-- Biome `noNonNullAssertion` → use `if (!x) return` guard
+- `noNonNullAssertion` → use `if (!x) return` guard
 - SSR empty render → forgot `mergeChildrenIntoProps` in renderComponent
 - DOM tests need happy-dom preload (bunfig.toml in each package)
 - Vite resolves `dist/` not `src/` → add `resolve.conditions: ["bun"]` to vite.config.ts
@@ -521,8 +521,10 @@ DOM-dependent packages (runtime-dom, router, head, compat layers) use `environme
 ```bash
 bun run lint                          # lint all packages + examples (via workspace filter)
 bun run typecheck                     # typecheck all packages + examples (via workspace filter)
-bunx biome check --write .            # auto-fix lint + format
+oxlint .                              # lint (400+ rules, Rust-powered)
+oxfmt --write .                       # auto-format
+oxfmt --check .                       # check formatting
 ```
 
-Every package and example must have `"lint": "biome check ."` and `"typecheck": "tsc --noEmit"` in scripts.
+Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` in scripts.
 Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts.

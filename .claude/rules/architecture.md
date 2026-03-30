@@ -9,7 +9,7 @@
 
 ## CI Requirements
 
-- Every package and example must have `"lint": "biome check ."` and `"typecheck": "tsc --noEmit"` scripts
+- Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` scripts
 - Root `lint` and `typecheck` run via `bun run --filter='*'` to cover all workspaces
 - Always verify `bun run lint` and `bun run typecheck` pass before committing
 - Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts

@@ -84,7 +84,7 @@ Every PR must include updates to rules and docs alongside the code changes. Don'
 - **New anti-pattern discovered?** Add it to `anti-patterns.md` in the same commit.
 - **New development pattern established?** Add it to `workflow.md` or `code-style.md` in the same PR.
 - **API surface changed?** Update `CLAUDE.md`, `docs/`, `README`, `llms.txt`, `llms-full.txt`, MCP `api-reference.ts` as part of the same PR.
-- **TypeScript/Bun/Biome quirk found?** Document it in the relevant rules file immediately.
+- **TypeScript/Bun/OXC quirk found?** Document it in the relevant rules file immediately.
 - **Workaround added?** Document WHY in a code comment AND add to anti-patterns in the same commit.
 - **Bug root cause identified?** Save to memory for future debugging AND document in anti-patterns if it's a recurring risk.
 
