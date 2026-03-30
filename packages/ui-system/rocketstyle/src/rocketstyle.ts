@@ -180,24 +180,35 @@ const rocketComponent: RocketComponent = (options) => {
     }
 
     // --------------------------------------------------
-    // rocketstate for $rocketstate prop (pseudo + dimensions)
+    // $rocketstate as a FUNCTION ACCESSOR — reactive on prop changes.
+    // Re-evaluates active dimensions + pseudo state from current props.
     // --------------------------------------------------
-    const { pseudo, ...mergeProps } = {
+    const $rocketstateAccessor = () => {
+      const { pseudo, ...mergeProps } = {
+        ...localCtx,
+        ...props,
+      }
+
+      const pseudoRocketstate = {
+        ...pseudo,
+        ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
+      }
+
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(mergeProps, reservedPropNames),
+        dimensions,
+      })
+
+      return { ...rocketstate, pseudo: pseudoRocketstate }
+    }
+
+    // --------------------------------------------------
+    // Static mergeProps for final prop filtering (non-dimension props)
+    // --------------------------------------------------
+    const { pseudo: _pseudo, ...mergeProps } = {
       ...localCtx,
       ...props,
     }
-
-    const pseudoRocketstate = {
-      ...pseudo,
-      ...pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]),
-    }
-
-    const rocketstate = _calculateStylingAttrs({
-      props: pickStyledAttrs(mergeProps, reservedPropNames),
-      dimensions,
-    })
-
-    const finalRocketstate = { ...rocketstate, pseudo: pseudoRocketstate }
 
     // --------------------------------------------------
     // final props passed to WrappedComponent
@@ -210,9 +221,9 @@ const rocketComponent: RocketComponent = (options) => {
       ]),
       ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
       ref: props.ref,
-      // FUNCTION accessor — styled component resolves it reactively
+      // FUNCTION accessors — styled component resolves them reactively
       $rocketstyle: $rocketstyleAccessor,
-      $rocketstate: finalRocketstate,
+      $rocketstate: $rocketstateAccessor,
     }
 
     // development debugging
@@ -222,7 +233,7 @@ const rocketComponent: RocketComponent = (options) => {
       if (options.DEBUG) {
         const debugPayload = {
           component: componentName,
-          rocketstate: finalRocketstate,
+          rocketstate: $rocketstateAccessor(),
           rocketstyle: $rocketstyleAccessor(),
           dimensions,
           mode: themeAttrs.mode,

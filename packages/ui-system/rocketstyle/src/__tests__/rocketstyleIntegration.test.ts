@@ -23,8 +23,8 @@ const BaseComponent: any = ({ children, $rocketstyle, $rocketstate, ...rest }: a
   props: rest,
   children,
   key: null,
-  $rocketstyle,
-  $rocketstate,
+  $rocketstyle: typeof $rocketstyle === 'function' ? $rocketstyle() : $rocketstyle,
+  $rocketstate: typeof $rocketstate === 'function' ? $rocketstate() : $rocketstate,
 })
 BaseComponent.displayName = 'BaseComponent'
 
