@@ -114,12 +114,11 @@ const Transition = ({
   })
 
   const elementRef = createRef<HTMLElement>()
+  const childProps = (children.props ?? {}) as Record<string, unknown>
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
-    (children.props as Record<string, unknown>)?.ref as
-      | ((el: HTMLElement | null) => void)
-      | undefined,
+    childProps.ref as ((el: HTMLElement | null) => void) | undefined,
   )
 
   const callbacks = {
@@ -198,9 +197,7 @@ const Transition = ({
           : cloneVNode(children, {
               ref: mergedRef,
               style: mergeStyles(
-                (children.props as Record<string, unknown>)?.style as
-                  | Record<string, string | number | undefined>
-                  | undefined,
+                childProps.style as Record<string, string | number | undefined> | undefined,
                 { display: "none" },
               ),
             })
