@@ -33,7 +33,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                            |
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
-| `@pyreon/lint`           | Pyreon-specific linter — 55 rules, 12 categories, config files, watch mode, AST cache                                                         |
+| `@pyreon/lint`           | Pyreon-specific linter — 56 rules, 12 categories, config files, watch mode, AST cache                                                         |
 
 ### UI System (Component Library)
 
@@ -302,14 +302,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `lint(options?)` — programmatic API: lint files, returns `LintResult` with counts
 - `lintFile(filePath, sourceText, rules, config)` — lint a single file
-- `listRules()` — returns metadata for all 55 rules
+- `listRules()` — returns metadata for all 56 rules
 - `applyFixes(sourceText, diagnostics)` — apply auto-fixes
 - `loadConfig(cwd)` — load `.pyreonlintrc.json` / `package.json` `"pyreonlint"` field
 - `createIgnoreFilter(cwd)` — load `.pyreonlintignore` + `.gitignore` patterns
 - `AstCache` — FNV-1a hash-keyed AST cache for repeat runs
 - `watchAndLint(options)` — file watcher with 100ms debounce, re-lints changed files
 - CLI: `pyreon-lint [--preset recommended|strict|app|lib] [--fix] [--format text|json|compact] [--quiet] [--list] [--watch] [--config path] [--ignore path] [--rule id=severity] [path...]`
-- 55 rules across 12 categories: reactivity (8), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
+- 56 rules across 12 categories: reactivity (9), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (5), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
 - 4 presets: `recommended`, `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)
 - Powered by `oxc-parser` — ESTree/TS-ESTree AST with Visitor
 

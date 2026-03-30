@@ -15,11 +15,13 @@ export type OptionStyles = ((css: Css) => ReturnType<Css>)[]
 /**
  * Props available inside `.styles()` interpolation functions.
  *
- * - `$rocketstyle` — computed theme (inferred from `.theme()` chain)
+ * - `$rocketstyle` — reactive theme accessor. Call it to get the resolved theme:
+ *   `props.$rocketstyle()` returns the CSS object for the current mode.
  * - `$rocketstate` — active dimension values + pseudo state
  */
 export type RocketStyleInterpolationProps<CSS extends TObj = TObj> = {
-  $rocketstyle: CSS
+  /** Reactive theme accessor — call `$rocketstyle()` to resolve the current theme. */
+  $rocketstyle: (() => CSS) | CSS
   $rocketstate: Record<string, string | string[]> & {
     pseudo: Partial<PseudoState>
   }

@@ -24,8 +24,12 @@ type ProviderType = Partial<
 >
 
 /**
+ * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
+ *
  * Provider that feeds the internal Pyreon context with the theme.
  * When no theme is supplied, renders children directly.
+ *
+ * @deprecated Prefer `<PyreonUI theme={theme}>` which handles all context layers.
  */
 function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
   if (isEmpty(theme) || !theme) return children ?? null
