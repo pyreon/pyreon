@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -163,19 +163,31 @@ const createStyledComponent = (
       customFilter,
     )
 
-    // Set up reactive class swap when $rocketstyle is a function accessor
+    // Set up reactive class swap when $rocketstyle is a function accessor.
+    // CRITICAL: only $rs() is tracked. resolve() and DOM mutations run
+    // inside runUntracked() to prevent subscribing to signals read by
+    // interpolation functions (theme properties, context getters, etc.).
+    // Without this, every styled component's effect subscribes to every
+    // signal touched during CSS resolution — causing an exponential
+    // cascade across 50+ components on any signal change.
     if (isReactiveRS) {
       effect(() => {
-        const newRS = $rs() // reactive read — tracks mode dependency
-        const newResolvedProps = { ...rawProps, $rocketstyle: newRS }
-        const newCss = normalizeCSS(resolve(strings, values, { ...newResolvedProps, theme }))
-        const newClass = newCss.length > 0 ? sheet.insert(newCss, boost) : ''
+        const newRS = $rs() // TRACKED: subscribes to mode signal only
 
-        if (el && newClass !== currentClassName) {
-          if (currentClassName) el.classList.remove(currentClassName)
-          if (newClass) el.classList.add(newClass)
-          currentClassName = newClass
-        }
+        runUntracked(() => {
+          // UNTRACKED: resolve + DOM mutation — no additional subscriptions
+          const newResolvedProps = { ...rawProps, $rocketstyle: newRS }
+          const newCss = normalizeCSS(
+            resolve(strings, values, { ...newResolvedProps, theme }),
+          )
+          const newClass = newCss.length > 0 ? sheet.insert(newCss, boost) : ''
+
+          if (el && newClass !== currentClassName) {
+            if (currentClassName) el.classList.remove(currentClassName)
+            if (newClass) el.classList.add(newClass)
+            currentClassName = newClass
+          }
+        })
       })
     }
 
