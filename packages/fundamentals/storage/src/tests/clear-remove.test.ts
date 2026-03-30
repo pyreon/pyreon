@@ -4,7 +4,6 @@ import {
   clearStorage,
   removeStorage,
   useCookie,
-  useMemoryStorage,
   useSessionStorage,
   useStorage,
 } from "../index"

@@ -253,7 +253,7 @@ describe("useSearchParams — edge cases", () => {
     const routes: RouteRecord[] = [{ path: "/search", component: Home }]
     const router = createRouter({ routes, url: "/search?q=hello" })
     setActiveRouter(router as RouterInstance)
-    const [get, set] = useSearchParams({ q: "", page: "1" })
+    const [, set] = useSearchParams({ q: "", page: "1" })
 
     await set({ page: "2" })
     // Router should navigate — check that the route updated

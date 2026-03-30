@@ -26,7 +26,7 @@ describe("search — plain values", () => {
   it("filters across multiple keys", () => {
     const result = search(users, "example", ["name", "email"])
     expect(result).toHaveLength(2)
-    expect(result.map((u) => u.name)).toEqual(["Alice", "Charlie"])
+    expect(result.map((u: (typeof users)[number]) => u.name)).toEqual(["Alice", "Charlie"])
   })
 
   it("is case-insensitive", () => {

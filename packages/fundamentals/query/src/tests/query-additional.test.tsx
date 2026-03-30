@@ -1,4 +1,3 @@
-import { signal } from "@pyreon/reactivity"
 import { mount } from "@pyreon/runtime-dom"
 import { QueryClient } from "@tanstack/query-core"
 import {

@@ -549,10 +549,13 @@ describe("dismiss callback behavior", () => {
   })
 
   it("onDismiss is called for each toast when dismissing all", () => {
-    const callbacks = [vi.fn(), vi.fn(), vi.fn()]
-    toast("A", { onDismiss: callbacks[0], duration: 0 })
-    toast("B", { onDismiss: callbacks[1], duration: 0 })
-    toast("C", { onDismiss: callbacks[2], duration: 0 })
+    const cb1 = vi.fn()
+    const cb2 = vi.fn()
+    const cb3 = vi.fn()
+    const callbacks = [cb1, cb2, cb3]
+    toast("A", { onDismiss: cb1, duration: 0 })
+    toast("B", { onDismiss: cb2, duration: 0 })
+    toast("C", { onDismiss: cb3, duration: 0 })
 
     toast.dismiss()
 

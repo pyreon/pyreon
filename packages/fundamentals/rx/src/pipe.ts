@@ -52,6 +52,21 @@ export function pipe<A, B, C, D, E, F>(
 export function pipe<A, B>(source: A, f1: (a: A) => B): B
 export function pipe<A, B, C>(source: A, f1: (a: A) => B, f2: (b: B) => C): C
 export function pipe<A, B, C, D>(source: A, f1: (a: A) => B, f2: (b: B) => C, f3: (c: C) => D): D
+export function pipe<A, B, C, D, E>(
+  source: A,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+): E
+export function pipe<A, B, C, D, E, F>(
+  source: A,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+  f5: (e: E) => F,
+): F
 export function pipe(source: any, ...fns: Array<(v: any) => any>): any {
   if (isSignal(source)) {
     return computed(() => {

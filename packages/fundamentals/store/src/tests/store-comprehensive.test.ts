@@ -79,7 +79,7 @@ describe("patch — partial update", () => {
       count: signal(0),
     }))
     const api = useStore()
-    api.patch({ __proto__: 999, constructor: 999, prototype: 999, count: 5 } as any)
+    api.patch({ __proto__: null, constructor: null, prototype: null, count: 5 } as any)
     expect(api.store.count()).toBe(5)
   })
 
