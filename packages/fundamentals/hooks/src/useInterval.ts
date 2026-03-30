@@ -5,15 +5,14 @@ export type UseInterval = (callback: () => void, delay: number | null) => void
 /**
  * Declarative `setInterval` with auto-cleanup.
  * Pass `null` as `delay` to pause the interval.
- * Always calls the latest callback (no stale closures).
+ * In Pyreon, components run once — callback is captured at setup time.
  */
 export const useInterval: UseInterval = (callback, delay) => {
-  const currentCallback = callback
   let intervalId: ReturnType<typeof setInterval> | null = null
 
   const start = () => {
     if (delay === null) return
-    intervalId = setInterval(() => currentCallback(), delay)
+    intervalId = setInterval(() => callback(), delay)
   }
 
   const stop = () => {
