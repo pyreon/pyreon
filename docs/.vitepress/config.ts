@@ -1,4 +1,4 @@
-import { defineConfig } from "vitepress"
+import { defineConfig } from "vitepress";
 
 export default defineConfig({
   title: "Pyreon",
@@ -163,4 +163,4 @@ export default defineConfig({
       copyright: "Copyright © Pyreon",
     },
   },
-})
+});

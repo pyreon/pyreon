@@ -1,5 +1,5 @@
-import { fade, kinetic, scaleIn, slideDown, slideLeft, slideRight, slideUp } from "@pyreon/kinetic"
-import type { Preset } from "@pyreon/kinetic-presets"
+import { fade, kinetic, scaleIn, slideDown, slideLeft, slideRight, slideUp } from "@pyreon/kinetic";
+import type { Preset } from "@pyreon/kinetic-presets";
 import {
   compose,
   createBlur,
@@ -12,8 +12,8 @@ import {
   withDelay,
   withDuration,
   withEasing,
-} from "@pyreon/kinetic-presets"
-import { signal } from "@pyreon/reactivity"
+} from "@pyreon/kinetic-presets";
+import { signal } from "@pyreon/reactivity";
 
 // ---------------------------------------------------------------------------
 // Shared inline styles
@@ -23,7 +23,7 @@ const wrapper: Record<string, string> = {
   "max-width": "960px",
   margin: "0 auto",
   padding: "32px 24px",
-}
+};
 
 const badge: Record<string, string> = {
   display: "inline-block",
@@ -34,13 +34,13 @@ const badge: Record<string, string> = {
   "font-size": "0.75rem",
   "font-weight": "600",
   "margin-bottom": "8px",
-}
+};
 
 const sectionTitle: Record<string, string> = {
   "font-size": "1.5rem",
   "font-weight": "600",
   margin: "32px 0 16px",
-}
+};
 
 const card: Record<string, string> = {
   padding: "24px",
@@ -48,20 +48,20 @@ const card: Record<string, string> = {
   background: "#f8f9fa",
   border: "1px solid #e9ecef",
   "margin-bottom": "24px",
-}
+};
 
 const cardTitle: Record<string, string> = {
   "font-size": "1.125rem",
   "font-weight": "600",
   margin: "0 0 8px",
-}
+};
 
 const cardDesc: Record<string, string> = {
   "font-size": "0.875rem",
   color: "#555",
   "line-height": "1.6",
   margin: "0 0 16px",
-}
+};
 
 const btn: Record<string, string> = {
   padding: "8px 16px",
@@ -70,21 +70,21 @@ const btn: Record<string, string> = {
   background: "#fff",
   cursor: "pointer",
   "font-size": "13px",
-}
+};
 
 const btnPrimary: Record<string, string> = {
   ...btn,
   background: "#0070f3",
   color: "#fff",
   border: "1px solid #0070f3",
-}
+};
 
 const btnDanger: Record<string, string> = {
   ...btn,
   background: "#dc3545",
   color: "#fff",
   border: "1px solid #dc3545",
-}
+};
 
 const colorBox: Record<string, string> = {
   padding: "32px",
@@ -93,7 +93,7 @@ const colorBox: Record<string, string> = {
   color: "#fff",
   "text-align": "center",
   "font-weight": "600",
-}
+};
 
 const logBox: Record<string, string> = {
   "font-family": "'SF Mono', 'Fira Code', monospace",
@@ -105,14 +105,14 @@ const logBox: Record<string, string> = {
   "margin-top": "12px",
   "max-height": "120px",
   "overflow-y": "auto",
-}
+};
 
 const gridRow: Record<string, string> = {
   display: "flex",
   gap: "12px",
   "flex-wrap": "wrap",
   "margin-bottom": "12px",
-}
+};
 
 const listItem: Record<string, string> = {
   padding: "12px 16px",
@@ -123,7 +123,7 @@ const listItem: Record<string, string> = {
   display: "flex",
   "align-items": "center",
   "justify-content": "space-between",
-}
+};
 
 const accordionHeader: Record<string, string> = {
   padding: "12px 16px",
@@ -134,13 +134,13 @@ const accordionHeader: Record<string, string> = {
   "font-weight": "500",
   "margin-bottom": "4px",
   "user-select": "none",
-}
+};
 
 const accordionContent: Record<string, string> = {
   padding: "16px",
   color: "#555",
   "line-height": "1.6",
-}
+};
 
 const presetCardStyle: Record<string, string> = {
   padding: "16px",
@@ -150,19 +150,19 @@ const presetCardStyle: Record<string, string> = {
   "text-align": "center",
   "min-width": "140px",
   flex: "1",
-}
+};
 
 // ---------------------------------------------------------------------------
 // Module-level kinetic components (created once, reused everywhere)
 // ---------------------------------------------------------------------------
 
 // Basic presets from @pyreon/kinetic
-const FadeDiv = kinetic("div").preset(fade)
-const ScaleInDiv = kinetic("div").preset(scaleIn)
-const SlideUpDiv = kinetic("div").preset(slideUp)
-const SlideDownDiv = kinetic("div").preset(slideDown)
-const SlideLeftDiv = kinetic("div").preset(slideLeft)
-const SlideRightDiv = kinetic("div").preset(slideRight)
+const FadeDiv = kinetic("div").preset(fade);
+const ScaleInDiv = kinetic("div").preset(scaleIn);
+const SlideUpDiv = kinetic("div").preset(slideUp);
+const SlideDownDiv = kinetic("div").preset(slideDown);
+const SlideLeftDiv = kinetic("div").preset(slideLeft);
+const SlideRightDiv = kinetic("div").preset(slideRight);
 
 // Custom style-object animation
 const SpringPanel = kinetic("div")
@@ -171,62 +171,62 @@ const SpringPanel = kinetic("div")
   .enterTransition("all 400ms cubic-bezier(0.34, 1.56, 0.64, 1)")
   .leave({ opacity: 1, transform: "scale(1)" })
   .leaveTo({ opacity: 0, transform: "scale(0.9)" })
-  .leaveTransition("all 250ms ease-in")
+  .leaveTransition("all 250ms ease-in");
 
 // Class-based animation
 const _ClassFadeDiv = kinetic("div")
   .enterClass({ active: "transition-opacity duration-300", from: "opacity-0", to: "opacity-100" })
-  .leaveClass({ active: "transition-opacity duration-200", from: "opacity-100", to: "opacity-0" })
+  .leaveClass({ active: "transition-opacity duration-200", from: "opacity-100", to: "opacity-0" });
 
 // Modal elements
-const Backdrop = kinetic("div").preset(fade)
+const Backdrop = kinetic("div").preset(fade);
 const Dialog = kinetic("div")
   .enter({ opacity: 0, transform: "scale(0.9) translateY(20px)" })
   .enterTo({ opacity: 1, transform: "scale(1) translateY(0)" })
   .enterTransition("all 350ms cubic-bezier(0.34, 1.56, 0.64, 1)")
   .leave({ opacity: 1, transform: "scale(1) translateY(0)" })
   .leaveTo({ opacity: 0, transform: "scale(0.95) translateY(10px)" })
-  .leaveTransition("all 200ms ease-in")
+  .leaveTransition("all 200ms ease-in");
 
 // Collapse
-const AccordionCollapse = kinetic("div").collapse()
+const AccordionCollapse = kinetic("div").collapse();
 const BouncyCollapse = kinetic("div").collapse({
   transition: "height 500ms cubic-bezier(0.34, 1.56, 0.64, 1)",
-})
+});
 
 // Stagger
-const StaggerMenu = kinetic("div").preset(slideUp).stagger({ interval: 75 })
+const StaggerMenu = kinetic("div").preset(slideUp).stagger({ interval: 75 });
 const StaggerNotifications = kinetic("div")
   .preset(fade)
-  .stagger({ interval: 100, reverseLeave: true })
-const _StaggerCardGrid = kinetic("div").preset(scaleIn).stagger({ interval: 50 })
+  .stagger({ interval: 100, reverseLeave: true });
+const _StaggerCardGrid = kinetic("div").preset(scaleIn).stagger({ interval: 50 });
 
 // Group (key-based)
-const GroupList = kinetic("div").preset(fade).group()
-const ToastGroup = kinetic("div").preset(slideRight).group()
+const GroupList = kinetic("div").preset(fade).group();
+const ToastGroup = kinetic("div").preset(slideRight).group();
 
 // Factory-created components
-const FactoryFadeUp = kinetic("div").preset(createFade({ direction: "up", distance: 24 }))
-const FactorySlideRight = kinetic("div").preset(createSlide({ direction: "right", distance: 32 }))
+const FactoryFadeUp = kinetic("div").preset(createFade({ direction: "up", distance: 24 }));
+const FactorySlideRight = kinetic("div").preset(createSlide({ direction: "right", distance: 32 }));
 const FactoryScaleSpring = kinetic("div").preset(
   createScale({ from: 0.5, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }),
-)
-const FactoryRotate = kinetic("div").preset(createRotate({ degrees: 30, duration: 400 }))
-const FactoryBlurScale = kinetic("div").preset(createBlur({ amount: 12, scale: 0.95 }))
+);
+const FactoryRotate = kinetic("div").preset(createRotate({ degrees: 30, duration: 400 }));
+const FactoryBlurScale = kinetic("div").preset(createBlur({ amount: 12, scale: 0.95 }));
 
 // Composition utilities
-const ComposedFadeSlide = kinetic("div").preset(compose(presets.fade, presets.slideUp))
-const SlowFade = kinetic("div").preset(withDuration(presets.fade, 800, 500))
+const ComposedFadeSlide = kinetic("div").preset(compose(presets.fade, presets.slideUp));
+const SlowFade = kinetic("div").preset(withDuration(presets.fade, 800, 500));
 const SpringEased = kinetic("div").preset(
   withEasing(presets.scaleIn, "cubic-bezier(0.34, 1.56, 0.64, 1)"),
-)
-const DelayedFade = kinetic("div").preset(withDelay(presets.fadeUp, 200, 0))
-const ReversedSlide = kinetic("div").preset(reverse(presets.slideUp))
+);
+const DelayedFade = kinetic("div").preset(withDelay(presets.fadeUp, 200, 0));
+const ReversedSlide = kinetic("div").preset(reverse(presets.slideUp));
 
 // All 122 presets as components (dynamically)
 const presetComponents: Record<string, ReturnType<typeof kinetic>> = Object.fromEntries(
   Object.entries(presets).map(([name, preset]) => [name, kinetic("div").preset(preset as Preset)]),
-)
+);
 
 // Preset categories for gallery
 const PRESET_CATEGORIES = [
@@ -364,14 +364,14 @@ const PRESET_CATEGORIES = [
   { name: "Expand", items: ["expandX", "expandY"] },
   { name: "Skew", items: ["skewIn", "skewInReverse", "skewInY", "skewInYReverse"] },
   { name: "Drop & Rise", items: ["drop", "rise"] },
-]
+];
 
 // ---------------------------------------------------------------------------
 // ID counters
 // ---------------------------------------------------------------------------
 
-let nextId = 4
-let toastId = 0
+let nextId = 4;
+let toastId = 0;
 
 // ---------------------------------------------------------------------------
 // Demo sections
@@ -385,7 +385,7 @@ function PresetShowcase() {
     slideDown: signal(true),
     slideLeft: signal(true),
     slideRight: signal(true),
-  }
+  };
 
   const components = {
     fade: FadeDiv,
@@ -394,7 +394,7 @@ function PresetShowcase() {
     slideDown: SlideDownDiv,
     slideLeft: SlideLeftDiv,
     slideRight: SlideRightDiv,
-  }
+  };
 
   return (
     <div style={card}>
@@ -421,11 +421,11 @@ function PresetShowcase() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 function StyleObjectDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   return (
     <div style={card}>
@@ -442,11 +442,11 @@ function StyleObjectDemo() {
         </SpringPanel>
       </div>
     </div>
-  )
+  );
 }
 
 function AppearDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   return (
     <div style={card}>
@@ -463,12 +463,12 @@ function AppearDemo() {
         </FadeDiv>
       </div>
     </div>
-  )
+  );
 }
 
 function UnmountDemo() {
-  const showUnmount = signal(true)
-  const showHide = signal(true)
+  const showUnmount = signal(true);
+  const showHide = signal(true);
 
   return (
     <div style={card}>
@@ -499,16 +499,16 @@ function UnmountDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function LifecycleDemo() {
-  const show = signal(true)
-  const logs = signal<string[]>([])
+  const show = signal(true);
+  const logs = signal<string[]>([]);
 
   const addLog = (msg: string) => {
-    logs.update((prev) => [...prev, `${new Date().toLocaleTimeString()} — ${msg}`])
-  }
+    logs.update((prev) => [...prev, `${new Date().toLocaleTimeString()} — ${msg}`]);
+  };
 
   return (
     <div style={card}>
@@ -538,23 +538,23 @@ function LifecycleDemo() {
         {() => (logs().length === 0 ? "No events yet..." : logs().map((log) => <div>{log}</div>))}
       </div>
     </div>
-  )
+  );
 }
 
 function ChainingDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   // Immutable chaining — branching from a base
   const Base = kinetic("div")
     .enter({ opacity: 0 })
     .enterTo({ opacity: 1 })
-    .enterTransition("opacity 300ms ease-out")
+    .enterTransition("opacity 300ms ease-out");
   const WithSlide = Base.enter({ opacity: 0, transform: "translateY(20px)" })
     .enterTo({ opacity: 1, transform: "translateY(0)" })
-    .enterTransition("all 300ms ease-out")
+    .enterTransition("all 300ms ease-out");
   const WithScale = Base.enter({ opacity: 0, transform: "scale(0.8)" })
     .enterTo({ opacity: 1, transform: "scale(1)" })
-    .enterTransition("all 400ms cubic-bezier(0.34, 1.56, 0.64, 1)")
+    .enterTransition("all 400ms cubic-bezier(0.34, 1.56, 0.64, 1)");
 
   return (
     <div style={card}>
@@ -583,11 +583,11 @@ function ChainingDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function CollapseDemo() {
-  const openIndex = signal<number | null>(0)
+  const openIndex = signal<number | null>(0);
 
   const items = [
     {
@@ -610,7 +610,7 @@ function CollapseDemo() {
       content:
         "Yes! A preset is just an object with enter/leave styles and transitions. You can also use factories (createFade, createSlide, etc.) for parameterized presets.",
     },
-  ]
+  ];
 
   return (
     <div style={card}>
@@ -634,11 +634,11 @@ function CollapseDemo() {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 function CollapseCustomDemo() {
-  const open = signal(false)
+  const open = signal(false);
 
   return (
     <div style={card}>
@@ -657,7 +657,7 @@ function CollapseCustomDemo() {
         </BouncyCollapse>
       </div>
     </div>
-  )
+  );
 }
 
 function GroupDemo() {
@@ -665,26 +665,26 @@ function GroupDemo() {
     { id: 1, text: "Item 1" },
     { id: 2, text: "Item 2" },
     { id: 3, text: "Item 3" },
-  ])
+  ]);
 
   const addItem = () => {
-    items.update((prev) => [...prev, { id: nextId++, text: `Item ${nextId - 1}` }])
-  }
+    items.update((prev) => [...prev, { id: nextId++, text: `Item ${nextId - 1}` }]);
+  };
 
   const removeItem = (id: number) => {
-    items.update((prev) => prev.filter((item) => item.id !== id))
-  }
+    items.update((prev) => prev.filter((item) => item.id !== id));
+  };
 
   const shuffle = () => {
     items.update((prev) => {
-      const arr = [...prev]
+      const arr = [...prev];
       for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[arr[i], arr[j]] = [arr[j], arr[i]]
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
       }
-      return arr
-    })
-  }
+      return arr;
+    });
+  };
 
   return (
     <div style={card}>
@@ -717,12 +717,12 @@ function GroupDemo() {
         }
       </GroupList>
     </div>
-  )
+  );
 }
 
 function StaggerDemo() {
-  const show = signal(true)
-  const menuItems = ["Dashboard", "Analytics", "Settings", "Profile", "Help", "Logout"]
+  const show = signal(true);
+  const menuItems = ["Dashboard", "Analytics", "Settings", "Profile", "Help", "Logout"];
 
   return (
     <div style={card}>
@@ -743,11 +743,11 @@ function StaggerDemo() {
         </StaggerMenu>
       </div>
     </div>
-  )
+  );
 }
 
 function StaggerReverseDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   return (
     <div style={card}>
@@ -768,11 +768,11 @@ function StaggerReverseDemo() {
         </StaggerNotifications>
       </div>
     </div>
-  )
+  );
 }
 
 function ModalDemo() {
-  const open = signal(false)
+  const open = signal(false);
 
   return (
     <div style={card}>
@@ -817,26 +817,26 @@ function ModalDemo() {
         </Dialog>
       </Backdrop>
     </div>
-  )
+  );
 }
 
 function ToastDemo() {
-  const toasts = signal<Array<{ id: number; message: string }>>([])
+  const toasts = signal<Array<{ id: number; message: string }>>([]);
 
   const addToast = () => {
-    const id = toastId++
+    const id = toastId++;
     const messages = [
       "File saved successfully",
       "New notification",
       "Upload complete",
       "Settings updated",
-    ]
-    const message = messages[id % messages.length]
-    toasts.update((prev) => [...prev, { id, message }])
+    ];
+    const message = messages[id % messages.length];
+    toasts.update((prev) => [...prev, { id, message }]);
     setTimeout(() => {
-      toasts.update((prev) => prev.filter((t) => t.id !== id))
-    }, 3000)
-  }
+      toasts.update((prev) => prev.filter((t) => t.id !== id));
+    }, 3000);
+  };
 
   return (
     <div style={card}>
@@ -884,17 +884,17 @@ function ToastDemo() {
         </ToastGroup>
       </div>
     </div>
-  )
+  );
 }
 
 function TabsDemo() {
-  const activeTab = signal(0)
-  const tabs = ["Overview", "Features", "API"]
+  const activeTab = signal(0);
+  const tabs = ["Overview", "Features", "API"];
   const content = [
     "Kinetic is a CSS-first animation library for Pyreon. It delegates all interpolation to the browser's CSS transition engine.",
     "122 presets, 5 factories, 5 composition utilities. Supports transition, collapse, stagger, and group modes.",
     "kinetic(tag) returns a chainable builder. Use .preset(), .enter(), .collapse(), .stagger(), .group() to configure.",
-  ]
+  ];
 
   return (
     <div style={card}>
@@ -934,11 +934,11 @@ function TabsDemo() {
         </FadeDiv>
       ))}
     </div>
-  )
+  );
 }
 
 function FactoryDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   const factories = [
     { name: "createFade", comp: FactoryFadeUp, desc: "direction: up, distance: 24" },
@@ -946,7 +946,7 @@ function FactoryDemo() {
     { name: "createScale", comp: FactoryScaleSpring, desc: "from: 0.5, spring easing" },
     { name: "createRotate", comp: FactoryRotate, desc: "degrees: 30, 400ms" },
     { name: "createBlur", comp: FactoryBlurScale, desc: "amount: 12, scale: 0.95" },
-  ]
+  ];
 
   return (
     <div style={card}>
@@ -968,11 +968,11 @@ function FactoryDemo() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 function CompositionDemo() {
-  const show = signal(true)
+  const show = signal(true);
 
   const compositions = [
     { name: "compose()", comp: ComposedFadeSlide, desc: "fade + slideUp merged" },
@@ -980,7 +980,7 @@ function CompositionDemo() {
     { name: "withEasing()", comp: SpringEased, desc: "spring cubic-bezier" },
     { name: "withDelay()", comp: DelayedFade, desc: "200ms enter delay" },
     { name: "reverse()", comp: ReversedSlide, desc: "slideUp enter/leave swapped" },
-  ]
+  ];
 
   return (
     <div style={card}>
@@ -1002,14 +1002,14 @@ function CompositionDemo() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 function PresetCard(props: { name: string }) {
-  const show = signal(true)
-  const Comp = presetComponents[props.name]
+  const show = signal(true);
+  const Comp = presetComponents[props.name];
 
-  if (!Comp) return <div style={presetCardStyle}>{props.name} (not found)</div>
+  if (!Comp) return <div style={presetCardStyle}>{props.name} (not found)</div>;
 
   return (
     <div style={presetCardStyle}>
@@ -1038,11 +1038,11 @@ function PresetCard(props: { name: string }) {
         </div>
       </Comp>
     </div>
-  )
+  );
 }
 
 function KineticPresetsGallery() {
-  const openCategory = signal<string | null>(null)
+  const openCategory = signal<string | null>(null);
 
   return (
     <div style={card}>
@@ -1068,11 +1068,11 @@ function KineticPresetsGallery() {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 function ToggleAllPresets() {
-  const show = signal(true)
+  const show = signal(true);
 
   return (
     <div style={card}>
@@ -1100,7 +1100,7 @@ function ToggleAllPresets() {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1152,5 +1152,5 @@ export function App() {
       <KineticPresetsGallery />
       <ToggleAllPresets />
     </div>
-  )
+  );
 }

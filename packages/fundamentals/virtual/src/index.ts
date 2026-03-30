@@ -7,7 +7,7 @@ export type {
   ScrollToOptions,
   VirtualItem,
   VirtualizerOptions,
-} from "@tanstack/virtual-core"
+} from "@tanstack/virtual-core";
 export {
   defaultKeyExtractor,
   defaultRangeExtractor,
@@ -19,17 +19,14 @@ export {
   observeWindowRect,
   Virtualizer,
   windowScroll,
-} from "@tanstack/virtual-core"
+} from "@tanstack/virtual-core";
 
 // ─── Pyreon adapter ─────────────────────────────────────────────────────────────
 
-export type {
-  UseVirtualizerOptions,
-  UseVirtualizerResult,
-} from "./use-virtualizer"
-export { useVirtualizer } from "./use-virtualizer"
+export type { UseVirtualizerOptions, UseVirtualizerResult } from "./use-virtualizer";
+export { useVirtualizer } from "./use-virtualizer";
 export type {
   UseWindowVirtualizerOptions,
   UseWindowVirtualizerResult,
-} from "./use-window-virtualizer"
-export { useWindowVirtualizer } from "./use-window-virtualizer"
+} from "./use-window-virtualizer";
+export { useWindowVirtualizer } from "./use-window-virtualizer";

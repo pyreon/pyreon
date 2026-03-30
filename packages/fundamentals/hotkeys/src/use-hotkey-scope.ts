@@ -1,5 +1,5 @@
-import { onUnmount } from "@pyreon/core"
-import { disableScope, enableScope } from "./registry"
+import { onUnmount } from "@pyreon/core";
+import { disableScope, enableScope } from "./registry";
 
 /**
  * Activate a hotkey scope for the lifetime of a component.
@@ -15,6 +15,6 @@ import { disableScope, enableScope } from "./registry"
  * ```
  */
 export function useHotkeyScope(scope: string): void {
-  enableScope(scope)
-  onUnmount(() => disableScope(scope))
+  enableScope(scope);
+  onUnmount(() => disableScope(scope));
 }

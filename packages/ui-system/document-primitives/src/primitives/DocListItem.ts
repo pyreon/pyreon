@@ -1,5 +1,5 @@
-import { Text } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Text } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocListItem = rocketstyle()({ name: "DocListItem", component: Text })
   .theme({
@@ -10,6 +10,6 @@ const DocListItem = rocketstyle()({ name: "DocListItem", component: Text })
   .attrs<{ tag: string; _documentProps: Record<string, unknown> }>((_props) => ({
     tag: "li",
     _documentProps: {},
-  }))
+  }));
 
-export default DocListItem
+export default DocListItem;

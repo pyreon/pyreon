@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/document",
   "version": "0.11.5",
-  "description": "Universal document rendering for Pyreon \u2014 one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
+  "description": "Universal document rendering for Pyreon — one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/document#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/document"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/document#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -22,6 +19,7 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,23 +30,15 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
-  },
-  "optionalDependencies": {
-    "docx": "^9.6.0",
-    "exceljs": "^4.4.0",
-    "pdfmake": "^0.3.7",
-    "pptxgenjs": "^4.0.1"
+    "lint": "oxlint ."
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
@@ -56,6 +46,16 @@
     "@pyreon/reactivity": "workspace:^",
     "@types/pdfmake": "^0.3.2",
     "@vitus-labs/tools-lint": "^1.11.0",
+    "docx": "^9.6.0",
+    "exceljs": "^4.4.0",
+    "pdfmake": "^0.3.7",
+    "pptxgenjs": "^4.0.1"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "optionalDependencies": {
     "docx": "^9.6.0",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.7",

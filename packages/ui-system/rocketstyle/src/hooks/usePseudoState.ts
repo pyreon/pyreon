@@ -1,5 +1,5 @@
-import { signal } from "@pyreon/reactivity"
-import type { PseudoActions, PseudoState } from "../types/pseudo"
+import { signal } from "@pyreon/reactivity";
+import type { PseudoActions, PseudoState } from "../types/pseudo";
 
 type UsePseudoState = ({
   onMouseEnter,
@@ -9,9 +9,9 @@ type UsePseudoState = ({
   onFocus,
   onBlur,
 }: Partial<PseudoActions>) => {
-  state: Pick<PseudoState, "hover" | "focus" | "pressed">
-  events: PseudoActions
-}
+  state: Pick<PseudoState, "hover" | "focus" | "pressed">;
+  events: PseudoActions;
+};
 
 /**
  * Tracks hover, focus, and pressed pseudo-states via mouse and focus
@@ -29,51 +29,51 @@ const usePseudoState: UsePseudoState = ({
   onMouseLeave,
   onMouseUp,
 }) => {
-  const hover = signal(false)
-  const focus = signal(false)
-  const pressed = signal(false)
+  const hover = signal(false);
+  const focus = signal(false);
+  const pressed = signal(false);
 
   const state = {
     get hover() {
-      return hover()
+      return hover();
     },
     get focus() {
-      return focus()
+      return focus();
     },
     get pressed() {
-      return pressed()
+      return pressed();
     },
-  }
+  };
 
   const events: PseudoActions = {
     onMouseEnter: (e) => {
-      hover.set(true)
-      if (onMouseEnter) onMouseEnter(e)
+      hover.set(true);
+      if (onMouseEnter) onMouseEnter(e);
     },
     onMouseLeave: (e) => {
-      hover.set(false)
-      pressed.set(false)
-      if (onMouseLeave) onMouseLeave(e)
+      hover.set(false);
+      pressed.set(false);
+      if (onMouseLeave) onMouseLeave(e);
     },
     onMouseDown: (e) => {
-      pressed.set(true)
-      if (onMouseDown) onMouseDown(e)
+      pressed.set(true);
+      if (onMouseDown) onMouseDown(e);
     },
     onMouseUp: (e) => {
-      pressed.set(false)
-      if (onMouseUp) onMouseUp(e)
+      pressed.set(false);
+      if (onMouseUp) onMouseUp(e);
     },
     onFocus: (e) => {
-      focus.set(true)
-      if (onFocus) onFocus(e)
+      focus.set(true);
+      if (onFocus) onFocus(e);
     },
     onBlur: (e) => {
-      focus.set(false)
-      if (onBlur) onBlur(e)
+      focus.set(false);
+      if (onBlur) onBlur(e);
     },
-  }
+  };
 
-  return { state, events }
-}
+  return { state, events };
+};
 
-export default usePseudoState
+export default usePseudoState;

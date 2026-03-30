@@ -1,7 +1,7 @@
-import { createContext, onUnmount, useContext } from "@pyreon/core"
-import { computed, signal } from "@pyreon/reactivity"
-import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from "./match"
-import { ScrollManager } from "./scroll"
+import { createContext, onUnmount, useContext } from "@pyreon/core";
+import { computed, signal } from "@pyreon/reactivity";
+import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from "./match";
+import { ScrollManager } from "./scroll";
 import {
   type AfterEachHook,
   type Blocker,
@@ -16,13 +16,13 @@ import {
   type Router,
   type RouterInstance,
   type RouterOptions,
-} from "./types"
+} from "./types";
 
 // Evaluated once at module load — collapses to `true` in browser / happy-dom,
 // `false` on the server. Using a constant avoids per-call `typeof` branches
 // that are uncoverable in test environments.
-const _isBrowser = typeof window !== "undefined"
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const _isBrowser = typeof window !== "undefined";
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
 // ─── Router context ───────────────────────────────────────────────────────────
 // Context-based access: isolated per request in SSR (ALS-backed via
@@ -30,42 +30,42 @@ const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "prod
 // Falls back to the module-level singleton for code running outside a component
 // tree (e.g. programmatic navigation from event handlers).
 
-export const RouterContext = createContext<RouterInstance | null>(null)
+export const RouterContext = createContext<RouterInstance | null>(null);
 
 // Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
-let _activeRouter: RouterInstance | null = null
+let _activeRouter: RouterInstance | null = null;
 
 export function getActiveRouter(): RouterInstance | null {
-  return useContext(RouterContext) ?? _activeRouter
+  return useContext(RouterContext) ?? _activeRouter;
 }
 
 export function setActiveRouter(router: RouterInstance | null): void {
-  if (router) router._viewDepth = 0
-  _activeRouter = router
+  if (router) router._viewDepth = 0;
+  _activeRouter = router;
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useRouter(): Router {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = useContext(RouterContext) ?? _activeRouter;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
-  return router
+    );
+  return router;
 }
 
 export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   import("./types").ExtractParams<TPath> & Record<string, string>,
   Record<string, string>
 > {
-  const router = useContext(RouterContext) ?? _activeRouter
+  const router = useContext(RouterContext) ?? _activeRouter;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
-  return router.currentRoute as never
+    );
+  return router.currentRoute as never;
 }
 
 /**
@@ -79,22 +79,22 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
  * })
  */
 export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
+    );
   // Register as a global guard that only fires when leaving the current route
-  const currentMatched = router.currentRoute().matched
+  const currentMatched = router.currentRoute().matched;
   const wrappedGuard: NavigationGuard = (to, from) => {
     // Only fire if we're actually leaving one of the matched routes
-    const isLeaving = from.matched.some((r) => currentMatched.includes(r))
-    if (!isLeaving) return undefined
-    return guard(to, from)
-  }
-  const remove = router.beforeEach(wrappedGuard)
-  onUnmount(() => remove())
-  return remove
+    const isLeaving = from.matched.some((r) => currentMatched.includes(r));
+    if (!isLeaving) return undefined;
+    return guard(to, from);
+  };
+  const remove = router.beforeEach(wrappedGuard);
+  onUnmount(() => remove());
+  return remove;
 }
 
 /**
@@ -108,21 +108,21 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
  * })
  */
 export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
-  const currentMatched = router.currentRoute().matched
+    );
+  const currentMatched = router.currentRoute().matched;
   const wrappedGuard: NavigationGuard = (to, from) => {
     // Only fire when the same component is reused (matched routes overlap)
-    const isReused = to.matched.some((r) => currentMatched.includes(r))
-    if (!isReused) return undefined
-    return guard(to, from)
-  }
-  const remove = router.beforeEach(wrappedGuard)
-  onUnmount(() => remove())
-  return remove
+    const isReused = to.matched.some((r) => currentMatched.includes(r));
+    if (!isReused) return undefined;
+    return guard(to, from);
+  };
+  const remove = router.beforeEach(wrappedGuard);
+  onUnmount(() => remove());
+  return remove;
 }
 
 /**
@@ -140,34 +140,34 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
  * // later: blocker.remove()
  */
 export function useBlocker(fn: BlockerFn): Blocker {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
-  router._blockers.add(fn)
+    );
+  router._blockers.add(fn);
 
   // Warn before tab/window close while this blocker is registered
   const beforeUnloadHandler = _isBrowser
     ? (e: BeforeUnloadEvent) => {
-        e.preventDefault()
+        e.preventDefault();
       }
-    : null
+    : null;
   if (beforeUnloadHandler) {
-    window.addEventListener("beforeunload", beforeUnloadHandler)
+    window.addEventListener("beforeunload", beforeUnloadHandler);
   }
 
   const remove = () => {
-    router._blockers.delete(fn)
+    router._blockers.delete(fn);
     if (beforeUnloadHandler) {
-      window.removeEventListener("beforeunload", beforeUnloadHandler)
+      window.removeEventListener("beforeunload", beforeUnloadHandler);
     }
-  }
+  };
 
   // Auto-remove when the component that called useBlocker unmounts
-  onUnmount(() => remove())
+  onUnmount(() => remove());
 
-  return { remove }
+  return { remove };
 }
 
 /**
@@ -199,59 +199,59 @@ export function useBlocker(fn: BlockerFn): Blocker {
  * ```
  */
 export function useIsActive(path: string, exact = false): () => boolean {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
+    );
   return () => {
-    const current = router.currentRoute().path
+    const current = router.currentRoute().path;
     if (exact) {
-      return matchSegments(current, path, true)
+      return matchSegments(current, path, true);
     }
-    if (path === "/") return current === "/"
+    if (path === "/") return current === "/";
     // Segment-aware prefix: /admin matches /admin/users but NOT /admin-panel
-    return matchSegments(current, path, false)
-  }
+    return matchSegments(current, path, false);
+  };
 }
 
 /** Match current path segments against a pattern that may contain `:param` segments. */
 function matchSegments(current: string, pattern: string, exact: boolean): boolean {
-  const cs = current.split("/").filter(Boolean)
-  const ps = pattern.split("/").filter(Boolean)
+  const cs = current.split("/").filter(Boolean);
+  const ps = pattern.split("/").filter(Boolean);
   if (exact) {
-    if (cs.length !== ps.length) return false
-    return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
+    if (cs.length !== ps.length) return false;
+    return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i]);
   }
-  if (ps.length > cs.length) return false
-  return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i])
+  if (ps.length > cs.length) return false;
+  return ps.every((seg, i) => seg.startsWith(":") || seg === cs[i]);
 }
 
 export function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
 ): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null;
   if (!router)
     throw new Error(
       "[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.",
-    )
+    );
   const get = (): T => {
-    const query = router.currentRoute().query
-    if (!defaults) return query as T
-    return { ...defaults, ...query } as T
-  }
+    const query = router.currentRoute().query;
+    if (!defaults) return query as T;
+    return { ...defaults, ...query } as T;
+  };
   const set = (updates: Partial<T>): Promise<void> => {
-    const merged = { ...get(), ...updates }
-    const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>)
-    return router.replace(path)
-  }
-  return [get, set]
+    const merged = { ...get(), ...updates };
+    const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>);
+    return router.replace(path);
+  };
+  return [get, set];
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createRouter(options: RouterOptions | RouteRecord[]): Router {
-  const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
+  const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options;
   const {
     routes,
     mode = "hash",
@@ -259,72 +259,72 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     onError,
     maxCacheSize = 100,
     trailingSlash = "strip",
-  } = opts
+  } = opts;
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
-  const base = mode === "history" ? normalizeBase(opts.base ?? "") : ""
+  const base = mode === "history" ? normalizeBase(opts.base ?? "") : "";
 
   // Pre-built O(1) name → record index. Computed once at startup.
-  const nameIndex = buildNameIndex(routes)
+  const nameIndex = buildNameIndex(routes);
 
-  const guards: NavigationGuard[] = []
-  const afterHooks: AfterEachHook[] = []
-  const scrollManager = new ScrollManager(scrollBehavior)
+  const guards: NavigationGuard[] = [];
+  const afterHooks: AfterEachHook[] = [];
+  const scrollManager = new ScrollManager(scrollBehavior);
 
   // Navigation generation counter — cancels in-flight navigations when a newer
   // one starts. Prevents out-of-order completion from stale async guards.
-  let _navGen = 0
+  let _navGen = 0;
 
   // ── Initial location ──────────────────────────────────────────────────────
 
   const getInitialLocation = (): string => {
     // SSR: use explicitly provided url (strip base if present)
-    if (opts.url) return stripBase(opts.url, base)
-    if (!_isBrowser) return "/"
+    if (opts.url) return stripBase(opts.url, base);
+    if (!_isBrowser) return "/";
     if (mode === "history") {
-      return stripBase(window.location.pathname, base) + window.location.search
+      return stripBase(window.location.pathname, base) + window.location.search;
     }
-    const hash = window.location.hash
-    return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
-  }
+    const hash = window.location.hash;
+    return hash.startsWith("#") ? hash.slice(1) || "/" : "/";
+  };
 
   const getCurrentLocation = (): string => {
-    if (!_isBrowser) return currentPath()
+    if (!_isBrowser) return currentPath();
     if (mode === "history") {
-      return stripBase(window.location.pathname, base) + window.location.search
+      return stripBase(window.location.pathname, base) + window.location.search;
     }
-    const hash = window.location.hash
-    return hash.startsWith("#") ? hash.slice(1) || "/" : "/"
-  }
+    const hash = window.location.hash;
+    return hash.startsWith("#") ? hash.slice(1) || "/" : "/";
+  };
 
   // ── Signals ───────────────────────────────────────────────────────────────
 
-  const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
-  const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
+  const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash));
+  const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes));
 
   // Browser event listeners — stored so destroy() can remove them
-  let _popstateHandler: (() => void) | null = null
-  let _hashchangeHandler: (() => void) | null = null
+  let _popstateHandler: (() => void) | null = null;
+  let _hashchangeHandler: (() => void) | null = null;
 
   if (_isBrowser) {
     if (mode === "history") {
-      _popstateHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener("popstate", _popstateHandler)
+      _popstateHandler = () => currentPath.set(getCurrentLocation());
+      window.addEventListener("popstate", _popstateHandler);
     } else {
-      _hashchangeHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener("hashchange", _hashchangeHandler)
+      _hashchangeHandler = () => currentPath.set(getCurrentLocation());
+      window.addEventListener("hashchange", _hashchangeHandler);
     }
   }
 
-  const componentCache = new Map<RouteRecord, ComponentFn>()
-  const loadingSignal = signal(0)
+  const componentCache = new Map<RouteRecord, ComponentFn>();
+  const loadingSignal = signal(0);
 
   // ── Navigation ────────────────────────────────────────────────────────────
 
   type GuardOutcome =
     | { action: "continue" }
     | { action: "cancel" }
-    | { action: "redirect"; target: string }
+    | { action: "redirect"; target: string };
 
   async function evaluateGuard(
     guard: NavigationGuard,
@@ -332,11 +332,11 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     from: ResolvedRoute,
     gen: number,
   ): Promise<GuardOutcome> {
-    const result = await runGuard(guard, to, from)
-    if (gen !== _navGen) return { action: "cancel" }
-    if (result === false) return { action: "cancel" }
-    if (typeof result === "string") return { action: "redirect", target: result }
-    return { action: "continue" }
+    const result = await runGuard(guard, to, from);
+    if (gen !== _navGen) return { action: "cancel" };
+    if (result === false) return { action: "cancel" };
+    if (typeof result === "string") return { action: "redirect", target: result };
+    return { action: "continue" };
   }
 
   async function runRouteGuards(
@@ -347,15 +347,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     gen: number,
   ): Promise<GuardOutcome> {
     for (const record of records) {
-      const raw = record[guardKey]
-      if (!raw) continue
-      const routeGuards = Array.isArray(raw) ? raw : [raw]
+      const raw = record[guardKey];
+      if (!raw) continue;
+      const routeGuards = Array.isArray(raw) ? raw : [raw];
       for (const guard of routeGuards) {
-        const outcome = await evaluateGuard(guard, to, from, gen)
-        if (outcome.action !== "continue") return outcome
+        const outcome = await evaluateGuard(guard, to, from, gen);
+        if (outcome.action !== "continue") return outcome;
       }
     }
-    return { action: "continue" }
+    return { action: "continue" };
   }
 
   async function runGlobalGuards(
@@ -365,10 +365,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     gen: number,
   ): Promise<GuardOutcome> {
     for (const guard of globalGuards) {
-      const outcome = await evaluateGuard(guard, to, from, gen)
-      if (outcome.action !== "continue") return outcome
+      const outcome = await evaluateGuard(guard, to, from, gen);
+      if (outcome.action !== "continue") return outcome;
     }
-    return { action: "continue" }
+    return { action: "continue" };
   }
 
   function processLoaderResult(
@@ -378,32 +378,32 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     to: ResolvedRoute,
   ): boolean {
     if (result.status === "fulfilled") {
-      router._loaderData.set(record, result.value)
-      return true
+      router._loaderData.set(record, result.value);
+      return true;
     }
-    if (ac.signal.aborted) return true
+    if (ac.signal.aborted) return true;
     if (router._onError) {
-      const cancel = router._onError(result.reason, to)
-      if (cancel === false) return false
+      const cancel = router._onError(result.reason, to);
+      if (cancel === false) return false;
     }
-    router._loaderData.set(record, undefined)
-    return true
+    router._loaderData.set(record, undefined);
+    return true;
   }
 
   function syncBrowserUrl(path: string, replace: boolean): void {
-    if (!_isBrowser) return
-    const url = mode === "history" ? `${base}${path}` : `#${path}`
+    if (!_isBrowser) return;
+    const url = mode === "history" ? `${base}${path}` : `#${path}`;
     if (replace) {
-      window.history.replaceState(null, "", url)
+      window.history.replaceState(null, "", url);
     } else {
-      window.history.pushState(null, "", url)
+      window.history.pushState(null, "", url);
     }
   }
 
   function resolveRedirect(to: ResolvedRoute): string | null {
-    const leaf = to.matched[to.matched.length - 1]
-    if (!leaf?.redirect) return null
-    return sanitizePath(typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect)
+    const leaf = to.matched[to.matched.length - 1];
+    if (!leaf?.redirect) return null;
+    return sanitizePath(typeof leaf.redirect === "function" ? leaf.redirect(to) : leaf.redirect);
   }
 
   async function runAllGuards(
@@ -411,13 +411,13 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     from: ResolvedRoute,
     gen: number,
   ): Promise<GuardOutcome> {
-    const leaveOutcome = await runRouteGuards(from.matched, "beforeLeave", to, from, gen)
-    if (leaveOutcome.action !== "continue") return leaveOutcome
+    const leaveOutcome = await runRouteGuards(from.matched, "beforeLeave", to, from, gen);
+    if (leaveOutcome.action !== "continue") return leaveOutcome;
 
-    const enterOutcome = await runRouteGuards(to.matched, "beforeEnter", to, from, gen)
-    if (enterOutcome.action !== "continue") return enterOutcome
+    const enterOutcome = await runRouteGuards(to.matched, "beforeEnter", to, from, gen);
+    if (enterOutcome.action !== "continue") return enterOutcome;
 
-    return runGlobalGuards(guards, to, from, gen)
+    return runGlobalGuards(guards, to, from, gen);
   }
 
   async function runBlockingLoaders(
@@ -426,60 +426,60 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     gen: number,
     ac: AbortController,
   ): Promise<boolean> {
-    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
+    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal };
     const results = await Promise.allSettled(
       records.map((r) => (r.loader ? r.loader(loaderCtx) : Promise.resolve(undefined))),
-    )
-    if (gen !== _navGen) return false
+    );
+    if (gen !== _navGen) return false;
     for (let i = 0; i < records.length; i++) {
-      const result = results[i]
-      const record = records[i]
-      if (!result || !record) continue
-      if (!processLoaderResult(result, record, ac, to)) return false
+      const result = results[i];
+      const record = records[i];
+      if (!result || !record) continue;
+      if (!processLoaderResult(result, record, ac, to)) return false;
     }
-    return true
+    return true;
   }
 
   /** Fire-and-forget background revalidation for stale-while-revalidate routes. */
   function revalidateSwrLoaders(records: RouteRecord[], to: ResolvedRoute, ac: AbortController) {
-    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
+    const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal };
     for (const r of records) {
-      if (!r.loader) continue
+      if (!r.loader) continue;
       r.loader(loaderCtx)
         .then((data) => {
           if (!ac.signal.aborted) {
-            router._loaderData.set(r, data)
+            router._loaderData.set(r, data);
             // Bump loadingSignal to trigger reactive re-render with fresh data
-            loadingSignal.update((n) => n + 1)
-            loadingSignal.update((n) => n - 1)
+            loadingSignal.update((n) => n + 1);
+            loadingSignal.update((n) => n - 1);
           }
         })
         .catch(() => {
           /* Background revalidation failure — stale data remains valid */
-        })
+        });
     }
   }
 
   async function runLoaders(to: ResolvedRoute, gen: number, ac: AbortController): Promise<boolean> {
-    const loadableRecords = to.matched.filter((r) => r.loader)
-    if (loadableRecords.length === 0) return true
+    const loadableRecords = to.matched.filter((r) => r.loader);
+    if (loadableRecords.length === 0) return true;
 
-    const blocking: RouteRecord[] = []
-    const swr: RouteRecord[] = []
+    const blocking: RouteRecord[] = [];
+    const swr: RouteRecord[] = [];
     for (const r of loadableRecords) {
       if (r.staleWhileRevalidate && router._loaderData.has(r)) {
-        swr.push(r)
+        swr.push(r);
       } else {
-        blocking.push(r)
+        blocking.push(r);
       }
     }
 
     if (blocking.length > 0) {
-      const ok = await runBlockingLoaders(blocking, to, gen, ac)
-      if (!ok) return false
+      const ok = await runBlockingLoaders(blocking, to, gen, ac);
+      if (!ok) return false;
     }
-    if (swr.length > 0) revalidateSwrLoaders(swr, to, ac)
-    return true
+    if (swr.length > 0) revalidateSwrLoaders(swr, to, ac);
+    return true;
   }
 
   function commitNavigation(
@@ -488,32 +488,32 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     to: ResolvedRoute,
     from: ResolvedRoute,
   ): void {
-    scrollManager.save(from.path)
-    currentPath.set(path)
-    syncBrowserUrl(path, replace)
+    scrollManager.save(from.path);
+    currentPath.set(path);
+    syncBrowserUrl(path, replace);
 
     if (_isBrowser && to.meta.title) {
-      document.title = to.meta.title
+      document.title = to.meta.title;
     }
 
     for (const record of router._loaderData.keys()) {
       if (!to.matched.includes(record)) {
-        router._loaderData.delete(record)
+        router._loaderData.delete(record);
       }
     }
 
     for (const hook of afterHooks) {
       try {
-        hook(to, from)
+        hook(to, from);
       } catch (err) {
         if (__DEV__) {
-          console.warn(`[Pyreon Router] afterEach hook threw an error:`, err)
+          console.warn(`[Pyreon Router] afterEach hook threw an error:`, err);
         }
       }
     }
 
     if (_isBrowser) {
-      queueMicrotask(() => scrollManager.restore(to, from))
+      queueMicrotask(() => scrollManager.restore(to, from));
     }
   }
 
@@ -523,10 +523,10 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     gen: number,
   ): Promise<"continue" | "cancel"> {
     for (const blocker of router._blockers) {
-      const blocked = await blocker(to, from)
-      if (gen !== _navGen || blocked) return "cancel"
+      const blocked = await blocker(to, from);
+      if (gen !== _navGen || blocked) return "cancel";
     }
-    return "continue"
+    return "continue";
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: navigation is inherently multi-step
@@ -537,60 +537,60 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         console.warn(
           `[Pyreon] Navigation to "${rawPath}" aborted: redirect depth exceeded 10 levels. ` +
             "This likely indicates a redirect loop in your route configuration.",
-        )
+        );
       }
-      return
+      return;
     }
 
-    const path = normalizeTrailingSlash(rawPath, trailingSlash)
-    const gen = ++_navGen
-    loadingSignal.update((n) => n + 1)
+    const path = normalizeTrailingSlash(rawPath, trailingSlash);
+    const gen = ++_navGen;
+    loadingSignal.update((n) => n + 1);
 
-    const to = resolveRoute(path, routes)
-    const from = currentRoute()
+    const to = resolveRoute(path, routes);
+    const from = currentRoute();
 
-    const redirectTarget = resolveRedirect(to)
+    const redirectTarget = resolveRedirect(to);
     if (redirectTarget !== null) {
-      loadingSignal.update((n) => n - 1)
-      return navigate(redirectTarget, replace, redirectDepth + 1)
+      loadingSignal.update((n) => n - 1);
+      return navigate(redirectTarget, replace, redirectDepth + 1);
     }
 
-    const blockerResult = await checkBlockers(to, from, gen)
+    const blockerResult = await checkBlockers(to, from, gen);
     if (blockerResult !== "continue") {
-      loadingSignal.update((n) => n - 1)
-      return
+      loadingSignal.update((n) => n - 1);
+      return;
     }
 
-    const guardOutcome = await runAllGuards(to, from, gen)
+    const guardOutcome = await runAllGuards(to, from, gen);
     if (guardOutcome.action !== "continue") {
-      loadingSignal.update((n) => n - 1)
+      loadingSignal.update((n) => n - 1);
       if (guardOutcome.action === "redirect") {
-        return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1)
+        return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1);
       }
-      return
+      return;
     }
 
-    router._abortController?.abort()
-    const ac = new AbortController()
-    router._abortController = ac
+    router._abortController?.abort();
+    const ac = new AbortController();
+    router._abortController = ac;
 
-    const loadersOk = await runLoaders(to, gen, ac)
+    const loadersOk = await runLoaders(to, gen, ac);
     if (!loadersOk) {
-      loadingSignal.update((n) => n - 1)
-      return
+      loadingSignal.update((n) => n - 1);
+      return;
     }
 
-    commitNavigation(path, replace, to, from)
-    loadingSignal.update((n) => n - 1)
+    commitNavigation(path, replace, to, from);
+    loadingSignal.update((n) => n - 1);
   }
 
   // ── isReady promise ─────────────────────────────────────────────────────
   // Resolves after the first navigation (including guards + loaders) completes.
 
-  let _readyResolve: (() => void) | null = null
+  let _readyResolve: (() => void) | null = null;
   const _readyPromise = new Promise<void>((resolve) => {
-    _readyResolve = resolve
-  })
+    _readyResolve = resolve;
+  });
 
   // ── Public router object ──────────────────────────────────────────────────
 
@@ -621,16 +621,16 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
     ) {
       if (typeof location === "string") {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), false)
+        const resolved = resolveRelativePath(location, currentPath());
+        return navigate(sanitizePath(resolved), false);
       }
       const path = resolveNamedPath(
         location.name,
         location.params ?? {},
         location.query ?? {},
         nameIndex,
-      )
-      return navigate(path, false)
+      );
+      return navigate(path, false);
     },
 
     async replace(
@@ -639,83 +639,83 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
         | { name: string; params?: Record<string, string>; query?: Record<string, string> },
     ) {
       if (typeof location === "string") {
-        const resolved = resolveRelativePath(location, currentPath())
-        return navigate(sanitizePath(resolved), true)
+        const resolved = resolveRelativePath(location, currentPath());
+        return navigate(sanitizePath(resolved), true);
       }
       const path = resolveNamedPath(
         location.name,
         location.params ?? {},
         location.query ?? {},
         nameIndex,
-      )
-      return navigate(path, true)
+      );
+      return navigate(path, true);
     },
 
     back() {
-      if (_isBrowser) window.history.back()
+      if (_isBrowser) window.history.back();
     },
 
     forward() {
-      if (_isBrowser) window.history.forward()
+      if (_isBrowser) window.history.forward();
     },
 
     go(delta: number) {
-      if (_isBrowser) window.history.go(delta)
+      if (_isBrowser) window.history.go(delta);
     },
 
     beforeEach(guard: NavigationGuard) {
-      guards.push(guard)
+      guards.push(guard);
       return () => {
-        const idx = guards.indexOf(guard)
-        if (idx >= 0) guards.splice(idx, 1)
-      }
+        const idx = guards.indexOf(guard);
+        if (idx >= 0) guards.splice(idx, 1);
+      };
     },
 
     afterEach(hook: AfterEachHook) {
-      afterHooks.push(hook)
+      afterHooks.push(hook);
       return () => {
-        const idx = afterHooks.indexOf(hook)
-        if (idx >= 0) afterHooks.splice(idx, 1)
-      }
+        const idx = afterHooks.indexOf(hook);
+        if (idx >= 0) afterHooks.splice(idx, 1);
+      };
     },
 
     loading: () => loadingSignal() > 0,
 
     isReady() {
-      return router._readyPromise
+      return router._readyPromise;
     },
 
     destroy() {
       if (_popstateHandler) {
-        window.removeEventListener("popstate", _popstateHandler)
-        _popstateHandler = null
+        window.removeEventListener("popstate", _popstateHandler);
+        _popstateHandler = null;
       }
       if (_hashchangeHandler) {
-        window.removeEventListener("hashchange", _hashchangeHandler)
-        _hashchangeHandler = null
+        window.removeEventListener("hashchange", _hashchangeHandler);
+        _hashchangeHandler = null;
       }
-      guards.length = 0
-      afterHooks.length = 0
-      router._blockers.clear()
-      componentCache.clear()
-      router._loaderData.clear()
-      router._abortController?.abort()
-      router._abortController = null
+      guards.length = 0;
+      afterHooks.length = 0;
+      router._blockers.clear();
+      componentCache.clear();
+      router._loaderData.clear();
+      router._abortController?.abort();
+      router._abortController = null;
     },
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),
-  }
+  };
 
   // Initial route is resolved synchronously — mark ready on next microtask
   // so consumers can await isReady() before the first render.
   queueMicrotask(() => {
     if (router._readyResolve) {
-      router._readyResolve()
-      router._readyResolve = null
+      router._readyResolve();
+      router._readyResolve = null;
     }
-  })
+  });
 
-  return router
+  return router;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -726,12 +726,12 @@ async function runGuard(
   from: ResolvedRoute,
 ): Promise<NavigationGuardResult> {
   try {
-    return await guard(to, from)
+    return await guard(to, from);
   } catch (err) {
     if (__DEV__) {
-      console.warn(`[Pyreon Router] Navigation guard threw an error — navigation cancelled:`, err)
+      console.warn(`[Pyreon Router] Navigation guard threw an error — navigation cancelled:`, err);
     }
-    return false
+    return false;
   }
 }
 
@@ -741,49 +741,49 @@ function resolveNamedPath(
   query: Record<string, string>,
   index: Map<string, RouteRecord>,
 ): string {
-  const record = index.get(name)
+  const record = index.get(name);
   if (!record) {
-    return "/"
+    return "/";
   }
-  let path = buildPath(record.path, params)
+  let path = buildPath(record.path, params);
   const qs = Object.entries(query)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&")
-  if (qs) path += `?${qs}`
-  return path
+    .join("&");
+  if (qs) path += `?${qs}`;
+  return path;
 }
 
 /** Normalize a base path: ensure leading `/`, strip trailing `/`. */
 function normalizeBase(raw: string): string {
-  if (!raw) return ""
-  let b = raw
-  if (!b.startsWith("/")) b = `/${b}`
-  if (b.endsWith("/")) b = b.slice(0, -1)
-  return b
+  if (!raw) return "";
+  let b = raw;
+  if (!b.startsWith("/")) b = `/${b}`;
+  if (b.endsWith("/")) b = b.slice(0, -1);
+  return b;
 }
 
 /** Strip the base prefix from a full URL path. Returns the app-relative path. */
 function stripBase(path: string, base: string): string {
-  if (!base) return path
-  if (path === base || path === `${base}/`) return "/"
-  if (path.startsWith(`${base}/`)) return path.slice(base.length)
-  return path
+  if (!base) return path;
+  if (path === base || path === `${base}/`) return "/";
+  if (path.startsWith(`${base}/`)) return path.slice(base.length);
+  return path;
 }
 
 /** Normalize trailing slash on a path according to the configured strategy. */
 function normalizeTrailingSlash(path: string, strategy: "strip" | "add" | "ignore"): string {
-  if (strategy === "ignore" || path === "/") return path
+  if (strategy === "ignore" || path === "/") return path;
   // Split off query string + hash so we only touch the path portion
-  const qIdx = path.indexOf("?")
-  const hIdx = path.indexOf("#")
-  const endIdx = qIdx >= 0 ? qIdx : hIdx >= 0 ? hIdx : path.length
-  const pathPart = path.slice(0, endIdx)
-  const suffix = path.slice(endIdx)
+  const qIdx = path.indexOf("?");
+  const hIdx = path.indexOf("#");
+  const endIdx = qIdx >= 0 ? qIdx : hIdx >= 0 ? hIdx : path.length;
+  const pathPart = path.slice(0, endIdx);
+  const suffix = path.slice(endIdx);
   if (strategy === "strip") {
-    return pathPart.length > 1 && pathPart.endsWith("/") ? pathPart.slice(0, -1) + suffix : path
+    return pathPart.length > 1 && pathPart.endsWith("/") ? pathPart.slice(0, -1) + suffix : path;
   }
   // strategy === "add"
-  return !pathPart.endsWith("/") ? `${pathPart}/${suffix}` : path
+  return !pathPart.endsWith("/") ? `${pathPart}/${suffix}` : path;
 }
 
 /**
@@ -791,34 +791,34 @@ function normalizeTrailingSlash(path: string, strategy: "strip" | "add" | "ignor
  * Non-relative paths are returned as-is.
  */
 function resolveRelativePath(to: string, from: string): string {
-  if (!to.startsWith("./") && !to.startsWith("../") && to !== "." && to !== "..") return to
+  if (!to.startsWith("./") && !to.startsWith("../") && to !== "." && to !== "..") return to;
 
   // Split current path into segments, drop the last segment (file-like resolution)
-  const fromSegments = from.split("/").filter(Boolean)
-  fromSegments.pop()
+  const fromSegments = from.split("/").filter(Boolean);
+  fromSegments.pop();
 
-  const toSegments = to.split("/").filter(Boolean)
+  const toSegments = to.split("/").filter(Boolean);
   for (const seg of toSegments) {
     if (seg === "..") {
-      fromSegments.pop()
+      fromSegments.pop();
     } else if (seg !== ".") {
-      fromSegments.push(seg)
+      fromSegments.push(seg);
     }
   }
-  return `/${fromSegments.join("/")}`
+  return `/${fromSegments.join("/")}`;
 }
 
 /** Block unsafe navigation targets: javascript/data/vbscript URIs and absolute URLs. */
 function sanitizePath(path: string): string {
-  const trimmed = path.trim()
+  const trimmed = path.trim();
   if (/^(?:javascript|data|vbscript):/i.test(trimmed)) {
-    return "/"
+    return "/";
   }
   // Block absolute URLs and protocol-relative URLs — router only handles same-origin paths
   if (/^\/\/|^https?:/i.test(trimmed)) {
-    return "/"
+    return "/";
   }
-  return path
+  return path;
 }
 
-export { isLazy }
+export { isLazy };

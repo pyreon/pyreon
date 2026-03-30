@@ -1,15 +1,15 @@
-import type { Props, VNode, VNodeChild } from "./types"
+import type { Props, VNode, VNodeChild } from "./types";
 
 /**
  * Symbol used as the VNode type for a Portal — runtime-dom mounts the
  * children into `target` instead of the normal parent.
  */
-export const PortalSymbol: unique symbol = Symbol("pyreon.Portal")
+export const PortalSymbol: unique symbol = Symbol("pyreon.Portal");
 
 export interface PortalProps {
   /** DOM element to render children into (e.g. document.body). */
-  target: Element
-  children: VNodeChild
+  target: Element;
+  children: VNodeChild;
 }
 
 /**
@@ -35,5 +35,5 @@ export function Portal(props: PortalProps): VNode {
     props: props as unknown as Props,
     children: [],
     key: null,
-  }
+  };
 }

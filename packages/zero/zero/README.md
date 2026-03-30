@@ -29,35 +29,35 @@ bun add @pyreon/zero
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin"
-import zero from "@pyreon/zero"
+import pyreon from "@pyreon/vite-plugin";
+import zero from "@pyreon/zero";
 
 export default {
   plugins: [pyreon(), zero({ mode: "ssr", ssr: { mode: "stream" } })],
-}
+};
 ```
 
 ## Subpath Exports
 
-| Export | Description |
-| --- | --- |
-| `@pyreon/zero` | Vite plugin, config, adapters, components, middleware |
-| `@pyreon/zero/client` | Client-side entry (`startClient`) |
-| `@pyreon/zero/config` | `defineConfig`, `resolveConfig` |
-| `@pyreon/zero/image` | `<Image>` component |
-| `@pyreon/zero/link` | `<Link>`, `useLink`, `createLink` |
-| `@pyreon/zero/script` | `<Script>` component |
-| `@pyreon/zero/theme` | Theme system and `<ThemeToggle>` |
-| `@pyreon/zero/font` | Font optimization plugin |
-| `@pyreon/zero/cache` | Cache and security middleware |
-| `@pyreon/zero/seo` | SEO plugin, sitemap, robots.txt |
-| `@pyreon/zero/image-plugin` | Image optimization Vite plugin |
-| `@pyreon/zero/actions` | `defineAction`, `createActionMiddleware` |
-| `@pyreon/zero/api-routes` | API route utilities and middleware |
-| `@pyreon/zero/cors` | CORS middleware |
-| `@pyreon/zero/rate-limit` | Rate limiting middleware |
-| `@pyreon/zero/compression` | Compression middleware |
-| `@pyreon/zero/testing` | Test utilities for middleware and API routes |
+| Export                      | Description                                           |
+| --------------------------- | ----------------------------------------------------- |
+| `@pyreon/zero`              | Vite plugin, config, adapters, components, middleware |
+| `@pyreon/zero/client`       | Client-side entry (`startClient`)                     |
+| `@pyreon/zero/config`       | `defineConfig`, `resolveConfig`                       |
+| `@pyreon/zero/image`        | `<Image>` component                                   |
+| `@pyreon/zero/link`         | `<Link>`, `useLink`, `createLink`                     |
+| `@pyreon/zero/script`       | `<Script>` component                                  |
+| `@pyreon/zero/theme`        | Theme system and `<ThemeToggle>`                      |
+| `@pyreon/zero/font`         | Font optimization plugin                              |
+| `@pyreon/zero/cache`        | Cache and security middleware                         |
+| `@pyreon/zero/seo`          | SEO plugin, sitemap, robots.txt                       |
+| `@pyreon/zero/image-plugin` | Image optimization Vite plugin                        |
+| `@pyreon/zero/actions`      | `defineAction`, `createActionMiddleware`              |
+| `@pyreon/zero/api-routes`   | API route utilities and middleware                    |
+| `@pyreon/zero/cors`         | CORS middleware                                       |
+| `@pyreon/zero/rate-limit`   | Rate limiting middleware                              |
+| `@pyreon/zero/compression`  | Compression middleware                                |
+| `@pyreon/zero/testing`      | Test utilities for middleware and API routes          |
 
 ## License
 

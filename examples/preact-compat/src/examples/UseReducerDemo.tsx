@@ -1,21 +1,21 @@
-import { useReducer } from "preact/hooks"
-import Demo from "./Demo"
+import { useReducer } from "preact/hooks";
+import Demo from "./Demo";
 
-type CounterAction = { type: "inc" } | { type: "dec" } | { type: "reset" }
+type CounterAction = { type: "inc" } | { type: "dec" } | { type: "reset" };
 
 function counterReducer(state: number, action: CounterAction): number {
   switch (action.type) {
     case "inc":
-      return state + 1
+      return state + 1;
     case "dec":
-      return state - 1
+      return state - 1;
     case "reset":
-      return 0
+      return 0;
   }
 }
 
 export default function UseReducerDemo() {
-  const [count, dispatch] = useReducer(counterReducer, 0)
+  const [count, dispatch] = useReducer(counterReducer, 0);
 
   return (
     <Demo
@@ -39,5 +39,5 @@ dispatch({ type: "inc" })`}
         </button>
       </div>
     </Demo>
-  )
+  );
 }

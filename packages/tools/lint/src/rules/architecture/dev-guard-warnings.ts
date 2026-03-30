@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
 
 export const devGuardWarnings: Rule = {
   meta: {
@@ -10,7 +10,7 @@ export const devGuardWarnings: Rule = {
     fixable: false,
   },
   create(context) {
-    const filePath = context.getFilePath()
+    const filePath = context.getFilePath();
     // Skip test and example files
     if (
       filePath.includes("/tests/") ||
@@ -19,25 +19,25 @@ export const devGuardWarnings: Rule = {
       filePath.includes(".test.") ||
       filePath.includes(".spec.")
     ) {
-      return {}
+      return {};
     }
 
-    let devGuardDepth = 0
+    let devGuardDepth = 0;
     const callbacks: VisitorCallbacks = {
       IfStatement(node: any) {
         if (node.test?.type === "Identifier" && node.test.name === "__DEV__") {
-          devGuardDepth++
+          devGuardDepth++;
         }
       },
       "IfStatement:exit"(node: any) {
         if (node.test?.type === "Identifier" && node.test.name === "__DEV__") {
-          devGuardDepth--
+          devGuardDepth--;
         }
       },
       CallExpression(node: any) {
-        if (devGuardDepth > 0) return
+        if (devGuardDepth > 0) return;
 
-        const callee = node.callee
+        const callee = node.callee;
         if (
           callee?.type === "MemberExpression" &&
           callee.object?.type === "Identifier" &&
@@ -48,10 +48,10 @@ export const devGuardWarnings: Rule = {
           context.report({
             message: `\`console.${callee.property.name}()\` without \`__DEV__\` guard — dev warnings must be tree-shakeable in production. Wrap in \`if (__DEV__) { ... }\`.`,
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

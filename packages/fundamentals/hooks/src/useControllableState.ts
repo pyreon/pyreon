@@ -1,14 +1,14 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from "@pyreon/reactivity";
 
 type UseControllableStateOptions<T> = {
-  value?: T | undefined
-  defaultValue: T
-  onChange?: ((value: T) => void) | undefined
-}
+  value?: T | undefined;
+  defaultValue: T;
+  onChange?: ((value: T) => void) | undefined;
+};
 
 export type UseControllableState = <T>(
   options: UseControllableStateOptions<T>,
-) => [() => T, (next: T | ((prev: T) => T)) => void]
+) => [() => T, (next: T | ((prev: T) => T)) => void];
 
 /**
  * Unified controlled/uncontrolled state pattern.
@@ -19,21 +19,21 @@ export type UseControllableState = <T>(
  * Returns [getter, setter] where getter is a reactive function.
  */
 export const useControllableState: UseControllableState = ({ value, defaultValue, onChange }) => {
-  const internal = signal(defaultValue)
-  const onChangeFn = onChange
+  const internal = signal(defaultValue);
+  const onChangeFn = onChange;
 
-  const isControlled = value !== undefined
+  const isControlled = value !== undefined;
 
-  const getter = (): any => (isControlled ? value : internal())
+  const getter = (): any => (isControlled ? value : internal());
 
   const setValue = (next: any) => {
-    const current = isControlled ? value : internal()
-    const nextValue = typeof next === "function" ? next(current) : next
-    if (!isControlled) internal.set(nextValue)
-    onChangeFn?.(nextValue)
-  }
+    const current = isControlled ? value : internal();
+    const nextValue = typeof next === "function" ? next(current) : next;
+    if (!isControlled) internal.set(nextValue);
+    onChangeFn?.(nextValue);
+  };
 
-  return [getter, setValue]
-}
+  return [getter, setValue];
+};
 
-export default useControllableState
+export default useControllableState;

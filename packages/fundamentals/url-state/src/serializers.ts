@@ -1,4 +1,4 @@
-import type { ArrayFormat, Serializer } from "./types"
+import type { ArrayFormat, Serializer } from "./types";
 
 /** Infer a serializer pair from the type of the default value. */
 export function inferSerializer<T>(
@@ -10,13 +10,13 @@ export function inferSerializer<T>(
       return {
         serialize: (v: T) => (v as string[]).join("\0REPEAT\0"),
         deserialize: (raw: string) => (raw === "" ? [] : raw.split("\0REPEAT\0")) as T,
-      }
+      };
     }
     // comma (default)
     return {
       serialize: (v: T) => (v as string[]).join(","),
       deserialize: (raw: string) => (raw === "" ? [] : raw.split(",")) as T,
-    }
+    };
   }
 
   switch (typeof defaultValue) {
@@ -24,29 +24,29 @@ export function inferSerializer<T>(
       return {
         serialize: (v: T) => String(v),
         deserialize: (raw: string) => {
-          const n = Number(raw)
-          return (Number.isNaN(n) ? defaultValue : n) as T
+          const n = Number(raw);
+          return (Number.isNaN(n) ? defaultValue : n) as T;
         },
-      }
+      };
     case "boolean":
       return {
         serialize: (v: T) => String(v),
         deserialize: (raw: string) => (raw === "true") as T,
-      }
+      };
     case "string":
       return {
         serialize: (v: T) => v as string,
         deserialize: (raw: string) => raw as T,
-      }
+      };
     case "object":
       return {
         serialize: (v: T) => JSON.stringify(v),
         deserialize: (raw: string) => JSON.parse(raw) as T,
-      }
+      };
     default:
       return {
         serialize: (v: T) => String(v),
         deserialize: (raw: string) => raw as T,
-      }
+      };
   }
 }

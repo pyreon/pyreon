@@ -1,7 +1,7 @@
-import { ref } from "vue"
+import { ref } from "vue";
 
 export default function Demo(props: { title: string; apis: string; code: string; children?: any }) {
-  const showCode = ref(false)
+  const showCode = ref(false);
   return (
     <section class="demo">
       <div class="demo-header">
@@ -12,7 +12,7 @@ export default function Demo(props: { title: string; apis: string; code: string;
             type="button"
             class="code-toggle"
             onClick={() => {
-              showCode.value = !showCode.value
+              showCode.value = !showCode.value;
             }}
           >
             {showCode.value ? "Hide Code" : "Show Code"}
@@ -26,5 +26,5 @@ export default function Demo(props: { title: string; apis: string; code: string;
       ) : null}
       {props.children}
     </section>
-  )
+  );
 }

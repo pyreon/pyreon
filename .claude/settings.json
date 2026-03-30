@@ -21,7 +21,7 @@
       "Bash(wc *)",
       "Bash(gh pr checks*)",
       "Bash(gh pr view*)",
-      
+
       "Bash(gh api*)",
       "Bash(bun run*)",
       "Bash(bun install*)",

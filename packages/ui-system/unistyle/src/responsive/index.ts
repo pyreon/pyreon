@@ -1,14 +1,14 @@
-export type { Breakpoints } from "./breakpoints"
-export { default as breakpoints } from "./breakpoints"
-export type { CreateMediaQueries } from "./createMediaQueries"
-export { default as createMediaQueries } from "./createMediaQueries"
-export type { MakeItResponsive, MakeItResponsiveStyles } from "./makeItResponsive"
-export { default as makeItResponsive } from "./makeItResponsive"
-export type { NormalizeTheme } from "./normalizeTheme"
-export { default as normalizeTheme } from "./normalizeTheme"
-export type { OptimizeTheme } from "./optimizeTheme"
-export { default as optimizeTheme } from "./optimizeTheme"
-export type { SortBreakpoints } from "./sortBreakpoints"
-export { default as sortBreakpoints } from "./sortBreakpoints"
-export type { TransformTheme } from "./transformTheme"
-export { default as transformTheme } from "./transformTheme"
+export type { Breakpoints } from "./breakpoints";
+export { default as breakpoints } from "./breakpoints";
+export type { CreateMediaQueries } from "./createMediaQueries";
+export { default as createMediaQueries } from "./createMediaQueries";
+export type { MakeItResponsive, MakeItResponsiveStyles } from "./makeItResponsive";
+export { default as makeItResponsive } from "./makeItResponsive";
+export type { NormalizeTheme } from "./normalizeTheme";
+export { default as normalizeTheme } from "./normalizeTheme";
+export type { OptimizeTheme } from "./optimizeTheme";
+export { default as optimizeTheme } from "./optimizeTheme";
+export type { SortBreakpoints } from "./sortBreakpoints";
+export { default as sortBreakpoints } from "./sortBreakpoints";
+export type { TransformTheme } from "./transformTheme";
+export { default as transformTheme } from "./transformTheme";

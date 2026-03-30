@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from "./types"
+import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from "./types";
 
 // ─── ELK algorithm mapping ───────────────────────────────────────────────────
 
@@ -10,56 +10,56 @@ const ELK_ALGORITHMS: Record<LayoutAlgorithm, string> = {
   radial: "org.eclipse.elk.radial",
   box: "org.eclipse.elk.box",
   rectpacking: "org.eclipse.elk.rectpacking",
-}
+};
 
 const ELK_DIRECTIONS: Record<string, string> = {
   UP: "UP",
   DOWN: "DOWN",
   LEFT: "LEFT",
   RIGHT: "RIGHT",
-}
+};
 
 // ─── Lazy-loaded ELK instance ────────────────────────────────────────────────
 
-let elkInstance: any = null
-let elkPromise: Promise<any> | null = null
+let elkInstance: any = null;
+let elkPromise: Promise<any> | null = null;
 
 async function getELK(): Promise<any> {
-  if (elkInstance) return elkInstance
-  if (elkPromise) return elkPromise
+  if (elkInstance) return elkInstance;
+  if (elkPromise) return elkPromise;
 
   elkPromise = import("elkjs/lib/elk.bundled.js").then((mod) => {
-    const ELK = mod.default || mod
-    elkInstance = new ELK()
-    return elkInstance
-  })
+    const ELK = mod.default || mod;
+    elkInstance = new ELK();
+    return elkInstance;
+  });
 
-  return elkPromise
+  return elkPromise;
 }
 
 // ─── Convert flow graph to ELK format ────────────────────────────────────────
 
 interface ElkNode {
-  id: string
-  width: number
-  height: number
+  id: string;
+  width: number;
+  height: number;
 }
 
 interface ElkEdge {
-  id: string
-  sources: string[]
-  targets: string[]
+  id: string;
+  sources: string[];
+  targets: string[];
 }
 
 interface ElkGraph {
-  id: string
-  layoutOptions: Record<string, string>
-  children: ElkNode[]
-  edges: ElkEdge[]
+  id: string;
+  layoutOptions: Record<string, string>;
+  children: ElkNode[];
+  edges: ElkEdge[];
 }
 
 interface ElkResult {
-  children: Array<{ id: string; x: number; y: number }>
+  children: Array<{ id: string; x: number; y: number }>;
 }
 
 function toElkGraph(
@@ -70,18 +70,18 @@ function toElkGraph(
 ): ElkGraph {
   const layoutOptions: Record<string, string> = {
     "elk.algorithm": ELK_ALGORITHMS[algorithm] ?? ELK_ALGORITHMS.layered,
-  }
+  };
 
   if (options.direction) {
-    layoutOptions["elk.direction"] = ELK_DIRECTIONS[options.direction] ?? "DOWN"
+    layoutOptions["elk.direction"] = ELK_DIRECTIONS[options.direction] ?? "DOWN";
   }
 
   if (options.nodeSpacing !== undefined) {
-    layoutOptions["elk.spacing.nodeNode"] = String(options.nodeSpacing)
+    layoutOptions["elk.spacing.nodeNode"] = String(options.nodeSpacing);
   }
 
   if (options.layerSpacing !== undefined) {
-    layoutOptions["elk.layered.spacing.nodeNodeBetweenLayers"] = String(options.layerSpacing)
+    layoutOptions["elk.layered.spacing.nodeNodeBetweenLayers"] = String(options.layerSpacing);
   }
 
   if (options.edgeRouting) {
@@ -89,8 +89,8 @@ function toElkGraph(
       orthogonal: "ORTHOGONAL",
       splines: "SPLINES",
       polyline: "POLYLINE",
-    }
-    layoutOptions["elk.edgeRouting"] = routingMap[options.edgeRouting] ?? "ORTHOGONAL"
+    };
+    layoutOptions["elk.edgeRouting"] = routingMap[options.edgeRouting] ?? "ORTHOGONAL";
   }
 
   return {
@@ -106,7 +106,7 @@ function toElkGraph(
       sources: [edge.source],
       targets: [edge.target],
     })),
-  }
+  };
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -133,12 +133,12 @@ export async function computeLayout(
   algorithm: LayoutAlgorithm = "layered",
   options: LayoutOptions = {},
 ): Promise<Array<{ id: string; position: { x: number; y: number } }>> {
-  const elk = await getELK()
-  const graph = toElkGraph(nodes, edges, algorithm, options)
-  const result: ElkResult = await elk.layout(graph)
+  const elk = await getELK();
+  const graph = toElkGraph(nodes, edges, algorithm, options);
+  const result: ElkResult = await elk.layout(graph);
 
   return (result.children ?? []).map((child) => ({
     id: child.id,
     position: { x: child.x ?? 0, y: child.y ?? 0 },
-  }))
+  }));
 }

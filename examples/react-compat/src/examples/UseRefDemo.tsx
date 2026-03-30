@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react"
-import Demo from "./Demo"
+import { useEffect, useRef, useState } from "react";
+import Demo from "./Demo";
 
 export default function UseRefDemo() {
-  const inputRef = useRef<HTMLInputElement>()
-  const renderCount = useRef(0)
-  const [value, setValue] = useState("")
+  const inputRef = useRef<HTMLInputElement>();
+  const renderCount = useRef(0);
+  const [value, setValue] = useState("");
 
   useEffect(() => {
-    renderCount.current = (renderCount.current ?? 0) + 1
-  })
+    renderCount.current = (renderCount.current ?? 0) + 1;
+  });
 
   return (
     <Demo
@@ -38,5 +38,5 @@ renderCount.current++;`}
         Value: {value} | Effect runs: {renderCount.current}
       </p>
     </Demo>
-  )
+  );
 }

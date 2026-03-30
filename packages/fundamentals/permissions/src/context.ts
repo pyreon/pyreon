@@ -1,8 +1,8 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import type { Permissions } from "./types"
+import type { VNodeChild } from "@pyreon/core";
+import { createContext, provide, useContext } from "@pyreon/core";
+import type { Permissions } from "./types";
 
-const PermissionsContext = createContext<Permissions | null>(null)
+const PermissionsContext = createContext<Permissions | null>(null);
 
 /**
  * Provide a permissions instance to descendant components.
@@ -18,12 +18,12 @@ const PermissionsContext = createContext<Permissions | null>(null)
  * ```
  */
 export function PermissionsProvider(props: {
-  instance: Permissions
-  children?: VNodeChild
+  instance: Permissions;
+  children?: VNodeChild;
 }): VNodeChild {
-  provide(PermissionsContext, props.instance)
+  provide(PermissionsContext, props.instance);
 
-  return props.children ?? null
+  return props.children ?? null;
 }
 
 /**
@@ -37,11 +37,11 @@ export function PermissionsProvider(props: {
  * ```
  */
 export function usePermissions(): Permissions {
-  const instance = useContext(PermissionsContext)
+  const instance = useContext(PermissionsContext);
   if (!instance) {
     throw new Error(
       "[@pyreon/permissions] usePermissions() must be used within <PermissionsProvider>.",
-    )
+    );
   }
-  return instance
+  return instance;
 }

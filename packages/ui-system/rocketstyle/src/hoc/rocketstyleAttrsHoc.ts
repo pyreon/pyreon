@@ -1,8 +1,8 @@
-import { render } from "@pyreon/ui-core"
-import { useTheme } from "../hooks"
-import type { Configuration } from "../types/configuration"
-import type { ComponentFn } from "../types/utils"
-import { calculateChainOptions, removeUndefinedProps } from "../utils/attrs"
+import { render } from "@pyreon/ui-core";
+import { useTheme } from "../hooks";
+import type { Configuration } from "../types/configuration";
+import type { ComponentFn } from "../types/utils";
+import { calculateChainOptions, removeUndefinedProps } from "../utils/attrs";
 
 export type RocketStyleHOC = ({
   inversed,
@@ -10,7 +10,7 @@ export type RocketStyleHOC = ({
   priorityAttrs,
 }: Pick<Configuration, "inversed" | "attrs" | "priorityAttrs">) => (
   WrappedComponent: ComponentFn<any>,
-) => ComponentFn<any>
+) => ComponentFn<any>;
 
 /**
  * HOC that resolves the `.attrs()` chain before the inner component renders.
@@ -22,18 +22,18 @@ export type RocketStyleHOC = ({
  * Components are plain functions.
  */
 const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
-  const calculateAttrs = calculateChainOptions(attrs)
-  const calculatePriorityAttrs = calculateChainOptions(priorityAttrs)
+  const calculateAttrs = calculateChainOptions(attrs);
+  const calculatePriorityAttrs = calculateChainOptions(priorityAttrs);
 
   const Enhanced = (WrappedComponent: ComponentFn<any>) => {
     const HOCComponent: ComponentFn<any> = (props) => {
       // IMPORTANT: Do NOT destructure — useTheme returns getter properties.
       // Destructuring calls getters once and captures static values.
       // Keep the object reference so properties re-evaluate lazily.
-      const themeAttrs = useTheme({ inversed })
+      const themeAttrs = useTheme({ inversed });
 
       // Remove undefined props not to override potential default props
-      const filteredProps = removeUndefinedProps(props)
+      const filteredProps = removeUndefinedProps(props);
 
       // Reactive accessor — re-evaluates when mode changes.
       // Reading themeAttrs.mode inside the accessor creates a dependency
@@ -43,9 +43,9 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
         const callbackParams = [
           themeAttrs.theme,
           { render, mode: themeAttrs.mode, isDark: themeAttrs.isDark, isLight: themeAttrs.isLight },
-        ]
+        ];
 
-        const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams])
+        const prioritizedAttrs = calculatePriorityAttrs([filteredProps, ...callbackParams]);
 
         const finalAttrs = calculateAttrs([
           {
@@ -53,21 +53,21 @@ const rocketStyleHOC: RocketStyleHOC = ({ inversed, attrs, priorityAttrs }) => {
             ...filteredProps,
           },
           ...callbackParams,
-        ])
+        ]);
 
         const finalProps = {
           ...prioritizedAttrs,
           ...finalAttrs,
           ...filteredProps,
-        }
+        };
 
-        return WrappedComponent(finalProps)
-      }) as unknown as ReturnType<ComponentFn<any>>
-    }
-    return HOCComponent
-  }
+        return WrappedComponent(finalProps);
+      }) as unknown as ReturnType<ComponentFn<any>>;
+    };
+    return HOCComponent;
+  };
 
-  return Enhanced
-}
+  return Enhanced;
+};
 
-export default rocketStyleHOC
+export default rocketStyleHOC;

@@ -10,18 +10,23 @@ description: CLI tools for Pyreon — doctor, generate, and context commands.
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/cli
 ```
+
 ```bash [bun]
 bun add @pyreon/cli
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/cli
 ```
+
 ```bash [yarn]
 yarn add @pyreon/cli
 ```
+
 :::
 
 ## Overview

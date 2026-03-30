@@ -1,14 +1,14 @@
-import { getCurrentScope } from "./scope"
-import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from "./tracking"
+import { getCurrentScope } from "./scope";
+import { _restoreActiveEffect, _setActiveEffect, setDepsCollector, withTracking } from "./tracking";
 
 export interface Effect {
-  dispose(): void
+  dispose(): void;
 }
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
 // Thread-local collector for cleanup functions registered via onCleanup()
 // during effect execution. Pushed/popped around the user callback in effect().
-let _cleanupCollector: (() => void)[] | null = null
+let _cleanupCollector: (() => void)[] | null = null;
 
 /**
  * Register a cleanup function inside an effect. The cleanup runs:
@@ -29,28 +29,28 @@ let _cleanupCollector: (() => void)[] | null = null
  */
 export function onCleanup(fn: () => void): void {
   if (_cleanupCollector) {
-    _cleanupCollector.push(fn)
+    _cleanupCollector.push(fn);
   }
 }
 
 // Global error handler — called for unhandled errors thrown inside effects.
 // Defaults to console.error so silent failures are never swallowed.
 export let _errorHandler: (err: unknown) => void = (err) => {
-  console.error("[pyreon] Unhandled effect error:", err)
-}
+  console.error("[pyreon] Unhandled effect error:", err);
+};
 
 export function setErrorHandler(fn: (err: unknown) => void): void {
-  _errorHandler = fn
+  _errorHandler = fn;
 }
 
 /** Remove an effect from all dependency subscriber sets (local deps array). */
 function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   if (deps.length === 1) {
-    ;(deps[0] as Set<() => void>).delete(fn)
-    deps.length = 0
+    (deps[0] as Set<() => void>).delete(fn);
+    deps.length = 0;
   } else if (deps.length > 1) {
-    for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn)
-    deps.length = 0
+    for (let i = 0; i < deps.length; i++) (deps[i] as Set<() => void>).delete(fn);
+    deps.length = 0;
   }
 }
 
@@ -58,75 +58,75 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
 export function effect(fn: () => (() => void) | void): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
-  const scope = getCurrentScope()
-  let disposed = false
-  let isFirstRun = true
-  let cleanup: (() => void) | undefined
+  const scope = getCurrentScope();
+  let disposed = false;
+  let isFirstRun = true;
+  let cleanup: (() => void) | undefined;
   // Local deps array — avoids WeakMap overhead (like renderEffect)
-  const deps: Set<() => void>[] = []
+  const deps: Set<() => void>[] = [];
 
-  let cleanups: (() => void)[] | undefined
+  let cleanups: (() => void)[] | undefined;
 
   const runCleanup = () => {
     if (cleanups) {
       for (const c of cleanups) {
         try {
-          c()
+          c();
         } catch (err) {
-          _errorHandler(err)
+          _errorHandler(err);
         }
       }
-      cleanups = undefined
+      cleanups = undefined;
     }
     if (typeof cleanup === "function") {
       try {
-        cleanup()
+        cleanup();
       } catch (err) {
-        _errorHandler(err)
+        _errorHandler(err);
       }
-      cleanup = undefined
+      cleanup = undefined;
     }
-  }
+  };
 
   const run = () => {
-    if (disposed) return
+    if (disposed) return;
     // Run previous cleanup before re-running
-    runCleanup()
+    runCleanup();
     try {
-      cleanupLocalDeps(deps, run)
-      setDepsCollector(deps)
+      cleanupLocalDeps(deps, run);
+      setDepsCollector(deps);
       // Collect onCleanup() registrations during execution
-      const collected: (() => void)[] = []
-      _cleanupCollector = collected
-      cleanup = withTracking(run, fn) || undefined
-      _cleanupCollector = null
-      if (collected.length > 0) cleanups = collected
-      setDepsCollector(null)
+      const collected: (() => void)[] = [];
+      _cleanupCollector = collected;
+      cleanup = withTracking(run, fn) || undefined;
+      _cleanupCollector = null;
+      if (collected.length > 0) cleanups = collected;
+      setDepsCollector(null);
     } catch (err) {
-      _cleanupCollector = null
-      setDepsCollector(null)
-      _errorHandler(err)
+      _cleanupCollector = null;
+      setDepsCollector(null);
+      _errorHandler(err);
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
-    if (!isFirstRun) scope?.notifyEffectRan()
-    isFirstRun = false
-  }
+    if (!isFirstRun) scope?.notifyEffectRan();
+    isFirstRun = false;
+  };
 
-  run()
+  run();
 
   const e: Effect = {
     dispose() {
-      runCleanup()
-      disposed = true
-      cleanupLocalDeps(deps, run)
+      runCleanup();
+      disposed = true;
+      cleanupLocalDeps(deps, run);
     },
-  }
+  };
 
   // Auto-register with the active EffectScope (if any)
-  getCurrentScope()?.add(e)
+  getCurrentScope()?.add(e);
 
-  return e
+  return e;
 }
 
 /**
@@ -156,75 +156,75 @@ export function effect(fn: () => (() => void) | void): Effect {
  * - Signal reads hit `if (activeEffect)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
-  const deps: Set<() => void>[] = []
-  let disposed = false
+  const deps: Set<() => void>[] = [];
+  let disposed = false;
 
   const run = () => {
-    if (disposed) return
-    fn()
-  }
+    if (disposed) return;
+    fn();
+  };
 
   // First run: track deps so we know what to unsubscribe on dispose
-  setDepsCollector(deps)
-  withTracking(run, fn)
-  setDepsCollector(null)
+  setDepsCollector(deps);
+  withTracking(run, fn);
+  setDepsCollector(null);
 
   const dispose = () => {
-    if (disposed) return
-    disposed = true
-    for (const s of deps) s.delete(run)
-    deps.length = 0
-  }
+    if (disposed) return;
+    disposed = true;
+    for (const s of deps) s.delete(run);
+    deps.length = 0;
+  };
 
   // Auto-register with scope so template bindings are disposed during teardown
-  getCurrentScope()?.add({ dispose })
+  getCurrentScope()?.add({ dispose });
 
-  return dispose
+  return dispose;
 }
 
 /** Full re-track path for renderEffect: cleanup old deps, evaluate with tracking. */
 function renderEffectFullTrack(deps: Set<() => void>[], run: () => void, fn: () => void): void {
   if (deps.length === 1) {
-    ;(deps[0] as Set<() => void>).delete(run)
-    deps.length = 0
+    (deps[0] as Set<() => void>).delete(run);
+    deps.length = 0;
   } else if (deps.length > 1) {
-    for (const s of deps) s.delete(run)
-    deps.length = 0
+    for (const s of deps) s.delete(run);
+    deps.length = 0;
   }
-  setDepsCollector(deps)
-  _setActiveEffect(run)
+  setDepsCollector(deps);
+  _setActiveEffect(run);
   try {
-    fn()
+    fn();
   } finally {
-    _restoreActiveEffect()
-    setDepsCollector(null)
+    _restoreActiveEffect();
+    setDepsCollector(null);
   }
 }
 
 export function renderEffect(fn: () => void): () => void {
-  const deps: Set<() => void>[] = []
-  let disposed = false
+  const deps: Set<() => void>[] = [];
+  let disposed = false;
 
   const run = () => {
-    if (disposed) return
-    renderEffectFullTrack(deps, run, fn)
-  }
+    if (disposed) return;
+    renderEffectFullTrack(deps, run, fn);
+  };
 
-  run()
+  run();
 
   const dispose = () => {
-    if (disposed) return
-    disposed = true
+    if (disposed) return;
+    disposed = true;
     if (deps.length === 1) {
-      ;(deps[0] as Set<() => void>).delete(run)
+      (deps[0] as Set<() => void>).delete(run);
     } else {
-      for (const s of deps) s.delete(run)
+      for (const s of deps) s.delete(run);
     }
-    deps.length = 0
-  }
+    deps.length = 0;
+  };
 
   // Auto-register with scope so render effects are disposed during teardown
-  getCurrentScope()?.add({ dispose })
+  getCurrentScope()?.add({ dispose });
 
-  return dispose
+  return dispose;
 }

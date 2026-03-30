@@ -1,3 +1,3 @@
-import LocalThemeManager from "./LocalThemeManager"
+import LocalThemeManager from "./LocalThemeManager";
 
-export { LocalThemeManager }
+export { LocalThemeManager };

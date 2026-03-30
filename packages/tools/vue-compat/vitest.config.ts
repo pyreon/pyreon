@@ -1,6 +1,6 @@
-import { mergeConfig } from "vite"
-import { defineConfig } from "vitest/config"
-import { sharedConfig } from "../../../vitest.shared"
+import { mergeConfig } from "vite";
+import { defineConfig } from "vitest/config";
+import { sharedConfig } from "../../../vitest.shared";
 
 // All logic lives in src/index.ts, so we can't use createVitestConfig()
 // which excludes src/**/index.ts by default.
@@ -25,4 +25,4 @@ export default mergeConfig(
       },
     },
   }),
-)
+);

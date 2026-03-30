@@ -1,12 +1,12 @@
-import type { Attrs } from "./init"
-import attrs from "./init"
-import type { IsAttrsComponent } from "./isAttrsComponent"
-import isAttrsComponent from "./isAttrsComponent"
-import type { AttrsComponent } from "./types/AttrsComponent"
-import type { AttrsCb } from "./types/attrs"
-import type { AttrsComponentType, ConfigAttrs } from "./types/config"
-import type { ComposeParam, GenericHoc } from "./types/hoc"
-import type { ComponentFn, ElementType, TObj } from "./types/utils"
+import type { Attrs } from "./init";
+import attrs from "./init";
+import type { IsAttrsComponent } from "./isAttrsComponent";
+import isAttrsComponent from "./isAttrsComponent";
+import type { AttrsComponent } from "./types/AttrsComponent";
+import type { AttrsCb } from "./types/attrs";
+import type { AttrsComponentType, ConfigAttrs } from "./types/config";
+import type { ComposeParam, GenericHoc } from "./types/hoc";
+import type { ComponentFn, ElementType, TObj } from "./types/utils";
 
 export type {
   Attrs,
@@ -20,7 +20,7 @@ export type {
   GenericHoc,
   IsAttrsComponent,
   TObj,
-}
+};
 
-export { attrs, isAttrsComponent }
-export default attrs
+export { attrs, isAttrsComponent };
+export default attrs;

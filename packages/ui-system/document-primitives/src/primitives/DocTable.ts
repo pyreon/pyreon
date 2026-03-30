@@ -1,5 +1,5 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocTable = rocketstyle({
   dimensions: {
@@ -13,14 +13,14 @@ const DocTable = rocketstyle({
   })
   .statics({ _documentType: "table" as const })
   .attrs<{
-    columns?: unknown[]
-    rows?: unknown[]
-    headerStyle?: Record<string, unknown>
-    striped?: boolean
-    bordered?: boolean
-    caption?: string
-    tag: string
-    _documentProps: Record<string, unknown>
+    columns?: unknown[];
+    rows?: unknown[];
+    headerStyle?: Record<string, unknown>;
+    striped?: boolean;
+    bordered?: boolean;
+    caption?: string;
+    tag: string;
+    _documentProps: Record<string, unknown>;
   }>((props) => ({
     tag: "table",
     _documentProps: {
@@ -31,6 +31,6 @@ const DocTable = rocketstyle({
       ...(props.bordered ? { bordered: props.bordered } : {}),
       ...(props.caption ? { caption: props.caption } : {}),
     },
-  }))
+  }));
 
-export default DocTable
+export default DocTable;

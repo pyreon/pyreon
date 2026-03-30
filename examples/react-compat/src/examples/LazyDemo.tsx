@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from "react"
-import Demo from "./Demo"
+import { lazy, Suspense, useState } from "react";
+import Demo from "./Demo";
 
 const LazyHeavy = lazy(
   () =>
@@ -7,13 +7,13 @@ const LazyHeavy = lazy(
       setTimeout(() => {
         resolve({
           default: () => <p>Lazy component loaded!</p>,
-        })
-      }, 1000)
+        });
+      }, 1000);
     }),
-)
+);
 
 export default function LazyDemo() {
-  const [show, setShow] = useState(false)
+  const [show, setShow] = useState(false);
 
   return (
     <Demo
@@ -36,5 +36,5 @@ export default function LazyDemo() {
         </Suspense>
       ) : null}
     </Demo>
-  )
+  );
 }

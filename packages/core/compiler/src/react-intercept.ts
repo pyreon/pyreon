@@ -12,7 +12,7 @@
  *  3. MCP server `migrate_react` / `validate` tools (AI agent integration)
  */
 
-import ts from "typescript"
+import ts from "typescript";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -42,38 +42,38 @@ export type ReactDiagnosticCode =
   | "array-map-jsx"
   | "key-on-for-child"
   | "create-context-import"
-  | "use-context-import"
+  | "use-context-import";
 
 export interface ReactDiagnostic {
   /** Machine-readable code for filtering and programmatic handling */
-  code: ReactDiagnosticCode
+  code: ReactDiagnosticCode;
   /** Human-readable message explaining the issue */
-  message: string
+  message: string;
   /** 1-based line number */
-  line: number
+  line: number;
   /** 0-based column */
-  column: number
+  column: number;
   /** The code as written */
-  current: string
+  current: string;
   /** The suggested Pyreon equivalent */
-  suggested: string
+  suggested: string;
   /** Whether migrateReactCode can auto-fix this */
-  fixable: boolean
+  fixable: boolean;
 }
 
 export interface MigrationChange {
-  type: "replace" | "remove" | "add"
-  line: number
-  description: string
+  type: "replace" | "remove" | "add";
+  line: number;
+  description: string;
 }
 
 export interface MigrationResult {
   /** Transformed source code */
-  code: string
+  code: string;
   /** All detected patterns (including unfixable ones) */
-  diagnostics: ReactDiagnostic[]
+  diagnostics: ReactDiagnostic[];
   /** Description of changes applied */
-  changes: MigrationChange[]
+  changes: MigrationChange[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -81,10 +81,10 @@ export interface MigrationResult {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface HookMapping {
-  pyreonFn: string
-  pyreonImport: string
-  description: string
-  example: string
+  pyreonFn: string;
+  pyreonImport: string;
+  description: string;
+  example: string;
 }
 
 const _REACT_HOOK_MAP: Record<string, HookMapping> = {
@@ -127,7 +127,7 @@ const _REACT_HOOK_MAP: Record<string, HookMapping> = {
     example:
       "const state = signal(initialState)\nconst dispatch = (action) => state.update(s => reducer(s, action))",
   },
-}
+};
 
 /** React import sources → Pyreon equivalents */
 const IMPORT_REWRITES: Record<string, string | null> = {
@@ -137,7 +137,7 @@ const IMPORT_REWRITES: Record<string, string | null> = {
   "react-dom/server": "@pyreon/runtime-server",
   "react-router": "@pyreon/router",
   "react-router-dom": "@pyreon/router",
-}
+};
 
 /** React specifiers that map to specific Pyreon imports */
 const SPECIFIER_REWRITES: Record<string, { name: string; from: string }> = {
@@ -164,27 +164,27 @@ const SPECIFIER_REWRITES: Record<string, { name: string; from: string }> = {
   NavLink: { name: "RouterLink", from: "@pyreon/router" },
   Outlet: { name: "RouterView", from: "@pyreon/router" },
   useSearchParams: { name: "useSearchParams", from: "@pyreon/router" },
-}
+};
 
 /** JSX attribute rewrites (React → standard HTML) */
 const JSX_ATTR_REWRITES: Record<string, string> = {
   className: "class",
   htmlFor: "for",
-}
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Detection (diagnostic-only, no modifications)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 interface DetectContext {
-  sf: ts.SourceFile
-  code: string
-  diagnostics: ReactDiagnostic[]
-  reactImportedHooks: Set<string>
+  sf: ts.SourceFile;
+  code: string;
+  diagnostics: ReactDiagnostic[];
+  reactImportedHooks: Set<string>;
 }
 
 function detectGetNodeText(ctx: DetectContext, node: ts.Node): string {
-  return ctx.code.slice(node.getStart(ctx.sf), node.getEnd())
+  return ctx.code.slice(node.getStart(ctx.sf), node.getEnd());
 }
 
 function detectDiag(
@@ -196,7 +196,7 @@ function detectDiag(
   suggested: string,
   fixable: boolean,
 ): void {
-  const { line, character } = ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf))
+  const { line, character } = ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf));
   ctx.diagnostics.push({
     code: diagCode,
     message,
@@ -205,18 +205,18 @@ function detectDiag(
     current: current.trim(),
     suggested: suggested.trim(),
     fixable,
-  })
+  });
 }
 
 function detectImportDeclaration(ctx: DetectContext, node: ts.ImportDeclaration): void {
-  if (!node.moduleSpecifier) return
-  const source = (node.moduleSpecifier as ts.StringLiteral).text
-  const pyreonSource = IMPORT_REWRITES[source]
+  if (!node.moduleSpecifier) return;
+  const source = (node.moduleSpecifier as ts.StringLiteral).text;
+  const pyreonSource = IMPORT_REWRITES[source];
 
   if (pyreonSource !== undefined) {
     if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
       for (const spec of node.importClause.namedBindings.elements) {
-        ctx.reactImportedHooks.add(spec.name.text)
+        ctx.reactImportedHooks.add(spec.name.text);
       }
     }
 
@@ -224,7 +224,7 @@ function detectImportDeclaration(ctx: DetectContext, node: ts.ImportDeclaration)
       ? "react-router-import"
       : source.startsWith("react-dom")
         ? "react-dom-import"
-        : "react-import"
+        : "react-import";
 
     detectDiag(
       ctx,
@@ -236,22 +236,22 @@ function detectImportDeclaration(ctx: DetectContext, node: ts.ImportDeclaration)
         ? `import { ... } from "${pyreonSource}"`
         : "Remove this import — not needed in Pyreon",
       true,
-    )
+    );
   }
 }
 
 function detectUseState(ctx: DetectContext, node: ts.CallExpression): void {
-  const parent = node.parent
+  const parent = node.parent;
   if (
     ts.isVariableDeclaration(parent) &&
     parent.name &&
     ts.isArrayBindingPattern(parent.name) &&
     parent.name.elements.length >= 1
   ) {
-    const firstEl = parent.name.elements[0]
+    const firstEl = parent.name.elements[0];
     const valueName =
-      firstEl && ts.isBindingElement(firstEl) ? (firstEl.name as ts.Identifier).text : "value"
-    const initArg = node.arguments[0] ? detectGetNodeText(ctx, node.arguments[0]) : "undefined"
+      firstEl && ts.isBindingElement(firstEl) ? (firstEl.name as ts.Identifier).text : "value";
+    const initArg = node.arguments[0] ? detectGetNodeText(ctx, node.arguments[0]) : "undefined";
 
     detectDiag(
       ctx,
@@ -261,7 +261,7 @@ function detectUseState(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, parent),
       `${valueName} = signal(${initArg})`,
       true,
-    )
+    );
   } else {
     detectDiag(
       ctx,
@@ -271,27 +271,27 @@ function detectUseState(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       "signal(initialValue)",
       true,
-    )
+    );
   }
 }
 
 function callbackHasCleanup(callbackArg: ts.Expression): boolean {
-  if (!ts.isArrowFunction(callbackArg) && !ts.isFunctionExpression(callbackArg)) return false
-  const body = callbackArg.body
-  if (!ts.isBlock(body)) return false
+  if (!ts.isArrowFunction(callbackArg) && !ts.isFunctionExpression(callbackArg)) return false;
+  const body = callbackArg.body;
+  if (!ts.isBlock(body)) return false;
   for (const stmt of body.statements) {
-    if (ts.isReturnStatement(stmt) && stmt.expression) return true
+    if (ts.isReturnStatement(stmt) && stmt.expression) return true;
   }
-  return false
+  return false;
 }
 
 function detectUseEffect(ctx: DetectContext, node: ts.CallExpression): void {
-  const hookName = (node.expression as ts.Identifier).text
-  const depsArg = node.arguments[1]
-  const callbackArg = node.arguments[0]
+  const hookName = (node.expression as ts.Identifier).text;
+  const depsArg = node.arguments[1];
+  const callbackArg = node.arguments[0];
 
   if (depsArg && ts.isArrayLiteralExpression(depsArg) && depsArg.elements.length === 0) {
-    const hasCleanup = callbackArg ? callbackHasCleanup(callbackArg) : false
+    const hasCleanup = callbackArg ? callbackHasCleanup(callbackArg) : false;
 
     detectDiag(
       ctx,
@@ -303,7 +303,7 @@ function detectUseEffect(ctx: DetectContext, node: ts.CallExpression): void {
         ? "onMount(() => {\n  // setup...\n  return () => { /* cleanup */ }\n})"
         : "onMount(() => {\n  // setup...\n})",
       true,
-    )
+    );
   } else if (depsArg && ts.isArrayLiteralExpression(depsArg)) {
     detectDiag(
       ctx,
@@ -313,7 +313,7 @@ function detectUseEffect(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       "effect(() => {\n  // reads are auto-tracked\n})",
       true,
-    )
+    );
   } else if (!depsArg) {
     detectDiag(
       ctx,
@@ -323,13 +323,13 @@ function detectUseEffect(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       "effect(() => {\n  // runs when accessed signals change\n})",
       true,
-    )
+    );
   }
 }
 
 function detectUseMemo(ctx: DetectContext, node: ts.CallExpression): void {
-  const computeFn = node.arguments[0]
-  const computeText = computeFn ? detectGetNodeText(ctx, computeFn) : "() => value"
+  const computeFn = node.arguments[0];
+  const computeText = computeFn ? detectGetNodeText(ctx, computeFn) : "() => value";
 
   detectDiag(
     ctx,
@@ -339,12 +339,12 @@ function detectUseMemo(ctx: DetectContext, node: ts.CallExpression): void {
     detectGetNodeText(ctx, node),
     `computed(${computeText})`,
     true,
-  )
+  );
 }
 
 function detectUseCallback(ctx: DetectContext, node: ts.CallExpression): void {
-  const callbackFn = node.arguments[0]
-  const callbackText = callbackFn ? detectGetNodeText(ctx, callbackFn) : "() => {}"
+  const callbackFn = node.arguments[0];
+  const callbackText = callbackFn ? detectGetNodeText(ctx, callbackFn) : "() => {}";
 
   detectDiag(
     ctx,
@@ -354,14 +354,14 @@ function detectUseCallback(ctx: DetectContext, node: ts.CallExpression): void {
     detectGetNodeText(ctx, node),
     callbackText,
     true,
-  )
+  );
 }
 
 function detectUseRef(ctx: DetectContext, node: ts.CallExpression): void {
-  const arg = node.arguments[0]
+  const arg = node.arguments[0];
   const isNullInit =
     arg &&
-    (arg.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(arg) && arg.text === "undefined"))
+    (arg.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(arg) && arg.text === "undefined"));
 
   if (isNullInit) {
     detectDiag(
@@ -372,9 +372,9 @@ function detectUseRef(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       "createRef()",
       true,
-    )
+    );
   } else {
-    const initText = arg ? detectGetNodeText(ctx, arg) : "undefined"
+    const initText = arg ? detectGetNodeText(ctx, arg) : "undefined";
     detectDiag(
       ctx,
       node,
@@ -383,7 +383,7 @@ function detectUseRef(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       `signal(${initText})`,
       true,
-    )
+    );
   }
 }
 
@@ -396,7 +396,7 @@ function detectUseReducer(ctx: DetectContext, node: ts.CallExpression): void {
     detectGetNodeText(ctx, node),
     "const state = signal(initialState)\nconst dispatch = (action) => state.update(s => reducer(s, action))",
     false,
-  )
+  );
 }
 
 function isCallToReactDot(callee: ts.Expression, methodName: string): boolean {
@@ -405,17 +405,17 @@ function isCallToReactDot(callee: ts.Expression, methodName: string): boolean {
     ts.isIdentifier(callee.expression) &&
     callee.expression.text === "React" &&
     callee.name.text === methodName
-  )
+  );
 }
 
 function detectMemoWrapper(ctx: DetectContext, node: ts.CallExpression): void {
-  const callee = node.expression
+  const callee = node.expression;
   const isMemo =
-    (ts.isIdentifier(callee) && callee.text === "memo") || isCallToReactDot(callee, "memo")
+    (ts.isIdentifier(callee) && callee.text === "memo") || isCallToReactDot(callee, "memo");
 
   if (isMemo) {
-    const inner = node.arguments[0]
-    const innerText = inner ? detectGetNodeText(ctx, inner) : "Component"
+    const inner = node.arguments[0];
+    const innerText = inner ? detectGetNodeText(ctx, inner) : "Component";
 
     detectDiag(
       ctx,
@@ -425,15 +425,15 @@ function detectMemoWrapper(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       innerText,
       true,
-    )
+    );
   }
 }
 
 function detectForwardRef(ctx: DetectContext, node: ts.CallExpression): void {
-  const callee = node.expression
+  const callee = node.expression;
   const isForwardRef =
     (ts.isIdentifier(callee) && callee.text === "forwardRef") ||
-    isCallToReactDot(callee, "forwardRef")
+    isCallToReactDot(callee, "forwardRef");
 
   if (isForwardRef) {
     detectDiag(
@@ -444,15 +444,15 @@ function detectForwardRef(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       "// Just pass ref as a prop:\nconst MyInput = (props) => <input ref={props.ref} />",
       true,
-    )
+    );
   }
 }
 
 function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
-  const attrName = (node.name as ts.Identifier).text
+  const attrName = (node.name as ts.Identifier).text;
 
   if (attrName in JSX_ATTR_REWRITES) {
-    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
+    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string;
     detectDiag(
       ctx,
       node,
@@ -461,13 +461,13 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
       detectGetNodeText(ctx, node),
       detectGetNodeText(ctx, node).replace(attrName, htmlAttr),
       true,
-    )
+    );
   }
 
   if (attrName === "onChange") {
-    const jsxElement = findParentJsxElement(node)
+    const jsxElement = findParentJsxElement(node);
     if (jsxElement) {
-      const tagName = getJsxTagName(jsxElement)
+      const tagName = getJsxTagName(jsxElement);
       if (tagName === "input" || tagName === "textarea" || tagName === "select") {
         detectDiag(
           ctx,
@@ -477,7 +477,7 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
           detectGetNodeText(ctx, node),
           detectGetNodeText(ctx, node).replace("onChange", "onInput"),
           true,
-        )
+        );
       }
     }
   }
@@ -491,13 +491,13 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
       detectGetNodeText(ctx, node),
       "innerHTML={htmlString}",
       true,
-    )
+    );
   }
 }
 
 function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpression): void {
-  const varName = (node.expression as ts.Identifier).text
-  const parent = node.parent
+  const varName = (node.expression as ts.Identifier).text;
+  const parent = node.parent;
   if (ts.isBinaryExpression(parent) && parent.left === node) {
     detectDiag(
       ctx,
@@ -507,21 +507,21 @@ function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpress
       detectGetNodeText(ctx, parent),
       `${varName}.set(${detectGetNodeText(ctx, parent.right)})`,
       false,
-    )
+    );
   }
 }
 
 function detectArrayMapJsx(ctx: DetectContext, node: ts.CallExpression): void {
-  const parent = node.parent
+  const parent = node.parent;
   if (ts.isJsxExpression(parent)) {
     const arrayExpr = detectGetNodeText(
       ctx,
       (node.expression as ts.PropertyAccessExpression).expression,
-    )
-    const mapCallback = node.arguments[0]
+    );
+    const mapCallback = node.arguments[0];
     const mapCallbackText = mapCallback
       ? detectGetNodeText(ctx, mapCallback)
-      : "item => <li>{item}</li>"
+      : "item => <li>{item}</li>";
 
     detectDiag(
       ctx,
@@ -531,7 +531,7 @@ function detectArrayMapJsx(ctx: DetectContext, node: ts.CallExpression): void {
       detectGetNodeText(ctx, node),
       `<For each={${arrayExpr}} by={item => item.id}>\n  {${mapCallbackText}}\n</For>`,
       false,
-    )
+    );
   }
 }
 
@@ -540,7 +540,7 @@ function isCallToHook(node: ts.Node, hookName: string): node is ts.CallExpressio
     ts.isCallExpression(node) &&
     ts.isIdentifier(node.expression) &&
     node.expression.text === hookName
-  )
+  );
 }
 
 function isCallToEffectHook(node: ts.Node): node is ts.CallExpression {
@@ -548,7 +548,7 @@ function isCallToEffectHook(node: ts.Node): node is ts.CallExpression {
     ts.isCallExpression(node) &&
     ts.isIdentifier(node.expression) &&
     (node.expression.text === "useEffect" || node.expression.text === "useLayoutEffect")
-  )
+  );
 }
 
 function isMapCallExpression(node: ts.Node): node is ts.CallExpression {
@@ -557,7 +557,7 @@ function isMapCallExpression(node: ts.Node): node is ts.CallExpression {
     ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.name) &&
     node.expression.name.text === "map"
-  )
+  );
 }
 
 function isDotValueAccess(node: ts.Node): node is ts.PropertyAccessExpression {
@@ -566,135 +566,135 @@ function isDotValueAccess(node: ts.Node): node is ts.PropertyAccessExpression {
     ts.isIdentifier(node.name) &&
     node.name.text === "value" &&
     ts.isIdentifier(node.expression)
-  )
+  );
 }
 
 function detectVisitNode(ctx: DetectContext, node: ts.Node): void {
-  if (ts.isImportDeclaration(node)) detectImportDeclaration(ctx, node)
-  if (isCallToHook(node, "useState")) detectUseState(ctx, node)
-  if (isCallToEffectHook(node)) detectUseEffect(ctx, node)
-  if (isCallToHook(node, "useMemo")) detectUseMemo(ctx, node)
-  if (isCallToHook(node, "useCallback")) detectUseCallback(ctx, node)
-  if (isCallToHook(node, "useRef")) detectUseRef(ctx, node)
-  if (isCallToHook(node, "useReducer")) detectUseReducer(ctx, node)
-  if (ts.isCallExpression(node)) detectMemoWrapper(ctx, node)
-  if (ts.isCallExpression(node)) detectForwardRef(ctx, node)
-  if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) detectJsxAttributes(ctx, node)
-  if (isDotValueAccess(node)) detectDotValueSignal(ctx, node)
-  if (isMapCallExpression(node)) detectArrayMapJsx(ctx, node)
+  if (ts.isImportDeclaration(node)) detectImportDeclaration(ctx, node);
+  if (isCallToHook(node, "useState")) detectUseState(ctx, node);
+  if (isCallToEffectHook(node)) detectUseEffect(ctx, node);
+  if (isCallToHook(node, "useMemo")) detectUseMemo(ctx, node);
+  if (isCallToHook(node, "useCallback")) detectUseCallback(ctx, node);
+  if (isCallToHook(node, "useRef")) detectUseRef(ctx, node);
+  if (isCallToHook(node, "useReducer")) detectUseReducer(ctx, node);
+  if (ts.isCallExpression(node)) detectMemoWrapper(ctx, node);
+  if (ts.isCallExpression(node)) detectForwardRef(ctx, node);
+  if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) detectJsxAttributes(ctx, node);
+  if (isDotValueAccess(node)) detectDotValueSignal(ctx, node);
+  if (isMapCallExpression(node)) detectArrayMapJsx(ctx, node);
 }
 
 function detectVisit(ctx: DetectContext, node: ts.Node): void {
   ts.forEachChild(node, (child) => {
-    detectVisitNode(ctx, child)
-    detectVisit(ctx, child)
-  })
+    detectVisitNode(ctx, child);
+    detectVisit(ctx, child);
+  });
 }
 
 export function detectReactPatterns(code: string, filename = "input.tsx"): ReactDiagnostic[] {
-  const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
+  const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX);
   const ctx: DetectContext = {
     sf,
     code,
     diagnostics: [],
     reactImportedHooks: new Set<string>(),
-  }
+  };
 
-  detectVisit(ctx, sf)
-  return ctx.diagnostics
+  detectVisit(ctx, sf);
+  return ctx.diagnostics;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Migration (detection + auto-fix)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-type Replacement = { start: number; end: number; text: string }
+type Replacement = { start: number; end: number; text: string };
 
 interface MigrateContext {
-  sf: ts.SourceFile
-  code: string
-  replacements: Replacement[]
-  changes: MigrationChange[]
-  pyreonImports: Map<string, Set<string>>
-  importsToRemove: Set<ts.ImportDeclaration>
-  specifierRewrites: Map<ts.ImportSpecifier, { name: string; from: string }>
+  sf: ts.SourceFile;
+  code: string;
+  replacements: Replacement[];
+  changes: MigrationChange[];
+  pyreonImports: Map<string, Set<string>>;
+  importsToRemove: Set<ts.ImportDeclaration>;
+  specifierRewrites: Map<ts.ImportSpecifier, { name: string; from: string }>;
 }
 
 function migrateAddImport(ctx: MigrateContext, source: string, specifier: string): void {
-  if (!source || !specifier) return
-  let specs = ctx.pyreonImports.get(source)
+  if (!source || !specifier) return;
+  let specs = ctx.pyreonImports.get(source);
   if (!specs) {
-    specs = new Set()
-    ctx.pyreonImports.set(source, specs)
+    specs = new Set();
+    ctx.pyreonImports.set(source, specs);
   }
-  specs.add(specifier)
+  specs.add(specifier);
 }
 
 function migrateReplace(ctx: MigrateContext, node: ts.Node, text: string): void {
-  ctx.replacements.push({ start: node.getStart(ctx.sf), end: node.getEnd(), text })
+  ctx.replacements.push({ start: node.getStart(ctx.sf), end: node.getEnd(), text });
 }
 
 function migrateGetNodeText(ctx: MigrateContext, node: ts.Node): string {
-  return ctx.code.slice(node.getStart(ctx.sf), node.getEnd())
+  return ctx.code.slice(node.getStart(ctx.sf), node.getEnd());
 }
 
 function migrateGetLine(ctx: MigrateContext, node: ts.Node): number {
-  return ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf)).line + 1
+  return ctx.sf.getLineAndCharacterOfPosition(node.getStart(ctx.sf)).line + 1;
 }
 
 function migrateImportDeclaration(ctx: MigrateContext, node: ts.ImportDeclaration): void {
-  if (!node.moduleSpecifier) return
-  const source = (node.moduleSpecifier as ts.StringLiteral).text
-  if (!(source in IMPORT_REWRITES)) return
+  if (!node.moduleSpecifier) return;
+  const source = (node.moduleSpecifier as ts.StringLiteral).text;
+  if (!(source in IMPORT_REWRITES)) return;
 
   if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
     for (const spec of node.importClause.namedBindings.elements) {
-      const name = spec.name.text
-      const rewrite = SPECIFIER_REWRITES[name]
+      const name = spec.name.text;
+      const rewrite = SPECIFIER_REWRITES[name];
       if (rewrite) {
         if (rewrite.name) {
-          migrateAddImport(ctx, rewrite.from, rewrite.name)
+          migrateAddImport(ctx, rewrite.from, rewrite.name);
         }
-        ctx.specifierRewrites.set(spec, rewrite)
+        ctx.specifierRewrites.set(spec, rewrite);
       }
     }
   }
-  ctx.importsToRemove.add(node)
+  ctx.importsToRemove.add(node);
 }
 
 function migrateUseState(ctx: MigrateContext, node: ts.CallExpression): void {
-  const parent = node.parent
+  const parent = node.parent;
   if (
     ts.isVariableDeclaration(parent) &&
     parent.name &&
     ts.isArrayBindingPattern(parent.name) &&
     parent.name.elements.length >= 1
   ) {
-    const firstEl = parent.name.elements[0]
+    const firstEl = parent.name.elements[0];
     const valueName =
-      firstEl && ts.isBindingElement(firstEl) ? (firstEl.name as ts.Identifier).text : "value"
-    const initArg = node.arguments[0] ? migrateGetNodeText(ctx, node.arguments[0]) : "undefined"
+      firstEl && ts.isBindingElement(firstEl) ? (firstEl.name as ts.Identifier).text : "value";
+    const initArg = node.arguments[0] ? migrateGetNodeText(ctx, node.arguments[0]) : "undefined";
 
-    const declStart = parent.getStart(ctx.sf)
-    const declEnd = parent.getEnd()
+    const declStart = parent.getStart(ctx.sf);
+    const declEnd = parent.getEnd();
     ctx.replacements.push({
       start: declStart,
       end: declEnd,
       text: `${valueName} = signal(${initArg})`,
-    })
-    migrateAddImport(ctx, "@pyreon/reactivity", "signal")
+    });
+    migrateAddImport(ctx, "@pyreon/reactivity", "signal");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: `useState → signal: ${valueName}`,
-    })
+    });
   }
 }
 
 function migrateUseEffect(ctx: MigrateContext, node: ts.CallExpression): void {
-  const depsArg = node.arguments[1]
-  const callbackArg = node.arguments[0]
-  const hookName = (node.expression as ts.Identifier).text
+  const depsArg = node.arguments[1];
+  const callbackArg = node.arguments[0];
+  const hookName = (node.expression as ts.Identifier).text;
 
   if (
     depsArg &&
@@ -702,255 +702,255 @@ function migrateUseEffect(ctx: MigrateContext, node: ts.CallExpression): void {
     depsArg.elements.length === 0 &&
     callbackArg
   ) {
-    const callbackText = migrateGetNodeText(ctx, callbackArg)
-    migrateReplace(ctx, node, `onMount(${callbackText})`)
-    migrateAddImport(ctx, "@pyreon/core", "onMount")
+    const callbackText = migrateGetNodeText(ctx, callbackArg);
+    migrateReplace(ctx, node, `onMount(${callbackText})`);
+    migrateAddImport(ctx, "@pyreon/core", "onMount");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: `${hookName}(fn, []) → onMount(fn)`,
-    })
+    });
   } else if (callbackArg) {
-    const callbackText = migrateGetNodeText(ctx, callbackArg)
-    migrateReplace(ctx, node, `effect(${callbackText})`)
-    migrateAddImport(ctx, "@pyreon/reactivity", "effect")
+    const callbackText = migrateGetNodeText(ctx, callbackArg);
+    migrateReplace(ctx, node, `effect(${callbackText})`);
+    migrateAddImport(ctx, "@pyreon/reactivity", "effect");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: `${hookName} → effect (auto-tracks deps)`,
-    })
+    });
   }
 }
 
 function migrateUseMemo(ctx: MigrateContext, node: ts.CallExpression): void {
-  const computeFn = node.arguments[0]
+  const computeFn = node.arguments[0];
   if (computeFn) {
-    migrateReplace(ctx, node, `computed(${migrateGetNodeText(ctx, computeFn)})`)
-    migrateAddImport(ctx, "@pyreon/reactivity", "computed")
+    migrateReplace(ctx, node, `computed(${migrateGetNodeText(ctx, computeFn)})`);
+    migrateAddImport(ctx, "@pyreon/reactivity", "computed");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: "useMemo → computed (auto-tracks deps)",
-    })
+    });
   }
 }
 
 function migrateUseCallback(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callbackFn = node.arguments[0]
+  const callbackFn = node.arguments[0];
   if (callbackFn) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, callbackFn))
+    migrateReplace(ctx, node, migrateGetNodeText(ctx, callbackFn));
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: "useCallback → plain function (not needed in Pyreon)",
-    })
+    });
   }
 }
 
 function migrateUseRef(ctx: MigrateContext, node: ts.CallExpression): void {
-  const arg = node.arguments[0]
+  const arg = node.arguments[0];
   const isNullInit =
     arg &&
-    (arg.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(arg) && arg.text === "undefined"))
+    (arg.kind === ts.SyntaxKind.NullKeyword || (ts.isIdentifier(arg) && arg.text === "undefined"));
 
   if (isNullInit || !arg) {
-    migrateReplace(ctx, node, "createRef()")
-    migrateAddImport(ctx, "@pyreon/core", "createRef")
+    migrateReplace(ctx, node, "createRef()");
+    migrateAddImport(ctx, "@pyreon/core", "createRef");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: "useRef(null) → createRef()",
-    })
+    });
   } else {
-    migrateReplace(ctx, node, `signal(${migrateGetNodeText(ctx, arg)})`)
-    migrateAddImport(ctx, "@pyreon/reactivity", "signal")
+    migrateReplace(ctx, node, `signal(${migrateGetNodeText(ctx, arg)})`);
+    migrateAddImport(ctx, "@pyreon/reactivity", "signal");
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: "useRef(value) → signal(value)",
-    })
+    });
   }
 }
 
 function migrateMemoWrapper(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callee = node.expression
+  const callee = node.expression;
   const isMemo =
-    (ts.isIdentifier(callee) && callee.text === "memo") || isCallToReactDot(callee, "memo")
+    (ts.isIdentifier(callee) && callee.text === "memo") || isCallToReactDot(callee, "memo");
 
   if (isMemo && node.arguments[0]) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]))
+    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]));
     ctx.changes.push({
       type: "remove",
       line: migrateGetLine(ctx, node),
       description: "Removed memo() wrapper (not needed in Pyreon)",
-    })
+    });
   }
 }
 
 function migrateForwardRef(ctx: MigrateContext, node: ts.CallExpression): void {
-  const callee = node.expression
+  const callee = node.expression;
   const isForwardRef =
     (ts.isIdentifier(callee) && callee.text === "forwardRef") ||
-    isCallToReactDot(callee, "forwardRef")
+    isCallToReactDot(callee, "forwardRef");
 
   if (isForwardRef && node.arguments[0]) {
-    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]))
+    migrateReplace(ctx, node, migrateGetNodeText(ctx, node.arguments[0]));
     ctx.changes.push({
       type: "remove",
       line: migrateGetLine(ctx, node),
       description: "Removed forwardRef wrapper (pass ref as normal prop in Pyreon)",
-    })
+    });
   }
 }
 
 function migrateJsxAttributes(ctx: MigrateContext, node: ts.JsxAttribute): void {
-  const attrName = (node.name as ts.Identifier).text
+  const attrName = (node.name as ts.Identifier).text;
 
   if (attrName in JSX_ATTR_REWRITES) {
-    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string
+    const htmlAttr = JSX_ATTR_REWRITES[attrName] as string;
     ctx.replacements.push({
       start: node.name.getStart(ctx.sf),
       end: node.name.getEnd(),
       text: htmlAttr,
-    })
+    });
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: `${attrName} → ${htmlAttr}`,
-    })
+    });
   }
 
   if (attrName === "onChange") {
-    const jsxElement = findParentJsxElement(node)
+    const jsxElement = findParentJsxElement(node);
     if (jsxElement) {
-      const tagName = getJsxTagName(jsxElement)
+      const tagName = getJsxTagName(jsxElement);
       if (tagName === "input" || tagName === "textarea" || tagName === "select") {
         ctx.replacements.push({
           start: node.name.getStart(ctx.sf),
           end: node.name.getEnd(),
           text: "onInput",
-        })
+        });
         ctx.changes.push({
           type: "replace",
           line: migrateGetLine(ctx, node),
           description: `onChange on <${tagName}> → onInput (native DOM events)`,
-        })
+        });
       }
     }
   }
 
   if (attrName === "dangerouslySetInnerHTML") {
-    migrateDangerouslySetInnerHTML(ctx, node)
+    migrateDangerouslySetInnerHTML(ctx, node);
   }
 }
 
 function migrateDangerouslySetInnerHTML(ctx: MigrateContext, node: ts.JsxAttribute): void {
   if (!node.initializer || !ts.isJsxExpression(node.initializer) || !node.initializer.expression) {
-    return
+    return;
   }
-  const expr = node.initializer.expression
-  if (!ts.isObjectLiteralExpression(expr)) return
+  const expr = node.initializer.expression;
+  if (!ts.isObjectLiteralExpression(expr)) return;
 
   const htmlProp = expr.properties.find(
     (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "__html",
-  ) as ts.PropertyAssignment | undefined
+  ) as ts.PropertyAssignment | undefined;
 
   if (htmlProp) {
-    const valueText = migrateGetNodeText(ctx, htmlProp.initializer)
-    migrateReplace(ctx, node, `innerHTML={${valueText}}`)
+    const valueText = migrateGetNodeText(ctx, htmlProp.initializer);
+    migrateReplace(ctx, node, `innerHTML={${valueText}}`);
     ctx.changes.push({
       type: "replace",
       line: migrateGetLine(ctx, node),
       description: "dangerouslySetInnerHTML → innerHTML",
-    })
+    });
   }
 }
 
 function applyReplacements(code: string, ctx: MigrateContext): string {
   // Remove React import declarations
   for (const imp of ctx.importsToRemove) {
-    ctx.replacements.push({ start: imp.getStart(ctx.sf), end: imp.getEnd(), text: "" })
+    ctx.replacements.push({ start: imp.getStart(ctx.sf), end: imp.getEnd(), text: "" });
     ctx.changes.push({
       type: "remove",
       line: ctx.sf.getLineAndCharacterOfPosition(imp.getStart(ctx.sf)).line + 1,
       description: "Removed React import",
-    })
+    });
   }
 
   // Sort descending for dedup (outermost replacements win over inner overlapping ones)
-  ctx.replacements.sort((a, b) => b.start - a.start)
+  ctx.replacements.sort((a, b) => b.start - a.start);
 
   // Deduplicate overlapping replacements (keep the outermost / first added)
-  const applied = new Set<string>()
-  const deduped: Replacement[] = []
+  const applied = new Set<string>();
+  const deduped: Replacement[] = [];
   for (const r of ctx.replacements) {
-    const key = `${r.start}:${r.end}`
-    let overlaps = false
+    const key = `${r.start}:${r.end}`;
+    let overlaps = false;
     for (const d of deduped) {
       if (r.start < d.end && r.end > d.start) {
-        overlaps = true
-        break
+        overlaps = true;
+        break;
       }
     }
     if (!overlaps && !applied.has(key)) {
-      applied.add(key)
-      deduped.push(r)
+      applied.add(key);
+      deduped.push(r);
     }
   }
 
   // Re-sort ascending for string builder — O(n) single join
-  deduped.sort((a, b) => a.start - b.start)
-  const parts: string[] = []
-  let lastPos = 0
+  deduped.sort((a, b) => a.start - b.start);
+  const parts: string[] = [];
+  let lastPos = 0;
   for (const r of deduped) {
-    parts.push(code.slice(lastPos, r.start))
-    parts.push(r.text)
-    lastPos = r.end
+    parts.push(code.slice(lastPos, r.start));
+    parts.push(r.text);
+    lastPos = r.end;
   }
-  parts.push(code.slice(lastPos))
-  return parts.join("")
+  parts.push(code.slice(lastPos));
+  return parts.join("");
 }
 
 function insertPyreonImports(code: string, pyreonImports: Map<string, Set<string>>): string {
-  if (pyreonImports.size === 0) return code
+  if (pyreonImports.size === 0) return code;
 
-  const importLines: string[] = []
-  const sorted = [...pyreonImports.entries()].sort(([a], [b]) => a.localeCompare(b))
+  const importLines: string[] = [];
+  const sorted = [...pyreonImports.entries()].sort(([a], [b]) => a.localeCompare(b));
   for (const [source, specs] of sorted) {
-    const specList = [...specs].sort().join(", ")
-    importLines.push(`import { ${specList} } from "${source}"`)
+    const specList = [...specs].sort().join(", ");
+    importLines.push(`import { ${specList} } from "${source}"`);
   }
-  const importBlock = importLines.join("\n")
+  const importBlock = importLines.join("\n");
 
-  const lastImportEnd = findLastImportEnd(code)
+  const lastImportEnd = findLastImportEnd(code);
   if (lastImportEnd > 0) {
-    return `${code.slice(0, lastImportEnd)}\n${importBlock}${code.slice(lastImportEnd)}`
+    return `${code.slice(0, lastImportEnd)}\n${importBlock}${code.slice(lastImportEnd)}`;
   }
-  return `${importBlock}\n\n${code}`
+  return `${importBlock}\n\n${code}`;
 }
 
 function migrateVisitNode(ctx: MigrateContext, node: ts.Node): void {
-  if (ts.isImportDeclaration(node)) migrateImportDeclaration(ctx, node)
-  if (isCallToHook(node, "useState")) migrateUseState(ctx, node)
-  if (isCallToEffectHook(node)) migrateUseEffect(ctx, node)
-  if (isCallToHook(node, "useMemo")) migrateUseMemo(ctx, node)
-  if (isCallToHook(node, "useCallback")) migrateUseCallback(ctx, node)
-  if (isCallToHook(node, "useRef")) migrateUseRef(ctx, node)
-  if (ts.isCallExpression(node)) migrateMemoWrapper(ctx, node)
-  if (ts.isCallExpression(node)) migrateForwardRef(ctx, node)
-  if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) migrateJsxAttributes(ctx, node)
+  if (ts.isImportDeclaration(node)) migrateImportDeclaration(ctx, node);
+  if (isCallToHook(node, "useState")) migrateUseState(ctx, node);
+  if (isCallToEffectHook(node)) migrateUseEffect(ctx, node);
+  if (isCallToHook(node, "useMemo")) migrateUseMemo(ctx, node);
+  if (isCallToHook(node, "useCallback")) migrateUseCallback(ctx, node);
+  if (isCallToHook(node, "useRef")) migrateUseRef(ctx, node);
+  if (ts.isCallExpression(node)) migrateMemoWrapper(ctx, node);
+  if (ts.isCallExpression(node)) migrateForwardRef(ctx, node);
+  if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) migrateJsxAttributes(ctx, node);
 }
 
 function migrateVisit(ctx: MigrateContext, node: ts.Node): void {
   ts.forEachChild(node, (child) => {
-    migrateVisitNode(ctx, child)
-    migrateVisit(ctx, child)
-  })
+    migrateVisitNode(ctx, child);
+    migrateVisit(ctx, child);
+  });
 }
 
 export function migrateReactCode(code: string, filename = "input.tsx"): MigrationResult {
-  const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
-  const diagnostics = detectReactPatterns(code, filename)
+  const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX);
+  const diagnostics = detectReactPatterns(code, filename);
 
   const ctx: MigrateContext = {
     sf,
@@ -960,17 +960,17 @@ export function migrateReactCode(code: string, filename = "input.tsx"): Migratio
     pyreonImports: new Map(),
     importsToRemove: new Set(),
     specifierRewrites: new Map(),
-  }
+  };
 
-  migrateVisit(ctx, sf)
+  migrateVisit(ctx, sf);
 
-  let result = applyReplacements(code, ctx)
-  result = insertPyreonImports(result, ctx.pyreonImports)
+  let result = applyReplacements(code, ctx);
+  result = insertPyreonImports(result, ctx.pyreonImports);
 
   // Clean up empty lines from removed imports
-  result = result.replace(/\n{3,}/g, "\n\n")
+  result = result.replace(/\n{3,}/g, "\n\n");
 
-  return { code: result, diagnostics, changes: ctx.changes }
+  return { code: result, diagnostics, changes: ctx.changes };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -980,41 +980,41 @@ export function migrateReactCode(code: string, filename = "input.tsx"): Migratio
 function findParentJsxElement(
   node: ts.Node,
 ): ts.JsxOpeningElement | ts.JsxSelfClosingElement | null {
-  let current = node.parent
+  let current = node.parent;
   while (current) {
     if (ts.isJsxOpeningElement(current) || ts.isJsxSelfClosingElement(current)) {
-      return current
+      return current;
     }
     // Don't cross component boundaries
     if (ts.isJsxElement(current)) {
-      return current.openingElement
+      return current.openingElement;
     }
     if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
-      return null
+      return null;
     }
-    current = current.parent
+    current = current.parent;
   }
-  return null
+  return null;
 }
 
 function getJsxTagName(node: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string {
-  const tagName = node.tagName
+  const tagName = node.tagName;
   if (ts.isIdentifier(tagName)) {
-    return tagName.text
+    return tagName.text;
   }
-  return ""
+  return "";
 }
 
 function findLastImportEnd(code: string): number {
-  const importRe = /^import\s.+$/gm
-  let lastEnd = 0
-  let match: RegExpExecArray | null
+  const importRe = /^import\s.+$/gm;
+  let lastEnd = 0;
+  let match: RegExpExecArray | null;
   while (true) {
-    match = importRe.exec(code)
-    if (!match) break
-    lastEnd = match.index + match[0].length
+    match = importRe.exec(code);
+    if (!match) break;
+    lastEnd = match.index + match[0].length;
   }
-  return lastEnd
+  return lastEnd;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1038,7 +1038,7 @@ export function hasReactPatterns(code: string): boolean {
     /\bclassName[=\s]/.test(code) ||
     /\bhtmlFor[=\s]/.test(code) ||
     /\.value\s*=/.test(code)
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1046,15 +1046,15 @@ export function hasReactPatterns(code: string): boolean {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface ErrorDiagnosis {
-  cause: string
-  fix: string
-  fixCode?: string | undefined
-  related?: string | undefined
+  cause: string;
+  fix: string;
+  fixCode?: string | undefined;
+  related?: string | undefined;
 }
 
 interface ErrorPattern {
-  pattern: RegExp
-  diagnose: (match: RegExpMatchArray) => ErrorDiagnosis
+  pattern: RegExp;
+  diagnose: (match: RegExpMatchArray) => ErrorDiagnosis;
 }
 
 const ERROR_PATTERNS: ErrorPattern[] = [
@@ -1144,15 +1144,15 @@ const ERROR_PATTERNS: ErrorPattern[] = [
       related: "Use typeof window !== 'undefined' checks or onMount() for client-only code.",
     }),
   },
-]
+];
 
 /** Diagnose an error message and return structured fix information */
 export function diagnoseError(error: string): ErrorDiagnosis | null {
   for (const { pattern, diagnose } of ERROR_PATTERNS) {
-    const match = error.match(pattern)
+    const match = error.match(pattern);
     if (match) {
-      return diagnose(match)
+      return diagnose(match);
     }
   }
-  return null
+  return null;
 }

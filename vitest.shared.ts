@@ -1,7 +1,7 @@
-import { resolve } from "node:path"
-import type { UserConfig } from "vite"
+import { resolve } from "node:path";
+import type { UserConfig } from "vite";
 
-const root = import.meta.dirname
+const root = import.meta.dirname;
 
 const corePackages = [
   "compiler",
@@ -12,7 +12,7 @@ const corePackages = [
   "runtime-dom",
   "runtime-server",
   "server",
-] as const
+] as const;
 
 const toolsPackages = [
   "cli",
@@ -24,7 +24,7 @@ const toolsPackages = [
   "vite-plugin",
   "storybook",
   "vue-compat",
-] as const
+] as const;
 
 const fundamentalsPackages = [
   "charts",
@@ -49,7 +49,7 @@ const fundamentalsPackages = [
   "validation",
   "url-state",
   "virtual",
-] as const
+] as const;
 
 const uiPackages = [
   "attrs",
@@ -63,17 +63,14 @@ const uiPackages = [
   "styler",
   "ui-core",
   "unistyle",
-] as const
+] as const;
 
-const zeroPackages = [
-  "zero",
-  "meta",
-] as const
+const zeroPackages = ["zero", "meta"] as const;
 
 // Subpath exports must come BEFORE their parent package to avoid prefix matching.
 // Vite resolves aliases in array order — first match wins.
-type AliasEntry = { find: string | RegExp; replacement: string }
-const alias: AliasEntry[] = []
+type AliasEntry = { find: string | RegExp; replacement: string };
+const alias: AliasEntry[] = [];
 
 // Subpath exports (must be first — exact match before prefix match on parent)
 const subpaths: [string, string][] = [
@@ -91,28 +88,43 @@ const subpaths: [string, string][] = [
   ["@pyreon/validation/arktype", "packages/fundamentals/validation/src/arktype.ts"],
   ["@pyreon/charts/manual", "packages/fundamentals/charts/src/manual.ts"],
   ["@pyreon/i18n/core", "packages/fundamentals/i18n/src/core.ts"],
-]
+];
 for (const [find, replacement] of subpaths) {
-  alias.push({ find, replacement: resolve(root, replacement) })
+  alias.push({ find, replacement: resolve(root, replacement) });
 }
 
 // Package-level aliases (index.ts)
 for (const pkg of corePackages) {
-  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/core/${pkg}/src/index.ts`) })
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/core/${pkg}/src/index.ts`),
+  });
 }
 for (const pkg of toolsPackages) {
-  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/tools/${pkg}/src/index.ts`) })
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/tools/${pkg}/src/index.ts`),
+  });
 }
 for (const pkg of fundamentalsPackages) {
-  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/fundamentals/${pkg}/src/index.ts`) })
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/fundamentals/${pkg}/src/index.ts`),
+  });
 }
 for (const pkg of uiPackages) {
-  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/ui-system/${pkg}/src/index.ts`) })
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/ui-system/${pkg}/src/index.ts`),
+  });
 }
 for (const pkg of zeroPackages) {
-  alias.push({ find: `@pyreon/${pkg}`, replacement: resolve(root, `packages/zero/${pkg}/src/index.ts`) })
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/zero/${pkg}/src/index.ts`),
+  });
 }
 
 export const sharedConfig: UserConfig = {
   resolve: { alias, conditions: ["bun"] },
-}
+};

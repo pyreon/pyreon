@@ -1,21 +1,21 @@
-import { useImperativeHandle, useRef, useState } from "react"
-import Demo from "./Demo"
+import { useImperativeHandle, useRef, useState } from "react";
+import Demo from "./Demo";
 
 export default function UseImperativeHandleDemo() {
-  const ref = useRef<{ focus: () => void }>()
-  const [msg, setMsg] = useState("")
+  const ref = useRef<{ focus: () => void }>();
+  const [msg, setMsg] = useState("");
 
   function FancyInput(props: { inputRef: { current: { focus: () => void } | null } }) {
-    const realInput = useRef<HTMLInputElement>()
+    const realInput = useRef<HTMLInputElement>();
 
     useImperativeHandle(props.inputRef, () => ({
       focus: () => {
-        realInput.current?.focus()
-        setMsg("Focused via imperative handle!")
+        realInput.current?.focus();
+        setMsg("Focused via imperative handle!");
       },
-    }))
+    }));
 
-    return <input type="text" ref={realInput} placeholder="Fancy input" />
+    return <input type="text" ref={realInput} placeholder="Fancy input" />;
   }
 
   return (
@@ -42,5 +42,5 @@ ref.current?.focus();`}
       </button>
       <p class="muted">{msg}</p>
     </Demo>
-  )
+  );
 }

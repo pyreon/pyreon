@@ -1,22 +1,22 @@
-import BatchDemo from "./examples/BatchDemo"
-import ChildrenDemo from "./examples/ChildrenDemo"
-import ContextDemo from "./examples/ContextDemo"
-import EffectDemo from "./examples/EffectDemo"
-import ErrorDemo from "./examples/ErrorDemo"
-import ForDemo from "./examples/ForDemo"
-import LazyDemo from "./examples/LazyDemo"
-import LifecycleDemo from "./examples/LifecycleDemo"
-import MemoDemo from "./examples/MemoDemo"
-import OnDemo from "./examples/OnDemo"
-import OwnerDemo from "./examples/OwnerDemo"
-import PropsDemo from "./examples/PropsDemo"
-import RenderEffectDemo from "./examples/RenderEffectDemo"
-import RootDemo from "./examples/RootDemo"
-import SelectorDemo from "./examples/SelectorDemo"
-import ShowDemo from "./examples/ShowDemo"
-import SignalDemo from "./examples/SignalDemo"
-import SwitchDemo from "./examples/SwitchDemo"
-import UntrackDemo from "./examples/UntrackDemo"
+import BatchDemo from "./examples/BatchDemo";
+import ChildrenDemo from "./examples/ChildrenDemo";
+import ContextDemo from "./examples/ContextDemo";
+import EffectDemo from "./examples/EffectDemo";
+import ErrorDemo from "./examples/ErrorDemo";
+import ForDemo from "./examples/ForDemo";
+import LazyDemo from "./examples/LazyDemo";
+import LifecycleDemo from "./examples/LifecycleDemo";
+import MemoDemo from "./examples/MemoDemo";
+import OnDemo from "./examples/OnDemo";
+import OwnerDemo from "./examples/OwnerDemo";
+import PropsDemo from "./examples/PropsDemo";
+import RenderEffectDemo from "./examples/RenderEffectDemo";
+import RootDemo from "./examples/RootDemo";
+import SelectorDemo from "./examples/SelectorDemo";
+import ShowDemo from "./examples/ShowDemo";
+import SignalDemo from "./examples/SignalDemo";
+import SwitchDemo from "./examples/SwitchDemo";
+import UntrackDemo from "./examples/UntrackDemo";
 
 export default function App() {
   return (
@@ -91,5 +91,5 @@ export default function App() {
         </p>
       </footer>
     </div>
-  )
+  );
 }

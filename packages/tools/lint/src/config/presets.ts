@@ -1,28 +1,28 @@
-import { allRules } from "../rules/index"
-import type { LintConfig, PresetName, Severity } from "../types"
+import { allRules } from "../rules/index";
+import type { LintConfig, PresetName, Severity } from "../types";
 
 /** Build a config where every rule uses its default severity. */
 function buildRecommended(): LintConfig {
-  const rules: Record<string, Severity> = {}
+  const rules: Record<string, Severity> = {};
   for (const rule of allRules) {
-    rules[rule.meta.id] = rule.meta.severity
+    rules[rule.meta.id] = rule.meta.severity;
   }
-  return { rules }
+  return { rules };
 }
 
 /** Build a config where every warn is promoted to error. */
 function buildStrict(): LintConfig {
-  const base = buildRecommended()
-  const rules: Record<string, Severity> = {}
+  const base = buildRecommended();
+  const rules: Record<string, Severity> = {};
   for (const [id, sev] of Object.entries(base.rules)) {
-    rules[id] = sev === "warn" ? "error" : sev
+    rules[id] = sev === "warn" ? "error" : sev;
   }
-  return { rules }
+  return { rules };
 }
 
 /** Build app config — recommended but disable library-only rules. */
 function buildApp(): LintConfig {
-  const base = buildRecommended()
+  const base = buildRecommended();
   return {
     rules: {
       ...base.rules,
@@ -31,12 +31,12 @@ function buildApp(): LintConfig {
       "pyreon/no-circular-import": "off",
       "pyreon/no-cross-layer-import": "off",
     },
-  }
+  };
 }
 
 /** Build lib config — strict + all architecture rules as error. */
 function buildLib(): LintConfig {
-  const base = buildStrict()
+  const base = buildStrict();
   return {
     rules: {
       ...base.rules,
@@ -45,7 +45,7 @@ function buildLib(): LintConfig {
       "pyreon/dev-guard-warnings": "error",
       "pyreon/no-error-without-prefix": "error",
     },
-  }
+  };
 }
 
 const presetBuilders: Record<PresetName, () => LintConfig> = {
@@ -53,10 +53,10 @@ const presetBuilders: Record<PresetName, () => LintConfig> = {
   strict: buildStrict,
   app: buildApp,
   lib: buildLib,
-}
+};
 
 export function getPreset(name: PresetName): LintConfig {
-  return presetBuilders[name]()
+  return presetBuilders[name]();
 }
 
-export { buildApp, buildLib, buildRecommended, buildStrict }
+export { buildApp, buildLib, buildRecommended, buildStrict };

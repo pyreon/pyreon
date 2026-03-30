@@ -1,5 +1,5 @@
-import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref } from "vue"
-import Demo from "./Demo"
+import { onBeforeMount, onBeforeUnmount, onMounted, onUnmounted, onUpdated, ref } from "vue";
+import Demo from "./Demo";
 
 /**
  * Child component at module scope (stable function reference).
@@ -10,27 +10,27 @@ import Demo from "./Demo"
  * ref write → scheduleRerender → re-render → onUpdated → infinite loop).
  */
 function LifecycleChild() {
-  const events = ref("")
-  let eventStr = ""
+  const events = ref("");
+  let eventStr = "";
 
   onBeforeMount(() => {
-    eventStr += "[beforeMount] "
-  })
+    eventStr += "[beforeMount] ";
+  });
   onMounted(() => {
-    eventStr += "[mounted] "
-    events.value = eventStr
-  })
+    eventStr += "[mounted] ";
+    events.value = eventStr;
+  });
   onUpdated(() => {
     // Cannot write to refs here — would cause infinite re-render loop.
     // In the re-render model, onUpdated fires on every re-render.
-    console.log("[updated]")
-  })
+    console.log("[updated]");
+  });
   onBeforeUnmount(() => {
-    eventStr += "[beforeUnmount] "
-  })
+    eventStr += "[beforeUnmount] ";
+  });
   onUnmounted(() => {
-    eventStr += "[unmounted] "
-  })
+    eventStr += "[unmounted] ";
+  });
 
   return (
     <>
@@ -39,11 +39,11 @@ function LifecycleChild() {
         events: <strong>{events.value || "(none)"}</strong>
       </p>
     </>
-  )
+  );
 }
 
 export default function LifecycleDemo() {
-  const visible = ref(true)
+  const visible = ref(true);
 
   return (
     <Demo
@@ -62,5 +62,5 @@ onUnmounted(() => log += "[unmounted] ")`}
       </div>
       {visible.value ? <LifecycleChild /> : null}
     </Demo>
-  )
+  );
 }

@@ -1,15 +1,15 @@
-import { mergeProps, splitProps } from "solid-js"
-import Demo from "./Demo"
+import { mergeProps, splitProps } from "solid-js";
+import Demo from "./Demo";
 
 function Greeting(props: { greeting?: string; name: string; class?: string }) {
-  const merged = mergeProps({ greeting: "Hello" }, props)
-  const [local, rest] = splitProps(merged, "greeting", "name")
+  const merged = mergeProps({ greeting: "Hello" }, props);
+  const [local, rest] = splitProps(merged, "greeting", "name");
 
   return (
     <p {...rest}>
       {local.greeting}, <strong>{local.name}</strong>!
     </p>
-  )
+  );
 }
 
 export default function PropsDemo() {
@@ -35,5 +35,5 @@ export default function PropsDemo() {
       <Greeting greeting="Hey" name="Pyreon" class="highlight" />
       <Greeting greeting="Bonjour" name="Developer" />
     </Demo>
-  )
+  );
 }

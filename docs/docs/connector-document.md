@@ -10,18 +10,23 @@ description: Bridge between Pyreon UI system styled components and @pyreon/docum
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/connector-document
 ```
+
 ```bash [bun]
 bun add @pyreon/connector-document
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/connector-document
 ```
+
 ```bash [yarn]
 yarn add @pyreon/connector-document
 ```
+
 :::
 
 ## Overview
@@ -39,16 +44,16 @@ When you build components with `@pyreon/rocketstyle` or `@pyreon/styler`, their 
 ## Usage
 
 ```tsx
-import { extractDocumentTree, resolveStyles } from '@pyreon/connector-document'
-import { render } from '@pyreon/document'
+import { extractDocumentTree, resolveStyles } from "@pyreon/connector-document";
+import { render } from "@pyreon/document";
 
 // Extract the styled component tree into document nodes
-const tree = extractDocumentTree(MyStyledComponent, { data: myData })
+const tree = extractDocumentTree(MyStyledComponent, { data: myData });
 
 // Render to any format
-const pdf = await render(tree, 'pdf')
-const docx = await render(tree, 'docx')
-const email = await render(tree, 'email')
+const pdf = await render(tree, "pdf");
+const docx = await render(tree, "docx");
+const email = await render(tree, "email");
 ```
 
 ## CSS Value Parsers
@@ -61,35 +66,35 @@ import {
   parseBoxModel,
   parseFontWeight,
   parseLineHeight,
-} from '@pyreon/connector-document'
+} from "@pyreon/connector-document";
 
-parseCssDimension('16px')    // { value: 16, unit: 'px' }
-parseCssDimension('1.5rem')  // { value: 1.5, unit: 'rem' }
-parseBoxModel('8px 16px')    // { top: 8, right: 16, bottom: 8, left: 16 }
-parseFontWeight('bold')      // 700
-parseLineHeight('1.5')       // 1.5
+parseCssDimension("16px"); // { value: 16, unit: 'px' }
+parseCssDimension("1.5rem"); // { value: 1.5, unit: 'rem' }
+parseBoxModel("8px 16px"); // { top: 8, right: 16, bottom: 8, left: 16 }
+parseFontWeight("bold"); // 700
+parseLineHeight("1.5"); // 1.5
 ```
 
 ## API Reference
 
-| Export | Type | Description |
-|---|---|---|
-| `extractDocumentTree` | Function | Walks a styled component tree and produces document nodes |
-| `resolveStyles` | Function | Converts CSS classes to inline style objects |
-| `parseCssDimension` | Function | Parses a CSS dimension string (e.g., `'16px'`) into value and unit |
-| `parseBoxModel` | Function | Parses CSS box model shorthand (margin/padding) |
-| `parseFontWeight` | Function | Parses CSS font-weight keywords and numbers |
-| `parseLineHeight` | Function | Parses CSS line-height values |
+| Export                | Type     | Description                                                        |
+| --------------------- | -------- | ------------------------------------------------------------------ |
+| `extractDocumentTree` | Function | Walks a styled component tree and produces document nodes          |
+| `resolveStyles`       | Function | Converts CSS classes to inline style objects                       |
+| `parseCssDimension`   | Function | Parses a CSS dimension string (e.g., `'16px'`) into value and unit |
+| `parseBoxModel`       | Function | Parses CSS box model shorthand (margin/padding)                    |
+| `parseFontWeight`     | Function | Parses CSS font-weight keywords and numbers                        |
+| `parseLineHeight`     | Function | Parses CSS line-height values                                      |
 
 ## Types
 
-| Type | Description |
-|---|---|
-| `DocNode` | A node in the extracted document tree |
-| `DocChild` | Child node type (text string or DocNode) |
-| `NodeType` | Union of document node type identifiers |
-| `ResolvedStyles` | Flat style object after CSS resolution |
-| `ExtractOptions` | Options for `extractDocumentTree` |
+| Type             | Description                                         |
+| ---------------- | --------------------------------------------------- |
+| `DocNode`        | A node in the extracted document tree               |
+| `DocChild`       | Child node type (text string or DocNode)            |
+| `NodeType`       | Union of document node type identifiers             |
+| `ResolvedStyles` | Flat style object after CSS resolution              |
+| `ExtractOptions` | Options for `extractDocumentTree`                   |
 | `DocumentMarker` | Marker interface for document extraction boundaries |
 
 ## Key Features

@@ -1,15 +1,15 @@
-import { For } from "@pyreon/core"
-import ContextDemo from "./examples/ContextDemo"
-import HFragmentDemo from "./examples/HFragmentDemo"
-import RenderDemo from "./examples/RenderDemo"
-import SignalsDemo from "./examples/SignalsDemo"
-import UseEffectDemo from "./examples/UseEffectDemo"
-import UseIdDemo from "./examples/UseIdDemo"
-import UseMemoDemo from "./examples/UseMemoDemo"
-import UseReducerDemo from "./examples/UseReducerDemo"
-import UseRefDemo from "./examples/UseRefDemo"
-import UseStateDemo from "./examples/UseStateDemo"
-import UtilsDemo from "./examples/UtilsDemo"
+import { For } from "@pyreon/core";
+import ContextDemo from "./examples/ContextDemo";
+import HFragmentDemo from "./examples/HFragmentDemo";
+import RenderDemo from "./examples/RenderDemo";
+import SignalsDemo from "./examples/SignalsDemo";
+import UseEffectDemo from "./examples/UseEffectDemo";
+import UseIdDemo from "./examples/UseIdDemo";
+import UseMemoDemo from "./examples/UseMemoDemo";
+import UseReducerDemo from "./examples/UseReducerDemo";
+import UseRefDemo from "./examples/UseRefDemo";
+import UseStateDemo from "./examples/UseStateDemo";
+import UtilsDemo from "./examples/UtilsDemo";
 
 // ─── All APIs ────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ const ALL_APIS = [
   "computed",
   "effect",
   "batch",
-]
+];
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -78,5 +78,5 @@ export default function App() {
         Built with @pyreon/preact-compat — all {ALL_APIS.length} APIs from 3 entry points
       </footer>
     </>
-  )
+  );
 }

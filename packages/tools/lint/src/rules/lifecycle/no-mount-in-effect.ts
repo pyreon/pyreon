@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo } from "../../utils/ast";
 
 export const noMountInEffect: Rule = {
   meta: {
@@ -10,26 +10,26 @@ export const noMountInEffect: Rule = {
     fixable: false,
   },
   create(context) {
-    let effectDepth = 0
+    let effectDepth = 0;
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         if (isCallTo(node, "effect")) {
-          effectDepth++
+          effectDepth++;
         }
         if (effectDepth > 0 && isCallTo(node, "onMount")) {
           context.report({
             message:
               "`onMount` inside `effect()` — `onMount` runs once on mount, not on every effect re-run.",
             span: getSpan(node),
-          })
+          });
         }
       },
       "CallExpression:exit"(node: any) {
         if (isCallTo(node, "effect")) {
-          effectDepth--
+          effectDepth--;
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

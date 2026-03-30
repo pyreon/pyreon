@@ -1,5 +1,5 @@
-import { Text } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Text } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocButton = rocketstyle({
   dimensions: {
@@ -32,6 +32,6 @@ const DocButton = rocketstyle({
   .attrs<{ href?: string; tag: string; _documentProps: { href: string } }>((props) => ({
     tag: "a",
     _documentProps: { href: props.href ?? "#" },
-  }))
+  }));
 
-export default DocButton
+export default DocButton;

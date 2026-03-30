@@ -1,10 +1,10 @@
-import { Col, Container, Row } from "@pyreon/coolgrid"
-import { useClickOutside, useElementSize, useFocus, useHover, useToggle } from "@pyreon/hooks"
-import { signal } from "@pyreon/reactivity"
-import { FadeIn, SlideDown } from "../animations"
-import { GhostButton, PrimaryButton } from "../components"
-import { addNotification } from "../notifications"
-import { Badge, Btn, Card, Code, FlexRow, SectionTitle } from "../primitives"
+import { Col, Container, Row } from "@pyreon/coolgrid";
+import { useClickOutside, useElementSize, useFocus, useHover, useToggle } from "@pyreon/hooks";
+import { signal } from "@pyreon/reactivity";
+import { FadeIn, SlideDown } from "../animations";
+import { GhostButton, PrimaryButton } from "../components";
+import { addNotification } from "../notifications";
+import { Badge, Btn, Card, Code, FlexRow, SectionTitle } from "../primitives";
 
 // ─── Hooks Tab ───────────────────────────────────────────────────────────────
 
@@ -28,12 +28,12 @@ export function HooksTab() {
         </Row>
       </Container>
     </FadeIn>
-  )
+  );
 }
 
 function HoverFocusDemo() {
-  const { hovered, props: hoverProps } = useHover()
-  const { focused, props: focusProps } = useFocus()
+  const { hovered, props: hoverProps } = useHover();
+  const { focused, props: focusProps } = useFocus();
 
   return (
     <Card style={{ marginBottom: "16px" }}>
@@ -94,12 +94,12 @@ function HoverFocusDemo() {
         </FlexRow>
       </div>
     </Card>
-  )
+  );
 }
 
 function ElementSizeDemo() {
-  let boxRef: HTMLElement | null = null
-  const size = useElementSize(() => boxRef)
+  let boxRef: HTMLElement | null = null;
+  const size = useElementSize(() => boxRef);
 
   return (
     <Card style={{ marginBottom: "16px" }}>
@@ -107,7 +107,7 @@ function ElementSizeDemo() {
       <div
         // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
         ref={(el: HTMLElement) => {
-          boxRef = el
+          boxRef = el;
         }}
         style={{
           marginTop: "12px",
@@ -128,17 +128,17 @@ function ElementSizeDemo() {
         </div>
       </div>
     </Card>
-  )
+  );
 }
 
 function ClickOutsideDemo() {
-  const open = useToggle(false)
-  let dropdownRef: HTMLElement | null = null
+  const open = useToggle(false);
+  let dropdownRef: HTMLElement | null = null;
 
   useClickOutside(
     () => dropdownRef,
     () => open.setFalse(),
-  )
+  );
 
   return (
     <Card style={{ marginBottom: "16px" }}>
@@ -153,7 +153,7 @@ function ClickOutsideDemo() {
               <div
                 // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
                 ref={(el: HTMLElement) => {
-                  dropdownRef = el
+                  dropdownRef = el;
                 }}
                 style={{
                   position: "absolute",
@@ -178,13 +178,13 @@ function ClickOutsideDemo() {
                       fontSize: "14px",
                     }}
                     onClick={() => {
-                      addNotification(`${item} clicked`, "info")
-                      open.setFalse()
+                      addNotification(`${item} clicked`, "info");
+                      open.setFalse();
                     }}
                     onKeyDown={(e: KeyboardEvent) => {
                       if (e.key === "Enter" || e.key === " ") {
-                        addNotification(`${item} clicked`, "info")
-                        open.setFalse()
+                        addNotification(`${item} clicked`, "info");
+                        open.setFalse();
                       }
                     }}
                   >
@@ -197,12 +197,12 @@ function ClickOutsideDemo() {
         }
       </div>
     </Card>
-  )
+  );
 }
 
 function ToggleCounterDemo() {
-  const count = signal(0)
-  const expanded = useToggle(false)
+  const count = signal(0);
+  const expanded = useToggle(false);
 
   return (
     <Card style={{ marginBottom: "16px" }}>
@@ -268,5 +268,5 @@ function ToggleCounterDemo() {
         }
       </div>
     </Card>
-  )
+  );
 }

@@ -1,27 +1,27 @@
 {
   "name": "@pyreon/example-ui-system-kinetic",
-  "private": true,
   "version": "0.3.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
-    "@pyreon/reactivity": "workspace:*",
-    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
     "@pyreon/kinetic": "workspace:*",
     "@pyreon/kinetic-presets": "workspace:*",
-    "@pyreon/hooks": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*"
   },
   "devDependencies": {
-    "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
   }

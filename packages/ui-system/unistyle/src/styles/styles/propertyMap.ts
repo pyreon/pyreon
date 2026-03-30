@@ -1,4 +1,4 @@
-import type { InnerTheme } from "./types"
+import type { InnerTheme } from "./types";
 
 type EdgeProperty =
   | "inset"
@@ -6,29 +6,29 @@ type EdgeProperty =
   | "padding"
   | "border-width"
   | "border-style"
-  | "border-color"
+  | "border-color";
 
 type EdgeKeys = {
-  full: keyof InnerTheme
-  x: keyof InnerTheme
-  y: keyof InnerTheme
-  top: keyof InnerTheme
-  left: keyof InnerTheme
-  bottom: keyof InnerTheme
-  right: keyof InnerTheme
-}
+  full: keyof InnerTheme;
+  x: keyof InnerTheme;
+  y: keyof InnerTheme;
+  top: keyof InnerTheme;
+  left: keyof InnerTheme;
+  bottom: keyof InnerTheme;
+  right: keyof InnerTheme;
+};
 
 type BorderRadiusKeys = {
-  full: keyof InnerTheme
-  top: keyof InnerTheme
-  bottom: keyof InnerTheme
-  left: keyof InnerTheme
-  right: keyof InnerTheme
-  topLeft: keyof InnerTheme
-  topRight: keyof InnerTheme
-  bottomLeft: keyof InnerTheme
-  bottomRight: keyof InnerTheme
-}
+  full: keyof InnerTheme;
+  top: keyof InnerTheme;
+  bottom: keyof InnerTheme;
+  left: keyof InnerTheme;
+  right: keyof InnerTheme;
+  topLeft: keyof InnerTheme;
+  topRight: keyof InnerTheme;
+  bottomLeft: keyof InnerTheme;
+  bottomRight: keyof InnerTheme;
+};
 
 export type PropertyDescriptor =
   | { kind: "simple"; css: string; key: keyof InnerTheme }
@@ -36,7 +36,7 @@ export type PropertyDescriptor =
   | { kind: "convert_fallback"; css: string; keys: (keyof InnerTheme)[] }
   | { kind: "edge"; property: EdgeProperty; keys: EdgeKeys }
   | { kind: "border_radius"; keys: BorderRadiusKeys }
-  | { kind: "special"; id: string }
+  | { kind: "special"; id: string };
 
 const propertyMap: PropertyDescriptor[] = [
   // SPECIAL: fullScreen
@@ -431,6 +431,6 @@ const propertyMap: PropertyDescriptor[] = [
   { kind: "special", id: "hideEmpty" },
   { kind: "special", id: "clearFix" },
   { kind: "special", id: "extendCss" },
-]
+];
 
-export default propertyMap
+export default propertyMap;

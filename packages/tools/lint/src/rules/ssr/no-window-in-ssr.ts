@@ -1,6 +1,6 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
-import { BROWSER_GLOBALS } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo } from "../../utils/ast";
+import { BROWSER_GLOBALS } from "../../utils/imports";
 
 export const noWindowInSsr: Rule = {
   meta: {
@@ -11,47 +11,47 @@ export const noWindowInSsr: Rule = {
     fixable: false,
   },
   create(context) {
-    let safeDepth = 0
-    let typeofGuardDepth = 0
+    let safeDepth = 0;
+    let typeofGuardDepth = 0;
 
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         if (isCallTo(node, "onMount") || isCallTo(node, "effect")) {
-          safeDepth++
+          safeDepth++;
         }
       },
       "CallExpression:exit"(node: any) {
         if (isCallTo(node, "onMount") || isCallTo(node, "effect")) {
-          safeDepth--
+          safeDepth--;
         }
       },
       IfStatement(node: any) {
         // typeof window !== "undefined"
-        const test = node.test
+        const test = node.test;
         if (
           test?.type === "BinaryExpression" &&
           test.left?.type === "UnaryExpression" &&
           test.left.operator === "typeof"
         ) {
-          typeofGuardDepth++
+          typeofGuardDepth++;
         }
       },
       "IfStatement:exit"(node: any) {
-        const test = node.test
+        const test = node.test;
         if (
           test?.type === "BinaryExpression" &&
           test.left?.type === "UnaryExpression" &&
           test.left.operator === "typeof"
         ) {
-          typeofGuardDepth--
+          typeofGuardDepth--;
         }
       },
       Identifier(node: any, parent: any) {
-        if (safeDepth > 0 || typeofGuardDepth > 0) return
-        if (!BROWSER_GLOBALS.has(node.name)) return
+        if (safeDepth > 0 || typeofGuardDepth > 0) return;
+        if (!BROWSER_GLOBALS.has(node.name)) return;
 
         // Skip typeof expressions: typeof window
-        if (parent?.type === "UnaryExpression" && parent.operator === "typeof") return
+        if (parent?.type === "UnaryExpression" && parent.operator === "typeof") return;
 
         // Skip import specifiers
         if (
@@ -59,18 +59,18 @@ export const noWindowInSsr: Rule = {
           parent?.type === "ImportDefaultSpecifier" ||
           parent?.type === "ImportNamespaceSpecifier"
         )
-          return
+          return;
 
         // Skip property access on member expressions (only flag when used as the object)
         if (parent?.type === "MemberExpression" && parent.property === node && !parent.computed)
-          return
+          return;
 
         context.report({
           message: `Browser global \`${node.name}\` used outside \`onMount\`/\`effect\`/typeof guard — this will fail during SSR. Wrap in \`onMount(() => { ... })\`.`,
           span: getSpan(node),
-        })
+        });
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

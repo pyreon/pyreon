@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo } from "../../utils/ast";
 
 export const noEffectInMount: Rule = {
   meta: {
@@ -11,26 +11,26 @@ export const noEffectInMount: Rule = {
     fixable: false,
   },
   create(context) {
-    let mountDepth = 0
+    let mountDepth = 0;
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         if (isCallTo(node, "onMount")) {
-          mountDepth++
+          mountDepth++;
         }
         if (mountDepth > 0 && isCallTo(node, "effect")) {
           context.report({
             message:
               "`effect()` inside `onMount` — effects are typically created at component setup time, not inside lifecycle hooks.",
             span: getSpan(node),
-          })
+          });
         }
       },
       "CallExpression:exit"(node: any) {
         if (isCallTo(node, "onMount")) {
-          mountDepth--
+          mountDepth--;
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

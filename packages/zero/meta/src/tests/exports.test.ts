@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import * as meta from "../index"
+import { describe, expect, it } from "vitest";
+import * as meta from "../index";
 
 describe("@pyreon/meta exports", () => {
   // ─── Fundamentals ───────────────────────────────────────────────────────
@@ -75,12 +75,12 @@ describe("@pyreon/meta exports", () => {
     "CodeEditor",
     "DiffEditor",
     "TabbedEditor",
-  ]
+  ];
 
   for (const name of fundamentals) {
     it(`exports ${name}`, () => {
-      expect(name in meta).toBe(true)
-    })
+      expect(name in meta).toBe(true);
+    });
   }
 
   // ─── UI System ──────────────────────────────────────────────────────────
@@ -121,11 +121,11 @@ describe("@pyreon/meta exports", () => {
     "createSlide",
     "attrs",
     "rocketstyle",
-  ]
+  ];
 
   for (const name of uiSystem) {
     it(`exports ${name}`, () => {
-      expect(name in meta).toBe(true)
-    })
+      expect(name in meta).toBe(true);
+    });
   }
-})
+});

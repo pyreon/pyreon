@@ -1,8 +1,8 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { signal } from "@pyreon/reactivity"
-import type { MutationFilters, QueryFilters } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+import { onUnmount } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
+import { signal } from "@pyreon/reactivity";
+import type { MutationFilters, QueryFilters } from "@tanstack/query-core";
+import { useQueryClient } from "./query-client";
 
 /**
  * Returns a signal that tracks how many queries are currently in-flight.
@@ -13,15 +13,15 @@ import { useQueryClient } from "./query-client"
  * // h('span', null, () => fetching() > 0 ? 'Loading…' : '')
  */
 export function useIsFetching(filters?: QueryFilters): Signal<number> {
-  const client = useQueryClient()
-  const count = signal(client.isFetching(filters))
+  const client = useQueryClient();
+  const count = signal(client.isFetching(filters));
 
   const unsub = client.getQueryCache().subscribe(() => {
-    count.set(client.isFetching(filters))
-  })
-  onUnmount(() => unsub())
+    count.set(client.isFetching(filters));
+  });
+  onUnmount(() => unsub());
 
-  return count
+  return count;
 }
 
 /**
@@ -32,13 +32,13 @@ export function useIsFetching(filters?: QueryFilters): Signal<number> {
  * // h('span', null, () => mutating() > 0 ? 'Saving…' : '')
  */
 export function useIsMutating(filters?: MutationFilters): Signal<number> {
-  const client = useQueryClient()
-  const count = signal(client.isMutating(filters))
+  const client = useQueryClient();
+  const count = signal(client.isMutating(filters));
 
   const unsub = client.getMutationCache().subscribe(() => {
-    count.set(client.isMutating(filters))
-  })
-  onUnmount(() => unsub())
+    count.set(client.isMutating(filters));
+  });
+  onUnmount(() => unsub());
 
-  return count
+  return count;
 }

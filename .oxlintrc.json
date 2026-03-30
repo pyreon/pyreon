@@ -1,0 +1,85 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "categories": {
+    "correctness": "warn"
+  },
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-shadow": "warn",
+    "no-empty": "warn",
+    "no-console": "warn",
+    "no-template-curly-in-string": "warn",
+    "no-debugger": "error",
+    "typescript/no-non-null-assertion": "warn",
+    "unicorn/prefer-flat-map": "error",
+    "import/no-duplicates": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "no-console": "off",
+        "no-empty": "off",
+        "no-shadow": "off",
+        "no-template-curly-in-string": "off",
+        "typescript/no-non-null-assertion": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/core/reactivity/src/debug.ts",
+        "packages/core/reactivity/src/effect.ts",
+        "packages/core/reactivity/src/scope.ts",
+        "packages/core/runtime-dom/src/devtools.ts",
+        "packages/core/runtime-dom/src/hydrate.ts",
+        "packages/core/runtime-dom/src/hydration-debug.ts",
+        "packages/core/runtime-dom/src/mount.ts",
+        "packages/core/runtime-dom/src/nodes.ts",
+        "packages/core/runtime-dom/src/props.ts",
+        "packages/core/runtime-dom/src/transition.ts",
+        "packages/core/runtime-server/src/index.ts",
+        "packages/core/server/src/handler.ts",
+        "packages/core/server/src/client.ts",
+        "examples/benchmark/**/*.ts",
+        "scripts/**/*.ts",
+        "packages/tools/cli/src/**",
+        "packages/tools/mcp/src/**",
+        "packages/tools/lint/src/cli.ts",
+        "packages/tools/lint/src/watcher.ts"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["packages/fundamentals/flow/src/**", "packages/fundamentals/code/src/**"],
+      "rules": {
+        "jsx-a11y/alt-text": "off"
+      }
+    }
+  ],
+  "settings": {
+    "jsx-a11y": {
+      "polymorphicPropName": null,
+      "components": {},
+      "attributes": {}
+    }
+  },
+  "env": {
+    "builtin": true
+  },
+  "globals": {
+    "Bun": "readonly",
+    "describe": "readonly",
+    "test": "readonly",
+    "it": "readonly",
+    "expect": "readonly",
+    "vi": "readonly",
+    "beforeEach": "readonly",
+    "afterEach": "readonly",
+    "beforeAll": "readonly",
+    "afterAll": "readonly"
+  },
+  "ignorePatterns": ["dist", "lib", "node_modules", ".turbo", "e2e", "tests/browser", "templates"]
+}

@@ -11,18 +11,16 @@ bun add @pyreon/runtime-dom
 ## Quick Start
 
 ```tsx
-import { mount } from "@pyreon/runtime-dom"
-import { signal } from "@pyreon/reactivity"
+import { mount } from "@pyreon/runtime-dom";
+import { signal } from "@pyreon/reactivity";
 
-const count = signal(0)
+const count = signal(0);
 
 const App = () => (
-  <button onClick={() => count.update((n) => n + 1)}>
-    Clicks: {() => count()}
-  </button>
-)
+  <button onClick={() => count.update((n) => n + 1)}>Clicks: {() => count()}</button>
+);
 
-const unmount = mount(<App />, document.getElementById("app")!)
+const unmount = mount(<App />, document.getElementById("app")!);
 ```
 
 ## Transition Examples
@@ -30,29 +28,27 @@ const unmount = mount(<App />, document.getElementById("app")!)
 Animate elements on enter and leave:
 
 ```tsx
-import { Transition } from "@pyreon/runtime-dom"
-import { signal } from "@pyreon/reactivity"
+import { Transition } from "@pyreon/runtime-dom";
+import { signal } from "@pyreon/reactivity";
 
-const show = signal(true)
+const show = signal(true);
 
 const App = () => (
   <div>
     <button onClick={() => show.set(!show())}>Toggle</button>
-    <Transition name="fade">
-      {() => show() && <p>Hello!</p>}
-    </Transition>
+    <Transition name="fade">{() => show() && <p>Hello!</p>}</Transition>
   </div>
-)
+);
 ```
 
 Animate keyed lists with move support:
 
 ```tsx
-import { TransitionGroup } from "@pyreon/runtime-dom"
-import { For } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import { TransitionGroup } from "@pyreon/runtime-dom";
+import { For } from "@pyreon/core";
+import { signal } from "@pyreon/reactivity";
 
-const items = signal([1, 2, 3])
+const items = signal([1, 2, 3]);
 
 const List = () => (
   <TransitionGroup name="list">
@@ -60,7 +56,7 @@ const List = () => (
       {(item) => <div>{() => item()}</div>}
     </For>
   </TransitionGroup>
-)
+);
 ```
 
 ## KeepAlive Example
@@ -68,20 +64,18 @@ const List = () => (
 Cache inactive component subtrees instead of destroying them:
 
 ```tsx
-import { KeepAlive } from "@pyreon/runtime-dom"
-import { signal } from "@pyreon/reactivity"
+import { KeepAlive } from "@pyreon/runtime-dom";
+import { signal } from "@pyreon/reactivity";
 
-const tab = signal<"home" | "settings">("home")
+const tab = signal<"home" | "settings">("home");
 
 const App = () => (
   <div>
     <button onClick={() => tab.set("home")}>Home</button>
     <button onClick={() => tab.set("settings")}>Settings</button>
-    <KeepAlive>
-      {() => tab() === "home" ? <Home /> : <Settings />}
-    </KeepAlive>
+    <KeepAlive>{() => (tab() === "home" ? <Home /> : <Settings />)}</KeepAlive>
   </div>
-)
+);
 ```
 
 ## API

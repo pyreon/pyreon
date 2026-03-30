@@ -1,3 +1,3 @@
-import attrsHoc from "./attrsHoc"
+import attrsHoc from "./attrsHoc";
 
-export { attrsHoc }
+export { attrsHoc };

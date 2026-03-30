@@ -1,4 +1,4 @@
-import type { Signal } from "@pyreon/reactivity"
+import type { Signal } from "@pyreon/reactivity";
 
 // ─── Storage Signal ──────────────────────────────────────────────────────────
 
@@ -8,7 +8,7 @@ import type { Signal } from "@pyreon/reactivity"
  */
 export interface StorageSignal<T> extends Signal<T> {
   /** Remove the value from storage and reset to the default value */
-  remove(): void
+  remove(): void;
 }
 
 // ─── Shared Options ──────────────────────────────────────────────────────────
@@ -18,11 +18,11 @@ export interface StorageSignal<T> extends Signal<T> {
  */
 export interface StorageOptions<T> {
   /** Custom serializer — default: JSON.stringify */
-  serializer?: (value: T) => string
+  serializer?: (value: T) => string;
   /** Custom deserializer — default: JSON.parse */
-  deserializer?: (raw: string) => T
+  deserializer?: (raw: string) => T;
   /** Called when deserialization fails — returns fallback or void for default */
-  onError?: (error: Error) => T | undefined
+  onError?: (error: Error) => T | undefined;
 }
 
 // ─── Cookie Options ──────────────────────────────────────────────────────────
@@ -32,17 +32,17 @@ export interface StorageOptions<T> {
  */
 export interface CookieOptions<T> extends StorageOptions<T> {
   /** Max age in seconds */
-  maxAge?: number
+  maxAge?: number;
   /** Expiry date (alternative to maxAge) */
-  expires?: Date
+  expires?: Date;
   /** Cookie path — default: '/' */
-  path?: string
+  path?: string;
   /** Cookie domain */
-  domain?: string
+  domain?: string;
   /** HTTPS only — default: false */
-  secure?: boolean
+  secure?: boolean;
   /** SameSite policy — default: 'lax' */
-  sameSite?: "strict" | "lax" | "none"
+  sameSite?: "strict" | "lax" | "none";
 }
 
 // ─── IndexedDB Options ───────────────────────────────────────────────────────
@@ -52,11 +52,11 @@ export interface CookieOptions<T> extends StorageOptions<T> {
  */
 export interface IndexedDBOptions<T> extends StorageOptions<T> {
   /** Database name — default: 'pyreon-storage' */
-  dbName?: string
+  dbName?: string;
   /** Object store name — default: 'kv' */
-  storeName?: string
+  storeName?: string;
   /** Write debounce in ms — default: 100 */
-  debounceMs?: number
+  debounceMs?: number;
 }
 
 // ─── Custom Storage Backend ──────────────────────────────────────────────────
@@ -66,11 +66,11 @@ export interface IndexedDBOptions<T> extends StorageOptions<T> {
  */
 export interface StorageBackend {
   /** Read a raw string value by key. Return null if not found. */
-  get(key: string): string | null
+  get(key: string): string | null;
   /** Write a raw string value by key */
-  set(key: string, value: string): void
+  set(key: string, value: string): void;
   /** Remove a value by key */
-  remove(key: string): void
+  remove(key: string): void;
 }
 
 /**
@@ -78,9 +78,9 @@ export interface StorageBackend {
  */
 export interface AsyncStorageBackend {
   /** Read a raw string value by key */
-  get(key: string): Promise<string | null>
+  get(key: string): Promise<string | null>;
   /** Write a raw string value by key */
-  set(key: string, value: string): Promise<void>
+  set(key: string, value: string): Promise<void>;
   /** Remove a value by key */
-  remove(key: string): Promise<void>
+  remove(key: string): Promise<void>;
 }

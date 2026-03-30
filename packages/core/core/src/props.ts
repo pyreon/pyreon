@@ -12,21 +12,21 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   props: T,
   keys: K,
 ): [Pick<T, K[number]>, Omit<T, K[number]>] {
-  const picked = {} as Pick<T, K[number]>
-  const rest = {} as Omit<T, K[number]>
-  const keySet = new Set<string | symbol>(keys as (string | symbol)[])
+  const picked = {} as Pick<T, K[number]>;
+  const rest = {} as Omit<T, K[number]>;
+  const keySet = new Set<string | symbol>(keys as (string | symbol)[]);
 
   for (const key of Object.keys(props)) {
-    const desc = Object.getOwnPropertyDescriptor(props, key)
-    if (!desc) continue
+    const desc = Object.getOwnPropertyDescriptor(props, key);
+    if (!desc) continue;
     if (keySet.has(key)) {
-      Object.defineProperty(picked, key, desc)
+      Object.defineProperty(picked, key, desc);
     } else {
-      Object.defineProperty(rest, key, desc)
+      Object.defineProperty(rest, key, desc);
     }
   }
 
-  return [picked, rest]
+  return [picked, rest];
 }
 
 /** Merge a getter-backed source property with an existing getter or value. */
@@ -36,16 +36,16 @@ function mergeGetterWithExisting(
   desc: PropertyDescriptor,
   existing: PropertyDescriptor,
 ): void {
-  const prevGet = existing.get ?? (() => existing.value)
-  const nextGet = desc.get as () => unknown
+  const prevGet = existing.get ?? (() => existing.value);
+  const nextGet = desc.get as () => unknown;
   Object.defineProperty(result, key, {
     get: () => {
-      const v = nextGet()
-      return v !== undefined ? v : prevGet()
+      const v = nextGet();
+      return v !== undefined ? v : prevGet();
     },
     enumerable: true,
     configurable: true,
-  })
+  });
 }
 
 /** Merge a static source property when the existing property has a getter. */
@@ -56,13 +56,13 @@ function mergeStaticWithGetter(
   existingGet: () => unknown,
 ): void {
   if (desc.value !== undefined) {
-    Object.defineProperty(result, key, desc)
+    Object.defineProperty(result, key, desc);
   } else {
     Object.defineProperty(result, key, {
       get: existingGet,
       enumerable: true,
       configurable: true,
-    })
+    });
   }
 }
 
@@ -72,16 +72,16 @@ function mergeProperty(
   key: string,
   desc: PropertyDescriptor,
 ): void {
-  const existing = Object.getOwnPropertyDescriptor(result, key)
+  const existing = Object.getOwnPropertyDescriptor(result, key);
   if (desc.get && existing) {
-    mergeGetterWithExisting(result, key, desc, existing)
+    mergeGetterWithExisting(result, key, desc, existing);
   } else if (desc.get) {
-    Object.defineProperty(result, key, desc)
+    Object.defineProperty(result, key, desc);
   } else if (existing?.get) {
-    mergeStaticWithGetter(result, key, desc, existing.get)
+    mergeStaticWithGetter(result, key, desc, existing.get);
   } else if (desc.value !== undefined || !existing) {
     // Both static — later value wins if defined
-    Object.defineProperty(result, key, desc)
+    Object.defineProperty(result, key, desc);
   }
 }
 
@@ -94,20 +94,20 @@ function mergeProperty(
  * // merged.size is reactive — falls back to "md" when props.size is undefined
  */
 export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): T {
-  const result = {} as T
+  const result = {} as T;
   for (const source of sources) {
     for (const key of Object.keys(source)) {
-      const desc = Object.getOwnPropertyDescriptor(source, key)
-      if (!desc) continue
-      mergeProperty(result, key, desc)
+      const desc = Object.getOwnPropertyDescriptor(source, key);
+      if (!desc) continue;
+      mergeProperty(result, key, desc);
     }
   }
-  return result
+  return result;
 }
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
-let _idCounter = 0
+let _idCounter = 0;
 
 /**
  * Generate a unique ID string for accessibility attributes (htmlFor, aria-describedby, etc.).
@@ -121,10 +121,10 @@ let _idCounter = 0
  * </>
  */
 export function createUniqueId(): string {
-  return `pyreon-${++_idCounter}`
+  return `pyreon-${++_idCounter}`;
 }
 
 /** Reset the ID counter (called by SSR per-request). */
 export function _resetIdCounter(): void {
-  _idCounter = 0
+  _idCounter = 0;
 }

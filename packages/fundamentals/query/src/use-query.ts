@@ -1,28 +1,28 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
+import { batch, effect, signal } from "@pyreon/reactivity";
 import type {
   DefaultError,
   QueryKey,
   QueryObserverOptions,
   QueryObserverResult,
-} from "@tanstack/query-core"
-import { QueryObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from "@tanstack/query-core";
+import { QueryObserver } from "@tanstack/query-core";
+import { useQueryClient } from "./query-client";
 
 export interface UseQueryResult<TData, TError = DefaultError> {
   /** Raw signal — the full observer result. Fine-grained accessors below are preferred. */
-  result: Signal<QueryObserverResult<TData, TError>>
-  data: Signal<TData | undefined>
-  error: Signal<TError | null>
-  status: Signal<"pending" | "error" | "success">
-  isPending: Signal<boolean>
-  isLoading: Signal<boolean>
-  isFetching: Signal<boolean>
-  isError: Signal<boolean>
-  isSuccess: Signal<boolean>
+  result: Signal<QueryObserverResult<TData, TError>>;
+  data: Signal<TData | undefined>;
+  error: Signal<TError | null>;
+  status: Signal<"pending" | "error" | "success">;
+  isPending: Signal<boolean>;
+  isLoading: Signal<boolean>;
+  isFetching: Signal<boolean>;
+  isError: Signal<boolean>;
+  isSuccess: Signal<boolean>;
   /** Manually trigger a refetch. */
-  refetch: () => Promise<QueryObserverResult<TData, TError>>
+  refetch: () => Promise<QueryObserverResult<TData, TError>>;
 }
 
 /**
@@ -43,46 +43,46 @@ export interface UseQueryResult<TData, TError = DefaultError> {
 export function useQuery<TData = unknown, TError = DefaultError, TKey extends QueryKey = QueryKey>(
   options: () => QueryObserverOptions<TData, TError, TData, TData, TKey>,
 ): UseQueryResult<TData, TError> {
-  const client = useQueryClient()
-  const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options())
-  const initial = observer.getCurrentResult()
+  const client = useQueryClient();
+  const observer = new QueryObserver<TData, TError, TData, TData, TKey>(client, options());
+  const initial = observer.getCurrentResult();
 
   // Fine-grained signals: each field is independent so only effects that read
   // e.g. `query.data()` re-run when data changes, not when isFetching flips.
-  const resultSig = signal<QueryObserverResult<TData, TError>>(initial)
-  const dataSig = signal<TData | undefined>(initial.data)
-  const errorSig = signal<TError | null>(initial.error ?? null)
-  const statusSig = signal<"pending" | "error" | "success">(initial.status)
-  const isPending = signal(initial.isPending)
-  const isLoading = signal(initial.isLoading)
-  const isFetching = signal(initial.isFetching)
-  const isError = signal(initial.isError)
-  const isSuccess = signal(initial.isSuccess)
+  const resultSig = signal<QueryObserverResult<TData, TError>>(initial);
+  const dataSig = signal<TData | undefined>(initial.data);
+  const errorSig = signal<TError | null>(initial.error ?? null);
+  const statusSig = signal<"pending" | "error" | "success">(initial.status);
+  const isPending = signal(initial.isPending);
+  const isLoading = signal(initial.isLoading);
+  const isFetching = signal(initial.isFetching);
+  const isError = signal(initial.isError);
+  const isSuccess = signal(initial.isSuccess);
 
   // Subscribe synchronously — data flows before mount (correct for SSR pre-population).
   // batch() coalesces all signal updates into one notification flush.
   const unsub = observer.subscribe((r) => {
     batch(() => {
-      resultSig.set(r)
-      dataSig.set(r.data)
-      errorSig.set(r.error ?? null)
-      statusSig.set(r.status)
-      isPending.set(r.isPending)
-      isLoading.set(r.isLoading)
-      isFetching.set(r.isFetching)
-      isError.set(r.isError)
-      isSuccess.set(r.isSuccess)
-    })
-  })
+      resultSig.set(r);
+      dataSig.set(r.data);
+      errorSig.set(r.error ?? null);
+      statusSig.set(r.status);
+      isPending.set(r.isPending);
+      isLoading.set(r.isLoading);
+      isFetching.set(r.isFetching);
+      isError.set(r.isError);
+      isSuccess.set(r.isSuccess);
+    });
+  });
 
   // Track reactive options: when signals inside options() change, update the observer.
   // effect() is auto-registered in the component's EffectScope → auto-disposed on unmount.
   effect(() => {
-    observer.setOptions(options())
-  })
+    observer.setOptions(options());
+  });
 
   // Unsubscribe the observer on unmount (effect disposal is handled by EffectScope).
-  onUnmount(() => unsub())
+  onUnmount(() => unsub());
 
   return {
     result: resultSig,
@@ -95,5 +95,5 @@ export function useQuery<TData = unknown, TError = DefaultError, TKey extends Qu
     isError,
     isSuccess,
     refetch: () => observer.refetch(),
-  }
+  };
 }

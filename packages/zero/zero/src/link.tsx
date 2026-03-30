@@ -1,6 +1,6 @@
-import { createRef } from "@pyreon/core"
-import { useRouter } from "@pyreon/router"
-import { useIntersectionObserver } from "./utils/use-intersection-observer"
+import { createRef } from "@pyreon/core";
+import { useRouter } from "@pyreon/router";
+import { useIntersectionObserver } from "./utils/use-intersection-observer";
 
 // ─── Link component with prefetching ────────────────────────────────────────
 //
@@ -13,78 +13,78 @@ import { useIntersectionObserver } from "./utils/use-intersection-observer"
 
 export interface LinkProps {
   /** Target URL path. */
-  href: string
+  href: string;
   /** Link content. */
-  children?: any
+  children?: any;
   /** CSS class name. */
-  class?: string
+  class?: string;
   /** Class applied when this link matches the current route. */
-  activeClass?: string
+  activeClass?: string;
   /** Class applied when this link exactly matches the current route. */
-  exactActiveClass?: string
+  exactActiveClass?: string;
   /** Prefetch strategy. Default: "hover" */
-  prefetch?: "hover" | "viewport" | "none"
+  prefetch?: "hover" | "viewport" | "none";
   /** Open in new tab. */
-  external?: boolean
+  external?: boolean;
   /** Inline styles. */
-  style?: string
+  style?: string;
   /** ARIA label. */
-  "aria-label"?: string
+  "aria-label"?: string;
 }
 
 /** Props passed to a custom component via createLink. */
 export interface LinkRenderProps {
-  href: string
-  ref: import("@pyreon/core").Ref<HTMLAnchorElement>
-  onClick: (e: MouseEvent) => void
-  onMouseEnter: () => void
-  onTouchStart: () => void
-  isActive: () => boolean
-  isExactActive: () => boolean
+  href: string;
+  ref: import("@pyreon/core").Ref<HTMLAnchorElement>;
+  onClick: (e: MouseEvent) => void;
+  onMouseEnter: () => void;
+  onTouchStart: () => void;
+  isActive: () => boolean;
+  isExactActive: () => boolean;
   /** Reactive class string — pass directly to element for auto-updates on route change. */
-  class: (() => string) | string | undefined
-  style?: string
-  target?: string
-  rel?: string
-  "aria-label"?: string
-  children?: any
+  class: (() => string) | string | undefined;
+  style?: string;
+  target?: string;
+  rel?: string;
+  "aria-label"?: string;
+  children?: any;
 }
 
 /** Return type of useLink. */
 export interface UseLinkReturn {
   /** Ref object — attach to the root element for viewport-based prefetch. */
-  ref: import("@pyreon/core").Ref<HTMLAnchorElement>
+  ref: import("@pyreon/core").Ref<HTMLAnchorElement>;
   /** Click handler — performs client-side navigation. */
-  handleClick: (e: MouseEvent) => void
+  handleClick: (e: MouseEvent) => void;
   /** Mouse enter handler — triggers hover prefetch. */
-  handleMouseEnter: () => void
+  handleMouseEnter: () => void;
   /** Touch start handler — triggers prefetch on mobile. */
-  handleTouchStart: () => void
+  handleTouchStart: () => void;
   /** Whether the link partially matches the current route. */
-  isActive: () => boolean
+  isActive: () => boolean;
   /** Whether the link exactly matches the current route. */
-  isExactActive: () => boolean
+  isExactActive: () => boolean;
   /** Resolved class string including active classes. */
-  classes: () => string
+  classes: () => string;
 }
 
-const prefetched = new Set<string>()
+const prefetched = new Set<string>();
 
 function doPrefetch(href: string) {
-  if (prefetched.has(href)) return
-  prefetched.add(href)
+  if (prefetched.has(href)) return;
+  prefetched.add(href);
 
-  const docLink = document.createElement("link")
-  docLink.rel = "prefetch"
-  docLink.href = href
-  docLink.as = "document"
-  document.head.appendChild(docLink)
+  const docLink = document.createElement("link");
+  docLink.rel = "prefetch";
+  docLink.href = href;
+  docLink.as = "document";
+  document.head.appendChild(docLink);
 
   try {
-    const chunkHint = document.createElement("link")
-    chunkHint.rel = "modulepreload"
-    chunkHint.href = href
-    document.head.appendChild(chunkHint)
+    const chunkHint = document.createElement("link");
+    chunkHint.rel = "modulepreload";
+    chunkHint.href = href;
+    document.head.appendChild(chunkHint);
   } catch {
     // modulepreload is a hint, not critical
   }
@@ -107,9 +107,9 @@ function doPrefetch(href: string) {
  * }
  */
 export function useLink(props: LinkProps): UseLinkReturn {
-  const router = useRouter()
-  const elementRef = createRef<HTMLAnchorElement>()
-  const strategy = props.prefetch ?? "hover"
+  const router = useRouter();
+  const elementRef = createRef<HTMLAnchorElement>();
+  const strategy = props.prefetch ?? "hover";
 
   function handleClick(e: MouseEvent) {
     if (
@@ -121,21 +121,21 @@ export function useLink(props: LinkProps): UseLinkReturn {
       e.altKey ||
       props.external
     ) {
-      return
+      return;
     }
-    e.preventDefault()
-    router.push(props.href)
+    e.preventDefault();
+    router.push(props.href);
   }
 
   function handleMouseEnter() {
     if (strategy === "hover") {
-      doPrefetch(props.href)
+      doPrefetch(props.href);
     }
   }
 
   function handleTouchStart() {
     if (strategy === "hover" || strategy === "viewport") {
-      doPrefetch(props.href)
+      doPrefetch(props.href);
     }
   }
 
@@ -143,29 +143,29 @@ export function useLink(props: LinkProps): UseLinkReturn {
     useIntersectionObserver(
       () => elementRef.current ?? undefined,
       () => doPrefetch(props.href),
-    )
+    );
   }
 
   const isActive = () => {
-    const currentPath = router.currentRoute()?.path
-    if (!currentPath || !props.href) return false
-    if (props.href === "/") return currentPath === "/"
-    return currentPath.startsWith(props.href)
-  }
+    const currentPath = router.currentRoute()?.path;
+    if (!currentPath || !props.href) return false;
+    if (props.href === "/") return currentPath === "/";
+    return currentPath.startsWith(props.href);
+  };
 
   const isExactActive = () => {
-    const currentPath = router.currentRoute()?.path
-    if (!currentPath) return false
-    return currentPath === props.href
-  }
+    const currentPath = router.currentRoute()?.path;
+    if (!currentPath) return false;
+    return currentPath === props.href;
+  };
 
   const classes = () => {
-    const cls: string[] = []
-    if (props.class) cls.push(props.class)
-    if (props.activeClass && isActive()) cls.push(props.activeClass)
-    if (props.exactActiveClass && isExactActive()) cls.push(props.exactActiveClass)
-    return cls.join(" ")
-  }
+    const cls: string[] = [];
+    if (props.class) cls.push(props.class);
+    if (props.activeClass && isActive()) cls.push(props.activeClass);
+    if (props.exactActiveClass && isExactActive()) cls.push(props.exactActiveClass);
+    return cls.join(" ");
+  };
 
   return {
     ref: elementRef,
@@ -175,7 +175,7 @@ export function useLink(props: LinkProps): UseLinkReturn {
     isActive,
     isExactActive,
     classes,
-  }
+  };
 }
 
 /**
@@ -215,7 +215,7 @@ export function useLink(props: LinkProps): UseLinkReturn {
  */
 export function createLink(Component: (props: LinkRenderProps) => any): (props: LinkProps) => any {
   return function WrappedLink(props: LinkProps) {
-    const link = useLink(props)
+    const link = useLink(props);
 
     return (
       <Component
@@ -232,8 +232,8 @@ export function createLink(Component: (props: LinkRenderProps) => any): (props: 
         {...(props["aria-label"] ? { "aria-label": props["aria-label"] } : {})}
         children={props.children}
       />
-    )
-  }
+    );
+  };
 }
 
 /**
@@ -259,4 +259,4 @@ export const Link = createLink((props: LinkRenderProps) => (
   >
     {props.children}
   </a>
-))
+));

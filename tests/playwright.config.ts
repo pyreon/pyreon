@@ -1,5 +1,5 @@
-import path from "node:path"
-import { defineConfig } from "@playwright/test"
+import path from "node:path";
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./browser",
@@ -21,4 +21,4 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:3799",
   },
-})
+});

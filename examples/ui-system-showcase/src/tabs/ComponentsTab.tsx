@@ -1,9 +1,9 @@
-import { Col, Container, Row } from "@pyreon/coolgrid"
-import { Element, List, Text } from "@pyreon/elements"
-import { FadeIn } from "../animations"
-import { DangerButton, GhostButton, PrimaryButton, RsBadge, RsButton } from "../components"
-import { addNotification } from "../notifications"
-import { Badge, Card, Code, FlexRow, SectionDesc, SectionTitle } from "../primitives"
+import { Col, Container, Row } from "@pyreon/coolgrid";
+import { Element, List, Text } from "@pyreon/elements";
+import { FadeIn } from "../animations";
+import { DangerButton, GhostButton, PrimaryButton, RsBadge, RsButton } from "../components";
+import { addNotification } from "../notifications";
+import { Badge, Card, Code, FlexRow, SectionDesc, SectionTitle } from "../primitives";
 
 // ─── Components Tab ──────────────────────────────────────────────────────────
 
@@ -179,18 +179,18 @@ export function ComponentsTab() {
         </Card>
       </FadeIn>
     </div>
-  )
+  );
 }
 
 // ─── Element User Row ────────────────────────────────────────────────────────
 
 function UserRow(props: {
-  initial: string
-  color: string
-  name: string
-  jobRole: string
-  statusText: string
-  statusState: string
+  initial: string;
+  color: string;
+  name: string;
+  jobRole: string;
+  statusText: string;
+  statusState: string;
 }) {
   return (
     <Element
@@ -231,18 +231,18 @@ function UserRow(props: {
         <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{props.jobRole}</span>
       </div>
     </Element>
-  )
+  );
 }
 
 // ─── List Item ───────────────────────────────────────────────────────────────
 
 function ListItem(props: {
-  children?: any
-  index?: number
-  first?: boolean
-  last?: boolean
-  odd?: boolean
-  position?: number
+  children?: any;
+  index?: number;
+  first?: boolean;
+  last?: boolean;
+  odd?: boolean;
+  position?: number;
 }) {
   return (
     <div
@@ -267,5 +267,5 @@ function ListItem(props: {
       </span>
       <Text tag="span">{props.children}</Text>
     </div>
-  )
+  );
 }

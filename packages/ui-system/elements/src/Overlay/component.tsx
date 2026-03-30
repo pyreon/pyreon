@@ -6,45 +6,45 @@
  * a dropdown inside another dropdown) via blocked-state propagation.
  */
 
-import type { VNodeChild } from "@pyreon/core"
-import { onMount, Portal } from "@pyreon/core"
-import { render } from "@pyreon/ui-core"
-import { PKG_NAME } from "../constants"
-import type { Content, PyreonComponent } from "../types"
-import useOverlay, { type UseOverlayProps } from "./useOverlay"
+import type { VNodeChild } from "@pyreon/core";
+import { onMount, Portal } from "@pyreon/core";
+import { render } from "@pyreon/ui-core";
+import { PKG_NAME } from "../constants";
+import type { Content, PyreonComponent } from "../types";
+import useOverlay, { type UseOverlayProps } from "./useOverlay";
 
-const IS_BROWSER = typeof window !== "undefined"
+const IS_BROWSER = typeof window !== "undefined";
 
-type Align = "bottom" | "top" | "left" | "right"
-type AlignX = "left" | "center" | "right"
-type AlignY = "bottom" | "top" | "center"
+type Align = "bottom" | "top" | "left" | "right";
+type AlignX = "left" | "center" | "right";
+type AlignY = "bottom" | "top" | "center";
 
 type TriggerRenderer = (
   props: Partial<{
-    active: boolean
-    showContent: () => void
-    hideContent: () => void
+    active: boolean;
+    showContent: () => void;
+    hideContent: () => void;
   }>,
-) => VNodeChild
+) => VNodeChild;
 
 type ContentRenderer = (
   props: Partial<{
-    active: boolean
-    showContent: () => void
-    hideContent: () => void
-    align: Align
-    alignX: AlignX
-    alignY: AlignY
+    active: boolean;
+    showContent: () => void;
+    hideContent: () => void;
+    align: Align;
+    alignX: AlignX;
+    alignY: AlignY;
   }>,
-) => VNodeChild
+) => VNodeChild;
 
 export type Props = {
-  children: ContentRenderer | Content
-  trigger: TriggerRenderer | Content
-  DOMLocation?: HTMLElement
-  triggerRefName?: string
-  contentRefName?: string
-} & UseOverlayProps
+  children: ContentRenderer | Content;
+  trigger: TriggerRenderer | Content;
+  DOMLocation?: HTMLElement;
+  triggerRefName?: string;
+  contentRefName?: string;
+} & UseOverlayProps;
 
 const Component: PyreonComponent<Props> = ({
   children,
@@ -66,29 +66,29 @@ const Component: PyreonComponent<Props> = ({
     setupListeners,
     Provider,
     ...ctx
-  } = useOverlay(props)
+  } = useOverlay(props);
 
-  const { openOn, closeOn, type } = props
+  const { openOn, closeOn, type } = props;
 
   const passHandlers =
-    openOn === "manual" || closeOn === "manual" || closeOn === "clickOutsideContent"
+    openOn === "manual" || closeOn === "manual" || closeOn === "clickOutsideContent";
 
   const ariaHasPopup = (() => {
     switch (type) {
       case "modal":
-        return "dialog" as const
+        return "dialog" as const;
       case "tooltip":
-        return "true" as const
+        return "true" as const;
       default:
-        return "menu" as const
+        return "menu" as const;
     }
-  })()
+  })();
 
   // Set up event listeners on mount
   onMount(() => {
-    const cleanup = setupListeners()
-    return cleanup
-  })
+    const cleanup = setupListeners();
+    return cleanup;
+  });
 
   return (
     <>
@@ -119,13 +119,13 @@ const Component: PyreonComponent<Props> = ({
         ) : null
       }
     </>
-  )
-}
+  );
+};
 
-const name = `${PKG_NAME}/Overlay` as const
+const name = `${PKG_NAME}/Overlay` as const;
 
-Component.displayName = name
-Component.pkgName = PKG_NAME
-Component.PYREON__COMPONENT = name
+Component.displayName = name;
+Component.pkgName = PKG_NAME;
+Component.PYREON__COMPONENT = name;
 
-export default Component
+export default Component;

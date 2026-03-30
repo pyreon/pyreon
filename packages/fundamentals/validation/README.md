@@ -11,20 +11,20 @@ bun add @pyreon/validation
 ## Quick Start
 
 ```ts
-import { z } from "zod"
-import { useForm } from "@pyreon/form"
-import { zodSchema } from "@pyreon/validation"
+import { z } from "zod";
+import { useForm } from "@pyreon/form";
+import { zodSchema } from "@pyreon/validation";
 
 const schema = z.object({
   email: z.string().email(),
   age: z.number().min(13),
-})
+});
 
 const form = useForm({
   initialValues: { email: "", age: 0 },
   schema: zodSchema(schema),
   onSubmit: async (values) => console.log(values),
-})
+});
 ```
 
 Each adapter comes in two flavors: **schema-level** (validates the whole form) and **field-level** (validates a single field).
@@ -35,9 +35,9 @@ Each adapter comes in two flavors: **schema-level** (validates the whole form) a
 
 Create a form-level schema validator from a Zod schema. Uses `safeParseAsync` internally — supports both sync and async refinements. Duck-typed to work with Zod v3 and v4.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | Zod schema | Any Zod object schema with `safeParse`/`safeParseAsync` |
+| Parameter | Type       | Description                                             |
+| --------- | ---------- | ------------------------------------------------------- |
+| `schema`  | Zod schema | Any Zod object schema with `safeParse`/`safeParseAsync` |
 
 **Returns:** `SchemaValidateFn<TValues>`
 
@@ -57,9 +57,9 @@ const form = useForm({
 
 Create a single-field validator from a Zod schema. Returns the first error message on failure.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | Zod schema | Any Zod schema (string, number, etc.) |
+| Parameter | Type       | Description                           |
+| --------- | ---------- | ------------------------------------- |
+| `schema`  | Zod schema | Any Zod schema (string, number, etc.) |
 
 **Returns:** `ValidateFn<T>`
 
@@ -77,10 +77,10 @@ const form = useForm({
 
 Create a form-level schema validator from a Valibot schema. Valibot uses standalone functions, so you must pass the parse function.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | Valibot schema | Any Valibot object schema |
-| `safeParseFn` | `Function` | `v.safeParse` or `v.safeParseAsync` from valibot |
+| Parameter     | Type           | Description                                      |
+| ------------- | -------------- | ------------------------------------------------ |
+| `schema`      | Valibot schema | Any Valibot object schema                        |
+| `safeParseFn` | `Function`     | `v.safeParse` or `v.safeParseAsync` from valibot |
 
 **Returns:** `SchemaValidateFn<TValues>`
 
@@ -103,10 +103,10 @@ const form = useForm({
 
 Create a single-field validator from a Valibot schema.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | Valibot schema | Any Valibot schema |
-| `safeParseFn` | `Function` | `v.safeParse` or `v.safeParseAsync` from valibot |
+| Parameter     | Type           | Description                                      |
+| ------------- | -------------- | ------------------------------------------------ |
+| `schema`      | Valibot schema | Any Valibot schema                               |
+| `safeParseFn` | `Function`     | `v.safeParse` or `v.safeParseAsync` from valibot |
 
 **Returns:** `ValidateFn<T>`
 
@@ -120,9 +120,9 @@ validators: {
 
 Create a form-level schema validator from an ArkType schema. ArkType validation is synchronous.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | ArkType `Type` | Any callable ArkType type |
+| Parameter | Type           | Description               |
+| --------- | -------------- | ------------------------- |
+| `schema`  | ArkType `Type` | Any callable ArkType type |
 
 **Returns:** `SchemaValidateFn<TValues>`
 
@@ -142,9 +142,9 @@ const form = useForm({
 
 Create a single-field validator from an ArkType schema.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `schema` | ArkType `Type` | Any callable ArkType type |
+| Parameter | Type           | Description               |
+| --------- | -------------- | ------------------------- |
+| `schema`  | ArkType `Type` | Any callable ArkType type |
 
 **Returns:** `ValidateFn<T>`
 
@@ -158,18 +158,18 @@ validators: {
 
 Convert an array of `ValidationIssue` objects into a flat field-to-error record. First error per field wins. Useful for building custom adapters.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `issues` | `ValidationIssue[]` | Array of `{ path: string, message: string }` |
+| Parameter | Type                | Description                                  |
+| --------- | ------------------- | -------------------------------------------- |
+| `issues`  | `ValidationIssue[]` | Array of `{ path: string, message: string }` |
 
 **Returns:** `Partial<Record<keyof TValues, ValidationError>>`
 
 ```ts
 issuesToRecord([
   { path: "email", message: "Required" },
-  { path: "email", message: "Invalid" },  // ignored — first wins
+  { path: "email", message: "Invalid" }, // ignored — first wins
   { path: "age", message: "Too young" },
-])
+]);
 // => { email: "Required", age: "Too young" }
 ```
 
@@ -180,9 +180,9 @@ issuesToRecord([
 Each adapter is available via subpath import to avoid bundling unused adapters:
 
 ```ts
-import { zodSchema } from "@pyreon/validation/zod"
-import { valibotSchema } from "@pyreon/validation/valibot"
-import { arktypeSchema } from "@pyreon/validation/arktype"
+import { zodSchema } from "@pyreon/validation/zod";
+import { valibotSchema } from "@pyreon/validation/valibot";
+import { arktypeSchema } from "@pyreon/validation/arktype";
 ```
 
 ### Mixing Field and Schema Validators
@@ -205,14 +205,14 @@ const form = useForm({
 
 ## Types
 
-| Type | Description |
-| --- | --- |
-| `ValidationIssue` | `{ path: string, message: string }` — normalized issue |
-| `SchemaAdapter<TSchema>` | Generic schema adapter factory type |
-| `FieldAdapter<TSchema>` | Generic field adapter factory type |
-| `SchemaValidateFn<TValues>` | Re-exported from `@pyreon/form` |
-| `ValidateFn<T>` | Re-exported from `@pyreon/form` |
-| `ValidationError` | Re-exported from `@pyreon/form` — `string \| undefined` |
+| Type                        | Description                                             |
+| --------------------------- | ------------------------------------------------------- |
+| `ValidationIssue`           | `{ path: string, message: string }` — normalized issue  |
+| `SchemaAdapter<TSchema>`    | Generic schema adapter factory type                     |
+| `FieldAdapter<TSchema>`     | Generic field adapter factory type                      |
+| `SchemaValidateFn<TValues>` | Re-exported from `@pyreon/form`                         |
+| `ValidateFn<T>`             | Re-exported from `@pyreon/form`                         |
+| `ValidationError`           | Re-exported from `@pyreon/form` — `string \| undefined` |
 
 ## Gotchas
 

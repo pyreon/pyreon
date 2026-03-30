@@ -1,9 +1,9 @@
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { useState } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function UseStateDemo() {
-  const [count, setCount] = useState(0)
-  const [name, setName] = useState("Preact")
+  const [count, setCount] = useState(0);
+  const [name, setName] = useState("Preact");
 
   return (
     <Demo
@@ -34,5 +34,5 @@ setCount(prev => prev + 1)`}
         <input value={name} onInput={(e: Event) => setName((e.target as HTMLInputElement).value)} />
       </div>
     </Demo>
-  )
+  );
 }

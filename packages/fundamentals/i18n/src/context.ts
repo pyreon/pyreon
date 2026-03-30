@@ -1,12 +1,12 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import type { I18nInstance } from "./types"
+import type { Props, VNode, VNodeChild } from "@pyreon/core";
+import { createContext, provide, useContext } from "@pyreon/core";
+import type { I18nInstance } from "./types";
 
-export const I18nContext = createContext<I18nInstance | null>(null)
+export const I18nContext = createContext<I18nInstance | null>(null);
 
 export interface I18nProviderProps extends Props {
-  instance: I18nInstance
-  children?: VNodeChild
+  instance: I18nInstance;
+  children?: VNodeChild;
 }
 
 /**
@@ -21,10 +21,10 @@ export interface I18nProviderProps extends Props {
  * </I18nProvider>
  */
 export function I18nProvider(props: I18nProviderProps): VNode {
-  provide(I18nContext, props.instance)
+  provide(I18nContext, props.instance);
 
-  const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode
+  const ch = props.children;
+  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode;
 }
 
 /**
@@ -38,9 +38,9 @@ export function I18nProvider(props: I18nProviderProps): VNode {
  * }
  */
 export function useI18n(): I18nInstance {
-  const instance = useContext(I18nContext)
+  const instance = useContext(I18nContext);
   if (!instance) {
-    throw new Error("[@pyreon/i18n] useI18n() must be used within an <I18nProvider>.")
+    throw new Error("[@pyreon/i18n] useI18n() must be used within an <I18nProvider>.");
   }
-  return instance
+  return instance;
 }

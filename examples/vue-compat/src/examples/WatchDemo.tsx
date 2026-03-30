@@ -1,13 +1,13 @@
-import { ref, watch } from "vue"
-import Demo from "./Demo"
+import { ref, watch } from "vue";
+import Demo from "./Demo";
 
 export default function WatchDemo() {
-  const source = ref(0)
-  const log = ref("")
+  const source = ref(0);
+  const log = ref("");
 
   watch(source, (newVal, oldVal) => {
-    log.value = `changed: ${oldVal} → ${newVal}`
-  })
+    log.value = `changed: ${oldVal} → ${newVal}`;
+  });
 
   return (
     <Demo
@@ -30,5 +30,5 @@ watch(source, (newVal, oldVal) => {
         watch log: <strong>{log.value || "(no changes yet)"}</strong>
       </p>
     </Demo>
-  )
+  );
 }

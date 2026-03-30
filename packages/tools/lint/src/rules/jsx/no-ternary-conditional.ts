@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isTernaryWithJSX } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isTernaryWithJSX } from "../../utils/ast";
 
 export const noTernaryConditional: Rule = {
   meta: {
@@ -10,23 +10,23 @@ export const noTernaryConditional: Rule = {
     fixable: false,
   },
   create(context) {
-    let jsxExpressionDepth = 0
+    let jsxExpressionDepth = 0;
     const callbacks: VisitorCallbacks = {
       JSXExpressionContainer() {
-        jsxExpressionDepth++
+        jsxExpressionDepth++;
       },
       "JSXExpressionContainer:exit"() {
-        jsxExpressionDepth--
+        jsxExpressionDepth--;
       },
       ConditionalExpression(node: any) {
-        if (jsxExpressionDepth === 0) return
-        if (!isTernaryWithJSX(node)) return
+        if (jsxExpressionDepth === 0) return;
+        if (!isTernaryWithJSX(node)) return;
         context.report({
           message: "Ternary with JSX — use `<Show>` for more efficient conditional rendering.",
           span: getSpan(node),
-        })
+        });
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

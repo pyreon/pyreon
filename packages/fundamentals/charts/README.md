@@ -13,23 +13,23 @@ bun add @pyreon/charts echarts
 ## Quick Start
 
 ```tsx
-import { Chart } from '@pyreon/charts'
-import { signal } from '@pyreon/reactivity'
+import { Chart } from "@pyreon/charts";
+import { signal } from "@pyreon/reactivity";
 
 function RevenueChart() {
-  const revenue = signal([120, 200, 150, 80, 70, 110, 130])
+  const revenue = signal([120, 200, 150, 80, 70, 110, 130]);
 
   return (
     <Chart
       options={() => ({
-        xAxis: { type: 'category', data: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'] },
-        yAxis: { type: 'value' },
-        tooltip: { trigger: 'axis' },
-        series: [{ type: 'bar', data: revenue() }],
+        xAxis: { type: "category", data: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"] },
+        yAxis: { type: "value" },
+        tooltip: { trigger: "axis" },
+        series: [{ type: "bar", data: revenue() }],
       })}
       style="height: 400px"
     />
-  )
+  );
 }
 ```
 
@@ -54,7 +54,7 @@ Component shorthand wrapping `useChart`.
 ```tsx
 <Chart
   options={() => ({
-    series: [{ type: 'pie', data: segments() }],
+    series: [{ type: "pie", data: segments() }],
     legend: {},
   })}
   theme="dark"
@@ -64,16 +64,16 @@ Component shorthand wrapping `useChart`.
 />
 ```
 
-| Prop | Type | Description |
-| --- | --- | --- |
-| `options` | `() => EChartOption` | Reactive config function |
-| `theme?` | `string \| object` | ECharts theme |
-| `renderer?` | `'canvas' \| 'svg'` | Renderer (default: `'canvas'`) |
-| `style?` | `string` | CSS style for container |
-| `class?` | `string` | CSS class for container |
-| `onClick?` | `(params) => void` | Click event |
-| `onMouseover?` | `(params) => void` | Mouseover event |
-| `onMouseout?` | `(params) => void` | Mouseout event |
+| Prop           | Type                 | Description                    |
+| -------------- | -------------------- | ------------------------------ |
+| `options`      | `() => EChartOption` | Reactive config function       |
+| `theme?`       | `string \| object`   | ECharts theme                  |
+| `renderer?`    | `'canvas' \| 'svg'`  | Renderer (default: `'canvas'`) |
+| `style?`       | `string`             | CSS style for container        |
+| `class?`       | `string`             | CSS class for container        |
+| `onClick?`     | `(params) => void`   | Click event                    |
+| `onMouseover?` | `(params) => void`   | Mouseover event                |
+| `onMouseout?`  | `(params) => void`   | Mouseout event                 |
 
 ### `useChart(options, config?)`
 
@@ -82,31 +82,31 @@ Core hook for programmatic control.
 ```tsx
 const chart = useChart(() => ({
   xAxis: { data: months() },
-  series: [{ type: 'line', data: values(), smooth: true }],
-}))
+  series: [{ type: "line", data: values(), smooth: true }],
+}));
 
-return <div ref={chart.ref} style="height: 400px" />
+return <div ref={chart.ref} style="height: 400px" />;
 ```
 
 **Returns:**
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `ref` | `(el: HTMLElement \| null) => void` | Bind to container div |
-| `instance` | `Signal<ECharts \| null>` | ECharts instance (null until loaded) |
-| `loading` | `Signal<boolean>` | True while modules are loading |
-| `resize` | `() => void` | Manually trigger resize |
+| Property   | Type                                | Description                          |
+| ---------- | ----------------------------------- | ------------------------------------ |
+| `ref`      | `(el: HTMLElement \| null) => void` | Bind to container div                |
+| `instance` | `Signal<ECharts \| null>`           | ECharts instance (null until loaded) |
+| `loading`  | `Signal<boolean>`                   | True while modules are loading       |
+| `resize`   | `() => void`                        | Manually trigger resize              |
 
 **Config options:**
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `theme` | `string \| object` | — | ECharts theme |
-| `renderer` | `'canvas' \| 'svg'` | `'canvas'` | Rendering engine |
-| `locale` | `string` | `'EN'` | ECharts locale |
-| `notMerge` | `boolean` | `false` | Replace options instead of merging |
-| `lazyUpdate` | `boolean` | `true` | Batch updates |
-| `onInit` | `(instance) => void` | — | Called when chart is created |
+| Option       | Type                 | Default    | Description                        |
+| ------------ | -------------------- | ---------- | ---------------------------------- |
+| `theme`      | `string \| object`   | —          | ECharts theme                      |
+| `renderer`   | `'canvas' \| 'svg'`  | `'canvas'` | Rendering engine                   |
+| `locale`     | `string`             | `'EN'`     | ECharts locale                     |
+| `notMerge`   | `boolean`            | `false`    | Replace options instead of merging |
+| `lazyUpdate` | `boolean`            | `true`     | Batch updates                      |
+| `onInit`     | `(instance) => void` | —          | Called when chart is created       |
 
 ## Manual Registration (Tree-shaking)
 
@@ -139,13 +139,13 @@ tooltip, legend, title, toolbox, dataZoom, visualMap, timeline, graphic, brush, 
 
 ## Bundle Size
 
-| Usage | ECharts loaded | Approx gzipped |
-| --- | --- | --- |
-| No charts rendered | Nothing | 0 KB |
-| Bar + tooltip | core + BarChart + Grid + Tooltip + Canvas | ~35 KB |
-| Bar + Line + legend | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB |
-| Pie only | core + PieChart + Canvas | ~25 KB |
-| @pyreon/charts itself | Module map + hook | ~3 KB |
+| Usage                 | ECharts loaded                                                 | Approx gzipped |
+| --------------------- | -------------------------------------------------------------- | -------------- |
+| No charts rendered    | Nothing                                                        | 0 KB           |
+| Bar + tooltip         | core + BarChart + Grid + Tooltip + Canvas                      | ~35 KB         |
+| Bar + Line + legend   | core + BarChart + LineChart + Grid + Legend + Tooltip + Canvas | ~42 KB         |
+| Pie only              | core + PieChart + Canvas                                       | ~25 KB         |
+| @pyreon/charts itself | Module map + hook                                              | ~3 KB          |
 
 ## Why Canvas by default
 

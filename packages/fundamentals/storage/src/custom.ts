@@ -1,7 +1,7 @@
-import { signal } from "@pyreon/reactivity"
-import { getEntry, removeEntry, setEntry } from "./registry"
-import type { StorageBackend, StorageOptions, StorageSignal } from "./types"
-import { deserialize, serialize } from "./utils"
+import { signal } from "@pyreon/reactivity";
+import { getEntry, removeEntry, setEntry } from "./registry";
+import type { StorageBackend, StorageOptions, StorageSignal } from "./types";
+import { deserialize, serialize } from "./utils";
 
 // ─── createStorage ───────────────────────────────────────────────────────────
 
@@ -24,7 +24,7 @@ export function createStorage(
   backend: StorageBackend,
   backendName?: string,
 ): <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T> {
-  const name = backendName ?? "custom"
+  const name = backendName ?? "custom";
 
   return function useCustomStorage<T>(
     key: string,
@@ -32,65 +32,65 @@ export function createStorage(
     options?: StorageOptions<T>,
   ): StorageSignal<T> {
     // Return existing signal if already registered
-    const existing = getEntry<T>(name, key)
-    if (existing) return existing.signal
+    const existing = getEntry<T>(name, key);
+    if (existing) return existing.signal;
 
     // Read initial value
-    let initialValue = defaultValue
+    let initialValue = defaultValue;
     try {
-      const raw = backend.get(key)
+      const raw = backend.get(key);
       if (raw !== null) {
-        initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError)
+        initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError);
       }
     } catch {
       // Backend read failed — use default
     }
 
-    const sig = signal<T>(initialValue)
+    const sig = signal<T>(initialValue);
 
     // Build the storage signal
-    const storageSig = (() => sig()) as unknown as StorageSignal<T>
+    const storageSig = (() => sig()) as unknown as StorageSignal<T>;
 
-    storageSig.peek = () => sig.peek()
-    storageSig.subscribe = (listener: () => void) => sig.subscribe(listener)
-    storageSig.direct = (updater: () => void) => sig.direct(updater)
-    storageSig.debug = () => sig.debug()
+    storageSig.peek = () => sig.peek();
+    storageSig.subscribe = (listener: () => void) => sig.subscribe(listener);
+    storageSig.direct = (updater: () => void) => sig.direct(updater);
+    storageSig.debug = () => sig.debug();
 
     Object.defineProperty(storageSig, "label", {
       get: () => sig.label,
       set: (v: string | undefined) => {
-        sig.label = v
+        sig.label = v;
       },
-    })
+    });
 
     storageSig.set = (value: T) => {
-      sig.set(value)
+      sig.set(value);
       try {
-        backend.set(key, serialize(value, options?.serializer))
+        backend.set(key, serialize(value, options?.serializer));
       } catch {
         // Write failed — signal still updates
       }
-    }
+    };
 
     storageSig.update = (fn: (current: T) => T) => {
-      const newValue = fn(sig.peek())
-      storageSig.set(newValue)
-    }
+      const newValue = fn(sig.peek());
+      storageSig.set(newValue);
+    };
 
     storageSig.remove = () => {
-      sig.set(defaultValue)
+      sig.set(defaultValue);
       try {
-        backend.remove(key)
+        backend.remove(key);
       } catch {
         // Remove failed
       }
-      removeEntry(name, key)
-    }
+      removeEntry(name, key);
+    };
 
-    setEntry(name, key, storageSig, defaultValue)
+    setEntry(name, key, storageSig, defaultValue);
 
-    return storageSig
-  }
+    return storageSig;
+  };
 }
 
 // ─── Memory storage ──────────────────────────────────────────────────────────
@@ -108,12 +108,12 @@ export function createStorage(
  */
 export const useMemoryStorage = createStorage(
   (() => {
-    const store = new Map<string, string>()
+    const store = new Map<string, string>();
     return {
       get: (key: string) => store.get(key) ?? null,
       set: (key: string, value: string) => store.set(key, value),
       remove: (key: string) => store.delete(key),
-    }
+    };
   })(),
   "memory",
-)
+);

@@ -1,4 +1,4 @@
-import type { ZeroConfig } from "./types"
+import type { ZeroConfig } from "./types";
 
 /**
  * Define a Zero configuration.
@@ -14,7 +14,7 @@ import type { ZeroConfig } from "./types"
  * })
  */
 export function defineConfig(config: ZeroConfig): ZeroConfig {
-  return config
+  return config;
 }
 
 /** Merge user config with defaults. */
@@ -31,5 +31,5 @@ export function resolveConfig(
       mode: "string",
       ...userConfig.ssr,
     },
-  }
+  };
 }

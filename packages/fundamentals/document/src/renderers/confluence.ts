@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from "../sanitize";
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types";
 
 /**
  * Atlassian Document Format (ADF) renderer — for Jira and Confluence.
@@ -8,30 +8,30 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === "string" ? { header: col } : col;
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .join("");
 }
 
 interface AdfNode {
-  type: string
-  content?: AdfNode[]
-  text?: string
-  marks?: { type: string; attrs?: Record<string, unknown> }[]
-  attrs?: Record<string, unknown>
+  type: string;
+  content?: AdfNode[];
+  text?: string;
+  marks?: { type: string; attrs?: Record<string, unknown> }[];
+  attrs?: Record<string, unknown>;
 }
 
 function textNode(text: string, marks?: AdfNode["marks"]): AdfNode {
-  return { type: "text", text, ...(marks && marks.length > 0 ? { marks } : {}) }
+  return { type: "text", text, ...(marks && marks.length > 0 ? { marks } : {}) };
 }
 
 function nodeToAdf(node: DocNode): AdfNode[] {
-  const p = node.props
-  const result: AdfNode[] = []
+  const p = node.props;
+  const result: AdfNode[] = [];
 
   switch (node.type) {
     case "document":
@@ -41,49 +41,49 @@ function nodeToAdf(node: DocNode): AdfNode[] {
     case "column":
       for (const child of node.children) {
         if (typeof child !== "string") {
-          result.push(...nodeToAdf(child))
+          result.push(...nodeToAdf(child));
         }
       }
-      break
+      break;
 
     case "heading": {
-      const level = Math.min(Math.max((p.level as number) ?? 1, 1), 6)
-      const text = getTextContent(node.children)
+      const level = Math.min(Math.max((p.level as number) ?? 1, 1), 6);
+      const text = getTextContent(node.children);
       result.push({
         type: "heading",
         attrs: { level },
         content: [textNode(text, [{ type: "strong" }])],
-      })
-      break
+      });
+      break;
     }
 
     case "text": {
-      const text = getTextContent(node.children)
-      const marks: AdfNode["marks"] = []
-      if (p.bold) marks.push({ type: "strong" })
-      if (p.italic) marks.push({ type: "em" })
-      if (p.underline) marks.push({ type: "underline" })
-      if (p.strikethrough) marks.push({ type: "strike" })
-      if (p.color) marks.push({ type: "textColor", attrs: { color: p.color as string } })
+      const text = getTextContent(node.children);
+      const marks: AdfNode["marks"] = [];
+      if (p.bold) marks.push({ type: "strong" });
+      if (p.italic) marks.push({ type: "em" });
+      if (p.underline) marks.push({ type: "underline" });
+      if (p.strikethrough) marks.push({ type: "strike" });
+      if (p.color) marks.push({ type: "textColor", attrs: { color: p.color as string } });
       result.push({
         type: "paragraph",
         content: [textNode(text, marks)],
-      })
-      break
+      });
+      break;
     }
 
     case "link": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       result.push({
         type: "paragraph",
         content: [textNode(text, [{ type: "link", attrs: { href } }])],
-      })
-      break
+      });
+      break;
     }
 
     case "image": {
-      const src = sanitizeImageSrc(p.src as string)
+      const src = sanitizeImageSrc(p.src as string);
       if (src.startsWith("http")) {
         result.push({
           type: "mediaSingle",
@@ -99,14 +99,14 @@ function nodeToAdf(node: DocNode): AdfNode[] {
               },
             },
           ],
-        })
+        });
       }
-      break
+      break;
     }
 
     case "table": {
-      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
-      const rows = (p.rows ?? []) as (string | number)[][]
+      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn);
+      const rows = (p.rows ?? []) as (string | number)[][];
 
       const headerRow: AdfNode = {
         type: "tableRow",
@@ -119,7 +119,7 @@ function nodeToAdf(node: DocNode): AdfNode[] {
             },
           ],
         })),
-      }
+      };
 
       const dataRows = rows.map((row) => ({
         type: "tableRow" as const,
@@ -132,19 +132,19 @@ function nodeToAdf(node: DocNode): AdfNode[] {
             },
           ],
         })),
-      }))
+      }));
 
       result.push({
         type: "table",
         attrs: { isNumberColumnEnabled: false, layout: "default" },
         content: [headerRow, ...dataRows],
-      })
-      break
+      });
+      break;
     }
 
     case "list": {
-      const ordered = p.ordered as boolean | undefined
-      const type = ordered ? "orderedList" : "bulletList"
+      const ordered = p.ordered as boolean | undefined;
+      const type = ordered ? "orderedList" : "bulletList";
       const items = node.children
         .filter((c): c is DocNode => typeof c !== "string")
         .map((item) => ({
@@ -155,62 +155,62 @@ function nodeToAdf(node: DocNode): AdfNode[] {
               content: [textNode(getTextContent(item.children))],
             },
           ],
-        }))
-      result.push({ type, content: items })
-      break
+        }));
+      result.push({ type, content: items });
+      break;
     }
 
     case "code": {
-      const text = getTextContent(node.children)
-      const lang = (p.language as string) ?? null
+      const text = getTextContent(node.children);
+      const lang = (p.language as string) ?? null;
       result.push({
         type: "codeBlock",
         attrs: { language: lang },
         content: [textNode(text)],
-      })
-      break
+      });
+      break;
     }
 
     case "divider":
     case "page-break":
-      result.push({ type: "rule" })
-      break
+      result.push({ type: "rule" });
+      break;
 
     case "spacer":
-      result.push({ type: "paragraph", content: [] })
-      break
+      result.push({ type: "paragraph", content: [] });
+      break;
 
     case "button": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       result.push({
         type: "paragraph",
         content: [textNode(text, [{ type: "link", attrs: { href } }, { type: "strong" }])],
-      })
-      break
+      });
+      break;
     }
 
     case "quote": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       result.push({
         type: "blockquote",
         content: [{ type: "paragraph", content: [textNode(text)] }],
-      })
-      break
+      });
+      break;
     }
   }
 
-  return result
+  return result;
 }
 
 export const confluenceRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    const content = nodeToAdf(node)
+    const content = nodeToAdf(node);
     const adf = {
       version: 1,
       type: "doc",
       content,
-    }
-    return JSON.stringify(adf, null, 2)
+    };
+    return JSON.stringify(adf, null, 2);
   },
-}
+};

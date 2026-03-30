@@ -1,18 +1,18 @@
-import type { ClassValue, Props } from "@pyreon/core"
-import { cx, normalizeStyleValue, toKebabCase } from "@pyreon/core"
+import type { ClassValue, Props } from "@pyreon/core";
+import { cx, normalizeStyleValue, toKebabCase } from "@pyreon/core";
 
-import { batch, renderEffect } from "@pyreon/reactivity"
-import { DELEGATED_EVENTS, delegatedPropName } from "./delegate"
+import { batch, renderEffect } from "@pyreon/reactivity";
+import { DELEGATED_EVENTS, delegatedPropName } from "./delegate";
 
-type Cleanup = () => void
+type Cleanup = () => void;
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
 // ─── Configurable sanitizer ──────────────────────────────────────────────────
 
-export type SanitizeFn = (html: string) => string
+export type SanitizeFn = (html: string) => string;
 
-let _customSanitizer: SanitizeFn | null = null
+let _customSanitizer: SanitizeFn | null = null;
 
 /**
  * Set a custom HTML sanitizer used by `innerHTML` and `sanitizeHtml()`.
@@ -31,7 +31,7 @@ let _customSanitizer: SanitizeFn | null = null
  * setSanitizer(null)
  */
 export function setSanitizer(fn: SanitizeFn | null): void {
-  _customSanitizer = fn
+  _customSanitizer = fn;
 }
 
 // Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)
@@ -105,10 +105,10 @@ const SAFE_TAGS = new Set([
   "ul",
   "var",
   "wbr",
-])
+]);
 
 // Attributes that can carry executable code
-const UNSAFE_ATTR_RE = /^on/i
+const UNSAFE_ATTR_RE = /^on/i;
 
 /**
  * Fallback tag-stripping sanitizer for environments without the Sanitizer API.
@@ -116,36 +116,36 @@ const UNSAFE_ATTR_RE = /^on/i
  * and blocks javascript:/data: URLs in href/src/action attributes.
  */
 function fallbackSanitize(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html")
-  sanitizeNode(doc.body)
-  return doc.body.innerHTML
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  sanitizeNode(doc.body);
+  return doc.body.innerHTML;
 }
 
 /** Strip unsafe attributes from a single element. */
 function stripUnsafeAttrs(el: Element): void {
-  const attrs = Array.from(el.attributes)
+  const attrs = Array.from(el.attributes);
   for (const attr of attrs) {
     if (UNSAFE_ATTR_RE.test(attr.name)) {
-      el.removeAttribute(attr.name)
+      el.removeAttribute(attr.name);
     } else if (URL_ATTRS.has(attr.name) && UNSAFE_URL_RE.test(attr.value)) {
-      el.removeAttribute(attr.name)
+      el.removeAttribute(attr.name);
     }
   }
 }
 
 function sanitizeNode(node: Node): void {
-  const children = Array.from(node.childNodes)
+  const children = Array.from(node.childNodes);
   for (const child of children) {
-    if (child.nodeType !== 1) continue
-    const el = child as Element
-    const tag = el.tagName.toLowerCase()
+    if (child.nodeType !== 1) continue;
+    const el = child as Element;
+    const tag = el.tagName.toLowerCase();
     if (!SAFE_TAGS.has(tag)) {
-      const text = document.createTextNode(el.textContent as string)
-      node.replaceChild(text, el)
-      continue
+      const text = document.createTextNode(el.textContent as string);
+      node.replaceChild(text, el);
+      continue;
     }
-    stripUnsafeAttrs(el)
-    sanitizeNode(el)
+    stripUnsafeAttrs(el);
+    sanitizeNode(el);
   }
 }
 
@@ -155,14 +155,14 @@ function sanitizeNode(node: Node): void {
  */
 export function sanitizeHtml(html: string): string {
   // User-provided sanitizer takes priority (e.g. DOMPurify)
-  if (_customSanitizer) return _customSanitizer(html)
+  if (_customSanitizer) return _customSanitizer(html);
   // DOM-based allowlist sanitizer — DOMParser is available in all browser targets.
   // sanitizeHtml is only called for innerHTML (DOM-only), so SSR fallback is not needed.
-  return fallbackSanitize(html)
+  return fallbackSanitize(html);
 }
 
 // Matches onClick, onInput, onMouseEnter, etc.
-const EVENT_RE = /^on[A-Z]/
+const EVENT_RE = /^on[A-Z]/;
 
 /**
  * Apply all props to a DOM element.
@@ -170,26 +170,26 @@ const EVENT_RE = /^on[A-Z]/
  * Uses for-in instead of Object.keys() to avoid allocating a keys array.
  */
 export function applyProps(el: Element, props: Props): Cleanup | null {
-  let first: Cleanup | null = null
-  let cleanups: Cleanup[] | null = null
+  let first: Cleanup | null = null;
+  let cleanups: Cleanup[] | null = null;
   for (const key in props) {
-    if (key === "key" || key === "ref" || key === "children") continue
-    const c = applyProp(el, key, props[key])
+    if (key === "key" || key === "ref" || key === "children") continue;
+    const c = applyProp(el, key, props[key]);
     if (c) {
       if (!first) {
-        first = c
+        first = c;
       } else if (!cleanups) {
-        cleanups = [first, c]
+        cleanups = [first, c];
       } else {
-        cleanups.push(c)
+        cleanups.push(c);
       }
     }
   }
   if (cleanups)
     return () => {
-      for (const c of cleanups) c()
-    }
-  return first
+      for (const c of cleanups) c();
+    };
+  return first;
 }
 
 /**
@@ -208,118 +208,118 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
       console.warn(
         `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
           `Expected a function. Did you mean ${key}={() => ...}?`,
-      )
+      );
     }
-    return null
+    return null;
   }
-  const eventName = key[2]?.toLowerCase() + key.slice(3)
-  const handler = value as EventListener
+  const eventName = key[2]?.toLowerCase() + key.slice(3);
+  const handler = value as EventListener;
 
   if (DELEGATED_EVENTS.has(eventName)) {
-    const prop = delegatedPropName(eventName)
-    ;(el as unknown as Record<string, unknown>)[prop] = (e: Event) => batch(() => handler(e))
+    const prop = delegatedPropName(eventName);
+    (el as unknown as Record<string, unknown>)[prop] = (e: Event) => batch(() => handler(e));
     return () => {
-      ;(el as unknown as Record<string, unknown>)[prop] = undefined
-    }
+      (el as unknown as Record<string, unknown>)[prop] = undefined;
+    };
   }
 
-  const batched: EventListener = (e) => batch(() => handler(e))
-  el.addEventListener(eventName, batched)
-  return () => el.removeEventListener(eventName, batched)
+  const batched: EventListener = (e) => batch(() => handler(e));
+  el.addEventListener(eventName, batched);
+  return () => el.removeEventListener(eventName, batched);
 }
 
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
   // Event listener: onClick → "click"
-  if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
+  if (EVENT_RE.test(key)) return applyEventProp(el, key, value);
 
   // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer
   if (key === "innerHTML") {
     if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === "function") {
-      ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(value as string)
+      (el as HTMLElement & { setHTML: (h: string) => void }).setHTML(value as string);
     } else {
-      ;(el as HTMLElement).innerHTML = sanitizeHtml(value as string)
+      (el as HTMLElement).innerHTML = sanitizeHtml(value as string);
     }
-    return null
+    return null;
   }
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
   if (key === "dangerouslySetInnerHTML") {
     if (__DEV__) {
       console.warn(
         "[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.",
-      )
+      );
     }
-    ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
-    return null
+    (el as HTMLElement).innerHTML = (value as { __html: string }).__html;
+    return null;
   }
 
   // Reactive prop — function that returns the actual value
   // Uses renderEffect (lighter than effect — no scope registration, no WeakMap)
   // since lifecycle is managed by mountElement's cleanup array.
   if (typeof value === "function") {
-    const dispose = renderEffect(() => setStaticProp(el, key, (value as () => unknown)()))
-    return dispose
+    const dispose = renderEffect(() => setStaticProp(el, key, (value as () => unknown)()));
+    return dispose;
   }
 
-  setStaticProp(el, key, value)
-  return null
+  setStaticProp(el, key, value);
+  return null;
 }
 
 // Attributes that carry URLs and must be guarded against javascript:/data: injection.
-const URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"])
-const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
+const URL_ATTRS = new Set(["href", "src", "action", "formaction", "poster", "cite", "data"]);
+const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i;
 
 /** Apply a style prop (string or object). */
 function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === "string") {
-    el.style.cssText = value
+    el.style.cssText = value;
   } else if (value != null && typeof value === "object") {
-    const obj = value as Record<string, unknown>
+    const obj = value as Record<string, unknown>;
     for (const k in obj) {
-      const css = normalizeStyleValue(k, obj[k])
-      el.style.setProperty(k.startsWith("--") ? k : toKebabCase(k), css)
+      const css = normalizeStyleValue(k, obj[k]);
+      el.style.setProperty(k.startsWith("--") ? k : toKebabCase(k), css);
     }
   }
 }
 
 function applyClassProp(el: Element, value: unknown): void {
-  const resolved = typeof value === "string" ? value : cx(value as ClassValue)
-  el.setAttribute("class", resolved || "")
+  const resolved = typeof value === "string" ? value : cx(value as ClassValue);
+  el.setAttribute("class", resolved || "");
 }
 
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (URL_ATTRS.has(key) && typeof value === "string" && UNSAFE_URL_RE.test(value)) {
     if (__DEV__) {
-      console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
+      console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`);
     }
-    return
+    return;
   }
 
   if (key === "class" || key === "className") {
-    applyClassProp(el, value)
-    return
+    applyClassProp(el, value);
+    return;
   }
 
   if (key === "style") {
-    applyStyleProp(el as HTMLElement, value)
-    return
+    applyStyleProp(el as HTMLElement, value);
+    return;
   }
 
   if (value == null) {
-    el.removeAttribute(key)
-    return
+    el.removeAttribute(key);
+    return;
   }
 
   if (typeof value === "boolean") {
-    if (value) el.setAttribute(key, "")
-    else el.removeAttribute(key)
-    return
+    if (value) el.setAttribute(key, "");
+    else el.removeAttribute(key);
+    return;
   }
 
   if (key in el) {
-    ;(el as unknown as Record<string, unknown>)[key] = value
-    return
+    (el as unknown as Record<string, unknown>)[key] = value;
+    return;
   }
 
-  el.setAttribute(key, String(value))
+  el.setAttribute(key, String(value));
 }

@@ -10,18 +10,23 @@ description: JSX reactive transform that wraps dynamic expressions in reactive g
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/compiler
 ```
+
 ```bash [bun]
 bun add @pyreon/compiler
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/compiler
 ```
+
 ```bash [yarn]
 yarn add @pyreon/compiler
 ```
+
 :::
 
 Most users do not need to install the compiler directly. It is used internally by `@pyreon/vite-plugin`. Install it directly only if you are building a custom build tool integration.
@@ -121,10 +126,10 @@ Children in expression containers on components are still wrapped, since the run
 
 Certain props are always excluded from wrapping regardless of their content:
 
-| Prop | Reason |
-|------|--------|
-| `key` | Used for reconciliation identity, not a DOM attribute |
-| `ref` | A callback ref or ref object, not a reactive value |
+| Prop                                      | Reason                                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| `key`                                     | Used for reconciliation identity, not a DOM attribute                       |
+| `ref`                                     | A callback ref or ref object, not a reactive value                          |
 | `onClick`, `onInput`, `onMouseEnter`, ... | Event handlers (any prop matching `/^on[A-Z]/`) are callbacks, not reactive |
 
 ```tsx
@@ -173,13 +178,13 @@ Fully static JSX expressions inside expression containers are hoisted to module 
 ```tsx
 // Input
 function App() {
-  return <div>{<span>Hello</span>}</div>
+  return <div>{<span>Hello</span>}</div>;
 }
 
 // Output
-const _$h0 = /*@__PURE__*/ <span>Hello</span>
+const _$h0 = /*@__PURE__*/ <span>Hello</span>;
 function App() {
-  return <div>{_$h0}</div>
+  return <div>{_$h0}</div>;
 }
 ```
 
@@ -236,36 +241,40 @@ JSX element trees with two or more DOM elements (no components, no spread attrib
 // Input
 <div class="box">
   <span>{text()}</span>
-</div>
+</div>;
 
 // Output
 import { _tpl } from "@pyreon/runtime-dom";
 import { _bind } from "@pyreon/reactivity";
 
-_tpl("<div class=\"box\"><span></span></div>", (__root) => {
-  const __e0 = __root.children[0]
-  const __t1 = document.createTextNode("")
-  __e0.appendChild(__t1)
-  const __d0 = _bind(() => { __t1.data = text() })
-  return () => { __d0() }
-})
+_tpl('<div class="box"><span></span></div>', (__root) => {
+  const __e0 = __root.children[0];
+  const __t1 = document.createTextNode("");
+  __e0.appendChild(__t1);
+  const __d0 = _bind(() => {
+    __t1.data = text();
+  });
+  return () => {
+    __d0();
+  };
+});
 ```
 
 ### Eligibility Rules
 
 A JSX tree is eligible for template emission when:
 
-| Condition | Eligible? | Reason |
-|-----------|-----------|--------|
-| 2+ DOM elements, all lowercase tags | Yes | Pure DOM tree |
-| Single element (`<div>text</div>`) | No | Not enough elements to benefit |
-| Contains component (`<MyComp />`) | No | Components need runtime instantiation |
-| Has spread attributes (`&#123;...props&#125;`) | No | Spread requires dynamic prop application |
-| Has `key` prop | No | Keyed elements need reconciliation metadata |
-| Contains fragment child (`<>...</>`) | No | Fragment breaks DOM structure assumptions |
-| Mixed element + expression children | No | `childNodes` indexing becomes unreliable |
-| Multiple expression children in same parent | No | Only single `textContent` per parent supported |
-| Expression child containing nested JSX | No | Too complex for template codegen |
+| Condition                                      | Eligible? | Reason                                         |
+| ---------------------------------------------- | --------- | ---------------------------------------------- |
+| 2+ DOM elements, all lowercase tags            | Yes       | Pure DOM tree                                  |
+| Single element (`<div>text</div>`)             | No        | Not enough elements to benefit                 |
+| Contains component (`<MyComp />`)              | No        | Components need runtime instantiation          |
+| Has spread attributes (`&#123;...props&#125;`) | No        | Spread requires dynamic prop application       |
+| Has `key` prop                                 | No        | Keyed elements need reconciliation metadata    |
+| Contains fragment child (`<>...</>`)           | No        | Fragment breaks DOM structure assumptions      |
+| Mixed element + expression children            | No        | `childNodes` indexing becomes unreliable       |
+| Multiple expression children in same parent    | No        | Only single `textContent` per parent supported |
+| Expression child containing nested JSX         | No        | Too complex for template codegen               |
 
 ### What Gets Baked Into HTML
 
@@ -285,13 +294,15 @@ Static parts of the template are baked directly into the HTML string, avoiding a
 The compiler handles JSX-to-HTML attribute mapping automatically:
 
 | JSX Attribute | HTML Attribute |
-|---------------|---------------|
-| `className` | `class` |
-| `htmlFor` | `for` |
+| ------------- | -------------- |
+| `className`   | `class`        |
+| `htmlFor`     | `for`          |
 
 ```tsx
 // Input
-<div className="box"><label htmlFor="name">Name</label></div>
+<div className="box">
+  <label htmlFor="name">Name</label>
+</div>
 
 // HTML string: <div class="box"><label for="name">Name</label></div>
 ```
@@ -304,45 +315,58 @@ Dynamic attributes and text content are handled by the bind function:
 
 ```tsx
 // Input
-<div class={cls()}><span>{name()}</span></div>
+<div class={cls()}>
+  <span>{name()}</span>
+</div>;
 
 // Output bind function:
 (__root) => {
-  const __e0 = __root.children[0]
-  const __d0 = _bind(() => { __root.className = cls() })
-  const __t1 = document.createTextNode("")
-  __e0.appendChild(__t1)
-  const __d1 = _bind(() => { __t1.data = name() })
-  return () => { __d0(); __d1() }
-}
+  const __e0 = __root.children[0];
+  const __d0 = _bind(() => {
+    __root.className = cls();
+  });
+  const __t1 = document.createTextNode("");
+  __e0.appendChild(__t1);
+  const __d1 = _bind(() => {
+    __t1.data = name();
+  });
+  return () => {
+    __d0();
+    __d1();
+  };
+};
 ```
 
 **One-time static expressions** (no calls, so not reactive) are set directly without `_bind()`:
 
 ```tsx
 // Input
-<div><span>{label}</span></div>
+<div>
+  <span>{label}</span>
+</div>;
 
 // Output bind function:
 (__root) => {
-  const __e0 = __root.children[0]
-  __e0.textContent = label
-  return null
-}
+  const __e0 = __root.children[0];
+  __e0.textContent = label;
+  return null;
+};
 ```
 
 **Event handlers** are converted to `addEventListener` calls:
 
 ```tsx
 // Input
-<div><button onClick={handler}>click</button></div>
+<div>
+  <button onClick={handler}>click</button>
+</div>;
 
 // Output bind function:
 (__root) => {
-  const __e0 = __root.children[0]
-  __e0.addEventListener("click", handler)
-  return null
-}
+  const __e0 = __root.children[0];
+  __e0.addEventListener("click", handler);
+  return null;
+};
 ```
 
 The event name is derived by lowering the third character: `onClick` becomes `"click"`, `onMouseEnter` becomes `"mouseEnter"`.
@@ -351,14 +375,16 @@ The event name is derived by lowering the third character: `onClick` becomes `"c
 
 ```tsx
 // Input
-<div><input ref={myRef} /></div>
+<div>
+  <input ref={myRef} />
+</div>;
 
 // Output bind function:
 (__root) => {
-  const __e0 = __root.children[0]
-  myRef.current = __e0
-  return null
-}
+  const __e0 = __root.children[0];
+  myRef.current = __e0;
+  return null;
+};
 ```
 
 ### Reactive Text Nodes
@@ -366,9 +392,11 @@ The event name is derived by lowering the third character: `onClick` becomes `"c
 For dynamic text content, the compiler creates a persistent `TextNode` and updates its `.data` property rather than setting `.textContent` on the parent. This avoids destroying and recreating the text node on every reactive update:
 
 ```tsx
-const __t0 = document.createTextNode("")
-__e0.appendChild(__t0)
-const __d0 = _bind(() => { __t0.data = name() })
+const __t0 = document.createTextNode("");
+__e0.appendChild(__t0);
+const __d0 = _bind(() => {
+  __t0.data = name();
+});
 ```
 
 ### Cleanup / Disposal
@@ -377,14 +405,21 @@ The bind function returns a cleanup function that disposes all reactive bindings
 
 ```tsx
 // No dynamic parts → null cleanup
-_tpl("<div><span>static</span></div>", () => null)
+_tpl("<div><span>static</span></div>", () => null);
 
 // Multiple dynamic parts → composed cleanup
 _tpl("...", (__root) => {
-  const __d0 = _bind(() => { __root.className = cls() })
-  const __d1 = _bind(() => { __t0.data = name() })
-  return () => { __d0(); __d1() }
-})
+  const __d0 = _bind(() => {
+    __root.className = cls();
+  });
+  const __d1 = _bind(() => {
+    __t0.data = name();
+  });
+  return () => {
+    __d0();
+    __d1();
+  };
+});
 ```
 
 ### Element Access Paths
@@ -393,7 +428,10 @@ The bind function accesses child elements using `children[]` indexing from the r
 
 ```tsx
 // Input
-<div><span>{a()}</span><em>{b()}</em></div>
+<div>
+  <span>{a()}</span>
+  <em>{b()}</em>
+</div>
 
 // Paths:
 // __root              → <div>
@@ -405,7 +443,13 @@ For deeply nested structures, paths chain through each level:
 
 ```tsx
 // Input
-<table><tbody><tr><td>{text()}</td></tr></tbody></table>
+<table>
+  <tbody>
+    <tr>
+      <td>{text()}</td>
+    </tr>
+  </tbody>
+</table>
 
 // Paths chain: __root.children[0].children[0].children[0] → <td>
 ```
@@ -416,7 +460,10 @@ HTML void elements (`br`, `img`, `input`, `hr`, etc.) are emitted without closin
 
 ```tsx
 // Input
-<div><br /><span>text</span></div>
+<div>
+  <br />
+  <span>text</span>
+</div>
 
 // HTML string: "<div><br><span>text</span></div>"
 // Note: <br> not </br>
@@ -454,21 +501,31 @@ Here is a realistic benchmark-style table row showing all template features work
 <tr class={cls()}>
   <td class="id">{String(row.id)}</td>
   <td>{row.label()}</td>
-</tr>
+</tr>;
 
 // Output
-_tpl("<tr><td class=\"id\"></td><td></td></tr>", (__root) => {
-  const __e0 = __root.children[0]
-  const __e1 = __root.children[1]
-  const __d0 = _bind(() => { __root.className = cls() })
-  const __t2 = document.createTextNode("")
-  __e0.appendChild(__t2)
-  const __d1 = _bind(() => { __t2.data = String(row.id) })
-  const __t3 = document.createTextNode("")
-  __e1.appendChild(__t3)
-  const __d2 = _bind(() => { __t3.data = row.label() })
-  return () => { __d0(); __d1(); __d2() }
-})
+_tpl('<tr><td class="id"></td><td></td></tr>', (__root) => {
+  const __e0 = __root.children[0];
+  const __e1 = __root.children[1];
+  const __d0 = _bind(() => {
+    __root.className = cls();
+  });
+  const __t2 = document.createTextNode("");
+  __e0.appendChild(__t2);
+  const __d1 = _bind(() => {
+    __t2.data = String(row.id);
+  });
+  const __t3 = document.createTextNode("");
+  __e1.appendChild(__t3);
+  const __d2 = _bind(() => {
+    __t3.data = row.label();
+  });
+  return () => {
+    __d0();
+    __d1();
+    __d2();
+  };
+});
 ```
 
 Static class `"id"` is baked into the HTML. Dynamic class `cls()` and text children `String(row.id)` / `row.label()` use `_bind()`.
@@ -497,10 +554,10 @@ Without `by`, the runtime falls back to index-based diffing, which is slower and
 
 ```ts
 interface CompilerWarning {
-  message: string
-  line: number      // 1-based line number
-  column: number    // 0-based column number
-  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop"
+  message: string;
+  line: number; // 1-based line number
+  column: number; // 0-based column number
+  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop";
 }
 ```
 
@@ -511,13 +568,13 @@ interface CompilerWarning {
 The main API. Transforms JSX source code, applying reactive wrapping, static hoisting, and template emission.
 
 ```ts
-import { transformJSX } from "@pyreon/compiler"
+import { transformJSX } from "@pyreon/compiler";
 
-const result = transformJSX(code, "MyComponent.tsx")
+const result = transformJSX(code, "MyComponent.tsx");
 
-console.log(result.code)           // Transformed source code
-console.log(result.usesTemplates)  // true if _tpl() was emitted
-console.log(result.warnings)       // Array of compiler warnings
+console.log(result.code); // Transformed source code
+console.log(result.usesTemplates); // true if _tpl() was emitted
+console.log(result.warnings); // Array of compiler warnings
 ```
 
 **Parameters:**
@@ -532,11 +589,11 @@ console.log(result.warnings)       // Array of compiler warnings
 ```ts
 interface TransformResult {
   /** Transformed source code (JSX preserved, only expression containers modified) */
-  code: string
+  code: string;
   /** Whether the output uses _tpl/_bind template helpers (needs auto-import) */
-  usesTemplates?: boolean
+  usesTemplates?: boolean;
   /** Compiler warnings for common mistakes */
-  warnings: CompilerWarning[]
+  warnings: CompilerWarning[];
 }
 ```
 
@@ -545,113 +602,111 @@ interface TransformResult {
 ```ts
 interface CompilerWarning {
   /** Warning message */
-  message: string
+  message: string;
   /** Source file line number (1-based) */
-  line: number
+  line: number;
   /** Source file column number (0-based) */
-  column: number
+  column: number;
   /** Warning code for filtering */
-  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop"
+  code: "signal-call-in-jsx" | "missing-key-on-for" | "signal-in-static-prop";
 }
 ```
 
 ## Complete Transform Rules Reference
 
-| Pattern | Transform | Reason |
-|---------|-----------|--------|
-| `<div>&#123;expr()&#125;</div>` | `&#123;() => expr()&#125;` | Dynamic child with signal read |
-| `<div :class='expr()'>` | `class=&#123;() => expr()&#125;` | Dynamic prop with signal read |
-| `<div>&#123;a() ? b : c&#125;</div>` | `&#123;() => a() ? b : c&#125;` | Ternary containing a call |
-| `<div>&#123;show() && x&#125;</div>` | `&#123;() => show() && x&#125;` | Logical expression containing a call |
-| `<div>&#123;count() + 1&#125;</div>` | `&#123;() => count() + 1&#125;` | Binary expression containing a call |
-| `` <div>&#123;`hi ${name()}`&#125;</div> `` | `` &#123;() => `hi ${name()}`&#125; `` | Template literal containing a call |
-| `<div>&#123;obj.get()&#125;</div>` | `&#123;() => obj.get()&#125;` | Method call |
-| `` <div>&#123;css`...`&#125;</div> `` | `{() => css`...`}` | Tagged template expression |
-| `<button :onClick='fn'>` | Unchanged | Event handler |
-| `<div :key='id'>` | Unchanged | Key prop |
-| `<div :ref='r'>` | Unchanged | Ref prop |
-| `<div>&#123;() => expr()&#125;</div>` | Unchanged | Already wrapped |
-| `<div>&#123;"literal"&#125;</div>` | Unchanged | Static string |
-| `<div>&#123;42&#125;</div>` | Unchanged | Static number |
-| `<div>&#123;true&#125;</div>` | Unchanged | Static boolean |
-| `<div>&#123;null&#125;</div>` | Unchanged | Static null |
-| `<div>&#123;undefined&#125;</div>` | Unchanged | Static undefined |
-| `<div>&#123;identifier&#125;</div>` | Unchanged | Plain identifier (no call) |
-| `<div>&#123;&#123; x: 1 &#125;&#125;</div>` | Unchanged | Object literal (no call) |
-| `<div>&#123;[1, 2]&#125;</div>` | Unchanged | Array literal (no call) |
-| `<div>&#123;a + b&#125;</div>` | Unchanged | Binary expression (no call) |
-| `<div>&#123;a ? b : c&#125;</div>` | Unchanged | Ternary (no call) |
-| `<Comp :prop='expr()'>` | Unchanged | Component prop (not wrapped) |
-| `<div>&#123;<span>text</span>&#125;</div>` | Hoisted to module scope | Static JSX child |
-| `<div><span>&#123;t()&#125;</span></div>` | `_tpl(...)` call | Template-eligible tree (2+ elements) |
-| `<div &#123;...props&#125;>` | Unchanged | Spread left as-is |
+| Pattern                                     | Transform                            | Reason                               |
+| ------------------------------------------- | ------------------------------------ | ------------------------------------ |
+| `<div>&#123;expr()&#125;</div>`             | `&#123;() => expr()&#125;`           | Dynamic child with signal read       |
+| `<div :class='expr()'>`                     | `class=&#123;() => expr()&#125;`     | Dynamic prop with signal read        |
+| `<div>&#123;a() ? b : c&#125;</div>`        | `&#123;() => a() ? b : c&#125;`      | Ternary containing a call            |
+| `<div>&#123;show() && x&#125;</div>`        | `&#123;() => show() && x&#125;`      | Logical expression containing a call |
+| `<div>&#123;count() + 1&#125;</div>`        | `&#123;() => count() + 1&#125;`      | Binary expression containing a call  |
+| ``<div>&#123;`hi ${name()}`&#125;</div>``   | ``&#123;() => `hi ${name()}`&#125;`` | Template literal containing a call   |
+| `<div>&#123;obj.get()&#125;</div>`          | `&#123;() => obj.get()&#125;`        | Method call                          |
+| ``<div>&#123;css`...`&#125;</div>``         | `{() => css`...`}`                   | Tagged template expression           |
+| `<button :onClick='fn'>`                    | Unchanged                            | Event handler                        |
+| `<div :key='id'>`                           | Unchanged                            | Key prop                             |
+| `<div :ref='r'>`                            | Unchanged                            | Ref prop                             |
+| `<div>&#123;() => expr()&#125;</div>`       | Unchanged                            | Already wrapped                      |
+| `<div>&#123;"literal"&#125;</div>`          | Unchanged                            | Static string                        |
+| `<div>&#123;42&#125;</div>`                 | Unchanged                            | Static number                        |
+| `<div>&#123;true&#125;</div>`               | Unchanged                            | Static boolean                       |
+| `<div>&#123;null&#125;</div>`               | Unchanged                            | Static null                          |
+| `<div>&#123;undefined&#125;</div>`          | Unchanged                            | Static undefined                     |
+| `<div>&#123;identifier&#125;</div>`         | Unchanged                            | Plain identifier (no call)           |
+| `<div>&#123;&#123; x: 1 &#125;&#125;</div>` | Unchanged                            | Object literal (no call)             |
+| `<div>&#123;[1, 2]&#125;</div>`             | Unchanged                            | Array literal (no call)              |
+| `<div>&#123;a + b&#125;</div>`              | Unchanged                            | Binary expression (no call)          |
+| `<div>&#123;a ? b : c&#125;</div>`          | Unchanged                            | Ternary (no call)                    |
+| `<Comp :prop='expr()'>`                     | Unchanged                            | Component prop (not wrapped)         |
+| `<div>&#123;<span>text</span>&#125;</div>`  | Hoisted to module scope              | Static JSX child                     |
+| `<div><span>&#123;t()&#125;</span></div>`   | `_tpl(...)` call                     | Template-eligible tree (2+ elements) |
+| `<div &#123;...props&#125;>`                | Unchanged                            | Spread left as-is                    |
 
 ## Integration with Vite Plugin
 
 The compiler is used automatically by `@pyreon/vite-plugin`. For custom integrations, call `transformJSX` in your build tool's transform hook:
 
 ```ts
-import { transformJSX } from "@pyreon/compiler"
+import { transformJSX } from "@pyreon/compiler";
 
 function myBuildPlugin() {
   return {
     name: "my-pyreon-transform",
     transform(code: string, id: string) {
       if (id.endsWith(".tsx") || id.endsWith(".jsx") || id.endsWith(".pyreon")) {
-        const result = transformJSX(code, id)
+        const result = transformJSX(code, id);
 
         // Log any warnings
         for (const warning of result.warnings) {
-          console.warn(
-            `[pyreon] ${id}:${warning.line}:${warning.column} ${warning.message}`
-          )
+          console.warn(`[pyreon] ${id}:${warning.line}:${warning.column} ${warning.message}`);
         }
 
-        return { code: result.code, map: null }
+        return { code: result.code, map: null };
       }
     },
-  }
+  };
 }
 ```
 
 ### Webpack Loader Example
 
 ```ts
-import { transformJSX } from "@pyreon/compiler"
+import { transformJSX } from "@pyreon/compiler";
 
 export default function pyreonLoader(source: string) {
-  const result = transformJSX(source, this.resourcePath)
+  const result = transformJSX(source, this.resourcePath);
 
   for (const warning of result.warnings) {
-    this.emitWarning(new Error(warning.message))
+    this.emitWarning(new Error(warning.message));
   }
 
-  return result.code
+  return result.code;
 }
 ```
 
 ### Rollup Plugin Example
 
 ```ts
-import { transformJSX } from "@pyreon/compiler"
+import { transformJSX } from "@pyreon/compiler";
 
 export default function pyreonPlugin() {
   return {
     name: "pyreon-compiler",
     transform(code: string, id: string) {
-      if (!/\.[jt]sx$/.test(id)) return null
+      if (!/\.[jt]sx$/.test(id)) return null;
 
-      const result = transformJSX(code, id)
+      const result = transformJSX(code, id);
 
       if (result.warnings.length > 0) {
         for (const w of result.warnings) {
-          this.warn({ message: w.message, id, pos: { line: w.line, column: w.column } })
+          this.warn({ message: w.message, id, pos: { line: w.line, column: w.column } });
         }
       }
 
-      return { code: result.code, map: null }
+      return { code: result.code, map: null };
     },
-  }
+  };
 }
 ```
 
@@ -701,8 +756,8 @@ The implementation is a single recursive `walk()` function that visits every nod
 
 ## Exports Summary
 
-| Export | Type | Description |
-|--------|------|-------------|
-| `transformJSX` | Function | Transform JSX source code with Pyreon's reactive compiler |
-| `TransformResult` | Type | Interface for the transform output |
-| `CompilerWarning` | Type | Interface for compiler warning objects |
+| Export            | Type     | Description                                               |
+| ----------------- | -------- | --------------------------------------------------------- |
+| `transformJSX`    | Function | Transform JSX source code with Pyreon's reactive compiler |
+| `TransformResult` | Type     | Interface for the transform output                        |
+| `CompilerWarning` | Type     | Interface for compiler warning objects                    |

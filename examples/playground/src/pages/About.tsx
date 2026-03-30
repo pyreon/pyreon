@@ -13,5 +13,5 @@ export function About() {
         <li>📦 Zero runtime VDOM overhead</li>
       </ul>
     </div>
-  )
+  );
 }

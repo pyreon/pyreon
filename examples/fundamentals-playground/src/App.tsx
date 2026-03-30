@@ -1,20 +1,20 @@
-import { signal } from "@pyreon/reactivity"
-import { ChartDemo } from "./demos/ChartDemo"
-import { CodeDemo } from "./demos/CodeDemo"
-import { DashboardDemo } from "./demos/DashboardDemo"
-import { DocumentDemo } from "./demos/DocumentDemo"
-import { FormDemo } from "./demos/FormDemo"
-import { HotkeysDemo } from "./demos/HotkeysDemo"
-import { I18nDemo } from "./demos/I18nDemo"
-import { MachineDemo } from "./demos/MachineDemo"
-import { PermissionsDemo } from "./demos/PermissionsDemo"
-import { QueryDemo } from "./demos/QueryDemo"
-import { StateTreeDemo } from "./demos/StateTreeDemo"
-import { StorageDemo } from "./demos/StorageDemo"
-import { StoreDemo } from "./demos/StoreDemo"
-import { TableDemo } from "./demos/TableDemo"
-import { ValidationDemo } from "./demos/ValidationDemo"
-import { VirtualDemo } from "./demos/VirtualDemo"
+import { signal } from "@pyreon/reactivity";
+import { ChartDemo } from "./demos/ChartDemo";
+import { CodeDemo } from "./demos/CodeDemo";
+import { DashboardDemo } from "./demos/DashboardDemo";
+import { DocumentDemo } from "./demos/DocumentDemo";
+import { FormDemo } from "./demos/FormDemo";
+import { HotkeysDemo } from "./demos/HotkeysDemo";
+import { I18nDemo } from "./demos/I18nDemo";
+import { MachineDemo } from "./demos/MachineDemo";
+import { PermissionsDemo } from "./demos/PermissionsDemo";
+import { QueryDemo } from "./demos/QueryDemo";
+import { StateTreeDemo } from "./demos/StateTreeDemo";
+import { StorageDemo } from "./demos/StorageDemo";
+import { StoreDemo } from "./demos/StoreDemo";
+import { TableDemo } from "./demos/TableDemo";
+import { ValidationDemo } from "./demos/ValidationDemo";
+import { VirtualDemo } from "./demos/VirtualDemo";
 
 const tabs = [
   { id: "dashboard", label: "📊 Dashboard", component: DashboardDemo },
@@ -33,9 +33,9 @@ const tabs = [
   { id: "hotkeys", label: "Hotkeys", component: HotkeysDemo },
   { id: "permissions", label: "Permissions", component: PermissionsDemo },
   { id: "machine", label: "Machine", component: MachineDemo },
-] as const
+] as const;
 
-const activeTab = signal(tabs[0]!.id)
+const activeTab = signal(tabs[0]!.id);
 
 export function App() {
   return (
@@ -57,14 +57,14 @@ export function App() {
       </nav>
       <main class="content">
         {tabs.map((tab) => {
-          const Component = tab.component
+          const Component = tab.component;
           return (
             <div key={tab.id} style={() => (activeTab() === tab.id ? "" : "display:none")}>
               <Component />
             </div>
-          )
+          );
         })}
       </main>
     </div>
-  )
+  );
 }

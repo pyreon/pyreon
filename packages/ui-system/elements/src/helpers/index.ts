@@ -1,4 +1,4 @@
-import Content from "./Content"
-import Wrapper from "./Wrapper"
+import Content from "./Content";
+import Wrapper from "./Wrapper";
 
-export { Content, Wrapper }
+export { Content, Wrapper };

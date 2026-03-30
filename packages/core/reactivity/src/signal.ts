@@ -1,102 +1,102 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
-declare const process: { env: { NODE_ENV?: string } } | undefined
+declare const process: { env: { NODE_ENV?: string } } | undefined;
 
-const __DEV__ = typeof process !== "undefined" && process?.env?.NODE_ENV !== "production"
+const __DEV__ = typeof process !== "undefined" && process?.env?.NODE_ENV !== "production";
 
-import { enqueuePendingNotification, isBatching } from "./batch"
-import { _notifyTraceListeners, isTracing } from "./debug"
-import { notifySubscribers, trackSubscriber } from "./tracking"
+import { enqueuePendingNotification, isBatching } from "./batch";
+import { _notifyTraceListeners, isTracing } from "./debug";
+import { notifySubscribers, trackSubscriber } from "./tracking";
 
 export interface SignalDebugInfo<T> {
   /** Signal name (set via options or inferred) */
-  name: string | undefined
+  name: string | undefined;
   /** Current value (same as peek()) */
-  value: T
+  value: T;
   /** Number of active subscribers */
-  subscriberCount: number
+  subscriberCount: number;
 }
 
 /**
  * Read-only reactive value — the common interface that both Signal and Computed satisfy.
  * Use this as the parameter type when a function only needs to read a reactive value.
  */
-export type ReadonlySignal<T> = () => T
+export type ReadonlySignal<T> = () => T;
 
 export interface Signal<T> {
-  (): T
+  (): T;
   /** Read the current value WITHOUT registering a reactive dependency. */
-  peek(): T
-  set(value: T): void
-  update(fn: (current: T) => T): void
+  peek(): T;
+  set(value: T): void;
+  update(fn: (current: T) => T): void;
   /**
    * Subscribe a static listener directly — no effect overhead (no withTracking,
    * no cleanupEffect, no effectDeps WeakMap). Use when the dependency is fixed
    * and dynamic re-tracking is not needed.
    * Returns a disposer that removes the subscription.
    */
-  subscribe(listener: () => void): () => void
+  subscribe(listener: () => void): () => void;
   /**
    * Register a direct updater — even lighter than subscribe().
    * Uses a flat array instead of Set. Disposal nulls the slot (no Set.delete).
    * Intended for compiler-emitted DOM bindings (_bindText, _bindDirect).
    * Returns a disposer that nulls the slot.
    */
-  direct(updater: () => void): () => void
+  direct(updater: () => void): () => void;
   /** Debug name — useful for devtools and logging. */
-  label: string | undefined
+  label: string | undefined;
   /** Returns a snapshot of the signal's debug info (value, name, subscriber count). */
-  debug(): SignalDebugInfo<T>
+  debug(): SignalDebugInfo<T>;
 }
 
 export interface SignalOptions {
   /** Debug name for this signal — shows up in devtools and debug() output. */
-  name?: string
+  name?: string;
 }
 
 // Internal shape of a signal function — state stored as properties on the
 // function object so methods can be shared via assignment (not per-signal closures).
 interface SignalFn<T> {
-  (): T
+  (): T;
   /** @internal current value */
-  _v: T
+  _v: T;
   /** @internal subscriber set (lazily allocated by trackSubscriber) */
-  _s: Set<() => void> | null
+  _s: Set<() => void> | null;
   /** @internal direct updaters array — compiler-emitted DOM updaters (lazily allocated) */
-  _d: ((() => void) | null)[] | null
-  peek(): T
-  set(value: T): void
-  update(fn: (current: T) => T): void
-  subscribe(listener: () => void): () => void
+  _d: ((() => void) | null)[] | null;
+  peek(): T;
+  set(value: T): void;
+  update(fn: (current: T) => T): void;
+  subscribe(listener: () => void): () => void;
   /** Register a direct updater — lighter than subscribe, uses array index disposal. */
-  direct(updater: () => void): () => void
-  label: string | undefined
-  debug(): SignalDebugInfo<T>
+  direct(updater: () => void): () => void;
+  label: string | undefined;
+  debug(): SignalDebugInfo<T>;
 }
 
 // Shared method implementations — defined once, assigned to every signal.
 // Uses `this` binding (signal methods are always called as `signal.method()`).
 function _peek(this: SignalFn<unknown>) {
-  return this._v
+  return this._v;
 }
 
 function _set(this: SignalFn<unknown>, newValue: unknown) {
-  if (Object.is(this._v, newValue)) return
-  const prev = this._v
-  this._v = newValue
-  if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue)
+  if (Object.is(this._v, newValue)) return;
+  const prev = this._v;
+  this._v = newValue;
+  if (isTracing()) _notifyTraceListeners(this as unknown as Signal<unknown>, prev, newValue);
   // Direct updaters — flat array, no Set overhead, batch-aware
-  if (this._d) notifyDirect(this._d)
-  if (this._s) notifySubscribers(this._s)
+  if (this._d) notifyDirect(this._d);
+  if (this._s) notifySubscribers(this._s);
 }
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
-  _set.call(this, fn(this._v))
+  _set.call(this, fn(this._v));
 }
 
 function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
-  if (!this._s) this._s = new Set()
-  this._s.add(listener)
-  return () => this._s?.delete(listener)
+  if (!this._s) this._s = new Set();
+  this._s.add(listener);
+  return () => this._s?.delete(listener);
 }
 
 /**
@@ -105,13 +105,13 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
  * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
  */
 function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
-  if (!this._d) this._d = []
-  const arr = this._d
-  const idx = arr.length
-  arr.push(updater)
+  if (!this._d) this._d = [];
+  const arr = this._d;
+  const idx = arr.length;
+  arr.push(updater);
   return () => {
-    arr[idx] = null
-  }
+    arr[idx] = null;
+  };
 }
 
 /**
@@ -121,12 +121,12 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
 function notifyDirect(updaters: ((() => void) | null)[]): void {
   if (isBatching()) {
     for (let i = 0; i < updaters.length; i++) {
-      const fn = updaters[i]
-      if (fn) enqueuePendingNotification(fn)
+      const fn = updaters[i];
+      if (fn) enqueuePendingNotification(fn);
     }
   } else {
     for (let i = 0; i < updaters.length; i++) {
-      updaters[i]?.()
+      updaters[i]?.();
     }
   }
 }
@@ -136,7 +136,7 @@ function _debug(this: SignalFn<unknown>): SignalDebugInfo<unknown> {
     name: this.label,
     value: this._v,
     subscriberCount: this._s?.size ?? 0,
-  }
+  };
 }
 
 /**
@@ -156,22 +156,22 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
         "[Pyreon] signal() was called with an argument. " +
           "Use signal.set(value) or signal.update(fn) to write. " +
           "signal(value) only reads — the argument is ignored.",
-      )
+      );
     }
-    trackSubscriber(read as SignalFn<T>)
-    return read._v
-  }) as unknown as SignalFn<T>
+    trackSubscriber(read as SignalFn<T>);
+    return read._v;
+  }) as unknown as SignalFn<T>;
 
-  read._v = initialValue
-  read._s = null
-  read._d = null
-  read.peek = _peek as () => T
-  read.set = _set as (value: T) => void
-  read.update = _update as (fn: (current: T) => T) => void
-  read.subscribe = _subscribe as (listener: () => void) => () => void
-  read.direct = _directFn as (updater: () => void) => () => void
-  read.debug = _debug as () => SignalDebugInfo<T>
-  read.label = options?.name
+  read._v = initialValue;
+  read._s = null;
+  read._d = null;
+  read.peek = _peek as () => T;
+  read.set = _set as (value: T) => void;
+  read.update = _update as (fn: (current: T) => T) => void;
+  read.subscribe = _subscribe as (listener: () => void) => () => void;
+  read.direct = _directFn as (updater: () => void) => () => void;
+  read.debug = _debug as () => SignalDebugInfo<T>;
+  read.label = options?.name;
 
-  return read as unknown as Signal<T>
+  return read as unknown as Signal<T>;
 }

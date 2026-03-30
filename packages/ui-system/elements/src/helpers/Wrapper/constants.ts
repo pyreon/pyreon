@@ -7,4 +7,4 @@ export const INLINE_ELEMENTS_FLEX_FIX = {
   button: true,
   fieldset: true,
   legend: true,
-}
+};

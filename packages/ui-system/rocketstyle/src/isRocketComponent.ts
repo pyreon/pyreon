@@ -1,4 +1,4 @@
-export type IsRocketComponent = <T>(component: T) => boolean
+export type IsRocketComponent = <T>(component: T) => boolean;
 
 /** Runtime type guard — checks if a component was created by `rocketstyle()`. */
 const isRocketComponent: IsRocketComponent = (component) => {
@@ -7,10 +7,10 @@ const isRocketComponent: IsRocketComponent = (component) => {
     (typeof component === "object" || typeof component === "function") &&
     Object.hasOwn(component as object, "IS_ROCKETSTYLE")
   ) {
-    return true
+    return true;
   }
 
-  return false
-}
+  return false;
+};
 
-export default isRocketComponent
+export default isRocketComponent;

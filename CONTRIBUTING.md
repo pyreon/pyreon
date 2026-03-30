@@ -33,21 +33,21 @@ bun run lint
 
 Pyreon is a monorepo with packages under `packages/`:
 
-| Package | Description |
-|---|---|
-| `@pyreon/reactivity` | Signals, computed, effects, stores |
-| `@pyreon/core` | VNode, h(), Fragment, lifecycle, context, JSX |
-| `@pyreon/runtime-dom` | DOM renderer, mount, hydrate, transitions |
-| `@pyreon/compiler` | JSX transform, static hoisting, template emission |
-| `@pyreon/runtime-server` | renderToString, renderToStream |
-| `@pyreon/router` | Client and SSR routing |
-| `@pyreon/head` | Document head management |
-| `@pyreon/server` | SSR handler, SSG prerender, islands |
-| `@pyreon/vite-plugin` | Vite integration |
-| `@pyreon/react-compat` | React compatibility layer |
-| `@pyreon/preact-compat` | Preact compatibility layer |
-| `@pyreon/solid-compat` | SolidJS compatibility layer |
-| `@pyreon/vue-compat` | Vue 3 Composition API compatibility layer |
+| Package                  | Description                                       |
+| ------------------------ | ------------------------------------------------- |
+| `@pyreon/reactivity`     | Signals, computed, effects, stores                |
+| `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX     |
+| `@pyreon/runtime-dom`    | DOM renderer, mount, hydrate, transitions         |
+| `@pyreon/compiler`       | JSX transform, static hoisting, template emission |
+| `@pyreon/runtime-server` | renderToString, renderToStream                    |
+| `@pyreon/router`         | Client and SSR routing                            |
+| `@pyreon/head`           | Document head management                          |
+| `@pyreon/server`         | SSR handler, SSG prerender, islands               |
+| `@pyreon/vite-plugin`    | Vite integration                                  |
+| `@pyreon/react-compat`   | React compatibility layer                         |
+| `@pyreon/preact-compat`  | Preact compatibility layer                        |
+| `@pyreon/solid-compat`   | SolidJS compatibility layer                       |
+| `@pyreon/vue-compat`     | Vue 3 Composition API compatibility layer         |
 
 Each package resolves via `"bun": "./src/index.ts"` in exports — no build step needed during development.
 
@@ -62,6 +62,7 @@ Each package resolves via `"bun": "./src/index.ts"` in exports — no build step
 ### Suggesting Features
 
 Open a [discussion](https://github.com/pyreon/pyreon/discussions) or issue with:
+
 - The use case you're trying to solve
 - Your proposed API or approach
 - Any alternatives you've considered

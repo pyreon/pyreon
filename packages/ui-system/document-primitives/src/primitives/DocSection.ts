@@ -1,5 +1,5 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocSection = rocketstyle({
   dimensions: {
@@ -18,6 +18,6 @@ const DocSection = rocketstyle({
   .attrs<{ direction?: string; tag: string; _documentProps: { direction: string } }>((props) => ({
     tag: "div",
     _documentProps: { direction: props.direction ?? "column" },
-  }))
+  }));
 
-export default DocSection
+export default DocSection;

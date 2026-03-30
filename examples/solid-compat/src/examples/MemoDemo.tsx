@@ -1,10 +1,10 @@
-import { createMemo, createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createMemo, createSignal } from "solid-js";
+import Demo from "./Demo";
 
 export default function MemoDemo() {
-  const [count, setCount] = createSignal(1)
-  const doubled = createMemo(() => count() * 2)
-  const quadrupled = createMemo(() => doubled() * 2)
+  const [count, setCount] = createSignal(1);
+  const doubled = createMemo(() => count() * 2);
+  const quadrupled = createMemo(() => doubled() * 2);
 
   return (
     <Demo
@@ -25,5 +25,5 @@ const quadrupled = createMemo(() => doubled() * 2);
         Increment
       </button>
     </Demo>
-  )
+  );
 }

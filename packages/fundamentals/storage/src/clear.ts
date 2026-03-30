@@ -1,9 +1,9 @@
-import { getEntriesByBackend, getEntry, removeEntry } from "./registry"
-import { getWebStorage, isBrowser } from "./utils"
+import { getEntriesByBackend, getEntry, removeEntry } from "./registry";
+import { getWebStorage, isBrowser } from "./utils";
 
 // ─── Storage type mapping ────────────────────────────────────────────────────
 
-type StorageType = "local" | "session" | "cookie" | "indexeddb" | "all"
+type StorageType = "local" | "session" | "cookie" | "indexeddb" | "all";
 
 // ─── removeStorage ───────────────────────────────────────────────────────────
 
@@ -21,21 +21,21 @@ export function removeStorage(
   key: string,
   options?: { type?: "local" | "session" | "cookie" | "indexeddb" },
 ): void {
-  const type = options?.type ?? "local"
-  const entry = getEntry(type, key)
+  const type = options?.type ?? "local";
+  const entry = getEntry(type, key);
 
   if (entry) {
-    entry.signal.remove()
+    entry.signal.remove();
   } else {
     // No signal registered — still try to clear the raw storage
     if (type === "local" || type === "session") {
-      const storage = getWebStorage(type)
-      if (storage) storage.removeItem(key)
+      const storage = getWebStorage(type);
+      if (storage) storage.removeItem(key);
     } else if (type === "cookie" && isBrowser()) {
       // biome-ignore lint/suspicious/noDocumentCookie: standard cookie deletion API
-      document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
+      document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`;
     }
-    removeEntry(type, key)
+    removeEntry(type, key);
   }
 }
 
@@ -54,19 +54,19 @@ export function removeStorage(
  */
 export function clearStorage(type: StorageType = "local"): void {
   if (type === "all") {
-    clearBackend("local")
-    clearBackend("session")
-    clearBackend("cookie")
-    clearBackend("indexeddb")
-    return
+    clearBackend("local");
+    clearBackend("session");
+    clearBackend("cookie");
+    clearBackend("indexeddb");
+    return;
   }
 
-  clearBackend(type)
+  clearBackend(type);
 }
 
 function clearBackend(type: string): void {
-  const entries = getEntriesByBackend(type)
+  const entries = getEntriesByBackend(type);
   for (const entry of entries) {
-    entry.signal.remove()
+    entry.signal.remove();
   }
 }

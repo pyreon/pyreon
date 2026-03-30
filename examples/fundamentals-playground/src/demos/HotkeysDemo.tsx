@@ -4,56 +4,56 @@ import {
   getRegisteredHotkeys,
   parseShortcut,
   registerHotkey,
-} from "@pyreon/hotkeys"
-import { signal } from "@pyreon/reactivity"
+} from "@pyreon/hotkeys";
+import { signal } from "@pyreon/reactivity";
 
 export function HotkeysDemo() {
-  const log = signal<string[]>([])
-  const editorScope = signal(false)
-  const parsedResult = signal("")
+  const log = signal<string[]>([]);
+  const editorScope = signal(false);
+  const parsedResult = signal("");
 
   const addLog = (msg: string) =>
-    log.update((l) => [...l.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`])
+    log.update((l) => [...l.slice(-14), `${new Date().toLocaleTimeString()} — ${msg}`]);
 
   // Global shortcuts
   registerHotkey("mod+k", () => addLog("mod+k: Open command palette"), {
     description: "Open command palette",
-  })
+  });
 
   registerHotkey(
     "mod+s",
     (e) => {
-      e.preventDefault()
-      addLog("mod+s: Save (prevented default)")
+      e.preventDefault();
+      addLog("mod+s: Save (prevented default)");
     },
     {
       description: "Save",
     },
-  )
+  );
 
   registerHotkey("mod+shift+p", () => addLog("mod+shift+p: Toggle panel"), {
     description: "Toggle panel",
-  })
+  });
 
   registerHotkey("escape", () => addLog("escape: Close/dismiss"), {
     description: "Close",
-  })
+  });
 
   // Scoped shortcuts
   registerHotkey("mod+z", () => addLog("[editor] mod+z: Undo"), {
     scope: "editor",
     description: "Undo",
-  })
+  });
 
   registerHotkey("mod+shift+z", () => addLog("[editor] mod+shift+z: Redo"), {
     scope: "editor",
     description: "Redo",
-  })
+  });
 
   registerHotkey("mod+b", () => addLog("[editor] mod+b: Bold"), {
     scope: "editor",
     description: "Bold",
-  })
+  });
 
   return (
     <div>
@@ -118,13 +118,13 @@ export function HotkeysDemo() {
             class={editorScope() ? "active" : ""}
             onClick={() => {
               if (editorScope()) {
-                disableScope("editor")
-                editorScope.set(false)
-                addLog("Editor scope disabled")
+                disableScope("editor");
+                editorScope.set(false);
+                addLog("Editor scope disabled");
               } else {
-                enableScope("editor")
-                editorScope.set(true)
-                addLog("Editor scope enabled")
+                enableScope("editor");
+                editorScope.set(true);
+                addLog("Editor scope enabled");
               }
             }}
           >
@@ -194,16 +194,16 @@ export function HotkeysDemo() {
           type="text"
           placeholder="Try: mod+shift+k, ctrl+alt+del, escape"
           onInput={(e: Event) => {
-            const value = (e.target as HTMLInputElement).value
+            const value = (e.target as HTMLInputElement).value;
             if (!value) {
-              parsedResult.set("")
-              return
+              parsedResult.set("");
+              return;
             }
             try {
-              const combo = parseShortcut(value)
-              parsedResult.set(JSON.stringify(combo, null, 2))
+              const combo = parseShortcut(value);
+              parsedResult.set(JSON.stringify(combo, null, 2));
             } catch (err) {
-              parsedResult.set(`Error: ${(err as Error).message}`)
+              parsedResult.set(`Error: ${(err as Error).message}`);
             }
           }}
           style="width: 100%; padding: 8px; margin-bottom: 8px"
@@ -220,5 +220,5 @@ export function HotkeysDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

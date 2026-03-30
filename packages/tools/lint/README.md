@@ -41,7 +41,7 @@ pyreon-lint --list
 ### Programmatic API
 
 ```ts
-import { lint, listRules, lintFile, applyFixes } from "@pyreon/lint"
+import { lint, listRules, lintFile, applyFixes } from "@pyreon/lint";
 
 // Lint files
 const result = lint({
@@ -49,143 +49,143 @@ const result = lint({
   preset: "recommended",
   fix: false,
   quiet: false,
-})
+});
 
-console.log(`${result.totalErrors} errors, ${result.totalWarnings} warnings`)
+console.log(`${result.totalErrors} errors, ${result.totalWarnings} warnings`);
 
 // List all rules
 for (const rule of listRules()) {
-  console.log(`${rule.id} (${rule.severity}): ${rule.description}`)
+  console.log(`${rule.id} (${rule.severity}): ${rule.description}`);
 }
 
 // Lint a single source string
-import { getPreset } from "@pyreon/lint"
-import { allRules } from "@pyreon/lint/rules"
+import { getPreset } from "@pyreon/lint";
+import { allRules } from "@pyreon/lint/rules";
 
-const fileResult = lintFile("app.tsx", source, allRules, getPreset("recommended"))
+const fileResult = lintFile("app.tsx", source, allRules, getPreset("recommended"));
 ```
 
 ## Rules (51)
 
 ### Reactivity (8)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-bare-signal-in-jsx` | error | Yes | Flags `{count()}` in JSX text — wrap in `() =>` |
-| `pyreon/no-signal-in-loop` | error | No | Flags signal()/computed() inside loops |
-| `pyreon/no-nested-effect` | warn | No | Flags effect() inside effect() |
-| `pyreon/no-peek-in-tracked` | error | No | Flags .peek() inside effect/computed |
-| `pyreon/no-unbatched-updates` | warn | No | Flags 3+ .set() calls without batch() |
-| `pyreon/prefer-computed` | warn | No | Suggests computed() for effect with single .set() |
-| `pyreon/no-effect-assignment` | warn | No | Flags effect with single .update() |
-| `pyreon/no-signal-leak` | warn | No | Reports unused signal declarations |
+| Rule                           | Severity | Fixable | Description                                       |
+| ------------------------------ | -------- | ------- | ------------------------------------------------- |
+| `pyreon/no-bare-signal-in-jsx` | error    | Yes     | Flags `{count()}` in JSX text — wrap in `() =>`   |
+| `pyreon/no-signal-in-loop`     | error    | No      | Flags signal()/computed() inside loops            |
+| `pyreon/no-nested-effect`      | warn     | No      | Flags effect() inside effect()                    |
+| `pyreon/no-peek-in-tracked`    | error    | No      | Flags .peek() inside effect/computed              |
+| `pyreon/no-unbatched-updates`  | warn     | No      | Flags 3+ .set() calls without batch()             |
+| `pyreon/prefer-computed`       | warn     | No      | Suggests computed() for effect with single .set() |
+| `pyreon/no-effect-assignment`  | warn     | No      | Flags effect with single .update()                |
+| `pyreon/no-signal-leak`        | warn     | No      | Reports unused signal declarations                |
 
 ### JSX (11)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-map-in-jsx` | warn | No | Prefer `<For>` over .map() in JSX |
-| `pyreon/use-by-not-key` | error | Yes | Use `by` not `key` on `<For>` |
-| `pyreon/no-classname` | error | Yes | Use `class` not `className` |
-| `pyreon/no-htmlfor` | error | Yes | Use `for` not `htmlFor` |
-| `pyreon/no-onchange` | warn | Yes | Prefer `onInput` over `onChange` on inputs |
-| `pyreon/no-ternary-conditional` | warn | No | Prefer `<Show>` over ternary with JSX |
-| `pyreon/no-and-conditional` | warn | No | Prefer `<Show>` over `&&` with JSX |
-| `pyreon/no-index-as-by` | warn | No | Don't use index as `by` prop |
-| `pyreon/no-missing-for-by` | warn | No | `<For>` should have `by` prop |
-| `pyreon/no-props-destructure` | error | No | Don't destructure component props |
-| `pyreon/no-children-access` | info | No | Direct props.children access in renderers |
+| Rule                            | Severity | Fixable | Description                                |
+| ------------------------------- | -------- | ------- | ------------------------------------------ |
+| `pyreon/no-map-in-jsx`          | warn     | No      | Prefer `<For>` over .map() in JSX          |
+| `pyreon/use-by-not-key`         | error    | Yes     | Use `by` not `key` on `<For>`              |
+| `pyreon/no-classname`           | error    | Yes     | Use `class` not `className`                |
+| `pyreon/no-htmlfor`             | error    | Yes     | Use `for` not `htmlFor`                    |
+| `pyreon/no-onchange`            | warn     | Yes     | Prefer `onInput` over `onChange` on inputs |
+| `pyreon/no-ternary-conditional` | warn     | No      | Prefer `<Show>` over ternary with JSX      |
+| `pyreon/no-and-conditional`     | warn     | No      | Prefer `<Show>` over `&&` with JSX         |
+| `pyreon/no-index-as-by`         | warn     | No      | Don't use index as `by` prop               |
+| `pyreon/no-missing-for-by`      | warn     | No      | `<For>` should have `by` prop              |
+| `pyreon/no-props-destructure`   | error    | No      | Don't destructure component props          |
+| `pyreon/no-children-access`     | info     | No      | Direct props.children access in renderers  |
 
 ### Lifecycle (4)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-missing-cleanup` | warn | No | onMount with timers needs cleanup return |
-| `pyreon/no-mount-in-effect` | warn | No | Don't call onMount inside effect |
-| `pyreon/no-effect-in-mount` | info | No | effect() inside onMount is unusual |
-| `pyreon/no-dom-in-setup` | warn | No | DOM queries outside onMount/effect |
+| Rule                        | Severity | Fixable | Description                              |
+| --------------------------- | -------- | ------- | ---------------------------------------- |
+| `pyreon/no-missing-cleanup` | warn     | No      | onMount with timers needs cleanup return |
+| `pyreon/no-mount-in-effect` | warn     | No      | Don't call onMount inside effect         |
+| `pyreon/no-effect-in-mount` | info     | No      | effect() inside onMount is unusual       |
+| `pyreon/no-dom-in-setup`    | warn     | No      | DOM queries outside onMount/effect       |
 
 ### Performance (4)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-large-for-without-by` | error | No | `<For>` must have `by` for reconciliation |
-| `pyreon/no-effect-in-for` | warn | No | Don't create effects inside `<For>` |
-| `pyreon/no-eager-import` | info | No | Lazy-load heavy packages |
-| `pyreon/prefer-show-over-display` | info | No | Use `<Show>` instead of CSS display toggle |
+| Rule                              | Severity | Fixable | Description                                |
+| --------------------------------- | -------- | ------- | ------------------------------------------ |
+| `pyreon/no-large-for-without-by`  | error    | No      | `<For>` must have `by` for reconciliation  |
+| `pyreon/no-effect-in-for`         | warn     | No      | Don't create effects inside `<For>`        |
+| `pyreon/no-eager-import`          | info     | No      | Lazy-load heavy packages                   |
+| `pyreon/prefer-show-over-display` | info     | No      | Use `<Show>` instead of CSS display toggle |
 
 ### SSR (3)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-window-in-ssr` | error | No | Browser globals outside safe scopes |
-| `pyreon/no-mismatch-risk` | warn | No | Non-deterministic calls in JSX |
-| `pyreon/prefer-request-context` | warn | No | Module-level state in server files |
+| Rule                            | Severity | Fixable | Description                         |
+| ------------------------------- | -------- | ------- | ----------------------------------- |
+| `pyreon/no-window-in-ssr`       | error    | No      | Browser globals outside safe scopes |
+| `pyreon/no-mismatch-risk`       | warn     | No      | Non-deterministic calls in JSX      |
+| `pyreon/prefer-request-context` | warn     | No      | Module-level state in server files  |
 
 ### Architecture (5)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-circular-import` | error | No | Enforce package layer order |
-| `pyreon/no-deep-import` | warn | No | No @pyreon/*/src/ imports |
-| `pyreon/no-cross-layer-import` | error | No | Core can't import ui-system |
-| `pyreon/dev-guard-warnings` | error | No | console.warn/error needs `__DEV__` |
-| `pyreon/no-error-without-prefix` | warn | Yes | Errors need [Pyreon] prefix |
+| Rule                             | Severity | Fixable | Description                        |
+| -------------------------------- | -------- | ------- | ---------------------------------- |
+| `pyreon/no-circular-import`      | error    | No      | Enforce package layer order        |
+| `pyreon/no-deep-import`          | warn     | No      | No @pyreon/\*/src/ imports         |
+| `pyreon/no-cross-layer-import`   | error    | No      | Core can't import ui-system        |
+| `pyreon/dev-guard-warnings`      | error    | No      | console.warn/error needs `__DEV__` |
+| `pyreon/no-error-without-prefix` | warn     | Yes     | Errors need [Pyreon] prefix        |
 
 ### Store (3)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-store-outside-provider` | warn | No | Store hooks need provider in SSR |
-| `pyreon/no-mutate-store-state` | warn | No | Use actions, not direct .set() |
-| `pyreon/no-duplicate-store-id` | error | No | Unique defineStore() IDs |
+| Rule                               | Severity | Fixable | Description                      |
+| ---------------------------------- | -------- | ------- | -------------------------------- |
+| `pyreon/no-store-outside-provider` | warn     | No      | Store hooks need provider in SSR |
+| `pyreon/no-mutate-store-state`     | warn     | No      | Use actions, not direct .set()   |
+| `pyreon/no-duplicate-store-id`     | error    | No      | Unique defineStore() IDs         |
 
 ### Form (3)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-unregistered-field` | warn | No | useField() without register() |
-| `pyreon/no-submit-without-validation` | warn | No | useForm onSubmit without validators |
-| `pyreon/prefer-field-array` | info | No | signal([]) in form files |
+| Rule                                  | Severity | Fixable | Description                         |
+| ------------------------------------- | -------- | ------- | ----------------------------------- |
+| `pyreon/no-unregistered-field`        | warn     | No      | useField() without register()       |
+| `pyreon/no-submit-without-validation` | warn     | No      | useForm onSubmit without validators |
+| `pyreon/prefer-field-array`           | info     | No      | signal([]) in form files            |
 
 ### Styling (4)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-inline-style-object` | warn | No | Inline style objects in JSX |
-| `pyreon/no-dynamic-styled` | warn | No | styled() inside functions |
-| `pyreon/prefer-cx` | info | No | Use cx() for class composition |
-| `pyreon/no-theme-outside-provider` | warn | No | useTheme() without provider |
+| Rule                               | Severity | Fixable | Description                    |
+| ---------------------------------- | -------- | ------- | ------------------------------ |
+| `pyreon/no-inline-style-object`    | warn     | No      | Inline style objects in JSX    |
+| `pyreon/no-dynamic-styled`         | warn     | No      | styled() inside functions      |
+| `pyreon/prefer-cx`                 | info     | No      | Use cx() for class composition |
+| `pyreon/no-theme-outside-provider` | warn     | No      | useTheme() without provider    |
 
 ### Hooks (3)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/no-raw-addeventlistener` | info | No | Use useEventListener() |
-| `pyreon/no-raw-setinterval` | info | No | Wrap timers in onMount |
-| `pyreon/no-raw-localstorage` | info | No | Use useStorage() |
+| Rule                             | Severity | Fixable | Description            |
+| -------------------------------- | -------- | ------- | ---------------------- |
+| `pyreon/no-raw-addeventlistener` | info     | No      | Use useEventListener() |
+| `pyreon/no-raw-setinterval`      | info     | No      | Wrap timers in onMount |
+| `pyreon/no-raw-localstorage`     | info     | No      | Use useStorage()       |
 
 ### Accessibility (3)
 
-| Rule | Severity | Fixable | Description |
-|------|----------|---------|-------------|
-| `pyreon/toast-a11y` | warn | No | Toast components need role/aria-live |
-| `pyreon/dialog-a11y` | warn | No | `<dialog>` needs aria-label |
-| `pyreon/overlay-a11y` | warn | No | `<Overlay>` needs role/aria-label |
+| Rule                  | Severity | Fixable | Description                          |
+| --------------------- | -------- | ------- | ------------------------------------ |
+| `pyreon/toast-a11y`   | warn     | No      | Toast components need role/aria-live |
+| `pyreon/dialog-a11y`  | warn     | No      | `<dialog>` needs aria-label          |
+| `pyreon/overlay-a11y` | warn     | No      | `<Overlay>` needs role/aria-label    |
 
 ## Presets
 
-| Preset | Description |
-|--------|-------------|
-| `recommended` | All rules at default severity |
-| `strict` | All warnings promoted to errors |
-| `app` | Recommended minus library-only rules |
-| `lib` | Strict plus architecture checks |
+| Preset        | Description                          |
+| ------------- | ------------------------------------ |
+| `recommended` | All rules at default severity        |
+| `strict`      | All warnings promoted to errors      |
+| `app`         | Recommended minus library-only rules |
+| `lib`         | Strict plus architecture checks      |
 
 ## Custom Rules
 
 ```ts
-import type { Rule } from "@pyreon/lint"
+import type { Rule } from "@pyreon/lint";
 
 const myRule: Rule = {
   meta: {
@@ -202,11 +202,11 @@ const myRule: Rule = {
         context.report({
           message: "Something is wrong",
           span: { start: node.start, end: node.end },
-        })
+        });
       },
-    }
+    };
   },
-}
+};
 ```
 
 ## License

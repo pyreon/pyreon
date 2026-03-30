@@ -8,12 +8,12 @@ import {
   useScrollLock,
   useToggle,
   useWindowResize,
-} from "@pyreon/hooks"
-import { computed, signal } from "@pyreon/reactivity"
-import { HeroFade, NotifFade } from "./animations"
-import { GhostButton, PrimaryButton } from "./components"
-import { ModalOverlay } from "./ModalOverlay"
-import { addNotification, notifications, removeNotification } from "./notifications"
+} from "@pyreon/hooks";
+import { computed, signal } from "@pyreon/reactivity";
+import { HeroFade, NotifFade } from "./animations";
+import { GhostButton, PrimaryButton } from "./components";
+import { ModalOverlay } from "./ModalOverlay";
+import { addNotification, notifications, removeNotification } from "./notifications";
 import {
   Badge,
   Btn,
@@ -25,61 +25,61 @@ import {
   Section,
   SectionDesc,
   SectionTitle,
-} from "./primitives"
-import { ComponentsTab } from "./tabs/ComponentsTab"
-import { DashboardTab } from "./tabs/DashboardTab"
-import { HooksTab } from "./tabs/HooksTab"
-import { darkTheme, lightTheme } from "./theme"
+} from "./primitives";
+import { ComponentsTab } from "./tabs/ComponentsTab";
+import { DashboardTab } from "./tabs/DashboardTab";
+import { HooksTab } from "./tabs/HooksTab";
+import { darkTheme, lightTheme } from "./theme";
 
 export function App() {
   // Theme (useColorScheme + useToggle)
-  const systemScheme = useColorScheme()
-  const darkMode = useToggle(false)
-  const theme = computed(() => (darkMode.value() ? darkTheme : lightTheme))
+  const systemScheme = useColorScheme();
+  const darkMode = useToggle(false);
+  const theme = computed(() => (darkMode.value() ? darkTheme : lightTheme));
 
   // Responsive (useWindowResize + useMediaQuery + useReducedMotion)
-  const windowSize = useWindowResize()
-  const isMobile = useMediaQuery("(max-width: 768px)")
-  const reducedMotion = useReducedMotion()
+  const windowSize = useWindowResize();
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const reducedMotion = useReducedMotion();
 
   // Search with debounce (useDebouncedValue)
-  const searchInput = signal("")
-  const debouncedSearch = useDebouncedValue(() => searchInput(), 300)
+  const searchInput = signal("");
+  const debouncedSearch = useDebouncedValue(() => searchInput(), 300);
 
   // Tabs
-  const activeTab = signal<"dashboard" | "components" | "hooks">("dashboard")
+  const activeTab = signal<"dashboard" | "components" | "hooks">("dashboard");
 
   // Scroll lock + modal (useScrollLock + useToggle)
-  const scrollLock = useScrollLock()
-  const modalOpen = useToggle(false)
+  const scrollLock = useScrollLock();
+  const modalOpen = useToggle(false);
 
   // Keyboard shortcuts (useKeyboard)
   useKeyboard(
     "Escape",
     () => {
       if (modalOpen.value()) {
-        modalOpen.setFalse()
-        scrollLock.unlock()
+        modalOpen.setFalse();
+        scrollLock.unlock();
       }
     },
     undefined,
-  )
+  );
 
   useKeyboard(
     "n",
     (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === "INPUT") return
-      addNotification("Keyboard shortcut triggered!", "info")
+      if ((e.target as HTMLElement).tagName === "INPUT") return;
+      addNotification("Keyboard shortcut triggered!", "info");
     },
     undefined,
-  )
+  );
 
   // Section visibility (useIntersection)
-  let heroRef: HTMLElement | null = null
-  const heroEntry = useIntersection(() => heroRef, { threshold: 0.5 })
+  let heroRef: HTMLElement | null = null;
+  const heroEntry = useIntersection(() => heroRef, { threshold: 0.5 });
   const _heroVisible = computed(
     () => (heroEntry() as IntersectionObserverEntry | null)?.isIntersecting ?? true,
-  )
+  );
 
   // Dashboard data
   const stats = [
@@ -87,7 +87,7 @@ export function App() {
     { label: "Hooks", value: "25+", change: "+5", trend: "up" },
     { label: "Presets", value: "122", change: "stable", trend: "flat" },
     { label: "Bundle", value: "~8kb", change: "-12%", trend: "down" },
-  ]
+  ];
 
   const recentItems = [
     { name: "Button", pkg: "rocketstyle", status: "stable" },
@@ -96,15 +96,15 @@ export function App() {
     { name: "useHover", pkg: "hooks", status: "stable" },
     { name: "Container", pkg: "coolgrid", status: "stable" },
     { name: "styled", pkg: "styler", status: "stable" },
-  ]
+  ];
 
   const filteredItems = computed(() => {
-    const q = debouncedSearch().toLowerCase()
-    if (!q) return recentItems
+    const q = debouncedSearch().toLowerCase();
+    if (!q) return recentItems;
     return recentItems.filter(
       (item) => item.name.toLowerCase().includes(q) || item.pkg.toLowerCase().includes(q),
-    )
-  })
+    );
+  });
 
   return (
     <Page style={theme}>
@@ -167,7 +167,7 @@ export function App() {
               info: "var(--primary)",
               success: "var(--success)",
               danger: "var(--danger)",
-            }
+            };
             return (
               <NotifFade
                 key={notif.id}
@@ -209,7 +209,7 @@ export function App() {
                   x
                 </button>
               </NotifFade>
-            )
+            );
           })
         }
       </div>
@@ -218,7 +218,7 @@ export function App() {
       <div
         // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
         ref={(el: HTMLElement) => {
-          heroRef = el
+          heroRef = el;
         }}
       >
         <HeroFade appear show={() => true}>
@@ -245,8 +245,8 @@ export function App() {
                 </PrimaryButton>
                 <GhostButton
                   onClick={() => {
-                    modalOpen.setTrue()
-                    scrollLock.lock()
+                    modalOpen.setTrue();
+                    scrollLock.lock();
                   }}
                 >
                   <span>Open modal</span>
@@ -307,12 +307,12 @@ export function App() {
         modalOpen.value() && (
           <ModalOverlay
             onClose={() => {
-              modalOpen.setFalse()
-              scrollLock.unlock()
+              modalOpen.setFalse();
+              scrollLock.unlock();
             }}
           />
         )
       }
     </Page>
-  )
+  );
 }

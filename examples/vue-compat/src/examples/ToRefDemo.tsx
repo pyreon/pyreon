@@ -1,10 +1,10 @@
-import { reactive, toRef, toRefs } from "vue"
-import Demo from "./Demo"
+import { reactive, toRef, toRefs } from "vue";
+import Demo from "./Demo";
 
 export default function ToRefDemo() {
-  const state = reactive({ width: 100, height: 200 })
-  const widthRef = toRef(state, "width")
-  const { height } = toRefs(state)
+  const state = reactive({ width: 100, height: 200 });
+  const widthRef = toRef(state, "width");
+  const { height } = toRefs(state);
 
   return (
     <Demo
@@ -43,5 +43,5 @@ height.value = 400    // also updates state.height`}
         </button>
       </div>
     </Demo>
-  )
+  );
 }

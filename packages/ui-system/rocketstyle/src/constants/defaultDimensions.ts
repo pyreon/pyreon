@@ -16,8 +16,8 @@ const DEFAULT_DIMENSIONS = {
     multi: true,
     transform: true,
   },
-} as const
+} as const;
 
-export type DefaultDimensions = typeof DEFAULT_DIMENSIONS
+export type DefaultDimensions = typeof DEFAULT_DIMENSIONS;
 
-export default DEFAULT_DIMENSIONS
+export default DEFAULT_DIMENSIONS;

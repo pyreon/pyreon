@@ -1,10 +1,10 @@
-import { onUnmount } from "@pyreon/core"
-import { watch } from "@pyreon/reactivity"
+import { onUnmount } from "@pyreon/core";
+import { watch } from "@pyreon/reactivity";
 
 export type UseUpdateEffect = <T>(
   source: () => T,
   callback: (newVal: T, oldVal: T | undefined) => undefined | (() => void),
-) => void
+) => void;
 
 /**
  * Like `effect` but skips the initial value — only fires on updates.
@@ -16,9 +16,9 @@ export type UseUpdateEffect = <T>(
  * @param callback - Called when source changes, receives (newVal, oldVal)
  */
 export const useUpdateEffect: UseUpdateEffect = (source, callback) => {
-  const stop = watch(source, callback)
+  const stop = watch(source, callback);
 
-  onUnmount(() => stop())
-}
+  onUnmount(() => stop());
+};
 
-export default useUpdateEffect
+export default useUpdateEffect;

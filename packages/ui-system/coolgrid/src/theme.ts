@@ -21,7 +21,7 @@ export default {
       xl: 1140,
     },
   },
-} as const
+} as const;
 
 export const defaultBreakpoints: Record<string, number> = {
   xs: 0,
@@ -29,7 +29,7 @@ export const defaultBreakpoints: Record<string, number> = {
   md: 768,
   lg: 992,
   xl: 1200,
-}
+};
 
 export const defaultContainerWidths: Record<string, string | number> = {
   xs: "100%",
@@ -37,4 +37,4 @@ export const defaultContainerWidths: Record<string, string | number> = {
   md: 720,
   lg: 960,
   xl: 1140,
-}
+};

@@ -1,8 +1,8 @@
-import { createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createSignal } from "solid-js";
+import Demo from "./Demo";
 
 export default function SignalDemo() {
-  const [count, setCount] = createSignal(0)
+  const [count, setCount] = createSignal(0);
 
   return (
     <Demo
@@ -32,5 +32,5 @@ setCount(prev => prev + 1);`}
         Reset
       </button>
     </Demo>
-  )
+  );
 }

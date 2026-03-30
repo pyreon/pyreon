@@ -1,6 +1,6 @@
-import type { Middleware, MiddlewareContext } from "@pyreon/server"
-import type { ApiHandler, ApiRouteEntry } from "./api-routes"
-import { createApiMiddleware } from "./api-routes"
+import type { Middleware, MiddlewareContext } from "@pyreon/server";
+import type { ApiHandler, ApiRouteEntry } from "./api-routes";
+import { createApiMiddleware } from "./api-routes";
 
 // ─── Test helpers for Zero applications ─────────────────────────────────────
 
@@ -16,27 +16,27 @@ import { createApiMiddleware } from "./api-routes"
 export function createTestContext(
   path: string,
   options: {
-    method?: string
-    headers?: Record<string, string>
-    body?: unknown
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
   } = {},
 ): MiddlewareContext {
-  const { method = "GET", headers = {}, body } = options
-  const url = new URL(`http://localhost${path}`)
+  const { method = "GET", headers = {}, body } = options;
+  const url = new URL(`http://localhost${path}`);
 
-  const requestHeaders: Record<string, string> = { ...headers }
-  let requestBody: string | undefined
+  const requestHeaders: Record<string, string> = { ...headers };
+  let requestBody: string | undefined;
 
   if (body !== undefined) {
-    requestHeaders["Content-Type"] = "application/json"
-    requestBody = JSON.stringify(body)
+    requestHeaders["Content-Type"] = "application/json";
+    requestBody = JSON.stringify(body);
   }
 
   const req = new Request(url.toString(), {
     method,
     headers: requestHeaders,
     ...(requestBody != null ? { body: requestBody } : {}),
-  })
+  });
 
   return {
     req,
@@ -44,7 +44,7 @@ export function createTestContext(
     path,
     headers: new Headers(),
     locals: {},
-  }
+  };
 }
 
 /**
@@ -64,14 +64,14 @@ export async function testMiddleware(
   middleware: Middleware,
   path: string,
   options: {
-    method?: string
-    headers?: Record<string, string>
-    body?: unknown
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
   } = {},
 ): Promise<{ response: Response | undefined; headers: Headers }> {
-  const ctx = createTestContext(path, options)
-  const response = (await middleware(ctx)) as Response | undefined
-  return { response, headers: ctx.headers }
+  const ctx = createTestContext(path, options);
+  const response = (await middleware(ctx)) as Response | undefined;
+  return { response, headers: ctx.headers };
 }
 
 /**
@@ -93,25 +93,25 @@ export async function testMiddleware(
  * expect(data.status).toBe(201)
  */
 export function createTestApiServer(routes: ApiRouteEntry[]) {
-  const middleware = createApiMiddleware(routes)
+  const middleware = createApiMiddleware(routes);
 
   return {
     async request(
       path: string,
       options: {
-        method?: string
-        headers?: Record<string, string>
-        body?: unknown
+        method?: string;
+        headers?: Record<string, string>;
+        body?: unknown;
       } = {},
     ): Promise<Response> {
-      const ctx = createTestContext(path, options)
-      const result = await middleware(ctx)
+      const ctx = createTestContext(path, options);
+      const result = await middleware(ctx);
       if (!result) {
-        return new Response("Not Found", { status: 404 })
+        return new Response("Not Found", { status: 404 });
       }
-      return result
+      return result;
     },
-  }
+  };
 }
 
 /**
@@ -129,18 +129,18 @@ export function createTestApiServer(routes: ApiRouteEntry[]) {
 export function createMockHandler(
   responseConfig: { status?: number; body?: unknown; headers?: Record<string, string> } = {},
 ): ApiHandler & {
-  calls: Array<{ path: string; params: Record<string, string> }>
+  calls: Array<{ path: string; params: Record<string, string> }>;
 } {
-  const { status = 200, body = null, headers = {} } = responseConfig
-  const calls: Array<{ path: string; params: Record<string, string> }> = []
+  const { status = 200, body = null, headers = {} } = responseConfig;
+  const calls: Array<{ path: string; params: Record<string, string> }> = [];
 
   const handler: ApiHandler = (ctx) => {
-    calls.push({ path: ctx.path, params: ctx.params })
+    calls.push({ path: ctx.path, params: ctx.params });
     return new Response(JSON.stringify(body), {
       status,
       headers: { "Content-Type": "application/json", ...headers },
-    })
-  }
+    });
+  };
 
-  return Object.assign(handler, { calls })
+  return Object.assign(handler, { calls });
 }

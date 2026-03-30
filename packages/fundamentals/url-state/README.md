@@ -11,20 +11,20 @@ bun add @pyreon/url-state
 ## Usage
 
 ```ts
-import { useUrlState } from "@pyreon/url-state"
+import { useUrlState } from "@pyreon/url-state";
 
 // Single param — auto type coercion from default value
-const page = useUrlState("page", 1)       // reads ?page=X, defaults to 1
-page()                                      // 1
-page.set(2)                                 // URL becomes ?page=2
-page.reset()                                // back to default
-page.remove()                               // removes ?page entirely
+const page = useUrlState("page", 1); // reads ?page=X, defaults to 1
+page(); // 1
+page.set(2); // URL becomes ?page=2
+page.reset(); // back to default
+page.remove(); // removes ?page entirely
 
 // Schema mode — multiple params
-const { page, sort, q } = useUrlState({ page: 1, sort: "name", q: "" })
+const { page, sort, q } = useUrlState({ page: 1, sort: "name", q: "" });
 
 // Debounced (for search inputs)
-const q = useUrlState("q", "", { debounce: 300 })
+const q = useUrlState("q", "", { debounce: 300 });
 ```
 
 ## Features

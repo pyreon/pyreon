@@ -9,16 +9,16 @@
  * enableHydrationWarnings()
  */
 
-const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production"
+const __DEV__ = typeof process !== "undefined" && process.env.NODE_ENV !== "production";
 
-let _enabled = __DEV__
+let _enabled = __DEV__;
 
 export function enableHydrationWarnings(): void {
-  _enabled = true
+  _enabled = true;
 }
 
 export function disableHydrationWarnings(): void {
-  _enabled = false
+  _enabled = false;
 }
 
 /**
@@ -34,8 +34,8 @@ export function warnHydrationMismatch(
   _actual: unknown,
   _path: string,
 ): void {
-  if (!_enabled) return
+  if (!_enabled) return;
   console.warn(
     `[Pyreon] Hydration mismatch (${_type}): expected ${String(_expected)}, got ${String(_actual)} at ${_path}`,
-  )
+  );
 }

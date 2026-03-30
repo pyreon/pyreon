@@ -1,16 +1,16 @@
-import type { DocNode, ExtractOptions } from "@pyreon/connector-document"
-import { extractDocumentTree } from "@pyreon/connector-document"
+import type { DocNode, ExtractOptions } from "@pyreon/connector-document";
+import { extractDocumentTree } from "@pyreon/connector-document";
 
 export interface DocumentExportOptions extends ExtractOptions {
   /** Theme object to provide during extraction. */
-  theme?: Record<string, unknown>
+  theme?: Record<string, unknown>;
   /** Mode: 'light' or 'dark'. */
-  mode?: "light" | "dark"
+  mode?: "light" | "dark";
 }
 
 export interface DocumentExport {
   /** Extract the DocNode tree from the template. */
-  getDocNode: () => DocNode
+  getDocNode: () => DocNode;
 }
 
 /**
@@ -39,9 +39,9 @@ export function createDocumentExport(
   options: DocumentExportOptions = {},
 ): DocumentExport {
   const getDocNode = (): DocNode => {
-    const vnode = templateFn()
-    return extractDocumentTree(vnode, options)
-  }
+    const vnode = templateFn();
+    return extractDocumentTree(vnode, options);
+  };
 
-  return { getDocNode }
+  return { getDocNode };
 }

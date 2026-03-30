@@ -1,6 +1,7 @@
 Review recent changes for correctness and quality.
 
 Steps:
+
 1. Run `git diff` to see unstaged changes, or `git diff HEAD~1` if no unstaged changes
 2. For each changed file, read the full file to understand context
 3. Check for:

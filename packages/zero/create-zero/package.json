@@ -9,8 +9,6 @@
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/zero/create-zero"
   },
-  "type": "module",
-  "main": "./lib/index.js",
   "bin": {
     "create-zero": "./bin/create-zero.js"
   },
@@ -22,10 +20,12 @@
     "LICENSE",
     "README.md"
   ],
+  "type": "module",
+  "main": "./lib/index.js",
   "scripts": {
     "build": "vl_rolldown_build",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0"

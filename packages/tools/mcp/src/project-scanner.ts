@@ -7,4 +7,4 @@ export {
   type IslandInfo,
   type ProjectContext,
   type RouteInfo,
-} from "@pyreon/compiler"
+} from "@pyreon/compiler";

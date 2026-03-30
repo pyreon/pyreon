@@ -1,7 +1,7 @@
-import { useState } from "preact/hooks"
+import { useState } from "preact/hooks";
 
 export default function Demo(props: { title: string; apis: string; code: string; children?: any }) {
-  const [showCode, setShowCode] = useState(false)
+  const [showCode, setShowCode] = useState(false);
   return (
     <section class="demo">
       <div class="demo-header">
@@ -20,5 +20,5 @@ export default function Demo(props: { title: string; apis: string; code: string;
       ) : null}
       {props.children}
     </section>
-  )
+  );
 }

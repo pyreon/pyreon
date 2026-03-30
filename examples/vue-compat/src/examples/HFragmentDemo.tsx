@@ -1,8 +1,8 @@
-import { Fragment, h, ref } from "vue"
-import Demo from "./Demo"
+import { Fragment, h, ref } from "vue";
+import Demo from "./Demo";
 
 export default function HFragmentDemo() {
-  const items = ref(["one", "two", "three"])
+  const items = ref(["one", "two", "three"]);
 
   return (
     <Demo
@@ -34,5 +34,5 @@ h(Fragment, null,
         Add item
       </button>
     </Demo>
-  )
+  );
 }

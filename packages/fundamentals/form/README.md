@@ -11,7 +11,7 @@ bun add @pyreon/form
 ## Quick Start
 
 ```tsx
-import { useForm } from "@pyreon/form"
+import { useForm } from "@pyreon/form";
 
 function LoginForm() {
   const form = useForm({
@@ -22,9 +22,9 @@ function LoginForm() {
     },
     validateOn: "blur",
     onSubmit: async (values) => {
-      await fetch("/api/login", { method: "POST", body: JSON.stringify(values) })
+      await fetch("/api/login", { method: "POST", body: JSON.stringify(values) });
     },
-  })
+  });
 
   return () => (
     <form onSubmit={form.handleSubmit}>
@@ -32,7 +32,7 @@ function LoginForm() {
       <input type="password" {...form.register("password")} />
       <button type="submit">Login</button>
     </form>
-  )
+  );
 }
 ```
 
@@ -42,37 +42,37 @@ function LoginForm() {
 
 Create a reactive form instance with field states, validation, and submission handling.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `options.initialValues` | `TValues` | Initial values for each field |
-| `options.onSubmit` | `(values: TValues) => void \| Promise<void>` | Called with validated values on submit |
-| `options.validators` | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators (receives value + all values) |
-| `options.schema` | `SchemaValidateFn<TValues>` | Schema-level validator (runs after field validators) |
-| `options.validateOn` | `"blur" \| "change" \| "submit"` | When to trigger validation (default: `"blur"`) |
-| `options.debounceMs` | `number` | Debounce delay for validators in ms |
+| Parameter               | Type                                         | Description                                          |
+| ----------------------- | -------------------------------------------- | ---------------------------------------------------- |
+| `options.initialValues` | `TValues`                                    | Initial values for each field                        |
+| `options.onSubmit`      | `(values: TValues) => void \| Promise<void>` | Called with validated values on submit               |
+| `options.validators`    | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators (receives value + all values)   |
+| `options.schema`        | `SchemaValidateFn<TValues>`                  | Schema-level validator (runs after field validators) |
+| `options.validateOn`    | `"blur" \| "change" \| "submit"`             | When to trigger validation (default: `"blur"`)       |
+| `options.debounceMs`    | `number`                                     | Debounce delay for validators in ms                  |
 
 **Returns:** `FormState<TValues>` with these properties:
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `fields` | `Record<keyof TValues, FieldState>` | Individual field states |
-| `isSubmitting` | `Signal<boolean>` | Whether the form is being submitted |
-| `isValidating` | `Signal<boolean>` | Whether async validation is running |
-| `isValid` | `Accessor<boolean>` | Whether all fields pass validation |
-| `isDirty` | `Accessor<boolean>` | Whether any field differs from initial |
-| `submitCount` | `Signal<number>` | Number of submission attempts |
-| `submitError` | `Signal<unknown>` | Error thrown by `onSubmit` |
-| `values()` | `() => TValues` | Get all current values |
-| `errors()` | `() => Record<keyof TValues, string>` | Get all current errors |
-| `register(field, opts?)` | `Function` | Bind an input to a field |
-| `handleSubmit(e?)` | `(e?: Event) => Promise<void>` | Submit handler |
-| `validate()` | `() => Promise<boolean>` | Validate all fields |
-| `reset()` | `() => void` | Reset all fields to initial values |
-| `setFieldValue(field, value)` | `Function` | Set a single field's value |
-| `setFieldError(field, error)` | `Function` | Set a single field's error |
-| `setErrors(errors)` | `Function` | Set multiple field errors |
-| `clearErrors()` | `() => void` | Clear all errors |
-| `resetField(field)` | `Function` | Reset a single field |
+| Property                      | Type                                  | Description                            |
+| ----------------------------- | ------------------------------------- | -------------------------------------- |
+| `fields`                      | `Record<keyof TValues, FieldState>`   | Individual field states                |
+| `isSubmitting`                | `Signal<boolean>`                     | Whether the form is being submitted    |
+| `isValidating`                | `Signal<boolean>`                     | Whether async validation is running    |
+| `isValid`                     | `Accessor<boolean>`                   | Whether all fields pass validation     |
+| `isDirty`                     | `Accessor<boolean>`                   | Whether any field differs from initial |
+| `submitCount`                 | `Signal<number>`                      | Number of submission attempts          |
+| `submitError`                 | `Signal<unknown>`                     | Error thrown by `onSubmit`             |
+| `values()`                    | `() => TValues`                       | Get all current values                 |
+| `errors()`                    | `() => Record<keyof TValues, string>` | Get all current errors                 |
+| `register(field, opts?)`      | `Function`                            | Bind an input to a field               |
+| `handleSubmit(e?)`            | `(e?: Event) => Promise<void>`        | Submit handler                         |
+| `validate()`                  | `() => Promise<boolean>`              | Validate all fields                    |
+| `reset()`                     | `() => void`                          | Reset all fields to initial values     |
+| `setFieldValue(field, value)` | `Function`                            | Set a single field's value             |
+| `setFieldError(field, error)` | `Function`                            | Set a single field's error             |
+| `setErrors(errors)`           | `Function`                            | Set multiple field errors              |
+| `clearErrors()`               | `() => void`                          | Clear all errors                       |
+| `resetField(field)`           | `Function`                            | Reset a single field                   |
 
 ```tsx
 const form = useForm({
@@ -94,22 +94,22 @@ const form = useForm({
 
 Extract a single field's state with computed helpers. Useful for building isolated field components.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `form` | `FormState<TValues>` | Form instance from `useForm` |
-| `name` | `keyof TValues & string` | Field name |
+| Parameter | Type                     | Description                  |
+| --------- | ------------------------ | ---------------------------- |
+| `form`    | `FormState<TValues>`     | Form instance from `useForm` |
+| `name`    | `keyof TValues & string` | Field name                   |
 
 **Returns:** `UseFieldResult<T>` with `value`, `error`, `touched`, `dirty`, `setValue`, `setTouched`, `reset`, `register`, `hasError` (Computed), `showError` (Computed: touched AND has error).
 
 ```tsx
 function EmailField({ form }) {
-  const field = useField(form, "email")
+  const field = useField(form, "email");
   return () => (
     <div>
       <input {...field.register()} />
-      {() => field.showError() ? <span>{field.error()}</span> : null}
+      {() => (field.showError() ? <span>{field.error()}</span> : null)}
     </div>
-  )
+  );
 }
 ```
 
@@ -117,47 +117,47 @@ function EmailField({ form }) {
 
 Manage a dynamic array of form fields with stable keys for keyed rendering.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
+| Parameter | Type  | Description                          |
+| --------- | ----- | ------------------------------------ |
 | `initial` | `T[]` | Initial array values (default: `[]`) |
 
 **Returns:** `UseFieldArrayResult<T>` with:
 
-| Property | Type | Description |
-| --- | --- | --- |
-| `items` | `Signal<FieldArrayItem<T>[]>` | Reactive list with `{ key, value }` items |
-| `length` | `Computed<number>` | Number of items |
-| `append(value)` | `(value: T) => void` | Add to end |
-| `prepend(value)` | `(value: T) => void` | Add to start |
-| `insert(index, value)` | `Function` | Insert at index |
-| `remove(index)` | `(index: number) => void` | Remove at index |
-| `update(index, value)` | `Function` | Update item at index |
-| `move(from, to)` | `Function` | Move item between indices |
-| `swap(a, b)` | `Function` | Swap two items |
-| `replace(values)` | `(values: T[]) => void` | Replace all items |
-| `values()` | `() => T[]` | Get current values as plain array |
+| Property               | Type                          | Description                               |
+| ---------------------- | ----------------------------- | ----------------------------------------- |
+| `items`                | `Signal<FieldArrayItem<T>[]>` | Reactive list with `{ key, value }` items |
+| `length`               | `Computed<number>`            | Number of items                           |
+| `append(value)`        | `(value: T) => void`          | Add to end                                |
+| `prepend(value)`       | `(value: T) => void`          | Add to start                              |
+| `insert(index, value)` | `Function`                    | Insert at index                           |
+| `remove(index)`        | `(index: number) => void`     | Remove at index                           |
+| `update(index, value)` | `Function`                    | Update item at index                      |
+| `move(from, to)`       | `Function`                    | Move item between indices                 |
+| `swap(a, b)`           | `Function`                    | Swap two items                            |
+| `replace(values)`      | `(values: T[]) => void`       | Replace all items                         |
+| `values()`             | `() => T[]`                   | Get current values as plain array         |
 
 ```ts
-const tags = useFieldArray<string>(["typescript"])
-tags.append("pyreon")
-tags.items()  // [{ key: 0, value: Signal("typescript") }, { key: 1, value: Signal("pyreon") }]
+const tags = useFieldArray<string>(["typescript"]);
+tags.append("pyreon");
+tags.items(); // [{ key: 0, value: Signal("typescript") }, { key: 1, value: Signal("pyreon") }]
 ```
 
 ### `useWatch(form, name?)`
 
 Watch specific field values reactively.
 
-| Signature | Returns |
-| --- | --- |
-| `useWatch(form, "email")` | `Signal<string>` — single field value |
+| Signature                           | Returns                                     |
+| ----------------------------------- | ------------------------------------------- |
+| `useWatch(form, "email")`           | `Signal<string>` — single field value       |
 | `useWatch(form, ["first", "last"])` | `[Signal, Signal]` — tuple of field signals |
-| `useWatch(form)` | `Computed<TValues>` — all fields as object |
+| `useWatch(form)`                    | `Computed<TValues>` — all fields as object  |
 
 ```ts
-const email = useWatch(form, "email")
+const email = useWatch(form, "email");
 // email() re-evaluates reactively when the email field changes
 
-const all = useWatch(form)
+const all = useWatch(form);
 // all() => { email: "...", password: "..." }
 ```
 
@@ -165,9 +165,9 @@ const all = useWatch(form)
 
 Subscribe to the full form state as a computed signal. Optionally pass a selector for fine-grained reactivity.
 
-| Parameter | Type | Description |
-| --- | --- | --- |
-| `form` | `FormState<TValues>` | Form instance |
+| Parameter  | Type                             | Description                  |
+| ---------- | -------------------------------- | ---------------------------- |
+| `form`     | `FormState<TValues>`             | Form instance                |
 | `selector` | `(state: FormStateSummary) => R` | Optional projection function |
 
 **Returns:** `Computed<FormStateSummary>` or `Computed<R>` when using a selector.
@@ -175,11 +175,11 @@ Subscribe to the full form state as a computed signal. Optionally pass a selecto
 `FormStateSummary` contains: `isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`, `touchedFields`, `dirtyFields`, `errors`.
 
 ```ts
-const state = useFormState(form)
-state().isValid  // boolean
+const state = useFormState(form);
+state().isValid; // boolean
 
-const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting)
-canSubmit()  // boolean
+const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting);
+canSubmit(); // boolean
 ```
 
 ### `FormProvider` / `useFormContext()`
@@ -190,12 +190,12 @@ Context pattern for sharing a form instance with nested components.
 // Parent:
 <FormProvider form={form}>
   <EmailField />
-</FormProvider>
+</FormProvider>;
 
 // Child:
 function EmailField() {
-  const form = useFormContext<{ email: string }>()
-  return () => <input {...form.register("email")} />
+  const form = useFormContext<{ email: string }>();
+  return () => <input {...form.register("email")} />;
 }
 ```
 
@@ -209,13 +209,13 @@ Use `setErrors()` to apply errors returned from your API.
 const form = useForm({
   initialValues: { email: "" },
   onSubmit: async (values) => {
-    const res = await fetch("/api/register", { method: "POST", body: JSON.stringify(values) })
+    const res = await fetch("/api/register", { method: "POST", body: JSON.stringify(values) });
     if (!res.ok) {
-      const errors = await res.json()
-      form.setErrors(errors)  // { email: "Already taken" }
+      const errors = await res.json();
+      form.setErrors(errors); // { email: "Already taken" }
     }
   },
-})
+});
 ```
 
 ### Schema Validation
@@ -235,20 +235,20 @@ const form = useForm({
 
 ## Types
 
-| Type | Description |
-| --- | --- |
-| `Accessor<T>` | `Signal<T> \| Computed<T>` — a readable reactive value |
-| `FormState<TValues>` | Full form instance returned by `useForm` |
-| `FieldState<T>` | Per-field state: `value`, `error`, `touched`, `dirty`, `setValue`, `setTouched`, `reset` |
-| `FieldRegisterProps<T>` | Props returned by `register()`: `value`, `onInput`, `onBlur`, `checked?` |
-| `UseFormOptions<TValues>` | Options for `useForm` |
-| `ValidateFn<T, TValues>` | `(value: T, allValues: TValues) => ValidationError \| Promise<ValidationError>` |
-| `SchemaValidateFn<TValues>` | `(values: TValues) => Record<keyof TValues, string>` |
-| `ValidationError` | `string \| undefined` |
-| `FieldArrayItem<T>` | `{ key: number, value: Signal<T> }` |
-| `UseFieldArrayResult<T>` | Return type of `useFieldArray` |
-| `UseFieldResult<T>` | Return type of `useField` |
-| `FormStateSummary<TValues>` | Snapshot object returned by `useFormState` |
+| Type                        | Description                                                                              |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| `Accessor<T>`               | `Signal<T> \| Computed<T>` — a readable reactive value                                   |
+| `FormState<TValues>`        | Full form instance returned by `useForm`                                                 |
+| `FieldState<T>`             | Per-field state: `value`, `error`, `touched`, `dirty`, `setValue`, `setTouched`, `reset` |
+| `FieldRegisterProps<T>`     | Props returned by `register()`: `value`, `onInput`, `onBlur`, `checked?`                 |
+| `UseFormOptions<TValues>`   | Options for `useForm`                                                                    |
+| `ValidateFn<T, TValues>`    | `(value: T, allValues: TValues) => ValidationError \| Promise<ValidationError>`          |
+| `SchemaValidateFn<TValues>` | `(values: TValues) => Record<keyof TValues, string>`                                     |
+| `ValidationError`           | `string \| undefined`                                                                    |
+| `FieldArrayItem<T>`         | `{ key: number, value: Signal<T> }`                                                      |
+| `UseFieldArrayResult<T>`    | Return type of `useFieldArray`                                                           |
+| `UseFieldResult<T>`         | Return type of `useField`                                                                |
+| `FormStateSummary<TValues>` | Snapshot object returned by `useFormState`                                               |
 
 ## Gotchas
 

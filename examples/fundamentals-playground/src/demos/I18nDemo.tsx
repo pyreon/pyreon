@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createI18n, I18nProvider, Trans, useI18n } from "@pyreon/i18n"
-import { signal } from "@pyreon/reactivity"
+import type { VNodeChild } from "@pyreon/core";
+import { createI18n, I18nProvider, Trans, useI18n } from "@pyreon/i18n";
+import { signal } from "@pyreon/reactivity";
 
 const i18n = createI18n({
   locale: "en",
@@ -30,15 +30,15 @@ const i18n = createI18n({
       nav: { home: "ホーム", about: "概要", settings: "設定" },
     },
   },
-})
+});
 
 function I18nContent() {
-  const { t, locale } = useI18n()
-  const name = signal("Alice")
-  const count = signal(1)
-  const seconds = signal(0)
+  const { t, locale } = useI18n();
+  const name = signal("Alice");
+  const count = signal(1);
+  const seconds = signal(0);
 
-  setInterval(() => seconds.update((s) => s + 1), 1000)
+  setInterval(() => seconds.update((s) => s + 1), 1000);
 
   return (
     <div>
@@ -104,7 +104,7 @@ function I18nContent() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export function I18nDemo() {
@@ -118,5 +118,5 @@ export function I18nDemo() {
         <I18nContent />
       </I18nProvider>
     </div>
-  )
+  );
 }

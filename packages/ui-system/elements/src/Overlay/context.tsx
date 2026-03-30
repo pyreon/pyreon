@@ -4,18 +4,18 @@
  * closing in response to click/hover events that belong to the child.
  */
 
-import type { VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
+import type { VNodeChild } from "@pyreon/core";
+import { createContext, provide, useContext } from "@pyreon/core";
 
 export interface OverlayContext {
-  blocked: boolean | (() => boolean)
-  setBlocked: () => void
-  setUnblocked: () => void
+  blocked: boolean | (() => boolean);
+  setBlocked: () => void;
+  setUnblocked: () => void;
 }
 
-const context = createContext<OverlayContext>({} as OverlayContext)
+const context = createContext<OverlayContext>({} as OverlayContext);
 
-export const useOverlayContext = () => useContext(context)
+export const useOverlayContext = () => useContext(context);
 
 const Component = ({
   children,
@@ -27,11 +27,11 @@ const Component = ({
     blocked,
     setBlocked,
     setUnblocked,
-  }
+  };
 
-  provide(context, ctx)
+  provide(context, ctx);
 
-  return <>{children}</>
-}
+  return <>{children}</>;
+};
 
-export default Component
+export default Component;

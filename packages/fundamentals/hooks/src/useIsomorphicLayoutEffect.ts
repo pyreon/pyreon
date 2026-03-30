@@ -1,4 +1,4 @@
-import { onMount } from "@pyreon/core"
+import { onMount } from "@pyreon/core";
 
 /**
  * In Pyreon there is no SSR warning distinction between effect and
@@ -11,9 +11,9 @@ import { onMount } from "@pyreon/core"
  * Consumers that need layout-timing should use `onMount` directly.
  * This hook is provided for API parity with the original library.
  */
-export type UseIsomorphicLayoutEffect = typeof onMount
+export type UseIsomorphicLayoutEffect = typeof onMount;
 
 const useIsomorphicLayoutEffect: UseIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? onMount : onMount
+  typeof window !== "undefined" ? onMount : onMount;
 
-export default useIsomorphicLayoutEffect
+export default useIsomorphicLayoutEffect;

@@ -2,15 +2,15 @@
   "name": "@pyreon/runtime-dom",
   "version": "0.11.5",
   "description": "DOM renderer for Pyreon",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-dom#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/runtime-dom"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-dom#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
   },
   "files": [
     "lib",
@@ -18,8 +18,8 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": false,
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -30,12 +30,15 @@
       "types": "./lib/types/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
@@ -45,8 +48,5 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "happy-dom": "^20.8.3"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

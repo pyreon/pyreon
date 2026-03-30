@@ -1,9 +1,9 @@
-import { createElement, Fragment, h } from "preact"
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { createElement, Fragment, h } from "preact";
+import { useState } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function HFragmentDemo() {
-  const [items, setItems] = useState(["one", "two", "three"])
+  const [items, setItems] = useState(["one", "two", "three"]);
 
   return (
     <Demo
@@ -36,5 +36,5 @@ h(Fragment, null, h("span", null, "A"), h("span", null, "B"))`}
         Add item
       </button>
     </Demo>
-  )
+  );
 }

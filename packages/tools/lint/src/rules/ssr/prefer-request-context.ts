@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo } from "../../utils/ast";
 
 export const preferRequestContext: Rule = {
   meta: {
@@ -11,46 +11,46 @@ export const preferRequestContext: Rule = {
     fixable: false,
   },
   create(context) {
-    const filePath = context.getFilePath()
+    const filePath = context.getFilePath();
     const isServerFile =
       filePath.includes("server") ||
       filePath.includes(".server.") ||
       filePath.endsWith("server.ts") ||
-      filePath.endsWith("server.tsx")
+      filePath.endsWith("server.tsx");
 
-    if (!isServerFile) return {}
+    if (!isServerFile) return {};
 
-    let functionDepth = 0
+    let functionDepth = 0;
     const callbacks: VisitorCallbacks = {
       FunctionDeclaration() {
-        functionDepth++
+        functionDepth++;
       },
       "FunctionDeclaration:exit"() {
-        functionDepth--
+        functionDepth--;
       },
       FunctionExpression() {
-        functionDepth++
+        functionDepth++;
       },
       "FunctionExpression:exit"() {
-        functionDepth--
+        functionDepth--;
       },
       ArrowFunctionExpression() {
-        functionDepth++
+        functionDepth++;
       },
       "ArrowFunctionExpression:exit"() {
-        functionDepth--
+        functionDepth--;
       },
       CallExpression(node: any) {
-        if (functionDepth > 0) return // only flag module-level calls
+        if (functionDepth > 0) return; // only flag module-level calls
         if (isCallTo(node, "signal") || isCallTo(node, "createStore")) {
-          const name = node.callee.name
+          const name = node.callee.name;
           context.report({
             message: `Module-level \`${name}()\` in a server file — this state is shared across all requests. Use \`runWithRequestContext()\` for per-request isolation.`,
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

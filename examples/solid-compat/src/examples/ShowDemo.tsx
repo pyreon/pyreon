@@ -1,8 +1,8 @@
-import { createSignal, Show } from "solid-js"
-import Demo from "./Demo"
+import { createSignal, Show } from "solid-js";
+import Demo from "./Demo";
 
 export default function ShowDemo() {
-  const [visible, setVisible] = createSignal(true)
+  const [visible, setVisible] = createSignal(true);
 
   return (
     <Demo
@@ -24,5 +24,5 @@ export default function ShowDemo() {
         <p>Hello, I'm visible!</p>
       </Show>
     </Demo>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-export { arktypeField, arktypeSchema } from "./arktype"
+export { arktypeField, arktypeSchema } from "./arktype";
 export type {
   FieldAdapter,
   SchemaAdapter,
@@ -6,7 +6,7 @@ export type {
   ValidateFn,
   ValidationError,
   ValidationIssue,
-} from "./types"
-export { issuesToRecord } from "./utils"
-export { valibotField, valibotSchema } from "./valibot"
-export { zodField, zodSchema } from "./zod"
+} from "./types";
+export { issuesToRecord } from "./utils";
+export { valibotField, valibotSchema } from "./valibot";
+export { zodField, zodSchema } from "./zod";

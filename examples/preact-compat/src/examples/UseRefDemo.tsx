@@ -1,11 +1,11 @@
-import { createRef } from "preact"
-import { useRef, useState } from "preact/hooks"
-import Demo from "./Demo"
+import { createRef } from "preact";
+import { useRef, useState } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function UseRefDemo() {
-  const inputRef = useRef<HTMLInputElement>()
-  const classRef = createRef<HTMLInputElement>()
-  const [msg, setMsg] = useState("")
+  const inputRef = useRef<HTMLInputElement>();
+  const classRef = createRef<HTMLInputElement>();
+  const [msg, setMsg] = useState("");
 
   return (
     <Demo
@@ -23,8 +23,8 @@ const classRef = createRef<HTMLInputElement>()
           type="button"
           onClick={() => {
             if (inputRef.current) {
-              inputRef.current.focus()
-              setMsg(`Focused useRef input (value: "${inputRef.current.value}")`)
+              inputRef.current.focus();
+              setMsg(`Focused useRef input (value: "${inputRef.current.value}")`);
             }
           }}
         >
@@ -37,8 +37,8 @@ const classRef = createRef<HTMLInputElement>()
           type="button"
           onClick={() => {
             if (classRef.current) {
-              classRef.current.focus()
-              setMsg(`Focused createRef input (value: "${classRef.current.value}")`)
+              classRef.current.focus();
+              setMsg(`Focused createRef input (value: "${classRef.current.value}")`);
             }
           }}
         >
@@ -47,5 +47,5 @@ const classRef = createRef<HTMLInputElement>()
       </div>
       <p class="muted">{msg || "Click a button to focus an input"}</p>
     </Demo>
-  )
+  );
 }

@@ -1,18 +1,15 @@
 {
   "name": "@pyreon/rx",
   "version": "0.11.5",
-  "description": "Signal-aware reactive transforms \u2014 filter, map, sort, group, pipe for Pyreon signals",
+  "description": "Signal-aware reactive transforms — filter, map, sort, group, pipe for Pyreon signals",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/rx"
-  },
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -29,17 +26,20 @@
       "types": "./lib/types/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "lint": "oxlint ."
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/reactivity": "workspace:^"
   }
 }

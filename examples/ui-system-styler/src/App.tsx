@@ -1,6 +1,6 @@
-import { attrs, isAttrsComponent } from "@pyreon/attrs"
-import { Col, Container, Row } from "@pyreon/coolgrid"
-import { Element, List, Text as PText } from "@pyreon/elements"
+import { attrs, isAttrsComponent } from "@pyreon/attrs";
+import { Col, Container, Row } from "@pyreon/coolgrid";
+import { Element, List, Text as PText } from "@pyreon/elements";
 import {
   useColorScheme,
   useDebouncedValue,
@@ -14,18 +14,18 @@ import {
   useReducedMotion,
   useToggle,
   useWindowResize,
-} from "@pyreon/hooks"
-import { signal } from "@pyreon/reactivity"
-import rocketstyle from "@pyreon/rocketstyle"
-import { config, Provider } from "@pyreon/ui-core"
-import { makeItResponsive, styles } from "@pyreon/unistyle"
+} from "@pyreon/hooks";
+import { signal } from "@pyreon/reactivity";
+import rocketstyle from "@pyreon/rocketstyle";
+import { config, Provider } from "@pyreon/ui-core";
+import { makeItResponsive, styles } from "@pyreon/unistyle";
 
-const { styled } = config
+const { styled } = config;
 
 const theme = {
   rootSize: 16,
   breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 },
-}
+};
 
 // ═══════════════════════════════════════════════════════════════════════
 // Styled primitives
@@ -35,9 +35,12 @@ const Page = styled.div`
   max-width: 960px;
   margin: 0 auto;
   padding: 32px 24px;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
   color: #111;
-`
+`;
 
 const TopBadge = styled.span`
   display: inline-block;
@@ -48,19 +51,19 @@ const TopBadge = styled.span`
   font-size: 0.75rem;
   font-weight: 600;
   margin-bottom: 8px;
-`
+`;
 
 const H1 = styled.h1`
   font-size: 2rem;
   font-weight: 700;
   margin: 0 0 4px;
-`
+`;
 
 const Sub = styled.p`
   font-size: 1rem;
   color: #666;
   margin: 0 0 40px;
-`
+`;
 
 const H2 = styled.h2`
   font-size: 1.5rem;
@@ -68,20 +71,20 @@ const H2 = styled.h2`
   margin: 32px 0 16px;
   padding-top: 8px;
   border-top: 1px solid #eee;
-`
+`;
 
 const H3 = styled.h3`
   font-size: 1.125rem;
   font-weight: 600;
   margin: 0 0 8px;
-`
+`;
 
 const P = styled.p`
   font-size: 0.875rem;
   color: #555;
   line-height: 1.6;
   margin: 0 0 16px;
-`
+`;
 
 const Card = styled.div`
   padding: 24px;
@@ -89,40 +92,40 @@ const Card = styled.div`
   background: #f8f9fa;
   border: 1px solid #e9ecef;
   margin-bottom: 24px;
-`
+`;
 
 const Note = styled.div`
   font-size: 0.75rem;
   color: #888;
   margin-top: 6px;
-`
+`;
 
 const Code = styled.code`
   background: #f0f0f0;
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.85em;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-`
+  font-family: "SF Mono", "Fira Code", monospace;
+`;
 
 const CodeBlock = styled.pre`
   background: #f4f4f5;
   border-radius: 8px;
   padding: 12px;
   font-size: 13px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: "SF Mono", "Fira Code", monospace;
   color: #333;
   line-height: 1.6;
   overflow-x: auto;
   margin: 0;
-`
+`;
 
 const FlexRow = styled.div`
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-`
+`;
 
 const GridCell = styled.div`
   padding: 16px;
@@ -133,7 +136,7 @@ const GridCell = styled.div`
   font-weight: 500;
   color: #0070f3;
   border: 1px solid #b8daff;
-`
+`;
 
 const IconBox = styled.div`
   width: 32px;
@@ -145,11 +148,11 @@ const IconBox = styled.div`
   align-items: center;
   justify-content: center;
   font-weight: 600;
-`
+`;
 
 const Spacer = styled.div`
   height: 16px;
-`
+`;
 
 const HookBox = styled.div`
   padding: 16px;
@@ -158,7 +161,7 @@ const HookBox = styled.div`
   border: 1px solid #e9ecef;
   margin-bottom: 12px;
   transition: all 0.2s;
-`
+`;
 
 const Dot = styled.span`
   display: inline-block;
@@ -166,7 +169,7 @@ const Dot = styled.span`
   height: 10px;
   border-radius: 50%;
   margin-right: 8px;
-`
+`;
 
 const Btn = styled.button`
   padding: 6px 12px;
@@ -176,8 +179,10 @@ const Btn = styled.button`
   cursor: pointer;
   font-size: 13px;
 
-  &:hover { background: #f5f5f5; }
-`
+  &:hover {
+    background: #f5f5f5;
+  }
+`;
 
 const _BtnPrimary = styled.button`
   padding: 8px 16px;
@@ -189,8 +194,10 @@ const _BtnPrimary = styled.button`
   font-size: 13px;
   font-weight: 500;
 
-  &:hover { background: #0060df; }
-`
+  &:hover {
+    background: #0060df;
+  }
+`;
 
 const Pill = styled.span`
   display: inline-flex;
@@ -201,7 +208,7 @@ const Pill = styled.span`
   color: #fff;
   font-weight: 700;
   font-size: 14px;
-`
+`;
 
 // ═══════════════════════════════════════════════════════════════════════
 // ATTRS DEMOS
@@ -212,14 +219,14 @@ const AttrBox = attrs({ name: "AttrBox", component: Element }).attrs({
   alignX: "center",
   alignY: "center",
   block: true,
-})
+});
 
 const AttrBadge = attrs({ name: "AttrBadge", component: Element })
   .attrs({ direction: "inline", alignX: "center", alignY: "center" })
-  .attrs({ gap: 4 })
+  .attrs({ gap: 4 });
 
 const ColorBox = attrs({ name: "ColorBox", component: Element }).attrs<{
-  variant?: "primary" | "success" | "danger"
+  variant?: "primary" | "success" | "danger";
 }>(((props: any) => ({
   direction: "inline" as const,
   alignX: "center" as const,
@@ -227,14 +234,14 @@ const ColorBox = attrs({ name: "ColorBox", component: Element }).attrs<{
   label: { primary: "#0070f3", success: "#2ecc71", danger: "#e74c3c" }[
     (props.variant ?? "primary") as "primary" | "success" | "danger"
   ],
-})) as any)
+})) as any);
 
 const LockedDir = attrs({ name: "LockedDir", component: Element })
   .attrs({ direction: "rows" }, { priority: true })
-  .attrs({ alignX: "center", alignY: "center", gap: 8, block: true })
+  .attrs({ alignX: "center", alignY: "center", gap: 8, block: true });
 
 const FilteredBox = attrs({ name: "FilteredBox", component: Element }).attrs<{
-  mood?: "happy" | "sad"
+  mood?: "happy" | "sad";
 }>(
   ((props: any) => ({
     direction: "inline" as const,
@@ -243,42 +250,42 @@ const FilteredBox = attrs({ name: "FilteredBox", component: Element }).attrs<{
     label: props.mood === "happy" ? "Happy :)" : "Sad :(",
   })) as any,
   { filter: ["mood"] },
-)
+);
 
-const AttrCard = AttrBox.config({ name: "AttrCard" }).attrs({ gap: 8 })
-const InfoCard = AttrCard.config({ name: "InfoCard" }).attrs({ gap: 12 })
+const AttrCard = AttrBox.config({ name: "AttrCard" }).attrs({ gap: 8 });
+const InfoCard = AttrCard.config({ name: "InfoCard" }).attrs({ gap: 12 });
 
 const MetaBox = attrs({ name: "MetaBox", component: Element })
   .attrs({ direction: "rows", block: true })
-  .statics({ category: "layout", version: "2.0", tags: ["box", "container"] })
+  .statics({ category: "layout", version: "2.0", tags: ["box", "container"] });
 
 const withBorder = (Component: any) => (props: any) => (
   <div style={{ border: "2px dashed #0070f3", borderRadius: "8px" }}>
     <Component {...props} />
   </div>
-)
+);
 
 const withBackground = (Component: any) => (props: any) => (
   <div style={{ background: "#e8f4fd", borderRadius: "8px" }}>
     <Component {...props} />
   </div>
-)
+);
 
 const ComposedBox = attrs({ name: "ComposedBox", component: Element })
   .attrs({ direction: "rows", alignX: "center", gap: 8, block: true })
-  .compose({ withBorder, withBackground })
+  .compose({ withBorder, withBackground });
 
 const BaseButton = attrs({ name: "BaseButton", component: Element }).attrs({
   direction: "inline",
   alignX: "center",
   alignY: "center",
-})
-const PrimaryBtn = BaseButton.config({ name: "PrimaryBtn" })
-const SecondaryBtn = BaseButton.config({ name: "SecondaryBtn" })
-const GhostBtn = BaseButton.config({ name: "GhostBtn" })
+});
+const PrimaryBtn = BaseButton.config({ name: "PrimaryBtn" });
+const SecondaryBtn = BaseButton.config({ name: "SecondaryBtn" });
+const GhostBtn = BaseButton.config({ name: "GhostBtn" });
 
 function AttrsSection() {
-  const variant = signal<"primary" | "success" | "danger">("primary")
+  const variant = signal<"primary" | "success" | "danger">("primary");
 
   return (
     <>
@@ -414,7 +421,7 @@ function AttrsSection() {
         </CodeBlock>
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -426,10 +433,17 @@ const RsBadge = rocketstyle()({ name: "RsBadge", component: Element })
   .theme({ backgroundColor: "#0070f3", color: "#fff", hover: { backgroundColor: "#0060df" } })
   .styles(
     (css) => css`
-    padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 700;
-    ${({ $rocketstyle: t }) => css`color: ${t.color}; background: ${t.backgroundColor};`};
-  `,
-  )
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      ${({ $rocketstyle: t }) =>
+        css`
+          color: ${t.color};
+          background: ${t.backgroundColor};
+        `};
+    `,
+  );
 
 const StatusBadge = rocketstyle()({ name: "StatusBadge", component: Element })
   .attrs({ tag: "span", direction: "inline", alignX: "center", alignY: "center" })
@@ -442,10 +456,17 @@ const StatusBadge = rocketstyle()({ name: "StatusBadge", component: Element })
   })
   .styles(
     (css) => css`
-    padding: 8px 14px; border-radius: 8px; font-size: 14px; font-weight: 700;
-    ${({ $rocketstyle: t }) => css`color: ${t.color}; background: ${t.backgroundColor};`};
-  `,
-  )
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      ${({ $rocketstyle: t }) =>
+        css`
+          color: ${t.color};
+          background: ${t.backgroundColor};
+        `};
+    `,
+  );
 
 const RsChip = rocketstyle()({ name: "RsChip", component: Element })
   .attrs({ tag: "span", direction: "inline", alignX: "center", alignY: "center" })
@@ -464,13 +485,16 @@ const RsChip = rocketstyle()({ name: "RsChip", component: Element })
   })
   .styles(
     (css) => css`
-    font-weight: 600;
-    ${({ $rocketstyle: t }) => css`
-      background: ${t.backgroundColor}; color: ${t.color};
-      padding: ${t.paddingY}px ${t.paddingX}px; font-size: ${t.fontSize}px; border-radius: ${t.borderRadius}px;
-    `};
-  `,
-  )
+      font-weight: 600;
+      ${({ $rocketstyle: t }) => css`
+        background: ${t.backgroundColor};
+        color: ${t.color};
+        padding: ${t.paddingY}px ${t.paddingX}px;
+        font-size: ${t.fontSize}px;
+        border-radius: ${t.borderRadius}px;
+      `};
+    `,
+  );
 
 const RsButton = rocketstyle()({ name: "RsButton", component: Element })
   .attrs({ tag: "button" })
@@ -493,15 +517,22 @@ const RsButton = rocketstyle()({ name: "RsButton", component: Element })
   })
   .styles(
     (css) => css`
-    border: none; border-radius: 6px; font-weight: 500; cursor: pointer; transition: background 0.2s;
-    ${({ $rocketstyle: t }: any) => css`
-      color: ${t.color}; background: ${t.backgroundColor};
-      padding: ${t.paddingY ?? 10}px ${t.paddingX ?? 20}px;
-      font-size: ${t.fontSize ?? 14}px;
-      &:hover { background: ${t.hover?.backgroundColor}; }
-    `};
-  `,
-  )
+      border: none;
+      border-radius: 6px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+      ${({ $rocketstyle: t }: any) => css`
+        color: ${t.color};
+        background: ${t.backgroundColor};
+        padding: ${t.paddingY ?? 10}px ${t.paddingX ?? 20}px;
+        font-size: ${t.fontSize ?? 14}px;
+        &:hover {
+          background: ${t.hover?.backgroundColor};
+        }
+      `};
+    `,
+  );
 
 const RsTag = rocketstyle()({ name: "RsTag", component: Element })
   .attrs({ tag: "span", direction: "inline", alignX: "center", alignY: "center" })
@@ -514,11 +545,19 @@ const RsTag = rocketstyle()({ name: "RsTag", component: Element })
   })
   .styles(
     (css) => css`
-    padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    ${({ $rocketstyle: t }) => css`background: ${t.backgroundColor}; color: ${t.color};`};
-  `,
-  )
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      ${({ $rocketstyle: t }) =>
+        css`
+          background: ${t.backgroundColor};
+          color: ${t.color};
+        `};
+    `,
+  );
 
 const UnistyleButton = rocketstyle()({ name: "UnistyleButton", component: Element })
   .attrs({ tag: "button" })
@@ -547,22 +586,32 @@ const UnistyleButton = rocketstyle()({ name: "UnistyleButton", component: Elemen
   })
   .styles(
     (css) => css`
-    font-weight: 500;
-    ${({ $rocketstyle, $rocketstate: { pseudo } }) => {
-      const { hover: hoverStyles, ...restStyles } = $rocketstyle
-      const baseTheme = makeItResponsive({ theme: restStyles as any, styles, css })
-      const hoverTheme = hoverStyles ? makeItResponsive({ theme: hoverStyles, styles, css }) : null
-      return css`
-        ${baseTheme};
-        ${!pseudo?.disabled && css`&:hover { ${hoverTheme}; }`};
-        ${pseudo?.hover && css`${hoverTheme}`};
-      `
-    }};
-  `,
-  )
+      font-weight: 500;
+      ${({ $rocketstyle, $rocketstate: { pseudo } }) => {
+        const { hover: hoverStyles, ...restStyles } = $rocketstyle;
+        const baseTheme = makeItResponsive({ theme: restStyles as any, styles, css });
+        const hoverTheme = hoverStyles
+          ? makeItResponsive({ theme: hoverStyles, styles, css })
+          : null;
+        return css`
+          ${baseTheme};
+          ${!pseudo?.disabled &&
+          css`
+            &:hover {
+              ${hoverTheme};
+            }
+          `};
+          ${pseudo?.hover &&
+          css`
+            ${hoverTheme}
+          `};
+        `;
+      }};
+    `,
+  );
 
 function RocketstyleSection() {
-  const activeState = signal<"primary" | "secondary" | "success" | "danger">("primary")
+  const activeState = signal<"primary" | "secondary" | "success" | "danger">("primary");
 
   return (
     <>
@@ -698,7 +747,7 @@ function RocketstyleSection() {
         </FlexRow>
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -814,7 +863,7 @@ function ElementsSection() {
         <Note>First item highlighted, separator on all but last (positional metadata)</Note>
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -913,7 +962,7 @@ function CoolgridSection() {
         </Container>
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -921,7 +970,7 @@ function CoolgridSection() {
 // ═══════════════════════════════════════════════════════════════════════
 
 function HoverDemo() {
-  const { hovered, props: hoverProps } = useHover()
+  const { hovered, props: hoverProps } = useHover();
   return (
     <HookBox
       {...hoverProps}
@@ -933,11 +982,11 @@ function HoverDemo() {
       <Dot style={() => ({ background: hovered() ? "#0070f3" : "#ccc" })} />
       <Code>useHover()</Code> — {() => (hovered() ? "Hovered!" : "Hover me")}
     </HookBox>
-  )
+  );
 }
 
 function FocusDemo() {
-  const { focused, props: focusProps } = useFocus()
+  const { focused, props: focusProps } = useFocus();
   return (
     <HookBox
       style={() => ({
@@ -956,11 +1005,11 @@ function FocusDemo() {
         style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; width: 100%"
       />
     </HookBox>
-  )
+  );
 }
 
 function ToggleDemo() {
-  const { value, toggle, setTrue, setFalse } = useToggle(false)
+  const { value, toggle, setTrue, setFalse } = useToggle(false);
   return (
     <HookBox>
       <Dot style={() => ({ background: value() ? "#0070f3" : "#ccc" })} />
@@ -971,12 +1020,12 @@ function ToggleDemo() {
         <Btn onClick={setFalse}>False</Btn>
       </FlexRow>
     </HookBox>
-  )
+  );
 }
 
 function CounterDemo() {
-  const count = signal(0)
-  const prev = usePrevious(() => count())
+  const count = signal(0);
+  const prev = usePrevious(() => count());
   return (
     <HookBox>
       <Code>signal()</Code> + <Code>usePrevious()</Code>
@@ -990,12 +1039,12 @@ function CounterDemo() {
         <Btn onClick={() => count.update((n) => n + 1)}>+</Btn>
       </FlexRow>
     </HookBox>
-  )
+  );
 }
 
 function DebouncedDemo() {
-  const input = signal("")
-  const debounced = useDebouncedValue(() => input(), 500)
+  const input = signal("");
+  const debounced = useDebouncedValue(() => input(), 500);
   return (
     <HookBox>
       <Code>useDebouncedValue()</Code> — 500ms delay
@@ -1011,11 +1060,11 @@ function DebouncedDemo() {
         Input: "{() => input()}" | Debounced: "{() => debounced()}"
       </div>
     </HookBox>
-  )
+  );
 }
 
 function WindowResizeDemo() {
-  const windowSize = useWindowResize()
+  const windowSize = useWindowResize();
   return (
     <HookBox>
       <Code>useWindowResize()</Code>
@@ -1024,13 +1073,13 @@ function WindowResizeDemo() {
         <strong>{() => windowSize().height}</strong>
       </div>
     </HookBox>
-  )
+  );
 }
 
 function MediaQueryDemo() {
-  const isMobile = useMediaQuery("(max-width: 575px)")
-  const isTablet = useMediaQuery("(min-width: 576px) and (max-width: 991px)")
-  const isDesktop = useMediaQuery("(min-width: 992px)")
+  const isMobile = useMediaQuery("(max-width: 575px)");
+  const isTablet = useMediaQuery("(min-width: 576px) and (max-width: 991px)");
+  const isDesktop = useMediaQuery("(min-width: 992px)");
   return (
     <HookBox>
       <Code>useMediaQuery()</Code>
@@ -1044,11 +1093,11 @@ function MediaQueryDemo() {
         <Dot style={() => ({ background: isDesktop() ? "#2ecc71" : "#ccc" })} /> Desktop (≥992px)
       </div>
     </HookBox>
-  )
+  );
 }
 
 function ColorSchemeDemo() {
-  const scheme = useColorScheme()
+  const scheme = useColorScheme();
   return (
     <HookBox>
       <Code>useColorScheme()</Code> — {() => scheme()}
@@ -1062,11 +1111,11 @@ function ColorSchemeDemo() {
         Your OS prefers: <strong>{() => scheme()}</strong> mode
       </div>
     </HookBox>
-  )
+  );
 }
 
 function ReducedMotionDemo() {
-  const reduced = useReducedMotion()
+  const reduced = useReducedMotion();
   return (
     <HookBox>
       <Code>useReducedMotion()</Code>
@@ -1075,14 +1124,14 @@ function ReducedMotionDemo() {
         Reduced motion: <strong>{() => (reduced() ? "YES" : "NO")}</strong>
       </div>
     </HookBox>
-  )
+  );
 }
 
 function KeyboardDemo() {
-  const lastKey = signal("(none)")
-  useKeyboard("Escape", () => lastKey.set("Escape"), undefined)
-  useKeyboard("Enter", () => lastKey.set("Enter"), undefined)
-  useKeyboard(" ", () => lastKey.set("Space"), undefined)
+  const lastKey = signal("(none)");
+  useKeyboard("Escape", () => lastKey.set("Escape"), undefined);
+  useKeyboard("Enter", () => lastKey.set("Enter"), undefined);
+  useKeyboard(" ", () => lastKey.set("Space"), undefined);
   return (
     <HookBox>
       <Code>useKeyboard()</Code> — listening for Escape, Enter, Space
@@ -1090,13 +1139,13 @@ function KeyboardDemo() {
         Last key pressed: <strong>{() => lastKey()}</strong>
       </div>
     </HookBox>
-  )
+  );
 }
 
 function IntervalDemo() {
-  const ticks = signal(0)
-  const running = signal(true)
-  useInterval(() => ticks.update((n) => n + 1), running() ? 1000 : null)
+  const ticks = signal(0);
+  const running = signal(true);
+  useInterval(() => ticks.update((n) => n + 1), running() ? 1000 : null);
   return (
     <HookBox>
       <Code>useInterval()</Code> — 1s ticks
@@ -1105,19 +1154,19 @@ function IntervalDemo() {
       </div>
       <Btn onClick={() => running.update((v) => !v)}>{() => (running() ? "Stop" : "Start")}</Btn>
     </HookBox>
-  )
+  );
 }
 
 function ElementSizeDemo() {
-  let elRef: HTMLElement | null = null
-  const size = useElementSize(() => elRef)
+  let elRef: HTMLElement | null = null;
+  const size = useElementSize(() => elRef);
   return (
     <HookBox>
       <Code>useElementSize()</Code>
       <div
         ref={
           ((el: HTMLElement) => {
-            elRef = el
+            elRef = el;
           }) as any
         }
         style={{
@@ -1138,7 +1187,7 @@ function ElementSizeDemo() {
         <strong>{() => Math.round(size().height)}</strong>
       </div>
     </HookBox>
-  )
+  );
 }
 
 function HooksSection() {
@@ -1175,7 +1224,7 @@ function HooksSection() {
         <ReducedMotionDemo />
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1202,7 +1251,7 @@ function StyledSection() {
         </FlexRow>
       </Card>
     </>
-  )
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1228,5 +1277,5 @@ export function App() {
         <HooksSection />
       </Page>
     </Provider>
-  )
+  );
 }

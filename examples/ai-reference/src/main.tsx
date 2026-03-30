@@ -4,13 +4,13 @@
  * PATTERN: mount() + RouterProvider + RouterView
  */
 
-import { HeadProvider } from "@pyreon/head"
-import { createRouter, RouterLink, RouterProvider, RouterView } from "@pyreon/router"
-import { mount } from "@pyreon/runtime-dom"
-import { Home } from "./pages/Home"
-import { TodoDetail } from "./pages/TodoDetail"
-import { TodoList } from "./pages/TodoList"
-import { UserProfile } from "./pages/UserProfile"
+import { HeadProvider } from "@pyreon/head";
+import { createRouter, RouterLink, RouterProvider, RouterView } from "@pyreon/router";
+import { mount } from "@pyreon/runtime-dom";
+import { Home } from "./pages/Home";
+import { TodoDetail } from "./pages/TodoDetail";
+import { TodoList } from "./pages/TodoList";
+import { UserProfile } from "./pages/UserProfile";
 
 const router = createRouter([
   { path: "/", component: Home, name: "home" },
@@ -19,8 +19,8 @@ const router = createRouter([
     component: TodoList,
     name: "todos",
     loader: async () => {
-      const res = await fetch("/api/todos")
-      return res.json()
+      const res = await fetch("/api/todos");
+      return res.json();
     },
   },
   {
@@ -28,12 +28,12 @@ const router = createRouter([
     component: TodoDetail,
     name: "todo",
     loader: async ({ params }) => {
-      const res = await fetch(`/api/todo/${params.id}`)
-      return res.json()
+      const res = await fetch(`/api/todo/${params.id}`);
+      return res.json();
     },
   },
   { path: "/user/:id", component: UserProfile, name: "user" },
-])
+]);
 
 const App = () => (
   <HeadProvider>
@@ -51,7 +51,7 @@ const App = () => (
       </main>
     </RouterProvider>
   </HeadProvider>
-)
+);
 
-const root = document.getElementById("app")
-if (root) mount(<App />, root)
+const root = document.getElementById("app");
+if (root) mount(<App />, root);

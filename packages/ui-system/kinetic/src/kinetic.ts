@@ -1,5 +1,5 @@
-import createKineticComponent from "./kinetic/createKineticComponent"
-import type { KineticComponent } from "./kinetic/types"
+import createKineticComponent from "./kinetic/createKineticComponent";
+import type { KineticComponent } from "./kinetic/types";
 
 /**
  * Creates a reusable animated component via immutable chaining.
@@ -20,6 +20,6 @@ import type { KineticComponent } from "./kinetic/types"
  * ```
  */
 const kinetic = <Tag extends string>(tag: Tag): KineticComponent<Tag, "transition"> =>
-  createKineticComponent<Tag, "transition">({ tag, mode: "transition" })
+  createKineticComponent<Tag, "transition">({ tag, mode: "transition" });
 
-export default kinetic
+export default kinetic;

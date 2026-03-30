@@ -1,16 +1,16 @@
-import { memo, useState } from "react"
-import Demo from "./Demo"
+import { memo, useState } from "react";
+import Demo from "./Demo";
 
 const ExpensiveChild = memo(function _ExpensiveChild(props: { value: number }) {
   return (
     <p>
       Memoized component — value: <strong>{props.value}</strong>
     </p>
-  )
-})
+  );
+});
 
 export default function MemoDemo() {
-  const [count, setCount] = useState(0)
+  const [count, setCount] = useState(0);
 
   return (
     <Demo
@@ -28,5 +28,5 @@ const Expensive = memo(function Expensive({ value }) {
       </button>
       <p class="muted">memo is a no-op — Pyreon components run once</p>
     </Demo>
-  )
+  );
 }

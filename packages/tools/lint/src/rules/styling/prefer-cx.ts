@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
 
 export const preferCx: Rule = {
   meta: {
@@ -13,11 +13,11 @@ export const preferCx: Rule = {
   create(context) {
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {
-        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "class") return
-        const value = node.value
-        if (!value || value.type !== "JSXExpressionContainer") return
-        const expr = value.expression
-        if (!expr) return
+        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "class") return;
+        const value = node.value;
+        if (!value || value.type !== "JSXExpressionContainer") return;
+        const expr = value.expression;
+        if (!expr) return;
 
         // String concatenation: "foo " + bar
         if (expr.type === "BinaryExpression" && expr.operator === "+") {
@@ -25,8 +25,8 @@ export const preferCx: Rule = {
             message:
               "String concatenation in `class` attribute — use `cx()` for cleaner class composition.",
             span: getSpan(expr),
-          })
-          return
+          });
+          return;
         }
 
         // Template literal: `foo ${bar}`
@@ -35,10 +35,10 @@ export const preferCx: Rule = {
             message:
               "Template literal in `class` attribute — use `cx()` for cleaner class composition.",
             span: getSpan(expr),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

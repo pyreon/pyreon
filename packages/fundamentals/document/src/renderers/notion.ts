@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from "../sanitize";
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types";
 
 /**
  * Notion renderer — outputs Notion Block JSON for the Notion API.
@@ -7,25 +7,25 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === "string" ? { header: col } : col;
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .join("");
 }
 
 interface RichText {
-  type: "text"
-  text: { content: string; link?: { url: string } }
+  type: "text";
+  text: { content: string; link?: { url: string } };
   annotations?: {
-    bold?: boolean
-    italic?: boolean
-    strikethrough?: boolean
-    underline?: boolean
-    code?: boolean
-  }
+    bold?: boolean;
+    italic?: boolean;
+    strikethrough?: boolean;
+    underline?: boolean;
+    code?: boolean;
+  };
 }
 
 function textToRichText(text: string, annotations?: RichText["annotations"]): RichText[] {
@@ -35,18 +35,18 @@ function textToRichText(text: string, annotations?: RichText["annotations"]): Ri
       text: { content: text },
       ...(annotations ? { annotations } : {}),
     },
-  ]
+  ];
 }
 
 interface NotionBlock {
-  object: "block"
-  type: string
-  [key: string]: unknown
+  object: "block";
+  type: string;
+  [key: string]: unknown;
 }
 
 function nodeToBlocks(node: DocNode): NotionBlock[] {
-  const p = node.props
-  const blocks: NotionBlock[] = []
+  const p = node.props;
+  const blocks: NotionBlock[] = [];
 
   switch (node.type) {
     case "document":
@@ -56,30 +56,30 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
     case "column":
       for (const child of node.children) {
         if (typeof child !== "string") {
-          blocks.push(...nodeToBlocks(child))
+          blocks.push(...nodeToBlocks(child));
         }
       }
-      break
+      break;
 
     case "heading": {
-      const level = (p.level as number) ?? 1
-      const text = getTextContent(node.children)
-      const type = level <= 1 ? "heading_1" : level === 2 ? "heading_2" : "heading_3"
+      const level = (p.level as number) ?? 1;
+      const text = getTextContent(node.children);
+      const type = level <= 1 ? "heading_1" : level === 2 ? "heading_2" : "heading_3";
       blocks.push({
         object: "block",
         type,
         [type]: { rich_text: textToRichText(text) },
-      })
-      break
+      });
+      break;
     }
 
     case "text": {
-      const text = getTextContent(node.children)
-      const annotations: RichText["annotations"] = {}
-      if (p.bold) annotations.bold = true
-      if (p.italic) annotations.italic = true
-      if (p.strikethrough) annotations.strikethrough = true
-      if (p.underline) annotations.underline = true
+      const text = getTextContent(node.children);
+      const annotations: RichText["annotations"] = {};
+      if (p.bold) annotations.bold = true;
+      if (p.italic) annotations.italic = true;
+      if (p.strikethrough) annotations.strikethrough = true;
+      if (p.underline) annotations.underline = true;
       blocks.push({
         object: "block",
         type: "paragraph",
@@ -89,25 +89,25 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
             Object.keys(annotations).length > 0 ? annotations : undefined,
           ),
         },
-      })
-      break
+      });
+      break;
     }
 
     case "link": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       blocks.push({
         object: "block",
         type: "paragraph",
         paragraph: {
           rich_text: [{ type: "text", text: { content: text, link: { url: href } } }],
         },
-      })
-      break
+      });
+      break;
     }
 
     case "image": {
-      const src = sanitizeImageSrc(p.src as string)
+      const src = sanitizeImageSrc(p.src as string);
       if (src.startsWith("http")) {
         blocks.push({
           object: "block",
@@ -117,16 +117,16 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
             external: { url: src },
             ...(p.caption ? { caption: textToRichText(p.caption as string) } : {}),
           },
-        })
+        });
       }
-      break
+      break;
     }
 
     case "table": {
-      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
-      const rows = (p.rows ?? []) as (string | number)[][]
+      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn);
+      const rows = (p.rows ?? []) as (string | number)[][];
 
-      const tableRows: NotionBlock[] = []
+      const tableRows: NotionBlock[] = [];
 
       // Header row
       tableRows.push({
@@ -135,7 +135,7 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
         table_row: {
           cells: columns.map((col) => textToRichText(col.header, { bold: true })),
         },
-      })
+      });
 
       // Data rows
       for (const row of rows) {
@@ -145,7 +145,7 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
           table_row: {
             cells: columns.map((_, i) => textToRichText(String(row[i] ?? ""))),
           },
-        })
+        });
       }
 
       blocks.push({
@@ -156,28 +156,28 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
           has_column_header: true,
           children: tableRows,
         },
-      })
-      break
+      });
+      break;
     }
 
     case "list": {
-      const ordered = p.ordered as boolean | undefined
-      const items = node.children.filter((c): c is DocNode => typeof c !== "string")
+      const ordered = p.ordered as boolean | undefined;
+      const items = node.children.filter((c): c is DocNode => typeof c !== "string");
       for (const item of items) {
-        const text = getTextContent(item.children)
-        const type = ordered ? "numbered_list_item" : "bulleted_list_item"
+        const text = getTextContent(item.children);
+        const type = ordered ? "numbered_list_item" : "bulleted_list_item";
         blocks.push({
           object: "block",
           type,
           [type]: { rich_text: textToRichText(text) },
-        })
+        });
       }
-      break
+      break;
     }
 
     case "code": {
-      const text = getTextContent(node.children)
-      const lang = (p.language as string) ?? "plain text"
+      const text = getTextContent(node.children);
+      const lang = (p.language as string) ?? "plain text";
       blocks.push({
         object: "block",
         type: "code",
@@ -185,26 +185,26 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
           rich_text: textToRichText(text),
           language: lang,
         },
-      })
-      break
+      });
+      break;
     }
 
     case "divider":
     case "page-break":
-      blocks.push({ object: "block", type: "divider", divider: {} })
-      break
+      blocks.push({ object: "block", type: "divider", divider: {} });
+      break;
 
     case "spacer":
       blocks.push({
         object: "block",
         type: "paragraph",
         paragraph: { rich_text: [] },
-      })
-      break
+      });
+      break;
 
     case "button": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       blocks.push({
         object: "block",
         type: "paragraph",
@@ -217,27 +217,27 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
             },
           ],
         },
-      })
-      break
+      });
+      break;
     }
 
     case "quote": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       blocks.push({
         object: "block",
         type: "quote",
         quote: { rich_text: textToRichText(text) },
-      })
-      break
+      });
+      break;
     }
   }
 
-  return blocks
+  return blocks;
 }
 
 export const notionRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    const blocks = nodeToBlocks(node)
-    return JSON.stringify({ children: blocks }, null, 2)
+    const blocks = nodeToBlocks(node);
+    return JSON.stringify({ children: blocks }, null, 2);
   },
-}
+};

@@ -1,6 +1,6 @@
-import { onUnmount } from "@pyreon/core"
-import type { Computed } from "@pyreon/reactivity"
-import { batch, computed, effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from "@pyreon/core";
+import type { Computed } from "@pyreon/reactivity";
+import { batch, computed, effect, signal } from "@pyreon/reactivity";
 import {
   createTable,
   type RowData,
@@ -9,9 +9,9 @@ import {
   type TableOptionsResolved,
   type TableState,
   type Updater,
-} from "@tanstack/table-core"
+} from "@tanstack/table-core";
 
-export type UseTableOptions<TData extends RowData> = () => TableOptions<TData>
+export type UseTableOptions<TData extends RowData> = () => TableOptions<TData>;
 
 /**
  * Create a reactive TanStack Table instance. Returns a read-only signal
@@ -34,12 +34,12 @@ export function useTable<TData extends RowData>(
   options: UseTableOptions<TData>,
 ): Computed<Table<TData>> {
   // Internal state managed by the adapter — merged with user-provided state.
-  const tableState = signal<TableState>({} as TableState)
+  const tableState = signal<TableState>({} as TableState);
 
   // Version counter — Pyreon signals use Object.is for equality, so
   // setting the same table reference is a no-op. We bump a version
   // counter to force the computed to re-evaluate and notify consumers.
-  const version = signal(0)
+  const version = signal(0);
 
   // Resolve user options with adapter-required defaults.
   const resolvedOptions: TableOptionsResolved<TData> = {
@@ -49,27 +49,27 @@ export function useTable<TData extends RowData>(
     },
     renderFallbackValue: null,
     ...options(),
-  }
+  };
 
   // Create the table instance once.
-  const table = createTable(resolvedOptions)
+  const table = createTable(resolvedOptions);
 
   // Initialize internal state from the table's initial state.
-  tableState.set(table.initialState)
+  tableState.set(table.initialState);
 
   // The signal that consumers read — depends on `version` so it
   // re-notifies whenever we bump the version after a state/option change.
   const tableSig = computed(() => {
-    version()
-    return table
-  })
+    version();
+    return table;
+  });
 
   // Sync options reactively: when signals inside options() change, or when
   // internal state changes, update the table and notify consumers.
   const cleanup = effect(() => {
-    const userOpts = options()
-    const currentState = tableState()
-    let stateChanged = false
+    const userOpts = options();
+    const currentState = tableState();
+    let stateChanged = false;
 
     table.setOptions((prev) => ({
       ...prev,
@@ -79,26 +79,26 @@ export function useTable<TData extends RowData>(
         ...userOpts.state,
       },
       onStateChange: (updater: Updater<TableState>) => {
-        const newState = typeof updater === "function" ? updater(tableState.peek()) : updater
+        const newState = typeof updater === "function" ? updater(tableState.peek()) : updater;
 
-        stateChanged = true
+        stateChanged = true;
         batch(() => {
-          tableState.set(newState)
-          version.update((n) => n + 1)
-        })
+          tableState.set(newState);
+          version.update((n) => n + 1);
+        });
 
-        userOpts.onStateChange?.(updater)
+        userOpts.onStateChange?.(updater);
       },
-    }))
+    }));
 
     // Only bump if setOptions didn't already trigger a state change
     if (!stateChanged) {
-      version.update((n) => n + 1)
+      version.update((n) => n + 1);
     }
-  })
+  });
 
   // Clean up the effect when the component unmounts.
-  onUnmount(() => cleanup.dispose())
+  onUnmount(() => cleanup.dispose());
 
-  return tableSig
+  return tableSig;
 }

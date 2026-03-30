@@ -1,18 +1,15 @@
 {
   "name": "@pyreon/dnd",
   "version": "0.11.5",
-  "description": "Signal-driven drag and drop for Pyreon \u2014 wraps @atlaskit/pragmatic-drag-and-drop",
+  "description": "Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/dnd"
-  },
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -29,23 +26,26 @@
       "types": "./lib/types/index.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
+    "lint": "oxlint ."
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.7.0",
     "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.0.0",
     "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.0.0"
   },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:^"
+  },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
-  },
-  "devDependencies": {
-    "@pyreon/typescript": "workspace:^"
   }
 }

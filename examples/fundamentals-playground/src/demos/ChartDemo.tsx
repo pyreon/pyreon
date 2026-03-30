@@ -1,12 +1,12 @@
-import type { EChartsOption } from "@pyreon/charts"
-import { Chart } from "@pyreon/charts"
-import { computed, signal } from "@pyreon/reactivity"
+import type { EChartsOption } from "@pyreon/charts";
+import { Chart } from "@pyreon/charts";
+import { computed, signal } from "@pyreon/reactivity";
 
 export function ChartDemo() {
   // ─── Bar chart data ────────────────────────────────────────────────────────
-  const months = signal(["Jan", "Feb", "Mar", "Apr", "May", "Jun"])
-  const revenue = signal([120, 200, 150, 80, 270, 310])
-  const profit = signal([40, 80, 50, 20, 110, 140])
+  const months = signal(["Jan", "Feb", "Mar", "Apr", "May", "Jun"]);
+  const revenue = signal([120, 200, 150, 80, 270, 310]);
+  const profit = signal([40, 80, 50, 20, 110, 140]);
 
   // ─── Pie chart data ────────────────────────────────────────────────────────
   const pieData = signal([
@@ -14,13 +14,13 @@ export function ChartDemo() {
     { name: "Mobile", value: 735 },
     { name: "Tablet", value: 580 },
     { name: "Other", value: 484 },
-  ])
+  ]);
 
   // ─── Gauge value ───────────────────────────────────────────────────────────
-  const gaugeValue = signal(72)
+  const gaugeValue = signal(72);
 
   // ─── Chart type selector ───────────────────────────────────────────────────
-  const chartType = signal<"bar" | "line" | "scatter">("bar")
+  const chartType = signal<"bar" | "line" | "scatter">("bar");
 
   const barOptions = computed<EChartsOption>(() => ({
     title: { text: "Revenue & Profit", left: "center" },
@@ -42,7 +42,7 @@ export function ChartDemo() {
         itemStyle: { color: "#91cc75" },
       },
     ],
-  }))
+  }));
 
   const pieOptions = computed<EChartsOption>(() => ({
     title: { text: "Device Share", left: "center" },
@@ -57,7 +57,7 @@ export function ChartDemo() {
         },
       },
     ],
-  }))
+  }));
 
   const gaugeOptions = computed<EChartsOption>(() => ({
     series: [
@@ -68,10 +68,10 @@ export function ChartDemo() {
         axisLine: { lineStyle: { width: 20 } },
       },
     ],
-  }))
+  }));
 
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  const log = signal<string[]>([]);
+  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg]);
 
   return (
     <div>
@@ -92,8 +92,8 @@ export function ChartDemo() {
               key={type}
               class={chartType() === type ? "active" : ""}
               onClick={() => {
-                chartType.set(type)
-                addLog(`Chart type → ${type}`)
+                chartType.set(type);
+                addLog(`Chart type → ${type}`);
               }}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -105,8 +105,8 @@ export function ChartDemo() {
           <button
             type="button"
             onClick={() => {
-              revenue.update((r) => r.map((v) => v + Math.round(Math.random() * 40 - 20)))
-              addLog("Revenue data randomized")
+              revenue.update((r) => r.map((v) => v + Math.round(Math.random() * 40 - 20)));
+              addLog("Revenue data randomized");
             }}
           >
             Randomize Revenue
@@ -114,10 +114,10 @@ export function ChartDemo() {
           <button
             type="button"
             onClick={() => {
-              months.update((m) => [...m, `M${m.length + 1}`])
-              revenue.update((r) => [...r, Math.round(Math.random() * 300)])
-              profit.update((p) => [...p, Math.round(Math.random() * 150)])
-              addLog("Added month")
+              months.update((m) => [...m, `M${m.length + 1}`]);
+              revenue.update((r) => [...r, Math.round(Math.random() * 300)]);
+              profit.update((p) => [...p, Math.round(Math.random() * 150)]);
+              addLog("Added month");
             }}
           >
             Add Month
@@ -138,8 +138,8 @@ export function ChartDemo() {
                   ...item,
                   value: Math.round(Math.random() * 1500),
                 })),
-              )
-              addLog("Pie data randomized")
+              );
+              addLog("Pie data randomized");
             }}
           >
             Randomize Values
@@ -155,8 +155,8 @@ export function ChartDemo() {
           <button
             type="button"
             onClick={() => {
-              gaugeValue.update((v) => Math.max(0, v - 10))
-              addLog(`Gauge → ${gaugeValue()}%`)
+              gaugeValue.update((v) => Math.max(0, v - 10));
+              addLog(`Gauge → ${gaugeValue()}%`);
             }}
           >
             -10
@@ -167,8 +167,8 @@ export function ChartDemo() {
           <button
             type="button"
             onClick={() => {
-              gaugeValue.update((v) => Math.min(100, v + 10))
-              addLog(`Gauge → ${gaugeValue()}%`)
+              gaugeValue.update((v) => Math.min(100, v + 10));
+              addLog(`Gauge → ${gaugeValue()}%`);
             }}
           >
             +10
@@ -197,5 +197,5 @@ export function ChartDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,23 +1,23 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
-import { issuesToRecord } from "./utils"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form";
+import type { ValidationIssue } from "./types";
+import { issuesToRecord } from "./utils";
 
 /**
  * Minimal Valibot-compatible interfaces so we don't require valibot as a hard dep.
  */
 interface ValibotPathItem {
-  key: string | number
+  key: string | number;
 }
 
 interface ValibotIssue {
-  path?: ValibotPathItem[]
-  message: string
+  path?: ValibotPathItem[];
+  message: string;
 }
 
 interface ValibotSafeParseResult {
-  success: boolean
-  output?: unknown
-  issues?: ValibotIssue[]
+  success: boolean;
+  output?: unknown;
+  issues?: ValibotIssue[];
 }
 
 /**
@@ -27,19 +27,19 @@ interface ValibotSafeParseResult {
  * any callable and cast internally.
  */
 // biome-ignore lint/complexity/noBannedTypes: must accept any valibot parse function
-type GenericSafeParseFn = Function
+type GenericSafeParseFn = Function;
 
 function valibotIssuesToGeneric(issues: ValibotIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
     path: issue.path?.map((p) => String(p.key)).join(".") ?? "",
     message: issue.message,
-  }))
+  }));
 }
 
 type InternalParseFn = (
   schema: unknown,
   input: unknown,
-) => ValibotSafeParseResult | Promise<ValibotSafeParseResult>
+) => ValibotSafeParseResult | Promise<ValibotSafeParseResult>;
 
 /**
  * Create a form-level schema validator from a Valibot schema.
@@ -66,18 +66,18 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
   schema: unknown,
   safeParseFn: GenericSafeParseFn,
 ): SchemaValidateFn<TValues> {
-  const parse = safeParseFn as InternalParseFn
+  const parse = safeParseFn as InternalParseFn;
   return async (values: TValues) => {
     try {
-      const result = await parse(schema, values)
-      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
-      return issuesToRecord<TValues>(valibotIssuesToGeneric(result.issues ?? []))
+      const result = await parse(schema, values);
+      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>;
+      return issuesToRecord<TValues>(valibotIssuesToGeneric(result.issues ?? []));
     } catch (err) {
       return {
         "": err instanceof Error ? err.message : String(err),
-      } as Partial<Record<keyof TValues, ValidationError>>
+      } as Partial<Record<keyof TValues, ValidationError>>;
     }
-  }
+  };
 }
 
 /**
@@ -96,14 +96,14 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
  * })
  */
 export function valibotField<T>(schema: unknown, safeParseFn: GenericSafeParseFn): ValidateFn<T> {
-  const parse = safeParseFn as InternalParseFn
+  const parse = safeParseFn as InternalParseFn;
   return async (value: T) => {
     try {
-      const result = await parse(schema, value)
-      if (result.success) return undefined
-      return result.issues?.[0]?.message
+      const result = await parse(schema, value);
+      if (result.success) return undefined;
+      return result.issues?.[0]?.message;
     } catch (err) {
-      return err instanceof Error ? err.message : String(err)
+      return err instanceof Error ? err.message : String(err);
     }
-  }
+  };
 }

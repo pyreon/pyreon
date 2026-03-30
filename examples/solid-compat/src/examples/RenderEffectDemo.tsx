@@ -1,18 +1,18 @@
-import { createComputed, createRenderEffect, createSignal } from "solid-js"
-import Demo from "./Demo"
+import { createComputed, createRenderEffect, createSignal } from "solid-js";
+import Demo from "./Demo";
 
 export default function RenderEffectDemo() {
-  const [count, setCount] = createSignal(0)
-  const [renderLog, setRenderLog] = createSignal<string[]>([])
-  const [computedLog, setComputedLog] = createSignal<string[]>([])
+  const [count, setCount] = createSignal(0);
+  const [renderLog, setRenderLog] = createSignal<string[]>([]);
+  const [computedLog, setComputedLog] = createSignal<string[]>([]);
 
   createRenderEffect(() => {
-    setRenderLog((prev) => [...prev.slice(-3), `render: ${count()}`])
-  })
+    setRenderLog((prev) => [...prev.slice(-3), `render: ${count()}`]);
+  });
 
   createComputed(() => {
-    setComputedLog((prev) => [...prev.slice(-3), `computed: ${count()}`])
-  })
+    setComputedLog((prev) => [...prev.slice(-3), `computed: ${count()}`]);
+  });
 
   return (
     <Demo
@@ -37,5 +37,5 @@ createComputed(() => {
       <p class="muted">renderEffect: {renderLog().join(" | ")}</p>
       <p class="muted">createComputed: {computedLog().join(" | ")}</p>
     </Demo>
-  )
+  );
 }

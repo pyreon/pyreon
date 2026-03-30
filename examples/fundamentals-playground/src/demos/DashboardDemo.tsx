@@ -1,9 +1,9 @@
-import { createDocument, render } from "@pyreon/document"
-import { createMachine } from "@pyreon/machine"
-import { createPermissions } from "@pyreon/permissions"
-import { computed, signal } from "@pyreon/reactivity"
-import { useStorage } from "@pyreon/storage"
-import { defineStore } from "@pyreon/store"
+import { createDocument, render } from "@pyreon/document";
+import { createMachine } from "@pyreon/machine";
+import { createPermissions } from "@pyreon/permissions";
+import { computed, signal } from "@pyreon/reactivity";
+import { useStorage } from "@pyreon/storage";
+import { defineStore } from "@pyreon/store";
 
 /**
  * Integrated Dashboard Demo
@@ -25,23 +25,23 @@ const useDashboard = defineStore("dashboard", () => {
     { region: "EU", revenue: 800000, growth: 15 },
     { region: "APAC", revenue: 500000, growth: 40 },
     { region: "LATAM", revenue: 300000, growth: 25 },
-  ])
+  ]);
 
-  const totalRevenue = computed(() => salesData().reduce((sum, r) => sum + r.revenue, 0))
+  const totalRevenue = computed(() => salesData().reduce((sum, r) => sum + r.revenue, 0));
 
   const topRegion = computed(() => {
-    const sorted = [...salesData()].sort((a, b) => b.revenue - a.revenue)
-    return sorted[0]?.region ?? "N/A"
-  })
+    const sorted = [...salesData()].sort((a, b) => b.revenue - a.revenue);
+    return sorted[0]?.region ?? "N/A";
+  });
 
   const addSale = (region: string, amount: number) => {
     salesData.update((data) =>
       data.map((r) => (r.region === region ? { ...r, revenue: r.revenue + amount } : r)),
-    )
-  }
+    );
+  };
 
-  return { salesData, totalRevenue, topRegion, addSale }
-})
+  return { salesData, totalRevenue, topRegion, addSale };
+});
 
 // ── Permissions ─────────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ const can = createPermissions({
   "dashboard.export": true,
   "sales.add": true,
   "admin.panel": false,
-})
+});
 
 // ── Export workflow machine ──────────────────────────────────────────────────
 
@@ -62,21 +62,21 @@ const exportMachine = createMachine({
     exporting: { on: { DONE: "complete", ERROR: "idle" } },
     complete: { on: { RESET: "idle" } },
   },
-})
+});
 
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function DashboardDemo() {
-  const { store } = useDashboard()
-  const theme = useStorage("dashboard-theme", "light")
-  const exportFormat = signal("html")
-  const exportResult = signal("")
-  const saleRegion = signal("US")
-  const saleAmount = signal(10000)
+  const { store } = useDashboard();
+  const theme = useStorage("dashboard-theme", "light");
+  const exportFormat = signal("html");
+  const exportResult = signal("");
+  const saleRegion = signal("US");
+  const saleAmount = signal(10000);
 
   const handleExport = async () => {
-    exportMachine.send("START")
-    exportMachine.send("SELECT")
+    exportMachine.send("START");
+    exportMachine.send("SELECT");
 
     try {
       const doc = createDocument({ title: "Sales Dashboard Report" })
@@ -94,27 +94,27 @@ export function DashboardDemo() {
             .map((r) => [r.region, `$${r.revenue.toLocaleString()}`, `${r.growth}%`]),
           striped: true,
           headerStyle: { background: "#1a1a2e", color: "#fff" },
-        })
+        });
 
-      const format = exportFormat()
-      const result = await render(doc.build(), format)
+      const format = exportFormat();
+      const result = await render(doc.build(), format);
       exportResult.set(
         typeof result === "string"
           ? result
           : `[Binary ${format.toUpperCase()} — ${result.length} bytes]`,
-      )
-      exportMachine.send("DONE")
+      );
+      exportMachine.send("DONE");
     } catch {
-      exportMachine.send("ERROR")
-      exportResult.set("Export failed")
+      exportMachine.send("ERROR");
+      exportResult.set("Export failed");
     }
-  }
+  };
 
   const handleAddSale = () => {
     if (can("sales.add")) {
-      store.addSale(saleRegion(), saleAmount())
+      store.addSale(saleRegion(), saleAmount());
     }
-  }
+  };
 
   return (
     <div>
@@ -157,8 +157,8 @@ export function DashboardDemo() {
       <p>
         <strong>Total Revenue: </strong>
         {() => {
-          const rev = store.totalRevenue()
-          return `$${rev.toLocaleString()}`
+          const rev = store.totalRevenue();
+          return `$${rev.toLocaleString()}`;
         }}
         {" | "}
         <strong>Top Region: </strong>
@@ -256,5 +256,5 @@ export function DashboardDemo() {
         ) : null
       }
     </div>
-  )
+  );
 }

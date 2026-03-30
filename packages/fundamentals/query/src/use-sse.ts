@@ -1,53 +1,53 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { batch, effect, signal } from "@pyreon/reactivity"
-import type { QueryClient } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+import { onUnmount } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
+import { batch, effect, signal } from "@pyreon/reactivity";
+import type { QueryClient } from "@tanstack/query-core";
+import { useQueryClient } from "./query-client";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type SSEStatus = "connecting" | "connected" | "disconnected" | "error"
+export type SSEStatus = "connecting" | "connected" | "disconnected" | "error";
 
 export interface UseSSEOptions<T = string> {
   /** EventSource URL — can be a signal for reactive URLs */
-  url: string | (() => string)
+  url: string | (() => string);
   /** Named event type(s) to listen for — if omitted, listens to generic `message` events */
-  events?: string | string[]
+  events?: string | string[];
   /** Parse raw event data — e.g. `JSON.parse` for automatic deserialization */
-  parse?: (raw: string) => T
+  parse?: (raw: string) => T;
   /** Whether the SSE connection is enabled — default: true */
-  enabled?: boolean | (() => boolean)
+  enabled?: boolean | (() => boolean);
   /** Whether to automatically reconnect — default: true */
-  reconnect?: boolean
+  reconnect?: boolean;
   /** Initial reconnect delay in ms — doubles on each retry, default: 1000 */
-  reconnectDelay?: number
+  reconnectDelay?: number;
   /** Maximum reconnect attempts — default: 10, 0 = unlimited */
-  maxReconnectAttempts?: number
+  maxReconnectAttempts?: number;
   /** Whether to send cookies with the request — default: false */
-  withCredentials?: boolean
+  withCredentials?: boolean;
   /** Called when a message is received — use queryClient to invalidate or update cache */
-  onMessage?: (data: T, queryClient: QueryClient) => void
+  onMessage?: (data: T, queryClient: QueryClient) => void;
   /** Called when the EventSource connection opens */
-  onOpen?: (event: Event) => void
+  onOpen?: (event: Event) => void;
   /** Called when a connection error occurs */
-  onError?: (event: Event) => void
+  onError?: (event: Event) => void;
 }
 
 export interface UseSSEResult<T> {
   /** Last received message data */
-  data: Signal<T | null>
+  data: Signal<T | null>;
   /** Current connection status */
-  status: Signal<SSEStatus>
+  status: Signal<SSEStatus>;
   /** Last error event */
-  error: Signal<Event | null>
+  error: Signal<Event | null>;
   /** Last `id` field received from the server (per SSE spec) */
-  lastEventId: () => string
+  lastEventId: () => string;
   /** EventSource readyState: 0=CONNECTING, 1=OPEN, 2=CLOSED */
-  readyState: () => number
+  readyState: () => number;
   /** Manually close the connection */
-  close: () => void
+  close: () => void;
   /** Manually reconnect */
-  reconnect: () => void
+  reconnect: () => void;
 }
 
 // ─── useSSE ─────────────────────────────────────────────────────────────────
@@ -76,48 +76,48 @@ export interface UseSSEResult<T> {
  * ```
  */
 export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
-  const queryClient = useQueryClient()
-  const data = signal<T | null>(null)
-  const status = signal<SSEStatus>("disconnected")
-  const error = signal<Event | null>(null)
-  const lastEventId = signal("")
-  const readyState = signal<number>(2) // Start as CLOSED until connected
+  const queryClient = useQueryClient();
+  const data = signal<T | null>(null);
+  const status = signal<SSEStatus>("disconnected");
+  const error = signal<Event | null>(null);
+  const lastEventId = signal("");
+  const readyState = signal<number>(2); // Start as CLOSED until connected
 
-  let es: EventSource | null = null
-  let reconnectAttempts = 0
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  let intentionalClose = false
+  let es: EventSource | null = null;
+  let reconnectAttempts = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let intentionalClose = false;
 
-  const reconnectEnabled = options.reconnect !== false
-  const baseDelay = options.reconnectDelay ?? 1000
-  const maxAttempts = options.maxReconnectAttempts ?? 10
+  const reconnectEnabled = options.reconnect !== false;
+  const baseDelay = options.reconnectDelay ?? 1000;
+  const maxAttempts = options.maxReconnectAttempts ?? 10;
   const eventNames = options.events
     ? Array.isArray(options.events)
       ? options.events
       : [options.events]
-    : null
+    : null;
 
   function getUrl(): string {
-    return typeof options.url === "function" ? options.url() : options.url
+    return typeof options.url === "function" ? options.url() : options.url;
   }
 
   function isEnabled(): boolean {
-    if (options.enabled === undefined) return true
-    return typeof options.enabled === "function" ? options.enabled() : options.enabled
+    if (options.enabled === undefined) return true;
+    return typeof options.enabled === "function" ? options.enabled() : options.enabled;
   }
 
   function handleMessage(event: MessageEvent): void {
     try {
       // Track lastEventId from the SSE spec
       if (event.lastEventId !== undefined && event.lastEventId !== "") {
-        lastEventId.set(event.lastEventId)
+        lastEventId.set(event.lastEventId);
       }
-      const parsed = options.parse ? options.parse(event.data as string) : (event.data as T)
+      const parsed = options.parse ? options.parse(event.data as string) : (event.data as T);
       batch(() => {
-        data.set(parsed)
-        error.set(null)
-      })
-      options.onMessage?.(parsed, queryClient)
+        data.set(parsed);
+        error.set(null);
+      });
+      options.onMessage?.(parsed, queryClient);
     } catch {
       // Message handler errors should not crash the subscription
     }
@@ -126,39 +126,39 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   function attachListeners(source: EventSource): void {
     if (eventNames) {
       for (const name of eventNames) {
-        source.addEventListener(name, handleMessage as EventListener)
+        source.addEventListener(name, handleMessage as EventListener);
       }
     } else {
-      source.onmessage = handleMessage
+      source.onmessage = handleMessage;
     }
   }
 
   function removeListeners(source: EventSource): void {
-    source.onopen = null
-    source.onmessage = null
-    source.onerror = null
+    source.onopen = null;
+    source.onmessage = null;
+    source.onerror = null;
 
     if (eventNames) {
       for (const name of eventNames) {
-        source.removeEventListener(name, handleMessage as EventListener)
+        source.removeEventListener(name, handleMessage as EventListener);
       }
     }
   }
 
   function handleError(event: Event): void {
-    status.set("error")
-    error.set(event)
-    readyState.set(es?.readyState ?? EventSource.CLOSED)
-    options.onError?.(event)
+    status.set("error");
+    error.set(event);
+    readyState.set(es?.readyState ?? EventSource.CLOSED);
+    options.onError?.(event);
 
     // EventSource auto-reconnects for transient errors, but if readyState is CLOSED
     // the browser has given up and we need to handle reconnection ourselves
     if (es?.readyState === EventSource.CLOSED) {
-      removeListeners(es)
-      es.close()
-      es = null
+      removeListeners(es);
+      es.close();
+      es = null;
       if (!intentionalClose && reconnectEnabled) {
-        scheduleReconnect()
+        scheduleReconnect();
       }
     }
   }
@@ -166,93 +166,93 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
   function connect(): void {
     // Clean up existing connection
     if (es) {
-      removeListeners(es)
-      es.close()
-      es = null
+      removeListeners(es);
+      es.close();
+      es = null;
     }
 
     if (!isEnabled()) {
-      status.set("disconnected")
-      return
+      status.set("disconnected");
+      return;
     }
 
-    status.set("connecting")
+    status.set("connecting");
 
     try {
       es = new EventSource(getUrl(), {
         withCredentials: options.withCredentials ?? false,
-      })
-      readyState.set(EventSource.CONNECTING)
+      });
+      readyState.set(EventSource.CONNECTING);
     } catch {
-      status.set("error")
-      readyState.set(EventSource.CLOSED)
-      scheduleReconnect()
-      return
+      status.set("error");
+      readyState.set(EventSource.CLOSED);
+      scheduleReconnect();
+      return;
     }
 
     es.onopen = (event: Event) => {
       batch(() => {
-        status.set("connected")
-        error.set(null)
-        readyState.set(EventSource.OPEN)
-        reconnectAttempts = 0
-      })
-      options.onOpen?.(event)
-    }
+        status.set("connected");
+        error.set(null);
+        readyState.set(EventSource.OPEN);
+        reconnectAttempts = 0;
+      });
+      options.onOpen?.(event);
+    };
 
-    attachListeners(es)
-    es.onerror = handleError
+    attachListeners(es);
+    es.onerror = handleError;
   }
 
   function scheduleReconnect(): void {
-    if (!reconnectEnabled) return
-    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return
+    if (!reconnectEnabled) return;
+    if (maxAttempts > 0 && reconnectAttempts >= maxAttempts) return;
 
-    const delay = baseDelay * 2 ** reconnectAttempts
-    reconnectAttempts++
+    const delay = baseDelay * 2 ** reconnectAttempts;
+    reconnectAttempts++;
 
     reconnectTimer = setTimeout(() => {
-      reconnectTimer = null
+      reconnectTimer = null;
       if (!intentionalClose && isEnabled()) {
-        connect()
+        connect();
       }
-    }, delay)
+    }, delay);
   }
 
   function close(): void {
-    intentionalClose = true
+    intentionalClose = true;
     if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer)
-      reconnectTimer = null
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
     if (es) {
-      removeListeners(es)
-      es.close()
-      es = null
+      removeListeners(es);
+      es.close();
+      es = null;
     }
-    status.set("disconnected")
-    readyState.set(EventSource.CLOSED)
+    status.set("disconnected");
+    readyState.set(EventSource.CLOSED);
   }
 
   function manualReconnect(): void {
-    intentionalClose = false
-    reconnectAttempts = 0
-    connect()
+    intentionalClose = false;
+    reconnectAttempts = 0;
+    connect();
   }
 
   // Track reactive URL and enabled state
   effect(() => {
     // Read reactive values to subscribe to changes
-    if (typeof options.url === "function") options.url()
-    if (typeof options.enabled === "function") options.enabled()
+    if (typeof options.url === "function") options.url();
+    if (typeof options.enabled === "function") options.enabled();
 
-    intentionalClose = false
-    reconnectAttempts = 0
-    connect()
-  })
+    intentionalClose = false;
+    reconnectAttempts = 0;
+    connect();
+  });
 
   // Cleanup on unmount
-  onUnmount(() => close())
+  onUnmount(() => close());
 
   return {
     data,
@@ -262,5 +262,5 @@ export function useSSE<T = string>(options: UseSSEOptions<T>): UseSSEResult<T> {
     readyState: () => readyState(),
     close,
     reconnect: manualReconnect,
-  }
+  };
 }

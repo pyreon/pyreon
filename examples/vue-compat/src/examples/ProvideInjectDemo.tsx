@@ -1,11 +1,11 @@
-import { inject, provide, ref } from "vue"
-import Demo from "./Demo"
+import { inject, provide, ref } from "vue";
+import Demo from "./Demo";
 
-const THEME_KEY = Symbol("theme")
+const THEME_KEY = Symbol("theme");
 
 function ThemeProvider(props: { children?: any }) {
-  const theme = ref("dark")
-  provide(THEME_KEY, theme)
+  const theme = ref("dark");
+  provide(THEME_KEY, theme);
   return (
     <>
       <div class="row">
@@ -21,16 +21,16 @@ function ThemeProvider(props: { children?: any }) {
       </div>
       {props.children}
     </>
-  )
+  );
 }
 
 function ThemeConsumer() {
-  const theme = inject<{ value: string }>(THEME_KEY)
+  const theme = inject<{ value: string }>(THEME_KEY);
   return (
     <p>
       Injected theme: <strong>{theme ? theme.value : "none"}</strong>
     </p>
-  )
+  );
 }
 
 export default function ProvideInjectDemo() {
@@ -52,5 +52,5 @@ theme.value // "dark"`}
         <ThemeConsumer />
       </ThemeProvider>
     </Demo>
-  )
+  );
 }

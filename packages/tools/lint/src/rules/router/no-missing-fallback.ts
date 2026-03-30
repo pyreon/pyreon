@@ -1,42 +1,42 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
-import { extractImportInfo } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
+import { extractImportInfo } from "../../utils/imports";
 
 function isCatchAllPath(value: string): boolean {
-  return value === "*" || value.endsWith("*")
+  return value === "*" || value.endsWith("*");
 }
 
 function getPathValue(prop: any): string | null {
-  const key = prop.key
-  if (!key) return null
-  const keyName = key.type === "Identifier" ? key.name : null
-  if (keyName !== "path") return null
-  const val = prop.value
+  const key = prop.key;
+  if (!key) return null;
+  const keyName = key.type === "Identifier" ? key.name : null;
+  if (keyName !== "path") return null;
+  const val = prop.value;
   if (val?.type === "Literal" && typeof val.value === "string") {
-    return val.value
+    return val.value;
   }
-  return null
+  return null;
 }
 
 function hasPathProperty(obj: any): boolean {
-  if (!obj || obj.type !== "ObjectExpression") return false
+  if (!obj || obj.type !== "ObjectExpression") return false;
   for (const prop of obj.properties ?? []) {
-    if (prop.type !== "Property") continue
-    if (getPathValue(prop) !== null) return true
+    if (prop.type !== "Property") continue;
+    if (getPathValue(prop) !== null) return true;
   }
-  return false
+  return false;
 }
 
 function hasCatchAllRoute(elements: any[]): boolean {
   for (const elem of elements) {
-    if (!elem || elem.type !== "ObjectExpression") continue
+    if (!elem || elem.type !== "ObjectExpression") continue;
     for (const prop of elem.properties ?? []) {
-      if (prop.type !== "Property") continue
-      const pathVal = getPathValue(prop)
-      if (pathVal !== null && isCatchAllPath(pathVal)) return true
+      if (prop.type !== "Property") continue;
+      const pathVal = getPathValue(prop);
+      if (pathVal !== null && isCatchAllPath(pathVal)) return true;
     }
   }
-  return false
+  return false;
 }
 
 export const noMissingFallback: Rule = {
@@ -49,39 +49,39 @@ export const noMissingFallback: Rule = {
     fixable: false,
   },
   create(context) {
-    let importsRouter = false
-    let routeArraySpan: { start: number; end: number } | null = null
-    let foundCatchAll = false
+    let importsRouter = false;
+    let routeArraySpan: { start: number; end: number } | null = null;
+    let foundCatchAll = false;
 
     const callbacks: VisitorCallbacks = {
       ImportDeclaration(node: any) {
-        const info = extractImportInfo(node)
+        const info = extractImportInfo(node);
         if (info && info.source === "@pyreon/router") {
-          importsRouter = true
+          importsRouter = true;
         }
       },
       ArrayExpression(node: any) {
-        if (!importsRouter) return
-        const elements = node.elements ?? []
-        const isRouteArray = elements.some((e: any) => hasPathProperty(e))
-        if (!isRouteArray) return
+        if (!importsRouter) return;
+        const elements = node.elements ?? [];
+        const isRouteArray = elements.some((e: any) => hasPathProperty(e));
+        if (!isRouteArray) return;
 
         if (!routeArraySpan) {
-          routeArraySpan = getSpan(node)
+          routeArraySpan = getSpan(node);
         }
         if (hasCatchAllRoute(elements)) {
-          foundCatchAll = true
+          foundCatchAll = true;
         }
       },
       "Program:exit"() {
-        if (!importsRouter || !routeArraySpan || foundCatchAll) return
+        if (!importsRouter || !routeArraySpan || foundCatchAll) return;
         context.report({
           message:
             'Route config has no catch-all route — add a `{ path: "*", component: NotFound }` for unmatched URLs.',
           span: routeArraySpan,
-        })
+        });
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

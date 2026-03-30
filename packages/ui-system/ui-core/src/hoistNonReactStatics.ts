@@ -6,12 +6,12 @@ const KNOWN_STATICS: Record<string, true> = {
   callee: true,
   arguments: true,
   arity: true,
-}
+};
 
 const COMPONENT_STATICS: Record<string, true> = {
   displayName: true,
   defaultProps: true,
-}
+};
 
 /**
  * Copies non-framework static properties from a source component to a target.
@@ -25,35 +25,35 @@ const hoistNonReactStatics = <T, S>(
   source: S,
   excludeList?: Record<string, true>,
 ): T => {
-  if (typeof source === "string") return target
+  if (typeof source === "string") return target;
 
-  const proto = Object.getPrototypeOf(source)
+  const proto = Object.getPrototypeOf(source);
   if (proto && proto !== Object.prototype) {
-    hoistNonReactStatics(target, proto, excludeList)
+    hoistNonReactStatics(target, proto, excludeList);
   }
 
   const keys: (string | symbol)[] = [
     ...Object.getOwnPropertyNames(source),
     ...Object.getOwnPropertySymbols(source),
-  ]
+  ];
 
   for (const key of keys) {
-    const k = key as string
+    const k = key as string;
     if (KNOWN_STATICS[k] || excludeList?.[k] || COMPONENT_STATICS[k]) {
-      continue
+      continue;
     }
 
-    const descriptor = Object.getOwnPropertyDescriptor(source, key)
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
     if (descriptor) {
       try {
-        Object.defineProperty(target, key, descriptor)
+        Object.defineProperty(target, key, descriptor);
       } catch {
         // Silently skip non-configurable properties
       }
     }
   }
 
-  return target
-}
+  return target;
+};
 
-export default hoistNonReactStatics
+export default hoistNonReactStatics;

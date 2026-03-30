@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
 
 export const noInlineStyleObject: Rule = {
   meta: {
@@ -12,19 +12,19 @@ export const noInlineStyleObject: Rule = {
   create(context) {
     const callbacks: VisitorCallbacks = {
       JSXAttribute(node: any) {
-        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") return
-        const value = node.value
-        if (!value || value.type !== "JSXExpressionContainer") return
-        const expr = value.expression
+        if (node.name?.type !== "JSXIdentifier" || node.name.name !== "style") return;
+        const value = node.value;
+        if (!value || value.type !== "JSXExpressionContainer") return;
+        const expr = value.expression;
         if (expr?.type === "ObjectExpression") {
           context.report({
             message:
               "Inline style object in JSX — consider using `styled()` or `css\\`...\\`` for better performance and caching.",
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

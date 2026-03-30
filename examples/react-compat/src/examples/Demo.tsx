@@ -1,7 +1,7 @@
-import { useState } from "react"
+import { useState } from "react";
 
 export default function Demo(props: { title: string; apis: string; code: string; children?: any }) {
-  const [showCode, setShowCode] = useState(false)
+  const [showCode, setShowCode] = useState(false);
 
   return (
     <section class="demo">
@@ -21,5 +21,5 @@ export default function Demo(props: { title: string; apis: string; code: string;
       ) : null}
       {props.children}
     </section>
-  )
+  );
 }

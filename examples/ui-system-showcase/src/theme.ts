@@ -13,7 +13,7 @@ export const lightTheme: Record<string, string> = {
   "--shadow": "0 1px 3px rgba(0,0,0,0.08)",
   "--shadow-lg": "0 8px 24px rgba(0,0,0,0.12)",
   "--radius": "8px",
-}
+};
 
 export const darkTheme: Record<string, string> = {
   "--bg": "#1a1b1e",
@@ -30,4 +30,4 @@ export const darkTheme: Record<string, string> = {
   "--shadow": "0 1px 3px rgba(0,0,0,0.3)",
   "--shadow-lg": "0 8px 24px rgba(0,0,0,0.5)",
   "--radius": "8px",
-}
+};

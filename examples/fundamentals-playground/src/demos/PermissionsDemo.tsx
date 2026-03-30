@@ -1,9 +1,9 @@
-import { createPermissions } from "@pyreon/permissions"
-import { effect, signal } from "@pyreon/reactivity"
+import { createPermissions } from "@pyreon/permissions";
+import { effect, signal } from "@pyreon/reactivity";
 
 // Role → permissions mapping
 function fromRole(role: string): Record<string, boolean | ((ctx?: any) => boolean)> {
-  const currentUserId = "user-42"
+  const currentUserId = "user-42";
   const roles: Record<string, Record<string, boolean | ((ctx?: any) => boolean)>> = {
     admin: { "*": true },
     editor: {
@@ -21,17 +21,17 @@ function fromRole(role: string): Record<string, boolean | ((ctx?: any) => boolea
       "comments.read": true,
       "users.read": true,
     },
-  }
-  return roles[role] ?? {}
+  };
+  return roles[role] ?? {};
 }
 
-const can = createPermissions(fromRole("editor"))
-const currentRole = signal("editor")
+const can = createPermissions(fromRole("editor"));
+const currentRole = signal("editor");
 
 // Sync role changes to permissions
 effect(() => {
-  can.set(fromRole(currentRole()))
-})
+  can.set(fromRole(currentRole()));
+});
 
 // Sample posts
 const posts = [
@@ -59,11 +59,11 @@ const posts = [
     authorId: "user-99",
     status: "draft",
   },
-]
+];
 
 export function PermissionsDemo() {
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  const log = signal<string[]>([]);
+  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg]);
 
   return (
     <div>
@@ -82,8 +82,8 @@ export function PermissionsDemo() {
               key={role}
               class={currentRole() === role ? "active" : ""}
               onClick={() => {
-                currentRole.set(role)
-                addLog(`Role changed to ${role}`)
+                currentRole.set(role);
+                addLog(`Role changed to ${role}`);
               }}
             >
               {role.charAt(0).toUpperCase() + role.slice(1)}
@@ -235,8 +235,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.patch({ "billing.export": true })
-              addLog("Patched: billing.export → true")
+              can.patch({ "billing.export": true });
+              addLog("Patched: billing.export → true");
             }}
           >
             Grant billing.export
@@ -244,8 +244,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.patch({ "feature.new-editor": false })
-              addLog("Patched: feature.new-editor → false")
+              can.patch({ "feature.new-editor": false });
+              addLog("Patched: feature.new-editor → false");
             }}
           >
             Revoke feature.new-editor
@@ -253,8 +253,8 @@ export function PermissionsDemo() {
           <button
             type="button"
             onClick={() => {
-              can.set(fromRole(currentRole()))
-              addLog("Reset to role defaults")
+              can.set(fromRole(currentRole()));
+              addLog("Reset to role defaults");
             }}
           >
             Reset
@@ -273,5 +273,5 @@ export function PermissionsDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

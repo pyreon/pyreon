@@ -1,20 +1,20 @@
 // ─── VNode ────────────────────────────────────────────────────────────────────
 
 // Reactive getter returning a child — wraps dynamic expressions in `() =>`
-export type VNodeChildAtom = VNode | VNode[] | string | number | boolean | null | undefined
-export type VNodeChild = VNodeChildAtom | (() => VNodeChildAtom)
+export type VNodeChildAtom = VNode | VNode[] | string | number | boolean | null | undefined;
+export type VNodeChild = VNodeChildAtom | (() => VNodeChildAtom);
 
 export interface VNode {
   /** Tag name, component function, or special symbol (Fragment) */
-  type: string | ComponentFn | symbol
-  props: Props
-  children: VNodeChild[]
-  key: string | number | null
+  type: string | ComponentFn | symbol;
+  props: Props;
+  children: VNodeChild[];
+  key: string | number | null;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-export type Props = Record<string, unknown>
+export type Props = Record<string, unknown>;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -22,32 +22,32 @@ export type Props = Record<string, unknown>
  * A component is a plain function that runs ONCE.
  * It returns any renderable content and may call lifecycle hooks during setup.
  */
-export type ComponentFn<P extends Props = Props> = (props: P) => VNodeChild
+export type ComponentFn<P extends Props = Props> = (props: P) => VNodeChild;
 
 // ─── Utility types ───────────────────────────────────────────────────────────
 
 /** Extract the props type from a component function, or pass through if already a props type. */
-export type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T
+export type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T;
 
 /** A higher-order component that wraps a component, optionally transforming its props. */
 export type HigherOrderComponent<HOP extends Props, P extends Props | undefined = undefined> = (
   Component: ComponentFn<HOP>,
-) => ComponentFn<P extends undefined ? HOP : P>
+) => ComponentFn<P extends undefined ? HOP : P>;
 
 /**
  * Internal runtime handle created by the renderer for each mounted component.
  */
 export interface ComponentInstance {
-  vnode: VNode | null
+  vnode: VNode | null;
   /** Trigger a re-check / patch cycle (called by the renderer) */
-  update(): void
-  unmount(): void
+  update(): void;
+  unmount(): void;
 }
 
 // ─── Lifecycle hooks storage (attached per-instance by the renderer) ──────────
 
 // Cleanup function optionally returned by onMount hooks
-export type CleanupFn = () => void
+export type CleanupFn = () => void;
 
 // ─── NativeItem ───────────────────────────────────────────────────────────────
 
@@ -57,16 +57,16 @@ export type CleanupFn = () => void
  * saving 2 allocations per row vs the VNode wrapper path.
  */
 export interface NativeItem {
-  readonly __isNative: true
-  el: HTMLElement
-  cleanup: (() => void) | null
+  readonly __isNative: true;
+  el: HTMLElement;
+  cleanup: (() => void) | null;
 }
 
 export interface LifecycleHooks {
   // biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
-  mount: (() => CleanupFn | void | undefined)[]
-  unmount: (() => void)[]
-  update: (() => void)[]
+  mount: (() => CleanupFn | void | undefined)[];
+  unmount: (() => void)[];
+  update: (() => void)[];
   /** Error handlers — return true to mark the error as handled (stops propagation). */
-  error: ((err: unknown) => boolean | undefined)[]
+  error: ((err: unknown) => boolean | undefined)[];
 }

@@ -52,24 +52,24 @@
  *   - "never"          — never hydrate (render-only, no client JS)
  */
 
-import type { ComponentFn, Props, VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
+import type { ComponentFn, Props, VNode } from "@pyreon/core";
+import { h } from "@pyreon/core";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type HydrationStrategy = "load" | "idle" | "visible" | "never" | `media(${string})`
+export type HydrationStrategy = "load" | "idle" | "visible" | "never" | `media(${string})`;
 
 export interface IslandOptions {
   /** Unique name — must match the key in the client-side hydrateIslands() registry */
-  name: string
+  name: string;
   /** When to hydrate on the client (default: "load") */
-  hydrate?: HydrationStrategy
+  hydrate?: HydrationStrategy;
 }
 
 export interface IslandMeta {
-  readonly __island: true
-  readonly name: string
-  readonly hydrate: HydrationStrategy
+  readonly __island: true;
+  readonly name: string;
+  readonly hydrate: HydrationStrategy;
 }
 
 // ─── Server-side island factory ──────────────────────────────────────────────
@@ -86,12 +86,12 @@ export function island<P extends Props = Props>(
   loader: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>,
   options: IslandOptions,
 ): ComponentFn<P> & IslandMeta {
-  const { name, hydrate = "load" } = options
+  const { name, hydrate = "load" } = options;
 
   const IslandWrapper = async function IslandWrapper(props: P): Promise<VNode | null> {
-    const mod = await loader()
-    const Comp = typeof mod === "function" ? mod : mod.default
-    const serializedProps = serializeIslandProps(props)
+    const mod = await loader();
+    const Comp = typeof mod === "function" ? mod : mod.default;
+    const serializedProps = serializeIslandProps(props);
 
     return h(
       "pyreon-island",
@@ -101,18 +101,18 @@ export function island<P extends Props = Props>(
         "data-hydrate": hydrate,
       },
       h(Comp, props),
-    )
-  }
+    );
+  };
 
   // Attach metadata so the Vite plugin can detect islands for code-splitting
-  const wrapper = IslandWrapper as unknown as ComponentFn<P> & IslandMeta
+  const wrapper = IslandWrapper as unknown as ComponentFn<P> & IslandMeta;
   Object.defineProperties(wrapper, {
     __island: { value: true, enumerable: true },
     name: { value: name, enumerable: true, writable: false, configurable: true },
     hydrate: { value: hydrate, enumerable: true },
-  })
+  });
 
-  return wrapper
+  return wrapper;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -122,16 +122,16 @@ export function island<P extends Props = Props>(
  * Strips non-serializable values (functions, symbols, children).
  */
 function serializeIslandProps(props: Record<string, unknown>): string {
-  const clean: Record<string, unknown> = {}
+  const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(props)) {
     // Skip non-serializable or internal props
-    if (key === "children") continue
-    if (typeof value === "function") continue
-    if (typeof value === "symbol") continue
-    if (value === undefined) continue
-    clean[key] = value
+    if (key === "children") continue;
+    if (typeof value === "function") continue;
+    if (typeof value === "symbol") continue;
+    if (value === undefined) continue;
+    clean[key] = value;
   }
   // The SSR renderer's renderProp() already applies escapeHtml() to attribute
   // values, so the JSON is safe to embed in HTML attributes without double-escaping.
-  return JSON.stringify(clean)
+  return JSON.stringify(clean);
 }

@@ -1,13 +1,13 @@
-import { signal } from "@pyreon/reactivity"
+import { signal } from "@pyreon/reactivity";
 
 export interface UseHoverResult {
   /** Reactive boolean — true when element is hovered */
-  hovered: () => boolean
+  hovered: () => boolean;
   /** Props to spread onto the element */
   props: {
-    onMouseEnter: () => void
-    onMouseLeave: () => void
-  }
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
+  };
 }
 
 /**
@@ -18,7 +18,7 @@ export interface UseHoverResult {
  * h('div', { ...props, class: () => hovered() ? 'active' : '' })
  */
 export function useHover(): UseHoverResult {
-  const hovered = signal(false)
+  const hovered = signal(false);
 
   return {
     hovered,
@@ -26,5 +26,5 @@ export function useHover(): UseHoverResult {
       onMouseEnter: () => hovered.set(true),
       onMouseLeave: () => hovered.set(false),
     },
-  }
+  };
 }

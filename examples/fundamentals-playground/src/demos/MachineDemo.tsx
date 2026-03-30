@@ -1,5 +1,5 @@
-import { createMachine } from "@pyreon/machine"
-import { signal } from "@pyreon/reactivity"
+import { createMachine } from "@pyreon/machine";
+import { signal } from "@pyreon/reactivity";
 
 // ─── Wizard Machine ─────────────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ const wizard = createMachine({
     submitting: { on: { SUCCESS: "done", ERROR: "step3" } },
     done: {},
   },
-})
+});
 
 // ─── Fetch Machine ──────────────────────────────────────────────────────────
 
@@ -24,25 +24,25 @@ const fetcher = createMachine({
     success: { on: { REFETCH: "loading", RESET: "idle" } },
     error: { on: { RETRY: "loading", RESET: "idle" } },
   },
-})
+});
 
-const fetchData = signal<string | null>(null)
-const fetchError = signal<string | null>(null)
+const fetchData = signal<string | null>(null);
+const fetchError = signal<string | null>(null);
 
 fetcher.onEnter("loading", () => {
-  fetchData.set(null)
-  fetchError.set(null)
+  fetchData.set(null);
+  fetchError.set(null);
   // Simulate API call
   setTimeout(() => {
     if (Math.random() > 0.3) {
-      fetchData.set(`Data loaded at ${new Date().toLocaleTimeString()}`)
-      fetcher.send("SUCCESS")
+      fetchData.set(`Data loaded at ${new Date().toLocaleTimeString()}`);
+      fetcher.send("SUCCESS");
     } else {
-      fetchError.set("Network error (simulated 30% failure rate)")
-      fetcher.send("ERROR")
+      fetchError.set("Network error (simulated 30% failure rate)");
+      fetcher.send("ERROR");
     }
-  }, 800)
-})
+  }, 800);
+});
 
 // ─── Toggle Machine ─────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ const toggle = createMachine({
     off: { on: { TOGGLE: "on" } },
     on: { on: { TOGGLE: "off" } },
   },
-})
+});
 
 // ─── Player Machine ─────────────────────────────────────────────────────────
 
@@ -63,11 +63,11 @@ const player = createMachine({
     playing: { on: { PAUSE: "paused", STOP: "stopped" } },
     paused: { on: { PLAY: "playing", STOP: "stopped" } },
   },
-})
+});
 
 // ─── Guarded Machine ────────────────────────────────────────────────────────
 
-const formValid = signal(false)
+const formValid = signal(false);
 
 const guardedForm = createMachine({
   initial: "editing",
@@ -80,19 +80,19 @@ const guardedForm = createMachine({
     submitting: { on: { SUCCESS: "done", ERROR: "editing" } },
     done: { on: { RESTART: "editing" } },
   },
-})
+});
 
 export function MachineDemo() {
-  const transitionLog = signal<string[]>([])
+  const transitionLog = signal<string[]>([]);
 
   // Log all wizard transitions
   wizard.onTransition((from, to, event) => {
-    transitionLog.update((l) => [...l.slice(-14), `${event.type}: ${from} → ${to}`])
-  })
+    transitionLog.update((l) => [...l.slice(-14), `${event.type}: ${from} → ${to}`]);
+  });
 
   fetcher.onTransition((from, to, event) => {
-    transitionLog.update((l) => [...l.slice(-14), `[fetch] ${event.type}: ${from} → ${to}`])
-  })
+    transitionLog.update((l) => [...l.slice(-14), `[fetch] ${event.type}: ${from} → ${to}`]);
+  });
 
   return (
     <div>
@@ -119,7 +119,7 @@ export function MachineDemo() {
                 <p>Name, email, phone...</p>
                 <button onClick={() => wizard.send("NEXT")}>Next</button>
               </div>
-            )
+            );
           if (wizard.matches("step2"))
             return (
               <div style="padding: 16px; background: #f0fdf4; border-radius: 8px">
@@ -130,7 +130,7 @@ export function MachineDemo() {
                   <button onClick={() => wizard.send("NEXT")}>Next</button>
                 </div>
               </div>
-            )
+            );
           if (wizard.matches("step3"))
             return (
               <div style="padding: 16px; background: #fefce8; border-radius: 8px">
@@ -141,7 +141,7 @@ export function MachineDemo() {
                   <button onClick={() => wizard.send("SUBMIT")}>Submit</button>
                 </div>
               </div>
-            )
+            );
           if (wizard.matches("submitting"))
             return (
               <div style="padding: 16px; background: #faf5ff; border-radius: 8px">
@@ -151,7 +151,7 @@ export function MachineDemo() {
                   <button onClick={() => wizard.send("ERROR")}>Simulate Error</button>
                 </div>
               </div>
-            )
+            );
           if (wizard.matches("done"))
             return (
               <div style="padding: 16px; background: #f0fdf4; border-radius: 8px">
@@ -159,8 +159,8 @@ export function MachineDemo() {
                 <p>Wizard completed successfully.</p>
                 <button onClick={() => wizard.reset()}>Start Over</button>
               </div>
-            )
-          return null
+            );
+          return null;
         }}
       </div>
 
@@ -173,8 +173,8 @@ export function MachineDemo() {
 
         {() => {
           if (fetcher.matches("idle"))
-            return <button onClick={() => fetcher.send("FETCH")}>Fetch Data</button>
-          if (fetcher.matches("loading")) return <p>Loading... (30% chance of simulated error)</p>
+            return <button onClick={() => fetcher.send("FETCH")}>Fetch Data</button>;
+          if (fetcher.matches("loading")) return <p>Loading... (30% chance of simulated error)</p>;
           if (fetcher.matches("success"))
             return (
               <div>
@@ -184,7 +184,7 @@ export function MachineDemo() {
                   <button onClick={() => fetcher.send("RESET")}>Reset</button>
                 </div>
               </div>
-            )
+            );
           if (fetcher.matches("error"))
             return (
               <div>
@@ -194,8 +194,8 @@ export function MachineDemo() {
                   <button onClick={() => fetcher.send("RESET")}>Reset</button>
                 </div>
               </div>
-            )
-          return null
+            );
+          return null;
         }}
       </div>
 
@@ -267,22 +267,22 @@ export function MachineDemo() {
                   }
                 </p>
               </div>
-            )
+            );
           if (guardedForm.matches("submitting"))
             return (
               <div>
                 <p>Submitting...</p>
                 <button onClick={() => guardedForm.send("SUCCESS")}>Complete</button>
               </div>
-            )
+            );
           if (guardedForm.matches("done"))
             return (
               <div>
                 <p style="color: green">Form submitted successfully!</p>
                 <button onClick={() => guardedForm.send("RESTART")}>Restart</button>
               </div>
-            )
-          return null
+            );
+          return null;
         }}
       </div>
 
@@ -298,5 +298,5 @@ export function MachineDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

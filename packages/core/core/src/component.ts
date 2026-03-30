@@ -1,12 +1,12 @@
-import { setCurrentHooks } from "./lifecycle"
-import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from "./types"
+import { setCurrentHooks } from "./lifecycle";
+import type { ComponentFn, LifecycleHooks, Props, VNodeChild } from "./types";
 
 /**
  * Identity wrapper — marks a function as a Pyreon component and preserves its type.
  * Useful for IDE tooling and future compiler optimisations.
  */
 export function defineComponent<P extends Props>(fn: ComponentFn<P>): ComponentFn<P> {
-  return fn
+  return fn;
 }
 
 /**
@@ -19,15 +19,15 @@ export function runWithHooks<P extends Props>(
   fn: ComponentFn<P>,
   props: P,
 ): { vnode: VNodeChild; hooks: LifecycleHooks } {
-  const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
-  setCurrentHooks(hooks)
-  let vnode: VNodeChild = null
+  const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] };
+  setCurrentHooks(hooks);
+  let vnode: VNodeChild = null;
   try {
-    vnode = fn(props)
+    vnode = fn(props);
   } finally {
-    setCurrentHooks(null)
+    setCurrentHooks(null);
   }
-  return { vnode, hooks }
+  return { vnode, hooks };
 }
 
 /**
@@ -36,9 +36,9 @@ export function runWithHooks<P extends Props>(
  */
 export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
   for (const handler of hooks.error) {
-    if (handler(err) === true) return true
+    if (handler(err) === true) return true;
   }
-  return false
+  return false;
 }
 
 // ─── Error boundary stack ────────────────────────────────────────────────────
@@ -46,14 +46,14 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 // ErrorBoundary pushes during its own setup (before children mount) so that
 // any child mountComponent error can dispatch up to the nearest boundary.
 
-const _errorBoundaryStack: ((err: unknown) => boolean)[] = []
+const _errorBoundaryStack: ((err: unknown) => boolean)[] = [];
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
-  _errorBoundaryStack.push(handler)
+  _errorBoundaryStack.push(handler);
 }
 
 export function popErrorBoundary(): void {
-  _errorBoundaryStack.pop()
+  _errorBoundaryStack.pop();
 }
 
 /**
@@ -61,6 +61,6 @@ export function popErrorBoundary(): void {
  * Returns true if the boundary handled it, false if none was registered.
  */
 export function dispatchToErrorBoundary(err: unknown): boolean {
-  const handler = _errorBoundaryStack[_errorBoundaryStack.length - 1]
-  return handler ? handler(err) : false
+  const handler = _errorBoundaryStack[_errorBoundaryStack.length - 1];
+  return handler ? handler(err) : false;
 }

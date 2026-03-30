@@ -12,12 +12,12 @@ bun add -D @pyreon/vite-plugin
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin"
-import { defineConfig } from "vite"
+import pyreon from "@pyreon/vite-plugin";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [pyreon()],
-})
+});
 ```
 
 ## SSR Mode
@@ -26,26 +26,26 @@ Pass an `ssr` option to enable SSR dev middleware. The plugin will load your ser
 
 ```ts
 // vite.config.ts
-import pyreon from "@pyreon/vite-plugin"
-import { defineConfig } from "vite"
+import pyreon from "@pyreon/vite-plugin";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [pyreon({ ssr: { entry: "./src/entry-server.ts" } })],
-})
+});
 ```
 
 Your server entry must export a `handler` (or default export) with the signature `(req: Request) => Promise<Response>`:
 
 ```tsx
 // src/entry-server.ts
-import { renderToString } from "@pyreon/runtime-server"
-import App from "./App"
+import { renderToString } from "@pyreon/runtime-server";
+import App from "./App";
 
 export async function handler(req: Request): Promise<Response> {
-  const html = await renderToString(<App />)
+  const html = await renderToString(<App />);
   return new Response(html, {
     headers: { "Content-Type": "text/html" },
-  })
+  });
 }
 ```
 
@@ -64,8 +64,8 @@ Default export. Returns a Vite `Plugin`.
 
 ### Options
 
-| Option | Type | Description |
-|---|---|---|
+| Option      | Type     | Description                                         |
+| ----------- | -------- | --------------------------------------------------- |
 | `ssr.entry` | `string` | Server entry file path. Enables SSR dev middleware. |
 
 ## What It Does

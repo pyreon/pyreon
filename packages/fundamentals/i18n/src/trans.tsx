@@ -1,11 +1,11 @@
-import type { Props, VNode } from "@pyreon/core"
-import type { InterpolationValues } from "./types"
+import type { Props, VNode } from "@pyreon/core";
+import type { InterpolationValues } from "./types";
 
-const TAG_RE = /<(\w+)>([^<]*)<\/\1>/g
+const TAG_RE = /<(\w+)>([^<]*)<\/\1>/g;
 
 interface RichPart {
-  tag: string
-  children: string
+  tag: string;
+  children: string;
 }
 
 /**
@@ -16,27 +16,27 @@ interface RichPart {
  * // → ["Hello ", { tag: "bold", children: "world" }, ", click ", { tag: "link", children: "here" }]
  */
 export function parseRichText(text: string): (string | RichPart)[] {
-  const parts: (string | RichPart)[] = []
-  let lastIndex = 0
+  const parts: (string | RichPart)[] = [];
+  let lastIndex = 0;
 
   for (const match of text.matchAll(TAG_RE)) {
-    const before = text.slice(lastIndex, match.index)
-    if (before) parts.push(before)
-    parts.push({ tag: match[1]!, children: match[2]! })
-    lastIndex = match.index! + match[0].length
+    const before = text.slice(lastIndex, match.index);
+    if (before) parts.push(before);
+    parts.push({ tag: match[1]!, children: match[2]! });
+    lastIndex = match.index! + match[0].length;
   }
 
-  const after = text.slice(lastIndex)
-  if (after) parts.push(after)
+  const after = text.slice(lastIndex);
+  if (after) parts.push(after);
 
-  return parts
+  return parts;
 }
 
 export interface TransProps extends Props {
   /** Translation key (supports namespace:key syntax). */
-  i18nKey: string
+  i18nKey: string;
   /** Interpolation values for {{placeholder}} syntax. */
-  values?: InterpolationValues
+  values?: InterpolationValues;
   /**
    * Component map for rich interpolation.
    * Keys match tag names in the translation string.
@@ -49,12 +49,12 @@ export interface TransProps extends Props {
    *   privacy: (children) => <a href="/privacy">{children}</a>,
    * }}
    */
-  components?: Record<string, (children: any) => any>
+  components?: Record<string, (children: any) => any>;
   /**
    * The i18n instance's `t` function.
    * Can be obtained from `useI18n()` or passed directly.
    */
-  t: (key: string, values?: InterpolationValues) => string
+  t: (key: string, values?: InterpolationValues) => string;
 }
 
 /**
@@ -89,22 +89,22 @@ export interface TransProps extends Props {
  * />
  */
 export function Trans(props: TransProps): VNode | string {
-  const translated = props.t(props.i18nKey, props.values)
+  const translated = props.t(props.i18nKey, props.values);
 
-  if (!props.components) return translated
+  if (!props.components) return translated;
 
-  const parts = parseRichText(translated)
+  const parts = parseRichText(translated);
 
   // If the result is a single plain string, return it directly
-  if (parts.length === 1 && typeof parts[0] === "string") return parts[0]
+  if (parts.length === 1 && typeof parts[0] === "string") return parts[0];
 
   const children = parts.map((part) => {
-    if (typeof part === "string") return part
-    const component = props.components![part.tag]
+    if (typeof part === "string") return part;
+    const component = props.components![part.tag];
     // Unmatched tags: render children as plain text (no raw HTML markup)
-    if (!component) return part.children
-    return component(part.children)
-  })
+    if (!component) return part.children;
+    return component(part.children);
+  });
 
-  return <>{children}</>
+  return <>{children}</>;
 }

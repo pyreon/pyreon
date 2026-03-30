@@ -1,6 +1,6 @@
-import type { OutputFormat } from "@pyreon/document"
-import { createDocument, Document, Heading, Page, render, Table, Text } from "@pyreon/document"
-import { signal } from "@pyreon/reactivity"
+import type { OutputFormat } from "@pyreon/document";
+import { createDocument, Document, Heading, Page, render, Table, Text } from "@pyreon/document";
+import { signal } from "@pyreon/reactivity";
 
 const formats: { id: OutputFormat; label: string }[] = [
   { id: "html", label: "HTML" },
@@ -9,13 +9,13 @@ const formats: { id: OutputFormat; label: string }[] = [
   { id: "csv", label: "CSV" },
   { id: "email", label: "Email HTML" },
   { id: "slack", label: "Slack" },
-]
+];
 
 export function DocumentDemo() {
   // ─── Builder pattern ─────────────────────────────────────────────────────
-  const activeFormat = signal<OutputFormat>("html")
-  const output = signal('Click "Render" to see output.')
-  const rendering = signal(false)
+  const activeFormat = signal<OutputFormat>("html");
+  const output = signal('Click "Render" to see output.');
+  const rendering = signal(false);
 
   // Sample data
   const teamData = signal([
@@ -24,7 +24,7 @@ export function DocumentDemo() {
     ["Carol", "Marketing", "$115K", "4.9"],
     ["Dave", "Engineering", "$155K", "4.2"],
     ["Eve", "Product", "$135K", "4.7"],
-  ])
+  ]);
 
   // Build document using builder pattern
   function buildReport() {
@@ -58,34 +58,34 @@ export function DocumentDemo() {
       .quote("Great teams build great products.")
       .divider()
       .code("const avgRating = ratings.reduce((a, b) => a + b) / ratings.length")
-      .text("Report generated automatically by @pyreon/document.")
+      .text("Report generated automatically by @pyreon/document.");
   }
 
   // Render to selected format
   async function renderDocument() {
-    rendering.set(true)
+    rendering.set(true);
     try {
-      const doc = buildReport()
-      const docNode = doc.build()
-      const rendered = await render(docNode, activeFormat())
+      const doc = buildReport();
+      const docNode = doc.build();
+      const rendered = await render(docNode, activeFormat());
       if (typeof rendered === "string") {
-        output.set(rendered)
+        output.set(rendered);
       } else {
-        output.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
+        output.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`);
       }
     } catch (err) {
-      output.set(`Error: ${(err as Error).message}`)
+      output.set(`Error: ${(err as Error).message}`);
     } finally {
-      rendering.set(false)
+      rendering.set(false);
     }
   }
 
   // ─── JSX pattern demo ─────────────────────────────────────────────────────
-  const jsxOutput = signal("")
-  const jsxFormat = signal<OutputFormat>("html")
+  const jsxOutput = signal("");
+  const jsxFormat = signal<OutputFormat>("html");
 
   async function renderJsxDoc() {
-    rendering.set(true)
+    rendering.set(true);
     try {
       const doc = Document(
         { title: "Invoice #1042" },
@@ -108,22 +108,22 @@ export function DocumentDemo() {
           }),
           Text({ bold: true }, "Total: $600"),
         ),
-      )
-      const rendered = await render(doc, jsxFormat())
+      );
+      const rendered = await render(doc, jsxFormat());
       if (typeof rendered === "string") {
-        jsxOutput.set(rendered)
+        jsxOutput.set(rendered);
       } else {
-        jsxOutput.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`)
+        jsxOutput.set(`[Binary output: ${(rendered as Uint8Array).byteLength} bytes]`);
       }
     } catch (err) {
-      jsxOutput.set(`Error: ${(err as Error).message}`)
+      jsxOutput.set(`Error: ${(err as Error).message}`);
     } finally {
-      rendering.set(false)
+      rendering.set(false);
     }
   }
 
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  const log = signal<string[]>([]);
+  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg]);
 
   return (
     <div>
@@ -147,8 +147,8 @@ export function DocumentDemo() {
               key={fmt.id}
               class={activeFormat() === fmt.id ? "active" : ""}
               onClick={() => {
-                activeFormat.set(fmt.id)
-                addLog(`Format → ${fmt.label}`)
+                activeFormat.set(fmt.id);
+                addLog(`Format → ${fmt.label}`);
               }}
             >
               {fmt.label}
@@ -159,8 +159,8 @@ export function DocumentDemo() {
           <button
             type="button"
             onClick={() => {
-              renderDocument()
-              addLog(`Rendered as ${activeFormat()}`)
+              renderDocument();
+              addLog(`Rendered as ${activeFormat()}`);
             }}
             disabled={rendering()}
           >
@@ -177,8 +177,8 @@ export function DocumentDemo() {
                   `$${100 + Math.floor(Math.random() * 80)}K`,
                   (3.5 + Math.random() * 1.5).toFixed(1),
                 ],
-              ])
-              addLog(`Added team member (${teamData().length} total)`)
+              ]);
+              addLog(`Added team member (${teamData().length} total)`);
             }}
           >
             Add Team Member
@@ -187,8 +187,8 @@ export function DocumentDemo() {
             type="button"
             onClick={() => {
               if (teamData().length > 1) {
-                teamData.update((d) => d.slice(0, -1))
-                addLog(`Removed last member (${teamData().length} total)`)
+                teamData.update((d) => d.slice(0, -1));
+                addLog(`Removed last member (${teamData().length} total)`);
               }
             }}
           >
@@ -216,8 +216,8 @@ export function DocumentDemo() {
               key={`jsx-${fmt.id}`}
               class={jsxFormat() === fmt.id ? "active" : ""}
               onClick={() => {
-                jsxFormat.set(fmt.id)
-                addLog(`Invoice format → ${fmt.label}`)
+                jsxFormat.set(fmt.id);
+                addLog(`Invoice format → ${fmt.label}`);
               }}
             >
               {fmt.label}
@@ -227,8 +227,8 @@ export function DocumentDemo() {
         <button
           type="button"
           onClick={() => {
-            renderJsxDoc()
-            addLog(`Rendered invoice as ${jsxFormat()}`)
+            renderJsxDoc();
+            addLog(`Rendered invoice as ${jsxFormat()}`);
           }}
           disabled={rendering()}
           style="margin-bottom: 8px"
@@ -270,5 +270,5 @@ export function DocumentDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

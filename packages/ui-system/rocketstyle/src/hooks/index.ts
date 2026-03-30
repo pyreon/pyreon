@@ -1,4 +1,4 @@
-import usePseudoState from "./usePseudoState"
-import useTheme from "./useTheme"
+import usePseudoState from "./usePseudoState";
+import useTheme from "./useTheme";
 
-export { usePseudoState, useTheme }
+export { usePseudoState, useTheme };

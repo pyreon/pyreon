@@ -30,7 +30,7 @@ export const RESERVED_PROPS = [
   "afterContentDirection",
   "afterContentAlignX",
   "afterContentAlignY",
-] as const
+] as const;
 
 /**
  * HTML tags that are inline-level by default. When Element renders one of
@@ -69,7 +69,7 @@ export const INLINE_ELEMENTS = {
   script: true,
   sub: true,
   sup: true,
-}
+};
 
 /**
  * HTML void/self-closing elements that cannot have children. When Element
@@ -93,4 +93,4 @@ export const EMPTY_ELEMENTS = {
   source: true,
   track: true,
   wbr: true,
-}
+};

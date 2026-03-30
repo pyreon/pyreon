@@ -1,22 +1,22 @@
-import { describe, expect, it } from "vitest"
-import DocButton from "../primitives/DocButton"
-import DocCode from "../primitives/DocCode"
-import DocColumn from "../primitives/DocColumn"
-import DocDivider from "../primitives/DocDivider"
-import DocDocument from "../primitives/DocDocument"
-import DocHeading from "../primitives/DocHeading"
-import DocImage from "../primitives/DocImage"
-import DocLink from "../primitives/DocLink"
-import DocList from "../primitives/DocList"
-import DocListItem from "../primitives/DocListItem"
-import DocPage from "../primitives/DocPage"
-import DocPageBreak from "../primitives/DocPageBreak"
-import DocQuote from "../primitives/DocQuote"
-import DocRow from "../primitives/DocRow"
-import DocSection from "../primitives/DocSection"
-import DocSpacer from "../primitives/DocSpacer"
-import DocTable from "../primitives/DocTable"
-import DocText from "../primitives/DocText"
+import { describe, expect, it } from "vitest";
+import DocButton from "../primitives/DocButton";
+import DocCode from "../primitives/DocCode";
+import DocColumn from "../primitives/DocColumn";
+import DocDivider from "../primitives/DocDivider";
+import DocDocument from "../primitives/DocDocument";
+import DocHeading from "../primitives/DocHeading";
+import DocImage from "../primitives/DocImage";
+import DocLink from "../primitives/DocLink";
+import DocList from "../primitives/DocList";
+import DocListItem from "../primitives/DocListItem";
+import DocPage from "../primitives/DocPage";
+import DocPageBreak from "../primitives/DocPageBreak";
+import DocQuote from "../primitives/DocQuote";
+import DocRow from "../primitives/DocRow";
+import DocSection from "../primitives/DocSection";
+import DocSpacer from "../primitives/DocSpacer";
+import DocTable from "../primitives/DocTable";
+import DocText from "../primitives/DocText";
 
 describe("document primitives _documentType markers", () => {
   const components = [
@@ -38,67 +38,67 @@ describe("document primitives _documentType markers", () => {
     { name: "DocButton", component: DocButton, type: "button" },
     { name: "DocQuote", component: DocQuote, type: "quote" },
     { name: "DocPageBreak", component: DocPageBreak, type: "page-break" },
-  ]
+  ];
 
   for (const { name, component, type } of components) {
     it(`${name} has _documentType = "${type}"`, () => {
-      expect((component as any)._documentType).toBe(type)
-    })
+      expect((component as any)._documentType).toBe(type);
+    });
   }
 
   it("all 18 node types are covered", () => {
-    expect(components).toHaveLength(18)
-    const types = new Set(components.map((c) => c.type))
-    expect(types.size).toBe(18)
-  })
-})
+    expect(components).toHaveLength(18);
+    const types = new Set(components.map((c) => c.type));
+    expect(types.size).toBe(18);
+  });
+});
 
 describe("document primitives have displayName", () => {
   it("DocHeading", () => {
-    expect(DocHeading.displayName).toBe("DocHeading")
-  })
+    expect(DocHeading.displayName).toBe("DocHeading");
+  });
 
   it("DocText", () => {
-    expect(DocText.displayName).toBe("DocText")
-  })
+    expect(DocText.displayName).toBe("DocText");
+  });
 
   it("DocSection", () => {
-    expect(DocSection.displayName).toBe("DocSection")
-  })
+    expect(DocSection.displayName).toBe("DocSection");
+  });
 
   it("DocTable", () => {
-    expect(DocTable.displayName).toBe("DocTable")
-  })
-})
+    expect(DocTable.displayName).toBe("DocTable");
+  });
+});
 
 describe("document primitives are callable", () => {
   it("DocHeading is a function", () => {
-    expect(typeof DocHeading).toBe("function")
-  })
+    expect(typeof DocHeading).toBe("function");
+  });
 
   it("DocText is a function", () => {
-    expect(typeof DocText).toBe("function")
-  })
+    expect(typeof DocText).toBe("function");
+  });
 
   it("DocTable is a function", () => {
-    expect(typeof DocTable).toBe("function")
-  })
+    expect(typeof DocTable).toBe("function");
+  });
 
   it("DocDocument is a function", () => {
-    expect(typeof DocDocument).toBe("function")
-  })
-})
+    expect(typeof DocDocument).toBe("function");
+  });
+});
 
 describe("document primitives IS_ROCKETSTYLE", () => {
   it("DocHeading is a rocketstyle component", () => {
-    expect((DocHeading as any).IS_ROCKETSTYLE).toBe(true)
-  })
+    expect((DocHeading as any).IS_ROCKETSTYLE).toBe(true);
+  });
 
   it("DocText is a rocketstyle component", () => {
-    expect((DocText as any).IS_ROCKETSTYLE).toBe(true)
-  })
+    expect((DocText as any).IS_ROCKETSTYLE).toBe(true);
+  });
 
   it("DocSection is a rocketstyle component", () => {
-    expect((DocSection as any).IS_ROCKETSTYLE).toBe(true)
-  })
-})
+    expect((DocSection as any).IS_ROCKETSTYLE).toBe(true);
+  });
+});

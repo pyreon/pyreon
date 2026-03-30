@@ -1,5 +1,5 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { BackgroundProps } from "../types"
+import type { VNodeChild } from "@pyreon/core";
+import type { BackgroundProps } from "../types";
 
 /**
  * Background pattern for the flow canvas.
@@ -13,9 +13,9 @@ import type { BackgroundProps } from "../types"
  * ```
  */
 export function Background(props: BackgroundProps): VNodeChild {
-  const { variant = "dots", gap = 20, size = 1, color = "#ddd" } = props
+  const { variant = "dots", gap = 20, size = 1, color = "#ddd" } = props;
 
-  const patternId = `flow-bg-${variant}`
+  const patternId = `flow-bg-${variant}`;
 
   if (variant === "dots") {
     return (
@@ -39,7 +39,7 @@ export function Background(props: BackgroundProps): VNodeChild {
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
       </svg>
-    )
+    );
   }
 
   if (variant === "lines") {
@@ -79,7 +79,7 @@ export function Background(props: BackgroundProps): VNodeChild {
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
       </svg>
-    )
+    );
   }
 
   // cross
@@ -119,5 +119,5 @@ export function Background(props: BackgroundProps): VNodeChild {
       </defs>
       <rect width="100%" height="100%" fill={`url(#${patternId})`} />
     </svg>
-  )
+  );
 }

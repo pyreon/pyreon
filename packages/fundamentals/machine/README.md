@@ -11,25 +11,29 @@ bun add @pyreon/machine
 ## Quick Start
 
 ```tsx
-import { createMachine } from '@pyreon/machine'
+import { createMachine } from "@pyreon/machine";
 
 const machine = createMachine({
-  initial: 'idle',
+  initial: "idle",
   states: {
-    idle: { on: { FETCH: 'loading' } },
-    loading: { on: { SUCCESS: 'done', ERROR: 'error' } },
+    idle: { on: { FETCH: "loading" } },
+    loading: { on: { SUCCESS: "done", ERROR: "error" } },
     done: {},
-    error: { on: { RETRY: 'loading' } },
+    error: { on: { RETRY: "loading" } },
   },
-})
+});
 
-machine()              // 'idle' — reads like a signal
-machine.send('FETCH')  // transition to 'loading'
-machine.matches('loading') // true — reactive in effects/JSX
+machine(); // 'idle' — reads like a signal
+machine.send("FETCH"); // transition to 'loading'
+machine.matches("loading"); // true — reactive in effects/JSX
 
 // Reactive in JSX
-{() => machine.matches('loading') && <Spinner />}
-{() => machine.matches('done') && <Results />}
+{
+  () => machine.matches("loading") && <Spinner />;
+}
+{
+  () => machine.matches("done") && <Results />;
+}
 ```
 
 ## Guards
@@ -38,15 +42,15 @@ Conditional transitions using guard functions:
 
 ```tsx
 const form = createMachine({
-  initial: 'editing',
+  initial: "editing",
   states: {
     editing: {
-      on: { SUBMIT: { target: 'submitting', guard: () => isValid() } },
+      on: { SUBMIT: { target: "submitting", guard: () => isValid() } },
     },
-    submitting: { on: { SUCCESS: 'done', ERROR: 'editing' } },
+    submitting: { on: { SUCCESS: "done", ERROR: "editing" } },
     done: {},
   },
-})
+});
 ```
 
 ## API
@@ -57,16 +61,16 @@ Create a reactive state machine. Config: `initial` (starting state) and `states`
 
 **Returns `Machine`:**
 
-| Property | Description |
-| --- | --- |
-| `machine()` | Read current state (reactive) |
-| `send(event, payload?)` | Trigger a transition |
-| `matches(...states)` | Check if in one of the given states (reactive) |
-| `can(event)` | Check if event would trigger a valid transition |
-| `nextEvents()` | Available events from current state |
-| `reset()` | Return to initial state |
-| `onEnter(state, callback)` | Fire callback when entering a state |
-| `onTransition(callback)` | Fire on any transition |
+| Property                   | Description                                     |
+| -------------------------- | ----------------------------------------------- |
+| `machine()`                | Read current state (reactive)                   |
+| `send(event, payload?)`    | Trigger a transition                            |
+| `matches(...states)`       | Check if in one of the given states (reactive)  |
+| `can(event)`               | Check if event would trigger a valid transition |
+| `nextEvents()`             | Available events from current state             |
+| `reset()`                  | Return to initial state                         |
+| `onEnter(state, callback)` | Fire callback when entering a state             |
+| `onTransition(callback)`   | Fire on any transition                          |
 
 Use signals alongside machines for data. The machine manages transitions, signals manage data.
 

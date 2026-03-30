@@ -10,36 +10,41 @@ description: Reactive flow diagrams for Pyreon — signal-native nodes, edges, p
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/flow
 ```
+
 ```bash [bun]
 bun add @pyreon/flow
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/flow
 ```
+
 ```bash [yarn]
 yarn add @pyreon/flow
 ```
+
 :::
 
 ## Quick Start
 
 ```tsx
-import { createFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
+import { createFlow, Flow, Background, MiniMap, Controls } from "@pyreon/flow";
 
 const flow = createFlow({
   nodes: [
-    { id: '1', type: 'input', position: { x: 0, y: 0 }, data: { label: 'Start' } },
-    { id: '2', position: { x: 200, y: 100 }, data: { label: 'Process' } },
-    { id: '3', type: 'output', position: { x: 400, y: 0 }, data: { label: 'End' } },
+    { id: "1", type: "input", position: { x: 0, y: 0 }, data: { label: "Start" } },
+    { id: "2", position: { x: 200, y: 100 }, data: { label: "Process" } },
+    { id: "3", type: "output", position: { x: 400, y: 0 }, data: { label: "End" } },
   ],
   edges: [
-    { source: '1', target: '2' },
-    { source: '2', target: '3' },
+    { source: "1", target: "2" },
+    { source: "2", target: "3" },
   ],
-})
+});
 
 function WorkflowBuilder() {
   return (
@@ -48,7 +53,7 @@ function WorkflowBuilder() {
       <MiniMap />
       <Controls />
     </Flow>
-  )
+  );
 }
 ```
 
@@ -71,28 +76,28 @@ const flow = createFlow({
 
 ### Config Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `nodes` | `FlowNode[]` | `[]` | Initial nodes |
-| `edges` | `FlowEdge[]` | `[]` | Initial edges |
-| `snapToGrid` | `boolean` | `false` | Snap node positions to grid |
-| `snapGrid` | `number` | `20` | Grid size in pixels |
-| `connectionRules` | `Record<string, ConnectionRule>` | — | Connection validation rules by node type |
-| `nodeExtent` | `&#123; x: [min, max], y: [min, max] &#125;` | — | Constrain node positions within bounds |
-| `minZoom` | `number` | `0.1` | Minimum zoom level |
-| `maxZoom` | `number` | `4` | Maximum zoom level |
+| Option            | Type                                         | Default | Description                              |
+| ----------------- | -------------------------------------------- | ------- | ---------------------------------------- |
+| `nodes`           | `FlowNode[]`                                 | `[]`    | Initial nodes                            |
+| `edges`           | `FlowEdge[]`                                 | `[]`    | Initial edges                            |
+| `snapToGrid`      | `boolean`                                    | `false` | Snap node positions to grid              |
+| `snapGrid`        | `number`                                     | `20`    | Grid size in pixels                      |
+| `connectionRules` | `Record<string, ConnectionRule>`             | —       | Connection validation rules by node type |
+| `nodeExtent`      | `&#123; x: [min, max], y: [min, max] &#125;` | —       | Constrain node positions within bounds   |
+| `minZoom`         | `number`                                     | `0.1`   | Minimum zoom level                       |
+| `maxZoom`         | `number`                                     | `4`     | Maximum zoom level                       |
 
 ## Reactive Signals
 
 All state is exposed as reactive signals:
 
 ```tsx
-flow.nodes()         // Signal<FlowNode[]>
-flow.edges()         // Signal<FlowEdge[]>
-flow.viewport()      // Signal<Viewport> — { x, y, zoom }
-flow.zoom()          // Computed<number> — just the zoom level
-flow.selectedNodes() // Computed<FlowNode[]>
-flow.selectedEdges() // Computed<FlowEdge[]>
+flow.nodes(); // Signal<FlowNode[]>
+flow.edges(); // Signal<FlowEdge[]>
+flow.viewport(); // Signal<Viewport> — { x, y, zoom }
+flow.zoom(); // Computed<number> — just the zoom level
+flow.selectedNodes(); // Computed<FlowNode[]>
+flow.selectedEdges(); // Computed<FlowEdge[]>
 ```
 
 ## Node Operations
@@ -100,38 +105,38 @@ flow.selectedEdges() // Computed<FlowEdge[]>
 ```tsx
 // Add a node
 flow.addNode({
-  id: '4',
+  id: "4",
   position: { x: 300, y: 200 },
-  data: { label: 'New Node' },
-})
+  data: { label: "New Node" },
+});
 
 // Remove a node (also removes connected edges)
-flow.removeNode('4')
+flow.removeNode("4");
 
 // Update node properties
-flow.updateNode('2', { data: { label: 'Updated' } })
+flow.updateNode("2", { data: { label: "Updated" } });
 
 // Update position (respects snapToGrid and nodeExtent)
-flow.updateNodePosition('2', { x: 250, y: 150 })
+flow.updateNodePosition("2", { x: 250, y: 150 });
 
 // Get a specific node
-const node = flow.getNode('2')  // FlowNode | undefined
+const node = flow.getNode("2"); // FlowNode | undefined
 ```
 
 ## Edge Operations
 
 ```tsx
 // Add an edge (id auto-generated if not provided)
-flow.addEdge({ source: '1', target: '3' })
+flow.addEdge({ source: "1", target: "3" });
 
 // Add with type
-flow.addEdge({ source: '1', target: '3', type: 'smoothstep', label: 'yes' })
+flow.addEdge({ source: "1", target: "3", type: "smoothstep", label: "yes" });
 
 // Remove an edge
-flow.removeEdge('e1-3')
+flow.removeEdge("e1-3");
 
 // Get a specific edge
-const edge = flow.getEdge('e1-3')
+const edge = flow.getEdge("e1-3");
 
 // Duplicate edges are prevented automatically
 ```
@@ -140,51 +145,51 @@ const edge = flow.getEdge('e1-3')
 
 Four built-in edge path algorithms:
 
-| Type | Description |
-|---|---|
-| `bezier` | Smooth cubic bezier curve (default) |
+| Type         | Description                           |
+| ------------ | ------------------------------------- |
+| `bezier`     | Smooth cubic bezier curve (default)   |
 | `smoothstep` | Right-angle path with rounded corners |
-| `step` | Right-angle path with sharp corners |
-| `straight` | Direct line between nodes |
+| `step`       | Right-angle path with sharp corners   |
+| `straight`   | Direct line between nodes             |
 
 ### Edge Waypoints
 
 Add bend points to edges:
 
 ```tsx
-flow.addEdgeWaypoint('e1-2', { x: 150, y: 50 })
-flow.addEdgeWaypoint('e1-2', { x: 200, y: 75 }, 1)  // at specific index
-flow.updateEdgeWaypoint('e1-2', 0, { x: 160, y: 60 })
-flow.removeEdgeWaypoint('e1-2', 0)
+flow.addEdgeWaypoint("e1-2", { x: 150, y: 50 });
+flow.addEdgeWaypoint("e1-2", { x: 200, y: 75 }, 1); // at specific index
+flow.updateEdgeWaypoint("e1-2", 0, { x: 160, y: 60 });
+flow.removeEdgeWaypoint("e1-2", 0);
 ```
 
 ## Selection
 
 ```tsx
-flow.selectNode('1')                    // select a node
-flow.selectNode('2', { additive: true }) // add to selection
-flow.selectEdge('e1-2')                 // select an edge
-flow.selectAll()                        // select all nodes
-flow.clearSelection()                   // deselect everything
-flow.deleteSelected()                   // remove selected nodes and edges
-flow.deselectNode('1')                  // remove from selection
+flow.selectNode("1"); // select a node
+flow.selectNode("2", { additive: true }); // add to selection
+flow.selectEdge("e1-2"); // select an edge
+flow.selectAll(); // select all nodes
+flow.clearSelection(); // deselect everything
+flow.deleteSelected(); // remove selected nodes and edges
+flow.deselectNode("1"); // remove from selection
 ```
 
 ## Viewport
 
 ```tsx
-flow.zoomIn()                  // zoom in by 0.2
-flow.zoomOut()                 // zoom out by 0.2
-flow.zoomTo(1.5)               // set exact zoom (clamped to min/max)
-flow.fitView()                 // fit all nodes in viewport
-flow.fitView(['1', '2'])       // fit specific nodes
-flow.panTo({ x: 100, y: 200 }) // pan to position
+flow.zoomIn(); // zoom in by 0.2
+flow.zoomOut(); // zoom out by 0.2
+flow.zoomTo(1.5); // set exact zoom (clamped to min/max)
+flow.fitView(); // fit all nodes in viewport
+flow.fitView(["1", "2"]); // fit specific nodes
+flow.panTo({ x: 100, y: 200 }); // pan to position
 
 // Reactive zoom level
-flow.zoom()                    // Computed<number>
+flow.zoom(); // Computed<number>
 
 // Check if a node is visible
-flow.isNodeVisible('1')        // boolean
+flow.isNodeVisible("1"); // boolean
 ```
 
 ## Auto-Layout
@@ -193,27 +198,27 @@ Layout nodes automatically using elkjs (lazy-loaded — zero cost until called):
 
 ```tsx
 // Layered layout (DAG/pipeline)
-await flow.layout('layered', { direction: 'RIGHT', spacing: 50 })
+await flow.layout("layered", { direction: "RIGHT", spacing: 50 });
 
 // Tree layout
-await flow.layout('tree', { direction: 'DOWN', spacing: 40 })
+await flow.layout("tree", { direction: "DOWN", spacing: 40 });
 
 // Force-directed
-await flow.layout('force')
+await flow.layout("force");
 
 // Available algorithms
-await flow.layout('stress')
-await flow.layout('radial')
-await flow.layout('box')
+await flow.layout("stress");
+await flow.layout("radial");
+await flow.layout("box");
 ```
 
 ### Layout Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `direction` | `'DOWN' \| 'RIGHT' \| 'UP' \| 'LEFT'` | `'DOWN'` | Layout direction |
-| `spacing` | `number` | `50` | Spacing between nodes |
-| `layerSpacing` | `number` | `spacing` | Spacing between layers |
+| Option         | Type                                  | Default   | Description            |
+| -------------- | ------------------------------------- | --------- | ---------------------- |
+| `direction`    | `'DOWN' \| 'RIGHT' \| 'UP' \| 'LEFT'` | `'DOWN'`  | Layout direction       |
+| `spacing`      | `number`                              | `50`      | Spacing between nodes  |
+| `layerSpacing` | `number`                              | `spacing` | Spacing between layers |
 
 elkjs is loaded on demand — only imported when `flow.layout()` is first called.
 
@@ -240,66 +245,66 @@ flow.isValidConnection({ source: '1', target: '2' })  // boolean
 
 ```tsx
 // Get all edges connected to a node
-flow.getConnectedEdges('2')  // FlowEdge[]
+flow.getConnectedEdges("2"); // FlowEdge[]
 
 // Get upstream nodes (nodes with edges pointing to this node)
-flow.getIncomers('2')  // FlowNode[]
+flow.getIncomers("2"); // FlowNode[]
 
 // Get downstream nodes (nodes this node points to)
-flow.getOutgoers('2')  // FlowNode[]
+flow.getOutgoers("2"); // FlowNode[]
 ```
 
 ## Search and Filter
 
 ```tsx
 // Find nodes by predicate
-flow.findNodes(n => n.type === 'process')  // FlowNode[]
+flow.findNodes((n) => n.type === "process"); // FlowNode[]
 
 // Search by label text (case-insensitive)
-flow.searchNodes('start')  // FlowNode[]
+flow.searchNodes("start"); // FlowNode[]
 ```
 
 ## Undo / Redo
 
 ```tsx
-flow.undo()  // restore previous state
-flow.redo()  // restore undone state
+flow.undo(); // restore previous state
+flow.redo(); // restore undone state
 ```
 
 ## Copy / Paste
 
 ```tsx
-flow.copy()   // copy selected nodes to clipboard
-flow.paste()  // paste with offset, new IDs generated
+flow.copy(); // copy selected nodes to clipboard
+flow.paste(); // paste with offset, new IDs generated
 ```
 
 ## Collision Detection
 
 ```tsx
 // Find nodes overlapping with a given node
-flow.getOverlappingNodes('2')  // FlowNode[]
+flow.getOverlappingNodes("2"); // FlowNode[]
 
 // Resolve collisions — push overlapping nodes apart
-flow.resolveCollisions('2')
+flow.resolveCollisions("2");
 ```
 
 ## Proximity Connect
 
 ```tsx
 // Find nearest unconnected node within distance
-flow.findNearestNode('1', 200)  // FlowNode | null
+flow.findNearestNode("1", 200); // FlowNode | null
 ```
 
 ## Serialization
 
 ```tsx
 // Export flow state as JSON
-const json = flow.toJSON()
+const json = flow.toJSON();
 // { nodes: [...], edges: [...], viewport: { x, y, zoom } }
 
 // Import flow state
-flow.fromJSON(json)
-flow.fromJSON(json, { resetViewport: true })
+flow.fromJSON(json);
+flow.fromJSON(json, { resetViewport: true });
 ```
 
 ## Listeners
@@ -328,10 +333,10 @@ unsub()
 
 ```tsx
 flow.batch(() => {
-  flow.addNode({ id: '10', position: { x: 0, y: 0 }, data: { label: 'A' } })
-  flow.addNode({ id: '11', position: { x: 200, y: 0 }, data: { label: 'B' } })
-  flow.addEdge({ source: '10', target: '11' })
-})
+  flow.addNode({ id: "10", position: { x: 0, y: 0 }, data: { label: "A" } });
+  flow.addNode({ id: "11", position: { x: 200, y: 0 }, data: { label: "B" } });
+  flow.addEdge({ source: "10", target: "11" });
+});
 // Single signal notification for all changes
 ```
 
@@ -365,7 +370,7 @@ Scaled overview with viewport indicator:
 
 ```tsx
 <MiniMap
-  nodeColor={(node) => node.type === 'input' ? '#6366f1' : '#94a3b8'}
+  nodeColor={(node) => (node.type === "input" ? "#6366f1" : "#94a3b8")}
   maskColor="rgba(0,0,0,0.2)"
 />
 ```
@@ -383,7 +388,7 @@ Zoom and fit controls:
 Connection points on nodes:
 
 ```tsx
-import { Handle, Position } from '@pyreon/flow'
+import { Handle, Position } from "@pyreon/flow";
 
 function CustomNode({ data }) {
   return (
@@ -392,7 +397,7 @@ function CustomNode({ data }) {
       <span>{data.label}</span>
       <Handle type="source" position={Position.Right} />
     </div>
-  )
+  );
 }
 ```
 
@@ -433,45 +438,42 @@ Floating toolbar that appears when a node is selected:
 Pure functions for generating SVG paths:
 
 ```tsx
-import {
-  getBezierPath,
-  getSmoothStepPath,
-  getStraightPath,
-  getStepPath,
-} from '@pyreon/flow'
+import { getBezierPath, getSmoothStepPath, getStraightPath, getStepPath } from "@pyreon/flow";
 
 const [path, labelX, labelY] = getBezierPath({
-  sourceX: 0, sourceY: 0,
-  targetX: 200, targetY: 100,
+  sourceX: 0,
+  sourceY: 0,
+  targetX: 200,
+  targetY: 100,
   sourcePosition: Position.Right,
   targetPosition: Position.Left,
-})
+});
 ```
 
 ## Position Enum
 
 ```tsx
-import { Position } from '@pyreon/flow'
+import { Position } from "@pyreon/flow";
 
-Position.Top     // 'top'
-Position.Right   // 'right'
-Position.Bottom  // 'bottom'
-Position.Left    // 'left'
+Position.Top; // 'top'
+Position.Right; // 'right'
+Position.Bottom; // 'bottom'
+Position.Left; // 'left'
 ```
 
 ## Cleanup
 
 ```tsx
-flow.dispose()  // remove all listeners, clear state
+flow.dispose(); // remove all listeners, clear state
 ```
 
 ## Comparison with React Flow
 
-| Feature | React Flow | @pyreon/flow |
-|---|---|---|
-| Update 1 of 1000 nodes | New array → diff all | 1 signal → 1 DOM update |
-| Bundle size | ~1.2MB (React + D3) | ~50KB + elkjs on demand |
-| State management | 3 callbacks + applyChanges | Automatic — zero boilerplate |
-| Auto-layout | Separate elkjs setup | `flow.layout('layered')` |
-| Undo/redo | DIY | Built-in |
-| Connection rules | `isValidConnection` callback | Declarative config |
+| Feature                | React Flow                   | @pyreon/flow                 |
+| ---------------------- | ---------------------------- | ---------------------------- |
+| Update 1 of 1000 nodes | New array → diff all         | 1 signal → 1 DOM update      |
+| Bundle size            | ~1.2MB (React + D3)          | ~50KB + elkjs on demand      |
+| State management       | 3 callbacks + applyChanges   | Automatic — zero boilerplate |
+| Auto-layout            | Separate elkjs setup         | `flow.layout('layered')`     |
+| Undo/redo              | DIY                          | Built-in                     |
+| Connection rules       | `isValidConnection` callback | Declarative config           |

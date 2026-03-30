@@ -1,10 +1,10 @@
-import { For } from "@pyreon/core"
-import { computed, signal } from "@pyreon/reactivity"
+import { For } from "@pyreon/core";
+import { computed, signal } from "@pyreon/reactivity";
 
 interface Todo {
-  id: number
-  text: string
-  done: boolean
+  id: number;
+  text: string;
+  done: boolean;
 }
 
 export function TodoList() {
@@ -12,29 +12,29 @@ export function TodoList() {
     { id: 1, text: "Build Pyreon framework", done: true },
     { id: 2, text: "Write tests", done: true },
     { id: 3, text: "Build the playground", done: false },
-  ])
-  const input = signal("")
+  ]);
+  const input = signal("");
 
-  const remaining = computed(() => todos().filter((t) => !t.done).length)
+  const remaining = computed(() => todos().filter((t) => !t.done).length);
 
   const addTodo = () => {
-    const text = input().trim()
-    if (!text) return
-    todos.update((list) => [...list, { id: Date.now(), text, done: false }])
-    input.set("")
-  }
+    const text = input().trim();
+    if (!text) return;
+    todos.update((list) => [...list, { id: Date.now(), text, done: false }]);
+    input.set("");
+  };
 
   const toggle = (id: number) => {
-    todos.update((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
-  }
+    todos.update((list) => list.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  };
 
   const remove = (id: number) => {
-    todos.update((list) => list.filter((t) => t.id !== id))
-  }
+    todos.update((list) => list.filter((t) => t.id !== id));
+  };
 
   const handleKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") addTodo()
-  }
+    if (e.key === "Enter") addTodo();
+  };
 
   return (
     <div class="card">
@@ -68,5 +68,5 @@ export function TodoList() {
         </For>
       </ul>
     </div>
-  )
+  );
 }

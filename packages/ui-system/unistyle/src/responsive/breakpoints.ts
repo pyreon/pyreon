@@ -8,8 +8,8 @@ const breakpoints = {
     xl: 1200,
     xxl: 1440,
   },
-} as const
+} as const;
 
-export type Breakpoints = typeof breakpoints
+export type Breakpoints = typeof breakpoints;
 
-export default breakpoints
+export default breakpoints;

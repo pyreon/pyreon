@@ -1,10 +1,10 @@
-import { provide } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { PseudoProps } from "../types/pseudo"
-import type { ComponentFn } from "../types/utils"
-import { localContext } from "./localContext"
+import { provide } from "@pyreon/core";
+import { signal } from "@pyreon/reactivity";
+import type { PseudoProps } from "../types/pseudo";
+import type { ComponentFn } from "../types/utils";
+import { localContext } from "./localContext";
 
-type Props = PseudoProps & Record<string, any>
+type Props = PseudoProps & Record<string, any>;
 
 /**
  * Higher-order component that wraps a component with a LocalProvider,
@@ -25,60 +25,60 @@ const createLocalProvider = (WrappedComponent: ComponentFn<any>) => {
     $rocketstate,
     ...props
   }) => {
-    const hover = signal(false)
-    const focus = signal(false)
-    const pressed = signal(false)
+    const hover = signal(false);
+    const focus = signal(false);
+    const pressed = signal(false);
 
     const pseudoState = () => ({
       hover: hover(),
       focus: focus(),
       pressed: pressed(),
-    })
+    });
 
     const events = {
       onMouseEnter: (e: MouseEvent) => {
-        hover.set(true)
-        if (onMouseEnter) onMouseEnter(e)
+        hover.set(true);
+        if (onMouseEnter) onMouseEnter(e);
       },
       onMouseLeave: (e: MouseEvent) => {
-        hover.set(false)
-        pressed.set(false)
-        if (onMouseLeave) onMouseLeave(e)
+        hover.set(false);
+        pressed.set(false);
+        if (onMouseLeave) onMouseLeave(e);
       },
       onMouseDown: (e: MouseEvent) => {
-        pressed.set(true)
-        if (onMouseDown) onMouseDown(e)
+        pressed.set(true);
+        if (onMouseDown) onMouseDown(e);
       },
       onMouseUp: (e: MouseEvent) => {
-        pressed.set(false)
-        if (onMouseUp) onMouseUp(e)
+        pressed.set(false);
+        if (onMouseUp) onMouseUp(e);
       },
       onFocus: (e: FocusEvent) => {
-        focus.set(true)
-        if (onFocus) onFocus(e)
+        focus.set(true);
+        if (onFocus) onFocus(e);
       },
       onBlur: (e: FocusEvent) => {
-        focus.set(false)
-        if (onBlur) onBlur(e)
+        focus.set(false);
+        if (onBlur) onBlur(e);
       },
-    }
+    };
 
     const updatedState = {
       ...$rocketstate,
       pseudo: { ...$rocketstate?.pseudo, ...pseudoState() },
-    }
+    };
 
     // Provide local context for child rocketstyle components
-    provide(localContext, updatedState)
+    provide(localContext, updatedState);
 
     return WrappedComponent({
       ...props,
       ...events,
       $rocketstate: updatedState,
-    })
-  }
+    });
+  };
 
-  return HOCComponent
-}
+  return HOCComponent;
+};
 
-export default createLocalProvider
+export default createLocalProvider;

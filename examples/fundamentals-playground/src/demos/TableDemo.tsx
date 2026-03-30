@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { SortingState } from "@pyreon/table"
+import type { VNodeChild } from "@pyreon/core";
+import { signal } from "@pyreon/reactivity";
+import type { SortingState } from "@pyreon/table";
 import {
   createColumnHelper,
   flexRender,
@@ -9,14 +9,14 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
   useTable,
-} from "@pyreon/table"
+} from "@pyreon/table";
 
 interface Employee {
-  id: number
-  name: string
-  department: string
-  salary: number
-  startDate: string
+  id: number;
+  name: string;
+  department: string;
+  salary: number;
+  startDate: string;
 }
 
 const employees: Employee[] = [
@@ -104,9 +104,9 @@ const employees: Employee[] = [
     salary: 91000,
     startDate: "2021-05-19",
   },
-]
+];
 
-const columnHelper = createColumnHelper<Employee>()
+const columnHelper = createColumnHelper<Employee>();
 const columns = [
   columnHelper.accessor("name", { header: "Name" }),
   columnHelper.accessor("department", { header: "Department" }),
@@ -118,11 +118,11 @@ const columns = [
     header: "Start Date",
     cell: (info) => new Date(info.getValue()).toLocaleDateString(),
   }),
-]
+];
 
 export function TableDemo() {
-  const sorting = signal<SortingState>([])
-  const globalFilter = signal("")
+  const sorting = signal<SortingState>([]);
+  const globalFilter = signal("");
 
   const table = useTable(() => ({
     data: employees,
@@ -132,16 +132,16 @@ export function TableDemo() {
       globalFilter: globalFilter(),
     },
     onSortingChange: (updater: any) => {
-      sorting.set(typeof updater === "function" ? updater(sorting()) : updater)
+      sorting.set(typeof updater === "function" ? updater(sorting()) : updater);
     },
     onGlobalFilterChange: (updater: any) => {
-      globalFilter.set(typeof updater === "function" ? updater(globalFilter()) : updater)
+      globalFilter.set(typeof updater === "function" ? updater(globalFilter()) : updater);
     },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-  }))
+  }));
 
   return (
     <div>
@@ -219,5 +219,5 @@ export function TableDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

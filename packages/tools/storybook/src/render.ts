@@ -1,1 +1,1 @@
-export { defaultRender, renderToCanvas } from "./render-impl"
+export { defaultRender, renderToCanvas } from "./render-impl";

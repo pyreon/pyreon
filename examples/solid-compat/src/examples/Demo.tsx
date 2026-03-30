@@ -1,7 +1,7 @@
-import { createSignal, Show } from "solid-js"
+import { createSignal, Show } from "solid-js";
 
 export default function Demo(props: { title: string; apis: string; code: string; children?: any }) {
-  const [showCode, setShowCode] = createSignal(false)
+  const [showCode, setShowCode] = createSignal(false);
 
   return (
     <section class="demo">
@@ -21,5 +21,5 @@ export default function Demo(props: { title: string; apis: string; code: string;
       </Show>
       {props.children}
     </section>
-  )
+  );
 }

@@ -10,34 +10,34 @@
  *   - computed() for derived values
  */
 
-import { For, Show } from "@pyreon/core"
-import { useHead } from "@pyreon/head"
-import { computed, signal } from "@pyreon/reactivity"
-import { useLoaderData } from "@pyreon/router"
-import { TodoItem } from "../components/TodoItem"
+import { For, Show } from "@pyreon/core";
+import { useHead } from "@pyreon/head";
+import { computed, signal } from "@pyreon/reactivity";
+import { useLoaderData } from "@pyreon/router";
+import { TodoItem } from "../components/TodoItem";
 
 interface Todo {
-  id: number
-  title: string
-  completed: boolean
+  id: number;
+  title: string;
+  completed: boolean;
 }
 
 export const TodoList = () => {
-  const todos = useLoaderData<Todo[]>()
-  const filter = signal<"all" | "active" | "done">("all")
+  const todos = useLoaderData<Todo[]>();
+  const filter = signal<"all" | "active" | "done">("all");
 
   const filtered = computed(() => {
-    const f = filter()
-    if (f === "active") return todos.filter((t) => !t.completed)
-    if (f === "done") return todos.filter((t) => t.completed)
-    return todos
-  })
+    const f = filter();
+    if (f === "active") return todos.filter((t) => !t.completed);
+    if (f === "done") return todos.filter((t) => t.completed);
+    return todos;
+  });
 
-  const activeCount = computed(() => todos.filter((t) => !t.completed).length)
+  const activeCount = computed(() => todos.filter((t) => !t.completed).length);
 
   useHead(() => ({
     title: `Todos (${activeCount()} active)`,
-  }))
+  }));
 
   return (
     <div>
@@ -67,5 +67,5 @@ export const TodoList = () => {
 
       <p>{activeCount()} items left</p>
     </div>
-  )
-}
+  );
+};

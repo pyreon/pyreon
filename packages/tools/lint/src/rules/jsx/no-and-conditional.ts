@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isLogicalAndWithJSX } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isLogicalAndWithJSX } from "../../utils/ast";
 
 export const noAndConditional: Rule = {
   meta: {
@@ -10,23 +10,23 @@ export const noAndConditional: Rule = {
     fixable: false,
   },
   create(context) {
-    let jsxExpressionDepth = 0
+    let jsxExpressionDepth = 0;
     const callbacks: VisitorCallbacks = {
       JSXExpressionContainer() {
-        jsxExpressionDepth++
+        jsxExpressionDepth++;
       },
       "JSXExpressionContainer:exit"() {
-        jsxExpressionDepth--
+        jsxExpressionDepth--;
       },
       LogicalExpression(node: any) {
-        if (jsxExpressionDepth === 0) return
-        if (!isLogicalAndWithJSX(node)) return
+        if (jsxExpressionDepth === 0) return;
+        if (!isLogicalAndWithJSX(node)) return;
         context.report({
           message: "`&&` with JSX — use `<Show>` for conditional rendering.",
           span: getSpan(node),
-        })
+        });
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

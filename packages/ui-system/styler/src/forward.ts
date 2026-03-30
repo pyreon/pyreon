@@ -190,36 +190,36 @@ const HTML_PROPS = new Set([
   "value",
   "width",
   "wrap",
-])
+]);
 
 /**
  * Filters props for HTML elements. Keeps valid HTML attrs, data-*, aria-*.
  * Rejects unknown props and $-prefixed transient props.
  */
 export const filterProps = (props: Record<string, unknown>): Record<string, unknown> => {
-  const filtered: Record<string, unknown> = {}
+  const filtered: Record<string, unknown> = {};
 
   for (const key in props) {
     // Skip transient props ($-prefixed) — used for styling-only props
-    if (key.charCodeAt(0) === 36) continue // '$'
+    if (key.charCodeAt(0) === 36) continue; // '$'
 
     // Skip `as` prop — handled separately by styled
-    if (key === "as") continue
+    if (key === "as") continue;
 
     // Keep data-* and aria-* attributes
     if (key.startsWith("data-") || key.startsWith("aria-")) {
-      filtered[key] = props[key]
-      continue
+      filtered[key] = props[key];
+      continue;
     }
 
     // Keep known HTML props
     if (HTML_PROPS.has(key)) {
-      filtered[key] = props[key]
+      filtered[key] = props[key];
     }
   }
 
-  return filtered
-}
+  return filtered;
+};
 
 /**
  * Build final props for a styled component in a single pass.
@@ -233,44 +233,44 @@ export const buildProps = (
   customFilter?: (prop: string) => boolean,
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 ): Record<string, any> => {
-  const result: Record<string, any> = {}
+  const result: Record<string, any> = {};
 
   // Merge generated + user className
-  const userCls = rawProps.class || rawProps.className
+  const userCls = rawProps.class || rawProps.className;
   if (generatedCls) {
-    result.class = userCls ? `${generatedCls} ${userCls}` : generatedCls
+    result.class = userCls ? `${generatedCls} ${userCls}` : generatedCls;
   } else if (userCls) {
-    result.class = userCls
+    result.class = userCls;
   }
 
   // Component target — forward all props except as/className/class and $-prefixed
   if (!isDOM) {
     for (const key in rawProps) {
-      if (key === "as" || key === "className" || key === "class") continue
-      if (key.charCodeAt(0) === 36) continue // $-prefixed transient
-      result[key] = rawProps[key]
+      if (key === "as" || key === "className" || key === "class") continue;
+      if (key.charCodeAt(0) === 36) continue; // $-prefixed transient
+      result[key] = rawProps[key];
     }
-    return result
+    return result;
   }
 
   // DOM element with custom shouldForwardProp
   if (customFilter) {
     for (const key in rawProps) {
-      if (key === "as" || key === "className" || key === "class") continue
-      if (customFilter(key)) result[key] = rawProps[key]
+      if (key === "as" || key === "className" || key === "class") continue;
+      if (customFilter(key)) result[key] = rawProps[key];
     }
-    return result
+    return result;
   }
 
   // DOM element with default filtering
   for (const key in rawProps) {
-    if (key === "as" || key === "className" || key === "class") continue
-    if (key.charCodeAt(0) === 36) continue // $-prefixed transient
+    if (key === "as" || key === "className" || key === "class") continue;
+    if (key.charCodeAt(0) === 36) continue; // $-prefixed transient
     if (key.startsWith("data-") || key.startsWith("aria-")) {
-      result[key] = rawProps[key]
-      continue
+      result[key] = rawProps[key];
+      continue;
     }
-    if (HTML_PROPS.has(key)) result[key] = rawProps[key]
+    if (HTML_PROPS.has(key)) result[key] = rawProps[key];
   }
-  return result
-}
+  return result;
+};

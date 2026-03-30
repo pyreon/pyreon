@@ -1,7 +1,7 @@
-import { FadeIn, SlideUp } from "./animations"
-import { GhostButton, PrimaryButton } from "./components"
-import { addNotification } from "./notifications"
-import { Code, FlexRow, SectionTitle } from "./primitives"
+import { FadeIn, SlideUp } from "./animations";
+import { GhostButton, PrimaryButton } from "./components";
+import { addNotification } from "./notifications";
+import { Code, FlexRow, SectionTitle } from "./primitives";
 
 export function ModalOverlay(props: { onClose: () => void }) {
   return (
@@ -19,10 +19,10 @@ export function ModalOverlay(props: { onClose: () => void }) {
           zIndex: "300",
         }}
         onClick={(e: Event) => {
-          if (e.target === e.currentTarget) props.onClose()
+          if (e.target === e.currentTarget) props.onClose();
         }}
         onKeyDown={(e: KeyboardEvent) => {
-          if (e.key === "Escape") props.onClose()
+          if (e.key === "Escape") props.onClose();
         }}
       >
         <SlideUp appear show={() => true}>
@@ -71,8 +71,8 @@ export function ModalOverlay(props: { onClose: () => void }) {
               </GhostButton>
               <PrimaryButton
                 onClick={() => {
-                  addNotification("Modal confirmed!", "success")
-                  props.onClose()
+                  addNotification("Modal confirmed!", "success");
+                  props.onClose();
                 }}
               >
                 <span>Confirm</span>
@@ -82,5 +82,5 @@ export function ModalOverlay(props: { onClose: () => void }) {
         </SlideUp>
       </div>
     </FadeIn>
-  )
+  );
 }

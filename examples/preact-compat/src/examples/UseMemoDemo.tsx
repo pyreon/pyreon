@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from "preact/hooks"
-import Demo from "./Demo"
+import { useCallback, useMemo, useState } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function UseMemoDemo() {
-  const [a, setA] = useState(3)
-  const [b, setB] = useState(7)
-  const sum = useMemo(() => a + b, [a, b])
-  const multiply = useCallback((x: number, y: number) => x * y, [])
+  const [a, setA] = useState(3);
+  const [b, setB] = useState(7);
+  const sum = useMemo(() => a + b, [a, b]);
+  const multiply = useCallback((x: number, y: number) => x * y, []);
 
   return (
     <Demo
@@ -34,5 +34,5 @@ const multiply = useCallback((x, y) => x * y, [])`}
         </button>
       </div>
     </Demo>
-  )
+  );
 }

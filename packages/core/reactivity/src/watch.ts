@@ -1,8 +1,8 @@
-import { effect } from "./effect"
+import { effect } from "./effect";
 
 export interface WatchOptions {
   /** If true, call the callback immediately with the current value on setup. Default: false. */
-  immediate?: boolean
+  immediate?: boolean;
 }
 
 /**
@@ -32,38 +32,38 @@ export function watch<T>(
   callback: (newVal: T, oldVal: T | undefined) => void | (() => void),
   opts: WatchOptions = {},
 ): () => void {
-  let oldVal: T | undefined
-  let isFirst = true
-  let cleanupFn: (() => void) | undefined
+  let oldVal: T | undefined;
+  let isFirst = true;
+  let cleanupFn: (() => void) | undefined;
 
   const e = effect(() => {
-    const newVal = source()
+    const newVal = source();
 
     if (isFirst) {
-      isFirst = false
-      oldVal = newVal
+      isFirst = false;
+      oldVal = newVal;
       if (opts.immediate) {
-        const result = callback(newVal, undefined)
-        if (typeof result === "function") cleanupFn = result
+        const result = callback(newVal, undefined);
+        if (typeof result === "function") cleanupFn = result;
       }
-      return
+      return;
     }
 
     if (cleanupFn) {
-      cleanupFn()
-      cleanupFn = undefined
+      cleanupFn();
+      cleanupFn = undefined;
     }
 
-    const result = callback(newVal, oldVal)
-    if (typeof result === "function") cleanupFn = result
-    oldVal = newVal
-  })
+    const result = callback(newVal, oldVal);
+    if (typeof result === "function") cleanupFn = result;
+    oldVal = newVal;
+  });
 
   return () => {
-    e.dispose()
+    e.dispose();
     if (cleanupFn) {
-      cleanupFn()
-      cleanupFn = undefined
+      cleanupFn();
+      cleanupFn = undefined;
     }
-  }
+  };
 }

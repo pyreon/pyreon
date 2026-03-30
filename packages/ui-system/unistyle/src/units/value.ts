@@ -1,4 +1,4 @@
-import stripUnit from "./stripUnit"
+import stripUnit from "./stripUnit";
 
 type CssUnits =
   | "px"
@@ -15,33 +15,33 @@ type CssUnits =
   | "vh"
   | "vw"
   | "vmin"
-  | "vmax"
+  | "vmax";
 
-const isNotValue = (val: unknown) => !val && val !== 0
+const isNotValue = (val: unknown) => !val && val !== 0;
 
 export type Value = (
   param: string | number | null | undefined,
   rootSize?: number,
   outputUnit?: CssUnits,
-) => string | number | null
+) => string | number | null;
 
 const value: Value = (param, rootSize = 16, outputUnit = "rem"): string | number | null => {
-  if (isNotValue(param)) return null
+  if (isNotValue(param)) return null;
 
   // After the guard above, param is guaranteed to be string | number (non-null)
-  const p = param as string | number
+  const p = param as string | number;
 
-  const [val, unit] = stripUnit(p as string, true)
-  if (isNotValue(val)) return null
-  if (val === 0 || typeof val === "string") return p
+  const [val, unit] = stripUnit(p as string, true);
+  if (isNotValue(val)) return null;
+  if (val === 0 || typeof val === "string") return p;
 
-  const canConvert = rootSize && !Number.isNaN(val)
-  if (canConvert && !unit && outputUnit === "px") return `${val}${outputUnit}`
-  if (canConvert && !unit) return `${val / rootSize}rem`
-  if (canConvert && unit === "px" && outputUnit === "rem") return `${val / rootSize}rem`
-  if (unit) return p
+  const canConvert = rootSize && !Number.isNaN(val);
+  if (canConvert && !unit && outputUnit === "px") return `${val}${outputUnit}`;
+  if (canConvert && !unit) return `${val / rootSize}rem`;
+  if (canConvert && unit === "px" && outputUnit === "rem") return `${val / rootSize}rem`;
+  if (unit) return p;
 
-  return `${val}${outputUnit}`
-}
+  return `${val}${outputUnit}`;
+};
 
-export default value
+export default value;

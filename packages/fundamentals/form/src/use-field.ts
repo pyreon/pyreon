@@ -1,28 +1,28 @@
-import type { Computed, Signal } from "@pyreon/reactivity"
-import { computed } from "@pyreon/reactivity"
-import type { FieldRegisterProps, FieldState, FormState, ValidationError } from "./types"
+import type { Computed, Signal } from "@pyreon/reactivity";
+import { computed } from "@pyreon/reactivity";
+import type { FieldRegisterProps, FieldState, FormState, ValidationError } from "./types";
 
 export interface UseFieldResult<T> {
   /** Current field value (reactive signal). */
-  value: Signal<T>
+  value: Signal<T>;
   /** Field error message (reactive signal). */
-  error: Signal<ValidationError>
+  error: Signal<ValidationError>;
   /** Whether the field has been touched (reactive signal). */
-  touched: Signal<boolean>
+  touched: Signal<boolean>;
   /** Whether the field value differs from initial (reactive signal). */
-  dirty: Signal<boolean>
+  dirty: Signal<boolean>;
   /** Set the field value. */
-  setValue: (value: T) => void
+  setValue: (value: T) => void;
   /** Mark the field as touched. */
-  setTouched: () => void
+  setTouched: () => void;
   /** Reset the field to its initial value. */
-  reset: () => void
+  reset: () => void;
   /** Register props for input binding. */
-  register: (opts?: { type?: "checkbox" }) => FieldRegisterProps<T>
+  register: (opts?: { type?: "checkbox" }) => FieldRegisterProps<T>;
   /** Whether the field has an error (computed). */
-  hasError: Computed<boolean>
+  hasError: Computed<boolean>;
   /** Whether the field should show its error (touched + has error). */
-  showError: Computed<boolean>
+  showError: Computed<boolean>;
 }
 
 /**
@@ -44,10 +44,10 @@ export function useField<TValues extends Record<string, unknown>, K extends keyo
   form: FormState<TValues>,
   name: K,
 ): UseFieldResult<TValues[K]> {
-  const fieldState: FieldState<TValues[K]> = form.fields[name]
+  const fieldState: FieldState<TValues[K]> = form.fields[name];
 
-  const hasError = computed(() => fieldState.error() !== undefined)
-  const showError = computed(() => fieldState.touched() && hasError())
+  const hasError = computed(() => fieldState.error() !== undefined);
+  const showError = computed(() => fieldState.touched() && hasError());
 
   return {
     value: fieldState.value,
@@ -60,5 +60,5 @@ export function useField<TValues extends Record<string, unknown>, K extends keyo
     register: (opts?) => form.register(name, opts),
     hasError,
     showError,
-  }
+  };
 }

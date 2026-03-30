@@ -1,6 +1,6 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
-import { HEAVY_PACKAGES } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
+import { HEAVY_PACKAGES } from "../../utils/imports";
 
 export const noEagerImport: Rule = {
   meta: {
@@ -13,16 +13,16 @@ export const noEagerImport: Rule = {
   create(context) {
     const callbacks: VisitorCallbacks = {
       ImportDeclaration(node: any) {
-        const source = node.source?.value as string
-        if (!source) return
+        const source = node.source?.value as string;
+        if (!source) return;
         if (HEAVY_PACKAGES.has(source)) {
           context.report({
             message: `Static import of \`${source}\` — consider using \`lazy()\` or dynamic \`import()\` to reduce initial bundle size.`,
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

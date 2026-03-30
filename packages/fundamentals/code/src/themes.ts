@@ -1,6 +1,6 @@
-import type { Extension } from "@codemirror/state"
-import { EditorView } from "@codemirror/view"
-import type { EditorTheme } from "./types"
+import type { Extension } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import type { EditorTheme } from "./types";
 
 /**
  * Light theme — clean, minimal.
@@ -34,7 +34,7 @@ export const lightTheme: Extension = EditorView.theme({
   ".cm-foldGutter": {
     color: "#94a3b8",
   },
-})
+});
 
 /**
  * Dark theme — VS Code inspired.
@@ -75,13 +75,13 @@ export const darkTheme: Extension = EditorView.theme(
     },
   },
   { dark: true },
-)
+);
 
 /**
  * Resolve a theme value to a CodeMirror extension.
  */
 export function resolveTheme(theme: EditorTheme): Extension {
-  if (theme === "light") return lightTheme
-  if (theme === "dark") return darkTheme
-  return theme // custom Extension
+  if (theme === "light") return lightTheme;
+  if (theme === "dark") return darkTheme;
+  return theme; // custom Extension
 }

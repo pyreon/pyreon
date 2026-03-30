@@ -1,15 +1,15 @@
-import { createContext, useContext } from "react"
-import Demo from "./Demo"
+import { createContext, useContext } from "react";
+import Demo from "./Demo";
 
-const ThemeContext = createContext<"light" | "dark">("light")
+const ThemeContext = createContext<"light" | "dark">("light");
 
 function ThemeDisplay() {
-  const theme = useContext(ThemeContext)
+  const theme = useContext(ThemeContext);
   return (
     <span>
       Theme: <strong>{theme}</strong>
     </span>
-  )
+  );
 }
 
 export default function ContextDemo() {
@@ -31,5 +31,5 @@ function ThemeDisplay() {
         Default context: <ThemeDisplay />
       </p>
     </Demo>
-  )
+  );
 }

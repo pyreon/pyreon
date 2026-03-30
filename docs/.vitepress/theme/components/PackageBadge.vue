@@ -1,27 +1,23 @@
 <script setup lang="ts">
 const props = withDefaults(
   defineProps<{
-    name: string
-    href?: string
-    status?: "stable" | "beta" | "alpha" | "deprecated"
+    name: string;
+    href?: string;
+    status?: "stable" | "beta" | "alpha" | "deprecated";
   }>(),
   { status: "stable" },
-)
+);
 
 const statusColors: Record<string, string> = {
   stable: "var(--vp-c-green-1)",
   beta: "var(--vp-c-yellow-1)",
   alpha: "var(--vp-c-orange-1)",
   deprecated: "var(--vp-c-red-1)",
-}
+};
 </script>
 
 <template>
-  <component
-    :is="href ? 'a' : 'span'"
-    :href="href"
-    class="package-badge"
-  >
+  <component :is="href ? 'a' : 'span'" :href="href" class="package-badge">
     <span class="package-badge-dot" :style="{ backgroundColor: statusColors[props.status] }" />
     <span class="package-badge-name">{{ name }}</span>
     <span class="package-badge-status">{{ status }}</span>

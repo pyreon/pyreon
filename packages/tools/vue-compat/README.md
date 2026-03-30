@@ -14,36 +14,36 @@ bun add @pyreon/vue-compat
 // Replace:
 // import { ref, computed, watch } from "vue"
 // With:
-import { ref, computed, watch } from "@pyreon/vue-compat"
+import { ref, computed, watch } from "@pyreon/vue-compat";
 
 function Counter() {
-  const count = ref(0)
-  const doubled = computed(() => count.value * 2)
+  const count = ref(0);
+  const doubled = computed(() => count.value * 2);
 
   watch(count, (newVal, oldVal) => {
-    console.log(`count: ${oldVal} -> ${newVal}`)
-  })
+    console.log(`count: ${oldVal} -> ${newVal}`);
+  });
 
   return (
     <div>
       <span>{doubled.value}</span>
       <button onClick={() => count.value++}>Count: {count.value}</button>
     </div>
-  )
+  );
 }
 ```
 
 ### Reactive Objects
 
 ```tsx
-import { reactive, watchEffect } from "@pyreon/vue-compat"
+import { reactive, watchEffect } from "@pyreon/vue-compat";
 
 function UserForm() {
-  const form = reactive({ name: "", email: "" })
+  const form = reactive({ name: "", email: "" });
 
   watchEffect(() => {
-    console.log("form changed:", form.name, form.email)
-  })
+    console.log("form changed:", form.name, form.email);
+  });
 
   return (
     <div>
@@ -57,22 +57,24 @@ function UserForm() {
         onInput={(e) => (form.email = e.currentTarget.value)}
         placeholder="Email"
       />
-      <p>Hello, {form.name} ({form.email})</p>
+      <p>
+        Hello, {form.name} ({form.email})
+      </p>
     </div>
-  )
+  );
 }
 ```
 
 ### Provide / Inject
 
 ```tsx
-import { ref, provide, inject, defineComponent } from "@pyreon/vue-compat"
+import { ref, provide, inject, defineComponent } from "@pyreon/vue-compat";
 
-const ThemeKey = Symbol("theme")
+const ThemeKey = Symbol("theme");
 
 function ThemeProvider(props: { children: any }) {
-  const theme = ref("light")
-  provide(ThemeKey, theme)
+  const theme = ref("light");
+  provide(ThemeKey, theme);
   return (
     <div>
       <button onClick={() => (theme.value = theme.value === "light" ? "dark" : "light")}>
@@ -80,27 +82,27 @@ function ThemeProvider(props: { children: any }) {
       </button>
       {props.children}
     </div>
-  )
+  );
 }
 
 function ThemedBox() {
-  const theme = inject(ThemeKey, ref("light"))
-  return <div class={`box-${theme.value}`}>Theme: {theme.value}</div>
+  const theme = inject(ThemeKey, ref("light"));
+  return <div class={`box-${theme.value}`}>Theme: {theme.value}</div>;
 }
 ```
 
 ### createApp
 
 ```tsx
-import { createApp, ref } from "@pyreon/vue-compat"
+import { createApp, ref } from "@pyreon/vue-compat";
 
 function App() {
-  const message = ref("Hello from Pyreon")
-  return <h1>{message.value}</h1>
+  const message = ref("Hello from Pyreon");
+  return <h1>{message.value}</h1>;
 }
 
-const app = createApp(App)
-app.mount("#app")
+const app = createApp(App);
+app.mount("#app");
 ```
 
 ## Key Differences from Vue

@@ -84,6 +84,7 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
 ```
 
 Features:
+
 - Auto-scroll when dragging near container edges
 - `overEdge` signal shows "top"/"bottom" (vertical) or "left"/"right" (horizontal)
 - Keyboard reordering with Alt+Arrow keys

@@ -15,4 +15,4 @@ export default {
       { input: "src/image-plugin.ts", file: "lib/image-plugin.js" },
     ],
   },
-}
+};

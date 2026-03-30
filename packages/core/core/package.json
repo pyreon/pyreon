@@ -2,15 +2,15 @@
   "name": "@pyreon/core",
   "version": "0.11.5",
   "description": "Core component model and lifecycle for Pyreon",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/core/core"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
   },
   "files": [
     "lib",
@@ -18,8 +18,8 @@
     "README.md",
     "LICENSE"
   ],
-  "sideEffects": false,
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -40,18 +40,18 @@
       "types": "./lib/types/jsx-dev-runtime.d.ts"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@pyreon/reactivity": "workspace:^"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

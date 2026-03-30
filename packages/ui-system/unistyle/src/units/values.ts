@@ -1,4 +1,4 @@
-import value from "./value"
+import value from "./value";
 
 type CssUnits =
   | "px"
@@ -15,26 +15,26 @@ type CssUnits =
   | "vh"
   | "vw"
   | "vmin"
-  | "vmax"
+  | "vmax";
 
-type GetValueOf = (...args: unknown[]) => number | string
+type GetValueOf = (...args: unknown[]) => number | string;
 const getValueOf: GetValueOf = (...args: any[]) =>
-  args.find((v) => typeof v !== "undefined" && v !== null)
+  args.find((v) => typeof v !== "undefined" && v !== null);
 
 export type Values = (
   items: unknown[],
   rootSize?: number,
   outputUnit?: CssUnits,
-) => string | number | null
+) => string | number | null;
 
 const values: Values = (items, rootSize, outputUnit) => {
-  const param = getValueOf(...items)
+  const param = getValueOf(...items);
 
   if (Array.isArray(param)) {
-    return param.map((item) => value(item, rootSize, outputUnit)).join(" ")
+    return param.map((item) => value(item, rootSize, outputUnit)).join(" ");
   }
 
-  return value(param, rootSize, outputUnit)
-}
+  return value(param, rootSize, outputUnit);
+};
 
-export default values
+export default values;

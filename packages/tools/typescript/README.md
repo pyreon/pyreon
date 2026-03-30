@@ -54,9 +54,11 @@ All presets configure:
 - **Source maps** — enabled by default
 
 ### `app` adds:
+
 - `noEmit: true` — type-checking only, bundler handles emit
 
 ### `lib` adds:
+
 - `declaration: true` + `declarationMap: true` — generates `.d.ts` files for consumers
 
 ## License

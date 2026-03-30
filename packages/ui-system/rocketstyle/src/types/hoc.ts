@@ -1,5 +1,5 @@
-import type { ElementType } from "./utils"
+import type { ElementType } from "./utils";
 
-export type GenericHoc = (component: ElementType) => ElementType
+export type GenericHoc = (component: ElementType) => ElementType;
 
-export type ComposeParam = Record<string, GenericHoc | null | undefined | false>
+export type ComposeParam = Record<string, GenericHoc | null | undefined | false>;

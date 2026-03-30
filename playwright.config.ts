@@ -1,17 +1,17 @@
-import { defineConfig } from '@playwright/test'
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: "./e2e",
   timeout: 30000,
   retries: 0,
   use: {
     headless: true,
-    browserName: 'chromium',
+    browserName: "chromium",
   },
   webServer: {
-    command: 'bun run --filter=@pyreon/fundamentals-playground dev',
+    command: "bun run --filter=@pyreon/fundamentals-playground dev",
     port: 5173,
     timeout: 30000,
     reuseExistingServer: !process.env.CI,
   },
-})
+});

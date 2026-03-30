@@ -1,14 +1,14 @@
-import { onUnmount } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import { effect, signal } from "@pyreon/reactivity"
+import { onUnmount } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
+import { effect, signal } from "@pyreon/reactivity";
 import type {
   DefaultError,
   QueryKey,
   QueryObserverOptions,
   QueryObserverResult,
-} from "@tanstack/query-core"
-import { QueriesObserver } from "@tanstack/query-core"
-import { useQueryClient } from "./query-client"
+} from "@tanstack/query-core";
+import { QueriesObserver } from "@tanstack/query-core";
+import { useQueryClient } from "./query-client";
 
 export type UseQueriesOptions<TQueryKey extends QueryKey = QueryKey> = QueryObserverOptions<
   unknown,
@@ -16,7 +16,7 @@ export type UseQueriesOptions<TQueryKey extends QueryKey = QueryKey> = QueryObse
   unknown,
   unknown,
   TQueryKey
->
+>;
 
 /**
  * Subscribe to multiple queries in parallel. Returns a single signal containing
@@ -37,26 +37,26 @@ export type UseQueriesOptions<TQueryKey extends QueryKey = QueryKey> = QueryObse
  * // results()[0].data — first user
  */
 export function useQueries(queries: () => UseQueriesOptions[]): Signal<QueryObserverResult[]> {
-  const client = useQueryClient()
-  const observer = new QueriesObserver(client, queries())
+  const client = useQueryClient();
+  const observer = new QueriesObserver(client, queries());
 
   const resultSig = signal(observer.getCurrentResult() as readonly QueryObserverResult[]) as Signal<
     QueryObserverResult[]
-  >
+  >;
 
   const unsub = observer.subscribe((results: readonly QueryObserverResult[]) => {
-    resultSig.set(results as QueryObserverResult[])
-  })
+    resultSig.set(results as QueryObserverResult[]);
+  });
 
   // When signals inside queries() change, update the observer.
   effect(() => {
-    observer.setQueries(queries())
-  })
+    observer.setQueries(queries());
+  });
 
   onUnmount(() => {
-    unsub()
-    observer.destroy()
-  })
+    unsub();
+    observer.destroy();
+  });
 
-  return resultSig
+  return resultSig;
 }

@@ -1,5 +1,5 @@
-import pyreon from "@pyreon/vite-plugin"
-import { defineConfig } from "vite"
+import pyreon from "@pyreon/vite-plugin";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [pyreon()],
@@ -12,4 +12,4 @@ export default defineConfig({
     // copy where signals lack the .direct method runtime-dom expects.
     exclude: ["@pyreon/core", "@pyreon/reactivity", "@pyreon/runtime-dom"],
   },
-})
+});

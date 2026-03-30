@@ -1,8 +1,8 @@
-import { onUnmount } from "@pyreon/core"
-import { effect, signal } from "@pyreon/reactivity"
-import type { EChartsOption } from "echarts"
-import { ensureModules } from "./loader"
-import type { UseChartConfig, UseChartResult } from "./types"
+import { onUnmount } from "@pyreon/core";
+import { effect, signal } from "@pyreon/reactivity";
+import type { EChartsOption } from "echarts";
+import { ensureModules } from "./loader";
+import type { UseChartConfig, UseChartResult } from "./types";
 
 /**
  * Reactive ECharts hook. Creates a chart instance bound to a container
@@ -32,36 +32,36 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
   optionsFn: () => TOption,
   config?: UseChartConfig,
 ): UseChartResult {
-  const instance = signal<import("echarts/core").ECharts | null>(null)
-  const loading = signal(true)
-  const error = signal<Error | null>(null)
-  const container = signal<HTMLElement | null>(null)
-  const renderer = config?.renderer ?? "canvas"
+  const instance = signal<import("echarts/core").ECharts | null>(null);
+  const loading = signal(true);
+  const error = signal<Error | null>(null);
+  const container = signal<HTMLElement | null>(null);
+  const renderer = config?.renderer ?? "canvas";
 
-  let observer: ResizeObserver | null = null
-  let initialized = false
+  let observer: ResizeObserver | null = null;
+  let initialized = false;
 
   // Initialize chart when container is bound
   effect(() => {
-    const el = container()
-    if (!el || initialized) return
+    const el = container();
+    if (!el || initialized) return;
 
-    initialized = true
+    initialized = true;
 
-    let opts: EChartsOption
+    let opts: EChartsOption;
     try {
-      opts = optionsFn()
+      opts = optionsFn();
     } catch (err) {
-      error.set(err instanceof Error ? err : new Error(String(err)))
-      loading.set(false)
-      return
+      error.set(err instanceof Error ? err : new Error(String(err)));
+      loading.set(false);
+      return;
     }
 
     // Load required ECharts modules, then create chart
     ensureModules(opts as Record<string, unknown>, renderer)
       .then((core) => {
         // Guard: component may have unmounted during async load
-        if (!container.peek()) return
+        if (!container.peek()) return;
 
         try {
           const chart = core.init(el, (config?.theme ?? null) as string | object | null, {
@@ -72,61 +72,61 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
               : {}),
             ...(config?.width != null ? { width: config.width } : {}),
             ...(config?.height != null ? { height: config.height } : {}),
-          })
+          });
 
-          chart.setOption(opts)
-          instance.set(chart)
-          loading.set(false)
-          error.set(null)
+          chart.setOption(opts);
+          instance.set(chart);
+          loading.set(false);
+          error.set(null);
 
-          config?.onInit?.(chart)
+          config?.onInit?.(chart);
 
           // ResizeObserver for auto-resize
           observer = new ResizeObserver(() => {
-            chart.resize()
-          })
-          observer.observe(el)
+            chart.resize();
+          });
+          observer.observe(el);
         } catch (err) {
-          error.set(err instanceof Error ? err : new Error(String(err)))
-          loading.set(false)
+          error.set(err instanceof Error ? err : new Error(String(err)));
+          loading.set(false);
         }
       })
       .catch((err) => {
-        error.set(err instanceof Error ? err : new Error(String(err)))
-        loading.set(false)
-      })
-  })
+        error.set(err instanceof Error ? err : new Error(String(err)));
+        loading.set(false);
+      });
+  });
 
   // Reactive updates — re-run when signals in optionsFn change
   effect(() => {
-    const chart = instance()
-    if (!chart) return
+    const chart = instance();
+    if (!chart) return;
 
     try {
-      const opts = optionsFn()
+      const opts = optionsFn();
       chart.setOption(opts, {
         notMerge: config?.notMerge ?? false,
         lazyUpdate: config?.lazyUpdate ?? true,
-      })
-      error.set(null)
+      });
+      error.set(null);
     } catch (err) {
-      error.set(err instanceof Error ? err : new Error(String(err)))
+      error.set(err instanceof Error ? err : new Error(String(err)));
     }
-  })
+  });
 
   // Cleanup on unmount
   onUnmount(() => {
-    observer?.disconnect()
-    observer = null
+    observer?.disconnect();
+    observer = null;
 
-    const chart = instance.peek()
+    const chart = instance.peek();
     if (chart) {
-      chart.dispose()
-      instance.set(null)
+      chart.dispose();
+      instance.set(null);
     }
 
-    initialized = false
-  })
+    initialized = false;
+  });
 
   return {
     ref: (el: Element | null) => container.set(el as HTMLElement | null),
@@ -134,5 +134,5 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
     loading,
     error,
     resize: () => instance.peek()?.resize(),
-  }
+  };
 }

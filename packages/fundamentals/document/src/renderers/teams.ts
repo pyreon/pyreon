@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from "../sanitize";
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types";
 
 /**
  * Microsoft Teams renderer — outputs Adaptive Cards JSON.
@@ -7,23 +7,23 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === "string" ? { header: col } : col;
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .join("");
 }
 
 interface AdaptiveElement {
-  type: string
-  [key: string]: unknown
+  type: string;
+  [key: string]: unknown;
 }
 
 function nodeToElements(node: DocNode): AdaptiveElement[] {
-  const p = node.props
-  const elements: AdaptiveElement[] = []
+  const p = node.props;
+  const elements: AdaptiveElement[] = [];
 
   switch (node.type) {
     case "document":
@@ -33,13 +33,13 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
     case "column":
       for (const child of node.children) {
         if (typeof child !== "string") {
-          elements.push(...nodeToElements(child))
+          elements.push(...nodeToElements(child));
         }
       }
-      break
+      break;
 
     case "heading": {
-      const level = (p.level as number) ?? 1
+      const level = (p.level as number) ?? 1;
       const sizeMap: Record<number, string> = {
         1: "extraLarge",
         2: "large",
@@ -47,59 +47,59 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
         4: "default",
         5: "small",
         6: "small",
-      }
+      };
       elements.push({
         type: "TextBlock",
         text: getTextContent(node.children),
         size: sizeMap[level] ?? "large",
         weight: "bolder",
         wrap: true,
-      })
-      break
+      });
+      break;
     }
 
     case "text": {
-      let text = getTextContent(node.children)
-      if (p.bold) text = `**${text}**`
-      if (p.italic) text = `_${text}_`
-      if (p.strikethrough) text = `~~${text}~~`
+      let text = getTextContent(node.children);
+      if (p.bold) text = `**${text}**`;
+      if (p.italic) text = `_${text}_`;
+      if (p.strikethrough) text = `~~${text}~~`;
       elements.push({
         type: "TextBlock",
         text,
         wrap: true,
         ...(p.color ? { color: "default" } : {}),
         ...(p.size ? { size: (p.size as number) >= 18 ? "large" : "default" } : {}),
-      })
-      break
+      });
+      break;
     }
 
     case "link": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       elements.push({
         type: "TextBlock",
         text: `[${text}](${href})`,
         wrap: true,
-      })
-      break
+      });
+      break;
     }
 
     case "image": {
-      const src = sanitizeImageSrc(p.src as string)
+      const src = sanitizeImageSrc(p.src as string);
       if (src.startsWith("http")) {
         elements.push({
           type: "Image",
           url: src,
           altText: (p.alt as string) ?? "Image",
           size: "large",
-        })
+        });
       }
-      break
+      break;
     }
 
     case "table": {
-      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
-      const rows = (p.rows ?? []) as (string | number)[][]
+      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn);
+      const rows = (p.rows ?? []) as (string | number)[][];
 
       // Adaptive Cards have native Table support (schema 1.5+)
       const tableColumns = columns.map((col) => ({
@@ -119,41 +119,41 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
             separator: i === 0,
           })),
         ],
-      }))
+      }));
 
       elements.push({
         type: "ColumnSet",
         columns: tableColumns,
-      })
-      break
+      });
+      break;
     }
 
     case "list": {
-      const ordered = p.ordered as boolean | undefined
+      const ordered = p.ordered as boolean | undefined;
       const items = node.children
         .filter((c): c is DocNode => typeof c !== "string")
         .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : "•"
-          return `${prefix} ${getTextContent(item.children)}`
+          const prefix = ordered ? `${i + 1}.` : "•";
+          return `${prefix} ${getTextContent(item.children)}`;
         })
-        .join("\n")
+        .join("\n");
       elements.push({
         type: "TextBlock",
         text: items,
         wrap: true,
-      })
-      break
+      });
+      break;
     }
 
     case "code": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       elements.push({
         type: "TextBlock",
         text: `\`\`\`\n${text}\n\`\`\``,
         fontType: "monospace",
         wrap: true,
-      })
-      break
+      });
+      break;
     }
 
     case "divider":
@@ -162,16 +162,16 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
         type: "TextBlock",
         text: " ",
         separator: true,
-      })
-      break
+      });
+      break;
 
     case "spacer":
       elements.push({
         type: "TextBlock",
         text: " ",
         spacing: "large",
-      })
-      break
+      });
+      break;
 
     case "button": {
       elements.push({
@@ -184,12 +184,12 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
             style: "positive",
           },
         ],
-      })
-      break
+      });
+      break;
     }
 
     case "quote": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       elements.push({
         type: "Container",
         style: "emphasis",
@@ -201,23 +201,23 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
             isSubtle: true,
           },
         ],
-      })
-      break
+      });
+      break;
     }
   }
 
-  return elements
+  return elements;
 }
 
 export const teamsRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    const body = nodeToElements(node)
+    const body = nodeToElements(node);
     const card = {
       type: "AdaptiveCard",
       $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
       version: "1.5",
       body,
-    }
-    return JSON.stringify(card, null, 2)
+    };
+    return JSON.stringify(card, null, 2);
   },
-}
+};

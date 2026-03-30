@@ -14,24 +14,24 @@ bun add @pyreon/solid-compat
 // Replace:
 // import { createSignal, createEffect } from "solid-js"
 // With:
-import { createSignal, createEffect } from "@pyreon/solid-compat"
+import { createSignal, createEffect } from "@pyreon/solid-compat";
 
 function Counter() {
-  const [count, setCount] = createSignal(0)
-  createEffect(() => console.log("count:", count()))
-  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+  const [count, setCount] = createSignal(0);
+  createEffect(() => console.log("count:", count()));
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 ```
 
 ### Derived State and Memos
 
 ```tsx
-import { createSignal, createMemo } from "@pyreon/solid-compat"
+import { createSignal, createMemo } from "@pyreon/solid-compat";
 
 function PriceCalculator() {
-  const [price, setPrice] = createSignal(100)
-  const [quantity, setQuantity] = createSignal(1)
-  const total = createMemo(() => price() * quantity())
+  const [price, setPrice] = createSignal(100);
+  const [quantity, setQuantity] = createSignal(1);
+  const total = createMemo(() => price() * quantity());
 
   return (
     <div>
@@ -47,22 +47,22 @@ function PriceCalculator() {
       />
       <p>Total: ${total()}</p>
     </div>
-  )
+  );
 }
 ```
 
 ### Control Flow Components
 
 ```tsx
-import { createSignal } from "@pyreon/solid-compat"
-import { Show, For } from "@pyreon/solid-compat"
+import { createSignal } from "@pyreon/solid-compat";
+import { Show, For } from "@pyreon/solid-compat";
 
 function TodoList() {
   const [todos, setTodos] = createSignal([
     { id: 1, text: "Learn Pyreon", done: false },
     { id: 2, text: "Build app", done: false },
-  ])
-  const [showDone, setShowDone] = createSignal(false)
+  ]);
+  const [showDone, setShowDone] = createSignal(false);
 
   return (
     <div>
@@ -77,31 +77,27 @@ function TodoList() {
         )}
       </For>
     </div>
-  )
+  );
 }
 ```
 
 ### Context and Dependency Injection
 
 ```tsx
-import { createContext, useContext } from "@pyreon/solid-compat"
-import { createSignal } from "@pyreon/solid-compat"
+import { createContext, useContext } from "@pyreon/solid-compat";
+import { createSignal } from "@pyreon/solid-compat";
 
-const CounterContext = createContext({ count: () => 0, increment: () => {} })
+const CounterContext = createContext({ count: () => 0, increment: () => {} });
 
 function CounterProvider(props: { children: any }) {
-  const [count, setCount] = createSignal(0)
-  const value = { count, increment: () => setCount((c) => c + 1) }
-  return (
-    <CounterContext.Provider value={value}>
-      {props.children}
-    </CounterContext.Provider>
-  )
+  const [count, setCount] = createSignal(0);
+  const value = { count, increment: () => setCount((c) => c + 1) };
+  return <CounterContext.Provider value={value}>{props.children}</CounterContext.Provider>;
 }
 
 function Display() {
-  const { count, increment } = useContext(CounterContext)
-  return <button onClick={increment}>Clicks: {count()}</button>
+  const { count, increment } = useContext(CounterContext);
+  return <button onClick={increment}>Clicks: {count()}</button>;
 }
 ```
 

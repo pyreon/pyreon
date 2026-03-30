@@ -22,17 +22,20 @@ bun add @pyreon/attrs
 ## Quick Start
 
 ```ts
-import attrs from '@pyreon/attrs'
-import { Element } from '@pyreon/elements'
+import attrs from "@pyreon/attrs";
+import { Element } from "@pyreon/elements";
 
-const Button = attrs({ name: 'Button', component: Element })
-  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+const Button = attrs({ name: "Button", component: Element }).attrs({
+  tag: "button",
+  alignX: "center",
+  alignY: "center",
+});
 
 // Renders Element with tag="button", alignX="center", alignY="center"
-Button({ label: 'Click me' })
+Button({ label: "Click me" });
 
 // Explicit props override attrs defaults
-Button({ tag: 'a', label: 'Link button' })
+Button({ tag: "a", label: "Link button" });
 ```
 
 ## API
@@ -43,9 +46,9 @@ Creates an attrs-enhanced component.
 
 ```ts
 const Component = attrs({
-  name: 'ComponentName',    // required — sets displayName
+  name: "ComponentName", // required — sets displayName
   component: BaseComponent, // required — the Pyreon component to wrap
-})
+});
 ```
 
 ### .attrs(props | callback, options?)
@@ -54,18 +57,18 @@ Add default props. Can be called multiple times — defaults stack left-to-right
 
 ```ts
 // Object form — static defaults
-Button.attrs({ tag: 'button' })
+Button.attrs({ tag: "button" });
 
 // Callback form — computed defaults based on current props
 Button.attrs((props) => ({
-  'aria-label': props.label,
-}))
+  "aria-label": props.label,
+}));
 
 // Priority — resolved before regular attrs, cannot be overridden by explicit props
-Button.attrs({ tag: 'button' }, { priority: true })
+Button.attrs({ tag: "button" }, { priority: true });
 
 // Filter — remove props before passing to the underlying component
-Button.attrs({}, { filter: ['internalFlag', 'variant'] })
+Button.attrs({}, { filter: ["internalFlag", "variant"] });
 ```
 
 **Props merge order:**
@@ -82,13 +85,13 @@ Reconfigure the component. Returns a new component instance.
 
 ```ts
 // Rename
-Button.config({ name: 'PrimaryButton' })
+Button.config({ name: "PrimaryButton" });
 
 // Swap the base component
-Button.config({ component: AnotherComponent })
+Button.config({ component: AnotherComponent });
 
 // Enable debug mode — adds data-attrs attribute in development
-Button.config({ DEBUG: true })
+Button.config({ DEBUG: true });
 ```
 
 ### .compose(hocs)
@@ -99,10 +102,10 @@ Attach named Higher-Order Components. Applied in declaration order.
 const Enhanced = Button.compose({
   withTheme: (Component) => (props) => Component({ ...props, themed: true }),
   withTracking: trackingHoc,
-})
+});
 
 // Remove a specific HOC from the chain
-const WithoutTracking = Enhanced.compose({ withTracking: null })
+const WithoutTracking = Enhanced.compose({ withTracking: null });
 ```
 
 ### .statics(metadata)
@@ -110,11 +113,13 @@ const WithoutTracking = Enhanced.compose({ withTracking: null })
 Attach metadata accessible via the `.meta` property.
 
 ```ts
-const Button = attrs({ name: 'Button', component: Element })
-  .statics({ category: 'action', sizes: ['sm', 'md', 'lg'] })
+const Button = attrs({ name: "Button", component: Element }).statics({
+  category: "action",
+  sizes: ["sm", "md", "lg"],
+});
 
-Button.meta.category // => 'action'
-Button.meta.sizes    // => ['sm', 'md', 'lg']
+Button.meta.category; // => 'action'
+Button.meta.sizes; // => ['sm', 'md', 'lg']
 ```
 
 ### isAttrsComponent(value)
@@ -122,10 +127,10 @@ Button.meta.sizes    // => ['sm', 'md', 'lg']
 Runtime type guard.
 
 ```ts
-import { isAttrsComponent } from '@pyreon/attrs'
+import { isAttrsComponent } from "@pyreon/attrs";
 
-isAttrsComponent(Button) // => true
-isAttrsComponent('div')  // => false
+isAttrsComponent(Button); // => true
+isAttrsComponent("div"); // => false
 ```
 
 ### getDefaultAttrs()
@@ -133,7 +138,7 @@ isAttrsComponent('div')  // => false
 Retrieve the computed default props for a component.
 
 ```ts
-Button.getDefaultAttrs() // => { tag: 'button', alignX: 'center', ... }
+Button.getDefaultAttrs(); // => { tag: 'button', alignX: 'center', ... }
 ```
 
 ## TypeScript
@@ -141,29 +146,29 @@ Button.getDefaultAttrs() // => { tag: 'button', alignX: 'center', ... }
 Each `.attrs<P>()` call adds `P` to the component's prop types through `MergeTypes`:
 
 ```ts
-const Base = attrs({ name: 'Base', component: Element })
+const Base = attrs({ name: "Base", component: Element });
 
-const Typed = Base
-  .attrs<{ variant: 'primary' | 'secondary' }>({ variant: 'primary' })
-  .attrs<{ size?: 'sm' | 'md' | 'lg' }>({})
+const Typed = Base.attrs<{ variant: "primary" | "secondary" }>({ variant: "primary" }).attrs<{
+  size?: "sm" | "md" | "lg";
+}>({});
 
 // Typed accepts: Element props + { variant, size? }
-Typed({ variant: 'secondary', size: 'lg', label: 'Hello' })
+Typed({ variant: "secondary", size: "lg", label: "Hello" });
 ```
 
 Access the accumulated types via type-only properties:
 
 ```ts
-type AllProps = typeof Typed.$$types
-type OriginalProps = typeof Typed.$$originTypes
-type ExtendedProps = typeof Typed.$$extendedTypes
+type AllProps = typeof Typed.$$types;
+type OriginalProps = typeof Typed.$$originTypes;
+type ExtendedProps = typeof Typed.$$extendedTypes;
 ```
 
 ## Peer Dependencies
 
-| Package | Version |
-| ------- | ------- |
-| @pyreon/core | >= 0.0.1 |
+| Package         | Version  |
+| --------------- | -------- |
+| @pyreon/core    | >= 0.0.1 |
 | @pyreon/ui-core | >= 0.0.1 |
 
 ## License

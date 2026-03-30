@@ -1,28 +1,28 @@
 import {
   dropTargetForExternal,
   monitorForExternal,
-} from "@atlaskit/pragmatic-drag-and-drop/external/adapter"
-import { containsFiles, getFiles } from "@atlaskit/pragmatic-drag-and-drop/external/file"
-import { onCleanup, signal } from "@pyreon/reactivity"
+} from "@atlaskit/pragmatic-drag-and-drop/external/adapter";
+import { containsFiles, getFiles } from "@atlaskit/pragmatic-drag-and-drop/external/file";
+import { onCleanup, signal } from "@pyreon/reactivity";
 
 export interface UseFileDropOptions {
   /** Element getter for the drop zone. */
-  element: () => HTMLElement | null
+  element: () => HTMLElement | null;
   /** Called when files are dropped. */
-  onDrop: (files: File[]) => void
+  onDrop: (files: File[]) => void;
   /** Filter accepted file types (e.g. ["image/*", ".pdf"]). */
-  accept?: string[]
+  accept?: string[];
   /** Maximum number of files. */
-  maxFiles?: number
+  maxFiles?: number;
   /** Whether drop is disabled. */
-  disabled?: boolean | (() => boolean)
+  disabled?: boolean | (() => boolean);
 }
 
 export interface UseFileDropResult {
   /** Whether files are being dragged over the drop zone. */
-  isOver: () => boolean
+  isOver: () => boolean;
   /** Whether files are being dragged anywhere on the page. */
-  isDraggingFiles: () => boolean
+  isDraggingFiles: () => boolean;
 }
 
 /**
@@ -49,29 +49,29 @@ export interface UseFileDropResult {
  * ```
  */
 export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
-  const isOver = signal(false)
-  const isDraggingFiles = signal(false)
-  let cleanup: (() => void) | undefined
+  const isOver = signal(false);
+  const isDraggingFiles = signal(false);
+  let cleanup: (() => void) | undefined;
 
   function matchesAccept(file: File, accept: string[]): boolean {
     return accept.some((pattern) => {
       if (pattern.startsWith(".")) {
-        return file.name.toLowerCase().endsWith(pattern.toLowerCase())
+        return file.name.toLowerCase().endsWith(pattern.toLowerCase());
       }
       if (pattern.endsWith("/*")) {
-        return file.type.startsWith(pattern.slice(0, -1))
+        return file.type.startsWith(pattern.slice(0, -1));
       }
-      return file.type === pattern
-    })
+      return file.type === pattern;
+    });
   }
 
   function setup() {
-    if (cleanup) cleanup()
+    if (cleanup) cleanup();
 
-    const el = options.element()
-    if (!el) return
+    const el = options.element();
+    if (!el) return;
 
-    const cleanups: (() => void)[] = []
+    const cleanups: (() => void)[] = [];
 
     // Monitor for file drags anywhere on the page
     cleanups.push(
@@ -80,52 +80,52 @@ export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
         onDragStart: () => isDraggingFiles.set(true),
         onDrop: () => isDraggingFiles.set(false),
       }),
-    )
+    );
 
     // Drop target on the specific element
     cleanups.push(
       dropTargetForExternal({
         element: el,
         canDrop: ({ source }) => {
-          const disabled = options.disabled
-          if (typeof disabled === "function" ? disabled() : disabled) return false
-          return containsFiles({ source })
+          const disabled = options.disabled;
+          if (typeof disabled === "function" ? disabled() : disabled) return false;
+          return containsFiles({ source });
         },
         onDragEnter: () => isOver.set(true),
         onDragLeave: () => isOver.set(false),
         onDrop: ({ source }) => {
-          isOver.set(false)
-          isDraggingFiles.set(false)
+          isOver.set(false);
+          isDraggingFiles.set(false);
 
-          let files = getFiles({ source })
+          let files = getFiles({ source });
 
           // Filter by accept
           if (options.accept && options.accept.length > 0) {
-            files = files.filter((f) => matchesAccept(f, options.accept as string[]))
+            files = files.filter((f) => matchesAccept(f, options.accept as string[]));
           }
 
           // Limit count
           if (options.maxFiles && files.length > options.maxFiles) {
-            files = files.slice(0, options.maxFiles)
+            files = files.slice(0, options.maxFiles);
           }
 
           if (files.length > 0) {
-            options.onDrop(files)
+            options.onDrop(files);
           }
         },
       }),
-    )
+    );
 
     cleanup = () => {
-      for (const fn of cleanups) fn()
-    }
+      for (const fn of cleanups) fn();
+    };
   }
 
-  queueMicrotask(setup)
+  queueMicrotask(setup);
 
   onCleanup(() => {
-    if (cleanup) cleanup()
-  })
+    if (cleanup) cleanup();
+  });
 
-  return { isOver, isDraggingFiles }
+  return { isOver, isDraggingFiles };
 }

@@ -1,12 +1,12 @@
-import type { Props, VNode, VNodeChild } from "@pyreon/core"
-import { createContext, provide, useContext } from "@pyreon/core"
-import type { FormState } from "./types"
+import type { Props, VNode, VNodeChild } from "@pyreon/core";
+import { createContext, provide, useContext } from "@pyreon/core";
+import type { FormState } from "./types";
 
-const FormContext = createContext<FormState<Record<string, unknown>> | null>(null)
+const FormContext = createContext<FormState<Record<string, unknown>> | null>(null);
 
 export interface FormProviderProps<TValues extends Record<string, unknown>> extends Props {
-  form: FormState<TValues>
-  children?: VNodeChild
+  form: FormState<TValues>;
+  children?: VNodeChild;
 }
 
 /**
@@ -24,10 +24,10 @@ export interface FormProviderProps<TValues extends Record<string, unknown>> exte
 export function FormProvider<TValues extends Record<string, unknown>>(
   props: FormProviderProps<TValues>,
 ): VNode {
-  provide(FormContext, props.form as FormState<Record<string, unknown>>)
+  provide(FormContext, props.form as FormState<Record<string, unknown>>);
 
-  const ch = props.children
-  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode
+  const ch = props.children;
+  return (typeof ch === "function" ? (ch as () => VNodeChild)() : ch) as VNode;
 }
 
 /**
@@ -43,11 +43,11 @@ export function FormProvider<TValues extends Record<string, unknown>>(
 export function useFormContext<
   TValues extends Record<string, unknown> = Record<string, unknown>,
 >(): FormState<TValues> {
-  const form = useContext(FormContext)
+  const form = useContext(FormContext);
   if (!form) {
-    throw new Error("[@pyreon/form] useFormContext() must be used within a <FormProvider>.")
+    throw new Error("[@pyreon/form] useFormContext() must be used within a <FormProvider>.");
   }
   // Generic narrowing: context stores FormState<Record<string, unknown>>
   // but callers narrow to their specific TValues at the call site.
-  return form as FormState<TValues>
+  return form as FormState<TValues>;
 }

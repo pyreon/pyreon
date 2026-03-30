@@ -1,6 +1,6 @@
-import useRootSize from "./useRootSize"
+import useRootSize from "./useRootSize";
 
-export type UseSpacing = (base?: number | undefined) => (multiplier: number) => string
+export type UseSpacing = (base?: number | undefined) => (multiplier: number) => string;
 
 /**
  * Returns a `spacing(n)` function that computes spacing values
@@ -17,10 +17,10 @@ export type UseSpacing = (base?: number | undefined) => (multiplier: number) => 
  * ```
  */
 export const useSpacing: UseSpacing = (base) => {
-  const { rootSize } = useRootSize()
-  const unit = base ?? rootSize / 2
+  const { rootSize } = useRootSize();
+  const unit = base ?? rootSize / 2;
 
-  return (multiplier: number) => `${unit * multiplier}px`
-}
+  return (multiplier: number) => `${unit * multiplier}px`;
+};
 
-export default useSpacing
+export default useSpacing;

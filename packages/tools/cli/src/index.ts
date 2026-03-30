@@ -8,11 +8,11 @@
  *   pyreon context                  — Generate .pyreon/context.json for AI tools
  */
 
-import { generateContext } from "./context"
-import { type DoctorOptions, doctor } from "./doctor"
+import { generateContext } from "./context";
+import { type DoctorOptions, doctor } from "./doctor";
 
-const args = process.argv.slice(2)
-const command = args[0]
+const args = process.argv.slice(2);
+const command = args[0];
 
 function printUsage(): void {
   console.log(`
@@ -25,18 +25,18 @@ function printUsage(): void {
   Options:
     --help                           Show this help message
     --version                        Show version
-`)
+`);
 }
 
 async function main(): Promise<void> {
   if (!command || command === "--help" || command === "-h") {
-    printUsage()
-    return
+    printUsage();
+    return;
   }
 
   if (command === "--version" || command === "-v") {
-    console.log("0.4.0")
-    return
+    console.log("0.4.0");
+    return;
   }
 
   if (command === "doctor") {
@@ -45,31 +45,31 @@ async function main(): Promise<void> {
       json: args.includes("--json"),
       ci: args.includes("--ci"),
       cwd: process.cwd(),
-    }
-    const exitCode = await doctor(options)
+    };
+    const exitCode = await doctor(options);
     if (options.ci && exitCode > 0) {
-      process.exit(1)
+      process.exit(1);
     }
-    return
+    return;
   }
 
   if (command === "context") {
-    const outIdx = args.indexOf("--out")
-    const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined
-    await generateContext({ cwd: process.cwd(), outPath })
-    return
+    const outIdx = args.indexOf("--out");
+    const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined;
+    await generateContext({ cwd: process.cwd(), outPath });
+    return;
   }
 
-  console.error(`Unknown command: ${command}`)
-  printUsage()
-  process.exit(1)
+  console.error(`Unknown command: ${command}`);
+  printUsage();
+  process.exit(1);
 }
 
 main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+  console.error(err);
+  process.exit(1);
+});
 
-export type { ContextOptions, ProjectContext } from "./context"
-export type { DoctorOptions } from "./doctor"
-export { doctor, generateContext }
+export type { ContextOptions, ProjectContext } from "./context";
+export type { DoctorOptions } from "./doctor";
+export { doctor, generateContext };

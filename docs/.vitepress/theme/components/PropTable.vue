@@ -1,16 +1,16 @@
 <script setup lang="ts">
 interface Prop {
-  name: string
-  type: string
-  default?: string
-  required?: boolean
-  description: string
+  name: string;
+  type: string;
+  default?: string;
+  required?: boolean;
+  description: string;
 }
 
 defineProps<{
-  title?: string
-  props: Prop[]
-}>()
+  title?: string;
+  props: Prop[];
+}>();
 </script>
 
 <template>
@@ -31,7 +31,9 @@ defineProps<{
             <code>{{ prop.name }}</code>
             <span v-if="prop.required" class="required">*</span>
           </td>
-          <td><code class="type">{{ prop.type }}</code></td>
+          <td>
+            <code class="type">{{ prop.type }}</code>
+          </td>
           <td>
             <code v-if="prop.default">{{ prop.default }}</code>
             <span v-else class="dash">&mdash;</span>

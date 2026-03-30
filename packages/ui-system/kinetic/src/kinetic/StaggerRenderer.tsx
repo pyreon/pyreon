@@ -1,24 +1,24 @@
-import type { VNode } from "@pyreon/core"
-import { h } from "@pyreon/core"
-import type { CSSProperties, TransitionCallbacks } from "../types"
-import { cloneVNode } from "../utils"
-import TransitionItem from "./TransitionItem"
-import type { KineticConfig } from "./types"
+import type { VNode } from "@pyreon/core";
+import { h } from "@pyreon/core";
+import type { CSSProperties, TransitionCallbacks } from "../types";
+import { cloneVNode } from "../utils";
+import TransitionItem from "./TransitionItem";
+import type { KineticConfig } from "./types";
 
 type StaggerRendererProps = {
-  config: KineticConfig
-  htmlProps: Record<string, unknown>
-  show: () => boolean
-  appear?: boolean | undefined
-  timeout?: number | undefined
-  interval?: number | undefined
-  reverseLeave?: boolean | undefined
-  callbacks: Partial<TransitionCallbacks>
-  children: VNode[]
-}
+  config: KineticConfig;
+  htmlProps: Record<string, unknown>;
+  show: () => boolean;
+  appear?: boolean | undefined;
+  timeout?: number | undefined;
+  interval?: number | undefined;
+  reverseLeave?: boolean | undefined;
+  callbacks: Partial<TransitionCallbacks>;
+  children: VNode[];
+};
 
 const isVNode = (child: unknown): child is VNode =>
-  child != null && typeof child === "object" && "type" in (child as object)
+  child != null && typeof child === "object" && "type" in (child as object);
 
 /**
  * Renders children with staggered enter/exit animation.
@@ -36,17 +36,17 @@ const StaggerRenderer = ({
   callbacks,
   children,
 }: StaggerRendererProps): VNode | null => {
-  const effectiveAppear = appear ?? config.appear ?? false
-  const effectiveTimeout = timeout ?? config.timeout ?? 5000
-  const effectiveInterval = interval ?? config.interval ?? 50
-  const effectiveReverseLeave = reverseLeave ?? config.reverseLeave ?? false
+  const effectiveAppear = appear ?? config.appear ?? false;
+  const effectiveTimeout = timeout ?? config.timeout ?? 5000;
+  const effectiveInterval = interval ?? config.interval ?? 50;
+  const effectiveReverseLeave = reverseLeave ?? config.reverseLeave ?? false;
 
-  const childArray = (Array.isArray(children) ? children : [children]).filter(isVNode)
-  const count = childArray.length
+  const childArray = (Array.isArray(children) ? children : [children]).filter(isVNode);
+  const count = childArray.length;
 
   const staggeredChildren = childArray.map((child, index) => {
-    const staggerIndex = !show() && effectiveReverseLeave ? count - 1 - index : index
-    const delay = staggerIndex * effectiveInterval
+    const staggerIndex = !show() && effectiveReverseLeave ? count - 1 - index : index;
+    const delay = staggerIndex * effectiveInterval;
 
     return (
       <TransitionItem
@@ -79,10 +79,10 @@ const StaggerRenderer = ({
           } as CSSProperties,
         })}
       </TransitionItem>
-    )
-  })
+    );
+  });
 
-  return h(config.tag, { ...htmlProps }, ...staggeredChildren)
-}
+  return h(config.tag, { ...htmlProps }, ...staggeredChildren);
+};
 
-export default StaggerRenderer
+export default StaggerRenderer;

@@ -1,51 +1,51 @@
-import { config, isEmpty, merge } from "@pyreon/ui-core"
-import type { ThemeModeCallback } from "../types/theme"
-import { removeNullableValues } from "./collection"
-import { isMultiKey } from "./dimensions"
+import { config, isEmpty, merge } from "@pyreon/ui-core";
+import type { ThemeModeCallback } from "../types/theme";
+import { removeNullableValues } from "./collection";
+import { isMultiKey } from "./dimensions";
 
 // --------------------------------------------------------
 // Theme Mode Callback
 // --------------------------------------------------------
-const MODE_CALLBACK_BRAND = Symbol.for("pyreon.themeModeCallback")
+const MODE_CALLBACK_BRAND = Symbol.for("pyreon.themeModeCallback");
 
 /** Creates a mode-switching function that returns the light or dark value based on the active mode. */
 export const themeModeCallback: ThemeModeCallback = (light, dark) => {
   const fn = (mode: string) => {
-    if (!mode || mode === "light") return light
-    return dark
-  }
-  ;(fn as unknown as Record<string, unknown>).__brand = MODE_CALLBACK_BRAND
-  return fn
-}
+    if (!mode || mode === "light") return light;
+    return dark;
+  };
+  (fn as unknown as Record<string, unknown>).__brand = MODE_CALLBACK_BRAND;
+  return fn;
+};
 
 // --------------------------------------------------------
 // Theme Mode Callback Check
 // --------------------------------------------------------
 /** Detects whether a value is a `themeModeCallback` function via Symbol brand. */
-type IsModeCallback = (value: unknown) => boolean
+type IsModeCallback = (value: unknown) => boolean;
 const isModeCallback: IsModeCallback = (value: unknown) =>
   typeof value === "function" &&
-  (value as unknown as Record<string, unknown>).__brand === MODE_CALLBACK_BRAND
+  (value as unknown as Record<string, unknown>).__brand === MODE_CALLBACK_BRAND;
 
 // --------------------------------------------------------
 // Get Theme From Chain
 // --------------------------------------------------------
 /** Reduces an array of chained `.theme()` callbacks into a single merged theme object. */
-type OptionFunc = (...arg: any) => Record<string, unknown>
+type OptionFunc = (...arg: any) => Record<string, unknown>;
 type GetThemeFromChain = (
   options: OptionFunc[] | undefined | null,
   theme: Record<string, any>,
-) => ReturnType<OptionFunc>
+) => ReturnType<OptionFunc>;
 
 export const getThemeFromChain: GetThemeFromChain = (options, theme) => {
-  const result = {}
-  if (!options || isEmpty(options)) return result
+  const result = {};
+  if (!options || isEmpty(options)) return result;
 
   return options.reduce(
     (acc, item) => merge(acc, item(theme, themeModeCallback, config.css)),
     result,
-  )
-}
+  );
+};
 
 // --------------------------------------------------------
 // calculate dimension themes
@@ -57,30 +57,30 @@ export const getThemeFromChain: GetThemeFromChain = (options, theme) => {
 type GetDimensionThemes = (
   theme: Record<string, any>,
   options: Record<string, any>,
-) => Record<string, any>
+) => Record<string, any>;
 
 export const getDimensionThemes: GetDimensionThemes = (theme, options) => {
-  const result = {}
+  const result = {};
 
-  if (isEmpty(options.dimensions)) return result
+  if (isEmpty(options.dimensions)) return result;
 
   return Object.entries(options.dimensions).reduce(
     (acc, [key, value]) => {
-      const [, dimension] = isMultiKey(value as string | Record<string, unknown>)
+      const [, dimension] = isMultiKey(value as string | Record<string, unknown>);
 
-      const helper = options[key]
+      const helper = options[key];
 
       if (Array.isArray(helper) && helper.length > 0) {
-        const finalDimensionThemes = getThemeFromChain(helper, theme)
+        const finalDimensionThemes = getThemeFromChain(helper, theme);
 
-        acc[dimension] = removeNullableValues(finalDimensionThemes)
+        acc[dimension] = removeNullableValues(finalDimensionThemes);
       }
 
-      return acc
+      return acc;
     },
     result as Record<string, any>,
-  )
-}
+  );
+};
 
 // --------------------------------------------------------
 // combine values
@@ -89,14 +89,14 @@ export const getDimensionThemes: GetDimensionThemes = (theme, options) => {
 type CalculateChainOptions = (
   options: OptionFunc[] | undefined | null,
   args: any[],
-) => Record<string, any>
+) => Record<string, any>;
 
 export const calculateChainOptions: CalculateChainOptions = (options, args) => {
-  const result = {}
-  if (!options || isEmpty(options)) return result
+  const result = {};
+  if (!options || isEmpty(options)) return result;
 
-  return options.reduce((acc, item) => merge(acc, item(...args)), result)
-}
+  return options.reduce((acc, item) => merge(acc, item(...args)), result);
+};
 
 // --------------------------------------------------------
 // generate theme
@@ -111,16 +111,16 @@ export const calculateChainOptions: CalculateChainOptions = (options, args) => {
  * return overrides — enabling derived styles like "outlined" or "inversed".
  */
 export type GetTheme = (params: {
-  rocketstate: Record<string, string | string[]>
-  themes: Record<string, Record<string, any>>
-  baseTheme: Record<string, any>
-  transformKeys?: Partial<Record<string, true>>
+  rocketstate: Record<string, string | string[]>;
+  themes: Record<string, Record<string, any>>;
+  baseTheme: Record<string, any>;
+  transformKeys?: Partial<Record<string, true>>;
   /** App theme from context — passed to transform dimension callbacks. */
-  appTheme?: Record<string, any>
-}) => Record<string, unknown>
+  appTheme?: Record<string, any>;
+}) => Record<string, unknown>;
 
 export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKeys, appTheme }) => {
-  let finalTheme = { ...baseTheme }
+  let finalTheme = { ...baseTheme };
   const deferredTransforms: Array<
     (
       currentTheme: Record<string, any>,
@@ -128,27 +128,27 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
       mode: typeof themeModeCallback,
       cssFn: typeof config.css,
     ) => Record<string, any>
-  > = []
+  > = [];
 
   Object.entries(rocketstate).forEach(([key, value]: [string, string | string[]]) => {
-    const keyTheme: Record<string, any> = themes[key] ?? {}
-    const isTransform = transformKeys?.[key]
+    const keyTheme: Record<string, any> = themes[key] ?? {};
+    const isTransform = transformKeys?.[key];
 
     const mergeValue = (item: string) => {
-      const val = keyTheme[item]
+      const val = keyTheme[item];
       if (isTransform && typeof val === "function") {
-        deferredTransforms.push(val)
+        deferredTransforms.push(val);
       } else {
-        finalTheme = merge({}, finalTheme, val)
+        finalTheme = merge({}, finalTheme, val);
       }
-    }
+    };
 
     if (Array.isArray(value)) {
-      value.forEach(mergeValue)
+      value.forEach(mergeValue);
     } else {
-      mergeValue(value)
+      mergeValue(value);
     }
-  })
+  });
 
   // Apply transform dimension values last with the fully accumulated theme
   for (const transform of deferredTransforms) {
@@ -156,11 +156,11 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
       {},
       finalTheme,
       transform(finalTheme, appTheme ?? {}, themeModeCallback, config.css),
-    )
+    );
   }
 
-  return finalTheme
-}
+  return finalTheme;
+};
 
 // --------------------------------------------------------
 // resolve theme by mode
@@ -173,24 +173,24 @@ export type GetThemeByMode = (
   object: Record<string, any>,
   mode: "light" | "dark",
 ) => Partial<{
-  baseTheme: Record<string, unknown>
-  themes: Record<string, unknown>
-}>
+  baseTheme: Record<string, unknown>;
+  themes: Record<string, unknown>;
+}>;
 
 export const getThemeByMode: GetThemeByMode = (object, mode) =>
   Object.keys(object).reduce(
     (acc, key) => {
-      const value = object[key]
+      const value = object[key];
 
       if (typeof value === "object" && value !== null) {
-        acc[key] = getThemeByMode(value, mode)
+        acc[key] = getThemeByMode(value, mode);
       } else if (isModeCallback(value)) {
-        acc[key] = value(mode)
+        acc[key] = value(mode);
       } else {
-        acc[key] = value
+        acc[key] = value;
       }
 
-      return acc
+      return acc;
     },
     {} as Record<string, any>,
-  )
+  );

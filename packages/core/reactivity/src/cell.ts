@@ -11,27 +11,27 @@
  * Ideal for list item labels in keyed reconcilers where subscribe() is used directly.
  */
 export class Cell<T> {
-  /** @internal */ _v: T
-  /** @internal */ _l: (() => void) | null = null // single-listener fast path
-  /** @internal */ _s: Set<() => void> | null = null // multi-listener fallback
+  /** @internal */ _v: T;
+  /** @internal */ _l: (() => void) | null = null; // single-listener fast path
+  /** @internal */ _s: Set<() => void> | null = null; // multi-listener fallback
 
   constructor(value: T) {
-    this._v = value
+    this._v = value;
   }
 
   peek(): T {
-    return this._v
+    return this._v;
   }
 
   set(value: T): void {
-    if (Object.is(this._v, value)) return
-    this._v = value
-    if (this._l) this._l()
-    else if (this._s) for (const fn of this._s) fn()
+    if (Object.is(this._v, value)) return;
+    this._v = value;
+    if (this._l) this._l();
+    else if (this._s) for (const fn of this._s) fn();
   }
 
   update(fn: (current: T) => T): void {
-    this.set(fn(this._v))
+    this.set(fn(this._v));
   }
 
   /**
@@ -41,32 +41,32 @@ export class Cell<T> {
    */
   listen(listener: () => void): void {
     if (!this._l && !this._s) {
-      this._l = listener
+      this._l = listener;
     } else {
       // Promote to Set
       if (!this._s) {
-        this._s = new Set()
+        this._s = new Set();
         if (this._l) {
-          this._s.add(this._l)
-          this._l = null
+          this._s.add(this._l);
+          this._l = null;
         }
       }
-      this._s.add(listener)
+      this._s.add(listener);
     }
   }
 
   subscribe(listener: () => void): () => void {
-    this.listen(listener)
+    this.listen(listener);
     // The listener could be in _l (single) or _s (multi).
     // A later subscribe() call may promote it from _l to _s,
     // so the disposer must check both locations.
     return () => {
-      if (this._l === listener) this._l = null
-      else this._s?.delete(listener)
-    }
+      if (this._l === listener) this._l = null;
+      else this._s?.delete(listener);
+    };
   }
 }
 
 export function cell<T>(value: T): Cell<T> {
-  return new Cell(value)
+  return new Cell(value);
 }

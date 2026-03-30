@@ -1,5 +1,5 @@
-import type { Extension } from "@codemirror/state"
-import type { EditorLanguage } from "./types"
+import type { Extension } from "@codemirror/state";
+import type { EditorLanguage } from "./types";
 
 /**
  * Language extension loaders — lazy-loaded on demand.
@@ -30,10 +30,10 @@ const languageLoaders: Record<EditorLanguage, () => Promise<Extension>> = {
   ruby: () => Promise.resolve([]),
   shell: () => Promise.resolve([]),
   plain: () => Promise.resolve([]),
-}
+};
 
 // Cache loaded language extensions
-const loaded = new Map<EditorLanguage, Extension>()
+const loaded = new Map<EditorLanguage, Extension>();
 
 /**
  * Load a language extension. Returns cached if already loaded.
@@ -45,19 +45,19 @@ const loaded = new Map<EditorLanguage, Extension>()
  * ```
  */
 export async function loadLanguage(language: EditorLanguage): Promise<Extension> {
-  const cached = loaded.get(language)
-  if (cached) return cached
+  const cached = loaded.get(language);
+  if (cached) return cached;
 
-  const loader = languageLoaders[language]
-  if (!loader) return []
+  const loader = languageLoaders[language];
+  if (!loader) return [];
 
   try {
-    const ext = await loader()
-    loaded.set(language, ext)
-    return ext
+    const ext = await loader();
+    loaded.set(language, ext);
+    return ext;
   } catch {
     // Language package not installed — return empty extension
-    return []
+    return [];
   }
 }
 
@@ -65,5 +65,5 @@ export async function loadLanguage(language: EditorLanguage): Promise<Extension>
  * Get available languages.
  */
 export function getAvailableLanguages(): EditorLanguage[] {
-  return Object.keys(languageLoaders) as EditorLanguage[]
+  return Object.keys(languageLoaders) as EditorLanguage[];
 }

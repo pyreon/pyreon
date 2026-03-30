@@ -119,17 +119,17 @@ migrate_react({
 **Response:**
 
 ```tsx
-import { signal, effect } from "@pyreon/reactivity"
+import { signal, effect } from "@pyreon/reactivity";
 
 function Timer() {
-  const seconds = signal(0)
+  const seconds = signal(0);
 
   effect(() => {
-    const id = setInterval(() => seconds.update(s => s + 1), 1000)
-    return () => clearInterval(id)
-  })
+    const id = setInterval(() => seconds.update((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  });
 
-  return <div class="timer">{seconds()}s</div>
+  return <div class="timer">{seconds()}s</div>;
 }
 ```
 
@@ -197,14 +197,14 @@ useEffect(() => { ... }, [dep])       effect(() => { ... })
 ```tsx
 // React: hooks, re-renders entire component
 function Counter() {
-  const [count, setCount] = useState(0)
-  return <button onClick={() => setCount(c => c + 1)}>{count}</button>
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount((c) => c + 1)}>{count}</button>;
 }
 
 // Pyreon: signals, fine-grained DOM updates (no re-render)
 function Counter() {
-  const count = signal(0)
-  return <button onClick={() => count.update(c => c + 1)}>{count()}</button>
+  const count = signal(0);
+  return <button onClick={() => count.update((c) => c + 1)}>{count()}</button>;
 }
 ```
 
@@ -282,14 +282,14 @@ const router = createRouter({
 
 ```tsx
 // React: key on element
-{items.map(item => (
-  <li key={item.id}>{item.name}</li>
-))}
+{
+  items.map((item) => <li key={item.id}>{item.name}</li>);
+}
 
 // Pyreon: by prop on For (not key — JSX extracts key specially)
-<For each={items} by={item => item.id}>
-  {item => <li>{item.name}</li>}
-</For>
+<For each={items} by={(item) => item.id}>
+  {(item) => <li>{item.name}</li>}
+</For>;
 ```
 
 ### Lazy loading

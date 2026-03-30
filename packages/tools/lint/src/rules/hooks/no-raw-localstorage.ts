@@ -1,8 +1,8 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
 
-const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"])
-const STORAGE_METHODS = new Set(["getItem", "setItem", "removeItem"])
+const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+const STORAGE_METHODS = new Set(["getItem", "setItem", "removeItem"]);
 
 export const noRawLocalStorage: Rule = {
   meta: {
@@ -15,8 +15,8 @@ export const noRawLocalStorage: Rule = {
   create(context) {
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
-        const callee = node.callee
-        if (!callee || callee.type !== "MemberExpression") return
+        const callee = node.callee;
+        if (!callee || callee.type !== "MemberExpression") return;
         if (
           callee.object?.type === "Identifier" &&
           STORAGE_OBJECTS.has(callee.object.name) &&
@@ -26,10 +26,10 @@ export const noRawLocalStorage: Rule = {
           context.report({
             message: `Raw \`${callee.object.name}.${callee.property.name}()\` — consider using \`useStorage()\` from \`@pyreon/storage\` for reactive, cross-tab synced storage.`,
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

@@ -1,6 +1,6 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createRef, onMount, onUnmount } from "@pyreon/core"
-import { useIntersectionObserver } from "./utils/use-intersection-observer"
+import type { VNodeChild } from "@pyreon/core";
+import { createRef, onMount, onUnmount } from "@pyreon/core";
+import { useIntersectionObserver } from "./utils/use-intersection-observer";
 
 // ─── Script optimization component ─────────────────────────────────────────
 //
@@ -13,19 +13,19 @@ import { useIntersectionObserver } from "./utils/use-intersection-observer"
 
 export interface ScriptProps {
   /** Script source URL. */
-  src: string
+  src: string;
   /** Loading strategy. Default: "afterHydration" */
-  strategy?: ScriptStrategy
+  strategy?: ScriptStrategy;
   /** Inline script content (alternative to src). */
-  children?: string
+  children?: string;
   /** Script id for deduplication. */
-  id?: string
+  id?: string;
   /** Async attribute. Default: true */
-  async?: boolean
+  async?: boolean;
   /** onLoad callback. */
-  onLoad?: () => void
+  onLoad?: () => void;
   /** onError callback. */
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void;
 }
 
 export type ScriptStrategy =
@@ -33,7 +33,7 @@ export type ScriptStrategy =
   | "afterHydration"
   | "onIdle"
   | "onInteraction"
-  | "onViewport"
+  | "onViewport";
 
 /**
  * Optimized script loading component.
@@ -53,81 +53,81 @@ export type ScriptStrategy =
 export function Script(props: ScriptProps): VNodeChild {
   function loadScript() {
     // Deduplication
-    if (props.id && document.getElementById(props.id)) return
+    if (props.id && document.getElementById(props.id)) return;
 
-    const script = document.createElement("script")
-    if (props.src) script.src = props.src
-    if (props.id) script.id = props.id
-    script.async = props.async !== false
+    const script = document.createElement("script");
+    if (props.src) script.src = props.src;
+    if (props.id) script.id = props.id;
+    script.async = props.async !== false;
 
-    if (props.onLoad) script.onload = props.onLoad
+    if (props.onLoad) script.onload = props.onLoad;
     if (props.onError) {
-      script.onerror = () => props.onError?.(new Error(`Failed to load: ${props.src}`))
+      script.onerror = () => props.onError?.(new Error(`Failed to load: ${props.src}`));
     }
 
     if (props.children && !props.src) {
-      script.textContent = props.children
+      script.textContent = props.children;
     }
 
-    document.head.appendChild(script)
+    document.head.appendChild(script);
   }
 
   onMount(() => {
-    const strategy = props.strategy ?? "afterHydration"
+    const strategy = props.strategy ?? "afterHydration";
 
     switch (strategy) {
       case "beforeHydration":
         // Already in HTML — do nothing
-        break
+        break;
 
       case "afterHydration":
         // Load immediately after mount (hydration is complete)
-        loadScript()
-        break
+        loadScript();
+        break;
 
       case "onIdle":
         if ("requestIdleCallback" in window) {
-          requestIdleCallback(() => loadScript(), { timeout: 5000 })
+          requestIdleCallback(() => loadScript(), { timeout: 5000 });
         } else {
-          setTimeout(loadScript, 200)
+          setTimeout(loadScript, 200);
         }
-        break
+        break;
 
       case "onInteraction": {
-        const events = ["click", "scroll", "keydown", "touchstart"]
+        const events = ["click", "scroll", "keydown", "touchstart"];
         function handler() {
-          for (const e of events) document.removeEventListener(e, handler)
-          loadScript()
+          for (const e of events) document.removeEventListener(e, handler);
+          loadScript();
         }
         for (const e of events) {
-          document.addEventListener(e, handler, { once: true, passive: true })
+          document.addEventListener(e, handler, { once: true, passive: true });
         }
         onUnmount(() => {
-          for (const e of events) document.removeEventListener(e, handler)
-        })
-        break
+          for (const e of events) document.removeEventListener(e, handler);
+        });
+        break;
       }
 
       case "onViewport":
         // Handled below via useIntersectionObserver on the sentinel element
-        break
+        break;
     }
-    return undefined
-  })
+    return undefined;
+  });
 
-  const sentinelRef = createRef<HTMLElement>()
-  const strategy = props.strategy ?? "afterHydration"
+  const sentinelRef = createRef<HTMLElement>();
+  const strategy = props.strategy ?? "afterHydration";
 
   if (strategy === "onViewport") {
     useIntersectionObserver(
       () => sentinelRef.current ?? undefined,
       () => loadScript(),
-    )
+    );
   }
 
   if (strategy === "onViewport") {
-    return <div ref={sentinelRef} style="width:0;height:0;overflow:hidden" />
+    return <div ref={sentinelRef} style="width:0;height:0;overflow:hidden" />;
   }
 
-  return null
+  return null;
 }

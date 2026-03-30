@@ -1,4 +1,4 @@
-import component from "./component"
+import component from "./component";
 import type {
   ElementType,
   ExtendedProps,
@@ -6,8 +6,8 @@ import type {
   Props,
   PropsCallback,
   SimpleValue,
-} from "./types"
+} from "./types";
 
-export type { ElementType, ExtendedProps, ObjectValue, Props, PropsCallback, SimpleValue }
+export type { ElementType, ExtendedProps, ObjectValue, Props, PropsCallback, SimpleValue };
 
-export default component
+export default component;

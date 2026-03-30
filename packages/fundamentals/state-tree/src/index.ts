@@ -1,19 +1,19 @@
 // ─── Core ─────────────────────────────────────────────────────────────────────
 
-export type { ModelDefinition } from "./model"
-export { model, resetAllHooks, resetHook } from "./model"
+export type { ModelDefinition } from "./model";
+export { model, resetAllHooks, resetHook } from "./model";
 
 // ─── Snapshot ─────────────────────────────────────────────────────────────────
 
-export { applySnapshot, getSnapshot } from "./snapshot"
+export { applySnapshot, getSnapshot } from "./snapshot";
 
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
-export { applyPatch, onPatch } from "./patch"
+export { applyPatch, onPatch } from "./patch";
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-export { addMiddleware } from "./middleware"
+export { addMiddleware } from "./middleware";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,4 +26,4 @@ export type {
   PatchListener,
   Snapshot,
   StateShape,
-} from "./types"
+} from "./types";

@@ -1,6 +1,7 @@
 Run the full validation pipeline before pushing.
 
 Steps:
+
 1. Run `bun run lint` — report any lint errors
 2. Run `bun run typecheck` — report any type errors (ignore MCP TS2589 pre-existing)
 3. Run `bun run test` — report any test failures

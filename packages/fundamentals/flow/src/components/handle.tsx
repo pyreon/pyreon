@@ -1,12 +1,12 @@
-import type { VNodeChild } from "@pyreon/core"
-import type { HandleProps } from "../types"
+import type { VNodeChild } from "@pyreon/core";
+import type { HandleProps } from "../types";
 
 const positionOffset: Record<string, string> = {
   top: "top: -4px; left: 50%; transform: translateX(-50%);",
   right: "right: -4px; top: 50%; transform: translateY(-50%);",
   bottom: "bottom: -4px; left: 50%; transform: translateX(-50%);",
   left: "left: -4px; top: 50%; transform: translateY(-50%);",
-}
+};
 
 /**
  * Connection handle — attachment point on a node where edges connect.
@@ -26,9 +26,9 @@ const positionOffset: Record<string, string> = {
  * ```
  */
 export function Handle(props: HandleProps): VNodeChild {
-  const { type, position, id, style = "" } = props
-  const posStyle = positionOffset[position] ?? positionOffset.bottom
-  const baseStyle = `position: absolute; ${posStyle} width: 8px; height: 8px; background: #555; border: 2px solid white; border-radius: 50%; cursor: crosshair; z-index: 1; ${style}`
+  const { type, position, id, style = "" } = props;
+  const posStyle = positionOffset[position] ?? positionOffset.bottom;
+  const baseStyle = `position: absolute; ${posStyle} width: 8px; height: 8px; background: #555; border: 2px solid white; border-radius: 50%; cursor: crosshair; z-index: 1; ${style}`;
 
   return (
     <div
@@ -38,5 +38,5 @@ export function Handle(props: HandleProps): VNodeChild {
       data-handleid={id ?? type}
       data-handleposition={position}
     />
-  )
+  );
 }

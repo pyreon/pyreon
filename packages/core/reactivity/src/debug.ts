@@ -8,28 +8,28 @@
  * when unused.
  */
 
-import type { Signal, SignalDebugInfo } from "./signal"
+import type { Signal, SignalDebugInfo } from "./signal";
 
 // ─── Signal update tracing ───────────────────────────────────────────────────
 
 interface SignalUpdateEvent {
   /** The signal that changed */
-  signal: Signal<unknown>
+  signal: Signal<unknown>;
   /** Signal name (from options or label) */
-  name: string | undefined
+  name: string | undefined;
   /** Previous value */
-  prev: unknown
+  prev: unknown;
   /** New value */
-  next: unknown
+  next: unknown;
   /** Stack trace at the point of the .set() / .update() call */
-  stack: string
+  stack: string;
   /** Timestamp */
-  timestamp: number
+  timestamp: number;
 }
 
-type SignalUpdateListener = (event: SignalUpdateEvent) => void
+type SignalUpdateListener = (event: SignalUpdateEvent) => void;
 
-let _traceListeners: SignalUpdateListener[] | null = null
+let _traceListeners: SignalUpdateListener[] | null = null;
 
 /**
  * Register a listener that fires on every signal write.
@@ -41,18 +41,18 @@ let _traceListeners: SignalUpdateListener[] | null = null
  * })
  */
 export function onSignalUpdate(listener: SignalUpdateListener): () => void {
-  if (!_traceListeners) _traceListeners = []
-  _traceListeners.push(listener)
+  if (!_traceListeners) _traceListeners = [];
+  _traceListeners.push(listener);
   return () => {
-    if (!_traceListeners) return
-    _traceListeners = _traceListeners.filter((l) => l !== listener)
-    if (_traceListeners.length === 0) _traceListeners = null
-  }
+    if (!_traceListeners) return;
+    _traceListeners = _traceListeners.filter((l) => l !== listener);
+    if (_traceListeners.length === 0) _traceListeners = null;
+  };
 }
 
 /** @internal — called from signal.set() when tracing is active */
 export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next: unknown): void {
-  if (!_traceListeners) return
+  if (!_traceListeners) return;
   const event: SignalUpdateEvent = {
     signal: sig,
     name: sig.label,
@@ -60,19 +60,19 @@ export function _notifyTraceListeners(sig: Signal<unknown>, prev: unknown, next:
     next,
     stack: new Error().stack ?? "",
     timestamp: performance.now(),
-  }
-  for (const l of _traceListeners) l(event)
+  };
+  for (const l of _traceListeners) l(event);
 }
 
 /** Check if any trace listeners are active (fast path for signal.set) */
 export function isTracing(): boolean {
-  return _traceListeners !== null
+  return _traceListeners !== null;
 }
 
 // ─── why() — trace which signal caused a re-run ──────────────────────────────
 
-let _whyActive = false
-let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = []
+let _whyActive = false;
+let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = [];
 
 /**
  * Trace the next signal update. Logs which signals fire and what changed.
@@ -84,29 +84,29 @@ let _whyLog: { name: string | undefined; prev: unknown; next: unknown }[] = []
  * // Console: [pyreon:why] "count": 3 → 5 (2 subscribers)
  */
 export function why(): void {
-  if (_whyActive) return
-  _whyActive = true
-  _whyLog = []
+  if (_whyActive) return;
+  _whyActive = true;
+  _whyLog = [];
 
   const dispose = onSignalUpdate((e) => {
-    const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0
-    const _name = e.name ? `"${e.name}"` : "(anonymous signal)"
+    const _subCount = (e.signal as unknown as { _s: Set<unknown> | null })._s?.size ?? 0;
+    const _name = e.name ? `"${e.name}"` : "(anonymous signal)";
 
     console.log(
       `[pyreon:why] ${_name}: ${JSON.stringify(e.prev)} → ${JSON.stringify(e.next)} (${_subCount} subscriber${_subCount === 1 ? "" : "s"})`,
-    )
-    _whyLog.push({ name: e.name, prev: e.prev, next: e.next })
-  })
+    );
+    _whyLog.push({ name: e.name, prev: e.prev, next: e.next });
+  });
 
   // Auto-dispose after the current microtask (captures the synchronous batch)
   queueMicrotask(() => {
-    dispose()
+    dispose();
     if (_whyLog.length === 0) {
-      console.log("[pyreon:why] No signal updates detected")
+      console.log("[pyreon:why] No signal updates detected");
     }
-    _whyActive = false
-    _whyLog = []
-  })
+    _whyActive = false;
+    _whyLog = [];
+  });
 }
 
 // ─── inspectSignal — rich console output ─────────────────────────────────────
@@ -123,12 +123,12 @@ export function why(): void {
  * //   subscribers: 3
  */
 export function inspectSignal<T>(sig: Signal<T>): SignalDebugInfo<T> {
-  const info = sig.debug()
+  const info = sig.debug();
 
-  console.group(`🔍 Signal ${info.name ? `"${info.name}"` : "(anonymous)"}`)
-  console.log("value:", info.value)
-  console.log("subscribers:", info.subscriberCount)
-  console.groupEnd()
+  console.group(`🔍 Signal ${info.name ? `"${info.name}"` : "(anonymous)"}`);
+  console.log("value:", info.value);
+  console.log("subscribers:", info.subscriberCount);
+  console.groupEnd();
 
-  return info
+  return info;
 }

@@ -24,17 +24,17 @@
  */
 
 // Components
-export { CodeEditor } from "./components/code-editor"
-export { DiffEditor } from "./components/diff-editor"
-export { TabbedEditor } from "./components/tabbed-editor"
+export { CodeEditor } from "./components/code-editor";
+export { DiffEditor } from "./components/diff-editor";
+export { TabbedEditor } from "./components/tabbed-editor";
 // Core
-export { createEditor } from "./editor"
+export { createEditor } from "./editor";
 // Languages
-export { getAvailableLanguages, loadLanguage } from "./languages"
+export { getAvailableLanguages, loadLanguage } from "./languages";
 // Minimap
-export { minimapExtension } from "./minimap"
+export { minimapExtension } from "./minimap";
 // Themes
-export { darkTheme, lightTheme, resolveTheme } from "./themes"
+export { darkTheme, lightTheme, resolveTheme } from "./themes";
 
 // Types
 export type {
@@ -49,4 +49,4 @@ export type {
   TabbedEditorConfig,
   TabbedEditorInstance,
   TabbedEditorProps,
-} from "./types"
+} from "./types";

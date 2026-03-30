@@ -1,9 +1,9 @@
-import { useId } from "preact/hooks"
-import Demo from "./Demo"
+import { useId } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function UseIdDemo() {
-  const id1 = useId()
-  const id2 = useId()
+  const id1 = useId();
+  const id2 = useId();
 
   return (
     <Demo
@@ -20,5 +20,5 @@ export default function UseIdDemo() {
       </p>
       <p class="muted">Each call returns a unique, stable identifier</p>
     </Demo>
-  )
+  );
 }

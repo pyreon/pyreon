@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from "../sanitize";
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types";
 
 /**
  * Slack Block Kit renderer — outputs JSON that can be posted via Slack's API.
@@ -7,31 +7,31 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === "string" ? { header: col } : col;
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .join("");
 }
 
 interface SlackBlock {
-  type: string
-  [key: string]: unknown
+  type: string;
+  [key: string]: unknown;
 }
 
 function mrkdwn(text: string): { type: "mrkdwn"; text: string } {
-  return { type: "mrkdwn", text }
+  return { type: "mrkdwn", text };
 }
 
 function plainText(text: string): { type: "plain_text"; text: string } {
-  return { type: "plain_text", text }
+  return { type: "plain_text", text };
 }
 
 function nodeToBlocks(node: DocNode): SlackBlock[] {
-  const p = node.props
-  const blocks: SlackBlock[] = []
+  const p = node.props;
+  const blocks: SlackBlock[] = [];
 
   switch (node.type) {
     case "document":
@@ -41,42 +41,42 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
     case "column":
       for (const child of node.children) {
         if (typeof child !== "string") {
-          blocks.push(...nodeToBlocks(child))
+          blocks.push(...nodeToBlocks(child));
         }
       }
-      break
+      break;
 
     case "heading":
       blocks.push({
         type: "header",
         text: plainText(getTextContent(node.children)),
-      })
-      break
+      });
+      break;
 
     case "text": {
-      let text = getTextContent(node.children)
-      if (p.bold) text = `*${text}*`
-      if (p.italic) text = `_${text}_`
-      if (p.strikethrough) text = `~${text}~`
+      let text = getTextContent(node.children);
+      if (p.bold) text = `*${text}*`;
+      if (p.italic) text = `_${text}_`;
+      if (p.strikethrough) text = `~${text}~`;
       blocks.push({
         type: "section",
         text: mrkdwn(text),
-      })
-      break
+      });
+      break;
     }
 
     case "link": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       blocks.push({
         type: "section",
         text: mrkdwn(`<${href}|${text}>`),
-      })
-      break
+      });
+      break;
     }
 
     case "image": {
-      const src = sanitizeImageSrc(p.src as string)
+      const src = sanitizeImageSrc(p.src as string);
       // Slack only supports public URLs for images
       if (src.startsWith("http")) {
         blocks.push({
@@ -84,68 +84,68 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
           image_url: src,
           alt_text: (p.alt as string) ?? "Image",
           ...(p.caption ? { title: plainText(p.caption as string) } : {}),
-        })
+        });
       }
-      break
+      break;
     }
 
     case "table": {
-      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
-      const rows = (p.rows ?? []) as (string | number)[][]
+      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn);
+      const rows = (p.rows ?? []) as (string | number)[][];
 
       // Slack doesn't have native tables — render as formatted text
-      const header = columns.map((c) => `*${c.header}*`).join(" | ")
-      const separator = columns.map(() => "---").join(" | ")
-      const body = rows.map((row) => row.map((cell) => String(cell ?? "")).join(" | ")).join("\n")
+      const header = columns.map((c) => `*${c.header}*`).join(" | ");
+      const separator = columns.map(() => "---").join(" | ");
+      const body = rows.map((row) => row.map((cell) => String(cell ?? "")).join(" | ")).join("\n");
 
-      let text = `${header}\n${separator}\n${body}`
-      if (p.caption) text = `_${p.caption}_\n${text}`
+      let text = `${header}\n${separator}\n${body}`;
+      if (p.caption) text = `_${p.caption}_\n${text}`;
 
       blocks.push({
         type: "section",
         text: mrkdwn(`\`\`\`\n${text}\n\`\`\``),
-      })
-      break
+      });
+      break;
     }
 
     case "list": {
-      const ordered = p.ordered as boolean | undefined
+      const ordered = p.ordered as boolean | undefined;
       const items = node.children
         .filter((c): c is DocNode => typeof c !== "string")
         .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : "•"
-          return `${prefix} ${getTextContent(item.children)}`
+          const prefix = ordered ? `${i + 1}.` : "•";
+          return `${prefix} ${getTextContent(item.children)}`;
         })
-        .join("\n")
+        .join("\n");
       blocks.push({
         type: "section",
         text: mrkdwn(items),
-      })
-      break
+      });
+      break;
     }
 
     case "code": {
-      const text = getTextContent(node.children)
-      const lang = (p.language as string) ?? ""
+      const text = getTextContent(node.children);
+      const lang = (p.language as string) ?? "";
       blocks.push({
         type: "section",
         text: mrkdwn(`\`\`\`${lang}\n${text}\n\`\`\``),
-      })
-      break
+      });
+      break;
     }
 
     case "divider":
     case "page-break":
-      blocks.push({ type: "divider" })
-      break
+      blocks.push({ type: "divider" });
+      break;
 
     case "spacer":
       // No equivalent in Slack — skip
-      break
+      break;
 
     case "button": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       blocks.push({
         type: "actions",
         elements: [
@@ -156,26 +156,26 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
             style: "primary",
           },
         ],
-      })
-      break
+      });
+      break;
     }
 
     case "quote": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       blocks.push({
         type: "section",
         text: mrkdwn(`> ${text}`),
-      })
-      break
+      });
+      break;
     }
   }
 
-  return blocks
+  return blocks;
 }
 
 export const slackRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    const blocks = nodeToBlocks(node)
-    return JSON.stringify({ blocks }, null, 2)
+    const blocks = nodeToBlocks(node);
+    return JSON.stringify({ blocks }, null, 2);
   },
-}
+};

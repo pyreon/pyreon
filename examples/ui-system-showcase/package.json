@@ -1,32 +1,32 @@
 {
   "name": "@pyreon/example-ui-system-showcase",
-  "private": true,
   "version": "0.3.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "preview": "vite preview",
-    "lint": "biome check .",
+    "lint": "oxlint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pyreon/attrs": "workspace:*",
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
+    "@pyreon/kinetic-presets": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
-    "@pyreon/elements": "workspace:*",
-    "@pyreon/coolgrid": "workspace:*",
-    "@pyreon/unistyle": "workspace:*",
-    "@pyreon/rocketstyle": "workspace:*",
-    "@pyreon/attrs": "workspace:*",
-    "@pyreon/hooks": "workspace:*",
-    "@pyreon/kinetic": "workspace:*",
-    "@pyreon/kinetic-presets": "workspace:*"
+    "@pyreon/unistyle": "workspace:*"
   },
   "devDependencies": {
-    "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
     "typescript": "~5.9.3",
     "vite": "^7.3.1"
   }

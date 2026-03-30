@@ -24,18 +24,18 @@
  * ```
  */
 
-export { Background } from "./components/background"
-export { Controls } from "./components/controls"
-export type { FlowComponentProps } from "./components/flow-component"
+export { Background } from "./components/background";
+export { Controls } from "./components/controls";
+export type { FlowComponentProps } from "./components/flow-component";
 // Components
-export { Flow } from "./components/flow-component"
-export { Handle } from "./components/handle"
-export { MiniMap } from "./components/minimap"
-export type { NodeResizerProps } from "./components/node-resizer"
-export { NodeResizer } from "./components/node-resizer"
-export type { NodeToolbarProps } from "./components/node-toolbar"
-export { NodeToolbar } from "./components/node-toolbar"
-export { Panel } from "./components/panel"
+export { Flow } from "./components/flow-component";
+export { Handle } from "./components/handle";
+export { MiniMap } from "./components/minimap";
+export type { NodeResizerProps } from "./components/node-resizer";
+export { NodeResizer } from "./components/node-resizer";
+export type { NodeToolbarProps } from "./components/node-toolbar";
+export { NodeToolbar } from "./components/node-toolbar";
+export { Panel } from "./components/panel";
 // Edge path utilities
 export {
   getBezierPath,
@@ -46,13 +46,13 @@ export {
   getStepPath,
   getStraightPath,
   getWaypointPath,
-} from "./edges"
+} from "./edges";
 // Core
-export { createFlow } from "./flow"
+export { createFlow } from "./flow";
 // Layout
-export { computeLayout } from "./layout"
+export { computeLayout } from "./layout";
 // Styles
-export { flowStyles } from "./styles"
+export { flowStyles } from "./styles";
 export type {
   BackgroundProps,
   Connection,
@@ -78,6 +78,6 @@ export type {
   Rect,
   Viewport,
   XYPosition,
-} from "./types"
+} from "./types";
 // Types
-export { Position } from "./types"
+export { Position } from "./types";

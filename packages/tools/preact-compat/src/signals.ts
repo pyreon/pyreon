@@ -5,23 +5,23 @@
  * Wraps Pyreon's signal/computed in `{ value }` accessor objects.
  */
 
-import type { Effect } from "@pyreon/reactivity"
+import type { Effect } from "@pyreon/reactivity";
 import {
   batch as pyreonBatch,
   computed as pyreonComputed,
   effect as pyreonEffect,
   signal as pyreonSignal,
-} from "@pyreon/reactivity"
+} from "@pyreon/reactivity";
 
 // ─── Signal ──────────────────────────────────────────────────────────────────
 
 export interface ReadonlySignal<T> {
-  readonly value: T
-  peek(): T
+  readonly value: T;
+  peek(): T;
 }
 
 export interface WritableSignal<T> extends ReadonlySignal<T> {
-  value: T
+  value: T;
 }
 
 /**
@@ -33,18 +33,18 @@ export interface WritableSignal<T> extends ReadonlySignal<T> {
  * console.log(count.value)  // read (tracked)
  */
 export function signal<T>(initial: T): WritableSignal<T> {
-  const s = pyreonSignal<T>(initial)
+  const s = pyreonSignal<T>(initial);
   return {
     get value(): T {
-      return s()
+      return s();
     },
     set value(v: T) {
-      s.set(v)
+      s.set(v);
     },
     peek(): T {
-      return s.peek()
+      return s.peek();
     },
-  }
+  };
 }
 
 // ─── Computed ────────────────────────────────────────────────────────────────
@@ -57,16 +57,16 @@ export function signal<T>(initial: T): WritableSignal<T> {
  * console.log(doubled.value)
  */
 export function computed<T>(fn: () => T): ReadonlySignal<T> {
-  const c = pyreonComputed(fn)
+  const c = pyreonComputed(fn);
   return {
     get value(): T {
-      return c()
+      return c();
     },
     peek(): T {
       // computed doesn't have peek — just read the value untracked
-      return c()
+      return c();
     },
-  }
+  };
 }
 
 // ─── Effect ──────────────────────────────────────────────────────────────────
@@ -78,10 +78,10 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
 // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
 export function effect(fn: () => void | (() => void)): () => void {
   // Pyreon's effect() natively supports cleanup return values
-  const e: Effect = pyreonEffect(fn)
+  const e: Effect = pyreonEffect(fn);
   return () => {
-    e.dispose()
-  }
+    e.dispose();
+  };
 }
 
 // ─── Batch ───────────────────────────────────────────────────────────────────
@@ -89,4 +89,4 @@ export function effect(fn: () => void | (() => void)): () => void {
 /**
  * Batch multiple signal writes into a single update.
  */
-export { pyreonBatch as batch }
+export { pyreonBatch as batch };

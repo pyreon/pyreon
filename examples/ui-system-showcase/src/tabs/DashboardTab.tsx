@@ -1,21 +1,21 @@
-import { Col, Container, Row } from "@pyreon/coolgrid"
-import { useHover } from "@pyreon/hooks"
-import type { signal } from "@pyreon/reactivity"
-import { FadeIn, SlideUp } from "../animations"
-import { RsBadge } from "../components"
-import { Card, Code, Divider, FlexRow, SectionDesc, SectionTitle } from "../primitives"
+import { Col, Container, Row } from "@pyreon/coolgrid";
+import { useHover } from "@pyreon/hooks";
+import type { signal } from "@pyreon/reactivity";
+import { FadeIn, SlideUp } from "../animations";
+import { RsBadge } from "../components";
+import { Card, Code, Divider, FlexRow, SectionDesc, SectionTitle } from "../primitives";
 
 // ─── Dashboard Tab ───────────────────────────────────────────────────────────
 
 export function DashboardTab(props: {
-  stats: Array<{ label: string; value: string; change: string; trend: string }>
+  stats: Array<{ label: string; value: string; change: string; trend: string }>;
   filteredItems: () => Array<{
-    name: string
-    pkg: string
-    status: string
-  }>
-  searchInput: ReturnType<typeof signal<string>>
-  debouncedSearch: () => string
+    name: string;
+    pkg: string;
+    status: string;
+  }>;
+  searchInput: ReturnType<typeof signal<string>>;
+  debouncedSearch: () => string;
 }) {
   return (
     <div>
@@ -100,21 +100,21 @@ export function DashboardTab(props: {
         }
       </div>
     </div>
-  )
+  );
 }
 
 // ─── Stat Card (useHover + Element) ──────────────────────────────────────────
 
 function StatCard(props: {
-  stat: { label: string; value: string; change: string; trend: string }
+  stat: { label: string; value: string; change: string; trend: string };
 }) {
-  const { hovered, props: hoverProps } = useHover()
+  const { hovered, props: hoverProps } = useHover();
 
   const trendColors: Record<string, string> = {
     up: "var(--success)",
     down: "var(--danger)",
     flat: "var(--text-muted)",
-  }
+  };
 
   return (
     <Card
@@ -147,5 +147,5 @@ function StatCard(props: {
         </span>
       </div>
     </Card>
-  )
+  );
 }

@@ -1,11 +1,11 @@
-import { signal } from "@pyreon/reactivity"
-import { getEntry, removeEntry, setEntry } from "./registry"
-import type { CookieOptions, StorageSignal } from "./types"
-import { deserialize, isBrowser, serialize } from "./utils"
+import { signal } from "@pyreon/reactivity";
+import { getEntry, removeEntry, setEntry } from "./registry";
+import type { CookieOptions, StorageSignal } from "./types";
+import { deserialize, isBrowser, serialize } from "./utils";
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
-let serverCookieString = ""
+let serverCookieString = "";
 
 /**
  * Set the cookie source string for SSR. Call this once per request
@@ -18,74 +18,74 @@ let serverCookieString = ""
  * ```
  */
 export function setCookieSource(cookieHeader: string): void {
-  serverCookieString = cookieHeader
+  serverCookieString = cookieHeader;
 }
 
 // ─── Cookie parsing ──────────────────────────────────────────────────────────
 
 function parseCookies(cookieString: string): Map<string, string> {
-  const cookies = new Map<string, string>()
-  if (!cookieString) return cookies
+  const cookies = new Map<string, string>();
+  if (!cookieString) return cookies;
 
   for (const pair of cookieString.split(";")) {
-    const eqIndex = pair.indexOf("=")
-    if (eqIndex === -1) continue
-    const name = pair.slice(0, eqIndex).trim()
-    const value = pair.slice(eqIndex + 1).trim()
-    if (name) cookies.set(name, decodeURIComponent(value))
+    const eqIndex = pair.indexOf("=");
+    if (eqIndex === -1) continue;
+    const name = pair.slice(0, eqIndex).trim();
+    const value = pair.slice(eqIndex + 1).trim();
+    if (name) cookies.set(name, decodeURIComponent(value));
   }
 
-  return cookies
+  return cookies;
 }
 
 function getCookieString(): string {
-  if (isBrowser()) return document.cookie
-  return serverCookieString
+  if (isBrowser()) return document.cookie;
+  return serverCookieString;
 }
 
 function readCookie(key: string): string | null {
-  const cookies = parseCookies(getCookieString())
-  return cookies.get(key) ?? null
+  const cookies = parseCookies(getCookieString());
+  return cookies.get(key) ?? null;
 }
 
 // ─── Cookie writing ──────────────────────────────────────────────────────────
 
 function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void {
-  if (!isBrowser()) return
+  if (!isBrowser()) return;
 
-  const serialized = serialize(value, options.serializer)
-  let cookie = `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`
+  const serialized = serialize(value, options.serializer);
+  let cookie = `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`;
 
   if (options.maxAge !== undefined) {
-    cookie += `; max-age=${options.maxAge}`
+    cookie += `; max-age=${options.maxAge}`;
   }
   if (options.expires) {
-    cookie += `; expires=${options.expires.toUTCString()}`
+    cookie += `; expires=${options.expires.toUTCString()}`;
   }
-  cookie += `; path=${options.path ?? "/"}`
+  cookie += `; path=${options.path ?? "/"}`;
   if (options.domain) {
-    cookie += `; domain=${options.domain}`
+    cookie += `; domain=${options.domain}`;
   }
   if (options.secure) {
-    cookie += "; secure"
+    cookie += "; secure";
   }
-  cookie += `; samesite=${options.sameSite ?? "lax"}`
+  cookie += `; samesite=${options.sameSite ?? "lax"}`;
 
   // biome-ignore lint/suspicious/noDocumentCookie: document.cookie is the standard cookie write API
-  document.cookie = cookie
+  document.cookie = cookie;
 }
 
 function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
-  if (!isBrowser()) return
+  if (!isBrowser()) return;
 
-  let cookie = `${encodeURIComponent(key)}=; max-age=0`
-  cookie += `; path=${options.path ?? "/"}`
+  let cookie = `${encodeURIComponent(key)}=; max-age=0`;
+  cookie += `; path=${options.path ?? "/"}`;
   if (options.domain) {
-    cookie += `; domain=${options.domain}`
+    cookie += `; domain=${options.domain}`;
   }
 
   // biome-ignore lint/suspicious/noDocumentCookie: document.cookie is the standard cookie write API
-  document.cookie = cookie
+  document.cookie = cookie;
 }
 
 // ─── useCookie ───────────────────────────────────────────────────────────────
@@ -112,50 +112,50 @@ export function useCookie<T>(
   options: CookieOptions<T> = {},
 ): StorageSignal<T> {
   // Return existing signal if already registered
-  const existing = getEntry<T>("cookie", key)
-  if (existing) return existing.signal
+  const existing = getEntry<T>("cookie", key);
+  if (existing) return existing.signal;
 
   // Read initial value from cookie
-  const raw = readCookie(key)
+  const raw = readCookie(key);
   const initialValue =
     raw !== null
       ? deserialize(raw, defaultValue, options.deserializer, options.onError)
-      : defaultValue
+      : defaultValue;
 
-  const sig = signal<T>(initialValue)
+  const sig = signal<T>(initialValue);
 
   // Build the storage signal
-  const storageSig = (() => sig()) as unknown as StorageSignal<T>
+  const storageSig = (() => sig()) as unknown as StorageSignal<T>;
 
-  storageSig.peek = () => sig.peek()
-  storageSig.subscribe = (listener: () => void) => sig.subscribe(listener)
-  storageSig.direct = (updater: () => void) => sig.direct(updater)
-  storageSig.debug = () => sig.debug()
+  storageSig.peek = () => sig.peek();
+  storageSig.subscribe = (listener: () => void) => sig.subscribe(listener);
+  storageSig.direct = (updater: () => void) => sig.direct(updater);
+  storageSig.debug = () => sig.debug();
 
   Object.defineProperty(storageSig, "label", {
     get: () => sig.label,
     set: (v: string | undefined) => {
-      sig.label = v
+      sig.label = v;
     },
-  })
+  });
 
   storageSig.set = (value: T) => {
-    sig.set(value)
-    writeCookie(key, value, options)
-  }
+    sig.set(value);
+    writeCookie(key, value, options);
+  };
 
   storageSig.update = (fn: (current: T) => T) => {
-    const newValue = fn(sig.peek())
-    storageSig.set(newValue)
-  }
+    const newValue = fn(sig.peek());
+    storageSig.set(newValue);
+  };
 
   storageSig.remove = () => {
-    sig.set(defaultValue)
-    deleteCookie(key, options)
-    removeEntry("cookie", key)
-  }
+    sig.set(defaultValue);
+    deleteCookie(key, options);
+    removeEntry("cookie", key);
+  };
 
-  setEntry("cookie", key, storageSig, defaultValue)
+  setEntry("cookie", key, storageSig, defaultValue);
 
-  return storageSig
+  return storageSig;
 }

@@ -1,14 +1,14 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form"
-import type { ValidationIssue } from "./types"
-import { issuesToRecord } from "./utils"
+import type { SchemaValidateFn, ValidateFn, ValidationError } from "@pyreon/form";
+import type { ValidationIssue } from "./types";
+import { issuesToRecord } from "./utils";
 
 /**
  * Minimal Zod-compatible interfaces so we don't require zod as a hard dep.
  * These match Zod v3's public API surface.
  */
 interface ZodIssue {
-  path: PropertyKey[]
-  message: string
+  path: PropertyKey[];
+  message: string;
 }
 
 /**
@@ -17,20 +17,20 @@ interface ZodIssue {
  */
 interface ZodSchema<T = unknown> {
   safeParse(data: unknown): {
-    success: boolean
-    data?: T
-    error?: { issues: ZodIssue[] }
-  }
+    success: boolean;
+    data?: T;
+    error?: { issues: ZodIssue[] };
+  };
   safeParseAsync(
     data: unknown,
-  ): Promise<{ success: boolean; data?: T; error?: { issues: ZodIssue[] } }>
+  ): Promise<{ success: boolean; data?: T; error?: { issues: ZodIssue[] } }>;
 }
 
 function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
     path: issue.path.map(String).join("."),
     message: issue.message,
-  }))
+  }));
 }
 
 /**
@@ -57,15 +57,15 @@ export function zodSchema<TValues extends Record<string, unknown>>(
 ): SchemaValidateFn<TValues> {
   return async (values: TValues) => {
     try {
-      const result = await schema.safeParseAsync(values)
-      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
-      return issuesToRecord<TValues>(zodIssuesToGeneric(result.error!.issues))
+      const result = await schema.safeParseAsync(values);
+      if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>;
+      return issuesToRecord<TValues>(zodIssuesToGeneric(result.error!.issues));
     } catch (err) {
       return {
         "": err instanceof Error ? err.message : String(err),
-      } as Partial<Record<keyof TValues, ValidationError>>
+      } as Partial<Record<keyof TValues, ValidationError>>;
     }
-  }
+  };
 }
 
 /**
@@ -87,11 +87,11 @@ export function zodSchema<TValues extends Record<string, unknown>>(
 export function zodField<T>(schema: ZodSchema<T>): ValidateFn<T> {
   return async (value: T) => {
     try {
-      const result = await schema.safeParseAsync(value)
-      if (result.success) return undefined
-      return result.error!.issues[0]?.message
+      const result = await schema.safeParseAsync(value);
+      if (result.success) return undefined;
+      return result.error!.issues[0]?.message;
     } catch (err) {
-      return err instanceof Error ? err.message : String(err)
+      return err instanceof Error ? err.message : String(err);
     }
-  }
+  };
 }

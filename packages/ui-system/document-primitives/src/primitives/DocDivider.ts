@@ -1,5 +1,5 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocDivider = rocketstyle()({ name: "DocDivider", component: Element })
   .theme({
@@ -8,16 +8,16 @@ const DocDivider = rocketstyle()({ name: "DocDivider", component: Element })
   })
   .statics({ _documentType: "divider" as const })
   .attrs<{
-    color?: string
-    thickness?: number
-    tag: string
-    _documentProps: Record<string, unknown>
+    color?: string;
+    thickness?: number;
+    tag: string;
+    _documentProps: Record<string, unknown>;
   }>((props) => ({
     tag: "hr",
     _documentProps: {
       ...(props.color ? { color: props.color } : {}),
       ...(props.thickness ? { thickness: props.thickness } : {}),
     },
-  }))
+  }));
 
-export default DocDivider
+export default DocDivider;

@@ -1,13 +1,13 @@
-import type { config } from "@pyreon/ui-core"
+import type { config } from "@pyreon/ui-core";
 
-export type Css = typeof config.css
+export type Css = typeof config.css;
 
-export type Defaults = "initial" | "inherit"
-export type Units = "px" | "rem" | "em" | "%" | "vh" | "vw" | "vmin" | "vmax" | "ex"
-export type UnitValue = number | `${number}${Units}`
-export type PropertyValue = UnitValue | "auto" | Defaults | `calc(${string | number})`
+export type Defaults = "initial" | "inherit";
+export type Units = "px" | "rem" | "em" | "%" | "vh" | "vw" | "vmin" | "vmax" | "ex";
+export type UnitValue = number | `${number}${Units}`;
+export type PropertyValue = UnitValue | "auto" | Defaults | `calc(${string | number})`;
 
-export type Size = "max-content" | "min-content" | "fit-content"
+export type Size = "max-content" | "min-content" | "fit-content";
 
 export type Color =
   | `#${string | number}`
@@ -22,7 +22,7 @@ export type Color =
   | `hsla(${number}, ${number}%, ${number}%, ${number})`
   | `hsla(${number},${number}%,${number}%,${number})`
   | BrowserColors
-  | Defaults
+  | Defaults;
 
 export type BrowserColors =
   | "black"
@@ -172,4 +172,4 @@ export type BrowserColors =
   | "wheat"
   | "whitesmoke"
   | "yellowgreen"
-  | "rebeccapurple"
+  | "rebeccapurple";

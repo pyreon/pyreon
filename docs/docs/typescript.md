@@ -10,18 +10,23 @@ description: Shared TypeScript configuration presets for Pyreon applications and
 ## Installation
 
 ::: code-group
+
 ```bash [npm]
 npm install @pyreon/typescript
 ```
+
 ```bash [bun]
 bun add @pyreon/typescript
 ```
+
 ```bash [pnpm]
 pnpm add @pyreon/typescript
 ```
+
 ```bash [yarn]
 yarn add @pyreon/typescript
 ```
+
 :::
 
 ---
@@ -40,17 +45,17 @@ The foundation configuration that all other presets extend. Includes strict Type
 
 **Key settings:**
 
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| `jsx` | `"react-jsx"` | Automatic JSX transform (no manual `h` imports needed) |
-| `jsxImportSource` | `"@pyreon/core"` | JSX factory from `@pyreon/core/jsx-runtime` |
-| `strict` | `true` | Full strict mode |
-| `exactOptionalPropertyTypes` | `true` | Optional properties require explicit `\| undefined` when assigned from functions |
-| `moduleResolution` | `"bundler"` | Bundler-compatible module resolution |
-| `module` | `"ESNext"` | ES modules |
-| `target` | `"ESNext"` | Latest JavaScript features |
-| `customConditions` | `["bun"]` | Workspace resolution via `"bun"` export condition |
-| `skipLibCheck` | `true` | Skip type checking of `.d.ts` files for faster builds |
+| Setting                      | Value            | Purpose                                                                          |
+| ---------------------------- | ---------------- | -------------------------------------------------------------------------------- |
+| `jsx`                        | `"react-jsx"`    | Automatic JSX transform (no manual `h` imports needed)                           |
+| `jsxImportSource`            | `"@pyreon/core"` | JSX factory from `@pyreon/core/jsx-runtime`                                      |
+| `strict`                     | `true`           | Full strict mode                                                                 |
+| `exactOptionalPropertyTypes` | `true`           | Optional properties require explicit `\| undefined` when assigned from functions |
+| `moduleResolution`           | `"bundler"`      | Bundler-compatible module resolution                                             |
+| `module`                     | `"ESNext"`       | ES modules                                                                       |
+| `target`                     | `"ESNext"`       | Latest JavaScript features                                                       |
+| `customConditions`           | `["bun"]`        | Workspace resolution via `"bun"` export condition                                |
+| `skipLibCheck`               | `true`           | Skip type checking of `.d.ts` files for faster builds                            |
 
 ### App (`@pyreon/typescript/app`)
 
@@ -64,8 +69,8 @@ For application projects (SPAs, SSR apps, examples). Extends the base preset and
 
 **Additional settings over base:**
 
-| Setting | Value | Purpose |
-|---------|-------|---------|
+| Setting  | Value  | Purpose                                  |
+| -------- | ------ | ---------------------------------------- |
 | `noEmit` | `true` | No output files -- Vite handles bundling |
 
 This is the recommended preset for Pyreon applications and examples. Since `noEmit` is enabled, you can include non-source files like `vite.config.ts` without needing a separate `rootDir` configuration.
@@ -82,9 +87,9 @@ For library packages that need to emit declaration files. Extends the base prese
 
 **Additional settings over base:**
 
-| Setting | Value | Purpose |
-|---------|-------|---------|
-| `declaration` | `true` | Emit `.d.ts` declaration files |
+| Setting          | Value  | Purpose                                           |
+| ---------------- | ------ | ------------------------------------------------- |
+| `declaration`    | `true` | Emit `.d.ts` declaration files                    |
 | `declarationMap` | `true` | Emit declaration source maps for go-to-definition |
 
 ---
@@ -133,10 +138,7 @@ For a monorepo root `tsconfig.json` that references workspace packages:
   "compilerOptions": {
     "customConditions": ["bun"]
   },
-  "references": [
-    { "path": "packages/my-app" },
-    { "path": "packages/my-lib" }
-  ]
+  "references": [{ "path": "packages/my-app" }, { "path": "packages/my-lib" }]
 }
 ```
 
@@ -159,14 +161,14 @@ The base preset enables `exactOptionalPropertyTypes`. This means optional proper
 
 ```ts
 interface Config {
-  name?: string
+  name?: string;
 }
 
 function getConfig(): Config {
-  const value = maybeGetName() // returns string | undefined
+  const value = maybeGetName(); // returns string | undefined
   return {
     name: value, // OK -- value is string | undefined, name is optional
-  }
+  };
 }
 ```
 
@@ -182,8 +184,8 @@ This catches bugs where `undefined` is accidentally assigned to a property that 
 
 ## Exports Summary
 
-| Export | Description |
-|--------|-------------|
+| Export                    | Description                                                     |
+| ------------------------- | --------------------------------------------------------------- |
 | `@pyreon/typescript/base` | Base TypeScript configuration with strict mode and JSX settings |
-| `@pyreon/typescript/app` | Application preset (extends base, adds `noEmit: true`) |
-| `@pyreon/typescript/lib` | Library preset (extends base, adds declaration output) |
+| `@pyreon/typescript/app`  | Application preset (extends base, adds `noEmit: true`)          |
+| `@pyreon/typescript/lib`  | Library preset (extends base, adds declaration output)          |

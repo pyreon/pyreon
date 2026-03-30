@@ -1,5 +1,5 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocQuote = rocketstyle()({ name: "DocQuote", component: Element })
   .theme({
@@ -14,6 +14,6 @@ const DocQuote = rocketstyle()({ name: "DocQuote", component: Element })
       tag: "blockquote",
       _documentProps: props.borderColor ? { borderColor: props.borderColor } : {},
     }),
-  )
+  );
 
-export default DocQuote
+export default DocQuote;

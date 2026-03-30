@@ -1,8 +1,8 @@
-import type { VNodeChild } from "@pyreon/core"
-import { createRef } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
-import type { FormatSource } from "./image-plugin"
-import { useIntersectionObserver } from "./utils/use-intersection-observer"
+import type { VNodeChild } from "@pyreon/core";
+import { createRef } from "@pyreon/core";
+import { signal } from "@pyreon/reactivity";
+import type { FormatSource } from "./image-plugin";
+import { useIntersectionObserver } from "./utils/use-intersection-observer";
 
 // ─── Image optimization component ───────────────────────────────────────────
 //
@@ -16,38 +16,38 @@ import { useIntersectionObserver } from "./utils/use-intersection-observer"
 
 export interface ImageProps {
   /** Image source URL. */
-  src: string
+  src: string;
   /** Alt text (required for accessibility). */
-  alt: string
+  alt: string;
   /** Intrinsic width of the image. */
-  width: number
+  width: number;
   /** Intrinsic height of the image. */
-  height: number
+  height: number;
   /** Responsive sizes attribute. Default: "100vw" */
-  sizes?: string
+  sizes?: string;
   /** Responsive srcset string or source array. */
-  srcset?: string | ImageSource[]
+  srcset?: string | ImageSource[];
   /** Per-format source sets for <picture>. Provided automatically by imagePlugin. */
-  formats?: FormatSource[]
+  formats?: FormatSource[];
   /** Loading strategy. "lazy" uses IntersectionObserver, "eager" loads immediately. Default: "lazy" */
-  loading?: "lazy" | "eager"
+  loading?: "lazy" | "eager";
   /** Mark as priority (LCP image). Disables lazy loading, adds fetchPriority="high". */
-  priority?: boolean
+  priority?: boolean;
   /** Low-quality placeholder image URL or base64 data URI for blur-up effect. */
-  placeholder?: string
+  placeholder?: string;
   /** CSS class name. */
-  class?: string
+  class?: string;
   /** Inline styles. */
-  style?: string
+  style?: string;
   /** CSS object-fit. Default: "cover" */
-  fit?: "cover" | "contain" | "fill" | "none" | "scale-down"
+  fit?: "cover" | "contain" | "fill" | "none" | "scale-down";
   /** Decode async. Default: true */
-  decoding?: "sync" | "async" | "auto"
+  decoding?: "sync" | "async" | "auto";
 }
 
 export interface ImageSource {
-  src: string
-  width: number
+  src: string;
+  width: number;
 }
 
 /**
@@ -64,27 +64,27 @@ export interface ImageSource {
  * <Image src="/hero.jpg" alt="Hero" width={1200} height={630} />
  */
 export function Image(props: ImageProps): VNodeChild {
-  const isEager = props.priority || props.loading === "eager"
-  const loaded = signal(isEager)
-  const inView = signal(isEager)
-  const containerRef = createRef<HTMLElement>()
+  const isEager = props.priority || props.loading === "eager";
+  const loaded = signal(isEager);
+  const inView = signal(isEager);
+  const containerRef = createRef<HTMLElement>();
 
   // Resolve srcset from string or array
   const resolvedSrcset =
     typeof props.srcset === "string"
       ? props.srcset
-      : props.srcset?.map((s) => `${s.src} ${s.width}w`).join(", ")
+      : props.srcset?.map((s) => `${s.src} ${s.width}w`).join(", ");
 
-  const sizes = props.sizes ?? "100vw"
-  const fit = props.fit ?? "cover"
-  const hasFormats = props.formats && props.formats.length > 0
-  const aspectRatio = `${props.width} / ${props.height}`
+  const sizes = props.sizes ?? "100vw";
+  const fit = props.fit ?? "cover";
+  const hasFormats = props.formats && props.formats.length > 0;
+  const aspectRatio = `${props.width} / ${props.height}`;
 
   if (!isEager) {
     useIntersectionObserver(
       () => containerRef.current ?? undefined,
       () => inView.set(true),
-    )
+    );
   }
 
   // Static styles (don't depend on signals)
@@ -97,7 +97,7 @@ export function Image(props: ImageProps): VNodeChild {
     props.style,
   ]
     .filter(Boolean)
-    .join("; ")
+    .join("; ");
 
   const imgEl = (
     <img
@@ -122,7 +122,7 @@ export function Image(props: ImageProps): VNodeChild {
         ].join("; ")
       }
     />
-  )
+  );
 
   return (
     <div ref={containerRef} class={props.class} style={containerStyle}>
@@ -162,5 +162,5 @@ export function Image(props: ImageProps): VNodeChild {
         imgEl
       )}
     </div>
-  )
+  );
 }

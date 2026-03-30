@@ -1,4 +1,4 @@
-export type IsAttrsComponent = <T>(component: T) => boolean
+export type IsAttrsComponent = <T>(component: T) => boolean;
 
 /** Runtime type guard — checks if a component was created by `attrs()`. */
 const isAttrsComponent: IsAttrsComponent = (component) => {
@@ -7,10 +7,10 @@ const isAttrsComponent: IsAttrsComponent = (component) => {
     (typeof component === "object" || typeof component === "function") &&
     Object.hasOwn(component as object, "IS_ATTRS")
   ) {
-    return true
+    return true;
   }
 
-  return false
-}
+  return false;
+};
 
-export default isAttrsComponent
+export default isAttrsComponent;

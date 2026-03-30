@@ -1,5 +1,5 @@
-import { Element } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Element } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocumentPreview = rocketstyle({
   dimensions: {
@@ -20,31 +20,31 @@ const DocumentPreview = rocketstyle({
   })
   .styles(
     (css: any) => css`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
 
-    & > * {
-      background: white;
-      padding: 25mm;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-      margin: 20px 0;
-    }
-  `,
+      & > * {
+        background: white;
+        padding: 25mm;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        margin: 20px 0;
+      }
+    `,
   )
   .statics({ _documentType: "document" as const })
   .attrs<{
-    size?: string
-    showPageBreaks?: boolean
-    tag: string
-    _documentProps: Record<string, unknown>
+    size?: string;
+    showPageBreaks?: boolean;
+    tag: string;
+    _documentProps: Record<string, unknown>;
   }>((props) => ({
     tag: "div",
     _documentProps: {
       ...(props.size ? { size: props.size } : { size: "A4" }),
       ...(props.showPageBreaks ? { showPageBreaks: props.showPageBreaks } : {}),
     },
-  }))
+  }));
 
-export default DocumentPreview
+export default DocumentPreview;

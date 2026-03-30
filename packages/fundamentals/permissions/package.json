@@ -1,19 +1,16 @@
 {
   "name": "@pyreon/permissions",
   "version": "0.11.5",
-  "description": "Reactive permissions for Pyreon \u2014 type-safe, signal-driven, universal",
+  "description": "Reactive permissions for Pyreon — type-safe, signal-driven, universal",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/permissions#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/pyreon/pyreon.git",
     "directory": "packages/fundamentals/permissions"
-  },
-  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/permissions#readme",
-  "bugs": {
-    "url": "https://github.com/pyreon/pyreon/issues"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "files": [
     "lib",
@@ -22,6 +19,7 @@
     "LICENSE"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,22 +30,24 @@
       "types": "./lib/types/index.d.ts"
     }
   },
-  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check ."
-  },
-  "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "lint": "oxlint ."
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@vitus-labs/tools-lint": "^1.11.0"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
   }
 }

@@ -32,6 +32,6 @@ export const documentTheme = {
     lg: 24,
     xl: 40,
   },
-}
+};
 
-export type DocumentTheme = typeof documentTheme
+export type DocumentTheme = typeof documentTheme;

@@ -1,10 +1,10 @@
-import type { VNode } from "@pyreon/core"
-import type { CSSProperties, TransitionCallbacks } from "../types"
-import CollapseRenderer from "./CollapseRenderer"
-import GroupRenderer from "./GroupRenderer"
-import StaggerRenderer from "./StaggerRenderer"
-import TransitionRenderer from "./TransitionRenderer"
-import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from "./types"
+import type { VNode } from "@pyreon/core";
+import type { CSSProperties, TransitionCallbacks } from "../types";
+import CollapseRenderer from "./CollapseRenderer";
+import GroupRenderer from "./GroupRenderer";
+import StaggerRenderer from "./StaggerRenderer";
+import TransitionRenderer from "./TransitionRenderer";
+import type { ClassConfig, KineticComponent, KineticConfig, KineticMode } from "./types";
 
 /** Keys that are kinetic-specific and should not be forwarded as HTML attrs. */
 const KINETIC_KEYS = new Set([
@@ -19,7 +19,7 @@ const KINETIC_KEYS = new Set([
   "onAfterEnter",
   "onLeave",
   "onAfterLeave",
-])
+]);
 
 /**
  * Core factory. Creates a component that delegates to the appropriate
@@ -31,14 +31,14 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
 ): KineticComponent<Tag, Mode> => {
   const Component = (props: Record<string, unknown>): VNode | null => {
     // Separate kinetic-specific props from HTML pass-through props
-    const htmlProps: Record<string, unknown> = {}
-    const kineticProps: Record<string, unknown> = {}
+    const htmlProps: Record<string, unknown> = {};
+    const kineticProps: Record<string, unknown> = {};
 
     for (const key in props) {
       if (KINETIC_KEYS.has(key)) {
-        kineticProps[key] = props[key]
+        kineticProps[key] = props[key];
       } else {
-        htmlProps[key] = props[key]
+        htmlProps[key] = props[key];
       }
     }
 
@@ -55,24 +55,24 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       onLeave,
       onAfterLeave,
     } = kineticProps as {
-      show?: () => boolean
-      appear?: boolean
-      unmount?: boolean
-      timeout?: number
-      transition?: string
-      interval?: number
-      reverseLeave?: boolean
-    } & Partial<TransitionCallbacks>
+      show?: () => boolean;
+      appear?: boolean;
+      unmount?: boolean;
+      timeout?: number;
+      transition?: string;
+      interval?: number;
+      reverseLeave?: boolean;
+    } & Partial<TransitionCallbacks>;
 
     const callbacks: Partial<TransitionCallbacks> = {
       onEnter: onEnter ?? config.onEnter,
       onAfterEnter: onAfterEnter ?? config.onAfterEnter,
       onLeave: onLeave ?? config.onLeave,
       onAfterLeave: onAfterLeave ?? config.onAfterLeave,
-    }
+    };
 
     // Extract children from htmlProps (it's not an HTML attribute)
-    const { children, ...restHtml } = htmlProps
+    const { children, ...restHtml } = htmlProps;
 
     if (config.mode === "collapse") {
       return (
@@ -87,7 +87,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
         >
           {children as VNode | VNode[]}
         </CollapseRenderer>
-      )
+      );
     }
 
     if (config.mode === "stagger") {
@@ -104,7 +104,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
         >
           {children as VNode[]}
         </StaggerRenderer>
-      )
+      );
     }
 
     if (config.mode === "group") {
@@ -118,7 +118,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
         >
           {children as VNode[]}
         </GroupRenderer>
-      )
+      );
     }
 
     // Default: transition mode
@@ -134,10 +134,10 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       >
         {children as VNode | VNode[]}
       </TransitionRenderer>
-    )
-  }
+    );
+  };
 
-  Component.displayName = `kinetic(${config.tag})`
+  Component.displayName = `kinetic(${config.tag})`;
 
   // Immutable chain methods — each returns a new component with merged config.
   return Object.assign(Component, {
@@ -205,7 +205,7 @@ const createKineticComponent = <Tag extends string, Mode extends KineticMode = "
       }),
 
     group: () => createKineticComponent<Tag, "group">({ ...config, mode: "group" }),
-  }) as unknown as KineticComponent<Tag, Mode>
-}
+  }) as unknown as KineticComponent<Tag, Mode>;
+};
 
-export default createKineticComponent
+export default createKineticComponent;

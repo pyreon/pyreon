@@ -1,8 +1,8 @@
-import { createSignal, Match, Switch } from "solid-js"
-import Demo from "./Demo"
+import { createSignal, Match, Switch } from "solid-js";
+import Demo from "./Demo";
 
 export default function SwitchDemo() {
-  const [tab, setTab] = createSignal<"home" | "about" | "contact">("home")
+  const [tab, setTab] = createSignal<"home" | "about" | "contact">("home");
 
   return (
     <Demo
@@ -54,5 +54,5 @@ export default function SwitchDemo() {
         </Match>
       </Switch>
     </Demo>
-  )
+  );
 }

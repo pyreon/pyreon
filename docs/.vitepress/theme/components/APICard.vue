@@ -1,10 +1,10 @@
 <script setup lang="ts">
 defineProps<{
-  name: string
-  type?: "fn" | "component" | "hook" | "type" | "constant" | "property" | "context"
-  signature?: string
-  description?: string
-}>()
+  name: string;
+  type?: "fn" | "component" | "hook" | "type" | "constant" | "property" | "context";
+  signature?: string;
+  description?: string;
+}>();
 
 const labels: Record<string, { label: string; color: string }> = {
   fn: { label: "fn", color: "var(--vp-c-blue-1)" },
@@ -14,7 +14,7 @@ const labels: Record<string, { label: string; color: string }> = {
   constant: { label: "K", color: "var(--vp-c-orange-1)" },
   property: { label: "P", color: "var(--vp-c-indigo-1)" },
   context: { label: "Cx", color: "var(--vp-c-red-1)" },
-}
+};
 </script>
 
 <template>

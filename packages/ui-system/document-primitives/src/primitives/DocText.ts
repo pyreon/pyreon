@@ -1,5 +1,5 @@
-import { Text } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Text } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocText = rocketstyle({
   dimensions: {
@@ -30,6 +30,6 @@ const DocText = rocketstyle({
   .attrs<{ tag: string; _documentProps: Record<string, unknown> }>((_props) => ({
     tag: "p",
     _documentProps: {},
-  }))
+  }));
 
-export default DocText
+export default DocText;

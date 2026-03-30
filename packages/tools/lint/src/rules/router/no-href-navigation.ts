@@ -1,8 +1,8 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getJSXAttribute, getSpan } from "../../utils/ast"
-import { extractImportInfo } from "../../utils/imports"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getJSXAttribute, getSpan } from "../../utils/ast";
+import { extractImportInfo } from "../../utils/imports";
 
-const EXTERNAL_PREFIXES = ["http://", "https://", "mailto:", "tel:"]
+const EXTERNAL_PREFIXES = ["http://", "https://", "mailto:", "tel:"];
 
 export const noHrefNavigation: Rule = {
   meta: {
@@ -14,38 +14,38 @@ export const noHrefNavigation: Rule = {
     fixable: false,
   },
   create(context) {
-    let importsRouter = false
+    let importsRouter = false;
 
     const callbacks: VisitorCallbacks = {
       ImportDeclaration(node: any) {
-        const info = extractImportInfo(node)
+        const info = extractImportInfo(node);
         if (info && info.source === "@pyreon/router") {
-          importsRouter = true
+          importsRouter = true;
         }
       },
       JSXOpeningElement(node: any) {
-        if (!importsRouter) return
-        const name = node.name
-        if (!name || name.type !== "JSXIdentifier" || name.name !== "a") return
+        if (!importsRouter) return;
+        const name = node.name;
+        if (!name || name.type !== "JSXIdentifier" || name.name !== "a") return;
 
-        const hrefAttr = getJSXAttribute(node, "href")
-        if (!hrefAttr) return
+        const hrefAttr = getJSXAttribute(node, "href");
+        if (!hrefAttr) return;
 
         // Get the href value
-        const value = hrefAttr.value
+        const value = hrefAttr.value;
         if (value?.type === "Literal" && typeof value.value === "string") {
-          const href: string = value.value
+          const href: string = value.value;
           // Skip external URLs and anchor links
-          if (href.startsWith("#") || EXTERNAL_PREFIXES.some((p) => href.startsWith(p))) return
+          if (href.startsWith("#") || EXTERNAL_PREFIXES.some((p) => href.startsWith(p))) return;
         }
 
         context.report({
           message:
             "`<a href>` in a router file — use `<Link>` or `<RouterLink>` for client-side navigation.",
           span: getSpan(node),
-        })
+        });
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

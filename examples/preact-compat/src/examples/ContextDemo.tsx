@@ -1,20 +1,20 @@
-import { createContext, useContext } from "preact"
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { createContext, useContext } from "preact";
+import { useState } from "preact/hooks";
+import Demo from "./Demo";
 
-const ThemeCtx = createContext("dark")
+const ThemeCtx = createContext("dark");
 
 function ThemeConsumer() {
-  const theme = useContext(ThemeCtx)
+  const theme = useContext(ThemeCtx);
   return (
     <p>
       Current theme: <strong>{theme}</strong>
     </p>
-  )
+  );
 }
 
 export default function ContextDemo() {
-  const [theme, setTheme] = useState("dark")
+  const [theme, setTheme] = useState("dark");
 
   return (
     <Demo
@@ -45,5 +45,5 @@ const theme = useContext(ThemeCtx)`}
         </button>
       </div>
     </Demo>
-  )
+  );
 }

@@ -1,19 +1,19 @@
 <script setup lang="ts">
 interface Layer {
-  name: string
-  support: ("full" | "partial" | "none")[]
+  name: string;
+  support: ("full" | "partial" | "none")[];
 }
 
 defineProps<{
-  features: string[]
-  layers: Layer[]
-}>()
+  features: string[];
+  layers: Layer[];
+}>();
 
 const icons: Record<string, string> = {
   full: "\u2713",
   partial: "~",
   none: "\u2014",
-}
+};
 </script>
 
 <template>
@@ -55,7 +55,8 @@ thead tr {
   border-bottom: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-soft);
 }
-th, td {
+th,
+td {
   padding: 10px 16px;
   text-align: left;
 }

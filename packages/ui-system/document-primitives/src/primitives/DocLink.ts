@@ -1,5 +1,5 @@
-import { Text } from "@pyreon/elements"
-import rocketstyle from "@pyreon/rocketstyle"
+import { Text } from "@pyreon/elements";
+import rocketstyle from "@pyreon/rocketstyle";
 
 const DocLink = rocketstyle()({ name: "DocLink", component: Text })
   .theme({
@@ -10,6 +10,6 @@ const DocLink = rocketstyle()({ name: "DocLink", component: Text })
   .attrs<{ href?: string; tag: string; _documentProps: { href: string } }>((props) => ({
     tag: "a",
     _documentProps: { href: props.href ?? "#" },
-  }))
+  }));
 
-export default DocLink
+export default DocLink;

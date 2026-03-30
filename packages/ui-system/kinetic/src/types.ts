@@ -1,118 +1,118 @@
-import type { Ref, VNode } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
+import type { Ref, VNode } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
 
-export type CSSProperties = Record<string, string | number | undefined>
+export type CSSProperties = Record<string, string | number | undefined>;
 
 /** Internal lifecycle stages of a transition. */
-export type TransitionStage = "hidden" | "entering" | "entered" | "leaving"
+export type TransitionStage = "hidden" | "entering" | "entered" | "leaving";
 
 /** Class-based transition definition. */
 export type ClassTransitionProps = {
   /** Classes applied during the entire enter phase */
-  enter?: string | undefined
+  enter?: string | undefined;
   /** Classes applied on first frame of enter, removed on next frame */
-  enterFrom?: string | undefined
+  enterFrom?: string | undefined;
   /** Classes applied on second frame of enter, kept until complete */
-  enterTo?: string | undefined
+  enterTo?: string | undefined;
   /** Classes applied during the entire leave phase */
-  leave?: string | undefined
+  leave?: string | undefined;
   /** Classes applied on first frame of leave */
-  leaveFrom?: string | undefined
+  leaveFrom?: string | undefined;
   /** Classes applied on second frame of leave, kept until complete */
-  leaveTo?: string | undefined
-}
+  leaveTo?: string | undefined;
+};
 
 /** Style-object transition definition (zero-CSS option). */
 export type StyleTransitionProps = {
   /** Inline styles for the start of enter */
-  enterStyle?: CSSProperties | undefined
+  enterStyle?: CSSProperties | undefined;
   /** Inline styles for the end of enter */
-  enterToStyle?: CSSProperties | undefined
+  enterToStyle?: CSSProperties | undefined;
   /** CSS transition shorthand applied during enter */
-  enterTransition?: string | undefined
+  enterTransition?: string | undefined;
   /** Inline styles for the start of leave */
-  leaveStyle?: CSSProperties | undefined
+  leaveStyle?: CSSProperties | undefined;
   /** Inline styles for the end of leave */
-  leaveToStyle?: CSSProperties | undefined
+  leaveToStyle?: CSSProperties | undefined;
   /** CSS transition shorthand applied during leave */
-  leaveTransition?: string | undefined
-}
+  leaveTransition?: string | undefined;
+};
 
 /** Lifecycle callbacks. */
 export type TransitionCallbacks = {
   /** Called immediately when entering begins */
-  onEnter?: (() => void) | undefined
+  onEnter?: (() => void) | undefined;
   /** Called when enter animation completes */
-  onAfterEnter?: (() => void) | undefined
+  onAfterEnter?: (() => void) | undefined;
   /** Called immediately when leaving begins */
-  onLeave?: (() => void) | undefined
+  onLeave?: (() => void) | undefined;
   /** Called when leave animation completes */
-  onAfterLeave?: (() => void) | undefined
-}
+  onAfterLeave?: (() => void) | undefined;
+};
 
 export type TransitionProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
     /** Reactive accessor controlling visibility. true = enter, false = leave + unmount. */
-    show: () => boolean
+    show: () => boolean;
     /** If true, runs enter animation on initial mount. Default: false. */
-    appear?: boolean | undefined
+    appear?: boolean | undefined;
     /** If true (default), unmounts when hidden. If false, keeps with display:none. */
-    unmount?: boolean | undefined
+    unmount?: boolean | undefined;
     /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    timeout?: number | undefined;
     /** Single child element. Must accept ref. */
-    children: VNode
-  }
+    children: VNode;
+  };
 
 export type TransitionGroupProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
     /** If true, animates initial children on mount. Default: false. */
-    appear?: boolean | undefined
+    appear?: boolean | undefined;
     /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    timeout?: number | undefined;
     /** Children with unique keys. */
-    children: VNode[]
-  }
+    children: VNode[];
+  };
 
 export type StaggerProps = ClassTransitionProps &
   StyleTransitionProps &
   TransitionCallbacks & {
     /** Reactive accessor controlling visibility of all children. */
-    show: () => boolean
+    show: () => boolean;
     /** Delay between each child's animation start in ms. Default: 50. */
-    interval?: number | undefined
+    interval?: number | undefined;
     /** If true, reverses stagger order on leave. Default: false. */
-    reverseLeave?: boolean | undefined
+    reverseLeave?: boolean | undefined;
     /** If true, animates on initial mount. Default: false. */
-    appear?: boolean | undefined
+    appear?: boolean | undefined;
     /** Safety timeout in ms. Default: 5000. */
-    timeout?: number | undefined
+    timeout?: number | undefined;
     /** Children to stagger. */
-    children: VNode[]
-  }
+    children: VNode[];
+  };
 
 export type CollapseProps = TransitionCallbacks & {
   /** Reactive accessor controlling expanded/collapsed state. */
-  show: () => boolean
+  show: () => boolean;
   /** CSS transition for height. Default: "height 300ms ease". */
-  transition?: string | undefined
+  transition?: string | undefined;
   /** If true, animates on initial mount. Default: false. */
-  appear?: boolean | undefined
+  appear?: boolean | undefined;
   /** Safety timeout in ms. Default: 5000. */
-  timeout?: number | undefined
+  timeout?: number | undefined;
   /** The content to collapse. */
-  children: VNode
-}
+  children: VNode;
+};
 
 export type TransitionStateResult = {
   /** Current lifecycle stage (signal) */
-  stage: Signal<TransitionStage>
+  stage: Signal<TransitionStage>;
   /** Ref callback to attach to the transitioning element */
-  ref: Ref<HTMLElement> | ((node: HTMLElement | null) => void)
+  ref: Ref<HTMLElement> | ((node: HTMLElement | null) => void);
   /** Reactive accessor: whether the element should be rendered */
-  shouldMount: () => boolean
+  shouldMount: () => boolean;
   /** Call when the current animation finishes */
-  complete: () => void
-}
+  complete: () => void;
+};

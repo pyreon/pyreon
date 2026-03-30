@@ -11,16 +11,16 @@ bun add @pyreon/hotkeys
 ## Quick Start
 
 ```tsx
-import { useHotkey, useHotkeyScope } from '@pyreon/hotkeys'
+import { useHotkey, useHotkeyScope } from "@pyreon/hotkeys";
 
 // Global shortcut — auto-unregisters on unmount
-useHotkey('mod+s', () => save(), { description: 'Save document' })
-useHotkey('mod+k', () => openCommandPalette())
+useHotkey("mod+s", () => save(), { description: "Save document" });
+useHotkey("mod+k", () => openCommandPalette());
 
 // Scoped shortcuts — only active when scope is enabled
-useHotkeyScope('editor')
-useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
-useHotkey('escape', () => closeModal(), { scope: 'modal' })
+useHotkeyScope("editor");
+useHotkey("ctrl+z", () => undo(), { scope: "editor" });
+useHotkey("escape", () => closeModal(), { scope: "modal" });
 ```
 
 `mod` = Command on Mac, Ctrl elsewhere. Shortcuts are ignored in input elements by default.

@@ -4,11 +4,11 @@
  * and their light/dark mode variants to avoid recalculation on re-renders.
  */
 export default class ThemeManager {
-  baseTheme = new WeakMap()
+  baseTheme = new WeakMap();
 
-  dimensionsThemes = new WeakMap()
+  dimensionsThemes = new WeakMap();
 
-  modeBaseTheme = { light: new WeakMap(), dark: new WeakMap() }
+  modeBaseTheme = { light: new WeakMap(), dark: new WeakMap() };
 
-  modeDimensionTheme = { light: new WeakMap(), dark: new WeakMap() }
+  modeDimensionTheme = { light: new WeakMap(), dark: new WeakMap() };
 }

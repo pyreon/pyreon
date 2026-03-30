@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan } from "../../utils/ast";
 
 export const noSignalInLoop: Rule = {
   meta: {
@@ -10,50 +10,50 @@ export const noSignalInLoop: Rule = {
     fixable: false,
   },
   create(context) {
-    let loopDepth = 0
+    let loopDepth = 0;
     const callbacks: VisitorCallbacks = {
       ForStatement() {
-        loopDepth++
+        loopDepth++;
       },
       "ForStatement:exit"() {
-        loopDepth--
+        loopDepth--;
       },
       ForInStatement() {
-        loopDepth++
+        loopDepth++;
       },
       "ForInStatement:exit"() {
-        loopDepth--
+        loopDepth--;
       },
       ForOfStatement() {
-        loopDepth++
+        loopDepth++;
       },
       "ForOfStatement:exit"() {
-        loopDepth--
+        loopDepth--;
       },
       WhileStatement() {
-        loopDepth++
+        loopDepth++;
       },
       "WhileStatement:exit"() {
-        loopDepth--
+        loopDepth--;
       },
       DoWhileStatement() {
-        loopDepth++
+        loopDepth++;
       },
       "DoWhileStatement:exit"() {
-        loopDepth--
+        loopDepth--;
       },
       CallExpression(node: any) {
-        if (loopDepth === 0) return
-        const callee = node.callee
-        if (!callee || callee.type !== "Identifier") return
+        if (loopDepth === 0) return;
+        const callee = node.callee;
+        if (!callee || callee.type !== "Identifier") return;
         if (callee.name === "signal" || callee.name === "computed") {
           context.report({
             message: `\`${callee.name}()\` inside a loop — signals should be created once at component setup, not on every iteration.`,
             span: getSpan(node),
-          })
+          });
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

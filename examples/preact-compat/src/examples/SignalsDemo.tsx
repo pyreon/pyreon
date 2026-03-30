@@ -1,20 +1,20 @@
-import { batch, computed, effect, signal } from "@preact/signals"
-import { useState } from "preact/hooks"
-import Demo from "./Demo"
+import { batch, computed, effect, signal } from "@preact/signals";
+import { useState } from "preact/hooks";
+import Demo from "./Demo";
 
 export default function SignalsDemo() {
-  const count = signal(0)
-  const doubled = computed(() => count.value * 2)
-  const [effectLog, setEffectLog] = useState("waiting...")
+  const count = signal(0);
+  const doubled = computed(() => count.value * 2);
+  const [effectLog, setEffectLog] = useState("waiting...");
 
   const dispose = effect(() => {
-    const c = count.value
+    const c = count.value;
     queueMicrotask(() => {
-      setEffectLog(`effect: count = ${c}`)
-    })
-  })
+      setEffectLog(`effect: count = ${c}`);
+    });
+  });
 
-  const [disposed, setDisposed] = useState(false)
+  const [disposed, setDisposed] = useState(false);
 
   return (
     <Demo
@@ -49,9 +49,9 @@ batch(() => {
           type="button"
           onClick={() => {
             batch(() => {
-              count.value++
-              count.value++
-            })
+              count.value++;
+              count.value++;
+            });
           }}
         >
           batch +2
@@ -59,8 +59,8 @@ batch(() => {
         <button
           type="button"
           onClick={() => {
-            dispose()
-            setDisposed(true)
+            dispose();
+            setDisposed(true);
           }}
         >
           Dispose effect
@@ -71,5 +71,5 @@ batch(() => {
         {disposed ? " (disposed)" : ""}
       </p>
     </Demo>
-  )
+  );
 }

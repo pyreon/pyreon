@@ -10,86 +10,86 @@
  * existing renderer handles all DOM work.
  */
 
-import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core"
-import { Fragment, h } from "@pyreon/core"
-import { signal } from "@pyreon/reactivity"
+import type { ComponentFn, Props, VNode, VNodeChild } from "@pyreon/core";
+import { Fragment, h } from "@pyreon/core";
+import { signal } from "@pyreon/reactivity";
 
-export { Fragment }
+export { Fragment };
 
 // ─── Render context (used by hooks) ──────────────────────────────────────────
 
 export interface RenderContext {
-  hooks: unknown[]
-  scheduleRerender: () => void
+  hooks: unknown[];
+  scheduleRerender: () => void;
   /** Effect entries pending execution after render */
-  pendingEffects: EffectEntry[]
+  pendingEffects: EffectEntry[];
   /** Layout effect entries pending execution after render */
-  pendingLayoutEffects: EffectEntry[]
+  pendingLayoutEffects: EffectEntry[];
   /** Set to true when the component is unmounted */
-  unmounted: boolean
+  unmounted: boolean;
 }
 
 export interface EffectEntry {
   // biome-ignore lint/suspicious/noConfusingVoidType: matches React's effect signature
-  fn: () => (() => void) | void
-  deps: unknown[] | undefined
-  cleanup: (() => void) | undefined
+  fn: () => (() => void) | void;
+  deps: unknown[] | undefined;
+  cleanup: (() => void) | undefined;
 }
 
-let _currentCtx: RenderContext | null = null
-let _hookIndex = 0
+let _currentCtx: RenderContext | null = null;
+let _hookIndex = 0;
 
 export function getCurrentCtx(): RenderContext | null {
-  return _currentCtx
+  return _currentCtx;
 }
 
 export function getHookIndex(): number {
-  return _hookIndex++
+  return _hookIndex++;
 }
 
 export function beginRender(ctx: RenderContext): void {
-  _currentCtx = ctx
-  _hookIndex = 0
-  ctx.pendingEffects = []
-  ctx.pendingLayoutEffects = []
+  _currentCtx = ctx;
+  _hookIndex = 0;
+  ctx.pendingEffects = [];
+  ctx.pendingLayoutEffects = [];
 }
 
 export function endRender(): void {
-  _currentCtx = null
-  _hookIndex = 0
+  _currentCtx = null;
+  _hookIndex = 0;
 }
 
 // ─── Effect runners ──────────────────────────────────────────────────────────
 
 function runLayoutEffects(entries: EffectEntry[]): void {
   for (const entry of entries) {
-    if (entry.cleanup) entry.cleanup()
-    const cleanup = entry.fn()
-    entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+    if (entry.cleanup) entry.cleanup();
+    const cleanup = entry.fn();
+    entry.cleanup = typeof cleanup === "function" ? cleanup : undefined;
   }
 }
 
 function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
-  if (entries.length === 0) return
+  if (entries.length === 0) return;
   queueMicrotask(() => {
     for (const entry of entries) {
-      if (ctx.unmounted) return
-      if (entry.cleanup) entry.cleanup()
-      const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === "function" ? cleanup : undefined
+      if (ctx.unmounted) return;
+      if (entry.cleanup) entry.cleanup();
+      const cleanup = entry.fn();
+      entry.cleanup = typeof cleanup === "function" ? cleanup : undefined;
     }
-  })
+  });
 }
 
 // ─── Component wrapping ──────────────────────────────────────────────────────
 
 // biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
-const _wrapperCache = new WeakMap<Function, ComponentFn>()
+const _wrapperCache = new WeakMap<Function, ComponentFn>();
 
 // biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 function wrapCompatComponent(reactComponent: Function): ComponentFn {
-  let wrapped = _wrapperCache.get(reactComponent)
-  if (wrapped) return wrapped
+  let wrapped = _wrapperCache.get(reactComponent);
+  if (wrapped) return wrapped;
 
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.
@@ -102,38 +102,38 @@ function wrapCompatComponent(reactComponent: Function): ComponentFn {
       pendingEffects: [],
       pendingLayoutEffects: [],
       unmounted: false,
-    }
+    };
 
-    const version = signal(0)
-    let updateScheduled = false
+    const version = signal(0);
+    let updateScheduled = false;
 
     ctx.scheduleRerender = () => {
-      if (ctx.unmounted || updateScheduled) return
-      updateScheduled = true
+      if (ctx.unmounted || updateScheduled) return;
+      updateScheduled = true;
       queueMicrotask(() => {
-        updateScheduled = false
-        if (!ctx.unmounted) version.set(version.peek() + 1)
-      })
-    }
+        updateScheduled = false;
+        if (!ctx.unmounted) version.set(version.peek() + 1);
+      });
+    };
 
     // Return reactive accessor — Pyreon's mountChild calls mountReactive
     return () => {
-      version() // tracked read — triggers re-execution when state changes
-      beginRender(ctx)
-      const result = (reactComponent as ComponentFn)(props)
-      const layoutEffects = ctx.pendingLayoutEffects
-      const effects = ctx.pendingEffects
-      endRender()
+      version(); // tracked read — triggers re-execution when state changes
+      beginRender(ctx);
+      const result = (reactComponent as ComponentFn)(props);
+      const layoutEffects = ctx.pendingLayoutEffects;
+      const effects = ctx.pendingEffects;
+      endRender();
 
-      runLayoutEffects(layoutEffects)
-      scheduleEffects(ctx, effects)
+      runLayoutEffects(layoutEffects);
+      scheduleEffects(ctx, effects);
 
-      return result
-    }
-  }) as unknown as ComponentFn
+      return result;
+    };
+  }) as unknown as ComponentFn;
 
-  _wrapperCache.set(reactComponent, wrapped)
-  return wrapped
+  _wrapperCache.set(reactComponent, wrapped);
+  return wrapped;
 }
 
 // ─── JSX functions ───────────────────────────────────────────────────────────
@@ -143,27 +143,27 @@ export function jsx(
   props: Props & { children?: VNodeChild | VNodeChild[] },
   key?: string | number | null,
 ): VNode {
-  const { children, ...rest } = props
-  const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
+  const { children, ...rest } = props;
+  const propsWithKey = (key != null ? { ...rest, key } : rest) as Props;
 
   if (typeof type === "function") {
     // Wrap React-style component for re-render support
-    const wrapped = wrapCompatComponent(type)
-    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
-    return h(wrapped, componentProps)
+    const wrapped = wrapCompatComponent(type);
+    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey;
+    return h(wrapped, componentProps);
   }
 
   // DOM element or symbol (Fragment): children go in vnode.children
-  const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
+  const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children];
 
   // Map className → class for React compat
   if (typeof type === "string" && propsWithKey.className !== undefined) {
-    propsWithKey.class = propsWithKey.className
-    delete propsWithKey.className
+    propsWithKey.class = propsWithKey.className;
+    delete propsWithKey.className;
   }
 
-  return h(type, propsWithKey, ...(childArray as VNodeChild[]))
+  return h(type, propsWithKey, ...(childArray as VNodeChild[]));
 }
 
-export const jsxs = jsx
-export const jsxDEV = jsx
+export const jsxs = jsx;
+export const jsxDEV = jsx;

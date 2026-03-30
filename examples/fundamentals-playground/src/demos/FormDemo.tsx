@@ -1,8 +1,8 @@
-import { useField, useForm, useFormState } from "@pyreon/form"
-import { signal } from "@pyreon/reactivity"
+import { useField, useForm, useFormState } from "@pyreon/form";
+import { signal } from "@pyreon/reactivity";
 
 export function FormDemo() {
-  const submitted = signal<string | null>(null)
+  const submitted = signal<string | null>(null);
 
   const form = useForm({
     initialValues: {
@@ -14,27 +14,27 @@ export function FormDemo() {
     validators: {
       name: (v) => (!v ? "Name is required" : undefined),
       email: (v) => {
-        if (!v) return "Email is required"
-        if (!v.includes("@")) return "Must be a valid email"
-        return undefined
+        if (!v) return "Email is required";
+        if (!v.includes("@")) return "Must be a valid email";
+        return undefined;
       },
       password: (v) => {
-        if (!v) return "Password is required"
-        if (v.length < 8) return "Must be at least 8 characters"
-        return undefined
+        if (!v) return "Password is required";
+        if (v.length < 8) return "Must be at least 8 characters";
+        return undefined;
       },
     },
     validateOn: "blur",
     onSubmit: async (values) => {
-      await new Promise((r) => setTimeout(r, 500))
-      submitted.set(JSON.stringify(values, null, 2))
+      await new Promise((r) => setTimeout(r, 500));
+      submitted.set(JSON.stringify(values, null, 2));
     },
-  })
+  });
 
-  const name = useField(form, "name")
-  const email = useField(form, "email")
-  const password = useField(form, "password")
-  const state = useFormState(form)
+  const name = useField(form, "name");
+  const email = useField(form, "email");
+  const password = useField(form, "password");
+  const state = useFormState(form);
 
   return (
     <div>
@@ -110,5 +110,5 @@ export function FormDemo() {
         ) : null
       }
     </div>
-  )
+  );
 }

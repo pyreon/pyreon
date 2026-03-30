@@ -112,4 +112,4 @@ export const flowStyles = `
 .pyreon-flow-controls button:active {
   background: #e5e7eb !important;
 }
-`
+`;

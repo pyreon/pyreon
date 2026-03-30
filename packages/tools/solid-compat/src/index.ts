@@ -13,7 +13,7 @@
  *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
  */
 
-import type { ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core"
+import type { ComponentFn, LazyComponent, Props, VNodeChild } from "@pyreon/core";
 import {
   ErrorBoundary,
   For,
@@ -25,7 +25,7 @@ import {
   Show,
   Suspense,
   Switch,
-} from "@pyreon/core"
+} from "@pyreon/core";
 import {
   type EffectScope,
   effectScope,
@@ -37,47 +37,47 @@ import {
   signal as pyreonSignal,
   runUntracked,
   setCurrentScope,
-} from "@pyreon/reactivity"
-import { getCurrentCtx, getHookIndex } from "./jsx-runtime"
+} from "@pyreon/reactivity";
+import { getCurrentCtx, getHookIndex } from "./jsx-runtime";
 
 // ─── createSignal ────────────────────────────────────────────────────────────
 
-export type SignalGetter<T> = () => T
-export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
+export type SignalGetter<T> = () => T;
+export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void;
 
 export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter<T>] {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
+    const idx = getHookIndex();
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = pyreonSignal<T>(initialValue)
+      ctx.hooks[idx] = pyreonSignal<T>(initialValue);
     }
-    const s = ctx.hooks[idx] as ReturnType<typeof pyreonSignal<T>>
-    const { scheduleRerender } = ctx
+    const s = ctx.hooks[idx] as ReturnType<typeof pyreonSignal<T>>;
+    const { scheduleRerender } = ctx;
 
-    const getter: SignalGetter<T> = () => s()
+    const getter: SignalGetter<T> = () => s();
     const setter: SignalSetter<T> = (v) => {
       if (typeof v === "function") {
-        s.update(v as (prev: T) => T)
+        s.update(v as (prev: T) => T);
       } else {
-        s.set(v)
+        s.set(v);
       }
-      scheduleRerender()
-    }
-    return [getter, setter]
+      scheduleRerender();
+    };
+    return [getter, setter];
   }
 
   // Outside component — plain Pyreon signal
-  const s = pyreonSignal<T>(initialValue)
-  const getter: SignalGetter<T> = () => s()
+  const s = pyreonSignal<T>(initialValue);
+  const getter: SignalGetter<T> = () => s();
   const setter: SignalSetter<T> = (v) => {
     if (typeof v === "function") {
-      s.update(v as (prev: T) => T)
+      s.update(v as (prev: T) => T);
     } else {
-      s.set(v)
+      s.set(v);
     }
-  }
-  return [getter, setter]
+  };
+  return [getter, setter];
 }
 
 // ─── createEffect ────────────────────────────────────────────────────────────
@@ -91,29 +91,29 @@ export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter
  * the effect.
  */
 export function createEffect(fn: () => void): void {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
-    if (idx < ctx.hooks.length) return // Already registered on first render
+    const idx = getHookIndex();
+    if (idx < ctx.hooks.length) return; // Already registered on first render
 
-    let running = false
+    let running = false;
     const e = pyreonEffect(() => {
-      if (running) return
-      running = true
+      if (running) return;
+      running = true;
       try {
-        fn()
+        fn();
       } finally {
-        running = false
+        running = false;
       }
-    })
-    const stop = () => e.dispose()
-    ctx.hooks[idx] = stop
-    ctx.unmountCallbacks.push(stop)
-    return
+    });
+    const stop = () => e.dispose();
+    ctx.hooks[idx] = stop;
+    ctx.unmountCallbacks.push(stop);
+    return;
   }
 
   // Outside component
-  pyreonEffect(fn)
+  pyreonEffect(fn);
 }
 
 // ─── createRenderEffect ──────────────────────────────────────────────────────
@@ -123,12 +123,12 @@ export function createEffect(fn: () => void): void {
  * In Solid, this runs during the render phase; here it runs as a Pyreon effect.
  */
 export function createRenderEffect(fn: () => void): void {
-  createEffect(fn)
+  createEffect(fn);
 }
 
 // ─── createComputed (legacy Solid API) ───────────────────────────────────────
 
-export { createEffect as createComputed }
+export { createEffect as createComputed };
 
 // ─── createMemo ──────────────────────────────────────────────────────────────
 
@@ -139,38 +139,38 @@ export { createEffect as createComputed }
  * Uses Pyreon's native computed for auto-tracking.
  */
 export function createMemo<T>(fn: () => T): () => T {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
+    const idx = getHookIndex();
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = pyreonComputed(fn)
+      ctx.hooks[idx] = pyreonComputed(fn);
     }
-    const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>
-    return () => c()
+    const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>;
+    return () => c();
   }
 
   // Outside component
-  const c = pyreonComputed(fn)
-  return () => c()
+  const c = pyreonComputed(fn);
+  return () => c();
 }
 
 // ─── createRoot ──────────────────────────────────────────────────────────────
 
 export function createRoot<T>(fn: (dispose: () => void) => T): T {
-  const scope = effectScope()
-  const prev = getCurrentScope()
-  setCurrentScope(scope)
+  const scope = effectScope();
+  const prev = getCurrentScope();
+  setCurrentScope(scope);
   try {
-    return fn(() => scope.stop())
+    return fn(() => scope.stop());
   } finally {
-    setCurrentScope(prev)
+    setCurrentScope(prev);
   }
 }
 
 // ─── on ──────────────────────────────────────────────────────────────────────
 
-type AccessorArray = readonly (() => unknown)[]
-type OnEffectFunction<D, V> = (input: D, prevInput: D | undefined, prev: V | undefined) => V
+type AccessorArray = readonly (() => unknown)[];
+type OnEffectFunction<D, V> = (input: D, prevInput: D | undefined, prev: V | undefined) => V;
 
 export function on<S extends (() => unknown) | AccessorArray, V>(
   deps: S,
@@ -179,100 +179,100 @@ export function on<S extends (() => unknown) | AccessorArray, V>(
     V
   >,
 ): () => V | undefined {
-  type D = S extends () => infer R ? R : S extends readonly (() => infer R)[] ? R[] : never
+  type D = S extends () => infer R ? R : S extends readonly (() => infer R)[] ? R[] : never;
 
-  let prevInput: D | undefined
-  let prevValue: V | undefined
-  let initialized = false
+  let prevInput: D | undefined;
+  let prevValue: V | undefined;
+  let initialized = false;
 
   return () => {
     // Read dependencies to register tracking
     const input: D = (
       Array.isArray(deps) ? (deps as (() => unknown)[]).map((d) => d()) : (deps as () => unknown)()
-    ) as D
+    ) as D;
 
     if (!initialized) {
-      initialized = true
-      prevValue = fn(input, undefined, undefined)
-      prevInput = input
-      return prevValue
+      initialized = true;
+      prevValue = fn(input, undefined, undefined);
+      prevInput = input;
+      return prevValue;
     }
 
-    const result = runUntracked(() => fn(input, prevInput, prevValue))
-    prevInput = input
-    prevValue = result
-    return result
-  }
+    const result = runUntracked(() => fn(input, prevInput, prevValue));
+    prevInput = input;
+    prevValue = result;
+    return result;
+  };
 }
 
 // ─── batch ───────────────────────────────────────────────────────────────────
 
-export { pyreonBatch as batch }
+export { pyreonBatch as batch };
 
 // ─── untrack ─────────────────────────────────────────────────────────────────
 
-export { runUntracked as untrack }
+export { runUntracked as untrack };
 
 // ─── onMount / onCleanup ─────────────────────────────────────────────────────
 
 /**
  * Solid-compatible `onMount` — runs once after the component's first render.
  */
-type CleanupFn = () => void
+type CleanupFn = () => void;
 // biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
 export function onMount(fn: () => CleanupFn | void | undefined): void {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
+    const idx = getHookIndex();
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = true
+      ctx.hooks[idx] = true;
       ctx.pendingEffects.push({
         fn: () => {
-          fn()
-          return undefined
+          fn();
+          return undefined;
         },
         deps: undefined,
         cleanup: undefined,
-      })
+      });
     }
-    return
+    return;
   }
 
   // Outside component
-  pyreonOnMount(fn)
+  pyreonOnMount(fn);
 }
 
 /**
  * Solid-compatible `onCleanup` — registers a callback to run when the component unmounts.
  */
 export function onCleanup(fn: () => void): void {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
+    const idx = getHookIndex();
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = true
-      ctx.unmountCallbacks.push(fn)
+      ctx.hooks[idx] = true;
+      ctx.unmountCallbacks.push(fn);
     }
-    return
+    return;
   }
 
   // Outside component
-  pyreonOnUnmount(fn)
+  pyreonOnUnmount(fn);
 }
 
 // ─── createSelector ──────────────────────────────────────────────────────────
 
 export function createSelector<T>(source: () => T): (key: T) => boolean {
-  const ctx = getCurrentCtx()
+  const ctx = getCurrentCtx();
   if (ctx) {
-    const idx = getHookIndex()
+    const idx = getHookIndex();
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = pyreonCreateSelector(source)
+      ctx.hooks[idx] = pyreonCreateSelector(source);
     }
-    return ctx.hooks[idx] as (key: T) => boolean
+    return ctx.hooks[idx] as (key: T) => boolean;
   }
 
-  return pyreonCreateSelector(source)
+  return pyreonCreateSelector(source);
 }
 
 // ─── mergeProps ──────────────────────────────────────────────────────────────
@@ -281,35 +281,35 @@ type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) exten
   k: infer I,
 ) => void
   ? I
-  : never
+  : never;
 
-type MergeProps<T extends object[]> = UnionToIntersection<T[number]>
+type MergeProps<T extends object[]> = UnionToIntersection<T[number]>;
 
 export function mergeProps<T extends object[]>(...sources: [...T]): MergeProps<T> {
-  const target = {} as Record<PropertyKey, unknown>
+  const target = {} as Record<PropertyKey, unknown>;
   for (const source of sources) {
-    const descriptors = Object.getOwnPropertyDescriptors(source)
+    const descriptors = Object.getOwnPropertyDescriptors(source);
     for (const key of Reflect.ownKeys(descriptors)) {
-      const desc = descriptors[key as string]
-      if (!desc) continue
+      const desc = descriptors[key as string];
+      if (!desc) continue;
       // Preserve getters for reactivity
       if (desc.get) {
         Object.defineProperty(target, key, {
           get: desc.get,
           enumerable: true,
           configurable: true,
-        })
+        });
       } else {
         Object.defineProperty(target, key, {
           value: desc.value,
           writable: true,
           enumerable: true,
           configurable: true,
-        })
+        });
       }
     }
   }
-  return target as MergeProps<T>
+  return target as MergeProps<T>;
 }
 
 // ─── splitProps ──────────────────────────────────────────────────────────────
@@ -318,44 +318,44 @@ export function splitProps<T extends Record<string, unknown>, K extends (keyof T
   props: T,
   ...keys: K
 ): [Pick<T, K[number]>, Omit<T, K[number]>] {
-  const picked = {} as Pick<T, K[number]>
-  const rest = {} as Record<string, unknown>
-  const keySet = new Set<string>(keys.flat() as string[])
+  const picked = {} as Pick<T, K[number]>;
+  const rest = {} as Record<string, unknown>;
+  const keySet = new Set<string>(keys.flat() as string[]);
 
-  const descriptors = Object.getOwnPropertyDescriptors(props)
+  const descriptors = Object.getOwnPropertyDescriptors(props);
   for (const key of Reflect.ownKeys(descriptors)) {
-    const desc = descriptors[key as string]
-    if (!desc) continue
-    const target = typeof key === "string" && keySet.has(key) ? picked : rest
+    const desc = descriptors[key as string];
+    if (!desc) continue;
+    const target = typeof key === "string" && keySet.has(key) ? picked : rest;
     if (desc.get) {
       Object.defineProperty(target, key, {
         get: desc.get,
         enumerable: true,
         configurable: true,
-      })
+      });
     } else {
       Object.defineProperty(target, key, {
         value: desc.value,
         writable: true,
         enumerable: true,
         configurable: true,
-      })
+      });
     }
   }
 
-  return [picked, rest as Omit<T, K[number]>]
+  return [picked, rest as Omit<T, K[number]>];
 }
 
 // ─── children ────────────────────────────────────────────────────────────────
 
 export function children(fn: () => VNodeChild): () => VNodeChild {
   const memo = createMemo(() => {
-    const result = fn()
+    const result = fn();
     // Resolve function children (reactive getters)
-    if (typeof result === "function") return (result as () => VNodeChild)()
-    return result
-  })
-  return memo
+    if (typeof result === "function") return (result as () => VNodeChild)();
+    return result;
+  });
+  return memo;
 }
 
 // ─── lazy ────────────────────────────────────────────────────────────────────
@@ -363,68 +363,68 @@ export function children(fn: () => VNodeChild): () => VNodeChild {
 export function lazy<P extends Props>(
   loader: () => Promise<{ default: ComponentFn<P> }>,
 ): LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> } {
-  const loaded = pyreonSignal<ComponentFn<P> | null>(null)
-  const error = pyreonSignal<Error | null>(null)
-  let promise: Promise<{ default: ComponentFn<P> }> | null = null
+  const loaded = pyreonSignal<ComponentFn<P> | null>(null);
+  const error = pyreonSignal<Error | null>(null);
+  let promise: Promise<{ default: ComponentFn<P> }> | null = null;
 
   const load = () => {
     if (!promise) {
       promise = loader()
         .then((mod) => {
-          loaded.set(mod.default)
-          return mod
+          loaded.set(mod.default);
+          return mod;
         })
         .catch((err) => {
-          const e = err instanceof Error ? err : new Error(String(err))
-          error.set(e)
-          promise = null
-          throw e
-        })
+          const e = err instanceof Error ? err : new Error(String(err));
+          error.set(e);
+          promise = null;
+          throw e;
+        });
     }
-    return promise
-  }
+    return promise;
+  };
 
   // Uses Pyreon's __loading protocol — Suspense checks this to show fallback.
   // __loading() triggers load() on first call so loading starts when Suspense
   // first encounters the component (not at module load time, not on first render).
   const LazyComp = ((props: P) => {
-    const err = error()
-    if (err) throw err
-    const comp = loaded()
-    if (!comp) return null
-    return comp(props)
-  }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> }
+    const err = error();
+    if (err) throw err;
+    const comp = loaded();
+    if (!comp) return null;
+    return comp(props);
+  }) as LazyComponent<P> & { preload: () => Promise<{ default: ComponentFn<P> }> };
 
   LazyComp.__loading = () => {
-    const isLoading = loaded() === null && error() === null
-    if (isLoading) load()
-    return isLoading
-  }
-  LazyComp.preload = load
+    const isLoading = loaded() === null && error() === null;
+    if (isLoading) load();
+    return isLoading;
+  };
+  LazyComp.preload = load;
 
-  return LazyComp
+  return LazyComp;
 }
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 
-export { pyreonCreateContext as createContext, pyreonUseContext as useContext }
+export { pyreonCreateContext as createContext, pyreonUseContext as useContext };
 
 // ─── getOwner / runWithOwner ─────────────────────────────────────────────────
 
 export function getOwner(): EffectScope | null {
-  return getCurrentScope()
+  return getCurrentScope();
 }
 
 export function runWithOwner<T>(owner: EffectScope | null, fn: () => T): T {
-  const prev = getCurrentScope()
-  setCurrentScope(owner)
+  const prev = getCurrentScope();
+  setCurrentScope(owner);
   try {
-    return fn()
+    return fn();
   } finally {
-    setCurrentScope(prev)
+    setCurrentScope(prev);
   }
 }
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────
 
-export { ErrorBoundary, For, Match, Show, Suspense, Switch }
+export { ErrorBoundary, For, Match, Show, Suspense, Switch };

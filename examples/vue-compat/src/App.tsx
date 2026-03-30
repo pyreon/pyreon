@@ -1,17 +1,17 @@
-import { For } from "@pyreon/core"
-import BatchDemo from "./examples/BatchDemo"
-import ComputedDemo from "./examples/ComputedDemo"
-import CreateAppDemo from "./examples/CreateAppDemo"
-import DefineComponentDemo from "./examples/DefineComponentDemo"
-import HFragmentDemo from "./examples/HFragmentDemo"
-import LifecycleDemo from "./examples/LifecycleDemo"
-import NextTickDemo from "./examples/NextTickDemo"
-import ProvideInjectDemo from "./examples/ProvideInjectDemo"
-import ReactiveDemo from "./examples/ReactiveDemo"
-import RefDemo from "./examples/RefDemo"
-import ToRefDemo from "./examples/ToRefDemo"
-import WatchDemo from "./examples/WatchDemo"
-import WatchEffectDemo from "./examples/WatchEffectDemo"
+import { For } from "@pyreon/core";
+import BatchDemo from "./examples/BatchDemo";
+import ComputedDemo from "./examples/ComputedDemo";
+import CreateAppDemo from "./examples/CreateAppDemo";
+import DefineComponentDemo from "./examples/DefineComponentDemo";
+import HFragmentDemo from "./examples/HFragmentDemo";
+import LifecycleDemo from "./examples/LifecycleDemo";
+import NextTickDemo from "./examples/NextTickDemo";
+import ProvideInjectDemo from "./examples/ProvideInjectDemo";
+import ReactiveDemo from "./examples/ReactiveDemo";
+import RefDemo from "./examples/RefDemo";
+import ToRefDemo from "./examples/ToRefDemo";
+import WatchDemo from "./examples/WatchDemo";
+import WatchEffectDemo from "./examples/WatchEffectDemo";
 
 // ─── All APIs ────────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ const ALL_APIS = [
   "Fragment",
   "createApp",
   "batch",
-]
+];
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
@@ -85,5 +85,5 @@ export default function App() {
         Built with @pyreon/vue-compat — all {ALL_APIS.length} APIs from a single import
       </footer>
     </>
-  )
+  );
 }

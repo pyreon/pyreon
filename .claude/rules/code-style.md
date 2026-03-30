@@ -1,21 +1,25 @@
 # Code Style Rules
 
-## Linting
-- Biome v2 for linting and formatting
-- Config in root `biome.jsonc`
-- Biome v2 uses `files.includes` with `!` prefixes (not `files.ignore`)
-- Every package and example has its own `"lint": "biome check ."` script
-- Run all: `bun run lint` (uses `--filter='*'` to run per-workspace)
-- Run single: `cd packages/<name> && bun run lint`
-- Auto-fix: `bunx biome check --write .`
+## Linting & Formatting
+
+- **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
+- **oxfmt** for formatting (Rust-powered, Prettier-compatible)
+- **@pyreon/lint** for Pyreon-specific rules (55 rules, 12 categories)
+- Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting)
+- Run lint: `bun run lint` (runs `oxlint .` from root)
+- Run format: `bun run format` (runs `oxfmt --write .`)
+- Check format: `bun run format:check` (runs `oxfmt --check .`)
+- Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)
 
 ## TypeScript
+
 - `exactOptionalPropertyTypes` enabled — optional properties need explicit `| undefined`
 - `jsx: "preserve"` with `jsxImportSource: "@pyreon/core"` in root tsconfig
 - `customConditions: ["bun"]` in root tsconfig for workspace resolution
 - No build step needed for development — `"bun": "./src/index.ts"` in each package's exports
 
 ## Conventions
+
 - Prefer `signal<T>()` callable pattern (not `.value` getter/setter)
 - Components are plain functions: `ComponentFn<P> = (props: P) => VNodeChild`
 - `onMount` returns `CleanupFn | undefined` (not `void`)
@@ -26,6 +30,7 @@
 - `HigherOrderComponent<HOP, P>` for typed HOC patterns
 
 ## Dead Code
+
 - Remove dead code rather than commenting it out
 - If browser APIs are removed from spec, remove the code that uses them
 - Don't add backwards-compatibility shims for removed features

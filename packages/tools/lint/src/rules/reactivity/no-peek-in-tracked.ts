@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo, isPeekCall } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo, isPeekCall } from "../../utils/ast";
 
 export const noPeekInTracked: Rule = {
   meta: {
@@ -10,26 +10,26 @@ export const noPeekInTracked: Rule = {
     fixable: false,
   },
   create(context) {
-    let trackedDepth = 0
+    let trackedDepth = 0;
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         if (isCallTo(node, "effect") || isCallTo(node, "computed")) {
-          trackedDepth++
+          trackedDepth++;
         }
         if (trackedDepth > 0 && isPeekCall(node)) {
           context.report({
             message:
               "`.peek()` inside a tracked scope (effect/computed) bypasses dependency tracking — use a normal signal read instead.",
             span: getSpan(node),
-          })
+          });
         }
       },
       "CallExpression:exit"(node: any) {
         if (isCallTo(node, "effect") || isCallTo(node, "computed")) {
-          trackedDepth--
+          trackedDepth--;
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

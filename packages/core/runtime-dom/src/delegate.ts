@@ -11,7 +11,7 @@
  * - Faster initial mount (~0.4-0.8ms savings on 1000-row benchmarks)
  */
 
-import { batch } from "@pyreon/reactivity"
+import { batch } from "@pyreon/reactivity";
 
 /**
  * Events that are delegated (common bubbling events).
@@ -42,41 +42,41 @@ export const DELEGATED_EVENTS = new Set([
   "touchend",
   "touchmove",
   "submit",
-])
+]);
 
 /**
  * Property name used on DOM elements to store delegated event handlers.
  * Format: `__ev_{eventName}` e.g. `__ev_click`, `__ev_input`
  */
 export function delegatedPropName(eventName: string): string {
-  return `__ev_${eventName}`
+  return `__ev_${eventName}`;
 }
 
 // Track which containers already have delegation installed
-const _delegated = new WeakSet<Element>()
+const _delegated = new WeakSet<Element>();
 
 /**
  * Install delegation listeners on a container element.
  * Called once from mount(). Idempotent — safe to call multiple times.
  */
 export function setupDelegation(container: Element): void {
-  if (_delegated.has(container)) return
-  _delegated.add(container)
+  if (_delegated.has(container)) return;
+  _delegated.add(container);
 
   for (const eventName of DELEGATED_EVENTS) {
-    const prop = delegatedPropName(eventName)
+    const prop = delegatedPropName(eventName);
     container.addEventListener(eventName, (e: Event) => {
-      let el = e.target as (HTMLElement & Record<string, unknown>) | null
+      let el = e.target as (HTMLElement & Record<string, unknown>) | null;
       while (el && el !== container) {
-        const handler = el[prop]
+        const handler = el[prop];
         if (typeof handler === "function") {
-          batch(() => handler(e))
+          batch(() => handler(e));
           // Don't break — allow ancestor handlers too (consistent with addEventListener)
           // But if stopPropagation was called, stop walking
-          if (e.cancelBubble) break
+          if (e.cancelBubble) break;
         }
-        el = el.parentElement as (HTMLElement & Record<string, unknown>) | null
+        el = el.parentElement as (HTMLElement & Record<string, unknown>) | null;
       }
-    })
+    });
   }
 }

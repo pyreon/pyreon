@@ -1,37 +1,37 @@
-import { onUnmount } from "@pyreon/core"
+import { onUnmount } from "@pyreon/core";
 
-let lockCount = 0
-let savedOverflow = ""
+let lockCount = 0;
+let savedOverflow = "";
 
 /**
  * Lock page scroll. Uses reference counting for concurrent locks.
  * Returns an unlock function.
  */
 export function useScrollLock(): { lock: () => void; unlock: () => void } {
-  let isLocked = false
+  let isLocked = false;
 
   const lock = () => {
-    if (isLocked) return
-    isLocked = true
+    if (isLocked) return;
+    isLocked = true;
     if (lockCount === 0) {
-      savedOverflow = document.body.style.overflow
-      document.body.style.overflow = "hidden"
+      savedOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
     }
-    lockCount++
-  }
+    lockCount++;
+  };
 
   const unlock = () => {
-    if (!isLocked) return
-    isLocked = false
-    lockCount--
+    if (!isLocked) return;
+    isLocked = false;
+    lockCount--;
     if (lockCount === 0) {
-      document.body.style.overflow = savedOverflow
+      document.body.style.overflow = savedOverflow;
     }
-  }
+  };
 
   onUnmount(() => {
-    if (isLocked) unlock()
-  })
+    if (isLocked) unlock();
+  });
 
-  return { lock, unlock }
+  return { lock, unlock };
 }

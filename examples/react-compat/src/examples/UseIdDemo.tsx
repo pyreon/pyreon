@@ -1,9 +1,9 @@
-import { useId } from "react"
-import Demo from "./Demo"
+import { useId } from "react";
+import Demo from "./Demo";
 
 export default function UseIdDemo() {
-  const id1 = useId()
-  const id2 = useId()
+  const id1 = useId();
+  const id2 = useId();
 
   return (
     <Demo
@@ -27,5 +27,5 @@ export default function UseIdDemo() {
         </label>
       </div>
     </Demo>
-  )
+  );
 }

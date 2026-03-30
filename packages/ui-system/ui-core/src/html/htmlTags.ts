@@ -101,7 +101,7 @@ const HTML_TAGS = [
   "var",
   "video",
   "wbr",
-] as const
+] as const;
 
 const HTML_TEXT_TAGS = [
   "abbr",
@@ -144,8 +144,8 @@ const HTML_TEXT_TAGS = [
   "sup",
   "time",
   "u",
-] as const
+] as const;
 
-export type HTMLTags = (typeof HTML_TAGS)[number]
-export type HTMLTextTags = (typeof HTML_TEXT_TAGS)[number]
-export { HTML_TAGS, HTML_TEXT_TAGS }
+export type HTMLTags = (typeof HTML_TAGS)[number];
+export type HTMLTextTags = (typeof HTML_TEXT_TAGS)[number];
+export { HTML_TAGS, HTML_TEXT_TAGS };

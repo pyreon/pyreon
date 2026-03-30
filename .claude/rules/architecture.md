@@ -1,18 +1,21 @@
 # Architecture Rules
 
 ## Monorepo Structure
+
 - All packages under `packages/` with `@pyreon/*` scope
 - Examples under `examples/` — also part of the workspace
 - Workspace resolution via `"bun"` condition — no build step for dev
 - Dependencies between packages use workspace protocol
 
 ## CI Requirements
+
 - Every package and example must have `"lint": "biome check ."` and `"typecheck": "tsc --noEmit"` scripts
 - Root `lint` and `typecheck` run via `bun run --filter='*'` to cover all workspaces
 - Always verify `bun run lint` and `bun run typecheck` pass before committing
 - Examples use `noEmit: true` in tsconfig (not `rootDir`) since they include vite.config.ts
 
 ## Package Layers (dependency order)
+
 1. `@pyreon/reactivity` — standalone, no framework deps
 2. `@pyreon/core` — depends on reactivity
 3. `@pyreon/compiler` — standalone babel transform
@@ -25,6 +28,7 @@
 10. Compat packages — depend on core + reactivity
 
 ## Performance Principles
+
 - `_tpl()` (cloneNode) + `_bind()` for compiled templates — 0 VNode allocations
 - `TextNode.data` for reactive text (not `.textContent`)
 - Signal subscriptions via `Set<() => void>`, batch uses pointer swap
@@ -33,6 +37,7 @@
 - `renderEffect` uses local array for deps (lighter than `effect()`)
 
 ## SSR
+
 - `renderToString(vnode)` + `renderToStream(vnode)` with Suspense streaming
 - Always call `mergeChildrenIntoProps(vnode)` before `runWithHooks`
 - `runWithRequestContext(fn)` isolates context + store per request via ALS

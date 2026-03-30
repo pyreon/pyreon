@@ -1,10 +1,10 @@
-import { defineComponent, ref } from "vue"
-import Demo from "./Demo"
+import { defineComponent, ref } from "vue";
+import Demo from "./Demo";
 
 const Greeting = defineComponent({
   name: "Greeting",
   setup(props: { name: string }) {
-    const exclaim = ref(false)
+    const exclaim = ref(false);
     return () => (
       <p>
         Hello, <strong>{props.name}</strong>
@@ -17,12 +17,12 @@ const Greeting = defineComponent({
           Toggle !
         </button>
       </p>
-    )
+    );
   },
-})
+});
 
 export default function DefineComponentDemo() {
-  const name = ref("World")
+  const name = ref("World");
 
   return (
     <Demo
@@ -48,5 +48,5 @@ export default function DefineComponentDemo() {
         </button>
       </div>
     </Demo>
-  )
+  );
 }

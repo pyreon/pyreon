@@ -1,4 +1,4 @@
-export type UseLatest = <T>(value: T) => { readonly current: T }
+export type UseLatest = <T>(value: T) => { readonly current: T };
 
 /**
  * Returns a ref-like object that always holds the latest value.
@@ -10,8 +10,8 @@ export type UseLatest = <T>(value: T) => { readonly current: T }
  * getter to read the latest value.
  */
 export const useLatest: UseLatest = <T>(value: T) => {
-  const ref = { current: value }
-  return ref
-}
+  const ref = { current: value };
+  return ref;
+};
 
-export default useLatest
+export default useLatest;

@@ -1,5 +1,5 @@
-import type { Rule, VisitorCallbacks } from "../../types"
-import { getSpan, isCallTo } from "../../utils/ast"
+import type { Rule, VisitorCallbacks } from "../../types";
+import { getSpan, isCallTo } from "../../utils/ast";
 
 export const noNestedEffect: Rule = {
   meta: {
@@ -10,24 +10,24 @@ export const noNestedEffect: Rule = {
     fixable: false,
   },
   create(context) {
-    let effectDepth = 0
+    let effectDepth = 0;
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
-        if (!isCallTo(node, "effect")) return
+        if (!isCallTo(node, "effect")) return;
         if (effectDepth > 0) {
           context.report({
             message: "Nested `effect()` — consider using `computed()` for derived values instead.",
             span: getSpan(node),
-          })
+          });
         }
-        effectDepth++
+        effectDepth++;
       },
       "CallExpression:exit"(node: any) {
         if (isCallTo(node, "effect")) {
-          effectDepth--
+          effectDepth--;
         }
       },
-    }
-    return callbacks
+    };
+    return callbacks;
   },
-}
+};

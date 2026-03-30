@@ -6,10 +6,10 @@
  */
 
 export interface ApiEntry {
-  signature: string
-  example: string
-  notes?: string
-  mistakes?: string
+  signature: string;
+  example: string;
+  notes?: string;
+  mistakes?: string;
 }
 
 export const API_REFERENCE: Record<string, ApiEntry> = {
@@ -1111,4 +1111,4 @@ export const Primary: StoryObj<typeof meta> = {
     notes:
       "Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.",
   },
-}
+};

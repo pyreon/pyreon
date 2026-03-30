@@ -1,6 +1,6 @@
-import type { EditorLanguage } from "@pyreon/code"
-import { createEditor, getAvailableLanguages } from "@pyreon/code"
-import { computed, signal } from "@pyreon/reactivity"
+import type { EditorLanguage } from "@pyreon/code";
+import { createEditor, getAvailableLanguages } from "@pyreon/code";
+import { computed, signal } from "@pyreon/reactivity";
 
 const sampleFiles: Record<string, { language: EditorLanguage; value: string }> = {
   "main.ts": {
@@ -78,7 +78,7 @@ users = [
 for user in users:
     print(greet(user))`,
   },
-}
+};
 
 export function CodeDemo() {
   // Create a single editor instance
@@ -89,33 +89,33 @@ export function CodeDemo() {
     minimap: false,
     lineNumbers: true,
     placeholder: "Start typing...",
-  })
+  });
 
   // Active file tracking
-  const activeFile = signal("main.ts")
-  const fileNames = Object.keys(sampleFiles)
+  const activeFile = signal("main.ts");
+  const fileNames = Object.keys(sampleFiles);
 
   // Theme toggle
-  const isDark = signal(true)
+  const isDark = signal(true);
 
   // Inserted text log
-  const log = signal<string[]>([])
-  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg])
+  const log = signal<string[]>([]);
+  const addLog = (msg: string) => log.update((l) => [...l.slice(-9), msg]);
 
   // Derived state from editor
   const cursorInfo = computed(() => {
-    const c = editor.cursor()
-    return `Ln ${c.line}, Col ${c.col}`
-  })
+    const c = editor.cursor();
+    return `Ln ${c.line}, Col ${c.col}`;
+  });
 
   const selectionInfo = computed(() => {
-    const s = editor.selection()
-    if (s.from === s.to) return "No selection"
-    return `Selected ${s.to - s.from} chars`
-  })
+    const s = editor.selection();
+    if (s.from === s.to) return "No selection";
+    return `Selected ${s.to - s.from} chars`;
+  });
 
   // Available languages
-  const languages = getAvailableLanguages()
+  const languages = getAvailableLanguages();
 
   return (
     <div>
@@ -136,11 +136,11 @@ export function CodeDemo() {
               key={name}
               class={activeFile() === name ? "active" : ""}
               onClick={() => {
-                const file = sampleFiles[name]!
-                activeFile.set(name)
-                editor.value.set(file.value)
-                editor.language.set(file.language)
-                addLog(`Opened ${name} (${file.language})`)
+                const file = sampleFiles[name]!;
+                activeFile.set(name);
+                editor.value.set(file.value);
+                editor.language.set(file.language);
+                addLog(`Opened ${name} (${file.language})`);
               }}
             >
               {name}
@@ -151,9 +151,9 @@ export function CodeDemo() {
         {/* Editor mount point — CodeEditor component would go here */}
         <div
           ref={(el: HTMLElement) => {
-            const view = editor.view.peek()
-            if (!view) return
-            el.appendChild(view.dom)
+            const view = editor.view.peek();
+            if (!view) return;
+            el.appendChild(view.dom);
           }}
           style="border: 1px solid #333; border-radius: 8px; overflow: hidden; min-height: 250px"
         />
@@ -175,8 +175,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.undo()
-              addLog("Undo")
+              editor.undo();
+              addLog("Undo");
             }}
           >
             Undo
@@ -184,8 +184,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.redo()
-              addLog("Redo")
+              editor.redo();
+              addLog("Redo");
             }}
           >
             Redo
@@ -193,8 +193,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.insert("\n// Inserted by demo\n")
-              addLog("Inserted comment")
+              editor.insert("\n// Inserted by demo\n");
+              addLog("Inserted comment");
             }}
           >
             Insert Comment
@@ -202,8 +202,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.goToLine(1)
-              addLog("Go to line 1")
+              editor.goToLine(1);
+              addLog("Go to line 1");
             }}
           >
             Go to Line 1
@@ -211,8 +211,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.selectAll()
-              addLog("Selected all")
+              editor.selectAll();
+              addLog("Selected all");
             }}
           >
             Select All
@@ -220,8 +220,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.focus()
-              addLog("Focused editor")
+              editor.focus();
+              addLog("Focused editor");
             }}
           >
             Focus
@@ -231,8 +231,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.foldAll()
-              addLog("Folded all")
+              editor.foldAll();
+              addLog("Folded all");
             }}
           >
             Fold All
@@ -240,8 +240,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.unfoldAll()
-              addLog("Unfolded all")
+              editor.unfoldAll();
+              addLog("Unfolded all");
             }}
           >
             Unfold All
@@ -249,8 +249,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              const word = editor.getWordAtCursor()
-              addLog(`Word at cursor: "${word}"`)
+              const word = editor.getWordAtCursor();
+              addLog(`Word at cursor: "${word}"`);
             }}
           >
             Word at Cursor
@@ -265,10 +265,10 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              const next = isDark() ? "light" : "dark"
-              isDark.update((d) => !d)
-              editor.theme.set(next)
-              addLog(`Theme → ${next}`)
+              const next = isDark() ? "light" : "dark";
+              isDark.update((d) => !d);
+              editor.theme.set(next);
+              addLog(`Theme → ${next}`);
             }}
           >
             {() => (isDark() ? "Switch to Light" : "Switch to Dark")}
@@ -276,8 +276,8 @@ export function CodeDemo() {
           <button
             type="button"
             onClick={() => {
-              editor.readOnly.update((r) => !r)
-              addLog(`Read-only → ${editor.readOnly()}`)
+              editor.readOnly.update((r) => !r);
+              addLog(`Read-only → ${editor.readOnly()}`);
             }}
           >
             {() => (editor.readOnly() ? "Make Editable" : "Make Read-Only")}
@@ -323,5 +323,5 @@ export function CodeDemo() {
         </div>
       </div>
     </div>
-  )
+  );
 }

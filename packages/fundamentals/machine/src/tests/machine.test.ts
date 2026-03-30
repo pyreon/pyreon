@@ -1,6 +1,6 @@
-import { computed, effect, signal } from "@pyreon/reactivity"
-import { describe, expect, it, vi } from "vitest"
-import { createMachine } from "../index"
+import { computed, effect, signal } from "@pyreon/reactivity";
+import { describe, expect, it, vi } from "vitest";
+import { createMachine } from "../index";
 
 describe("createMachine", () => {
   // ─── Basic state and transitions ─────────────────────────────────────
@@ -13,9 +13,9 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: {},
         },
-      })
-      expect(m()).toBe("idle")
-    })
+      });
+      expect(m()).toBe("idle");
+    });
 
     it("transitions on valid event", () => {
       const m = createMachine({
@@ -24,10 +24,10 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      m.send("START")
-      expect(m()).toBe("running")
-    })
+      });
+      m.send("START");
+      expect(m()).toBe("running");
+    });
 
     it("ignores invalid events (no-op)", () => {
       const m = createMachine({
@@ -36,10 +36,10 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      m.send("STOP" as any) // not valid in 'idle'
-      expect(m()).toBe("idle")
-    })
+      });
+      m.send("STOP" as any); // not valid in 'idle'
+      expect(m()).toBe("idle");
+    });
 
     it("supports self-transitions", () => {
       const m = createMachine({
@@ -47,10 +47,10 @@ describe("createMachine", () => {
         states: {
           counting: { on: { INCREMENT: "counting" } },
         },
-      })
-      m.send("INCREMENT")
-      expect(m()).toBe("counting")
-    })
+      });
+      m.send("INCREMENT");
+      expect(m()).toBe("counting");
+    });
 
     it("supports multiple transitions from one state", () => {
       const m = createMachine({
@@ -60,11 +60,11 @@ describe("createMachine", () => {
           loading: {},
           cancelled: {},
         },
-      })
+      });
 
-      m.send("CANCEL")
-      expect(m()).toBe("cancelled")
-    })
+      m.send("CANCEL");
+      expect(m()).toBe("cancelled");
+    });
 
     it("handles states with no transitions (final states)", () => {
       const m = createMachine({
@@ -73,12 +73,12 @@ describe("createMachine", () => {
           idle: { on: { DONE: "finished" } },
           finished: {},
         },
-      })
-      m.send("DONE")
-      expect(m()).toBe("finished")
-      m.send("DONE") // ignored — no transitions from 'finished'
-      expect(m()).toBe("finished")
-    })
+      });
+      m.send("DONE");
+      expect(m()).toBe("finished");
+      m.send("DONE"); // ignored — no transitions from 'finished'
+      expect(m()).toBe("finished");
+    });
 
     it("throws on invalid initial state", () => {
       expect(() =>
@@ -88,9 +88,9 @@ describe("createMachine", () => {
             idle: {},
           },
         }),
-      ).toThrow("[@pyreon/machine] Initial state")
-    })
-  })
+      ).toThrow("[@pyreon/machine] Initial state");
+    });
+  });
 
   // ─── Guards ──────────────────────────────────────────────────────────
 
@@ -106,10 +106,10 @@ describe("createMachine", () => {
           },
           submitting: {},
         },
-      })
-      m.send("SUBMIT")
-      expect(m()).toBe("submitting")
-    })
+      });
+      m.send("SUBMIT");
+      expect(m()).toBe("submitting");
+    });
 
     it("blocks transition when guard returns false", () => {
       const m = createMachine({
@@ -122,15 +122,15 @@ describe("createMachine", () => {
           },
           submitting: {},
         },
-      })
-      m.send("SUBMIT")
-      expect(m()).toBe("editing")
-    })
+      });
+      m.send("SUBMIT");
+      expect(m()).toBe("editing");
+    });
 
     it("guard receives event payload", () => {
       const guardFn = vi.fn((payload?: unknown) => {
-        return (payload as any)?.valid === true
-      })
+        return (payload as any)?.valid === true;
+      });
 
       const m = createMachine({
         initial: "editing",
@@ -142,18 +142,18 @@ describe("createMachine", () => {
           },
           submitting: {},
         },
-      })
+      });
 
-      m.send("SUBMIT", { valid: false })
-      expect(m()).toBe("editing")
-      expect(guardFn).toHaveBeenCalledWith({ valid: false })
+      m.send("SUBMIT", { valid: false });
+      expect(m()).toBe("editing");
+      expect(guardFn).toHaveBeenCalledWith({ valid: false });
 
-      m.send("SUBMIT", { valid: true })
-      expect(m()).toBe("submitting")
-    })
+      m.send("SUBMIT", { valid: true });
+      expect(m()).toBe("submitting");
+    });
 
     it("guard with reactive signal", () => {
-      const isValid = signal(false)
+      const isValid = signal(false);
 
       const m = createMachine({
         initial: "editing",
@@ -168,16 +168,16 @@ describe("createMachine", () => {
           },
           submitting: {},
         },
-      })
+      });
 
-      m.send("SUBMIT")
-      expect(m()).toBe("editing")
+      m.send("SUBMIT");
+      expect(m()).toBe("editing");
 
-      isValid.set(true)
-      m.send("SUBMIT")
-      expect(m()).toBe("submitting")
-    })
-  })
+      isValid.set(true);
+      m.send("SUBMIT");
+      expect(m()).toBe("submitting");
+    });
+  });
 
   // ─── matches ─────────────────────────────────────────────────────────
 
@@ -189,10 +189,10 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: {},
         },
-      })
-      expect(m.matches("idle")).toBe(true)
-      expect(m.matches("running")).toBe(false)
-    })
+      });
+      expect(m.matches("idle")).toBe(true);
+      expect(m.matches("running")).toBe(false);
+    });
 
     it("supports multiple states", () => {
       const m = createMachine({
@@ -202,10 +202,10 @@ describe("createMachine", () => {
           loading: {},
           error: {},
         },
-      })
-      expect(m.matches("loading", "error")).toBe(true)
-      expect(m.matches("idle", "error")).toBe(false)
-    })
+      });
+      expect(m.matches("loading", "error")).toBe(true);
+      expect(m.matches("idle", "error")).toBe(false);
+    });
 
     it("is reactive in effects", () => {
       const m = createMachine({
@@ -214,22 +214,22 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      const results: boolean[] = []
+      });
+      const results: boolean[] = [];
 
       effect(() => {
-        results.push(m.matches("running"))
-      })
+        results.push(m.matches("running"));
+      });
 
-      expect(results).toEqual([false])
+      expect(results).toEqual([false]);
 
-      m.send("START")
-      expect(results).toEqual([false, true])
+      m.send("START");
+      expect(results).toEqual([false, true]);
 
-      m.send("STOP")
-      expect(results).toEqual([false, true, false])
-    })
-  })
+      m.send("STOP");
+      expect(results).toEqual([false, true, false]);
+    });
+  });
 
   // ─── can ─────────────────────────────────────────────────────────────
 
@@ -241,10 +241,10 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      expect(m.can("START")).toBe(true)
-      expect(m.can("STOP")).toBe(false)
-    })
+      });
+      expect(m.can("START")).toBe(true);
+      expect(m.can("STOP")).toBe(false);
+    });
 
     it("is reactive", () => {
       const m = createMachine({
@@ -253,18 +253,18 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      const results: boolean[] = []
+      });
+      const results: boolean[] = [];
 
       effect(() => {
-        results.push(m.can("STOP"))
-      })
+        results.push(m.can("STOP"));
+      });
 
-      expect(results).toEqual([false])
+      expect(results).toEqual([false]);
 
-      m.send("START")
-      expect(results).toEqual([false, true])
-    })
+      m.send("START");
+      expect(results).toEqual([false, true]);
+    });
 
     it("returns true for guarded transitions (guard not evaluated)", () => {
       const m = createMachine({
@@ -277,11 +277,11 @@ describe("createMachine", () => {
           },
           submitting: {},
         },
-      })
+      });
       // can() returns true because the event exists, even though guard would fail
-      expect(m.can("SUBMIT")).toBe(true)
-    })
-  })
+      expect(m.can("SUBMIT")).toBe(true);
+    });
+  });
 
   // ─── nextEvents ──────────────────────────────────────────────────────
 
@@ -295,9 +295,9 @@ describe("createMachine", () => {
           done: {},
           error: {},
         },
-      })
-      expect(m.nextEvents()).toEqual(expect.arrayContaining(["FETCH", "RESET"]))
-    })
+      });
+      expect(m.nextEvents()).toEqual(expect.arrayContaining(["FETCH", "RESET"]));
+    });
 
     it("returns empty array for final states", () => {
       const m = createMachine({
@@ -306,10 +306,10 @@ describe("createMachine", () => {
           idle: { on: { DONE: "finished" } },
           finished: {},
         },
-      })
-      m.send("DONE")
-      expect(m.nextEvents()).toEqual([])
-    })
+      });
+      m.send("DONE");
+      expect(m.nextEvents()).toEqual([]);
+    });
 
     it("is reactive", () => {
       const m = createMachine({
@@ -319,18 +319,18 @@ describe("createMachine", () => {
           running: { on: { STOP: "idle", PAUSE: "paused" } },
           paused: { on: { RESUME: "running" } },
         },
-      })
-      const results: string[][] = []
+      });
+      const results: string[][] = [];
 
       effect(() => {
-        results.push(m.nextEvents())
-      })
+        results.push(m.nextEvents());
+      });
 
-      m.send("START")
-      expect(results).toHaveLength(2)
-      expect(results[1]).toEqual(expect.arrayContaining(["STOP", "PAUSE"]))
-    })
-  })
+      m.send("START");
+      expect(results).toHaveLength(2);
+      expect(results[1]).toEqual(expect.arrayContaining(["STOP", "PAUSE"]));
+    });
+  });
 
   // ─── reset ───────────────────────────────────────────────────────────
 
@@ -342,14 +342,14 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: { on: { STOP: "idle" } },
         },
-      })
-      m.send("START")
-      expect(m()).toBe("running")
+      });
+      m.send("START");
+      expect(m()).toBe("running");
 
-      m.reset()
-      expect(m()).toBe("idle")
-    })
-  })
+      m.reset();
+      expect(m()).toBe("idle");
+    });
+  });
 
   // ─── Reactivity ────────────────────────────────────────────────────
 
@@ -362,18 +362,18 @@ describe("createMachine", () => {
           b: { on: { NEXT: "c" } },
           c: {},
         },
-      })
-      const states: string[] = []
+      });
+      const states: string[] = [];
 
       effect(() => {
-        states.push(m())
-      })
+        states.push(m());
+      });
 
-      m.send("NEXT")
-      m.send("NEXT")
+      m.send("NEXT");
+      m.send("NEXT");
 
-      expect(states).toEqual(["a", "b", "c"])
-    })
+      expect(states).toEqual(["a", "b", "c"]);
+    });
 
     it("machine() is reactive in computed", () => {
       const m = createMachine({
@@ -382,18 +382,18 @@ describe("createMachine", () => {
           idle: { on: { LOAD: "loading" } },
           loading: { on: { DONE: "idle" } },
         },
-      })
+      });
 
-      const isLoading = computed(() => m() === "loading")
-      expect(isLoading()).toBe(false)
+      const isLoading = computed(() => m() === "loading");
+      expect(isLoading()).toBe(false);
 
-      m.send("LOAD")
-      expect(isLoading()).toBe(true)
+      m.send("LOAD");
+      expect(isLoading()).toBe(true);
 
-      m.send("DONE")
-      expect(isLoading()).toBe(false)
-    })
-  })
+      m.send("DONE");
+      expect(isLoading()).toBe(false);
+    });
+  });
 
   // ─── onEnter ─────────────────────────────────────────────────────────
 
@@ -405,16 +405,16 @@ describe("createMachine", () => {
           idle: { on: { LOAD: "loading" } },
           loading: { on: { DONE: "idle" } },
         },
-      })
-      const entered: string[] = []
+      });
+      const entered: string[] = [];
 
       m.onEnter("loading", (event) => {
-        entered.push(event.type)
-      })
+        entered.push(event.type);
+      });
 
-      m.send("LOAD")
-      expect(entered).toEqual(["LOAD"])
-    })
+      m.send("LOAD");
+      expect(entered).toEqual(["LOAD"]);
+    });
 
     it("does not fire for other states", () => {
       const m = createMachine({
@@ -424,16 +424,16 @@ describe("createMachine", () => {
           b: { on: { GO: "c" } },
           c: {},
         },
-      })
-      const fn = vi.fn()
+      });
+      const fn = vi.fn();
 
-      m.onEnter("c", fn)
-      m.send("GO") // a → b
-      expect(fn).not.toHaveBeenCalled()
+      m.onEnter("c", fn);
+      m.send("GO"); // a → b
+      expect(fn).not.toHaveBeenCalled();
 
-      m.send("GO") // b → c
-      expect(fn).toHaveBeenCalledOnce()
-    })
+      m.send("GO"); // b → c
+      expect(fn).toHaveBeenCalledOnce();
+    });
 
     it("receives event payload", () => {
       const m = createMachine({
@@ -442,16 +442,16 @@ describe("createMachine", () => {
           idle: { on: { SELECT: "selected" } },
           selected: {},
         },
-      })
-      let received: unknown = null
+      });
+      let received: unknown = null;
 
       m.onEnter("selected", (event) => {
-        received = event.payload
-      })
+        received = event.payload;
+      });
 
-      m.send("SELECT", { id: 42 })
-      expect(received).toEqual({ id: 42 })
-    })
+      m.send("SELECT", { id: 42 });
+      expect(received).toEqual({ id: 42 });
+    });
 
     it("fires on self-transitions", () => {
       const m = createMachine({
@@ -459,15 +459,15 @@ describe("createMachine", () => {
         states: {
           counting: { on: { INC: "counting" } },
         },
-      })
-      const fn = vi.fn()
+      });
+      const fn = vi.fn();
 
-      m.onEnter("counting", fn)
-      m.send("INC")
-      m.send("INC")
+      m.onEnter("counting", fn);
+      m.send("INC");
+      m.send("INC");
 
-      expect(fn).toHaveBeenCalledTimes(2)
-    })
+      expect(fn).toHaveBeenCalledTimes(2);
+    });
 
     it("returns unsubscribe function", () => {
       const m = createMachine({
@@ -476,18 +476,18 @@ describe("createMachine", () => {
           a: { on: { GO: "b" } },
           b: { on: { GO: "a" } },
         },
-      })
-      const fn = vi.fn()
+      });
+      const fn = vi.fn();
 
-      const unsub = m.onEnter("b", fn)
-      m.send("GO") // a → b
-      expect(fn).toHaveBeenCalledOnce()
+      const unsub = m.onEnter("b", fn);
+      m.send("GO"); // a → b
+      expect(fn).toHaveBeenCalledOnce();
 
-      unsub()
-      m.send("GO") // b → a
-      m.send("GO") // a → b again
-      expect(fn).toHaveBeenCalledOnce() // not called again
-    })
+      unsub();
+      m.send("GO"); // b → a
+      m.send("GO"); // a → b again
+      expect(fn).toHaveBeenCalledOnce(); // not called again
+    });
 
     it("multiple listeners for same state", () => {
       const m = createMachine({
@@ -496,18 +496,18 @@ describe("createMachine", () => {
           idle: { on: { GO: "active" } },
           active: {},
         },
-      })
-      const fn1 = vi.fn()
-      const fn2 = vi.fn()
+      });
+      const fn1 = vi.fn();
+      const fn2 = vi.fn();
 
-      m.onEnter("active", fn1)
-      m.onEnter("active", fn2)
+      m.onEnter("active", fn1);
+      m.onEnter("active", fn2);
 
-      m.send("GO")
-      expect(fn1).toHaveBeenCalledOnce()
-      expect(fn2).toHaveBeenCalledOnce()
-    })
-  })
+      m.send("GO");
+      expect(fn1).toHaveBeenCalledOnce();
+      expect(fn2).toHaveBeenCalledOnce();
+    });
+  });
 
   // ─── onTransition ────────────────────────────────────────────────────
 
@@ -520,21 +520,21 @@ describe("createMachine", () => {
           b: { on: { NEXT: "c" } },
           c: {},
         },
-      })
-      const transitions: [string, string, string][] = []
+      });
+      const transitions: [string, string, string][] = [];
 
       m.onTransition((from, to, event) => {
-        transitions.push([from, to, event.type])
-      })
+        transitions.push([from, to, event.type]);
+      });
 
-      m.send("NEXT")
-      m.send("NEXT")
+      m.send("NEXT");
+      m.send("NEXT");
 
       expect(transitions).toEqual([
         ["a", "b", "NEXT"],
         ["b", "c", "NEXT"],
-      ])
-    })
+      ]);
+    });
 
     it("does not fire when event is ignored", () => {
       const m = createMachine({
@@ -543,13 +543,13 @@ describe("createMachine", () => {
           idle: { on: { START: "running" } },
           running: {},
         },
-      })
-      const fn = vi.fn()
+      });
+      const fn = vi.fn();
 
-      m.onTransition(fn)
-      m.send("STOP" as any) // invalid event
-      expect(fn).not.toHaveBeenCalled()
-    })
+      m.onTransition(fn);
+      m.send("STOP" as any); // invalid event
+      expect(fn).not.toHaveBeenCalled();
+    });
 
     it("returns unsubscribe function", () => {
       const m = createMachine({
@@ -558,18 +558,18 @@ describe("createMachine", () => {
           a: { on: { GO: "b" } },
           b: { on: { GO: "a" } },
         },
-      })
-      const fn = vi.fn()
+      });
+      const fn = vi.fn();
 
-      const unsub = m.onTransition(fn)
-      m.send("GO")
-      expect(fn).toHaveBeenCalledOnce()
+      const unsub = m.onTransition(fn);
+      m.send("GO");
+      expect(fn).toHaveBeenCalledOnce();
 
-      unsub()
-      m.send("GO")
-      expect(fn).toHaveBeenCalledOnce() // not called again
-    })
-  })
+      unsub();
+      m.send("GO");
+      expect(fn).toHaveBeenCalledOnce(); // not called again
+    });
+  });
 
   // ─── dispose ─────────────────────────────────────────────────────────
 
@@ -581,20 +581,20 @@ describe("createMachine", () => {
           a: { on: { GO: "b" } },
           b: { on: { GO: "a" } },
         },
-      })
-      const enterFn = vi.fn()
-      const transitionFn = vi.fn()
+      });
+      const enterFn = vi.fn();
+      const transitionFn = vi.fn();
 
-      m.onEnter("b", enterFn)
-      m.onTransition(transitionFn)
+      m.onEnter("b", enterFn);
+      m.onTransition(transitionFn);
 
-      m.dispose()
+      m.dispose();
 
-      m.send("GO")
-      expect(enterFn).not.toHaveBeenCalled()
-      expect(transitionFn).not.toHaveBeenCalled()
-    })
-  })
+      m.send("GO");
+      expect(enterFn).not.toHaveBeenCalled();
+      expect(transitionFn).not.toHaveBeenCalled();
+    });
+  });
 
   // ─── Real-world patterns ───────────────────────────────────────────
 
@@ -609,26 +609,26 @@ describe("createMachine", () => {
           submitting: { on: { SUCCESS: "done", ERROR: "step3" } },
           done: {},
         },
-      })
+      });
 
-      m.send("NEXT") // step1 → step2
-      m.send("NEXT") // step2 → step3
-      expect(m()).toBe("step3")
+      m.send("NEXT"); // step1 → step2
+      m.send("NEXT"); // step2 → step3
+      expect(m()).toBe("step3");
 
-      m.send("BACK") // step3 → step2
-      expect(m()).toBe("step2")
+      m.send("BACK"); // step3 → step2
+      expect(m()).toBe("step2");
 
-      m.send("NEXT") // step2 → step3
-      m.send("SUBMIT") // step3 → submitting
-      expect(m()).toBe("submitting")
+      m.send("NEXT"); // step2 → step3
+      m.send("SUBMIT"); // step3 → submitting
+      expect(m()).toBe("submitting");
 
-      m.send("SUCCESS")
-      expect(m()).toBe("done")
+      m.send("SUCCESS");
+      expect(m()).toBe("done");
 
       // Final state — no more transitions
-      m.send("SUBMIT")
-      expect(m()).toBe("done")
-    })
+      m.send("SUBMIT");
+      expect(m()).toBe("done");
+    });
 
     it("async fetch with onEnter", () => {
       const m = createMachine({
@@ -639,20 +639,20 @@ describe("createMachine", () => {
           done: { on: { REFETCH: "loading" } },
           error: { on: { RETRY: "loading" } },
         },
-      })
+      });
 
-      const data = signal<string | null>(null)
+      const data = signal<string | null>(null);
 
       m.onEnter("loading", () => {
         // Simulate async — in real code this would be an API call
-        data.set("loaded data")
-        m.send("SUCCESS")
-      })
+        data.set("loaded data");
+        m.send("SUCCESS");
+      });
 
-      m.send("FETCH")
-      expect(m()).toBe("done")
-      expect(data()).toBe("loaded data")
-    })
+      m.send("FETCH");
+      expect(m()).toBe("done");
+      expect(data()).toBe("loaded data");
+    });
 
     it("toggle with reactive UI", () => {
       const m = createMachine({
@@ -661,22 +661,22 @@ describe("createMachine", () => {
           off: { on: { TOGGLE: "on" } },
           on: { on: { TOGGLE: "off" } },
         },
-      })
+      });
 
-      const labels: string[] = []
+      const labels: string[] = [];
       effect(() => {
-        labels.push(m.matches("on") ? "ON" : "OFF")
-      })
+        labels.push(m.matches("on") ? "ON" : "OFF");
+      });
 
-      m.send("TOGGLE")
-      m.send("TOGGLE")
-      m.send("TOGGLE")
+      m.send("TOGGLE");
+      m.send("TOGGLE");
+      m.send("TOGGLE");
 
-      expect(labels).toEqual(["OFF", "ON", "OFF", "ON"])
-    })
+      expect(labels).toEqual(["OFF", "ON", "OFF", "ON"]);
+    });
 
     it("form with validation guard", () => {
-      const isValid = signal(false)
+      const isValid = signal(false);
 
       const m = createMachine({
         initial: "editing",
@@ -692,15 +692,15 @@ describe("createMachine", () => {
           submitting: { on: { SUCCESS: "done", ERROR: "editing" } },
           done: {},
         },
-      })
+      });
 
-      m.send("SUBMIT") // guard fails
-      expect(m()).toBe("editing")
+      m.send("SUBMIT"); // guard fails
+      expect(m()).toBe("editing");
 
-      isValid.set(true)
-      m.send("SUBMIT") // guard passes
-      expect(m()).toBe("submitting")
-    })
+      isValid.set(true);
+      m.send("SUBMIT"); // guard passes
+      expect(m()).toBe("submitting");
+    });
 
     it("player with pause/resume", () => {
       const m = createMachine({
@@ -710,20 +710,20 @@ describe("createMachine", () => {
           playing: { on: { PAUSE: "paused", STOP: "stopped" } },
           paused: { on: { PLAY: "playing", STOP: "stopped" } },
         },
-      })
+      });
 
-      m.send("PLAY")
-      expect(m()).toBe("playing")
+      m.send("PLAY");
+      expect(m()).toBe("playing");
 
-      m.send("PAUSE")
-      expect(m()).toBe("paused")
+      m.send("PAUSE");
+      expect(m()).toBe("paused");
 
-      m.send("PLAY")
-      expect(m()).toBe("playing")
+      m.send("PLAY");
+      expect(m()).toBe("playing");
 
-      m.send("STOP")
-      expect(m()).toBe("stopped")
-    })
+      m.send("STOP");
+      expect(m()).toBe("stopped");
+    });
 
     it("analytics tracking via onTransition", () => {
       const m = createMachine({
@@ -733,18 +733,18 @@ describe("createMachine", () => {
           step2: { on: { NEXT: "step3" } },
           step3: {},
         },
-      })
+      });
 
-      const tracked: string[] = []
+      const tracked: string[] = [];
       m.onTransition((from, to) => {
-        tracked.push(`${from} → ${to}`)
-      })
+        tracked.push(`${from} → ${to}`);
+      });
 
-      m.send("NEXT")
-      m.send("NEXT")
+      m.send("NEXT");
+      m.send("NEXT");
 
-      expect(tracked).toEqual(["step1 → step2", "step2 → step3"])
-    })
+      expect(tracked).toEqual(["step1 → step2", "step2 → step3"]);
+    });
 
     it("reusable machine definition", () => {
       const toggleDef = {
@@ -753,14 +753,14 @@ describe("createMachine", () => {
           off: { on: { TOGGLE: "on" as const } },
           on: { on: { TOGGLE: "off" as const } },
         },
-      }
+      };
 
-      const m1 = createMachine(toggleDef)
-      const m2 = createMachine(toggleDef)
+      const m1 = createMachine(toggleDef);
+      const m2 = createMachine(toggleDef);
 
-      m1.send("TOGGLE")
-      expect(m1()).toBe("on")
-      expect(m2()).toBe("off") // independent instance
-    })
-  })
-})
+      m1.send("TOGGLE");
+      expect(m1()).toBe("on");
+      expect(m2()).toBe("off"); // independent instance
+    });
+  });
+});

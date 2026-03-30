@@ -1,7 +1,7 @@
-import type { Props } from "@pyreon/core"
-import type { Signal } from "@pyreon/reactivity"
-import type { ComposeOption, EChartsOption, SetOptionOpts } from "echarts"
-import type { ECharts } from "echarts/core"
+import type { Props } from "@pyreon/core";
+import type { Signal } from "@pyreon/reactivity";
+import type { ComposeOption, EChartsOption, SetOptionOpts } from "echarts";
+import type { ECharts } from "echarts/core";
 
 // ─── Re-export ECharts types for consumer convenience ────────────────────────
 
@@ -30,25 +30,25 @@ export type {
   TreemapSeriesOption,
   TreeSeriesOption,
   VisualMapComponentOption,
-} from "echarts"
-export type { ComposeOption, ECharts, EChartsOption, SetOptionOpts }
+} from "echarts";
+export type { ComposeOption, ECharts, EChartsOption, SetOptionOpts };
 
 // ─── Event types (duck-typed to avoid echarts dual-package type conflicts) ───
 
 /** Chart event params — duck-typed to work across echarts entry points */
 export interface ChartEventParams {
-  componentType?: string
-  seriesType?: string
-  seriesIndex?: number
-  seriesName?: string
-  name?: string
-  dataIndex?: number
-  data?: unknown
-  dataType?: string
-  value?: unknown
-  color?: string
-  event?: Event
-  [key: string]: unknown
+  componentType?: string;
+  seriesType?: string;
+  seriesIndex?: number;
+  seriesName?: string;
+  name?: string;
+  dataIndex?: number;
+  data?: unknown;
+  dataType?: string;
+  value?: unknown;
+  color?: string;
+  event?: Event;
+  [key: string]: unknown;
 }
 
 // ─── Chart config ────────────────────────────────────────────────────────────
@@ -58,23 +58,23 @@ export interface ChartEventParams {
  */
 export interface UseChartConfig {
   /** ECharts theme — 'dark', a registered theme name, or a theme object */
-  theme?: string | Record<string, unknown>
+  theme?: string | Record<string, unknown>;
   /** Renderer — 'canvas' (default, best performance) or 'svg' */
-  renderer?: "canvas" | "svg"
+  renderer?: "canvas" | "svg";
   /** ECharts locale — 'EN' (default), 'ZH', etc. */
-  locale?: string
+  locale?: string;
   /** Whether to replace all options instead of merging — default: false */
-  notMerge?: boolean
+  notMerge?: boolean;
   /** Whether to batch updates — default: true */
-  lazyUpdate?: boolean
+  lazyUpdate?: boolean;
   /** Device pixel ratio — default: window.devicePixelRatio */
-  devicePixelRatio?: number
+  devicePixelRatio?: number;
   /** Width override — default: container width */
-  width?: number
+  width?: number;
   /** Height override — default: container height */
-  height?: number
+  height?: number;
   /** Called when chart instance is created */
-  onInit?: (instance: ECharts) => void
+  onInit?: (instance: ECharts) => void;
 }
 
 /**
@@ -82,15 +82,15 @@ export interface UseChartConfig {
  */
 export interface UseChartResult {
   /** Bind to container element via ref */
-  ref: (el: Element | null) => void
+  ref: (el: Element | null) => void;
   /** The ECharts instance — null until mounted and modules loaded */
-  instance: Signal<ECharts | null>
+  instance: Signal<ECharts | null>;
   /** True while ECharts modules are being dynamically imported */
-  loading: Signal<boolean>
+  loading: Signal<boolean>;
   /** Error signal — set if chart init or setOption throws */
-  error: Signal<Error | null>
+  error: Signal<Error | null>;
   /** Manually trigger resize */
-  resize: () => void
+  resize: () => void;
 }
 
 /**
@@ -99,19 +99,19 @@ export interface UseChartResult {
  */
 export interface ChartProps<TOption extends EChartsOption = EChartsOption> extends Props {
   /** Reactive ECharts option config — fully typed */
-  options: () => TOption
+  options: () => TOption;
   /** ECharts theme */
-  theme?: string | Record<string, unknown>
+  theme?: string | Record<string, unknown>;
   /** Renderer — 'canvas' (default) or 'svg' */
-  renderer?: "canvas" | "svg"
+  renderer?: "canvas" | "svg";
   /** CSS style for the container div */
-  style?: string
+  style?: string;
   /** CSS class for the container div */
-  class?: string
+  class?: string;
   /** Click event handler */
-  onClick?: (params: ChartEventParams) => void
+  onClick?: (params: ChartEventParams) => void;
   /** Mouseover event handler */
-  onMouseover?: (params: ChartEventParams) => void
+  onMouseover?: (params: ChartEventParams) => void;
   /** Mouseout event handler */
-  onMouseout?: (params: ChartEventParams) => void
+  onMouseout?: (params: ChartEventParams) => void;
 }

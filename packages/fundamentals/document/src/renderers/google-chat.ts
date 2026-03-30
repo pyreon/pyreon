@@ -1,5 +1,5 @@
-import { sanitizeHref, sanitizeImageSrc } from "../sanitize"
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types"
+import { sanitizeHref, sanitizeImageSrc } from "../sanitize";
+import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from "../types";
 
 /**
  * Google Chat renderer — outputs Card V2 JSON for Google Chat API.
@@ -7,22 +7,22 @@ import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } 
  */
 
 function resolveColumn(col: string | TableColumn): TableColumn {
-  return typeof col === "string" ? { header: col } : col
+  return typeof col === "string" ? { header: col } : col;
 }
 
 function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === "string" ? c : getTextContent((c as DocNode).children)))
-    .join("")
+    .join("");
 }
 
 interface CardWidget {
-  [key: string]: unknown
+  [key: string]: unknown;
 }
 
 function nodeToWidgets(node: DocNode): CardWidget[] {
-  const p = node.props
-  const widgets: CardWidget[] = []
+  const p = node.props;
+  const widgets: CardWidget[] = [];
 
   switch (node.type) {
     case "document":
@@ -32,107 +32,107 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
     case "column":
       for (const child of node.children) {
         if (typeof child !== "string") {
-          widgets.push(...nodeToWidgets(child))
+          widgets.push(...nodeToWidgets(child));
         }
       }
-      break
+      break;
 
     case "heading": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       widgets.push({
         decoratedText: {
           topLabel: "",
           text: `<b>${text}</b>`,
           wrapText: true,
         },
-      })
-      break
+      });
+      break;
     }
 
     case "text": {
-      let text = getTextContent(node.children)
-      if (p.bold) text = `<b>${text}</b>`
-      if (p.italic) text = `<i>${text}</i>`
-      if (p.strikethrough) text = `<s>${text}</s>`
+      let text = getTextContent(node.children);
+      if (p.bold) text = `<b>${text}</b>`;
+      if (p.italic) text = `<i>${text}</i>`;
+      if (p.strikethrough) text = `<s>${text}</s>`;
       widgets.push({
         textParagraph: { text },
-      })
-      break
+      });
+      break;
     }
 
     case "link": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       widgets.push({
         textParagraph: { text: `<a href="${href}">${text}</a>` },
-      })
-      break
+      });
+      break;
     }
 
     case "image": {
-      const src = sanitizeImageSrc(p.src as string)
+      const src = sanitizeImageSrc(p.src as string);
       if (src.startsWith("http")) {
         widgets.push({
           image: {
             imageUrl: src,
             altText: (p.alt as string) ?? "Image",
           },
-        })
+        });
       }
-      break
+      break;
     }
 
     case "table": {
-      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
-      const rows = (p.rows ?? []) as (string | number)[][]
+      const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn);
+      const rows = (p.rows ?? []) as (string | number)[][];
 
       // Google Chat Cards don't have native tables — use grid or formatted text
-      const header = columns.map((c) => `<b>${c.header}</b>`).join(" | ")
-      const body = rows.map((row) => row.map((c) => String(c ?? "")).join(" | ")).join("\n")
+      const header = columns.map((c) => `<b>${c.header}</b>`).join(" | ");
+      const body = rows.map((row) => row.map((c) => String(c ?? "")).join(" | ")).join("\n");
 
       widgets.push({
         textParagraph: { text: `${header}\n${body}` },
-      })
-      break
+      });
+      break;
     }
 
     case "list": {
-      const ordered = p.ordered as boolean | undefined
+      const ordered = p.ordered as boolean | undefined;
       const items = node.children
         .filter((c): c is DocNode => typeof c !== "string")
         .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : "•"
-          return `${prefix} ${getTextContent(item.children)}`
+          const prefix = ordered ? `${i + 1}.` : "•";
+          return `${prefix} ${getTextContent(item.children)}`;
         })
-        .join("\n")
+        .join("\n");
       widgets.push({
         textParagraph: { text: items },
-      })
-      break
+      });
+      break;
     }
 
     case "code": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       widgets.push({
         textParagraph: {
           text: `<font color="#333333"><code>${text}</code></font>`,
         },
-      })
-      break
+      });
+      break;
     }
 
     case "divider":
     case "page-break":
-      widgets.push({ divider: {} })
-      break
+      widgets.push({ divider: {} });
+      break;
 
     case "spacer":
       // No direct equivalent — skip
-      break
+      break;
 
     case "button": {
-      const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const href = sanitizeHref(p.href as string);
+      const text = getTextContent(node.children);
       widgets.push({
         buttonList: {
           buttons: [
@@ -148,33 +148,33 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
             },
           ],
         },
-      })
-      break
+      });
+      break;
     }
 
     case "quote": {
-      const text = getTextContent(node.children)
+      const text = getTextContent(node.children);
       widgets.push({
         textParagraph: { text: `<i>"${text}"</i>` },
-      })
-      break
+      });
+      break;
     }
   }
 
-  return widgets
+  return widgets;
 }
 
 export const googleChatRenderer: DocumentRenderer = {
   async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    const widgets = nodeToWidgets(node)
+    const widgets = nodeToWidgets(node);
 
     // Extract title from first heading or document title
-    let title = (node.props.title as string) ?? ""
+    let title = (node.props.title as string) ?? "";
     if (!title) {
       const firstHeading = node.children.find(
         (c): c is DocNode => typeof c !== "string" && c.type === "heading",
-      )
-      if (firstHeading) title = getTextContent(firstHeading.children)
+      );
+      if (firstHeading) title = getTextContent(firstHeading.children);
     }
 
     const card = {
@@ -193,8 +193,8 @@ export const googleChatRenderer: DocumentRenderer = {
           },
         },
       ],
-    }
+    };
 
-    return JSON.stringify(card, null, 2)
+    return JSON.stringify(card, null, 2);
   },
-}
+};
