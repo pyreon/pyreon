@@ -9,7 +9,6 @@
  */
 import { ThemeCapture, getComputedTheme, initTestConfig, withThemeContext } from '@pyreon/test-utils'
 import rocketstyle from '../init'
-import { themeModeCallback } from '../utils/theme'
 
 let cleanup: () => void
 beforeAll(() => {
