@@ -217,6 +217,8 @@ export type OutputFormat =
   | 'confluence'
   | 'whatsapp'
   | 'google-chat'
+  | 'json'
+  | 'jsonl'
 
 export interface RenderOptions {
   /** Custom styles to apply (overrides component styles). */
