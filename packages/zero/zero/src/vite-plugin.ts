@@ -1,6 +1,25 @@
-import type { Plugin } from "vite";
-import { generateApiRouteModule } from "./api-routes";
-import { resolveConfig } from "./config";
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import type { Plugin } from 'vite'
+import { generateApiRouteModule } from './api-routes'
+import { resolveConfig } from './config'
+
+/**
+ * Scan node_modules/@pyreon/ to discover all installed Pyreon packages.
+ * Returns package names to exclude from Vite's dep optimizer.
+ */
+function scanPyreonPackages(root: string): string[] {
+  const pyreonDir = join(root, 'node_modules', '@pyreon')
+  if (!existsSync(pyreonDir)) return []
+
+  try {
+    return readdirSync(pyreonDir)
+      .filter((name) => !name.startsWith('.'))
+      .map((name) => `@pyreon/${name}`)
+  } catch {
+    return []
+  }
+}
 import { matchPattern } from "./entry-server";
 import { renderErrorOverlay } from "./error-overlay";
 import {
@@ -58,7 +77,9 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
 				try {
 					const files = await scanRouteFiles(routesDir);
-					return generateRouteModule(files, routesDir);
+					return generateRouteModule(files, routesDir, {
+					staticImports: config.mode === 'ssg',
+				});
 				} catch (_err) {
 					return `export const routes = []`;
 				}
@@ -172,38 +193,19 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 			});
 		},
 
-		config() {
+		config(userConfig) {
+			// Discover all @pyreon/* packages installed in node_modules.
+			// The "bun" export condition points to TS source — esbuild's
+			// dep optimizer would compile them with the wrong JSX runtime.
+			const root = userConfig.root ?? process.cwd()
+			const pyreonExclude = scanPyreonPackages(root)
+
 			return {
 				resolve: {
 					conditions: ['bun'],
 				},
 				optimizeDeps: {
-					// Exclude @pyreon/* from pre-bundling. The "bun" condition
-					// points to TS source files — esbuild's dep optimizer
-					// would compile them with the wrong JSX runtime (react).
-					// The Pyreon vite-plugin handles JSX transform via OXC.
-					exclude: [
-						'@pyreon/core',
-						'@pyreon/reactivity',
-						'@pyreon/runtime-dom',
-						'@pyreon/runtime-server',
-						'@pyreon/router',
-						'@pyreon/head',
-						'@pyreon/server',
-						'@pyreon/styler',
-						'@pyreon/ui-core',
-						'@pyreon/unistyle',
-						'@pyreon/elements',
-						'@pyreon/rocketstyle',
-						'@pyreon/attrs',
-						'@pyreon/coolgrid',
-						'@pyreon/kinetic',
-						'@pyreon/kinetic-presets',
-						'@pyreon/hooks',
-						'@pyreon/store',
-						'@pyreon/form',
-						'@pyreon/zero',
-					],
+					exclude: pyreonExclude,
 				},
 				server: {
 					port: config.port,

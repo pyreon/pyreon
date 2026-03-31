@@ -362,3 +362,35 @@ describe('matchPattern', () => {
     expect(matchPattern('/users/:id/settings', '/users/42/settings')).toBe(true)
   })
 })
+
+// ─── staticImports option ─────────────────────────────────────────────────
+
+describe('generateRouteModule — staticImports option', () => {
+  it('uses lazy() by default', () => {
+    const files = ['index.tsx']
+    const result = generateRouteModule(files, './routes')
+    expect(result).toContain('lazy(')
+    expect(result).toContain('import(')
+  })
+
+  it('uses static import when staticImports: true', () => {
+    const files = ['index.tsx']
+    const result = generateRouteModule(files, './routes', { staticImports: true })
+    expect(result).not.toContain('lazy(')
+    expect(result).not.toContain('import("./routes/index.tsx")')
+    // Should have a static import instead
+    expect(result).toContain('import ')
+  })
+
+  it('does not emit errorComponent without _error file', () => {
+    const files = ['index.tsx', 'about.tsx']
+    const result = generateRouteModule(files, './routes')
+    expect(result).not.toContain('.error')
+  })
+
+  it('emits errorComponent when _error file exists', () => {
+    const files = ['index.tsx', '_error.tsx']
+    const result = generateRouteModule(files, './routes')
+    expect(result).toContain('errorComponent')
+  })
+})

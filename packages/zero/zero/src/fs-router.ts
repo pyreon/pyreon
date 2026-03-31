@@ -20,7 +20,8 @@ import type { FileRoute, RenderMode } from './types'
 // Conventions:
 //   [param]     → dynamic segment  → :param
 //   [...param]  → catch-all        → :param*
-//   _layout     → layout wrapper (not a route itself)
+//   _layout     → layout wrapper — must use <RouterView /> to render child routes
+//                 (props.children is NOT passed — the router handles nesting)
 //   _error      → error component
 //   _loading    → loading component
 //   _404        → not-found component (renders on 404)
