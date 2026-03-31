@@ -257,6 +257,39 @@ describe('JSX transform — component elements', () => {
   test('wraps props on lowercase DOM elements', () => {
     expect(t('<div title={getTitle()} />')).toContain('() => getTitle()')
   })
+
+  test('wraps ternary with call in component prop', () => {
+    const result = t(`<Comp x={a() ? 'yes' : 'no'} />`)
+    expect(result).toContain('_rp(')
+  })
+
+  test('wraps template literal with call in component prop', () => {
+    const result = t('<Comp label={`${count()} items`} />')
+    expect(result).toContain('_rp(')
+  })
+
+  test('wraps multiple reactive props independently', () => {
+    const result = t('<Comp a={x()} b={y()} c={12} />')
+    // Two reactive props should produce two _rp wrappers
+    const rpCount = (result.match(/_rp\(/g) || []).length
+    expect(rpCount).toBe(2)
+    // Static prop should remain plain (JSX attribute syntax)
+    expect(result).toContain('c={12}')
+  })
+
+  test('wraps children prop with call (children not in SKIP_PROPS)', () => {
+    const result = t('<Comp children={items()} />')
+    // children is NOT in SKIP_PROPS, so it gets _rp wrapping
+    expect(result).toContain('_rp(')
+  })
+
+  test('spread props on component pass through without _rp wrapping', () => {
+    const result = t('<Comp {...getProps()} label="hi" />')
+    // Spread should remain as-is
+    expect(result).toContain('{...getProps()}')
+    // Static label should not be wrapped
+    expect(result).not.toContain('_rp(() => "hi")')
+  })
 })
 
 // ─── Spread attributes ──────────────────────────────────────────────────────

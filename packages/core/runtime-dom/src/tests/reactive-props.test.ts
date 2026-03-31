@@ -149,4 +149,122 @@ describe('reactive component props', () => {
     expect(iconMountCount).toBe(1) // NOT remounted
     expect(container.querySelector('i')?.getAttribute('data-name')).toBe('close')
   })
+
+  it('multiple reactive props update independently', () => {
+    const first = signal('Alice')
+    const last = signal('Smith')
+    let mountCount = 0
+
+    const Comp = (props: any) => {
+      mountCount++
+      return h('div', null,
+        h('span', { id: 'first' }, () => props.first),
+        h('span', { id: 'last' }, () => props.last),
+      )
+    }
+
+    mount(h(Comp, { first: _rp(() => first()), last: _rp(() => last()) }), container)
+    expect(mountCount).toBe(1)
+    expect(container.querySelector('#first')?.textContent).toBe('Alice')
+    expect(container.querySelector('#last')?.textContent).toBe('Smith')
+
+    first.set('Bob')
+    expect(mountCount).toBe(1)
+    expect(container.querySelector('#first')?.textContent).toBe('Bob')
+    expect(container.querySelector('#last')?.textContent).toBe('Smith')
+
+    last.set('Jones')
+    expect(mountCount).toBe(1)
+    expect(container.querySelector('#first')?.textContent).toBe('Bob')
+    expect(container.querySelector('#last')?.textContent).toBe('Jones')
+  })
+
+  it('reactive and static props coexist', () => {
+    const count = signal(0)
+    let mountCount = 0
+
+    const Comp = (props: any) => {
+      mountCount++
+      return h('div', null,
+        h('span', { id: 'dynamic' }, () => String(props.count)),
+        h('span', { id: 'static' }, props.label),
+      )
+    }
+
+    mount(h(Comp, { count: _rp(() => count()), label: 'fixed' }), container)
+    expect(mountCount).toBe(1)
+    expect(container.querySelector('#dynamic')?.textContent).toBe('0')
+    expect(container.querySelector('#static')?.textContent).toBe('fixed')
+
+    count.set(42)
+    expect(mountCount).toBe(1)
+    expect(container.querySelector('#dynamic')?.textContent).toBe('42')
+    expect(container.querySelector('#static')?.textContent).toBe('fixed')
+  })
+
+  it('nested components with reactive props from same signal', () => {
+    const value = signal('hello')
+    let outerMounts = 0
+    let innerMounts = 0
+
+    const Inner = (props: any) => {
+      innerMounts++
+      return h('span', { id: 'inner' }, () => props.text)
+    }
+
+    const Outer = (props: any) => {
+      outerMounts++
+      return h('div', { id: 'outer' },
+        () => props.label,
+        h(Inner, { text: _rp(() => value()) }),
+      )
+    }
+
+    mount(h(Outer, { label: _rp(() => value()) }), container)
+    expect(outerMounts).toBe(1)
+    expect(innerMounts).toBe(1)
+    expect(container.querySelector('#outer')?.textContent).toBe('hellohello')
+
+    value.set('world')
+    expect(outerMounts).toBe(1)
+    expect(innerMounts).toBe(1)
+    expect(container.querySelector('#outer')?.textContent).toBe('worldworld')
+  })
+
+  it('prop changing to undefined', () => {
+    const title = signal<string | undefined>('visible')
+
+    const Comp = (props: any) => {
+      return h('div', null, () => props.title ?? 'empty')
+    }
+
+    mount(h(Comp, { title: _rp(() => title()) }), container)
+    expect(container.textContent).toBe('visible')
+
+    title.set(undefined)
+    expect(container.textContent).toBe('empty')
+
+    title.set('back')
+    expect(container.textContent).toBe('back')
+  })
+
+  it('rapid signal updates produce correct final value', () => {
+    const count = signal(0)
+    let mountCount = 0
+
+    const Comp = (props: any) => {
+      mountCount++
+      return h('div', null, () => String(props.count))
+    }
+
+    mount(h(Comp, { count: _rp(() => count()) }), container)
+    expect(mountCount).toBe(1)
+
+    for (let i = 1; i <= 100; i++) {
+      count.set(i)
+    }
+
+    expect(mountCount).toBe(1)
+    expect(container.textContent).toBe('100')
+  })
 })
