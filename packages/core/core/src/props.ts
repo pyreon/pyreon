@@ -105,6 +105,52 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
   return result
 }
 
+/**
+ * Brand symbol for compiler-emitted reactive prop wrappers.
+ * Distinguishes `() => expr` wrappers from user-written accessor props
+ * (like Show's `when={() => condition()}`).
+ */
+export const REACTIVE_PROP = Symbol.for('pyreon.reactiveProp')
+
+/**
+ * Create a branded reactive prop wrapper.
+ * Called by the compiler for component prop expressions containing signal reads.
+ */
+export function _rp<T>(fn: () => T): () => T {
+  ;(fn as any)[REACTIVE_PROP] = true
+  return fn
+}
+
+/**
+ * Convert compiler-emitted `_rp(() => expr)` prop values into getter properties.
+ *
+ * Only converts functions branded with REACTIVE_PROP — user-written accessor
+ * props (like Show's when, For's each) are left as-is.
+ */
+export function makeReactiveProps(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  let hasGetters = false
+
+  for (const key of Object.keys(raw)) {
+    const val = raw[key]
+
+    if (typeof val === 'function' && (val as any)[REACTIVE_PROP]) {
+      Object.defineProperty(result, key, {
+        get: val as () => unknown,
+        enumerable: true,
+        configurable: true,
+      })
+      hasGetters = true
+    } else {
+      result[key] = val
+    }
+  }
+
+  return hasGetters ? result : raw
+}
+
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
 let _idCounter = 0

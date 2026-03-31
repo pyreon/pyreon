@@ -12,6 +12,7 @@ import {
   EMPTY_PROPS,
   ForSymbol,
   Fragment,
+  makeReactiveProps,
   PortalSymbol,
   propagateError,
   reportError,
@@ -260,13 +261,18 @@ function mountComponent(
 
   // Merge vnode.children into props.children if not already set
   const children = vnode.children ?? []
-  const mergedProps =
+  const rawProps =
     children.length > 0 && (vnode.props as Record<string, unknown>).children === undefined
       ? {
           ...vnode.props,
           children: children.length === 1 ? children[0] : children,
         }
       : vnode.props
+
+  // Convert compiler-emitted () => expr wrappers into getter properties.
+  // This makes component props reactive — reading props.state inside an
+  // effect/computed tracks the underlying signals.
+  const mergedProps = rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
 
   try {
     const result = runWithHooks(vnode.type, mergedProps)

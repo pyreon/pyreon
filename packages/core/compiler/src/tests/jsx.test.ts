@@ -204,15 +204,34 @@ describe('JSX transform — props', () => {
 // ─── Component elements ──────────────────────────────────────────────────────
 
 describe('JSX transform — component elements', () => {
-  test('does NOT wrap props on component elements (uppercase tag)', () => {
+  test('wraps reactive props on component elements with _rp brand', () => {
     const result = t('<MyComponent value={count()} />')
-    expect(result).not.toContain('() => count()')
-    expect(result).toContain('count()')
+    expect(result).toContain('_rp(() => count())')
   })
 
-  test('does NOT wrap any prop on uppercase component', () => {
+  test('wraps reactive props on any uppercase component with _rp brand', () => {
     const result = t('<Button label={getText()} />')
-    expect(result).not.toContain('() => getText()')
+    expect(result).toContain('_rp(() => getText())')
+  })
+
+  test('emits _rp import when component has reactive props', () => {
+    const result = t('<Button label={getText()} />')
+    expect(result).toContain('import { _rp } from "@pyreon/core"')
+  })
+
+  test('does NOT wrap static props on component elements', () => {
+    const result = t('<Button size={12} />')
+    expect(result).not.toContain('() =>')
+  })
+
+  test('does NOT wrap event handlers on component elements', () => {
+    const result = t('<Button onClick={handleClick} />')
+    expect(result).not.toContain('() => handleClick')
+  })
+
+  test('does NOT wrap arrow function props on component elements', () => {
+    const result = t('<Button render={() => "hello"} />')
+    expect(result).not.toContain('() => () =>')
   })
 
   test('wraps children of component elements (via JSX expression)', () => {
