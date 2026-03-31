@@ -228,7 +228,7 @@ type InferEnvSchema<T> = {
  * - **Default values**: `3000`, `false`, `"localhost"` → type inferred, used as default
  * - **Constructors**: `String`, `Number`, `Boolean` → required, no default
  * - **Validators**: `url()`, `oneOf([...])`, `str()`, `num()`, `bool()` → explicit validation
- * - **Adapters**: `zod(z.string().url())` from `@pyreon/zero/env-zod`
+ * - **Custom**: `schema(raw => z.coerce.number().parse(raw))` — bridge to any schema library
  *
  * @example
  * ```ts
@@ -306,8 +306,39 @@ export function publicEnv(schema?: Record<string, SchemaEntry>): Record<string, 
   return validateEnv(schema, prefixedSource)
 }
 
-// ─── Schema library adapters ────────────────────────────────────────────────
-// Available via subpath imports — no code pulled unless used:
-//   import { zod } from "@pyreon/zero/env-zod"
-//   import { valibot } from "@pyreon/zero/env-valibot"
-//   import { arktype } from "@pyreon/zero/env-arktype"
+// ─── Custom validator escape hatch ──────────────────────────────────────────
+
+/**
+ * Create an env validator from a custom parse function.
+ * Use this to integrate any schema library (Zod, Valibot, ArkType, etc.).
+ *
+ * @example
+ * ```ts
+ * import { z } from "zod"
+ * import { validateEnv, schema } from "@pyreon/zero/env"
+ *
+ * const env = validateEnv({
+ *   PORT: schema(raw => z.coerce.number().parse(raw)),
+ *   DATABASE_URL: schema(raw => z.string().url().parse(raw)),
+ *   HOST: "localhost",  // plain defaults still work alongside
+ * })
+ * ```
+ */
+export function schema<T>(parse: (raw: string) => T): EnvValidator<T> {
+  return {
+    __type: 'env-validator',
+    required: true,
+    defaultValue: undefined,
+    parse(raw: string | undefined, key: string) {
+      if (raw === undefined || raw === '') {
+        throw new Error(`[zero:env] ${key}: is required but not set`)
+      }
+      try {
+        return parse(raw)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(`[zero:env] ${key}: ${msg}`)
+      }
+    },
+  }
+}

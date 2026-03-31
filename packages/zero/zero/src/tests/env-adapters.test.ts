@@ -1,161 +1,90 @@
 import { describe, expect, it } from 'vitest'
-import { validateEnv } from '../env'
-import { arktype } from '../env-arktype'
-import { valibot } from '../env-valibot'
-import { zod } from '../env-zod'
+import { schema, validateEnv } from '../env'
 
-// ─── Zod adapter (duck-typed mock) ──────────────────────────────────────────
+// Mock schema library parse functions (simulating Zod/Valibot/ArkType)
 
-function mockZodString() {
-  return {
-    safeParse(data: unknown) {
-      if (typeof data === 'string' && data.length > 0) {
-        return { success: true, data }
-      }
-      return { success: false, error: { issues: [{ message: 'Expected string' }] } }
-    },
+function mockParseNumber(raw: string): number {
+  const n = Number(raw)
+  if (Number.isNaN(n)) throw new Error('Expected number')
+  return n
+}
+
+function mockParseUrl(raw: string): string {
+  new URL(raw) // throws if invalid
+  return raw
+}
+
+function mockParseEnum(allowed: string[]) {
+  return (raw: string) => {
+    if (!allowed.includes(raw)) throw new Error(`Must be one of: ${allowed.join(', ')}`)
+    return raw
   }
 }
 
-function mockZodNumber() {
-  return {
-    safeParse(data: unknown) {
-      const n = Number(data)
-      if (!Number.isNaN(n)) return { success: true, data: n }
-      return { success: false, error: { issues: [{ message: 'Expected number' }] } }
-    },
-  }
-}
-
-function mockZodDefault(inner: any, defaultValue: any) {
-  return {
-    _def: { typeName: 'ZodDefault' },
-    safeParse(data: unknown) {
-      if (data === undefined || data === null) return { success: true, data: defaultValue }
-      return inner.safeParse(data)
-    },
-  }
-}
-
-describe('zod env adapter', () => {
-  it('validates string', () => {
+describe('schema() — generic bridge', () => {
+  it('validates with custom parse function', () => {
     const result = validateEnv(
-      { NAME: zod(mockZodString()) },
-      { NAME: 'hello' },
-    )
-    expect(result.NAME).toBe('hello')
-  })
-
-  it('throws on invalid', () => {
-    expect(() => validateEnv(
-      { NAME: zod(mockZodString()) },
-      { NAME: '' },
-    )).toThrow('NAME')
-  })
-
-  it('coerces number', () => {
-    const result = validateEnv(
-      { PORT: zod(mockZodNumber()) },
+      { PORT: schema(mockParseNumber) },
       { PORT: '3000' },
     )
     expect(result.PORT).toBe(3000)
   })
 
-  it('handles default value', () => {
-    const result = validateEnv(
-      { PORT: zod(mockZodDefault(mockZodNumber(), 8080)) },
-      {},
-    )
-    expect(result.PORT).toBe(8080)
-  })
-})
-
-// ─── Valibot adapter (duck-typed mock) ──────────────────────────────────────
-
-function mockValibotSafeParse(schema: any, input: unknown) {
-  if (schema.type === 'string') {
-    if (typeof input === 'string') return { success: true, output: input }
-    return { success: false, issues: [{ message: 'Expected string' }] }
-  }
-  if (schema.type === 'number') {
-    const n = Number(input)
-    if (!Number.isNaN(n)) return { success: true, output: n }
-    return { success: false, issues: [{ message: 'Expected number' }] }
-  }
-  return { success: true, output: input }
-}
-
-describe('valibot env adapter', () => {
-  it('validates string', () => {
-    const result = validateEnv(
-      { NAME: valibot({ type: 'string' }, mockValibotSafeParse) },
-      { NAME: 'world' },
-    )
-    expect(result.NAME).toBe('world')
-  })
-
-  it('throws on missing', () => {
+  it('throws on parse failure', () => {
     expect(() => validateEnv(
-      { NAME: valibot({ type: 'string' }, mockValibotSafeParse) },
-      {},
-    )).toThrow('NAME')
+      { PORT: schema(mockParseNumber) },
+      { PORT: 'abc' },
+    )).toThrow('Expected number')
   })
 
-  it('validates number', () => {
-    const result = validateEnv(
-      { PORT: valibot({ type: 'number' }, mockValibotSafeParse) },
-      { PORT: '3000' },
-    )
-    expect(result.PORT).toBe(3000)
-  })
-})
-
-// ─── ArkType adapter (duck-typed mock) ───────────────────────────────────────
-
-function mockArkString(data: unknown) {
-  if (typeof data === 'string') return data
-  const errors = [{ message: 'must be a string' }]
-  ;(errors as any).summary = 'must be a string'
-  return errors
-}
-
-function mockArkUrl(data: unknown) {
-  if (typeof data === 'string') {
-    try { new URL(data); return data } catch {}
-  }
-  const errors = [{ message: 'must be a URL' }]
-  ;(errors as any).summary = 'must be a URL'
-  return errors
-}
-
-describe('arktype env adapter', () => {
-  it('validates string', () => {
-    const result = validateEnv(
-      { NAME: arktype(mockArkString) },
-      { NAME: 'hello' },
-    )
-    expect(result.NAME).toBe('hello')
-  })
-
-  it('throws on missing', () => {
+  it('throws on missing value', () => {
     expect(() => validateEnv(
-      { NAME: arktype(mockArkString) },
+      { PORT: schema(mockParseNumber) },
       {},
-    )).toThrow('NAME')
+    )).toThrow('PORT')
   })
 
   it('validates URL', () => {
     const result = validateEnv(
-      { API: arktype(mockArkUrl) },
+      { API: schema(mockParseUrl) },
       { API: 'https://api.example.com' },
     )
     expect(result.API).toBe('https://api.example.com')
   })
 
-  it('throws on invalid URL', () => {
+  it('rejects invalid URL', () => {
     expect(() => validateEnv(
-      { API: arktype(mockArkUrl) },
+      { API: schema(mockParseUrl) },
       { API: 'not-a-url' },
-    )).toThrow('must be a URL')
+    )).toThrow('API')
+  })
+
+  it('validates enum', () => {
+    const result = validateEnv(
+      { ENV: schema(mockParseEnum(['dev', 'prod'])) },
+      { ENV: 'prod' },
+    )
+    expect(result.ENV).toBe('prod')
+  })
+
+  it('rejects invalid enum', () => {
+    expect(() => validateEnv(
+      { ENV: schema(mockParseEnum(['dev', 'prod'])) },
+      { ENV: 'staging' },
+    )).toThrow('Must be one of')
+  })
+
+  it('works alongside plain defaults', () => {
+    const result = validateEnv(
+      {
+        PORT: schema(mockParseNumber),
+        HOST: 'localhost',
+        DEBUG: false,
+      },
+      { PORT: '8080' },
+    )
+    expect(result.PORT).toBe(8080)
+    expect(result.HOST).toBe('localhost')
+    expect(result.DEBUG).toBe(false)
   })
 })

@@ -147,21 +147,6 @@
       "import": "./lib/env.js",
       "types": "./lib/types/env.d.ts"
     },
-    "./env-zod": {
-      "bun": "./src/env-zod.ts",
-      "import": "./lib/env-zod.js",
-      "types": "./lib/types/env-zod.d.ts"
-    },
-    "./env-valibot": {
-      "bun": "./src/env-valibot.ts",
-      "import": "./lib/env-valibot.js",
-      "types": "./lib/types/env-valibot.d.ts"
-    },
-    "./env-arktype": {
-      "bun": "./src/env-arktype.ts",
-      "import": "./lib/env-arktype.js",
-      "types": "./lib/types/env-arktype.d.ts"
-    },
     "./logger": {
       "bun": "./src/logger.ts",
       "import": "./lib/logger.js",

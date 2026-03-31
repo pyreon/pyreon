@@ -194,7 +194,7 @@ export { loggerMiddleware } from "./logger";
 // ─── Request logging ────────────────────────────────────────────────────────
 
 export type { EnvValidator } from "./env";
-export { bool, num, oneOf, publicEnv, str, url, validateEnv } from "./env";
+export { bool, num, oneOf, publicEnv, schema, str, url, validateEnv } from "./env";
 
 // ─── AI integration ─────────────────────────────────────────────────────────
 
