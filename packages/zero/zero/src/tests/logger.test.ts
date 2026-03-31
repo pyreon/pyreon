@@ -48,7 +48,7 @@ describe('loggerMiddleware', () => {
   })
 
   it('uses custom format', async () => {
-    const format = vi.fn((entry) => `${entry.method} ${entry.path}`)
+    const format = vi.fn((entry: any) => `${entry.method} ${entry.path}`)
     const mw = loggerMiddleware({ format })
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
 

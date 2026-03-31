@@ -262,8 +262,7 @@ export function publicEnv(schema?: Record<string, EnvValidator<any>>): Record<st
 }
 
 // ─── Schema library adapters ────────────────────────────────────────────────
-// Re-exported so users can do: import { validateEnv, str, zod } from "@pyreon/zero/env"
-
-export { zod } from './env-zod'
-export { valibot } from './env-valibot'
-export { arktype } from './env-arktype'
+// Available via subpath imports — no code pulled unless used:
+//   import { zod } from "@pyreon/zero/env-zod"
+//   import { valibot } from "@pyreon/zero/env-valibot"
+//   import { arktype } from "@pyreon/zero/env-arktype"

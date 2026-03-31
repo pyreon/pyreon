@@ -19,11 +19,10 @@ export interface LoggerConfig {
   /**
    * Log level — controls which requests are logged.
    * - "all": log every request
-   * - "errors": only log 4xx and 5xx responses
    * - "none": disable logging
    * Default: "all"
    */
-  level?: 'all' | 'errors' | 'none'
+  level?: 'all' | 'none'
   /**
    * Custom log formatter. Receives request details and returns
    * the string to log (or null to skip).
@@ -44,7 +43,6 @@ export interface LoggerConfig {
 export interface LogEntry {
   method: string
   path: string
-  status: number
   duration: number
   timestamp: Date
   userAgent?: string | undefined
@@ -59,14 +57,6 @@ const COLORS = {
   red: '\x1b[31m',
   cyan: '\x1b[36m',
   magenta: '\x1b[35m',
-}
-
-function statusColor(status: number, colors: boolean): string {
-  if (!colors) return String(status)
-  if (status < 300) return `${COLORS.green}${status}${COLORS.reset}`
-  if (status < 400) return `${COLORS.cyan}${status}${COLORS.reset}`
-  if (status < 500) return `${COLORS.yellow}${status}${COLORS.reset}`
-  return `${COLORS.red}${status}${COLORS.reset}`
 }
 
 function methodColor(method: string, colors: boolean): string {
@@ -92,23 +82,24 @@ function defaultFormat(entry: LogEntry, colors: boolean): string {
   const dim = colors ? COLORS.dim : ''
   const reset = colors ? COLORS.reset : ''
 
-  return `  ${methodColor(entry.method, colors)} ${entry.path} ${statusColor(entry.status, colors)} ${dim}${dur}${reset}`
+  return `  ${methodColor(entry.method, colors)} ${entry.path} ${dim}${dur}${reset}`
 }
 
 /**
  * Request logging middleware.
+ *
+ * Logs incoming requests with method, path, and duration.
+ * Runs in middleware phase — logs timing from middleware start to
+ * microtask completion (approximate request duration).
  *
  * @example
  * ```ts
  * // Basic usage
  * loggerMiddleware()
  *
- * // Errors only
- * loggerMiddleware({ level: "errors" })
- *
  * // Custom format
  * loggerMiddleware({
- *   format: (e) => `${e.method} ${e.path} → ${e.status} (${e.duration}ms)`,
+ *   format: (e) => `${e.method} ${e.path} (${e.duration}ms)`,
  * })
  * ```
  */
@@ -126,14 +117,9 @@ export function loggerMiddleware(config?: LoggerConfig): Middleware {
 
     const start = performance.now()
 
-    // Attach a post-response logger via a header trick:
-    // We can't hook into response completion in the middleware model,
-    // so we log at middleware time with status 200 (assumed).
-    // For accurate status logging, use the `format` callback with response info.
     const entry: LogEntry = {
       method: ctx.req.method ?? 'GET',
       path: ctx.path,
-      status: 200,
       duration: 0,
       timestamp: new Date(),
       userAgent: ctx.req.headers.get('user-agent') ?? undefined,
@@ -142,8 +128,6 @@ export function loggerMiddleware(config?: LoggerConfig): Middleware {
     // Use queueMicrotask to log after the middleware chain completes
     queueMicrotask(() => {
       entry.duration = performance.now() - start
-
-      if (level === 'errors' && entry.status < 400) return
 
       if (config?.format) {
         const line = config.format(entry)

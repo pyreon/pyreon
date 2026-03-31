@@ -40,6 +40,10 @@ export interface AiPluginConfig {
   legalUrl?: string
   /** Logo URL for the plugin. */
   logoUrl?: string
+  /** Routes directory relative to project root. Default: "src/routes" */
+  routesDir?: string
+  /** API routes directory relative to project root. Default: "src/api" */
+  apiDir?: string
   /**
    * API route descriptions — map of pattern to description.
    * Used for llms.txt and ai-plugin.json.
@@ -100,7 +104,8 @@ export function generateLlmsTxt(
   // Pages section
   const routes = parseFileRoutes(routeFiles)
   const pages = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound && !r.isCatchAll,
+    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
+      && !r.isCatchAll && !r.urlPath.includes(':'),
   )
 
   if (pages.length > 0) {
@@ -120,7 +125,8 @@ export function generateLlmsTxt(
 
   // Dynamic routes (documented separately — AI needs to know about params)
   const dynamicRoutes = routes.filter(
-    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound && r.urlPath.includes(':'),
+    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound
+      && (r.urlPath.includes(':') || r.isCatchAll),
   )
   if (dynamicRoutes.length > 0) {
     lines.push('## Dynamic Pages')
@@ -498,8 +504,8 @@ export function aiPlugin(config: AiPluginConfig): Plugin {
         const { readdir } = await import('node:fs/promises')
         const { join } = await import('node:path')
 
-        const routesDir = join(root, 'src', 'routes')
-        const apiDir = join(root, 'src', 'api')
+        const routesDir = join(root, config.routesDir ?? 'src/routes')
+        const apiDir = join(root, config.apiDir ?? 'src/api')
 
         routeFiles = await scanDir(routesDir, routesDir)
         apiFiles = await scanDir(apiDir, apiDir)

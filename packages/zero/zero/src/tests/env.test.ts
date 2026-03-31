@@ -151,34 +151,39 @@ describe('validateEnv', () => {
 })
 
 describe('publicEnv', () => {
-  const originalEnv = process.env
-
   it('extracts ZERO_PUBLIC_ prefixed vars', () => {
+    // Use a controlled env snapshot via Object.defineProperty on process
+    const saved = process.env
     process.env = {
-      ...originalEnv,
       ZERO_PUBLIC_API_URL: 'https://api.example.com',
       ZERO_PUBLIC_APP_NAME: 'MyApp',
       DATABASE_URL: 'postgres://secret',
     }
-    const result = publicEnv()
-    expect(result.API_URL).toBe('https://api.example.com')
-    expect(result.APP_NAME).toBe('MyApp')
-    expect((result as any).DATABASE_URL).toBeUndefined()
-    process.env = originalEnv
+    try {
+      const result = publicEnv()
+      expect(result.API_URL).toBe('https://api.example.com')
+      expect(result.APP_NAME).toBe('MyApp')
+      expect((result as any).DATABASE_URL).toBeUndefined()
+    } finally {
+      process.env = saved
+    }
   })
 
   it('validates with schema using ZERO_PUBLIC_ prefix', () => {
+    const saved = process.env
     process.env = {
-      ...originalEnv,
       ZERO_PUBLIC_PORT: '3000',
       ZERO_PUBLIC_DEBUG: 'true',
     }
-    const result = publicEnv({
-      PORT: num(),
-      DEBUG: bool(),
-    })
-    expect(result.PORT).toBe(3000)
-    expect(result.DEBUG).toBe(true)
-    process.env = originalEnv
+    try {
+      const result = publicEnv({
+        PORT: num(),
+        DEBUG: bool(),
+      })
+      expect(result.PORT).toBe(3000)
+      expect(result.DEBUG).toBe(true)
+    } finally {
+      process.env = saved
+    }
   })
 })

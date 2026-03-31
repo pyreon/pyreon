@@ -146,16 +146,33 @@ export function buildTextOverlaySvg(
     const anchor = layer.textAnchor ?? 'middle'
     const maxWidth = layer.maxWidth ?? Math.round(width * 0.8)
 
-    // Simple word wrapping via tspan elements
+    // Word wrapping via tspan elements.
+    // Width estimation: Latin chars ~0.55em, CJK chars ~1.0em, narrow chars ~0.35em.
     const words = text.split(' ')
     const lines: string[] = []
     let currentLine = ''
 
-    // Approximate character width as 0.5 × fontSize
-    const charWidth = fontSize * 0.5
+    const estimateWidth = (s: string): number => {
+      let width = 0
+      for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i)
+        if (code >= 0x3000 && code <= 0x9FFF) {
+          // CJK characters — full width
+          width += fontSize * 1.0
+        } else if (code <= 0x7E && 'iljft!|:;.,\''.includes(s[i]!)) {
+          // Narrow Latin characters
+          width += fontSize * 0.35
+        } else {
+          // Regular Latin characters
+          width += fontSize * 0.55
+        }
+      }
+      return width
+    }
+
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word
-      if (testLine.length * charWidth > maxWidth && currentLine) {
+      if (estimateWidth(testLine) > maxWidth && currentLine) {
         lines.push(currentLine)
         currentLine = word
       } else {

@@ -23,6 +23,31 @@
  */
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
+/**
+ * Module-level nonce storage. Set by CSP middleware per-request,
+ * read by components via useNonce(). In SSR, runWithRequestContext
+ * ensures isolation between concurrent requests.
+ */
+let _currentNonce = ''
+
+/**
+ * Read the current CSP nonce in a component or template.
+ * Returns empty string if no CSP middleware is active.
+ *
+ * @example
+ * ```tsx
+ * import { useNonce } from "@pyreon/zero/csp"
+ *
+ * function InlineScript() {
+ *   const nonce = useNonce()
+ *   return <script nonce={nonce}>console.log("safe")</script>
+ * }
+ * ```
+ */
+export function useNonce(): string {
+  return _currentNonce
+}
+
 export interface CspDirectives {
   defaultSrc?: string[]
   scriptSrc?: string[]
@@ -168,9 +193,11 @@ export function cspMiddleware(config: CspConfig): Middleware {
 
   return (ctx: MiddlewareContext) => {
     if (staticHeader) {
+      _currentNonce = ''
       ctx.headers.set(headerName, staticHeader)
     } else {
       const nonce = generateNonce()
+      _currentNonce = nonce
       ;(ctx.locals as Record<string, unknown>).cspNonce = nonce
       ctx.headers.set(headerName, buildCspHeader(config.directives, nonce))
     }

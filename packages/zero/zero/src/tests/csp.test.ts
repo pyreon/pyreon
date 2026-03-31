@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCspHeader, cspMiddleware } from '../csp'
+import { buildCspHeader, cspMiddleware, useNonce } from '../csp'
 
 describe('buildCspHeader', () => {
   it('builds basic directives', () => {
@@ -111,5 +111,26 @@ describe('cspMiddleware', () => {
     expect(locals.cspNonce).toBeDefined()
     expect(typeof locals.cspNonce).toBe('string')
     expect(headers.get('Content-Security-Policy')).toContain("'nonce-")
+  })
+
+  it('useNonce returns the nonce set by middleware', () => {
+    const mw = cspMiddleware({
+      directives: { scriptSrc: ["'self'", "'nonce'"] },
+    })
+    const headers = new Headers()
+    const locals: Record<string, unknown> = {}
+    mw({ headers, locals } as any)
+    const nonce = useNonce()
+    expect(nonce).toBe(locals.cspNonce)
+    expect(nonce.length).toBeGreaterThan(0)
+  })
+
+  it('useNonce returns empty string when no nonce middleware', () => {
+    const mw = cspMiddleware({
+      directives: { defaultSrc: ["'self'"] },
+    })
+    const headers = new Headers()
+    mw({ headers, locals: {} } as any)
+    expect(useNonce()).toBe('')
   })
 })
