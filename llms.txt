@@ -194,9 +194,15 @@ mount(<App />, document.getElementById("app")!)
 - `.map()` in JSX → use `<For>` for reactive list rendering
 - `class="a b"` works, but for conditional classes use `class={["a", cond && "b"]}` or `cx()`
 
-### Reactivity
-- `const { mode } = useContext(ctx)` → BREAKS REACTIVITY! Destructuring captures the value once. Keep the reference: `const ctx = useContext(Ctx)` then read `ctx.mode` inside reactive scopes
-- `<Comp title={signal()}` → static (evaluated once). For reactive props, pass the signal and read inside the component
+### Props & Reactivity
+- `const { state } = props` → BREAKS REACTIVITY! Destructuring captures once. Use `props.state` for reactive access
+- For rest props with reactivity: `const [own, rest] = splitProps(props, ['state', 'size'])` — preserves getters
+- Component props with signal reads ARE reactive (compiler wraps with _rp): `<Button state={isActive() ? 'primary' : 'default'} />` updates without remount
+- Single JSX element props are stable: `<Wrapper icon={<Icon name={x()} />} />` — Icon created once, name updates reactively
+- Conditional JSX props remount: `<Wrapper icon={show() ? <Icon /> : null} />` — correct, different VNode types
+
+### Context & Effects
+- `const { mode } = useContext(ctx)` → BREAKS REACTIVITY! Destructuring captures once. Keep reference: `const ctx = useContext(Ctx)` then `ctx.mode`
 - `effect(() => { effect(() => ...) })` → NEVER nest effects. Use `computed()` for derived values
 - `.peek()` inside effects/computeds → bypasses tracking, creates stale reads
 
