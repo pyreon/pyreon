@@ -31,7 +31,7 @@ export interface EnvValidatorOptions<T = string> {
   description?: string
 }
 
-interface EnvValidator<T> {
+export interface EnvValidator<T> {
   __type: 'env-validator'
   parse: (raw: string | undefined, key: string) => T
   required: boolean
