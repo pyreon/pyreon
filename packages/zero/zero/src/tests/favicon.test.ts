@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createIcoFromPngs } from '../favicon'
+import { createIcoFromPngs, faviconLinks } from '../favicon'
 
 describe('createIcoFromPngs', () => {
   it('produces valid ICO header bytes', () => {
@@ -106,5 +106,56 @@ describe('faviconPlugin', () => {
     const tags = plugin.transformIndexHtml()
     const themeMeta = tags.find((t: any) => t.attrs.name === 'theme-color')
     expect(themeMeta.attrs.content).toBe('#0070f3')
+  })
+})
+
+describe('faviconLinks', () => {
+  const baseConfig = { source: './icon.svg' }
+  const localeConfig = {
+    source: './icon.svg',
+    locales: {
+      de: { source: './icon-de.svg' },
+      cs: { source: './icon-cs.svg' },
+    },
+  }
+
+  it('returns base links without locale', () => {
+    const links = faviconLinks(undefined, baseConfig)
+    expect(links.length).toBeGreaterThan(0)
+    expect(links.every((l) => !l.href.startsWith('/de/'))).toBe(true)
+    expect(links.some((l) => l.rel === 'icon' && l.type === 'image/svg+xml')).toBe(true)
+  })
+
+  it('returns locale-prefixed links for locale with override', () => {
+    const links = faviconLinks('de', localeConfig)
+    const svgLink = links.find((l) => l.type === 'image/svg+xml')
+    expect(svgLink?.href).toBe('/de/favicon.svg')
+    expect(links.find((l) => l.sizes === '32x32')?.href).toBe('/de/favicon-32x32.png')
+    expect(links.find((l) => l.rel === 'apple-touch-icon')?.href).toBe('/de/apple-touch-icon.png')
+  })
+
+  it('returns base links for locale without override', () => {
+    const links = faviconLinks('fr', localeConfig)
+    expect(links.find((l) => l.type === 'image/svg+xml')?.href).toBe('/favicon.svg')
+  })
+
+  it('includes manifest link when not disabled', () => {
+    const links = faviconLinks(undefined, baseConfig)
+    expect(links.some((l) => l.rel === 'manifest')).toBe(true)
+  })
+
+  it('excludes manifest link when disabled', () => {
+    const links = faviconLinks(undefined, { ...baseConfig, manifest: false })
+    expect(links.some((l) => l.rel === 'manifest')).toBe(false)
+  })
+
+  it('handles PNG source (no SVG link)', () => {
+    const links = faviconLinks(undefined, { source: './icon.png' })
+    expect(links.some((l) => l.type === 'image/svg+xml')).toBe(false)
+  })
+
+  it('locale-prefixed manifest link', () => {
+    const links = faviconLinks('de', localeConfig)
+    expect(links.find((l) => l.rel === 'manifest')?.href).toBe('/de/site.webmanifest')
   })
 })

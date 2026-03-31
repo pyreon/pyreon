@@ -27,6 +27,13 @@ function warnSharpMissing() {
 //   import { faviconPlugin } from "@pyreon/zero"
 //   export default { plugins: [zero(), faviconPlugin({ source: "./icon.svg" })] }
 
+export interface FaviconLocaleConfig {
+  /** Locale-specific source icon (SVG or PNG). */
+  source: string
+  /** Optional dark mode variant for this locale. */
+  darkSource?: string
+}
+
 export interface FaviconPluginConfig {
   /** Path to the source icon (SVG or PNG, at least 512x512 for PNG). */
   source: string
@@ -44,6 +51,26 @@ export interface FaviconPluginConfig {
    * to switch between light and dark variants.
    */
   darkSource?: string
+  /**
+   * Locale-specific icon overrides. Each key is a locale code,
+   * value is a source icon (and optional dark variant).
+   * Locales not in this map use the base `source`.
+   *
+   * Generated files are placed under `/{locale}/` prefix:
+   *   /de/favicon.svg, /de/favicon-32x32.png, etc.
+   *
+   * @example
+   * ```ts
+   * faviconPlugin({
+   *   source: "./icon.svg",
+   *   locales: {
+   *     de: { source: "./icon-de.svg" },
+   *     cs: { source: "./icon-cs.svg" },
+   *   },
+   * })
+   * ```
+   */
+  locales?: Record<string, FaviconLocaleConfig>
 }
 
 interface FaviconSize {
@@ -95,24 +122,41 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     // Dev server: serve generated favicons on-the-fly
     configureServer(server) {
       const sourcePath = join(root, config.source)
+      const devCache = new Map<string, Uint8Array>()
 
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? ''
 
+        // Resolve locale-specific source: /{locale}/favicon.svg → locale source
+        const localeSource = resolveLocaleSource(url, config, root)
+
         // Serve source as favicon.svg in dev
-        if (url === '/favicon.svg' && config.source.endsWith('.svg')) {
+        const svgUrl = localeSource ? localeSource.url : url
+        const svgPath = localeSource ? localeSource.sourcePath : sourcePath
+        const isSvgSource = localeSource ? localeSource.source.endsWith('.svg') : config.source.endsWith('.svg')
+
+        if (svgUrl.endsWith('/favicon.svg') && isSvgSource) {
           try {
-            const content = await readFile(sourcePath, 'utf-8')
+            const content = await readFile(svgPath, 'utf-8')
             res.setHeader('Content-Type', 'image/svg+xml')
             res.end(content)
             return
           } catch { /* fall through */ }
         }
 
-        // Serve generated PNGs on-demand
-        const sizeMatch = SIZES.find((s) => url === `/${s.name}`)
+        // Serve generated PNGs on-demand (supports /{locale}/favicon-32x32.png)
+        const baseName = svgUrl.split('/').pop() ?? ''
+        const sizeMatch = SIZES.find((s) => s.name === baseName)
         if (sizeMatch) {
-          const png = await resizeToPng(sourcePath, sizeMatch.size)
+          const cacheKey = `${svgPath}:${sizeMatch.size}`
+          let png = devCache.get(cacheKey)
+          if (!png) {
+            const result = await resizeToPng(svgPath, sizeMatch.size)
+            if (result) {
+              png = result
+              devCache.set(cacheKey, result)
+            }
+          }
           if (png) {
             res.setHeader('Content-Type', 'image/png')
             res.setHeader('Cache-Control', 'no-cache')
@@ -122,8 +166,16 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         }
 
         // Serve generated ICO on-demand
-        if (url === '/favicon.ico') {
-          const ico = await generateIco(sourcePath)
+        if (baseName === 'favicon.ico') {
+          const cacheKey = `ico:${svgPath}`
+          let ico: Uint8Array | undefined = devCache.get(cacheKey)
+          if (!ico) {
+            const result = await generateIco(svgPath)
+            if (result) {
+              ico = result
+              devCache.set(cacheKey, result)
+            }
+          }
           if (ico) {
             res.setHeader('Content-Type', 'image/x-icon')
             res.setHeader('Cache-Control', 'no-cache')
@@ -132,14 +184,15 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
           }
         }
 
-        // Serve manifest
-        if (url === '/site.webmanifest' && generateManifest) {
+        // Serve manifest (supports /{locale}/site.webmanifest)
+        if (baseName === 'site.webmanifest' && generateManifest) {
+          const prefix = localeSource ? `/${localeSource.locale}` : ''
           const manifest = {
             name: config.name ?? 'App',
             short_name: config.name ?? 'App',
             icons: [
-              { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-              { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+              { src: `${prefix}/icon-192.png`, sizes: '192x192', type: 'image/png' },
+              { src: `${prefix}/icon-512.png`, sizes: '512x512', type: 'image/png' },
             ],
             theme_color: themeColor,
             background_color: backgroundColor,
@@ -209,77 +262,14 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     async generateBundle() {
       if (!isBuild) return
 
-      const sourcePath = join(root, config.source)
-      if (!existsSync(sourcePath)) {
-        // oxlint-disable-next-line no-console
-        console.warn(`[zero:favicon] Source not found: ${sourcePath}`)
-        return
-      }
+      // Generate favicons for the base (default) source
+      await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
 
-      const isSvg = config.source.endsWith('.svg')
-
-      // Copy SVG as favicon.svg
-      if (isSvg) {
-        const svgContent = await readFile(sourcePath, 'utf-8')
-        let finalSvg = svgContent
-
-        // If dark mode variant provided, wrap in media query
-        if (config.darkSource) {
-          const darkPath = join(root, config.darkSource)
-          if (existsSync(darkPath)) {
-            const darkSvg = await readFile(darkPath, 'utf-8')
-            finalSvg = wrapSvgWithDarkMode(svgContent, darkSvg)
-          }
+      // Generate locale-specific favicon sets
+      if (config.locales) {
+        for (const [locale, localeConfig] of Object.entries(config.locales)) {
+          await generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest)
         }
-
-        this.emitFile({
-          type: 'asset',
-          fileName: 'favicon.svg',
-          source: finalSvg,
-        })
-      }
-
-      // Generate PNG sizes via sharp
-      for (const { size, name } of SIZES) {
-        const pngBuffer = await resizeToPng(sourcePath, size)
-        if (pngBuffer) {
-          this.emitFile({
-            type: 'asset',
-            fileName: name,
-            source: pngBuffer,
-          })
-        }
-      }
-
-      // Generate favicon.ico (16 + 32)
-      const ico = await generateIco(sourcePath)
-      if (ico) {
-        this.emitFile({
-          type: 'asset',
-          fileName: 'favicon.ico',
-          source: ico,
-        })
-      }
-
-      // Generate web manifest
-      if (generateManifest) {
-        const manifest = {
-          name: config.name ?? 'App',
-          short_name: config.name ?? 'App',
-          icons: [
-            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-            { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-          ],
-          theme_color: themeColor,
-          background_color: backgroundColor,
-          display: 'standalone',
-        }
-
-        this.emitFile({
-          type: 'asset',
-          fileName: 'site.webmanifest',
-          source: JSON.stringify(manifest, null, 2),
-        })
       }
     },
   }
@@ -309,6 +299,157 @@ function stripSvgWrapper(svg: string): string {
     .replace(/<svg[^>]*>/, '')
     .replace(/<\/svg>\s*$/, '')
     .trim()
+}
+
+/**
+ * Resolve the source path for a locale-prefixed favicon URL.
+ * Returns null if the URL is not locale-prefixed or locale has no override.
+ */
+function resolveLocaleSource(
+  url: string,
+  config: FaviconPluginConfig,
+  rootDir: string,
+): { locale: string; url: string; source: string; sourcePath: string } | null {
+  if (!config.locales) return null
+
+  for (const [locale, localeConfig] of Object.entries(config.locales)) {
+    const prefix = `/${locale}/`
+    if (url.startsWith(prefix)) {
+      return {
+        locale,
+        url,
+        source: localeConfig.source,
+        sourcePath: join(rootDir, localeConfig.source),
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Generate a complete favicon set (SVG, PNGs, ICO, manifest) with a file prefix.
+ * Called once for base (prefix = '') and once per locale (prefix = '{locale}/').
+ */
+async function generateFaviconSet(
+  this: any,
+  rootDir: string,
+  source: string,
+  darkSource: string | undefined,
+  prefix: string,
+  config: FaviconPluginConfig,
+  themeColor: string,
+  backgroundColor: string,
+  generateManifest: boolean,
+): Promise<void> {
+  const sourcePath = join(rootDir, source)
+  if (!existsSync(sourcePath)) {
+    // oxlint-disable-next-line no-console
+    console.warn(`[zero:favicon] Source not found: ${sourcePath}`)
+    return
+  }
+
+  const isSvg = source.endsWith('.svg')
+
+  // Copy SVG as favicon.svg
+  if (isSvg) {
+    const svgContent = await readFile(sourcePath, 'utf-8')
+    let finalSvg = svgContent
+
+    if (darkSource) {
+      const darkPath = join(rootDir, darkSource)
+      if (existsSync(darkPath)) {
+        const darkSvg = await readFile(darkPath, 'utf-8')
+        finalSvg = wrapSvgWithDarkMode(svgContent, darkSvg)
+      }
+    }
+
+    this.emitFile({
+      type: 'asset',
+      fileName: `${prefix}favicon.svg`,
+      source: finalSvg,
+    })
+  }
+
+  // Generate PNG sizes via sharp
+  for (const { size, name } of SIZES) {
+    const pngBuffer = await resizeToPng(sourcePath, size)
+    if (pngBuffer) {
+      this.emitFile({
+        type: 'asset',
+        fileName: `${prefix}${name}`,
+        source: pngBuffer,
+      })
+    }
+  }
+
+  // Generate favicon.ico (16 + 32)
+  const ico = await generateIco(sourcePath)
+  if (ico) {
+    this.emitFile({
+      type: 'asset',
+      fileName: `${prefix}favicon.ico`,
+      source: ico,
+    })
+  }
+
+  // Generate web manifest
+  if (generateManifest) {
+    const manifestPrefix = prefix ? `/${prefix.slice(0, -1)}` : ''
+    const manifest = {
+      name: config.name ?? 'App',
+      short_name: config.name ?? 'App',
+      icons: [
+        { src: `${manifestPrefix}/icon-192.png`, sizes: '192x192', type: 'image/png' },
+        { src: `${manifestPrefix}/icon-512.png`, sizes: '512x512', type: 'image/png' },
+      ],
+      theme_color: themeColor,
+      background_color: backgroundColor,
+      display: 'standalone',
+    }
+
+    this.emitFile({
+      type: 'asset',
+      fileName: `${prefix}site.webmanifest`,
+      source: JSON.stringify(manifest, null, 2),
+    })
+  }
+}
+
+/**
+ * Get favicon link tags for a specific locale.
+ * Returns link objects suitable for `useHead()` or direct HTML injection.
+ *
+ * @example
+ * ```ts
+ * const links = faviconLinks("de", { source: "./icon.svg", locales: { de: { source: "./icon-de.svg" } } })
+ * // → [{ rel: "icon", type: "image/svg+xml", href: "/de/favicon.svg" }, ...]
+ * ```
+ */
+export function faviconLinks(
+  locale: string | undefined,
+  config: FaviconPluginConfig,
+): Array<{ rel: string; type?: string; sizes?: string; href: string }> {
+  const hasLocaleOverride = locale && config.locales?.[locale]
+  const prefix = hasLocaleOverride ? `/${locale}` : ''
+  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith('.svg')
+
+  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = []
+
+  if (isSvg) {
+    links.push({ rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon.svg` })
+  }
+
+  links.push(
+    { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${prefix}/favicon-32x32.png` },
+    { rel: 'icon', type: 'image/png', sizes: '16x16', href: `${prefix}/favicon-16x16.png` },
+    { rel: 'apple-touch-icon', sizes: '180x180', href: `${prefix}/apple-touch-icon.png` },
+  )
+
+  if (config.manifest !== false) {
+    links.push({ rel: 'manifest', href: `${prefix}/site.webmanifest` })
+  }
+
+  return links
 }
 
 async function resizeToPng(input: string, size: number): Promise<Uint8Array | null> {

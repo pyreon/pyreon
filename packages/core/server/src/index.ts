@@ -70,6 +70,7 @@ export { island } from './island'
 
 // Middleware
 export type { Middleware, MiddlewareContext } from './middleware'
+export { useRequestLocals } from './middleware'
 export type { PrerenderOptions, PrerenderResult } from './ssg'
 // SSG
 export { prerender } from './ssg'

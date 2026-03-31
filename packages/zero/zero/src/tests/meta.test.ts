@@ -147,6 +147,141 @@ describe('buildMetaTags', () => {
     expect(ogAlternates.length).toBe(1)
     expect(ogAlternates[0]?.content).toBe('en')
   })
+
+  it('resolves OG image from ogTemplate', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      ogTemplate: 'default',
+      locale: 'de',
+    })
+
+    const ogImage = tags.meta.find((m) => m.property === 'og:image')
+    expect(ogImage?.content).toBe('/og/default-de.png')
+    const twitterImage = tags.meta.find((m) => m.name === 'twitter:image')
+    expect(twitterImage?.content).toBe('/og/default-de.png')
+  })
+
+  it('explicit image overrides ogTemplate', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      image: '/custom-og.jpg',
+      ogTemplate: 'default',
+      locale: 'de',
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:image')?.content).toBe('/custom-og.jpg')
+  })
+
+  it('ogTemplate without locale uses no suffix', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      ogTemplate: 'hero',
+    })
+
+    // Default locale is en_US — no suffix
+    expect(tags.meta.find((m) => m.property === 'og:image')?.content).toBe('/og/hero.png')
+  })
+
+  it('ogTemplate respects custom dir and format', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      ogTemplate: 'photo',
+      locale: 'fr',
+      ogImageDir: 'images',
+      ogImageFormat: 'jpeg',
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:image')?.content).toBe('/images/photo-fr.jpg')
+  })
+
+  it('injects favicon links when favicon config provided', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      favicon: { source: './icon.svg' },
+    })
+
+    expect(tags.link.some((l) => l.rel === 'icon')).toBe(true)
+    expect(tags.link.some((l) => l.rel === 'apple-touch-icon')).toBe(true)
+    expect(tags.link.some((l) => l.rel === 'manifest')).toBe(true)
+  })
+
+  it('injects locale-aware favicon links', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      locale: 'de',
+      favicon: {
+        source: './icon.svg',
+        locales: { de: { source: './icon-de.svg' } },
+      },
+    })
+
+    const svgIcon = tags.link.find((l) => l.type === 'image/svg+xml')
+    expect(svgIcon?.href).toBe('/de/favicon.svg')
+  })
+
+  it('injects theme-color from favicon config', () => {
+    const tags = buildMetaTags({
+      title: 'Page',
+      favicon: { source: './icon.svg', themeColor: '#0070f3' },
+    })
+
+    expect(tags.meta.find((m) => m.name === 'theme-color')?.content).toBe('#0070f3')
+  })
+
+  it('includes og:image:width and og:image:height', () => {
+    const tags = buildMetaTags({
+      image: '/og.jpg',
+      imageWidth: 1200,
+      imageHeight: 630,
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:image:width')?.content).toBe('1200')
+    expect(tags.meta.find((m) => m.property === 'og:image:height')?.content).toBe('630')
+  })
+
+  it('auto-resolves image dimensions for ogTemplate', () => {
+    const tags = buildMetaTags({
+      ogTemplate: 'default',
+      locale: 'en',
+    })
+
+    // ogTemplate defaults to 1200x630
+    expect(tags.meta.find((m) => m.property === 'og:image:width')?.content).toBe('1200')
+    expect(tags.meta.find((m) => m.property === 'og:image:height')?.content).toBe('630')
+  })
+
+  it('noIndex convenience prop overrides robots', () => {
+    const tags = buildMetaTags({ noIndex: true })
+    expect(tags.meta.find((m) => m.name === 'robots')?.content).toBe('noindex, nofollow')
+  })
+
+  it('noIndex false uses default robots', () => {
+    const tags = buildMetaTags({ noIndex: false })
+    expect(tags.meta.find((m) => m.name === 'robots')?.content).toBe('index, follow')
+  })
+
+  it('includes og:video with auto-detected type', () => {
+    const tags = buildMetaTags({
+      video: '/intro.mp4',
+      videoWidth: 1920,
+      videoHeight: 1080,
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:video')?.content).toBe('/intro.mp4')
+    expect(tags.meta.find((m) => m.property === 'og:video:width')?.content).toBe('1920')
+    expect(tags.meta.find((m) => m.property === 'og:video:height')?.content).toBe('1080')
+    expect(tags.meta.find((m) => m.property === 'og:video:type')?.content).toBe('video/mp4')
+  })
+
+  it('includes og:video:type for webm', () => {
+    const tags = buildMetaTags({ video: '/clip.webm' })
+    expect(tags.meta.find((m) => m.property === 'og:video:type')?.content).toBe('video/webm')
+  })
+
+  it('includes og:audio', () => {
+    const tags = buildMetaTags({ audio: '/podcast.mp3' })
+    expect(tags.meta.find((m) => m.property === 'og:audio')?.content).toBe('/podcast.mp3')
+  })
 })
 
 describe('Meta component', () => {

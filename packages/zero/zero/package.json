@@ -117,15 +117,40 @@
       "import": "./lib/favicon.js",
       "types": "./lib/types/favicon.d.ts"
     },
+    "./og-image": {
+      "bun": "./src/og-image.ts",
+      "import": "./lib/og-image.js",
+      "types": "./lib/types/og-image.d.ts"
+    },
     "./i18n": {
       "bun": "./src/i18n-routing.ts",
       "import": "./lib/i18n-routing.js",
       "types": "./lib/types/i18n-routing.d.ts"
     },
+    "./ai": {
+      "bun": "./src/ai.ts",
+      "import": "./lib/ai.js",
+      "types": "./lib/types/ai.d.ts"
+    },
     "./middleware": {
       "bun": "./src/middleware.ts",
       "import": "./lib/middleware.js",
       "types": "./lib/types/middleware.d.ts"
+    },
+    "./csp": {
+      "bun": "./src/csp.ts",
+      "import": "./lib/csp.js",
+      "types": "./lib/types/csp.d.ts"
+    },
+    "./env": {
+      "bun": "./src/env.ts",
+      "import": "./lib/env.js",
+      "types": "./lib/types/env.d.ts"
+    },
+    "./logger": {
+      "bun": "./src/logger.ts",
+      "import": "./lib/logger.js",
+      "types": "./lib/types/logger.d.ts"
     }
   },
   "scripts": {

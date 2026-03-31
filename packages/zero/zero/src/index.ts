@@ -32,9 +32,12 @@ export { createISRHandler } from "./isr";
 
 export {
 	bunAdapter,
+	cloudflareAdapter,
+	netlifyAdapter,
 	nodeAdapter,
 	resolveAdapter,
 	staticAdapter,
+	vercelAdapter,
 } from "./adapters";
 
 // ─── Components ─────────────────────────────────────────────────────────────
@@ -148,8 +151,17 @@ export { createActionMiddleware, defineAction } from "./actions";
 
 // ─── Favicon ────────────────────────────────────────────────────────────────
 
-export type { FaviconPluginConfig } from "./favicon";
-export { faviconPlugin } from "./favicon";
+export type { FaviconLocaleConfig, FaviconPluginConfig } from "./favicon";
+export { faviconLinks, faviconPlugin } from "./favicon";
+
+// ─── OG Image ───────────────────────────────────────────────────────────────
+
+export type {
+	OgImageLayer,
+	OgImagePluginConfig,
+	OgImageTemplate,
+} from "./og-image";
+export { ogImagePath, ogImagePlugin } from "./og-image";
 
 // ─── Meta ───────────────────────────────────────────────────────────────────
 
@@ -168,6 +180,33 @@ export {
 	setLocale,
 	useLocale,
 } from "./i18n-routing";
+
+// ─── CSP ────────────────────────────────────────────────────────────────────
+
+export type { CspConfig, CspDirectives } from "./csp";
+export { buildCspHeader, cspMiddleware, useNonce } from "./csp";
+
+// ─── Environment validation ─────────────────────────────────────────────────
+
+export type { LogEntry, LoggerConfig } from "./logger";
+export { loggerMiddleware } from "./logger";
+
+// ─── Request logging ────────────────────────────────────────────────────────
+
+export type { EnvValidator } from "./env";
+export { bool, num, oneOf, publicEnv, schema, str, url, validateEnv } from "./env";
+
+// ─── AI integration ─────────────────────────────────────────────────────────
+
+export type { AiPluginConfig, InferJsonLdOptions } from "./ai";
+export {
+	aiPlugin,
+	generateAiPluginManifest,
+	generateLlmsFullTxt,
+	generateLlmsTxt,
+	generateOpenApiSpec,
+	inferJsonLd,
+} from "./ai";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

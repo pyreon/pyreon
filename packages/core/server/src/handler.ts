@@ -44,6 +44,7 @@ import {
   processCompiledTemplate,
 } from './html'
 import type { Middleware, MiddlewareContext } from './middleware'
+import { provideRequestLocals } from './middleware'
 
 const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
@@ -127,6 +128,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
 
     return runWithRequestContext(async () => {
       try {
+        // Bridge middleware locals → Pyreon context system so components
+        // can access per-request data (CSP nonce, auth user, etc.)
+        provideRequestLocals(ctx.locals)
+
         // Pre-run loaders so data is available during render
         await prefetchLoaderData(router as never, path)
 

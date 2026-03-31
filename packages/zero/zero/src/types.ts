@@ -75,7 +75,7 @@ export interface ZeroConfig {
   isr?: ISRConfig
 
   /** Deploy adapter. Default: "node" */
-  adapter?: 'node' | 'bun' | 'static'
+  adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify'
 
   /** Base URL path. Default: "/" */
   base?: string
