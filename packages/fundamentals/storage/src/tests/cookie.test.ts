@@ -5,7 +5,6 @@ function clearAllCookies(): void {
   for (const cookie of document.cookie.split(';')) {
     const name = cookie.split('=')[0]?.trim()
     if (name) {
-      // biome-ignore lint/suspicious/noDocumentCookie: test cleanup requires direct cookie access
       document.cookie = `${name}=; max-age=0; path=/`
     }
   }
@@ -28,7 +27,6 @@ describe('useCookie', () => {
   })
 
   it('reads existing cookie value', () => {
-    // biome-ignore lint/suspicious/noDocumentCookie: test setup requires direct cookie access
     document.cookie = `locale=${encodeURIComponent(JSON.stringify('de'))}; path=/`
     const locale = useCookie('locale', 'en')
     expect(locale()).toBe('de')

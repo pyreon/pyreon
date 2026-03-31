@@ -32,7 +32,6 @@ export function removeStorage(
       const storage = getWebStorage(type)
       if (storage) storage.removeItem(key)
     } else if (type === 'cookie' && isBrowser()) {
-      // biome-ignore lint/suspicious/noDocumentCookie: standard cookie deletion API
       document.cookie = `${encodeURIComponent(key)}=; max-age=0; path=/`
     }
     removeEntry(type, key)

@@ -213,7 +213,6 @@ describe('StyleSheet -- at-rule splitting', () => {
       expect(hasMediaRule).toBe(true)
     })
 
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
     it('boosted selector appears in both base and media rules', () => {
       const s = createSheet()
       const className = s.insert('color: red; @media (min-width: 768px){color: blue;}', true)

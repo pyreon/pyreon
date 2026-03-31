@@ -2,7 +2,6 @@ import type { THEME_MODES } from '../constants'
 import type { Css } from './styles'
 import type { MergeTypes } from './utils'
 
-// biome-ignore lint/suspicious/noEmptyInterface: this is an interface to be extended in consuming projects
 export interface ThemeDefault {}
 
 export type Theme<T> = T extends unknown ? ThemeDefault : MergeTypes<[ThemeDefault, T]>

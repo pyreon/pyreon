@@ -30,6 +30,8 @@ export interface LinkProps {
   style?: string
   /** ARIA label. */
   'aria-label'?: string
+  /** Additional click handler — called before navigation. Call e.preventDefault() to cancel. */
+  onClick?: ((e: MouseEvent) => void) | undefined
 }
 
 /** Props passed to a custom component via createLink. */
@@ -124,6 +126,11 @@ export function useLink(props: LinkProps): UseLinkReturn {
   const strategy = props.prefetch ?? 'hover'
 
   function handleClick(e: MouseEvent) {
+    // Call user's onClick first — they may call e.preventDefault()
+    if (props.onClick) {
+      ;(props.onClick as (e: MouseEvent) => void)(e)
+    }
+
     if (
       e.defaultPrevented ||
       e.button !== 0 ||

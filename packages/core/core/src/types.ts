@@ -63,7 +63,6 @@ export interface NativeItem {
 }
 
 export interface LifecycleHooks {
-  // biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
   mount: (() => CleanupFn | void | undefined)[]
   unmount: (() => void)[]
   update: (() => void)[]

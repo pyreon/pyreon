@@ -41,7 +41,7 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
   // Debounce map: filePath -> timeout
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
 
-  // eslint-disable-next-line no-console
+  // oxlint-disable-next-line no-console
   console.log(`\x1b[2m[pyreon-lint] Watching for changes...\x1b[0m\n`)
 
   for (const p of options.paths) {

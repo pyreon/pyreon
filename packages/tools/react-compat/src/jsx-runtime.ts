@@ -30,7 +30,6 @@ export interface RenderContext {
 }
 
 export interface EffectEntry {
-  // biome-ignore lint/suspicious/noConfusingVoidType: matches React's effect signature
   fn: () => (() => void) | void
   deps: unknown[] | undefined
   cleanup: (() => void) | undefined
@@ -83,10 +82,8 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
 
 // ─── Component wrapping ──────────────────────────────────────────────────────
 
-// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 const _wrapperCache = new WeakMap<Function, ComponentFn>()
 
-// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 function wrapCompatComponent(reactComponent: Function): ComponentFn {
   let wrapped = _wrapperCache.get(reactComponent)
   if (wrapped) return wrapped

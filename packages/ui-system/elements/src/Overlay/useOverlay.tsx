@@ -57,7 +57,7 @@ const sel = <T,>(cond: boolean, a: T, b: T): T => (cond ? a : b)
 
 const devWarn = (msg: string) => {
   if (!IS_DEVELOPMENT) return
-  // biome-ignore lint/suspicious/noConsole: dev-mode warning
+  // oxlint-disable-next-line no-console
   console.warn(msg)
 }
 

@@ -16,7 +16,7 @@ export function getCurrentHooks(): LifecycleHooks | null {
 
 function warnOutsideSetup(hookName: string): void {
   if (__DEV__ && !_current) {
-    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    // oxlint-disable-next-line no-console
     console.warn(
       `[Pyreon] ${hookName}() called outside component setup. ` +
         "Lifecycle hooks must be called synchronously during a component's setup function.",
@@ -28,7 +28,6 @@ function warnOutsideSetup(hookName: string): void {
  * Register a callback to run after the component is mounted to the DOM.
  * Optionally return a cleanup function — it will run on unmount.
  */
-// biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
 export function onMount(fn: () => CleanupFn | void | undefined) {
   warnOutsideSetup('onMount')
   _current?.mount.push(fn)

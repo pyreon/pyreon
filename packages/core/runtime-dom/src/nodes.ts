@@ -74,11 +74,19 @@ export function mountReactive(
       )
     }
     if (value != null && value !== false) {
-      // Restore ancestor context so children mounted here can read
-      // provider values via useContext() — without this, <Show> children
-      // wouldn't inherit context from components above the Show boundary.
-      const cleanup = restoreContextStack(contextSnapshot, () =>
-        mount(value, parent, marker),
+      // Mount children UNTRACKED — signal reads during child component
+      // setup (useContext, useTheme, etc.) must NOT subscribe this
+      // mountReactive effect. Otherwise, any signal read during the
+      // entire child tree's setup becomes a dependency, causing full
+      // DOM teardown + remount on that signal's change.
+      //
+      // Child components set up their OWN effects for reactivity
+      // (e.g. DynamicStyled's class swap effect). Those effects track
+      // their own dependencies independently.
+      const cleanup = runUntracked(() =>
+        restoreContextStack(contextSnapshot, () =>
+          mount(value, parent, marker),
+        ),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
       // throw) may have already re-run this effect and updated currentCleanup.

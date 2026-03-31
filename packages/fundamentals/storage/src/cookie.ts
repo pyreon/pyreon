@@ -71,7 +71,6 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
   }
   cookie += `; samesite=${options.sameSite ?? 'lax'}`
 
-  // biome-ignore lint/suspicious/noDocumentCookie: document.cookie is the standard cookie write API
   document.cookie = cookie
 }
 
@@ -84,7 +83,6 @@ function deleteCookie<T>(key: string, options: CookieOptions<T>): void {
     cookie += `; domain=${options.domain}`
   }
 
-  // biome-ignore lint/suspicious/noDocumentCookie: document.cookie is the standard cookie write API
   document.cookie = cookie
 }
 

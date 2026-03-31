@@ -56,7 +56,6 @@ function collectSourceFiles(cwd: string): string[] {
   const extensions = new Set(['.tsx', '.jsx', '.ts', '.js'])
   const ignoreDirs = new Set(['node_modules', 'dist', 'lib', '.pyreon', '.git', 'build'])
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: simple recursive walker
   function walk(dir: string): void {
     let entries: fs.Dirent[]
     try {

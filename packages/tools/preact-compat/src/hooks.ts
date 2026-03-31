@@ -64,7 +64,6 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
  * Preact-compatible `useEffect` — runs after render when deps change.
  * Returns cleanup on unmount and before re-running.
  */
-// biome-ignore lint/suspicious/noConfusingVoidType: matches Preact's useEffect signature
 export function useEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
   const ctx = requireCtx()
   const idx = getHookIndex()
@@ -89,7 +88,6 @@ export function useEffect(fn: () => (() => void) | void, deps?: unknown[]): void
 /**
  * Preact-compatible `useLayoutEffect` — runs synchronously after DOM mutations.
  */
-// biome-ignore lint/suspicious/noConfusingVoidType: matches Preact's useLayoutEffect signature
 export function useLayoutEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
   const ctx = requireCtx()
   const idx = getHookIndex()

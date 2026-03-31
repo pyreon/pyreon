@@ -146,14 +146,38 @@ export function parseGoogleFamily(input: string): ResolvedFont {
       }
     }
 
-    // Static weights: wght@400;500;700
-    const weightMatch = spec.match(/wght@([\d;]+)/)
-    if (weightMatch && weightMatch[1]) {
-      return {
-        family,
-        italic,
-        variable: false,
-        weights: weightMatch[1].split(';').map(Number),
+    // Static weights — two formats:
+    // Simple:  "wght@400;500;700"
+    // Tuples:  "ital,wght@0,300;0,500;1,300;1,500" (ital_flag,weight pairs)
+    const afterAt = spec.split('@')[1]
+    if (afterAt) {
+      const entries = afterAt.split(';').filter(Boolean)
+      const weights = new Set<number>()
+
+      for (const entry of entries) {
+        if (entry.includes(',')) {
+          // Tuple format: "0,300" or "1,500" — last value is the weight
+          const parts = entry.split(',')
+          const weight = Number(parts[parts.length - 1])
+          if (weight > 0) weights.add(weight)
+          // Detect italic from tuple: "1,xxx" means italic
+          if (parts[0] === '1') italic = true
+        } else if (entry.includes('..')) {
+          // Variable range already handled above — skip
+        } else {
+          // Simple weight: "400"
+          const weight = Number(entry)
+          if (weight > 0) weights.add(weight)
+        }
+      }
+
+      if (weights.size > 0) {
+        return {
+          family,
+          italic,
+          variable: false,
+          weights: [...weights].sort((a, b) => a - b),
+        }
       }
     }
   }

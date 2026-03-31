@@ -44,7 +44,6 @@ export interface PrerenderOptions {
    * Called after each page is rendered — use for logging or progress tracking.
    * Return false to skip writing this page.
    */
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional
   onPage?: (path: string, html: string) => void | boolean | Promise<void | boolean>
 }
 

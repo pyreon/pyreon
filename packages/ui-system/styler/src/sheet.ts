@@ -67,7 +67,6 @@ export class StyleSheet {
   }
 
   /** Parse existing rules from SSR-rendered <style> tag into cache. */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   private hydrateFromTag(el: HTMLStyleElement) {
     const sheet = el.sheet
     if (!sheet) return
@@ -111,7 +110,6 @@ export class StyleSheet {
    * Extract nested at-rules (@media, @supports, @container) from CSS text
    * and wrap their content in the given selector as separate top-level rules.
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   private splitAtRules(cssText: string, selector: string): { base: string; atRules: string[] } {
     // Fast path: no at-rules to split
     if (cssText.indexOf('@') === -1) return { base: cssText, atRules: [] }
@@ -182,7 +180,6 @@ export class StyleSheet {
    * When `boost` is true, the selector is doubled (`.pyr-abc.pyr-abc`)
    * to raise specificity from (0,1,0) to (0,2,0).
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   insert(cssText: string, boost = false): string {
     // Fast path: skip hash computation on repeated insertions of same CSS text
     const icKey = boost ? `${cssText}\0` : cssText
@@ -222,7 +219,7 @@ export class StyleSheet {
           this.sheet.insertRule(rule, this.sheet.cssRules.length)
         } catch (_e) {
           if (process.env.NODE_ENV !== 'production') {
-            // biome-ignore lint/suspicious/noConsole: dev-only CSS rule insertion warning
+            // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert CSS rule:', rule, _e)
           }
         }
@@ -299,7 +296,7 @@ export class StyleSheet {
           this.sheet.insertRule(rule, this.sheet.cssRules.length)
         } catch (_e) {
           if (process.env.NODE_ENV !== 'production') {
-            // biome-ignore lint/suspicious/noConsole: dev-only CSS rule insertion warning
+            // oxlint-disable-next-line no-console
             console.warn('[styler] Failed to insert global CSS rule:', rule, _e)
           }
         }

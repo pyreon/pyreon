@@ -56,7 +56,6 @@ const createStyledComponent = (
   strings: TemplateStringsArray,
   values: Interpolation[],
   options?: StyledOptions,
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 ): ComponentFn => {
   // Ultra-fast hot cache: 3 reference comparisons → return immediately
   if (values.length === 0 && !options) {

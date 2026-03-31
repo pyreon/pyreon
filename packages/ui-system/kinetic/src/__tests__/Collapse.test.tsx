@@ -31,7 +31,6 @@ const fireTransitionEnd = (el: HTMLElement) => {
  * Collapse creates a wrapper div (wrapperRef) and inner content div (contentRef).
  * We manually assign mock elements to the refs so the animation logic runs.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 const setupCollapse = (props: Record<string, unknown>) => {
   const wrapperEl = document.createElement('div')
   const contentEl = document.createElement('div')

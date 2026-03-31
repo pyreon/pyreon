@@ -23,7 +23,7 @@ export type LazyComponent<P extends Props = Props> = ((props: P) => VNodeChild) 
  */
 export function Suspense(props: { fallback: VNodeChild; children?: VNodeChild }): VNode {
   if (__DEV__ && props.fallback === undefined) {
-    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] <Suspense> is missing a `fallback` prop. Provide fallback UI to show while loading.',
     )

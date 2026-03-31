@@ -240,7 +240,7 @@ const rocketComponent: RocketComponent = (options) => {
           filteredAttrs: options.filterAttrs,
         }
 
-        // eslint-disable-next-line no-console
+        // oxlint-disable-next-line no-console
         console.debug(`[rocketstyle] ${componentName} render:`, debugPayload)
       }
     }

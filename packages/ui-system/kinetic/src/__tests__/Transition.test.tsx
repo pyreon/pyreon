@@ -53,7 +53,6 @@ const fireTransitionEnd = (el: HTMLElement) => {
  */
 const wireRef = (vnode: VNode | null, el: HTMLElement) => {
   if (!vnode) return
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   const visitNode = (node: VNode) => {
     const nodeProps = node.props as Record<string, unknown>
     if (typeof nodeProps?.ref === 'function') {

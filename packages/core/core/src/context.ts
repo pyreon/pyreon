@@ -73,7 +73,7 @@ export function pushContext(values: Map<symbol, unknown>) {
 export function popContext() {
   const stack = getStack()
   if (__DEV__ && stack.length === 0) {
-    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] popContext() called on an empty context stack. This likely indicates a missing Provider.',
     )
