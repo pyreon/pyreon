@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bool, num, oneOf, str, url, validateEnv } from '../env'
+import { bool, num, oneOf, publicEnv, str, url, validateEnv } from '../env'
 
 describe('str validator', () => {
   it('accepts valid string', () => {
@@ -147,5 +147,38 @@ describe('validateEnv', () => {
     } catch (e: any) {
       expect(e.message).toContain('API authentication key')
     }
+  })
+})
+
+describe('publicEnv', () => {
+  const originalEnv = process.env
+
+  it('extracts ZERO_PUBLIC_ prefixed vars', () => {
+    process.env = {
+      ...originalEnv,
+      ZERO_PUBLIC_API_URL: 'https://api.example.com',
+      ZERO_PUBLIC_APP_NAME: 'MyApp',
+      DATABASE_URL: 'postgres://secret',
+    }
+    const result = publicEnv()
+    expect(result.API_URL).toBe('https://api.example.com')
+    expect(result.APP_NAME).toBe('MyApp')
+    expect((result as any).DATABASE_URL).toBeUndefined()
+    process.env = originalEnv
+  })
+
+  it('validates with schema using ZERO_PUBLIC_ prefix', () => {
+    process.env = {
+      ...originalEnv,
+      ZERO_PUBLIC_PORT: '3000',
+      ZERO_PUBLIC_DEBUG: 'true',
+    }
+    const result = publicEnv({
+      PORT: num(),
+      DEBUG: bool(),
+    })
+    expect(result.PORT).toBe(3000)
+    expect(result.DEBUG).toBe(true)
+    process.env = originalEnv
   })
 })

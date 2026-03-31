@@ -207,3 +207,63 @@ export function validateEnv<T extends Record<string, EnvValidator<any>>>(
 
   return result as InferEnvSchema<T>
 }
+
+// ─── Public env (client-safe) ────────────────────────────────────────────────
+
+/**
+ * Extract public environment variables (prefixed with `ZERO_PUBLIC_`).
+ *
+ * Only variables with the prefix are included — safe to expose to the client.
+ * The prefix is stripped from keys in the result.
+ *
+ * @example
+ * ```ts
+ * // process.env.ZERO_PUBLIC_API_URL = "https://api.example.com"
+ * // process.env.DATABASE_URL = "postgres://..." (excluded)
+ *
+ * const pub = publicEnv()
+ * // → { API_URL: "https://api.example.com" }
+ * ```
+ *
+ * @example With validation
+ * ```ts
+ * const pub = publicEnv({
+ *   API_URL: url(),
+ *   APP_NAME: str({ default: "My App" }),
+ * })
+ * // Validates ZERO_PUBLIC_API_URL, ZERO_PUBLIC_APP_NAME
+ * ```
+ */
+export function publicEnv(): Record<string, string>
+export function publicEnv<T extends Record<string, EnvValidator<any>>>(
+  schema: T,
+): InferEnvSchema<T>
+export function publicEnv(schema?: Record<string, EnvValidator<any>>): Record<string, unknown> {
+  const prefix = 'ZERO_PUBLIC_'
+  const env = typeof process !== 'undefined' ? process.env : {}
+
+  if (!schema) {
+    // No schema — return all ZERO_PUBLIC_* vars with prefix stripped
+    const result: Record<string, string> = {}
+    for (const [key, value] of Object.entries(env)) {
+      if (key.startsWith(prefix) && value !== undefined) {
+        result[key.slice(prefix.length)] = value
+      }
+    }
+    return result
+  }
+
+  // With schema — validate ZERO_PUBLIC_ prefixed vars
+  const prefixedSource: Record<string, string | undefined> = {}
+  for (const key of Object.keys(schema)) {
+    prefixedSource[key] = env[`${prefix}${key}`]
+  }
+  return validateEnv(schema, prefixedSource)
+}
+
+// ─── Schema library adapters ────────────────────────────────────────────────
+// Re-exported so users can do: import { validateEnv, str, zod } from "@pyreon/zero/env"
+
+export { zod } from './env-zod'
+export { valibot } from './env-valibot'
+export { arktype } from './env-arktype'

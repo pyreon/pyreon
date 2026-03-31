@@ -199,6 +199,18 @@ export { zod as zodEnv } from "./env-zod";
 export { valibot as valibotEnv } from "./env-valibot";
 export { arktype as arktypeEnv } from "./env-arktype";
 
+// ─── AI integration ─────────────────────────────────────────────────────────
+
+export type { AiPluginConfig, InferJsonLdOptions } from "./ai";
+export {
+	aiPlugin,
+	generateAiPluginManifest,
+	generateLlmsFullTxt,
+	generateLlmsTxt,
+	generateOpenApiSpec,
+	inferJsonLd,
+} from "./ai";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type {

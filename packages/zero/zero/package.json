@@ -127,6 +127,11 @@
       "import": "./lib/i18n-routing.js",
       "types": "./lib/types/i18n-routing.d.ts"
     },
+    "./ai": {
+      "bun": "./src/ai.ts",
+      "import": "./lib/ai.js",
+      "types": "./lib/types/ai.d.ts"
+    },
     "./middleware": {
       "bun": "./src/middleware.ts",
       "import": "./lib/middleware.js",
