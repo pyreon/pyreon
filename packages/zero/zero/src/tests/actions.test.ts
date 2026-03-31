@@ -25,7 +25,7 @@ describe('defineAction', () => {
   it('returns a callable with actionId', () => {
     const action = defineAction(async () => 42)
     expect(typeof action).toBe('function')
-    expect(action.actionId).toMatch(/^action_\d+$/)
+    expect(action.actionId).toMatch(/^action_[a-f0-9]+$/)
   })
 })
 

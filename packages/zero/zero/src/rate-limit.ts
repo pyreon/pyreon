@@ -51,18 +51,17 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
 
   const windowMs = windowSec * 1000
   const store = new Map<string, RateLimitEntry>()
+  const MAX_STORE_SIZE = 10000
+  let lastCleanup = Date.now()
 
-  // Periodic cleanup of expired entries
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now()
+  // Inline cleanup — runs during request processing, no setInterval needed.
+  // Evicts expired entries when store exceeds half capacity or on window boundary.
+  function cleanupIfNeeded(now: number) {
+    if (store.size < MAX_STORE_SIZE / 2 && now - lastCleanup < windowMs) return
+    lastCleanup = now
     for (const [key, entry] of store) {
       if (entry.resetAt <= now) store.delete(key)
     }
-  }, windowMs)
-
-  // Allow GC to clean up the interval
-  if (typeof cleanupInterval === 'object' && 'unref' in cleanupInterval) {
-    cleanupInterval.unref()
   }
 
   return (ctx: MiddlewareContext) => {
@@ -72,6 +71,9 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
 
     const key = keyFn(ctx)
     const now = Date.now()
+
+    cleanupIfNeeded(now)
+
     let entry = store.get(key)
 
     if (!entry || entry.resetAt <= now) {

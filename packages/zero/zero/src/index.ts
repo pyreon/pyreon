@@ -88,6 +88,7 @@ export type { Theme } from "./theme";
 export {
 	initTheme,
 	resolvedTheme,
+	setSSRThemeDefault,
 	setTheme,
 	ThemeToggle,
 	theme,

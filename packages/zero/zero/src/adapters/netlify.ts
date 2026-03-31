@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions } from '../types'
+import { validateBuildInputs } from './validate'
 
 /**
  * Netlify adapter — generates output for Netlify Functions (v2).
@@ -22,6 +23,7 @@ export function netlifyAdapter(): Adapter {
   return {
     name: 'netlify',
     async build(options: AdapterBuildOptions) {
+      await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 

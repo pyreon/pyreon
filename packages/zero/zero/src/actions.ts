@@ -34,7 +34,6 @@ export interface Action<T = unknown> {
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 const actionRegistry = new Map<string, RegisteredAction>()
-let actionCounter = 0
 
 /**
  * Define a server action. Returns a callable function that:
@@ -53,7 +52,7 @@ let actionCounter = 0
  * const result = await createPost({ title: 'Hello', body: '...' })
  */
 export function defineAction<T = unknown>(handler: ActionHandler<T>): Action<T> {
-  const id = `action_${actionCounter++}`
+  const id = `action_${crypto.randomUUID().slice(0, 8)}`
 
   actionRegistry.set(id, { id, handler: handler as ActionHandler })
 
@@ -100,7 +99,6 @@ export function getRegisteredActions(): Map<string, RegisteredAction> {
  */
 export function _resetActions(): void {
   actionRegistry.clear()
-  actionCounter = 0
 }
 
 // ─── Server handler ──────────────────────────────────────────────────────────
