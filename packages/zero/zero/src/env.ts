@@ -1,24 +1,22 @@
 /**
  * Environment variable validation.
  *
- * Schema-based validation for environment variables at startup.
- * Catches missing or invalid env vars early with clear error messages.
+ * Infers types from default values — no verbose validator imports needed.
+ * Explicit validators (`url()`, `oneOf()`) available for special cases.
  *
  * @example
  * ```ts
- * import { validateEnv, str, num, bool, url, oneOf } from "@pyreon/zero/env"
+ * import { validateEnv, url, oneOf } from "@pyreon/zero/env"
  *
  * const env = validateEnv({
- *   DATABASE_URL: url(),
- *   PORT: num({ default: 3000 }),
+ *   PORT: 3000,                                // number, default 3000
+ *   DEBUG: false,                              // boolean, default false
+ *   HOST: "localhost",                         // string, default "localhost"
+ *   DATABASE_URL: url(),                       // validated URL, required
  *   NODE_ENV: oneOf(["development", "production", "test"]),
- *   DEBUG: bool({ default: false }),
- *   API_KEY: str({ required: true }),
+ *   API_KEY: String,                           // required string, no default
+ *   MAX_RETRIES: Number,                       // required number, no default
  * })
- *
- * // env.DATABASE_URL → string (validated URL)
- * // env.PORT → number
- * // env.NODE_ENV → "development" | "production" | "test"
  * ```
  */
 
@@ -37,6 +35,8 @@ export interface EnvValidator<T> {
   required: boolean
   defaultValue?: T | undefined
 }
+
+// ─── Explicit validators (for special cases) ────────────────────────────────
 
 /**
  * String validator — accepts any non-empty string.
@@ -155,6 +155,8 @@ export function oneOf<T extends string>(
   }
 }
 
+// ─── Internal helpers ───────────────────────────────────────────────────────
+
 class EnvError extends Error {
   constructor(key: string, message: string, description?: string) {
     const desc = description ? ` (${description})` : ''
@@ -163,27 +165,85 @@ class EnvError extends Error {
   }
 }
 
-type InferEnvSchema<T> = {
-  [K in keyof T]: T[K] extends EnvValidator<infer V> ? V : never
+function isEnvValidator(v: unknown): v is EnvValidator<unknown> {
+  return typeof v === 'object' && v !== null && (v as any).__type === 'env-validator'
 }
 
 /**
- * Validate environment variables against a schema.
+ * Convert a plain schema value to an EnvValidator.
  *
- * Reads from `process.env` and validates each variable.
- * Throws with clear error messages listing ALL invalid variables
- * (not just the first one).
+ * - `3000` → num({ default: 3000 })
+ * - `false` → bool({ default: false })
+ * - `"localhost"` → str({ default: "localhost" })
+ * - `String` → str() (required)
+ * - `Number` → num() (required)
+ * - `Boolean` → bool() (required)
+ * - EnvValidator → pass through
+ */
+function toValidator(value: unknown): EnvValidator<unknown> {
+  if (isEnvValidator(value)) return value
+
+  // Constructor markers → required, no default
+  if (value === String) return str()
+  if (value === Number) return num()
+  if (value === Boolean) return bool()
+
+  // Plain values → infer type + use as default
+  if (typeof value === 'number') return num({ default: value })
+  if (typeof value === 'boolean') return bool({ default: value })
+  if (typeof value === 'string') return str({ default: value })
+
+  throw new Error(`[zero:env] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`)
+}
+
+// ─── Type inference ─────────────────────────────────────────────────────────
+
+/** Schema entry: plain value, constructor, or explicit validator. */
+type SchemaEntry =
+  | string | number | boolean
+  | StringConstructor | NumberConstructor | BooleanConstructor
+  | EnvValidator<any>
+
+/** Infer the output type from a schema entry. */
+type InferEntry<T> =
+  T extends EnvValidator<infer V> ? V :
+  T extends StringConstructor ? string :
+  T extends NumberConstructor ? number :
+  T extends BooleanConstructor ? boolean :
+  T extends string ? string :
+  T extends number ? number :
+  T extends boolean ? boolean :
+  never
+
+type InferEnvSchema<T> = {
+  [K in keyof T]: InferEntry<T[K]>
+}
+
+// ─── Main API ───────────────────────────────────────────────────────────────
+
+/**
+ * Validate environment variables.
+ *
+ * Schema values can be:
+ * - **Default values**: `3000`, `false`, `"localhost"` → type inferred, used as default
+ * - **Constructors**: `String`, `Number`, `Boolean` → required, no default
+ * - **Validators**: `url()`, `oneOf([...])`, `str()`, `num()`, `bool()` → explicit validation
+ * - **Adapters**: `zod(z.string().url())` from `@pyreon/zero/env-zod`
  *
  * @example
  * ```ts
+ * import { validateEnv, url, oneOf } from "@pyreon/zero/env"
+ *
  * const env = validateEnv({
- *   DATABASE_URL: url(),
- *   PORT: num({ default: 3000 }),
- *   NODE_ENV: oneOf(["development", "production", "test"]),
+ *   PORT: 3000,                                // optional, default 3000
+ *   DATABASE_URL: url(),                       // required, validated URL
+ *   NODE_ENV: oneOf(["dev", "prod", "test"]),  // required, must be one of
+ *   API_KEY: String,                           // required string
+ *   DEBUG: false,                              // optional, default false
  * })
  * ```
  */
-export function validateEnv<T extends Record<string, EnvValidator<any>>>(
+export function validateEnv<T extends Record<string, SchemaEntry>>(
   schema: T,
   source?: Record<string, string | undefined>,
 ): InferEnvSchema<T> {
@@ -191,7 +251,8 @@ export function validateEnv<T extends Record<string, EnvValidator<any>>>(
   const result: Record<string, unknown> = {}
   const errors: string[] = []
 
-  for (const [key, validator] of Object.entries(schema)) {
+  for (const [key, entry] of Object.entries(schema)) {
+    const validator = toValidator(entry)
     try {
       result[key] = validator.parse(env[key], key)
     } catch (e) {
@@ -213,37 +274,22 @@ export function validateEnv<T extends Record<string, EnvValidator<any>>>(
 /**
  * Extract public environment variables (prefixed with `ZERO_PUBLIC_`).
  *
- * Only variables with the prefix are included — safe to expose to the client.
- * The prefix is stripped from keys in the result.
- *
  * @example
  * ```ts
- * // process.env.ZERO_PUBLIC_API_URL = "https://api.example.com"
- * // process.env.DATABASE_URL = "postgres://..." (excluded)
- *
  * const pub = publicEnv()
- * // → { API_URL: "https://api.example.com" }
- * ```
+ * // → { API_URL: "https://...", APP_NAME: "MyApp" }
  *
- * @example With validation
- * ```ts
- * const pub = publicEnv({
- *   API_URL: url(),
- *   APP_NAME: str({ default: "My App" }),
- * })
- * // Validates ZERO_PUBLIC_API_URL, ZERO_PUBLIC_APP_NAME
+ * const pub = publicEnv({ API_URL: url(), APP_NAME: "Default" })
+ * // → validated against ZERO_PUBLIC_API_URL, ZERO_PUBLIC_APP_NAME
  * ```
  */
 export function publicEnv(): Record<string, string>
-export function publicEnv<T extends Record<string, EnvValidator<any>>>(
-  schema: T,
-): InferEnvSchema<T>
-export function publicEnv(schema?: Record<string, EnvValidator<any>>): Record<string, unknown> {
+export function publicEnv<T extends Record<string, SchemaEntry>>(schema: T): InferEnvSchema<T>
+export function publicEnv(schema?: Record<string, SchemaEntry>): Record<string, unknown> {
   const prefix = 'ZERO_PUBLIC_'
   const env = typeof process !== 'undefined' ? process.env : {}
 
   if (!schema) {
-    // No schema — return all ZERO_PUBLIC_* vars with prefix stripped
     const result: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) {
       if (key.startsWith(prefix) && value !== undefined) {
@@ -253,7 +299,6 @@ export function publicEnv(schema?: Record<string, EnvValidator<any>>): Record<st
     return result
   }
 
-  // With schema — validate ZERO_PUBLIC_ prefixed vars
   const prefixedSource: Record<string, string | undefined> = {}
   for (const key of Object.keys(schema)) {
     prefixedSource[key] = env[`${prefix}${key}`]
