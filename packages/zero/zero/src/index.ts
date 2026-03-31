@@ -11,13 +11,14 @@ export { zeroPlugin as default } from "./vite-plugin";
 
 // ─── File-system routing ─────────────────────────────────────────────────────
 
+export type { GenerateRouteModuleOptions } from './fs-router'
 export {
 	filePathToUrlPath,
 	generateMiddlewareModule,
 	generateRouteModule,
 	parseFileRoutes,
 	scanRouteFiles,
-} from "./fs-router";
+} from './fs-router'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 

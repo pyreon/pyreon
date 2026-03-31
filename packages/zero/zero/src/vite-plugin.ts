@@ -175,7 +175,35 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 		config() {
 			return {
 				resolve: {
-					conditions: ["bun"],
+					conditions: ['bun'],
+				},
+				optimizeDeps: {
+					// Exclude @pyreon/* from pre-bundling. The "bun" condition
+					// points to TS source files — esbuild's dep optimizer
+					// would compile them with the wrong JSX runtime (react).
+					// The Pyreon vite-plugin handles JSX transform via OXC.
+					exclude: [
+						'@pyreon/core',
+						'@pyreon/reactivity',
+						'@pyreon/runtime-dom',
+						'@pyreon/runtime-server',
+						'@pyreon/router',
+						'@pyreon/head',
+						'@pyreon/server',
+						'@pyreon/styler',
+						'@pyreon/ui-core',
+						'@pyreon/unistyle',
+						'@pyreon/elements',
+						'@pyreon/rocketstyle',
+						'@pyreon/attrs',
+						'@pyreon/coolgrid',
+						'@pyreon/kinetic',
+						'@pyreon/kinetic-presets',
+						'@pyreon/hooks',
+						'@pyreon/store',
+						'@pyreon/form',
+						'@pyreon/zero',
+					],
 				},
 				server: {
 					port: config.port,

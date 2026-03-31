@@ -209,11 +209,26 @@ function buildRouteTree(routes: FileRoute[]): RouteNode {
  * Wires up layouts as parent routes with children, loaders, guards,
  * error/loading components, middleware, and meta from route module exports.
  */
-export function generateRouteModule(files: string[], routesDir: string): string {
+export interface GenerateRouteModuleOptions {
+  /**
+   * When true, skip lazy() for route components and use static imports.
+   * Use for SSG/prerender mode where all routes are rendered at build time
+   * and code splitting provides no benefit. Avoids Rolldown warnings about
+   * static + dynamic imports of the same module.
+   */
+  staticImports?: boolean
+}
+
+export function generateRouteModule(
+  files: string[],
+  routesDir: string,
+  options?: GenerateRouteModuleOptions,
+): string {
   const routes = parseFileRoutes(files)
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
+  const useStaticImports = options?.staticImports ?? false
 
   function nextImport(filePath: string, exportName = 'default'): string {
     const name = `_${importCounter++}`
@@ -229,11 +244,18 @@ export function generateRouteModule(files: string[], routesDir: string): string 
   function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
-    const opts: string[] = []
-    if (loadingName) opts.push(`loading: ${loadingName}`)
-    if (errorName) opts.push(`error: ${errorName}`)
-    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
-    imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+
+    if (useStaticImports) {
+      // SSG mode: static import avoids Rolldown warnings about
+      // static + dynamic imports of the same module
+      imports.push(`import ${name} from "${fullPath}"`)
+    } else {
+      const opts: string[] = []
+      if (loadingName) opts.push(`loading: ${loadingName}`)
+      if (errorName) opts.push(`error: ${errorName}`)
+      const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
+      imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+    }
     return name
   }
 
@@ -262,10 +284,11 @@ export function generateRouteModule(files: string[], routesDir: string): string 
       `${indent}  meta: { ...${mod}.meta, renderMode: ${mod}.renderMode }`,
     ]
 
+    // Only emit errorComponent when there's an actual _error file in scope
+    // or the route module exports an error component. Avoids referencing
+    // undefined .error exports that produce noisy bundler warnings.
     if (errorName) {
       props.push(`${indent}  errorComponent: ${mod}.error || ${errorName}`)
-    } else {
-      props.push(`${indent}  errorComponent: ${mod}.error`)
     }
 
     if (notFoundName) {
