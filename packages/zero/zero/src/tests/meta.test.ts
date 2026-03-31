@@ -227,6 +227,61 @@ describe('buildMetaTags', () => {
 
     expect(tags.meta.find((m) => m.name === 'theme-color')?.content).toBe('#0070f3')
   })
+
+  it('includes og:image:width and og:image:height', () => {
+    const tags = buildMetaTags({
+      image: '/og.jpg',
+      imageWidth: 1200,
+      imageHeight: 630,
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:image:width')?.content).toBe('1200')
+    expect(tags.meta.find((m) => m.property === 'og:image:height')?.content).toBe('630')
+  })
+
+  it('auto-resolves image dimensions for ogTemplate', () => {
+    const tags = buildMetaTags({
+      ogTemplate: 'default',
+      locale: 'en',
+    })
+
+    // ogTemplate defaults to 1200x630
+    expect(tags.meta.find((m) => m.property === 'og:image:width')?.content).toBe('1200')
+    expect(tags.meta.find((m) => m.property === 'og:image:height')?.content).toBe('630')
+  })
+
+  it('noIndex convenience prop overrides robots', () => {
+    const tags = buildMetaTags({ noIndex: true })
+    expect(tags.meta.find((m) => m.name === 'robots')?.content).toBe('noindex, nofollow')
+  })
+
+  it('noIndex false uses default robots', () => {
+    const tags = buildMetaTags({ noIndex: false })
+    expect(tags.meta.find((m) => m.name === 'robots')?.content).toBe('index, follow')
+  })
+
+  it('includes og:video with auto-detected type', () => {
+    const tags = buildMetaTags({
+      video: '/intro.mp4',
+      videoWidth: 1920,
+      videoHeight: 1080,
+    })
+
+    expect(tags.meta.find((m) => m.property === 'og:video')?.content).toBe('/intro.mp4')
+    expect(tags.meta.find((m) => m.property === 'og:video:width')?.content).toBe('1920')
+    expect(tags.meta.find((m) => m.property === 'og:video:height')?.content).toBe('1080')
+    expect(tags.meta.find((m) => m.property === 'og:video:type')?.content).toBe('video/mp4')
+  })
+
+  it('includes og:video:type for webm', () => {
+    const tags = buildMetaTags({ video: '/clip.webm' })
+    expect(tags.meta.find((m) => m.property === 'og:video:type')?.content).toBe('video/webm')
+  })
+
+  it('includes og:audio', () => {
+    const tags = buildMetaTags({ audio: '/podcast.mp3' })
+    expect(tags.meta.find((m) => m.property === 'og:audio')?.content).toBe('/podcast.mp3')
+  })
 })
 
 describe('Meta component', () => {
