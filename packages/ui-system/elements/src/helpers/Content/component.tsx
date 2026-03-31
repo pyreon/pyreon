@@ -6,44 +6,46 @@
  *
  * Children are rendered via core `render()`.
  */
+import { splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { IS_DEVELOPMENT } from '../../utils'
 import Styled from './styled'
 import type { Props } from './types'
 
-const Component = ({
-  contentType,
-  tag,
-  parentDirection,
-  direction,
-  alignX,
-  alignY,
-  equalCols,
-  gap,
-  extendCss,
-  children,
-  ...props
-}: Partial<Props>) => {
+const Component = (props: Partial<Props>) => {
+  const [own, rest] = splitProps(props, [
+    'contentType',
+    'tag',
+    'parentDirection',
+    'direction',
+    'alignX',
+    'alignY',
+    'equalCols',
+    'gap',
+    'extendCss',
+    'children',
+  ])
+
   const debugProps = IS_DEVELOPMENT
     ? {
-        'data-pyr-element': contentType,
+        'data-pyr-element': own.contentType,
       }
     : {}
 
   const stylingProps = {
-    contentType,
-    parentDirection,
-    direction,
-    alignX,
-    alignY,
-    equalCols,
-    gap,
-    extraStyles: extendCss,
+    contentType: own.contentType,
+    parentDirection: own.parentDirection,
+    direction: own.direction,
+    alignX: own.alignX,
+    alignY: own.alignY,
+    equalCols: own.equalCols,
+    gap: own.gap,
+    extraStyles: own.extendCss,
   }
 
   return (
-    <Styled as={tag} $contentType={contentType} $element={stylingProps} {...debugProps} {...props}>
-      {render(children)}
+    <Styled as={own.tag} $contentType={own.contentType} $element={stylingProps} {...debugProps} {...rest}>
+      {render(own.children)}
     </Styled>
   )
 }

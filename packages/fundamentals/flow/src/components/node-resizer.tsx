@@ -57,14 +57,10 @@ const directionPositions: Record<ResizeDirection, string> = {
  * ```
  */
 export function NodeResizer(props: NodeResizerProps): VNodeChild {
-  const {
-    nodeId,
-    instance,
-    minWidth = 50,
-    minHeight = 30,
-    handleSize = 8,
-    showEdgeHandles = false,
-  } = props
+  const minWidth = props.minWidth ?? 50
+  const minHeight = props.minHeight ?? 30
+  const handleSize = props.handleSize ?? 8
+  const showEdgeHandles = props.showEdgeHandles ?? false
 
   const directions: ResizeDirection[] = showEdgeHandles
     ? ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w']
@@ -83,7 +79,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
       e.stopPropagation()
       e.preventDefault()
 
-      const node = instance.getNode(nodeId)
+      const node = props.instance.getNode(props.nodeId)
       if (!node) return
 
       startX = e.clientX
@@ -92,7 +88,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
       startHeight = node.height ?? 40
       startNodeX = node.position.x
       startNodeY = node.position.y
-      zoomAtStart = instance.viewport.peek().zoom
+      zoomAtStart = props.instance.viewport.peek().zoom
 
       // Use pointer capture — clean, no leaks
       const el = e.currentTarget as HTMLElement
@@ -129,7 +125,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
         newY = startNodeY + startHeight - newH
       }
 
-      instance.updateNode(nodeId, {
+      props.instance.updateNode(props.nodeId, {
         width: newW,
         height: newH,
         position: { x: newX, y: newY },

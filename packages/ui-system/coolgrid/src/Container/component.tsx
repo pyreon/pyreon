@@ -1,4 +1,4 @@
-import { provide } from '@pyreon/core'
+import { provide, splitProps } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import ContainerContext from '../context/ContainerContext'
 import type { ElementType } from '../types'
@@ -16,13 +16,8 @@ import Styled from './styled'
 const DEV_PROPS: Record<string, string> =
   process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
 
-const Component: ElementType<['containerWidth']> = ({
-  children,
-  component,
-  css,
-  width,
-  ...props
-}) => {
+const Component: ElementType<['containerWidth']> = (props) => {
+  const [own, rest] = splitProps(props, ['children', 'component', 'css', 'width'])
   const {
     containerWidth,
     columns,
@@ -35,7 +30,7 @@ const Component: ElementType<['containerWidth']> = ({
     rowCss,
     rowComponent,
     contentAlignX,
-  } = useGridContext(props)
+  } = useGridContext(rest)
 
   const context = {
     columns,
@@ -51,15 +46,15 @@ const Component: ElementType<['containerWidth']> = ({
   }
 
   const finalWidth = (() => {
-    if (!width) return containerWidth
-    if (typeof width === 'function') return width(containerWidth as Record<string, any>)
-    return width
+    if (!own.width) return containerWidth
+    if (typeof own.width === 'function') return own.width(containerWidth as Record<string, any>)
+    return own.width
   })()
 
   const finalProps = {
     $coolgrid: {
       width: finalWidth,
-      extraStyles: css,
+      extraStyles: own.css,
     },
   }
 
@@ -67,8 +62,8 @@ const Component: ElementType<['containerWidth']> = ({
   provide(ContainerContext, context)
 
   return (
-    <Styled {...omitCtxKeys(props)} as={component} {...finalProps} {...DEV_PROPS}>
-      {children}
+    <Styled {...omitCtxKeys(rest)} as={own.component} {...finalProps} {...DEV_PROPS}>
+      {own.children}
     </Styled>
   )
 }

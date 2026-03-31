@@ -106,6 +106,26 @@
       "bun": "./src/testing.ts",
       "import": "./lib/testing.js",
       "types": "./lib/types/testing.d.ts"
+    },
+    "./meta": {
+      "bun": "./src/meta.tsx",
+      "import": "./lib/meta.js",
+      "types": "./lib/types/meta.d.ts"
+    },
+    "./favicon": {
+      "bun": "./src/favicon.ts",
+      "import": "./lib/favicon.js",
+      "types": "./lib/types/favicon.d.ts"
+    },
+    "./i18n": {
+      "bun": "./src/i18n-routing.ts",
+      "import": "./lib/i18n-routing.js",
+      "types": "./lib/types/i18n-routing.d.ts"
+    },
+    "./middleware": {
+      "bun": "./src/middleware.ts",
+      "import": "./lib/middleware.js",
+      "types": "./lib/types/middleware.d.ts"
     }
   },
   "scripts": {

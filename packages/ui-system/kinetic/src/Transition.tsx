@@ -79,29 +79,11 @@ const applyReducedMotion = (
   }
 }
 
-const Transition = ({
-  show,
-  appear = false,
-  unmount = true,
-  timeout = 5000,
-  enter,
-  enterFrom,
-  enterTo,
-  leave,
-  leaveFrom,
-  leaveTo,
-  enterStyle,
-  enterToStyle,
-  enterTransition,
-  leaveStyle,
-  leaveToStyle,
-  leaveTransition,
-  onEnter,
-  onAfterEnter,
-  onLeave,
-  onAfterLeave,
-  children,
-}: TransitionProps): VNode | null => {
+const Transition = (props: TransitionProps): VNode | null => {
+  const appear = props.appear ?? false
+  const unmount = props.unmount ?? true
+  const timeout = props.timeout ?? 5000
+
   const reducedMotion = useReducedMotion()
   const {
     stage,
@@ -109,12 +91,12 @@ const Transition = ({
     shouldMount,
     complete,
   } = useTransitionState({
-    show,
+    show: props.show,
     appear,
   })
 
   const elementRef = createRef<HTMLElement>()
-  const childProps = (children.props ?? {}) as Record<string, unknown>
+  const childProps = (props.children.props ?? {}) as Record<string, unknown>
   const mergedRef = mergeRefs(
     elementRef,
     stateRef,
@@ -122,25 +104,25 @@ const Transition = ({
   )
 
   const callbacks = {
-    onEnter,
-    onAfterEnter,
-    onLeave,
-    onAfterLeave,
+    onEnter: props.onEnter,
+    onAfterEnter: props.onAfterEnter,
+    onLeave: props.onLeave,
+    onAfterLeave: props.onAfterLeave,
   }
 
   const transitionConfig = {
-    enter,
-    enterFrom,
-    enterTo,
-    leave,
-    leaveFrom,
-    leaveTo,
-    enterStyle,
-    enterToStyle,
-    enterTransition,
-    leaveStyle,
-    leaveToStyle,
-    leaveTransition,
+    enter: props.enter,
+    enterFrom: props.enterFrom,
+    enterTo: props.enterTo,
+    leave: props.leave,
+    leaveFrom: props.leaveFrom,
+    leaveTo: props.leaveTo,
+    enterStyle: props.enterStyle,
+    enterToStyle: props.enterToStyle,
+    enterTransition: props.enterTransition,
+    leaveStyle: props.leaveStyle,
+    leaveToStyle: props.leaveToStyle,
+    leaveTransition: props.leaveTransition,
   }
 
   useAnimationEnd({
@@ -181,7 +163,7 @@ const Transition = ({
       }
 
       if (currentStage === 'entered') {
-        removeClasses(el, enter)
+        removeClasses(el, props.enter)
         el.style.transition = ''
       }
     },
@@ -194,7 +176,7 @@ const Transition = ({
       fallback={
         unmount
           ? null
-          : cloneVNode(children, {
+          : cloneVNode(props.children, {
               ref: mergedRef,
               style: mergeStyles(
                 childProps.style as Record<string, string | number | undefined> | undefined,
@@ -203,7 +185,7 @@ const Transition = ({
             })
       }
     >
-      {cloneVNode(children, { ref: mergedRef })}
+      {cloneVNode(props.children, { ref: mergedRef })}
     </Show>
   )
 }

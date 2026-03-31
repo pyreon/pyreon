@@ -74,16 +74,16 @@ describe('StyleSheet -- at-rule splitting', () => {
       expect(styles).toMatch(/@media \(min-width: 1024px\)\{\.pyr-[0-9a-z]+\{color: green;\}\}/)
     })
 
-    it('boost doubles selector in both base and media rules', () => {
-      const s = createSheet()
-      s.insert('color: red; @media (min-width: 768px){color: blue;}', true)
+    it('layer wraps both base and media rules in @layer', () => {
+      const s = createSheet({ layer: 'rocketstyle' })
+      s.insert('color: red; @media (min-width: 768px){color: blue;}')
       const styles = s.getStyles()
 
-      // Base: .pyr-xxx.pyr-xxx{color: red;}
-      expect(styles).toMatch(/\.pyr-[0-9a-z]+\.pyr-[0-9a-z]+\{color: red;\}/)
-      // Media: @media (...){.pyr-xxx.pyr-xxx{color: blue;}}
+      // Base wrapped in @layer: @layer rocketstyle{.pyr-xxx{color: red;}}
+      expect(styles).toMatch(/@layer rocketstyle\{\.pyr-[0-9a-z]+\{color: red;\}\}/)
+      // Media wrapped in @layer: @layer rocketstyle{@media (...){.pyr-xxx{color: blue;}}}
       expect(styles).toMatch(
-        /@media \(min-width: 768px\)\{\.pyr-[0-9a-z]+\.pyr-[0-9a-z]+\{color: blue;\}\}/,
+        /@layer rocketstyle\{@media \(min-width: 768px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}\}/,
       )
     })
 
@@ -139,7 +139,7 @@ describe('StyleSheet -- at-rule splitting', () => {
         '@media only screen and (min-width: 48em){bottom: 0; height: 40rem;} ' +
         '@media only screen and (min-width: 62em){right: -6.25rem;} ' +
         '@media only screen and (min-width: 100em){right: initial; left: 55%;}'
-      s.insert(cssStr, true)
+      s.insert(cssStr)
       const styles = s.getStyles()
 
       // Base rule has position, bottom, right, height
@@ -213,27 +213,27 @@ describe('StyleSheet -- at-rule splitting', () => {
       expect(hasMediaRule).toBe(true)
     })
 
-    it('boosted selector appears in both base and media rules', () => {
+    it('single selector appears in both base and media rules', () => {
       const s = createSheet()
-      const className = s.insert('color: red; @media (min-width: 768px){color: blue;}', true)
+      const className = s.insert('color: red; @media (min-width: 768px){color: blue;}')
 
       const styleEl = document.querySelector('style[data-pyreon-styler]') as HTMLStyleElement
       const sheet = styleEl.sheet
       if (!sheet) throw new Error('expected sheet')
-      const boostedSelector = `.${className}.${className}`
+      const singleSelector = `.${className}`
 
       let baseFound = false
       let mediaInnerFound = false
 
       for (let i = 0; i < sheet.cssRules.length; i++) {
         const rule = sheet.cssRules[i]
-        if (rule instanceof CSSStyleRule && rule.selectorText === boostedSelector) {
+        if (rule instanceof CSSStyleRule && rule.selectorText === singleSelector) {
           baseFound = true
         }
         if (rule instanceof CSSMediaRule) {
           for (let j = 0; j < rule.cssRules.length; j++) {
             const inner = rule.cssRules[j]
-            if (inner instanceof CSSStyleRule && inner.selectorText === boostedSelector) {
+            if (inner instanceof CSSStyleRule && inner.selectorText === singleSelector) {
               mediaInnerFound = true
             }
           }
@@ -271,16 +271,16 @@ describe('StyleSheet -- at-rule splitting', () => {
       expect(s.cacheSize).toBeGreaterThanOrEqual(1)
     })
 
-    it('hydrates className from boosted selectors in media rules', () => {
+    it('hydrates className from @layer wrapped selectors in media rules', () => {
       const el = document.createElement('style')
       el.setAttribute('data-pyreon-styler', '')
       document.head.appendChild(el)
 
       const className = `pyr-${hash('font-size: 1rem;')}`
 
-      el.sheet?.insertRule(`.${className}.${className}{font-size: 1rem;}`, 0)
+      el.sheet?.insertRule(`.${className}{font-size: 1rem;}`, 0)
       el.sheet?.insertRule(
-        `@media (min-width: 768px){.${className}.${className}{font-size: 1.5rem;}}`,
+        `@media (min-width: 768px){.${className}{font-size: 1.5rem;}}`,
         1,
       )
 

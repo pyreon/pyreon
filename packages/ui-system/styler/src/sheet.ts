@@ -49,12 +49,22 @@ export class StyleSheet {
       this.sheet = el.sheet ?? null
     }
 
-    // Inject @layer declaration if configured
-    if (this.layer && this.sheet) {
+    // Inject @layer declarations.
+    // 'base' is for plain styled() components, 'rocketstyle' is for
+    // rocketstyle wrappers. Layer order ensures rocketstyle overrides base
+    // without needing doubled selectors (boost).
+    if (this.sheet) {
       try {
-        this.sheet.insertRule(`@layer ${this.layer};`, 0)
+        this.sheet.insertRule('@layer base, rocketstyle;', 0)
       } catch {
-        // skip if @layer not supported
+        // @layer not supported — falls back to source order
+      }
+      if (this.layer) {
+        try {
+          this.sheet.insertRule(`@layer ${this.layer};`, 1)
+        } catch {
+          // skip
+        }
       }
     }
   }
@@ -177,12 +187,15 @@ export class StyleSheet {
    * Deduplicates: same CSS text always produces the same class name and
    * the rules are only injected once.
    *
-   * When `boost` is true, the selector is doubled (`.pyr-abc.pyr-abc`)
-   * to raise specificity from (0,1,0) to (0,2,0).
+   * @param cssText - CSS declarations to insert
+   * @param _unused - Reserved for backward compatibility (was `boost`)
+   * @param insertLayer - CSS @layer to wrap this rule in (e.g. 'rocketstyle').
+   *   Used by rocketstyle to ensure wrapper styles override inner component styles
+   *   via @layer order (base < rocketstyle) instead of specificity hacks.
    */
-  insert(cssText: string, boost = false): string {
+  insert(cssText: string, _unused = false, insertLayer?: string): string {
     // Fast path: skip hash computation on repeated insertions of same CSS text
-    const icKey = boost ? `${cssText}\0` : cssText
+    const icKey = insertLayer ? `${cssText}\0L:${insertLayer}` : cssText
     const icHit = this.insertCache.get(icKey)
     if (icHit) return icHit
 
@@ -197,7 +210,7 @@ export class StyleSheet {
     this.evictIfNeeded()
     this.cache.set(className, className)
 
-    const selector = boost ? `.${className}.${className}` : `.${className}`
+    const selector = `.${className}`
 
     // Split nested at-rules into separate top-level rules
     const { base, atRules } = this.splitAtRules(cssText, selector)
@@ -206,8 +219,9 @@ export class StyleSheet {
     if (base) rules.push(`${selector}{${base}}`)
     rules.push(...atRules)
 
-    // Apply @layer wrapping if configured
-    const finalRules = this.layer ? rules.map((r) => `@layer ${this.layer}{${r}}`) : rules
+    // Apply @layer wrapping — per-insert layer takes precedence over sheet-level layer
+    const layerName = insertLayer ?? this.layer
+    const finalRules = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
 
     if (this.isSSR) {
       for (const rule of finalRules) {
@@ -348,10 +362,10 @@ export class StyleSheet {
   /**
    * Compute className and full CSS rule text without injecting.
    */
-  prepare(cssText: string, boost = false): { className: string; rules: string } {
+  prepare(cssText: string): { className: string; rules: string } {
     const h = hash(cssText)
     const className = `${PREFIX}-${h}`
-    const selector = boost ? `.${className}.${className}` : `.${className}`
+    const selector = `.${className}`
     const { base, atRules } = this.splitAtRules(cssText, selector)
 
     const allRules: string[] = []

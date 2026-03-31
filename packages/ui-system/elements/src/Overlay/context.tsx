@@ -17,21 +17,16 @@ const context = createContext<OverlayContext>({} as OverlayContext)
 
 export const useOverlayContext = () => useContext(context)
 
-const Component = ({
-  children,
-  blocked,
-  setBlocked,
-  setUnblocked,
-}: OverlayContext & { children: VNodeChild }) => {
+const Component = (props: OverlayContext & { children: VNodeChild }) => {
   const ctx = {
-    blocked,
-    setBlocked,
-    setUnblocked,
+    blocked: props.blocked,
+    setBlocked: props.setBlocked,
+    setUnblocked: props.setUnblocked,
   }
 
   provide(context, ctx)
 
-  return <>{children}</>
+  return <>{props.children}</>
 }
 
 export default Component

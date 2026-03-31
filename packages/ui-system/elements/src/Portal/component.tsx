@@ -24,12 +24,12 @@ export interface Props {
   tag?: string
 }
 
-const Component: PyreonComponent<Props> = ({ DOMLocation, tag: _tag = 'div', children }) => {
-  const target = DOMLocation ?? (typeof document !== 'undefined' ? document.body : undefined)
+const Component: PyreonComponent<Props> = (props) => {
+  const target = props.DOMLocation ?? (typeof document !== 'undefined' ? document.body : undefined)
 
   if (!target) return null
 
-  return <CorePortal target={target}>{children}</CorePortal>
+  return <CorePortal target={target}>{props.children}</CorePortal>
 }
 
 const name = `${PKG_NAME}/Portal` as const

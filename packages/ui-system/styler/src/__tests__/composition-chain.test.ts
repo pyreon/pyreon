@@ -345,7 +345,7 @@ describe('resolve composition chain', () => {
 describe('styled component composition', () => {
   it('handles array of functions as single interpolation (calculateStyles pattern)', () => {
     // This is EXACTLY what rocketstyle does:
-    // styled(component, { boost: true })`${calculateStyles(styles)};`
+    // styled(component, { layer: 'rocketstyle' })`${calculateStyles(styles)};`
     // calculateStyles returns an array of function results
 
     const fn1 = (props: any) => `position: ${props.$rocketstyle?.position ?? 'static'};`

@@ -197,7 +197,12 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     return
   }
   enqueue(`${open}>`)
-  for (const child of vnode.children) await streamNode(child, enqueue)
+  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | undefined
+  if (dangerous?.__html) {
+    enqueue(dangerous.__html)
+  } else {
+    for (const child of vnode.children) await streamNode(child, enqueue)
+  }
   enqueue(`</${tag}>`)
 }
 
@@ -364,8 +369,14 @@ async function renderElement(vnode: VNode): Promise<string> {
 
   html += '>'
 
-  for (const child of vnode.children) {
-    html += await renderNode(child)
+  // dangerouslySetInnerHTML — inject raw HTML, skip children
+  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | undefined
+  if (dangerous?.__html) {
+    html += dangerous.__html
+  } else {
+    for (const child of vnode.children) {
+      html += await renderNode(child)
+    }
   }
 
   html += `</${tag}>`
@@ -376,7 +387,7 @@ const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 function renderPropSkipped(key: string): boolean {
-  if (key === 'key' || key === 'ref') return true
+  if (key === 'key' || key === 'ref' || key === 'dangerouslySetInnerHTML') return true
   if (/^on[A-Z]/.test(key)) return true
   return false
 }

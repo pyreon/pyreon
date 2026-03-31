@@ -40,8 +40,8 @@ describe('StyleSheet', () => {
       expect(className).toMatch(/^pyr-[0-9a-z]+$/)
     })
 
-    it('supports boost mode (doubled selector)', () => {
-      const className = sheet.insert('color: red;', true)
+    it('supports layer mode (@layer wrapping)', () => {
+      const className = sheet.insert('color: red;', false, 'rocketstyle')
       expect(className).toMatch(/^pyr-[0-9a-z]+$/)
     })
   })
@@ -107,10 +107,11 @@ describe('StyleSheet', () => {
       expect(rules).toContain('color: red;')
     })
 
-    it('supports boost mode', () => {
-      const { className, rules } = sheet.prepare('color: red;', true)
-      // Boosted selector should have doubled class
-      expect(rules).toContain(`.${className}.${className}`)
+    it('produces single selector (no boost)', () => {
+      const { className, rules } = sheet.prepare('color: red;')
+      // Single selector, no doubling
+      expect(rules).toContain(`.${className}{`)
+      expect(rules).not.toContain(`.${className}.${className}`)
     })
   })
 

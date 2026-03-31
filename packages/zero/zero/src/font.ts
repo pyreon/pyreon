@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
 // ─── Font optimization ──────────────────────────────────────────────────────
@@ -313,10 +315,31 @@ function extractFontUrls(css: string): string[] {
 async function selfHostFonts(
   cssUrl: string,
   fontsSubDir: string,
+  root: string,
 ): Promise<{
   css: string
   fontFiles: Array<{ name: string; content: Buffer }>
 }> {
+  // Cache fonts between builds to avoid re-downloading (~6s penalty)
+  const cacheDir = join(root, 'node_modules', '.cache', 'zero-fonts')
+  const cacheKey = Buffer.from(cssUrl).toString('base64url')
+  const cachePath = join(cacheDir, `${cacheKey}.json`)
+
+  try {
+    const cached = JSON.parse(await readFile(cachePath, 'utf-8'))
+    if (cached.css && cached.fontFiles) {
+      return {
+        css: cached.css,
+        fontFiles: cached.fontFiles.map((f: any) => ({
+          name: f.name,
+          content: Buffer.from(f.content, 'base64'),
+        })),
+      }
+    }
+  } catch {
+    // No cache — download fresh
+  }
+
   const css = await downloadGoogleFontsCSS(cssUrl)
   const fontUrls = extractFontUrls(css)
   const fontFiles: Array<{ name: string; content: Buffer }> = []
@@ -330,6 +353,17 @@ async function selfHostFonts(
 
     fontFiles.push({ name: fileName, content })
     rewrittenCss = rewrittenCss.replace(url, `/${fontsSubDir}/${fileName}`)
+  }
+
+  // Write cache
+  try {
+    await mkdir(cacheDir, { recursive: true })
+    await writeFile(cachePath, JSON.stringify({
+      css: rewrittenCss,
+      fontFiles: fontFiles.map((f) => ({ name: f.name, content: f.content.toString('base64') })),
+    }))
+  } catch {
+    // Cache write failure is non-fatal
   }
 
   return { css: rewrittenCss, fontFiles }
@@ -364,6 +398,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
   const googleFamilies = (config.google ?? []).map(resolveGoogleFont)
 
   let isBuild = false
+  let root = ''
   let selfHostedCSS = ''
   let selfHostedFontFiles: Array<{ name: string; content: Buffer }> = []
 
@@ -372,13 +407,14 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
 
     configResolved(resolvedConfig) {
       isBuild = resolvedConfig.command === 'build'
+      root = resolvedConfig.root
     },
 
     async buildStart() {
       if (isBuild && shouldSelfHost && googleFamilies.length > 0) {
         const cssUrl = googleFontsUrl(googleFamilies, display)
         try {
-          const result = await selfHostFonts(cssUrl, 'assets/fonts')
+          const result = await selfHostFonts(cssUrl, 'assets/fonts', root)
           selfHostedCSS = result.css
           selfHostedFontFiles = result.fontFiles
         } catch {

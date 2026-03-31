@@ -5,29 +5,23 @@ import type { CollapseProps, TransitionStage } from './types'
 import useAnimationEnd from './useAnimationEnd'
 import { useReducedMotion } from './useReducedMotion'
 
-const Collapse = ({
-  show,
-  transition = 'height 300ms ease',
-  appear = false,
-  timeout = 5000,
-  onEnter,
-  onAfterEnter,
-  onLeave,
-  onAfterLeave,
-  children,
-}: CollapseProps): VNode | null => {
+const Collapse = (props: CollapseProps): VNode | null => {
+  const transition = props.transition ?? 'height 300ms ease'
+  const appear = props.appear ?? false
+  const timeout = props.timeout ?? 5000
+
   const reducedMotion = useReducedMotion()
   let wrapperRef: { current: HTMLDivElement | null } = createRef<HTMLDivElement>()
   const contentRef = createRef<HTMLDivElement>()
 
   const callbacks = {
-    onEnter,
-    onAfterEnter,
-    onLeave,
-    onAfterLeave,
+    onEnter: props.onEnter,
+    onAfterEnter: props.onAfterEnter,
+    onLeave: props.onLeave,
+    onAfterLeave: props.onAfterLeave,
   }
 
-  const initialShow = show()
+  const initialShow = props.show()
   // When appear=true and show starts true, mount but defer animation until ref is wired
   const needsAppear = appear && initialShow
   const stage = signal<TransitionStage>(initialShow ? 'entered' : 'hidden')
@@ -56,7 +50,7 @@ const Collapse = ({
 
   // State machine transitions
   watch(
-    show,
+    props.show,
     (showVal) => {
       if (isInitialMount) {
         isInitialMount = false
@@ -163,7 +157,7 @@ const Collapse = ({
       }}
     >
       <Show when={shouldRender}>
-        <div ref={contentRef}>{children}</div>
+        <div ref={contentRef}>{props.children}</div>
       </Show>
     </div>
   )

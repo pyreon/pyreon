@@ -155,13 +155,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       return {
         optimizeDeps: {
           exclude: optimizeDepsExclude,
-          esbuildOptions: {
-            // Configure esbuild's JSX for dep optimization / pre-bundling.
-            // Without this, esbuild uses React as the default JSX runtime
-            // when pre-bundling @pyreon/* packages that contain JSX.
-            jsx: 'automatic',
-            jsxImportSource: jsxSource,
-          },
+          // Vite 8 uses rolldownOptions (esbuildOptions is deprecated).
+          // Configure JSX for pre-bundling so the optimizer uses
+          // @pyreon/core instead of React as the JSX runtime.
+          rolldownOptions: {
+            jsx: {
+              runtime: 'automatic',
+              importSource: jsxSource,
+            },
+          } as any,
         },
         oxc: {
           jsx: {

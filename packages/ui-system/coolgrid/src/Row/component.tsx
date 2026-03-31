@@ -1,4 +1,4 @@
-import { provide, useContext } from '@pyreon/core'
+import { provide, splitProps, useContext } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import { ContainerContext, RowContext } from '../context'
 import type { ElementType } from '../types'
@@ -16,13 +16,8 @@ import Styled from './styled'
 const DEV_PROPS: Record<string, string> =
   process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'row' } : {}
 
-const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss']> = ({
-  children,
-  component,
-  css,
-  contentAlignX: rowAlignX,
-  ...props
-}) => {
+const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss']> = (props) => {
+  const [own, rest] = splitProps(props, ['children', 'component', 'css', 'contentAlignX'])
   const parentCtx = useContext(ContainerContext)
 
   const {
@@ -37,7 +32,7 @@ const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss
     padding,
     colCss,
     colComponent,
-  } = useGridContext({ ...parentCtx, ...props })
+  } = useGridContext({ ...parentCtx, ...rest })
 
   const context = {
     containerWidth,
@@ -52,11 +47,11 @@ const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss
 
   const finalProps = {
     $coolgrid: {
-      contentAlignX: rowAlignX || contentAlignX,
+      contentAlignX: own.contentAlignX || contentAlignX,
       columns,
       gap,
       gutter,
-      extraStyles: css || rowCss,
+      extraStyles: own.css || rowCss,
     },
   }
 
@@ -64,8 +59,8 @@ const Component: ElementType<['containerWidth', 'width', 'rowComponent', 'rowCss
   provide(RowContext, context)
 
   return (
-    <Styled {...omitCtxKeys(props)} as={component || rowComponent} {...finalProps} {...DEV_PROPS}>
-      {children}
+    <Styled {...omitCtxKeys(rest)} as={own.component || rowComponent} {...finalProps} {...DEV_PROPS}>
+      {own.children}
     </Styled>
   )
 }
