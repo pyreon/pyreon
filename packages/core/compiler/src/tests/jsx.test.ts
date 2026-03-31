@@ -234,6 +234,20 @@ describe('JSX transform — component elements', () => {
     expect(result).not.toContain('() => () =>')
   })
 
+  test('does NOT wrap single JSX element prop — recurses into inner props', () => {
+    const result = t('<Wrapper icon={<Icon name={getName()} />} />')
+    // The outer <Icon> should NOT be wrapped in _rp
+    expect(result).not.toContain('_rp(() => <Icon')
+    // But Icon's name prop should be wrapped (it contains a call)
+    expect(result).toContain('() => getName()')
+  })
+
+  test('DOES wrap conditional JSX element prop', () => {
+    const result = t('<Wrapper icon={show() ? <Icon /> : null} />')
+    // Conditional contains a call — wraps the whole expression
+    expect(result).toContain('_rp(')
+  })
+
   test('wraps children of component elements (via JSX expression)', () => {
     // Children in expression containers are still wrapped
     const result = t('<MyComponent>{count()}</MyComponent>')

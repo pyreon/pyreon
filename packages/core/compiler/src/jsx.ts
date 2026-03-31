@@ -206,7 +206,20 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
 
     if (isComponent) {
-      // Component prop: wrap with _rp() brand so makeReactiveProps recognizes it
+      // Component prop: wrap with _rp() brand so makeReactiveProps recognizes it.
+      //
+      // EXCEPTION: If the expression is a single JSX element (not a conditional),
+      // do NOT wrap the outer expression. The JSX element is created once (stable VNode).
+      // Its own inner props will be wrapped individually via recursive walk().
+      // This prevents remounting: <Icon name={x()} /> stays one Icon instance,
+      // only its name prop updates reactively.
+      const isSingleJsx = ts.isJsxElement(expr) || ts.isJsxSelfClosingElement(expr)
+      if (isSingleJsx) {
+        // Don't wrap — recurse into the JSX element's attributes instead
+        ts.forEachChild(expr, walk)
+        return
+      }
+
       const hoistName = maybeHoist(expr)
       if (hoistName) {
         replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
