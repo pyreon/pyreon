@@ -30,11 +30,11 @@ export interface StyledOptions {
   /** Custom prop filter. Return true to forward the prop to the DOM element. */
   shouldForwardProp?: (prop: string) => boolean
   /**
-   * Double the class selector to raise specificity from (0,1,0) to (0,2,0).
-   * Ensures this component's styles override inner library components
-   * regardless of CSS source order.
+   * CSS @layer name. Rules are wrapped in `@layer <name> { ... }`.
+   * Used by rocketstyle to ensure wrapper styles override inner component
+   * styles via layer order (base < rocketstyle) instead of specificity hacks.
    */
-  boost?: boolean
+  layer?: string
 }
 
 const getDisplayName = (tag: Tag): string =>
@@ -77,7 +77,7 @@ const createStyledComponent = (
   // Fast check: no values means no dynamic interpolations — avoids .some() scan
   const hasDynamicValues = values.length > 0 && values.some(isDynamic)
   const customFilter = options ? options.shouldForwardProp : undefined
-  const boost = options ? (options.boost ?? false) : false
+  const insertLayer = options?.layer
 
   // STATIC FAST PATH: no function interpolations → compute class once at creation time
   if (!hasDynamicValues) {
@@ -86,7 +86,7 @@ const createStyledComponent = (
     const cssText = normalizeCSS(raw)
     const hasCss = cssText.length > 0
 
-    const staticClassName = hasCss ? sheet.insert(cssText, boost) : ''
+    const staticClassName = hasCss ? sheet.insert(cssText, false, insertLayer) : ''
 
     const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
       const finalTag = rawProps.as || tag
@@ -148,7 +148,7 @@ const createStyledComponent = (
       ...(isReactiveState ? { $rocketstate: resolvedState } : {}),
     }
     const cssText = normalizeCSS(resolve(strings, values, { ...initialProps, theme }))
-    const initialClassName = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
+    const initialClassName = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
 
     const finalTag = rawProps.as || tag
     const isDOM = typeof finalTag === 'string'
@@ -195,7 +195,7 @@ const createStyledComponent = (
           const newCss = normalizeCSS(
             resolve(strings, values, { ...newResolvedProps, theme }),
           )
-          const newClass = newCss.length > 0 ? sheet.insert(newCss, boost) : ''
+          const newClass = newCss.length > 0 ? sheet.insert(newCss, false, insertLayer) : ''
 
           if (el && newClass !== currentClassName) {
             if (currentClassName) el.classList.remove(currentClassName)

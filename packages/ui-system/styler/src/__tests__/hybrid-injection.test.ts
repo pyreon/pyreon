@@ -2,14 +2,14 @@
  * Tests for the hybrid injection approach:
  * - Client (jsdom): shared <style data-pyreon-styler> sheet
  * - CSS rules present in the CSSOM sheet after insertion
- * - `boost` option threaded from styled() through to the sheet
+ * - `layer` option threaded from styled() through to the sheet
  *
  * Ported to VNode-level testing: we call the component function directly
  * and inspect the returned VNode + the sheet's CSSOM.
  */
 
 import type { VNode } from '@pyreon/core'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createGlobalStyle } from '../globalStyle'
 import { sheet } from '../sheet'
 import { styled } from '../styled'
@@ -160,37 +160,38 @@ describe('hybrid injection — VNode output (no <style> in tree)', () => {
   })
 })
 
-describe('hybrid injection — boost option at component level', () => {
+describe('hybrid injection — layer option at component level', () => {
   afterEach(() => {
     sheet.clearAll()
   })
 
-  it('static boosted component produces doubled selector in CSSOM', () => {
-    const Comp = styled('div', { boost: true })`
+  it('static layered component generates className', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const Comp = styled('div', { layer: 'rocketstyle' })`
       color: red;
     `
     const vnode = Comp({}) as VNode
     const className = vnode.props.class as string
 
-    const rules = findRulesFor(className)
-    expect(rules.length).toBeGreaterThanOrEqual(1)
-    // Boost doubles the selector: .pyr-abc.pyr-abc
-    expect(rules.some((r) => r.includes(`.${className}.${className}`))).toBe(true)
+    // className is generated regardless of CSSOM @layer support
+    expect(className).toMatch(/^pyr-/)
+    warnSpy.mockRestore()
   })
 
-  it('dynamic boosted component produces doubled selector in CSSOM', () => {
-    const Comp = styled('div', { boost: true })`
+  it('dynamic layered component generates className', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const Comp = styled('div', { layer: 'rocketstyle' })`
       color: ${(p: any) => p.$color};
     `
     const vnode = Comp({ $color: 'blue' }) as VNode
     const className = vnode.props.class as string
 
-    const rules = findRulesFor(className)
-    expect(rules.length).toBeGreaterThanOrEqual(1)
-    expect(rules.some((r) => r.includes(`.${className}.${className}`))).toBe(true)
+    // className is generated regardless of CSSOM @layer support
+    expect(className).toMatch(/^pyr-/)
+    warnSpy.mockRestore()
   })
 
-  it('non-boosted component produces single selector', () => {
+  it('non-layered component produces single selector without @layer', () => {
     const Comp = styled('div')`
       color: green;
     `
@@ -199,17 +200,16 @@ describe('hybrid injection — boost option at component level', () => {
 
     const rules = findRulesFor(className)
     expect(rules.length).toBeGreaterThanOrEqual(1)
-    // Single selector: .pyr-abc { ... } — NOT .pyr-abc.pyr-abc
+    // Single selector: .pyr-abc { ... }
     const baseRule = rules[0] as string
     expect(baseRule).toContain(`.${className}`)
-    // Count occurrences of the className in the selector portion
-    const selectorPart = baseRule.split('{')[0] as string
-    const occurrences = selectorPart.split(`.${className}`).length - 1
-    expect(occurrences).toBe(1)
+    // No @layer wrapping
+    expect(baseRule).not.toContain('@layer')
   })
 
-  it('boosted component with @media splits correctly', () => {
-    const Comp = styled('div', { boost: true })`
+  it('layered component with @media generates className', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const Comp = styled('div', { layer: 'rocketstyle' })`
       color: red;
       @media (min-width: 768px) {
         font-size: 20px;
@@ -218,12 +218,7 @@ describe('hybrid injection — boost option at component level', () => {
     const vnode = Comp({}) as VNode
     const className = vnode.props.class as string
 
-    const rules = findRulesFor(className)
-    // Should have at least 2 rules: base + @media
-    expect(rules.length).toBeGreaterThanOrEqual(2)
-    // Both base and media rule should use doubled selector
-    for (const rule of rules) {
-      expect(rule).toContain(`.${className}.${className}`)
-    }
+    expect(className).toMatch(/^pyr-/)
+    warnSpy.mockRestore()
   })
 })

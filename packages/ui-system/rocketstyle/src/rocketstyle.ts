@@ -64,12 +64,13 @@ const rocketComponent: RocketComponent = (options) => {
   const componentName = options.name ?? options.component.displayName ?? options.component.name
 
   // Create styled component with all options.styles if available.
-  // boost: true doubles the class selector so rocketstyle wrapper styles
-  // always override inner library component styles.
+  // layer: 'rocketstyle' ensures wrapper styles override inner component
+  // styles via CSS @layer order (base < rocketstyle) instead of
+  // doubled selectors. Media queries work correctly at same specificity.
   const STYLED_COMPONENT =
     (component.IS_ROCKETSTYLE ?? options.styled !== true)
       ? component
-      : styled(component, { boost: true })`
+      : styled(component, { layer: 'rocketstyle' })`
           ${calculateStyles(styles)};
         `
 

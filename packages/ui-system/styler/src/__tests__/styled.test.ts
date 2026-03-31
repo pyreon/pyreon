@@ -286,9 +286,9 @@ describe('styled', () => {
     })
   })
 
-  describe('boost option', () => {
-    it('accepts boost option without error', () => {
-      const Comp = styled('div', { boost: true })`
+  describe('layer option', () => {
+    it('accepts layer option without error', () => {
+      const Comp = styled('div', { layer: 'rocketstyle' })`
         color: red;
       `
       const vnode = Comp({}) as VNode

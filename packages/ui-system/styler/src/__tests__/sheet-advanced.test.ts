@@ -221,25 +221,15 @@ describe('StyleSheet -- advanced features', () => {
     })
   })
 
-  describe('boost on prepare()', () => {
-    it('doubles selector when boost is true', () => {
+  describe('prepare()', () => {
+    it('produces single selector', () => {
       document.querySelectorAll('style[data-pyreon-styler]').forEach((el) => {
         el.remove()
       })
       const s = createSheet()
-      const result = s.prepare('color: red;', true)
+      const result = s.prepare('color: red;')
       expect(result.className).toMatch(/^pyr-/)
-      // Boosted: selector is doubled
-      expect(result.rules).toContain(`.${result.className}.${result.className}`)
-    })
-
-    it('single selector when boost is false', () => {
-      document.querySelectorAll('style[data-pyreon-styler]').forEach((el) => {
-        el.remove()
-      })
-      const s = createSheet()
-      const result = s.prepare('color: red;', false)
-      // Non-boosted: single selector
+      // Single selector, no doubling
       expect(result.rules).toContain(`.${result.className}{`)
       expect(result.rules).not.toContain(`.${result.className}.${result.className}`)
     })
@@ -275,23 +265,23 @@ describe('StyleSheet -- advanced features', () => {
     })
   })
 
-  describe('boost on insert()', () => {
+  describe('layer on insert()', () => {
     beforeEach(() => {
       document.querySelectorAll('style[data-pyreon-styler]').forEach((el) => {
         el.remove()
       })
     })
 
-    it('inserts boosted rule on client side', () => {
+    it('inserts rule with layer on client side', () => {
       const s = createSheet()
-      const cls = s.insert('color: red;', true)
+      const cls = s.insert('color: red;', false, 'rocketstyle')
       expect(cls).toMatch(/^pyr-/)
     })
 
-    it('deduplicates boosted and non-boosted separately via insertCache key', () => {
+    it('deduplicates layered and non-layered separately via insertCache key', () => {
       const s = createSheet()
       const cls1 = s.insert('color: green;', false)
-      const cls2 = s.insert('color: green;', true)
+      const cls2 = s.insert('color: green;', false, 'rocketstyle')
       // Same className (same hash) but both should work without error
       expect(cls1).toBe(cls2)
     })
@@ -606,11 +596,11 @@ describe('StyleSheet -- advanced features', () => {
         expect(result.rules).toContain('color: red;')
       })
 
-      it('prepare() with boost wraps in @layer', () => {
+      it('prepare() wraps in @layer with layer option', () => {
         const s = createSheet({ layer: 'lib' })
-        const result = s.prepare('color: blue;', true)
+        const result = s.prepare('color: blue;')
         expect(result.rules).toContain('@layer lib')
-        expect(result.rules).toContain(`.${result.className}.${result.className}`)
+        expect(result.rules).toContain(`.${result.className}`)
       })
     })
 
