@@ -29,7 +29,8 @@ const fullHeightCSS = `
 
 const blockCSS = `
   align-self: stretch;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 `
 
 const childFixPosition = (isBlock?: boolean) => `display: ${isBlock ? 'flex' : 'inline-flex'};`
