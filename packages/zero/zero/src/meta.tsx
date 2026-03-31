@@ -1,8 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
-import { useContext } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
-import type { I18nRoutingConfig, LocaleContext } from './i18n-routing'
-import { LocaleCtx, createLocaleContext, extractLocaleFromPath } from './i18n-routing'
+import type { I18nRoutingConfig } from './i18n-routing'
+import { extractLocaleFromPath } from './i18n-routing'
 
 // ─── Meta component ────────────────────────────────────────────────────────
 
@@ -84,27 +83,17 @@ export function Meta(props: MetaProps): VNodeChild {
   // If title or description are reactive accessors, pass a getter to useHead
   // so it re-evaluates when the signals change.
   if (hasReactiveTitle || hasReactiveDescription) {
-    useHead(() => {
+    useHead((() => {
       const title = resolveStr(props.title)
       const description = resolveStr(props.description)
-      const tags = buildMetaTags({ ...props, title, description })
-      return {
-        title,
-        meta: tags.meta,
-        link: tags.link,
-        script: tags.script,
-      }
-    })
+      const tags = buildMetaTags({ ...props, title, description } as any)
+      return { title, meta: tags.meta, link: tags.link, script: tags.script }
+    }) as any)
   } else {
     const title = resolveStr(props.title)
     const description = resolveStr(props.description)
-    const tags = buildMetaTags({ ...props, title, description })
-    useHead({
-      title,
-      meta: tags.meta,
-      link: tags.link,
-      script: tags.script,
-    })
+    const tags = buildMetaTags({ ...props, title, description } as any)
+    useHead({ title, meta: tags.meta, link: tags.link, script: tags.script } as any)
   }
 
   return props.children ?? null

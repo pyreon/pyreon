@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { Plugin } from 'vite'
 
 let sharpWarned = false
@@ -314,7 +314,7 @@ function stripSvgWrapper(svg: string): string {
 async function resizeToPng(input: string, size: number): Promise<Uint8Array | null> {
   try {
     const sharp = await import('sharp').then((m) => m.default ?? m)
-    return await sharp(input).resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer()
+    return await sharp(input).resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
   } catch {
     warnSharpMissing()
     return null
@@ -324,8 +324,8 @@ async function resizeToPng(input: string, size: number): Promise<Uint8Array | nu
 async function generateIco(input: string): Promise<Uint8Array | null> {
   try {
     const sharp = await import('sharp').then((m) => m.default ?? m)
-    const png16 = await sharp(input).resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer()
-    const png32 = await sharp(input).resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer()
+    const png16 = await sharp(input).resize(16, 16, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
+    const png32 = await sharp(input).resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } } as any).png().toBuffer()
 
     // ICO format: header + directory entries + PNG data
     return createIcoFromPngs([

@@ -191,7 +191,7 @@ export function i18nRouting(config: I18nRoutingConfig): Plugin {
           return next()
         }
 
-        const { locale, pathWithoutLocale } = extractLocaleFromPath(
+        const { locale } = extractLocaleFromPath(
           url,
           config.locales,
           config.defaultLocale,

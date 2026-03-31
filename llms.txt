@@ -266,6 +266,24 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/storybook — Storybook renderer for Pyreon components
 - @pyreon/lint — Pyreon-specific linter — 56 rules (reactivity, JSX, SSR, performance, architecture, router, etc.), config files, watch mode, AST cache, CLI + API, powered by oxc-parser
 
+## Zero (Full-Stack Framework)
+
+@pyreon/zero — full-stack meta-framework built on Pyreon + Vite:
+- File-system routing (src/routes/) with layouts, error boundaries, loading states, 404 pages
+- SSR + SSG + ISR rendering modes
+- API routes (src/routes/api/) with typed handlers
+- Image optimization — responsive srcset, blur placeholders, WebP/AVIF, lazy loading
+- Favicon generation — single source SVG/PNG → ICO, Apple touch, manifest, dark mode SVG
+- Meta component — declarative OG, Twitter Cards, JSON-LD, hreflang, reactive title
+- I18n routing — locale detection (Accept-Language + cookie), prefix strategies, useLocale()
+- Font optimization — Google Fonts, local fonts, font-display, fallback metrics
+- Theme — dark/light toggle with FOUC prevention script
+- Middleware composition — compose(), shared context, CORS, cache, compression, rate limiting
+- SEO — sitemap.xml, robots.txt, JSON-LD helpers
+- Dev error overlay with stack traces
+- Adapters — Node, Bun, static export
+- Layouts use `<RouterView />` (not props.children)
+
 ## Key Ecosystem Patterns
 
 ```typescript

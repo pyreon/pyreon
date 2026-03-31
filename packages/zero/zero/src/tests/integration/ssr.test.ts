@@ -247,7 +247,6 @@ describe("error overlay middleware", () => {
 
 		// Create a mock response object
 		const headers: Record<string, string | number> = {};
-		let statusCode = 200;
 		let responseBody = "";
 
 		const mockRes = {
@@ -265,9 +264,8 @@ describe("error overlay middleware", () => {
 		mockRes.setHeader("Content-Type", "text/html; charset=utf-8");
 		mockRes.setHeader("Content-Length", Buffer.byteLength(html));
 		mockRes.end(html);
-		statusCode = mockRes.statusCode;
 
-		expect(statusCode).toBe(500);
+		expect(mockRes.statusCode).toBe(500);
 		expect(headers["Content-Type"]).toBe("text/html; charset=utf-8");
 		expect(responseBody).toContain("SSR Error");
 		expect(responseBody).toContain("Intentional SSR error for testing");
