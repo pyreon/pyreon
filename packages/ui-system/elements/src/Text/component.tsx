@@ -5,6 +5,7 @@
  * a static `isText` flag so other components can detect text children.
  */
 
+import { splitProps } from '@pyreon/core'
 import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
 import type { HTMLTextTags } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
@@ -37,17 +38,19 @@ export type Props = Partial<{
 
 const Component: PyreonComponent<Props> & {
   isText?: true
-} = ({ paragraph, label, children, tag, css, ref, ...props }) => {
+} = (props) => {
+  const [own, rest] = splitProps(props, ['paragraph', 'label', 'children', 'tag', 'css', 'ref'])
+
   let finalTag: string | undefined
 
-  if (paragraph) finalTag = 'p'
+  if (own.paragraph) finalTag = 'p'
   else {
-    finalTag = tag
+    finalTag = own.tag
   }
 
   return (
-    <Styled ref={ref} as={finalTag} $text={{ extraStyles: css }} {...props}>
-      {children ?? label}
+    <Styled ref={own.ref} as={finalTag} $text={{ extraStyles: own.css }} {...rest}>
+      {own.children ?? own.label}
     </Styled>
   )
 }

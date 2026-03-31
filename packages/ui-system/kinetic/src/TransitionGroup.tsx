@@ -1,4 +1,5 @@
 import type { VNode } from '@pyreon/core'
+import { splitProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import Transition from './Transition'
 import type { ClassTransitionProps, StyleTransitionProps, TransitionCallbacks } from './types'
@@ -42,19 +43,21 @@ const getKeyedChildren = (children: VNode[]): KeyedChild[] => {
  * The component uses a reactive accessor internally to diff previous vs
  * current children and animate entries/exits.
  */
-const TransitionGroup = ({
-  children,
-  appear = false,
-  timeout,
-  onAfterLeave,
-  ...transitionProps
-}: TransitionGroupProps): VNode | null => {
+const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
+  const [own, transitionProps] = splitProps(props, [
+    'children',
+    'appear',
+    'timeout',
+    'onAfterLeave',
+  ])
+  const appear = own.appear ?? false
   const prevMap = new Map<string | number, VNode>()
   const leavingMap = new Map<string | number, VNode>()
   const forceUpdate = signal(0)
 
   // Normalize children to an accessor for uniform handling
-  const getChildren = typeof children === 'function' ? (children as () => VNode[]) : () => children
+  const getChildren =
+    typeof own.children === 'function' ? (own.children as () => VNode[]) : () => own.children
 
   // Track initial keys for appear animation logic
   const initialKeyed = getKeyedChildren(getChildren())
@@ -65,7 +68,7 @@ const TransitionGroup = ({
 
   const handleAfterLeave = (key: string | number) => {
     leavingMap.delete(key)
-    onAfterLeave?.()
+    own.onAfterLeave?.()
     forceUpdate.update((c) => c + 1)
   }
 
@@ -118,7 +121,7 @@ const TransitionGroup = ({
               key={key}
               show={() => isShowing}
               appear={isInitial ? appear : true}
-              timeout={timeout}
+              timeout={own.timeout}
               {...transitionProps}
               onAfterLeave={() => handleAfterLeave(key)}
             >

@@ -1,4 +1,4 @@
-import { useContext } from '@pyreon/core'
+import { splitProps, useContext } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import { RowContext } from '../context'
 import type { ElementType } from '../types'
@@ -28,11 +28,12 @@ const Component: ElementType<
     'gutter',
     'contentAlignX',
   ]
-> = ({ children, component, css, ...props }) => {
+> = (props) => {
+  const [own, rest] = splitProps(props, ['children', 'component', 'css'])
   const parentCtx = useContext(RowContext)
   const { colCss, colComponent, columns, gap, size, padding } = useGridContext({
     ...parentCtx,
-    ...props,
+    ...rest,
   })
 
   const finalProps = {
@@ -41,13 +42,13 @@ const Component: ElementType<
       gap,
       size,
       padding,
-      extraStyles: css ?? colCss,
+      extraStyles: own.css ?? colCss,
     },
   }
 
   return (
-    <Styled {...omitCtxKeys(props)} as={component ?? colComponent} {...finalProps} {...DEV_PROPS}>
-      {children}
+    <Styled {...omitCtxKeys(rest)} as={own.component ?? colComponent} {...finalProps} {...DEV_PROPS}>
+      {own.children}
     </Styled>
   )
 }

@@ -115,7 +115,8 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
 // ─── Toast item ─────────────────────────────────────────────────────────────
 
-function ToastItem({ toast: t }: { toast: Toast }): VNodeChild {
+function ToastItem(props: { toast: Toast }): VNodeChild {
+  const t = props.toast
   const stateClass =
     t.state === 'entering'
       ? ' pyreon-toast--entering'

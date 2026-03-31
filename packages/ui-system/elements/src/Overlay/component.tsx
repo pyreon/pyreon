@@ -7,7 +7,7 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { onMount, Portal } from '@pyreon/core'
+import { onMount, Portal, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { Content, PyreonComponent } from '../types'
@@ -46,14 +46,18 @@ export type Props = {
   contentRefName?: string
 } & UseOverlayProps
 
-const Component: PyreonComponent<Props> = ({
-  children,
-  trigger,
-  DOMLocation,
-  triggerRefName = 'ref',
-  contentRefName = 'ref',
-  ...props
-}) => {
+const Component: PyreonComponent<Props> = (props) => {
+  const [own, overlayProps] = splitProps(props, [
+    'children',
+    'trigger',
+    'DOMLocation',
+    'triggerRefName',
+    'contentRefName',
+  ])
+
+  const triggerRefName = own.triggerRefName ?? 'ref'
+  const contentRefName = own.contentRefName ?? 'ref'
+
   const {
     active,
     triggerRef,
@@ -66,9 +70,9 @@ const Component: PyreonComponent<Props> = ({
     setupListeners,
     Provider,
     ...ctx
-  } = useOverlay(props)
+  } = useOverlay(overlayProps)
 
-  const { openOn, closeOn, type } = props
+  const { openOn, closeOn, type } = overlayProps
 
   const passHandlers =
     openOn === 'manual' || closeOn === 'manual' || closeOn === 'clickOutsideContent'
@@ -92,7 +96,7 @@ const Component: PyreonComponent<Props> = ({
 
   return (
     <>
-      {render(trigger, {
+      {render(own.trigger, {
         [triggerRefName]: triggerRef,
         active: active(),
         'aria-expanded': active(),
@@ -102,9 +106,9 @@ const Component: PyreonComponent<Props> = ({
 
       {() =>
         IS_BROWSER && active() ? (
-          <Portal target={DOMLocation ?? document.body}>
+          <Portal target={own.DOMLocation ?? document.body}>
             <Provider {...ctx}>
-              {render(children, {
+              {render(own.children, {
                 [contentRefName]: contentRef,
                 role: type === 'modal' ? 'dialog' : undefined,
                 'aria-modal': type === 'modal' ? true : undefined,

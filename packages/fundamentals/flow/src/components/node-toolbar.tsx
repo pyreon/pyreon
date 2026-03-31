@@ -41,7 +41,10 @@ const positionStyles: Record<string, string> = {
  * ```
  */
 export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
-  const { position = 'top', offset = 8, showOnSelect = true, selected = false, children } = props
+  const position = props.position ?? 'top'
+  const offset = props.offset ?? 8
+  const showOnSelect = props.showOnSelect ?? true
+  const selected = props.selected ?? false
 
   if (showOnSelect && !selected) return null
 
@@ -59,7 +62,7 @@ export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
 
   return (
     <div class={`pyreon-flow-node-toolbar ${props.class ?? ''}`} style={baseStyle}>
-      {children}
+      {props.children}
     </div>
   )
 }

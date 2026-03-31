@@ -26,17 +26,17 @@ const positionOffset: Record<string, string> = {
  * ```
  */
 export function Handle(props: HandleProps): VNodeChild {
-  const { type, position, id, style = '' } = props
-  const posStyle = positionOffset[position] ?? positionOffset.bottom
+  const posStyle = positionOffset[props.position] ?? positionOffset.bottom
+  const style = props.style ?? ''
   const baseStyle = `position: absolute; ${posStyle} width: 8px; height: 8px; background: #555; border: 2px solid white; border-radius: 50%; cursor: crosshair; z-index: 1; ${style}`
 
   return (
     <div
-      class={`pyreon-flow-handle pyreon-flow-handle-${type} ${props.class ?? ''}`}
+      class={`pyreon-flow-handle pyreon-flow-handle-${props.type} ${props.class ?? ''}`}
       style={baseStyle}
-      data-handletype={type}
-      data-handleid={id ?? type}
-      data-handleposition={position}
+      data-handletype={props.type}
+      data-handleid={props.id ?? props.type}
+      data-handleposition={props.position}
     />
   )
 }

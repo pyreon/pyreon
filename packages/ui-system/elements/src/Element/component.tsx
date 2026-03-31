@@ -7,7 +7,7 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { onMount } from '@pyreon/core'
+import { onMount, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import { Content, Wrapper } from '../helpers'
@@ -37,62 +37,68 @@ const defaultContentDirection = 'rows'
 const defaultAlignX = 'left'
 const defaultAlignY = 'center'
 
-const Component: PyreonElement = ({
-  innerRef,
-  tag,
-  label,
-  content,
-  children,
-  beforeContent,
-  afterContent,
-  equalBeforeAfter,
+const Component: PyreonElement = (props) => {
+  const [own, rest] = splitProps(props, [
+    'innerRef',
+    'tag',
+    'label',
+    'content',
+    'children',
+    'beforeContent',
+    'afterContent',
+    'equalBeforeAfter',
+    'block',
+    'equalCols',
+    'gap',
+    'direction',
+    'alignX',
+    'alignY',
+    'css',
+    'contentCss',
+    'beforeContentCss',
+    'afterContentCss',
+    'contentDirection',
+    'contentAlignX',
+    'contentAlignY',
+    'beforeContentDirection',
+    'beforeContentAlignX',
+    'beforeContentAlignY',
+    'afterContentDirection',
+    'afterContentAlignX',
+    'afterContentAlignY',
+    'ref',
+  ])
 
-  block,
-  equalCols,
-  gap,
+  const alignX = own.alignX ?? defaultAlignX
+  const alignY = own.alignY ?? defaultAlignY
+  const contentDirection = own.contentDirection ?? defaultContentDirection
+  const contentAlignX = own.contentAlignX ?? defaultAlignX
+  const contentAlignY = own.contentAlignY ?? defaultAlignY
+  const beforeContentDirection = own.beforeContentDirection ?? defaultDirection
+  const beforeContentAlignX = own.beforeContentAlignX ?? defaultAlignX
+  const beforeContentAlignY = own.beforeContentAlignY ?? defaultAlignY
+  const afterContentDirection = own.afterContentDirection ?? defaultDirection
+  const afterContentAlignX = own.afterContentAlignX ?? defaultAlignX
+  const afterContentAlignY = own.afterContentAlignY ?? defaultAlignY
 
-  direction,
-  alignX = defaultAlignX,
-  alignY = defaultAlignY,
-
-  css,
-  contentCss,
-  beforeContentCss,
-  afterContentCss,
-
-  contentDirection = defaultContentDirection,
-  contentAlignX = defaultAlignX,
-  contentAlignY = defaultAlignY,
-
-  beforeContentDirection = defaultDirection,
-  beforeContentAlignX = defaultAlignX,
-  beforeContentAlignY = defaultAlignY,
-
-  afterContentDirection = defaultDirection,
-  afterContentAlignX = defaultAlignX,
-  afterContentAlignY = defaultAlignY,
-
-  ref,
-  ...props
-}) => {
   // --------------------------------------------------------
   // check if should render only single element
   // --------------------------------------------------------
-  const shouldBeEmpty = !!props.dangerouslySetInnerHTML || getShouldBeEmpty(tag)
+  const shouldBeEmpty = !!rest.dangerouslySetInnerHTML || getShouldBeEmpty(own.tag)
 
   // --------------------------------------------------------
   // if not single element, calculate values
   // --------------------------------------------------------
-  const isSimpleElement = !beforeContent && !afterContent
-  const CHILDREN = children ?? content ?? label
+  const isSimpleElement = !own.beforeContent && !own.afterContent
+  const CHILDREN = own.children ?? own.content ?? own.label
 
-  const isInline = isInlineElement(tag)
+  const isInline = isInlineElement(own.tag)
   const SUB_TAG = isInline ? 'span' : undefined
 
   // --------------------------------------------------------
   // direction & alignX & alignY calculations
   // --------------------------------------------------------
-  let wrapperDirection: typeof direction = direction
+  let wrapperDirection: typeof own.direction = own.direction
   let wrapperAlignX: typeof alignX = alignX
   let wrapperAlignY: typeof alignY = alignY
 
@@ -100,8 +106,8 @@ const Component: PyreonElement = ({
     if (contentDirection) wrapperDirection = contentDirection
     if (contentAlignX) wrapperAlignX = contentAlignX
     if (contentAlignY) wrapperAlignY = contentAlignY
-  } else if (direction) {
-    wrapperDirection = direction
+  } else if (own.direction) {
+    wrapperDirection = own.direction
   } else {
     wrapperDirection = defaultDirection
   }
@@ -110,7 +116,7 @@ const Component: PyreonElement = ({
   // equalBeforeAfter: measure & equalize slot dimensions
   // --------------------------------------------------------
   let equalizeRef: HTMLElement | null = null
-  const externalRef = ref ?? innerRef
+  const externalRef = own.ref ?? own.innerRef
 
   const mergedRef = (node: HTMLElement | null) => {
     equalizeRef = node
@@ -120,9 +126,9 @@ const Component: PyreonElement = ({
     }
   }
 
-  if (equalBeforeAfter && beforeContent && afterContent) {
+  if (own.equalBeforeAfter && own.beforeContent && own.afterContent) {
     onMount(() => {
-      if (equalizeRef) equalize(equalizeRef, direction)
+      if (equalizeRef) equalize(equalizeRef, own.direction)
       return undefined
     })
   }
@@ -132,9 +138,9 @@ const Component: PyreonElement = ({
   // --------------------------------------------------------
   const WRAPPER_PROPS = {
     ref: mergedRef,
-    extendCss: css,
-    tag,
-    block,
+    extendCss: own.css,
+    tag: own.tag,
+    block: own.block,
     direction: wrapperDirection,
     alignX: wrapperAlignX,
     alignY: wrapperAlignY,
@@ -145,24 +151,24 @@ const Component: PyreonElement = ({
   // return simple/empty element like input or image etc.
   // --------------------------------------------------------
   if (shouldBeEmpty) {
-    return <Wrapper {...props} {...WRAPPER_PROPS} />
+    return <Wrapper {...rest} {...WRAPPER_PROPS} />
   }
 
   return (
-    <Wrapper {...props} {...WRAPPER_PROPS} isInline={isInline}>
-      {beforeContent && (
+    <Wrapper {...rest} {...WRAPPER_PROPS} isInline={isInline}>
+      {own.beforeContent && (
         <Content
           tag={SUB_TAG}
           contentType="before"
           parentDirection={wrapperDirection}
-          extendCss={beforeContentCss}
+          extendCss={own.beforeContentCss}
           direction={beforeContentDirection}
           alignX={beforeContentAlignX}
           alignY={beforeContentAlignY}
-          equalCols={equalCols}
-          gap={gap}
+          equalCols={own.equalCols}
+          gap={own.gap}
         >
-          {beforeContent}
+          {own.beforeContent}
         </Content>
       )}
 
@@ -173,29 +179,29 @@ const Component: PyreonElement = ({
           tag={SUB_TAG}
           contentType="content"
           parentDirection={wrapperDirection}
-          extendCss={contentCss}
+          extendCss={own.contentCss}
           direction={contentDirection}
           alignX={contentAlignX}
           alignY={contentAlignY}
-          equalCols={equalCols}
+          equalCols={own.equalCols}
         >
           {CHILDREN}
         </Content>
       )}
 
-      {afterContent && (
+      {own.afterContent && (
         <Content
           tag={SUB_TAG}
           contentType="after"
           parentDirection={wrapperDirection}
-          extendCss={afterContentCss}
+          extendCss={own.afterContentCss}
           direction={afterContentDirection}
           alignX={afterContentAlignX}
           alignY={afterContentAlignY}
-          equalCols={equalCols}
-          gap={gap}
+          equalCols={own.equalCols}
+          gap={own.gap}
         >
-          {afterContent}
+          {own.afterContent}
         </Content>
       )}
     </Wrapper>
