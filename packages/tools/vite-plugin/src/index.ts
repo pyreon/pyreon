@@ -155,16 +155,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       return {
         optimizeDeps: {
           exclude: optimizeDepsExclude,
-          // Vite 8 uses rolldownOptions (esbuildOptions is deprecated).
-          // Configure JSX for pre-bundling so the optimizer uses
-          // @pyreon/core instead of React as the JSX runtime.
-          rolldownOptions: {
-            jsx: {
-              runtime: 'automatic',
-              importSource: jsxSource,
-            },
-          } as any,
         },
+        // Vite 8 uses oxc for JSX transform (not esbuildOptions or rolldownOptions)
         oxc: {
           jsx: {
             runtime: 'automatic',
