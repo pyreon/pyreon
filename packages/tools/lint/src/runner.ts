@@ -138,8 +138,21 @@ export function lintFile(
   const visitor = new Visitor(mergeCallbacks(allCallbacks))
   visitor.visit(program)
 
-  diagnostics.sort((a, b) => a.span.start - b.span.start)
-  return { filePath, diagnostics }
+  // Filter suppressed diagnostics:
+  // // pyreon-lint-ignore             — suppress all on next line
+  // // pyreon-lint-ignore rule-name   — suppress specific rule on next line
+  const lines = sourceText.split('\n')
+  const filtered = diagnostics.filter((d) => {
+    const prevLineIdx = d.loc.line - 2
+    if (prevLineIdx < 0) return true
+    const prevLine = lines[prevLineIdx]?.trim()
+    if (!prevLine?.startsWith('// pyreon-lint-ignore')) return true
+    const rest = prevLine.slice('// pyreon-lint-ignore'.length).trim()
+    return rest.length > 0 && rest !== d.ruleId
+  })
+
+  filtered.sort((a, b) => a.span.start - b.span.start)
+  return { filePath, diagnostics: filtered }
 }
 
 /**

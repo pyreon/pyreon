@@ -46,6 +46,7 @@ import { noEffectAssignment } from './reactivity/no-effect-assignment'
 import { noNestedEffect } from './reactivity/no-nested-effect'
 import { noPeekInTracked } from './reactivity/no-peek-in-tracked'
 import { noSignalInLoop } from './reactivity/no-signal-in-loop'
+import { noSignalInProps } from './reactivity/no-signal-in-props'
 import { noSignalLeak } from './reactivity/no-signal-leak'
 import { noUnbatchedUpdates } from './reactivity/no-unbatched-updates'
 import { preferComputed } from './reactivity/prefer-computed'
@@ -69,10 +70,11 @@ import { noThemeOutsideProvider } from './styling/no-theme-outside-provider'
 import { preferCx } from './styling/prefer-cx'
 
 export const allRules: Rule[] = [
-  // Reactivity (9)
+  // Reactivity (10)
   noBareSignalInJsx,
   noContextDestructure,
   noSignalInLoop,
+  noSignalInProps,
   noNestedEffect,
   noPeekInTracked,
   noUnbatchedUpdates,
@@ -187,6 +189,7 @@ export {
   noRawLocalStorage,
   noRawSetInterval,
   noSignalInLoop,
+  noSignalInProps,
   noSignalLeak,
   // Store
   noStoreOutsideProvider,
