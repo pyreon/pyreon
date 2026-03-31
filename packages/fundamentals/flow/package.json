@@ -41,7 +41,7 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "elkjs": "^0.9.3"
+    "elkjs": "^0.11.1"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.3",
