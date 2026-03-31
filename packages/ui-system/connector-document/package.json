@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/connector-document",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Bridge between @pyreon/pyreon styled components and @pyreon/document rendering",
   "license": "MIT",
   "repository": {

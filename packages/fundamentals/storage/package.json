@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/storage",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Reactive client-side storage for Pyreon — localStorage, sessionStorage, cookies, IndexedDB",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/storage#readme",
   "bugs": {
