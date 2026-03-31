@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero",
-  "version": "0.11.8",
+  "version": "0.11.9",
   "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
   "author": "Vit Bokisch",
