@@ -131,6 +131,21 @@
       "bun": "./src/middleware.ts",
       "import": "./lib/middleware.js",
       "types": "./lib/types/middleware.d.ts"
+    },
+    "./csp": {
+      "bun": "./src/csp.ts",
+      "import": "./lib/csp.js",
+      "types": "./lib/types/csp.d.ts"
+    },
+    "./env": {
+      "bun": "./src/env.ts",
+      "import": "./lib/env.js",
+      "types": "./lib/types/env.d.ts"
+    },
+    "./logger": {
+      "bun": "./src/logger.ts",
+      "import": "./lib/logger.js",
+      "types": "./lib/types/logger.d.ts"
     }
   },
   "scripts": {

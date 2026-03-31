@@ -22,10 +22,25 @@ describe('resolveAdapter', () => {
     expect(adapter.name).toBe('static')
   })
 
+  it('returns vercel adapter', () => {
+    const adapter = resolveAdapter({ adapter: 'vercel' })
+    expect(adapter.name).toBe('vercel')
+  })
+
+  it('returns cloudflare adapter', () => {
+    const adapter = resolveAdapter({ adapter: 'cloudflare' })
+    expect(adapter.name).toBe('cloudflare')
+  })
+
+  it('returns netlify adapter', () => {
+    const adapter = resolveAdapter({ adapter: 'netlify' })
+    expect(adapter.name).toBe('netlify')
+  })
+
   it('throws for unknown adapter', () => {
     expect(() =>
       // @ts-expect-error testing invalid input
-      resolveAdapter({ adapter: 'vercel' }),
-    ).toThrow('[zero] Unknown adapter: "vercel"')
+      resolveAdapter({ adapter: 'unknown-platform' }),
+    ).toThrow('[zero] Unknown adapter: "unknown-platform"')
   })
 })

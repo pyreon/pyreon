@@ -32,9 +32,12 @@ export { createISRHandler } from "./isr";
 
 export {
 	bunAdapter,
+	cloudflareAdapter,
+	netlifyAdapter,
 	nodeAdapter,
 	resolveAdapter,
 	staticAdapter,
+	vercelAdapter,
 } from "./adapters";
 
 // ─── Components ─────────────────────────────────────────────────────────────
@@ -177,6 +180,20 @@ export {
 	setLocale,
 	useLocale,
 } from "./i18n-routing";
+
+// ─── CSP ────────────────────────────────────────────────────────────────────
+
+export type { CspConfig, CspDirectives } from "./csp";
+export { buildCspHeader, cspMiddleware } from "./csp";
+
+// ─── Environment validation ─────────────────────────────────────────────────
+
+export type { LogEntry, LoggerConfig } from "./logger";
+export { loggerMiddleware } from "./logger";
+
+// ─── Request logging ────────────────────────────────────────────────────────
+
+export { bool, num, oneOf, str, url, validateEnv } from "./env";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
