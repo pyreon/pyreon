@@ -102,7 +102,6 @@ export const calculateStylingAttrs: CalculateStylingAttrs =
     if (useBooleans) {
       const propsKeys = Object.keys(props)
 
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
       Object.entries(result).forEach(([key, value]) => {
         const isMultiKey = multiKeys?.[key]
 

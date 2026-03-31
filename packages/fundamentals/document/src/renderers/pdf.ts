@@ -328,12 +328,10 @@ export const pdfRenderer: DocumentRenderer = {
     // Resolve the actual exports (handle .default for ESM wrappers).
     // pdfmake's default export is a singleton instance of browser_extensions_pdfmake.
     // ESM interop may wrap it in an extra .default layer.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pdfmake types are incomplete
     let pdfMake: any = pdfMakeModule.default ?? pdfMakeModule
     if (pdfMake.default && typeof pdfMake.default.createPdf === 'function') {
       pdfMake = pdfMake.default
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pdfmake types are incomplete
     const pdfFonts: any = pdfFontsModule.default ?? pdfFontsModule
 
     // Assign virtual filesystem for fonts

@@ -7,7 +7,7 @@ let sharpWarned = false
 function warnSharpMissing() {
   if (sharpWarned) return
   sharpWarned = true
-  // biome-ignore lint/suspicious/noConsole: intentional build-time warning
+  // oxlint-disable-next-line no-console
   console.warn(
     '\n[zero:image] sharp not installed — images will not be optimized. Install for full support: bun add -D sharp\n',
   )

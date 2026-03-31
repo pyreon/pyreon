@@ -7,7 +7,7 @@ let sharpWarned = false
 function warnSharpMissing() {
   if (sharpWarned) return
   sharpWarned = true
-  // biome-ignore lint/suspicious/noConsole: intentional build-time warning
+  // oxlint-disable-next-line no-console
   console.warn(
     '\n[zero:favicon] sharp not installed — favicons will not be generated. Install for full support: bun add -D sharp\n',
   )
@@ -211,7 +211,7 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
 
       const sourcePath = join(root, config.source)
       if (!existsSync(sourcePath)) {
-        // eslint-disable-next-line no-console
+        // oxlint-disable-next-line no-console
         console.warn(`[zero:favicon] Source not found: ${sourcePath}`)
         return
       }

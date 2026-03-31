@@ -54,7 +54,6 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   }
 }
 
-// biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callbacks that return nothing must be assignable
 export function effect(fn: () => (() => void) | void): Effect {
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.

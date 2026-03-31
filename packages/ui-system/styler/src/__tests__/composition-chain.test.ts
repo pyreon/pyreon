@@ -163,7 +163,6 @@ describe('resolve composition chain', () => {
       }: {
         theme: Record<string, any>
         css: typeof css
-        // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
       }) => {
         const fragments = [
           t.position ? `position: ${t.position};` : '',

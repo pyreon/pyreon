@@ -38,7 +38,6 @@ export const resolve = (
   strings: TemplateStringsArray,
   values: Interpolation[],
   props: Record<string, any>,
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 ): string => {
   // Tagged templates guarantee strings.length === values.length + 1,
   // so strings[0] and strings[i+1] are always defined — no ?? needed.
@@ -81,7 +80,6 @@ const normCache = new Map<string, string>()
 /** Clear the normalizeCSS cache (called during HMR cleanup). */
 export const clearNormCache = () => normCache.clear()
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 export const normalizeCSS = (css: string): string => {
   const cached = normCache.get(css)
   if (cached !== undefined) return cached

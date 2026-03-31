@@ -52,7 +52,7 @@ const __DEV__ = typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'pr
 
 function Provider({ theme, children, ...props }: ProviderType): VNodeChild {
   if (__DEV__) {
-    // eslint-disable-next-line no-console
+    // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] CoreProvider is internal. Use <PyreonUI theme={theme}> instead — it handles all context layers (styler, core, mode) in one component.',
     )

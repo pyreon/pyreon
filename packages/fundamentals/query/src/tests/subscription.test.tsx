@@ -80,7 +80,6 @@ afterAll(() => {
   globalThis.WebSocket = OriginalWebSocket
 })
 
-// biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op for tests where onMessage isn't the focus
 const noop = () => {}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

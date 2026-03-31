@@ -58,7 +58,6 @@ export interface RenderContext {
 }
 
 export interface EffectEntry {
-  // biome-ignore lint/suspicious/noConfusingVoidType: matches Solid's effect signature
   fn: () => (() => void) | void
   deps: unknown[] | undefined
   cleanup: (() => void) | undefined
@@ -126,11 +125,9 @@ const noop = () => {
 
 // ─── Component wrapping ──────────────────────────────────────────────────────
 
-// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 const _wrapperCache = new WeakMap<Function, ComponentFn>()
 
 // Pyreon core components that must NOT be wrapped — they rely on internal reactivity
-// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component set
 const _nativeComponents: Set<Function> = new Set([
   Show,
   For,
@@ -140,7 +137,6 @@ const _nativeComponents: Set<Function> = new Set([
   ErrorBoundary,
 ])
 
-// biome-ignore lint/complexity/noBannedTypes: Function is needed for generic component wrapping
 function wrapCompatComponent(solidComponent: Function): ComponentFn {
   if (_nativeComponents.has(solidComponent)) return solidComponent as ComponentFn
 

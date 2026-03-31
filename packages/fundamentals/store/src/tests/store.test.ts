@@ -581,7 +581,6 @@ describe('subscribe/unsubscribe — no memory leak', () => {
     // Subscribe and unsubscribe many times
     const unsubs: (() => void)[] = []
     for (let i = 0; i < 100; i++) {
-      // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op subscriber
       unsubs.push(api.subscribe(() => {}))
     }
 
@@ -604,7 +603,6 @@ describe('subscribe/unsubscribe — no memory leak', () => {
       count: signal(0),
     }))
     const api = useStore()
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op subscriber
     const unsub = api.subscribe(() => {})
     unsub()
     // Second unsubscribe should not throw

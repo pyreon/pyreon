@@ -10,7 +10,7 @@ export interface DynamicProps extends Props {
 export function Dynamic(props: DynamicProps): VNode | null {
   const { component, ...rest } = props
   if (__DEV__ && !component) {
-    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    // oxlint-disable-next-line no-console
     console.warn('[Pyreon] <Dynamic> received a falsy `component` prop. Nothing will be rendered.')
   }
   if (!component) return null

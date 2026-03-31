@@ -5,7 +5,6 @@ function clearAllCookies(): void {
   for (const cookie of document.cookie.split(';')) {
     const name = cookie.split('=')[0]?.trim()
     if (name) {
-      // biome-ignore lint/suspicious/noDocumentCookie: test cleanup requires direct cookie access
       document.cookie = `${name}=; max-age=0; path=/`
     }
   }
@@ -160,7 +159,6 @@ describe('useCookie — options', () => {
   describe('onError callback', () => {
     it('calls onError when deserialization fails', () => {
       // Pre-seed a corrupt cookie
-      // biome-ignore lint/suspicious/noDocumentCookie: test setup
       document.cookie = `broken-cookie=${encodeURIComponent('{invalid json')}; path=/`
 
       const errors: Error[] = []
@@ -175,7 +173,6 @@ describe('useCookie — options', () => {
     })
 
     it('onError can provide custom fallback', () => {
-      // biome-ignore lint/suspicious/noDocumentCookie: test setup
       document.cookie = `bad-cookie=${encodeURIComponent('not-json{')}`
       const sig = useCookie('bad-cookie', 'default', {
         onError: () => 'custom-fallback',

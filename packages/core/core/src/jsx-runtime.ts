@@ -537,7 +537,6 @@ declare global {
 
     /** Tells TS which prop name carries children in component calls */
     interface ElementChildrenAttribute {
-      // biome-ignore lint/complexity/noBannedTypes: JSX spec requires {} for ElementChildrenAttribute
       children: {}
     }
 

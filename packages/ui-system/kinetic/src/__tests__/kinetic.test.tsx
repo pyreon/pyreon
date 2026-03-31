@@ -56,7 +56,6 @@ const fireTransitionEnd = (el: HTMLElement) => {
 const wireRef = (vnode: VNode | null, el: HTMLElement) => {
   if (!vnode) return
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
   const visitNode = (node: VNode) => {
     const props = node.props as Record<string, unknown>
     if (typeof props?.ref === 'function') {
@@ -363,7 +362,6 @@ describe('kinetic() — collapse mode', () => {
     wireRef(vnode, wrapperEl)
 
     // Find contentRef in the VNode tree
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
     const findContentRef = (node: VNode | null) => {
       if (!node) return
       if (node.children) {

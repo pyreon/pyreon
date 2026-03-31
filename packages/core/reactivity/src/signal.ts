@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-condition */
 declare const process: { env: { NODE_ENV?: string } } | undefined
 
 const __DEV__ = typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production'
@@ -151,7 +150,7 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   // It doubles as the SubscriberHost (_s property) for trackSubscriber.
   const read = ((...args: unknown[]) => {
     if (__DEV__ && args.length > 0) {
-      // biome-ignore lint/suspicious/noConsole: dev-only signal misuse warning
+      // oxlint-disable-next-line no-console
       console.warn(
         '[Pyreon] signal() was called with an argument. ' +
           'Use signal.set(value) or signal.update(fn) to write. ' +

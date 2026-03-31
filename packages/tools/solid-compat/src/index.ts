@@ -219,7 +219,6 @@ export { runUntracked as untrack }
  * Solid-compatible `onMount` — runs once after the component's first render.
  */
 type CleanupFn = () => void
-// biome-ignore lint/suspicious/noConfusingVoidType: void allows callbacks that return nothing
 export function onMount(fn: () => CleanupFn | void | undefined): void {
   const ctx = getCurrentCtx()
   if (ctx) {

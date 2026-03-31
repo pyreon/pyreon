@@ -28,7 +28,6 @@ export interface WatchOptions {
  */
 export function watch<T>(
   source: () => T,
-  // biome-ignore lint/suspicious/noConfusingVoidType: void is intentional — callers may return void
   callback: (newVal: T, oldVal: T | undefined) => void | (() => void),
   opts: WatchOptions = {},
 ): () => void {

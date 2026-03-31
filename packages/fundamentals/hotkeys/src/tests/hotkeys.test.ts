@@ -431,7 +431,6 @@ describe('getRegisteredHotkeys', () => {
   })
 
   it('returns all registered hotkeys', () => {
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op handlers for registry test
     const noop = () => {}
     registerHotkey('ctrl+s', noop, { description: 'Save' })
     registerHotkey('ctrl+z', noop, { scope: 'editor', description: 'Undo' })
@@ -451,7 +450,6 @@ describe('getRegisteredHotkeys', () => {
   })
 
   it('reflects unregistered hotkeys', () => {
-    // biome-ignore lint/suspicious/noEmptyBlockStatements: intentional no-op handler
     const noop = () => {}
     const unsub = registerHotkey('ctrl+s', noop)
     expect(getRegisteredHotkeys()).toHaveLength(1)

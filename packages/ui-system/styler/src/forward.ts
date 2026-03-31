@@ -231,7 +231,6 @@ export const buildProps = (
   generatedCls: string,
   isDOM: boolean,
   customFilter?: (prop: string) => boolean,
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: complex logic is inherent to this function
 ): Record<string, any> => {
   const result: Record<string, any> = {}
 

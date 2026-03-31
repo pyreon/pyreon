@@ -38,7 +38,7 @@ export function ErrorBoundary(props: {
   children?: VNodeChild
 }): VNodeChild {
   if (__DEV__ && typeof props.fallback !== 'function') {
-    // biome-ignore lint/suspicious/noConsole: dev-only warning
+    // oxlint-disable-next-line no-console
     console.warn(
       '[Pyreon] <ErrorBoundary> expects `fallback` to be a function: (err, reset) => VNode. ' +
         `Received ${typeof props.fallback}.`,

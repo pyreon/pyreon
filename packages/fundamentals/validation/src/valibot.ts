@@ -26,7 +26,6 @@ interface ValibotSafeParseResult {
  * parameter that can't be expressed without importing Valibot types. We accept
  * any callable and cast internally.
  */
-// biome-ignore lint/complexity/noBannedTypes: must accept any valibot parse function
 type GenericSafeParseFn = Function
 
 function valibotIssuesToGeneric(issues: ValibotIssue[]): ValidationIssue[] {
