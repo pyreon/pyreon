@@ -71,6 +71,22 @@ export interface HandlerOptions {
    *   "stream" — progressive streaming via renderToStream (Suspense out-of-order)
    */
   mode?: 'string' | 'stream'
+  /**
+   * Collect CSS styles after rendering. Called after renderToString/renderWithHead.
+   * Return a `<style>` tag string to inject into `<head>`.
+   * Used by @pyreon/styler's sheet.getStyleTag() to prevent FOUC in SSG.
+   *
+   * @example
+   * import { sheet } from '@pyreon/styler'
+   * createHandler({
+   *   collectStyles: () => {
+   *     const tag = sheet.getStyleTag()
+   *     sheet.reset()
+   *     return tag
+   *   },
+   * })
+   */
+  collectStyles?: () => string
 }
 
 export function createHandler(options: HandlerOptions): (req: Request) => Promise<Response> {
@@ -81,6 +97,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     clientEntry = '/src/entry-client.ts',
     middleware = [],
     mode = 'string',
+    collectStyles,
   } = options
 
   // Pre-compile once at handler creation — avoids 3x string scan per request
@@ -123,18 +140,10 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         // ── String mode (default) ─────────────────────────────────────────────
         const { html: appHtml, head } = await renderWithHead(app)
 
-        // Collect CSS-in-JS styles generated during SSR rendering.
-        // styler's sheet buffers CSS in SSR mode — getStyleTag() returns
-        // a <style> tag with all scoped CSS rules. This prevents FOUC
-        // (Flash of Unstyled Content) in SSG/prerendered pages.
-        let styleTag = ''
-        try {
-          const { sheet } = await import('@pyreon/styler')
-          styleTag = sheet.getStyleTag()
-          sheet.reset() // clear buffer for next request
-        } catch {
-          // @pyreon/styler not installed — skip style collection
-        }
+        // Collect CSS-in-JS styles if a collector was provided.
+        // The consumer passes collectStyles (e.g. sheet.getStyleTag from @pyreon/styler)
+        // to inject scoped CSS into <head> and prevent FOUC in SSG pages.
+        const styleTag = collectStyles ? collectStyles() : ''
 
         const loaderData = serializeLoaderData(router as never)
         const scripts = buildScriptsFast(clientEntryTag, loaderData)

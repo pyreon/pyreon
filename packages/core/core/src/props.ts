@@ -8,7 +8,7 @@
  * const [own, html] = splitProps(props, ["label", "icon"])
  * return <button {...html}><Icon name={own.icon} /> {own.label}</button>
  */
-export function splitProps<T extends Record<string, unknown>, K extends (keyof T)[]>(
+export function splitProps<T extends object, K extends (keyof T)[]>(
   props: T,
   keys: K,
 ): [Pick<T, K[number]>, Omit<T, K[number]>] {

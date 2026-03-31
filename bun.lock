@@ -344,6 +344,12 @@
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
       },
+      "peerDependencies": {
+        "@pyreon/styler": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/styler",
+      ],
     },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",

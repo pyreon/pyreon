@@ -57,7 +57,9 @@ const TransitionGroup = (props: TransitionGroupProps): VNode | null => {
 
   // Normalize children to an accessor for uniform handling
   const getChildren =
-    typeof own.children === 'function' ? (own.children as () => VNode[]) : () => own.children
+    typeof own.children === 'function'
+      ? (own.children as () => VNode[])
+      : () => own.children as VNode[]
 
   // Track initial keys for appear animation logic
   const initialKeyed = getKeyedChildren(getChildren())

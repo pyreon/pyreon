@@ -163,7 +163,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
               runtime: 'automatic',
               importSource: jsxSource,
             },
-          },
+          } as any,
         },
         oxc: {
           jsx: {
