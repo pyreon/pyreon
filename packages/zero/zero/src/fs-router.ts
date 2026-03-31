@@ -20,9 +20,12 @@ import type { FileRoute, RenderMode } from './types'
 // Conventions:
 //   [param]     → dynamic segment  → :param
 //   [...param]  → catch-all        → :param*
-//   _layout     → layout wrapper (not a route itself)
+//   _layout     → layout wrapper — must use <RouterView /> to render child routes
+//                 (props.children is NOT passed — the router handles nesting)
 //   _error      → error component
 //   _loading    → loading component
+//   _404        → not-found component (renders on 404)
+//   _not-found  → alias for _404
 //   (group)     → route group (directory ignored in URL)
 
 const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
@@ -54,6 +57,7 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
   const isLayout = fileName === '_layout'
   const isError = fileName === '_error'
   const isLoading = fileName === '_loading'
+  const isNotFound = fileName === '_404' || fileName === '_not-found'
   const isCatchAll = route.includes('[...')
 
   // Get directory path (strip groups for consistent grouping)
@@ -73,6 +77,7 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
     isLayout,
     isError,
     isLoading,
+    isNotFound,
     isCatchAll,
     renderMode: defaultMode,
   }
@@ -99,7 +104,7 @@ export function filePathToUrlPath(filePath: string): string {
     if (seg.startsWith('(') && seg.endsWith(')')) continue
 
     // Skip special files
-    if (seg === '_layout' || seg === '_error' || seg === '_loading') continue
+    if (seg === '_layout' || seg === '_error' || seg === '_loading' || seg === '_404' || seg === '_not-found') continue
 
     // "index" maps to the parent path
     if (seg === 'index') continue
@@ -156,6 +161,8 @@ interface RouteNode {
   error?: FileRoute
   /** Loading fallback file (if any). */
   loading?: FileRoute
+  /** Not-found (404) file (if any). */
+  notFound?: FileRoute
   /** Child directories. */
   children: Map<string, RouteNode>
 }
@@ -186,6 +193,7 @@ function placeRoute(node: RouteNode, route: FileRoute) {
   if (route.isLayout) node.layout = route
   else if (route.isError) node.error = route
   else if (route.isLoading) node.loading = route
+  else if (route.isNotFound) node.notFound = route
   else node.pages.push(route)
 }
 
@@ -202,11 +210,26 @@ function buildRouteTree(routes: FileRoute[]): RouteNode {
  * Wires up layouts as parent routes with children, loaders, guards,
  * error/loading components, middleware, and meta from route module exports.
  */
-export function generateRouteModule(files: string[], routesDir: string): string {
+export interface GenerateRouteModuleOptions {
+  /**
+   * When true, skip lazy() for route components and use static imports.
+   * Use for SSG/prerender mode where all routes are rendered at build time
+   * and code splitting provides no benefit. Avoids Rolldown warnings about
+   * static + dynamic imports of the same module.
+   */
+  staticImports?: boolean
+}
+
+export function generateRouteModule(
+  files: string[],
+  routesDir: string,
+  options?: GenerateRouteModuleOptions,
+): string {
   const routes = parseFileRoutes(files)
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
+  const useStaticImports = options?.staticImports ?? false
 
   function nextImport(filePath: string, exportName = 'default'): string {
     const name = `_${importCounter++}`
@@ -222,11 +245,18 @@ export function generateRouteModule(files: string[], routesDir: string): string 
   function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
     const name = `_${importCounter++}`
     const fullPath = `${routesDir}/${filePath}`
-    const opts: string[] = []
-    if (loadingName) opts.push(`loading: ${loadingName}`)
-    if (errorName) opts.push(`error: ${errorName}`)
-    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
-    imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+
+    if (useStaticImports) {
+      // SSG mode: static import avoids Rolldown warnings about
+      // static + dynamic imports of the same module
+      imports.push(`import ${name} from "${fullPath}"`)
+    } else {
+      const opts: string[] = []
+      if (loadingName) opts.push(`loading: ${loadingName}`)
+      if (errorName) opts.push(`error: ${errorName}`)
+      const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
+      imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+    }
     return name
   }
 
@@ -242,6 +272,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     indent: string,
     loadingName: string | undefined,
     errorName: string | undefined,
+    notFoundName: string | undefined,
   ): string {
     const mod = nextModuleImport(page.filePath)
     const comp = nextLazy(page.filePath, loadingName, errorName)
@@ -254,10 +285,15 @@ export function generateRouteModule(files: string[], routesDir: string): string 
       `${indent}  meta: { ...${mod}.meta, renderMode: ${mod}.renderMode }`,
     ]
 
+    // Only emit errorComponent when there's an actual _error file in scope
+    // or the route module exports an error component. Avoids referencing
+    // undefined .error exports that produce noisy bundler warnings.
     if (errorName) {
       props.push(`${indent}  errorComponent: ${mod}.error || ${errorName}`)
-    } else {
-      props.push(`${indent}  errorComponent: ${mod}.error`)
+    }
+
+    if (notFoundName) {
+      props.push(`${indent}  notFoundComponent: ${notFoundName}`)
     }
 
     return `${indent}{\n${props.join(',\n')}\n${indent}}`
@@ -268,6 +304,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     children: string[],
     indent: string,
     errorName: string | undefined,
+    notFoundName: string | undefined,
   ): string {
     const layout = node.layout as FileRoute
     const layoutMod = nextModuleImport(layout.filePath)
@@ -282,6 +319,9 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     ]
     if (errorName) {
       props.push(`${indent}errorComponent: ${errorName}`)
+    }
+    if (notFoundName) {
+      props.push(`${indent}notFoundComponent: ${notFoundName}`)
     }
     if (children.length > 0) {
       props.push(`${indent}children: [\n${children.join(',\n')}\n${indent}]`)
@@ -298,6 +338,7 @@ export function generateRouteModule(files: string[], routesDir: string): string 
 
     const errorName = node.error ? nextImport(node.error.filePath) : undefined
     const loadingName = node.loading ? nextImport(node.loading.filePath) : undefined
+    const notFoundName = node.notFound ? nextImport(node.notFound.filePath) : undefined
 
     const childRouteDefs: string[] = []
     for (const [, childNode] of node.children) {
@@ -305,13 +346,13 @@ export function generateRouteModule(files: string[], routesDir: string): string 
     }
 
     const pageRouteDefs = node.pages.map((page) =>
-      generatePageRoute(page, indent, loadingName, errorName),
+      generatePageRoute(page, indent, loadingName, errorName, notFoundName),
     )
 
     const allChildren = [...pageRouteDefs, ...childRouteDefs]
 
     if (node.layout) {
-      return [wrapWithLayout(node, allChildren, indent, errorName)]
+      return [wrapWithLayout(node, allChildren, indent, errorName, notFoundName)]
     }
     return allChildren
   }
@@ -350,7 +391,7 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
   let counter = 0
 
   for (const route of routes) {
-    if (route.isLayout || route.isError || route.isLoading) continue
+    if (route.isLayout || route.isError || route.isLoading || route.isNotFound) continue
     const name = `_mw${counter++}`
     const fullPath = `${routesDir}/${route.filePath}`
     imports.push(`import { middleware as ${name} } from "${fullPath}"`)

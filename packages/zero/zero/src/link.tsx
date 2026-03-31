@@ -91,6 +91,18 @@ function doPrefetch(href: string) {
 }
 
 /**
+ * Prefetch a route's JS chunk by injecting `<link rel="prefetch">` into the
+ * document head. Deduplicates — calling with the same href twice is a no-op.
+ *
+ * @example
+ * prefetchRoute('/about')
+ * prefetchRoute('/dashboard')
+ */
+export function prefetchRoute(href: string): void {
+  doPrefetch(href)
+}
+
+/**
  * Composable that provides all link behavior — navigation, prefetching,
  * active state, and viewport observation.
  *
