@@ -136,26 +136,10 @@ const rocketComponent: RocketComponent = (options) => {
     const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
 
     // --------------------------------------------------
-    // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
-    // Re-evaluates when mode OR dimension props change.
-    // Props are resolved fresh each call so reactive prop accessors
-    // (signals, getters) produce updated dimension values.
+    // Pre-compute theme for BOTH modes at mount.
+    // Mode switching then picks from pre-computed map — no CSS resolution.
     // --------------------------------------------------
-    const $rocketstyleAccessor = () => {
-      // Only read mode and dimension props — NOT pseudo state.
-      // Pseudo state (hover, focus, pressed) is read by .styles()
-      // via $rocketstate inside runUntracked(). Reading pseudo signals
-      // here would subscribe this accessor to hover/focus/pressed,
-      // causing CSS recomputation on every mouse event.
-      const mode = themeAttrs.mode // reactive: tracks mode signal
-
-      // Resolve active dimensions from props (not localCtx which has pseudo getters)
-      const rocketstate = _calculateStylingAttrs({
-        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
-        dimensions,
-      })
-
-      // Resolve mode-specific theme
+    function resolveForMode(mode: 'light' | 'dark') {
       const modeBaseHelper = ThemeManager.modeBaseTheme[mode]
       if (!modeBaseHelper.has(baseTheme)) {
         modeBaseHelper.set(baseTheme, getThemeByMode(baseTheme, mode))
@@ -168,13 +152,48 @@ const rocketComponent: RocketComponent = (options) => {
       }
       const currentModeThemes = modeDimHelper.get(themes)
 
-      return getTheme({
-        rocketstate,
-        themes: currentModeThemes,
-        baseTheme: currentModeBaseTheme,
-        transformKeys: options.transformKeys,
-        appTheme: theme,
+      return (rocketstate: Record<string, string | string[]>) =>
+        getTheme({
+          rocketstate,
+          themes: currentModeThemes,
+          baseTheme: currentModeBaseTheme,
+          transformKeys: options.transformKeys,
+          appTheme: theme,
+        })
+    }
+
+    const resolveLight = resolveForMode('light')
+    const resolveDark = resolveForMode('dark')
+
+    // --------------------------------------------------
+    // $rocketstyle as a FUNCTION ACCESSOR.
+    // Reads mode (for picking pre-computed variant) and dimension props.
+    // Mode switch is now a cheap map lookup — no getThemeByMode().
+    // --------------------------------------------------
+    const $rocketstyleAccessor = () => {
+      const mode = themeAttrs.mode
+
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
+        dimensions,
       })
+
+      return mode === 'dark' ? resolveDark(rocketstate) : resolveLight(rocketstate)
+    }
+
+    /**
+     * Pre-compute themes for both modes with current dimension props.
+     * Used by DynamicStyled to pre-insert CSS for both modes at mount.
+     */
+    $rocketstyleAccessor._bothModes = () => {
+      const rocketstate = _calculateStylingAttrs({
+        props: pickStyledAttrs(props as Record<string, unknown>, reservedPropNames),
+        dimensions,
+      })
+      return {
+        light: resolveLight(rocketstate),
+        dark: resolveDark(rocketstate),
+      }
     }
 
     // --------------------------------------------------

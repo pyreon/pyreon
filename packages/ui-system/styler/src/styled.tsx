@@ -124,22 +124,18 @@ const createStyledComponent = (
   }
 
   // DYNAMIC PATH: resolve CSS on every render with theme/props.
-  // When $rocketstyle is a function accessor (from rocketstyle's
-  // EnhancedComponent), we resolve it initially for the first class,
-  // then set up an effect to reactively swap classes when mode changes.
-  // This avoids VNode remounting — only classList updates on the DOM element.
+  // When $rocketstyle is a function accessor (from rocketstyle), we
+  // pre-compute CSS for BOTH light and dark modes at mount. Theme toggle
+  // then swaps pre-computed class names — zero CSS recomputation.
   const DynamicStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
     const theme = useTheme()
     const $rs = rawProps.$rocketstyle
     const $rsState = rawProps.$rocketstate
     const isReactiveRS = typeof $rs === 'function'
     const isReactiveState = typeof $rsState === 'function'
+    const hasBothModes = isReactiveRS && typeof $rs._bothModes === 'function'
 
-    // Resolve initial accessor values — both $rocketstyle and $rocketstate
-    // must be plain objects when passed to resolve(), because .styles()
-    // interpolation functions destructure them directly:
-    //   const { hover, pressed } = $rocketstate.pseudo
-    //   const { hover: hoverStyles } = $rocketstyle
+    // Resolve initial values
     const resolvedRS = isReactiveRS ? $rs() : $rs
     const resolvedState = isReactiveState ? $rsState() : $rsState
     const initialProps = {
@@ -150,10 +146,26 @@ const createStyledComponent = (
     const cssText = normalizeCSS(resolve(strings, values, { ...initialProps, theme }))
     const initialClassName = cssText.length > 0 ? sheet.insert(cssText, boost) : ''
 
+    // Pre-compute BOTH mode CSS classes at mount. Theme toggle then
+    // picks from pre-computed — zero CSS resolution on mode change.
+    let lightClass = initialClassName
+    let darkClass = initialClassName
+    if (hasBothModes) {
+      const { light: lightRS, dark: darkRS } = $rs._bothModes()
+
+      const lightCss = normalizeCSS(
+        resolve(strings, values, { ...rawProps, $rocketstyle: lightRS, $rocketstate: resolvedState, theme }),
+      )
+      const darkCss = normalizeCSS(
+        resolve(strings, values, { ...rawProps, $rocketstyle: darkRS, $rocketstate: resolvedState, theme }),
+      )
+      lightClass = lightCss.length > 0 ? sheet.insert(lightCss, boost) : ''
+      darkClass = darkCss.length > 0 ? sheet.insert(darkCss, boost) : ''
+    }
+
     const finalTag = rawProps.as || tag
     const isDOM = typeof finalTag === 'string'
 
-    // Track mounted element for reactive class updates
     let el: Element | null = null
     let currentClassName = initialClassName
 
@@ -164,6 +176,11 @@ const createStyledComponent = (
         if (typeof originalRef === 'function') originalRef(node)
         else if (originalRef && typeof originalRef === 'object') originalRef.current = node
       }
+      // Store pre-computed classes for root sweep
+      if (node && hasBothModes && lightClass !== darkClass) {
+        ;(node as HTMLElement).dataset.pyrLight = lightClass
+        ;(node as HTMLElement).dataset.pyrDark = darkClass
+      }
     }
 
     const finalProps = buildProps(
@@ -173,20 +190,15 @@ const createStyledComponent = (
       customFilter,
     )
 
-    // Set up reactive class swap when $rocketstyle is a function accessor.
-    // CRITICAL: only $rs() is tracked. resolve() and DOM mutations run
-    // inside runUntracked() to prevent subscribing to signals read by
-    // interpolation functions (theme properties, context getters, etc.).
-    // Without this, every styled component's effect subscribes to every
-    // signal touched during CSS resolution — causing an exponential
-    // cascade across 50+ components on any signal change.
-    if (isReactiveRS) {
+    // For dimension prop changes (state, size, variant) — NOT mode.
+    // Mode is handled by PyreonUI's root sweep via data-pyr-light/dark.
+    if (isReactiveRS && !hasBothModes) {
+      // Fallback: no pre-computed modes, use per-component effect
       effect(() => {
-        const newRS = $rs() // TRACKED: subscribes to mode + dimension signals
-        const newState = isReactiveState ? $rsState() : $rsState // TRACKED
+        const newRS = $rs()
+        const newState = isReactiveState ? $rsState() : $rsState
 
         runUntracked(() => {
-          // UNTRACKED: resolve + DOM mutation — no additional subscriptions
           const newResolvedProps = {
             ...rawProps,
             $rocketstyle: newRS,

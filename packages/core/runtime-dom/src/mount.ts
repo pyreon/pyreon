@@ -287,6 +287,16 @@ function mountComponent(
     if (!handled) {
       console.error(`[Pyreon] <${componentName}> threw during setup:`, err)
     }
+    // In dev mode, render an inline error overlay so failures are visible
+    if (__DEV__ && !handled) {
+      const overlay = document.createElement('pre')
+      overlay.style.cssText =
+        'color:#e53e3e;background:#fff5f5;padding:12px;border:2px solid #e53e3e;border-radius:6px;font-size:12px;margin:4px;font-family:monospace;white-space:pre-wrap;word-break:break-word'
+      const e = err as Error
+      overlay.textContent = `[${componentName}] ${e.message ?? err}\n${e.stack ?? ''}`
+      parent.insertBefore(overlay, anchor)
+      return () => overlay.remove()
+    }
     return noop
   } finally {
     setCurrentScope(null)

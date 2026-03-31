@@ -1,6 +1,6 @@
 import type { VNodeChild } from '@pyreon/core'
 import { createReactiveContext, provide, useContext } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, effect, signal } from '@pyreon/reactivity'
 import { ThemeContext } from '@pyreon/styler'
 import type { PyreonTheme } from '@pyreon/unistyle'
 import { enrichTheme } from '@pyreon/unistyle'
@@ -131,6 +131,28 @@ export function PyreonUI({ theme, mode = 'light', inversed, children }: PyreonUI
 
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
+
+  // 4. Root theme sweep — when mode changes, swap pre-computed classes
+  // on all rocketstyle elements in one pass. Zero CSS recomputation.
+  // Elements store both classes via data-pyr-light/data-pyr-dark.
+  effect(() => {
+    const mode = modeComputed()
+    if (typeof document === 'undefined') return
+
+    document.documentElement.dataset.theme = mode
+
+    const elements = document.querySelectorAll('[data-pyr-light]')
+
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i] as HTMLElement
+      const targetClass = mode === 'dark'
+        ? el.dataset.pyrDark
+        : el.dataset.pyrLight
+      if (targetClass != null) {
+        el.className = targetClass
+      }
+    }
+  })
 
   return children ?? null
 }

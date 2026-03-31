@@ -3,11 +3,9 @@ import { getSpan, isDestructuring } from '../../utils/ast'
 
 function containsJSXReturn(node: any): boolean {
   if (!node) return false
-  // Arrow with expression body returning JSX
   if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
   if (node.type === 'ParenthesizedExpression') return containsJSXReturn(node.expression)
 
-  // Block body — look for return statements with JSX
   if (node.type === 'BlockStatement') {
     for (const stmt of node.body ?? []) {
       if (stmt.type === 'ReturnStatement' && containsJSXReturn(stmt.argument)) {
@@ -28,29 +26,50 @@ export const noPropsDestructure: Rule = {
     fixable: false,
   },
   create(context) {
+    // Track function nesting depth to detect HOC patterns.
+    // A function returned from another function is likely an HOC inner —
+    // destructuring there is intentional (stripping/forwarding props).
+    let functionDepth = 0
+
     const callbacks: VisitorCallbacks = {
       ArrowFunctionExpression(node: any) {
-        checkFunction(node, context)
+        functionDepth++
+        checkFunction(node, context, functionDepth)
+      },
+      'ArrowFunctionExpression:exit'() {
+        functionDepth--
       },
       FunctionDeclaration(node: any) {
-        checkFunction(node, context)
+        functionDepth++
+        checkFunction(node, context, functionDepth)
+      },
+      'FunctionDeclaration:exit'() {
+        functionDepth--
       },
       FunctionExpression(node: any) {
-        checkFunction(node, context)
+        functionDepth++
+        checkFunction(node, context, functionDepth)
+      },
+      'FunctionExpression:exit'() {
+        functionDepth--
       },
     }
     return callbacks
   },
 }
 
-function checkFunction(node: any, context: any) {
+function checkFunction(node: any, context: any, depth: number) {
   const params = node.params
   if (!params || params.length === 0) return
 
   const firstParam = params[0]
   if (!isDestructuring(firstParam)) return
 
-  // Check if this function returns JSX
+  // Skip if this is a nested function (HOC inner function).
+  // HOC pattern: (WrappedComponent) => ({ prop1, ...rest }) => <JSX />
+  // Depth 1 = top-level function, depth 2+ = nested (likely HOC inner)
+  if (depth > 1) return
+
   const body = node.body
   if (!body) return
 
