@@ -484,8 +484,9 @@ Plus: `docs/` (VitePress site), `examples/` (example apps).
 In Pyreon, components run ONCE. What's reactive and what's static depends on WHERE you read a signal:
 
 ```tsx
-// Component props are STATIC — evaluated once at mount
-<MyComponent title={name()} />  // name() called once, value captured
+// Component props with signal reads are REACTIVE — compiler wraps with _rp()
+<MyComponent title={name()} />  // compiler → title: _rp(() => name()) → getter on props
+// Reading props.title in an effect/accessor tracks the signal
 
 // DOM text children are REACTIVE — compiler wraps in accessor
 <div>{name()}</div>  // compiler → () => name() — re-evaluates on change
@@ -493,18 +494,17 @@ In Pyreon, components run ONCE. What's reactive and what's static depends on WHE
 // Reactive accessor (explicit) — always reactive
 <div>{() => `Hello ${name()}`}</div>
 
-// Context reads are STATIC at setup, REACTIVE inside accessors
-const ctx = useContext(ThemeCtx)
-ctx.mode  // static if destructured: const { mode } = ctx
-() => ctx.mode  // reactive inside accessor — re-evaluates
+// Context reads — ReactiveContext returns () => T, regular Context returns T
+const getMode = useContext(ModeCtx)  // ReactiveContext → () => ThemeMode
+getMode()  // reactive read
 ```
 
 Rule of thumb:
 
-- **Component props** = static (called once)
+- **Component props** = reactive when expression contains signal reads (compiler wraps)
 - **DOM children with signals** = reactive (compiler wraps)
-- **Context reads** = static at setup, reactive inside `() => ...`
-- **To make anything reactive**: wrap in `() => ...` accessor
+- **Context reads** = ReactiveContext returns accessor, read it in reactive scope
+- **Destructuring props** = captures once (static) — use `props.x` for reactivity
 
 ## Common Issues & Fixes
 
