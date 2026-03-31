@@ -7,6 +7,10 @@ import type { Adapter, AdapterBuildOptions } from '../types'
  * - Client assets in the output directory root (served as static)
  * - `_worker.js` — Cloudflare Pages Function for SSR
  *
+ * Note: Cloudflare Pages Functions have a ~1MB module size limit.
+ * For large apps, configure Vite's SSR build to bundle server code:
+ * `ssr: { noExternal: true }` in vite.config.ts.
+ *
  * Deploy with: `npx wrangler pages deploy ./dist`
  *
  * @example

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aiPlugin,
   generateAiPluginManifest,
   generateLlmsFullTxt,
   generateLlmsTxt,
@@ -257,5 +258,50 @@ describe('generateOpenApiSpec', () => {
     const paths = spec.paths as any
     expect(paths['/api/users']).toBeDefined()
     expect(paths['/api/users/{id}']).toBeDefined()
+  })
+})
+
+describe('aiPlugin', () => {
+  it('returns a Vite plugin with correct name and hooks', () => {
+    const plugin = aiPlugin(baseConfig) as any
+    expect(plugin.name).toBe('pyreon-zero-ai')
+    expect(plugin.enforce).toBe('post')
+    expect(typeof plugin.configResolved).toBe('function')
+    expect(typeof plugin.buildStart).toBe('function')
+    expect(typeof plugin.configureServer).toBe('function')
+    expect(typeof plugin.generateBundle).toBe('function')
+  })
+
+  it('configureServer serves llms.txt', async () => {
+    const plugin = aiPlugin(baseConfig) as any
+    plugin.configResolved({ root: '/tmp/test', command: 'serve' })
+
+    let handler: any
+    plugin.configureServer({ middlewares: { use: (h: any) => { handler = h } } })
+
+    let capturedBody = ''
+    let capturedContentType = ''
+    const mockRes = {
+      setHeader: (k: string, v: string) => { if (k === 'Content-Type') capturedContentType = v },
+      end: (body: string) => { capturedBody = body },
+    }
+    let nextCalled = false
+
+    await handler({ url: '/llms.txt' }, mockRes, () => { nextCalled = true })
+    expect(capturedContentType).toBe('text/plain; charset=utf-8')
+    expect(capturedBody).toContain('# Test App')
+    expect(nextCalled).toBe(false)
+  })
+
+  it('configureServer passes through non-AI URLs', async () => {
+    const plugin = aiPlugin(baseConfig) as any
+    plugin.configResolved({ root: '/tmp/test', command: 'serve' })
+
+    let handler: any
+    plugin.configureServer({ middlewares: { use: (h: any) => { handler = h } } })
+
+    let nextCalled = false
+    await handler({ url: '/about' }, {}, () => { nextCalled = true })
+    expect(nextCalled).toBe(true)
   })
 })

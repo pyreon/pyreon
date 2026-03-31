@@ -24,15 +24,18 @@
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 /**
- * Module-level nonce storage. Set by CSP middleware per-request,
- * read by components via useNonce(). In SSR, runWithRequestContext
- * ensures isolation between concurrent requests.
+ * Module-level nonce for dev/SPA use. For production SSR with concurrent
+ * requests, read `ctx.locals.cspNonce` in your server handler and pass
+ * it to components via props or context.
  */
 let _currentNonce = ''
 
 /**
- * Read the current CSP nonce in a component or template.
- * Returns empty string if no CSP middleware is active.
+ * Read the current CSP nonce. Works for dev server and SPA.
+ *
+ * For production SSR with concurrent requests, use `ctx.locals.cspNonce`
+ * from your middleware context instead — module-level state isn't
+ * request-isolated.
  *
  * @example
  * ```tsx
