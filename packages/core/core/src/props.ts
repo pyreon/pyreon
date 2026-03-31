@@ -112,6 +112,9 @@ export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): 
  */
 export const REACTIVE_PROP = Symbol.for('pyreon.reactiveProp')
 
+/** Symbol to access the underlying props signal for updates. */
+export const PROPS_SIGNAL = Symbol.for('pyreon.propsSignal')
+
 /**
  * Create a branded reactive prop wrapper.
  * Called by the compiler for component prop expressions containing signal reads.
@@ -126,6 +129,8 @@ export function _rp<T>(fn: () => T): () => T {
  *
  * Only converts functions branded with REACTIVE_PROP — user-written accessor
  * props (like Show's when, For's each) are left as-is.
+ *
+ * Returns the same object if no reactive props found (fast path).
  */
 export function makeReactiveProps(
   raw: Record<string, unknown>,
