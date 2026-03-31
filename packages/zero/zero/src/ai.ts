@@ -22,8 +22,7 @@
  * ```
  */
 import type { Plugin } from 'vite'
-import { parseFileRoutes, filePathToUrlPath } from './fs-router'
-import type { FileRoute, RouteMeta } from './types'
+import { parseFileRoutes } from './fs-router'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -501,7 +500,6 @@ export function aiPlugin(config: AiPluginConfig): Plugin {
     async buildStart() {
       // Scan for route and API files
       try {
-        const { readdir } = await import('node:fs/promises')
         const { join } = await import('node:path')
 
         const routesDir = join(root, config.routesDir ?? 'src/routes')
