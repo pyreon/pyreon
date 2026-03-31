@@ -575,8 +575,8 @@ describe('StyleSheet -- advanced features', () => {
         const styles = s.getStyles()
 
         expect(styles).toContain('@keyframes fadeIn')
-        // Keyframes are not wrapped
-        expect(styles).not.toMatch(/@layer.*@keyframes/)
+        // Keyframes are not wrapped in a layer block (layer declaration before them is fine)
+        expect(styles).not.toMatch(/@layer\s+\w+\s*\{[^}]*@keyframes/)
       })
 
       it('does not wrap global rules in @layer', () => {
