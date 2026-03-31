@@ -191,20 +191,21 @@ describe('hybrid injection — layer option at component level', () => {
     warnSpy.mockRestore()
   })
 
-  it('non-layered component produces single selector without @layer', () => {
+  it('default sheet component produces valid className and injects rule', () => {
     const Comp = styled('div')`
       color: green;
     `
     const vnode = Comp({}) as VNode
     const className = vnode.props.class as string
 
+    expect(className).toMatch(/^pyr-/)
+    // In environments without @layer support (happy-dom), rules are inserted
+    // without layer wrapping. In real browsers, they'd be in @layer base.
     const rules = findRulesFor(className)
     expect(rules.length).toBeGreaterThanOrEqual(1)
-    // Single selector: .pyr-abc { ... }
     const baseRule = rules[0] as string
     expect(baseRule).toContain(`.${className}`)
-    // No @layer wrapping
-    expect(baseRule).not.toContain('@layer')
+    expect(baseRule).toContain('color: green')
   })
 
   it('layered component with @media generates className', () => {
