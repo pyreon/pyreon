@@ -117,6 +117,11 @@
       "import": "./lib/favicon.js",
       "types": "./lib/types/favicon.d.ts"
     },
+    "./og-image": {
+      "bun": "./src/og-image.ts",
+      "import": "./lib/og-image.js",
+      "types": "./lib/types/og-image.d.ts"
+    },
     "./i18n": {
       "bun": "./src/i18n-routing.ts",
       "import": "./lib/i18n-routing.js",

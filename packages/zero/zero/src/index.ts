@@ -148,8 +148,17 @@ export { createActionMiddleware, defineAction } from "./actions";
 
 // ─── Favicon ────────────────────────────────────────────────────────────────
 
-export type { FaviconPluginConfig } from "./favicon";
-export { faviconPlugin } from "./favicon";
+export type { FaviconLocaleConfig, FaviconPluginConfig } from "./favicon";
+export { faviconLinks, faviconPlugin } from "./favicon";
+
+// ─── OG Image ───────────────────────────────────────────────────────────────
+
+export type {
+	OgImageLayer,
+	OgImagePluginConfig,
+	OgImageTemplate,
+} from "./og-image";
+export { ogImagePath, ogImagePlugin } from "./og-image";
 
 // ─── Meta ───────────────────────────────────────────────────────────────────
 
