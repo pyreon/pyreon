@@ -50,19 +50,42 @@ function createRouteMiddlewareDispatcher(
 	};
 }
 
-/** Simple URL pattern matcher supporting :param and :param* segments. */
+/**
+ * URL pattern matcher supporting :param and :param* segments.
+ *
+ * Rules:
+ * - Static segments must match exactly
+ * - `:param` matches a single path segment
+ * - `:param*` matches all remaining segments (must be last, and path must
+ *   have matched all preceding segments)
+ * - Path length must match pattern length (unless catch-all)
+ */
 export function matchPattern(pattern: string, path: string): boolean {
 	const patternParts = pattern.split("/").filter(Boolean);
 	const pathParts = path.split("/").filter(Boolean);
 
 	for (let i = 0; i < patternParts.length; i++) {
-		const pp = patternParts[i];
-		if (!pp) continue;
-		if (pp.endsWith("*")) return true; // catch-all matches everything after
-		if (pp.startsWith(":")) continue; // dynamic segment matches anything
+		const pp = patternParts[i]!;
+
+		// Catch-all: matches remaining segments, but only if we've matched
+		// all preceding segments up to this point
+		if (pp.endsWith("*")) {
+			// All segments before the catch-all must have matched (we got here)
+			// and there must be at least one remaining path segment
+			return i <= pathParts.length;
+		}
+
+		// No more path segments to match against
+		if (i >= pathParts.length) return false;
+
+		// Dynamic segment matches any single segment
+		if (pp.startsWith(":")) continue;
+
+		// Static segment must match exactly
 		if (pp !== pathParts[i]) return false;
 	}
 
+	// All pattern parts consumed — path must also be fully consumed
 	return patternParts.length === pathParts.length;
 }
 

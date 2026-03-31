@@ -126,7 +126,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 					(handled) => {
 						if (!handled) next();
 					},
-					() => next(), // On error, fall through to Vite's default handling
+					(err) => {
+						// oxlint-disable-next-line no-console
+						console.error('[zero] Error in 404 handler:', err);
+						next();
+					},
 				);
 			});
 

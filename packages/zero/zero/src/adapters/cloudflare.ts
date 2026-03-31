@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions } from '../types'
+import { validateBuildInputs } from './validate'
 
 /**
  * Cloudflare Pages adapter — generates output for Cloudflare Pages with Functions.
@@ -27,6 +28,7 @@ export function cloudflareAdapter(): Adapter {
   return {
     name: 'cloudflare',
     async build(options: AdapterBuildOptions) {
+      await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 

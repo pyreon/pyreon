@@ -70,10 +70,16 @@ export interface UseLinkReturn {
   classes: () => string
 }
 
+const MAX_PREFETCH_CACHE = 200
 const prefetched = new Set<string>()
 
 function doPrefetch(href: string) {
   if (prefetched.has(href)) return
+  // Evict oldest entries when cache is full
+  if (prefetched.size >= MAX_PREFETCH_CACHE) {
+    const first = prefetched.values().next().value
+    if (first) prefetched.delete(first)
+  }
   prefetched.add(href)
 
   const docLink = document.createElement('link')

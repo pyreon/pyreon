@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions } from '../types'
+import { validateBuildInputs } from './validate'
 
 /**
  * Vercel adapter — generates output for Vercel's Build Output API v3.
@@ -22,6 +23,7 @@ export function vercelAdapter(): Adapter {
   return {
     name: 'vercel',
     async build(options: AdapterBuildOptions) {
+      await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 

@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions } from '../types'
+import { validateBuildInputs } from './validate'
 
 /**
  * Bun adapter — generates a standalone Bun.serve() entry.
@@ -7,6 +8,7 @@ export function bunAdapter(): Adapter {
   return {
     name: 'bun',
     async build(options: AdapterBuildOptions) {
+      await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 

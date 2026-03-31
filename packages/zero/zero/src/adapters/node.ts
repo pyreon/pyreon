@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions } from '../types'
+import { validateBuildInputs } from './validate'
 
 /**
  * Node.js adapter — generates a standalone server entry using node:http.
@@ -7,6 +8,7 @@ export function nodeAdapter(): Adapter {
   return {
     name: 'node',
     async build(options: AdapterBuildOptions) {
+      await validateBuildInputs(options)
       const { writeFile, cp, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 

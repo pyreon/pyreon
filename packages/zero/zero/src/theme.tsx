@@ -17,11 +17,22 @@ const STORAGE_KEY = 'zero-theme'
 /** Reactive theme signal. */
 export const theme = signal<Theme>('system')
 
+/** SSR fallback when system preference can't be detected. Default: 'light'. */
+let _ssrDefault: 'light' | 'dark' = 'light'
+
+/**
+ * Set the default theme for SSR (when `matchMedia` is unavailable).
+ * Call once at server startup before rendering.
+ */
+export function setSSRThemeDefault(value: 'light' | 'dark'): void {
+  _ssrDefault = value
+}
+
 /** Computed resolved theme (what's actually applied). */
 export function resolvedTheme(): 'light' | 'dark' {
   const t = theme()
   if (t === 'system') {
-    if (typeof window === 'undefined') return 'dark'
+    if (typeof window === 'undefined') return _ssrDefault
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   }
   return t

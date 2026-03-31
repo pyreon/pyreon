@@ -1,4 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
+import type { UseHeadInput } from '@pyreon/head'
 import { useHead } from '@pyreon/head'
 import type { FaviconPluginConfig } from './favicon'
 import { faviconLinks } from './favicon'
@@ -121,26 +122,53 @@ export function Meta(props: MetaProps): VNodeChild {
   // If title or description are reactive accessors, pass a getter to useHead
   // so it re-evaluates when the signals change.
   if (hasReactiveTitle || hasReactiveDescription) {
-    useHead((() => {
+    useHead((): UseHeadInput => {
       const title = resolveStr(props.title)
       const description = resolveStr(props.description)
-      const tags = buildMetaTags({ ...props, title, description } as any)
-      return { title, meta: tags.meta, link: tags.link, script: tags.script }
-    }) as any)
+      const resolved = { ...props, title, description } as Parameters<typeof buildMetaTags>[0]
+      const tags = buildMetaTags(resolved)
+      const input: UseHeadInput = { meta: tags.meta, link: tags.link, script: tags.script }
+      if (title) input.title = title
+      return input
+    })
   } else {
     const title = resolveStr(props.title)
     const description = resolveStr(props.description)
-    const tags = buildMetaTags({ ...props, title, description } as any)
-    useHead({ title, meta: tags.meta, link: tags.link, script: tags.script } as any)
+    const resolved = { ...props, title, description } as Parameters<typeof buildMetaTags>[0]
+    const tags = buildMetaTags(resolved)
+    const input: UseHeadInput = { meta: tags.meta, link: tags.link, script: tags.script }
+    if (title) input.title = title
+    useHead(input)
   }
 
   return props.children ?? null
 }
 
+interface MetaTagEntry {
+  name?: string
+  property?: string
+  content: string
+  [key: string]: string | undefined
+}
+
+interface LinkTagEntry {
+  rel: string
+  href?: string
+  hreflang?: string
+  type?: string
+  sizes?: string
+  [key: string]: string | undefined
+}
+
+interface ScriptTagEntry {
+  type: string
+  children: string
+}
+
 interface MetaTags {
-  meta: Array<Record<string, string>>
-  link: Array<Record<string, string>>
-  script: Array<{ type: string; children: string }>
+  meta: MetaTagEntry[]
+  link: LinkTagEntry[]
+  script: ScriptTagEntry[]
 }
 
 export function buildMetaTags(
@@ -149,9 +177,9 @@ export function buildMetaTags(
     description?: string
   },
 ): MetaTags {
-  const meta: Array<Record<string, string>> = []
-  const link: Array<Record<string, string>> = []
-  const script: Array<{ type: string; children: string }> = []
+  const meta: MetaTagEntry[] = []
+  const link: LinkTagEntry[] = []
+  const script: ScriptTagEntry[] = []
 
   const {
     title, description, canonical, imageAlt, imageWidth, imageHeight,
@@ -280,7 +308,7 @@ export function buildMetaTags(
   if (favicon) {
     const faviconLocale = locale !== 'en_US' ? locale : undefined
     for (const fl of faviconLinks(faviconLocale, favicon)) {
-      link.push(fl as Record<string, string>)
+      link.push(fl as LinkTagEntry)
     }
     // Theme color meta from favicon config
     if (favicon.themeColor) {

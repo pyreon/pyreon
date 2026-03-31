@@ -94,7 +94,23 @@ export function isCompressible(contentType: string): boolean {
 }
 
 async function compress(data: ArrayBuffer, encoding: 'gzip' | 'deflate'): Promise<ArrayBuffer> {
-  const format = encoding === 'gzip' ? 'gzip' : 'deflate'
-  const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
-  return new Response(stream).arrayBuffer()
+  // CompressionStream is available in modern browsers and Node 18+/Bun.
+  // Fallback: try node:zlib for older runtimes.
+  if (typeof CompressionStream !== 'undefined') {
+    const format = encoding === 'gzip' ? 'gzip' : 'deflate'
+    const stream = new Blob([data]).stream().pipeThrough(new CompressionStream(format))
+    return new Response(stream).arrayBuffer()
+  }
+
+  // Node.js fallback via zlib
+  try {
+    const zlib = await import('node:zlib')
+    const { promisify } = await import('node:util')
+    const fn = encoding === 'gzip' ? promisify(zlib.gzip) : promisify(zlib.deflate)
+    const result = await fn(Buffer.from(data))
+    return result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength)
+  } catch {
+    // No compression available — return uncompressed
+    return data
+  }
 }
