@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/flow",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/flow#readme",
   "bugs": {
