@@ -122,9 +122,24 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
 
         // ── String mode (default) ─────────────────────────────────────────────
         const { html: appHtml, head } = await renderWithHead(app)
+
+        // Collect CSS-in-JS styles generated during SSR rendering.
+        // styler's sheet buffers CSS in SSR mode — getStyleTag() returns
+        // a <style> tag with all scoped CSS rules. This prevents FOUC
+        // (Flash of Unstyled Content) in SSG/prerendered pages.
+        let styleTag = ''
+        try {
+          const { sheet } = await import('@pyreon/styler')
+          styleTag = sheet.getStyleTag()
+          sheet.reset() // clear buffer for next request
+        } catch {
+          // @pyreon/styler not installed — skip style collection
+        }
+
         const loaderData = serializeLoaderData(router as never)
         const scripts = buildScriptsFast(clientEntryTag, loaderData)
-        const fullHtml = processCompiledTemplate(compiled, { head, app: appHtml, scripts })
+        const headWithStyles = styleTag ? `${styleTag}\n${head}` : head
+        const fullHtml = processCompiledTemplate(compiled, { head: headWithStyles, app: appHtml, scripts })
 
         return new Response(fullHtml, { status: 200, headers: ctx.headers })
       } catch (err) {

@@ -7,15 +7,12 @@ export interface WindowSize {
 }
 
 /**
- * Track window dimensions reactively.
+ * Track window dimensions reactively with debouncing.
+ * Fires once after resize stops — guarantees the final dimensions.
  *
- * @param throttleMs - Throttle interval in ms (default 200). Set to 0 for debounce behavior.
- * @param mode - 'throttle' (default) fires at most once per interval. 'debounce' waits until resize stops.
+ * @param debounceMs - Wait time after last resize event (default 200ms)
  */
-export function useWindowResize(
-  throttleMs = 200,
-  mode: 'throttle' | 'debounce' = 'debounce',
-): () => WindowSize {
+export function useWindowResize(debounceMs = 200): () => WindowSize {
   const size = signal<WindowSize>({
     width: typeof window !== 'undefined' ? window.innerWidth : 0,
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
@@ -24,19 +21,11 @@ export function useWindowResize(
   let timer: ReturnType<typeof setTimeout> | undefined
 
   function onResize() {
-    if (mode === 'debounce') {
-      if (timer !== undefined) clearTimeout(timer)
-      timer = setTimeout(() => {
-        timer = undefined
-        size.set({ width: window.innerWidth, height: window.innerHeight })
-      }, throttleMs)
-    } else {
-      if (timer !== undefined) return
-      timer = setTimeout(() => {
-        timer = undefined
-        size.set({ width: window.innerWidth, height: window.innerHeight })
-      }, throttleMs)
-    }
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = undefined
+      size.set({ width: window.innerWidth, height: window.innerHeight })
+    }, debounceMs)
   }
 
   onMount(() => {
