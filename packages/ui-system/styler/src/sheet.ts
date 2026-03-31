@@ -27,6 +27,7 @@ export class StyleSheet {
   private isSSR: boolean
   private maxCacheSize: number
   private layer: string | undefined
+  private supportsLayer = false
 
   constructor(options: StyleSheetOptions = {}) {
     this.maxCacheSize = options.maxCacheSize ?? DEFAULT_MAX_CACHE_SIZE
@@ -56,15 +57,9 @@ export class StyleSheet {
     if (this.sheet) {
       try {
         this.sheet.insertRule('@layer base, rocketstyle;', 0)
+        this.supportsLayer = true
       } catch {
         // @layer not supported — falls back to source order
-      }
-      if (this.layer) {
-        try {
-          this.sheet.insertRule(`@layer ${this.layer};`, 1)
-        } catch {
-          // skip
-        }
       }
     }
   }
@@ -219,8 +214,10 @@ export class StyleSheet {
     if (base) rules.push(`${selector}{${base}}`)
     rules.push(...atRules)
 
-    // Apply @layer wrapping — per-insert layer takes precedence over sheet-level layer
-    const layerName = insertLayer ?? this.layer
+    // Apply @layer wrapping — per-insert layer takes precedence over sheet-level layer.
+    // In SSR, always apply layers (output goes to real browsers).
+    // In client, skip if @layer isn't supported (e.g. happy-dom in tests).
+    const layerName = (this.isSSR || this.supportsLayer) ? (insertLayer ?? this.layer) : undefined
     const finalRules = layerName ? rules.map((r) => `@layer ${layerName}{${r}}`) : rules
 
     if (this.isSSR) {
@@ -320,13 +317,17 @@ export class StyleSheet {
 
   /** Returns collected CSS for SSR as a complete `<style>` tag string. */
   getStyleTag(): string {
-    const css = this.ssrBuffer.join('').replace(/<\/style/gi, '<\\/style')
+    if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""></style>`
+    const layerDecl = this.layer ? '@layer base, rocketstyle;' : ''
+    const css = (layerDecl + this.ssrBuffer.join('')).replace(/<\/style/gi, '<\\/style')
     return `<style ${ATTR}="">${css}</style>`
   }
 
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
-    return this.ssrBuffer.join('')
+    if (this.ssrBuffer.length === 0) return ''
+    const layerDecl = this.layer ? '@layer base, rocketstyle;' : ''
+    return layerDecl + this.ssrBuffer.join('')
   }
 
   /** Reset SSR buffer and cache (call between server requests). */
@@ -389,7 +390,7 @@ export class StyleSheet {
 }
 
 /** Default singleton sheet for client-side use. */
-export const sheet = new StyleSheet()
+export const sheet = new StyleSheet({ layer: 'base' })
 
 /**
  * Factory for creating isolated StyleSheet instances.
