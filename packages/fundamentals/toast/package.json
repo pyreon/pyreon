@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/toast",
-  "version": "0.11.7",
+  "version": "0.11.8",
   "description": "Imperative toast notifications for Pyreon — no provider needed",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/toast#readme",
   "bugs": {
