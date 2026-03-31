@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Template and JSX compiler for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/compiler#readme",
   "bugs": {
