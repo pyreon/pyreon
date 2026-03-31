@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/attrs",
-  "version": "0.11.9",
+  "version": "0.11.10",
   "description": "Attrs HOC chaining for Pyreon components",
   "license": "MIT",
   "repository": {
