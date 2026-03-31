@@ -122,7 +122,7 @@
       "import": "./lib/og-image.js",
       "types": "./lib/types/og-image.d.ts"
     },
-    "./i18n": {
+    "./i18n-routing": {
       "bun": "./src/i18n-routing.ts",
       "import": "./lib/i18n-routing.js",
       "types": "./lib/types/i18n-routing.d.ts"
