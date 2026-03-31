@@ -204,15 +204,48 @@ describe('JSX transform — props', () => {
 // ─── Component elements ──────────────────────────────────────────────────────
 
 describe('JSX transform — component elements', () => {
-  test('does NOT wrap props on component elements (uppercase tag)', () => {
+  test('wraps reactive props on component elements with _rp brand', () => {
     const result = t('<MyComponent value={count()} />')
-    expect(result).not.toContain('() => count()')
-    expect(result).toContain('count()')
+    expect(result).toContain('_rp(() => count())')
   })
 
-  test('does NOT wrap any prop on uppercase component', () => {
+  test('wraps reactive props on any uppercase component with _rp brand', () => {
     const result = t('<Button label={getText()} />')
-    expect(result).not.toContain('() => getText()')
+    expect(result).toContain('_rp(() => getText())')
+  })
+
+  test('emits _rp import when component has reactive props', () => {
+    const result = t('<Button label={getText()} />')
+    expect(result).toContain('import { _rp } from "@pyreon/core"')
+  })
+
+  test('does NOT wrap static props on component elements', () => {
+    const result = t('<Button size={12} />')
+    expect(result).not.toContain('() =>')
+  })
+
+  test('does NOT wrap event handlers on component elements', () => {
+    const result = t('<Button onClick={handleClick} />')
+    expect(result).not.toContain('() => handleClick')
+  })
+
+  test('does NOT wrap arrow function props on component elements', () => {
+    const result = t('<Button render={() => "hello"} />')
+    expect(result).not.toContain('() => () =>')
+  })
+
+  test('does NOT wrap single JSX element prop — recurses into inner props', () => {
+    const result = t('<Wrapper icon={<Icon name={getName()} />} />')
+    // The outer <Icon> should NOT be wrapped in _rp
+    expect(result).not.toContain('_rp(() => <Icon')
+    // But Icon's name prop should be wrapped (it contains a call)
+    expect(result).toContain('() => getName()')
+  })
+
+  test('DOES wrap conditional JSX element prop', () => {
+    const result = t('<Wrapper icon={show() ? <Icon /> : null} />')
+    // Conditional contains a call — wraps the whole expression
+    expect(result).toContain('_rp(')
   })
 
   test('wraps children of component elements (via JSX expression)', () => {
@@ -223,6 +256,39 @@ describe('JSX transform — component elements', () => {
 
   test('wraps props on lowercase DOM elements', () => {
     expect(t('<div title={getTitle()} />')).toContain('() => getTitle()')
+  })
+
+  test('wraps ternary with call in component prop', () => {
+    const result = t(`<Comp x={a() ? 'yes' : 'no'} />`)
+    expect(result).toContain('_rp(')
+  })
+
+  test('wraps template literal with call in component prop', () => {
+    const result = t('<Comp label={`${count()} items`} />')
+    expect(result).toContain('_rp(')
+  })
+
+  test('wraps multiple reactive props independently', () => {
+    const result = t('<Comp a={x()} b={y()} c={12} />')
+    // Two reactive props should produce two _rp wrappers
+    const rpCount = (result.match(/_rp\(/g) || []).length
+    expect(rpCount).toBe(2)
+    // Static prop should remain plain (JSX attribute syntax)
+    expect(result).toContain('c={12}')
+  })
+
+  test('wraps children prop with call (children not in SKIP_PROPS)', () => {
+    const result = t('<Comp children={items()} />')
+    // children is NOT in SKIP_PROPS, so it gets _rp wrapping
+    expect(result).toContain('_rp(')
+  })
+
+  test('spread props on component pass through without _rp wrapping', () => {
+    const result = t('<Comp {...getProps()} label="hi" />')
+    // Spread should remain as-is
+    expect(result).toContain('{...getProps()}')
+    // Static label should not be wrapped
+    expect(result).not.toContain('_rp(() => "hi")')
   })
 })
 

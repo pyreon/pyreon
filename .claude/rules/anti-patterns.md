@@ -8,6 +8,7 @@
 - **Nested effects**: `effect()` inside `effect()` → use `computed()` for derived values
 - **Signals in hot paths**: Creating signals inside render functions or loops → create once at component setup
 - **Reading `.peek()` in effects/computeds**: Bypasses tracking, creates stale reads
+- **Destructuring props**: `const { state } = props` captures getter values once — loses reactivity. Use `props.state` directly, or `splitProps(props, ['state'])` for rest patterns
 
 ## JSX Mistakes
 

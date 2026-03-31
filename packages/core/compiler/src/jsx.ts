@@ -112,6 +112,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   const hoists: Hoist[] = []
   let hoistIdx = 0
   let needsTplImport = false
+  let needsRpImport = false
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
@@ -183,18 +184,55 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     }
   }
 
-  /** Handle a JSX attribute node — wrap or hoist its value if needed. */
+  /** Handle a JSX attribute node — wrap or hoist its value if needed.
+   *
+   * Both DOM and component props are processed:
+   * - DOM props: () => expr — applyProp creates renderEffect
+   * - Component props: _rp(() => expr) — makeReactiveProps converts to getters
+   *
+   * The _rp() brand distinguishes compiler wrappers from user-written accessor
+   * props (like Show's when, For's each) so makeReactiveProps only converts
+   * compiler-emitted wrappers.
+   */
   function handleJsxAttribute(node: ts.JsxAttribute): void {
     const name = ts.isIdentifier(node.name) ? node.name.text : ''
-    const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
-    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ''
-    const isComponentElement =
-      tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
-    if (isComponentElement) return
     if (SKIP_PROPS.has(name) || EVENT_RE.test(name)) return
     if (!node.initializer || !ts.isJsxExpression(node.initializer)) return
     const expr = node.initializer.expression
-    if (expr) hoistOrWrap(expr)
+    if (!expr) return
+
+    const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
+    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ''
+    const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
+
+    if (isComponent) {
+      // Component prop: wrap with _rp() brand so makeReactiveProps recognizes it.
+      //
+      // EXCEPTION: If the expression is a single JSX element (not a conditional),
+      // do NOT wrap the outer expression. The JSX element is created once (stable VNode).
+      // Its own inner props will be wrapped individually via recursive walk().
+      // This prevents remounting: <Icon name={x()} /> stays one Icon instance,
+      // only its name prop updates reactively.
+      const isSingleJsx = ts.isJsxElement(expr) || ts.isJsxSelfClosingElement(expr)
+      if (isSingleJsx) {
+        // Don't wrap — recurse into the JSX element's attributes instead
+        ts.forEachChild(expr, walk)
+        return
+      }
+
+      const hoistName = maybeHoist(expr)
+      if (hoistName) {
+        replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+      } else if (shouldWrap(expr)) {
+        const start = expr.getStart(sf)
+        const end = expr.getEnd()
+        replacements.push({ start, end, text: `_rp(() => ${code.slice(start, end)})` })
+        needsRpImport = true
+      }
+    } else {
+      // DOM prop: standard () => expr wrapping
+      hoistOrWrap(expr)
+    }
   }
 
   /** Handle a JSX expression in child position — wrap, hoist, or recurse. */
@@ -264,6 +302,11 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     result =
       `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
       result
+  }
+
+  // Prepend _rp import if reactive component props were emitted
+  if (needsRpImport) {
+    result = `import { _rp } from "@pyreon/core";\n` + result
   }
 
   return { code: result, usesTemplates: needsTplImport, warnings }

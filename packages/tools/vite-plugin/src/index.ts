@@ -150,14 +150,23 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       // they resolve to workspace packages via our resolveId hook, not node_modules.
       const optimizeDepsExclude = compat ? Object.keys(COMPAT_ALIASES[compat]) : []
 
+      const jsxSource = compat ? COMPAT_JSX_SOURCE[compat] : '@pyreon/core'
+
       return {
         optimizeDeps: {
           exclude: optimizeDepsExclude,
+          esbuildOptions: {
+            // Configure esbuild's JSX for dep optimization / pre-bundling.
+            // Without this, esbuild uses React as the default JSX runtime
+            // when pre-bundling @pyreon/* packages that contain JSX.
+            jsx: 'automatic',
+            jsxImportSource: jsxSource,
+          },
         },
         oxc: {
           jsx: {
             runtime: 'automatic',
-            importSource: compat ? COMPAT_JSX_SOURCE[compat] : '@pyreon/core',
+            importSource: jsxSource,
           },
         },
         // In SSR build mode, configure the entry
