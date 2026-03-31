@@ -22,20 +22,17 @@
  * ```
  */
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
+import { useRequestLocals } from '@pyreon/server'
+
+/** Client-side fallback nonce (dev server, SPA). */
+let _clientNonce = ''
 
 /**
- * Module-level nonce for dev/SPA use. For production SSR with concurrent
- * requests, read `ctx.locals.cspNonce` in your server handler and pass
- * it to components via props or context.
- */
-let _currentNonce = ''
-
-/**
- * Read the current CSP nonce. Works for dev server and SPA.
+ * Read the current CSP nonce in a component.
  *
- * For production SSR with concurrent requests, use `ctx.locals.cspNonce`
- * from your middleware context instead — module-level state isn't
- * request-isolated.
+ * SSR: reads from per-request `ctx.locals.cspNonce` via Pyreon's context
+ * system — fully isolated between concurrent requests via AsyncLocalStorage.
+ * Client/dev: falls back to module-level variable set by middleware.
  *
  * @example
  * ```tsx
@@ -48,7 +45,9 @@ let _currentNonce = ''
  * ```
  */
 export function useNonce(): string {
-  return _currentNonce
+  const locals = useRequestLocals()
+  if (locals.cspNonce) return locals.cspNonce as string
+  return _clientNonce
 }
 
 export interface CspDirectives {
@@ -196,11 +195,11 @@ export function cspMiddleware(config: CspConfig): Middleware {
 
   return (ctx: MiddlewareContext) => {
     if (staticHeader) {
-      _currentNonce = ''
+      _clientNonce = ''
       ctx.headers.set(headerName, staticHeader)
     } else {
       const nonce = generateNonce()
-      _currentNonce = nonce
+      _clientNonce = nonce
       ;(ctx.locals as Record<string, unknown>).cspNonce = nonce
       ctx.headers.set(headerName, buildCspHeader(config.directives, nonce))
     }
