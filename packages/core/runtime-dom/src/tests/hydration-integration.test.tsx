@@ -5,7 +5,7 @@
  * hydrate on client, verify signals work and DOM is reused.
  */
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, For, Fragment, h, provide, Show, useContext } from '@pyreon/core'
+import { For, Fragment, h, Show } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, enableHydrationWarnings, hydrateRoot } from '../index'
