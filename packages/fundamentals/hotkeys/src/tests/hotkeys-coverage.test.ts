@@ -112,7 +112,7 @@ describe('registerHotkey — additional coverage', () => {
 
   it('stopPropagation option works', () => {
     registerHotkey('ctrl+s', () => {}, { stopPropagation: true })
-    const event = fireKey('s', { ctrlKey: true })
+    fireKey('s', { ctrlKey: true })
     // Can't easily test stopPropagation on window, but the path is exercised
   })
 
