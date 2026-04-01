@@ -528,8 +528,14 @@ describe('JSX transform — template emission', () => {
     expect(result).not.toContain('_tpl(')
   })
 
-  test('does NOT emit _tpl for spread attributes', () => {
+  test('emits _tpl for root spread with _applyProps in bind', () => {
     const result = t('<div {...props}><span /></div>')
+    expect(result).toContain('_tpl(')
+    expect(result).toContain('_applyProps(__root, props)')
+  })
+
+  test('does NOT emit _tpl for spread on inner elements', () => {
+    const result = t('<div><span {...innerProps} /></div>')
     expect(result).not.toContain('_tpl(')
   })
 

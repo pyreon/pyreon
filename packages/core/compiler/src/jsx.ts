@@ -116,6 +116,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
+  let needsApplyPropsImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -154,7 +155,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   /** Try to emit a template for a JsxElement. Returns true if handled. */
   function tryTemplateEmit(node: ts.JsxElement): boolean {
-    const elemCount = templateElementCount(node)
+    const elemCount = templateElementCount(node, /* isRoot */ true)
     if (elemCount < 1) return false
     const tplCall = buildTemplateCall(node)
     if (!tplCall) return false
@@ -296,6 +297,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     const runtimeDomImports = ['_tpl']
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
+    if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -313,10 +315,19 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   // ── Template emission helpers (closures over sf, code) ──────────────────────
 
-  /** Check if a single attribute would prevent template emission. */
-  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
+  /**
+   * Check if attributes prevent template emission.
+   * - `key` always bails (VNode reconciliation prop)
+   * - Spread on inner elements bails (too complex to merge in _bind)
+   * - Spread on root element is allowed — applied via applyProps in _bind
+   */
+  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement, isRoot = false): boolean {
     for (const attr of jsxAttrs(node)) {
-      if (ts.isJsxSpreadAttribute(attr)) return true
+      if (ts.isJsxSpreadAttribute(attr)) {
+        // Allow spread on root element — handled in buildTemplateCall
+        if (isRoot) continue
+        return true
+      }
       if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === 'key')
         return true
     }
@@ -343,10 +354,13 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
    * Count DOM elements in a JSX subtree. Returns -1 if the tree is not
    * eligible for template emission.
    */
-  function templateElementCount(node: ts.JsxElement | ts.JsxSelfClosingElement): number {
+  function templateElementCount(
+    node: ts.JsxElement | ts.JsxSelfClosingElement,
+    isRoot = false,
+  ): number {
     const tag = jsxTagName(node)
     if (!tag || !isLowerCase(tag)) return -1
-    if (hasBailAttr(node)) return -1
+    if (hasBailAttr(node, isRoot)) return -1
     if (!ts.isJsxElement(node)) return 1
 
     let count = 1
@@ -382,6 +396,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
     let needsBindDirectImport = false
+    let needsApplyPropsImport = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -559,6 +574,18 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
     /** Process a single attribute, returning HTML to append. */
     function processOneAttr(attr: ts.JsxAttributeLike, varName: string): string {
+      // Spread attribute: apply all props at runtime
+      if (ts.isJsxSpreadAttribute(attr)) {
+        const expr = sliceExpr(attr.expression)
+        // Use runtime-dom's applyProps which handles class, style, events, etc.
+        needsApplyPropsImport = true
+        if (containsCall(attr.expression)) {
+          reactiveBindExprs.push(`_applyProps(${varName}, ${expr})`)
+        } else {
+          bindLines.push(`_applyProps(${varName}, ${expr})`)
+        }
+        return ''
+      }
       if (!ts.isJsxAttribute(attr)) return ''
       const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ''
       if (attrName === 'key') return ''
@@ -712,6 +739,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
     if (needsBindTextImport) needsBindTextImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
+    if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
 
     // Build bind function body
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
