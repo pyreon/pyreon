@@ -231,7 +231,7 @@ function matchSegments(current: string, pattern: string, exact: boolean): boolea
 
 /** Schema entry for typed search params. */
 export type SearchParamSchema = {
-  [key: string]: 'string' | 'number' | 'boolean' | string
+  [key: string]: 'string' | 'number' | 'boolean'
 }
 
 /** Infer the typed result from a search param schema. */
