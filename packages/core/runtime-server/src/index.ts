@@ -146,9 +146,13 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, children } = vnode.props as unknown as ForProps<unknown>
+    const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     enqueue('<!--pyreon-for-->')
-    for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
+    for (const item of each()) {
+      const key = by(item)
+      enqueue(`<!--k:${key}-->`)
+      await streamNode(children(item) as VNodeChild, enqueue)
+    }
     enqueue('<!--/pyreon-for-->')
     return
   }
@@ -339,9 +343,13 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, children } = vnode.props as unknown as ForProps<unknown>
+    const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     let forHtml = '<!--pyreon-for-->'
-    for (const item of each()) forHtml += await renderNode(children(item) as VNodeChild)
+    for (const item of each()) {
+      const key = by(item)
+      forHtml += `<!--k:${key}-->`
+      forHtml += await renderNode(children(item) as VNodeChild)
+    }
     forHtml += '<!--/pyreon-for-->'
     return forHtml
   }

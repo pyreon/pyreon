@@ -265,12 +265,23 @@ export interface RouterOptions {
 
 // ─── Router interface ─────────────────────────────────────────────────────────
 
-export interface Router {
+/**
+ * Router interface. Parameterized by route name union for type-safe named navigation.
+ *
+ * @example
+ * ```ts
+ * type MyRoutes = 'home' | 'user' | 'settings'
+ * const router: Router<MyRoutes> = createRouter({ routes })
+ * router.push({ name: 'user', params: { id: '42' } }) // ✓
+ * router.push({ name: 'typo' })                        // TS error
+ * ```
+ */
+export interface Router<TNames extends string = string> {
   /** Navigate to a path */
   push(path: string): Promise<void>
-  /** Navigate to a path by name */
+  /** Navigate to a named route */
   push(location: {
-    name: string
+    name: TNames
     params?: Record<string, string>
     query?: Record<string, string>
   }): Promise<void>
@@ -278,7 +289,7 @@ export interface Router {
   replace(path: string): Promise<void>
   /** Replace current history entry using a named route */
   replace(location: {
-    name: string
+    name: TNames
     params?: Record<string, string>
     query?: Record<string, string>
   }): Promise<void>
