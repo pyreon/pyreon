@@ -8,7 +8,6 @@ import {
   RouterProvider,
   RouterView,
   useLoaderData,
-  useRoute,
 } from '../index'
 import { setActiveRouter } from '../router'
 import type { RouterInstance } from '../types'
