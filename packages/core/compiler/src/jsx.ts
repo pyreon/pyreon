@@ -228,7 +228,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       } else if (shouldWrap(expr)) {
         const start = expr.getStart(sf)
         const end = expr.getEnd()
-        replacements.push({ start, end, text: `_rp(() => ${code.slice(start, end)})` })
+        replacements.push({ start, end, text: `_rp(() => ${inlineVarsInText(code.slice(start, end))})` })
         needsRpImport = true
       }
     } else {
@@ -408,7 +408,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     let resolved = expr
     for (const [depName, depExpr] of propDerivedVars) {
       if (depName === varName) continue
-      const re = new RegExp(`(?<![.\\w])${depName}(?![\\w:])`, 'g')
+      const re = new RegExp(`(?<![.\\w])${depName}(?![\\w:=])`, 'g')
       if (re.test(resolved)) {
         resolved = resolved.replace(re, `(${depExpr})`)
       }
@@ -435,8 +435,8 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       //   - property name in object: { varName: ... } (followed by :)
       //   - part of longer identifier: varNameExtra
       // Lookbehind ensures not preceded by . or alphanumeric
-      // Lookahead ensures not followed by alphanumeric or :
-      const re = new RegExp(`(?<![.\\w])${varName}(?![\\w:])`, 'g')
+      // Lookahead ensures not followed by alphanumeric, :, or = (JSX attr name)
+      const re = new RegExp(`(?<![.\\w])${varName}(?![\\w:=])`, 'g')
       result = result.replace(re, `(${expr})`)
     }
     return result
