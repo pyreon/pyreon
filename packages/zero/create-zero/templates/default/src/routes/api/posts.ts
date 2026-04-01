@@ -1,4 +1,4 @@
-import type { ApiContext } from "@pyreon/zero"
+import type { ApiContext } from "@pyreon/zero/api-routes"
 
 /**
  * API route example — /api/posts
