@@ -122,7 +122,7 @@ const Component: PyreonElement = (props) => {
 
   const mergedRef = (node: HTMLElement | null) => {
     equalizeRef = node
-    if (typeof externalRef === 'function') externalRef(node)
+    if (typeof externalRef === 'function') (externalRef as (el: HTMLElement | null) => void)(node)
     else if (externalRef != null) {
       ;(externalRef as unknown as { current: HTMLElement | null }).current = node
     }

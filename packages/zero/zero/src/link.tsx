@@ -144,7 +144,8 @@ export function useLink(props: LinkProps): UseLinkReturn {
       e.ctrlKey ||
       e.shiftKey ||
       e.altKey ||
-      props.external
+      props.external ||
+      !props.href
     ) {
       return
     }

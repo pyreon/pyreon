@@ -36,12 +36,15 @@ export type MultiKeys<T extends Dimensions = Dimensions> = Partial<
   Record<ExtractDimensionKey<T[keyof T]>, true>
 >
 
+/** Mode-aware value — either the value directly or a m(light, dark) callback. */
+type ModeAware<T> = T | ((mode: 'light' | 'dark') => T)
+
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: any[]) => any
     ? T[K]
     : NonNullable<T[K]> extends Record<string, any>
-      ? DeepPartial<NonNullable<T[K]>> | Extract<T[K], null>
-      : T[K]
+      ? DeepPartial<NonNullable<T[K]>> | ModeAware<DeepPartial<NonNullable<T[K]>>> | Extract<T[K], null>
+      : ModeAware<T[K]>
 }
 
 export type DimensionResult<CT, T = any> = Record<
@@ -84,7 +87,7 @@ export type DimensionObjAttrs<D extends Dimensions, DKP extends TDKP> = {
   [I in ExtractDimensionKey<D[keyof D]> & keyof DKP]: ExtractDimensionMulti<
     D[I & keyof D]
   > extends true
-    ? Array<keyof DKP[I]>
+    ? keyof DKP[I] | Array<keyof DKP[I]>
     : keyof DKP[I]
 }
 

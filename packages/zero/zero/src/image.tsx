@@ -43,6 +43,12 @@ export interface ImageProps {
   fit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'
   /** Decode async. Default: true */
   decoding?: 'sync' | 'async' | 'auto'
+  /**
+   * Raw mode — renders a plain `<img>` without the container div,
+   * aspect-ratio, max-width, or lazy loading wrapper.
+   * Use when the Image is inside a custom layout (absolute positioning, etc.).
+   */
+  raw?: boolean
 }
 
 export interface ImageSource {
@@ -64,6 +70,23 @@ export interface ImageSource {
  * <Image src="/hero.jpg" alt="Hero" width={1200} height={630} />
  */
 export function Image(props: ImageProps): VNodeChild {
+  // Raw mode: plain <img> without container, lazy loading, or layout constraints
+  if (props.raw) {
+    return (
+      <img
+        src={props.src}
+        alt={props.alt}
+        width={props.width}
+        height={props.height}
+        class={props.class}
+        style={props.style}
+        decoding={props.decoding ?? 'async'}
+        loading={props.loading ?? 'lazy'}
+        fetchPriority={props.priority ? 'high' : undefined}
+      />
+    ) as any
+  }
+
   const isEager = props.priority || props.loading === 'eager'
   const loaded = signal(isEager)
   const inView = signal(isEager)
