@@ -138,8 +138,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   function wrap(expr: ts.Expression): void {
     const start = expr.getStart(sf)
     const end = expr.getEnd()
-    const exprText = inlineVarsInText(code.slice(start, end))
-    replacements.push({ start, end, text: `() => ${exprText}` })
+    replacements.push({ start, end, text: `() => ${sliceExpr(expr)}` })
   }
 
   /** Try to hoist or wrap an expression, pushing a replacement if needed. */
@@ -228,7 +227,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       } else if (shouldWrap(expr)) {
         const start = expr.getStart(sf)
         const end = expr.getEnd()
-        replacements.push({ start, end, text: `_rp(() => ${inlineVarsInText(code.slice(start, end))})` })
+        replacements.push({ start, end, text: `_rp(() => ${sliceExpr(expr)})` })
         needsRpImport = true
       }
     } else {
@@ -403,17 +402,34 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     })
   }
 
-  // Resolve transitive inlining: if b's expr references a, replace a with its expr
-  for (const [varName, expr] of propDerivedVars) {
-    let resolved = expr
-    for (const [depName, depExpr] of propDerivedVars) {
-      if (depName === varName) continue
-      const re = new RegExp(`(?<![.\\w])${depName}(?![\\w:=])`, 'g')
-      if (re.test(resolved)) {
-        resolved = resolved.replace(re, `(${depExpr})`)
+  // Resolve transitive inlining: if b's expr text references a, replace a
+  // with its expr. This uses the TS parser to find identifiers in the
+  // expression AST — not regex on arbitrary text.
+  for (const [varName, exprText] of propDerivedVars) {
+    // Parse the expression to find identifier references
+    const tempSf = ts.createSourceFile('_expr.ts', exprText, ts.ScriptTarget.Latest, true)
+    let resolved = exprText
+    const replacements_: { start: number; end: number; text: string }[] = []
+
+    function findIds(n: ts.Node): void {
+      if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== varName) {
+        // Skip property names after dot
+        const p = n.parent
+        if (p && ts.isPropertyAccessExpression(p) && p.name === n) return
+        replacements_.push({ start: n.getStart(tempSf), end: n.getEnd(), text: `(${propDerivedVars.get(n.text)!})` })
+        return
       }
+      ts.forEachChild(n, findIds)
     }
-    if (resolved !== expr) propDerivedVars.set(varName, resolved)
+    ts.forEachChild(tempSf, findIds)
+
+    if (replacements_.length > 0) {
+      // Apply right-to-left
+      for (const r of replacements_.sort((a, b) => b.start - a.start)) {
+        resolved = resolved.slice(0, r.start) + r.text + resolved.slice(r.end)
+      }
+      propDerivedVars.set(varName, resolved)
+    }
   }
 
   /**
@@ -421,27 +437,6 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
    * Returns true if an expression is reactive (contains signal calls,
    * accesses props members, or references prop-derived variables).
    */
-  /**
-   * Replace prop-derived variable names in a source text with their original expressions.
-   * Simple regex-based replacement — safe because variable names are identifiers.
-   */
-  function inlineVarsInText(text: string): string {
-    if (propDerivedVars.size === 0) return text
-    let result = text
-    for (const [varName, expr] of propDerivedVars) {
-      // Replace standalone variable references only.
-      // Must NOT match:
-      //   - property access: obj.varName (preceded by .)
-      //   - property name in object: { varName: ... } (followed by :)
-      //   - part of longer identifier: varNameExtra
-      // Lookbehind ensures not preceded by . or alphanumeric
-      // Lookahead ensures not followed by alphanumeric, :, or = (JSX attr name)
-      const re = new RegExp(`(?<![.\\w])${varName}(?![\\w:=])`, 'g')
-      result = result.replace(re, `(${expr})`)
-    }
-    return result
-  }
-
   function isDynamic(node: ts.Node): boolean {
     if (containsCall(node)) return true
     return accessesProps(node)
@@ -847,7 +842,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         // When r.name() changes, r.email()'s _bind doesn't re-run.
         needsBindImportGlobal = true
         const d = nextDisp()
-        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${inlineVarsInText(expr)} })`)
+        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
       }
       return needsPlaceholder ? '<!>' : ''
     }
@@ -971,7 +966,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     if (reactiveBindExprs.length > 0) {
       needsBindImportGlobal = true
       const combinedName = nextDisp()
-      const combinedBody = reactiveBindExprs.map(inlineVarsInText).join('; ')
+      const combinedBody = reactiveBindExprs.join('; ')
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
     }
 
@@ -1067,6 +1062,12 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   /** Slice expression source from the original code */
   function sliceExpr(expr: ts.Expression): string {
+    // If the expression is a single identifier that's prop-derived, return
+    // the original props expression instead. This is the ONLY place inlining
+    // happens — no regex, no post-processing, no string manipulation.
+    if (ts.isIdentifier(expr) && propDerivedVars.has(expr.text)) {
+      return `(${propDerivedVars.get(expr.text)!})`
+    }
     return code.slice(expr.getStart(sf), expr.getEnd())
   }
 
