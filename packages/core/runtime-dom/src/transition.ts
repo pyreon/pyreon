@@ -96,6 +96,8 @@ export function Transition(props: TransitionProps): VNodeChild {
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
+      // Safety timeout: if CSS animation never fires (bad CSS, off-screen), force cleanup
+      setTimeout(done, 5000)
     })
   }
 
@@ -122,6 +124,8 @@ export function Transition(props: TransitionProps): VNodeChild {
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
+      // Safety timeout: if CSS animation never fires, force cleanup
+      setTimeout(done, 5000)
     })
   }
 
