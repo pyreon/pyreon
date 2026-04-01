@@ -1,11 +1,45 @@
 import type { VNodeChild } from '@pyreon/core'
 import type { UseHeadInput } from '@pyreon/head'
 import { useHead } from '@pyreon/head'
-import type { FaviconPluginConfig } from './favicon'
-import { faviconLinks } from './favicon'
 import type { I18nRoutingConfig } from './i18n-routing'
 import { extractLocaleFromPath } from './i18n-routing'
-import { ogImagePath } from './og-image'
+
+// ─── Inline helpers (no node:fs dependency) ─────────────────────────────────
+// These are inlined to avoid importing from favicon.ts/og-image.ts which
+// pull in node:fs at the top level — making Meta unsafe for client bundles.
+
+/** Favicon plugin config shape (type-only). */
+interface FaviconPluginConfig {
+  source: string
+  themeColor?: string
+  manifest?: boolean
+  locales?: Record<string, { source: string; darkSource?: string }>
+  [key: string]: unknown
+}
+
+function faviconLinks(
+  locale: string | undefined,
+  config: FaviconPluginConfig,
+): Array<{ rel: string; type?: string; sizes?: string; href: string }> {
+  const hasLocaleOverride = locale && config.locales?.[locale]
+  const prefix = hasLocaleOverride ? `/${locale}` : ''
+  const isSvg = (hasLocaleOverride ? config.locales![locale]!.source : config.source).endsWith('.svg')
+  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = []
+  if (isSvg) links.push({ rel: 'icon', type: 'image/svg+xml', href: `${prefix}/favicon.svg` })
+  links.push(
+    { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${prefix}/favicon-32x32.png` },
+    { rel: 'icon', type: 'image/png', sizes: '16x16', href: `${prefix}/favicon-16x16.png` },
+    { rel: 'apple-touch-icon', sizes: '180x180', href: `${prefix}/apple-touch-icon.png` },
+  )
+  if (config.manifest !== false) links.push({ rel: 'manifest', href: `${prefix}/site.webmanifest` })
+  return links
+}
+
+function ogImagePath(templateName: string, locale?: string, outDir = 'og', format: 'png' | 'jpeg' = 'png'): string {
+  const ext = format === 'jpeg' ? 'jpg' : 'png'
+  const suffix = locale ? `-${locale}` : ''
+  return `/${outDir}/${templateName}${suffix}.${ext}`
+}
 
 // ─── Meta component ────────────────────────────────────────────────────────
 
