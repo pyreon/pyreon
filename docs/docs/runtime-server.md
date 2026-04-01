@@ -1134,6 +1134,34 @@ The renderer already uses `Promise.all` for array children, meaning sibling asyn
 
 ---
 
+## Suspense Streaming Timeout
+
+Suspense boundaries in `renderToStream` have a 30-second timeout. If async children do not resolve within 30 seconds, the fallback HTML remains in the output and the stream continues without the resolved content. This prevents a single slow data source from blocking the entire page indefinitely.
+
+The timeout is per-boundary -- other Suspense boundaries that resolve faster are unaffected.
+
+## XSS Protection in Suspense Templates
+
+The Suspense swap mechanism (`<template>` + inline `<script>`) properly escapes all content in the template elements. This prevents XSS attacks where user-generated content inside a Suspense boundary could break out of the template and inject scripts.
+
+All text content and attribute values within Suspense templates go through the same HTML escaping as regular SSR output (`&`, `<`, `>`, `"`, `'` replaced with their HTML entities).
+
+## For List Key Markers
+
+When rendering `<For>` lists during SSR, each item now includes a key marker comment for precise hydration matching:
+
+```html
+<!--pyreon-for-->
+<!--k:apple--><li>apple</li>
+<!--k:banana--><li>banana</li>
+<!--k:cherry--><li>cherry</li>
+<!--/pyreon-for-->
+```
+
+The `<!--k:key-->` comments allow the client-side hydrator to match server-rendered items with their reactive counterparts by key rather than by position. This improves hydration accuracy when list items are reordered between server render and client hydration.
+
+---
+
 ## Exports Summary
 
 | Export                            | Type                                                           | Description                                           |

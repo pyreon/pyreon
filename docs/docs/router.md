@@ -1928,6 +1928,152 @@ export async function handleRequest(req: Request): Promise<Response> {
 }
 ```
 
+## Typed Search Params
+
+`useTypedSearchParams` provides type-safe access to URL query parameters with automatic coercion:
+
+```ts
+import { useTypedSearchParams } from '@pyreon/router'
+
+const params = useTypedSearchParams({
+  page: 'number',
+  q: 'string',
+  active: 'boolean',
+})
+
+params.page() // number (coerced from URL string)
+params.q() // string
+params.active() // boolean
+
+params.set({ page: 2, q: 'hello' }) // updates URL
+```
+
+The type map supports `'string'`, `'number'`, and `'boolean'`. Values are coerced automatically from URL search param strings.
+
+## Route Transitions
+
+`useTransition` provides a reactive signal indicating whether a route transition is in progress:
+
+```tsx
+import { useTransition } from '@pyreon/router'
+
+function App() {
+  const { isTransitioning } = useTransition()
+
+  return (
+    <div>
+      {isTransitioning() && <ProgressBar />}
+      <RouterView />
+    </div>
+  )
+}
+```
+
+The signal is `true` from the start of navigation (guard evaluation, loader fetching) until the route component is mounted.
+
+## View Transitions API
+
+Route navigations are automatically wrapped in `document.startViewTransition()` when the browser supports the View Transitions API. This provides smooth CSS-driven transitions between pages with zero configuration.
+
+To opt out for a specific route, set `meta.viewTransition: false`:
+
+```ts
+{
+  path: '/modal',
+  component: ModalPage,
+  meta: { viewTransition: false },
+}
+```
+
+The `::view-transition-old(root)` and `::view-transition-new(root)` CSS pseudo-elements can be styled for custom transition effects:
+
+```css
+::view-transition-old(root) {
+  animation: fade-out 200ms ease-in;
+}
+::view-transition-new(root) {
+  animation: fade-in 300ms ease-out;
+}
+```
+
+## Hash Scrolling
+
+When navigating to a URL with a hash fragment (e.g., `/docs#installation`), the router automatically scrolls to the element with the matching `id`. This works for both initial page load and client-side navigation.
+
+## Route Error Boundaries
+
+The `errorComponent` on a route record catches render errors (not just loader errors). When a route component throws during rendering, the error component is shown instead:
+
+```tsx
+{
+  path: '/dashboard',
+  component: Dashboard,
+  errorComponent: (props) => (
+    <div>
+      <h2>Dashboard Error</h2>
+      <p>{props.error.message}</p>
+      <button onClick={props.reset}>Retry</button>
+    </div>
+  ),
+}
+```
+
+## Middleware Chain
+
+Routes can define middleware that runs before guards and loaders. Middleware receives a context object with a `data` property for passing data downstream:
+
+```ts
+import type { RouteMiddleware } from '@pyreon/router'
+
+const authMiddleware: RouteMiddleware = async (ctx) => {
+  const user = await getUser(ctx.request)
+  ctx.data.user = user
+  if (!user) return '/login' // redirect
+}
+
+const routes = [
+  {
+    path: '/admin',
+    component: AdminLayout,
+    middleware: [authMiddleware],
+    children: [
+      { path: 'dashboard', component: AdminDashboard },
+    ],
+  },
+]
+```
+
+Inside components, read middleware data with `useMiddlewareData()`:
+
+```tsx
+import { useMiddlewareData } from '@pyreon/router'
+
+function AdminDashboard() {
+  const data = useMiddlewareData<{ user: User }>()
+  return <h1>Welcome, {data.user.name}</h1>
+}
+```
+
+## Typed Route Names
+
+`Router<TNames>` accepts a generic for typed named navigation:
+
+```ts
+type RouteNames = 'home' | 'user' | 'settings'
+
+const router = createRouter<RouteNames>({
+  routes: [
+    { path: '/', component: Home, name: 'home' },
+    { path: '/user/:id', component: User, name: 'user' },
+    { path: '/settings', component: Settings, name: 'settings' },
+  ],
+})
+
+// Typed — only 'home' | 'user' | 'settings' allowed:
+router.push({ name: 'user', params: { id: '42' } })
+// router.push({ name: 'invalid' })  // TypeScript error
+```
+
 ## Exports Summary
 
 ### Functions
@@ -1973,6 +2119,12 @@ export async function handleRequest(req: Request): Promise<Response> {
 <APICard name="useLoaderData" type="hook" signature="useLoaderData<T>(): T" description="Read data returned by the current route's loader function." />
 
 <APICard name="useSearchParams" type="hook" signature="useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]" description="Reactive read/write access to URL query parameters with optional defaults." />
+
+<APICard name="useTypedSearchParams" type="hook" signature="useTypedSearchParams<T>(schema: T): TypedSearchParams<T>" description="Type-safe search params with automatic coercion from URL strings." />
+
+<APICard name="useTransition" type="hook" signature="useTransition(): { isTransitioning: () => boolean }" description="Reactive signal indicating whether a route transition is in progress." />
+
+<APICard name="useMiddlewareData" type="hook" signature="useMiddlewareData<T>(): T" description="Read data set by route middleware in the current route's middleware chain." />
 
 <APICard name="useBlocker" type="hook" signature="useBlocker(fn: BlockerFn): { remove(): void }" description="Register a navigation blocker. Returns true to block, false to allow. Also handles beforeunload." />
 

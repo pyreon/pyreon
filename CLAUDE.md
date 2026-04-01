@@ -23,10 +23,10 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack                                                              |
 | `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId |
-| `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive                                                                      |
-| `@pyreon/compiler`       | JSX transform with smart `shouldWrap`, static hoisting                                                                                        |
-| `@pyreon/runtime-server` | renderToString, renderToStream                                                                                                                |
-| `@pyreon/router`         | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive                                                                    |
+| `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements                                |
+| `@pyreon/compiler`       | JSX transform with smart `shouldWrap`, static hoisting, per-text-node `_bind`, pure call detection, spread templates                           |
+| `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers                                                     |
+| `@pyreon/router`         | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params                  |
 | `@pyreon/head`           | useHead, HeadProvider, renderWithHead                                                                                                         |
 | `@pyreon/server`         | createHandler (SSR), prerender (SSG), island(), middleware                                                                                    |
 | `@pyreon/vite-plugin`    | JSX transform + SSR dev middleware + signal-preserving HMR                                                                                    |
@@ -146,6 +146,27 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/rx`          | Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions                                               |
 | `@pyreon/toast`       | Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y                                                      |
 | `@pyreon/url-state`   | URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe                                                             |
+
+### Zero (Full-Stack Meta-Framework)
+
+| Package        | Description                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/zero` | Full-stack meta-framework: file-system routing, SSR/SSG/ISR/SPA, API routes, server actions, theme, fonts, image optimization, SEO, adapters      |
+
+#### @pyreon/zero — Key Features
+
+- Client-safe main entry: `@pyreon/zero` exports only client-safe code (components, theme, middleware). Server-only code at `@pyreon/zero/server`
+- Server import stubs: importing server-only APIs from the main entry gives clear error messages instead of silent failures
+- Deployment adapters: Vercel (`vercelAdapter()`), Cloudflare Pages (`cloudflareAdapter()`), Netlify Functions (`netlifyAdapter()`) — in addition to Node, Bun, static
+- CSP middleware: `cspMiddleware({ directives })` with `useNonce()` for inline scripts
+- Env validation: `validateEnv({ PORT: 3000, DEBUG: false, API_KEY: String })` with `schema()` for custom parsers, `publicEnv()` for client-safe subset
+- Request logging: `loggerMiddleware()` with configurable format and levels
+- AI integration: `aiPlugin()` — generates llms.txt, JSON-LD inference metadata, AI plugin manifest
+- `useRequestLocals()` — bridge middleware locals into component tree
+- Locale-aware favicons: `faviconPlugin({ locales: { de: { source: "./icon-de.svg" } } })` — per-locale favicon generation
+- OG image generation: `ogImagePlugin({ templates, locales })` — build-time OG image rendering
+- Reactive favicon switching: dual light/dark PNG/ICO with theme-synced `media` attribute swap
+- Meta completion: og:image:width/height, og:video, og:audio, noIndex, ogTemplate, favicon prop on Meta component
 
 ## Fundamentals — Key Technical Details
 
@@ -314,10 +335,17 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - 4 presets: `recommended`, `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)
 - Powered by `oxc-parser` — ESTree/TS-ESTree AST with Visitor
 
-### @pyreon/router — useIsActive
+### @pyreon/router — New Features
 
 - `useIsActive(path, exact?)` — returns reactive boolean for whether a path matches the current route
 - Segment-aware prefix matching: `/admin` matches `/admin/users` when `exact` is false
+- `useTypedSearchParams({ page: 'number', q: 'string' })` — typed search params with auto-coercion
+- `useTransition()` — returns `{ isTransitioning }` signal during route transitions
+- Hash scrolling — navigating to `#id` auto-scrolls to the matching element
+- Route error boundaries — `errorComponent` on route records catches render errors (not just loader errors)
+- View Transitions API — auto-enabled for route navigations, opt out per route via `meta.viewTransition: false`
+- Middleware chain — `RouteMiddleware` with `ctx.data` for passing data between middleware, `useMiddlewareData()` to read in components
+- `Router<TNames>` generic — typed named navigation (`router.push({ name: 'user', params: { id: '42' } })`)
 
 ### @pyreon/hooks — New Hooks
 
@@ -379,12 +407,18 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 Context-based: `RouterContext = createContext<RouterInstance | null>(null)`.
 `RouterProvider` pushes to context stack + sets module fallback.
 Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update.
+View Transitions API integration: route changes wrapped in `document.startViewTransition()` when available.
+Middleware chain: `RouteMiddleware[]` runs before guards, `ctx.data` passed through, `useMiddlewareData()` reads in components.
+Hash scrolling: after navigation, `#id` fragments auto-scroll to matching DOM element.
 
 ### SSR
 
 `renderToString(vnode)` + `renderToStream(vnode)` with Suspense streaming.
 `mergeChildrenIntoProps(vnode)` called before `runWithHooks` in both paths.
 `runWithRequestContext(fn)` isolates context + store per request via ALS.
+Suspense streaming has a 30s timeout — if async children do not resolve within 30 seconds, the fallback remains.
+XSS escape in Suspense swap templates — all template content is properly escaped.
+`For` list SSR emits per-item key markers (`<!--k:key-->`) for precise hydration matching.
 
 ### Island Architecture
 
@@ -398,6 +432,9 @@ Static JSX nodes hoisted to module scope as `const _$h0 = ...`.
 Template emission: JSX element trees with ≥1 DOM element emit `_tpl()` + `_bind()`.
 Supports mixed element+expression children (via `childNodes[]` indexing), multiple expressions, and fragment inlining.
 Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
+Per-text-node independent `_bind()`: each text node gets its own `_bind()` call for fine-grained reactivity (instead of grouping all bindings).
+Pure static call detection: 40+ functions treated as pure (Math.*, JSON.*, Object.keys/values/entries, Array.isArray, etc.) — not wrapped in reactive getters.
+Spread props on root element: when a root element has `{...props}`, emit `_tpl()` + `_applyProps()` instead of falling back to `h()` calls.
 
 ### Context providing pattern
 
@@ -439,6 +476,13 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 - Module-scope signals get names via `__hmr_signal`; function-scope via injected options
 - Skips signals that already have an options argument
 - Not applied in production builds (tree-shaken)
+
+### Runtime DOM — SVG/MathML and Custom Elements
+
+- SVG namespace: 67 SVG/MathML tags auto-detected, created via `createElementNS` with correct namespace URI
+- Custom elements: props set as properties (not attributes) on elements with a hyphen in the tag name
+- Transition 5s timeout: if `transitionend`/`animationend` never fires, the transition completes automatically after 5 seconds
+- Duplicate key production guard: duplicate `key` values in lists emit a one-time console warning in production (not just dev)
 
 ### Dev-Mode Warnings (`__DEV__`)
 

@@ -710,6 +710,82 @@ export default function pyreonPlugin() {
 }
 ```
 
+## Per-Text-Node Independent Bindings
+
+Each reactive text node in a template now gets its own independent `_bind()` call. Previously, multiple text bindings could share a single `_bind()`, meaning a change in one signal would re-evaluate all bindings in the group. Now each text node tracks only its own dependencies:
+
+```tsx
+// Input
+<div>
+  <span>{firstName()}</span>
+  <span>{lastName()}</span>
+</div>
+
+// Output — each text node has its own _bind():
+_tpl('<div><span></span><span></span></div>', (__root) => {
+  const __e0 = __root.children[0]
+  const __e1 = __root.children[1]
+  const __t0 = document.createTextNode('')
+  __e0.appendChild(__t0)
+  const __d0 = _bind(() => { __t0.data = firstName() })
+  const __t1 = document.createTextNode('')
+  __e1.appendChild(__t1)
+  const __d1 = _bind(() => { __t1.data = lastName() })
+  return () => { __d0(); __d1() }
+})
+```
+
+Changing `firstName` only re-executes `__d0`, not `__d1`. This is fine-grained reactivity at the individual text node level.
+
+## Pure Static Call Detection
+
+The compiler recognizes 40+ standard library functions as pure (side-effect-free). Expressions containing only pure calls are **not** wrapped in reactive getters, since they cannot contain signal reads:
+
+```tsx
+// NOT wrapped — Math.round is pure:
+<div>{Math.round(3.7)}</div>
+
+// NOT wrapped — JSON.stringify is pure:
+<span>{JSON.stringify(data)}</span>
+
+// NOT wrapped — Object.keys is pure:
+<ul>{Object.keys(config).length}</ul>
+
+// STILL wrapped — user function may contain signals:
+<div>{formatPrice(price())}</div>
+```
+
+The full list of recognized pure functions includes:
+
+- **Math**: `abs`, `ceil`, `floor`, `round`, `max`, `min`, `pow`, `sqrt`, `log`, `random`, `sign`, `trunc`, `clz32`, `imul`, `fround`, `cbrt`, `hypot`, `log2`, `log10`, `log1p`, `expm1`, `cosh`, `sinh`, `tanh`, `acosh`, `asinh`, `atanh`
+- **JSON**: `stringify`, `parse`
+- **Object**: `keys`, `values`, `entries`, `assign`, `freeze`, `is`, `fromEntries`, `hasOwn`, `create`, `getPrototypeOf`
+- **Array**: `isArray`, `from`, `of`
+- **Other**: `String()`, `Number()`, `Boolean()`, `parseInt()`, `parseFloat()`, `isNaN()`, `isFinite()`, `encodeURIComponent()`, `decodeURIComponent()`
+
+## Spread Props on Root Element
+
+When the root element of a template has spread attributes, the compiler now emits `_tpl()` + `_applyProps()` instead of falling back to `h()` calls. This preserves the performance benefits of template cloning:
+
+```tsx
+// Input
+<div {...props}>
+  <span>{text()}</span>
+</div>
+
+// Output — template cloning + _applyProps for spread:
+_tpl('<div><span></span></div>', (__root) => {
+  _applyProps(__root, props)
+  const __e0 = __root.children[0]
+  const __t0 = document.createTextNode('')
+  __e0.appendChild(__t0)
+  const __d0 = _bind(() => { __t0.data = text() })
+  return () => { __d0() }
+})
+```
+
+Previously, any spread attribute would bail out of template emission entirely and fall back to `h()` calls. Now only spreads on non-root elements cause bailout.
+
 ## Known Limitations
 
 ### Nested JSX in Expression Containers
