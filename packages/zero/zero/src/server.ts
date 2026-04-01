@@ -57,9 +57,17 @@ export { render404Page } from "./not-found";
 
 export { compose, getContext } from "./middleware";
 
-// ─── Vite plugin ────────────────────────────────────────────────────────────
+// ─── Vite plugins ───────────────────────────────────────────────────────────
 
 export { zeroPlugin as default } from "./vite-plugin";
+export type { FaviconPluginConfig, FaviconLocaleConfig } from "./favicon";
+export { faviconPlugin, faviconLinks } from "./favicon";
+export type { SeoPluginConfig, SitemapConfig, RobotsConfig } from "./seo";
+export { seoPlugin, generateSitemap, generateRobots, jsonLd, seoMiddleware } from "./seo";
+export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";
+export { ogImagePlugin, ogImagePath } from "./og-image";
+export type { AiPluginConfig, InferJsonLdOptions } from "./ai";
+export { aiPlugin, inferJsonLd, generateLlmsTxt, generateLlmsFullTxt } from "./ai";
 
 // ─── I18n server-only ───────────────────────────────────────────────────────
 
