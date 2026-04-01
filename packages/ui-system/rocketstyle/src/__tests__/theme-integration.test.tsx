@@ -8,7 +8,6 @@ import {
   ThemeCapture,
   getComputedTheme,
   initTestConfig,
-  renderProps,
   withThemeContext,
 } from '@pyreon/test-utils'
 import rocketstyle from '../init'
