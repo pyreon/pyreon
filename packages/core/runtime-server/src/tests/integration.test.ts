@@ -2,7 +2,6 @@ import type { ComponentFn, VNode } from '@pyreon/core'
 import {
   createContext,
   For,
-  Fragment,
   h,
   pushContext,
   Show,
