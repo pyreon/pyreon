@@ -153,10 +153,16 @@ export function jsx(
   // DOM element or symbol (Fragment): children go in vnode.children
   const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
 
-  // Map className → class for React compat
-  if (typeof type === 'string' && propsWithKey.className !== undefined) {
-    propsWithKey.class = propsWithKey.className
-    delete propsWithKey.className
+  // Map React-style attributes to standard HTML attributes
+  if (typeof type === 'string') {
+    if (propsWithKey.className !== undefined) {
+      propsWithKey.class = propsWithKey.className
+      delete propsWithKey.className
+    }
+    if (propsWithKey.htmlFor !== undefined) {
+      propsWithKey.for = propsWithKey.htmlFor
+      delete propsWithKey.htmlFor
+    }
   }
 
   return h(type, propsWithKey, ...(childArray as VNodeChild[]))

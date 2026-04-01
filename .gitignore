@@ -11,3 +11,5 @@ coverage
 .next
 .source
 test-results
+scripts/visual-test/current/*.png
+scripts/visual-test/diffs/*.png

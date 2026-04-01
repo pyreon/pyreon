@@ -202,11 +202,16 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       const ext = getExt(id)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
-      // In compat mode, skip Pyreon's reactive JSX transform.
-      // OXC's built-in JSX transform handles jsx() calls; the compat
-      // JSX runtime wraps components for re-render support.
-      if (compat === 'react' || compat === 'preact' || compat === 'vue' || compat === 'solid')
+      // In compat mode, skip Pyreon's reactive JSX transform but apply
+      // attribute renames (className → class, htmlFor → for) so source code
+      // that uses React-style attribute names works correctly.
+      if (compat === 'react' || compat === 'preact' || compat === 'vue' || compat === 'solid') {
+        if (compat === 'react' || compat === 'preact') {
+          const transformed = transformCompatAttributes(code)
+          if (transformed !== code) return { code: transformed, map: null }
+        }
         return
+      }
 
       const result = transformJSX(code, id)
       // Surface compiler warnings in the terminal
@@ -495,6 +500,29 @@ function injectHmr(code: string, moduleId: string): string {
   output = `${output}\n\n${lines.join('\n')}\n`
 
   return output
+}
+
+// ── Compat attribute transforms ──────────────────────────────────────────────
+
+/**
+ * Transform React-style JSX attribute names to standard HTML attribute names.
+ * This is a lightweight string transform that runs on JSX source before OXC's
+ * JSX transform converts it to jsx() calls.
+ *
+ * - `className` → `class`
+ * - `htmlFor` → `for`
+ *
+ * Only matches attribute position in JSX (after `<tag ` or whitespace).
+ * Does not transform property access (e.g. `props.className` stays as-is since
+ * the compat JSX runtime handles that at call time).
+ */
+function transformCompatAttributes(code: string): string {
+  // Match className/htmlFor in JSX attribute position:
+  // After < and tag name, or after whitespace between attributes
+  // Pattern: word boundary + attribute name + = (with optional whitespace)
+  return code
+    .replace(/(\s)className(\s*=)/g, '$1class$2')
+    .replace(/(\s)htmlFor(\s*=)/g, '$1for$2')
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
