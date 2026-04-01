@@ -289,8 +289,21 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     return found
   }
 
-  /** Pre-pass: scan a function body for prop-derived variable declarations. */
+  /** Pre-pass: scan a function body for prop-derived variable declarations.
+   *  callbackDepth tracks nesting inside callback arguments (map, filter, etc.)
+   *  to avoid tracking variables declared inside callbacks as prop-derived. */
+  let _callbackDepth = 0
   function scanForPropDerivedVars(node: ts.Node): void {
+    // Track callback nesting — don't track vars inside callbacks
+    if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node))) {
+      const parent = node.parent
+      if (parent && ts.isCallExpression(parent) && parent.arguments.includes(node as any)) {
+        _callbackDepth++
+        ts.forEachChild(node, scanForPropDerivedVars)
+        _callbackDepth--
+        return
+      }
+    }
     // Track the function's first parameter as a props name.
     // Only for COMPONENT functions — not callbacks like .map(item => <div>...)
     // Heuristic: component functions are named declarations, const assignments,
@@ -338,7 +351,9 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
         // Track: const x = props.y ?? z  OR  const x = own.y
         // Skip let/var — mutable variables can be reassigned, unsafe to inline
+        // Skip declarations inside callbacks (map, filter, etc.)
         if (!(node.declarationList.flags & ts.NodeFlags.Const)) continue
+        if (_callbackDepth > 0) continue
         if (ts.isIdentifier(decl.name) && decl.initializer) {
           if (readsFromProps(decl.initializer)) {
             const varName = decl.name.text
