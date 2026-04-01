@@ -146,9 +146,13 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, children } = vnode.props as unknown as ForProps<unknown>
+    const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     enqueue('<!--pyreon-for-->')
-    for (const item of each()) await streamNode(children(item) as VNodeChild, enqueue)
+    for (const item of each()) {
+      const key = by(item)
+      enqueue(`<!--k:${key}-->`)
+      await streamNode(children(item) as VNodeChild, enqueue)
+    }
     enqueue('<!--/pyreon-for-->')
     return
   }
@@ -267,15 +271,36 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   // Capture the context store for the async resolution so it inherits context
   const ctxStore = _contextAls.getStore() ?? []
 
-  // Queue async resolution — runs in parallel, emits to main stream when done
+  // Queue async resolution — runs in parallel, emits to main stream when done.
   // Errors are caught per-boundary so one failing Suspense doesn't abort the stream.
+  // Timeout prevents hung async children from keeping the stream open forever.
+  const SUSPENSE_TIMEOUT_MS = 30_000
+
   ctx.pending.push(
     _contextAls.run(ctxStore, async () => {
       try {
         ctx.suspenseDepth++
         const buf: string[] = []
-        await streamNode(children ?? null, (s) => buf.push(s))
-        mainEnqueue(`<template id="pyreon-t-${id}">${buf.join('')}</template>`)
+
+        // Race the async children against a timeout
+        const result = await Promise.race([
+          streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
+          new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), SUSPENSE_TIMEOUT_MS)),
+        ])
+
+        if (result === 'timeout') {
+          if (__DEV__) {
+            console.warn(
+              `[Pyreon SSR] Suspense boundary timed out after ${SUSPENSE_TIMEOUT_MS}ms — fallback will remain.`,
+            )
+          }
+          // Fallback stays visible — no swap
+          return
+        }
+
+        // Escape </template> in buffered content to prevent early close + XSS
+        const content = buf.join('').replace(/<\/template/gi, '<\\/template')
+        mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {
         if (__DEV__) {
@@ -318,9 +343,13 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
   }
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    const { each, children } = vnode.props as unknown as ForProps<unknown>
+    const { each, children, by } = vnode.props as unknown as ForProps<unknown>
     let forHtml = '<!--pyreon-for-->'
-    for (const item of each()) forHtml += await renderNode(children(item) as VNodeChild)
+    for (const item of each()) {
+      const key = by(item)
+      forHtml += `<!--k:${key}-->`
+      forHtml += await renderNode(children(item) as VNodeChild)
+    }
     forHtml += '<!--/pyreon-for-->'
     return forHtml
   }

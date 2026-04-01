@@ -181,8 +181,45 @@ const VOID_ELEMENTS = new Set([
   'wbr',
 ])
 
+const SVG_NS = 'http://www.w3.org/2000/svg'
+const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
+
+// Tags that require namespace-aware creation
+const SVG_TAGS = new Set([
+  'svg', 'circle', 'ellipse', 'line', 'path', 'polygon', 'polyline', 'rect',
+  'g', 'defs', 'symbol', 'use', 'text', 'tspan', 'textPath', 'image',
+  'clipPath', 'mask', 'pattern', 'marker', 'linearGradient', 'radialGradient',
+  'stop', 'filter', 'feBlend', 'feColorMatrix', 'feComponentTransfer',
+  'feComposite', 'feConvolveMatrix', 'feDiffuseLighting', 'feDisplacementMap',
+  'feFlood', 'feGaussianBlur', 'feImage', 'feMerge', 'feMergeNode',
+  'feMorphology', 'feOffset', 'feSpecularLighting', 'feTile', 'feTurbulence',
+  'animate', 'animateMotion', 'animateTransform', 'set', 'desc', 'title',
+  'metadata', 'foreignObject',
+])
+
+const MATHML_TAGS = new Set([
+  'math', 'mi', 'mo', 'mn', 'ms', 'mtext', 'mspace', 'mrow', 'mfrac',
+  'msqrt', 'mroot', 'msub', 'msup', 'msubsup', 'munder', 'mover',
+  'munderover', 'mtable', 'mtr', 'mtd', 'mpadded', 'mphantom', 'menclose',
+])
+
+/** Track SVG context depth — children of <svg> inherit the SVG namespace. */
+let _svgDepth = 0
+let _mathmlDepth = 0
+
+function createElementWithNS(tag: string): Element {
+  if (_svgDepth > 0 || SVG_TAGS.has(tag)) return document.createElementNS(SVG_NS, tag)
+  if (_mathmlDepth > 0 || MATHML_TAGS.has(tag)) return document.createElementNS(MATHML_NS, tag)
+  return document.createElement(tag)
+}
+
 function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup {
-  const el = document.createElement(vnode.type as string)
+  const tag = vnode.type as string
+  const el = createElementWithNS(tag)
+  const isSvg = tag === 'svg'
+  const isMathml = tag === 'math'
+  if (isSvg) _svgDepth++
+  if (isMathml) _mathmlDepth++
 
   if (__DEV__ && (vnode.children?.length ?? 0) > 0 && VOID_ELEMENTS.has(vnode.type as string)) {
     console.warn(
@@ -199,6 +236,8 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   _elementDepth++
   const childCleanup = mountChildren(vnode.children ?? [], el, null)
   _elementDepth--
+  if (isSvg) _svgDepth--
+  if (isMathml) _mathmlDepth--
 
   parent.insertBefore(el, anchor)
 

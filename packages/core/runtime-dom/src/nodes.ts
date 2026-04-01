@@ -470,17 +470,23 @@ export function mountFor<T>(
   }
 
   const warnForKey = (seen: Set<string | number> | null, key: string | number) => {
-    if (!__DEV__ || !seen) return
-    if (key == null) {
+    if (!seen) return
+    if (__DEV__ && key == null) {
       console.warn(
         '[Pyreon] <For> `by` function returned null/undefined. ' +
           'Keys must be strings or numbers. Check your `by` prop.',
       )
     }
     if (seen.has(key)) {
-      console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
+      if (__DEV__) {
+        console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
+      }
+      // In production: skip duplicate — use first occurrence only.
+      // Prevents silent DOM corruption from cache key collision.
+      return true
     }
     seen.add(key)
+    return false
   }
 
   /** Render item into container, update cache+cleanupCount. No anchor registration. */
@@ -515,11 +521,11 @@ export function mountFor<T>(
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
     const frag = document.createDocumentFragment()
     const keys = new Array<string | number>(n)
-    const _seenKeys = __DEV__ ? new Set<string | number>() : null
+    const _seenKeys = new Set<string | number>()
     for (let i = 0; i < n; i++) {
       const item = items[i] as T
       const key = getKey(item)
-      warnForKey(_seenKeys, key)
+      if (warnForKey(_seenKeys, key)) continue // skip duplicate
       keys[i] = key
       renderInto(item, key, i, frag, null)
     }
@@ -530,10 +536,12 @@ export function mountFor<T>(
 
   const collectNewKeys = (items: T[], n: number): (string | number)[] => {
     const newKeys = new Array<string | number>(n)
-    const _seenUpdate = __DEV__ ? new Set<string | number>() : null
+    const _seenUpdate = new Set<string | number>()
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
       warnForKey(_seenUpdate, newKeys[i] as string | number)
+      // Note: we don't skip here — keys array must match items array length.
+      // Duplicate keys in update will just cause cache collisions (first wins).
     }
     return newKeys
   }

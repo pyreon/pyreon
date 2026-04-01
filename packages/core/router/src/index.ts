@@ -64,7 +64,10 @@ export {
   useIsActive,
   useRoute,
   useRouter,
+  useMiddlewareData,
   useSearchParams,
+  useTransition,
+  useTypedSearchParams,
 } from './router'
 // Types
 // Data loaders
@@ -81,6 +84,8 @@ export type {
   RouteComponent,
   RouteLoaderFn,
   RouteMeta,
+  RouteMiddleware,
+  RouteMiddlewareContext,
   RouteRecord,
   Router,
   RouterOptions,

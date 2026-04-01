@@ -37,7 +37,7 @@ async function printRouteTable(projectRoot: string) {
     const routesDir = join(projectRoot, 'src/routes')
     if (!existsSync(routesDir)) return
 
-    const { scanRouteFiles, parseFileRoutes } = await import('@pyreon/zero')
+    const { scanRouteFiles, parseFileRoutes } = await import('@pyreon/zero/server')
     const { isApiRoute, apiFilePathToPattern } = await import('@pyreon/zero/api-routes')
 
     const files = await scanRouteFiles(routesDir)

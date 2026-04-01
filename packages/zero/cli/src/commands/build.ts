@@ -68,7 +68,7 @@ async function resolveSsgPaths(zeroConfig: Record<string, unknown> | undefined):
 /** Run the deploy adapter build step. */
 async function runAdapter(projectRoot: string, zeroConfig: Record<string, unknown>) {
   try {
-    const { resolveAdapter } = await import('@pyreon/zero')
+    const { resolveAdapter } = await import('@pyreon/zero/server')
     const adapter = resolveAdapter(zeroConfig)
     await adapter.build({
       serverEntry: join(projectRoot, 'dist/server/entry-server.js'),

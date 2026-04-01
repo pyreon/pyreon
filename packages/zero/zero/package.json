@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero",
-  "version": "0.12.2",
+  "version": "0.12.4",
   "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
   "author": "Vit Bokisch",
@@ -26,6 +26,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./server": {
+      "bun": "./src/server.ts",
+      "import": "./lib/server.js",
+      "types": "./lib/types/server.d.ts"
     },
     "./client": {
       "bun": "./src/client.ts",

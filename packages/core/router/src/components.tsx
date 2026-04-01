@@ -1,5 +1,5 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
-import { createRef, h, onUnmount, provide, useContext } from '@pyreon/core'
+import { createRef, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
@@ -250,11 +250,28 @@ function renderWithLoader(
   route: Pick<ResolvedRoute, 'params' | 'query' | 'meta'>,
 ): VNodeChild {
   const routeProps = { params: route.params, query: route.query, meta: route.meta }
-  if (!record.loader) {
-    return h(Comp, routeProps)
+
+  // If route has an error component, wrap rendering in error boundary
+  if (record.errorComponent) {
+    return h(ErrorBoundary, {
+      fallback: (error: Error) => h(record.errorComponent!, { ...routeProps, error }),
+      children: record.loader
+        ? renderLoaderContent(router, record, Comp, routeProps)
+        : h(Comp, routeProps),
+    })
   }
+
+  if (!record.loader) return h(Comp, routeProps)
+  return renderLoaderContent(router, record, Comp, routeProps)
+}
+
+function renderLoaderContent(
+  router: RouterInstance,
+  record: RouteRecord,
+  Comp: ComponentFn,
+  routeProps: Record<string, unknown>,
+): VNodeChild {
   const data = router._loaderData.get(record)
-  // If loader data is undefined and route has an errorComponent, render it
   if (data === undefined && record.errorComponent) {
     return h(record.errorComponent, routeProps)
   }

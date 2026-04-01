@@ -988,3 +988,96 @@ describe('renderToStream — Suspense error fallback', () => {
     expect(html).not.toContain('__NS("pyreon-s-')
   })
 })
+
+// ─── Suspense XSS — </template> escaping ─────────────────────────────────────
+
+describe('renderToStream — Suspense XSS escape', () => {
+  test('escapes </template> inside Suspense async content', async () => {
+    async function XSSChild(): Promise<ReturnType<typeof h>> {
+      await new Promise<void>((r) => setTimeout(r, 5))
+      return h('div', { dangerouslySetInnerHTML: { __html: '</template><script>alert(1)</script>' } })
+    }
+
+    const vnode = h(Suspense, {
+      fallback: h('span', null, 'loading'),
+      children: h(XSSChild as unknown as ComponentFn, null),
+    })
+
+    const html = await collectStream(renderToStream(vnode))
+    // The raw </template> should be escaped to <\/template in the buffered content
+    expect(html).not.toContain('</template><script>alert')
+    // The escaped version should be present instead
+    expect(html).toContain('<\\/template')
+  })
+})
+
+// ─── For SSR — key markers ───────────────────────────────────────────────────
+
+describe('renderToString — For key markers', () => {
+  test('emits key markers for each item', async () => {
+    const items = [
+      { id: 1, name: 'a' },
+      { id: 2, name: 'b' },
+    ]
+    const vnode = h(For, {
+      each: () => items,
+      by: (r: { id: number }) => r.id,
+      children: (item: { id: number; name: string }) => h('li', null, item.name),
+    })
+    const html = await renderToString(vnode)
+    expect(html).toContain('<!--k:1-->')
+    expect(html).toContain('<!--k:2-->')
+    expect(html).toContain('<!--pyreon-for-->')
+    expect(html).toContain('<!--/pyreon-for-->')
+    expect(html).toContain('<li>a</li>')
+    expect(html).toContain('<li>b</li>')
+  })
+
+  test('For markers appear in correct order', async () => {
+    const items = [
+      { id: 10, name: 'first' },
+      { id: 20, name: 'second' },
+      { id: 30, name: 'third' },
+    ]
+    const vnode = h(For, {
+      each: () => items,
+      by: (r: { id: number }) => r.id,
+      children: (item: { id: number; name: string }) => h('span', null, item.name),
+    })
+    const html = await renderToString(vnode)
+    const idx10 = html.indexOf('<!--k:10-->')
+    const idx20 = html.indexOf('<!--k:20-->')
+    const idx30 = html.indexOf('<!--k:30-->')
+    expect(idx10).toBeLessThan(idx20)
+    expect(idx20).toBeLessThan(idx30)
+  })
+
+  test('For with empty array emits boundary markers only', async () => {
+    const vnode = h(For, {
+      each: () => [],
+      by: (r: unknown) => r,
+      children: () => h('li', null, 'nope'),
+    })
+    const html = await renderToString(vnode)
+    expect(html).toBe('<!--pyreon-for--><!--/pyreon-for-->')
+  })
+})
+
+// ─── For SSR — key markers in stream ─────────────────────────────────────────
+
+describe('renderToStream — For key markers', () => {
+  test('emits key markers for each item in stream', async () => {
+    const items = [
+      { id: 1, name: 'x' },
+      { id: 2, name: 'y' },
+    ]
+    const vnode = h(For, {
+      each: () => items,
+      by: (r: { id: number }) => r.id,
+      children: (item: { id: number; name: string }) => h('li', null, item.name),
+    })
+    const html = await collectStream(renderToStream(vnode))
+    expect(html).toContain('<!--k:1-->')
+    expect(html).toContain('<!--k:2-->')
+  })
+})
