@@ -12,7 +12,6 @@
     "no-template-curly-in-string": "warn",
     "no-debugger": "error",
     "typescript/no-non-null-assertion": "warn",
-    "unicorn/prefer-flat-map": "error",
     "import/no-duplicates": "warn"
   },
   "overrides": [
