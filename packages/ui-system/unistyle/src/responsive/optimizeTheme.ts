@@ -26,10 +26,28 @@ const optimizeTheme: OptimizeTheme = ({ theme, breakpoints }) => {
 
   for (let i = 0; i < breakpoints.length; i++) {
     const key = breakpoints[i] as string
-    const previousBreakpoint = breakpoints[i - 1] as string
     const current = theme[key]
-    if (current && (i === 0 || !shallowEqual(theme[previousBreakpoint], current))) {
+    if (!current) continue
+
+    if (i === 0) {
+      // First breakpoint: emit all properties
       result[key] = current
+    } else {
+      // Higher breakpoints: only emit properties that CHANGED from previous.
+      // This prevents duplicating e.g. height: 100% in every media query
+      // when only maxWidth changes per breakpoint.
+      const prev = theme[breakpoints[i - 1] as string]
+      const diff: Record<string, unknown> = {}
+      let hasDiff = false
+
+      for (const prop of Object.keys(current)) {
+        if (!prev || current[prop] !== prev[prop]) {
+          diff[prop] = current[prop]
+          hasDiff = true
+        }
+      }
+
+      if (hasDiff) result[key] = diff
     }
   }
 
