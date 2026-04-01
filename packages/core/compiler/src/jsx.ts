@@ -598,8 +598,11 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         const d = nextDisp()
         bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
       } else {
-        // Collected into the combined _bind at the end
-        reactiveBindExprs.push(`${tVar}.data = ${expr}`)
+        // Each reactive text child gets its own _bind — independent tracking.
+        // When r.name() changes, r.email()'s _bind doesn't re-run.
+        needsBindImportGlobal = true
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
       }
       return needsPlaceholder ? '<!>' : ''
     }
