@@ -1,4 +1,3 @@
-import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── useInterval — null delay branch ────────────────────────────────────────
