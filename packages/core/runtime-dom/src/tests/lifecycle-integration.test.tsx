@@ -1,4 +1,4 @@
-import { defineComponent, For, Fragment, h, onMount, onUnmount, Show } from '@pyreon/core'
+import { defineComponent, For, h, onMount, onUnmount, Show } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '../index'
 
