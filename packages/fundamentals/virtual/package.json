@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/virtual",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Pyreon adapter for TanStack Virtual",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/virtual#readme",
   "bugs": {
