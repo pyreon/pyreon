@@ -438,7 +438,7 @@ describe('inferSerializer', () => {
   })
 
   it('infers array serializer with repeat format', () => {
-    const { serialize, deserialize } = inferSerializer([] as string[], 'repeat')
+    const { serialize } = inferSerializer([] as string[], 'repeat')
     // repeat format uses internal separator
     expect(typeof serialize(['a'])).toBe('string')
   })

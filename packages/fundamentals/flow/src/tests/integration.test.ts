@@ -1,5 +1,5 @@
 import { effect } from '@pyreon/reactivity'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   getBezierPath,
   getEdgePath,
