@@ -186,7 +186,6 @@ const rocketComponent: RocketComponent = (options) => {
     // getters (from createLocalProvider) that read signals lazily.
     // Passing them through preserves reactivity without subscribing here.
     const localPseudo = localCtx?.pseudo
-    const propPseudo = pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS])
 
     const $rocketstateAccessor = () => {
       const rocketstate = _calculateStylingAttrs({
@@ -194,8 +193,11 @@ const rocketComponent: RocketComponent = (options) => {
         dimensions,
       })
 
-      // Pseudo state uses getter properties — they're evaluated lazily
-      // by .styles() inside runUntracked(), not here.
+      // Read pseudo props fresh each call — props may have reactive getters
+      // from _rp() wrapping. Reading inside the accessor (which runs in an
+      // effect) ensures changes to pseudo props like active={isDark()} are tracked.
+      const propPseudo = pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS])
+
       return {
         ...rocketstate,
         pseudo: { ...localPseudo, ...propPseudo },
