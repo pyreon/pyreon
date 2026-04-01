@@ -104,7 +104,7 @@ test.describe('Reactivity E2E', () => {
   test('batch updates — DOM updates once', async ({ page }) => {
     await setupPyreon(page)
 
-    const updateCount = await page.evaluate(() => {
+    await page.evaluate(() => {
       const { h, mount, signal, batch } = (window as any).__pyreon
       const app = document.getElementById('app')!
       app.innerHTML = ''
