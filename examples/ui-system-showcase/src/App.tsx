@@ -216,7 +216,6 @@ export function App() {
 
       {/* ── Hero (kinetic compose + intersection) ───────── */}
       <div
-        // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
         ref={(el: HTMLElement) => {
           heroRef = el
         }}

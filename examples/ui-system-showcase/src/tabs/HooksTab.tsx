@@ -105,7 +105,6 @@ function ElementSizeDemo() {
     <Card style={{ marginBottom: '16px' }}>
       <SectionTitle style={{ fontSize: '16px' }}>useElementSize</SectionTitle>
       <div
-        // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
         ref={(el: HTMLElement) => {
           boxRef = el
         }}
@@ -151,8 +150,7 @@ function ClickOutsideDemo() {
           open.value() && (
             <SlideDown appear show={() => true}>
               <div
-                // @ts-expect-error -- Pyreon supports callback refs at runtime but built types expect { current }
-                ref={(el: HTMLElement) => {
+                        ref={(el: HTMLElement) => {
                   dropdownRef = el
                 }}
                 style={{
