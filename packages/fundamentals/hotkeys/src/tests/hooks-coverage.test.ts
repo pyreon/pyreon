@@ -10,7 +10,6 @@ vi.mock('@pyreon/core', () => ({
 
 import {
   _resetHotkeys,
-  enableScope,
   getActiveScopes,
   getRegisteredHotkeys,
 } from '../registry'
