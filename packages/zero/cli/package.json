@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero-cli",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "CLI for Pyreon Zero — dev, build, preview",
   "license": "MIT",
   "author": "Vit Bokisch",
