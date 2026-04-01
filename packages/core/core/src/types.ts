@@ -1,8 +1,8 @@
 // ─── VNode ────────────────────────────────────────────────────────────────────
 
 // Reactive getter returning a child — wraps dynamic expressions in `() =>`
-export type VNodeChildAtom = VNode | VNode[] | string | number | boolean | null | undefined
-export type VNodeChild = VNodeChildAtom | (() => VNodeChildAtom)
+export type VNodeChildAtom = VNode | string | number | boolean | null | undefined
+export type VNodeChild = VNodeChildAtom | VNodeChildAtom[] | (() => VNodeChildAtom | VNodeChildAtom[])
 
 export interface VNode {
   /** Tag name, component function, or special symbol (Fragment) */
