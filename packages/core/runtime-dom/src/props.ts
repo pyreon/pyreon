@@ -321,5 +321,14 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
+  // Custom elements: set as property (element may not be upgraded yet,
+  // so `key in el` missed it). Properties set before upgrade are picked
+  // up when the element's constructor runs.
+  const tag = el.tagName
+  if (tag.includes('-')) {
+    ;(el as unknown as Record<string, unknown>)[key] = value
+    return
+  }
+
   el.setAttribute(key, String(value))
 }
