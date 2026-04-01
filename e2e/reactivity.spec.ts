@@ -105,7 +105,7 @@ test.describe('Reactivity E2E', () => {
     await setupPyreon(page)
 
     await page.evaluate(() => {
-      const { h, mount, signal, batch } = (window as any).__pyreon
+      const { h, mount, signal } = (window as any).__pyreon
       const app = document.getElementById('app')!
       app.innerHTML = ''
 
