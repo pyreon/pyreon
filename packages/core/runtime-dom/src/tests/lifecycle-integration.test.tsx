@@ -1,5 +1,5 @@
 import { defineComponent, For, h, onMount, onUnmount, Show } from '@pyreon/core'
-import { effect, signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
 import { mount } from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
