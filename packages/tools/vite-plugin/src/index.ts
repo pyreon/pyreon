@@ -153,6 +153,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       const jsxSource = compat ? COMPAT_JSX_SOURCE[compat] : '@pyreon/core'
 
       return {
+        // Use "bun" condition for workspace resolution — source .ts/.tsx files
+        // for HMR, fast refresh, and type-safe imports.
+        resolve: { conditions: ['bun'] },
         optimizeDeps: {
           exclude: optimizeDepsExclude,
         },
