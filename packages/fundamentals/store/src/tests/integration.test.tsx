@@ -1,4 +1,4 @@
-import { computed, effect, signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import { defineStore, resetAllStores } from '../index'
 
 afterEach(() => resetAllStores())
