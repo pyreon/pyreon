@@ -5,7 +5,7 @@
  * Todo app, form validation, tab component, nested context.
  */
 import type { VNodeChild } from '@pyreon/core'
-import { createContext, For, Fragment, h, onMount, onUnmount, provide, Show, useContext } from '@pyreon/core'
+import { createContext, For, Fragment, h, onMount, provide, Show, useContext } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '../index'
 
