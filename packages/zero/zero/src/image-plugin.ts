@@ -29,6 +29,46 @@ function warnSharpMissing() {
 //   import { Image } from "@pyreon/zero/image"
 //   <Image src="/hero.jpg" width={1920} height={1080} optimize />
 
+/**
+ * CDN provider — rewrites image URLs to CDN endpoints.
+ * Return the rewritten URL, or null to use local processing.
+ */
+export type ImageCdnProvider = (src: string, opts: {
+  width: number
+  quality: number
+  format: ImageFormat
+}) => string | null
+
+/** Built-in CDN providers. */
+export const cdnProviders = {
+  /** Cloudinary: `https://res.cloudinary.com/{cloud}/image/upload/...` */
+  cloudinary: (cloudName: string): ImageCdnProvider => (src, { width, quality, format }) =>
+    `https://res.cloudinary.com/${cloudName}/image/upload/w_${width},q_${quality},f_${format}/${src}`,
+
+  /** Imgix: `https://{domain}.imgix.net/...?w=...&q=...&fm=...` */
+  imgix: (domain: string): ImageCdnProvider => (src, { width, quality, format }) =>
+    `https://${domain}.imgix.net/${src}?w=${width}&q=${quality}&fm=${format}&auto=format`,
+
+  /** Vercel Image Optimization: `/_next/image?url=...&w=...&q=...` */
+  vercel: (): ImageCdnProvider => (src, { width, quality }) =>
+    `/_vercel/image?url=${encodeURIComponent(src)}&w=${width}&q=${quality}`,
+
+  /** Bunny CDN: `https://{pullZone}.b-cdn.net/...?width=...&quality=...` */
+  bunny: (pullZone: string): ImageCdnProvider => (src, { width, quality }) =>
+    `https://${pullZone}.b-cdn.net/${src}?width=${width}&quality=${quality}`,
+} as const
+
+/** Placeholder generation strategy. */
+export type PlaceholderStrategy = 'blur' | 'dominant-color' | 'none'
+
+/** SVG processing options for ?component imports. */
+export interface SvgOptions {
+  /** Replace fill/stroke with currentColor. Default: true */
+  currentColor?: boolean
+  /** Default size (width/height). */
+  defaultSize?: number
+}
+
 export interface ImagePluginConfig {
   /** Output directory for processed images. Default: "assets/img" */
   outDir?: string
@@ -40,8 +80,31 @@ export interface ImagePluginConfig {
   quality?: number
   /** Blur placeholder size in px. Default: 16 */
   placeholderSize?: number
+  /** Placeholder strategy. Default: "blur" */
+  placeholder?: PlaceholderStrategy
   /** File patterns to process. Default: /\.(jpe?g|png|webp|avif)$/i */
   include?: RegExp
+  /**
+   * CDN provider for URL rewriting. When set, images are NOT processed
+   * locally — URLs are rewritten to the CDN endpoint.
+   *
+   * @example
+   * ```ts
+   * imagePlugin({ cdn: cdnProviders.cloudinary('my-cloud') })
+   * imagePlugin({ cdn: cdnProviders.vercel() })
+   * ```
+   */
+  cdn?: ImageCdnProvider
+  /**
+   * SVG processing options. Enables `?component` import for inline SVGs.
+   *
+   * @example
+   * ```tsx
+   * import Logo from './logo.svg?component'
+   * <Logo width={24} class="text-primary" />
+   * ```
+   */
+  svg?: SvgOptions | boolean
 }
 
 export type ImageFormat = 'webp' | 'avif' | 'jpeg' | 'png'
@@ -102,8 +165,15 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
   const defaultFormats = config.formats ?? ['webp']
   const quality = config.quality ?? 80
   const placeholderSize = config.placeholderSize ?? 16
+  const placeholderStrategy = config.placeholder ?? 'blur'
   const outSubDir = config.outDir ?? 'assets/img'
   const include = config.include ?? IMAGE_EXT_RE
+  const cdn = config.cdn
+  const svgOpts: SvgOptions | false = config.svg === true
+    ? { currentColor: true }
+    : config.svg === false || config.svg === undefined
+      ? false
+      : config.svg
 
   let root = ''
   let outDir = ''
@@ -120,6 +190,10 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
     },
 
     async resolveId(id) {
+      // SVG as component: import Logo from './logo.svg?component'
+      if (svgOpts && id.includes('?component') && id.split('?')[0]!.endsWith('.svg')) {
+        return `\0virtual:zero-svg:${id}`
+      }
       // Handle ?optimize query on image imports
       if (id.includes('?optimize') && include.test(id.split('?')[0]!)) {
         return `\0virtual:zero-image:${id}`
@@ -128,10 +202,79 @@ export function imagePlugin(config: ImagePluginConfig = {}): Plugin {
     },
 
     async load(id) {
+      // SVG component loading
+      if (id.startsWith('\0virtual:zero-svg:')) {
+        const rawPath = id.replace('\0virtual:zero-svg:', '').split('?')[0] ?? id
+        const absPath = rawPath.startsWith('/') ? join(root, rawPath) : rawPath
+        if (!existsSync(absPath)) return null
+
+        let svg = await readFile(absPath, 'utf-8')
+
+        // Replace fill/stroke with currentColor
+        if (svgOpts && (svgOpts as SvgOptions).currentColor !== false) {
+          svg = svg
+            .replace(/fill="(?!none)[^"]*"/g, 'fill="currentColor"')
+            .replace(/stroke="(?!none)[^"]*"/g, 'stroke="currentColor"')
+        }
+
+        // Add default size from config
+        const defaultSize = svgOpts && (svgOpts as SvgOptions).defaultSize
+        if (defaultSize && !svg.includes('width=')) {
+          svg = svg.replace('<svg', `<svg width="${defaultSize}" height="${defaultSize}"`)
+        }
+
+        // Export as Pyreon component
+        return `
+import { h } from '@pyreon/core'
+const _svg = ${JSON.stringify(svg)}
+export default function SvgComponent(props) {
+  const el = h('span', {
+    ...props,
+    dangerouslySetInnerHTML: { __html: _svg },
+    style: [
+      'display:inline-flex;align-items:center;justify-content:center',
+      props.width ? 'width:' + props.width + 'px' : '',
+      props.height ? 'height:' + props.height + 'px' : '',
+      props.style || '',
+    ].filter(Boolean).join(';'),
+  })
+  return el
+}
+`
+      }
+
+      // Image optimization loading
       if (!id.startsWith('\0virtual:zero-image:')) return null
 
       const rawPath = id.replace('\0virtual:zero-image:', '').split('?')[0] ?? id
       const absPath = rawPath.startsWith('/') ? join(root, 'public', rawPath) : rawPath
+
+      // CDN mode — rewrite URLs, no local processing
+      if (cdn) {
+        const metadata = await getImageMetadata(absPath)
+        const sources = defaultWidths.map((w) => ({
+          src: cdn(rawPath, { width: w, quality, format: defaultFormats[0]! }) ?? rawPath,
+          width: w,
+          format: defaultFormats[0]! as string,
+        }))
+        const srcset = sources.map((s) => `${s.src} ${s.width}w`).join(', ')
+        const result: ProcessedImage = {
+          src: sources[sources.length - 1]?.src ?? rawPath,
+          srcset,
+          width: metadata.width,
+          height: metadata.height,
+          placeholder: placeholderStrategy === 'none' ? ''
+            : await generateBlurPlaceholder(absPath, placeholderSize),
+          formats: defaultFormats.map((fmt) => ({
+            type: `image/${fmt}`,
+            srcset: defaultWidths
+              .map((w) => `${cdn(rawPath, { width: w, quality, format: fmt }) ?? rawPath} ${w}w`)
+              .join(', '),
+          })),
+          sources,
+        }
+        return `export default ${JSON.stringify(result)}`
+      }
 
       if (!isBuild) {
         const result = await loadDevImage(absPath, rawPath, placeholderSize)
