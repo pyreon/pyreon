@@ -3,7 +3,6 @@ import {
   _resetRenderers,
   createDocument,
   Document,
-  Heading,
   isDocNode,
   Page,
   registerRenderer,
