@@ -49,6 +49,7 @@ export default defineConfig({
           items: [
             { text: 'Overview', link: '/docs/' },
             { text: 'Getting Started', link: '/docs/getting-started' },
+            { text: 'Reactivity Rules', link: '/docs/reactivity-rules' },
           ],
         },
         {
