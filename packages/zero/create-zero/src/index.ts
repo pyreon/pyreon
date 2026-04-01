@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { cp, readFile, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import * as p from '@clack/prompts'
@@ -297,49 +297,18 @@ async function scaffold(config: ProjectConfig) {
 
 // ─── File generators ────────────────────────────────────────────────────────
 
-// Resolve the correct version range for a @pyreon/* package
-function pyreonVersion(pkg: string): string {
-  // Core packages
-  const core = [
-    'core',
-    'reactivity',
-    'runtime-dom',
-    'runtime-server',
-    'server',
-    'head',
-    'router',
-    'vite-plugin',
-    'compiler',
-    'cli',
-    'mcp',
-  ]
-  if (core.some((c) => pkg === `@pyreon/${c}`)) return '^0.12.5'
-  // Zero framework packages
-  if (
-    pkg === '@pyreon/zero' ||
-    pkg === '@pyreon/meta' ||
-    pkg === '@pyreon/zero-cli' ||
-    pkg === '@pyreon/create-zero'
-  )
-    return '^0.12.5'
-  // Fundamentals
-  const fundamentals = [
-    'store',
-    'form',
-    'validation',
-    'query',
-    'table',
-    'virtual',
-    'i18n',
-    'feature',
-    'machine',
-    'permissions',
-    'flow',
-    'code',
-  ]
-  if (fundamentals.some((f) => pkg === `@pyreon/${f}`)) return '^0.12.5'
-  // UI system
-  return '^0.12.5'
+/**
+ * All @pyreon/* packages share the same version in the monorepo.
+ * Read from this package's own version — no manual updates needed.
+ * When we bump versions for release, create-zero automatically uses the new version.
+ */
+const _ownPkgJson = JSON.parse(
+  readFileSync(resolve(import.meta.dirname, '..', 'package.json'), 'utf-8'),
+)
+const PYREON_VERSION = `^${_ownPkgJson.version}`
+
+function pyreonVersion(_pkg: string): string {
+  return PYREON_VERSION
 }
 
 function generatePackageJson(config: ProjectConfig): string {
@@ -517,6 +486,11 @@ declare module 'virtual:zero/routes' {
 declare module 'virtual:zero/route-middleware' {
   import type { RouteMiddlewareEntry } from '@pyreon/zero'
   export const routeMiddleware: RouteMiddlewareEntry[]
+}
+
+declare module 'virtual:zero/api-routes' {
+  import type { ApiRouteEntry } from '@pyreon/zero/api-routes'
+  export const apiRoutes: ApiRouteEntry[]
 }
 `
 
