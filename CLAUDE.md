@@ -435,6 +435,7 @@ Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 Per-text-node independent `_bind()`: each text node gets its own `_bind()` call for fine-grained reactivity (instead of grouping all bindings).
 Pure static call detection: 40+ functions treated as pure (Math.*, JSON.*, Object.keys/values/entries, Array.isArray, etc.) — not wrapped in reactive getters.
 Spread props on root element: when a root element has `{...props}`, emit `_tpl()` + `_applyProps()` instead of falling back to `h()` calls.
+Reactive props inlining: the compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites. `const x = props.y ?? 'default'; return <div>{x}</div>` compiles to `_bind(() => { t.data = (props.y ?? 'default') })` — fully reactive. Transitive resolution supported: `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`. Only `const` is tracked (`let`/`var` are mutable, unsafe to inline). Non-JSX usage (e.g., `console.log(x)`) stays static (uses captured value).
 
 ### Context providing pattern
 
@@ -549,6 +550,8 @@ Rule of thumb:
 - **DOM children with signals** = reactive (compiler wraps)
 - **Context reads** = ReactiveContext returns accessor, read it in reactive scope
 - **Destructuring props** = captures once (static) — use `props.x` for reactivity
+- **`const` from props in JSX** = reactive (compiler inlines `props.x` back at use site) — `const x = props.y; return <div>{x}</div>` is now reactive
+- **`let`/`var` from props** = static (mutable variables are not inlined)
 
 ## Common Issues & Fixes
 

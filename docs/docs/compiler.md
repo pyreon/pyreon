@@ -710,6 +710,86 @@ export default function pyreonPlugin() {
 }
 ```
 
+## Reactive Props Inlining
+
+The compiler auto-detects when `const` variables are derived from `props.*` or `splitProps` results and inlines them at JSX use sites, making them automatically reactive.
+
+### The Problem
+
+In Pyreon, components run once. A plain variable assignment from props captures the value at setup time — it does not track future changes:
+
+```tsx
+// Before this feature — x was static:
+function Greeting(props) {
+  const x = props.name ?? 'World'
+  return <div>{x}</div>  // never updated when props.name changed
+}
+```
+
+### The Solution
+
+The compiler now traces `const` declarations back to their props origin and inlines the original expression at each JSX use site:
+
+```tsx
+// Input
+function Greeting(props) {
+  const x = props.name ?? 'World'
+  return <div>{x}</div>
+}
+
+// Compiler output (template mode):
+_tpl('<div></div>', (__root) => {
+  const __t0 = document.createTextNode('')
+  __root.appendChild(__t0)
+  const __d0 = _bind(() => { __t0.data = (props.name ?? 'World') })
+  return () => { __d0() }
+})
+```
+
+The variable `x` is replaced with its original expression `(props.name ?? 'World')` inside the `_bind()`, so it re-evaluates whenever `props.name` changes.
+
+### Transitive Resolution
+
+The compiler resolves chains of `const` assignments transitively:
+
+```tsx
+function Profile(props) {
+  const name = props.name
+  const greeting = name + '!'
+  const upper = greeting.toUpperCase()
+  return <div>{upper}</div>
+}
+
+// Compiler inlines upper as:
+// ((((props.name)) + '!').toUpperCase())
+// → fully reactive to props.name changes
+```
+
+### Rules
+
+| Condition | Inlined? | Reason |
+| --- | --- | --- |
+| `const x = props.y` | Yes | Direct props member access |
+| `const x = props.y ?? 'default'` | Yes | Expression containing props access |
+| `const [own, rest] = splitProps(props, ['y'])` then `const x = own.y` | Yes | splitProps results are tracked |
+| `const a = props.x; const b = a + 1` | Yes | Transitive resolution |
+| `let x = props.y` | No | `let` is mutable — unsafe to inline |
+| `var x = props.y` | No | `var` is mutable — unsafe to inline |
+| `console.log(x)` where `x` is prop-derived | No | Non-JSX usage stays static (captured value) |
+
+### Non-JSX Usage
+
+The inlining only applies to JSX text and attribute positions. Using a prop-derived variable in regular JavaScript code (e.g., `console.log(x)`, passing to a function) still uses the captured value. This is correct — those contexts are not reactive scopes:
+
+```tsx
+function MyComponent(props) {
+  const label = props.label ?? 'default'
+
+  console.log(label)          // ✓ Correct — logs the setup-time value
+  return <div>{label}</div>   // ✓ Reactive — compiler inlines props.label ?? 'default'
+}
+```
+
 ## Per-Text-Node Independent Bindings
 
 Each reactive text node in a template now gets its own independent `_bind()` call. Previously, multiple text bindings could share a single `_bind()`, meaning a change in one signal would re-evaluate all bindings in the group. Now each text node tracks only its own dependencies:

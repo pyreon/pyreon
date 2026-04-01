@@ -196,6 +196,7 @@ mount(<App />, document.getElementById("app")!)
 
 ### Props & Reactivity
 - `const { state } = props` → BREAKS REACTIVITY! Destructuring captures once. Use `props.state` for reactive access
+- `const x = props.y` in JSX is NOW REACTIVE — compiler inlines `props.y` at JSX use sites (text + attributes). Transitive: `const a = props.x; const b = a + 1` inlines as `((props.x) + 1)`. Only `const` tracked (`let`/`var` excluded). Non-JSX usage stays static.
 - For rest props with reactivity: `const [own, rest] = splitProps(props, ['state', 'size'])` — preserves getters
 - Component props with signal reads ARE reactive (compiler wraps with _rp): `<Button state={isActive() ? 'primary' : 'default'} />` updates without remount
 - Single JSX element props are stable: `<Wrapper icon={<Icon name={x()} />} />` — Icon created once, name updates reactively

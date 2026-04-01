@@ -138,7 +138,8 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   function wrap(expr: ts.Expression): void {
     const start = expr.getStart(sf)
     const end = expr.getEnd()
-    replacements.push({ start, end, text: `() => ${code.slice(start, end)}` })
+    const exprText = inlineVarsInText(code.slice(start, end))
+    replacements.push({ start, end, text: `() => ${exprText}` })
   }
 
   /** Try to hoist or wrap an expression, pushing a replacement if needed. */
@@ -253,6 +254,223 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     // Recurse into the expression body to find nested JSX elements
     // that should be compiled to _tpl() calls.
     ts.forEachChild(expr, walk)
+  }
+
+  // ── Prop-derived variable tracking ─────────────────────────────────────────
+  // Pre-pass: find variables derived from props/splitProps results inside
+  // component functions. These are inlined at JSX use sites so the compiler's
+  // existing wrapping makes them reactive.
+  //
+  // Example:
+  //   const align = props.alignX ?? 'left'
+  //   return <div class={align}>  ← inlined to: class={props.alignX ?? 'left'}
+  //                                 ← compiler wraps: class={() => props.alignX ?? 'left'}
+
+  /** Names that refer to the props object or splitProps results. */
+  const propsNames = new Set<string>()
+
+  /** Map of variable name → source text of the original expression. */
+  const propDerivedVars = new Map<string, string>()
+
+  /** Check if an expression reads from a tracked props-like object. */
+  function readsFromProps(node: ts.Node): boolean {
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      return propsNames.has(node.expression.text)
+    }
+    if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      return propsNames.has(node.expression.text)
+    }
+    // Check children recursively — e.g. props.x ?? 'default'
+    let found = false
+    ts.forEachChild(node, (child) => {
+      if (found) return
+      if (readsFromProps(child)) found = true
+    })
+    return found
+  }
+
+  /** Pre-pass: scan a function body for prop-derived variable declarations.
+   *  callbackDepth tracks nesting inside callback arguments (map, filter, etc.)
+   *  to avoid tracking variables declared inside callbacks as prop-derived. */
+  let _callbackDepth = 0
+  function scanForPropDerivedVars(node: ts.Node): void {
+    // Track callback nesting — don't track vars inside callbacks
+    if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node))) {
+      const parent = node.parent
+      if (parent && ts.isCallExpression(parent) && parent.arguments.includes(node as any)) {
+        _callbackDepth++
+        ts.forEachChild(node, scanForPropDerivedVars)
+        _callbackDepth--
+        return
+      }
+    }
+    // Track the function's first parameter as a props name.
+    // Only for COMPONENT functions — not callbacks like .map(item => <div>...)
+    // Heuristic: component functions are named declarations, const assignments,
+    // or export defaults — NOT inline arguments to calls like .map(), .filter().
+    if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node))
+      && node.parameters.length > 0) {
+
+      // Skip functions that are arguments to a call (map/filter callbacks)
+      const parent = node.parent
+      if (parent && ts.isCallExpression(parent) && parent.arguments.includes(node as any)) {
+        ts.forEachChild(node, scanForPropDerivedVars)
+        return
+      }
+
+      const firstParam = node.parameters[0]!
+      if (ts.isIdentifier(firstParam.name)) {
+        // Check if this function returns JSX (is a component)
+        let hasJSX = false
+        ts.forEachChild(node, function checkJSX(n) {
+          if (hasJSX) return
+          if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) {
+            hasJSX = true
+            return
+          }
+          ts.forEachChild(n, checkJSX)
+        })
+        if (hasJSX) propsNames.add(firstParam.name.text)
+      }
+    }
+
+    // Track splitProps results: const [own, rest] = splitProps(props, [...])
+    if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (ts.isArrayBindingPattern(decl.name) && decl.initializer
+          && ts.isCallExpression(decl.initializer)) {
+          const callee = decl.initializer.expression
+          if (ts.isIdentifier(callee) && callee.text === 'splitProps') {
+            for (const el of decl.name.elements) {
+              if (ts.isBindingElement(el) && ts.isIdentifier(el.name)) {
+                propsNames.add(el.name.text)
+              }
+            }
+          }
+        }
+
+        // Track: const x = props.y ?? z  OR  const x = own.y
+        // Skip let/var — mutable variables can be reassigned, unsafe to inline
+        // Skip declarations inside callbacks (map, filter, etc.)
+        if (!(node.declarationList.flags & ts.NodeFlags.Const)) continue
+        if (_callbackDepth > 0) continue
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          if (readsFromProps(decl.initializer)) {
+            const varName = decl.name.text
+            const exprText = code.slice(decl.initializer.getStart(sf), decl.initializer.getEnd())
+            propDerivedVars.set(varName, exprText)
+          }
+        }
+      }
+    }
+
+    ts.forEachChild(node, scanForPropDerivedVars)
+  }
+
+  // Run pre-pass
+  scanForPropDerivedVars(sf)
+
+  // Transitive resolution: if const b = a + 1 where a is prop-derived,
+  // then b is also prop-derived. Inline b → (a + 1) → ((props.x) + 1).
+  // Fixed-point iteration until no new variables are added.
+  let changed = true
+  while (changed) {
+    changed = false
+    sf.forEachChild(function scanTransitive(node) {
+      if (!ts.isVariableStatement(node)) { ts.forEachChild(node, scanTransitive); return }
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
+        const varName = decl.name.text
+        if (propDerivedVars.has(varName)) continue // already tracked
+        if (node.declarationList.flags & ts.NodeFlags.Let) continue // skip let
+        // Check if the initializer references any existing prop-derived var
+        let usesPropVar = false
+        ts.forEachChild(decl.initializer, function check(n) {
+          if (usesPropVar) return
+          if (ts.isIdentifier(n) && propDerivedVars.has(n.text)) {
+            const parent = n.parent
+            if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) return
+            usesPropVar = true
+          }
+          ts.forEachChild(n, check)
+        })
+        if (usesPropVar) {
+          const exprText = code.slice(decl.initializer.getStart(sf), decl.initializer.getEnd())
+          propDerivedVars.set(varName, exprText)
+          changed = true
+        }
+      }
+    })
+  }
+
+  // Resolve transitive inlining: if b's expr references a, replace a with its expr
+  for (const [varName, expr] of propDerivedVars) {
+    let resolved = expr
+    for (const [depName, depExpr] of propDerivedVars) {
+      if (depName === varName) continue
+      const re = new RegExp(`(?<![.\\w])${depName}(?![\\w:])`, 'g')
+      if (re.test(resolved)) {
+        resolved = resolved.replace(re, `(${depExpr})`)
+      }
+    }
+    if (resolved !== expr) propDerivedVars.set(varName, resolved)
+  }
+
+  /**
+   * Enhanced dynamic check — combines containsCall with props awareness.
+   * Returns true if an expression is reactive (contains signal calls,
+   * accesses props members, or references prop-derived variables).
+   */
+  /**
+   * Replace prop-derived variable names in a source text with their original expressions.
+   * Simple regex-based replacement — safe because variable names are identifiers.
+   */
+  function inlineVarsInText(text: string): string {
+    if (propDerivedVars.size === 0) return text
+    let result = text
+    for (const [varName, expr] of propDerivedVars) {
+      // Replace standalone variable references only.
+      // Must NOT match:
+      //   - property access: obj.varName (preceded by .)
+      //   - property name in object: { varName: ... } (followed by :)
+      //   - part of longer identifier: varNameExtra
+      // Lookbehind ensures not preceded by . or alphanumeric
+      // Lookahead ensures not followed by alphanumeric or :
+      const re = new RegExp(`(?<![.\\w])${varName}(?![\\w:])`, 'g')
+      result = result.replace(re, `(${expr})`)
+    }
+    return result
+  }
+
+  function isDynamic(node: ts.Node): boolean {
+    if (containsCall(node)) return true
+    return accessesProps(node)
+  }
+
+  /** Check if an expression accesses a tracked props object or a prop-derived variable. */
+  function accessesProps(node: ts.Node): boolean {
+    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+      if (propsNames.has(node.expression.text)) return true
+    }
+    if (ts.isIdentifier(node) && propDerivedVars.has(node.text)) {
+      const parent = node.parent
+      if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) return false
+      return true
+    }
+    let found = false
+    ts.forEachChild(node, (child) => {
+      if (found) return
+      if (ts.isArrowFunction(child) || ts.isFunctionExpression(child)) return
+      if (accessesProps(child)) found = true
+    })
+    return found
+  }
+
+  function shouldWrap(node: ts.Expression): boolean {
+    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
+    if (isStatic(node)) return false
+    if (ts.isCallExpression(node) && isPureStaticCall(node)) return false
+    return isDynamic(node)
   }
 
   function walk(node: ts.Node): void {
@@ -484,7 +702,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       if (ts.isArrowFunction(exprNode) || ts.isFunctionExpression(exprNode)) {
         return { expr: `(${sliceExpr(exprNode)})()`, isReactive: true }
       }
-      return { expr: sliceExpr(exprNode), isReactive: containsCall(exprNode) }
+      return { expr: sliceExpr(exprNode), isReactive: isDynamic(exprNode) }
     }
 
     /** Build a setter expression for an attribute. */
@@ -579,7 +797,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         const expr = sliceExpr(attr.expression)
         // Use runtime-dom's applyProps which handles class, style, events, etc.
         needsApplyPropsImport = true
-        if (containsCall(attr.expression)) {
+        if (isDynamic(attr.expression)) {
           reactiveBindExprs.push(`_applyProps(${varName}, ${expr})`)
         } else {
           bindLines.push(`_applyProps(${varName}, ${expr})`)
@@ -629,7 +847,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         // When r.name() changes, r.email()'s _bind doesn't re-run.
         needsBindImportGlobal = true
         const d = nextDisp()
-        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${inlineVarsInText(expr)} })`)
       }
       return needsPlaceholder ? '<!>' : ''
     }
@@ -753,7 +971,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     if (reactiveBindExprs.length > 0) {
       needsBindImportGlobal = true
       const combinedName = nextDisp()
-      const combinedBody = reactiveBindExprs.join('; ')
+      const combinedBody = reactiveBindExprs.map(inlineVarsInText).join('; ')
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
     }
 
@@ -997,20 +1215,6 @@ function isPureStaticCall(node: ts.CallExpression): boolean {
   if (!PURE_CALLS.has(name)) return false
   // Pure call with all static arguments → result is static
   return node.arguments.every((arg) => !ts.isSpreadElement(arg) && isStatic(arg))
-}
-
-function shouldWrap(node: ts.Expression): boolean {
-  // Already a function — user explicitly wrapped or it's a callback
-  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
-  // Static literal — no signals involved
-  if (isStatic(node)) return false
-  // Pure call with static args — result is constant
-  if (ts.isCallExpression(node) && isPureStaticCall(node)) return false
-  // Only wrap if the expression tree contains a call — signal reads are always
-  // function calls (e.g. `count()`, `name()`). Plain identifiers, object literals
-  // like `style={{ color: "red" }}`, array literals, and member accesses are
-  // left as-is to avoid unnecessary reactive wrappers.
-  return containsCall(node)
 }
 
 function containsCall(node: ts.Node): boolean {

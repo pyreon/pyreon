@@ -117,14 +117,36 @@ effect(() => {
 })
 ```
 
-## What Is NOT Reactive
+## Prop-Derived `const` Variables — Reactive (compiler-inlined)
 
-### Variables assigned from signals at setup time
+The compiler detects `const` variables derived from `props.*` or `splitProps` results and **inlines them back** at JSX use sites, making them reactive automatically:
 
 ```tsx
 function MyComponent(props) {
-  const name = props.name  // ✗ captured once — static
-  const value = count()    // ✗ captured once — static
+  const name = props.name ?? 'Anonymous'
+  const label = name + '!'  // transitive — derived from props-derived const
+
+  return <div>{label}</div>
+  // Compiler inlines to: _bind(() => { t.data = ((props.name ?? 'Anonymous') + '!') })
+  // ✓ Updates when props.name changes
+}
+```
+
+**Rules:**
+
+- Only `const` declarations are inlined (`let`/`var` are mutable, unsafe to inline)
+- Transitive resolution: `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`
+- Works with `splitProps` results: `const [own] = splitProps(props, ['x']); const v = own.x`
+- Non-JSX usage stays static: `console.log(name)` uses the captured value (correct behavior)
+
+## What Is NOT Reactive
+
+### `let`/`var` variables and signal reads at setup time
+
+```tsx
+function MyComponent(props) {
+  let name = props.name    // ✗ let — mutable, not inlined
+  const value = count()    // ✗ signal read captured once — static
 
   return <div>{name}</div> // never updates
 }
@@ -175,7 +197,8 @@ function MyComponent(props) {
 | `<div class={active() ? 'a' : 'b'} />` | ✓ | Compiler wraps attributes with calls |
 | `<Comp title={name()} />` | ✓ | Compiler wraps with `_rp()` |
 | `props.title` in JSX | ✓ | Getter property (from `_rp`) |
-| `const x = props.title` | ✗ | Captured once at setup |
+| `const x = props.title` in JSX | ✓ | Compiler inlines `props.title` at use site |
+| `let x = props.title` | ✗ | `let` not inlined (mutable) |
 | `const { title } = props` | ✗ | Destructured = static |
 | `effect(() => count())` | ✓ | Effect tracks signals |
 | `computed(() => a() + b())` | ✓ | Computed tracks signals |
@@ -217,7 +240,11 @@ function MyComponent(props) {
 <ProgressBar value={count()} max={100} />
 
 // The compiler actually fixes this — _rp(() => count()) makes it reactive.
-// But if you store it in a variable first:
-const current = count()  // ✗ static
+// But if you store a signal READ (not a props member) in a variable:
+const current = count()  // ✗ static (signal read, not props access)
 <ProgressBar value={current} max={100} />  // never updates
+
+// Note: const from PROPS is now reactive (compiler inlines):
+const current = props.value  // ✓ compiler inlines props.value at JSX use sites
+<ProgressBar value={current} max={100} />  // updates!
 ```

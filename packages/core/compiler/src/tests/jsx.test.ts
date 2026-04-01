@@ -1246,3 +1246,122 @@ describe('JSX transform — per-text-node bind', () => {
     expect(result).toContain('_bindText(c,')
   })
 })
+
+// ─── Reactive props auto-detection ──────────────────────────────────────────
+
+describe('JSX transform — reactive props detection', () => {
+  test('props.x in text child is reactive (wrapped in _bind)', () => {
+    const result = t('function Comp(props) { return <div>{props.name}</div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.name')
+  })
+
+  test('props.x in attribute is reactive (wrapped in _bind)', () => {
+    const result = t('function Comp(props) { return <div class={props.cls}></div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.cls')
+  })
+
+  test('prop-derived variable inlined in text child', () => {
+    const result = t('function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.name ?? "anon"')
+    // x should be inlined, not used directly
+    expect(result).not.toMatch(/__t\d+\.data = x\b/)
+  })
+
+  test('prop-derived variable inlined in attribute', () => {
+    const result = t('function Comp(props) { const align = props.alignX ?? "left"; return <div class={align}></div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.alignX ?? "left"')
+  })
+
+  test('splitProps results tracked as props-like', () => {
+    const result = t('function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('own.x ?? 5')
+  })
+
+  test('non-component function NOT tracked (no JSX)', () => {
+    const result = t('function helper(props) { const x = props.y; return x }')
+    expect(result).not.toContain('_bind')
+    expect(result).not.toContain('_tpl')
+  })
+
+  test('static values unchanged by props tracking', () => {
+    const result = t('function Comp(props) { return <div class="static">text</div> }')
+    expect(result).toContain('_tpl("<div class=\\"static\\">text</div>"')
+    expect(result).not.toContain('_bind')
+  })
+
+  test('signal calls still work alongside props detection', () => {
+    const result = t('function Comp(props) { return <div>{count()}</div> }')
+    expect(result).toContain('_bindText(count,')
+  })
+
+  test('arrow function component detected', () => {
+    const result = t('const Comp = (props) => <div>{props.x}</div>')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.x')
+  })
+})
+
+// ─── Transitive prop derivation ─────────────────────────────────────────────
+
+describe('JSX transform — transitive prop derivation', () => {
+  test('const b = a + 1 where a is prop-derived', () => {
+    const result = t('function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }')
+    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('props.x')
+    // b should be inlined transitively
+    expect(result).not.toMatch(/__t\d+\.data = b\b/)
+  })
+
+  test('deep chain: c = b * 2, b = a + 1, a = props.x', () => {
+    const result = t('function Comp(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }')
+    expect(result).toContain('props.x')
+    // Full chain inlined
+    expect(result).toContain('_bind')
+  })
+
+  test('non-prop-derived variable NOT inlined', () => {
+    const result = t('function Comp(props) { const x = 42; return <div>{x}</div> }')
+    // x = 42 is static, not prop-derived — should NOT be wrapped
+    expect(result).not.toContain('_bind')
+  })
+
+  test('let variables NOT tracked (mutable — can be reassigned)', () => {
+    const result = t('function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }')
+    // let is excluded — x is NOT inlined, set statically
+    expect(result).toContain('textContent = x')
+    expect(result).not.toContain('_bind')
+  })
+
+  test('mixed props and signals in same expression', () => {
+    const result = t('function Comp(props) { return <div class={`${props.base} ${count()}`}></div> }')
+    expect(result).toContain('_bind(() => {')
+  })
+
+  test('prop-derived used in non-JSX stays static', () => {
+    // The variable is still captured — only JSX usage is inlined
+    const result = t('function Comp(props) { const x = props.y; console.log(x); return <div>{x}</div> }')
+    // console.log(x) uses the captured value — compiler doesn't touch it
+    expect(result).toContain('console.log(x)')
+    // JSX usage is inlined
+    expect(result).toContain('props.y')
+    expect(result).toContain('_bind')
+  })
+
+  test('.map() callback params NOT treated as props', () => {
+    const result = t('function App(props) { return <div>{tabs.map((tab) => { const C = tab.component; return <div><C /></div> })}</div> }')
+    // tab is a callback param, not a component's props — should NOT be tracked
+    expect(result).not.toContain('(tab.component)')
+  })
+
+  test('prop read with ?? default used multiple times', () => {
+    const result = t('function Comp(props) { const x = props.a ?? "def"; return <div class={x}>{x}</div> }')
+    // Both uses should be inlined
+    const matches = result.match(/props\.a \?\? "def"/g)
+    expect(matches?.length).toBeGreaterThanOrEqual(2)
+  })
+})

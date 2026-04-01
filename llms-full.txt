@@ -15,7 +15,7 @@
 | @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, useIsActive, useTypedSearchParams, useTransition, useMiddlewareData, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
 | @pyreon/head | useHead, HeadProvider, renderWithHead | Document head |
 | @pyreon/server | createHandler, prerender, island, compileTemplate | SSR/SSG server |
-| @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode, per-text-node _bind, pure call detection, spread templates | Build tools |
+| @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode, per-text-node _bind, pure call detection, spread templates, reactive props inlining | Build tools |
 | @pyreon/cli | doctor, context | Developer CLI |
 | @pyreon/mcp | MCP server | AI tool integration |
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
@@ -732,6 +732,32 @@ export default defineConfig({
   ],
 })
 ```
+
+## Compiler — Reactive Props Inlining
+
+The compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites for automatic reactivity.
+
+```typescript
+// Input
+function Greeting(props) {
+  const x = props.name ?? 'World'
+  return <div>{x}</div>
+}
+
+// Compiler output — x inlined as (props.name ?? 'World') inside _bind():
+_tpl('<div></div>', (__root) => {
+  const __t0 = document.createTextNode('')
+  __root.appendChild(__t0)
+  const __d0 = _bind(() => { __t0.data = (props.name ?? 'World') })
+  return () => { __d0() }
+})
+```
+
+- Props member access (`props.x`, `own.y` from splitProps) detected as reactive source
+- Transitive: `const a = props.x; const b = a + 1` → `b` inlined as `((props.x) + 1)`
+- Only `const` tracked — `let`/`var` are mutable, excluded from inlining
+- Non-JSX usage stays static (`console.log(x)` uses captured value — correct)
+- Works with splitProps: `const [own] = splitProps(props, ['x']); const v = own.x` → `v` inlined
 
 ## React → Pyreon Migration Cheat Sheet
 
