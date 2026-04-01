@@ -127,7 +127,7 @@ effect(() => {
 ## Routing
 
 ```typescript
-import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute } from "@pyreon/router"
+import { createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useTypedSearchParams, useTransition, useMiddlewareData } from "@pyreon/router"
 
 const router = createRouter([
   { path: "/", component: Home },
@@ -275,19 +275,28 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 ## Zero (Full-Stack Framework)
 
 @pyreon/zero — full-stack meta-framework built on Pyreon + Vite:
+- Client-safe main entry: `@pyreon/zero` = client components only, `@pyreon/zero/server` = server-only
 - File-system routing (src/routes/) with layouts, error boundaries, loading states, 404 pages
 - SSR + SSG + ISR rendering modes
 - API routes (src/routes/api/) with typed handlers
 - Image optimization — responsive srcset, blur placeholders, WebP/AVIF, lazy loading
 - Favicon generation — single source SVG/PNG → ICO, Apple touch, manifest, dark mode SVG
-- Meta component — declarative OG, Twitter Cards, JSON-LD, hreflang, reactive title
+- Locale-aware favicons — `faviconPlugin({ locales: { de: { source: "./icon-de.svg" } } })`
+- OG image generation — `ogImagePlugin({ templates, locales })`
+- Reactive favicon switching — dual light/dark PNG/ICO with theme-synced media attribute swap
+- Meta component — declarative OG (og:image:width/height, og:video, og:audio), noIndex, ogTemplate, favicon prop
 - I18n routing — locale detection (Accept-Language + cookie), prefix strategies, useLocale()
 - Font optimization — Google Fonts, local fonts, font-display, fallback metrics
 - Theme — dark/light toggle with FOUC prevention script
 - Middleware composition — compose(), shared context, CORS, cache, compression, rate limiting
+- CSP middleware — `cspMiddleware({ directives })` with `useNonce()` for inline scripts
+- Env validation — `validateEnv({ PORT: 3000, DEBUG: false, API_KEY: String })`, `publicEnv()`
+- Request logging — `loggerMiddleware()`
+- AI integration — `aiPlugin()` for llms.txt, JSON-LD inference, AI plugin manifest
+- `useRequestLocals()` — bridge middleware locals into component tree
 - SEO — sitemap.xml, robots.txt, JSON-LD helpers
 - Dev error overlay with stack traces
-- Adapters — Node, Bun, static export
+- Adapters — Node, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
 - Layouts use `<RouterView />` (not props.children)
 
 ## Key Ecosystem Patterns
@@ -344,6 +353,22 @@ const { data } = useSSE({ queryKey: ['events'], url: '/api/events' })
 // Active route detection
 import { useIsActive } from '@pyreon/router'
 const isAdmin = useIsActive('/admin')  // reactive boolean
+
+// Typed search params with auto-coercion
+import { useTypedSearchParams } from '@pyreon/router'
+const params = useTypedSearchParams({ page: 'number', q: 'string' })
+params.page()  // number
+
+// Route transition state
+import { useTransition } from '@pyreon/router'
+const { isTransitioning } = useTransition()
+
+// View Transitions API — auto-enabled, opt out per route:
+{ path: '/modal', component: Modal, meta: { viewTransition: false } }
+
+// Middleware chain with data passing
+const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx.request) }
+// In component: const data = useMiddlewareData<{ user: User }>()
 ```
 
 ## Documentation

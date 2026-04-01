@@ -1070,6 +1070,211 @@ expect(handler.calls[0].params).toEqual({ id: '123' })
 | `createTestApiServer(routes)`       | Test API routes via `server.request()`    |
 | `createMockHandler(config)`         | Mock handler that records calls           |
 
+## Client-Safe Entry Points
+
+`@pyreon/zero` is split into client-safe and server-only entry points:
+
+- **`@pyreon/zero`** — Client-safe exports only: components (`Image`, `Link`, `Script`, `ThemeToggle`), theme system, middleware configuration, SEO helpers, font/image plugins, adapters
+- **`@pyreon/zero/server`** — Server-only exports: `createServer`, `createSSRHandler`, env validation, request locals, CSP nonce generation
+
+Importing server-only APIs from the main `@pyreon/zero` entry gives clear error messages:
+
+```ts
+// This works (client-safe):
+import { Image, Link, theme } from '@pyreon/zero'
+
+// This works (server-only):
+import { createServer, validateEnv } from '@pyreon/zero/server'
+
+// This throws a helpful error at import time:
+// import { createServer } from '@pyreon/zero'
+// Error: "createServer is server-only. Import from '@pyreon/zero/server' instead."
+```
+
+## Deployment Adapters
+
+In addition to the Node, Bun, and static adapters, Zero now supports platform-specific deployment:
+
+```ts
+import { vercelAdapter } from '@pyreon/zero/adapter-vercel'
+import { cloudflareAdapter } from '@pyreon/zero/adapter-cloudflare'
+import { netlifyAdapter } from '@pyreon/zero/adapter-netlify'
+
+defineConfig({
+  adapter: vercelAdapter(),
+})
+```
+
+| Adapter      | Description                                              |
+| ------------ | -------------------------------------------------------- |
+| `node`       | Standard Node.js HTTP server                             |
+| `bun`        | Optimized for Bun's HTTP server                          |
+| `static`     | Static HTML/CSS/JS output (for SSG/SPA)                  |
+| `vercel`     | Vercel serverless functions with edge runtime support     |
+| `cloudflare` | Cloudflare Pages with Workers runtime                    |
+| `netlify`    | Netlify Functions with streaming response support        |
+
+## CSP Middleware
+
+Content Security Policy middleware with nonce support for inline scripts:
+
+```ts
+import { cspMiddleware } from '@pyreon/zero/server'
+
+cspMiddleware({
+  directives: {
+    'default-src': ["'self'"],
+    'script-src': ["'self'", "'nonce'"], // nonce auto-injected
+    'style-src': ["'self'", "'unsafe-inline'"],
+    'img-src': ["'self'", 'data:', 'https:'],
+  },
+})
+```
+
+Use `useNonce()` in components to get the per-request nonce for inline scripts:
+
+```tsx
+import { useNonce } from '@pyreon/zero/server'
+
+function InlineScript() {
+  const nonce = useNonce()
+  return <script nonce={nonce}>console.log('safe')</script>
+}
+```
+
+## Environment Validation
+
+Type-safe environment variable validation with automatic coercion:
+
+```ts
+import { validateEnv, schema, publicEnv } from '@pyreon/zero/server'
+
+// Validate and coerce env vars at startup:
+const env = validateEnv({
+  PORT: 3000,           // number, defaults to 3000
+  DEBUG: false,         // boolean, defaults to false
+  API_KEY: String,      // required string (no default)
+  DATABASE_URL: String, // required string
+})
+
+// Custom parser:
+const env2 = validateEnv({
+  ALLOWED_ORIGINS: schema((v) => v.split(',')),
+})
+
+// Client-safe subset (only PUBLIC_ prefixed vars):
+const pub = publicEnv()
+// pub.PUBLIC_API_URL — available in client bundles
+```
+
+## Request Logging
+
+Structured request logging middleware:
+
+```ts
+import { loggerMiddleware } from '@pyreon/zero/server'
+
+loggerMiddleware() // logs method, path, status, duration
+```
+
+## AI Integration
+
+The `aiPlugin()` Vite plugin generates AI-friendly metadata:
+
+```ts
+import { aiPlugin } from '@pyreon/zero/server'
+
+// In vite.config.ts plugins array:
+aiPlugin()
+```
+
+This generates:
+- `llms.txt` — concise framework reference for LLM context
+- JSON-LD inference metadata in HTML output
+- AI plugin manifest at `/.well-known/ai-plugin.json`
+
+## useRequestLocals
+
+Bridge middleware locals into the component tree:
+
+```tsx
+import { useRequestLocals } from '@pyreon/zero/server'
+
+// In middleware: ctx.locals.user = authenticatedUser
+// In component:
+function Dashboard() {
+  const locals = useRequestLocals<{ user: User }>()
+  return <h1>Welcome, {locals.user.name}</h1>
+}
+```
+
+## Locale-Aware Favicons
+
+Generate per-locale favicons from source SVG/PNG files:
+
+```ts
+import { faviconPlugin } from '@pyreon/zero'
+
+faviconPlugin({
+  source: './icon.svg',
+  locales: {
+    de: { source: './icon-de.svg' },
+    ja: { source: './icon-ja.svg' },
+  },
+})
+```
+
+## OG Image Generation
+
+Build-time Open Graph image generation:
+
+```ts
+import { ogImagePlugin } from '@pyreon/zero'
+
+ogImagePlugin({
+  templates: {
+    default: './og-template.tsx',
+  },
+  locales: {
+    en: { title: 'My App' },
+    de: { title: 'Meine App' },
+  },
+})
+```
+
+## Reactive Favicon
+
+Theme-aware favicon switching with dual light/dark variants:
+
+```tsx
+// Dual PNG/ICO favicons that swap based on OS theme:
+// light-mode users see icon-light.png, dark-mode users see icon-dark.png
+// Implemented via media attribute on <link> elements:
+// <link rel="icon" href="/icon-light.png" media="(prefers-color-scheme: light)">
+// <link rel="icon" href="/icon-dark.png" media="(prefers-color-scheme: dark)">
+```
+
+## Enhanced Meta
+
+The `Meta` component now supports additional Open Graph and SEO properties:
+
+```tsx
+import { Meta } from '@pyreon/zero'
+
+<Meta
+  title="My Page"
+  description="Page description"
+  ogImage={{ url: '/og.png', width: 1200, height: 630 }}
+  ogVideo={{ url: '/video.mp4', type: 'video/mp4' }}
+  ogAudio={{ url: '/audio.mp3', type: 'audio/mpeg' }}
+  noIndex={true}
+  ogTemplate="default"
+  favicon="/custom-favicon.svg"
+/>
+```
+
+New properties: `og:image:width`, `og:image:height`, `og:video`, `og:audio`, `noIndex`, `ogTemplate`, `favicon`.
+
 ## Exports Summary
 
 | Export                   | Signature                                        | Description                                              |
@@ -1135,6 +1340,10 @@ expect(handler.calls[0].params).toEqual({ id: '123' })
 | `@pyreon/zero/rate-limit`   | `rateLimitMiddleware`                                                       |
 | `@pyreon/zero/compression`  | `compressionMiddleware`, `compressResponse`                                 |
 | `@pyreon/zero/testing`      | Test helpers for middleware and API routes                                  |
+| `@pyreon/zero/server`       | Server-only: `createServer`, `validateEnv`, `useNonce`, `useRequestLocals` |
+| `@pyreon/zero/adapter-vercel` | Vercel serverless deployment adapter                                      |
+| `@pyreon/zero/adapter-cloudflare` | Cloudflare Pages deployment adapter                                  |
+| `@pyreon/zero/adapter-netlify` | Netlify Functions deployment adapter                                    |
 
 ## Type Exports
 

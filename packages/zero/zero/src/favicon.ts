@@ -71,6 +71,23 @@ export interface FaviconPluginConfig {
    * ```
    */
   locales?: Record<string, FaviconLocaleConfig>
+  /**
+   * Dev mode favicon — shown only during development to distinguish
+   * dev tabs from production. Can be:
+   * - A path to a separate icon file
+   * - `true` to auto-generate a dev badge (grayscale + "DEV" overlay)
+   *
+   * @example
+   * ```ts
+   * faviconPlugin({
+   *   source: "./icon.svg",
+   *   devSource: "./icon-dev.svg",     // custom dev icon
+   *   // OR
+   *   devSource: true,                 // auto-generate grayscale badge
+   * })
+   * ```
+   */
+  devSource?: string | boolean
 }
 
 interface FaviconSize {
@@ -122,36 +139,59 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     // Dev server: serve generated favicons on-the-fly
     configureServer(server) {
       const sourcePath = join(root, config.source)
+      const darkPath = config.darkSource ? join(root, config.darkSource) : null
+      const devSourcePath = typeof config.devSource === 'string'
+        ? join(root, config.devSource)
+        : null
+      const autoDevBadge = config.devSource === true
       const devCache = new Map<string, Uint8Array>()
+
+      /** Resolve source path for a request — handles dark variants and dev badge. */
+      function resolveSourceForDev(baseName: string, defaultSource: string): string {
+        // Dark variant: favicon-dark-32x32.png → use darkSource
+        if (darkPath && baseName.includes('-dark-')) return darkPath
+        // Light variant: favicon-light-32x32.png → use source
+        if (baseName.includes('-light-')) return defaultSource
+        return defaultSource
+      }
 
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? ''
 
-        // Resolve locale-specific source: /{locale}/favicon.svg → locale source
+        // Resolve locale-specific source
         const localeSource = resolveLocaleSource(url, config, root)
-
-        // Serve source as favicon.svg in dev
         const svgUrl = localeSource ? localeSource.url : url
         const svgPath = localeSource ? localeSource.sourcePath : sourcePath
         const isSvgSource = localeSource ? localeSource.source.endsWith('.svg') : config.source.endsWith('.svg')
 
+        // Serve favicon.svg — in dev, add dev badge overlay if configured
         if (svgUrl.endsWith('/favicon.svg') && isSvgSource) {
           try {
-            const content = await readFile(svgPath, 'utf-8')
+            let content = await readFile(svgPath, 'utf-8')
+            if (autoDevBadge) content = addDevBadgeToSvg(content)
+            else if (devSourcePath && existsSync(devSourcePath)) {
+              content = await readFile(devSourcePath, 'utf-8')
+            }
             res.setHeader('Content-Type', 'image/svg+xml')
             res.end(content)
             return
           } catch { /* fall through */ }
         }
 
-        // Serve generated PNGs on-demand (supports /{locale}/favicon-32x32.png)
+        // Serve generated PNGs on-demand — supports dark variants + dev badge
         const baseName = svgUrl.split('/').pop() ?? ''
-        const sizeMatch = SIZES.find((s) => s.name === baseName)
+        // Strip light-/dark- prefix for size matching
+        const cleanName = baseName.replace(/-?(light|dark)-/, '-')
+        const sizeMatch = SIZES.find((s) => s.name === cleanName || baseName === s.name)
         if (sizeMatch) {
-          const cacheKey = `${svgPath}:${sizeMatch.size}`
+          const resolvedSource = resolveSourceForDev(baseName, svgPath)
+          const cacheKey = `${resolvedSource}:${sizeMatch.size}:${autoDevBadge}`
           let png = devCache.get(cacheKey)
           if (!png) {
-            const result = await resizeToPng(svgPath, sizeMatch.size)
+            let result = await resizeToPng(resolvedSource, sizeMatch.size)
+            if (result && autoDevBadge) {
+              result = await addDevBadgeToPng(result, sizeMatch.size)
+            }
             if (result) {
               png = result
               devCache.set(cacheKey, result)
@@ -210,12 +250,14 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     // Inject favicon <link> tags into HTML
     transformIndexHtml() {
       const isSvg = config.source.endsWith('.svg')
+      const hasDark = !!config.darkSource
       const tags: Array<{
         tag: string
         attrs: Record<string, string>
         injectTo: 'head'
       }> = []
 
+      // SVG favicon (with prefers-color-scheme media query when dark variant exists)
       if (isSvg) {
         tags.push({
           tag: 'link',
@@ -224,23 +266,28 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         })
       }
 
-      tags.push(
-        {
-          tag: 'link',
-          attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
-          injectTo: 'head',
-        },
-        {
-          tag: 'link',
-          attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
-          injectTo: 'head',
-        },
-        {
-          tag: 'link',
-          attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
-          injectTo: 'head',
-        },
-      )
+      if (hasDark) {
+        // Dual-variant PNG/ICO favicons — light active, dark hidden via media="not all".
+        // The themeScript and initTheme() swap these based on the resolved theme.
+        const lightAttrs = { 'data-favicon-theme': 'light' }
+        const darkAttrs = { 'data-favicon-theme': 'dark', media: 'not all' }
+
+        tags.push(
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-light-32x32.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-dark-32x32.png', ...darkAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-light-16x16.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-dark-16x16.png', ...darkAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-light.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-dark.png', ...darkAttrs }, injectTo: 'head' },
+        )
+      } else {
+        // Single-variant (no dark mode)
+        tags.push(
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' }, injectTo: 'head' },
+        )
+      }
 
       if (generateManifest) {
         tags.push({
@@ -371,14 +418,43 @@ async function generateFaviconSet(
   }
 
   // Generate PNG sizes via sharp
-  for (const { size, name } of SIZES) {
-    const pngBuffer = await resizeToPng(sourcePath, size)
-    if (pngBuffer) {
-      this.emitFile({
-        type: 'asset',
-        fileName: `${prefix}${name}`,
-        source: pngBuffer,
-      })
+  if (darkSource) {
+    // Dual-variant: generate light + dark PNGs with prefixed names
+    const darkPath = join(rootDir, darkSource)
+    const darkExists = existsSync(darkPath)
+
+    for (const { size, name } of SIZES) {
+      // Light variant
+      const lightName = name.replace(/^(favicon-)/, '$1light-').replace(/^(apple-touch-icon)/, '$1-light').replace(/^(icon-)/, '$1light-')
+      const lightPng = await resizeToPng(sourcePath, size)
+      if (lightPng) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: lightPng })
+      }
+
+      // Dark variant
+      if (darkExists) {
+        const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
+        const darkPng = await resizeToPng(darkPath, size)
+        if (darkPng) {
+          this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: darkPng })
+        }
+      }
+    }
+
+    // Also generate standard names (used by manifest + external references)
+    for (const { size, name } of SIZES) {
+      const pngBuffer = await resizeToPng(sourcePath, size)
+      if (pngBuffer) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+      }
+    }
+  } else {
+    // Single-variant
+    for (const { size, name } of SIZES) {
+      const pngBuffer = await resizeToPng(sourcePath, size)
+      if (pngBuffer) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+      }
     }
   }
 
@@ -518,4 +594,58 @@ export function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
   }
 
   return Buffer.concat([header, dirEntries, ...dataBuffers])
+}
+
+// ─── Dev badge helpers ──────────────────────────────────────────────────────
+
+/**
+ * Add a "DEV" badge overlay to an SVG string.
+ * Adds a small colored circle with "DEV" text in the bottom-right corner.
+ */
+function addDevBadgeToSvg(svg: string): string {
+  const viewBoxMatch = svg.match(/viewBox="([^"]*)"/)
+  const viewBox = viewBoxMatch?.[1] ?? '0 0 32 32'
+  const [, , w, h] = viewBox.split(' ').map(Number)
+  const size = Math.min(w ?? 32, h ?? 32)
+  const r = size * 0.28
+  const cx = (w ?? 32) - r
+  const cy = (h ?? 32) - r
+  const fontSize = r * 0.85
+
+  const badge = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ef4444" stroke="white" stroke-width="${size * 0.03}"/>` +
+    `<text x="${cx}" y="${cy}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">D</text>`
+
+  // Insert badge before closing </svg>
+  return svg.replace(/<\/svg>\s*$/, `${badge}</svg>`)
+}
+
+/**
+ * Add a "DEV" badge to a PNG buffer via sharp composite.
+ * Composites a red circle with "D" in the bottom-right corner.
+ */
+async function addDevBadgeToPng(pngBuffer: Uint8Array, size: number): Promise<Uint8Array> {
+  try {
+    const sharp = await import('sharp').then((m) => m.default ?? m)
+    const r = Math.round(size * 0.28)
+    const d = r * 2
+    const fontSize = Math.round(r * 0.85)
+
+    const badgeSvg = `<svg width="${d}" height="${d}" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="${r}" cy="${r}" r="${r}" fill="#ef4444"/>
+      <text x="${r}" y="${r}" font-size="${fontSize}" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">D</text>
+    </svg>`
+
+    const badgePng = await sharp(Buffer.from(badgeSvg)).png().toBuffer()
+
+    return await (sharp(Buffer.from(pngBuffer)) as any)
+      .composite([{
+        input: badgePng,
+        gravity: 'southeast',
+      }])
+      .png()
+      .toBuffer()
+  } catch {
+    // sharp not available — return original
+    return pngBuffer
+  }
 }

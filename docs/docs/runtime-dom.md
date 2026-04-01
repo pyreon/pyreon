@@ -1363,6 +1363,53 @@ function StaggeredList() {
 }
 ```
 
+## SVG and MathML Namespace Support
+
+Pyreon automatically detects SVG and MathML elements and creates them with the correct namespace URI via `document.createElementNS()`. There are 67 recognized namespace tags:
+
+```tsx
+// SVG elements are created with the SVG namespace automatically:
+<svg viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="40" fill="red" />
+  <path d="M10 80 Q 95 10 180 80" stroke="black" fill="transparent" />
+</svg>
+
+// MathML elements use the MathML namespace:
+<math>
+  <mrow>
+    <mi>x</mi>
+    <mo>=</mo>
+    <mfrac><mn>1</mn><mn>2</mn></mfrac>
+  </mrow>
+</math>
+```
+
+No configuration is needed -- the runtime checks the tag name against a built-in set and selects the appropriate namespace. This includes all standard SVG elements (`svg`, `circle`, `path`, `rect`, `text`, `g`, `defs`, `use`, `clipPath`, `mask`, `filter`, `linearGradient`, `radialGradient`, etc.) and MathML elements (`math`, `mrow`, `mi`, `mo`, `mn`, `mfrac`, `msqrt`, `mtext`, etc.).
+
+## Custom Elements
+
+When a DOM element tag contains a hyphen (e.g., `my-component`, `sl-button`), Pyreon treats it as a custom element and sets props as **properties** rather than attributes:
+
+```tsx
+// Props are set as properties on custom elements:
+<my-slider value={50} min={0} max={100} onChange={handler} />
+// Equivalent to: el.value = 50; el.min = 0; el.max = 100;
+
+// Regular elements still use attributes:
+<div class="box" data-id="123" />
+// Equivalent to: el.setAttribute("class", "box"); el.setAttribute("data-id", "123");
+```
+
+This matches the Web Components convention where custom element properties reflect richer types than string attributes.
+
+## Transition Timeout
+
+CSS transitions have a 5-second safety timeout. If `transitionend` or `animationend` events never fire (due to missing CSS, display:none, or other edge cases), the transition completes automatically after 5 seconds. This prevents elements from being stuck in a transitioning state indefinitely.
+
+## Duplicate Key Production Guard
+
+In production builds, duplicate `key` values in keyed lists emit a one-time console warning. Previously, duplicate key warnings were only shown in development mode. The production guard helps catch data issues that cause incorrect list reconciliation in deployed applications.
+
 ## Performance: Direct DOM vs Virtual DOM
 
 | Aspect                | Pyreon (Direct DOM)                  | Virtual DOM Frameworks           |

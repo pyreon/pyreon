@@ -1093,6 +1093,40 @@ const isExactAdmin = useIsActive('/admin', true)  // exact only
       'Returns a reactive boolean. Segment-aware prefix matching: /admin matches /admin/users but not /admin-panel. Pass exact=true for exact-only matching.',
   },
 
+  'router/useTypedSearchParams': {
+    signature:
+      "useTypedSearchParams<T>(schema: T): TypedSearchParams<T>",
+    example: `import { useTypedSearchParams } from '@pyreon/router'
+
+const params = useTypedSearchParams({ page: 'number', q: 'string', active: 'boolean' })
+params.page()    // number (auto-coerced)
+params.q()       // string
+params.set({ page: 2 })  // updates URL`,
+    notes:
+      'Type-safe search params with auto-coercion from URL strings. Supports "string", "number", and "boolean" types.',
+  },
+
+  'router/useTransition': {
+    signature: 'useTransition(): { isTransitioning: () => boolean }',
+    example: `import { useTransition } from '@pyreon/router'
+
+const { isTransitioning } = useTransition()
+// true during navigation (guards + loaders), false when mounted`,
+    notes:
+      'Reactive signal for route transition state. Useful for progress bars and loading indicators.',
+  },
+
+  'router/useMiddlewareData': {
+    signature: 'useMiddlewareData<T>(): T',
+    example: `import { useMiddlewareData } from '@pyreon/router'
+
+// After middleware sets ctx.data.user:
+const data = useMiddlewareData<{ user: User }>()
+// data.user is available in the component`,
+    notes:
+      'Reads data set by RouteMiddleware in the middleware chain. Middleware sets ctx.data properties, components read them.',
+  },
+
   'storybook/renderToCanvas': {
     signature: 'renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void',
     example: `// .storybook/main.ts:

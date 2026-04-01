@@ -10,12 +10,12 @@
 |---|---|---|
 | @pyreon/reactivity | signal, computed, effect, onCleanup, batch, createStore, createResource, untrack | Reactive primitives |
 | @pyreon/core | h, Fragment, For, Show, Switch, Match, Suspense, ErrorBoundary, lazy, Dynamic, Portal, onMount, onUnmount, onUpdate, createContext, useContext, provide, createRef, cx, splitProps, mergeProps, createUniqueId, TargetedEvent, ExtractProps, HigherOrderComponent | Component model |
-| @pyreon/runtime-dom | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive | DOM renderer |
-| @pyreon/runtime-server | renderToString, renderToStream, runWithRequestContext | SSR renderer |
-| @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, useIsActive, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
+| @pyreon/runtime-dom | mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace (67 tags), custom elements | DOM renderer |
+| @pyreon/runtime-server | renderToString, renderToStream, runWithRequestContext, Suspense 30s timeout, XSS-safe templates, For key markers | SSR renderer |
+| @pyreon/router | createRouter, RouterProvider, RouterView, RouterLink, useRouter, useRoute, useSearchParams, useBlocker, useLoaderData, useIsActive, useTypedSearchParams, useTransition, useMiddlewareData, onBeforeRouteLeave, onBeforeRouteUpdate | Routing |
 | @pyreon/head | useHead, HeadProvider, renderWithHead | Document head |
 | @pyreon/server | createHandler, prerender, island, compileTemplate | SSR/SSG server |
-| @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode | Build tools |
+| @pyreon/compiler | transformJSX, detectReactPatterns, migrateReactCode, per-text-node _bind, pure call detection, spread templates | Build tools |
 | @pyreon/cli | doctor, context | Developer CLI |
 | @pyreon/mcp | MCP server | AI tool integration |
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
@@ -514,6 +514,76 @@ const Posts = () => {
 type UserParams = ExtractParams<"/user/:id">  // { id: string }
 type PostParams = ExtractParams<"/blog/:slug/comment/:commentId">  // { slug: string; commentId: string }
 const path = buildPath("/user/:id", { id: "42" })  // "/user/42"
+```
+
+### Typed Search Params
+```typescript
+import { useTypedSearchParams } from '@pyreon/router'
+
+const params = useTypedSearchParams({ page: 'number', q: 'string', active: 'boolean' })
+params.page()    // number (auto-coerced from URL string)
+params.q()       // string
+params.active()  // boolean
+params.set({ page: 2, q: 'hello' })  // updates URL
+```
+
+### Route Transitions
+```typescript
+import { useTransition } from '@pyreon/router'
+
+const { isTransitioning } = useTransition()
+// true during navigation (guards + loaders), false when route component mounted
+```
+
+### View Transitions API
+```typescript
+// Auto-enabled — route changes wrapped in document.startViewTransition()
+// Opt out per route:
+{ path: '/modal', component: Modal, meta: { viewTransition: false } }
+
+// Style with CSS pseudo-elements:
+// ::view-transition-old(root) { animation: fade-out 200ms ease-in }
+// ::view-transition-new(root) { animation: fade-in 300ms ease-out }
+```
+
+### Hash Scrolling
+```typescript
+// Navigating to /docs#installation auto-scrolls to element with id="installation"
+router.push('/docs#installation')
+```
+
+### Route Error Boundaries
+```typescript
+// errorComponent catches render errors (not just loader errors):
+{
+  path: '/dashboard',
+  component: Dashboard,
+  errorComponent: (props) => <div>Error: {props.error.message} <button onClick={props.reset}>Retry</button></div>,
+}
+```
+
+### Middleware Chain
+```typescript
+import type { RouteMiddleware } from '@pyreon/router'
+
+const auth: RouteMiddleware = async (ctx) => {
+  ctx.data.user = await getUser(ctx.request)
+  if (!ctx.data.user) return '/login'
+}
+
+// In routes:
+{ path: '/admin', component: Admin, middleware: [auth] }
+
+// In components:
+import { useMiddlewareData } from '@pyreon/router'
+const data = useMiddlewareData<{ user: User }>()
+```
+
+### Typed Route Names
+```typescript
+type Names = 'home' | 'user' | 'settings'
+const router = createRouter<Names>({ routes: [...] })
+router.push({ name: 'user', params: { id: '42' } })  // typed — only valid names
 ```
 
 ## @pyreon/head — Complete API

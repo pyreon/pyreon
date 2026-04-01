@@ -21,9 +21,18 @@ bun add @pyreon/zero
 - **Image optimization** — Build-time processing via `?optimize` imports (WebP/AVIF, blur placeholders)
 - **SEO** — Sitemap, robots.txt, JSON-LD helpers (Vite plugin + dev middleware)
 - **Middleware** — `cacheMiddleware()`, `securityHeaders()`, `corsMiddleware()`, `rateLimitMiddleware()`, `compressionMiddleware()`
-- **Adapters** — Node.js, Bun, static
+- **Adapters** — Node.js, Bun, static, Vercel, Cloudflare Pages, Netlify Functions
 - **Testing** — `createTestContext()`, `testMiddleware()`, `createTestApiServer()`, `createMockHandler()`
 - **Dev overlay** — Styled error overlay with source-mapped stack traces for SSR errors
+- **CSP middleware** — `cspMiddleware({ directives })` with `useNonce()` for inline scripts
+- **Env validation** — `validateEnv()` with type coercion, `schema()` for custom parsers, `publicEnv()`
+- **Request logging** — `loggerMiddleware()` with structured output
+- **AI integration** — `aiPlugin()` for llms.txt, JSON-LD inference, AI plugin manifest
+- **useRequestLocals()** — Bridge middleware locals into components
+- **Locale-aware favicons** — Per-locale favicon generation from source SVG/PNG
+- **OG image generation** — Build-time Open Graph image rendering
+- **Reactive favicon** — Theme-synced light/dark favicon switching
+- **Client-safe entry** — `@pyreon/zero` = client-safe, `@pyreon/zero/server` = server-only
 
 ## Usage
 
@@ -41,7 +50,7 @@ export default {
 
 | Export                      | Description                                           |
 | --------------------------- | ----------------------------------------------------- |
-| `@pyreon/zero`              | Vite plugin, config, adapters, components, middleware |
+| `@pyreon/zero`              | Client-safe: components, middleware, adapters, theme, SEO, fonts |
 | `@pyreon/zero/client`       | Client-side entry (`startClient`)                     |
 | `@pyreon/zero/config`       | `defineConfig`, `resolveConfig`                       |
 | `@pyreon/zero/image`        | `<Image>` component                                   |
@@ -58,6 +67,10 @@ export default {
 | `@pyreon/zero/rate-limit`   | Rate limiting middleware                              |
 | `@pyreon/zero/compression`  | Compression middleware                                |
 | `@pyreon/zero/testing`      | Test utilities for middleware and API routes          |
+| `@pyreon/zero/server`       | Server-only: `createServer`, `validateEnv`, `useNonce`, `useRequestLocals` |
+| `@pyreon/zero/adapter-vercel` | Vercel serverless deployment adapter               |
+| `@pyreon/zero/adapter-cloudflare` | Cloudflare Pages deployment adapter           |
+| `@pyreon/zero/adapter-netlify` | Netlify Functions deployment adapter              |
 
 ## License
 

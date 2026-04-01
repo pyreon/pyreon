@@ -90,7 +90,9 @@ const Component: PyreonElement = (props) => {
   // if not single element, calculate values
   // --------------------------------------------------------
   const isSimpleElement = !own.beforeContent && !own.afterContent
-  const CHILDREN = own.children ?? own.content ?? own.label
+  // Getter — preserves reactivity of own.content (which may be _rp() wrapped).
+  // Reading own.content via ?? at setup would capture the value once.
+  const getChildren = () => own.children ?? own.content ?? own.label
 
   const isInline = isInlineElement(own.tag)
   const SUB_TAG = isInline ? 'span' : undefined
@@ -173,7 +175,7 @@ const Component: PyreonElement = (props) => {
       )}
 
       {isSimpleElement ? (
-        render(CHILDREN)
+        render(getChildren())
       ) : (
         <Content
           tag={SUB_TAG}
@@ -185,7 +187,7 @@ const Component: PyreonElement = (props) => {
           alignY={contentAlignY}
           equalCols={own.equalCols}
         >
-          {CHILDREN}
+          {getChildren()}
         </Content>
       )}
 

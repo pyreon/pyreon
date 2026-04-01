@@ -313,7 +313,7 @@ function pyreonVersion(pkg: string): string {
     'cli',
     'mcp',
   ]
-  if (core.some((c) => pkg === `@pyreon/${c}`)) return '^0.7.11'
+  if (core.some((c) => pkg === `@pyreon/${c}`)) return '^0.12.5'
   // Zero framework packages
   if (
     pkg === '@pyreon/zero' ||
@@ -321,7 +321,7 @@ function pyreonVersion(pkg: string): string {
     pkg === '@pyreon/zero-cli' ||
     pkg === '@pyreon/create-zero'
   )
-    return '^0.4.1'
+    return '^0.12.5'
   // Fundamentals
   const fundamentals = [
     'store',
@@ -337,9 +337,9 @@ function pyreonVersion(pkg: string): string {
     'flow',
     'code',
   ]
-  if (fundamentals.some((f) => pkg === `@pyreon/${f}`)) return '^0.10.0'
+  if (fundamentals.some((f) => pkg === `@pyreon/${f}`)) return '^0.12.5'
   // UI system
-  return '^0.4.1'
+  return '^0.12.5'
 }
 
 function generatePackageJson(config: ProjectConfig): string {
@@ -403,8 +403,8 @@ function generatePackageJson(config: ProjectConfig): string {
   const devDeps: Record<string, string> = {
     '@pyreon/vite-plugin': pyreonVersion('@pyreon/vite-plugin'),
     '@pyreon/zero-cli': pyreonVersion('@pyreon/zero-cli'),
-    typescript: '^5.9.3',
-    vite: '^7.0.0',
+    typescript: '^6.0.2',
+    vite: '^8.0.3',
   }
 
   if (config.aiToolchain) {
@@ -444,7 +444,7 @@ function generateViteConfig(config: ProjectConfig): string {
   }
 
   return `import pyreon from '@pyreon/vite-plugin'
-import zero from '@pyreon/zero'
+import zero from '@pyreon/zero/server'
 import { fontPlugin } from '@pyreon/zero/font'
 import { seoPlugin } from '@pyreon/zero/seo'
 
@@ -478,7 +478,7 @@ function generateEntryServer(config: ProjectConfig): string {
   const imports = [
     `import { routes } from 'virtual:zero/routes'`,
     `import { routeMiddleware } from 'virtual:zero/route-middleware'`,
-    `import { createServer } from '@pyreon/zero'`,
+    `import { createServer } from '@pyreon/zero/server'`,
     `import {\n  cacheMiddleware,\n  securityHeaders,\n  varyEncoding,\n} from '@pyreon/zero/cache'`,
   ]
 
