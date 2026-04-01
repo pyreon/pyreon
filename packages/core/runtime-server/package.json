@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/runtime-server",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "description": "SSR/SSG renderer for Pyreon — streaming HTML + static generation",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-server#readme",
   "bugs": {
