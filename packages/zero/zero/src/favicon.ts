@@ -303,6 +303,19 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         injectTo: 'head',
       })
 
+      // Auto-inject favicon swap script when dark variant exists.
+      // This runs in the blocking <head> before any render — no flash.
+      // Reads theme from localStorage or OS preference, then swaps
+      // data-favicon-theme media attributes.
+      if (hasDark) {
+        tags.push({
+          tag: 'script',
+          attrs: {},
+          injectTo: 'head',
+          children: `(function(){try{var t=localStorage.getItem("zero-theme");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.querySelectorAll("[data-favicon-theme]").forEach(function(l){l.media=l.dataset.faviconTheme===r?"":"not all"})}catch(e){}})()`,
+        } as any)
+      }
+
       return tags
     },
 
