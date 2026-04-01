@@ -933,6 +933,39 @@ function isStatic(node: ts.Expression): boolean {
     node.kind === ts.SyntaxKind.NullKeyword ||
     node.kind === ts.SyntaxKind.UndefinedKeyword
   )
+  // Note: object/array literals are NOT static — they need runtime application
+  // (e.g., style={{ color: "red" }} requires Object.assign at runtime).
+}
+
+/** Known pure global functions that don't read signals. */
+const PURE_CALLS = new Set([
+  'Math.max', 'Math.min', 'Math.abs', 'Math.floor', 'Math.ceil', 'Math.round',
+  'Math.pow', 'Math.sqrt', 'Math.random', 'Math.trunc', 'Math.sign',
+  'Number.parseInt', 'Number.parseFloat', 'Number.isNaN', 'Number.isFinite',
+  'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+  'String.fromCharCode', 'String.fromCodePoint',
+  'Object.keys', 'Object.values', 'Object.entries', 'Object.assign',
+  'Object.freeze', 'Object.create',
+  'Array.from', 'Array.isArray', 'Array.of',
+  'JSON.stringify', 'JSON.parse',
+  'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  'Date.now',
+])
+
+/** Check if a call expression calls a known pure function with static args. */
+function isPureStaticCall(node: ts.CallExpression): boolean {
+  const callee = node.expression
+  let name = ''
+
+  if (ts.isIdentifier(callee)) {
+    name = callee.text
+  } else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+    name = `${callee.expression.text}.${callee.name.text}`
+  }
+
+  if (!PURE_CALLS.has(name)) return false
+  // Pure call with all static arguments → result is static
+  return node.arguments.every((arg) => !ts.isSpreadElement(arg) && isStatic(arg))
 }
 
 function shouldWrap(node: ts.Expression): boolean {
@@ -940,6 +973,8 @@ function shouldWrap(node: ts.Expression): boolean {
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
   // Static literal — no signals involved
   if (isStatic(node)) return false
+  // Pure call with static args — result is constant
+  if (ts.isCallExpression(node) && isPureStaticCall(node)) return false
   // Only wrap if the expression tree contains a call — signal reads are always
   // function calls (e.g. `count()`, `name()`). Plain identifiers, object literals
   // like `style={{ color: "red" }}`, array literals, and member accesses are
@@ -948,7 +983,11 @@ function shouldWrap(node: ts.Expression): boolean {
 }
 
 function containsCall(node: ts.Node): boolean {
-  if (ts.isCallExpression(node)) return true
+  if (ts.isCallExpression(node)) {
+    // Skip pure calls with static args
+    if (isPureStaticCall(node as ts.CallExpression)) return false
+    return true
+  }
   if (ts.isTaggedTemplateExpression(node)) return true
   // Don't recurse into nested functions — they're self-contained
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false

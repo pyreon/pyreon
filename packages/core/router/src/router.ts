@@ -227,14 +227,43 @@ function matchSegments(current: string, pattern: string, exact: boolean): boolea
   return ps.every((seg, i) => seg.startsWith(':') || seg === cs[i])
 }
 
+/** Schema entry for typed search params. */
+export type SearchParamSchema = {
+  [key: string]: 'string' | 'number' | 'boolean' | string
+}
+
+/** Infer the typed result from a search param schema. */
+type InferSearchParams<T extends SearchParamSchema> = {
+  [K in keyof T]: T[K] extends 'number' ? number
+    : T[K] extends 'boolean' ? boolean
+    : string
+}
+
+/**
+ * Read and write URL search params reactively.
+ *
+ * @example Basic (untyped)
+ * ```ts
+ * const [params, setParams] = useSearchParams({ page: "1" })
+ * params().page // "1"
+ * setParams({ page: "2" }) // updates URL
+ * ```
+ *
+ * @example Typed with schema
+ * ```ts
+ * const [params, setParams] = useSearchParams({
+ *   page: 'number',
+ *   sort: 'string',
+ *   desc: 'boolean',
+ * })
+ * params().page  // number (auto-coerced)
+ * params().desc  // boolean
+ * ```
+ */
 export function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
 ): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {
-  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
-  if (!router)
-    throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
-    )
+  const router = _getRouter()
   const get = (): T => {
     const query = router.currentRoute().query
     if (!defaults) return query as T
@@ -246,6 +275,77 @@ export function useSearchParams<T extends Record<string, string>>(
     return router.replace(path)
   }
   return [get, set]
+}
+
+/**
+ * Typed search params with auto-coercion.
+ *
+ * Schema values define the type: `'string'`, `'number'`, or `'boolean'`.
+ * Query string values are automatically coerced to the declared type.
+ *
+ * @example
+ * ```ts
+ * const [params, setParams] = useTypedSearchParams({
+ *   page: 'number',
+ *   sort: 'string',
+ *   desc: 'boolean',
+ * })
+ * params().page  // number (coerced from "3" → 3)
+ * params().desc  // boolean (coerced from "true" → true)
+ * setParams({ page: 2 }) // updates URL with ?page=2
+ * ```
+ */
+export function useTypedSearchParams<T extends SearchParamSchema>(
+  schema: T,
+): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<void>] {
+  const router = _getRouter()
+  const get = (): InferSearchParams<T> => {
+    const query = router.currentRoute().query
+    const result: Record<string, unknown> = {}
+    for (const [key, type] of Object.entries(schema)) {
+      const raw = query[key]
+      if (type === 'number') result[key] = raw !== undefined ? Number(raw) : 0
+      else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
+      else result[key] = raw ?? ''
+    }
+    return result as InferSearchParams<T>
+  }
+  const set = (updates: Partial<InferSearchParams<T>>): Promise<void> => {
+    const current = get()
+    const merged: Record<string, string> = {}
+    for (const [k, v] of Object.entries({ ...current, ...updates })) {
+      merged[k] = String(v)
+    }
+    const path = router.currentRoute().path + stringifyQuery(merged)
+    return router.replace(path)
+  }
+  return [get, set]
+}
+
+function _getRouter(): RouterInstance {
+  const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
+  if (!router)
+    throw new Error(
+      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+    )
+  return router
+}
+
+/**
+ * Returns true while a navigation is in progress (guards + loaders running).
+ * Use this to show loading indicators during route transitions.
+ *
+ * @example
+ * ```tsx
+ * const isNavigating = useTransition()
+ * <Show when={isNavigating}>
+ *   <LoadingBar />
+ * </Show>
+ * ```
+ */
+export function useTransition(): () => boolean {
+  const router = _getRouter()
+  return () => router._loadingSignal() > 0
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
