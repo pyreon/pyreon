@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/form",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "Signal-based form management for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/form#readme",
   "bugs": {

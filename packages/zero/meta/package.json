@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/meta",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "Pyreon Meta — barrel package re-exporting the full Pyreon fundamentals ecosystem",
   "license": "MIT",
   "author": "Vit Bokisch",
