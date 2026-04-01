@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/store",
-  "version": "0.12.7",
+  "version": "0.12.8",
   "description": "Global state management for Pyreon — Pinia-inspired composition stores",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/store#readme",
   "bugs": {
