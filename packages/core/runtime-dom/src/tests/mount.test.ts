@@ -3210,3 +3210,70 @@ describe('mount — error paths', () => {
     spy.mockRestore()
   })
 })
+
+// ─── SVG namespace ──────────────────────────────────────────────────────────
+
+describe('mount — SVG namespace', () => {
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+
+  test('svg element gets SVG namespace', () => {
+    const el = container()
+    mount(h('svg', null), el)
+    const svg = el.firstElementChild!
+    expect(svg.namespaceURI).toBe(SVG_NS)
+  })
+
+  test('nested element inside svg inherits SVG namespace', () => {
+    const el = container()
+    // Use null props to avoid happy-dom SVG property setter issues
+    mount(h('svg', null, h('circle', null)), el)
+    const svg = el.firstElementChild!
+    const circle = svg.firstElementChild!
+    expect(svg.namespaceURI).toBe(SVG_NS)
+    expect(circle.namespaceURI).toBe(SVG_NS)
+    expect(circle.tagName.toLowerCase()).toBe('circle')
+  })
+
+  test('deeply nested SVG elements inherit namespace', () => {
+    const el = container()
+    mount(
+      h('svg', null, h('g', null, h('rect', null))),
+      el,
+    )
+    const svg = el.firstElementChild!
+    const g = svg.firstElementChild!
+    const rect = g.firstElementChild!
+    expect(g.namespaceURI).toBe(SVG_NS)
+    expect(rect.namespaceURI).toBe(SVG_NS)
+  })
+
+  test('elements outside svg do not get SVG namespace', () => {
+    const el = container()
+    mount(
+      h(Fragment, null, h('svg', null, h('circle', null)), h('div', null, 'text')),
+      el,
+    )
+    const svg = el.querySelector('svg')!
+    const circle = svg.firstElementChild!
+    const div = el.querySelector('div')!
+    expect(svg.namespaceURI).toBe(SVG_NS)
+    expect(circle.namespaceURI).toBe(SVG_NS)
+    expect(div.namespaceURI).not.toBe(SVG_NS)
+  })
+
+  test('svg with multiple children all get SVG namespace', () => {
+    const el = container()
+    mount(
+      h('svg', null,
+        h('circle', null),
+        h('rect', null),
+        h('path', null),
+      ),
+      el,
+    )
+    const svg = el.firstElementChild!
+    for (const child of Array.from(svg.children)) {
+      expect(child.namespaceURI).toBe(SVG_NS)
+    }
+  })
+})

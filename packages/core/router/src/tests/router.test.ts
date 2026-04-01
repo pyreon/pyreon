@@ -15,10 +15,14 @@ import {
   useBlocker,
   useIsActive,
   useLoaderData,
+  useMiddlewareData,
   useRoute,
   useRouter,
   useSearchParams,
+  useTransition,
+  useTypedSearchParams,
 } from '../index'
+import type { RouteMiddleware } from '../index'
 import {
   buildNameIndex,
   buildPath,
@@ -4192,5 +4196,284 @@ describe('useIsActive', () => {
     setupRouter('/user')
     const isActive = useIsActive('/user/:id', true)
     expect(isActive()).toBe(false)
+  })
+})
+
+// ─── useTypedSearchParams ────────────────────────────────────────────────────
+
+describe('useTypedSearchParams', () => {
+  const tspRoutes: RouteRecord[] = [
+    { path: '/', component: Home },
+    { path: '/search', component: About },
+  ]
+
+  it('coerces number params from query string', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?page=3' })
+    const ctr = document.createElement('div')
+    let result: { page: number } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ page: 'number' })
+      result = params() as { page: number }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.page).toBe(3)
+    expect(typeof result!.page).toBe('number')
+    router.destroy()
+  })
+
+  it('coerces boolean params from query string', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?active=true' })
+    const ctr = document.createElement('div')
+    let result: { active: boolean } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ active: 'boolean' })
+      result = params() as { active: boolean }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.active).toBe(true)
+    expect(typeof result!.active).toBe('boolean')
+    router.destroy()
+  })
+
+  it('coerces multiple typed params together', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?page=3&active=true&sort=name' })
+    const ctr = document.createElement('div')
+    let result: { page: number; active: boolean; sort: string } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ page: 'number', active: 'boolean', sort: 'string' })
+      result = params() as { page: number; active: boolean; sort: string }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.page).toBe(3)
+    expect(result!.active).toBe(true)
+    expect(result!.sort).toBe('name')
+    router.destroy()
+  })
+
+  it('defaults number to 0 when missing from URL', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search' })
+    const ctr = document.createElement('div')
+    let result: { page: number } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ page: 'number' })
+      result = params() as { page: number }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.page).toBe(0)
+    router.destroy()
+  })
+
+  it('defaults boolean to false when missing from URL', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search' })
+    const ctr = document.createElement('div')
+    let result: { active: boolean } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ active: 'boolean' })
+      result = params() as { active: boolean }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.active).toBe(false)
+    router.destroy()
+  })
+
+  it('defaults string to empty string when missing from URL', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search' })
+    const ctr = document.createElement('div')
+    let result: { sort: string } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ sort: 'string' })
+      result = params() as { sort: string }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.sort).toBe('')
+    router.destroy()
+  })
+
+  it('setTypedSearchParams updates query and navigates', async () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?page=1' })
+    const ctr = document.createElement('div')
+    let setter: ((updates: Partial<{ page: number }>) => Promise<void>) | undefined
+    const TestComp = () => {
+      const [, setParams] = useTypedSearchParams({ page: 'number' })
+      setter = setParams as (updates: Partial<{ page: number }>) => Promise<void>
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    await setter!({ page: 5 })
+    expect(router.currentRoute().query.page).toBe('5')
+    router.destroy()
+  })
+})
+
+// ─── useTransition ──────────────────────────────────────────────────────────
+
+describe('useTransition', () => {
+  const trRoutes: RouteRecord[] = [
+    { path: '/', component: Home },
+    { path: '/slow', component: About, loader: async () => {
+      await new Promise<void>((r) => setTimeout(r, 50))
+      return 'data'
+    }},
+  ]
+
+  it('returns a function that returns boolean', () => {
+    const router = createRouter({ routes: trRoutes, url: '/' })
+    const ctr = document.createElement('div')
+    let isNavigating: (() => boolean) | undefined
+    const TestComp = () => {
+      isNavigating = useTransition()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(typeof isNavigating).toBe('function')
+    expect(typeof isNavigating!()).toBe('boolean')
+    router.destroy()
+  })
+
+  it('is false when not navigating', () => {
+    const router = createRouter({ routes: trRoutes, url: '/' })
+    const ctr = document.createElement('div')
+    let isNavigating: (() => boolean) | undefined
+    const TestComp = () => {
+      isNavigating = useTransition()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(isNavigating!()).toBe(false)
+    router.destroy()
+  })
+})
+
+// ─── Middleware chain ───────────────────────────────────────────────────────
+
+describe('route middleware', () => {
+  it('middleware runs and accumulates data on navigation', async () => {
+    const calls: string[] = []
+    const authMiddleware: RouteMiddleware = (ctx) => {
+      ctx.data.user = 'admin'
+      calls.push('auth')
+    }
+    const logMiddleware: RouteMiddleware = (ctx) => {
+      calls.push(`log:${ctx.data.user}`)
+    }
+
+    const mwRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/protected', component: About, middleware: [authMiddleware, logMiddleware] },
+    ]
+
+    const router = createRouter({ routes: mwRoutes, url: '/' })
+    await router.push('/protected')
+    expect(calls).toEqual(['auth', 'log:admin'])
+    router.destroy()
+  })
+
+  it('middleware returning false cancels navigation', async () => {
+    const blockMiddleware: RouteMiddleware = () => false
+
+    const mwRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/blocked', component: About, middleware: blockMiddleware },
+    ]
+
+    const router = createRouter({ routes: mwRoutes, url: '/' })
+    await router.push('/blocked')
+    // Navigation should be cancelled — stay on /
+    expect(router.currentRoute().path).toBe('/')
+    router.destroy()
+  })
+
+  it('middleware returning string redirects', async () => {
+    const redirectMiddleware: RouteMiddleware = () => '/about'
+
+    const mwRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+      { path: '/old', component: Home, middleware: redirectMiddleware },
+    ]
+
+    const router = createRouter({ routes: mwRoutes, url: '/' })
+    await router.push('/old')
+    expect(router.currentRoute().path).toBe('/about')
+    router.destroy()
+  })
+
+  it('async middleware runs before navigation commits', async () => {
+    const order: string[] = []
+    const asyncMiddleware: RouteMiddleware = async (ctx) => {
+      await new Promise<void>((r) => setTimeout(r, 10))
+      order.push('middleware')
+      ctx.data.loaded = true
+    }
+
+    const mwRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/dash', component: About, middleware: asyncMiddleware },
+    ]
+
+    const router = createRouter({ routes: mwRoutes, url: '/' })
+    await router.push('/dash')
+    expect(order).toEqual(['middleware'])
+    expect(router.currentRoute().path).toBe('/dash')
+    router.destroy()
+  })
+})
+
+// ─── View Transitions API ───────────────────────────────────────────────────
+
+describe('View Transitions API', () => {
+  it('calls document.startViewTransition on navigation when available', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => { cb() })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+
+    const router = createRouter({ routes: vtRoutes, url: '/' })
+    await router.push('/about')
+    expect(startViewTransition).toHaveBeenCalled()
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('does NOT call startViewTransition when meta.viewTransition is false', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => { cb() })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/no-vt', component: About, meta: { viewTransition: false } },
+    ]
+
+    const router = createRouter({ routes: vtRoutes, url: '/' })
+    await router.push('/no-vt')
+    expect(startViewTransition).not.toHaveBeenCalled()
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('navigates normally when startViewTransition is not available', async () => {
+    // Ensure startViewTransition is not on document
+    delete (document as any).startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+
+    const router = createRouter({ routes: vtRoutes, url: '/' })
+    await router.push('/about')
+    expect(router.currentRoute().path).toBe('/about')
+    router.destroy()
   })
 })
