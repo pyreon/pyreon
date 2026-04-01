@@ -10,9 +10,8 @@
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
-import { _tpl, _bindText, _bindDirect, _applyProps } from '../template'
-import { mountChild } from '../mount'
-import { mount } from '../index'
+import { _tpl, _bindText, _bindDirect } from '../template'
+import { _applyProps, mount, mountChild } from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
