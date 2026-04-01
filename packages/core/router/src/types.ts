@@ -52,6 +52,8 @@ export interface RouteMeta {
   requiresAuth?: boolean
   /** Scroll behavior for this route */
   scrollBehavior?: 'top' | 'restore' | 'none'
+  /** Set to false to disable View Transitions API for this route. Default: true */
+  viewTransition?: boolean
 }
 
 // ─── Resolved route ───────────────────────────────────────────────────────────
@@ -109,6 +111,31 @@ export type NavigationGuard = (
 ) => NavigationGuardResult | Promise<NavigationGuardResult>
 
 export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void
+
+// ─── Route middleware ────────────────────────────────────────────────────────
+
+/**
+ * Context object passed through the middleware chain.
+ * Middleware can read/write arbitrary data on `ctx.data`.
+ */
+export interface RouteMiddlewareContext {
+  /** The route being navigated to. */
+  to: ResolvedRoute
+  /** The route being navigated from. */
+  from: ResolvedRoute
+  /** Shared data — middleware can accumulate state here for downstream middleware/components. */
+  data: Record<string, unknown>
+}
+
+/**
+ * Route middleware function. Called before guards.
+ * - Return nothing/undefined to continue
+ * - Return `false` to cancel navigation
+ * - Return a string to redirect
+ */
+export type RouteMiddleware = (
+  ctx: RouteMiddlewareContext,
+) => void | false | string | Promise<void | false | string>
 
 // ─── Navigation blockers ──────────────────────────────────────────────────────
 
@@ -178,6 +205,8 @@ export interface RouteRecord<TPath extends string = string> {
   staleWhileRevalidate?: boolean
   /** Component rendered when this route's loader throws an error */
   errorComponent?: ComponentFn
+  /** Per-route middleware — runs before guards, can accumulate context data. */
+  middleware?: RouteMiddleware | RouteMiddleware[]
 }
 
 // ─── Router options ───────────────────────────────────────────────────────────

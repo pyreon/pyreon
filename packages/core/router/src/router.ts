@@ -12,6 +12,8 @@ import {
   type NavigationGuard,
   type NavigationGuardResult,
   type ResolvedRoute,
+  type RouteMiddleware,
+  type RouteMiddlewareContext,
   type RouteRecord,
   type Router,
   type RouterInstance,
@@ -348,6 +350,27 @@ export function useTransition(): () => boolean {
   return () => router._loadingSignal() > 0
 }
 
+/**
+ * Read data accumulated by route middleware.
+ *
+ * @example
+ * ```ts
+ * // In middleware:
+ * const authMiddleware: RouteMiddleware = async (ctx) => {
+ *   ctx.data.user = await getUser(ctx.to)
+ *   if (!ctx.data.user) return '/login'
+ * }
+ *
+ * // In component:
+ * const data = useMiddlewareData()
+ * const user = () => data().user as User
+ * ```
+ */
+export function useMiddlewareData(): () => Record<string, unknown> {
+  const router = _getRouter()
+  return () => (router.currentRoute() as any)._middlewareData ?? {}
+}
+
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
 export function createRouter(options: RouterOptions | RouteRecord[]): Router {
@@ -589,17 +612,34 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     from: ResolvedRoute,
   ): void {
     scrollManager.save(from.path)
-    currentPath.set(path)
-    syncBrowserUrl(path, replace)
 
-    if (_isBrowser && to.meta.title) {
-      document.title = to.meta.title
+    const doCommit = () => {
+      currentPath.set(path)
+      syncBrowserUrl(path, replace)
+
+      if (_isBrowser && to.meta.title) {
+        document.title = to.meta.title
+      }
+
+      for (const record of router._loaderData.keys()) {
+        if (!to.matched.includes(record)) {
+          router._loaderData.delete(record)
+        }
+      }
     }
 
-    for (const record of router._loaderData.keys()) {
-      if (!to.matched.includes(record)) {
-        router._loaderData.delete(record)
-      }
+    // Use View Transitions API when available and not explicitly disabled.
+    // Route meta can opt out: meta: { viewTransition: false }
+    const useVT = _isBrowser
+      && to.meta.viewTransition !== false
+      && typeof (document as any).startViewTransition === 'function'
+
+    if (useVT) {
+      (document as any).startViewTransition(() => {
+        doCommit()
+      })
+    } else {
+      doCommit()
     }
 
     for (const hook of afterHooks) {
@@ -627,6 +667,30 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       if (gen !== _navGen || blocked) return 'cancel'
     }
     return 'continue'
+  }
+
+  /** Run per-route middleware chain. Middleware from all matched routes execute in order. */
+  async function runMiddleware(
+    to: ResolvedRoute,
+    from: ResolvedRoute,
+    gen: number,
+  ): Promise<{ action: 'continue' } | { action: 'cancel' } | { action: 'redirect'; target: string }> {
+    const ctx: RouteMiddlewareContext = { to, from, data: {} }
+
+    for (const record of to.matched) {
+      if (!record.middleware) continue
+      const mws = Array.isArray(record.middleware) ? record.middleware : [record.middleware]
+      for (const mw of mws) {
+        if (gen !== _navGen) return { action: 'cancel' }
+        const result = await mw(ctx)
+        if (result === false) return { action: 'cancel' }
+        if (typeof result === 'string') return { action: 'redirect', target: result }
+      }
+    }
+
+    // Store middleware data on the resolved route for component access
+    ;(to as any)._middlewareData = ctx.data
+    return { action: 'continue' }
   }
 
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
@@ -657,6 +721,16 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     const blockerResult = await checkBlockers(to, from, gen)
     if (blockerResult !== 'continue') {
       loadingSignal.update((n) => n - 1)
+      return
+    }
+
+    // Run per-route middleware chain (before guards)
+    const mwResult = await runMiddleware(to, from, gen)
+    if (mwResult.action !== 'continue') {
+      loadingSignal.update((n) => n - 1)
+      if (mwResult.action === 'redirect') {
+        return navigate(sanitizePath(mwResult.target), replace, redirectDepth + 1)
+      }
       return
     }
 
