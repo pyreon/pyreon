@@ -5,7 +5,7 @@ import { matchPattern } from '../entry-server'
 import { resolveAdapter } from '../adapters'
 import { buildMetaTags } from '../meta'
 import { buildCspHeader } from '../csp'
-import { validateEnv, publicEnv, str, num, bool, url, oneOf, schema } from '../env'
+import { validateEnv, publicEnv, str, url } from '../env'
 import type { MiddlewareContext } from '@pyreon/server'
 
 // ─── Route integration — file scanning + matching ──────────────────────────
