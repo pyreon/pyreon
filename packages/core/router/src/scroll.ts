@@ -35,6 +35,26 @@ export class ScrollManager {
   }
 
   private _applyResult(result: 'top' | 'restore' | 'none' | number, toPath: string): void {
+    // Hash scrolling: if the path contains #, scroll to the element
+    const hashIdx = toPath.indexOf('#')
+    if (hashIdx >= 0) {
+      const id = toPath.slice(hashIdx + 1)
+      if (id) {
+        // Use requestAnimationFrame to ensure DOM is updated before scrolling
+        requestAnimationFrame(() => {
+          const el = document.getElementById(id)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' })
+            return
+          }
+          // Fallback: try name attribute (for anchors)
+          const namedEl = document.querySelector(`[name="${CSS.escape(id)}"]`)
+          if (namedEl) namedEl.scrollIntoView({ behavior: 'smooth' })
+        })
+        return
+      }
+    }
+
     if (result === 'none') return
     if (result === 'top' || result === undefined) {
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior })

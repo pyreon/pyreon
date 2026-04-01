@@ -528,8 +528,14 @@ describe('JSX transform — template emission', () => {
     expect(result).not.toContain('_tpl(')
   })
 
-  test('does NOT emit _tpl for spread attributes', () => {
+  test('emits _tpl for root spread with _applyProps in bind', () => {
     const result = t('<div {...props}><span /></div>')
+    expect(result).toContain('_tpl(')
+    expect(result).toContain('_applyProps(__root, props)')
+  })
+
+  test('does NOT emit _tpl for spread on inner elements', () => {
+    const result = t('<div><span {...innerProps} /></div>')
     expect(result).not.toContain('_tpl(')
   })
 
@@ -1172,5 +1178,71 @@ describe('JSX transform — style attribute in templates', () => {
     const result = t('<div style={() => getStyle()}>text</div>')
     expect(result).toContain('_tpl(')
     expect(result).toContain('style.cssText')
+  })
+})
+
+// ─── Pure call detection ────────────────────────────────────────────────────
+
+describe('JSX transform — pure call detection', () => {
+  test('Math.max with static args is not wrapped', () => {
+    const result = t('<div>{Math.max(5, 10)}</div>')
+    expect(result).not.toContain('() =>')
+  })
+
+  test('JSON.stringify with string arg is not wrapped', () => {
+    const result = t('<div>{JSON.stringify("hello")}</div>')
+    expect(result).not.toContain('() =>')
+  })
+
+  test('JSON.stringify with object arg IS wrapped (object not static)', () => {
+    const result = t('<div>{JSON.stringify({a: 1})}</div>')
+    // Object literals are not considered static by the compiler
+    expect(result).toContain('.data =')
+  })
+
+  test('Math.max with dynamic arg (signal call) IS wrapped', () => {
+    const result = t('<div>{Math.max(count(), 10)}</div>')
+    // Dynamic argument means the result depends on a signal
+    expect(result).toContain('Math.max(count(), 10)')
+    expect(result).toContain('.data =')
+  })
+
+  test('unknown function call IS wrapped', () => {
+    const result = t('<div>{unknownFn(5)}</div>')
+    // Unknown function is not in PURE_CALLS, so it gets wrapped
+    expect(result).toContain('.data =')
+  })
+
+  test('Math.floor with static arg is not wrapped', () => {
+    const result = t('<div>{Math.floor(3.14)}</div>')
+    expect(result).not.toContain('() =>')
+  })
+
+  test('Number.parseInt with static arg is not wrapped', () => {
+    const result = t('<div>{Number.parseInt("42", 10)}</div>')
+    expect(result).not.toContain('() =>')
+  })
+})
+
+// ─── Per-text-node bind (separate bindings) ─────────────────────────────────
+
+describe('JSX transform — per-text-node bind', () => {
+  test('two adjacent signal calls produce two separate _bindText calls', () => {
+    const result = t('<div>{a()}{b()}</div>')
+    expect(result).toContain('_bindText(a,')
+    expect(result).toContain('_bindText(b,')
+  })
+
+  test('two signal expressions with text between produce separate bindings', () => {
+    const result = t('<div>{a()} and {b()}</div>')
+    expect(result).toContain('_bindText(a,')
+    expect(result).toContain('_bindText(b,')
+  })
+
+  test('three signal calls produce three separate _bindText calls', () => {
+    const result = t('<div>{a()}{b()}{c()}</div>')
+    expect(result).toContain('_bindText(a,')
+    expect(result).toContain('_bindText(b,')
+    expect(result).toContain('_bindText(c,')
   })
 })

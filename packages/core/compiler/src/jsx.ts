@@ -116,6 +116,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
+  let needsApplyPropsImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -154,7 +155,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   /** Try to emit a template for a JsxElement. Returns true if handled. */
   function tryTemplateEmit(node: ts.JsxElement): boolean {
-    const elemCount = templateElementCount(node)
+    const elemCount = templateElementCount(node, /* isRoot */ true)
     if (elemCount < 1) return false
     const tplCall = buildTemplateCall(node)
     if (!tplCall) return false
@@ -296,6 +297,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     const runtimeDomImports = ['_tpl']
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
+    if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -313,10 +315,19 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   // ── Template emission helpers (closures over sf, code) ──────────────────────
 
-  /** Check if a single attribute would prevent template emission. */
-  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
+  /**
+   * Check if attributes prevent template emission.
+   * - `key` always bails (VNode reconciliation prop)
+   * - Spread on inner elements bails (too complex to merge in _bind)
+   * - Spread on root element is allowed — applied via applyProps in _bind
+   */
+  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement, isRoot = false): boolean {
     for (const attr of jsxAttrs(node)) {
-      if (ts.isJsxSpreadAttribute(attr)) return true
+      if (ts.isJsxSpreadAttribute(attr)) {
+        // Allow spread on root element — handled in buildTemplateCall
+        if (isRoot) continue
+        return true
+      }
       if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === 'key')
         return true
     }
@@ -343,10 +354,13 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
    * Count DOM elements in a JSX subtree. Returns -1 if the tree is not
    * eligible for template emission.
    */
-  function templateElementCount(node: ts.JsxElement | ts.JsxSelfClosingElement): number {
+  function templateElementCount(
+    node: ts.JsxElement | ts.JsxSelfClosingElement,
+    isRoot = false,
+  ): number {
     const tag = jsxTagName(node)
     if (!tag || !isLowerCase(tag)) return -1
-    if (hasBailAttr(node)) return -1
+    if (hasBailAttr(node, isRoot)) return -1
     if (!ts.isJsxElement(node)) return 1
 
     let count = 1
@@ -382,6 +396,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
     let needsBindDirectImport = false
+    let needsApplyPropsImport = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -559,6 +574,18 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
     /** Process a single attribute, returning HTML to append. */
     function processOneAttr(attr: ts.JsxAttributeLike, varName: string): string {
+      // Spread attribute: apply all props at runtime
+      if (ts.isJsxSpreadAttribute(attr)) {
+        const expr = sliceExpr(attr.expression)
+        // Use runtime-dom's applyProps which handles class, style, events, etc.
+        needsApplyPropsImport = true
+        if (containsCall(attr.expression)) {
+          reactiveBindExprs.push(`_applyProps(${varName}, ${expr})`)
+        } else {
+          bindLines.push(`_applyProps(${varName}, ${expr})`)
+        }
+        return ''
+      }
       if (!ts.isJsxAttribute(attr)) return ''
       const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ''
       if (attrName === 'key') return ''
@@ -598,8 +625,11 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         const d = nextDisp()
         bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
       } else {
-        // Collected into the combined _bind at the end
-        reactiveBindExprs.push(`${tVar}.data = ${expr}`)
+        // Each reactive text child gets its own _bind — independent tracking.
+        // When r.name() changes, r.email()'s _bind doesn't re-run.
+        needsBindImportGlobal = true
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
       }
       return needsPlaceholder ? '<!>' : ''
     }
@@ -709,6 +739,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
     if (needsBindTextImport) needsBindTextImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
+    if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
 
     // Build bind function body
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -933,6 +964,39 @@ function isStatic(node: ts.Expression): boolean {
     node.kind === ts.SyntaxKind.NullKeyword ||
     node.kind === ts.SyntaxKind.UndefinedKeyword
   )
+  // Note: object/array literals are NOT static — they need runtime application
+  // (e.g., style={{ color: "red" }} requires Object.assign at runtime).
+}
+
+/** Known pure global functions that don't read signals. */
+const PURE_CALLS = new Set([
+  'Math.max', 'Math.min', 'Math.abs', 'Math.floor', 'Math.ceil', 'Math.round',
+  'Math.pow', 'Math.sqrt', 'Math.random', 'Math.trunc', 'Math.sign',
+  'Number.parseInt', 'Number.parseFloat', 'Number.isNaN', 'Number.isFinite',
+  'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+  'String.fromCharCode', 'String.fromCodePoint',
+  'Object.keys', 'Object.values', 'Object.entries', 'Object.assign',
+  'Object.freeze', 'Object.create',
+  'Array.from', 'Array.isArray', 'Array.of',
+  'JSON.stringify', 'JSON.parse',
+  'encodeURIComponent', 'decodeURIComponent', 'encodeURI', 'decodeURI',
+  'Date.now',
+])
+
+/** Check if a call expression calls a known pure function with static args. */
+function isPureStaticCall(node: ts.CallExpression): boolean {
+  const callee = node.expression
+  let name = ''
+
+  if (ts.isIdentifier(callee)) {
+    name = callee.text
+  } else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+    name = `${callee.expression.text}.${callee.name.text}`
+  }
+
+  if (!PURE_CALLS.has(name)) return false
+  // Pure call with all static arguments → result is static
+  return node.arguments.every((arg) => !ts.isSpreadElement(arg) && isStatic(arg))
 }
 
 function shouldWrap(node: ts.Expression): boolean {
@@ -940,6 +1004,8 @@ function shouldWrap(node: ts.Expression): boolean {
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
   // Static literal — no signals involved
   if (isStatic(node)) return false
+  // Pure call with static args — result is constant
+  if (ts.isCallExpression(node) && isPureStaticCall(node)) return false
   // Only wrap if the expression tree contains a call — signal reads are always
   // function calls (e.g. `count()`, `name()`). Plain identifiers, object literals
   // like `style={{ color: "red" }}`, array literals, and member accesses are
@@ -948,7 +1014,11 @@ function shouldWrap(node: ts.Expression): boolean {
 }
 
 function containsCall(node: ts.Node): boolean {
-  if (ts.isCallExpression(node)) return true
+  if (ts.isCallExpression(node)) {
+    // Skip pure calls with static args
+    if (isPureStaticCall(node as ts.CallExpression)) return false
+    return true
+  }
   if (ts.isTaggedTemplateExpression(node)) return true
   // Don't recurse into nested functions — they're self-contained
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
