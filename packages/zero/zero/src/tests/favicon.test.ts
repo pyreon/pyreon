@@ -107,6 +107,49 @@ describe('faviconPlugin', () => {
     const themeMeta = tags.find((t: any) => t.attrs.name === 'theme-color')
     expect(themeMeta.attrs.content).toBe('#0070f3')
   })
+
+  it('darkSource injects dual link tags with data-favicon-theme', async () => {
+    const { faviconPlugin } = await import('../favicon')
+    const plugin = faviconPlugin({ source: './icon.svg', darkSource: './icon-dark.svg' }) as any
+    const tags = plugin.transformIndexHtml()
+
+    // Should have light and dark variants
+    const lightLinks = tags.filter((t: any) => t.attrs?.['data-favicon-theme'] === 'light')
+    const darkLinks = tags.filter((t: any) => t.attrs?.['data-favicon-theme'] === 'dark')
+    expect(lightLinks.length).toBeGreaterThan(0)
+    expect(darkLinks.length).toBeGreaterThan(0)
+    expect(lightLinks.length).toBe(darkLinks.length)
+
+    // Dark links should have media="not all" (hidden initially)
+    for (const link of darkLinks) {
+      expect(link.attrs.media).toBe('not all')
+    }
+
+    // Light links should NOT have media="not all"
+    for (const link of lightLinks) {
+      expect(link.attrs.media).toBeUndefined()
+    }
+  })
+
+  it('darkSource auto-injects favicon swap script', async () => {
+    const { faviconPlugin } = await import('../favicon')
+    const plugin = faviconPlugin({ source: './icon.svg', darkSource: './icon-dark.svg' }) as any
+    const tags = plugin.transformIndexHtml()
+
+    const scripts = tags.filter((t: any) => t.tag === 'script')
+    expect(scripts.length).toBe(1)
+    expect(scripts[0].children).toContain('data-favicon-theme')
+    expect(scripts[0].children).toContain('localStorage')
+  })
+
+  it('no darkSource → no swap script', async () => {
+    const { faviconPlugin } = await import('../favicon')
+    const plugin = faviconPlugin({ source: './icon.svg' }) as any
+    const tags = plugin.transformIndexHtml()
+
+    const scripts = tags.filter((t: any) => t.tag === 'script')
+    expect(scripts.length).toBe(0)
+  })
 })
 
 describe('faviconLinks', () => {
