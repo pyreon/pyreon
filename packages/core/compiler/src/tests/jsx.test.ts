@@ -1365,3 +1365,56 @@ describe('JSX transform — transitive prop derivation', () => {
     expect(matches?.length).toBeGreaterThanOrEqual(2)
   })
 })
+
+// ─── AST-based inlining edge cases ──────────────────────────────────────────
+
+describe('JSX transform — AST inlining (template literals, ternaries)', () => {
+  test('template literal with prop-derived var is inlined', () => {
+    const result = t('function C(props) { const x = props.name; return <div>{`hello ${x}`}</div> }')
+    expect(result).toContain('props.name')
+    expect(result).toContain('_bind')
+  })
+
+  test('ternary with prop-derived var is inlined', () => {
+    const result = t('function C(props) { const v = props.x; return <div>{v ? "yes" : "no"}</div> }')
+    expect(result).toContain('props.x')
+    expect(result).toContain('? "yes" : "no"')
+  })
+
+  test('both branches of ternary inlined when both are prop-derived', () => {
+    const result = t('function C(props) { const a = props.x; const b = props.y; return <div>{a ? b : "none"}</div> }')
+    expect(result).toContain('props.x')
+    expect(result).toContain('props.y')
+  })
+
+  test('concatenation with prop-derived inlined', () => {
+    const result = t('function C(props) { const x = props.cls; return <div class={x + " extra"}></div> }')
+    expect(result).toContain('props.cls')
+    expect(result).toContain('" extra"')
+  })
+
+  test('object property access on prop-derived NOT confused', () => {
+    const result = t('function C(props) { const data = props.data; return <div>{data.name}</div> }')
+    // data.name → (props.data).name — the .name is preserved, not replaced
+    expect(result).toContain('props.data')
+    expect(result).toContain('.name')
+  })
+
+  test('deep transitive: c = b * 2, b = a + 1, a = props.x via AST', () => {
+    const result = t('function C(props) { const a = props.x; const b = a + 1; const c = b * 2; return <div>{c}</div> }')
+    expect(result).toContain('props.x')
+    // Full chain resolved via AST visitor
+    expect(result).toContain('_bind')
+  })
+
+  test('array destructuring NOT tracked (only simple identifier)', () => {
+    const result = t('function C(props) { const [a, b] = props.items; return <div>{a}</div> }')
+    // Array destructuring is not a simple identifier — not tracked
+    expect(result).not.toContain('(props.items)')
+  })
+
+  test('computed property not confused with prop-derived', () => {
+    const result = t('function C(props) { const key = props.key; return <div>{obj[key]}</div> }')
+    expect(result).toContain('props.key')
+  })
+})
