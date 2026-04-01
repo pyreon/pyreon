@@ -66,4 +66,4 @@ export type ExtendedConfiguration<
   statics: Record<string, any>
 } & Record<string, any>
 
-export type DefaultProps = Partial<PseudoProps>
+export type DefaultProps = Partial<PseudoProps> & { children?: import('@pyreon/core').VNodeChild }

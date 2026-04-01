@@ -80,6 +80,11 @@ function checkFunction(node: any, context: any, depth: number) {
   // Skip HOC inner functions (depth > 1)
   if (depth > 1) return
 
+  // Skip functions passed as arguments to HOC factories
+  // e.g. createLink(({ href, ...rest }) => <a {...rest} />)
+  const parent = node.parent
+  if (parent?.type === 'CallExpression' && parent.arguments?.includes(node)) return
+
   const body = node.body
   if (!body) return
 
