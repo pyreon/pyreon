@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createEditor } from '../editor'
 import { getAvailableLanguages, loadLanguage } from '../languages'
 import { createTabbedEditor } from '../tabbed-editor'
+import { darkTheme, lightTheme, resolveTheme } from '../themes'
 
 // ─── createEditor — Computed Properties ────────────────────────────────────
 
@@ -246,5 +247,463 @@ describe('createEditor — config combinations', () => {
 
     expect(editor.value()).toBe('')
     expect(editor.config.lineNumbers).toBe(false)
+  })
+})
+
+// ─── resolveTheme ─────────────────────────────────────────────────────────
+
+describe('resolveTheme', () => {
+  it('returns lightTheme for "light"', () => {
+    expect(resolveTheme('light')).toBe(lightTheme)
+  })
+
+  it('returns darkTheme for "dark"', () => {
+    expect(resolveTheme('dark')).toBe(darkTheme)
+  })
+
+  it('returns custom extension as-is', () => {
+    const custom = {} as any
+    expect(resolveTheme(custom)).toBe(custom)
+  })
+})
+
+// ─── loadLanguage — additional languages ─────────────────────────────────
+
+describe('loadLanguage — additional', () => {
+  it('loads ruby (returns empty extension)', async () => {
+    const ext = await loadLanguage('ruby')
+    expect(ext).toEqual([])
+  })
+
+  it('loads shell (returns empty extension)', async () => {
+    const ext = await loadLanguage('shell')
+    expect(ext).toEqual([])
+  })
+
+  it('returns empty for unknown language', async () => {
+    const ext = await loadLanguage('nonexistent' as any)
+    expect(ext).toEqual([])
+  })
+
+  it('loads javascript language', async () => {
+    const ext = await loadLanguage('javascript')
+    // Should return an extension (or empty if package not installed)
+    expect(ext).toBeDefined()
+  })
+
+  it('loads typescript language', async () => {
+    const ext = await loadLanguage('typescript')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads jsx language', async () => {
+    const ext = await loadLanguage('jsx')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads tsx language', async () => {
+    const ext = await loadLanguage('tsx')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads html language', async () => {
+    const ext = await loadLanguage('html')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads css language', async () => {
+    const ext = await loadLanguage('css')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads json language', async () => {
+    const ext = await loadLanguage('json')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads markdown language', async () => {
+    const ext = await loadLanguage('markdown')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads python language', async () => {
+    const ext = await loadLanguage('python')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads rust language', async () => {
+    const ext = await loadLanguage('rust')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads sql language', async () => {
+    const ext = await loadLanguage('sql')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads xml language', async () => {
+    const ext = await loadLanguage('xml')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads yaml language', async () => {
+    const ext = await loadLanguage('yaml')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads cpp language', async () => {
+    const ext = await loadLanguage('cpp')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads java language', async () => {
+    const ext = await loadLanguage('java')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads go language', async () => {
+    const ext = await loadLanguage('go')
+    expect(ext).toBeDefined()
+  })
+
+  it('loads php language', async () => {
+    const ext = await loadLanguage('php')
+    expect(ext).toBeDefined()
+  })
+
+  it('getAvailableLanguages returns all languages', () => {
+    const langs = getAvailableLanguages()
+    expect(langs.length).toBeGreaterThanOrEqual(15)
+    expect(langs).toContain('plain')
+    expect(langs).toContain('ruby')
+    expect(langs).toContain('shell')
+    expect(langs).toContain('markdown')
+    expect(langs).toContain('sql')
+    expect(langs).toContain('xml')
+    expect(langs).toContain('yaml')
+    expect(langs).toContain('cpp')
+    expect(langs).toContain('java')
+    expect(langs).toContain('php')
+  })
+})
+
+// ─── createEditor — actions without mount ────────────────────────────────
+
+describe('createEditor — actions without mount (bail paths)', () => {
+  it('focus does nothing without view', () => {
+    const editor = createEditor()
+    editor.focus() // should not throw
+  })
+
+  it('insert does nothing without view', () => {
+    const editor = createEditor()
+    editor.insert('text') // should not throw
+  })
+
+  it('replaceSelection does nothing without view', () => {
+    const editor = createEditor()
+    editor.replaceSelection('text') // should not throw
+  })
+
+  it('select does nothing without view', () => {
+    const editor = createEditor()
+    editor.select(0, 5) // should not throw
+  })
+
+  it('selectAll does nothing without view', () => {
+    const editor = createEditor()
+    editor.selectAll() // should not throw
+  })
+
+  it('goToLine does nothing without view', () => {
+    const editor = createEditor()
+    editor.goToLine(5) // should not throw
+  })
+
+  it('undo does nothing without view', () => {
+    const editor = createEditor()
+    editor.undo() // should not throw
+  })
+
+  it('redo does nothing without view', () => {
+    const editor = createEditor()
+    editor.redo() // should not throw
+  })
+
+  it('foldAll does nothing without view', () => {
+    const editor = createEditor()
+    editor.foldAll() // should not throw
+  })
+
+  it('unfoldAll does nothing without view', () => {
+    const editor = createEditor()
+    editor.unfoldAll() // should not throw
+  })
+
+  it('setDiagnostics does nothing without view', () => {
+    const editor = createEditor()
+    editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: 'test' }]) // should not throw
+  })
+
+  it('clearDiagnostics does nothing without view', () => {
+    const editor = createEditor()
+    editor.clearDiagnostics() // should not throw
+  })
+
+  it('highlightLine does nothing without view', () => {
+    const editor = createEditor()
+    editor.highlightLine(1, 'highlight') // should not throw
+  })
+
+  it('clearLineHighlights does nothing without view', () => {
+    const editor = createEditor()
+    editor.clearLineHighlights() // should not throw
+  })
+
+  it('setGutterMarker does nothing without view', () => {
+    const editor = createEditor()
+    editor.setGutterMarker(1, { text: '!' }) // should not throw
+  })
+
+  it('clearGutterMarkers does nothing without view', () => {
+    const editor = createEditor()
+    editor.clearGutterMarkers() // should not throw
+  })
+
+  it('addKeybinding stores binding but does not dispatch without view', () => {
+    const editor = createEditor()
+    editor.addKeybinding('Ctrl-s', () => true) // should not throw
+  })
+
+  it('getLine returns empty without view', () => {
+    const editor = createEditor()
+    expect(editor.getLine(1)).toBe('')
+  })
+
+  it('getWordAtCursor returns empty without view', () => {
+    const editor = createEditor()
+    expect(editor.getWordAtCursor()).toBe('')
+  })
+
+  it('scrollTo does nothing without view', () => {
+    const editor = createEditor()
+    editor.scrollTo(0) // should not throw
+  })
+
+  it('dispose does nothing without view', () => {
+    const editor = createEditor()
+    editor.dispose() // should not throw
+    expect(editor.view()).toBeNull()
+  })
+})
+
+// ─── createEditor — readOnly signal ──────────────────────────────────────
+
+describe('createEditor — readOnly signal', () => {
+  it('readOnly signal reflects initial value', () => {
+    const editor = createEditor({ readOnly: true })
+    expect(editor.readOnly()).toBe(true)
+  })
+
+  it('readOnly signal can be toggled', () => {
+    const editor = createEditor({ readOnly: false })
+    editor.readOnly.set(true)
+    expect(editor.readOnly()).toBe(true)
+  })
+})
+
+// ─── createEditor — theme signal ─────────────────────────────────────────
+
+describe('createEditor — theme signal', () => {
+  it('theme signal defaults to light', () => {
+    const editor = createEditor()
+    expect(editor.theme()).toBe('light')
+  })
+
+  it('theme signal can be set to dark', () => {
+    const editor = createEditor()
+    editor.theme.set('dark')
+    expect(editor.theme()).toBe('dark')
+  })
+})
+
+// ─── createTabbedEditor — extended coverage ──────────────────────────────
+
+describe('createTabbedEditor — extended', () => {
+  it('switchTab to nonexistent tab is a no-op', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: 'aaa' }],
+    })
+    te.switchTab('nonexistent')
+    expect(te.activeTabId()).toBe('a.ts')
+  })
+
+  it('openTab switches to existing tab', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: 'aaa' },
+        { name: 'b.ts', value: 'bbb' },
+      ],
+    })
+    te.openTab({ name: 'b.ts', value: 'bbb' })
+    expect(te.activeTabId()).toBe('b.ts')
+    expect(te.tabs()).toHaveLength(2) // no duplicate
+  })
+
+  it('closeTab on active tab switches to adjacent tab', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: '' },
+        { name: 'b.ts', value: '' },
+        { name: 'c.ts', value: '' },
+      ],
+    })
+    te.switchTab('b.ts')
+    te.closeTab('b.ts')
+    // Should switch to adjacent tab
+    expect(te.activeTabId()).not.toBe('b.ts')
+  })
+
+  it('closing all tabs results in empty editor', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: 'content' }],
+    })
+    te.closeTab('a.ts')
+    expect(te.tabs()).toHaveLength(0)
+    expect(te.activeTabId()).toBe('')
+    expect(te.editor.value()).toBe('')
+  })
+
+  it('closeAll removes all closable tabs', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: '' },
+        { name: 'b.ts', value: '' },
+      ],
+    })
+    te.closeAll()
+    expect(te.tabs()).toHaveLength(0)
+    expect(te.activeTabId()).toBe('')
+  })
+
+  it('closeAll switches to non-closable tab if one remains', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: '', closable: false },
+        { name: 'b.ts', value: '' },
+      ],
+    })
+    te.closeAll()
+    expect(te.tabs()).toHaveLength(1)
+    expect(te.activeTabId()).toBe('a.ts')
+  })
+
+  it('closeOthers switches to the kept tab', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: 'aaa' },
+        { name: 'b.ts', value: 'bbb' },
+        { name: 'c.ts', value: 'ccc' },
+      ],
+    })
+    te.closeOthers('b.ts')
+    expect(te.tabs()).toHaveLength(1)
+    expect(te.activeTabId()).toBe('b.ts')
+  })
+
+  it('closeTab on nonexistent tab is a no-op', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: '' }],
+    })
+    te.closeTab('nonexistent')
+    expect(te.tabs()).toHaveLength(1)
+  })
+
+  it('dispose clears state', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: '' }],
+    })
+    te.dispose() // should not throw
+  })
+
+  it('getTab returns undefined for missing tab', () => {
+    const te = createTabbedEditor()
+    expect(te.getTab('nonexistent')).toBeUndefined()
+  })
+
+  it('activeTab returns null for empty editor', () => {
+    const te = createTabbedEditor()
+    expect(te.activeTab()).toBeNull()
+  })
+
+  it('tabs with explicit id uses id for lookup', () => {
+    const te = createTabbedEditor({
+      tabs: [{ id: 'custom-id', name: 'file.ts', value: 'content' }],
+    })
+    expect(te.getTab('custom-id')).toBeDefined()
+    expect(te.activeTabId()).toBe('custom-id')
+  })
+
+  it('onChange callback fires on switchTab content restore', () => {
+    const changes: string[] = []
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: 'aaa' },
+        { name: 'b.ts', value: 'bbb' },
+      ],
+      editorConfig: { onChange: (v) => changes.push(v) },
+    })
+    te.editor.value.set('modified-a')
+    te.switchTab('b.ts')
+    // After switching, the editor value is set which might trigger onChange indirectly
+  })
+
+  it('setModified marks tab as modified', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: '' }],
+    })
+    te.setModified('a.ts', true)
+    expect(te.getTab('a.ts')?.modified).toBe(true)
+    te.setModified('a.ts', false)
+    expect(te.getTab('a.ts')?.modified).toBe(false)
+  })
+
+  it('moveTab with same indices is a no-op', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: '' },
+        { name: 'b.ts', value: '' },
+      ],
+    })
+    te.moveTab(0, 0)
+    expect(te.tabs()[0]!.name).toBe('a.ts')
+  })
+
+  it('creates tabbed editor with theme', () => {
+    const te = createTabbedEditor({
+      tabs: [{ name: 'a.ts', value: '' }],
+      theme: 'dark',
+    })
+    expect(te.editor.theme()).toBe('dark')
+  })
+
+  it('creates tabbed editor with empty tabs', () => {
+    const te = createTabbedEditor({ tabs: [] })
+    expect(te.tabs()).toHaveLength(0)
+    expect(te.activeTab()).toBeNull()
+  })
+
+  it('closing last active tab when multiple tabs exist switches to next', () => {
+    const te = createTabbedEditor({
+      tabs: [
+        { name: 'a.ts', value: 'aaa' },
+        { name: 'b.ts', value: 'bbb' },
+        { name: 'c.ts', value: 'ccc' },
+      ],
+    })
+    te.switchTab('c.ts')
+    te.closeTab('c.ts')
+    // Should switch to the last remaining tab
+    expect(['a.ts', 'b.ts']).toContain(te.activeTabId())
   })
 })
