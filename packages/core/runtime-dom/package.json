@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/runtime-dom",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "DOM renderer for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/runtime-dom#readme",
   "bugs": {
