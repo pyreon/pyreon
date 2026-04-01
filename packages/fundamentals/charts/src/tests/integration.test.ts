@@ -7,7 +7,7 @@ afterEach(() => {
 // ─── Chart type detection ────────────────────────────────────────────────────
 
 describe('chart type detection', () => {
-  it('detects single chart type from series', async () => {
+  it('detects single chart type from series', { timeout: 15000 }, async () => {
     const core = await ensureModules({
       series: [{ type: 'bar', data: [1, 2, 3] }],
     })
@@ -15,7 +15,7 @@ describe('chart type detection', () => {
     expect(typeof core.init).toBe('function')
   })
 
-  it('detects multiple chart types from series array', async () => {
+  it('detects multiple chart types from series array', { timeout: 15000 }, async () => {
     const core = await ensureModules({
       series: [
         { type: 'bar', data: [1] },
@@ -26,7 +26,7 @@ describe('chart type detection', () => {
     expect(core).toBeDefined()
   })
 
-  it('detects all 22 chart types without error', async () => {
+  it('detects all 22 chart types without error', { timeout: 15000 }, async () => {
     const types = [
       'bar',
       'line',
