@@ -210,12 +210,14 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     // Inject favicon <link> tags into HTML
     transformIndexHtml() {
       const isSvg = config.source.endsWith('.svg')
+      const hasDark = !!config.darkSource
       const tags: Array<{
         tag: string
         attrs: Record<string, string>
         injectTo: 'head'
       }> = []
 
+      // SVG favicon (with prefers-color-scheme media query when dark variant exists)
       if (isSvg) {
         tags.push({
           tag: 'link',
@@ -224,23 +226,28 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         })
       }
 
-      tags.push(
-        {
-          tag: 'link',
-          attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
-          injectTo: 'head',
-        },
-        {
-          tag: 'link',
-          attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' },
-          injectTo: 'head',
-        },
-        {
-          tag: 'link',
-          attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
-          injectTo: 'head',
-        },
-      )
+      if (hasDark) {
+        // Dual-variant PNG/ICO favicons — light active, dark hidden via media="not all".
+        // The themeScript and initTheme() swap these based on the resolved theme.
+        const lightAttrs = { 'data-favicon-theme': 'light' }
+        const darkAttrs = { 'data-favicon-theme': 'dark', media: 'not all' }
+
+        tags.push(
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-light-32x32.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-dark-32x32.png', ...darkAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-light-16x16.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-dark-16x16.png', ...darkAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-light.png', ...lightAttrs }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon-dark.png', ...darkAttrs }, injectTo: 'head' },
+        )
+      } else {
+        // Single-variant (no dark mode)
+        tags.push(
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16x16.png' }, injectTo: 'head' },
+          { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' }, injectTo: 'head' },
+        )
+      }
 
       if (generateManifest) {
         tags.push({
@@ -371,14 +378,43 @@ async function generateFaviconSet(
   }
 
   // Generate PNG sizes via sharp
-  for (const { size, name } of SIZES) {
-    const pngBuffer = await resizeToPng(sourcePath, size)
-    if (pngBuffer) {
-      this.emitFile({
-        type: 'asset',
-        fileName: `${prefix}${name}`,
-        source: pngBuffer,
-      })
+  if (darkSource) {
+    // Dual-variant: generate light + dark PNGs with prefixed names
+    const darkPath = join(rootDir, darkSource)
+    const darkExists = existsSync(darkPath)
+
+    for (const { size, name } of SIZES) {
+      // Light variant
+      const lightName = name.replace(/^(favicon-)/, '$1light-').replace(/^(apple-touch-icon)/, '$1-light').replace(/^(icon-)/, '$1light-')
+      const lightPng = await resizeToPng(sourcePath, size)
+      if (lightPng) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: lightPng })
+      }
+
+      // Dark variant
+      if (darkExists) {
+        const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
+        const darkPng = await resizeToPng(darkPath, size)
+        if (darkPng) {
+          this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: darkPng })
+        }
+      }
+    }
+
+    // Also generate standard names (used by manifest + external references)
+    for (const { size, name } of SIZES) {
+      const pngBuffer = await resizeToPng(sourcePath, size)
+      if (pngBuffer) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+      }
+    }
+  } else {
+    // Single-variant
+    for (const { size, name } of SIZES) {
+      const pngBuffer = await resizeToPng(sourcePath, size)
+      if (pngBuffer) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+      }
     }
   }
 

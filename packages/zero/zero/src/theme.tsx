@@ -86,9 +86,16 @@ export function initTheme() {
     mq.addEventListener('change', onChange)
     onUnmount(() => mq.removeEventListener('change', onChange))
 
-    // Re-apply when theme signal changes
+    // Re-apply when theme signal changes — updates data-theme + favicons
     const dispose = effect(() => {
-      document.documentElement.dataset.theme = resolvedTheme()
+      const mode = resolvedTheme()
+      document.documentElement.dataset.theme = mode
+
+      // Swap favicon variants (if dual-variant favicons are present)
+      const faviconLinks = document.querySelectorAll<HTMLLinkElement>('[data-favicon-theme]')
+      for (const link of faviconLinks) {
+        link.media = link.dataset.faviconTheme === mode ? '' : 'not all'
+      }
     })
     if (dispose) onUnmount(() => dispose.dispose())
 
@@ -169,4 +176,4 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
  *   ...
  * </head>
  */
-export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r}catch(e){}})()`
+export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r;document.querySelectorAll("[data-favicon-theme]").forEach(function(l){l.media=l.dataset.faviconTheme===r?"":"not all"})}catch(e){}})()`
