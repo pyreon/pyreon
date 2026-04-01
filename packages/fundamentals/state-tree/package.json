@@ -46,7 +46,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.3",
+    "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/reactivity": "workspace:^"
   },
   "peerDependencies": {

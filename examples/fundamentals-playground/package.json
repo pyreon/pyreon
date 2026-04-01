@@ -27,7 +27,7 @@
     "@pyreon/table": "workspace:*",
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
-    "@tanstack/query-core": "^5.90.20",
+    "@tanstack/query-core": "^5.96.1",
     "@tanstack/table-core": "^8.21.3",
     "@tanstack/virtual-core": "^3.13.23",
     "zod": "^4.3.6"

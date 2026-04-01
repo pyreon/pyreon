@@ -41,11 +41,11 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.3",
+    "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@types/pdfmake": "^0.3.2",
-    "@vitus-labs/tools-lint": "^1.11.0",
+    "@vitus-labs/tools-lint": "^1.15.5",
     "docx": "^9.6.0",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.7",

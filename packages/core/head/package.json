@@ -61,7 +61,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "devDependencies": {
-    "@happy-dom/global-registrator": "^20.8.3",
+    "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/runtime-server": "workspace:^"
   },
