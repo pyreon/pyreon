@@ -131,11 +131,72 @@ function getCompatTarget(compat: CompatFramework | undefined, id: string): strin
   return undefined
 }
 
+/**
+ * Resolve a @pyreon/* package specifier using the "bun" export condition.
+ * Reads the package's package.json exports and returns the resolved source path.
+ * Returns null if not found.
+ */
+function resolveBunExport(specifier: string, root: string): string | null {
+  // Parse: @pyreon/core → package=@pyreon/core, subpath=.
+  //        @pyreon/zero/meta → package=@pyreon/zero, subpath=./meta
+  const parts = specifier.split('/')
+  const pkgName = parts[0]! + '/' + parts[1]! // @pyreon/xxx
+  const subpath = parts.length > 2 ? './' + parts.slice(2).join('/') : '.'
+
+  // Try to find the package.json
+  const candidates = [
+    pathJoin(root, 'node_modules', pkgName, 'package.json'),
+    // Workspace packages may not be in node_modules
+  ]
+
+  // Also check workspace paths by walking up
+  try {
+    const { createRequire } = require('module') as typeof import('module')
+    const req = createRequire(pathJoin(root, 'package.json'))
+    const pkgJsonPath = req.resolve(pkgName + '/package.json')
+    if (pkgJsonPath) candidates.unshift(pkgJsonPath)
+  } catch {
+    // package.json not directly resolvable — try node_modules
+  }
+
+  for (const pkgJsonPath of candidates) {
+    if (!existsSync(pkgJsonPath)) continue
+
+    try {
+      const pkgJson = JSON.parse(
+        require('fs').readFileSync(pkgJsonPath, 'utf-8'),
+      )
+      const exports = pkgJson.exports
+      if (!exports) continue
+
+      const entry = exports[subpath]
+      if (!entry) continue
+
+      // Get the "bun" condition (source .ts/.tsx file)
+      const bunPath = typeof entry === 'object' ? entry.bun : undefined
+      if (!bunPath) continue
+
+      // Resolve relative to package directory
+      const pkgDir = pkgJsonPath.replace(/\/package\.json$/, '')
+      const resolved = pathJoin(pkgDir, bunPath)
+      if (existsSync(resolved)) return resolved
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   const ssrConfig = options?.ssr
   const compat = options?.compat
   let isBuild = false
+  let isSsr = false
   let projectRoot = ''
+
+  // Cache: package specifier → resolved source path (bun condition)
+  const bunResolutionCache = new Map<string, string | null>()
 
   return {
     name: 'pyreon',
@@ -143,6 +204,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
 
     config(userConfig, env) {
       isBuild = env.command === 'build'
+      isSsr = !!env.isSsrBuild
       // Capture the project root for package resolution in resolveId
       projectRoot = userConfig.root ?? process.cwd()
 
@@ -163,30 +225,57 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
             importSource: jsxSource,
           },
         },
-        // In SSR build mode, configure the entry
-        ...(env.isSsrBuild && ssrConfig
+        // Only add "bun" condition for SSR builds — never for client.
+        // Client-side resolution uses the plugin's resolveId hook below
+        // to read the "bun" export condition from package.json manually.
+        // This prevents node:fs and other server-only imports from
+        // leaking into the client bundle.
+        ...(env.isSsrBuild
           ? {
-              build: {
-                ssr: true,
-                rollupOptions: {
-                  input: ssrConfig.entry,
-                },
-              },
+              resolve: { conditions: ['bun'] },
+              ...(ssrConfig
+                ? {
+                    build: {
+                      ssr: true,
+                      rollupOptions: {
+                        input: ssrConfig.entry,
+                      },
+                    },
+                  }
+                : {}),
             }
           : {}),
       }
     },
 
-    // ── Virtual module + compat alias resolution ─────────────────────────────
-    async resolveId(id, importer) {
+    // ── Virtual module + compat alias + workspace resolution ─────────────────
+    async resolveId(id, importer, resolveOptions) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
-      const target = getCompatTarget(compat, id)
-      if (!target) return
 
-      // Vite 8 resolves the "bun" condition natively via resolve.conditions.
-      // Delegate to Vite's resolver instead of manual package.json parsing.
-      const resolved = await this.resolve(target, importer, { skipSelf: true })
-      return resolved?.id
+      // Compat alias resolution
+      const target = getCompatTarget(compat, id)
+      if (target) {
+        const resolved = await this.resolve(target, importer, { skipSelf: true })
+        return resolved?.id
+      }
+
+      // For SSR, Vite handles the "bun" condition natively (set in config above)
+      if (isSsr || resolveOptions?.ssr) return
+
+      // For client: resolve @pyreon/* workspace packages via "bun" export condition.
+      // This gives us source-level imports (for HMR, fast refresh) without
+      // adding "bun" to global resolve.conditions (which would leak node:fs).
+      if (!id.startsWith('@pyreon/')) return
+
+      // Only resolve bare specifiers, not already-resolved paths
+      if (id.includes('/src/') || id.startsWith('/') || id.startsWith('.')) return
+
+      const cached = bunResolutionCache.get(id)
+      if (cached !== undefined) return cached ?? undefined
+
+      const resolved = resolveBunExport(id, projectRoot)
+      bunResolutionCache.set(id, resolved)
+      return resolved ?? undefined
     },
 
     load(id) {

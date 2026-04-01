@@ -278,10 +278,22 @@ export function App() { const [x] = useState(0); return null }
 // ─── Plugin config ───────────────────────────────────────────────────────────
 
 describe('plugin config', () => {
-  it('does not set resolve.conditions (consumer manages their own)', () => {
+  it('does not set resolve.conditions for client/dev (prevents node:fs leak)', () => {
     const plugin = pyreonPlugin()
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as Record<string, unknown>
     expect(config.resolve).toBeUndefined()
+  })
+
+  it('does not set resolve.conditions for client build', () => {
+    const plugin = pyreonPlugin()
+    const config = getConfigHook(plugin)({}, { command: 'build' }) as Record<string, unknown>
+    expect(config.resolve).toBeUndefined()
+  })
+
+  it('sets resolve.conditions: ["bun"] for SSR build only', () => {
+    const plugin = pyreonPlugin({ ssr: { entry: './src/entry-server.ts' } })
+    const config = getConfigHook(plugin)({}, { command: 'build', isSsrBuild: true }) as Record<string, any>
+    expect(config.resolve?.conditions).toEqual(['bun'])
   })
 
   it('sets JSX import source to @pyreon/core by default', () => {
