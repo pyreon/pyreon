@@ -50,13 +50,15 @@ export class StyleSheet {
       this.sheet = el.sheet ?? null
     }
 
-    // Inject @layer declarations.
-    // 'base' is for plain styled() components, 'rocketstyle' is for
-    // rocketstyle wrappers. Layer order ensures rocketstyle overrides base
-    // without needing doubled selectors (boost).
+    // Inject single @layer for all framework CSS.
+    // Using one shared layer ensures rocketstyle overrides base via source
+    // order (rocketstyle rules inserted after base), while media queries
+    // from base components still work correctly within the same layer.
+    // A two-layer approach (base < rocketstyle) breaks responsive styles
+    // because higher layers always win regardless of @media conditions.
     if (this.sheet) {
       try {
-        this.sheet.insertRule('@layer base, rocketstyle;', 0)
+        this.sheet.insertRule('@layer pyreon;', 0)
         this.supportsLayer = true
       } catch {
         // @layer not supported — falls back to source order
@@ -318,7 +320,7 @@ export class StyleSheet {
   /** Returns collected CSS for SSR as a complete `<style>` tag string. */
   getStyleTag(): string {
     if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""></style>`
-    const layerDecl = this.layer ? '@layer base, rocketstyle;' : ''
+    const layerDecl = this.layer ? `@layer ${this.layer};` : ''
     const css = (layerDecl + this.ssrBuffer.join('')).replace(/<\/style/gi, '<\\/style')
     return `<style ${ATTR}="">${css}</style>`
   }
@@ -326,7 +328,7 @@ export class StyleSheet {
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
     if (this.ssrBuffer.length === 0) return ''
-    const layerDecl = this.layer ? '@layer base, rocketstyle;' : ''
+    const layerDecl = this.layer ? `@layer ${this.layer};` : ''
     return layerDecl + this.ssrBuffer.join('')
   }
 
@@ -390,7 +392,7 @@ export class StyleSheet {
 }
 
 /** Default singleton sheet for client-side use. */
-export const sheet = new StyleSheet({ layer: 'base' })
+export const sheet = new StyleSheet({ layer: 'pyreon' })
 
 /**
  * Factory for creating isolated StyleSheet instances.

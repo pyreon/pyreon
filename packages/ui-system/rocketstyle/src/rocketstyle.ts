@@ -64,13 +64,14 @@ const rocketComponent: RocketComponent = (options) => {
   const componentName = options.name ?? options.component.displayName ?? options.component.name
 
   // Create styled component with all options.styles if available.
-  // layer: 'rocketstyle' ensures wrapper styles override inner component
-  // styles via CSS @layer order (base < rocketstyle) instead of
-  // doubled selectors. Media queries work correctly at same specificity.
+  // All framework CSS lives in a single @layer pyreon. Rocketstyle
+  // overrides base via source order (inserted after base rules).
+  // A two-layer approach (base < rocketstyle) broke responsive styles
+  // because higher layers always win regardless of @media conditions.
   const STYLED_COMPONENT =
     (component.IS_ROCKETSTYLE ?? options.styled !== true)
       ? component
-      : styled(component, { layer: 'rocketstyle' })`
+      : styled(component, { layer: 'pyreon' })`
           ${calculateStyles(styles)};
         `
 

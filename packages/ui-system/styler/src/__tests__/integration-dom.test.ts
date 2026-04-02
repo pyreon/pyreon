@@ -46,8 +46,8 @@ describe('Styler integration — styled + sheet', () => {
     expect(vnodeRed.props.class).not.toBe(vnodeBlue.props.class)
   })
 
-  it('@layer declarations exist in stylesheet (rocketstyle layer)', () => {
-    // The sheet mounts on construction and injects @layer base, rocketstyle;
+  it('@layer declarations exist in stylesheet (pyreon layer)', () => {
+    // The sheet mounts on construction and injects @layer pyreon;
     // Verify the sheet has been mounted and can insert rules
     const className = sheet.insert('display: grid;')
     expect(className).toMatch(/^pyr-/)
