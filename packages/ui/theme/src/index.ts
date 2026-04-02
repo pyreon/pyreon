@@ -1,4 +1,6 @@
+export { configureUI, getComponentTheme, getDefaults, getThemeConfig, resetUIConfig } from './config'
 export { createTheme } from './createTheme'
 export { defaultTheme } from './defaultTheme'
+export { defineComponentTheme, type ComponentThemeDef, type ModeAwareFn } from './defineComponentTheme'
 export { buildSemantics, m, resolveMode } from './semantics'
 export type { DeepPartial, ModeAware, ModeValue, SemanticColors, ThemeConfig } from './types'
