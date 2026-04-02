@@ -41,3 +41,18 @@ export { default as Skeleton } from './components/Skeleton'
 
 // Indicators
 export { default as Indicator } from './components/Indicator'
+
+// Overlays
+export { default as Modal } from './components/Modal'
+export { default as Drawer } from './components/Drawer'
+export { default as Dialog } from './components/Dialog'
+export { default as Tooltip } from './components/Tooltip'
+export { default as Popover } from './components/Popover'
+export { default as HoverCard } from './components/HoverCard'
+export { default as Menu, MenuItem } from './components/Menu'
+
+// Navigation
+export { default as Tabs, Tab, TabPanel } from './components/Tabs'
+export { default as Breadcrumb, BreadcrumbItem } from './components/Breadcrumb'
+export { default as Pagination } from './components/Pagination'
+export { default as NavLink } from './components/NavLink'
