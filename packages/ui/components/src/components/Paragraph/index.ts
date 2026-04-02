@@ -1,18 +1,13 @@
 import { Text } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { paragraphTheme } from './theme'
+
+const resolved = getComponentTheme(paragraphTheme)
 
 const Paragraph = rocketstyle({ useBooleans: true })({ name: 'Paragraph', component: Text })
-  .attrs({ tag: 'p' })
-  .theme({
-    fontSize: 16,
-    lineHeight: 1.5,
-    color: '#374151',
-    margin: 0,
-  })
-  .sizes({
-    sm: { fontSize: 14 },
-    md: { fontSize: 16 },
-    lg: { fontSize: 18 },
-  })
+  .attrs({ tag: 'p' } as any)
+  .theme(resolved.base)
+  .sizes(resolved.sizes)
 
 export default Paragraph

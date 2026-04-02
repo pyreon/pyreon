@@ -1,20 +1,16 @@
 import { Element } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { paginationTheme } from './theme'
+
+const resolved = getComponentTheme(paginationTheme)
 
 const Pagination = rocketstyle({ useBooleans: true })({
   name: 'Pagination',
   component: Element,
 })
   .attrs({ tag: 'nav' } as any)
-  .theme({
-    display: 'flex',
-    alignItems: 'center',
-    gap: 4,
-  })
-  .sizes({
-    sm: { gap: 2, fontSize: 12 },
-    md: { gap: 4, fontSize: 14 },
-    lg: { gap: 6, fontSize: 16 },
-  })
+  .theme(resolved.base)
+  .sizes(resolved.sizes)
 
 export default Pagination

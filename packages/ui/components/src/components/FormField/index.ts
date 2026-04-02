@@ -1,47 +1,30 @@
 import { Element, Text } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { formFieldTheme, fieldLabelTheme, fieldErrorTheme, fieldDescriptionTheme } from './theme'
 
-/** Groups a label, input, error message, and description into a form field. */
+const ffResolved = getComponentTheme(formFieldTheme)
+
 const FormField = rocketstyle({ useBooleans: true })({ name: 'FormField', component: Element })
   .attrs({ tag: 'div', direction: 'rows', block: true } as any)
-  .theme({
-    gap: 4,
-  })
-  .states({
-    error: { color: '#ef4444' },
-  })
+  .theme(ffResolved.base)
 
 export default FormField
 
-/** Label for a form field. */
+const flResolved = getComponentTheme(fieldLabelTheme)
+
 export const FieldLabel = rocketstyle({ useBooleans: true })({ name: 'FieldLabel', component: Text })
   .attrs({ tag: 'label' } as any)
-  .theme({
-    fontSize: 14,
-    fontWeight: 500,
-    color: '#374151',
-    lineHeight: 1.5,
-  })
-  .sizes({
-    sm: { fontSize: 12 },
-    md: { fontSize: 14 },
-    lg: { fontSize: 16 },
-  })
+  .theme(flResolved.base)
 
-/** Error message for a form field. */
+const feResolved = getComponentTheme(fieldErrorTheme)
+
 export const FieldError = rocketstyle()({ name: 'FieldError', component: Text })
   .attrs({ tag: 'span' } as any)
-  .theme({
-    fontSize: 12,
-    color: '#ef4444',
-    lineHeight: 1.5,
-  })
+  .theme(feResolved.base)
 
-/** Helper description for a form field. */
+const fdResolved = getComponentTheme(fieldDescriptionTheme)
+
 export const FieldDescription = rocketstyle()({ name: 'FieldDescription', component: Text })
   .attrs({ tag: 'span' } as any)
-  .theme({
-    fontSize: 12,
-    color: '#9ca3af',
-    lineHeight: 1.5,
-  })
+  .theme(fdResolved.base)

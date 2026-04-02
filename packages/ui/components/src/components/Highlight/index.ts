@@ -1,22 +1,13 @@
 import { Text } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { highlightTheme } from './theme'
+
+const resolved = getComponentTheme(highlightTheme)
 
 const Highlight = rocketstyle({ useBooleans: true })({ name: 'Highlight', component: Text })
   .attrs({ tag: 'span' } as any)
-  .theme({
-    backgroundColor: '#fef08a',
-    color: 'inherit',
-    paddingTop: 1,
-    paddingBottom: 1,
-    paddingLeft: 4,
-    paddingRight: 4,
-    borderRadius: 2,
-  })
-  .states({
-    primary: { backgroundColor: '#bfdbfe' },
-    success: { backgroundColor: '#bbf7d0' },
-    warning: { backgroundColor: '#fde68a' },
-    error: { backgroundColor: '#fecaca' },
-  })
+  .theme(resolved.base)
+  .states(resolved.states)
 
 export default Highlight

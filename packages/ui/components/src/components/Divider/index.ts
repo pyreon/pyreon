@@ -1,24 +1,14 @@
 import { Element } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { dividerTheme } from './theme'
+
+const resolved = getComponentTheme(dividerTheme)
 
 const Divider = rocketstyle({ useBooleans: true })({ name: 'Divider', component: Element })
-  .attrs({ tag: 'hr' })
-  .theme({
-    borderTopWidth: 1,
-    borderTopStyle: 'solid',
-    borderTopColor: '#e5e7eb',
-    margin: 0,
-    width: '100%',
-  })
-  .variants({
-    solid: { borderTopStyle: 'solid' },
-    dashed: { borderTopStyle: 'dashed' },
-    dotted: { borderTopStyle: 'dotted' },
-  })
-  .sizes({
-    sm: { borderTopWidth: 1 },
-    md: { borderTopWidth: 2 },
-    lg: { borderTopWidth: 4 },
-  })
+  .attrs({ tag: 'hr' } as any)
+  .theme(resolved.base)
+  .variants(resolved.variants)
+  .sizes(resolved.sizes)
 
 export default Divider

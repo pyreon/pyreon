@@ -1,15 +1,13 @@
 import { Element } from '@pyreon/elements'
 import rocketstyle from '@pyreon/rocketstyle'
+import { getComponentTheme } from '@pyreon/ui-theme'
+import { stackTheme } from './theme'
+
+const resolved = getComponentTheme(stackTheme)
 
 const Stack = rocketstyle({ useBooleans: true })({ name: 'Stack', component: Element })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme({ gap: 16 })
-  .sizes({
-    xs: { gap: 4 },
-    sm: { gap: 8 },
-    md: { gap: 16 },
-    lg: { gap: 24 },
-    xl: { gap: 32 },
-  })
+  .attrs({ tag: 'div', direction: 'rows', block: true } as any)
+  .theme(resolved.base)
+  .sizes(resolved.sizes)
 
 export default Stack
