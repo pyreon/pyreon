@@ -31,6 +31,7 @@
     "visual-test:diff": "bun scripts/visual-test/diff.ts",
     "visual-test:report": "bun scripts/visual-test/report.ts",
     "visual-test:update": "bun scripts/visual-test/update.ts",
+    "coverage": "bun scripts/check-coverage.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
     "changeset": "changeset",
     "version-packages": "changeset version",

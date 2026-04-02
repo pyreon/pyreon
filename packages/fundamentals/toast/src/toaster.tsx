@@ -60,6 +60,8 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  * ```
  */
 export function Toaster(props?: ToasterProps): VNodeChild {
+  if (typeof document === 'undefined') return null
+
   const position = props?.position ?? 'top-right'
   const max = props?.max ?? 5
   const gap = props?.gap ?? 8

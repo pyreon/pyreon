@@ -592,3 +592,23 @@ describe('Toaster renders', () => {
     expect(typeof Toaster).toBe('function')
   })
 })
+
+describe('Toaster SSR safety', () => {
+  let originalDocument: typeof globalThis.document
+
+  beforeEach(() => {
+    originalDocument = globalThis.document
+    // @ts-expect-error — simulate SSR by removing document
+    delete globalThis.document
+  })
+
+  afterEach(() => {
+    globalThis.document = originalDocument
+  })
+
+  it('returns null when document is undefined (SSR)', async () => {
+    const { Toaster } = await import('../toaster')
+    const result = Toaster()
+    expect(result).toBeNull()
+  })
+})

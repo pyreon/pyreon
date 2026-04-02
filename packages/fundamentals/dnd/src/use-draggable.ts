@@ -22,6 +22,8 @@ import type { DragData, UseDraggableOptions, UseDraggableResult } from './types'
 export function useDraggable<T extends DragData = DragData>(
   options: UseDraggableOptions<T>,
 ): UseDraggableResult {
+  if (typeof document === 'undefined') return { isDragging: () => false }
+
   const isDragging = signal(false)
   let cleanup: (() => void) | undefined
 

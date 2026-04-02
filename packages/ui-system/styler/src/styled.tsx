@@ -31,8 +31,8 @@ export interface StyledOptions {
   shouldForwardProp?: (prop: string) => boolean
   /**
    * CSS @layer name. Rules are wrapped in `@layer <name> { ... }`.
-   * Used by rocketstyle to ensure wrapper styles override inner component
-   * styles via layer order (base < rocketstyle) instead of specificity hacks.
+   * All framework CSS uses a single 'pyreon' layer. Source order within
+   * the layer determines override precedence (rocketstyle inserts after base).
    */
   layer?: string
 }

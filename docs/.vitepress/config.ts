@@ -97,6 +97,10 @@ export default defineConfig({
             { text: 'Storage', link: '/docs/storage' },
             { text: 'Permissions', link: '/docs/permissions' },
             { text: 'Hotkeys', link: '/docs/hotkeys' },
+            { text: 'Toast', link: '/docs/toast' },
+            { text: 'Rx', link: '/docs/rx' },
+            { text: 'URL State', link: '/docs/url-state' },
+            { text: 'Drag & Drop', link: '/docs/dnd' },
           ],
         },
         {

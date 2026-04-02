@@ -200,7 +200,7 @@ describe('hybrid injection — layer option at component level', () => {
 
     expect(className).toMatch(/^pyr-/)
     // In environments without @layer support (happy-dom), rules are inserted
-    // without layer wrapping. In real browsers, they'd be in @layer base.
+    // without layer wrapping. In real browsers, they'd be in @layer pyreon.
     const rules = findRulesFor(className)
     expect(rules.length).toBeGreaterThanOrEqual(1)
     const baseRule = rules[0] as string

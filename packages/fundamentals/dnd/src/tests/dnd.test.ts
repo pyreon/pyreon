@@ -659,6 +659,63 @@ describe('useDragMonitor canMonitor filter', () => {
   })
 })
 
+// ─── SSR safety ────────────────────────────────────────────────────────────
+
+describe('SSR safety — all hooks return inert results without document', () => {
+  let originalDocument: typeof globalThis.document
+
+  beforeEach(() => {
+    originalDocument = globalThis.document
+    // @ts-expect-error — simulate SSR by removing document
+    delete globalThis.document
+  })
+
+  afterEach(() => {
+    globalThis.document = originalDocument
+  })
+
+  it('useDraggable returns inert isDragging', async () => {
+    const { useDraggable } = await import('../use-draggable')
+    const result = useDraggable({ element: () => null, data: { id: '1' } })
+    expect(result.isDragging()).toBe(false)
+  })
+
+  it('useDroppable returns inert isOver', async () => {
+    const { useDroppable } = await import('../use-droppable')
+    const result = useDroppable({ element: () => null, onDrop: () => {} })
+    expect(result.isOver()).toBe(false)
+  })
+
+  it('useSortable returns full inert API', async () => {
+    const { useSortable } = await import('../use-sortable')
+    const result = useSortable({
+      items: () => [{ id: '1' }],
+      by: (item: { id: string }) => item.id,
+      onReorder: () => {},
+    })
+    expect(result.activeId()).toBeNull()
+    expect(result.overId()).toBeNull()
+    expect(result.overEdge()).toBeNull()
+    expect(typeof result.containerRef).toBe('function')
+    expect(typeof result.itemRef).toBe('function')
+    expect(typeof result.itemRef('1')).toBe('function')
+  })
+
+  it('useFileDrop returns inert signals', async () => {
+    const { useFileDrop } = await import('../use-file-drop')
+    const result = useFileDrop({ element: () => null, onDrop: () => {} })
+    expect(result.isOver()).toBe(false)
+    expect(result.isDraggingFiles()).toBe(false)
+  })
+
+  it('useDragMonitor returns inert signals', async () => {
+    const { useDragMonitor } = await import('../use-drag-monitor')
+    const result = useDragMonitor()
+    expect(result.isDragging()).toBe(false)
+    expect(result.dragData()).toBeNull()
+  })
+})
+
 // ─── Module exports ─────────────────────────────────────────────────────────
 
 describe('module exports', () => {

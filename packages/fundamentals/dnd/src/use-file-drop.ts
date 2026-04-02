@@ -49,6 +49,8 @@ export interface UseFileDropResult {
  * ```
  */
 export function useFileDrop(options: UseFileDropOptions): UseFileDropResult {
+  if (typeof document === 'undefined') return { isOver: () => false, isDraggingFiles: () => false }
+
   const isOver = signal(false)
   const isDraggingFiles = signal(false)
   let cleanup: (() => void) | undefined
