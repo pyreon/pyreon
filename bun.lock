@@ -1012,6 +1012,61 @@
         "@pyreon/ui-core": "workspace:^",
       },
     },
+    "packages/ui/components": {
+      "name": "@pyreon/ui-components",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/ui-primitives": "workspace:^",
+        "@pyreon/ui-theme": "workspace:^",
+        "@pyreon/ui-tokens": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/hooks": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/styler": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
+      },
+    },
+    "packages/ui/primitives": {
+      "name": "@pyreon/ui-primitives",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/hooks": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/ui/theme": {
+      "name": "@pyreon/ui-theme",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/ui-tokens": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
+    "packages/ui/tokens": {
+      "name": "@pyreon/ui-tokens",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+    },
     "packages/zero/cli": {
       "name": "@pyreon/zero-cli",
       "version": "0.12.10",
@@ -1800,7 +1855,15 @@
 
     "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 
+    "@pyreon/ui-components": ["@pyreon/ui-components@workspace:packages/ui/components"],
+
     "@pyreon/ui-core": ["@pyreon/ui-core@workspace:packages/ui-system/ui-core"],
+
+    "@pyreon/ui-primitives": ["@pyreon/ui-primitives@workspace:packages/ui/primitives"],
+
+    "@pyreon/ui-theme": ["@pyreon/ui-theme@workspace:packages/ui/theme"],
+
+    "@pyreon/ui-tokens": ["@pyreon/ui-tokens@workspace:packages/ui/tokens"],
 
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
 
