@@ -24,6 +24,20 @@ export { default as Slider } from './components/Slider'
 // Data Display
 export { default as Badge } from './components/Badge'
 export { default as Card } from './components/Card'
+export { default as Avatar, AvatarGroup } from './components/Avatar'
+export { default as Image } from './components/Image'
+export { default as Kbd } from './components/Kbd'
+export { default as Table } from './components/Table'
+export { default as Timeline } from './components/Timeline'
+export { default as Code } from './components/Code'
+export { default as Highlight } from './components/Highlight'
 
 // Feedback
 export { default as Alert } from './components/Alert'
+export { default as Notification } from './components/Notification'
+export { default as Progress } from './components/Progress'
+export { default as Loader } from './components/Loader'
+export { default as Skeleton } from './components/Skeleton'
+
+// Indicators
+export { default as Indicator } from './components/Indicator'
