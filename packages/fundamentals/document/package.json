@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/document",
-  "version": "0.12.8",
+  "version": "0.12.9",
   "description": "Universal document rendering for Pyreon — one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/document#readme",
   "bugs": {
