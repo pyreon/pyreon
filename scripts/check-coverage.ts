@@ -8,7 +8,7 @@
  * If no threshold is configured, uses the default (90% statements).
  * Supports parallel execution and CI-friendly output.
  */
-import { execSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { readdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -48,37 +48,58 @@ function getPackageThreshold(pkgDir: string): number {
   return DEFAULT_THRESHOLD
 }
 
-/** Run coverage for a single package and return results. */
-function runCoverage(pkgDir: string, pkgName: string, threshold: number): CoverageResult | null {
-  try {
-    const output = execSync('bun run test -- --coverage --reporter=json', {
+/** Run coverage for a single package asynchronously. */
+function runCoverage(
+  pkgDir: string,
+  pkgName: string,
+  threshold: number,
+): Promise<CoverageResult | null> {
+  return new Promise((resolve) => {
+    const child = spawn('bun', ['run', 'test', '--', '--coverage', '--reporter=json'], {
       cwd: pkgDir,
-      timeout: 120_000,
-      encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     })
 
-    const match = output.match(
-      /All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/,
-    )
-    if (match) {
-      const [, stmts, branches, funcs, lines] = match.map(Number)
-      const pass = (stmts ?? 0) >= threshold
-      return {
-        package: pkgName,
-        statements: stmts ?? 0,
-        branches: branches ?? 0,
-        functions: funcs ?? 0,
-        lines: lines ?? 0,
-        pass,
-        threshold,
-      }
-    }
-  } catch {
-    // Package test failed or timed out
-  }
+    let stdout = ''
+    child.stdout.on('data', (data: Buffer) => {
+      stdout += data.toString()
+    })
+    child.stderr.on('data', (data: Buffer) => {
+      stdout += data.toString()
+    })
 
-  return null
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+    }, 120_000)
+
+    child.on('close', () => {
+      clearTimeout(timer)
+
+      const match = stdout.match(
+        /All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/,
+      )
+      if (match) {
+        const [, stmts, branches, funcs, lines] = match.map(Number)
+        const pass = (stmts ?? 0) >= threshold
+        resolve({
+          package: pkgName,
+          statements: stmts ?? 0,
+          branches: branches ?? 0,
+          functions: funcs ?? 0,
+          lines: lines ?? 0,
+          pass,
+          threshold,
+        })
+      } else {
+        resolve(null)
+      }
+    })
+
+    child.on('error', () => {
+      clearTimeout(timer)
+      resolve(null)
+    })
+  })
 }
 
 /** Collect all testable packages. */
@@ -110,7 +131,7 @@ function collectPackages(): { dir: string; name: string; threshold: number }[] {
   return packages
 }
 
-/** Run packages with bounded concurrency. */
+/** Run packages with bounded concurrency using async spawn. */
 async function runWithConcurrency(
   packages: { dir: string; name: string; threshold: number }[],
 ): Promise<CoverageResult[]> {
@@ -123,7 +144,7 @@ async function runWithConcurrency(
       if (!pkg) break
 
       process.stdout.write(`  Testing ${pkg.name}...`)
-      const result = runCoverage(pkg.dir, pkg.name, pkg.threshold)
+      const result = await runCoverage(pkg.dir, pkg.name, pkg.threshold)
       if (result) {
         results.push(result)
         console.log(` ${result.statements}% ${result.pass ? '\u2705' : '\u274c'}`)
@@ -144,7 +165,7 @@ async function runWithConcurrency(
 const isCI = !!process.env.CI
 const packages = collectPackages()
 
-console.log(`\nRunning coverage for ${packages.length} packages...\n`)
+console.log(`\nRunning coverage for ${packages.length} packages (${CONCURRENCY} parallel)...\n`)
 
 const results = await runWithConcurrency(packages)
 const sorted = results.sort((a, b) => a.package.localeCompare(b.package))
