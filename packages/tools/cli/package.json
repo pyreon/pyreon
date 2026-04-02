@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/cli",
-  "version": "0.12.9",
+  "version": "0.12.10",
   "description": "CLI tools for Pyreon — doctor, generate, context",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/cli#readme",
   "bugs": {
