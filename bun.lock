@@ -1021,6 +1021,7 @@
         "@pyreon/ui-tokens": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
       },
       "peerDependencies": {
