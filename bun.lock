@@ -181,6 +181,24 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/ssr-showcase": {
+      "name": "@pyreon/ssr-showcase",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.3.11",
+        "typescript": "^6.0.2",
+        "vite": "^8.0.0",
+      },
+    },
     "examples/ui-system-kinetic": {
       "name": "@pyreon/example-ui-system-kinetic",
       "version": "0.3.0",
@@ -1761,6 +1779,8 @@
     "@pyreon/server": ["@pyreon/server@workspace:packages/core/server"],
 
     "@pyreon/solid-compat": ["@pyreon/solid-compat@workspace:packages/tools/solid-compat"],
+
+    "@pyreon/ssr-showcase": ["@pyreon/ssr-showcase@workspace:examples/ssr-showcase"],
 
     "@pyreon/state-tree": ["@pyreon/state-tree@workspace:packages/fundamentals/state-tree"],
 

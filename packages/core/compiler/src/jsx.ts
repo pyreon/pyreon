@@ -268,8 +268,9 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   /** Names that refer to the props object or splitProps results. */
   const propsNames = new Set<string>()
 
-  /** Map of variable name → source text of the original expression. */
-  const propDerivedVars = new Map<string, string>()
+  /** Map of variable name → AST node of the original expression.
+   *  Using AST nodes instead of text avoids all string manipulation edge cases. */
+  const propDerivedVars = new Map<string, ts.Expression>()
 
   /** Check if an expression reads from a tracked props-like object. */
   function readsFromProps(node: ts.Node): boolean {
@@ -355,9 +356,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         if (_callbackDepth > 0) continue
         if (ts.isIdentifier(decl.name) && decl.initializer) {
           if (readsFromProps(decl.initializer)) {
-            const varName = decl.name.text
-            const exprText = code.slice(decl.initializer.getStart(sf), decl.initializer.getEnd())
-            propDerivedVars.set(varName, exprText)
+            propDerivedVars.set(decl.name.text, decl.initializer)
           }
         }
       }
@@ -370,7 +369,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   scanForPropDerivedVars(sf)
 
   // Transitive resolution: if const b = a + 1 where a is prop-derived,
-  // then b is also prop-derived. Inline b → (a + 1) → ((props.x) + 1).
+  // then b is also prop-derived. Store its AST node.
   // Fixed-point iteration until no new variables are added.
   let changed = true
   while (changed) {
@@ -380,9 +379,8 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       for (const decl of node.declarationList.declarations) {
         if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
         const varName = decl.name.text
-        if (propDerivedVars.has(varName)) continue // already tracked
-        if (node.declarationList.flags & ts.NodeFlags.Let) continue // skip let
-        // Check if the initializer references any existing prop-derived var
+        if (propDerivedVars.has(varName)) continue
+        if (node.declarationList.flags & ts.NodeFlags.Let) continue
         let usesPropVar = false
         ts.forEachChild(decl.initializer, function check(n) {
           if (usesPropVar) return
@@ -394,43 +392,43 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
           ts.forEachChild(n, check)
         })
         if (usesPropVar) {
-          const exprText = code.slice(decl.initializer.getStart(sf), decl.initializer.getEnd())
-          propDerivedVars.set(varName, exprText)
+          propDerivedVars.set(varName, decl.initializer)
           changed = true
         }
       }
     })
   }
 
-  // Resolve transitive inlining: if b's expr text references a, replace a
-  // with its expr. This uses the TS parser to find identifiers in the
-  // expression AST — not regex on arbitrary text.
-  for (const [varName, exprText] of propDerivedVars) {
-    // Parse the expression to find identifier references
-    const tempSf = ts.createSourceFile('_expr.ts', exprText, ts.ScriptTarget.Latest, true)
-    let resolved = exprText
-    const replacements_: { start: number; end: number; text: string }[] = []
-
-    function findIds(n: ts.Node): void {
-      if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== varName) {
-        // Skip property names after dot
-        const p = n.parent
-        if (p && ts.isPropertyAccessExpression(p) && p.name === n) return
-        replacements_.push({ start: n.getStart(tempSf), end: n.getEnd(), text: `(${propDerivedVars.get(n.text)!})` })
-        return
+  // Resolve transitive AST: for each prop-derived var, recursively replace
+  // references to other prop-derived vars in its AST with their resolved nodes.
+  // Uses ts.visitNode for correct AST transformation — no string manipulation.
+  function resolveExprTransitive(node: ts.Expression, excludeVar?: string): ts.Expression {
+    return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
+      if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== excludeVar) {
+        const parent = n.parent
+        // Skip property name after dot: obj.sizes
+        if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) {
+          return n
+        }
+        // Skip JSX attribute name: sizes={...}
+        if (parent && ts.isJsxAttribute(parent) && parent.name === n) {
+          return n
+        }
+        // Skip shorthand property assignment: { sizes }
+        if (parent && ts.isShorthandPropertyAssignment(parent)) {
+          return n
+        }
+        const resolved = propDerivedVars.get(n.text)!
+        return ts.factory.createParenthesizedExpression(
+          resolveExprTransitive(resolved, n.text),
+        )
       }
-      ts.forEachChild(n, findIds)
-    }
-    ts.forEachChild(tempSf, findIds)
-
-    if (replacements_.length > 0) {
-      // Apply right-to-left
-      for (const r of replacements_.sort((a, b) => b.start - a.start)) {
-        resolved = resolved.slice(0, r.start) + r.text + resolved.slice(r.end)
-      }
-      propDerivedVars.set(varName, resolved)
-    }
+      return ts.visitEachChild(n, visit, undefined as any)
+    }) as ts.Expression
   }
+
+  /** Print an AST expression back to source text. */
+  const printer = ts.createPrinter({ removeComments: false })
 
   /**
    * Enhanced dynamic check — combines containsCall with props awareness.
@@ -1060,13 +1058,14 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     return false
   }
 
-  /** Slice expression source from the original code */
+  /** Slice expression source from the original code.
+   *  Resolves any prop-derived identifiers found anywhere in the expression
+   *  via AST transformation — handles template literals, ternaries, etc. */
   function sliceExpr(expr: ts.Expression): string {
-    // If the expression is a single identifier that's prop-derived, return
-    // the original props expression instead. This is the ONLY place inlining
-    // happens — no regex, no post-processing, no string manipulation.
-    if (ts.isIdentifier(expr) && propDerivedVars.has(expr.text)) {
-      return `(${propDerivedVars.get(expr.text)!})`
+    // Quick check: does this expression contain any prop-derived references?
+    if (propDerivedVars.size > 0 && accessesProps(expr)) {
+      const resolved = resolveExprTransitive(expr)
+      return printer.printNode(ts.EmitHint.Expression, resolved, sf)
     }
     return code.slice(expr.getStart(sf), expr.getEnd())
   }

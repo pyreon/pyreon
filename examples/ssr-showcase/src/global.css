@@ -1,0 +1,109 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  color: #222;
+  background: #fff;
+}
+
+[data-theme='dark'] body {
+  color: #eee;
+  background: #111;
+}
+
+a {
+  color: #0066cc;
+}
+
+[data-theme='dark'] a {
+  color: #66aaff;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #ddd;
+}
+
+[data-theme='dark'] nav {
+  border-bottom-color: #444;
+}
+
+nav a {
+  text-decoration: none;
+}
+
+nav a.active {
+  font-weight: bold;
+}
+
+main {
+  padding: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+button {
+  cursor: pointer;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f5f5f5;
+}
+
+[data-theme='dark'] button {
+  background: #333;
+  border-color: #555;
+  color: #eee;
+}
+
+.counter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.counter-value {
+  min-width: 3rem;
+  text-align: center;
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+
+.post-list {
+  list-style: none;
+  padding: 0;
+}
+
+.post-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+}
+
+[data-theme='dark'] .post-list li {
+  border-bottom-color: #333;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: #888;
+}
+
+.error-page {
+  text-align: center;
+  padding: 2rem;
+  color: #cc0000;
+}
+
+.not-found {
+  text-align: center;
+  padding: 2rem;
+}

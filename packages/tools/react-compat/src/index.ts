@@ -15,8 +15,8 @@
 export type { Props, VNode as ReactNode, VNodeChild } from '@pyreon/core'
 export { Fragment, h as createElement, h } from '@pyreon/core'
 
-import type { VNodeChild } from '@pyreon/core'
-import { createContext, ErrorBoundary, Portal, Suspense, useContext } from '@pyreon/core'
+import type { VNode, VNodeChild } from '@pyreon/core'
+import { createContext, ErrorBoundary, h, Portal, Suspense, useContext } from '@pyreon/core'
 import { batch } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
@@ -291,3 +291,112 @@ export function createPortal(children: VNodeChild, target: Element): VNodeChild 
 
 export { lazy } from '@pyreon/core'
 export { ErrorBoundary, Suspense }
+
+// ─── forwardRef ─────────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `forwardRef` — pass-through in Pyreon.
+ * Refs are regular props in Pyreon, so no wrapper is needed.
+ * The render function receives (props, ref) — we merge ref into props.
+ */
+export function forwardRef<P extends Record<string, unknown>>(
+  render: (props: P, ref: { current: unknown } | null) => VNodeChild,
+): (props: P & { ref?: { current: unknown } | null }) => VNodeChild {
+  return (props: P & { ref?: { current: unknown } | null }) => {
+    const { ref, ...rest } = props
+    return render(rest as P, ref ?? null)
+  }
+}
+
+// ─── cloneElement ───────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `cloneElement` — creates a new VNode with merged props.
+ */
+export function cloneElement(
+  element: VNode,
+  props?: Record<string, unknown>,
+  ...children: VNodeChild[]
+): VNode {
+  const mergedProps = { ...element.props, ...props }
+  const mergedChildren = children.length > 0 ? children : element.children
+  return h(element.type, mergedProps, ...mergedChildren)
+}
+
+// ─── Children utilities ─────────────────────────────────────────────────────
+
+function flattenChildren(children: VNodeChild | VNodeChild[]): VNodeChild[] {
+  if (children == null) return []
+  if (!Array.isArray(children)) return [children]
+  const result: VNodeChild[] = []
+  for (const child of children) {
+    if (Array.isArray(child)) {
+      result.push(...flattenChildren(child))
+    } else {
+      result.push(child)
+    }
+  }
+  return result
+}
+
+/**
+ * React-compatible `Children` utilities for working with VNode children.
+ */
+export const Children = {
+  /**
+   * Iterate over children, calling `fn` for each non-null child.
+   */
+  map<T>(children: VNodeChild | VNodeChild[], fn: (child: VNodeChild, index: number) => T): T[] {
+    const flat = flattenChildren(children)
+    const result: T[] = []
+    for (let i = 0; i < flat.length; i++) {
+      const child = flat[i]
+      if (child == null || child === true || child === false) continue
+      result.push(fn(child, i))
+    }
+    return result
+  },
+
+  /**
+   * Call `fn` for each non-null child (no return value).
+   */
+  forEach(children: VNodeChild | VNodeChild[], fn: (child: VNodeChild, index: number) => void): void {
+    const flat = flattenChildren(children)
+    for (let i = 0; i < flat.length; i++) {
+      const child = flat[i]
+      if (child == null || child === true || child === false) continue
+      fn(child, i)
+    }
+  },
+
+  /**
+   * Count non-null children.
+   */
+  count(children: VNodeChild | VNodeChild[]): number {
+    const flat = flattenChildren(children)
+    let count = 0
+    for (const child of flat) {
+      if (child != null && child !== true && child !== false) count++
+    }
+    return count
+  },
+
+  /**
+   * Convert children to a flat array.
+   */
+  toArray(children: VNodeChild | VNodeChild[]): VNodeChild[] {
+    const flat = flattenChildren(children)
+    return flat.filter((child) => child != null && child !== true && child !== false)
+  },
+
+  /**
+   * Assert and return the only child. Throws if not exactly one child.
+   */
+  only(children: VNodeChild | VNodeChild[]): VNodeChild {
+    const arr = Children.toArray(children)
+    if (arr.length !== 1) {
+      throw new Error('[Pyreon] Children.only expected exactly one child')
+    }
+    return arr[0] as VNodeChild
+  },
+}
