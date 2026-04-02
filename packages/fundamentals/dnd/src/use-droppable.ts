@@ -23,6 +23,8 @@ import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
 export function useDroppable<T extends DragData = DragData>(
   options: UseDroppableOptions<T>,
 ): UseDroppableResult {
+  if (typeof document === 'undefined') return { isOver: () => false }
+
   const isOver = signal(false)
   let cleanup: (() => void) | undefined
 

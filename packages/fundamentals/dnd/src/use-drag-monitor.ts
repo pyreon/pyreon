@@ -38,6 +38,8 @@ export interface UseDragMonitorResult {
  * ```
  */
 export function useDragMonitor(options?: UseDragMonitorOptions): UseDragMonitorResult {
+  if (typeof document === 'undefined') return { isDragging: () => false, dragData: () => null }
+
   const isDragging = signal(false)
   const dragData = signal<DragData | null>(null)
 

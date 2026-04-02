@@ -54,6 +54,17 @@ let _sortableCounter = 0
  * ```
  */
 export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResult {
+  if (typeof document === 'undefined') {
+    const noop = () => {}
+    return {
+      containerRef: noop as (el: HTMLElement) => void,
+      itemRef: () => noop as (el: HTMLElement) => void,
+      activeId: () => null,
+      overId: () => null,
+      overEdge: () => null,
+    }
+  }
+
   const sortableId = `sortable-${++_sortableCounter}`
   const activeId = signal<string | number | null>(null)
   const overId = signal<string | number | null>(null)
