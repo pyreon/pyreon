@@ -406,10 +406,18 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
       if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== excludeVar) {
         const parent = n.parent
+        // Skip property name after dot: obj.sizes
         if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) {
-          return n // property name after dot — don't replace
+          return n
         }
-        // Wrap in parens to preserve precedence
+        // Skip JSX attribute name: sizes={...}
+        if (parent && ts.isJsxAttribute(parent) && parent.name === n) {
+          return n
+        }
+        // Skip shorthand property assignment: { sizes }
+        if (parent && ts.isShorthandPropertyAssignment(parent)) {
+          return n
+        }
         const resolved = propDerivedVars.get(n.text)!
         return ts.factory.createParenthesizedExpression(
           resolveExprTransitive(resolved, n.text),
