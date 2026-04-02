@@ -6,7 +6,7 @@
  * Usage: bun scripts/visual-test/report.ts > report.md
  */
 
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
 
 const ROOT = join(import.meta.dir, '../..')
