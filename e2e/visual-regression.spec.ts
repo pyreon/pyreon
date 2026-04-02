@@ -5,7 +5,7 @@
  * Run via: bun run visual-test:capture
  */
 
-import { expect, test } from '@playwright/test'
+import { test } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
