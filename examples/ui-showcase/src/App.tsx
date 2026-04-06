@@ -89,6 +89,16 @@ import { DateRangePickerDemo } from './demos/DateRangePickerDemo'
 import { TreeDemo } from './demos/TreeDemo'
 import { VisuallyHiddenDemo } from './demos/VisuallyHiddenDemo'
 
+// Combinations — real-world patterns
+import { LoginFormDemo } from './demos/LoginFormDemo'
+import { DashboardDemo } from './demos/DashboardDemo'
+import { SettingsDemo } from './demos/SettingsDemo'
+import { EcommerceDemo } from './demos/EcommerceDemo'
+import { NotificationCenterDemo } from './demos/NotificationCenterDemo'
+import { UserProfileDemo } from './demos/UserProfileDemo'
+import { DataTableDemo } from './demos/DataTableDemo'
+import { WizardDemo } from './demos/WizardDemo'
+
 // ─── Navigation structure ────────────────────────────────────────────────────
 
 interface NavItem {
@@ -223,6 +233,19 @@ const navGroups: NavGroup[] = [
     items: [
       { id: 'tree', label: 'Tree', component: TreeDemo },
       { id: 'visuallyhidden', label: 'VisuallyHidden', component: VisuallyHiddenDemo },
+    ],
+  },
+  {
+    label: 'Real-World Examples',
+    items: [
+      { id: 'login', label: 'Login Form', component: LoginFormDemo },
+      { id: 'dashboard', label: 'Dashboard', component: DashboardDemo },
+      { id: 'settings', label: 'Settings Page', component: SettingsDemo },
+      { id: 'ecommerce', label: 'Product Grid', component: EcommerceDemo },
+      { id: 'notifications', label: 'Notification Center', component: NotificationCenterDemo },
+      { id: 'profile', label: 'User Profile', component: UserProfileDemo },
+      { id: 'datatable', label: 'Data Table', component: DataTableDemo },
+      { id: 'wizard', label: 'Multi-Step Wizard', component: WizardDemo },
     ],
   },
 ]

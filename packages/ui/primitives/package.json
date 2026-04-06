@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "vl_rolldown_build",
+    "build": "echo 'private package — consumed via bun condition'",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
