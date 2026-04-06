@@ -30,6 +30,13 @@ const ALL_COMPONENTS = [
   'Tabs', 'Tab', 'TabPanel', 'Breadcrumb', 'BreadcrumbItem', 'Pagination', 'NavLink', 'Stepper', 'Step',
   // Disclosure
   'Accordion', 'AccordionItem', 'AccordionTrigger', 'AccordionContent', 'Spoiler',
+  // Date & Time
+  'Calendar', 'DatePicker', 'DateRangePicker', 'TimePicker', 'DateTimePicker', 'MonthPicker',
+  // Advanced Inputs
+  'Combobox', 'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
+  'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl',
+  // Data
+  'Tree',
   // Accessibility
   'VisuallyHidden',
 ] as const
@@ -56,6 +63,10 @@ describe('Rocketstyle components have IS_ROCKETSTYLE', () => {
     'Modal', 'Drawer', 'Dialog', 'Tooltip', 'Popover', 'HoverCard', 'Menu', 'MenuItem',
     'Tabs', 'Tab', 'TabPanel', 'Breadcrumb', 'BreadcrumbItem', 'Pagination', 'NavLink', 'Stepper', 'Step',
     'Accordion', 'AccordionItem', 'AccordionTrigger', 'AccordionContent', 'Spoiler',
+    'Calendar', 'DatePicker', 'DateRangePicker', 'TimePicker', 'DateTimePicker', 'MonthPicker',
+    'Combobox', 'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
+    'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl',
+    'Tree',
     'VisuallyHidden',
   ] as const
 
