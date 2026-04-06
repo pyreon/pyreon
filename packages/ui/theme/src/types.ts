@@ -33,13 +33,13 @@ export interface ThemeConfig {
   }
   semantic: SemanticColors
   fontFamily: { sans: string; mono: string }
-  fontSize: Record<string, number>
-  fontWeight: Record<string, number>
-  lineHeight: Record<string, number>
-  spacing: Record<number, number>
-  radii: Record<string, number>
-  shadows: Record<string, string>
-  transition: Record<string, string>
+  fontSize: { xs: number; sm: number; md: number; lg: number; xl: number; '2xl': number; '3xl': number; '4xl': number; '5xl': number; [key: string]: number }
+  fontWeight: { normal: number; medium: number; semibold: number; bold: number; [key: string]: number }
+  lineHeight: { tight: number; normal: number; relaxed: number; [key: string]: number }
+  spacing: { 0: number; 0.5: number; 1: number; 1.5: number; 2: number; 2.5: number; 3: number; 3.5: number; 4: number; 5: number; 6: number; 7: number; 8: number; 9: number; 10: number; 12: number; 14: number; 16: number; 20: number; 24: number; [key: number]: number }
+  radii: { none: number; sm: number; md: number; lg: number; xl: number; '2xl': number; '3xl': number; full: number; [key: string]: number }
+  shadows: { xs: string; sm: string; md: string; lg: string; xl: string; '2xl': string; none: string; [key: string]: string }
+  transition: { fast: string; normal: string; slow: string; [key: string]: string }
 }
 
 /** Deep partial for theme overrides. */

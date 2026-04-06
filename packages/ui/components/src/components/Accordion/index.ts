@@ -26,7 +26,7 @@ export const AccordionTrigger = rocketstyle({ useBooleans: true })({
   name: 'AccordionTrigger',
   component: Element,
 })
-  .attrs({ tag: 'button' } as any)
+  .attrs({ tag: 'button' })
   .theme(atResolved.base)
 
 const acResolved = getComponentTheme(accordionContentTheme)
@@ -35,5 +35,5 @@ export const AccordionContent = rocketstyle({ useBooleans: true })({
   name: 'AccordionContent',
   component: Element,
 })
-  .attrs({ tag: 'div' } as any)
+  .attrs({ tag: 'div' })
   .theme(acResolved.base)
