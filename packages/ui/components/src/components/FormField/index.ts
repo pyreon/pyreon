@@ -1,30 +1,10 @@
 import { Element, Text } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { formFieldTheme, fieldLabelTheme, fieldErrorTheme, fieldDescriptionTheme } from './theme'
 
-const ffResolved = getComponentTheme(formFieldTheme)
-
-const FormField = rocketstyle({ useBooleans: true })({ name: 'FormField', component: Element })
-  .attrs({ tag: 'div', direction: 'rows', block: true } as any)
-  .theme(ffResolved.base)
-
+const FormField = createComponent('FormField', Element, formFieldTheme, { tag: 'div', direction: 'rows', block: true })
 export default FormField
 
-const flResolved = getComponentTheme(fieldLabelTheme)
-
-export const FieldLabel = rocketstyle({ useBooleans: true })({ name: 'FieldLabel', component: Text })
-  .attrs({ tag: 'label' } as any)
-  .theme(flResolved.base)
-
-const feResolved = getComponentTheme(fieldErrorTheme)
-
-export const FieldError = rocketstyle()({ name: 'FieldError', component: Text })
-  .attrs({ tag: 'span' } as any)
-  .theme(feResolved.base)
-
-const fdResolved = getComponentTheme(fieldDescriptionTheme)
-
-export const FieldDescription = rocketstyle()({ name: 'FieldDescription', component: Text })
-  .attrs({ tag: 'span' } as any)
-  .theme(fdResolved.base)
+export const FieldLabel = createComponent('FieldLabel', Text, fieldLabelTheme, { tag: 'label' })
+export const FieldError = createComponent('FieldError', Text, fieldErrorTheme, { tag: 'span' })
+export const FieldDescription = createComponent('FieldDescription', Text, fieldDescriptionTheme, { tag: 'span' })

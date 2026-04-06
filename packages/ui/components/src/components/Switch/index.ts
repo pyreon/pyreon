@@ -1,12 +1,6 @@
-import rocketstyle from '@pyreon/rocketstyle'
 import { SwitchBase } from '@pyreon/ui-primitives'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { switchTheme } from './theme'
 
-const resolved = getComponentTheme(switchTheme)
-
-const Switch = rocketstyle({ useBooleans: true })({ name: 'Switch', component: SwitchBase as any })
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const Switch = createComponent('Switch', SwitchBase, switchTheme)
 export default Switch

@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { buttonGroupTheme } from './theme'
 
-const resolved = getComponentTheme(buttonGroupTheme)
-
-const ButtonGroup = rocketstyle({ useBooleans: true })({ name: 'ButtonGroup', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-  .variants(resolved.variants)
-
+const ButtonGroup = createComponent('ButtonGroup', Element, buttonGroupTheme, { tag: 'div' })
 export default ButtonGroup

@@ -1,20 +1,8 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { stepperTheme, stepTheme } from './theme'
 
-const sResolved = getComponentTheme(stepperTheme)
-
-const Stepper = rocketstyle({ useBooleans: true })({ name: 'Stepper', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(sResolved.base)
-  .variants(sResolved.variants)
-
+const Stepper = createComponent('Stepper', Element, stepperTheme, { tag: 'div' })
 export default Stepper
 
-const stResolved = getComponentTheme(stepTheme)
-
-export const Step = rocketstyle({ useBooleans: true })({ name: 'Step', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(stResolved.base)
-  .states(stResolved.states)
+export const Step = createComponent('Step', Element, stepTheme, { tag: 'div' })

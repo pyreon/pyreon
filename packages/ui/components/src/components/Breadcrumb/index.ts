@@ -1,24 +1,8 @@
-import { Element, Text } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { Element } from '@pyreon/elements'
+import { createComponent } from '../../factory'
 import { breadcrumbTheme, breadcrumbItemTheme } from './theme'
 
-const bResolved = getComponentTheme(breadcrumbTheme)
-
-const Breadcrumb = rocketstyle({ useBooleans: true })({
-  name: 'Breadcrumb',
-  component: Element,
-})
-  .attrs({ tag: 'nav' } as any)
-  .theme(bResolved.base)
-
+const Breadcrumb = createComponent('Breadcrumb', Element, breadcrumbTheme, { tag: 'nav' })
 export default Breadcrumb
 
-const biResolved = getComponentTheme(breadcrumbItemTheme)
-
-export const BreadcrumbItem = rocketstyle({ useBooleans: true })({
-  name: 'BreadcrumbItem',
-  component: Text,
-})
-  .attrs({ tag: 'a' } as any)
-  .theme(biResolved.base)
+export const BreadcrumbItem = createComponent('BreadcrumbItem', Element, breadcrumbItemTheme, { tag: 'a' })

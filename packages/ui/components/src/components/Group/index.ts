@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { groupTheme } from './theme'
 
-const resolved = getComponentTheme(groupTheme)
-
-const Group = rocketstyle({ useBooleans: true })({ name: 'Group', component: Element })
-  .attrs({ tag: 'div', direction: 'inline', block: true } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const Group = createComponent('Group', Element, groupTheme, { tag: 'div', direction: 'inline', block: true })
 export default Group

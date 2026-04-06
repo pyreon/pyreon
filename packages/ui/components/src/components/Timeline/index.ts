@@ -1,12 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { timelineTheme } from './theme'
 
-const resolved = getComponentTheme(timelineTheme)
-
-const Timeline = rocketstyle({ useBooleans: true })({ name: 'Timeline', component: Element })
-  .attrs({ tag: 'div', direction: 'rows' } as any)
-  .theme(resolved.base)
-
+const Timeline = createComponent('Timeline', Element, timelineTheme, { tag: 'div', direction: 'rows' })
 export default Timeline

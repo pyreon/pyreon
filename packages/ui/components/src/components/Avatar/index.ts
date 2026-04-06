@@ -1,20 +1,8 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { avatarTheme, avatarGroupTheme } from './theme'
 
-const resolved = getComponentTheme(avatarTheme)
-
-const Avatar = rocketstyle({ useBooleans: true })({ name: 'Avatar', component: Element })
-  .attrs({ tag: 'div', alignX: 'center', alignY: 'center' } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-  .variants(resolved.variants)
-
+const Avatar = createComponent('Avatar', Element, avatarTheme, { tag: 'div', alignX: 'center', alignY: 'center' })
 export default Avatar
 
-const agResolved = getComponentTheme(avatarGroupTheme)
-
-export const AvatarGroup = rocketstyle({ useBooleans: true })({ name: 'AvatarGroup', component: Element })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' } as any)
-  .theme(agResolved.base)
+export const AvatarGroup = createComponent('AvatarGroup', Element, avatarGroupTheme, { tag: 'div', direction: 'inline', alignY: 'center' })

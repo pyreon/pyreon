@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { dateTimePickerTheme } from './theme'
 
-const resolved = getComponentTheme(dateTimePickerTheme)
-
-const DateTimePicker = rocketstyle({ useBooleans: true })({ name: 'DateTimePicker', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const DateTimePicker = createComponent('DateTimePicker', Element, dateTimePickerTheme, { tag: 'div' })
 export default DateTimePicker

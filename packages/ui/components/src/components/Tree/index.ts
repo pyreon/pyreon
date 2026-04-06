@@ -1,11 +1,6 @@
-import rocketstyle from '@pyreon/rocketstyle'
 import { TreeBase } from '@pyreon/ui-primitives'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { treeTheme } from './theme'
 
-const resolved = getComponentTheme(treeTheme)
-
-const Tree = rocketstyle({ useBooleans: true })({ name: 'Tree', component: TreeBase as any })
-  .theme(resolved.base)
-
+const Tree = createComponent('Tree', TreeBase, treeTheme)
 export default Tree

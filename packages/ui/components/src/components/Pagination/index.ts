@@ -1,16 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { paginationTheme } from './theme'
 
-const resolved = getComponentTheme(paginationTheme)
-
-const Pagination = rocketstyle({ useBooleans: true })({
-  name: 'Pagination',
-  component: Element,
-})
-  .attrs({ tag: 'nav' } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const Pagination = createComponent('Pagination', Element, paginationTheme, { tag: 'nav' })
 export default Pagination

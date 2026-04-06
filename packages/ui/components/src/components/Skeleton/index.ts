@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { skeletonTheme } from './theme'
 
-const resolved = getComponentTheme(skeletonTheme)
-
-const Skeleton = rocketstyle({ useBooleans: true })({ name: 'Skeleton', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-  .variants(resolved.variants)
-
+const Skeleton = createComponent('Skeleton', Element, skeletonTheme, { tag: 'div' })
 export default Skeleton

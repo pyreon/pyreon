@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { notificationTheme } from './theme'
 
-const resolved = getComponentTheme(notificationTheme)
-
-const Notification = rocketstyle({ useBooleans: true })({ name: 'Notification', component: Element })
-  .attrs({ tag: 'div', direction: 'rows', block: true } as any)
-  .theme(resolved.base)
-  .states(resolved.states)
-
+const Notification = createComponent('Notification', Element, notificationTheme, { tag: 'div', direction: 'rows', block: true })
 export default Notification

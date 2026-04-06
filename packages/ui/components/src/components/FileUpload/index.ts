@@ -1,11 +1,6 @@
-import rocketstyle from '@pyreon/rocketstyle'
 import { FileUploadBase } from '@pyreon/ui-primitives'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { fileUploadTheme } from './theme'
 
-const resolved = getComponentTheme(fileUploadTheme)
-
-const FileUpload = rocketstyle({ useBooleans: true })({ name: 'FileUpload', component: FileUploadBase as any })
-  .theme(resolved.base)
-
+const FileUpload = createComponent('FileUpload', FileUploadBase, fileUploadTheme)
 export default FileUpload

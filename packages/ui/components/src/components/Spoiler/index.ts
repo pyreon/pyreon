@@ -1,12 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { spoilerTheme } from './theme'
 
-const resolved = getComponentTheme(spoilerTheme)
-
-const Spoiler = rocketstyle({ useBooleans: true })({ name: 'Spoiler', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-
+const Spoiler = createComponent('Spoiler', Element, spoilerTheme, { tag: 'div' })
 export default Spoiler

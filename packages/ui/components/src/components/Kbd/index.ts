@@ -1,12 +1,6 @@
 import { Text } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { kbdTheme } from './theme'
 
-const resolved = getComponentTheme(kbdTheme)
-
-const Kbd = rocketstyle({ useBooleans: true })({ name: 'Kbd', component: Text })
-  .attrs({ tag: 'kbd' } as any)
-  .theme(resolved.base)
-
+const Kbd = createComponent('Kbd', Text, kbdTheme, { tag: 'kbd' })
 export default Kbd

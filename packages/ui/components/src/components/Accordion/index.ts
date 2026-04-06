@@ -1,39 +1,10 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
-import { accordionTheme, accordionItemTheme, accordionTriggerTheme, accordionContentTheme } from './theme'
+import { createComponent } from '../../factory'
+import { accordionContentTheme, accordionItemTheme, accordionTheme, accordionTriggerTheme } from './theme'
 
-const aResolved = getComponentTheme(accordionTheme)
-
-const Accordion = rocketstyle({ useBooleans: true })({ name: 'Accordion', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(aResolved.base)
-
+const Accordion = createComponent('Accordion', Element, accordionTheme, { tag: 'div' })
 export default Accordion
 
-const aiResolved = getComponentTheme(accordionItemTheme)
-
-export const AccordionItem = rocketstyle({ useBooleans: true })({
-  name: 'AccordionItem',
-  component: Element,
-})
-  .attrs({ tag: 'div' } as any)
-  .theme(aiResolved.base)
-
-const atResolved = getComponentTheme(accordionTriggerTheme)
-
-export const AccordionTrigger = rocketstyle({ useBooleans: true })({
-  name: 'AccordionTrigger',
-  component: Element,
-})
-  .attrs({ tag: 'button' })
-  .theme(atResolved.base)
-
-const acResolved = getComponentTheme(accordionContentTheme)
-
-export const AccordionContent = rocketstyle({ useBooleans: true })({
-  name: 'AccordionContent',
-  component: Element,
-})
-  .attrs({ tag: 'div' })
-  .theme(acResolved.base)
+export const AccordionItem = createComponent('AccordionItem', Element, accordionItemTheme, { tag: 'div' })
+export const AccordionTrigger = createComponent('AccordionTrigger', Element, accordionTriggerTheme, { tag: 'button' })
+export const AccordionContent = createComponent('AccordionContent', Element, accordionContentTheme, { tag: 'div' })

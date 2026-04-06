@@ -1,17 +1,8 @@
-import rocketstyle from '@pyreon/rocketstyle'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { radioTheme, radioGroupTheme } from './theme'
 
-const rResolved = getComponentTheme(radioTheme)
-
-const Radio = rocketstyle({ useBooleans: true })({ name: 'Radio', component: RadioBase as any })
-  .theme(rResolved.base)
-  .sizes(rResolved.sizes)
-
+const Radio = createComponent('Radio', RadioBase, radioTheme)
 export default Radio
 
-const rgResolved = getComponentTheme(radioGroupTheme)
-
-export const RadioGroup = rocketstyle({ useBooleans: true })({ name: 'RadioGroup', component: RadioGroupBase as any })
-  .theme(rgResolved.base)
+export const RadioGroup = createComponent('RadioGroup', RadioGroupBase, radioGroupTheme)

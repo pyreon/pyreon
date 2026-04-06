@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { simpleGridTheme } from './theme'
 
-const resolved = getComponentTheme(simpleGridTheme)
-
-const SimpleGrid = rocketstyle({ useBooleans: true })({ name: 'SimpleGrid', component: Element })
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const SimpleGrid = createComponent('SimpleGrid', Element, simpleGridTheme, { tag: 'div' })
 export default SimpleGrid

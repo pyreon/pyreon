@@ -1,15 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { popoverTheme } from './theme'
 
-const resolved = getComponentTheme(popoverTheme)
-
-const Popover = rocketstyle({ useBooleans: true })({
-  name: 'Popover',
-  component: Element,
-})
-  .attrs({ tag: 'div' } as any)
-  .theme(resolved.base)
-
+const Popover = createComponent('Popover', Element, popoverTheme, { tag: 'div' })
 export default Popover

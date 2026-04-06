@@ -1,13 +1,6 @@
 import { Text } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { paragraphTheme } from './theme'
 
-const resolved = getComponentTheme(paragraphTheme)
-
-const Paragraph = rocketstyle({ useBooleans: true })({ name: 'Paragraph', component: Text })
-  .attrs({ tag: 'p' } as any)
-  .theme(resolved.base)
-  .sizes(resolved.sizes)
-
+const Paragraph = createComponent('Paragraph', Text, paragraphTheme, { tag: 'p' })
 export default Paragraph

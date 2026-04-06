@@ -1,13 +1,6 @@
 import { Element } from '@pyreon/elements'
-import rocketstyle from '@pyreon/rocketstyle'
-import { getComponentTheme } from '@pyreon/ui-theme'
+import { createComponent } from '../../factory'
 import { imageTheme } from './theme'
 
-const resolved = getComponentTheme(imageTheme)
-
-const Image = rocketstyle({ useBooleans: true })({ name: 'Image', component: Element })
-  .attrs({ tag: 'img' } as any)
-  .theme(resolved.base)
-  .variants(resolved.variants)
-
+const Image = createComponent('Image', Element, imageTheme, { tag: 'img' })
 export default Image
