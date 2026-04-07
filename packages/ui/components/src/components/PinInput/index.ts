@@ -1,8 +1,43 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { pinInputTheme, pinInputCellTheme } from './theme'
+import { el } from '../../factory'
 
-const PinInput = createComponent('PinInput', Element, pinInputTheme, { tag: 'div' })
+const PinInput = el
+  .config({ name: 'PinInput' })
+  .attrs({ tag: 'div' })
+  .theme((t: any) => ({
+    display: 'flex',
+    gap: t.spacing.xxSmall,
+  }))
+  .sizes((t: any) => ({
+    small: { gap: t.spacing.xxSmall },
+    medium: { gap: t.spacing.xxSmall },
+    large: { gap: t.spacing.xSmall },
+  }))
+
 export default PinInput
 
-export const PinInputCell = createComponent('PinInputCell', Element, pinInputCellTheme, { tag: 'input' })
+export const PinInputCell = el
+  .config({ name: 'PinInputCell' })
+  .attrs({ tag: 'input' })
+  .theme((t: any) => ({
+    width: '40px',
+    height: '40px',
+    textAlign: 'center',
+    fontSize: t.fontSize.medium,
+    borderWidth: t.borderWidth.base,
+    borderStyle: t.borderStyle.base,
+    borderColor: t.color.system.base[300],
+    borderRadius: t.borderRadius.base,
+    backgroundColor: t.color.system.light.base,
+    color: t.color.system.dark[800],
+    outline: 'none',
+    transition: t.transition.fast,
+    focus: {
+      borderColor: t.color.system.primary.base,
+      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
+    },
+  }))
+  .sizes((t: any) => ({
+    small: { width: '36px', height: '36px', fontSize: t.fontSize.base },
+    medium: { width: '40px', height: '40px', fontSize: t.fontSize.medium },
+    large: { width: '48px', height: '48px', fontSize: t.fontSize.large },
+  }))

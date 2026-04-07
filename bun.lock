@@ -213,8 +213,6 @@
         "@pyreon/ui-components": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/ui-primitives": "workspace:*",
-        "@pyreon/ui-theme": "workspace:*",
-        "@pyreon/ui-tokens": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
       },
       "devDependencies": {
@@ -1043,8 +1041,6 @@
       "version": "0.0.1",
       "dependencies": {
         "@pyreon/ui-primitives": "workspace:^",
-        "@pyreon/ui-theme": "workspace:^",
-        "@pyreon/ui-tokens": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/test-utils": "workspace:^",
@@ -1076,19 +1072,6 @@
     },
     "packages/ui/theme": {
       "name": "@pyreon/ui-theme",
-      "version": "0.0.1",
-      "dependencies": {
-        "@pyreon/ui-tokens": "workspace:^",
-      },
-      "devDependencies": {
-        "@pyreon/typescript": "workspace:^",
-      },
-      "peerDependencies": {
-        "@pyreon/reactivity": "workspace:^",
-      },
-    },
-    "packages/ui/tokens": {
-      "name": "@pyreon/ui-tokens",
       "version": "0.0.1",
       "devDependencies": {
         "@pyreon/typescript": "workspace:^",
@@ -1891,8 +1874,6 @@
     "@pyreon/ui-primitives": ["@pyreon/ui-primitives@workspace:packages/ui/primitives"],
 
     "@pyreon/ui-theme": ["@pyreon/ui-theme@workspace:packages/ui/theme"],
-
-    "@pyreon/ui-tokens": ["@pyreon/ui-tokens@workspace:packages/ui/tokens"],
 
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
 

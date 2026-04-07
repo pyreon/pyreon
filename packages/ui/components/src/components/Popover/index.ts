@@ -1,6 +1,17 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { popoverTheme } from './theme'
+import { el } from '../../factory'
 
-const Popover = createComponent('Popover', Element, popoverTheme, { tag: 'div' })
+const Popover = el
+  .config({ name: 'Popover' })
+  .attrs({ tag: 'div' })
+  .theme((t: any) => ({
+    backgroundColor: t.color.system.light.base,
+    borderRadius: t.borderRadius.medium,
+    boxShadow: t.shadows.medium,
+    borderWidth: t.borderWidth.base,
+    borderStyle: t.borderStyle.base,
+    borderColor: t.color.system.base[200],
+    padding: t.spacing.small,
+    zIndex: 50,
+  }))
+
 export default Popover

@@ -1,6 +1,11 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { spoilerTheme } from './theme'
+import { el } from '../../factory'
 
-const Spoiler = createComponent('Spoiler', Element, spoilerTheme, { tag: 'div' })
+const Spoiler = el
+  .config({ name: 'Spoiler' })
+  .attrs({ tag: 'div' })
+  .theme(() => ({
+    overflow: 'hidden',
+    position: 'relative',
+  }))
+
 export default Spoiler

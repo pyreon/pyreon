@@ -1,6 +1,12 @@
+import rocketstyle from '@pyreon/rocketstyle'
 import { TreeBase } from '@pyreon/ui-primitives'
-import { createComponent } from '../../factory'
-import { treeTheme } from './theme'
 
-const Tree = createComponent('Tree', TreeBase, treeTheme)
+const rs = rocketstyle({ useBooleans: true })
+
+const Tree = rs({ name: 'Tree', component: TreeBase })
+  .theme((t: any) => ({
+    fontSize: t.fontSize.small,
+    color: t.color.system.base[700],
+  }))
+
 export default Tree

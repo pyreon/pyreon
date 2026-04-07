@@ -1,6 +1,30 @@
+import rocketstyle from '@pyreon/rocketstyle'
 import { SliderBase } from '@pyreon/ui-primitives'
-import { createComponent } from '../../factory'
-import { sliderTheme } from './theme'
 
-const Slider = createComponent('Slider', SliderBase, sliderTheme)
+const rs = rocketstyle({ useBooleans: true })
+
+const Slider = rs({ name: 'Slider', component: SliderBase })
+  .theme((t: any) => ({
+    width: '100%',
+    backgroundColor: t.color.system.base[200],
+    borderRadius: t.borderRadius.pill,
+    position: 'relative',
+    cursor: 'pointer',
+    transition: t.transition.fast,
+    focus: {
+      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
+      outline: 'none',
+    },
+    disabled: {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+      pointerEvents: 'none',
+    },
+  }))
+  .sizes(() => ({
+    small: { height: '4px' },
+    medium: { height: '6px' },
+    large: { height: '8px' },
+  }))
+
 export default Slider

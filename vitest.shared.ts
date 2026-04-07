@@ -65,7 +65,7 @@ const uiPackages = [
   'unistyle',
 ] as const
 
-const uiLibPackages = ['ui-tokens', 'ui-theme', 'ui-primitives', 'ui-components'] as const
+const uiLibPackages = ['ui-theme', 'ui-primitives', 'ui-components'] as const
 
 const zeroPackages = ['zero', 'meta'] as const
 

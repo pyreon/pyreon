@@ -2,7 +2,7 @@
   "name": "@pyreon/ui-theme",
   "version": "0.0.1",
   "private": true,
-  "description": "Theme system for the Pyreon UI component library — createTheme, semantic aliases, dark mode",
+  "description": "Default theme for the Pyreon UI component library",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -34,13 +34,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
-  "dependencies": {
-    "@pyreon/ui-tokens": "workspace:^"
-  },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^"
-  },
-  "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
   }
 }

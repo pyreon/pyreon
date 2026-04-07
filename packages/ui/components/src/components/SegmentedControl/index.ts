@@ -1,8 +1,60 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { segmentedControlTheme, segmentedControlItemTheme } from './theme'
+import { el } from '../../factory'
 
-const SegmentedControl = createComponent('SegmentedControl', Element, segmentedControlTheme, { tag: 'div' })
+const SegmentedControl = el
+  .config({ name: 'SegmentedControl' })
+  .attrs({ tag: 'div' })
+  .theme((t: any) => ({
+    display: 'inline-flex',
+    backgroundColor: t.color.system.base[100],
+    borderRadius: t.borderRadius.base,
+    padding: t.spacing.xxxSmall,
+  }))
+  .states((t: any) => ({
+    primary: { backgroundColor: t.color.system.base[100] },
+  }))
+  .sizes((t: any) => ({
+    small: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.small },
+    medium: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.base },
+    large: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.medium },
+  }))
+
 export default SegmentedControl
 
-export const SegmentedControlItem = createComponent('SegmentedControlItem', Element, segmentedControlItemTheme, { tag: 'button' })
+export const SegmentedControlItem = el
+  .config({ name: 'SegmentedControlItem' })
+  .attrs({ tag: 'button' })
+  .theme((t: any) => ({
+    cursor: 'pointer',
+    fontWeight: t.fontWeight.medium,
+    fontSize: t.fontSize.small,
+    transition: t.transition.fast,
+    borderRadius: t.borderRadius.small,
+    color: t.color.system.base[600],
+    backgroundColor: 'transparent',
+    border: 'none',
+    outline: 'none',
+    hover: { color: t.color.system.dark[800] },
+  }))
+  .sizes((t: any) => ({
+    small: {
+      fontSize: t.fontSize.xSmall,
+      paddingTop: t.spacing.xxxSmall,
+      paddingBottom: t.spacing.xxxSmall,
+      paddingLeft: t.spacing.xSmall,
+      paddingRight: t.spacing.xSmall,
+    },
+    medium: {
+      fontSize: t.fontSize.small,
+      paddingTop: t.spacing.xxSmall,
+      paddingBottom: t.spacing.xxSmall,
+      paddingLeft: t.spacing.xSmall,
+      paddingRight: t.spacing.xSmall,
+    },
+    large: {
+      fontSize: t.fontSize.base,
+      paddingTop: t.spacing.xxSmall,
+      paddingBottom: t.spacing.xxSmall,
+      paddingLeft: t.spacing.small,
+      paddingRight: t.spacing.small,
+    },
+  }))

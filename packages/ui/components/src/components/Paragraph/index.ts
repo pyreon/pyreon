@@ -1,6 +1,17 @@
-import { Text } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { paragraphTheme } from './theme'
+import { txt } from '../../factory'
 
-const Paragraph = createComponent('Paragraph', Text, paragraphTheme, { tag: 'p' })
+const Paragraph = txt
+  .config({ name: 'Paragraph' })
+  .attrs({ tag: 'p' })
+  .theme((t: any) => ({
+    color: t.color.system.base[600],
+    lineHeight: t.lineHeight.base,
+    margin: 0,
+  }))
+  .sizes((t: any) => ({
+    small: { fontSize: t.fontSize.small },
+    medium: { fontSize: t.fontSize.base },
+    large: { fontSize: t.fontSize.medium },
+  }))
+
 export default Paragraph

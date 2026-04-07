@@ -1,6 +1,18 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { stackTheme } from './theme'
+import { el } from '../../factory'
 
-const Stack = createComponent('Stack', Element, stackTheme, { tag: 'div', direction: 'rows', block: true })
+const Stack = el
+  .config({ name: 'Stack' })
+  .attrs({ tag: 'div', direction: 'rows', block: true })
+  .theme(() => ({
+    display: 'flex',
+    flexDirection: 'column',
+  }))
+  .sizes((t: any) => ({
+    xSmall: { gap: t.spacing.xxxSmall },
+    small: { gap: t.spacing.xxSmall },
+    medium: { gap: t.spacing.small },
+    large: { gap: t.spacing.medium },
+    xLarge: { gap: t.spacing.large },
+  }))
+
 export default Stack

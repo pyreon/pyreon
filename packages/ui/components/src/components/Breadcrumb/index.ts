@@ -1,8 +1,32 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { breadcrumbTheme, breadcrumbItemTheme } from './theme'
+import { el } from '../../factory'
 
-const Breadcrumb = createComponent('Breadcrumb', Element, breadcrumbTheme, { tag: 'nav' })
+const Breadcrumb = el
+  .config({ name: 'Breadcrumb' })
+  .attrs({ tag: 'nav' })
+  .theme((t: any) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: t.spacing.xxSmall,
+    fontSize: t.fontSize.small,
+  }))
+
 export default Breadcrumb
 
-export const BreadcrumbItem = createComponent('BreadcrumbItem', Element, breadcrumbItemTheme, { tag: 'a' })
+export const BreadcrumbItem = el
+  .config({ name: 'BreadcrumbItem' })
+  .attrs({ tag: 'a' })
+  .theme((t: any) => ({
+    color: t.color.system.base[500],
+    transition: t.transition.fast,
+    textDecoration: 'none',
+    hover: { color: t.color.system.base[700] },
+    focus: {
+      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
+      outline: 'none',
+      borderRadius: t.borderRadius.small,
+    },
+    active: {
+      color: t.color.system.dark[800],
+      fontWeight: t.fontWeight.medium,
+    },
+  }))

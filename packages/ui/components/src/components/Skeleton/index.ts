@@ -1,6 +1,20 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { skeletonTheme } from './theme'
+import { el } from '../../factory'
 
-const Skeleton = createComponent('Skeleton', Element, skeletonTheme, { tag: 'div' })
+const Skeleton = el
+  .config({ name: 'Skeleton' })
+  .attrs({ tag: 'div' })
+  .theme((t: any) => ({
+    backgroundColor: t.color.system.base[200],
+    overflow: 'hidden',
+  }))
+  .variants((t: any) => ({
+    text: {
+      borderRadius: t.borderRadius.small,
+      height: '1em',
+      width: '100%',
+    },
+    circle: { borderRadius: t.borderRadius.pill },
+    rect: { borderRadius: t.borderRadius.base },
+  }))
+
 export default Skeleton

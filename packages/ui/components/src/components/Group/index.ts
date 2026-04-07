@@ -1,6 +1,20 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { groupTheme } from './theme'
+import { el } from '../../factory'
 
-const Group = createComponent('Group', Element, groupTheme, { tag: 'div', direction: 'inline', block: true })
+const Group = el
+  .config({ name: 'Group' })
+  .attrs({ tag: 'div', direction: 'inline', block: true })
+  .theme(() => ({
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  }))
+  .sizes((t: any) => ({
+    xSmall: { gap: t.spacing.xxxSmall },
+    small: { gap: t.spacing.xxSmall },
+    medium: { gap: t.spacing.small },
+    large: { gap: t.spacing.medium },
+    xLarge: { gap: t.spacing.large },
+  }))
+
 export default Group

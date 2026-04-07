@@ -1,6 +1,11 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { inputGroupTheme } from './theme'
+import { el } from '../../factory'
 
-const InputGroup = createComponent('InputGroup', Element, inputGroupTheme, { tag: 'div' })
+const InputGroup = el
+  .config({ name: 'InputGroup' })
+  .attrs({ tag: 'div' })
+  .theme(() => ({
+    display: 'flex',
+    alignItems: 'stretch',
+  }))
+
 export default InputGroup

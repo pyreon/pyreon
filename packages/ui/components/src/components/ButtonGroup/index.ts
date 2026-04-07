@@ -1,6 +1,15 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { buttonGroupTheme } from './theme'
+import { el } from '../../factory'
 
-const ButtonGroup = createComponent('ButtonGroup', Element, buttonGroupTheme, { tag: 'div' })
+const ButtonGroup = el
+  .config({ name: 'ButtonGroup' })
+  .attrs({ tag: 'div' })
+  .theme(() => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+  }))
+  .variants((t: any) => ({
+    attached: { gap: 0 },
+    separated: { gap: t.spacing.xxSmall },
+  }))
+
 export default ButtonGroup

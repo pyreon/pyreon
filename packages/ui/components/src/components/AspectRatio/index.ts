@@ -1,6 +1,11 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { aspectRatioTheme } from './theme'
+import { el } from '../../factory'
 
-const AspectRatio = createComponent('AspectRatio', Element, aspectRatioTheme, { tag: 'div' })
+const AspectRatio = el
+  .config({ name: 'AspectRatio' })
+  .attrs({ tag: 'div' })
+  .theme(() => ({
+    position: 'relative',
+    overflow: 'hidden',
+  }))
+
 export default AspectRatio

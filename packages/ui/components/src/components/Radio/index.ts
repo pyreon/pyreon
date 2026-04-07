@@ -1,8 +1,48 @@
+import rocketstyle from '@pyreon/rocketstyle'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
-import { createComponent } from '../../factory'
-import { radioTheme, radioGroupTheme } from './theme'
 
-const Radio = createComponent('Radio', RadioBase, radioTheme)
+const rs = rocketstyle({ useBooleans: true })
+
+const Radio = rs({ name: 'Radio', component: RadioBase })
+  .theme((t: any) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: t.spacing.xxSmall,
+    cursor: 'pointer',
+    color: t.color.system.base[700],
+    fontSize: t.fontSize.small,
+    transition: t.transition.fast,
+    focus: {
+      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
+      outline: 'none',
+      borderRadius: t.borderRadius.pill,
+    },
+    disabled: {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+      pointerEvents: 'none',
+    },
+  }))
+  .sizes((t: any) => ({
+    small: { fontSize: t.fontSize.xSmall, gap: t.spacing.xxSmall },
+    medium: { fontSize: t.fontSize.small, gap: t.spacing.xxSmall },
+    large: { fontSize: t.fontSize.base, gap: t.spacing.xSmall },
+  }))
+
 export default Radio
 
-export const RadioGroup = createComponent('RadioGroup', RadioGroupBase, radioGroupTheme)
+export const RadioGroup = rs({ name: 'RadioGroup', component: RadioGroupBase })
+  .theme((t: any) => ({
+    display: 'flex',
+    gap: t.spacing.xSmall,
+  }))
+  .variants((t: any) => ({
+    vertical: {
+      flexDirection: 'column',
+      gap: t.spacing.xxSmall,
+    },
+    horizontal: {
+      flexDirection: 'row',
+      gap: t.spacing.small,
+    },
+  }))

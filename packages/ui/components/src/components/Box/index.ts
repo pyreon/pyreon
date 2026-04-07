@@ -1,6 +1,8 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { boxTheme } from './theme'
+import { el } from '../../factory'
 
-const Box = createComponent('Box', Element, boxTheme, { tag: 'div' })
+const Box = el
+  .config({ name: 'Box' })
+  .attrs({ tag: 'div' })
+  .theme(() => ({}))
+
 export default Box

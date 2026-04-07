@@ -1,6 +1,17 @@
-import { Element } from '@pyreon/elements'
-import { createComponent } from '../../factory'
-import { simpleGridTheme } from './theme'
+import { el } from '../../factory'
 
-const SimpleGrid = createComponent('SimpleGrid', Element, simpleGridTheme, { tag: 'div' })
+const SimpleGrid = el
+  .config({ name: 'SimpleGrid' })
+  .attrs({ tag: 'div' })
+  .theme((t: any) => ({
+    display: 'grid',
+    gap: t.spacing.small,
+  }))
+  .sizes(() => ({
+    1: { gridTemplateColumns: 'repeat(1, 1fr)' },
+    2: { gridTemplateColumns: 'repeat(2, 1fr)' },
+    3: { gridTemplateColumns: 'repeat(3, 1fr)' },
+    4: { gridTemplateColumns: 'repeat(4, 1fr)' },
+  }))
+
 export default SimpleGrid
