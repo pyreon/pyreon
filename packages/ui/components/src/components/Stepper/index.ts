@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Stepper = el
   .config({ name: 'Stepper' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
   .theme((t) => ({
     display: 'flex',
     gap: t.spacing.xxSmall,

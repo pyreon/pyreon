@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const ButtonGroup = el
   .config({ name: 'ButtonGroup' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
   .theme(() => ({
     display: 'inline-flex',
     alignItems: 'center',
