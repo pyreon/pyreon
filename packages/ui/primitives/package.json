@@ -40,6 +40,7 @@
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/hooks": "workspace:^",
     "@pyreon/elements": "workspace:^"
   }

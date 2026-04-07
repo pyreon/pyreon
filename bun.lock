@@ -1069,6 +1069,7 @@
         "@pyreon/elements": "workspace:^",
         "@pyreon/hooks": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
       },
     },
     "packages/ui/theme": {
