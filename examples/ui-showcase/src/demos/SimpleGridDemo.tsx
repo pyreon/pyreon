@@ -1,74 +1,60 @@
-import { SimpleGrid, Box } from '@pyreon/ui-components'
+import { GridContainer, GridRow, GridCol } from '@pyreon/ui-components'
 
 const coloredBox = (color: string, label: string) => (
-  <Box {...{ style: `padding: 24px; background: ${color}; border-radius: 6px; text-align: center; font-weight: 600; color: #fff;` } as any}>
+  <div style={`padding: 24px; background: ${color}; border-radius: 6px; text-align: center; font-weight: 600; color: #fff;`}>
     {label}
-  </Box>
+  </div>
 )
 
 export function SimpleGridDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 16px;">SimpleGrid</h2>
+      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 16px;">Grid (CoolGrid)</h2>
       <p style="color: #6b7280; margin-bottom: 24px;">
-        CSS Grid layout with predefined column counts (1-4). Equal-width columns with consistent gap.
+        Responsive 12-column grid system via GridContainer, GridRow, GridCol.
       </p>
 
       <section style="margin-bottom: 32px;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">1 Column</h3>
-        <SimpleGrid {...{ size: 1 } as any}>
-          {coloredBox('#6366f1', '1')}
-          {coloredBox('#818cf8', '2')}
-          {coloredBox('#a5b4fc', '3')}
-        </SimpleGrid>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Equal Columns</h3>
+        <GridContainer>
+          <GridRow>
+            <GridCol>{coloredBox('#6366f1', '1/3')}</GridCol>
+            <GridCol>{coloredBox('#818cf8', '2/3')}</GridCol>
+            <GridCol>{coloredBox('#a5b4fc', '3/3')}</GridCol>
+          </GridRow>
+        </GridContainer>
       </section>
 
       <section style="margin-bottom: 32px;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">2 Columns</h3>
-        <SimpleGrid {...{ size: 2 } as any}>
-          {coloredBox('#6366f1', '1')}
-          {coloredBox('#818cf8', '2')}
-          {coloredBox('#a5b4fc', '3')}
-          {coloredBox('#c7d2fe', '4')}
-        </SimpleGrid>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Two Columns</h3>
+        <GridContainer>
+          <GridRow>
+            <GridCol size={6}>{coloredBox('#059669', 'Left (6)')}</GridCol>
+            <GridCol size={6}>{coloredBox('#10b981', 'Right (6)')}</GridCol>
+          </GridRow>
+        </GridContainer>
       </section>
 
       <section style="margin-bottom: 32px;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">3 Columns</h3>
-        <SimpleGrid {...{ size: 3 } as any}>
-          {coloredBox('#059669', '1')}
-          {coloredBox('#10b981', '2')}
-          {coloredBox('#34d399', '3')}
-          {coloredBox('#6ee7b7', '4')}
-          {coloredBox('#a7f3d0', '5')}
-          {coloredBox('#d1fae5', '6')}
-        </SimpleGrid>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sidebar Layout</h3>
+        <GridContainer>
+          <GridRow>
+            <GridCol size={4}>{coloredBox('#dc2626', 'Sidebar (4)')}</GridCol>
+            <GridCol size={8}>{coloredBox('#ef4444', 'Content (8)')}</GridCol>
+          </GridRow>
+        </GridContainer>
       </section>
 
       <section style="margin-bottom: 32px;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">4 Columns</h3>
-        <SimpleGrid {...{ size: 4 } as any}>
-          {coloredBox('#dc2626', '1')}
-          {coloredBox('#ef4444', '2')}
-          {coloredBox('#f87171', '3')}
-          {coloredBox('#fca5a5', '4')}
-          {coloredBox('#fecaca', '5')}
-          {coloredBox('#fee2e2', '6')}
-          {coloredBox('#fef2f2', '7')}
-          {coloredBox('#f87171', '8')}
-        </SimpleGrid>
-      </section>
-
-      <section style="margin-bottom: 32px;">
-        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Card-like Grid (3 columns)</h3>
-        <SimpleGrid {...{ size: 3 } as any}>
-          {['Dashboard', 'Analytics', 'Reports', 'Settings', 'Users', 'Billing'].map((label) => (
-            <Box {...{ style: 'padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px;' } as any}>
-              <div style="font-weight: 600; margin-bottom: 4px;">{label}</div>
-              <div style="font-size: 13px; color: #6b7280;">Description for {label.toLowerCase()}</div>
-            </Box>
-          ))}
-        </SimpleGrid>
+        <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Four Columns</h3>
+        <GridContainer>
+          <GridRow>
+            <GridCol size={3}>{coloredBox('#f59e0b', '3')}</GridCol>
+            <GridCol size={3}>{coloredBox('#fbbf24', '3')}</GridCol>
+            <GridCol size={3}>{coloredBox('#fcd34d', '3')}</GridCol>
+            <GridCol size={3}>{coloredBox('#fde68a', '3')}</GridCol>
+          </GridRow>
+        </GridContainer>
       </section>
     </div>
   )
