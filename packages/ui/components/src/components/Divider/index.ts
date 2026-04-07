@@ -1,15 +1,14 @@
-import { txt } from '../../factory'
+import { el } from '../../factory'
 
-const Divider = txt
+const Divider = el
   .config({ name: 'Divider' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'hr', block: true })
   .theme((t) => ({
+    borderColor: t.color.system.base[200],
+    borderStyle: t.borderStyle.base,
     borderWidth: 0,
     borderTopWidth: 1,
-    borderTopStyle: t.borderStyle.base,
-    borderTopColor: t.color.system.base[200],
-    margin: 0,
-    width: '100%',
+    height: 0,
   }))
   .sizes(() => ({
     small: { borderTopWidth: 1 },
