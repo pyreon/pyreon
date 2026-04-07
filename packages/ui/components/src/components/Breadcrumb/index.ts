@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Breadcrumb = el
   .config({ name: 'Breadcrumb' })
-  .attrs({ tag: 'nav' })
+  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center' })
   .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
