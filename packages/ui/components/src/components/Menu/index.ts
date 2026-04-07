@@ -25,11 +25,11 @@ export const MenuItem = el
     borderRadius: t.borderRadius.small,
     color: t.color.system.base[700],
     transition: t.transition.fast,
-    fontSize: t.fontSize.small,
-    paddingTop: t.spacing.xxSmall,
-    paddingBottom: t.spacing.xxSmall,
-    paddingLeft: t.spacing.xSmall,
-    paddingRight: t.spacing.xSmall,
+    fontSize: t.fontSize.base,
+    paddingTop: t.spacing.small,
+    paddingBottom: t.spacing.small,
+    paddingLeft: t.spacing.medium,
+    paddingRight: t.spacing.medium,
     hover: {
       backgroundColor: t.color.system.base[100],
     },
@@ -46,16 +46,16 @@ export const MenuItem = el
   .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
-      paddingTop: t.spacing.xxxSmall,
-      paddingBottom: t.spacing.xxxSmall,
-      paddingLeft: t.spacing.xxSmall,
-      paddingRight: t.spacing.xxSmall,
-    },
-    medium: {
-      fontSize: t.fontSize.small,
       paddingTop: t.spacing.xxSmall,
       paddingBottom: t.spacing.xxSmall,
-      paddingLeft: t.spacing.xSmall,
-      paddingRight: t.spacing.xSmall,
+      paddingLeft: t.spacing.small,
+      paddingRight: t.spacing.small,
+    },
+    medium: {
+      fontSize: t.fontSize.base,
+      paddingTop: t.spacing.small,
+      paddingBottom: t.spacing.small,
+      paddingLeft: t.spacing.medium,
+      paddingRight: t.spacing.medium,
     },
   }))

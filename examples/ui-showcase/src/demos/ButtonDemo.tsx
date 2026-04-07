@@ -35,7 +35,7 @@ export function ButtonDemo() {
       <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Interactive</h3>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <Button state="primary" onClick={() => count.update((n) => n + 1)}>
-          Clicked: {() => String(count())}
+          Clicked: {count()}
         </Button>
         <Button state="danger" variant="outline" onClick={() => count.set(0)}>
           Reset

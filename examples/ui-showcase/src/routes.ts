@@ -52,7 +52,7 @@ import { ModalDemo } from './demos/ModalDemo'
 import { TableDemo } from './demos/TableDemo'
 
 export const routes: RouteRecord[] = [
-  { path: '/', redirect: '/button' },
+  { path: '/', redirect: '/button', component: () => null },
 
   // Core
   { path: '/button', component: ButtonDemo },

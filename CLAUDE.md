@@ -52,6 +52,26 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/connector-document`  | Bridge between ui-system components and @pyreon/document         |
 | `@pyreon/document-primitives` | Rocketstyle-based document export components                     |
 
+### UI Component Library (packages/ui/)
+
+| Package                 | Description                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `@pyreon/ui-theme`      | Default theme (colors, spacing, typography, borders, shadows, transitions) + rocketstyle ThemeDefault/StylesDefault augmentation |
+| `@pyreon/ui-components` | 75 rocketstyle components across 10 categories (Button, Card, Input, etc.)                                                       |
+| `@pyreon/ui-primitives` | Headless behavior primitives (ComboboxBase, CalendarBase, etc.)                                                                  |
+
+#### @pyreon/ui-components — Architecture
+
+- Three base components: `el` (Element — structured layout), `txt` (Text — inline typography), `list` (List — flowing children)
+- Factory at `packages/ui/components/src/factory.ts` re-exports `el`, `txt`, `list`, `rs` from `bases/`
+- **Layout in `.attrs()`**: `tag`, `direction`, `alignX`, `alignY`, `gap`, `block` — these target Element's inner layout
+- **CSS in `.theme()`**: colors, spacing, borders, shadows — these target the styled outer wrapper
+- **Pseudo-states in `.theme()`**: `hover: {}`, `focus: {}`, `active: {}`, `disabled: {}` objects — bases generate `:hover`/`:focus-visible`/`:active`/`:disabled` CSS
+- **`:hover` is unconditional** — applied to ALL components with hover theme, not just interactive ones. Only `cursor: pointer` is gated on `onClick`/`href`
+- **CSS property naming**: unistyle convention (`borderWidthTop`) not CSS-spec (`borderTopWidth`)
+- **useBooleans: false**: dimension props accept string values (`state="primary"`), not booleans
+- Theme augmentation: `@pyreon/ui-theme` augments `ThemeDefault extends Theme` and `StylesDefault extends ITheme` — apps must NOT re-augment
+
 ### UI System — Key Technical Details
 
 #### @pyreon/styler (CSS-in-JS)
