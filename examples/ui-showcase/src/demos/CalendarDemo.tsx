@@ -42,15 +42,15 @@ export function CalendarDemo() {
                   ))}
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
-                  {state.days().flat().map((day) => (
+                  {() => state.days().flat().map((day) => (
                     <button
                       onClick={() => state.select(day.date)}
                       disabled={day.isDisabled}
-                      style={`
+                      style={() => `
                         padding: 8px 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
-                        background: ${day.isSelected ? '#3b82f6' : day.isToday ? '#eff6ff' : 'transparent'};
-                        color: ${day.isSelected ? 'white' : !day.isCurrentMonth ? '#d1d5db' : day.isToday ? '#3b82f6' : '#374151'};
-                        font-weight: ${day.isToday || day.isSelected ? '600' : '400'};
+                        background: ${state.isSelected(day.date) ? '#3b82f6' : state.isToday(day.date) ? '#eff6ff' : 'transparent'};
+                        color: ${state.isSelected(day.date) ? 'white' : !day.isCurrentMonth ? '#d1d5db' : state.isToday(day.date) ? '#3b82f6' : '#374151'};
+                        font-weight: ${state.isToday(day.date) || state.isSelected(day.date) ? '600' : '400'};
                         opacity: ${day.isDisabled ? '0.3' : '1'};
                       `}
                     >
@@ -95,14 +95,14 @@ export function CalendarDemo() {
                   ))}
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
-                  {state.days().flat().map((day) => (
+                  {() => state.days().flat().map((day) => (
                     <button
                       onClick={() => state.select(day.date)}
-                      style={`
+                      style={() => `
                         padding: 8px 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
-                        background: ${day.isSelected ? '#3b82f6' : day.isToday ? '#eff6ff' : 'transparent'};
-                        color: ${day.isSelected ? 'white' : !day.isCurrentMonth ? '#d1d5db' : day.isToday ? '#3b82f6' : '#374151'};
-                        font-weight: ${day.isToday || day.isSelected ? '600' : '400'};
+                        background: ${state.isSelected(day.date) ? '#3b82f6' : state.isToday(day.date) ? '#eff6ff' : 'transparent'};
+                        color: ${state.isSelected(day.date) ? 'white' : !day.isCurrentMonth ? '#d1d5db' : state.isToday(day.date) ? '#3b82f6' : '#374151'};
+                        font-weight: ${state.isToday(day.date) || state.isSelected(day.date) ? '600' : '400'};
                       `}
                     >
                       {day.date.day}
@@ -133,13 +133,13 @@ export function CalendarDemo() {
                   ))}
                 </div>
                 <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
-                  {state.days().flat().map((day) => (
+                  {() => state.days().flat().map((day) => (
                     <button
                       onClick={() => !day.isDisabled && state.select(day.date)}
-                      style={`
+                      style={() => `
                         padding: 8px 4px; border: none; border-radius: 6px; cursor: ${day.isDisabled ? 'not-allowed' : 'pointer'}; font-size: 13px;
-                        background: ${day.isSelected ? '#3b82f6' : 'transparent'};
-                        color: ${day.isSelected ? 'white' : day.isDisabled ? '#d1d5db' : !day.isCurrentMonth ? '#d1d5db' : '#374151'};
+                        background: ${state.isSelected(day.date) ? '#3b82f6' : 'transparent'};
+                        color: ${state.isSelected(day.date) ? 'white' : day.isDisabled ? '#d1d5db' : !day.isCurrentMonth ? '#d1d5db' : '#374151'};
                         text-decoration: ${day.isDisabled && day.isCurrentMonth ? 'line-through' : 'none'};
                       `}
                     >
