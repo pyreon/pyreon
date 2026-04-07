@@ -65,6 +65,8 @@ const uiPackages = [
   'unistyle',
 ] as const
 
+const uiLibPackages = ['ui-theme', 'ui-primitives', 'ui-components'] as const
+
 const zeroPackages = ['zero', 'meta'] as const
 
 // Subpath exports must come BEFORE their parent package to avoid prefix matching.
@@ -116,6 +118,13 @@ for (const pkg of uiPackages) {
   alias.push({
     find: `@pyreon/${pkg}`,
     replacement: resolve(root, `packages/ui-system/${pkg}/src/index.ts`),
+  })
+}
+for (const pkg of uiLibPackages) {
+  const shortName = pkg.replace('ui-', '')
+  alias.push({
+    find: `@pyreon/${pkg}`,
+    replacement: resolve(root, `packages/ui/${shortName}/src/index.ts`),
   })
 }
 for (const pkg of zeroPackages) {

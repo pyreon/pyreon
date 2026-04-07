@@ -406,17 +406,15 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
       if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== excludeVar) {
         const parent = n.parent
-        // Skip property name after dot: obj.sizes
-        if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) {
-          return n
-        }
-        // Skip JSX attribute name: sizes={...}
-        if (parent && ts.isJsxAttribute(parent) && parent.name === n) {
-          return n
-        }
-        // Skip shorthand property assignment: { sizes }
-        if (parent && ts.isShorthandPropertyAssignment(parent)) {
-          return n
+        // ONLY inline identifiers that are REFERENCES (reads), never DECLARATIONS.
+        // An identifier is a declaration when it's the .name of its parent.
+        // Skip all non-reference positions to avoid replacing binding names,
+        // parameter names, property names, etc. with ParenthesizedExpressions.
+        if (parent) {
+          // Declaration positions — identifier defines a name, not reads one
+          if ('name' in parent && (parent as any).name === n) return n
+          // Shorthand property: { x } — the identifier is both key and value
+          if (ts.isShorthandPropertyAssignment(parent)) return n
         }
         const resolved = propDerivedVars.get(n.text)!
         return ts.factory.createParenthesizedExpression(
@@ -1126,7 +1124,11 @@ function escapeHtmlAttr(s: string): string {
 }
 
 function escapeHtmlText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  // TypeScript's JsxText preserves HTML entities as-is (e.g. "&lt;" stays "&lt;",
+  // not decoded to "<"). Since the template is parsed via innerHTML, entities are
+  // already valid HTML — pass them through. Only escape raw `<` and raw `&` that
+  // are NOT part of existing entities.
+  return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
 }
 
 // ─── Static JSX analysis ──────────────────────────────────────────────────────

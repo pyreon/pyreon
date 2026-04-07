@@ -199,6 +199,33 @@
         "vite": "^8.0.0",
       },
     },
+    "examples/ui-showcase": {
+      "name": "@pyreon/example-ui-showcase",
+      "version": "0.1.0",
+      "dependencies": {
+        "@pyreon/coolgrid": "workspace:*",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-components": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/ui-primitives": "workspace:*",
+        "@pyreon/ui-theme": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/compiler": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/bun": "^1.3.11",
+        "typescript": "~6.0.2",
+        "vite": "^8.0.3",
+      },
+    },
     "examples/ui-system-kinetic": {
       "name": "@pyreon/example-ui-system-kinetic",
       "version": "0.3.0",
@@ -1012,6 +1039,53 @@
         "@pyreon/ui-core": "workspace:^",
       },
     },
+    "packages/ui/components": {
+      "name": "@pyreon/ui-components",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/ui-primitives": "workspace:^",
+        "@pyreon/ui-theme": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/coolgrid": "workspace:^",
+        "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/hooks": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/styler": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
+      },
+    },
+    "packages/ui/primitives": {
+      "name": "@pyreon/ui-primitives",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/elements": "workspace:^",
+        "@pyreon/hooks": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+    },
+    "packages/ui/theme": {
+      "name": "@pyreon/ui-theme",
+      "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/rocketstyle": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+      },
+    },
     "packages/zero/cli": {
       "name": "@pyreon/zero-cli",
       "version": "0.12.10",
@@ -1718,6 +1792,8 @@
 
     "@pyreon/example-solid-compat": ["@pyreon/example-solid-compat@workspace:examples/solid-compat"],
 
+    "@pyreon/example-ui-showcase": ["@pyreon/example-ui-showcase@workspace:examples/ui-showcase"],
+
     "@pyreon/example-ui-system-kinetic": ["@pyreon/example-ui-system-kinetic@workspace:examples/ui-system-kinetic"],
 
     "@pyreon/example-ui-system-showcase": ["@pyreon/example-ui-system-showcase@workspace:examples/ui-system-showcase"],
@@ -1800,7 +1876,13 @@
 
     "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 
+    "@pyreon/ui-components": ["@pyreon/ui-components@workspace:packages/ui/components"],
+
     "@pyreon/ui-core": ["@pyreon/ui-core@workspace:packages/ui-system/ui-core"],
+
+    "@pyreon/ui-primitives": ["@pyreon/ui-primitives@workspace:packages/ui/primitives"],
+
+    "@pyreon/ui-theme": ["@pyreon/ui-theme@workspace:packages/ui/theme"],
 
     "@pyreon/unistyle": ["@pyreon/unistyle@workspace:packages/ui-system/unistyle"],
 

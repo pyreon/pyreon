@@ -1417,4 +1417,75 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     const result = t('function C(props) { const key = props.key; return <div>{obj[key]}</div> }')
     expect(result).toContain('props.key')
   })
+
+  test('type cast "as" in prop-derived var does not crash compiler', () => {
+    // Regression: const sel = state.selected() as string[] inside JSX arrow
+    // caused ParenthesizedExpression to replace a BindingName, crashing ts.visitEachChild
+    const result = t(`
+      function C(props) {
+        const items = props.data
+        return <div>{() => {
+          const sel = items as any
+          return sel
+        }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('variable declaration name is not inlined by resolveExprTransitive', () => {
+    const result = t(`
+      function C(props) {
+        const x = props.val
+        const y = x
+        return <div>{y}</div>
+      }
+    `)
+    expect(result).toContain('props.val')
+  })
+
+  test('parameter name matching prop-derived var does not crash', () => {
+    // (val: string) => ... where "val" might match a prop-derived var
+    const result = t(`
+      function C(props) {
+        const val = props.value
+        return <div>{() => [1,2].map((val) => <span>{val}</span>)}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('catch clause variable matching prop-derived var does not crash', () => {
+    const result = t(`
+      function C(props) {
+        const err = props.error
+        return <div>{() => { try {} catch(err) { return err } }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('binding element matching prop-derived var does not crash', () => {
+    const result = t(`
+      function C(props) {
+        const x = props.x
+        return <div>{() => { const { x } = obj; return x }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('HTML entities in JSX text are not double-escaped', () => {
+    const result = t('function C() { return <button>&lt; prev</button> }')
+    expect(result).toContain('&lt;')
+    expect(result).not.toContain('&amp;lt;')
+  })
+
+  test('mixed HTML entities and raw ampersands', () => {
+    const result = t('function C() { return <span>A &amp; B &lt; C</span> }')
+    expect(result).toContain('&amp;')
+    expect(result).toContain('&lt;')
+    expect(result).not.toContain('&amp;amp;')
+    expect(result).not.toContain('&amp;lt;')
+  })
 })

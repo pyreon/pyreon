@@ -1,0 +1,31 @@
+import { el, txt } from '../../factory'
+
+const Breadcrumb = el
+  .config({ name: 'Breadcrumb' })
+  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 2 })
+  .theme((t) => ({
+    fontSize: t.fontSize.small,
+  }))
+
+export default Breadcrumb
+
+export const BreadcrumbItem = txt
+  .config({ name: 'BreadcrumbItem' })
+  .attrs({ tag: 'span' })
+  .theme((t) => ({
+    color: t.color.system.base[500],
+    transition: t.transition.fast,
+    textDecoration: 'none',
+    hover: {
+      color: t.color.system.base[700],
+    },
+    focus: {
+      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
+      outline: 'none',
+      borderRadius: t.borderRadius.small,
+    },
+    active: {
+      color: t.color.system.dark[800],
+      fontWeight: t.fontWeight.medium,
+    },
+  }))
