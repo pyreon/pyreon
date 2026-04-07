@@ -39,6 +39,14 @@ export interface FileUploadState {
   }
   /** Ref for the hidden file input. */
   inputRef: (el: HTMLInputElement | null) => void
+  /** Props to spread on the hidden file input element. */
+  inputProps: {
+    type: 'file'
+    style: string
+    multiple: boolean | undefined
+    accept: string | undefined
+    onChange: (e: Event) => void
+  }
 }
 
 export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
@@ -101,6 +109,17 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
       },
     },
     inputRef: (el) => { inputEl = el },
+    inputProps: {
+      type: 'file' as const,
+      style: 'display:none',
+      multiple: own.multiple,
+      accept: own.accept?.join(','),
+      onChange: (e: Event) => {
+        const input = e.target as HTMLInputElement
+        if (input.files?.length) handleFiles(Array.from(input.files))
+        input.value = ''
+      },
+    },
   }
 
   if (typeof own.children === 'function') {
