@@ -47,9 +47,12 @@ import { TabsDemo } from './demos/TabsDemo'
 
 // Complex
 import { CalendarDemo } from './demos/CalendarDemo'
+import { ColorPickerDemo } from './demos/ColorPickerDemo'
 import { ComboboxDemo } from './demos/ComboboxDemo'
+import { FileUploadDemo } from './demos/FileUploadDemo'
 import { ModalDemo } from './demos/ModalDemo'
 import { TableDemo } from './demos/TableDemo'
+import { TreeDemo } from './demos/TreeDemo'
 
 export const routes: RouteRecord[] = [
   { path: '/', redirect: '/button', component: () => null },
@@ -101,9 +104,12 @@ export const routes: RouteRecord[] = [
 
   // Complex
   { path: '/calendar', component: CalendarDemo },
+  { path: '/colorpicker', component: ColorPickerDemo },
   { path: '/combobox', component: ComboboxDemo },
+  { path: '/fileupload', component: FileUploadDemo },
   { path: '/modal', component: ModalDemo },
   { path: '/table', component: TableDemo },
+  { path: '/tree', component: TreeDemo },
 ]
 
 export const navGroups = [
@@ -177,9 +183,12 @@ export const navGroups = [
     label: 'Complex',
     items: [
       { path: '/calendar', label: 'Calendar' },
+      { path: '/colorpicker', label: 'ColorPicker' },
       { path: '/combobox', label: 'Combobox' },
+      { path: '/fileupload', label: 'FileUpload' },
       { path: '/modal', label: 'Modal' },
       { path: '/table', label: 'Table' },
+      { path: '/tree', label: 'Tree' },
     ],
   },
 ]
