@@ -8,5 +8,13 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['@pyreon/core', '@pyreon/reactivity', '@pyreon/runtime-dom'],
+    force: true,
   },
+  server: {
+    watch: {
+      // Watch workspace packages for changes
+      ignored: ['!**/packages/**'],
+    },
+  },
+  cacheDir: undefined,
 })
