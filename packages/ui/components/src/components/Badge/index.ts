@@ -3,7 +3,7 @@ import { txt } from '../../factory'
 const Badge = txt
   .config({ name: 'Badge' })
   .attrs({ tag: 'span' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     fontWeight: t.fontWeight.medium,
@@ -11,7 +11,7 @@ const Badge = txt
     borderRadius: t.borderRadius.pill,
     whiteSpace: 'nowrap',
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: {
       backgroundColor: t.color.system.primary[100],
       color: t.color.system.primary[800],
@@ -33,7 +33,7 @@ const Badge = txt
       color: t.color.system.warning[800],
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingLeft: t.spacing.xxSmall,

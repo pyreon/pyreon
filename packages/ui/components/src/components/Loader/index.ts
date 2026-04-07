@@ -8,7 +8,7 @@ const Loader = el
     alignItems: 'center',
     justifyContent: 'center',
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: { color: t.color.system.primary.base },
     secondary: { color: t.color.system.base[500] },
   }))

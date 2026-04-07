@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Radio = rs({ name: 'Radio', component: RadioBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
@@ -23,7 +22,7 @@ const Radio = rs({ name: 'Radio', component: RadioBase })
       pointerEvents: 'none',
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { fontSize: t.fontSize.xSmall, gap: t.spacing.xxSmall },
     medium: { fontSize: t.fontSize.small, gap: t.spacing.xxSmall },
     large: { fontSize: t.fontSize.base, gap: t.spacing.xSmall },
@@ -32,11 +31,11 @@ const Radio = rs({ name: 'Radio', component: RadioBase })
 export default Radio
 
 export const RadioGroup = rs({ name: 'RadioGroup', component: RadioGroupBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     gap: t.spacing.xSmall,
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     vertical: {
       flexDirection: 'column',
       gap: t.spacing.xxSmall,

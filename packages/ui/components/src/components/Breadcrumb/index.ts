@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Breadcrumb = el
   .config({ name: 'Breadcrumb' })
   .attrs({ tag: 'nav' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
@@ -15,7 +15,7 @@ export default Breadcrumb
 export const BreadcrumbItem = el
   .config({ name: 'BreadcrumbItem' })
   .attrs({ tag: 'a' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     color: t.color.system.base[500],
     transition: t.transition.fast,
     textDecoration: 'none',

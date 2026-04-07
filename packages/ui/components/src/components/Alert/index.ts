@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Alert = el
   .config({ name: 'Alert' })
   .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'flex-start',
     padding: t.spacing.small,
@@ -11,7 +11,7 @@ const Alert = el
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     info: {
       backgroundColor: t.color.system.info[50],
       color: t.color.system.info[800],

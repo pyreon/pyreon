@@ -3,12 +3,12 @@ import { txt } from '../../factory'
 const Paragraph = txt
   .config({ name: 'Paragraph' })
   .attrs({ tag: 'p' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     color: t.color.system.base[600],
     lineHeight: t.lineHeight.base,
     margin: 0,
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { fontSize: t.fontSize.small },
     medium: { fontSize: t.fontSize.base },
     large: { fontSize: t.fontSize.medium },

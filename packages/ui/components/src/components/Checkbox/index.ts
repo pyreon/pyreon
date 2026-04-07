@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { CheckboxBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Checkbox = rs({ name: 'Checkbox', component: CheckboxBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
@@ -23,7 +22,7 @@ const Checkbox = rs({ name: 'Checkbox', component: CheckboxBase })
       pointerEvents: 'none',
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { fontSize: t.fontSize.xSmall, gap: t.spacing.xxSmall },
     medium: { fontSize: t.fontSize.small, gap: t.spacing.xxSmall },
     large: { fontSize: t.fontSize.base, gap: t.spacing.xSmall },

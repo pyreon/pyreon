@@ -3,12 +3,12 @@ import { el } from '../../factory'
 const Indicator = el
   .config({ name: 'Indicator' })
   .attrs({ tag: 'span' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-block',
     borderRadius: t.borderRadius.pill,
     flexShrink: 0,
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: { backgroundColor: t.color.system.primary.base },
     success: { backgroundColor: t.color.system.success.base },
     error: { backgroundColor: t.color.system.error.base },

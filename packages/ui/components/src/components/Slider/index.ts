@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { SliderBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Slider = rs({ name: 'Slider', component: SliderBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.base[200],
     borderRadius: t.borderRadius.pill,

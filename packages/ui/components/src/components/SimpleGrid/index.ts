@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const SimpleGrid = el
   .config({ name: 'SimpleGrid' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'grid',
     gap: t.spacing.small,
   }))

@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Button = el
   .config({ name: 'Button' })
   .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     fontSize: t.fontSize.base,
     fontWeight: t.fontWeight.medium,
     lineHeight: t.lineHeight.base,
@@ -30,7 +30,7 @@ const Button = el
       transform: 'scale(0.98)',
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.light.base,
@@ -52,7 +52,7 @@ const Button = el
       hover: { backgroundColor: t.color.system.success[800] },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.small,
       paddingTop: t.spacing.xSmall,
@@ -75,7 +75,7 @@ const Button = el
       paddingRight: t.spacing.xLarge,
     },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     solid: {},
     outline: {
       backgroundColor: t.color.system.transparent,
@@ -106,7 +106,7 @@ export default Button
 export const IconButton = el
   .config({ name: 'IconButton' })
   .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[600],
     borderRadius: t.borderRadius.base,
@@ -119,7 +119,7 @@ export const IconButton = el
     focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
     disabled: { opacity: 0.5, cursor: 'not-allowed' },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { padding: t.spacing.xSmall },
     medium: { padding: t.spacing.small },
     large: { padding: t.spacing.medium },
@@ -128,7 +128,7 @@ export const IconButton = el
 export const CloseButton = el
   .config({ name: 'CloseButton' })
   .attrs({ tag: 'button', 'aria-label': 'Close', alignX: 'center', alignY: 'center' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[400],
     borderRadius: t.borderRadius.small,
@@ -141,7 +141,7 @@ export const CloseButton = el
     focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
     disabled: { opacity: 0.5, cursor: 'not-allowed' },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { padding: t.spacing.xxxSmall },
     medium: { padding: t.spacing.xxSmall },
     large: { padding: t.spacing.xSmall },

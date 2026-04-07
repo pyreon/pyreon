@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
   .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -25,7 +25,7 @@ const ActionIcon = el
       pointerEvents: 'none',
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.light.base,
@@ -43,14 +43,14 @@ const ActionIcon = el
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     xSmall: { width: '24px', height: '24px', fontSize: t.fontSize.xSmall },
     small: { width: '30px', height: '30px', fontSize: t.fontSize.small },
     medium: { width: '36px', height: '36px', fontSize: t.fontSize.base },
     large: { width: '42px', height: '42px', fontSize: t.fontSize.medium },
     xLarge: { width: '48px', height: '48px', fontSize: t.fontSize.large },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     filled: {},
     outline: {
       backgroundColor: t.color.system.transparent,

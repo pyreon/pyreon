@@ -9,7 +9,7 @@ const Group = el
     flexWrap: 'wrap',
     alignItems: 'center',
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     xSmall: { gap: t.spacing.xxxSmall },
     small: { gap: t.spacing.xxSmall },
     medium: { gap: t.spacing.small },

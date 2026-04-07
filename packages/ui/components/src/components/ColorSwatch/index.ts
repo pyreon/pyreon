@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const ColorSwatch = el
   .config({ name: 'ColorSwatch' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '32px',
     height: '32px',
     borderRadius: t.borderRadius.pill,

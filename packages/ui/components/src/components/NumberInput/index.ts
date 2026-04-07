@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const NumberInput = el
   .config({ name: 'NumberInput' })
   .attrs({ tag: 'input', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -28,7 +28,7 @@ const NumberInput = el
       color: t.color.system.base[400],
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,

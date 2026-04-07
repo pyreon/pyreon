@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const NavLink = el
   .config({ name: 'NavLink' })
   .attrs({ tag: 'a' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
     gap: t.spacing.xSmall,
@@ -28,7 +28,7 @@ const NavLink = el
       pointerEvents: 'none',
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     active: {
       backgroundColor: t.color.system.primary[50],
       color: t.color.system.primary[700],

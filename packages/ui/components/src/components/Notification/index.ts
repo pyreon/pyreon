@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Notification = el
   .config({ name: 'Notification' })
   .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'flex-start',
     padding: t.spacing.small,
@@ -13,7 +13,7 @@ const Notification = el
     lineHeight: t.lineHeight.base,
     backgroundColor: t.color.system.light.base,
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     info: {
       borderLeftWidth: '4px',
       borderLeftStyle: 'solid',

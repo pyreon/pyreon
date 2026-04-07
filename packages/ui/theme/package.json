@@ -36,5 +36,8 @@
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^"
+  },
+  "peerDependencies": {
+    "@pyreon/rocketstyle": "workspace:^"
   }
 }

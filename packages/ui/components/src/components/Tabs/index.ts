@@ -1,17 +1,16 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Tabs = rs({ name: 'Tabs', component: TabsBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: t.color.system.base[200],
     gap: 0,
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     line: {},
     enclosed: {
       borderBottomWidth: 0,
@@ -26,7 +25,7 @@ const Tabs = rs({ name: 'Tabs', component: TabsBase })
 export default Tabs
 
 export const Tab = rs({ name: 'Tab', component: TabBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     color: t.color.system.base[500],
     fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
@@ -56,7 +55,7 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
       pointerEvents: 'none',
     },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     line: {},
     enclosed: {
       borderWidth: 1,
@@ -80,6 +79,6 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
   }))
 
 export const TabPanel = rs({ name: 'TabPanel', component: TabPanelBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     paddingTop: t.spacing.small,
   }))

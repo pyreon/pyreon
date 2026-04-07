@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Combobox = rs({ name: 'Combobox', component: ComboboxBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -27,13 +26,13 @@ const Combobox = rs({ name: 'Combobox', component: ComboboxBase })
     },
     placeholder: { color: t.color.system.base[400] },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,

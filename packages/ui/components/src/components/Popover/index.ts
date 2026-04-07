@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Popover = el
   .config({ name: 'Popover' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     borderRadius: t.borderRadius.medium,
     boxShadow: t.shadows.medium,

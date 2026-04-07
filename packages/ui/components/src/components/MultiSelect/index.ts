@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const MultiSelect = rs({ name: 'MultiSelect', component: ComboboxBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -31,7 +30,7 @@ const MultiSelect = rs({ name: 'MultiSelect', component: ComboboxBase })
     },
     placeholder: { color: t.color.system.base[400] },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       minHeight: '32px',

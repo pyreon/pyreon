@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Tooltip = el
   .config({ name: 'Tooltip' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.dark[800],
     color: t.color.system.light.base,
     fontSize: t.fontSize.xSmall,

@@ -7,7 +7,7 @@ const ButtonGroup = el
     display: 'inline-flex',
     alignItems: 'center',
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     attached: { gap: 0 },
     separated: { gap: t.spacing.xxSmall },
   }))

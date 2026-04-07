@@ -3,13 +3,13 @@ import { el } from '../../factory'
 const Progress = el
   .config({ name: 'Progress' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.base[200],
     borderRadius: t.borderRadius.pill,
     overflow: 'hidden',
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: {
       '& > [data-part="bar"]': { backgroundColor: t.color.system.primary.base },
     },

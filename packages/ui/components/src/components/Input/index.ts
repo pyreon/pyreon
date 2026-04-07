@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Input = el
   .config({ name: 'Input' })
   .attrs({ tag: 'input', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -28,7 +28,7 @@ const Input = el
       color: t.color.system.base[400],
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
@@ -38,7 +38,7 @@ const Input = el
       focus: { boxShadow: `0 0 0 3px ${t.color.system.success[200]}` },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,
@@ -64,7 +64,7 @@ const Input = el
       borderRadius: t.borderRadius.medium,
     },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     outline: {},
     filled: {
       backgroundColor: t.color.system.base[100],
@@ -93,7 +93,7 @@ export default Input
 export const Textarea = el
   .config({ name: 'Textarea' })
   .attrs({ tag: 'textarea', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -119,7 +119,7 @@ export const Textarea = el
       color: t.color.system.base[400],
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
@@ -129,7 +129,7 @@ export const Textarea = el
       focus: { boxShadow: `0 0 0 3px ${t.color.system.success[200]}` },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,
@@ -158,7 +158,7 @@ export const Textarea = el
       minHeight: '120px',
     },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     outline: {},
     filled: {
       backgroundColor: t.color.system.base[100],

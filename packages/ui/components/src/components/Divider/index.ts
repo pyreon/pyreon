@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Divider = el
   .config({ name: 'Divider' })
   .attrs({ tag: 'hr' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     borderTopStyle: 'solid',
     borderTopColor: t.color.system.base[200],
   }))

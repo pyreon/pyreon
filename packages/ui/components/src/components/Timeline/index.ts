@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Timeline = el
   .config({ name: 'Timeline' })
   .attrs({ tag: 'div', direction: 'rows' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     paddingLeft: t.spacing.medium,
     borderLeftWidth: '2px',
     borderLeftStyle: 'solid',

@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { SelectBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Select = rs({ name: 'Select', component: SelectBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -31,13 +30,13 @@ const Select = rs({ name: 'Select', component: SelectBase })
       backgroundColor: t.color.system.base[50],
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,

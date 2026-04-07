@@ -3,7 +3,7 @@ import { txt } from '../../factory'
 const Kbd = txt
   .config({ name: 'Kbd' })
   .attrs({ tag: 'kbd' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',

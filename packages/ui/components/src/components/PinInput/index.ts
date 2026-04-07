@@ -3,11 +3,11 @@ import { el } from '../../factory'
 const PinInput = el
   .config({ name: 'PinInput' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     gap: t.spacing.xxSmall,
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { gap: t.spacing.xxSmall },
     medium: { gap: t.spacing.xxSmall },
     large: { gap: t.spacing.xSmall },
@@ -18,7 +18,7 @@ export default PinInput
 export const PinInputCell = el
   .config({ name: 'PinInputCell' })
   .attrs({ tag: 'input' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '40px',
     height: '40px',
     textAlign: 'center',
@@ -36,7 +36,7 @@ export const PinInputCell = el
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { width: '36px', height: '36px', fontSize: t.fontSize.base },
     medium: { width: '40px', height: '40px', fontSize: t.fontSize.medium },
     large: { width: '48px', height: '48px', fontSize: t.fontSize.large },

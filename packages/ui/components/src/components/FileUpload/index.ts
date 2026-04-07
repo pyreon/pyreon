@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { FileUploadBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const FileUpload = rs({ name: 'FileUpload', component: FileUploadBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     borderWidth: t.borderWidth.medium,
     borderStyle: t.borderStyle.dashed,
     borderColor: t.color.system.base[300],

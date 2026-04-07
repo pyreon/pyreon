@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const MonthPicker = el
   .config({ name: 'MonthPicker' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,

@@ -12,7 +12,7 @@ export default Accordion
 export const AccordionItem = el
   .config({ name: 'AccordionItem' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     borderBottomWidth: 1,
     borderBottomStyle: 'solid',
     borderBottomColor: t.color.system.base[200],
@@ -21,7 +21,7 @@ export const AccordionItem = el
 export const AccordionTrigger = el
   .config({ name: 'AccordionTrigger' })
   .attrs({ tag: 'button' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -52,7 +52,7 @@ export const AccordionTrigger = el
 export const AccordionContent = el
   .config({ name: 'AccordionContent' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     paddingBottom: t.spacing.xSmall,
     fontSize: t.fontSize.small,
     color: t.color.system.base[700],

@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Modal = rs({ name: 'Modal', component: ModalBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     position: 'fixed',
     top: 0,
     left: 0,

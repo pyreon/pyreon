@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Chip = el
   .config({ name: 'Chip' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: t.spacing.xxxSmall,
@@ -22,7 +22,7 @@ const Chip = el
       pointerEvents: 'none',
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: {
       backgroundColor: t.color.system.primary[100],
       color: t.color.system.primary[700],
@@ -44,7 +44,7 @@ const Chip = el
       hover: { backgroundColor: t.color.system.error[200] },
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxxSmall,

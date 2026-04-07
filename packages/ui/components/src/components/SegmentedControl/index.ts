@@ -3,16 +3,16 @@ import { el } from '../../factory'
 const SegmentedControl = el
   .config({ name: 'SegmentedControl' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'inline-flex',
     backgroundColor: t.color.system.base[100],
     borderRadius: t.borderRadius.base,
     padding: t.spacing.xxxSmall,
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     primary: { backgroundColor: t.color.system.base[100] },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.small },
     medium: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.base },
     large: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.medium },
@@ -23,7 +23,7 @@ export default SegmentedControl
 export const SegmentedControlItem = el
   .config({ name: 'SegmentedControlItem' })
   .attrs({ tag: 'button' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     cursor: 'pointer',
     fontWeight: t.fontWeight.medium,
     fontSize: t.fontSize.small,
@@ -35,7 +35,7 @@ export const SegmentedControlItem = el
     outline: 'none',
     hover: { color: t.color.system.dark[800] },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxxSmall,

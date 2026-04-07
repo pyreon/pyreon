@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { SwitchBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Switch = rs({ name: 'Switch', component: SwitchBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.base[300],
     borderRadius: t.borderRadius.pill,
     cursor: 'pointer',

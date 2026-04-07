@@ -35,7 +35,8 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@pyreon/ui-primitives": "workspace:^"
+    "@pyreon/ui-primitives": "workspace:^",
+    "@pyreon/ui-theme": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/test-utils": "workspace:^",

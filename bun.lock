@@ -1041,6 +1041,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@pyreon/ui-primitives": "workspace:^",
+        "@pyreon/ui-theme": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/test-utils": "workspace:^",
@@ -1075,6 +1076,9 @@
       "version": "0.0.1",
       "devDependencies": {
         "@pyreon/typescript": "workspace:^",
+      },
+      "peerDependencies": {
+        "@pyreon/rocketstyle": "workspace:^",
       },
     },
     "packages/zero/cli": {

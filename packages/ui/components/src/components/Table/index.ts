@@ -3,17 +3,17 @@ import { el } from '../../factory'
 const Table = el
   .config({ name: 'Table' })
   .attrs({ tag: 'table' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     borderCollapse: 'collapse',
     fontSize: t.fontSize.small,
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     compact: { fontSize: t.fontSize.xSmall },
     default: { fontSize: t.fontSize.small },
     relaxed: { fontSize: t.fontSize.base },
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     simple: {},
     striped: {},
     bordered: {

@@ -3,11 +3,11 @@ import { el } from '../../factory'
 const Skeleton = el
   .config({ name: 'Skeleton' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.base[200],
     overflow: 'hidden',
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     text: {
       borderRadius: t.borderRadius.small,
       height: '1em',

@@ -3,12 +3,12 @@ import { el } from '../../factory'
 const Card = el
   .config({ name: 'Card' })
   .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     borderRadius: t.borderRadius.medium,
     padding: t.spacing.medium,
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     elevated: { boxShadow: t.shadows.small },
     outline: {
       borderWidth: '1px',

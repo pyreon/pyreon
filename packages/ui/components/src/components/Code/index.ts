@@ -3,13 +3,13 @@ import { txt } from '../../factory'
 const Code = txt
   .config({ name: 'Code' })
   .attrs({ tag: 'code' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     fontFamily: 'monospace',
     fontSize: t.fontSize.small,
     backgroundColor: t.color.system.base[100],
     color: t.color.system.base[800],
   }))
-  .variants((t: any) => ({
+  .variants((t) => ({
     inline: {
       display: 'inline',
       padding: `0 ${t.spacing.xxxSmall}`,

@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Stepper = el
   .config({ name: 'Stepper' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     gap: t.spacing.xxSmall,
   }))
@@ -22,7 +22,7 @@ export default Stepper
 export const Step = el
   .config({ name: 'Step' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
@@ -35,7 +35,7 @@ export const Step = el
       borderRadius: t.borderRadius.small,
     },
   }))
-  .states((t: any) => ({
+  .states((t) => ({
     active: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.light.base,

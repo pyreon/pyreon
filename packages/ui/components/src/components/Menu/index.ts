@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const Menu = el
   .config({ name: 'Menu' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     boxShadow: t.shadows.medium,
     borderWidth: t.borderWidth.base,
@@ -20,7 +20,7 @@ export default Menu
 export const MenuItem = el
   .config({ name: 'MenuItem' })
   .attrs({ tag: 'button' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     display: 'flex',
     alignItems: 'center',
     gap: t.spacing.xxSmall,
@@ -39,7 +39,7 @@ export const MenuItem = el
       pointerEvents: 'none',
     },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxxSmall,

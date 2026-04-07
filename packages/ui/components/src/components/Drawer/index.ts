@@ -1,7 +1,6 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Drawer = rs({ name: 'Drawer', component: ModalBase })
   .theme(() => ({

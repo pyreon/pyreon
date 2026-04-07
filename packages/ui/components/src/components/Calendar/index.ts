@@ -1,10 +1,9 @@
-import rocketstyle from '@pyreon/rocketstyle'
+import { rs } from '../../factory'
 import { CalendarBase } from '@pyreon/ui-primitives'
 
-const rs = rocketstyle({ useBooleans: true })
 
 const Calendar = rs({ name: 'Calendar', component: CalendarBase })
-  .theme((t: any) => ({
+  .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,

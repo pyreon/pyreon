@@ -3,7 +3,7 @@ import { el } from '../../factory'
 const DatePicker = el
   .config({ name: 'DatePicker' })
   .attrs({ tag: 'div' })
-  .theme((t: any) => ({
+  .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
@@ -26,7 +26,7 @@ const DatePicker = el
     },
     placeholder: { color: t.color.system.base[400] },
   }))
-  .sizes((t: any) => ({
+  .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxSmall,
