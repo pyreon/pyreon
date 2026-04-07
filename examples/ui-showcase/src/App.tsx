@@ -1,4 +1,4 @@
-import { RouterLink, RouterProvider, RouterView, useIsActive } from '@pyreon/router'
+import { RouterLink, RouterView, useIsActive } from '@pyreon/router'
 import { navGroups } from './routes'
 
 function NavItem(props: { path: string; label: string }) {

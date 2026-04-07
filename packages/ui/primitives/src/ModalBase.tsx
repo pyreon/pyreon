@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { Portal } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { effect, onCleanup, signal } from '@pyreon/reactivity'
+import { effect, onCleanup } from '@pyreon/reactivity'
 
 export interface ModalBaseProps {
   open?: boolean

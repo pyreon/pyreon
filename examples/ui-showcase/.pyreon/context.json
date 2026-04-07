@@ -1,7 +1,7 @@
 {
   "framework": "pyreon",
   "version": "workspace:*",
-  "generatedAt": "2026-04-07T08:37:42.185Z",
+  "generatedAt": "2026-04-07T10:35:23.980Z",
   "routes": [
     {
       "path": "/",
@@ -473,132 +473,6 @@
       "file": "src/App.tsx",
       "hasSignals": false,
       "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/Overlays.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "modalOpen",
-        "drawerOpen",
-        "dialogOpen"
-      ],
-      "props": []
-    },
-    {
-      "name": "OverlaySection",
-      "file": "src/sections/Overlays.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "modalOpen",
-        "drawerOpen",
-        "dialogOpen"
-      ],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/Buttons.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "Row",
-      "file": "src/sections/Buttons.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "ButtonsSection",
-      "file": "src/sections/Buttons.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/DataDisplay.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "Row",
-      "file": "src/sections/DataDisplay.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "DataDisplaySection",
-      "file": "src/sections/DataDisplay.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/Feedback.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "FeedbackSection",
-      "file": "src/sections/Feedback.tsx",
-      "hasSignals": false,
-      "signalNames": [],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/Forms.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "name",
-        "email",
-        "bio",
-        "agree",
-        "plan",
-        "darkMode",
-        "volume"
-      ],
-      "props": []
-    },
-    {
-      "name": "FormsSection",
-      "file": "src/sections/Forms.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "name",
-        "email",
-        "bio",
-        "agree",
-        "plan",
-        "darkMode",
-        "volume"
-      ],
-      "props": []
-    },
-    {
-      "name": "SectionTitle",
-      "file": "src/sections/Navigation.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "activeTab"
-      ],
-      "props": []
-    },
-    {
-      "name": "NavigationSection",
-      "file": "src/sections/Navigation.tsx",
-      "hasSignals": true,
-      "signalNames": [
-        "activeTab"
-      ],
       "props": []
     },
     {

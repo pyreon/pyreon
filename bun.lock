@@ -1079,11 +1079,11 @@
     "packages/ui/theme": {
       "name": "@pyreon/ui-theme",
       "version": "0.0.1",
+      "dependencies": {
+        "@pyreon/rocketstyle": "workspace:^",
+      },
       "devDependencies": {
         "@pyreon/typescript": "workspace:^",
-      },
-      "peerDependencies": {
-        "@pyreon/rocketstyle": "workspace:^",
       },
     },
     "packages/zero/cli": {
