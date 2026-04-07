@@ -26,7 +26,7 @@ export function ColorPickerDemo() {
                 <div>
                   <p style="font-weight: 600; font-size: 16px;">{() => state.hex()}</p>
                   <p style="color: #6b7280; font-size: 13px;">
-                    {() => { const rgb = state.rgb(); return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` }}
+                    {() => `rgb(${state.rgb().r}, ${state.rgb().g}, ${state.rgb().b})`}
                   </p>
                 </div>
               </div>

@@ -418,6 +418,12 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         if (parent && ts.isShorthandPropertyAssignment(parent)) {
           return n
         }
+        // Skip variable declaration binding name: const x = ...
+        // Inlining here would replace the name with a ParenthesizedExpression
+        // which is not a valid BindingName, crashing ts.visitEachChild.
+        if (parent && ts.isVariableDeclaration(parent) && parent.name === n) {
+          return n
+        }
         const resolved = propDerivedVars.get(n.text)!
         return ts.factory.createParenthesizedExpression(
           resolveExprTransitive(resolved, n.text),

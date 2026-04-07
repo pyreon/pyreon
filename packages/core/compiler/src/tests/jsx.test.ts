@@ -1417,4 +1417,32 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     const result = t('function C(props) { const key = props.key; return <div>{obj[key]}</div> }')
     expect(result).toContain('props.key')
   })
+
+  test('type cast "as" in prop-derived var does not crash compiler', () => {
+    // Regression: const sel = state.selected() as string[] inside JSX arrow
+    // caused ParenthesizedExpression to replace a BindingName, crashing ts.visitEachChild
+    const result = t(`
+      function C(props) {
+        const items = props.data
+        return <div>{() => {
+          const sel = items as any
+          return sel
+        }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('variable declaration name is not inlined by resolveExprTransitive', () => {
+    // const x = props.val; const y = x + 1; — "y" should not be replaced as a binding name
+    const result = t(`
+      function C(props) {
+        const x = props.val
+        const y = x
+        return <div>{y}</div>
+      }
+    `)
+    // y should be inlined to props.val in JSX usage, not crash
+    expect(result).toContain('props.val')
+  })
 })
