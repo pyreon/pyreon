@@ -33,7 +33,7 @@ export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
   ])
 
   const [value, setValue] = useControllableState({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? '',
     onChange: own.onChange,
   })

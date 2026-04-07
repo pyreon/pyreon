@@ -30,7 +30,7 @@ export const SwitchBase: ComponentFn<SwitchBaseProps> = (props) => {
   ])
 
   const [checked, setChecked] = useControllableState({
-    value: own.checked,
+    value: () => own.checked,
     defaultValue: own.defaultChecked ?? false,
     onChange: own.onChange,
   })

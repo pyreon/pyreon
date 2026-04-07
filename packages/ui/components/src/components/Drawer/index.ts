@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-const Drawer = rs({ name: 'Drawer', component: ModalBase })
+const Drawer = el.config({ name: 'Drawer', component: ModalBase })
   .theme(() => ({
     position: 'fixed',
     top: 0,

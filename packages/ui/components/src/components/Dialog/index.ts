@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-const Dialog = rs({ name: 'Dialog', component: ModalBase })
+const Dialog = el.config({ name: 'Dialog', component: ModalBase })
   .theme((t) => ({
     position: 'fixed',
     top: 0,

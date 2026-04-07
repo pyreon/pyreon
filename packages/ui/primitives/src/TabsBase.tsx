@@ -32,7 +32,7 @@ export const TabsBase: ComponentFn<TabsBaseProps> = (props) => {
   const [own, rest] = splitProps(props, ['value', 'defaultValue', 'onChange', 'children', 'ref'])
 
   const [value, setValue] = useControllableState({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? '',
     onChange: own.onChange,
   })

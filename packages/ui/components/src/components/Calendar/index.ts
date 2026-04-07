@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { CalendarBase } from '@pyreon/ui-primitives'
 
-const Calendar = rs({ name: 'Calendar', component: CalendarBase }).theme((t) => ({
+const Calendar = el.config({ name: 'Calendar', component: CalendarBase }).theme((t) => ({
   backgroundColor: t.color.system.light.base,
   borderWidth: t.borderWidth.base,
   borderStyle: t.borderStyle.base,
