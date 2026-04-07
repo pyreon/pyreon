@@ -87,7 +87,7 @@ describe('rocketstyle factory', () => {
     expect(Button.IS_ROCKETSTYLE).toBe(true)
   })
 
-  it('defaults useBooleans to true', () => {
+  it('defaults useBooleans to false', () => {
     const Button = rocketstyle()({
       name: 'Test',
       component: BaseComponent,
@@ -174,7 +174,7 @@ describe('chaining methods', () => {
 
     const info = Themed.getStaticDimensions({ rootSize: 16 })
     expect(info.dimensions).toBeDefined()
-    expect(info.useBooleans).toBe(true)
+    expect(info.useBooleans).toBe(false)
     expect(info.multiKeys).toBeDefined()
   })
 

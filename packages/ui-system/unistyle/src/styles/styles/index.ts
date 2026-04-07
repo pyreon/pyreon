@@ -2,9 +2,9 @@ import { values } from '../../units'
 import { borderRadius, edge } from '../shorthands'
 import processDescriptor from './processDescriptor'
 import propertyMap from './propertyMap'
-import type { InnerTheme, Theme } from './types'
+import type { ITheme, InnerTheme, Theme } from './types'
 
-export type { Theme as StylesTheme }
+export type { ITheme, Theme as StylesTheme }
 
 type Css = (strings: TemplateStringsArray, ...args: any[]) => string
 
@@ -12,10 +12,12 @@ export type Styles = ({
   theme,
   css,
   rootSize,
+  globalTheme,
 }: {
   theme: InnerTheme
   css: Css
-  rootSize?: number
+  rootSize?: number | undefined
+  globalTheme?: Record<string, any> | undefined
 }) => string
 
 const styles: Styles = ({ theme: t, css, rootSize }) => {

@@ -7,23 +7,17 @@
     "dev": "bunx --bun vite",
     "preview": "vite preview",
     "lint": "oxlint .",
-    "typecheck": "echo 'Showcase uses rocketstyle boolean props — skips strict typecheck'"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
-    "@pyreon/elements": "workspace:*",
-    "@pyreon/hooks": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
-    "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
-    "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/ui-primitives": "workspace:*",
-    "@pyreon/ui-components": "workspace:*",
-    "@pyreon/unistyle": "workspace:*"
+    "@pyreon/ui-components": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",

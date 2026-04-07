@@ -236,6 +236,8 @@ export interface ITheme {
   borderImageWidth?: string
   borderSpacing?: string
 
+  borderCollapse?: string
+
   // Logical borders
   borderInline?: string
   borderBlock?: string

@@ -1,101 +1,46 @@
 import { signal } from '@pyreon/reactivity'
-import { Switch } from '@pyreon/ui-components'
+import { SwitchBase } from '@pyreon/ui-primitives'
+
+function SwitchItem(props: { label: string }) {
+  const on = signal(false)
+
+  return (
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <SwitchBase
+        checked={on()}
+        onChange={(v: boolean) => on.set(v)}
+        style={() => `width: 44px; height: 24px; padding: 2px; border-radius: 9999px; border: none; cursor: pointer; transition: all 0.2s; background: ${on() ? '#3b82f6' : '#d1d5db'};`}
+      >
+        <span style={() => `display: block; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s; transform: translateX(${on() ? '20px' : '0'});`} />
+      </SwitchBase>
+      <span style="font-size: 14px;">{props.label}</span>
+    </div>
+  )
+}
 
 export function SwitchDemo() {
-  const darkMode = signal(false)
-  const notifications = signal(true)
-  const autoSave = signal(false)
+  const enabled = signal(false)
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 16px;">Switch</h2>
-      <p style="color: #6b7280; margin-bottom: 24px;">
-        Toggle switch with controlled state, sizes, disabled, and label patterns.
-      </p>
+      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Switch</h2>
 
-      {/* Controlled toggle */}
-      <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">Controlled Toggle</h3>
-      <div style="margin-bottom: 32px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch
-            checked={darkMode()}
-            onChange={(v: boolean) => darkMode.set(v)}
-          />
-          <span>Dark Mode: {() => darkMode() ? 'On' : 'Off'}</span>
-        </div>
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+        <SwitchBase
+          checked={enabled()}
+          onChange={(v: boolean) => enabled.set(v)}
+          style={() => `width: 44px; height: 24px; padding: 2px; border-radius: 9999px; border: none; cursor: pointer; transition: all 0.2s; background: ${enabled() ? '#3b82f6' : '#d1d5db'};`}
+        >
+          <span style={() => `display: block; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s; transform: translateX(${enabled() ? '20px' : '0'});`} />
+        </SwitchBase>
+        <span style="font-size: 14px;">{() => enabled() ? 'On' : 'Off'}</span>
       </div>
 
-      {/* Sizes */}
-      <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">Sizes</h3>
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch size="sm" defaultChecked />
-          <span style="font-size: 14px;">Small</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch size="md" defaultChecked />
-          <span style="font-size: 14px;">Medium (default)</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch size="lg" defaultChecked />
-          <span style="font-size: 14px;">Large</span>
-        </div>
-      </div>
-
-      {/* Disabled */}
-      <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">Disabled</h3>
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch disabled />
-          <span style="color: #9ca3af;">Disabled Off</span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <Switch disabled defaultChecked />
-          <span style="color: #9ca3af;">Disabled On</span>
-        </div>
-      </div>
-
-      {/* With label */}
-      <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">With Labels</h3>
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; max-width: 400px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <p style="font-weight: 500;">Notifications</p>
-            <p style="font-size: 13px; color: #6b7280;">Receive push notifications</p>
-          </div>
-          <Switch
-            checked={notifications()}
-            onChange={(v: boolean) => notifications.set(v)}
-          />
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <p style="font-weight: 500;">Auto-save</p>
-            <p style="font-size: 13px; color: #6b7280;">Automatically save changes</p>
-          </div>
-          <Switch
-            checked={autoSave()}
-            onChange={(v: boolean) => autoSave.set(v)}
-          />
-        </div>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <p style="font-weight: 500;">Dark Mode</p>
-            <p style="font-size: 13px; color: #6b7280;">Use dark theme</p>
-          </div>
-          <Switch
-            checked={darkMode()}
-            onChange={(v: boolean) => darkMode.set(v)}
-          />
-        </div>
-      </div>
-
-      {/* Multiple toggles state display */}
-      <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">State Summary</h3>
-      <div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin-bottom: 32px; max-width: 400px;">
-        <p style="font-size: 14px;">Dark Mode: {() => darkMode() ? 'enabled' : 'disabled'}</p>
-        <p style="font-size: 14px;">Notifications: {() => notifications() ? 'enabled' : 'disabled'}</p>
-        <p style="font-size: 14px;">Auto-save: {() => autoSave() ? 'enabled' : 'disabled'}</p>
+      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Multiple switches</h3>
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px;">
+        <SwitchItem label="Notifications" />
+        <SwitchItem label="Dark mode" />
+        <SwitchItem label="Auto-save" />
       </div>
     </div>
   )

@@ -7,7 +7,7 @@ import transformTheme from './transformTheme'
 
 type Css = (strings: TemplateStringsArray, ...values: any[]) => any
 
-type CustomTheme = Record<string, Record<string, unknown> | number | string | boolean>
+type CustomTheme = Record<string, unknown>
 
 type Theme = Partial<{
   rootSize: number

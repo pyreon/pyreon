@@ -29,6 +29,15 @@
 - `ExtractProps<T>` extracts props from a ComponentFn or passes through
 - `HigherOrderComponent<HOP, P>` for typed HOC patterns
 
+## UI Components (@pyreon/ui-components)
+
+- **Layout in `.attrs()`, CSS in `.theme()`**: Element layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) go in `.attrs()`. Visual styles (colors, spacing, borders, shadows) go in `.theme()`.
+- **Pseudo-state styles**: Use `hover: { ... }`, `focus: { ... }`, `active: { ... }`, `disabled: { ... }` objects inside `.theme()` callbacks. The `el`/`txt` bases handle CSS pseudo-selector generation via `makeItResponsive`.
+- **Hover CSS is unconditional**: `:hover` styles apply to ALL components that define hover theme — not just interactive ones (onClick/href). The `cursor: pointer` is the only thing gated on interactivity.
+- **CSS property naming**: Use unistyle convention (`borderWidthTop`, `borderColorLeft`) NOT CSS-spec order (`borderTopWidth`, `borderLeftColor`). Property-first naming.
+- **useBooleans: false**: Rocketstyle dimensions accept string values (`state="primary"`, `size="large"`), not booleans. This is the default.
+- **Size dimensions should be comfortable**: Menu items, dropdown options, and interactive list items need adequate padding. `t.spacing.small` (8px) vertical / `t.spacing.medium` (12px) horizontal is the minimum for touch-friendly sizing.
+
 ## Dead Code
 
 - Remove dead code rather than commenting it out

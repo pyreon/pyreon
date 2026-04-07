@@ -17,6 +17,8 @@
 - **`className`/`htmlFor`**: Use `class` and `for` — standard HTML attributes
 - **`onChange` on inputs**: Use `onInput` for keypress-by-keypress updates (native DOM events)
 - **Ternary for conditionals**: Use `<Show>` for signal-driven conditions (more efficient)
+- **Wrapping signal reads in String()**: `{String(count())}` is unnecessary — `{count()}` works directly in JSX text, numbers auto-coerce. The compiler wraps signal reads reactively regardless.
+- **Function accessors for dimension props**: `state={() => expr}` is wrong — rocketstyle dimension props (`state`, `size`, `variant`) accept string values, not function accessors. Use `state={expr}` and let the compiler handle reactivity via `_rp()` wrapping.
 
 ## Context & Provider Mistakes
 
@@ -31,6 +33,8 @@
 - **Build before dev**: Workspace resolution via `"bun"` condition means no build step needed
 - **`[key: string]: unknown` catch-all**: Use `data-*/aria-*` template literal index signatures
 - **Detaching methods**: `_bindText(obj.method, node)` loses `this` → compiler only emits for simple identifiers
+- **Duplicate module augmentation**: When a library package (e.g., `@pyreon/ui-theme`) already augments an interface (e.g., `StylesDefault extends ITheme`), consuming apps must NOT re-augment the same interface with a different type — this causes TS2320 "cannot simultaneously extend" errors. Remove app-level `pyreon.d.ts` augmentation when the library handles it.
+- **Using non-existent dimension props in demos**: Always check the component definition before using `state`, `size`, or `variant` props — if the component doesn't define that dimension (e.g., Loader has no `.variants()`), the prop is invalid and causes type errors (`never[]`).
 
 ## Testing Mistakes
 

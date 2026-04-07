@@ -41,8 +41,15 @@ const optimizeTheme: OptimizeTheme = ({ theme, breakpoints }) => {
       let hasDiff = false
 
       for (const prop of Object.keys(current)) {
-        if (!prev || current[prop] !== prev[prop]) {
-          diff[prop] = current[prop]
+        const curr = current[prop]
+        const prevVal = prev?.[prop]
+        const isChanged = !prev || (
+          typeof curr === 'object' && curr !== null && typeof prevVal === 'object' && prevVal !== null
+            ? !shallowEqual(curr as Record<string, unknown>, prevVal as Record<string, unknown>)
+            : curr !== prevVal
+        )
+        if (isChanged) {
+          diff[prop] = curr
           hasDiff = true
         }
       }

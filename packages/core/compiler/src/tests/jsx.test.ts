@@ -1488,4 +1488,37 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     expect(result).not.toContain('&amp;amp;')
     expect(result).not.toContain('&amp;lt;')
   })
+
+  test('props.children in template uses _mountSlot instead of createTextNode', () => {
+    const result = t('function C(props) { return <div>{props.children}</div> }')
+    expect(result).toContain('_mountSlot')
+    expect(result).not.toContain('createTextNode')
+    expect(result).not.toContain('.data')
+  })
+
+  test('own.children in template uses _mountSlot', () => {
+    const result = t('function C(props) { const own = props; return <label><input/>{own.children}</label> }')
+    expect(result).toContain('_mountSlot')
+    expect(result).toContain('own.children')
+  })
+
+  test('non-children prop access still uses text node binding', () => {
+    const result = t('function C(props) { return <div>{props.name}</div> }')
+    expect(result).not.toContain('_mountSlot')
+    expect(result).toContain('.data')
+  })
+
+  test('signal() calls are NOT inlined as prop-derived vars', () => {
+    const result = t(`
+      function C(props) {
+        const open = signal(props.defaultOpen ?? false)
+        return <div>{() => open() ? 'yes' : 'no'}</div>
+      }
+    `)
+    // open should be referenced as-is, NOT replaced with signal(props.defaultOpen ?? false)
+    expect(result).toContain('open()')
+    // signal() should appear only once — in the original declaration
+    const signalMatches = result.match(/signal\(props\.defaultOpen/g)
+    expect(signalMatches?.length ?? 0).toBe(1)
+  })
 })

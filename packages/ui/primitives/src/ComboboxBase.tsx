@@ -97,7 +97,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
       if (!isControlled) _value.set(value)
       own.onChange?.(value)
       isOpen.set(false)
-      query.set('')
+      query.set(opt?.label ?? value)
     }
   }
 

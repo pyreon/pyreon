@@ -8,17 +8,13 @@ const Progress = el
     backgroundColor: t.color.system.base[200],
     borderRadius: t.borderRadius.pill,
     overflow: 'hidden',
+    height: '8px',
+    color: t.color.system.primary.base,
   }))
   .states((t) => ({
-    primary: {
-      '& > [data-part="bar"]': { backgroundColor: t.color.system.primary.base },
-    },
-    success: {
-      '& > [data-part="bar"]': { backgroundColor: t.color.system.success.base },
-    },
-    error: {
-      '& > [data-part="bar"]': { backgroundColor: t.color.system.error.base },
-    },
+    primary: { color: t.color.system.primary.base },
+    success: { color: t.color.system.success.base },
+    error: { color: t.color.system.error.base },
   }))
   .sizes(() => ({
     small: { height: '4px' },
