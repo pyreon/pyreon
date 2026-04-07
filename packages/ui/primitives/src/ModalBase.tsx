@@ -9,6 +9,8 @@ export interface ModalBaseProps {
   onClose?: () => void
   closeOnEscape?: boolean
   closeOnOverlay?: boolean
+  'aria-labelledby'?: string
+  'aria-describedby'?: string
   children?: VNodeChild
   ref?: (el: HTMLElement | null) => void
   [key: string]: unknown
@@ -65,6 +67,6 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
           {own.children}
         </div>
       </Portal>
-    ) as unknown as VNodeChild
-  }) as unknown as VNodeChild
+    )
+  })
 }

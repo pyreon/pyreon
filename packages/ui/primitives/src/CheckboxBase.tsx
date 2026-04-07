@@ -1,6 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { useControllableState } from '@pyreon/hooks'
 
 export interface CheckboxBaseProps {
   checked?: boolean
@@ -8,6 +8,7 @@ export interface CheckboxBaseProps {
   onChange?: (checked: boolean) => void
   disabled?: boolean
   indeterminate?: boolean
+  'aria-invalid'?: boolean
   name?: string
   value?: string
   children?: VNodeChild
@@ -26,22 +27,22 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
     'onChange',
     'disabled',
     'indeterminate',
+    'aria-invalid',
     'name',
     'value',
     'children',
     'ref',
   ])
 
-  const isControlled = own.checked !== undefined
-  const internal = signal(own.defaultChecked ?? false)
-
-  const checked = () => (isControlled ? own.checked! : internal())
+  const [checked, setChecked] = useControllableState({
+    value: own.checked,
+    defaultValue: own.defaultChecked ?? false,
+    onChange: own.onChange,
+  })
 
   const toggle = () => {
     if (own.disabled) return
-    const next = !checked()
-    if (!isControlled) internal.set(next)
-    own.onChange?.(next)
+    setChecked(!checked())
   }
 
   return (
@@ -51,6 +52,7 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
       role="checkbox"
       aria-checked={own.indeterminate ? 'mixed' : checked()}
       aria-disabled={own.disabled || undefined}
+      aria-invalid={own['aria-invalid'] || undefined}
       data-checked={checked() || undefined}
       data-disabled={own.disabled || undefined}
       tabIndex={own.disabled ? -1 : 0}
@@ -78,5 +80,5 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
       />
       {own.children}
     </label>
-  ) as unknown as VNodeChild
+  )
 }

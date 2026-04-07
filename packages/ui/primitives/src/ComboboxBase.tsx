@@ -1,5 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { createUniqueId, splitProps } from '@pyreon/core'
+import { useControllableState } from '@pyreon/hooks'
 import { computed, signal } from '@pyreon/reactivity'
 
 export interface ComboboxOption {
@@ -59,6 +60,12 @@ export interface ComboboxState {
   getLabel: (value: string) => string
   /** Check if a value is selected. */
   isSelected: (value: string) => boolean
+  /** Props to spread on the input element. */
+  inputProps: () => Record<string, unknown>
+  /** Props to spread on the listbox container. */
+  listboxProps: () => Record<string, unknown>
+  /** Get props for an individual option. */
+  getOptionProps: (value: string, index: number) => Record<string, unknown>
 }
 
 export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
@@ -67,9 +74,14 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     'placeholder', 'disabled', 'children',
   ])
 
-  const isControlled = own.value !== undefined
-  const _value = signal<string | string[]>(own.defaultValue ?? (own.multiple ? [] : ''))
-  const selected = () => (isControlled ? own.value! : _value())
+  const [selected, setSelected] = useControllableState<string | string[]>({
+    value: own.value,
+    defaultValue: own.defaultValue ?? (own.multiple ? [] : ''),
+    onChange: own.onChange,
+  })
+
+  const baseId = createUniqueId()
+  const listboxId = `${baseId}-listbox`
 
   const query = signal('')
   const isOpen = signal(false)
@@ -91,11 +103,9 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
       const next = current.includes(value)
         ? current.filter((v) => v !== value)
         : [...current, value]
-      if (!isControlled) _value.set(next)
-      own.onChange?.(next)
+      setSelected(next)
     } else {
-      if (!isControlled) _value.set(value)
-      own.onChange?.(value)
+      setSelected(value)
       isOpen.set(false)
       query.set(opt?.label ?? value)
     }
@@ -105,14 +115,12 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     if (!own.multiple) return
     const current = Array.isArray(selected()) ? selected() as string[] : []
     const next = current.filter((v) => v !== value)
-    if (!isControlled) _value.set(next)
-    own.onChange?.(next)
+    setSelected(next)
   }
 
   function clear() {
-    const empty = own.multiple ? [] : ''
-    if (!isControlled) _value.set(empty)
-    own.onChange?.(empty)
+    const empty: string | string[] = own.multiple ? [] : ''
+    setSelected(empty)
     query.set('')
   }
 
@@ -120,7 +128,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     return own.options.find((o) => o.value === value)?.label ?? value
   }
 
-  function isSelected(value: string): boolean {
+  function isSelectedFn(value: string): boolean {
     const sel = selected()
     return Array.isArray(sel) ? sel.includes(value) : sel === value
   }
@@ -142,7 +150,17 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     } else if (e.key === 'Escape') {
       isOpen.set(false)
       query.set('')
+    } else if (e.key === 'Tab') {
+      if (isOpen()) isOpen.set(false)
     }
+  }
+
+  function getActiveDescendantId(): string | undefined {
+    if (!isOpen()) return undefined
+    const opts = filtered()
+    const opt = opts[highlightedIndex()]
+    if (!opt) return undefined
+    return `${baseId}-option-${highlightedIndex()}`
   }
 
   const state: ComboboxState = {
@@ -160,7 +178,24 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     clear,
     onKeyDown,
     getLabel,
-    isSelected,
+    isSelected: isSelectedFn,
+    inputProps: () => ({
+      role: 'combobox',
+      'aria-expanded': isOpen(),
+      'aria-controls': listboxId,
+      'aria-activedescendant': getActiveDescendantId(),
+      'aria-autocomplete': 'list' as const,
+    }),
+    listboxProps: () => ({
+      role: 'listbox',
+      id: listboxId,
+    }),
+    getOptionProps: (value: string, index: number) => ({
+      role: 'option',
+      id: `${baseId}-option-${index}`,
+      'aria-selected': isSelectedFn(value),
+      'aria-disabled': own.options.find((o) => o.value === value)?.disabled || undefined,
+    }),
   }
 
   if (typeof own.children === 'function') {
