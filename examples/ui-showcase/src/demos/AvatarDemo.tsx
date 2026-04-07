@@ -1,11 +1,11 @@
-import { Avatar, AvatarGroup } from '@pyreon/ui-components'
+import { Avatar, AvatarGroup, Title } from '@pyreon/ui-components'
 
 export function AvatarDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Avatar</h2>
+      <Title size="h2" style="margin-bottom: 24px">Avatar</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sizes (circle)</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sizes (circle)</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <Avatar size="xSmall" variant="circle">XS</Avatar>
         <Avatar size="small" variant="circle">SM</Avatar>
@@ -14,7 +14,7 @@ export function AvatarDemo() {
         <Avatar size="xLarge" variant="circle">XL</Avatar>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sizes (rounded)</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sizes (rounded)</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <Avatar size="xSmall" variant="rounded">XS</Avatar>
         <Avatar size="small" variant="rounded">SM</Avatar>
@@ -23,7 +23,7 @@ export function AvatarDemo() {
         <Avatar size="xLarge" variant="rounded">XL</Avatar>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Avatar Group</h3>
+      <Title size="h3" style="margin-bottom: 12px">Avatar Group</Title>
       <AvatarGroup>
         <Avatar size="medium" variant="circle">AB</Avatar>
         <Avatar size="medium" variant="circle">CD</Avatar>

@@ -1,11 +1,11 @@
-import { Stack } from '@pyreon/ui-components'
+import { Stack, Title } from '@pyreon/ui-components'
 
 export function StackDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Stack</h2>
+      <Title size="h2" style="margin-bottom: 24px">Stack</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Gap sizes</h3>
+      <Title size="h3" style="margin-bottom: 12px">Gap sizes</Title>
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px;">
         <div>
           <p style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">small</p>

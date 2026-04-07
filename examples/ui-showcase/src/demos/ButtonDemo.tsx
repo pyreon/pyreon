@@ -1,14 +1,14 @@
 import { signal } from '@pyreon/reactivity'
-import { Button, CloseButton, IconButton } from '@pyreon/ui-components'
+import { Button, CloseButton, IconButton, Title } from '@pyreon/ui-components'
 
 export function ButtonDemo() {
   const count = signal(0)
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Button</h2>
+      <Title size="h2" style="margin-bottom: 24px">Button</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="display: flex; gap: 12px; margin-bottom: 24px;">
         <Button state="primary">Primary</Button>
         <Button state="secondary">Secondary</Button>
@@ -16,14 +16,14 @@ export function ButtonDemo() {
         <Button state="success">Success</Button>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sizes</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sizes</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <Button state="primary" size="small">Small</Button>
         <Button state="primary" size="medium">Medium</Button>
         <Button state="primary" size="large">Large</Button>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Variants</h3>
+      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
       <div style="display: flex; gap: 12px; margin-bottom: 24px;">
         <Button state="primary" variant="solid">Solid</Button>
         <Button state="primary" variant="outline">Outline</Button>
@@ -32,7 +32,7 @@ export function ButtonDemo() {
         <Button state="primary" variant="link">Link</Button>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Interactive</h3>
+      <Title size="h3" style="margin-bottom: 12px">Interactive</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <Button state="primary" onClick={() => count.update((n) => n + 1)}>
           Clicked: {count()}
@@ -42,7 +42,7 @@ export function ButtonDemo() {
         </Button>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Icon Buttons</h3>
+      <Title size="h3" style="margin-bottom: 12px">Icon Buttons</Title>
       <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 24px;">
         <IconButton size="small">+</IconButton>
         <IconButton size="medium">...</IconButton>

@@ -1,9 +1,9 @@
-import { Breadcrumb, BreadcrumbItem } from '@pyreon/ui-components'
+import { Breadcrumb, BreadcrumbItem, Title } from '@pyreon/ui-components'
 
 export function BreadcrumbDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Breadcrumb</h2>
+      <Title size="h2" style="margin-bottom: 24px">Breadcrumb</Title>
 
       <div style="margin-bottom: 24px;">
         <Breadcrumb gap="small">

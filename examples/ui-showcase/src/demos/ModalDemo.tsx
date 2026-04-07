@@ -6,7 +6,7 @@ export function ModalDemo() {
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Modal</h2>
+      <Title size="h2" style="margin-bottom: 24px">Modal</Title>
 
       <Button state="primary" onClick={() => open.set(true)}>Open Modal</Button>
 

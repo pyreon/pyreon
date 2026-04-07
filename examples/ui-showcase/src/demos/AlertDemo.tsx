@@ -1,11 +1,11 @@
-import { Alert } from '@pyreon/ui-components'
+import { Alert, Title } from '@pyreon/ui-components'
 
 export function AlertDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Alert</h2>
+      <Title size="h2" style="margin-bottom: 24px">Alert</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Alert state="info">This is an informational message.</Alert>
         <Alert state="success">Operation completed successfully!</Alert>
@@ -13,7 +13,7 @@ export function AlertDemo() {
         <Alert state="error">An error occurred. Please try again.</Alert>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Variants</h3>
+      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Alert state="info" variant="subtle">Subtle</Alert>
         <Alert state="info" variant="solid">Solid</Alert>

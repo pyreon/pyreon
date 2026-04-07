@@ -1,11 +1,11 @@
-import { Notification } from '@pyreon/ui-components'
+import { Notification, Title } from '@pyreon/ui-components'
 
 export function NotificationDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Notification</h2>
+      <Title size="h2" style="margin-bottom: 24px">Notification</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; max-width: 480px; margin-bottom: 24px;">
         <Notification state="info">
           A new software update is available. See what's new in version 4.0.
@@ -21,7 +21,7 @@ export function NotificationDemo() {
         </Notification>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Without State</h3>
+      <Title size="h3" style="margin-bottom: 12px">Without State</Title>
       <div style="max-width: 480px; margin-bottom: 24px;">
         <Notification>
           This is a neutral notification with no specific state applied.

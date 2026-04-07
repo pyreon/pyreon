@@ -1,11 +1,11 @@
-import { Group, Button } from '@pyreon/ui-components'
+import { Group, Button, Title } from '@pyreon/ui-components'
 
 export function GroupDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Group</h2>
+      <Title size="h2" style="margin-bottom: 24px">Group</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Inline items with gap</h3>
+      <Title size="h3" style="margin-bottom: 12px">Inline items with gap</Title>
       <div style="margin-bottom: 24px;">
         <Group gap="medium">
           <Button state="primary">Save</Button>

@@ -1,14 +1,14 @@
 import { signal } from '@pyreon/reactivity'
-import { NavLink } from '@pyreon/ui-components'
+import { NavLink, Title } from '@pyreon/ui-components'
 
 export function NavLinkDemo() {
   const active = signal('Dashboard')
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">NavLink</h2>
+      <Title size="h2" style="margin-bottom: 24px">NavLink</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sidebar Navigation</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sidebar Navigation</Title>
       <div style="width: 220px; display: flex; flex-direction: column; gap: 4px; margin-bottom: 24px;">
         <NavLink state={active() === 'Dashboard' ? 'active' : undefined} onClick={() => active.set('Dashboard')}>Dashboard</NavLink>
         <NavLink state={active() === 'Settings' ? 'active' : undefined} onClick={() => active.set('Settings')}>Settings</NavLink>
@@ -18,7 +18,7 @@ export function NavLinkDemo() {
       </div>
 
       <div style="font-size: 14px; color: #6b7280;">
-        Active: {() => active()}
+        Active: {active()}
       </div>
     </div>
   )

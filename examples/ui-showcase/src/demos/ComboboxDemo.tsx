@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { MenuItem } from '@pyreon/ui-components'
+import { MenuItem, Title } from '@pyreon/ui-components'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 import type { ComboboxState } from '@pyreon/ui-primitives'
 
@@ -17,7 +17,7 @@ export function ComboboxDemo() {
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Combobox</h2>
+      <Title size="h2" style="margin-bottom: 24px">Combobox</Title>
 
       <div style="max-width: 300px; margin-bottom: 24px;">
         <ComboboxBase

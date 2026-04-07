@@ -3,9 +3,9 @@ import { Card, Title, Paragraph } from '@pyreon/ui-components'
 export function CardDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Card</h2>
+      <Title size="h2" style="margin-bottom: 24px">Card</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Variants</h3>
+      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
       <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px;">
         <Card variant="elevated">
           <Title size="h4">Elevated</Title>

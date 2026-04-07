@@ -1,4 +1,5 @@
 import { signal } from '@pyreon/reactivity'
+import { Title } from '@pyreon/ui-components'
 import { CalendarBase } from '@pyreon/ui-primitives'
 import type { CalendarDate, CalendarState } from '@pyreon/ui-primitives'
 
@@ -7,7 +8,7 @@ export function CalendarDemo() {
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Calendar</h2>
+      <Title size="h2" style="margin-bottom: 24px">Calendar</Title>
 
       <CalendarBase
         value={selected()}
@@ -50,7 +51,7 @@ export function CalendarDemo() {
       <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
         Selected: {() => {
           const d = selected()
-          return d ? `${d.year}-${String(d.month + 1).padStart(2, '0')}-${String(d.day).padStart(2, '0')}` : 'None'
+          return d ? `${d.year}-${(d.month + 1).toString().padStart(2, '0')}-${d.day.toString().padStart(2, '0')}` : 'None'
         }}
       </p>
     </div>

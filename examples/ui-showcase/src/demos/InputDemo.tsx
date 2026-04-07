@@ -1,14 +1,14 @@
 import { signal } from '@pyreon/reactivity'
-import { Input, Textarea } from '@pyreon/ui-components'
+import { Input, Textarea, Title } from '@pyreon/ui-components'
 
 export function InputDemo() {
   const name = signal('')
 
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Input</h2>
+      <Title size="h2" style="margin-bottom: 24px">Input</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Basic</h3>
+      <Title size="h3" style="margin-bottom: 12px">Basic</Title>
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Input
           placeholder="Enter your name"
@@ -20,27 +20,27 @@ export function InputDemo() {
         </p>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input state="error" placeholder="Error state" />
         <Input state="success" placeholder="Success state" />
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sizes</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sizes</Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input size="small" placeholder="Small" />
         <Input size="medium" placeholder="Medium" />
         <Input size="large" placeholder="Large" />
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Variants</h3>
+      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
       <div style="max-width: 400px; display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Input variant="outline" placeholder="Outline" />
         <Input variant="filled" placeholder="Filled" />
         <Input variant="underline" placeholder="Underline" />
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Textarea</h3>
+      <Title size="h3" style="margin-bottom: 12px">Textarea</Title>
       <div style="max-width: 400px; margin-bottom: 24px;">
         <Textarea placeholder="Write something..." rows={4} />
       </div>
