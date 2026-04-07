@@ -2,9 +2,8 @@ import { el, txt } from '../../factory'
 
 const Breadcrumb = el
   .config({ name: 'Breadcrumb' })
-  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center' })
+  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 2 })
   .theme((t) => ({
-    gap: t.spacing.xxSmall,
     fontSize: t.fontSize.small,
   }))
 
