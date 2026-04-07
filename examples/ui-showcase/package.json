@@ -10,8 +10,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pyreon/zero": "workspace:*",
+    "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/ui-primitives": "workspace:*",

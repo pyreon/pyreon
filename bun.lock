@@ -203,12 +203,14 @@
       "name": "@pyreon/example-ui-showcase",
       "version": "0.1.0",
       "dependencies": {
+        "@pyreon/core": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/ui-components": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/ui-primitives": "workspace:*",
         "@pyreon/ui-theme": "workspace:*",
-        "@pyreon/zero": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",

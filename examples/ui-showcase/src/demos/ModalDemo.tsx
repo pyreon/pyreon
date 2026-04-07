@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { Button, Card, Title, Paragraph } from '@pyreon/ui-components'
+import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 export function ModalDemo() {
   const open = signal(false)
