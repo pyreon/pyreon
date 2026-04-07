@@ -10,6 +10,7 @@
     "typecheck": "echo 'Showcase uses rocketstyle boolean props — skips strict typecheck'"
   },
   "dependencies": {
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/elements": "workspace:*",
     "@pyreon/hooks": "workspace:*",

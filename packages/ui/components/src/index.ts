@@ -4,7 +4,7 @@ export { default as Stack } from './components/Stack'
 export { default as Group } from './components/Group'
 export { default as Center } from './components/Center'
 export { default as Divider } from './components/Divider'
-export { default as SimpleGrid } from './components/SimpleGrid'
+export { GridContainer, GridRow, GridCol } from './components/SimpleGrid'
 export { default as AspectRatio } from './components/AspectRatio'
 
 // Typography

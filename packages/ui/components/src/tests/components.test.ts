@@ -10,7 +10,7 @@ afterAll(() => cleanup())
 
 const ALL_COMPONENTS = [
   // Layout
-  'Box', 'Stack', 'Group', 'Center', 'Divider', 'SimpleGrid', 'AspectRatio',
+  'Box', 'Stack', 'Group', 'Center', 'Divider', 'GridContainer', 'GridRow', 'GridCol', 'AspectRatio',
   // Typography
   'Title', 'Paragraph',
   // Buttons
@@ -52,7 +52,7 @@ describe('All components are exported', () => {
 
 describe('Rocketstyle components have IS_ROCKETSTYLE', () => {
   const rocketstyleComponents = [
-    'Box', 'Stack', 'Group', 'Center', 'Divider', 'SimpleGrid', 'AspectRatio',
+    'Box', 'Stack', 'Group', 'Center', 'Divider', 'AspectRatio',
     'Title', 'Paragraph',
     'Button', 'IconButton', 'CloseButton', 'ButtonGroup', 'ActionIcon',
     'FormField', 'FieldLabel', 'FieldError', 'FieldDescription',

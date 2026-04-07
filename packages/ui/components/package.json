@@ -49,6 +49,7 @@
     "@pyreon/styler": "workspace:^",
     "@pyreon/unistyle": "workspace:^",
     "@pyreon/elements": "workspace:^",
+    "@pyreon/coolgrid": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
     "@pyreon/hooks": "workspace:^"
   }
