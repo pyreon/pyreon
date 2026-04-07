@@ -35,6 +35,10 @@
 - **Detaching methods**: `_bindText(obj.method, node)` loses `this` → compiler only emits for simple identifiers
 - **Duplicate module augmentation**: When a library package (e.g., `@pyreon/ui-theme`) already augments an interface (e.g., `StylesDefault extends ITheme`), consuming apps must NOT re-augment the same interface with a different type — this causes TS2320 "cannot simultaneously extend" errors. Remove app-level `pyreon.d.ts` augmentation when the library handles it.
 - **Using non-existent dimension props in demos**: Always check the component definition before using `state`, `size`, or `variant` props — if the component doesn't define that dimension (e.g., Loader has no `.variants()`), the prop is invalid and causes type errors (`never[]`).
+- **`as unknown as VNodeChild` on JSX returns**: This cast is unnecessary — `JSX.Element` (VNode) is already assignable to `VNodeChild`. Never add it; remove it where found.
+- **Duplicating controlled/uncontrolled pattern**: Use `useControllableState` from `@pyreon/hooks` instead of manual `isControlled + signal + getter` pattern. Every primitive had this duplicated before the fix.
+- **Static return null for conditional rendering**: `if (!isActive()) return null` runs once — components run once in Pyreon. Use reactive accessor: `return (() => { if (!isActive()) return null; return <div>...</div> })`. This applies to TabPanelBase, ModalBase, and any component that conditionally renders.
+- **Empty `.theme({})`**: Never chain `.theme({})` as a no-op. If a component needs no base theme, skip `.theme()` entirely.
 
 ## Testing Mistakes
 

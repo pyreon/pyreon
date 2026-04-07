@@ -39,6 +39,15 @@
 - **Size dimensions should be comfortable**: Menu items, dropdown options, and interactive list items need adequate padding. `t.spacing.small` (8px) vertical / `t.spacing.medium` (12px) horizontal is the minimum for touch-friendly sizing.
 - **Use `@pyreon/hooks` instead of manual event handling**: Use `useEventListener` for document/window listeners, `useScrollLock` for scroll locking, `useClickOutside` for click-outside detection. Never use raw `addEventListener`/`removeEventListener` in primitives.
 - **Use `@pyreon/elements` Overlay for tooltips/popovers/dropdowns**: The `useOverlay` hook handles positioning, viewport flipping, ESC key, click-outside, scroll tracking, hover delay. Never reimplement overlay positioning logic in primitives.
+- **Semantic HTML in `.config({ component })`**: Use `component: 'hr'` for Divider, `component: 'nav'` for nav containers etc. This sets the outer rocketstyle element tag. `tag` in `.attrs()` sets the Element's inner tag.
+
+## UI Primitives (@pyreon/ui-primitives)
+
+- **Use `useControllableState`**: Every primitive with controlled/uncontrolled state must use `useControllableState({ value, defaultValue, onChange })` from `@pyreon/hooks`. Never duplicate the `isControlled + signal + getter` pattern.
+- **Shared keyboard navigation**: Use `navigateByRole()` from `keyboard.ts` for arrow key navigation between siblings (tabs, radios). Accepts `containerSelector`, `itemSelector`, and `keys` ('horizontal'|'vertical'|'both').
+- **Render-function primitives provide ARIA helpers**: ComboboxBase exposes `inputProps()`, `listboxProps()`, `getOptionProps()`. TreeBase exposes `treeProps()`, `getItemProps()`. FileUploadBase exposes `inputProps`. Always add ARIA helper objects to state for render-function primitives.
+- **Reactive conditional rendering**: Use `return (() => { if (!cond()) return null; return <div>...</div> })` not `if (!cond()) return null; return <div>...</div>`. Components run once.
+- **No `as unknown as VNodeChild`**: JSX.Element (VNode) is assignable to VNodeChild. The cast is unnecessary.
 
 ## Dead Code
 
