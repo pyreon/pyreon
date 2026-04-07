@@ -1,17 +1,17 @@
-import { el, txt } from '../../factory'
+import { el, list } from '../../factory'
 
-const Breadcrumb = el
+const Breadcrumb = list
   .config({ name: 'Breadcrumb' })
-  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 2 })
+  .attrs({ contentDirection: 'inline' })
   .theme((t) => ({
     fontSize: t.fontSize.small,
   }))
 
 export default Breadcrumb
 
-export const BreadcrumbItem = txt
+export const BreadcrumbItem = el
   .config({ name: 'BreadcrumbItem' })
-  .attrs({ tag: 'span' })
+  .attrs({ tag: 'span', direction: 'inline', alignY: 'center' })
   .theme((t) => ({
     color: t.color.system.base[500],
     transition: t.transition.fast,

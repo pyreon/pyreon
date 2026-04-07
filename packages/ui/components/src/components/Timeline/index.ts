@@ -5,9 +5,9 @@ const Timeline = el
   .attrs({ tag: 'div', direction: 'rows' })
   .theme((t) => ({
     paddingLeft: t.spacing.medium,
-    borderLeftWidth: '2px',
-    borderLeftStyle: 'solid',
-    borderLeftColor: t.color.system.base[200],
+    borderWidthLeft: '2px',
+    borderStyleLeft: 'solid',
+    borderColorLeft: t.color.system.base[200],
   }))
 
 export default Timeline

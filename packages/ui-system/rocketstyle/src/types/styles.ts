@@ -21,8 +21,20 @@ export type OptionStyles = ((css: Css) => ReturnType<Css>)[]
  * to DynamicStyled for reactive class swapping. But by the time interpolation
  * functions run, it's always been resolved to a plain CSS object.
  */
+/** Pseudo-state style overrides — always present (default to {}). */
+type PseudoStyleOverrides = {
+  hover: Record<string, unknown>
+  focus: Record<string, unknown>
+  active: Record<string, unknown>
+  disabled: Record<string, unknown>
+  pressed: Record<string, unknown>
+  readOnly: Record<string, unknown>
+}
+
 export type RocketStyleInterpolationProps<CSS extends TObj = TObj> = {
-  $rocketstyle: CSS
+  /** Resolved theme object — merged from .theme(), .states(), .sizes(), .variants(). */
+  $rocketstyle: CSS & PseudoStyleOverrides & Record<string, unknown>
+  /** Active dimension values + pseudo state (hover, focus, pressed, etc.). */
   $rocketstate: Record<string, string | string[]> & {
     pseudo: Partial<PseudoState>
   }

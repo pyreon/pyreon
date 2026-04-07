@@ -129,7 +129,7 @@ describe('theme integration — pseudo props reactive', () => {
   })
 
   it('boolean dimension prop resolves to the matching state theme', () => {
-    const Comp: any = rocketstyle()({
+    const Comp: any = rocketstyle({ useBooleans: true })({
       name: 'BoolPseudoComp',
       component: ThemeCapture,
     })
@@ -139,7 +139,7 @@ describe('theme integration — pseudo props reactive', () => {
         secondary: { color: 'green' },
       })
 
-    // boolean shorthand: `primary={true}` → state='primary'
+    // boolean shorthand: `primary={true}` → state='primary' (requires useBooleans: true)
     const theme = getComputedTheme(Comp, { primary: true })
     expect(theme.color).toBe('blue')
   })

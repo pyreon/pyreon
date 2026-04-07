@@ -25,6 +25,7 @@ import type {
   AlignContentAlignYKeys,
   AlignContentDirectionKeys,
   ExtendCss,
+  ITheme,
   Styles,
   StylesTheme,
 } from './styles'
@@ -51,6 +52,7 @@ export type {
   CreateMediaQueries,
   Defaults,
   ExtendCss,
+  ITheme,
   MakeItResponsive,
   MakeItResponsiveStyles,
   NormalizeTheme,

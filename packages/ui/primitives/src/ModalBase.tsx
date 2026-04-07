@@ -1,7 +1,8 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { Portal } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { effect, onCleanup } from '@pyreon/reactivity'
+import { useEventListener, useScrollLock } from '@pyreon/hooks'
+import { effect } from '@pyreon/reactivity'
 
 export interface ModalBaseProps {
   open?: boolean
@@ -31,23 +32,17 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
   const closeOnEscape = own.closeOnEscape !== false
   const closeOnOverlay = own.closeOnOverlay !== false
 
+  const scrollLock = useScrollLock()
+
+  // ESC handler via useEventListener
+  useEventListener('keydown', (e) => {
+    if (own.open && closeOnEscape && e.key === 'Escape') own.onClose?.()
+  })
+
+  // Scroll lock tied to open state
   effect(() => {
-    if (!own.open) return
-
-    // Scroll lock
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    // ESC handler
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (closeOnEscape && e.key === 'Escape') own.onClose?.()
-    }
-    document.addEventListener('keydown', onKeyDown)
-
-    onCleanup(() => {
-      document.body.style.overflow = prev
-      document.removeEventListener('keydown', onKeyDown)
-    })
+    if (own.open) scrollLock.lock()
+    else scrollLock.unlock()
   })
 
   if (!own.open) return null

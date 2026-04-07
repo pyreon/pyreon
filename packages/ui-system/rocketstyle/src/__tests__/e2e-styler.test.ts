@@ -221,7 +221,6 @@ describe('e2e: rocketstyle theme computation', () => {
       name: 'ChainedModComp',
       component: ThemeCapture,
     })
-      .theme({})
       .modifiers({
         first: () => ({ step: 'one' }),
         second: (accTheme: any) => ({ sawStep: accTheme.step }),

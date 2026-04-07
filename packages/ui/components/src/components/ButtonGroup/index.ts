@@ -1,12 +1,5 @@
-import { el } from '../../factory'
+import { list } from '../../factory'
 
-const ButtonGroup = el
-  .config({ name: 'ButtonGroup' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
-  .theme(() => ({}))
-  .variants((t) => ({
-    attached: { gap: 0 },
-    separated: { gap: t.spacing.xxSmall },
-  }))
+const ButtonGroup = list.config({ name: 'ButtonGroup' }).attrs({ contentDirection: 'inline' })
 
 export default ButtonGroup

@@ -203,20 +203,14 @@
       "name": "@pyreon/example-ui-showcase",
       "version": "0.1.0",
       "dependencies": {
-        "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
-        "@pyreon/elements": "workspace:*",
-        "@pyreon/hooks": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
-        "@pyreon/rocketstyle": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
-        "@pyreon/styler": "workspace:*",
         "@pyreon/ui-components": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/ui-primitives": "workspace:*",
         "@pyreon/ui-theme": "workspace:*",
-        "@pyreon/unistyle": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
@@ -1081,6 +1075,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
         "@pyreon/typescript": "workspace:^",

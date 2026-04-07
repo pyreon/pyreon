@@ -4,19 +4,19 @@ import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
 const Tabs = rs({ name: 'Tabs', component: TabsBase })
   .theme((t) => ({
     display: 'flex',
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: t.color.system.base[200],
+    borderWidthBottom: 1,
+    borderStyleBottom: 'solid',
+    borderColorBottom: t.color.system.base[200],
     gap: 0,
   }))
   .variants((t) => ({
     line: {},
     enclosed: {
-      borderBottomWidth: 0,
+      borderWidthBottom: 0,
       gap: t.spacing.xxxSmall,
     },
     pills: {
-      borderBottomWidth: 0,
+      borderWidthBottom: 0,
       gap: t.spacing.xxxSmall,
     },
   }))
@@ -33,9 +33,9 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
     paddingBottom: t.spacing.xxSmall,
     paddingLeft: t.spacing.small,
     paddingRight: t.spacing.small,
-    borderBottomWidth: 2,
-    borderBottomStyle: 'solid',
-    borderBottomColor: 'transparent',
+    borderWidthBottom: 2,
+    borderStyleBottom: 'solid',
+    borderColorBottom: 'transparent',
     transition: t.transition.fast,
     whiteSpace: 'nowrap',
     hover: {
@@ -47,7 +47,7 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
       borderRadius: t.borderRadius.small,
     },
     active: {
-      borderBottomColor: t.color.system.primary.base,
+      borderColorBottom: t.color.system.primary.base,
       color: t.color.system.primary.text,
     },
     disabled: {
@@ -62,7 +62,7 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
       borderWidth: 1,
       borderStyle: 'solid',
       borderColor: 'transparent',
-      borderBottomWidth: 0,
+      borderWidthBottom: 0,
       borderRadius: `${t.borderRadius.base} ${t.borderRadius.base} 0 0`,
       active: {
         borderColor: t.color.system.base[200],
@@ -70,7 +70,7 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
       },
     },
     pills: {
-      borderBottomWidth: 0,
+      borderWidthBottom: 0,
       borderRadius: t.borderRadius.base,
       active: {
         backgroundColor: t.color.system.primary.base,
