@@ -2,11 +2,12 @@ import { el } from '../../factory'
 
 const Pagination = el
   .config({ name: 'Pagination' })
-  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 1 })
-  .theme(() => ({}))
+  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 4 })
+  .theme((t) => ({
+    fontSize: t.fontSize.small,
+  }))
   .sizes((t) => ({
     small: {
-      gap: t.spacing.xxxSmall,
       fontSize: t.fontSize.xSmall,
       paddingTop: t.spacing.xxxSmall,
       paddingBottom: t.spacing.xxxSmall,
@@ -14,7 +15,6 @@ const Pagination = el
       paddingRight: t.spacing.xxSmall,
     },
     medium: {
-      gap: t.spacing.xxxSmall,
       fontSize: t.fontSize.small,
       paddingTop: t.spacing.xxSmall,
       paddingBottom: t.spacing.xxSmall,
@@ -22,7 +22,6 @@ const Pagination = el
       paddingRight: t.spacing.xSmall,
     },
     large: {
-      gap: t.spacing.xxSmall,
       fontSize: t.fontSize.base,
       paddingTop: t.spacing.xxSmall,
       paddingBottom: t.spacing.xxSmall,

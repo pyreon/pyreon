@@ -34,9 +34,9 @@ const ALL_COMPONENTS = [
   'Calendar', 'DatePicker', 'DateRangePicker', 'TimePicker', 'DateTimePicker', 'MonthPicker',
   // Advanced Inputs
   'Combobox', 'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
-  'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl',
+  'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl', 'SegmentedControlItem',
   // Data
-  'Tree',
+  'Tree', 'TreeItem',
   // Accessibility
   'VisuallyHidden',
 ] as const

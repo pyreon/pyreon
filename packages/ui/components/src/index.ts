@@ -90,10 +90,10 @@ export { default as ColorSwatch } from './components/ColorSwatch'
 export { default as InputGroup } from './components/InputGroup'
 export { default as NumberInput } from './components/NumberInput'
 export { default as PinInput } from './components/PinInput'
-export { default as SegmentedControl } from './components/SegmentedControl'
+export { default as SegmentedControl, SegmentedControlItem } from './components/SegmentedControl'
 
 // Data
-export { default as Tree } from './components/Tree'
+export { default as Tree, TreeItem } from './components/Tree'
 
 // Accessibility
 export { default as VisuallyHidden } from './components/VisuallyHidden'

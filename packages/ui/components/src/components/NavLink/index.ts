@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const NavLink = el
   .config({ name: 'NavLink' })
-  .attrs({ tag: 'a', direction: 'inline', alignY: 'center', gap: 4 })
+  .attrs({ tag: 'a', direction: 'inline', alignY: 'center', gap: 6 })
   .theme((t) => ({
     paddingTop: t.spacing.xxSmall,
     paddingBottom: t.spacing.xxSmall,

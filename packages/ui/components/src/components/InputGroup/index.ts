@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const InputGroup = el
   .config({ name: 'InputGroup' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'block', block: true })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
   .theme(() => ({}))
 
 export default InputGroup

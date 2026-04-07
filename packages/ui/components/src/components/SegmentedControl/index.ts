@@ -8,9 +8,6 @@ const SegmentedControl = el
     borderRadius: t.borderRadius.base,
     padding: t.spacing.xxxSmall,
   }))
-  .states((t) => ({
-    primary: { backgroundColor: t.color.system.base[100] },
-  }))
   .sizes((t) => ({
     small: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.small },
     medium: { padding: t.spacing.xxxSmall, borderRadius: t.borderRadius.base },
@@ -30,10 +27,17 @@ export const SegmentedControlItem = el
     borderRadius: t.borderRadius.small,
     color: t.color.system.base[600],
     backgroundColor: 'transparent',
-    border: 'none',
+    borderWidth: 0,
     outline: 'none',
     hover: {
       color: t.color.system.dark[800],
+    },
+  }))
+  .states((t) => ({
+    active: {
+      backgroundColor: t.color.system.light.base,
+      color: t.color.system.dark[800],
+      boxShadow: t.shadows.small,
     },
   }))
   .sizes((t) => ({
