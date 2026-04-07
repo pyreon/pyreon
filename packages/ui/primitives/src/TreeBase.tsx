@@ -1,5 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { createUniqueId, splitProps } from '@pyreon/core'
+import { useControllableState } from '@pyreon/hooks'
 import { signal } from '@pyreon/reactivity'
 
 export interface TreeNode {
@@ -54,6 +55,10 @@ export interface TreeState {
   onKeyDown: (e: KeyboardEvent) => void
   /** Flat list of visible nodes for rendering. */
   visibleNodes: () => { node: TreeNode; depth: number }[]
+  /** Props to spread on the tree container. */
+  treeProps: () => Record<string, unknown>
+  /** Get props for a tree item. */
+  getItemProps: (id: string, depth: number, hasChildren: boolean) => Record<string, unknown>
 }
 
 export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
@@ -62,16 +67,20 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     'defaultExpanded', 'onExpand', 'children',
   ])
 
-  const isControlled = own.value !== undefined
-  const _selected = signal<string | string[]>(own.defaultValue ?? (own.multiple ? [] : ''))
-  const selected = () => (isControlled ? own.value! : _selected())
+  const baseId = createUniqueId()
+
+  const [selected, setSelected] = useControllableState<string | string[]>({
+    value: own.value,
+    defaultValue: own.defaultValue ?? (own.multiple ? [] : ''),
+    onChange: own.onChange,
+  })
 
   const expanded = signal(new Set<string>(own.defaultExpanded ?? []))
   const focused = signal<string | null>(null)
 
   function isExpanded(id: string): boolean { return expanded().has(id) }
 
-  function isSelected(id: string): boolean {
+  function isSelectedFn(id: string): boolean {
     const sel = selected()
     return Array.isArray(sel) ? sel.includes(id) : sel === id
   }
@@ -101,11 +110,9 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     if (own.multiple) {
       const current = Array.isArray(selected()) ? selected() as string[] : []
       const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id]
-      if (!isControlled) _selected.set(next)
-      own.onChange?.(next)
+      setSelected(next)
     } else {
-      if (!isControlled) _selected.set(id)
-      own.onChange?.(id)
+      setSelected(id)
     }
   }
 
@@ -148,8 +155,20 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       if (isExpanded(focusedId)) collapse(focusedId)
     } else if ((e.key === 'Enter' || e.key === ' ') && focusedId) {
       e.preventDefault()
-      select(focusedId)
+      const node = visible[idx]?.node
+      if (node && !node.disabled) select(focusedId)
     }
+  }
+
+  function findNode(id: string, nodes: TreeNode[]): TreeNode | undefined {
+    for (const node of nodes) {
+      if (node.id === id) return node
+      if (node.children) {
+        const found = findNode(id, node.children)
+        if (found) return found
+      }
+    }
+    return undefined
   }
 
   const state: TreeState = {
@@ -162,9 +181,25 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     select,
     focus: (id) => focused.set(id),
     isExpanded,
-    isSelected,
+    isSelected: isSelectedFn,
     onKeyDown,
     visibleNodes: getVisibleNodes,
+    treeProps: () => ({
+      role: 'tree',
+      'aria-multiselectable': own.multiple || undefined,
+    }),
+    getItemProps: (id: string, depth: number, hasChildren: boolean) => {
+      const node = findNode(id, own.data)
+      return {
+        role: 'treeitem',
+        id: `${baseId}-item-${id}`,
+        'aria-level': depth + 1,
+        'aria-expanded': hasChildren ? isExpanded(id) : undefined,
+        'aria-selected': isSelectedFn(id),
+        'aria-disabled': node?.disabled || undefined,
+        tabIndex: focused() === id ? 0 : -1,
+      }
+    },
   }
 
   if (typeof own.children === 'function') {

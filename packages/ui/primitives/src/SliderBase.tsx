@@ -1,6 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { useControllableState } from '@pyreon/hooks'
 
 export interface SliderBaseProps {
   value?: number
@@ -10,6 +10,7 @@ export interface SliderBaseProps {
   max?: number
   step?: number
   disabled?: boolean
+  'aria-invalid'?: boolean
   name?: string
   children?: VNodeChild
   ref?: (el: HTMLElement | null) => void
@@ -28,20 +29,21 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
     'max',
     'step',
     'disabled',
+    'aria-invalid',
     'name',
     'children',
     'ref',
   ])
 
-  const isControlled = own.value !== undefined
-  const internal = signal(own.defaultValue ?? own.min ?? 0)
-  const value = () => (isControlled ? own.value! : internal())
+  const [value, setValue] = useControllableState({
+    value: own.value,
+    defaultValue: own.defaultValue ?? own.min ?? 0,
+    onChange: own.onChange,
+  })
 
   const handleInput = (e: Event) => {
     const target = e.target as HTMLInputElement
-    const numVal = Number(target.value)
-    if (!isControlled) internal.set(numVal)
-    own.onChange?.(numVal)
+    setValue(Number(target.value))
   }
 
   return (
@@ -60,7 +62,8 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
       aria-valuemin={own.min ?? 0}
       aria-valuemax={own.max ?? 100}
       aria-disabled={own.disabled || undefined}
+      aria-invalid={own['aria-invalid'] || undefined}
       onInput={handleInput}
     />
-  ) as unknown as VNodeChild
+  )
 }
