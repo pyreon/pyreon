@@ -1,20 +1,24 @@
-import { el } from '../../factory'
+import { txt } from '../../factory'
 
-const Divider = el
+const Divider = txt
   .config({ name: 'Divider' })
-  .attrs({ tag: 'hr' })
+  .attrs({ tag: 'div' })
   .theme((t) => ({
-    borderTopStyle: 'solid',
+    borderWidth: 0,
+    borderTopWidth: 1,
+    borderTopStyle: t.borderStyle.base,
     borderTopColor: t.color.system.base[200],
+    margin: 0,
+    width: '100%',
   }))
   .sizes(() => ({
-    small: { borderTopWidth: '1px' },
-    medium: { borderTopWidth: '2px' },
-    large: { borderTopWidth: '3px' },
+    small: { borderTopWidth: 1 },
+    medium: { borderTopWidth: 2 },
+    large: { borderTopWidth: 4 },
   }))
-  .variants(() => ({
-    solid: { borderTopStyle: 'solid' },
-    dashed: { borderTopStyle: 'dashed' },
+  .variants((t) => ({
+    solid: { borderTopStyle: t.borderStyle.base },
+    dashed: { borderTopStyle: t.borderStyle.dashed },
     dotted: { borderTopStyle: 'dotted' },
   }))
 
