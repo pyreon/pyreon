@@ -8,7 +8,9 @@ import {
   IconButton,
   Chip,
   Highlight,
-  SimpleGrid,
+  GridContainer,
+  GridRow,
+  GridCol,
 } from '@pyreon/ui-components'
 
 const products = [
@@ -118,9 +120,9 @@ export function EcommerceDemo() {
       </div>
 
       {/* Product Grid */}
-      <SimpleGrid {...{ cols: 3, spacing: 'lg' } as any}>
+      <GridContainer><GridRow>
         {products.map((product) => (
-          <Card {...{ variant: 'outline' } as any}>
+          <GridCol size={4}><Card {...{ variant: 'outline' } as any}>
             {/* Image placeholder */}
             <div
               style="width: 100%; height: 180px; background: linear-gradient(135deg, #f0f4ff 0%, #e8ecf8 100%); border-radius: 8px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center;"
@@ -189,9 +191,9 @@ export function EcommerceDemo() {
                 {() => wishlist().has(product.id) ? '\u2665' : '\u2661'}
               </IconButton>
             </div>
-          </Card>
+          </Card></GridCol>
         ))}
-      </SimpleGrid>
+      </GridRow></GridContainer>
     </div>
   )
 }
