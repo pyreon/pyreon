@@ -2,7 +2,19 @@ import { el } from '../../factory'
 
 const NumberInput = el
   .config({ name: 'NumberInput' })
-  .attrs({ tag: 'input', block: true })
+  .attrs<{
+    placeholder?: string
+    type?: string
+    value?: string | number
+    min?: number
+    max?: number
+    step?: number
+    onInput?: (e: Event) => void
+    onChange?: (e: Event) => void
+    disabled?: boolean
+    readOnly?: boolean
+    name?: string
+  }>({ tag: 'input', block: true })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,

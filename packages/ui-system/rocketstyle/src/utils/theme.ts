@@ -159,6 +159,15 @@ export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKe
     )
   }
 
+  // Ensure pseudo-state keys always exist as objects so .styles() can
+  // destructure without defaults: const { hover, focus, ... } = $rocketstyle
+  finalTheme.hover ??= {}
+  finalTheme.focus ??= {}
+  finalTheme.active ??= {}
+  finalTheme.disabled ??= {}
+  finalTheme.pressed ??= {}
+  finalTheme.readOnly ??= {}
+
   return finalTheme
 }
 

@@ -13,9 +13,9 @@ export const AccordionItem = el
   .config({ name: 'AccordionItem' })
   .attrs({ tag: 'div' })
   .theme((t) => ({
-    borderBottomWidth: 1,
-    borderBottomStyle: 'solid',
-    borderBottomColor: t.color.system.base[200],
+    borderWidthBottom: 1,
+    borderStyleBottom: 'solid',
+    borderColorBottom: t.color.system.base[200],
   }))
 
 export const AccordionTrigger = el

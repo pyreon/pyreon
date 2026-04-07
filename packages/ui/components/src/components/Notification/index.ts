@@ -10,27 +10,26 @@ const Notification = el
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
     backgroundColor: t.color.system.light.base,
+    borderWidthLeft: '0',
+    borderStyleLeft: 'solid',
+    borderColorLeft: 'transparent',
   }))
   .states((t) => ({
     info: {
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.info.base,
+      borderWidthLeft: '4px',
+      borderColorLeft: t.color.system.info.base,
     },
     success: {
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.success.base,
+      borderWidthLeft: '4px',
+      borderColorLeft: t.color.system.success.base,
     },
     warning: {
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.warning.base,
+      borderWidthLeft: '4px',
+      borderColorLeft: t.color.system.warning.base,
     },
     error: {
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.error.base,
+      borderWidthLeft: '4px',
+      borderColorLeft: t.color.system.error.base,
     },
   }))
 

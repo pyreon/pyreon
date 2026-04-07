@@ -30,7 +30,7 @@ type ListProps = {
   content: never
 }
 
-export type Props = MergeTypes<[IteratorProps, ListProps]>
+export type Props = MergeTypes<[IteratorProps, ListProps]> & Partial<Omit<ElementProps, 'children' | 'content' | 'label'>>
 
 const Component: PyreonElement<Props> = (({
   rootElement = false,

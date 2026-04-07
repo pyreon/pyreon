@@ -6,10 +6,15 @@ const Badge = txt
   .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
+    fontSize: t.fontSize.small,
     fontWeight: t.fontWeight.medium,
     lineHeight: t.lineHeight.small,
     borderRadius: t.borderRadius.pill,
     whiteSpace: 'nowrap',
+    paddingLeft: t.spacing.xSmall,
+    paddingRight: t.spacing.xSmall,
+    paddingTop: t.spacing.xxxSmall,
+    paddingBottom: t.spacing.xxxSmall,
   }))
   .states((t) => ({
     primary: {

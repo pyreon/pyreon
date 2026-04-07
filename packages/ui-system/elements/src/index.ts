@@ -5,6 +5,7 @@ export { Element } from './Element'
 export type {
   ElementType,
   ExtendedProps,
+  MaybeNull,
   ObjectValue,
   Props as IteratorProps,
   PropsCallback,

@@ -2,7 +2,22 @@ import { el } from '../../factory'
 
 const Input = el
   .config({ name: 'Input' })
-  .attrs({ tag: 'input', block: true })
+  .attrs<{
+    placeholder?: string
+    type?: string
+    value?: string | number
+    onInput?: (e: Event) => void
+    onChange?: (e: Event) => void
+    disabled?: boolean
+    readOnly?: boolean
+    name?: string
+    autoComplete?: string
+    autoFocus?: boolean
+    maxLength?: number
+    minLength?: number
+    pattern?: string
+    required?: boolean
+  }>({ tag: 'input', block: true })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
@@ -75,15 +90,16 @@ const Input = el
       },
     },
     underline: {
-      borderTopWidth: 0,
-      borderLeftWidth: 0,
-      borderRightWidth: 0,
+      borderWidth: 0,
+      borderWidthBottom: 2,
+      borderStyleBottom: 'solid',
+      borderColorBottom: t.color.system.base[300],
       borderRadius: 0,
       paddingLeft: 0,
       paddingRight: 0,
       focus: {
         boxShadow: 'none',
-        borderBottomColor: t.color.system.primary.base,
+        borderColorBottom: t.color.system.primary.base,
       },
     },
   }))
@@ -92,7 +108,18 @@ export default Input
 
 export const Textarea = el
   .config({ name: 'Textarea' })
-  .attrs({ tag: 'textarea', block: true })
+  .attrs<{
+    placeholder?: string
+    value?: string
+    rows?: number
+    onInput?: (e: Event) => void
+    onChange?: (e: Event) => void
+    disabled?: boolean
+    readOnly?: boolean
+    name?: string
+    required?: boolean
+    maxLength?: number
+  }>({ tag: 'textarea', block: true })
   .theme((t) => ({
     width: '100%',
     backgroundColor: t.color.system.light.base,
@@ -169,15 +196,16 @@ export const Textarea = el
       },
     },
     underline: {
-      borderTopWidth: 0,
-      borderLeftWidth: 0,
-      borderRightWidth: 0,
+      borderWidth: 0,
+      borderWidthBottom: 2,
+      borderStyleBottom: 'solid',
+      borderColorBottom: t.color.system.base[300],
       borderRadius: 0,
       paddingLeft: 0,
       paddingRight: 0,
       focus: {
         boxShadow: 'none',
-        borderBottomColor: t.color.system.primary.base,
+        borderColorBottom: t.color.system.primary.base,
       },
     },
   }))

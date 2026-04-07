@@ -117,6 +117,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
   let needsApplyPropsImportGlobal = false
+  let needsMountSlotImportGlobal = false
 
   /**
    * If `node` is a fully-static JSX element/fragment, register a module-scope
@@ -352,9 +353,11 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
         // Track: const x = props.y ?? z  OR  const x = own.y
         // Skip let/var — mutable variables can be reassigned, unsafe to inline
         // Skip declarations inside callbacks (map, filter, etc.)
+        // Skip stateful calls (signal, computed, effect) — inlining creates new instances
         if (!(node.declarationList.flags & ts.NodeFlags.Const)) continue
         if (_callbackDepth > 0) continue
         if (ts.isIdentifier(decl.name) && decl.initializer) {
+          if (isStatefulCall(decl.initializer)) continue
           if (readsFromProps(decl.initializer)) {
             propDerivedVars.set(decl.name.text, decl.initializer)
           }
@@ -507,6 +510,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
+    if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -606,6 +610,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     let needsBindTextImport = false
     let needsBindDirectImport = false
     let needsApplyPropsImport = false
+    let needsMountSlotImport = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -882,6 +887,17 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       // expression
       const needsPlaceholder = useMixed || useMultiExpr
       const { expr, isReactive } = unwrapAccessor(child.expression)
+
+      // Children slot: expression accesses .children (e.g. props.children, own.children)
+      // These can contain VNodes — use _mountSlot instead of text node binding.
+      if (isChildrenExpression(child.expression, expr)) {
+        needsMountSlotImport = true
+        const placeholder = `${parentRef}.childNodes[${childNodeIdx}]`
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
+        return '<!>'
+      }
+
       if (isReactive) {
         return emitReactiveTextChild(
           expr,
@@ -949,6 +965,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     if (needsBindTextImport) needsBindTextImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
+    if (needsMountSlotImport) needsMountSlotImportGlobal = true
 
     // Build bind function body
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
@@ -1106,6 +1123,41 @@ const VOID_ELEMENTS = new Set([
 const JSX_TO_HTML_ATTR: Record<string, string> = {
   className: 'class',
   htmlFor: 'for',
+}
+
+/**
+ * Detect if an expression is a stateful call that must NOT be inlined.
+ * signal(), computed(), effect() etc. create state — inlining them would
+ * create new instances at each use site instead of referencing the original.
+ */
+const STATEFUL_CALLS = new Set([
+  'signal', 'computed', 'effect', 'batch',
+  'createContext', 'createReactiveContext',
+  'useContext', 'useRef', 'createRef',
+  'useForm', 'useQuery', 'useMutation',
+  'defineStore', 'useStore',
+])
+
+function isStatefulCall(node: ts.Node): boolean {
+  if (!ts.isCallExpression(node)) return false
+  const callee = node.expression
+  if (ts.isIdentifier(callee)) return STATEFUL_CALLS.has(callee.text)
+  return false
+}
+
+/**
+ * Detect if an expression accesses `.children` — these can contain VNodes
+ * and must use _mountSlot instead of text node binding in templates.
+ * Matches: props.children, own.children, x.children, or bare `children` identifier.
+ */
+function isChildrenExpression(node: ts.Expression, expr: string): boolean {
+  // Direct property access: props.children, own.children
+  if (ts.isPropertyAccessExpression(node) && node.name.text === 'children') return true
+  // Bare identifier named 'children'
+  if (ts.isIdentifier(node) && node.text === 'children') return true
+  // String fallback for inlined expressions
+  if (expr.endsWith('.children') || expr === 'children') return true
+  return false
 }
 
 function isLowerCase(s: string): boolean {

@@ -1,5 +1,6 @@
-import type { NativeItem } from '@pyreon/core'
+import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { renderEffect } from '@pyreon/reactivity'
+import { mountChild } from './mount'
 
 /**
  * Creates a row/item factory backed by HTML template cloning.
@@ -150,4 +151,31 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }
+}
+
+/**
+ * Mount a children slot inside a template.
+ *
+ * Compiler emits this instead of `createTextNode()` when it detects a
+ * children expression (`props.children`, `own.children`). Unlike text nodes,
+ * children can be VNodes, arrays, or reactive accessors — all handled by
+ * `mountChild()`.
+ *
+ * @param children - The children value (VNode, string, array, or accessor)
+ * @param parent - The parent element in the cloned template
+ * @param placeholder - The comment placeholder node to replace
+ * @returns Cleanup function
+ */
+export function _mountSlot(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  placeholder: Node,
+): (() => void) | null {
+  if (children == null || children === false || children === true) {
+    parent.removeChild(placeholder)
+    return null
+  }
+  const cleanup = mountChild(children, parent, placeholder)
+  parent.removeChild(placeholder)
+  return cleanup
 }

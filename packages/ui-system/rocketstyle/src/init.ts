@@ -71,7 +71,7 @@ const validateInit = (name: string, component: unknown, dimensions: Dimensions) 
   }
 }
 
-const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = true } = {}) =>
+const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = {}) =>
   ({ name, component }: { name: string; component: any }) => {
     if (process.env.NODE_ENV !== 'production') {
       validateInit(name, component, dimensions)

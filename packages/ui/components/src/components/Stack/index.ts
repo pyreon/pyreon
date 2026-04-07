@@ -1,15 +1,5 @@
-import { el } from '../../factory'
+import { list } from '../../factory'
 
-const Stack = el
-  .config({ name: 'Stack' })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme(() => ({}))
-  .sizes((t) => ({
-    xSmall: { gap: t.spacing.xxxSmall },
-    small: { gap: t.spacing.xxSmall },
-    medium: { gap: t.spacing.small },
-    large: { gap: t.spacing.medium },
-    xLarge: { gap: t.spacing.large },
-  }))
+const Stack = list.config({ name: 'Stack' }).attrs({ contentDirection: 'rows' })
 
 export default Stack

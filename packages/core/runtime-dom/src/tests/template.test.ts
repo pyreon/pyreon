@@ -192,3 +192,58 @@ describe('_bindDirect', () => {
     expect(el.getAttribute('data-num')).toBe('1')
   })
 })
+
+// ─── _mountSlot ────────────────────────────────────────────────────────────
+
+describe('_mountSlot', async () => {
+  const { _mountSlot } = await import('../template')
+  const { h } = await import('@pyreon/core')
+
+  test('mounts a string child as text', () => {
+    const parent = document.createElement('div')
+    const placeholder = document.createComment('')
+    parent.appendChild(placeholder)
+
+    _mountSlot('hello', parent, placeholder)
+    expect(parent.textContent).toBe('hello')
+  })
+
+  test('mounts a VNode child as DOM element', () => {
+    const parent = document.createElement('div')
+    const placeholder = document.createComment('')
+    parent.appendChild(placeholder)
+
+    const vnode = h('span', { class: 'test' }, 'content')
+    _mountSlot(vnode, parent, placeholder)
+    expect(parent.querySelector('span')).not.toBeNull()
+    expect(parent.querySelector('span')?.textContent).toBe('content')
+    expect(parent.querySelector('span')?.className).toBe('test')
+  })
+
+  test('mounts an array of children', () => {
+    const parent = document.createElement('div')
+    const placeholder = document.createComment('')
+    parent.appendChild(placeholder)
+
+    _mountSlot(['first', ' ', 'second'], parent, placeholder)
+    expect(parent.textContent).toBe('first second')
+  })
+
+  test('handles null/undefined children', () => {
+    const parent = document.createElement('div')
+    const placeholder = document.createComment('')
+    parent.appendChild(placeholder)
+
+    _mountSlot(null, parent, placeholder)
+    expect(parent.childNodes.length).toBe(0)
+  })
+
+  test('handles false/true children', () => {
+    const parent = document.createElement('div')
+    const placeholder = document.createComment('')
+    parent.appendChild(placeholder)
+
+    _mountSlot(false, parent, placeholder)
+    expect(parent.childNodes.length).toBe(0)
+  })
+})

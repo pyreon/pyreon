@@ -12,5 +12,5 @@ export {
 } from './alignContent'
 export type { ExtendCss } from './extendCss'
 export { default as extendCss } from './extendCss'
-export type { Styles, StylesTheme } from './styles'
+export type { ITheme, Styles, StylesTheme } from './styles'
 export { default as styles } from './styles'

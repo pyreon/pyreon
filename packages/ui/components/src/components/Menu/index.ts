@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Menu = el
   .config({ name: 'Menu' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'rows', block: true })
   .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     boxShadow: t.shadows.medium,
@@ -19,12 +19,17 @@ export default Menu
 
 export const MenuItem = el
   .config({ name: 'MenuItem' })
-  .attrs({ tag: 'button', direction: 'inline', alignY: 'center', gap: 2 })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
   .theme((t) => ({
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,
     color: t.color.system.base[700],
     transition: t.transition.fast,
+    fontSize: t.fontSize.small,
+    paddingTop: t.spacing.xxSmall,
+    paddingBottom: t.spacing.xxSmall,
+    paddingLeft: t.spacing.xSmall,
+    paddingRight: t.spacing.xSmall,
     hover: {
       backgroundColor: t.color.system.base[100],
     },

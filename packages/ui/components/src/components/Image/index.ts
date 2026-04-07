@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Image = el
   .config({ name: 'Image' })
-  .attrs({ tag: 'img' })
+  .attrs<{ src?: string; alt?: string; loading?: 'lazy' | 'eager'; width?: number | string; height?: number | string }>({ tag: 'img' })
   .theme((t) => ({
     borderRadius: t.borderRadius.base,
     maxWidth: '100%',

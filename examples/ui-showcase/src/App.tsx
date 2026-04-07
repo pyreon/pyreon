@@ -23,7 +23,7 @@ export function App() {
       <nav style="width: 240px; border-right: 1px solid #e5e7eb; padding: 16px 0; overflow-y: auto; position: fixed; top: 0; bottom: 0; background: white;">
         <div style="padding: 0 16px 16px; border-bottom: 1px solid #e5e7eb; margin-bottom: 8px;">
           <h1 style="font-size: 18px; font-weight: 700; color: #111827;">Pyreon UI</h1>
-          <span style="font-size: 12px; color: #9ca3af;">75 components</span>
+          <span style="font-size: 12px; color: #9ca3af;">35 demos</span>
         </div>
 
         {navGroups.map((group) => (

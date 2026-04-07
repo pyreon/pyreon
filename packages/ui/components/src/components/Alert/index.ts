@@ -8,47 +8,49 @@ const Alert = el
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     lineHeight: t.lineHeight.base,
+    backgroundColor: t.color.system.info[100],
+    color: t.color.system.info[800],
+    borderWidthLeft: '4px',
+    borderStyleLeft: 'solid',
+    borderColorLeft: t.color.system.info.base,
+    borderWidth: '0',
+    borderStyle: 'solid',
+    borderColor: 'transparent',
   }))
   .states((t) => ({
     info: {
-      backgroundColor: t.color.system.info[50],
+      backgroundColor: t.color.system.info[100],
       color: t.color.system.info[800],
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.info.base,
+      borderColorLeft: t.color.system.info.base,
     },
     success: {
-      backgroundColor: t.color.system.success[50],
+      backgroundColor: t.color.system.success[100],
       color: t.color.system.success[800],
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.success.base,
+      borderColorLeft: t.color.system.success.base,
     },
     warning: {
-      backgroundColor: t.color.system.warning[50],
+      backgroundColor: t.color.system.warning[100],
       color: t.color.system.warning[800],
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.warning.base,
+      borderColorLeft: t.color.system.warning.base,
     },
     error: {
-      backgroundColor: t.color.system.error[50],
+      backgroundColor: t.color.system.error[100],
       color: t.color.system.error[800],
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
-      borderLeftColor: t.color.system.error.base,
+      borderColorLeft: t.color.system.error.base,
     },
   }))
-  .variants(() => ({
+  .variants((t) => ({
     subtle: {},
-    solid: { borderLeftWidth: '0' },
+    solid: {
+      backgroundColor: t.color.system.info.base,
+      color: t.color.system.light.base,
+      borderWidthLeft: '0',
+    },
     outline: {
       backgroundColor: 'transparent',
       borderWidth: '1px',
-      borderStyle: 'solid',
       borderColor: 'currentColor',
-      borderLeftWidth: '4px',
-      borderLeftStyle: 'solid',
+      borderWidthLeft: '1px',
     },
   }))
 

@@ -17,7 +17,7 @@ const Kbd = txt
     borderWidth: '1px',
     borderStyle: 'solid',
     borderColor: t.color.system.base[300],
-    borderBottomWidth: '2px',
+    borderWidthBottom: '2px',
     paddingLeft: t.spacing.xxSmall,
     paddingRight: t.spacing.xxSmall,
     paddingTop: 0,
