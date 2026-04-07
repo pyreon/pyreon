@@ -1,12 +1,13 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { useControllableState } from '@pyreon/hooks'
 
 export interface SelectBaseProps {
   value?: string
   defaultValue?: string
   onChange?: (value: string) => void
   disabled?: boolean
+  'aria-invalid'?: boolean
   name?: string
   placeholder?: string
   children?: VNodeChild
@@ -16,7 +17,7 @@ export interface SelectBaseProps {
 
 /**
  * Headless native select base — wraps a <select> element.
- * For a custom dropdown with search/virtualization, use ComboboxBase (Phase 6).
+ * For a custom dropdown with search/virtualization, use ComboboxBase.
  */
 export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
   const [own, rest] = splitProps(props, [
@@ -24,20 +25,22 @@ export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
     'defaultValue',
     'onChange',
     'disabled',
+    'aria-invalid',
     'name',
     'placeholder',
     'children',
     'ref',
   ])
 
-  const isControlled = own.value !== undefined
-  const internal = signal(own.defaultValue ?? '')
-  const value = () => (isControlled ? own.value! : internal())
+  const [value, setValue] = useControllableState({
+    value: own.value,
+    defaultValue: own.defaultValue ?? '',
+    onChange: own.onChange,
+  })
 
   const handleChange = (e: Event) => {
     const target = e.target as HTMLSelectElement
-    if (!isControlled) internal.set(target.value)
-    own.onChange?.(target.value)
+    setValue(target.value)
   }
 
   return (
@@ -46,6 +49,7 @@ export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
       ref={own.ref as ((el: HTMLElement) => void) | undefined}
       value={value()}
       disabled={own.disabled}
+      aria-invalid={own['aria-invalid'] || undefined}
       name={own.name}
       onChange={handleChange}
     >
@@ -56,5 +60,5 @@ export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
       )}
       {own.children}
     </select>
-  ) as unknown as VNodeChild
+  )
 }

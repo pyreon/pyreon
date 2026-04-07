@@ -1,6 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createContext, provide, splitProps, useContext } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { useControllableState } from '@pyreon/hooks'
+import { navigateByRole } from './keyboard'
 
 // ─── Radio Group Context ─────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ export interface RadioGroupBaseProps {
   onChange?: (value: string) => void
   name?: string
   disabled?: boolean
+  'aria-invalid'?: boolean
   children?: VNodeChild
   ref?: (el: HTMLElement | null) => void
   [key: string]: unknown
@@ -40,30 +42,29 @@ export const RadioGroupBase: ComponentFn<RadioGroupBaseProps> = (props) => {
     'onChange',
     'name',
     'disabled',
+    'aria-invalid',
     'children',
     'ref',
   ])
 
-  const isControlled = own.value !== undefined
-  const internal = signal(own.defaultValue ?? '')
-  const value = () => (isControlled ? own.value! : internal())
+  const [value, setValue] = useControllableState({
+    value: own.value,
+    defaultValue: own.defaultValue ?? '',
+    onChange: own.onChange,
+  })
 
-  const onChange = (v: string) => {
-    if (!isControlled) internal.set(v)
-    own.onChange?.(v)
-  }
-
-  provide(RadioGroupContext, { value, onChange, name: own.name, disabled: own.disabled })
+  provide(RadioGroupContext, { value, onChange: setValue, name: own.name, disabled: own.disabled })
 
   return (
     <div
       {...(rest as Record<string, unknown>)}
       ref={own.ref as ((el: HTMLElement) => void) | undefined}
       role="radiogroup"
+      aria-invalid={own['aria-invalid'] || undefined}
     >
       {own.children}
     </div>
-  ) as unknown as VNodeChild
+  )
 }
 
 // ─── RadioBase ───────────────────────────────────────────────────────────────
@@ -88,6 +89,21 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
     group.onChange(own.value)
   }
 
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault()
+      select()
+      return
+    }
+
+    const value = navigateByRole(e, {
+      containerSelector: '[role="radiogroup"]',
+      itemSelector: '[role="radio"]',
+      keys: 'both',
+    })
+    if (value) group.onChange(value)
+  }
+
   return (
     <label
       {...(rest as Record<string, unknown>)}
@@ -97,14 +113,10 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       aria-disabled={isDisabled() || undefined}
       data-checked={checked() || undefined}
       data-disabled={isDisabled() || undefined}
-      tabIndex={isDisabled() ? -1 : 0}
+      data-value={own.value}
+      tabIndex={isDisabled() ? -1 : (checked() || !group.value()) ? 0 : -1}
       onClick={select}
-      onKeyDown={(e: KeyboardEvent) => {
-        if (e.key === ' ' || e.key === 'Enter') {
-          e.preventDefault()
-          select()
-        }
-      }}
+      onKeyDown={handleKeyDown}
     >
       <input
         type="radio"
@@ -122,5 +134,5 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       />
       {own.children}
     </label>
-  ) as unknown as VNodeChild
+  )
 }

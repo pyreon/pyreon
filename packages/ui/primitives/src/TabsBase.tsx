@@ -1,6 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createContext, provide, splitProps, useContext } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { useControllableState } from '@pyreon/hooks'
+import { navigateByRole } from './keyboard'
 
 // ─── Tabs Context ────────────────────────────────────────────────────────────
 
@@ -30,16 +31,13 @@ export interface TabsBaseProps {
 export const TabsBase: ComponentFn<TabsBaseProps> = (props) => {
   const [own, rest] = splitProps(props, ['value', 'defaultValue', 'onChange', 'children', 'ref'])
 
-  const isControlled = own.value !== undefined
-  const internal = signal(own.defaultValue ?? '')
-  const value = () => (isControlled ? own.value! : internal())
+  const [value, setValue] = useControllableState({
+    value: own.value,
+    defaultValue: own.defaultValue ?? '',
+    onChange: own.onChange,
+  })
 
-  const onChange = (v: string) => {
-    if (!isControlled) internal.set(v)
-    own.onChange?.(v)
-  }
-
-  provide(TabsContext, { value, onChange })
+  provide(TabsContext, { value, onChange: setValue })
 
   return (
     <div
@@ -48,7 +46,7 @@ export const TabsBase: ComponentFn<TabsBaseProps> = (props) => {
     >
       {own.children}
     </div>
-  ) as unknown as VNodeChild
+  )
 }
 
 // ─── TabBase (single tab trigger) ────────────────────────────────────────────
@@ -67,6 +65,15 @@ export const TabBase: ComponentFn<TabBaseProps> = (props) => {
 
   const isActive = () => tabs.value() === own.value
 
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const value = navigateByRole(e, {
+      containerSelector: '[role="tablist"]',
+      itemSelector: '[role="tab"]',
+      keys: 'horizontal',
+    })
+    if (value) tabs.onChange(value)
+  }
+
   return (
     <button
       {...(rest as Record<string, unknown>)}
@@ -76,14 +83,16 @@ export const TabBase: ComponentFn<TabBaseProps> = (props) => {
       aria-selected={isActive()}
       aria-disabled={own.disabled || undefined}
       data-active={isActive() || undefined}
+      data-value={own.value}
       tabIndex={isActive() ? 0 : -1}
       onClick={() => {
         if (!own.disabled) tabs.onChange(own.value)
       }}
+      onKeyDown={handleKeyDown}
     >
       {own.children}
     </button>
-  ) as unknown as VNodeChild
+  )
 }
 
 // ─── TabPanelBase ────────────────────────────────────────────────────────────
@@ -101,15 +110,17 @@ export const TabPanelBase: ComponentFn<TabPanelBaseProps> = (props) => {
 
   const isActive = () => tabs.value() === own.value
 
-  if (!isActive()) return null
+  return (() => {
+    if (!isActive()) return null
 
-  return (
-    <div
-      {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
-      role="tabpanel"
-    >
-      {own.children}
-    </div>
-  ) as unknown as VNodeChild
+    return (
+      <div
+        {...(rest as Record<string, unknown>)}
+        ref={own.ref as ((el: HTMLElement) => void) | undefined}
+        role="tabpanel"
+      >
+        {own.children}
+      </div>
+    )
+  })
 }
