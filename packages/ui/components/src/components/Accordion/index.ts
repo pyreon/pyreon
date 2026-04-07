@@ -36,7 +36,9 @@ export const AccordionTrigger = el
     backgroundColor: 'transparent',
     borderWidth: 0,
     textAlign: 'left',
-    hover: { backgroundColor: t.color.system.base[50] },
+    hover: {
+      backgroundColor: t.color.system.base[50],
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',

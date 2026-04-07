@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-
 const Dialog = rs({ name: 'Dialog', component: ModalBase })
   .theme((t) => ({
     position: 'fixed',

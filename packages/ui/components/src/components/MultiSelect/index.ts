@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-
 const MultiSelect = rs({ name: 'MultiSelect', component: ComboboxBase })
   .theme((t) => ({
     width: '100%',
@@ -28,7 +27,9 @@ const MultiSelect = rs({ name: 'MultiSelect', component: ComboboxBase })
       cursor: 'not-allowed',
       backgroundColor: t.color.system.base[50],
     },
-    placeholder: { color: t.color.system.base[400] },
+    placeholder: {
+      color: t.color.system.base[400],
+    },
   }))
   .sizes((t) => ({
     small: {

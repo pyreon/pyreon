@@ -26,22 +26,30 @@ const Chip = el
     primary: {
       backgroundColor: t.color.system.primary[100],
       color: t.color.system.primary[700],
-      hover: { backgroundColor: t.color.system.primary[200] },
+      hover: {
+        backgroundColor: t.color.system.primary[200],
+      },
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
       color: t.color.system.base[700],
-      hover: { backgroundColor: t.color.system.base[200] },
+      hover: {
+        backgroundColor: t.color.system.base[200],
+      },
     },
     success: {
       backgroundColor: t.color.system.success[100],
       color: t.color.system.success[700],
-      hover: { backgroundColor: t.color.system.success[200] },
+      hover: {
+        backgroundColor: t.color.system.success[200],
+      },
     },
     error: {
       backgroundColor: t.color.system.error[100],
       color: t.color.system.error[700],
-      hover: { backgroundColor: t.color.system.error[200] },
+      hover: {
+        backgroundColor: t.color.system.error[200],
+      },
     },
   }))
   .sizes((t) => ({

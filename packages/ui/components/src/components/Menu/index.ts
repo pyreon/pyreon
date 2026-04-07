@@ -28,7 +28,9 @@ export const MenuItem = el
     borderRadius: t.borderRadius.small,
     color: t.color.system.base[700],
     transition: t.transition.fast,
-    hover: { backgroundColor: t.color.system.base[100] },
+    hover: {
+      backgroundColor: t.color.system.base[100],
+    },
     focus: {
       backgroundColor: t.color.system.base[100],
       outline: 'none',

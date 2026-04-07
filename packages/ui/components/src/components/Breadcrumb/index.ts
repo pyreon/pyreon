@@ -19,7 +19,9 @@ export const BreadcrumbItem = el
     color: t.color.system.base[500],
     transition: t.transition.fast,
     textDecoration: 'none',
-    hover: { color: t.color.system.base[700] },
+    hover: {
+      color: t.color.system.base[700],
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',

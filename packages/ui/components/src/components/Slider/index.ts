@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { SliderBase } from '@pyreon/ui-primitives'
 
-
 const Slider = rs({ name: 'Slider', component: SliderBase })
   .theme((t) => ({
     width: '100%',

@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { ModalBase } from '@pyreon/ui-primitives'
 
-
 const Drawer = rs({ name: 'Drawer', component: ModalBase })
   .theme(() => ({
     position: 'fixed',

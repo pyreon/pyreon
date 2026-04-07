@@ -24,7 +24,9 @@ const DatePicker = el
       cursor: 'not-allowed',
       backgroundColor: t.color.system.base[50],
     },
-    placeholder: { color: t.color.system.base[400] },
+    placeholder: {
+      color: t.color.system.base[400],
+    },
   }))
   .sizes((t) => ({
     small: {

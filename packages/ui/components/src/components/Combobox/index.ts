@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
-
 const Combobox = rs({ name: 'Combobox', component: ComboboxBase })
   .theme((t) => ({
     width: '100%',
@@ -24,7 +23,9 @@ const Combobox = rs({ name: 'Combobox', component: ComboboxBase })
       cursor: 'not-allowed',
       backgroundColor: t.color.system.base[50],
     },
-    placeholder: { color: t.color.system.base[400] },
+    placeholder: {
+      color: t.color.system.base[400],
+    },
   }))
   .states((t) => ({
     error: {

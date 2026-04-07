@@ -17,7 +17,9 @@ const NavLink = el
     textDecoration: 'none',
     cursor: 'pointer',
     transition: t.transition.fast,
-    hover: { backgroundColor: t.color.system.base[100] },
+    hover: {
+      backgroundColor: t.color.system.base[100],
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',

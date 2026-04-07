@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { CheckboxBase } from '@pyreon/ui-primitives'
 
-
 const Checkbox = rs({ name: 'Checkbox', component: CheckboxBase })
   .theme((t) => ({
     display: 'inline-flex',

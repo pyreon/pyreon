@@ -34,22 +34,30 @@ const Button = el
     primary: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.primary[800] },
+      hover: {
+        backgroundColor: t.color.system.primary[800],
+      },
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
       color: t.color.system.dark[800],
-      hover: { backgroundColor: t.color.system.base[200] },
+      hover: {
+        backgroundColor: t.color.system.base[200],
+      },
     },
     danger: {
       backgroundColor: t.color.system.error.base,
       color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.error[800] },
+      hover: {
+        backgroundColor: t.color.system.error[800],
+      },
     },
     success: {
       backgroundColor: t.color.system.success.base,
       color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.success[800] },
+      hover: {
+        backgroundColor: t.color.system.success[800],
+      },
     },
   }))
   .sizes((t) => ({
@@ -81,22 +89,31 @@ const Button = el
       backgroundColor: t.color.system.transparent,
       borderColor: t.color.system.primary.base,
       color: t.color.system.primary.text,
-      hover: { backgroundColor: t.color.system.primary[50] },
+      hover: {
+        backgroundColor: t.color.system.primary[50],
+      },
     },
     subtle: {
       backgroundColor: t.color.system.primary[100],
       color: t.color.system.primary.text,
-      hover: { backgroundColor: t.color.system.primary[200] },
+      hover: {
+        backgroundColor: t.color.system.primary[200],
+      },
     },
     ghost: {
       backgroundColor: t.color.system.transparent,
       color: t.color.system.primary.text,
-      hover: { backgroundColor: t.color.system.base[50] },
+      hover: {
+        backgroundColor: t.color.system.base[50],
+      },
     },
     link: {
       backgroundColor: t.color.system.transparent,
       color: t.color.system.primary.text,
-      paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
       textDecoration: 'underline',
     },
   }))
@@ -115,9 +132,17 @@ export const IconButton = el
     transition: t.transition.base,
     display: 'inline-flex',
     padding: t.spacing.small,
-    hover: { backgroundColor: t.color.system.base[50], color: t.color.system.dark.base },
+    hover: {
+      backgroundColor: t.color.system.base[50],
+
+      color: t.color.system.dark.base,
+    },
     focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
-    disabled: { opacity: 0.5, cursor: 'not-allowed' },
+    disabled: {
+      opacity: 0.5,
+
+      cursor: 'not-allowed',
+    },
   }))
   .sizes((t) => ({
     small: { padding: t.spacing.xSmall },
@@ -137,9 +162,17 @@ export const CloseButton = el
     transition: t.transition.fast,
     display: 'inline-flex',
     padding: t.spacing.xxSmall,
-    hover: { backgroundColor: t.color.system.base[50], color: t.color.system.dark[700] },
+    hover: {
+      backgroundColor: t.color.system.base[50],
+
+      color: t.color.system.dark[700],
+    },
     focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
-    disabled: { opacity: 0.5, cursor: 'not-allowed' },
+    disabled: {
+      opacity: 0.5,
+
+      cursor: 'not-allowed',
+    },
   }))
   .sizes((t) => ({
     small: { padding: t.spacing.xxxSmall },

@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { SwitchBase } from '@pyreon/ui-primitives'
 
-
 const Switch = rs({ name: 'Switch', component: SwitchBase })
   .theme((t) => ({
     backgroundColor: t.color.system.base[300],
@@ -11,12 +10,16 @@ const Switch = rs({ name: 'Switch', component: SwitchBase })
     position: 'relative',
     display: 'inline-flex',
     alignItems: 'center',
-    hover: { backgroundColor: t.color.system.base[400] },
+    hover: {
+      backgroundColor: t.color.system.base[400],
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',
     },
-    active: { backgroundColor: t.color.system.primary.base },
+    active: {
+      backgroundColor: t.color.system.primary.base,
+    },
     disabled: {
       opacity: 0.5,
       cursor: 'not-allowed',

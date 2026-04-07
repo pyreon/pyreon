@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
 
-
 const Tabs = rs({ name: 'Tabs', component: TabsBase })
   .theme((t) => ({
     display: 'flex',
@@ -39,7 +38,9 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
     borderBottomColor: 'transparent',
     transition: t.transition.fast,
     whiteSpace: 'nowrap',
-    hover: { color: t.color.system.base[700] },
+    hover: {
+      color: t.color.system.base[700],
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',
@@ -78,7 +79,6 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
     },
   }))
 
-export const TabPanel = rs({ name: 'TabPanel', component: TabPanelBase })
-  .theme((t) => ({
-    paddingTop: t.spacing.small,
-  }))
+export const TabPanel = rs({ name: 'TabPanel', component: TabPanelBase }).theme((t) => ({
+  paddingTop: t.spacing.small,
+}))

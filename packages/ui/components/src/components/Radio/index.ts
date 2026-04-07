@@ -1,7 +1,6 @@
 import { rs } from '../../factory'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 
-
 const Radio = rs({ name: 'Radio', component: RadioBase })
   .theme((t) => ({
     display: 'inline-flex',

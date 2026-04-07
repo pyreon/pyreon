@@ -13,12 +13,16 @@ const ActionIcon = el
     borderColor: t.color.system.transparent,
     borderRadius: t.borderRadius.base,
     transition: t.transition.fast,
-    hover: { transform: 'scale(1.05)' },
+    hover: {
+      transform: 'scale(1.05)',
+    },
     focus: {
       boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
       outline: 'none',
     },
-    active: { transform: 'scale(0.95)' },
+    active: {
+      transform: 'scale(0.95)',
+    },
     disabled: {
       opacity: 0.5,
       cursor: 'not-allowed',
@@ -29,17 +33,23 @@ const ActionIcon = el
     primary: {
       backgroundColor: t.color.system.primary.base,
       color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.primary[800] },
+      hover: {
+        backgroundColor: t.color.system.primary[800],
+      },
     },
     secondary: {
       backgroundColor: t.color.system.base[100],
       color: t.color.system.base[700],
-      hover: { backgroundColor: t.color.system.base[200] },
+      hover: {
+        backgroundColor: t.color.system.base[200],
+      },
     },
     danger: {
       backgroundColor: t.color.system.error.base,
       color: t.color.system.light.base,
-      hover: { backgroundColor: t.color.system.error[800] },
+      hover: {
+        backgroundColor: t.color.system.error[800],
+      },
       focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
     },
   }))
@@ -56,17 +66,25 @@ const ActionIcon = el
       backgroundColor: t.color.system.transparent,
       borderColor: t.color.system.primary.base,
       color: t.color.system.primary.text,
-      hover: { backgroundColor: t.color.system.primary[50] },
+      hover: {
+        backgroundColor: t.color.system.primary[50],
+      },
     },
     subtle: {
       backgroundColor: t.color.system.primary[50],
       color: t.color.system.primary.text,
-      hover: { backgroundColor: t.color.system.primary[100] },
+      hover: {
+        backgroundColor: t.color.system.primary[100],
+      },
     },
     transparent: {
       backgroundColor: t.color.system.transparent,
       color: t.color.system.base[500],
-      hover: { backgroundColor: t.color.system.base[100], color: t.color.system.dark.base },
+      hover: {
+        backgroundColor: t.color.system.base[100],
+
+        color: t.color.system.dark.base,
+      },
     },
   }))
 

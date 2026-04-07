@@ -33,7 +33,9 @@ export const SegmentedControlItem = el
     backgroundColor: 'transparent',
     border: 'none',
     outline: 'none',
-    hover: { color: t.color.system.dark[800] },
+    hover: {
+      color: t.color.system.dark[800],
+    },
   }))
   .sizes((t) => ({
     small: {
