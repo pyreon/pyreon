@@ -81,6 +81,7 @@ const Chip = el
       backgroundColor: 'transparent',
       borderWidth: 1,
       borderStyle: 'solid',
+      borderColor: 'currentColor',
     },
   }))
 
