@@ -1,7 +1,8 @@
 import { signal } from '@pyreon/reactivity'
 
 type UseControllableStateOptions<T> = {
-  value?: T | undefined
+  /** Reactive getter for controlled value. Pass `() => own.prop`. */
+  value: () => T | undefined
   defaultValue: T
   onChange?: ((value: T) => void) | undefined
 }
@@ -12,25 +13,31 @@ export type UseControllableState = <T>(
 
 /**
  * Unified controlled/uncontrolled state pattern.
- * When `value` is provided the component is controlled; otherwise
- * internal state is used with `defaultValue` as the initial value.
- * The `onChange` callback fires in both modes.
  *
- * Returns [getter, setter] where getter is a reactive function.
+ * `value` MUST be a getter — this ensures the controlled value is read
+ * lazily inside reactive scopes, preserving Pyreon's signal reactivity.
+ *
+ * @example
+ * const [checked, setChecked] = useControllableState({
+ *   value: () => own.checked,
+ *   defaultValue: false,
+ *   onChange: own.onChange,
+ * })
  */
 export const useControllableState: UseControllableState = ({ value, defaultValue, onChange }) => {
   const internal = signal(defaultValue)
-  const onChangeFn = onChange
+  const isControlled = value() !== undefined
 
-  const isControlled = value !== undefined
-
-  const getter = (): any => (isControlled ? value : internal())
+  const getter = (): any => {
+    const v = value()
+    return v !== undefined ? v : internal()
+  }
 
   const setValue = (next: any) => {
-    const current = isControlled ? value : internal()
+    const current = getter()
     const nextValue = typeof next === 'function' ? next(current) : next
     if (!isControlled) internal.set(nextValue)
-    onChangeFn?.(nextValue)
+    onChange?.(nextValue)
   }
 
   return [getter, setValue]

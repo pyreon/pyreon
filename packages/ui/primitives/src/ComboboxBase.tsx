@@ -75,7 +75,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
   ])
 
   const [selected, setSelected] = useControllableState<string | string[]>({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? (own.multiple ? [] : ''),
     onChange: own.onChange,
   })

@@ -48,7 +48,7 @@ export const RadioGroupBase: ComponentFn<RadioGroupBaseProps> = (props) => {
   ])
 
   const [value, setValue] = useControllableState({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? '',
     onChange: own.onChange,
   })

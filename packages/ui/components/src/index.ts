@@ -19,9 +19,9 @@ export { default as ActionIcon } from './components/ActionIcon'
 // Forms
 export { default as FormField, FieldDescription, FieldError, FieldLabel } from './components/FormField'
 export { default as Input, Textarea } from './components/Input'
-export { default as Checkbox } from './components/Checkbox'
-export { default as Radio, RadioGroup } from './components/Radio'
-export { default as Switch } from './components/Switch'
+export { default as Checkbox, CheckboxIndicator } from './components/Checkbox'
+export { default as Radio, RadioGroup, RadioIndicator, RadioDot } from './components/Radio'
+export { default as Switch, SwitchThumb } from './components/Switch'
 export { default as Select } from './components/Select'
 export { default as Slider } from './components/Slider'
 

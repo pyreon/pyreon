@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { FileUploadBase } from '@pyreon/ui-primitives'
 
-const FileUpload = rs({ name: 'FileUpload', component: FileUploadBase }).theme((t) => ({
+const FileUpload = el.config({ name: 'FileUpload', component: FileUploadBase }).theme((t) => ({
   borderWidth: t.borderWidth.medium,
   borderStyle: t.borderStyle.dashed,
   borderColor: t.color.system.base[300],

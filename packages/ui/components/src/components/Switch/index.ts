@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { SwitchBase } from '@pyreon/ui-primitives'
 
-const Switch = rs({ name: 'Switch', component: SwitchBase })
+const Switch = el.config({ name: 'Switch', component: SwitchBase })
   .theme((t) => ({
     backgroundColor: t.color.system.base[300],
     borderRadius: t.borderRadius.pill,
@@ -10,6 +10,7 @@ const Switch = rs({ name: 'Switch', component: SwitchBase })
     position: 'relative',
     display: 'inline-flex',
     alignItems: 'center',
+    padding: '2px',
     hover: {
       backgroundColor: t.color.system.base[400],
     },
@@ -33,3 +34,35 @@ const Switch = rs({ name: 'Switch', component: SwitchBase })
   }))
 
 export default Switch
+
+export const SwitchThumb = el
+  .config({ name: 'SwitchThumb' })
+  .attrs({ tag: 'span' })
+  .theme((t) => ({
+    width: '16px',
+    height: '16px',
+    borderRadius: t.borderRadius.pill,
+    backgroundColor: t.color.system.light.base,
+    boxShadow: t.shadows.small,
+    transition: t.transition.fast,
+    transform: 'translateX(0)',
+  }))
+  .states(() => ({
+    checked: {
+      transform: 'translateX(20px)',
+    },
+  }))
+  .sizes(() => ({
+    small: {
+      width: '12px',
+      height: '12px',
+    },
+    medium: {
+      width: '16px',
+      height: '16px',
+    },
+    large: {
+      width: '20px',
+      height: '20px',
+    },
+  }))
