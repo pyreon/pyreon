@@ -1,7 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import {
   Card,
-  Title,
   Paragraph,
   Badge,
   Button,

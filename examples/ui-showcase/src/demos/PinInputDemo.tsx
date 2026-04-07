@@ -1,9 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+
 import { PinInput } from '@pyreon/ui-components'
 
 export function PinInputDemo() {
-  const pin4 = signal('')
-  const pin6 = signal('')
 
   return (
     <div>

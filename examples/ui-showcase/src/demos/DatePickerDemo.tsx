@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { DatePicker, Calendar, Button } from '@pyreon/ui-components'
+import { DatePicker, Calendar } from '@pyreon/ui-components'
 import type { CalendarDate, CalendarState } from '@pyreon/ui-primitives'
 
 export function DatePickerDemo() {

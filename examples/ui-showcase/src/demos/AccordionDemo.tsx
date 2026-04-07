@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+
 import {
   Accordion,
   AccordionItem,
@@ -10,7 +10,6 @@ import {
 } from '@pyreon/ui-components'
 
 export function AccordionDemo() {
-  const openItem = signal<string | null>('item1')
 
   return (
     <div>

@@ -9,7 +9,6 @@ import {
   Stepper,
   Step,
   Timeline,
-  Divider,
 } from '@pyreon/ui-components'
 
 const skills = [

@@ -1,4 +1,4 @@
-import { InputGroup, Input, Select, FieldLabel } from '@pyreon/ui-components'
+import { InputGroup, Input, FieldLabel } from '@pyreon/ui-components'
 
 export function InputGroupDemo() {
   return (

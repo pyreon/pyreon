@@ -1,4 +1,4 @@
-import { HoverCard, Title, Paragraph, Button, Badge } from '@pyreon/ui-components'
+import { HoverCard, Title, Paragraph, Badge } from '@pyreon/ui-components'
 
 export function HoverCardDemo() {
   return (
