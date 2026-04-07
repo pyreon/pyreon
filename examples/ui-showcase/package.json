@@ -19,6 +19,7 @@
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
+    "@pyreon/ui-theme": "workspace:*",
     "@pyreon/ui-primitives": "workspace:*",
     "@pyreon/ui-components": "workspace:*",
     "@pyreon/unistyle": "workspace:*"

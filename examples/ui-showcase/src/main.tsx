@@ -1,13 +1,9 @@
 import { createRouter, RouterProvider } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { PyreonUI } from '@pyreon/ui-core'
+import { theme } from '@pyreon/ui-theme'
 import { App } from './App'
 import { routes } from './routes'
-
-const theme = {
-  rootSize: 16,
-  breakpoints: { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200 },
-}
 
 const router = createRouter({ routes, mode: 'hash' })
 

@@ -1,7 +1,7 @@
 {
   "framework": "pyreon",
   "version": "workspace:*",
-  "generatedAt": "2026-04-07T08:34:07.207Z",
+  "generatedAt": "2026-04-07T08:37:42.185Z",
   "routes": [
     {
       "path": "/",
