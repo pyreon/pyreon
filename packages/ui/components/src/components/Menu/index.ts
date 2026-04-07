@@ -19,11 +19,8 @@ export default Menu
 
 export const MenuItem = el
   .config({ name: 'MenuItem' })
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', direction: 'inline', alignY: 'center', gap: 2 })
   .theme((t) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: t.spacing.xxSmall,
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,
     color: t.color.system.base[700],

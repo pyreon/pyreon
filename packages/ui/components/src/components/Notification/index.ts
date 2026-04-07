@@ -2,10 +2,8 @@ import { el } from '../../factory'
 
 const Notification = el
   .config({ name: 'Notification' })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'top', block: true })
   .theme((t) => ({
-    display: 'flex',
-    alignItems: 'flex-start',
     padding: t.spacing.small,
     borderRadius: t.borderRadius.base,
     boxShadow: t.shadows.base,

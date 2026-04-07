@@ -2,16 +2,10 @@ import { el } from '../../factory'
 
 const Stepper = el
   .config({ name: 'Stepper' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
-  .theme((t) => ({
-    display: 'flex',
-    gap: t.spacing.xxSmall,
-  }))
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 2 })
+  .theme(() => ({}))
   .variants(() => ({
-    horizontal: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
+    horizontal: {},
     vertical: {
       flexDirection: 'column',
     },
@@ -21,11 +15,8 @@ export default Stepper
 
 export const Step = el
   .config({ name: 'Step' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 2 })
   .theme((t) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: t.spacing.xxSmall,
     fontSize: t.fontSize.small,
     color: t.color.system.base[500],
     transition: t.transition.fast,

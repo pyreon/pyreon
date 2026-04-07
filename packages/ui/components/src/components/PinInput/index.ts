@@ -2,11 +2,8 @@ import { el } from '../../factory'
 
 const PinInput = el
   .config({ name: 'PinInput' })
-  .attrs({ tag: 'div' })
-  .theme((t) => ({
-    display: 'flex',
-    gap: t.spacing.xxSmall,
-  }))
+  .attrs({ tag: 'div', direction: 'inline', gap: 2 })
+  .theme(() => ({}))
   .sizes((t) => ({
     small: { gap: t.spacing.xxSmall },
     medium: { gap: t.spacing.xxSmall },

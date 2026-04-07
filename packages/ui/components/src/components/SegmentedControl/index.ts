@@ -2,9 +2,8 @@ import { el } from '../../factory'
 
 const SegmentedControl = el
   .config({ name: 'SegmentedControl' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'inline' })
   .theme((t) => ({
-    display: 'inline-flex',
     backgroundColor: t.color.system.base[100],
     borderRadius: t.borderRadius.base,
     padding: t.spacing.xxxSmall,

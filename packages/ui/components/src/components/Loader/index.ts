@@ -2,12 +2,8 @@ import { el } from '../../factory'
 
 const Loader = el
   .config({ name: 'Loader' })
-  .attrs({ tag: 'span' })
-  .theme(() => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  }))
+  .attrs({ tag: 'span', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .theme(() => ({}))
   .states((t) => ({
     primary: { color: t.color.system.primary.base },
     secondary: { color: t.color.system.base[500] },

@@ -2,11 +2,8 @@ import { el } from '../../factory'
 
 const Avatar = el
   .config({ name: 'Avatar' })
-  .attrs({ tag: 'div', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'div', direction: 'inline', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: t.color.system.base[200],
     color: t.color.system.base[600],
     fontWeight: t.fontWeight.medium,
@@ -31,7 +28,6 @@ export const AvatarGroup = el
   .config({ name: 'AvatarGroup' })
   .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
   .theme((t) => ({
-    display: 'inline-flex',
     flexDirection: 'row-reverse',
     gap: `-${t.spacing.xxSmall}`,
   }))

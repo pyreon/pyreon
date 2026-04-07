@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
-  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', direction: 'inline', alignX: 'center', alignY: 'center', gap: 8 })
   .theme((t) => ({
     fontSize: t.fontSize.base,
     fontWeight: t.fontWeight.medium,
@@ -13,8 +13,6 @@ const Button = el
     borderColor: t.color.system.transparent,
     cursor: 'pointer',
     transition: t.transition.base,
-    display: 'inline-flex',
-    gap: t.spacing.small,
     whiteSpace: 'nowrap',
     userSelect: 'none',
     focus: {
@@ -122,7 +120,7 @@ export default Button
 
 export const IconButton = el
   .config({ name: 'IconButton' })
-  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', direction: 'inline', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[600],
@@ -130,7 +128,6 @@ export const IconButton = el
     borderWidth: 0,
     cursor: 'pointer',
     transition: t.transition.base,
-    display: 'inline-flex',
     padding: t.spacing.small,
     hover: {
       backgroundColor: t.color.system.base[50],
@@ -152,7 +149,7 @@ export const IconButton = el
 
 export const CloseButton = el
   .config({ name: 'CloseButton' })
-  .attrs({ tag: 'button', 'aria-label': 'Close', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', 'aria-label': 'Close', direction: 'inline', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[400],
@@ -160,7 +157,6 @@ export const CloseButton = el
     borderWidth: 0,
     cursor: 'pointer',
     transition: t.transition.fast,
-    display: 'inline-flex',
     padding: t.spacing.xxSmall,
     hover: {
       backgroundColor: t.color.system.base[50],

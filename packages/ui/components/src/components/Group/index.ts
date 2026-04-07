@@ -2,12 +2,9 @@ import { el } from '../../factory'
 
 const Group = el
   .config({ name: 'Group' })
-  .attrs({ tag: 'div', direction: 'inline', block: true })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
   .theme(() => ({
-    display: 'flex',
-    flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'center',
   }))
   .sizes((t) => ({
     xSmall: { gap: t.spacing.xxxSmall },

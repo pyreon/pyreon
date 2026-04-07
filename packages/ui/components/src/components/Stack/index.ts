@@ -3,10 +3,7 @@ import { el } from '../../factory'
 const Stack = el
   .config({ name: 'Stack' })
   .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme(() => ({
-    display: 'flex',
-    flexDirection: 'column',
-  }))
+  .theme(() => ({}))
   .sizes((t) => ({
     xSmall: { gap: t.spacing.xxxSmall },
     small: { gap: t.spacing.xxSmall },

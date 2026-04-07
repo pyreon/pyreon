@@ -2,11 +2,8 @@ import { el } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
-  .attrs({ tag: 'button', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', direction: 'inline', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     cursor: 'pointer',
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,

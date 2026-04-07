@@ -2,12 +2,8 @@ import { el, txt } from '../../factory'
 
 const FormField = el
   .config({ name: 'FormField' })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
-  .theme((t) => ({
-    display: 'flex',
-    flexDirection: 'column',
-    gap: t.spacing.xxxSmall,
-  }))
+  .attrs({ tag: 'div', direction: 'rows', block: true, gap: 1 })
+  .theme(() => ({}))
 
 export default FormField
 

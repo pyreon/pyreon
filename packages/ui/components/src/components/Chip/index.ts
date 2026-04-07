@@ -2,11 +2,8 @@ import { el } from '../../factory'
 
 const Chip = el
   .config({ name: 'Chip' })
-  .attrs({ tag: 'div' })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 1 })
   .theme((t) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: t.spacing.xxxSmall,
     fontWeight: t.fontWeight.medium,
     whiteSpace: 'nowrap',
     cursor: 'pointer',

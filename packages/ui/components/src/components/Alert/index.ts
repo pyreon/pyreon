@@ -2,10 +2,8 @@ import { el } from '../../factory'
 
 const Alert = el
   .config({ name: 'Alert' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline', alignY: 'top', block: true })
   .theme((t) => ({
-    display: 'flex',
-    alignItems: 'flex-start',
     padding: t.spacing.small,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,

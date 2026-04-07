@@ -2,12 +2,8 @@ import { el } from '../../factory'
 
 const Pagination = el
   .config({ name: 'Pagination' })
-  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center' })
-  .theme((t) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: t.spacing.xxxSmall,
-  }))
+  .attrs({ tag: 'nav', direction: 'inline', alignY: 'center', gap: 1 })
+  .theme(() => ({}))
   .sizes((t) => ({
     small: {
       gap: t.spacing.xxxSmall,

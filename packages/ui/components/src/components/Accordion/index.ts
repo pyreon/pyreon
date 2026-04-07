@@ -20,11 +20,8 @@ export const AccordionItem = el
 
 export const AccordionTrigger = el
   .config({ name: 'AccordionTrigger' })
-  .attrs({ tag: 'button' })
+  .attrs({ tag: 'button', direction: 'inline', alignX: 'spaceBetween', alignY: 'center' })
   .theme((t) => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     width: '100%',
     paddingTop: t.spacing.xSmall,
     paddingBottom: t.spacing.xSmall,
