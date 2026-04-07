@@ -179,10 +179,13 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     onUnmount(() => observer.disconnect())
   }
 
+  // Forward all non-RouterLink props (style, class, id, data-*, etc.) to the <a>.
+  const { to: _to, replace: _replace, activeClass: _ac, exactActiveClass: _eac, exact: _exact, prefetch: _prefetch, children, ...rest } = props
+
   return h(
     'a',
-    { ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
-    props.children ?? props.to,
+    { ...rest, ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
+    children ?? props.to,
   )
 }
 
