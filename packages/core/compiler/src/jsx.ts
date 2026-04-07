@@ -406,23 +406,15 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
       if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== excludeVar) {
         const parent = n.parent
-        // Skip property name after dot: obj.sizes
-        if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) {
-          return n
-        }
-        // Skip JSX attribute name: sizes={...}
-        if (parent && ts.isJsxAttribute(parent) && parent.name === n) {
-          return n
-        }
-        // Skip shorthand property assignment: { sizes }
-        if (parent && ts.isShorthandPropertyAssignment(parent)) {
-          return n
-        }
-        // Skip variable declaration binding name: const x = ...
-        // Inlining here would replace the name with a ParenthesizedExpression
-        // which is not a valid BindingName, crashing ts.visitEachChild.
-        if (parent && ts.isVariableDeclaration(parent) && parent.name === n) {
-          return n
+        // ONLY inline identifiers that are REFERENCES (reads), never DECLARATIONS.
+        // An identifier is a declaration when it's the .name of its parent.
+        // Skip all non-reference positions to avoid replacing binding names,
+        // parameter names, property names, etc. with ParenthesizedExpressions.
+        if (parent) {
+          // Declaration positions — identifier defines a name, not reads one
+          if ('name' in parent && (parent as any).name === n) return n
+          // Shorthand property: { x } — the identifier is both key and value
+          if (ts.isShorthandPropertyAssignment(parent)) return n
         }
         const resolved = propDerivedVars.get(n.text)!
         return ts.factory.createParenthesizedExpression(

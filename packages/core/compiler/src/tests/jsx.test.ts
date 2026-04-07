@@ -1434,7 +1434,6 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   })
 
   test('variable declaration name is not inlined by resolveExprTransitive', () => {
-    // const x = props.val; const y = x + 1; — "y" should not be replaced as a binding name
     const result = t(`
       function C(props) {
         const x = props.val
@@ -1442,7 +1441,37 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
         return <div>{y}</div>
       }
     `)
-    // y should be inlined to props.val in JSX usage, not crash
     expect(result).toContain('props.val')
+  })
+
+  test('parameter name matching prop-derived var does not crash', () => {
+    // (val: string) => ... where "val" might match a prop-derived var
+    const result = t(`
+      function C(props) {
+        const val = props.value
+        return <div>{() => [1,2].map((val) => <span>{val}</span>)}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('catch clause variable matching prop-derived var does not crash', () => {
+    const result = t(`
+      function C(props) {
+        const err = props.error
+        return <div>{() => { try {} catch(err) { return err } }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
+  })
+
+  test('binding element matching prop-derived var does not crash', () => {
+    const result = t(`
+      function C(props) {
+        const x = props.x
+        return <div>{() => { const { x } = obj; return x }}</div>
+      }
+    `)
+    expect(result).toBeDefined()
   })
 })
