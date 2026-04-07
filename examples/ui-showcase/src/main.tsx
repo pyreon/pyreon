@@ -5,7 +5,7 @@ import { theme } from '@pyreon/ui-theme'
 import { App } from './App'
 import { routes } from './routes'
 
-const router = createRouter({ routes, mode: 'hash' })
+const router = createRouter({ routes, mode: 'history' })
 
 const container = document.getElementById('app')
 if (!container) throw new Error('Missing #app element')
