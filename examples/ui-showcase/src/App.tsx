@@ -1,18 +1,18 @@
-import { Link, View, useIsActive } from '@pyreon/router'
+import { RouterLink, RouterProvider, RouterView, useIsActive } from '@pyreon/router'
 import { navGroups } from './routes'
 
 function NavItem(props: { path: string; label: string }) {
   const isActive = useIsActive(props.path, true)
 
   return (
-    <Link
-      href={props.path}
+    <RouterLink
+      to={props.path}
       style={() =>
         `display: block; width: 100%; text-align: left; padding: 4px 16px 4px 24px; font-size: 13px; text-decoration: none; background: ${isActive() ? '#eff6ff' : 'transparent'}; color: ${isActive() ? '#2563eb' : '#374151'}; font-weight: ${isActive() ? '500' : '400'};`
       }
     >
       {props.label}
-    </Link>
+    </RouterLink>
   )
 }
 
@@ -40,7 +40,7 @@ export function App() {
 
       {/* Main content */}
       <main style="margin-left: 240px; flex: 1; padding: 32px 40px; max-width: 900px;">
-        <View />
+        <RouterView />
       </main>
     </div>
   )
