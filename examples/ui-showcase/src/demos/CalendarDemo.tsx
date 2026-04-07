@@ -1,5 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { Calendar } from '@pyreon/ui-components'
+import { CalendarBase } from '@pyreon/ui-primitives'
 import type { CalendarDate, CalendarState } from '@pyreon/ui-primitives'
 
 export function CalendarDemo() {
@@ -15,7 +15,7 @@ export function CalendarDemo() {
 
       <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">Basic Calendar</h3>
       <div style="margin-bottom: 24px;">
-        <Calendar
+        <CalendarBase
           {...{
             value: selectedDate(),
             onChange: (d: CalendarDate) => selectedDate.set(d),
@@ -72,7 +72,7 @@ export function CalendarDemo() {
 
       <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">Pre-selected Date</h3>
       <div style="margin-bottom: 24px;">
-        <Calendar
+        <CalendarBase
           {...{
             value: selectedDate2(),
             onChange: (d: CalendarDate) => selectedDate2.set(d),
@@ -117,7 +117,7 @@ export function CalendarDemo() {
 
       <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 12px;">With Disabled Dates</h3>
       <div style="margin-bottom: 24px;">
-        <Calendar
+        <CalendarBase
           {...{
             disabledDates: (d: CalendarDate) => d.day > 0 && (d.day % 7 === 0 || d.day % 7 === 6),
             children: (state: CalendarState) => (

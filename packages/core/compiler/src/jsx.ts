@@ -1124,7 +1124,11 @@ function escapeHtmlAttr(s: string): string {
 }
 
 function escapeHtmlText(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  // TypeScript's JsxText preserves HTML entities as-is (e.g. "&lt;" stays "&lt;",
+  // not decoded to "<"). Since the template is parsed via innerHTML, entities are
+  // already valid HTML — pass them through. Only escape raw `<` and raw `&` that
+  // are NOT part of existing entities.
+  return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
 }
 
 // ─── Static JSX analysis ──────────────────────────────────────────────────────

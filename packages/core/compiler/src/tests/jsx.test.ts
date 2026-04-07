@@ -1474,4 +1474,18 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     `)
     expect(result).toBeDefined()
   })
+
+  test('HTML entities in JSX text are not double-escaped', () => {
+    const result = t('function C() { return <button>&lt; prev</button> }')
+    expect(result).toContain('&lt;')
+    expect(result).not.toContain('&amp;lt;')
+  })
+
+  test('mixed HTML entities and raw ampersands', () => {
+    const result = t('function C() { return <span>A &amp; B &lt; C</span> }')
+    expect(result).toContain('&amp;')
+    expect(result).toContain('&lt;')
+    expect(result).not.toContain('&amp;amp;')
+    expect(result).not.toContain('&amp;lt;')
+  })
 })
