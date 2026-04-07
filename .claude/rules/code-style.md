@@ -37,6 +37,8 @@
 - **CSS property naming**: Use unistyle convention (`borderWidthTop`, `borderColorLeft`) NOT CSS-spec order (`borderTopWidth`, `borderLeftColor`). Property-first naming.
 - **useBooleans: false**: Rocketstyle dimensions accept string values (`state="primary"`, `size="large"`), not booleans. This is the default.
 - **Size dimensions should be comfortable**: Menu items, dropdown options, and interactive list items need adequate padding. `t.spacing.small` (8px) vertical / `t.spacing.medium` (12px) horizontal is the minimum for touch-friendly sizing.
+- **Use `@pyreon/hooks` instead of manual event handling**: Use `useEventListener` for document/window listeners, `useScrollLock` for scroll locking, `useClickOutside` for click-outside detection. Never use raw `addEventListener`/`removeEventListener` in primitives.
+- **Use `@pyreon/elements` Overlay for tooltips/popovers/dropdowns**: The `useOverlay` hook handles positioning, viewport flipping, ESC key, click-outside, scroll tracking, hover delay. Never reimplement overlay positioning logic in primitives.
 
 ## Dead Code
 

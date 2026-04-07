@@ -1,7 +1,8 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { Portal } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
-import { effect, onCleanup } from '@pyreon/reactivity'
+import { useEventListener, useScrollLock } from '@pyreon/hooks'
+import { effect } from '@pyreon/reactivity'
 
 export interface ModalBaseProps {
   open?: boolean
@@ -14,7 +15,10 @@ export interface ModalBaseProps {
 }
 
 /**
- * Headless modal base — manages open state, ESC key, overlay click, focus trap, scroll lock.
+ * Headless modal base — manages open state, ESC key, overlay click, scroll lock.
+ *
+ * Always mounts (for scroll lock + ESC to work reactively).
+ * Renders children only when `open` is true.
  */
 export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
   const [own, rest] = splitProps(props, [
@@ -31,42 +35,36 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
   const closeOnEscape = own.closeOnEscape !== false
   const closeOnOverlay = own.closeOnOverlay !== false
 
-  effect(() => {
-    if (!own.open) return
+  const scrollLock = useScrollLock()
 
-    // Scroll lock
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    // ESC handler
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (closeOnEscape && e.key === 'Escape') own.onClose?.()
-    }
-    document.addEventListener('keydown', onKeyDown)
-
-    onCleanup(() => {
-      document.body.style.overflow = prev
-      document.removeEventListener('keydown', onKeyDown)
-    })
+  useEventListener('keydown', (e) => {
+    if (own.open && closeOnEscape && e.key === 'Escape') own.onClose?.()
   })
 
-  if (!own.open) return null
+  effect(() => {
+    if (own.open) scrollLock.lock()
+    else scrollLock.unlock()
+  })
 
   const handleOverlayClick = (e: MouseEvent) => {
     if (closeOnOverlay && e.target === e.currentTarget) own.onClose?.()
   }
 
-  return (
-    <Portal target={document.body}>
-      <div
-        {...(rest as Record<string, unknown>)}
-        ref={own.ref as ((el: HTMLElement) => void) | undefined}
-        role="dialog"
-        aria-modal="true"
-        onClick={handleOverlayClick}
-      >
-        {own.children}
-      </div>
-    </Portal>
-  ) as unknown as VNodeChild
+  return (() => {
+    if (!own.open) return null
+
+    return (
+      <Portal target={document.body}>
+        <div
+          {...(rest as Record<string, unknown>)}
+          ref={own.ref as ((el: HTMLElement) => void) | undefined}
+          role="dialog"
+          aria-modal="true"
+          onClick={handleOverlayClick}
+        >
+          {own.children}
+        </div>
+      </Portal>
+    ) as unknown as VNodeChild
+  }) as unknown as VNodeChild
 }
