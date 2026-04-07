@@ -1,11 +1,11 @@
-import { Badge } from '@pyreon/ui-components'
+import { Badge, Title } from '@pyreon/ui-components'
 
 export function BadgeDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Badge</h2>
+      <Title size="h2" style="margin-bottom: 24px">Badge</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 24px;">
         <Badge state="primary">Primary</Badge>
         <Badge state="secondary">Secondary</Badge>
@@ -14,14 +14,14 @@ export function BadgeDemo() {
         <Badge state="warning">Warning</Badge>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Sizes</h3>
+      <Title size="h3" style="margin-bottom: 12px">Sizes</Title>
       <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 24px;">
         <Badge state="primary" size="small">Small</Badge>
         <Badge state="primary" size="medium">Medium</Badge>
         <Badge state="primary" size="large">Large</Badge>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Variants</h3>
+      <Title size="h3" style="margin-bottom: 12px">Variants</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 24px;">
         <Badge state="primary" variant="solid">Solid</Badge>
         <Badge state="primary" variant="outline">Outline</Badge>

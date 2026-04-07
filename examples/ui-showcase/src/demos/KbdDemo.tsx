@@ -1,11 +1,11 @@
-import { Kbd, Paragraph } from '@pyreon/ui-components'
+import { Kbd, Paragraph, Title } from '@pyreon/ui-components'
 
 export function KbdDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Kbd</h2>
+      <Title size="h2" style="margin-bottom: 24px">Kbd</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Single Keys</h3>
+      <Title size="h3" style="margin-bottom: 12px">Single Keys</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 24px;">
         <Kbd>Esc</Kbd>
         <Kbd>Tab</Kbd>
@@ -14,7 +14,7 @@ export function KbdDemo() {
         <Kbd>Backspace</Kbd>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Keyboard Shortcuts</h3>
+      <Title size="h3" style="margin-bottom: 12px">Keyboard Shortcuts</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Paragraph>Save: <Kbd>Ctrl</Kbd> + <Kbd>S</Kbd></Paragraph>
         <Paragraph>Undo: <Kbd>Cmd</Kbd> + <Kbd>Z</Kbd></Paragraph>
@@ -23,7 +23,7 @@ export function KbdDemo() {
         <Paragraph>Select all: <Kbd>Ctrl</Kbd> + <Kbd>A</Kbd></Paragraph>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Complex Shortcuts</h3>
+      <Title size="h3" style="margin-bottom: 12px">Complex Shortcuts</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Paragraph>Find and replace: <Kbd>Ctrl</Kbd> + <Kbd>Shift</Kbd> + <Kbd>H</Kbd></Paragraph>
         <Paragraph>Developer tools: <Kbd>Ctrl</Kbd> + <Kbd>Shift</Kbd> + <Kbd>I</Kbd></Paragraph>

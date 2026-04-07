@@ -1,3 +1,5 @@
+import { Title } from '@pyreon/ui-components'
+
 const users = [
   { name: 'Alice', email: 'alice@example.com', role: 'Admin', status: 'Active' },
   { name: 'Bob', email: 'bob@example.com', role: 'Editor', status: 'Active' },
@@ -9,7 +11,7 @@ const users = [
 export function TableDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Table</h2>
+      <Title size="h2" style="margin-bottom: 24px">Table</Title>
 
       <div style="border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">

@@ -1,11 +1,11 @@
-import { Highlight, Paragraph } from '@pyreon/ui-components'
+import { Highlight, Paragraph, Title } from '@pyreon/ui-components'
 
 export function HighlightDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">Highlight</h2>
+      <Title size="h2" style="margin-bottom: 24px">Highlight</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">States</h3>
+      <Title size="h3" style="margin-bottom: 12px">States</Title>
       <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
         <Paragraph>
           This text contains a <Highlight state="primary">primary highlight</Highlight> for emphasis.
@@ -21,7 +21,7 @@ export function HighlightDemo() {
         </Paragraph>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Multiple Highlights</h3>
+      <Title size="h3" style="margin-bottom: 12px">Multiple Highlights</Title>
       <div style="margin-bottom: 24px;">
         <Paragraph>
           Pyreon's <Highlight state="primary">signal-based reactivity</Highlight> enables <Highlight state="success">fine-grained updates</Highlight> with <Highlight state="warning">zero unnecessary re-renders</Highlight>.

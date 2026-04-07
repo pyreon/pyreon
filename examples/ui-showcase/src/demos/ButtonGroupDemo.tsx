@@ -1,11 +1,11 @@
-import { ButtonGroup, Button } from '@pyreon/ui-components'
+import { ButtonGroup, Button, Title } from '@pyreon/ui-components'
 
 export function ButtonGroupDemo() {
   return (
     <div>
-      <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">ButtonGroup</h2>
+      <Title size="h2" style="margin-bottom: 24px">ButtonGroup</Title>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Primary Group</h3>
+      <Title size="h3" style="margin-bottom: 12px">Primary Group</Title>
       <div style="margin-bottom: 24px;">
         <ButtonGroup gap="small">
           <Button state="primary">Save</Button>
@@ -14,7 +14,7 @@ export function ButtonGroupDemo() {
         </ButtonGroup>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Navigation Group</h3>
+      <Title size="h3" style="margin-bottom: 12px">Navigation Group</Title>
       <div style="margin-bottom: 24px;">
         <ButtonGroup gap="small">
           <Button state="secondary" variant="outline">Previous</Button>
@@ -25,7 +25,7 @@ export function ButtonGroupDemo() {
         </ButtonGroup>
       </div>
 
-      <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 12px;">Mixed States</h3>
+      <Title size="h3" style="margin-bottom: 12px">Mixed States</Title>
       <div style="margin-bottom: 24px;">
         <ButtonGroup gap="small">
           <Button state="success">Approve</Button>
