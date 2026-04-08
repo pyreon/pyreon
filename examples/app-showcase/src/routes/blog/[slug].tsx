@@ -80,6 +80,7 @@ export default function PostDetailPage() {
         { property: 'og:type', content: 'article' },
         { property: 'og:title', content: post.title },
         { property: 'og:description', content: post.excerpt },
+        ...(post.ogImage ? [{ property: 'og:image', content: post.ogImage }] : []),
         { property: 'article:published_time', content: post.date },
         { property: 'article:author', content: post.author },
         ...post.tags.map((tag) => ({ property: 'article:tag', content: tag })),

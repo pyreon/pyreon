@@ -1,7 +1,7 @@
+import { For } from '@pyreon/core'
 import { useHead } from '@pyreon/head'
 import { useLoaderData } from '@pyreon/router'
 import { useUrlState } from '@pyreon/url-state'
-import type { LoaderContext } from '@pyreon/zero'
 import { allTags, posts } from '../../sections/blog/content/posts'
 import type { Post } from '../../sections/blog/content/types'
 import { formatDate } from '../../sections/blog/format'
@@ -18,6 +18,7 @@ import {
   PostCardMeta,
   PostCardTitle,
   PostList,
+  PostMetaSeparator,
   SidebarLabel,
   SidebarSection,
   TagButton,
@@ -29,6 +30,8 @@ import {
 interface BlogIndexData {
   posts: Post[]
   allTags: string[]
+  /** Pre-computed `tag → post count` map so the sidebar doesn't recompute on every render. */
+  tagCounts: Record<string, number>
 }
 
 /**
@@ -36,9 +39,17 @@ interface BlogIndexData {
  * navigation. For an in-memory blog the loader is synchronous, but the
  * shape (`async ({ params, query, signal }) => data`) matches what
  * you'd write against a real CMS or fetch endpoint.
+ *
+ * Derived data (tag counts) is computed inside the loader so the page
+ * component stays purely declarative — it just renders what the loader
+ * gave it.
  */
-export async function loader(_ctx: LoaderContext): Promise<BlogIndexData> {
-  return { posts, allTags }
+export async function loader(): Promise<BlogIndexData> {
+  const tagCounts: Record<string, number> = {}
+  for (const post of posts) {
+    for (const tag of post.tags) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1
+  }
+  return { posts, allTags, tagCounts }
 }
 
 /**
@@ -85,17 +96,13 @@ export default function BlogIndexPage() {
     }
   })
 
+  // Reactive accessor for the visible post list. Reads the URL signal
+  // so the compiler tracks it; the filter re-runs only when the tag
+  // changes.
   const visible = (): Post[] => {
     const active = tag()
     if (!active) return data.posts
     return data.posts.filter((p) => p.tags.includes(active))
-  }
-
-  // Tag → count map, computed from the loader data so it doesn't
-  // recompute per render.
-  const tagCounts = new Map<string, number>()
-  for (const post of data.posts) {
-    for (const t of post.tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
   }
 
   return (
@@ -107,12 +114,14 @@ export default function BlogIndexPage() {
             <span>All posts</span>
             <TagCount>{data.posts.length}</TagCount>
           </TagButton>
-          {data.allTags.map((name) => (
-            <TagButton type="button" onClick={() => tag.set(name)} $active={tag() === name}>
-              <span>{name}</span>
-              <TagCount>{tagCounts.get(name) ?? 0}</TagCount>
-            </TagButton>
-          ))}
+          <For each={() => data.allTags} by={(name) => name}>
+            {(name) => (
+              <TagButton type="button" onClick={() => tag.set(name)} $active={tag() === name}>
+                <span>{name}</span>
+                <TagCount>{data.tagCounts[name] ?? 0}</TagCount>
+              </TagButton>
+            )}
+          </For>
         </SidebarSection>
       </BlogSidebar>
 
@@ -134,24 +143,26 @@ export default function BlogIndexPage() {
           }
           return (
             <PostList>
-              {list.map((post) => (
-                <PostCard to={`/blog/${post.slug}`}>
-                  <PostCardMeta>
-                    <span>{formatDate(post.date)}</span>
-                    <span>·</span>
-                    <span>{post.readMinutes} min read</span>
-                    <span>·</span>
-                    <span>{post.author}</span>
-                  </PostCardMeta>
-                  <PostCardTitle>{post.title}</PostCardTitle>
-                  <PostCardExcerpt>{post.excerpt}</PostCardExcerpt>
-                  <TagsRow>
-                    {post.tags.map((tagName) => (
-                      <TagChip>{tagName}</TagChip>
-                    ))}
-                  </TagsRow>
-                </PostCard>
-              ))}
+              <For each={() => list} by={(post) => post.slug}>
+                {(post) => (
+                  <PostCard to={`/blog/${post.slug}`}>
+                    <PostCardMeta>
+                      <span>{formatDate(post.date)}</span>
+                      <PostMetaSeparator>·</PostMetaSeparator>
+                      <span>{post.readMinutes} min read</span>
+                      <PostMetaSeparator>·</PostMetaSeparator>
+                      <span>{post.author}</span>
+                    </PostCardMeta>
+                    <PostCardTitle>{post.title}</PostCardTitle>
+                    <PostCardExcerpt>{post.excerpt}</PostCardExcerpt>
+                    <TagsRow>
+                      {post.tags.map((tagName) => (
+                        <TagChip>{tagName}</TagChip>
+                      ))}
+                    </TagsRow>
+                  </PostCard>
+                )}
+              </For>
             </PostList>
           )
         }}
