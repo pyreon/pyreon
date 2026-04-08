@@ -9,8 +9,6 @@ const DocImage = rocketstyle()({ name: 'DocImage', component: Element })
     width?: number | string
     height?: number | string
     caption?: string
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'img',
     _documentProps: {

@@ -29,6 +29,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
 | I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
 | Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
+| Resume Builder  | ✅ available   | `document-primitives` + `connector-document` round-trip, `store`, `toast`    |
 | Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
@@ -63,8 +64,10 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
 │   │   ├── shop/
 │   │   │   └── index.tsx    ← /shop (i18n + cart store + persisted cart + url filter)
-│   │   └── invoice/
-│   │       └── index.tsx    ← /invoice (document tree → PDF/DOCX/HTML/MD)
+│   │   ├── invoice/
+│   │   │   └── index.tsx    ← /invoice (document tree → PDF/DOCX/HTML/MD)
+│   │   └── resume/
+│   │       └── index.tsx    ← /resume (document-primitives round-trip)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -133,15 +136,27 @@ examples/app-showcase/
 │       │   └── data/
 │       │       ├── products.ts
 │       │       └── types.ts
-│       └── invoice/
-│           ├── InvoiceForm.tsx        ← signal-bound form with line-item array
-│           ├── LivePreview.tsx        ← effect() rebuilds doc HTML on every change
-│           ├── ExportButtons.tsx      ← download as HTML/MD/PDF/DOCX via @pyreon/document
-│           ├── template.ts            ← buildInvoiceDoc(invoice) → DocNode tree
-│           ├── store.ts               ← invoice store with derived totals
-│           ├── styled.ts
+│       ├── invoice/
+│       │   ├── InvoiceForm.tsx        ← signal-bound form with line-item array
+│       │   ├── LivePreview.tsx        ← effect() rebuilds doc HTML on every change
+│       │   ├── ExportButtons.tsx      ← download as HTML/MD/PDF/DOCX via @pyreon/document
+│       │   ├── template.ts            ← buildInvoiceDoc(invoice) → DocNode tree
+│       │   ├── store.ts               ← invoice store with derived totals
+│       │   ├── styled.ts
+│       │   └── data/
+│       │       ├── seed.ts            ← seed invoice + currency/date helpers
+│       │       └── types.ts
+│       └── resume/
+│           ├── ResumeTemplate.tsx     ← @pyreon/document-primitives — same tree
+│           │                             renders in browser AND exports to PDF/DOCX
+│           ├── ResumeForm.tsx         ← signal-bound editor with field-array
+│           │                             siblings (Experience/Education lists)
+│           ├── ExportButtons.tsx      ← createDocumentExport → extractDocumentTree
+│           │                             → @pyreon/document download()
+│           ├── store.ts               ← single signal store for the whole resume
+│           ├── styled.ts              ← form/preview chrome (no doc styling)
 │           └── data/
-│               ├── seed.ts            ← seed invoice + currency/date helpers
+│               ├── seed.ts
 │               └── types.ts
 ```
 

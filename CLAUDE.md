@@ -38,19 +38,19 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### UI System (Component Library)
 
-| Package                       | Description                                                      |
-| ----------------------------- | ---------------------------------------------------------------- |
-| `@pyreon/ui-core`             | Config engine, init(), utilities, HTML tags                      |
-| `@pyreon/styler`              | CSS-in-JS: styled(), css, keyframes, theming                     |
-| `@pyreon/unistyle`            | Responsive breakpoints, CSS property mappings, unit utilities    |
-| `@pyreon/elements`            | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
-| `@pyreon/attrs`               | Chainable HOC factory (.attrs(), .config(), .statics())          |
-| `@pyreon/rocketstyle`         | Multi-state styling (states, sizes, variants, themes, dark mode) |
-| `@pyreon/coolgrid`            | 12-column responsive grid (Container, Row, Col)                  |
-| `@pyreon/kinetic`             | CSS-transition animations (Transition, Stagger, Collapse)        |
-| `@pyreon/kinetic-presets`     | 120+ animation presets                                           |
-| `@pyreon/connector-document`  | Bridge between ui-system components and @pyreon/document         |
-| `@pyreon/document-primitives` | Rocketstyle-based document export components                     |
+| Package                       | Description                                                          |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `@pyreon/ui-core`             | Config engine, init(), utilities, HTML tags                          |
+| `@pyreon/styler`              | CSS-in-JS: styled(), css, keyframes, theming                         |
+| `@pyreon/unistyle`            | Responsive breakpoints, CSS property mappings, unit utilities        |
+| `@pyreon/elements`            | 5 foundational primitives (Element, Text, List, Overlay, Portal)     |
+| `@pyreon/attrs`               | Chainable HOC factory (.attrs(), .config(), .statics())              |
+| `@pyreon/rocketstyle`         | Multi-state styling (states, sizes, variants, themes, dark mode)     |
+| `@pyreon/coolgrid`            | 12-column responsive grid (Container, Row, Col)                      |
+| `@pyreon/kinetic`             | CSS-transition animations (Transition, Stagger, Collapse)            |
+| `@pyreon/kinetic-presets`     | 120+ animation presets                                               |
+| `@pyreon/connector-document`  | Bridge between ui-system components and @pyreon/document             |
+| `@pyreon/document-primitives` | Rocketstyle-based document components — render in browser AND export |
 
 ### UI Component Library (packages/ui/)
 
@@ -309,6 +309,15 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - JSX primitives: `Document`, `Page`, `Heading`, `Text`, `Table`, `Image`, `List`, `Code`, `Divider`, etc.
 - 14+ output formats: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat
 - Heavy renderers lazy-loaded (PDF ~300KB, DOCX ~100KB, XLSX ~500KB, PPTX ~200KB)
+
+### @pyreon/document-primitives
+
+- 18 rocketstyle components — `DocDocument`, `DocPage`, `DocSection`, `DocRow`, `DocColumn`, `DocHeading`, `DocText`, `DocLink`, `DocImage`, `DocTable`, `DocList`, `DocListItem`, `DocCode`, `DocDivider`, `DocSpacer`, `DocButton`, `DocQuote`, `DocPageBreak`
+- **Same component tree renders in browser AND exports to 14+ formats** — primitives carry `_documentType` static markers; `extractDocumentTree(vnode)` from `@pyreon/connector-document` walks the tree and produces a `DocNode` for `@pyreon/document`'s `render()` to consume
+- `createDocumentExport(templateFn)` — wraps a template function so `getDocNode()` returns the extracted DocNode tree
+- Layout props live in `.attrs()` (not `.theme()`): `direction`, `gap`, `alignX`, `alignY`. Element accepts `direction: 'inline' | 'rows' | 'reverseInline' | 'reverseRows'` — `'row'` is invalid
+- For fine-grained reactivity in templates that drive a live preview, pass a signal accessor (not its resolved value) and read it inside the template body via per-text-node thunks: `<DocText>{() => store.field()}</DocText>` — components run once, so reading the signal at the top of the template captures only the initial value
+- Rocketstyle `.attrs<P>()` generic is the **public** prop type — runtime-filled fields like `tag` and `_documentProps` belong in the callback body, never in the generic, or they leak as required JSX props
 
 ### @pyreon/storybook
 

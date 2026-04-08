@@ -108,6 +108,49 @@ Because these components are built with `@pyreon/rocketstyle`, they support dime
 
 Document Primitives use `@pyreon/connector-document` under the hood to resolve their Rocketstyle-based styles into the format expected by `@pyreon/document` renderers. This means your design tokens (colors, spacing, typography) are preserved consistently across all 18 output formats.
 
+```tsx
+import { createDocumentExport } from '@pyreon/document-primitives'
+import { download } from '@pyreon/document'
+
+// Wrap a template fn to get a DocNode tree:
+const helper = createDocumentExport(() => <Invoice data={data} />)
+const tree = helper.getDocNode()
+await download(tree, 'invoice.pdf')   // PDF
+await download(tree, 'invoice.docx')  // DOCX
+await download(tree, 'invoice.html')  // HTML
+await download(tree, 'invoice.md')    // Markdown
+```
+
+## Live Preview + Reactivity
+
+Because primitives render as DOM elements in the browser, the same component tree that gets exported can also drive a **live preview** — what you see is exactly what you download.
+
+Components run **once** in Pyreon. To get fine-grained per-text-node updates (instead of re-mounting the entire tree on every keystroke), pass a signal **accessor** into the template and read it inside the body via per-text-node thunks:
+
+```tsx
+function ResumeTemplate(props: { resume: () => Resume }) {
+  return (
+    <DocDocument>
+      <DocPage>
+        {/* Read signal lazily — only this text node patches when name changes */}
+        <DocHeading level="h1">{() => props.resume().name}</DocHeading>
+        <DocText variant="caption">{() => props.resume().headline}</DocText>
+      </DocPage>
+    </DocDocument>
+  )
+}
+
+// Live preview — pass the accessor:
+<ResumeTemplate resume={store.resume} />
+
+// Export — pass a snapshot:
+const helper = createDocumentExport(() => ResumeTemplate({ resume: () => store.resume() }))
+```
+
+## Layout Conventions
+
+Layout props (`direction`, `gap`, `alignX`, `alignY`) belong in `.attrs()`, not `.theme()`. Element accepts `direction: 'inline' | 'rows' | 'reverseInline' | 'reverseRows'` — `'row'` is **not** a valid value.
+
 ## Key Features
 
 - Rocketstyle-powered primitives with theme, size, and variant dimensions

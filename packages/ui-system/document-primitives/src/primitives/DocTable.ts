@@ -19,8 +19,6 @@ const DocTable = rocketstyle({
     striped?: boolean
     bordered?: boolean
     caption?: string
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'table',
     _documentProps: {

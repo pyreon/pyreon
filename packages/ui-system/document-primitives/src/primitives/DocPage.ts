@@ -10,8 +10,6 @@ const DocPage = rocketstyle()({ name: 'DocPage', component: Element })
   .attrs<{
     size?: string
     orientation?: string
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'div',
     _documentProps: {

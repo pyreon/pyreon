@@ -69,9 +69,11 @@
       "version": "0.1.0",
       "dependencies": {
         "@pyreon/charts": "workspace:*",
+        "@pyreon/connector-document": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/document": "workspace:*",
+        "@pyreon/document-primitives": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/form": "workspace:*",
         "@pyreon/head": "workspace:*",
@@ -920,7 +922,9 @@
       "devDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/elements": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",

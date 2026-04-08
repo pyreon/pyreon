@@ -92,6 +92,15 @@ export const sections: Section[] = [
     available: true,
     group: 'forms',
   },
+  {
+    path: '/resume',
+    label: 'Resume Builder',
+    tagline:
+      'Same component tree drives the browser preview AND the PDF/DOCX export — no duplication',
+    features: ['document-primitives', 'connector-document', 'document', 'store', 'toast'],
+    available: true,
+    group: 'forms',
+  },
 
   // ─── Data ───────────────────────────────────────────────────────
   {

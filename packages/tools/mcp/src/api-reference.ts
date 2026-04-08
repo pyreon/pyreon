@@ -1145,4 +1145,42 @@ export const Primary: StoryObj<typeof meta> = {
     notes:
       'Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.',
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/document-primitives
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  'document-primitives/createDocumentExport': {
+    signature:
+      'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
+    example: `import {
+  DocDocument, DocPage, DocHeading, DocText,
+  createDocumentExport,
+} from '@pyreon/document-primitives'
+import { download } from '@pyreon/document'
+
+function Resume(props: { name: string }) {
+  return (
+    <DocDocument title={\`\${props.name} — Resume\`}>
+      <DocPage>
+        <DocHeading level="h1">{props.name}</DocHeading>
+        <DocText>Senior Engineer</DocText>
+      </DocPage>
+    </DocDocument>
+  )
+}
+
+// One template, many formats:
+const helper = createDocumentExport(() => <Resume name="Aisha" />)
+const tree = helper.getDocNode()
+await download(tree, 'resume.pdf')
+await download(tree, 'resume.docx')
+await download(tree, 'resume.html')
+await download(tree, 'resume.md')`,
+    notes:
+      "18 primitives: DocDocument, DocPage, DocSection, DocRow, DocColumn, DocHeading, DocText, DocLink, DocImage, DocTable, DocList, DocListItem, DocCode, DocDivider, DocSpacer, DocButton, DocQuote, DocPageBreak. Same component tree renders in browser AND exports — primitives carry _documentType statics that extractDocumentTree (from @pyreon/connector-document) walks to produce a DocNode for @pyreon/document's render() to consume.",
+    mistakes: `- DocRow direction: layout props (direction, gap) go in .attrs() not .theme(). Element accepts 'inline' | 'rows' | 'reverseInline' | 'reverseRows' — 'row' is NOT valid
+- For live preview reactivity, pass a signal accessor and read inside body: <DocText>{() => store.field()}</DocText>. Components run once — reading the signal at the top captures only the initial value
+- Don't declare runtime-filled fields (tag, _documentProps) in the rocketstyle .attrs<P>() generic — they leak as required JSX props`,
+  },
 }

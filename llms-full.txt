@@ -52,8 +52,8 @@
 | @pyreon/coolgrid | Container, Row, Col | Responsive grid |
 | @pyreon/kinetic | kinetic(), .preset(), .enter(), .leave(), .collapse(), .stagger() | CSS-transition animations |
 | @pyreon/kinetic-presets | fade, slideUp, slideDown, scaleIn, 120+ presets | Animation presets |
-| @pyreon/connector-document | Document bridge utilities | UI ↔ document bridge |
-| @pyreon/document-primitives | Document export components | Rocketstyle document components |
+| @pyreon/connector-document | extractDocumentTree(vnode), createDocumentExport(templateFn) | Walks rocketstyle component tree → DocNode |
+| @pyreon/document-primitives | DocDocument, DocPage, DocHeading, DocText, DocList, DocTable, DocRow, DocColumn (18 total) | Same tree renders in browser AND exports to 14+ formats |
 
 ## @pyreon/reactivity — Complete API
 

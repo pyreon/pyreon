@@ -7,8 +7,6 @@ const DocDocument = rocketstyle()({ name: 'DocDocument', component: Element })
     title?: string
     author?: string
     subject?: string
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'div',
     _documentProps: {

@@ -7,7 +7,7 @@ const DocListItem = rocketstyle()({ name: 'DocListItem', component: Text })
     lineHeight: 1.5,
   })
   .statics({ _documentType: 'list-item' as const })
-  .attrs<{ tag: string; _documentProps: Record<string, unknown> }>((_props) => ({
+  .attrs(() => ({
     tag: 'li',
     _documentProps: {},
   }))

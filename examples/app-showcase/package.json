@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@pyreon/charts": "workspace:*",
+    "@pyreon/connector-document": "workspace:*",
     "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/document": "workspace:*",
+    "@pyreon/document-primitives": "workspace:*",
     "@pyreon/elements": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/head": "workspace:*",
