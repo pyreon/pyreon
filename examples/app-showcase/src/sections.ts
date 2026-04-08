@@ -79,9 +79,9 @@ export const sections: Section[] = [
   {
     path: '/forms-wizard',
     label: 'Forms Wizard',
-    tagline: 'Multi-step onboarding form with validation',
-    features: ['form', 'validation', 'state-tree', 'machine'],
-    available: false,
+    tagline: 'Multi-step onboarding form with per-step Zod validation',
+    features: ['form', 'validation (zod)', 'state-tree', 'machine'],
+    available: true,
     group: 'forms',
   },
   {

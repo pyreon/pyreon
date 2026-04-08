@@ -24,9 +24,9 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`           |
 | Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
 | Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
+| Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
 | Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`                        |
 | Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
-| Forms Wizard    | 🚧 coming soon | `form`, `validation`, `state-tree`, `machine`                                |
 | Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
 | I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`                            |
 | Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
@@ -53,8 +53,10 @@ examples/app-showcase/
 │   │   ├── blog/
 │   │   │   ├── index.tsx    ← /blog list (loader + meta + tag filter)
 │   │   │   └── [slug].tsx   ← /blog/:slug detail (loader + dynamic head)
-│   │   └── dashboard/
-│   │       └── index.tsx    ← /dashboard (query + table + charts + virtual)
+│   │   ├── dashboard/
+│   │   │   └── index.tsx    ← /dashboard (query + table + charts + virtual)
+│   │   └── forms-wizard/
+│   │       └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -71,19 +73,28 @@ examples/app-showcase/
 │       │   └── content/
 │       │       ├── posts.ts
 │       │       └── types.ts
-│       └── dashboard/
-│           ├── KpiStrip.tsx
-│           ├── RevenueChart.tsx
-│           ├── CategoryChart.tsx
-│           ├── OrdersTable.tsx
-│           ├── CustomersVirtualList.tsx
-│           ├── RoleToggleHeader.tsx
-│           ├── permissions.ts
-│           ├── styled.ts
-│           └── data/
-│               ├── api.ts
-│               ├── seed.ts
-│               └── types.ts
+│       ├── dashboard/
+│       │   ├── KpiStrip.tsx
+│       │   ├── RevenueChart.tsx
+│       │   ├── CategoryChart.tsx
+│       │   ├── OrdersTable.tsx
+│       │   ├── CustomersVirtualList.tsx
+│       │   ├── RoleToggleHeader.tsx
+│       │   ├── permissions.ts
+│       │   ├── styled.ts
+│       │   └── data/
+│       │       ├── api.ts
+│       │       ├── seed.ts
+│       │       └── types.ts
+│       └── wizard/
+│           ├── AccountStep.tsx
+│           ├── ProfileStep.tsx
+│           ├── PreferencesStep.tsx
+│           ├── ReviewStep.tsx
+│           ├── schema.ts            ← Zod schemas + types per step
+│           ├── wizardModel.ts       ← @pyreon/state-tree model
+│           ├── wizardMachine.ts     ← @pyreon/machine step transitions
+│           └── styled.ts
 ```
 
 > **Why split `routes/` and `sections/`?** Zero treats every file under `src/routes/` as a route — including helpers, which produces dynamic-import warnings. Putting non-route files under `src/sections/` keeps the routing tree tidy and lets Rolldown chunk per-route cleanly.
