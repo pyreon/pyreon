@@ -11,12 +11,16 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pyreon/charts": "workspace:*",
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
     "@pyreon/elements": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
+    "@pyreon/permissions": "workspace:*",
+    "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
@@ -24,10 +28,13 @@
     "@pyreon/storage": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/styler": "workspace:*",
+    "@pyreon/table": "workspace:*",
+    "@pyreon/toast": "workspace:*",
     "@pyreon/ui-components": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/url-state": "workspace:*",
+    "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {

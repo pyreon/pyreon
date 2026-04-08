@@ -43,9 +43,19 @@ export const sections: Section[] = [
   {
     path: '/dashboard',
     label: 'Dashboard',
-    tagline: 'Admin with charts, tables, filters, CRUD',
-    features: ['query', 'table', 'charts', 'feature', 'permissions', 'virtual'],
-    available: false,
+    tagline: 'Admin with charts, table, virtualized list, role-based actions',
+    features: [
+      'query',
+      'table',
+      'charts',
+      'virtual',
+      'permissions',
+      'toast',
+      'coolgrid',
+      'url-state',
+      'rx',
+    ],
+    available: true,
     group: 'apps',
   },
   {
