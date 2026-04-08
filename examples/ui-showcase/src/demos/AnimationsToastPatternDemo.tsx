@@ -42,27 +42,33 @@ export function AnimationsToastPatternDemo() {
         <Button state="danger" onClick={() => add('error')}>Error</Button>
       </div>
 
-      <ToastGroup style="position: fixed; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; max-width: 320px; z-index: 100;">
-        {() =>
-          toasts().map((toast) => (
-            <div
-              key={toast.id}
-              style={() =>
-                `padding: 12px 16px; background: ${colors[toast.type]}; color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;`
-              }
-            >
-              <span>{toast.message}</span>
-              <button
-                type="button"
-                onClick={() => toasts.set(toasts().filter((t) => t.id !== toast.id))}
-                style="background: none; border: none; color: white; cursor: pointer; font-size: 18px; padding: 0;"
+      {/* Demo viewport — toasts are absolutely positioned within this box, not the page */}
+      <div style="position: relative; min-height: 280px; padding: 16px; background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px;">
+        <p style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">
+          Demo viewport — toasts appear in the top-right corner of this box.
+        </p>
+        <ToastGroup style="position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; max-width: 280px;">
+          {() =>
+            toasts().map((toast) => (
+              <div
+                key={toast.id}
+                style={() =>
+                  `padding: 12px 16px; background: ${colors[toast.type]}; color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;`
+                }
               >
-                ×
-              </button>
-            </div>
-          ))
-        }
-      </ToastGroup>
+                <span>{toast.message}</span>
+                <button
+                  type="button"
+                  onClick={() => toasts.set(toasts().filter((t) => t.id !== toast.id))}
+                  style="background: none; border: none; color: white; cursor: pointer; font-size: 18px; padding: 0; line-height: 1;"
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          }
+        </ToastGroup>
+      </div>
     </div>
   )
 }

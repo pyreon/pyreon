@@ -103,20 +103,15 @@ export const navGroups = [
     ],
   },
   {
-    label: 'Composition',
+    label: 'Architecture',
     items: [
+      { path: '/elements', label: 'Elements' },
+      { path: '/styler', label: 'Styler (CSS-in-JS)' },
+      { path: '/composition/rocketstyle', label: 'Rocketstyle (raw)' },
       { path: '/composition/attrs-basic', label: 'Attrs — Basic' },
       { path: '/composition/attrs-callbacks', label: 'Attrs — Callbacks' },
       { path: '/composition/attrs-config', label: 'Attrs — Config' },
       { path: '/composition/attrs-compose', label: 'Attrs — Compose' },
-      { path: '/composition/rocketstyle', label: 'Rocketstyle (raw)' },
-    ],
-  },
-  {
-    label: 'Styling',
-    items: [
-      { path: '/styler', label: 'Styler (CSS-in-JS)' },
-      { path: '/elements', label: 'Elements' },
     ],
   },
 ]

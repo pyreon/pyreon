@@ -102,15 +102,64 @@ export function RocketstyleDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">Reactive dimension props</Title>
       <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-        <Button state="secondary" size="small" onClick={() => state.set(undefined)}>default</Button>
-        <Button state="success" size="small" onClick={() => state.set('success')}>success</Button>
-        <Button state="primary" size="small" onClick={() => state.set('info')}>info</Button>
-        <Button state="danger" size="small" onClick={() => state.set('danger')}>danger</Button>
+        <Button
+          state="secondary"
+          variant={state() === undefined ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => state.set(undefined)}
+        >
+          default
+        </Button>
+        <Button
+          state="success"
+          variant={state() === 'success' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => state.set('success')}
+        >
+          success
+        </Button>
+        <Button
+          state="primary"
+          variant={state() === 'info' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => state.set('info')}
+        >
+          info
+        </Button>
+        <Button
+          state="danger"
+          variant={state() === 'danger' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => state.set('danger')}
+        >
+          danger
+        </Button>
       </div>
       <div style="display: flex; gap: 8px; margin-bottom: 16px;">
-        <Button state="secondary" size="small" onClick={() => size.set('small')}>S</Button>
-        <Button state="secondary" size="small" onClick={() => size.set('medium')}>M</Button>
-        <Button state="secondary" size="small" onClick={() => size.set('large')}>L</Button>
+        <Button
+          state="secondary"
+          variant={size() === 'small' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => size.set('small')}
+        >
+          S
+        </Button>
+        <Button
+          state="secondary"
+          variant={size() === 'medium' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => size.set('medium')}
+        >
+          M
+        </Button>
+        <Button
+          state="secondary"
+          variant={size() === 'large' ? 'solid' : 'outline'}
+          size="small"
+          onClick={() => size.set('large')}
+        >
+          L
+        </Button>
       </div>
       <RsBadge state={state()} size={size()}>
         Reactive: {state() ?? 'default'}/{size()}

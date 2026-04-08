@@ -3,7 +3,7 @@ import { type Preset, presets } from '@pyreon/kinetic-presets'
 import { signal } from '@pyreon/reactivity'
 import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
-// Build all 122 preset components once
+// Build all 122 preset components once at module scope (stateless, OK to share)
 const presetComponents: Record<string, ReturnType<typeof kinetic>> = Object.fromEntries(
   Object.entries(presets).map(([name, preset]) => [name, kinetic('div').preset(preset as Preset)]),
 )
@@ -69,20 +69,14 @@ const PRESET_CATEGORIES: Array<{ name: string; items: string[] }> = [
   { name: 'Drop & Rise', items: ['drop', 'rise'] },
 ]
 
-// Build a single signal per preset (created once at module scope)
-const showSignals: Record<string, ReturnType<typeof signal<boolean>>> = {}
-for (const cat of PRESET_CATEGORIES) {
-  for (const name of cat.items) {
-    showSignals[name] = signal(true)
-  }
-}
-
 const cellStyle =
   'padding: 16px; background: #0070f3; color: white; border-radius: 6px; text-align: center; font-size: 11px; font-weight: 600; cursor: pointer;'
 
-function PresetCell(props: { name: string }) {
+type ShowsMap = Map<string, ReturnType<typeof signal<boolean>>>
+
+function PresetCell(props: { name: string; shows: ShowsMap }) {
   const Comp = presetComponents[props.name]
-  const sig = showSignals[props.name]
+  const sig = props.shows.get(props.name)
   if (!Comp || !sig) return null
   return (
     <Comp show={() => sig()} style={cellStyle} onClick={() => sig.set(!sig())}>
@@ -91,12 +85,14 @@ function PresetCell(props: { name: string }) {
   )
 }
 
-function CategorySection(props: { name: string; items: string[] }) {
+function CategorySection(props: { name: string; items: string[]; shows: ShowsMap }) {
   const open = signal(true)
+
   const toggleAll = () => {
-    const target = !props.items.every((n) => showSignals[n]?.())
-    for (const n of props.items) showSignals[n]?.set(target)
+    const target = !props.items.every((n) => props.shows.get(n)?.())
+    for (const n of props.items) props.shows.get(n)?.set(target)
   }
+
   return (
     <div style="margin-bottom: 24px;">
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
@@ -106,7 +102,9 @@ function CategorySection(props: { name: string; items: string[] }) {
           style="background: none; border: none; cursor: pointer; font-size: 16px; font-weight: 600; padding: 4px 0;"
         >
           {() => (open() ? '▼' : '▶')} {props.name}{' '}
-          <span style="font-size: 12px; color: #6b7280; font-weight: 400;">({props.items.length})</span>
+          <span style="font-size: 12px; color: #6b7280; font-weight: 400;">
+            ({props.items.length})
+          </span>
         </button>
         <Button state="secondary" size="small" onClick={toggleAll}>
           Toggle all
@@ -116,7 +114,7 @@ function CategorySection(props: { name: string; items: string[] }) {
         open() ? (
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;">
             {props.items.map((name) => (
-              <PresetCell name={name} />
+              <PresetCell name={name} shows={props.shows} />
             ))}
           </div>
         ) : null
@@ -126,25 +124,34 @@ function CategorySection(props: { name: string; items: string[] }) {
 }
 
 export function AnimationsGalleryDemo() {
+  // Component-scoped signal map (fresh per mount, HMR-safe)
+  const shows: ShowsMap = new Map()
+  for (const cat of PRESET_CATEGORIES) {
+    for (const name of cat.items) {
+      shows.set(name, signal(true))
+    }
+  }
+
   const totalCount = PRESET_CATEGORIES.reduce((sum, c) => sum + c.items.length, 0)
 
   const toggleAll = () => {
-    const target = !Object.values(showSignals).every((s) => s())
-    for (const s of Object.values(showSignals)) s.set(target)
+    const target = ![...shows.values()].every((s) => s())
+    for (const s of shows.values()) s.set(target)
   }
 
   return (
     <div>
       <Title size="h2" style="margin-bottom: 12px">Preset Gallery</Title>
       <Paragraph style="margin-bottom: 16px">
-        All <strong>{totalCount} presets</strong> from `@pyreon/kinetic-presets` in one place. Click any cell to toggle, or use category headers to expand/collapse and toggle a whole group.
+        All <strong>{totalCount} presets</strong> from `@pyreon/kinetic-presets` in one place.
+        Click any cell to toggle, or use category headers to expand/collapse and toggle a whole group.
       </Paragraph>
       <Button state="primary" onClick={toggleAll} style="margin-bottom: 24px;">
         Toggle ALL presets
       </Button>
 
       {PRESET_CATEGORIES.map((cat) => (
-        <CategorySection name={cat.name} items={cat.items} />
+        <CategorySection name={cat.name} items={cat.items} shows={shows} />
       ))}
     </div>
   )

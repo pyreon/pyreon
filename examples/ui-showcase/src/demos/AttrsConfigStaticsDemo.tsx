@@ -13,7 +13,7 @@ const Box = attrs({ name: 'Box', component: Element }).attrs({
 const Card = Box.config({ name: 'Card' }).attrs({ gap: 8 })
 const InfoCard = Card.config({ name: 'InfoCard' }).attrs({ gap: 12 })
 
-// 2. .statics() — attach metadata via .meta
+// 2. .statics() — attach metadata accessible via .meta
 const MetaBox = attrs({ name: 'MetaBox', component: Element })
   .attrs({ direction: 'rows', block: true })
   .statics({ category: 'layout', version: '2.0', tags: ['box', 'container'] })
@@ -22,7 +22,8 @@ const cardStyle = 'padding: 16px; background: #f3f4f6; border-radius: 8px; max-w
 
 export function AttrsConfigStaticsDemo() {
   const isAttrs = isAttrsComponent(Box)
-  const meta = (MetaBox as unknown as { meta: Record<string, unknown> }).meta
+  // .meta is a typed property on AttrsComponent — direct access, no cast needed
+  const meta = MetaBox.meta
 
   return (
     <div>
