@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { matchPattern } from '../entry-server'
 import {
   detectRouteExports,
@@ -175,52 +178,47 @@ describe('parseFileRoutes', () => {
 // ─── generateRouteModule ─────────────────────────────────────────────────────
 
 describe('generateRouteModule', () => {
+  // These tests pass synthetic file paths that don't exist on disk. The
+  // generator can't read them, so it treats them as having no metadata
+  // exports and emits the optimal `lazy()` shape (one dynamic import per
+  // route, no static metadata wiring). Tests that need metadata wiring use
+  // `generateRouteModuleFromRoutes` directly with explicit exports.
+
   it('generates valid module code', () => {
     const code = generateRouteModule(['index.tsx', 'about.tsx'], '/src/routes')
     expect(code).toContain('export const routes')
     expect(code).toContain('path: "/"')
     expect(code).toContain('path: "/about"')
-    // No more lazy import — all routes are statically imported
-    expect(code).not.toContain('import { lazy }')
   })
 
-  it('imports route modules for loader/guard/meta access', () => {
+  it('uses lazy() for routes when files cannot be read', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    // Should have module import for accessing loader, guard, meta
-    expect(code).toContain('import * as')
+    expect(code).toContain('import { lazy }')
+    expect(code).toContain('lazy(() => import("/src/routes/index.tsx"))')
   })
 
-  it('uses single static import for component and module exports', () => {
+  it('emits no `import * as` when no metadata is detected', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    // Component is now `mod.default` from a single `import * as mod` —
-    // avoids INEFFECTIVE_DYNAMIC_IMPORT warning from importing same file twice.
-    expect(code).toContain('import * as')
-    expect(code).toContain('.default')
-    // No more lazy() calls
-    expect(code).not.toContain('lazy(')
+    expect(code).not.toContain('import * as')
   })
 
-  it('wires up loader from module via _pick helper', () => {
+  it('emits no _pick helper', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('loader: _pick(')
-    expect(code).toContain('"loader"')
+    expect(code).not.toContain('_pick')
+    expect(code).not.toContain('function _pick')
   })
 
-  it('wires up guard as beforeEnter via _pick helper', () => {
+  it('emits no metadata wiring when files cannot be read', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('beforeEnter: _pick(')
-    expect(code).toContain('"guard"')
-  })
-
-  it('wires up meta from module via _pick helper', () => {
-    const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('meta: { ..._pick(')
-    expect(code).toContain('"meta"')
+    expect(code).not.toContain('loader:')
+    expect(code).not.toContain('beforeEnter:')
+    expect(code).not.toContain('meta:')
   })
 
   it('wraps routes in layout when _layout exists', () => {
     const code = generateRouteModule(['_layout.tsx', 'index.tsx', 'about.tsx'], '/src/routes')
     expect(code).toContain('children:')
+    expect(code).toContain('import { layout as')
   })
 
   it('wires error component from _error.tsx', () => {
@@ -230,9 +228,8 @@ describe('generateRouteModule', () => {
 
   it('imports loading component from _loading.tsx', () => {
     const code = generateRouteModule(['_loading.tsx', 'index.tsx'], '/src/routes')
-    // Static-imports refactor: loading component is still imported and
-    // available; the previous lazy({ loading }) wiring was removed when
-    // we eliminated dynamic imports to fix INEFFECTIVE_DYNAMIC_IMPORT warnings.
+    // The _loading file gets imported as the loading fallback for any
+    // lazy() route in the same tree node.
     expect(code).toContain('_loading')
   })
 
@@ -257,7 +254,6 @@ describe('generateRouteModule', () => {
       ],
       '/src/routes',
     )
-    // Should have nested children structures
     expect(code).toContain('children:')
   })
 
@@ -269,19 +265,6 @@ describe('generateRouteModule', () => {
   it('includes clean() helper to strip undefined props', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
     expect(code).toContain('function clean(routes)')
-  })
-
-  it('wires renderMode into route meta', () => {
-    const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('"renderMode"')
-    expect(code).toMatch(/meta:.*renderMode/)
-  })
-
-  it('wires renderMode in layout routes', () => {
-    const code = generateRouteModule(['_layout.tsx', 'index.tsx'], '/src/routes')
-    // Both layout and page should have renderMode in meta
-    const matches = code.match(/renderMode/g)
-    expect(matches?.length).toBeGreaterThanOrEqual(2)
   })
 
   it('wires notFoundComponent from _404.tsx', () => {
@@ -303,6 +286,107 @@ describe('generateRouteModule', () => {
   it('does not include notFoundComponent when no _404 exists', () => {
     const code = generateRouteModule(['index.tsx', 'about.tsx'], '/src/routes')
     expect(code).not.toContain('notFoundComponent:')
+  })
+})
+
+// ─── generateRouteModule with real fixture files ───────────────────────────
+//
+// End-to-end coverage of the file-reading path: write actual route files
+// to a temp dir and verify the generator detects metadata exports and emits
+// the optimal shape (lazy() for routes without metadata, namespace import
+// for routes with metadata, no _pick anywhere).
+
+describe('generateRouteModule (real files)', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pyreon-zero-fs-router-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  function write(filePath: string, source: string) {
+    const full = join(dir, filePath)
+    mkdirSync(join(full, '..'), { recursive: true })
+    writeFileSync(full, source, 'utf-8')
+  }
+
+  it('emits lazy() for files with no metadata exports', () => {
+    write('index.tsx', `export default function Home() { return null }`)
+    const code = generateRouteModule(['index.tsx'], dir)
+    expect(code).toContain('import { lazy }')
+    expect(code).toContain('lazy(() => import(')
+    expect(code).not.toContain('import * as')
+    expect(code).not.toContain('_pick')
+  })
+
+  it('emits namespace import for files with detected metadata', () => {
+    write(
+      'dashboard.tsx',
+      `export const loader = async () => ({})\nexport default function Dashboard() { return null }`,
+    )
+    const code = generateRouteModule(['dashboard.tsx'], dir)
+    expect(code).toContain('import * as')
+    expect(code).toMatch(/loader: _m\d+\.loader/)
+    expect(code).not.toContain('_pick')
+    expect(code).not.toContain('lazy(')
+  })
+
+  it('mixes lazy() and namespace imports across files', () => {
+    write('home.tsx', `export default function Home() { return null }`)
+    write(
+      'admin.tsx',
+      `export const meta = { title: 'Admin' }\nexport default function Admin() { return null }`,
+    )
+    const code = generateRouteModule(['home.tsx', 'admin.tsx'], dir)
+    expect(code).toContain('lazy(() => import(')
+    expect(code).toContain('import * as')
+    expect(code).toMatch(/meta: \{ \.\.\._m\d+\.meta \}/)
+    expect(code).not.toContain('_pick')
+  })
+
+  it('detects every supported metadata export name', () => {
+    write(
+      'page.tsx',
+      `
+export const loader = async () => ({})
+export const guard = () => true
+export const meta = { title: 'Page' }
+export const renderMode = 'ssg'
+export const error = function ErrorBoundary() { return null }
+export const middleware = () => undefined
+export default function Page() { return null }
+      `,
+    )
+    const code = generateRouteModule(['page.tsx'], dir)
+    expect(code).toMatch(/loader: _m\d+\.loader/)
+    expect(code).toMatch(/beforeEnter: _m\d+\.guard/)
+    expect(code).toMatch(/meta: \{ \.\.\._m\d+\.meta, renderMode: _m\d+\.renderMode \}/)
+    expect(code).not.toContain('_pick')
+  })
+
+  it('layout with metadata uses single namespace import', () => {
+    write(
+      '_layout.tsx',
+      `export const loader = async () => ({})\nexport function layout({ children }) { return children }`,
+    )
+    write('index.tsx', `export default function Home() { return null }`)
+    const code = generateRouteModule(['_layout.tsx', 'index.tsx'], dir)
+    // Layout has metadata → namespace import covers both `.layout` and `.loader`
+    expect(code).toMatch(/component: _m\d+\.layout/)
+    expect(code).toMatch(/loader: _m\d+\.loader/)
+    expect(code).not.toContain('import { layout as')
+    expect(code).not.toContain('_pick')
+  })
+
+  it('layout without metadata uses named layout import', () => {
+    write('_layout.tsx', `export function layout({ children }) { return children }`)
+    write('index.tsx', `export default function Home() { return null }`)
+    const code = generateRouteModule(['_layout.tsx', 'index.tsx'], dir)
+    expect(code).toContain('import { layout as')
+    expect(code).not.toContain('_pick')
   })
 })
 
@@ -372,31 +456,6 @@ describe('matchPattern', () => {
 
   it('matches nested dynamic paths', () => {
     expect(matchPattern('/users/:id/settings', '/users/42/settings')).toBe(true)
-  })
-})
-
-// ─── back-compat path (unknown exports) ────────────────────────────────────
-
-describe('generateRouteModule — back-compat (unknown exports)', () => {
-  it('uses static import * with _pick helper when exports unknown', () => {
-    const files = ['index.tsx']
-    const result = generateRouteModule(files, './routes')
-    // Pessimistic shape: namespace import + _pick for safety
-    expect(result).toContain('import * as')
-    expect(result).toContain('_pick(')
-    expect(result).not.toContain('lazy(')
-  })
-
-  it('does not emit errorComponent without _error file', () => {
-    const files = ['index.tsx', 'about.tsx']
-    const result = generateRouteModule(files, './routes')
-    expect(result).not.toContain('.error')
-  })
-
-  it('emits errorComponent when _error file exists', () => {
-    const files = ['index.tsx', '_error.tsx']
-    const result = generateRouteModule(files, './routes')
-    expect(result).toContain('errorComponent')
   })
 })
 
@@ -612,6 +671,87 @@ describe('detectRouteExports', () => {
       export const meta = { title: 'Page' }
       export const renderMode = 'ssg'
       export default function Page() {}
+    `)
+    expect(result.hasLoader).toBe(true)
+    expect(result.hasMeta).toBe(true)
+    expect(result.hasRenderMode).toBe(true)
+    expect(result.hasGuard).toBe(false)
+  })
+
+  it('detects export list: export { loader, meta }', () => {
+    const result = detectRouteExports(`
+      const loader = async () => {}
+      const meta = { title: 'Page' }
+      export { loader, meta }
+      export default function Page() {}
+    `)
+    expect(result.hasLoader).toBe(true)
+    expect(result.hasMeta).toBe(true)
+  })
+
+  it('detects export list with rename: export { foo as loader }', () => {
+    const result = detectRouteExports(`
+      const foo = async () => {}
+      export { foo as loader }
+      export default function Page() {}
+    `)
+    expect(result.hasLoader).toBe(true)
+  })
+
+  it('ignores exports inside string literals', () => {
+    const result = detectRouteExports(`
+      const x = "export const loader = () => {}"
+      const y = 'export const meta = {}'
+      export default function Page() { return null }
+    `)
+    expect(result.hasLoader).toBe(false)
+    expect(result.hasMeta).toBe(false)
+  })
+
+  it('ignores exports inside template literals', () => {
+    const result = detectRouteExports(`
+      const x = \`export const loader = () => {}\`
+      export default function Page() { return null }
+    `)
+    expect(result.hasLoader).toBe(false)
+  })
+
+  it('ignores exports inside template literal expression slots', () => {
+    // Tricky: \`\${export}\` shouldn't trigger anything either
+    const result = detectRouteExports(`
+      const code = \`\${'export const loader = () => {}'}\`
+      export default function Page() { return null }
+    `)
+    expect(result.hasLoader).toBe(false)
+  })
+
+  it('ignores exports inside nested function bodies (brace depth > 0)', () => {
+    const result = detectRouteExports(`
+      function generate() {
+        const code = "export const loader = () => {}"
+      }
+      export default function Page() { return null }
+    `)
+    expect(result.hasLoader).toBe(false)
+  })
+
+  it('still works with real-world route file shape', () => {
+    const result = detectRouteExports(`
+import type { LoaderContext } from '@pyreon/zero'
+
+export async function loader(ctx: LoaderContext) {
+  return { data: [] }
+}
+
+export const meta = {
+  title: 'Posts',
+}
+
+export const renderMode = 'ssg'
+
+export default function PostsPage() {
+  return <div>Posts</div>
+}
     `)
     expect(result.hasLoader).toBe(true)
     expect(result.hasMeta).toBe(true)

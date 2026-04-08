@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 
 // ─── File-system route conventions ──────────────────────────────────────────
@@ -30,51 +32,285 @@ import type { FileRoute, RenderMode, RouteFileExports } from './types'
 
 const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
 
+/** Names whose top-level export presence we care about. */
+const ROUTE_EXPORT_NAMES = [
+  'loader',
+  'guard',
+  'meta',
+  'renderMode',
+  'error',
+  'middleware',
+] as const
+
+type RouteExportName = (typeof ROUTE_EXPORT_NAMES)[number]
+
 /**
- * Detect which optional metadata exports a route file source contains.
- * Uses regex (not full AST parsing) — we only need to know IF a top-level
- * `export const X` / `export function X` / `export async function X`
- * exists for the recognized names. False positives are harmless: the
- * code generator will emit references to exports that exist.
+ * Detect which optional metadata exports a route file source declares.
  *
- * Names checked: loader, guard, meta, renderMode, error, middleware
+ * Walks the source character-by-character, tracking string-literal and
+ * comment state, then collects top-level `export …` statements. This is
+ * more accurate than regex (no false matches inside string literals,
+ * template literals, or comments) and lighter than a full AST parse
+ * (no oxc/babel dependency, ~1µs per file).
+ *
+ * Recognizes:
+ *   • `export const NAME = …`
+ *   • `export let NAME = …`
+ *   • `export var NAME = …`
+ *   • `export function NAME(…)`
+ *   • `export async function NAME(…)`
+ *   • `export { NAME }` and `export { localName as NAME }`
+ *   • `export { NAME } from '…'` (re-export)
+ *
+ * Names checked: loader, guard, meta, renderMode, error, middleware.
  */
 export function detectRouteExports(source: string): RouteFileExports {
-  // Strip line comments and block comments to avoid matching inside them.
-  // Cheap pass — not perfect (string literals containing `export const meta`
-  // would slip through) but good enough since false positives are harmless.
-  const stripped = source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '')
+  const found = new Set<RouteExportName>()
+  const tokens = scanTopLevelExportTokens(source)
 
-  const hasNamedExport = (name: string): boolean => {
-    // Match `export const NAME`, `export let NAME`, `export var NAME`,
-    // `export function NAME`, `export async function NAME` at start of line
-    // (allowing leading whitespace).
-    const re = new RegExp(
-      `^\\s*export\\s+(?:async\\s+)?(?:const|let|var|function)\\s+${name}\\b`,
-      'm',
-    )
-    return re.test(stripped)
+  for (const tok of tokens) {
+    if (tok.kind === 'declaration') {
+      // `export const NAME` / `export function NAME`
+      if ((ROUTE_EXPORT_NAMES as readonly string[]).includes(tok.name)) {
+        found.add(tok.name as RouteExportName)
+      }
+    } else {
+      // `export { localName as exportedName, ... }`
+      for (const name of tok.names) {
+        if ((ROUTE_EXPORT_NAMES as readonly string[]).includes(name)) {
+          found.add(name as RouteExportName)
+        }
+      }
+    }
   }
 
   return {
-    hasLoader: hasNamedExport('loader'),
-    hasGuard: hasNamedExport('guard'),
-    hasMeta: hasNamedExport('meta'),
-    hasRenderMode: hasNamedExport('renderMode'),
-    hasError: hasNamedExport('error'),
-    hasMiddleware: hasNamedExport('middleware'),
+    hasLoader: found.has('loader'),
+    hasGuard: found.has('guard'),
+    hasMeta: found.has('meta'),
+    hasRenderMode: found.has('renderMode'),
+    hasError: found.has('error'),
+    hasMiddleware: found.has('middleware'),
   }
 }
 
 /**
- * True if a route file declares ANY metadata export.
- * Used by the code generator to decide whether to emit `import * as mod`
- * (for metadata access) alongside the lazy() component import.
+ * Lightweight tokenizer for the export forms detectRouteExports cares about.
+ * Returns an array of either:
+ *   • `{ kind: 'declaration', name }` — `export const NAME = …`
+ *   • `{ kind: 'list', names }`        — `export { NAME, other as NAME2 }`
+ *
+ * Only top-level statements (brace depth 0) are considered. String literals,
+ * template literals, and comments are skipped so their contents can't trigger
+ * false matches.
  */
-export function hasAnyMetaExport(exports: RouteFileExports | undefined): boolean {
-  if (!exports) return true // unknown — assume yes for back-compat safety
+type ExportToken =
+  | { kind: 'declaration'; name: string }
+  | { kind: 'list'; names: string[] }
+
+function scanTopLevelExportTokens(source: string): ExportToken[] {
+  const tokens: ExportToken[] = []
+  const len = source.length
+  let i = 0
+  let depth = 0 // brace depth — we only care about top-level (depth 0)
+
+  // Identifier characters used to skip past names and to validate that
+  // a match isn't a substring of a longer identifier.
+  const isIdStart = (c: string) => /[A-Za-z_$]/.test(c)
+  const isIdCont = (c: string) => /[A-Za-z0-9_$]/.test(c)
+
+  // Read an identifier starting at position p; returns [name, nextPos] or null.
+  const readIdentifier = (p: number): [string, number] | null => {
+    if (p >= len || !isIdStart(source[p] as string)) return null
+    let end = p + 1
+    while (end < len && isIdCont(source[end] as string)) end++
+    return [source.slice(p, end), end]
+  }
+
+  // Skip whitespace including newlines.
+  const skipWs = (p: number): number => {
+    while (p < len && /\s/.test(source[p] as string)) p++
+    return p
+  }
+
+  // Match the literal `keyword` at position p, requiring an identifier
+  // boundary on both sides. Returns nextPos or -1.
+  const matchKeyword = (p: number, keyword: string): number => {
+    if (source.slice(p, p + keyword.length) !== keyword) return -1
+    const after = p + keyword.length
+    if (after < len && isIdCont(source[after] as string)) return -1
+    if (p > 0 && isIdCont(source[p - 1] as string)) return -1
+    return after
+  }
+
+  while (i < len) {
+    const ch = source[i] as string
+    const next = source[i + 1] ?? ''
+
+    // ── Comments ──────────────────────────────────────────────────────
+    if (ch === '/' && next === '/') {
+      // Line comment — skip to newline
+      while (i < len && source[i] !== '\n') i++
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      // Block comment — skip to closing */
+      i += 2
+      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+
+    // ── String / template literals ────────────────────────────────────
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      i++
+      while (i < len && source[i] !== quote) {
+        if (source[i] === '\\') i += 2
+        else i++
+      }
+      i++
+      continue
+    }
+    if (ch === '`') {
+      // Template literal — skip to closing backtick, handling ${...} blocks
+      i++
+      while (i < len && source[i] !== '`') {
+        if (source[i] === '\\') {
+          i += 2
+          continue
+        }
+        if (source[i] === '$' && source[i + 1] === '{') {
+          // Skip a balanced ${ ... } expression
+          i += 2
+          let exprDepth = 1
+          while (i < len && exprDepth > 0) {
+            const c = source[i] as string
+            if (c === '{') exprDepth++
+            else if (c === '}') exprDepth--
+            if (exprDepth === 0) {
+              i++
+              break
+            }
+            i++
+          }
+          continue
+        }
+        i++
+      }
+      i++
+      continue
+    }
+
+    // ── Brace depth tracking ──────────────────────────────────────────
+    if (ch === '{') {
+      depth++
+      i++
+      continue
+    }
+    if (ch === '}') {
+      depth--
+      i++
+      continue
+    }
+
+    // ── `export …` at top level ──────────────────────────────────────
+    if (depth === 0 && ch === 'e') {
+      const afterExport = matchKeyword(i, 'export')
+      if (afterExport > 0) {
+        // Found `export` token at top level. Look at what follows.
+        let p = skipWs(afterExport)
+
+        // `export default …` — not a named export we care about
+        const afterDefault = matchKeyword(p, 'default')
+        if (afterDefault > 0) {
+          i = afterDefault
+          continue
+        }
+
+        // `export { … }` (export list, possibly followed by `from '…'`)
+        if (source[p] === '{') {
+          p++
+          const names: string[] = []
+          while (p < len && source[p] !== '}') {
+            p = skipWs(p)
+            if (source[p] === '}') break
+            const id = readIdentifier(p)
+            if (!id) {
+              p++
+              continue
+            }
+            const [first, afterFirst] = id
+            // `localName as exportedName` — the EXPORTED name is what counts
+            let exportedName = first
+            const afterFirstWs = skipWs(afterFirst)
+            const afterAs = matchKeyword(afterFirstWs, 'as')
+            if (afterAs > 0) {
+              const aliasStart = skipWs(afterAs)
+              const alias = readIdentifier(aliasStart)
+              if (alias) {
+                exportedName = alias[0]
+                p = alias[1]
+              } else {
+                p = afterFirst
+              }
+            } else {
+              p = afterFirst
+            }
+            names.push(exportedName)
+            p = skipWs(p)
+            if (source[p] === ',') p++
+          }
+          tokens.push({ kind: 'list', names })
+          i = p + 1 // past closing brace
+          continue
+        }
+
+        // `export async function NAME …`
+        const afterAsync = matchKeyword(p, 'async')
+        if (afterAsync > 0) p = skipWs(afterAsync)
+
+        // `export const | let | var | function NAME …`
+        for (const kw of ['const', 'let', 'var', 'function'] as const) {
+          const afterKw = matchKeyword(p, kw)
+          if (afterKw > 0) {
+            const nameStart = skipWs(afterKw)
+            const id = readIdentifier(nameStart)
+            if (id) {
+              tokens.push({ kind: 'declaration', name: id[0] })
+              i = id[1]
+              break
+            }
+          }
+        }
+        // If we didn't break out of the loop above, fall through and advance.
+        i = afterExport
+        continue
+      }
+    }
+
+    i++
+  }
+
+  return tokens
+}
+
+/** All-false exports record. Used when source detection fails. */
+const EMPTY_EXPORTS: RouteFileExports = {
+  hasLoader: false,
+  hasGuard: false,
+  hasMeta: false,
+  hasRenderMode: false,
+  hasError: false,
+  hasMiddleware: false,
+}
+
+/**
+ * True if a route file declares ANY metadata export.
+ * Used by the code generator to decide whether to emit a static
+ * `import * as mod` (for metadata access) instead of lazy().
+ */
+export function hasAnyMetaExport(exports: RouteFileExports): boolean {
   return (
     exports.hasLoader ||
     exports.hasGuard ||
@@ -291,21 +527,32 @@ export function generateRouteModule(
   routesDir: string,
   options?: GenerateRouteModuleOptions,
 ): string {
-  // NOTE: When `files` is `string[]` (back-compat caller path), no per-file
-  // export info is known, so the generator falls back to `_pick(mod, "key")`
-  // for metadata access (avoiding IMPORT_IS_UNDEFINED warnings) and uses
-  // a single static `import * as mod` for everything.
+  // Synchronously read each route file's source and detect its optional
+  // metadata exports. This produces the optimal shape every time:
+  //   • `lazy(() => import(...))` for routes with no metadata
+  //   • Direct `mod.loader`/`.guard`/`.meta` for routes with metadata
+  //   • Zero `IMPORT_IS_UNDEFINED` and zero `INEFFECTIVE_DYNAMIC_IMPORT` warnings
   //
-  // When the caller pre-detects exports via `parseFileRoutesWithExports`
-  // and passes them through (or uses the async `scanRouteFiles` pipeline),
-  // each FileRoute carries `.exports` and the generator emits the optimal
-  // shape:
-  //   • `lazy(() => import(...))` for the component (code splitting!)
-  //   • `import * as mod` ONLY when metadata exports are detected
-  //   • Direct `mod.loader` access (no _pick) since we know it exists
-  //   • No imports at all for routes that only export `default` other
-  //     than the lazy() component import
-  return generateRouteModuleFromRoutes(parseFileRoutes(files), routesDir, options)
+  // If a file can't be read (e.g. caller passing synthetic paths), the
+  // FileRoute gets EMPTY_EXPORTS — the generator emits the same lazy()
+  // shape used for routes that genuinely have no metadata. Callers that
+  // need metadata wiring with synthetic paths should use
+  // `generateRouteModuleFromRoutes()` directly with explicit exports.
+  const exportsMap = new Map<string, RouteFileExports>()
+  for (const filePath of files) {
+    if (!ROUTE_EXTENSIONS.some((ext) => filePath.endsWith(ext))) continue
+    try {
+      const source = readFileSync(join(routesDir, filePath), 'utf-8')
+      exportsMap.set(filePath, detectRouteExports(source))
+    } catch {
+      exportsMap.set(filePath, EMPTY_EXPORTS)
+    }
+  }
+  return generateRouteModuleFromRoutes(
+    parseFileRoutes(files, undefined, exportsMap),
+    routesDir,
+    options,
+  )
 }
 
 /**
@@ -323,10 +570,6 @@ export function generateRouteModuleFromRoutes(
   let importCounter = 0
   const useStaticOnly = options?.staticImports ?? false
 
-  // Track whether we need _pick at all (only for back-compat path with
-  // unknown exports). If every route knows its exports, _pick is unused
-  // and we skip emitting the helper.
-  let needsPickHelper = false
   // Track whether we need lazy() at all (omitted in static-only mode and
   // when there are no routes that use it).
   let needsLazyImport = false
@@ -368,73 +611,14 @@ export function generateRouteModuleFromRoutes(
     errorName: string | undefined,
     notFoundName: string | undefined,
   ): string {
-    const exp = page.exports
+    const exp = page.exports ?? EMPTY_EXPORTS
     const props: string[] = [`${indent}  path: ${JSON.stringify(page.urlPath)}`]
+    const hasMeta = hasAnyMetaExport(exp)
 
     if (useStaticOnly) {
-      // SSG / static mode: bundle everything synchronously, single import.
-      if (exp === undefined) {
-        // Unknown exports — emit the safe pessimistic shape with _pick
-        const mod = nextModuleImport(page.filePath)
-        needsPickHelper = true
-        props.push(`${indent}  component: ${mod}.default`)
-        props.push(`${indent}  loader: _pick(${mod}, "loader")`)
-        props.push(`${indent}  beforeEnter: _pick(${mod}, "guard")`)
-        props.push(
-          `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
-        )
-        if (errorName) {
-          props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
-        }
-      } else {
-        // Known exports — emit only what exists, direct access
-        if (hasAnyMetaExport(exp)) {
-          const mod = nextModuleImport(page.filePath)
-          props.push(`${indent}  component: ${mod}.default`)
-          if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
-          if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
-          if (exp.hasMeta || exp.hasRenderMode) {
-            const metaParts: string[] = []
-            if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
-            if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
-            props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
-          }
-          if (errorName) {
-            const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
-            props.push(`${indent}  errorComponent: ${errorRef}`)
-          }
-        } else {
-          // No metadata at all — single static default import
-          const comp = nextImport(page.filePath, 'default')
-          props.push(`${indent}  component: ${comp}`)
-          if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
-        }
-      }
-    } else {
-      // SSR/SPA mode: use lazy() for the component (code splitting).
-      // Only add a static `import * as` if metadata exports exist.
-      if (exp === undefined) {
-        // Unknown exports — pessimistic shape: dual import (one warning)
-        // OR static-only with _pick. We choose static-only with _pick here
-        // because Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning is louder
-        // than losing per-route code splitting for back-compat callers.
-        const mod = nextModuleImport(page.filePath)
-        needsPickHelper = true
-        props.push(`${indent}  component: ${mod}.default`)
-        props.push(`${indent}  loader: _pick(${mod}, "loader")`)
-        props.push(`${indent}  beforeEnter: _pick(${mod}, "guard")`)
-        props.push(
-          `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
-        )
-        if (errorName) {
-          props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
-        }
-      } else if (hasAnyMetaExport(exp)) {
-        // Has metadata — needs both static module (for metadata) AND lazy
-        // for the component. This produces the dual-import collision, so
-        // we fall back to static-only for this route. The metadata access
-        // is critical (loader runs server-side); the component will still
-        // be tree-shaken into the appropriate chunk by Rolldown's chunking.
+      // SSG / static mode: bundle everything synchronously, no lazy().
+      if (hasMeta) {
+        // Single namespace import covers component AND metadata.
         const mod = nextModuleImport(page.filePath)
         props.push(`${indent}  component: ${mod}.default`)
         if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
@@ -450,8 +634,33 @@ export function generateRouteModuleFromRoutes(
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
-        // No metadata — pure lazy() for code splitting, no metadata import.
-        // This is the optimal path: single dynamic import per route.
+        // No metadata — single static default import.
+        const comp = nextImport(page.filePath, 'default')
+        props.push(`${indent}  component: ${comp}`)
+        if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
+      }
+    } else {
+      // SSR/SPA mode: lazy() for code splitting unless metadata exists.
+      if (hasMeta) {
+        // Static `import * as` for metadata access. The dual import would
+        // collide, so we use the namespace import for the component too —
+        // Rolldown's chunker still puts each route in its own chunk.
+        const mod = nextModuleImport(page.filePath)
+        props.push(`${indent}  component: ${mod}.default`)
+        if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
+        if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
+        if (exp.hasMeta || exp.hasRenderMode) {
+          const metaParts: string[] = []
+          if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
+          if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
+          props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
+        }
+        if (errorName) {
+          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+          props.push(`${indent}  errorComponent: ${errorRef}`)
+        }
+      } else {
+        // No metadata — pure lazy() for code splitting.
         const comp = nextLazy(page.filePath, loadingName, errorName)
         props.push(`${indent}  component: ${comp}`)
         if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
@@ -473,25 +682,22 @@ export function generateRouteModuleFromRoutes(
     notFoundName: string | undefined,
   ): string {
     const layout = node.layout as FileRoute
-    const exp = layout.exports
+    const exp = layout.exports ?? EMPTY_EXPORTS
+    const hasMeta = hasAnyMetaExport(exp)
 
     // Decide between two import shapes:
     //   • Layout HAS metadata exports → single `import * as mod` for both
     //     the layout component (mod.layout) AND metadata. One import.
     //   • Layout has NO metadata → just `import { layout as _N }`. One import.
-    //   • Back-compat (unknown exports) → `import { layout as _N }` +
-    //     `import * as mod` for _pick metadata. Two imports of same file
-    //     (both static, no dynamic-vs-static collision).
     let layoutComp: string
     let layoutMod: string | undefined
 
-    if (exp !== undefined && hasAnyMetaExport(exp)) {
+    if (hasMeta) {
       // Single namespace import covers both component and metadata.
       layoutMod = nextModuleImport(layout.filePath)
       layoutComp = `${layoutMod}.layout`
     } else {
-      // Either no metadata at all, or unknown exports. Either way we need
-      // the named `layout` import for the component.
+      // No metadata — named `layout` import is enough.
       layoutComp = nextImport(layout.filePath, 'layout')
     }
 
@@ -500,17 +706,7 @@ export function generateRouteModuleFromRoutes(
       `${indent}component: ${layoutComp}`,
     ]
 
-    if (exp === undefined) {
-      // Back-compat: pessimistic with _pick
-      const mod = nextModuleImport(layout.filePath)
-      needsPickHelper = true
-      props.push(`${indent}loader: _pick(${mod}, "loader")`)
-      props.push(`${indent}beforeEnter: _pick(${mod}, "guard")`)
-      props.push(
-        `${indent}meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
-      )
-    } else if (layoutMod !== undefined) {
-      // Known metadata — direct access via the same namespace import
+    if (layoutMod !== undefined) {
       if (exp.hasLoader) props.push(`${indent}loader: ${layoutMod}.loader`)
       if (exp.hasGuard) props.push(`${indent}beforeEnter: ${layoutMod}.guard`)
       if (exp.hasMeta || exp.hasRenderMode) {
@@ -520,8 +716,6 @@ export function generateRouteModuleFromRoutes(
         props.push(`${indent}meta: { ${metaParts.join(', ')} }`)
       }
     }
-    // If layout has no metadata exports, we don't emit any metadata
-    // props at all — the `clean()` helper drops undefined props anyway.
 
     if (errorName) {
       props.push(`${indent}errorComponent: ${errorName}`)
@@ -568,16 +762,6 @@ export function generateRouteModuleFromRoutes(
   const lines: string[] = []
   if (needsLazyImport) lines.push(`import { lazy } from "@pyreon/router"`, '')
   lines.push(...imports, '')
-
-  if (needsPickHelper) {
-    lines.push(
-      // Read optional module exports via bracket access. Hides them from
-      // Rolldown's static export analysis so it doesn't warn about routes
-      // that don't export `loader`, `guard`, `meta`, etc.
-      `function _pick(mod, key) { return mod[key] }`,
-      '',
-    )
-  }
 
   lines.push(
     // Filter out undefined properties at runtime
@@ -631,7 +815,7 @@ export function generateMiddlewareModule(files: string[], routesDir: string): st
  */
 export async function scanRouteFiles(routesDir: string): Promise<string[]> {
   const { readdir } = await import('node:fs/promises')
-  const { join, relative } = await import('node:path')
+  const { relative } = await import('node:path')
 
   const files: string[] = []
 
@@ -666,7 +850,6 @@ export async function scanRouteFilesWithExports(
   defaultMode: RenderMode = 'ssr',
 ): Promise<FileRoute[]> {
   const { readFile } = await import('node:fs/promises')
-  const { join } = await import('node:path')
 
   const files = await scanRouteFiles(routesDir)
   const exportsMap = new Map<string, RouteFileExports>()
@@ -677,8 +860,9 @@ export async function scanRouteFilesWithExports(
         const source = await readFile(join(routesDir, filePath), 'utf-8')
         exportsMap.set(filePath, detectRouteExports(source))
       } catch {
-        // If a file can't be read, leave its exports unset — the generator
-        // will fall back to the pessimistic _pick path for that route.
+        // File can't be read — generator treats this as no metadata
+        // and emits the optimal lazy() shape.
+        exportsMap.set(filePath, EMPTY_EXPORTS)
       }
     }),
   )

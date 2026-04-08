@@ -135,10 +135,11 @@ export interface FileRoute {
   renderMode: RenderMode
   /**
    * Detected optional exports from the file source.
-   * When undefined (back-compat), the generator pessimistically assumes
-   * all metadata exports MAY exist and emits the safe `_pick(mod, ...)` pattern.
-   * When provided, the generator emits only the exports that exist
-   * AND can use lazy() for the component since there's no dual-import.
+   * When undefined, the generator treats the file as having no metadata
+   * exports and emits the optimal `lazy()` shape (one dynamic import,
+   * no static metadata wiring). When provided, the generator emits a
+   * single namespace import for files with metadata or `lazy()` for
+   * files with only a default export.
    */
   exports?: RouteFileExports
 }
