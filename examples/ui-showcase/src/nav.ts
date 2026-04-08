@@ -19,6 +19,7 @@ export const navGroups = [
       { path: '/divider', label: 'Divider' },
       { path: '/breadcrumb', label: 'Breadcrumb' },
       { path: '/buttongroup', label: 'ButtonGroup' },
+      { path: '/grid', label: 'Grid (coolgrid)' },
     ],
   },
   {
@@ -75,6 +76,42 @@ export const navGroups = [
       { path: '/modal', label: 'Modal' },
       { path: '/table', label: 'Table' },
       { path: '/tree', label: 'Tree' },
+    ],
+  },
+  {
+    label: 'Animations',
+    items: [
+      { path: '/animations/basic', label: 'Basic Presets' },
+      { path: '/animations/stagger', label: 'Stagger' },
+      { path: '/animations/collapse', label: 'Collapse' },
+      { path: '/animations/group', label: 'Group (lists)' },
+      { path: '/animations/factories', label: 'Factories' },
+      { path: '/animations/compositions', label: 'Compositions' },
+      { path: '/animations/gallery', label: 'Preset Gallery (122)' },
+      { path: '/animations/modal-pattern', label: 'Modal Pattern' },
+      { path: '/animations/toast-pattern', label: 'Toast Pattern' },
+      { path: '/animations/tab-pattern', label: 'Tab Cross-fade' },
+    ],
+  },
+  {
+    label: 'Hooks',
+    items: [
+      { path: '/hooks/interaction', label: 'Interaction' },
+      { path: '/hooks/state', label: 'State' },
+      { path: '/hooks/dom', label: 'DOM Observers' },
+      { path: '/hooks/responsive', label: 'Responsive & A11y' },
+    ],
+  },
+  {
+    label: 'Architecture',
+    items: [
+      { path: '/elements', label: 'Elements' },
+      { path: '/styler', label: 'Styler (CSS-in-JS)' },
+      { path: '/composition/rocketstyle', label: 'Rocketstyle (raw)' },
+      { path: '/composition/attrs-basic', label: 'Attrs — Basic' },
+      { path: '/composition/attrs-callbacks', label: 'Attrs — Callbacks' },
+      { path: '/composition/attrs-config', label: 'Attrs — Config' },
+      { path: '/composition/attrs-compose', label: 'Attrs — Compose' },
     ],
   },
 ]
