@@ -35,9 +35,9 @@ export const sections: Section[] = [
   {
     path: '/blog',
     label: 'Blog',
-    tagline: 'Markdown blog with tags, RSS, sitemap, OG images',
-    features: ['zero ssg', 'head', 'document', 'file routing', 'loaders'],
-    available: false,
+    tagline: 'Tag-filtered post list with dynamic routes, loaders, and per-post head meta',
+    features: ['zero ssg', 'head', 'router loaders', 'file routing', 'url-state'],
+    available: true,
     group: 'apps',
   },
   {
