@@ -1,7 +1,7 @@
 {
   "framework": "pyreon",
   "version": "workspace:*",
-  "generatedAt": "2026-04-08T10:41:28.911Z",
+  "generatedAt": "2026-04-08T11:08:48.225Z",
   "routes": [],
   "components": [
     {
@@ -46,6 +46,56 @@
       "signalNames": [
         "color"
       ],
+      "props": []
+    },
+    {
+      "name": "AnimationsToastPatternDemo",
+      "file": "src/demos/AnimationsToastPatternDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "toasts"
+      ],
+      "props": []
+    },
+    {
+      "name": "Box",
+      "file": "src/demos/AttrsBasicDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "Badge",
+      "file": "src/demos/AttrsBasicDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "AttrsBasicDemo",
+      "file": "src/demos/AttrsBasicDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "ComposedBox",
+      "file": "src/demos/AttrsComposeDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "AttrsComposeDemo",
+      "file": "src/demos/AttrsComposeDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
       "props": []
     },
     {
@@ -116,6 +166,49 @@
     {
       "name": "ChipDemo",
       "file": "src/demos/ChipDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "Box",
+      "file": "src/demos/AttrsConfigStaticsDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "Card",
+      "file": "src/demos/AttrsConfigStaticsDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "Box.config("
+      ]
+    },
+    {
+      "name": "InfoCard",
+      "file": "src/demos/AttrsConfigStaticsDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "Card.config("
+      ]
+    },
+    {
+      "name": "MetaBox",
+      "file": "src/demos/AttrsConfigStaticsDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "AttrsConfigStaticsDemo",
+      "file": "src/demos/AttrsConfigStaticsDemo.tsx",
       "hasSignals": false,
       "signalNames": [],
       "props": []
@@ -330,6 +423,15 @@
       "props": []
     },
     {
+      "name": "AnimationsTabPatternDemo",
+      "file": "src/demos/AnimationsTabPatternDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "active"
+      ],
+      "props": []
+    },
+    {
       "name": "CalendarDemo",
       "file": "src/demos/CalendarDemo.tsx",
       "hasSignals": true,
@@ -398,6 +500,57 @@
       "props": []
     },
     {
+      "name": "RocketstyleDemo",
+      "file": "src/demos/RocketstyleDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "state",
+        "size"
+      ],
+      "props": []
+    },
+    {
+      "name": "PRESET_CATEGORIES",
+      "file": "src/demos/AnimationsGalleryDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "PresetCell",
+      "file": "src/demos/AnimationsGalleryDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "open"
+      ],
+      "props": []
+    },
+    {
+      "name": "CategorySection",
+      "file": "src/demos/AnimationsGalleryDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "open"
+      ],
+      "props": []
+    },
+    {
+      "name": "AnimationsGalleryDemo",
+      "file": "src/demos/AnimationsGalleryDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AnimationsModalPatternDemo",
+      "file": "src/demos/AnimationsModalPatternDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "open"
+      ],
+      "props": []
+    },
+    {
       "name": "ProgressDemo",
       "file": "src/demos/ProgressDemo.tsx",
       "hasSignals": false,
@@ -418,7 +571,8 @@
       "signalNames": [
         "count",
         "search",
-        "ticks"
+        "ticks",
+        "running"
       ],
       "props": []
     },
@@ -473,6 +627,52 @@
       "file": "src/demos/TableDemo.tsx",
       "hasSignals": false,
       "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "ColorBox",
+      "file": "src/demos/AttrsCallbacksDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "variant",
+        "mood"
+      ],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "LockedDir",
+      "file": "src/demos/AttrsCallbacksDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "variant",
+        "mood"
+      ],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "FilteredBox",
+      "file": "src/demos/AttrsCallbacksDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "variant",
+        "mood"
+      ],
+      "props": [
+        "attrs("
+      ]
+    },
+    {
+      "name": "AttrsCallbacksDemo",
+      "file": "src/demos/AttrsCallbacksDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "variant",
+        "mood"
+      ],
       "props": []
     },
     {

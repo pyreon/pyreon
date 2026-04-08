@@ -87,6 +87,10 @@ export const navGroups = [
       { path: '/animations/group', label: 'Group (lists)' },
       { path: '/animations/factories', label: 'Factories' },
       { path: '/animations/compositions', label: 'Compositions' },
+      { path: '/animations/gallery', label: 'Preset Gallery (122)' },
+      { path: '/animations/modal-pattern', label: 'Modal Pattern' },
+      { path: '/animations/toast-pattern', label: 'Toast Pattern' },
+      { path: '/animations/tab-pattern', label: 'Tab Cross-fade' },
     ],
   },
   {
@@ -96,6 +100,16 @@ export const navGroups = [
       { path: '/hooks/state', label: 'State' },
       { path: '/hooks/dom', label: 'DOM Observers' },
       { path: '/hooks/responsive', label: 'Responsive & A11y' },
+    ],
+  },
+  {
+    label: 'Composition',
+    items: [
+      { path: '/composition/attrs-basic', label: 'Attrs — Basic' },
+      { path: '/composition/attrs-callbacks', label: 'Attrs — Callbacks' },
+      { path: '/composition/attrs-config', label: 'Attrs — Config' },
+      { path: '/composition/attrs-compose', label: 'Attrs — Compose' },
+      { path: '/composition/rocketstyle', label: 'Rocketstyle (raw)' },
     ],
   },
   {

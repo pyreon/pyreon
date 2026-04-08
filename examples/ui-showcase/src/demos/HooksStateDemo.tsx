@@ -14,9 +14,14 @@ export function HooksStateDemo() {
   const search = signal('')
   const debounced = useDebouncedValue(() => search(), 500)
 
-  // useInterval — 1s ticks
+  // useInterval — gated by `running` flag inside the callback
+  // (useInterval takes a static delay; reading the signal inside the
+  // callback lets us start/stop without unmounting)
   const ticks = signal(0)
-  useInterval(() => ticks.set(ticks() + 1), 1000)
+  const running = signal(true)
+  useInterval(() => {
+    if (running()) ticks.set(ticks() + 1)
+  }, 1000)
 
   return (
     <div>
@@ -51,6 +56,9 @@ export function HooksStateDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">useInterval(fn, 1000)</Title>
       <div style="display: flex; gap: 8px; align-items: center;">
+        <Button state="primary" onClick={() => running.set(!running())}>
+          {() => (running() ? 'Stop' : 'Start')}
+        </Button>
         <Button state="secondary" onClick={() => ticks.set(0)}>Reset</Button>
         <span>Ticks: <strong>{ticks()}</strong></span>
       </div>
