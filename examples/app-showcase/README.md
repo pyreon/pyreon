@@ -25,7 +25,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
 | Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
 | Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
-| Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`                        |
+| Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
 | Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
 | Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
 | I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`                            |
@@ -55,8 +55,10 @@ examples/app-showcase/
 │   │   │   └── [slug].tsx   ← /blog/:slug detail (loader + dynamic head)
 │   │   ├── dashboard/
 │   │   │   └── index.tsx    ← /dashboard (query + table + charts + virtual)
-│   │   └── forms-wizard/
-│   │       └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
+│   │   ├── forms-wizard/
+│   │   │   └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
+│   │   └── chat/
+│   │       └── index.tsx    ← /chat (store + virtual + machine + toast)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -86,15 +88,27 @@ examples/app-showcase/
 │       │       ├── api.ts
 │       │       ├── seed.ts
 │       │       └── types.ts
-│       └── wizard/
-│           ├── AccountStep.tsx
-│           ├── ProfileStep.tsx
-│           ├── PreferencesStep.tsx
-│           ├── ReviewStep.tsx
-│           ├── schema.ts            ← Zod schemas + types per step
-│           ├── wizardModel.ts       ← @pyreon/state-tree model
-│           ├── wizardMachine.ts     ← @pyreon/machine step transitions
-│           └── styled.ts
+│       ├── wizard/
+│       │   ├── AccountStep.tsx
+│       │   ├── ProfileStep.tsx
+│       │   ├── PreferencesStep.tsx
+│       │   ├── ReviewStep.tsx
+│       │   ├── schema.ts            ← Zod schemas + types per step
+│       │   ├── wizardModel.ts       ← @pyreon/state-tree model
+│       │   ├── wizardMachine.ts     ← @pyreon/machine step transitions
+│       │   └── styled.ts
+│       └── chat/
+│           ├── ChannelList.tsx
+│           ├── MessageList.tsx       ← virtualized via @pyreon/virtual
+│           ├── MessageComposer.tsx   ← optimistic send + toast on error
+│           ├── connectionMachine.ts  ← @pyreon/machine connection FSM
+│           ├── store.ts              ← messages store + chatBus subscription
+│           ├── format.ts
+│           ├── styled.ts
+│           └── data/
+│               ├── eventBus.ts       ← mock chat server (replaces SSE)
+│               ├── seed.ts
+│               └── types.ts
 ```
 
 > **Why split `routes/` and `sections/`?** Zero treats every file under `src/routes/` as a route — including helpers, which produces dynamic-import warnings. Putting non-route files under `src/sections/` keeps the routing tree tidy and lets Rolldown chunk per-route cleanly.
