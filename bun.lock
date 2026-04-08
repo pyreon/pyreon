@@ -76,6 +76,7 @@
         "@pyreon/head": "workspace:*",
         "@pyreon/hooks": "workspace:*",
         "@pyreon/hotkeys": "workspace:*",
+        "@pyreon/i18n": "workspace:*",
         "@pyreon/machine": "workspace:*",
         "@pyreon/permissions": "workspace:*",
         "@pyreon/query": "workspace:*",

@@ -27,8 +27,8 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
 | Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
 | Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
+| I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
 | Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
-| I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`                            |
 | Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
@@ -59,8 +59,10 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
 │   │   ├── chat/
 │   │   │   └── index.tsx    ← /chat (store + virtual + machine + toast)
-│   │   └── kanban/
-│   │       └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
+│   │   ├── kanban/
+│   │   │   └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
+│   │   └── shop/
+│   │       └── index.tsx    ← /shop (i18n + cart store + persisted cart + url filter)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -111,13 +113,23 @@ examples/app-showcase/
 │       │       ├── eventBus.ts       ← mock chat server (replaces SSE)
 │       │       ├── seed.ts
 │       │       └── types.ts
-│       └── kanban/
-│           ├── BoardCard.tsx
-│           ├── boardModel.ts          ← @pyreon/state-tree model + undo manager
-│           ├── permissions.ts         ← admin/viewer createPermissions singleton
+│       ├── kanban/
+│       │   ├── BoardCard.tsx
+│       │   ├── boardModel.ts          ← @pyreon/state-tree model + undo manager
+│       │   ├── permissions.ts         ← admin/viewer createPermissions singleton
+│       │   ├── styled.ts
+│       │   └── data/
+│       │       ├── seed.ts
+│       │       └── types.ts
+│       └── shop/
+│           ├── ProductGrid.tsx
+│           ├── CartDrawer.tsx
+│           ├── Switchers.tsx          ← LocaleSwitcher + CurrencySwitcher
+│           ├── cartStore.ts           ← cart + currency persisted via @pyreon/storage
+│           ├── i18n.ts                ← createI18n with EN/DE/FR catalog
 │           ├── styled.ts
 │           └── data/
-│               ├── seed.ts
+│               ├── products.ts
 │               └── types.ts
 ```
 
