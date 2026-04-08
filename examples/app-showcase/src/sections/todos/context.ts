@@ -5,8 +5,9 @@ import type { useTodos } from './store/todos'
 type TodosStoreApi = ReturnType<typeof useTodos>
 
 export interface TodosCtxValue {
+  /** Store handle exposing reactive state and actions. */
   store: TodosStoreApi['store']
-  patch: TodosStoreApi['patch']
+  /** Currently selected row id (for keyboard navigation). */
   selectedId: Signal<string | undefined>
 }
 

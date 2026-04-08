@@ -28,7 +28,7 @@ export const sections: Section[] = [
     path: '/todos',
     label: 'Todos',
     tagline: 'CRUD list with persistence, filters, and keyboard shortcuts',
-    features: ['store', 'storage', 'form', 'url-state', 'hotkeys'],
+    features: ['store', 'storage', 'form', 'url-state', 'hotkeys', 'rx', 'styler'],
     available: true,
     group: 'apps',
   },

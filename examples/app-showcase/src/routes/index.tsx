@@ -1,4 +1,3 @@
-import { RouterLink } from '@pyreon/router'
 import { sections } from '../sections'
 import {
   FeatureChip,
@@ -9,6 +8,7 @@ import {
   PageTitle,
   PageWide,
   SectionCard,
+  SectionCardDisabled,
   SectionCardHead,
   SectionCardLink,
   SectionCardTagline,
@@ -67,13 +67,9 @@ export default function HomePage() {
             </SectionCard>
           )
           if (s.available) {
-            return (
-              <SectionCardLink as={RouterLink as unknown as 'a'} to={s.path}>
-                {card}
-              </SectionCardLink>
-            )
+            return <SectionCardLink to={s.path}>{card}</SectionCardLink>
           }
-          return <SectionCardLink $disabled>{card}</SectionCardLink>
+          return <SectionCardDisabled>{card}</SectionCardDisabled>
         })}
       </SectionGrid>
 

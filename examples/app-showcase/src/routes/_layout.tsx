@@ -1,5 +1,5 @@
 import type { Props } from '@pyreon/core'
-import { RouterLink, RouterView, useIsActive } from '@pyreon/router'
+import { RouterView, useIsActive } from '@pyreon/router'
 import { PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 import { groupLabels, sections, type Section } from '../sections'
@@ -20,10 +20,8 @@ import {
 function NavItem(props: { section: Section }) {
   const isActive = useIsActive(props.section.path, false)
   const disabled = !props.section.available
-  // RouterLink renders an anchor; pass `as` to forward our styled <a> styles.
   return (
     <NavLink
-      as={RouterLink as unknown as 'a'}
       to={disabled ? '/' : props.section.path}
       $active={isActive() && props.section.available}
       $disabled={disabled}
@@ -42,11 +40,11 @@ const groups = (['apps', 'forms', 'data', 'visual'] as const).map((group) => ({
 
 export function layout(_props: Props) {
   return (
-    <PyreonUI theme={theme} mode="system">
+    <PyreonUI theme={theme} mode="light">
       <GlobalReset />
       <Shell>
         <Sidebar>
-          <Brand as={RouterLink as unknown as 'a'} to="/">
+          <Brand to="/">
             <BrandTitle>Pyreon Apps</BrandTitle>
             <BrandSubtitle>One Zero app, many features</BrandSubtitle>
           </Brand>

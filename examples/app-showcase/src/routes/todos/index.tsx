@@ -1,10 +1,15 @@
 import { provide } from '@pyreon/core'
+import { useForm } from '@pyreon/form'
 import { useHotkey } from '@pyreon/hotkeys'
 import { signal } from '@pyreon/reactivity'
+import { rx } from '@pyreon/rx'
 import { Kbd } from '@pyreon/ui-components'
 import type { UrlStateSignal } from '@pyreon/url-state'
 import { useUrlState } from '@pyreon/url-state'
+import { TodoList } from '../../sections/todos/TodoList'
+import { TodosCtx, type TodosCtxValue } from '../../sections/todos/context'
 import {
+  AddButton,
   AddCard,
   AddForm,
   AddIcon,
@@ -19,6 +24,7 @@ import {
   ProjectCount,
   ProjectLabel,
   ProjectSwatch,
+  SearchInput,
   ShortcutItem,
   ShortcutsList,
   SidebarLabel,
@@ -31,16 +37,16 @@ import {
   TodosSidebar,
   TodosTitle,
 } from '../../sections/todos/styled'
-import { TodoList } from '../../sections/todos/TodoList'
-import { TodosCtx, type TodosCtxValue } from '../../sections/todos/context'
 import { useTodos } from '../../sections/todos/store/todos'
-import type { StatusFilter, Todo } from '../../sections/todos/store/types'
+import type { StatusFilter } from '../../sections/todos/store/types'
 
 /**
  * Todos section — single-page CRUD app demonstrating:
  *   • @pyreon/store     — composition store with derived counts
  *   • @pyreon/storage   — useStorage for cross-tab localStorage persistence
- *   • @pyreon/url-state — status filter and selected project read from URL
+ *   • @pyreon/form      — useForm for the inline add-todo input
+ *   • @pyreon/url-state — status / project / search query in the URL
+ *   • @pyreon/rx        — pipe-style filter pipeline (search → status → project)
  *   • @pyreon/hotkeys   — N add, / focus search, X toggle done, Del remove
  *   • @pyreon/styler    — every visual element is a styled component
  *
@@ -48,85 +54,115 @@ import type { StatusFilter, Todo } from '../../sections/todos/store/types'
  * a second tab — the todos persist and stay in sync via the storage event.
  */
 export default function TodosPage() {
-  const todosStore = useTodos()
-  const { store, patch } = todosStore
+  const { store } = useTodos()
 
   // ── URL state — every filter is reflected in the URL so views are
-  //    shareable and the back button works as expected.
+  //    shareable and the back button works as expected. The default
+  //    is cast so TS infers the union type instead of the literal.
   const status = useUrlState('status', 'all' as StatusFilter)
   const projectId = useUrlState('project', 'all')
-  const search = useUrlState('q', '')
+  const searchQuery = useUrlState('q', '')
 
   // ── Selection — local UI state, kept in a signal so the keyboard
   //    handlers below can act on the currently focused row.
   const selectedId = signal<string | undefined>(undefined)
 
-  // ── New-todo input ref so hotkey N can focus it without `document`.
+  // ── Refs to the new-todo and search inputs so the N and / hotkeys
+  //    can focus them without reaching for `document.querySelector`.
   let newTodoEl: HTMLInputElement | null = null
+  let searchEl: HTMLInputElement | null = null
   const setNewTodoRef = (el: HTMLElement | null) => {
     newTodoEl = el as HTMLInputElement | null
   }
-  const draft = signal('')
-
-  function submitDraft(e?: Event) {
-    e?.preventDefault()
-    const title = draft().trim()
-    if (!title) return
-    const created = store.add({
-      title,
-      projectId: projectId() === 'all' ? 'inbox' : projectId(),
-    })
-    draft.set('')
-    selectedId.set(created.id)
-    newTodoEl?.focus()
+  const setSearchRef = (el: HTMLElement | null) => {
+    searchEl = el as HTMLInputElement | null
   }
 
-  // ── Keyboard shortcuts ────────────────────────────────────────────────
+  // ── Add form — useForm gives us a single owner of validation +
+  //    submission, so the same handler runs whether the user presses
+  //    Enter inside the input or clicks the submit button. No
+  //    double-submit, no bespoke `submitDraft` glue.
+  const addForm = useForm({
+    initialValues: { title: '' },
+    validators: {
+      title: (value) => {
+        const trimmed = value.trim()
+        if (!trimmed) return 'Title is required'
+        if (trimmed.length > 200) return 'Title must be 200 characters or fewer'
+        return undefined
+      },
+    },
+    validateOn: 'submit',
+    onSubmit: ({ title }) => {
+      const created = store.add({
+        title,
+        projectId: projectId() === 'all' ? 'inbox' : projectId(),
+      })
+      addForm.reset()
+      selectedId.set(created.id)
+      newTodoEl?.focus()
+    },
+  })
+
+  // ── Keyboard shortcuts — every shortcut acts on a typed ref or
+  //    a signal, never on `document.querySelector`.
   useHotkey('n', () => newTodoEl?.focus(), { description: 'Focus new-todo input' })
-  useHotkey('/', () => {
-    const input = document.querySelector<HTMLInputElement>('[data-search-input]')
-    input?.focus()
-  }, { description: 'Focus search' })
-  useHotkey('x', () => {
-    const id = selectedId()
-    if (id) store.toggle(id)
-  }, { description: 'Toggle selected todo' })
-  useHotkey('delete', () => {
-    const id = selectedId()
-    if (!id) return
-    store.remove(id)
-    selectedId.set(undefined)
-  }, { description: 'Delete selected todo' })
+  useHotkey('/', () => searchEl?.focus(), { description: 'Focus search' })
+  useHotkey(
+    'x',
+    () => {
+      const id = selectedId()
+      if (id) store.toggle(id)
+    },
+    { description: 'Toggle selected todo' },
+  )
+  useHotkey(
+    'delete',
+    () => {
+      const id = selectedId()
+      if (!id) return
+      store.remove(id)
+      selectedId.set(undefined)
+    },
+    { description: 'Delete selected todo' },
+  )
   useHotkey('escape', () => selectedId.set(undefined), { description: 'Clear selection' })
 
   // ── Provide the store to descendants so TodoList / TodoItem don't
-  //    need to re-call useTodos() and so we can pass the selected-id
-  //    signal down with no prop drilling.
-  const ctxValue: TodosCtxValue = {
-    store,
-    patch,
-    selectedId,
-  }
+  //    need to re-call useTodos() and can react to selection from
+  //    anywhere in the section.
+  const ctxValue: TodosCtxValue = { store, selectedId }
   provide(TodosCtx, ctxValue)
 
-  // ── Filtering pipeline (read-time, no extra computeds — every signal
-  //    read here re-runs the filter on change automatically since it's
-  //    inside a reactive accessor below).
-  const filtered = (): Todo[] => {
-    const q = search().trim().toLowerCase()
-    const s = status()
-    const p = projectId()
-    return store
-      .todos()
-      .filter((t) => (s === 'all' ? true : s === 'active' ? !t.done : t.done))
-      .filter((t) => (p === 'all' ? true : t.projectId === p))
-      .filter((t) =>
-        !q
-          ? true
-          : t.title.toLowerCase().includes(q) ||
-            (t.notes ?? '').toLowerCase().includes(q),
-      )
-  }
+  // ── Filter pipeline (signal-aware @pyreon/rx) ─────────────────────
+  //    rx.combine merges store.todos with the three URL-state filters
+  //    into a single Computed<Todo[]>. The result re-derives only when
+  //    one of its inputs actually changes, so the list stays cheap to
+  //    re-render even with thousands of todos.
+  const filtered = rx.combine(
+    store.todos,
+    searchQuery,
+    status,
+    (items, q, currentStatus) => {
+      const needle = q.trim().toLowerCase()
+      return items.filter((todo) => {
+        if (currentStatus === 'active' && todo.done) return false
+        if (currentStatus === 'completed' && !todo.done) return false
+        if (needle) {
+          const inTitle = todo.title.toLowerCase().includes(needle)
+          const inNotes = (todo.notes ?? '').toLowerCase().includes(needle)
+          if (!inTitle && !inNotes) return false
+        }
+        return true
+      })
+    },
+  )
+
+  // Project filter layered on top — keeps the combine arity at 3 so
+  // each rx.combine call has a clear, narrow purpose.
+  const visible = rx.combine(filtered, projectId, (items, currentProject) =>
+    currentProject === 'all' ? items : items.filter((t) => t.projectId === currentProject),
+  )
 
   return (
     <TodosLayout>
@@ -135,8 +171,8 @@ export default function TodosPage() {
           <SidebarLabel>Projects</SidebarLabel>
           <ProjectButton
             label="All projects"
-            color={tokensFaint}
-            active={() => projectId() === 'all'}
+            color="#9ca3af"
+            $active={projectId() === 'all'}
             onClick={() => projectId.set('all')}
           />
           {() =>
@@ -144,8 +180,8 @@ export default function TodosPage() {
               <ProjectButton
                 label={p.name}
                 color={p.color}
-                count={() => store.todos().filter((t) => t.projectId === p.id).length}
-                active={() => projectId() === p.id}
+                count={store.todos().filter((todo) => todo.projectId === p.id).length}
+                $active={projectId() === p.id}
                 onClick={() => projectId.set(p.id)}
               />
             ))
@@ -170,47 +206,49 @@ export default function TodosPage() {
           Persisted to localStorage. Filter state lives in the URL — try refreshing.
         </TodosLead>
 
-        <AddForm onSubmit={submitDraft}>
+        <AddForm onSubmit={(e: Event) => addForm.handleSubmit(e)}>
           <AddCard>
             <AddIcon>+</AddIcon>
             <AddInput
               innerRef={setNewTodoRef}
               type="text"
               placeholder="Add a todo and press Enter…"
-              value={draft()}
-              onInput={(e: Event) => draft.set((e.target as HTMLInputElement).value)}
+              value={addForm.fields.title.value()}
+              onInput={(e: Event) =>
+                addForm.fields.title.setValue((e.target as HTMLInputElement).value)
+              }
             />
-            <FooterButton state="primary" size="small" disabled={!draft().trim()} onClick={submitDraft}>
+            <AddButton type="submit" disabled={!addForm.fields.title.value().trim()}>
               Add
-            </FooterButton>
+            </AddButton>
           </AddCard>
         </AddForm>
 
         <Toolbar>
           <FilterTabs status={status} />
           <ToolbarSearchSlot>
-            <AddInput
+            <SearchInput
+              innerRef={setSearchRef}
               type="text"
-              data-search-input
               placeholder="Search todos…"
-              value={search()}
-              onInput={(e: Event) => search.set((e.target as HTMLInputElement).value)}
+              value={searchQuery()}
+              onInput={(e: Event) => searchQuery.set((e.target as HTMLInputElement).value)}
             />
           </ToolbarSearchSlot>
           {() => {
-            const c = store.counts()
+            const counts = store.counts()
             return (
               <CountBadge state="primary">
-                {c.active} active / {c.all} total
+                {counts.active} active / {counts.all} total
               </CountBadge>
             )
           }}
         </Toolbar>
 
-        <TodoList items={filtered} />
+        <TodoList items={visible} />
 
         <FooterBar>
-          <span>{() => `${store.counts().completed} completed`}</span>
+          <span>{store.counts().completed} completed</span>
           <FooterActions>
             <FooterButton size="small" variant="ghost" onClick={() => store.clearCompleted()}>
               Clear completed
@@ -225,21 +263,20 @@ export default function TodosPage() {
   )
 }
 
-const tokensFaint = '#9ca3af'
-
-function ProjectButton(props: {
+interface ProjectButtonProps {
   label: string
   color: string
-  count?: () => number
-  active: () => boolean
+  count?: number
+  $active: boolean
   onClick: () => void
-}) {
-  const count = props.count
+}
+
+function ProjectButton(props: ProjectButtonProps) {
   return (
-    <ProjectButtonRoot type="button" onClick={props.onClick} $active={props.active()}>
+    <ProjectButtonRoot type="button" onClick={props.onClick} $active={props.$active}>
       <ProjectSwatch $color={props.color} />
       <ProjectLabel>{props.label}</ProjectLabel>
-      {count ? <ProjectCount>{() => count()}</ProjectCount> : null}
+      {props.count !== undefined ? <ProjectCount>{props.count}</ProjectCount> : null}
     </ProjectButtonRoot>
   )
 }
@@ -263,9 +300,13 @@ function FilterTabs(props: { status: UrlStateSignal<StatusFilter> }) {
   ]
   return (
     <FilterTabsRoot>
-      {tabs.map((t) => (
-        <FilterTab type="button" onClick={() => props.status.set(t.id)} $active={props.status() === t.id}>
-          {t.label}
+      {tabs.map((tab) => (
+        <FilterTab
+          type="button"
+          onClick={() => props.status.set(tab.id)}
+          $active={props.status() === tab.id}
+        >
+          {tab.label}
         </FilterTab>
       ))}
     </FilterTabsRoot>

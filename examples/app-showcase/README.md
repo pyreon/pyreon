@@ -19,17 +19,17 @@ No build step is needed for development — the Vite plugin reads `src/` directl
 
 Each section lives under `src/routes/<section>/` and is registered in [src/sections.ts](src/sections.ts). The sidebar nav is generated from that registry.
 
-| Section         | Status         | Pyreon features                                                 |
-| --------------- | -------------- | --------------------------------------------------------------- |
-| Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `hooks`     |
-| Blog            | 🚧 coming soon | `zero` SSG, `head`, `document`, file routing, loaders           |
-| Dashboard       | 🚧 coming soon | `query`, `table`, `charts`, `feature`, `permissions`, `virtual` |
-| Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`           |
-| Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                 |
-| Forms Wizard    | 🚧 coming soon | `form`, `validation`, `state-tree`, `machine`                   |
-| Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`         |
-| I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`               |
-| Flow Editor     | 🚧 coming soon | `flow`, `code`                                                  |
+| Section         | Status         | Pyreon features                                                              |
+| --------------- | -------------- | ---------------------------------------------------------------------------- |
+| Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`           |
+| Blog            | 🚧 coming soon | `zero` SSG, `head`, `document`, file routing, loaders                        |
+| Dashboard       | 🚧 coming soon | `query`, `table`, `charts`, `feature`, `permissions`, `virtual`              |
+| Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`                        |
+| Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
+| Forms Wizard    | 🚧 coming soon | `form`, `validation`, `state-tree`, `machine`                                |
+| Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
+| I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`                            |
+| Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
 
