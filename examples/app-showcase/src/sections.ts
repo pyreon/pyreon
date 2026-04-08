@@ -97,9 +97,9 @@ export const sections: Section[] = [
   {
     path: '/shop',
     label: 'I18n Shop',
-    tagline: 'E-commerce with multi-locale and currencies',
-    features: ['i18n', 'zero locale routing', 'store', 'url-state'],
-    available: false,
+    tagline: 'E-commerce mock with three locales, currency conversion, and persisted cart',
+    features: ['i18n', 'store', 'storage', 'url-state', 'reactivity'],
+    available: true,
     group: 'data',
   },
 
