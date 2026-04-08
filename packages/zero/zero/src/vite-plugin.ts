@@ -24,8 +24,9 @@ import { matchPattern } from "./entry-server";
 import { renderErrorOverlay } from "./error-overlay";
 import {
 	generateMiddlewareModule,
-	generateRouteModule,
+	generateRouteModuleFromRoutes,
 	scanRouteFiles,
+	scanRouteFilesWithExports,
 } from "./fs-router";
 import { render404Page } from "./not-found";
 import type { ZeroConfig } from "./types";
@@ -76,10 +77,15 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 		async load(id) {
 			if (id === RESOLVED_VIRTUAL_ROUTES_ID) {
 				try {
-					const files = await scanRouteFiles(routesDir);
-					return generateRouteModule(files, routesDir, {
-					staticImports: config.mode === 'ssg',
-				});
+					// Detect each file's optional exports up front so the
+					// generator emits the optimal shape:
+					//   • lazy() for routes that only export `default` (best code splitting)
+					//   • Direct mod.loader/.guard/.meta access for routes with metadata
+					//   • No spurious IMPORT_IS_UNDEFINED warnings from Rolldown
+					const routes = await scanRouteFilesWithExports(routesDir, config.mode);
+					return generateRouteModuleFromRoutes(routes, routesDir, {
+						staticImports: config.mode === 'ssg',
+					});
 				} catch (_err) {
 					return `export const routes = []`;
 				}

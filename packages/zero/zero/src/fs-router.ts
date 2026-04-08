@@ -1,4 +1,4 @@
-import type { FileRoute, RenderMode } from './types'
+import type { FileRoute, RenderMode, RouteFileExports } from './types'
 
 // ─── File-system route conventions ──────────────────────────────────────────
 //
@@ -31,15 +31,82 @@ import type { FileRoute, RenderMode } from './types'
 const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
 
 /**
+ * Detect which optional metadata exports a route file source contains.
+ * Uses regex (not full AST parsing) — we only need to know IF a top-level
+ * `export const X` / `export function X` / `export async function X`
+ * exists for the recognized names. False positives are harmless: the
+ * code generator will emit references to exports that exist.
+ *
+ * Names checked: loader, guard, meta, renderMode, error, middleware
+ */
+export function detectRouteExports(source: string): RouteFileExports {
+  // Strip line comments and block comments to avoid matching inside them.
+  // Cheap pass — not perfect (string literals containing `export const meta`
+  // would slip through) but good enough since false positives are harmless.
+  const stripped = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '')
+
+  const hasNamedExport = (name: string): boolean => {
+    // Match `export const NAME`, `export let NAME`, `export var NAME`,
+    // `export function NAME`, `export async function NAME` at start of line
+    // (allowing leading whitespace).
+    const re = new RegExp(
+      `^\\s*export\\s+(?:async\\s+)?(?:const|let|var|function)\\s+${name}\\b`,
+      'm',
+    )
+    return re.test(stripped)
+  }
+
+  return {
+    hasLoader: hasNamedExport('loader'),
+    hasGuard: hasNamedExport('guard'),
+    hasMeta: hasNamedExport('meta'),
+    hasRenderMode: hasNamedExport('renderMode'),
+    hasError: hasNamedExport('error'),
+    hasMiddleware: hasNamedExport('middleware'),
+  }
+}
+
+/**
+ * True if a route file declares ANY metadata export.
+ * Used by the code generator to decide whether to emit `import * as mod`
+ * (for metadata access) alongside the lazy() component import.
+ */
+export function hasAnyMetaExport(exports: RouteFileExports | undefined): boolean {
+  if (!exports) return true // unknown — assume yes for back-compat safety
+  return (
+    exports.hasLoader ||
+    exports.hasGuard ||
+    exports.hasMeta ||
+    exports.hasRenderMode ||
+    exports.hasError ||
+    exports.hasMiddleware
+  )
+}
+
+/**
  * Parse a set of file paths (relative to routes dir) into FileRoute objects.
  *
  * @param files Array of file paths like ["index.tsx", "users/[id].tsx"]
  * @param defaultMode Default rendering mode from config
+ * @param exportsMap Optional map of filePath → detected exports. When
+ *   provided, the resulting FileRoute objects carry export info that the
+ *   code generator uses to optimize imports (skip metadata namespace
+ *   imports for routes that only export `default`).
  */
-export function parseFileRoutes(files: string[], defaultMode: RenderMode = 'ssr'): FileRoute[] {
+export function parseFileRoutes(
+  files: string[],
+  defaultMode: RenderMode = 'ssr',
+  exportsMap?: Map<string, RouteFileExports>,
+): FileRoute[] {
   return files
     .filter((f) => ROUTE_EXTENSIONS.some((ext) => f.endsWith(ext)))
-    .map((filePath) => parseFilePath(filePath, defaultMode))
+    .map((filePath) => {
+      const route = parseFilePath(filePath, defaultMode)
+      const exp = exportsMap?.get(filePath)
+      return exp ? { ...route, exports: exp } : route
+    })
     .sort(sortRoutes)
 }
 
@@ -214,8 +281,7 @@ export interface GenerateRouteModuleOptions {
   /**
    * When true, skip lazy() for route components and use static imports.
    * Use for SSG/prerender mode where all routes are rendered at build time
-   * and code splitting provides no benefit. Avoids Rolldown warnings about
-   * static + dynamic imports of the same module.
+   * and code splitting provides no benefit at request time.
    */
   staticImports?: boolean
 }
@@ -223,17 +289,47 @@ export interface GenerateRouteModuleOptions {
 export function generateRouteModule(
   files: string[],
   routesDir: string,
-  _options?: GenerateRouteModuleOptions,
+  options?: GenerateRouteModuleOptions,
 ): string {
-  const routes = parseFileRoutes(files)
+  // NOTE: When `files` is `string[]` (back-compat caller path), no per-file
+  // export info is known, so the generator falls back to `_pick(mod, "key")`
+  // for metadata access (avoiding IMPORT_IS_UNDEFINED warnings) and uses
+  // a single static `import * as mod` for everything.
+  //
+  // When the caller pre-detects exports via `parseFileRoutesWithExports`
+  // and passes them through (or uses the async `scanRouteFiles` pipeline),
+  // each FileRoute carries `.exports` and the generator emits the optimal
+  // shape:
+  //   • `lazy(() => import(...))` for the component (code splitting!)
+  //   • `import * as mod` ONLY when metadata exports are detected
+  //   • Direct `mod.loader` access (no _pick) since we know it exists
+  //   • No imports at all for routes that only export `default` other
+  //     than the lazy() component import
+  return generateRouteModuleFromRoutes(parseFileRoutes(files), routesDir, options)
+}
+
+/**
+ * Lower-level entry point that accepts pre-parsed FileRoute[] (so callers
+ * can attach `.exports` info from source detection). Use this when you've
+ * already read the files and want optimal output.
+ */
+export function generateRouteModuleFromRoutes(
+  routes: FileRoute[],
+  routesDir: string,
+  options?: GenerateRouteModuleOptions,
+): string {
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
-  // staticImports option is now always implicit — every route uses
-  // static `import * as` so the component (.default), loader, guard, meta,
-  // and renderMode all come from a single module reference. This avoids
-  // Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning that fired when the same
-  // file was imported via both static and dynamic paths.
+  const useStaticOnly = options?.staticImports ?? false
+
+  // Track whether we need _pick at all (only for back-compat path with
+  // unknown exports). If every route knows its exports, _pick is unused
+  // and we skip emitting the helper.
+  let needsPickHelper = false
+  // Track whether we need lazy() at all (omitted in static-only mode and
+  // when there are no routes that use it).
+  let needsLazyImport = false
 
   function nextImport(filePath: string, exportName = 'default'): string {
     const name = `_${importCounter++}`
@@ -253,33 +349,113 @@ export function generateRouteModule(
     return name
   }
 
+  function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
+    const name = `_${importCounter++}`
+    const fullPath = `${routesDir}/${filePath}`
+    needsLazyImport = true
+    const opts: string[] = []
+    if (loadingName) opts.push(`loading: ${loadingName}`)
+    if (errorName) opts.push(`error: ${errorName}`)
+    const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
+    imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
+    return name
+  }
+
   function generatePageRoute(
     page: FileRoute,
     indent: string,
-    _loadingName: string | undefined,
+    loadingName: string | undefined,
     errorName: string | undefined,
     notFoundName: string | undefined,
   ): string {
-    // Use a single static `import * as` for the namespace, then read all
-    // optional exports (loader, guard, meta, renderMode) via the runtime
-    // helper `_pick()` which uses bracket-key access. Rolldown can't
-    // statically prove which keys exist, so it doesn't warn about
-    // "import will always be undefined" — and we still get a single
-    // static import per route (no INEFFECTIVE_DYNAMIC_IMPORT warning).
-    const mod = nextModuleImport(page.filePath)
+    const exp = page.exports
+    const props: string[] = [`${indent}  path: ${JSON.stringify(page.urlPath)}`]
 
-    const props: string[] = [
-      `${indent}  path: ${JSON.stringify(page.urlPath)}`,
-      `${indent}  component: ${mod}.default`,
-      `${indent}  loader: _pick(${mod}, "loader")`,
-      `${indent}  beforeEnter: _pick(${mod}, "guard")`,
-      `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
-    ]
-
-    // Only emit errorComponent when there's an actual _error file in scope
-    // or the route module exports an error component.
-    if (errorName) {
-      props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
+    if (useStaticOnly) {
+      // SSG / static mode: bundle everything synchronously, single import.
+      if (exp === undefined) {
+        // Unknown exports — emit the safe pessimistic shape with _pick
+        const mod = nextModuleImport(page.filePath)
+        needsPickHelper = true
+        props.push(`${indent}  component: ${mod}.default`)
+        props.push(`${indent}  loader: _pick(${mod}, "loader")`)
+        props.push(`${indent}  beforeEnter: _pick(${mod}, "guard")`)
+        props.push(
+          `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
+        )
+        if (errorName) {
+          props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
+        }
+      } else {
+        // Known exports — emit only what exists, direct access
+        if (hasAnyMetaExport(exp)) {
+          const mod = nextModuleImport(page.filePath)
+          props.push(`${indent}  component: ${mod}.default`)
+          if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
+          if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
+          if (exp.hasMeta || exp.hasRenderMode) {
+            const metaParts: string[] = []
+            if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
+            if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
+            props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
+          }
+          if (errorName) {
+            const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+            props.push(`${indent}  errorComponent: ${errorRef}`)
+          }
+        } else {
+          // No metadata at all — single static default import
+          const comp = nextImport(page.filePath, 'default')
+          props.push(`${indent}  component: ${comp}`)
+          if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
+        }
+      }
+    } else {
+      // SSR/SPA mode: use lazy() for the component (code splitting).
+      // Only add a static `import * as` if metadata exports exist.
+      if (exp === undefined) {
+        // Unknown exports — pessimistic shape: dual import (one warning)
+        // OR static-only with _pick. We choose static-only with _pick here
+        // because Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning is louder
+        // than losing per-route code splitting for back-compat callers.
+        const mod = nextModuleImport(page.filePath)
+        needsPickHelper = true
+        props.push(`${indent}  component: ${mod}.default`)
+        props.push(`${indent}  loader: _pick(${mod}, "loader")`)
+        props.push(`${indent}  beforeEnter: _pick(${mod}, "guard")`)
+        props.push(
+          `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
+        )
+        if (errorName) {
+          props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
+        }
+      } else if (hasAnyMetaExport(exp)) {
+        // Has metadata — needs both static module (for metadata) AND lazy
+        // for the component. This produces the dual-import collision, so
+        // we fall back to static-only for this route. The metadata access
+        // is critical (loader runs server-side); the component will still
+        // be tree-shaken into the appropriate chunk by Rolldown's chunking.
+        const mod = nextModuleImport(page.filePath)
+        props.push(`${indent}  component: ${mod}.default`)
+        if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
+        if (exp.hasGuard) props.push(`${indent}  beforeEnter: ${mod}.guard`)
+        if (exp.hasMeta || exp.hasRenderMode) {
+          const metaParts: string[] = []
+          if (exp.hasMeta) metaParts.push(`...${mod}.meta`)
+          if (exp.hasRenderMode) metaParts.push(`renderMode: ${mod}.renderMode`)
+          props.push(`${indent}  meta: { ${metaParts.join(', ')} }`)
+        }
+        if (errorName) {
+          const errorRef = exp.hasError ? `${mod}.error || ${errorName}` : errorName
+          props.push(`${indent}  errorComponent: ${errorRef}`)
+        }
+      } else {
+        // No metadata — pure lazy() for code splitting, no metadata import.
+        // This is the optimal path: single dynamic import per route.
+        const comp = nextLazy(page.filePath, loadingName, errorName)
+        props.push(`${indent}  component: ${comp}`)
+        if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
+      }
     }
 
     if (notFoundName) {
@@ -297,16 +473,56 @@ export function generateRouteModule(
     notFoundName: string | undefined,
   ): string {
     const layout = node.layout as FileRoute
-    const layoutMod = nextModuleImport(layout.filePath)
-    const layoutComp = nextImport(layout.filePath, 'layout')
+    const exp = layout.exports
+
+    // Decide between two import shapes:
+    //   • Layout HAS metadata exports → single `import * as mod` for both
+    //     the layout component (mod.layout) AND metadata. One import.
+    //   • Layout has NO metadata → just `import { layout as _N }`. One import.
+    //   • Back-compat (unknown exports) → `import { layout as _N }` +
+    //     `import * as mod` for _pick metadata. Two imports of same file
+    //     (both static, no dynamic-vs-static collision).
+    let layoutComp: string
+    let layoutMod: string | undefined
+
+    if (exp !== undefined && hasAnyMetaExport(exp)) {
+      // Single namespace import covers both component and metadata.
+      layoutMod = nextModuleImport(layout.filePath)
+      layoutComp = `${layoutMod}.layout`
+    } else {
+      // Either no metadata at all, or unknown exports. Either way we need
+      // the named `layout` import for the component.
+      layoutComp = nextImport(layout.filePath, 'layout')
+    }
 
     const props: string[] = [
       `${indent}path: ${JSON.stringify(layout.urlPath)}`,
       `${indent}component: ${layoutComp}`,
-      `${indent}loader: _pick(${layoutMod}, "loader")`,
-      `${indent}beforeEnter: _pick(${layoutMod}, "guard")`,
-      `${indent}meta: { ..._pick(${layoutMod}, "meta"), renderMode: _pick(${layoutMod}, "renderMode") }`,
     ]
+
+    if (exp === undefined) {
+      // Back-compat: pessimistic with _pick
+      const mod = nextModuleImport(layout.filePath)
+      needsPickHelper = true
+      props.push(`${indent}loader: _pick(${mod}, "loader")`)
+      props.push(`${indent}beforeEnter: _pick(${mod}, "guard")`)
+      props.push(
+        `${indent}meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
+      )
+    } else if (layoutMod !== undefined) {
+      // Known metadata — direct access via the same namespace import
+      if (exp.hasLoader) props.push(`${indent}loader: ${layoutMod}.loader`)
+      if (exp.hasGuard) props.push(`${indent}beforeEnter: ${layoutMod}.guard`)
+      if (exp.hasMeta || exp.hasRenderMode) {
+        const metaParts: string[] = []
+        if (exp.hasMeta) metaParts.push(`...${layoutMod}.meta`)
+        if (exp.hasRenderMode) metaParts.push(`renderMode: ${layoutMod}.renderMode`)
+        props.push(`${indent}meta: { ${metaParts.join(', ')} }`)
+      }
+    }
+    // If layout has no metadata exports, we don't emit any metadata
+    // props at all — the `clean()` helper drops undefined props anyway.
+
     if (errorName) {
       props.push(`${indent}errorComponent: ${errorName}`)
     }
@@ -349,14 +565,21 @@ export function generateRouteModule(
 
   const routeDefs = generateNode(tree, 0)
 
-  return [
-    ...imports,
-    '',
-    // Read optional module exports via bracket access. Hides them from
-    // Rolldown's static export analysis so it doesn't warn about routes
-    // that don't export `loader`, `guard`, `meta`, etc.
-    `function _pick(mod, key) { return mod[key] }`,
-    '',
+  const lines: string[] = []
+  if (needsLazyImport) lines.push(`import { lazy } from "@pyreon/router"`, '')
+  lines.push(...imports, '')
+
+  if (needsPickHelper) {
+    lines.push(
+      // Read optional module exports via bracket access. Hides them from
+      // Rolldown's static export analysis so it doesn't warn about routes
+      // that don't export `loader`, `guard`, `meta`, etc.
+      `function _pick(mod, key) { return mod[key] }`,
+      '',
+    )
+  }
+
+  lines.push(
     // Filter out undefined properties at runtime
     `function clean(routes) {`,
     `  return routes.map(r => {`,
@@ -370,7 +593,9 @@ export function generateRouteModule(
     `export const routes = clean([`,
     routeDefs.join(',\n'),
     `])`,
-  ].join('\n')
+  )
+
+  return lines.join('\n')
 }
 
 /**
@@ -424,4 +649,39 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
 
   await walk(routesDir)
   return files
+}
+
+/**
+ * Scan route files AND read each one to detect optional metadata exports
+ * (loader, guard, meta, renderMode, error, middleware).
+ *
+ * Returns FileRoute[] with `.exports` populated, ready to feed into
+ * `generateRouteModuleFromRoutes()` for optimal output:
+ *   • lazy() for components without metadata (best code splitting)
+ *   • Direct property access for components with metadata (no _pick)
+ *   • No spurious IMPORT_IS_UNDEFINED warnings
+ */
+export async function scanRouteFilesWithExports(
+  routesDir: string,
+  defaultMode: RenderMode = 'ssr',
+): Promise<FileRoute[]> {
+  const { readFile } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+
+  const files = await scanRouteFiles(routesDir)
+  const exportsMap = new Map<string, RouteFileExports>()
+
+  await Promise.all(
+    files.map(async (filePath) => {
+      try {
+        const source = await readFile(join(routesDir, filePath), 'utf-8')
+        exportsMap.set(filePath, detectRouteExports(source))
+      } catch {
+        // If a file can't be read, leave its exports unset — the generator
+        // will fall back to the pessimistic _pick path for that route.
+      }
+    }),
+  )
+
+  return parseFileRoutes(files, defaultMode, exportsMap)
 }

@@ -89,6 +89,28 @@ export interface ZeroConfig {
 
 // ─── File-system route ───────────────────────────────────────────────────────
 
+/**
+ * Which optional metadata exports a route file declares.
+ * Detected at scan time by parsing the file source. The code generator
+ * uses this to skip emitting `import * as mod` for routes that only
+ * export `default`, eliminating the dual-import collision with `lazy()`
+ * and silencing `IMPORT_IS_UNDEFINED` warnings from Rolldown.
+ */
+export interface RouteFileExports {
+  /** Has `export const loader` or `export function loader` */
+  hasLoader: boolean
+  /** Has `export const guard` or `export function guard` */
+  hasGuard: boolean
+  /** Has `export const meta` */
+  hasMeta: boolean
+  /** Has `export const renderMode` */
+  hasRenderMode: boolean
+  /** Has `export const error` (custom per-route error component) */
+  hasError: boolean
+  /** Has `export const middleware` */
+  hasMiddleware: boolean
+}
+
 /** Internal representation of a file-system route before conversion to RouteRecord. */
 export interface FileRoute {
   /** File path relative to routes dir (e.g. "users/[id].tsx") */
@@ -111,6 +133,14 @@ export interface FileRoute {
   isCatchAll: boolean
   /** Resolved rendering mode. */
   renderMode: RenderMode
+  /**
+   * Detected optional exports from the file source.
+   * When undefined (back-compat), the generator pessimistically assumes
+   * all metadata exports MAY exist and emits the safe `_pick(mod, ...)` pattern.
+   * When provided, the generator emits only the exports that exist
+   * AND can use lazy() for the component since there's no dual-import.
+   */
+  exports?: RouteFileExports
 }
 
 // ─── Route middleware ────────────────────────────────────────────────────
