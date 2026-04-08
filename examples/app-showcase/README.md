@@ -23,7 +23,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | --------------- | -------------- | ---------------------------------------------------------------------------- |
 | Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`           |
 | Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
-| Dashboard       | 🚧 coming soon | `query`, `table`, `charts`, `feature`, `permissions`, `virtual`              |
+| Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
 | Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`                        |
 | Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
 | Forms Wizard    | 🚧 coming soon | `form`, `validation`, `state-tree`, `machine`                                |
@@ -50,9 +50,11 @@ examples/app-showcase/
 │   │   ├── index.tsx        ← homepage with feature grid
 │   │   ├── todos/
 │   │   │   └── index.tsx    ← /todos page entry
-│   │   └── blog/
-│   │       ├── index.tsx    ← /blog list (loader + meta + tag filter)
-│   │       └── [slug].tsx   ← /blog/:slug detail (loader + dynamic head)
+│   │   ├── blog/
+│   │   │   ├── index.tsx    ← /blog list (loader + meta + tag filter)
+│   │   │   └── [slug].tsx   ← /blog/:slug detail (loader + dynamic head)
+│   │   └── dashboard/
+│   │       └── index.tsx    ← /dashboard (query + table + charts + virtual)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -62,12 +64,25 @@ examples/app-showcase/
 │       │   └── store/
 │       │       ├── todos.ts
 │       │       └── types.ts
-│       └── blog/
-│           ├── BlockRenderer.tsx
-│           ├── format.ts
+│       ├── blog/
+│       │   ├── BlockRenderer.tsx
+│       │   ├── format.ts
+│       │   ├── styled.ts
+│       │   └── content/
+│       │       ├── posts.ts
+│       │       └── types.ts
+│       └── dashboard/
+│           ├── KpiStrip.tsx
+│           ├── RevenueChart.tsx
+│           ├── CategoryChart.tsx
+│           ├── OrdersTable.tsx
+│           ├── CustomersVirtualList.tsx
+│           ├── RoleToggleHeader.tsx
+│           ├── permissions.ts
 │           ├── styled.ts
-│           └── content/
-│               ├── posts.ts
+│           └── data/
+│               ├── api.ts
+│               ├── seed.ts
 │               └── types.ts
 ```
 
