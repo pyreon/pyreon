@@ -22,7 +22,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Section         | Status         | Pyreon features                                                              |
 | --------------- | -------------- | ---------------------------------------------------------------------------- |
 | Todos           | ✅ available   | `store`, `storage`, `form`, `url-state`, `hotkeys`, `rx`, `styler`           |
-| Blog            | 🚧 coming soon | `zero` SSG, `head`, `document`, file routing, loaders                        |
+| Blog            | ✅ available   | `zero` SSG, `head`, router loaders, file routing (`[slug]`), `url-state`     |
 | Dashboard       | 🚧 coming soon | `query`, `table`, `charts`, `feature`, `permissions`, `virtual`              |
 | Chat            | 🚧 coming soon | `query` SSE, `virtual`, `toast`, `machine`, `kinetic`                        |
 | Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
@@ -48,15 +48,26 @@ examples/app-showcase/
 │   ├── routes/              ← only ROUTE files live here
 │   │   ├── _layout.tsx      ← sidebar + main column for the entire app
 │   │   ├── index.tsx        ← homepage with feature grid
-│   │   └── todos/
-│   │       └── index.tsx    ← entry component for /todos
+│   │   ├── todos/
+│   │   │   └── index.tsx    ← /todos page entry
+│   │   └── blog/
+│   │       ├── index.tsx    ← /blog list (loader + meta + tag filter)
+│   │       └── [slug].tsx   ← /blog/:slug detail (loader + dynamic head)
 │   └── sections/            ← per-section components, stores, helpers
-│       └── todos/
-│           ├── TodoList.tsx
-│           ├── TodoItem.tsx
-│           ├── context.ts
-│           └── store/
-│               ├── todos.ts
+│       ├── todos/
+│       │   ├── TodoList.tsx
+│       │   ├── TodoItem.tsx
+│       │   ├── context.ts
+│       │   ├── styled.ts
+│       │   └── store/
+│       │       ├── todos.ts
+│       │       └── types.ts
+│       └── blog/
+│           ├── BlockRenderer.tsx
+│           ├── format.ts
+│           ├── styled.ts
+│           └── content/
+│               ├── posts.ts
 │               └── types.ts
 ```
 
