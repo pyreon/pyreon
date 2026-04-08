@@ -101,6 +101,7 @@
         "@pyreon/permissions": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+        "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/state-tree": "workspace:*",
         "@pyreon/storage": "workspace:*",
@@ -108,6 +109,7 @@
         "@pyreon/table": "workspace:*",
         "@pyreon/validation": "workspace:*",
         "@pyreon/virtual": "workspace:*",
+        "@pyreon/zero": "workspace:*",
         "@tanstack/query-core": "^5.96.1",
         "@tanstack/table-core": "^8.21.3",
         "@tanstack/virtual-core": "^3.13.23",
@@ -128,6 +130,7 @@
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/zero": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/vite-plugin": "workspace:*",
@@ -204,6 +207,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@pyreon/core": "workspace:*",
+        "@pyreon/head": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
@@ -211,6 +215,7 @@
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/ui-primitives": "workspace:*",
         "@pyreon/ui-theme": "workspace:*",
+        "@pyreon/zero": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
@@ -254,10 +259,12 @@
         "@pyreon/kinetic-presets": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/styler": "workspace:*",
         "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
+        "@pyreon/zero": "workspace:*",
       },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
@@ -968,6 +975,7 @@
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
       },
     },
     "packages/ui-system/kinetic-presets": {

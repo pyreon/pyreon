@@ -766,9 +766,17 @@ describe('JSX transform — template emission', () => {
     expect(result).toContain('setAttribute("title"')
   })
 
-  test('ref attribute in template binds .current', () => {
+  test('ref attribute in template binds .current for object refs', () => {
     const result = t('<div ref={myRef}><span /></div>')
-    expect(result).toContain('myRef.current = __root')
+    // Object refs go through a runtime check (could also be a function)
+    expect(result).toContain('myRef')
+    expect(result).toContain('.current = __root')
+  })
+
+  test('ref attribute in template calls function refs', () => {
+    const result = t('<div ref={(el) => { myEl = el }}><span /></div>')
+    // Arrow function refs are called with the element
+    expect(result).toContain('((el) => { myEl = el })(__root)')
   })
 
   test('handles non-void self-closing element as closing tag', () => {
