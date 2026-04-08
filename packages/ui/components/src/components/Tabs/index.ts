@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
 
-const Tabs = rs({ name: 'Tabs', component: TabsBase })
+const Tabs = el.config({ name: 'Tabs', component: TabsBase })
   .theme((t) => ({
     display: 'flex',
     borderWidthBottom: 1,
@@ -23,7 +23,7 @@ const Tabs = rs({ name: 'Tabs', component: TabsBase })
 
 export default Tabs
 
-export const Tab = rs({ name: 'Tab', component: TabBase })
+export const Tab = el.config({ name: 'Tab', component: TabBase })
   .theme((t) => ({
     color: t.color.system.base[500],
     fontSize: t.fontSize.small,
@@ -79,6 +79,6 @@ export const Tab = rs({ name: 'Tab', component: TabBase })
     },
   }))
 
-export const TabPanel = rs({ name: 'TabPanel', component: TabPanelBase }).theme((t) => ({
+export const TabPanel = el.config({ name: 'TabPanel', component: TabPanelBase }).theme((t) => ({
   paddingTop: t.spacing.small,
 }))

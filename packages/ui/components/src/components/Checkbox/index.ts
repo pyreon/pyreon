@@ -1,7 +1,7 @@
-import { rs } from '../../factory'
+import { el } from '../../factory'
 import { CheckboxBase } from '@pyreon/ui-primitives'
 
-const Checkbox = rs({ name: 'Checkbox', component: CheckboxBase })
+const Checkbox = el.config({ name: 'Checkbox', component: CheckboxBase })
   .theme((t) => ({
     display: 'inline-flex',
     alignItems: 'center',
@@ -28,3 +28,34 @@ const Checkbox = rs({ name: 'Checkbox', component: CheckboxBase })
   }))
 
 export default Checkbox
+
+export const CheckboxIndicator = el
+  .config({ name: 'CheckboxIndicator' })
+  .attrs({ tag: 'span' })
+  .theme((t) => ({
+    width: '18px',
+    height: '18px',
+    borderWidth: 2,
+    borderStyle: 'solid',
+    borderColor: t.color.system.base[300],
+    borderRadius: t.borderRadius.small,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: t.color.system.light.base,
+    color: t.color.system.light.base,
+    fontSize: '12px',
+    transition: t.transition.fast,
+    flexShrink: 0,
+  }))
+  .states((t) => ({
+    checked: {
+      backgroundColor: t.color.system.primary.base,
+      borderColor: t.color.system.primary.base,
+    },
+  }))
+  .sizes(() => ({
+    small: { width: '14px', height: '14px', fontSize: '10px' },
+    medium: { width: '18px', height: '18px', fontSize: '12px' },
+    large: { width: '22px', height: '22px', fontSize: '14px' },
+  }))

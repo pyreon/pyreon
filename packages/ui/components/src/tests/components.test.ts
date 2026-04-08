@@ -17,7 +17,7 @@ const ALL_COMPONENTS = [
   'Button', 'IconButton', 'CloseButton', 'ButtonGroup', 'ActionIcon',
   // Forms
   'FormField', 'FieldLabel', 'FieldError', 'FieldDescription',
-  'Input', 'Textarea', 'Checkbox', 'Radio', 'RadioGroup', 'Switch', 'Select', 'Slider',
+  'Input', 'Textarea', 'Checkbox', 'CheckboxIndicator', 'Radio', 'RadioGroup', 'RadioIndicator', 'RadioDot', 'Switch', 'SwitchThumb', 'Select', 'Slider',
   // Data Display
   'Badge', 'Chip', 'Card', 'Avatar', 'AvatarGroup', 'Image', 'Kbd', 'Table', 'Timeline', 'Code', 'Highlight',
   // Feedback

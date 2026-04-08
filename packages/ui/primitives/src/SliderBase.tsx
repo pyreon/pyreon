@@ -36,7 +36,7 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
   ])
 
   const [value, setValue] = useControllableState({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? own.min ?? 0,
     onChange: own.onChange,
   })

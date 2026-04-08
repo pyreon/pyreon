@@ -70,7 +70,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
   const baseId = createUniqueId()
 
   const [selected, setSelected] = useControllableState<string | string[]>({
-    value: own.value,
+    value: () => own.value,
     defaultValue: own.defaultValue ?? (own.multiple ? [] : ''),
     onChange: own.onChange,
   })
