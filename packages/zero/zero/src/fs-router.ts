@@ -271,6 +271,7 @@ function scanTopLevelExportTokens(source: string): ExportToken[] {
         if (afterAsync > 0) p = skipWs(afterAsync)
 
         // `export const | let | var | function NAME …`
+        let foundDecl = false
         for (const kw of ['const', 'let', 'var', 'function'] as const) {
           const afterKw = matchKeyword(p, kw)
           if (afterKw > 0) {
@@ -278,13 +279,15 @@ function scanTopLevelExportTokens(source: string): ExportToken[] {
             const id = readIdentifier(nameStart)
             if (id) {
               tokens.push({ kind: 'declaration', name: id[0] })
-              i = id[1]
+              i = id[1] // advance past the identifier we just consumed
+              foundDecl = true
               break
             }
           }
         }
-        // If we didn't break out of the loop above, fall through and advance.
-        i = afterExport
+        // If we couldn't recognize a declaration form, advance past `export`
+        // so the outer loop doesn't re-match the same token forever.
+        if (!foundDecl) i = afterExport
         continue
       }
     }
