@@ -139,7 +139,13 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   function wrap(expr: ts.Expression): void {
     const start = expr.getStart(sf)
     const end = expr.getEnd()
-    replacements.push({ start, end, text: `() => ${sliceExpr(expr)}` })
+    // Object literals need parens: `() => { ... }` is a function body with
+    // labeled statements, not an object expression. Use `() => ({ ... })`.
+    const sliced = sliceExpr(expr)
+    const text = ts.isObjectLiteralExpression(expr)
+      ? `() => (${sliced})`
+      : `() => ${sliced}`
+    replacements.push({ start, end, text })
   }
 
   /** Try to hoist or wrap an expression, pushing a replacement if needed. */
@@ -228,7 +234,10 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
       } else if (shouldWrap(expr)) {
         const start = expr.getStart(sf)
         const end = expr.getEnd()
-        replacements.push({ start, end, text: `_rp(() => ${sliceExpr(expr)})` })
+        // Object literals need parens to disambiguate from arrow function body
+        const sliced = sliceExpr(expr)
+        const inner = ts.isObjectLiteralExpression(expr) ? `(${sliced})` : sliced
+        replacements.push({ start, end, text: `_rp(() => ${inner})` })
         needsRpImport = true
       }
     } else {
@@ -638,8 +647,17 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
     /** Emit bind line for a ref attribute. */
     function emitRef(attr: ts.JsxAttribute, varName: string): void {
       if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
-      if (!attr.initializer.expression) return
-      bindLines.push(`${sliceExpr(attr.initializer.expression)}.current = ${varName}`)
+      const expr = attr.initializer.expression
+      if (!expr) return
+      // Function ref: ref={(el) => { ... }} or ref={fn} → call with element
+      // Object ref: ref={myRef} → assign element to .current
+      if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+        bindLines.push(`(${sliceExpr(expr)})(${varName})`)
+      } else {
+        bindLines.push(
+          `{ const __r = ${sliceExpr(expr)}; if (typeof __r === "function") __r(${varName}); else if (__r) __r.current = ${varName} }`,
+        )
+      }
     }
 
     /** Emit event handler bind line — delegated (expando) or addEventListener. */

@@ -1,0 +1,18 @@
+export const tabs = [
+  { id: 'dashboard', path: '/', label: '📊 Dashboard' },
+  { id: 'store', path: '/store', label: 'Store' },
+  { id: 'state-tree', path: '/state-tree', label: 'State Tree' },
+  { id: 'form', path: '/form', label: 'Form' },
+  { id: 'validation', path: '/validation', label: 'Validation' },
+  { id: 'i18n', path: '/i18n', label: 'i18n' },
+  { id: 'query', path: '/query', label: 'Query' },
+  { id: 'table', path: '/table', label: 'Table' },
+  { id: 'virtual', path: '/virtual', label: 'Virtual' },
+  { id: 'charts', path: '/charts', label: 'Charts' },
+  { id: 'code', path: '/code', label: 'Code' },
+  { id: 'document', path: '/document', label: 'Document' },
+  { id: 'storage', path: '/storage', label: 'Storage' },
+  { id: 'hotkeys', path: '/hotkeys', label: 'Hotkeys' },
+  { id: 'permissions', path: '/permissions', label: 'Permissions' },
+  { id: 'machine', path: '/machine', label: 'Machine' },
+] as const

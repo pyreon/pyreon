@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit"
@@ -19,10 +20,12 @@
     "@pyreon/kinetic-presets": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/rocketstyle": "workspace:*",
+    "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
-    "@pyreon/unistyle": "workspace:*"
+    "@pyreon/unistyle": "workspace:*",
+    "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",

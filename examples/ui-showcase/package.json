@@ -4,20 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bunx --bun vite",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/head": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/ui-primitives": "workspace:*",
-    "@pyreon/ui-components": "workspace:*"
+    "@pyreon/ui-components": "workspace:*",
+    "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",

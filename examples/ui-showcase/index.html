@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -9,9 +9,11 @@
       body { font-family: Inter, system-ui, sans-serif; background: #f9fafb; color: #111827; }
       @keyframes spin { to { transform: rotate(360deg); } }
     </style>
+    <!--pyreon-head-->
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="app"><!--pyreon-app--></div>
+    <!--pyreon-scripts-->
+    <script type="module" src="/src/entry-client.ts"></script>
   </body>
 </html>

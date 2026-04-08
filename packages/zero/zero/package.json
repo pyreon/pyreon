@@ -177,6 +177,15 @@
     "vite": "^8.0.0"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "sharp": "^0.33.0"
+  },
+  "peerDependenciesMeta": {
+    "sharp": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "sharp": "^0.33.0"
   }
 }

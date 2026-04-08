@@ -1,7 +1,7 @@
 {
   "framework": "pyreon",
   "version": "workspace:*",
-  "generatedAt": "2026-04-07T16:44:56.099Z",
+  "generatedAt": "2026-04-08T07:41:20.947Z",
   "routes": [
     {
       "path": "/",
@@ -202,7 +202,19 @@
       "params": []
     },
     {
+      "path": "/colorpicker",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
       "path": "/combobox",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/fileupload",
       "hasLoader": false,
       "hasGuard": false,
       "params": []
@@ -215,6 +227,12 @@
     },
     {
       "path": "/table",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/tree",
       "hasLoader": false,
       "hasGuard": false,
       "params": []
@@ -271,10 +289,28 @@
       "props": []
     },
     {
+      "name": "ColorPickerDemo",
+      "file": "src/demos/ColorPickerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "color"
+      ],
+      "props": []
+    },
+    {
       "name": "HighlightDemo",
       "file": "src/demos/HighlightDemo.tsx",
       "hasSignals": false,
       "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "RadioIndicator",
+      "file": "src/demos/RadioDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "plan"
+      ],
       "props": []
     },
     {
@@ -361,6 +397,15 @@
       "props": []
     },
     {
+      "name": "TreeDemo",
+      "file": "src/demos/TreeDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selected"
+      ],
+      "props": []
+    },
+    {
       "name": "CenterDemo",
       "file": "src/demos/CenterDemo.tsx",
       "hasSignals": false,
@@ -380,8 +425,7 @@
       "hasSignals": true,
       "signalNames": [
         "value",
-        "volume",
-        "brightness"
+        "volume"
       ],
       "props": []
     },
@@ -390,8 +434,7 @@
       "file": "src/demos/SliderDemo.tsx",
       "hasSignals": true,
       "signalNames": [
-        "volume",
-        "brightness"
+        "volume"
       ],
       "props": []
     },
@@ -435,6 +478,15 @@
       "props": []
     },
     {
+      "name": "AccordionEntry",
+      "file": "src/demos/AccordionDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "open"
+      ],
+      "props": []
+    },
+    {
       "name": "AccordionDemo",
       "file": "src/demos/AccordionDemo.tsx",
       "hasSignals": false,
@@ -448,6 +500,13 @@
       "signalNames": [
         "selected"
       ],
+      "props": []
+    },
+    {
+      "name": "FileUploadDemo",
+      "file": "src/demos/FileUploadDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
       "props": []
     },
     {
@@ -467,7 +526,7 @@
       "props": []
     },
     {
-      "name": "CheckboxItem",
+      "name": "CheckboxIndicator",
       "file": "src/demos/CheckboxDemo.tsx",
       "hasSignals": true,
       "signalNames": [
@@ -531,6 +590,16 @@
       "props": []
     },
     {
+      "name": "SwitchTrack",
+      "file": "src/demos/SwitchDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "on",
+        "enabled"
+      ],
+      "props": []
+    },
+    {
       "name": "SwitchItem",
       "file": "src/demos/SwitchDemo.tsx",
       "hasSignals": true,
@@ -547,6 +616,20 @@
       "signalNames": [
         "enabled"
       ],
+      "props": []
+    },
+    {
+      "name": "HomePage",
+      "file": "src/routes/index.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "NavItem",
+      "file": "src/routes/_layout.tsx",
+      "hasSignals": false,
+      "signalNames": [],
       "props": []
     }
   ],
