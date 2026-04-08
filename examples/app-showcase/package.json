@@ -1,0 +1,40 @@
+{
+  "name": "@pyreon/example-app-showcase",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pyreon/core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
+    "@pyreon/form": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/hotkeys": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/rx": "workspace:*",
+    "@pyreon/storage": "workspace:*",
+    "@pyreon/store": "workspace:*",
+    "@pyreon/styler": "workspace:*",
+    "@pyreon/ui-components": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
+    "@pyreon/ui-theme": "workspace:*",
+    "@pyreon/url-state": "workspace:*",
+    "@pyreon/zero": "workspace:*"
+  },
+  "devDependencies": {
+    "@pyreon/compiler": "workspace:*",
+    "@pyreon/vite-plugin": "workspace:*",
+    "@types/bun": "^1.3.11",
+    "typescript": "~6.0.2",
+    "vite": "^8.0.3"
+  }
+}

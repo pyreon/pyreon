@@ -1,0 +1,112 @@
+/**
+ * Section registry — drives the sidebar nav and the homepage feature grid.
+ *
+ * Each section is a self-contained area of the app demonstrating a specific
+ * set of Pyreon features. New sections are added by:
+ *   1. Creating `src/routes/<section>/...` route files
+ *   2. Appending an entry here with `available: true`
+ */
+
+export interface Section {
+  /** URL path for the section root (e.g. "/todos"). */
+  path: string
+  /** Display name in the sidebar and homepage card. */
+  label: string
+  /** Short tagline for the homepage card. */
+  tagline: string
+  /** Pyreon packages this section showcases. */
+  features: string[]
+  /** Whether the section is built. Disabled sections render a "coming soon" badge. */
+  available: boolean
+  /** Sidebar group this section belongs to. */
+  group: 'apps' | 'forms' | 'data' | 'visual'
+}
+
+export const sections: Section[] = [
+  // ─── Apps ───────────────────────────────────────────────────────
+  {
+    path: '/todos',
+    label: 'Todos',
+    tagline: 'CRUD list with persistence, filters, and keyboard shortcuts',
+    features: ['store', 'storage', 'form', 'url-state', 'hotkeys', 'rx', 'styler'],
+    available: true,
+    group: 'apps',
+  },
+  {
+    path: '/blog',
+    label: 'Blog',
+    tagline: 'Markdown blog with tags, RSS, sitemap, OG images',
+    features: ['zero ssg', 'head', 'document', 'file routing', 'loaders'],
+    available: false,
+    group: 'apps',
+  },
+  {
+    path: '/dashboard',
+    label: 'Dashboard',
+    tagline: 'Admin with charts, tables, filters, CRUD',
+    features: ['query', 'table', 'charts', 'feature', 'permissions', 'virtual'],
+    available: false,
+    group: 'apps',
+  },
+  {
+    path: '/chat',
+    label: 'Chat',
+    tagline: 'Real-time messaging with channels and presence',
+    features: ['query (sse/sub)', 'virtual', 'toast', 'machine', 'kinetic'],
+    available: false,
+    group: 'apps',
+  },
+  {
+    path: '/kanban',
+    label: 'Kanban',
+    tagline: 'Drag-and-drop task board with undo/redo',
+    features: ['state-tree', 'store', 'permissions', 'hotkeys'],
+    available: false,
+    group: 'apps',
+  },
+
+  // ─── Forms ──────────────────────────────────────────────────────
+  {
+    path: '/forms-wizard',
+    label: 'Forms Wizard',
+    tagline: 'Multi-step onboarding form with validation',
+    features: ['form', 'validation', 'state-tree', 'machine'],
+    available: false,
+    group: 'forms',
+  },
+  {
+    path: '/invoice',
+    label: 'Invoice Builder',
+    tagline: 'Generate PDF/DOCX invoices from a form',
+    features: ['document', 'document-primitives', 'connector-document', 'form'],
+    available: false,
+    group: 'forms',
+  },
+
+  // ─── Data ───────────────────────────────────────────────────────
+  {
+    path: '/shop',
+    label: 'I18n Shop',
+    tagline: 'E-commerce with multi-locale and currencies',
+    features: ['i18n', 'zero locale routing', 'store', 'url-state'],
+    available: false,
+    group: 'data',
+  },
+
+  // ─── Visual ─────────────────────────────────────────────────────
+  {
+    path: '/flow',
+    label: 'Flow Editor',
+    tagline: 'Visual node editor with JSON sidebar',
+    features: ['flow', 'code', 'store'],
+    available: false,
+    group: 'visual',
+  },
+]
+
+export const groupLabels: Record<Section['group'], string> = {
+  apps: 'Apps',
+  forms: 'Forms',
+  data: 'Data',
+  visual: 'Visual',
+}
