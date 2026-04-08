@@ -1,6 +1,6 @@
 import { fade, kinetic, scaleIn, slideDown, slideLeft, slideRight, slideUp } from '@pyreon/kinetic'
 import { signal } from '@pyreon/reactivity'
-import { Button, Card, Title, Paragraph } from '@pyreon/ui-components'
+import { Button, Title, Paragraph } from '@pyreon/ui-components'
 
 const FadeBox = kinetic('div').preset(fade)
 const SlideUpBox = kinetic('div').preset(slideUp)
