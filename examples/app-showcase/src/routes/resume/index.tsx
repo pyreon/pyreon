@@ -85,7 +85,11 @@ export default function ResumeRoute() {
             <span>{() => `${r.store.resume().experience.length} jobs`}</span>
           </PreviewLabel>
           <PreviewFrame>
-            {() => <ResumeTemplate resume={r.store.resume()} />}
+            {/* Pass the SIGNAL accessor (not its resolved value) so the
+                template reads it inside its body. That gives fine-grained
+                per-text-node patching instead of a top-down re-render
+                on every keystroke. See ResumeTemplate's docstring. */}
+            <ResumeTemplate resume={r.store.resume} />
           </PreviewFrame>
         </PreviewColumn>
       </Workspace>
