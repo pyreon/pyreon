@@ -19,6 +19,7 @@ export const navGroups = [
       { path: '/divider', label: 'Divider' },
       { path: '/breadcrumb', label: 'Breadcrumb' },
       { path: '/buttongroup', label: 'ButtonGroup' },
+      { path: '/grid', label: 'Grid (coolgrid)' },
     ],
   },
   {
@@ -75,6 +76,33 @@ export const navGroups = [
       { path: '/modal', label: 'Modal' },
       { path: '/table', label: 'Table' },
       { path: '/tree', label: 'Tree' },
+    ],
+  },
+  {
+    label: 'Animations',
+    items: [
+      { path: '/animations/basic', label: 'Basic Presets' },
+      { path: '/animations/stagger', label: 'Stagger' },
+      { path: '/animations/collapse', label: 'Collapse' },
+      { path: '/animations/group', label: 'Group (lists)' },
+      { path: '/animations/factories', label: 'Factories' },
+      { path: '/animations/compositions', label: 'Compositions' },
+    ],
+  },
+  {
+    label: 'Hooks',
+    items: [
+      { path: '/hooks/interaction', label: 'Interaction' },
+      { path: '/hooks/state', label: 'State' },
+      { path: '/hooks/dom', label: 'DOM Observers' },
+      { path: '/hooks/responsive', label: 'Responsive & A11y' },
+    ],
+  },
+  {
+    label: 'Styling',
+    items: [
+      { path: '/styler', label: 'Styler (CSS-in-JS)' },
+      { path: '/elements', label: 'Elements' },
     ],
   },
 ]

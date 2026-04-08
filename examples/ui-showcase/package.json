@@ -11,15 +11,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pyreon/attrs": "workspace:*",
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
     "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
+    "@pyreon/kinetic": "workspace:*",
+    "@pyreon/kinetic-presets": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/styler": "workspace:*",
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/ui-primitives": "workspace:*",
     "@pyreon/ui-components": "workspace:*",
+    "@pyreon/unistyle": "workspace:*",
     "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {
