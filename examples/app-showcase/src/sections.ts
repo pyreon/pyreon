@@ -69,9 +69,9 @@ export const sections: Section[] = [
   {
     path: '/kanban',
     label: 'Kanban',
-    tagline: 'Drag-and-drop task board with undo/redo',
-    features: ['state-tree', 'store', 'permissions', 'hotkeys'],
-    available: false,
+    tagline: 'Drag-and-drop task board with snapshot-based undo/redo',
+    features: ['state-tree', 'permissions', 'hotkeys', 'styler'],
+    available: true,
     group: 'apps',
   },
 

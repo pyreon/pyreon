@@ -26,7 +26,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Dashboard       | ✅ available   | `query`, `table`, `charts`, `virtual`, `permissions`, `toast`, `coolgrid`    |
 | Forms Wizard    | ✅ available   | `form`, `validation` (zod), `state-tree` (snapshots + patches), `machine`    |
 | Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
-| Kanban          | 🚧 coming soon | `state-tree`, `store`, `permissions`, `hotkeys`                              |
+| Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
 | Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
 | I18n Shop       | 🚧 coming soon | `i18n`, Zero locale routing, `store`, `url-state`                            |
 | Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
@@ -57,8 +57,10 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /dashboard (query + table + charts + virtual)
 │   │   ├── forms-wizard/
 │   │   │   └── index.tsx    ← /forms-wizard (form + validation + state-tree + machine)
-│   │   └── chat/
-│   │       └── index.tsx    ← /chat (store + virtual + machine + toast)
+│   │   ├── chat/
+│   │   │   └── index.tsx    ← /chat (store + virtual + machine + toast)
+│   │   └── kanban/
+│   │       └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -97,16 +99,24 @@ examples/app-showcase/
 │       │   ├── wizardModel.ts       ← @pyreon/state-tree model
 │       │   ├── wizardMachine.ts     ← @pyreon/machine step transitions
 │       │   └── styled.ts
-│       └── chat/
-│           ├── ChannelList.tsx
-│           ├── MessageList.tsx       ← virtualized via @pyreon/virtual
-│           ├── MessageComposer.tsx   ← optimistic send + toast on error
-│           ├── connectionMachine.ts  ← @pyreon/machine connection FSM
-│           ├── store.ts              ← messages store + chatBus subscription
-│           ├── format.ts
+│       ├── chat/
+│       │   ├── ChannelList.tsx
+│       │   ├── MessageList.tsx       ← virtualized via @pyreon/virtual
+│       │   ├── MessageComposer.tsx   ← optimistic send + toast on error
+│       │   ├── connectionMachine.ts  ← @pyreon/machine connection FSM
+│       │   ├── store.ts              ← messages store + chatBus subscription
+│       │   ├── format.ts
+│       │   ├── styled.ts
+│       │   └── data/
+│       │       ├── eventBus.ts       ← mock chat server (replaces SSE)
+│       │       ├── seed.ts
+│       │       └── types.ts
+│       └── kanban/
+│           ├── BoardCard.tsx
+│           ├── boardModel.ts          ← @pyreon/state-tree model + undo manager
+│           ├── permissions.ts         ← admin/viewer createPermissions singleton
 │           ├── styled.ts
 │           └── data/
-│               ├── eventBus.ts       ← mock chat server (replaces SSE)
 │               ├── seed.ts
 │               └── types.ts
 ```
