@@ -116,3 +116,4 @@ export default function DashboardPageRoute() {
 export const meta = {
   title: 'Dashboard — Pyreon App Showcase',
 }
+

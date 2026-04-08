@@ -84,6 +84,29 @@ export function detectRouteExports(source: string): RouteFileExports {
     }
   }
 
+  // Capture literal `meta` and `renderMode` initializers when present
+  // so the route generator can inline them and avoid forcing a static
+  // import of the entire route module just to read the metadata.
+  // Strip any trailing `as const` / `satisfies T` type assertions —
+  // the generated routes module is plain JS, not TS.
+  //
+  // We then run `isPureLiteral()` to make sure the captured expression
+  // doesn't reference any free identifiers (e.g. `meta = { title: foo }`
+  // where `foo` is a const declared elsewhere in the file). Inlining
+  // such an expression into the routes module would produce a runtime
+  // ReferenceError, so we drop the literal and let the generator fall
+  // back to a static module import in those cases.
+  const rawMeta = found.has('meta') ? extractLiteralExport(source, 'meta') : undefined
+  const rawRenderMode = found.has('renderMode')
+    ? extractLiteralExport(source, 'renderMode')
+    : undefined
+  const cleanMeta = rawMeta !== undefined ? stripTypeAssertions(rawMeta) : undefined
+  const cleanRenderMode =
+    rawRenderMode !== undefined ? stripTypeAssertions(rawRenderMode) : undefined
+  const metaLiteral = cleanMeta !== undefined && isPureLiteral(cleanMeta) ? cleanMeta : undefined
+  const renderModeLiteral =
+    cleanRenderMode !== undefined && isPureLiteral(cleanRenderMode) ? cleanRenderMode : undefined
+
   return {
     hasLoader: found.has('loader'),
     hasGuard: found.has('guard'),
@@ -91,7 +114,423 @@ export function detectRouteExports(source: string): RouteFileExports {
     hasRenderMode: found.has('renderMode'),
     hasError: found.has('error'),
     hasMiddleware: found.has('middleware'),
+    ...(metaLiteral !== undefined ? { metaLiteral } : {}),
+    ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
   }
+}
+
+/**
+ * Extract the literal initializer of an `export const NAME = …` statement
+ * as a raw text slice — used by the route generator to inline `meta` and
+ * `renderMode` values into the generated routes module.
+ *
+ * Walks the source character-by-character respecting strings, template
+ * literals, comments, and brace/bracket/paren nesting. The slice runs
+ * from the first non-whitespace character after `=` to the matching
+ * end-of-expression terminator (`;`, newline at depth 0, or top-level
+ * `export`). Whatever the slice contains is handed to V8 verbatim by
+ * embedding it inside `{ … }` in the generated module — which means
+ * the original source must already be valid JavaScript (which it is,
+ * since the route file compiles).
+ *
+ * Returns `undefined` when extraction fails for any reason — the
+ * generator falls back to a static module import in that case.
+ */
+function extractLiteralExport(source: string, name: string): string | undefined {
+  // Find `export const NAME = ` at top level. Reuse the same
+  // string/comment/depth tracking as the token scanner so we don't
+  // false-match inside literals.
+  const len = source.length
+  let i = 0
+  let depth = 0
+
+  const isIdCont = (c: string) => /[A-Za-z0-9_$]/.test(c)
+  const skipWs = (p: number): number => {
+    while (p < len && /\s/.test(source[p] as string)) p++
+    return p
+  }
+
+  while (i < len) {
+    const ch = source[i] as string
+    const next = source[i + 1] ?? ''
+
+    // Skip comments
+    if (ch === '/' && next === '/') {
+      while (i < len && source[i] !== '\n') i++
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      i += 2
+      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+
+    // Skip string literals
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      i++
+      while (i < len && source[i] !== quote) {
+        if (source[i] === '\\') i += 2
+        else i++
+      }
+      i++
+      continue
+    }
+    if (ch === '`') {
+      i++
+      while (i < len && source[i] !== '`') {
+        if (source[i] === '\\') {
+          i += 2
+          continue
+        }
+        if (source[i] === '$' && source[i + 1] === '{') {
+          i += 2
+          let exprDepth = 1
+          while (i < len && exprDepth > 0) {
+            const c = source[i] as string
+            if (c === '{') exprDepth++
+            else if (c === '}') exprDepth--
+            if (exprDepth === 0) {
+              i++
+              break
+            }
+            i++
+          }
+          continue
+        }
+        i++
+      }
+      i++
+      continue
+    }
+
+    // Brace depth tracking
+    if (ch === '{') {
+      depth++
+      i++
+      continue
+    }
+    if (ch === '}') {
+      depth--
+      i++
+      continue
+    }
+
+    // Look for `export const NAME = …` at depth 0
+    if (depth === 0 && ch === 'e') {
+      const afterExport = source.slice(i, i + 6) === 'export' && !isIdCont(source[i + 6] ?? '')
+      if (afterExport) {
+        let p = skipWs(i + 6)
+        if (source.slice(p, p + 5) === 'const' && !isIdCont(source[p + 5] ?? '')) {
+          p = skipWs(p + 5)
+          // Check that the identifier matches our target name
+          if (
+            source.slice(p, p + name.length) === name &&
+            !isIdCont(source[p + name.length] ?? '')
+          ) {
+            p = skipWs(p + name.length)
+            if (source[p] === '=') {
+              p = skipWs(p + 1)
+              return readExpressionUntilEnd(source, p)
+            }
+          }
+        }
+        i = i + 6
+        continue
+      }
+    }
+
+    i++
+  }
+
+  return undefined
+}
+
+/**
+ * Read a JavaScript expression starting at `start` and return the raw
+ * text up to (but not including) its end. The end is whichever comes
+ * first of:
+ *   • a `;` at depth 0
+ *   • a newline at depth 0 that is not inside a string/template
+ *   • the next top-level `export` / `const` / `function` keyword
+ *   • end of file
+ *
+ * Tracks `()`, `[]`, and `{}` nesting plus string/template/comment
+ * state so depth-0 boundaries are detected correctly even for nested
+ * objects, arrays, and tagged templates.
+ */
+function readExpressionUntilEnd(source: string, start: number): string | undefined {
+  const len = source.length
+  let i = start
+  let depth = 0 // combined paren/bracket/brace depth
+
+  while (i < len) {
+    const ch = source[i] as string
+    const next = source[i + 1] ?? ''
+
+    // End conditions at depth 0
+    if (depth === 0) {
+      if (ch === ';') return source.slice(start, i).trim() || undefined
+      if (ch === '\n') {
+        // Allow trailing whitespace/comma but stop at the newline.
+        // Some authors close objects on the same line, others span
+        // them across lines — the depth check above handles the
+        // multi-line case so a depth-0 newline really is the end.
+        const trimmed = source.slice(start, i).trim()
+        if (trimmed.length === 0) {
+          i++
+          continue
+        }
+        return trimmed
+      }
+    }
+
+    // Skip comments
+    if (ch === '/' && next === '/') {
+      while (i < len && source[i] !== '\n') i++
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      i += 2
+      while (i < len - 1 && !(source[i] === '*' && source[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+
+    // Skip strings
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      i++
+      while (i < len && source[i] !== quote) {
+        if (source[i] === '\\') i += 2
+        else i++
+      }
+      i++
+      continue
+    }
+    if (ch === '`') {
+      i++
+      while (i < len && source[i] !== '`') {
+        if (source[i] === '\\') {
+          i += 2
+          continue
+        }
+        if (source[i] === '$' && source[i + 1] === '{') {
+          i += 2
+          let exprDepth = 1
+          while (i < len && exprDepth > 0) {
+            const c = source[i] as string
+            if (c === '{') exprDepth++
+            else if (c === '}') exprDepth--
+            if (exprDepth === 0) {
+              i++
+              break
+            }
+            i++
+          }
+          continue
+        }
+        i++
+      }
+      i++
+      continue
+    }
+
+    // Track depth across all bracket families
+    if (ch === '{' || ch === '[' || ch === '(') {
+      depth++
+      i++
+      continue
+    }
+    if (ch === '}' || ch === ']' || ch === ')') {
+      depth--
+      if (depth < 0) {
+        // We ran past our scope without seeing a terminator. The
+        // expression must have ended right before this closer.
+        return source.slice(start, i).trim() || undefined
+      }
+      i++
+      continue
+    }
+
+    i++
+  }
+
+  // Hit EOF without an explicit terminator — return whatever we have
+  // if it looks plausible, otherwise undefined.
+  const trimmed = source.slice(start).trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+/**
+ * True if `text` is a pure JS literal — only string/number/boolean/null
+ * literals plus the structural punctuation needed to compose them into
+ * objects, arrays, and tuples. Identifiers, operators, function calls,
+ * template-literal expression slots, and references to other names all
+ * disqualify the expression.
+ *
+ * Walks the source character-by-character, tracking string/template/
+ * comment state. Inside a string or template head (no `${}` slot) every
+ * character is fine; outside strings, only the structural symbols
+ * `{}[](),:` plus whitespace, digits, the literal keywords `true`,
+ * `false`, `null`, and `-` (for negative numbers) are allowed.
+ *
+ * The check is conservative on purpose — anything fancier than a flat
+ * literal falls back to the static-import path, which still works,
+ * just at the cost of one un-split chunk.
+ */
+function isPureLiteral(text: string): boolean {
+  const len = text.length
+  let i = 0
+
+  while (i < len) {
+    const ch = text[i] as string
+
+    // Strings — anything inside is literal data
+    if (ch === '"' || ch === "'") {
+      const quote = ch
+      i++
+      while (i < len && text[i] !== quote) {
+        if (text[i] === '\\') i += 2
+        else i++
+      }
+      i++
+      continue
+    }
+
+    // Template literals — only allowed if they contain no ${} slots
+    if (ch === '`') {
+      i++
+      while (i < len && text[i] !== '`') {
+        if (text[i] === '\\') {
+          i += 2
+          continue
+        }
+        if (text[i] === '$' && text[i + 1] === '{') {
+          // Template with an expression slot — not a pure literal
+          return false
+        }
+        i++
+      }
+      i++
+      continue
+    }
+
+    // Whitespace + structural punctuation are fine
+    if (/\s/.test(ch)) {
+      i++
+      continue
+    }
+    if (ch === '{' || ch === '}' || ch === '[' || ch === ']' || ch === ',' || ch === ':') {
+      i++
+      continue
+    }
+
+    // Number literals (including leading - and 0x/0b/0o)
+    if (/[0-9]/.test(ch) || (ch === '-' && /[0-9]/.test(text[i + 1] ?? ''))) {
+      while (i < len && /[0-9a-fA-Fxob.eE+\-_]/.test(text[i] as string)) i++
+      continue
+    }
+
+    // Allowed bare identifiers — only the literal keywords
+    if (text.slice(i, i + 4) === 'true' && !isIdContChar(text[i + 4] ?? '')) {
+      i += 4
+      continue
+    }
+    if (text.slice(i, i + 5) === 'false' && !isIdContChar(text[i + 5] ?? '')) {
+      i += 5
+      continue
+    }
+    if (text.slice(i, i + 4) === 'null' && !isIdContChar(text[i + 4] ?? '')) {
+      i += 4
+      continue
+    }
+    if (text.slice(i, i + 9) === 'undefined' && !isIdContChar(text[i + 9] ?? '')) {
+      i += 9
+      continue
+    }
+
+    // Property keys can be unquoted identifiers — they're followed by `:`.
+    // Walk over the identifier; if the next non-whitespace char is `:`,
+    // accept it as a key. Otherwise the identifier is a free reference
+    // and the expression isn't pure.
+    if (/[A-Za-z_$]/.test(ch)) {
+      let end = i + 1
+      while (end < len && isIdContChar(text[end] as string)) end++
+      let after = end
+      while (after < len && /\s/.test(text[after] as string)) after++
+      if (text[after] === ':') {
+        // unquoted property key — fine
+        i = end
+        continue
+      }
+      return false
+    }
+
+    // Anything else (operators, parens for function calls, etc.) → not pure
+    return false
+  }
+
+  return true
+}
+
+function isIdContChar(c: string): boolean {
+  return /[A-Za-z0-9_$]/.test(c)
+}
+
+/**
+ * Strip TypeScript type-only suffixes (`as const`, `as SomeType`,
+ * `satisfies SomeType`) from a literal expression so the generated
+ * JS module is syntactically valid.
+ *
+ * The route file is TypeScript so authors freely write
+ * `export const renderMode = 'ssg' as const` — but the generated
+ * `virtual:zero/routes` module is JavaScript and can't keep the cast.
+ * Strip from the rightmost top-level `as` or `satisfies` keyword.
+ */
+export function stripTypeAssertions(literal: string): string {
+  let result = literal.trim()
+
+  // Walk from the right at depth 0, find the LAST occurrence of
+  // ` as ` or ` satisfies ` and cut everything to the right of it.
+  // We use a depth-aware right-to-left scan because the literal can
+  // contain `as`/`satisfies` inside nested objects (e.g. a string
+  // value `'satisfies the schema'` should be left untouched).
+  let depth = 0
+  for (let i = result.length - 1; i > 0; i--) {
+    const ch = result[i] as string
+    if (ch === ')' || ch === ']' || ch === '}') depth++
+    else if (ch === '(' || ch === '[' || ch === '{') depth--
+
+    if (depth !== 0) continue
+
+    // Check for ` as ` boundary
+    if (
+      i >= 4 &&
+      result[i - 3] === ' ' &&
+      result[i - 2] === 'a' &&
+      result[i - 1] === 's' &&
+      result[i] === ' '
+    ) {
+      result = result.slice(0, i - 3).trim()
+      i = result.length
+      depth = 0
+      continue
+    }
+    // Check for ` satisfies ` boundary
+    if (
+      i >= 11 &&
+      result.slice(i - 10, i + 1) === ' satisfies '
+    ) {
+      result = result.slice(0, i - 10).trim()
+      i = result.length
+      depth = 0
+      continue
+    }
+  }
+
+  return result
 }
 
 /**
@@ -607,6 +1046,26 @@ export function generateRouteModuleFromRoutes(
     return name
   }
 
+  /**
+   * Emit a `meta: { ... }` prop using the literal initializers captured
+   * from the route file source. Either or both of `metaLiteral` and
+   * `renderModeLiteral` may be present; the result is always a single
+   * inline object literal.
+   */
+  function emitInlineMeta(exp: RouteFileExports, props: string[], indent: string): void {
+    if (!exp.hasMeta && !exp.hasRenderMode) return
+    const parts: string[] = []
+    if (exp.hasMeta && exp.metaLiteral !== undefined) {
+      parts.push(`...(${exp.metaLiteral})`)
+    }
+    if (exp.hasRenderMode && exp.renderModeLiteral !== undefined) {
+      parts.push(`renderMode: ${exp.renderModeLiteral}`)
+    }
+    if (parts.length > 0) {
+      props.push(`${indent}  meta: { ${parts.join(', ')} }`)
+    }
+  }
+
   function generatePageRoute(
     page: FileRoute,
     indent: string,
@@ -643,11 +1102,71 @@ export function generateRouteModuleFromRoutes(
         if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
       }
     } else {
-      // SSR/SPA mode: lazy() for code splitting unless metadata exists.
-      if (hasMeta) {
-        // Static `import * as` for metadata access. The dual import would
-        // collide, so we use the namespace import for the component too —
-        // Rolldown's chunker still puts each route in its own chunk.
+      // SSR/SPA mode: prefer lazy() for code splitting wherever possible.
+      //
+      // Three cases, in order of preference:
+      //   1. metaLiteral / renderModeLiteral are extracted AND there's
+      //      no loader/guard/error/middleware → fully lazy. Component
+      //      is `lazy()`'d, metadata is inlined as a literal in the
+      //      generated module. The route file's entire dependency
+      //      graph chunks separately.
+      //   2. metaLiteral / renderModeLiteral are extracted but a
+      //      function-shaped export (loader/guard/error/middleware)
+      //      is also present → mixed: component still lazy, metadata
+      //      inlined, function exports come from a static `import * as`.
+      //      The static import shares the chunk with the lazy chunk
+      //      via Rolldown's deduplication.
+      //   3. No literal extraction succeeded → fall back to the previous
+      //      pessimistic shape: single namespace import covering both
+      //      component and metadata.
+      const inlineableMeta =
+        (!exp.hasMeta || exp.metaLiteral !== undefined) &&
+        (!exp.hasRenderMode || exp.renderModeLiteral !== undefined)
+      const needsFunctionExports = exp.hasLoader || exp.hasGuard || exp.hasError
+
+      if (hasMeta && inlineableMeta && !needsFunctionExports) {
+        // Optimal path — component lazy, metadata inlined.
+        const comp = nextLazy(page.filePath, loadingName, errorName)
+        props.push(`${indent}  component: ${comp}`)
+        emitInlineMeta(exp, props, indent)
+        if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)
+      } else if (hasMeta && inlineableMeta) {
+        // Mixed — metadata is inlinable but the route also exports
+        // function-shaped values (loader/guard/error). Wrap them as
+        // lazy thunks so the route file's full dependency tree stays
+        // out of the main bundle: each thunk calls the same dynamic
+        // import as the lazy() component, and Rolldown deduplicates
+        // them into one chunk. Inlining the literal metadata is what
+        // makes this safe — without it, the meta access would force
+        // a static import that would collide with the dynamic one.
+        const comp = nextLazy(page.filePath, loadingName, errorName)
+        const fullPath = `${routesDir}/${page.filePath}`
+        props.push(`${indent}  component: ${comp}`)
+        if (exp.hasLoader) {
+          props.push(
+            `${indent}  loader: (ctx) => import("${fullPath}").then((m) => m.loader(ctx))`,
+          )
+        }
+        if (exp.hasGuard) {
+          props.push(
+            `${indent}  beforeEnter: (to, from) => import("${fullPath}").then((m) => m.guard(to, from))`,
+          )
+        }
+        emitInlineMeta(exp, props, indent)
+        if (errorName) {
+          // For error components we can't easily await — pass the lazy
+          // thunk through `lazy()` so the router resolves it like any
+          // other lazy component when an error fires.
+          const errorRef = exp.hasError
+            ? `lazy(() => import("${fullPath}").then((m) => ({ default: m.error })))`
+            : errorName
+          if (exp.hasError) needsLazyImport = true
+          props.push(`${indent}  errorComponent: ${errorRef}`)
+        }
+      } else if (hasMeta) {
+        // Fallback — metadata couldn't be extracted as a literal (e.g.
+        // computed values, references to other declarations). Fall
+        // back to the pessimistic single-namespace-import shape.
         const mod = nextModuleImport(page.filePath)
         props.push(`${indent}  component: ${mod}.default`)
         if (exp.hasLoader) props.push(`${indent}  loader: ${mod}.loader`)
@@ -663,7 +1182,7 @@ export function generateRouteModuleFromRoutes(
           props.push(`${indent}  errorComponent: ${errorRef}`)
         }
       } else {
-        // No metadata — pure lazy() for code splitting.
+        // No metadata at all — pure lazy() for code splitting.
         const comp = nextLazy(page.filePath, loadingName, errorName)
         props.push(`${indent}  component: ${comp}`)
         if (errorName) props.push(`${indent}  errorComponent: ${errorName}`)

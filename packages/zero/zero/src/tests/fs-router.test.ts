@@ -322,28 +322,51 @@ describe('generateRouteModule (real files)', () => {
     expect(code).not.toContain('_pick')
   })
 
-  it('emits namespace import for files with detected metadata', () => {
+  it('lazy-thunks the loader when paired with inlinable meta', () => {
     write(
       'dashboard.tsx',
-      `export const loader = async () => ({})\nexport default function Dashboard() { return null }`,
+      `export const loader = async () => ({})\nexport const meta = { title: 'Dashboard' }\nexport default function Dashboard() { return null }`,
     )
     const code = generateRouteModule(['dashboard.tsx'], dir)
-    expect(code).toContain('import * as')
-    expect(code).toMatch(/loader: _m\d+\.loader/)
+    // Component is lazy(), loader is wrapped in a dynamic-import thunk so the
+    // entire route module stays in its own chunk.
+    expect(code).toContain('lazy(() => import(')
+    expect(code).toContain('loader: (ctx) => import(')
+    expect(code).toContain('.then((m) => m.loader(ctx))')
+    // Meta is inlined as a literal, not pulled from a static module import.
+    expect(code).toMatch(/meta: \{ \.\.\.\(\{ title: 'Dashboard' \}\) \}/)
+    expect(code).not.toContain('import * as')
     expect(code).not.toContain('_pick')
-    expect(code).not.toContain('lazy(')
   })
 
-  it('mixes lazy() and namespace imports across files', () => {
+  it('falls back to namespace import when meta isn\'t a literal', () => {
+    write(
+      'computed-meta.tsx',
+      `const baseTitle = 'Page'\nexport const loader = async () => ({})\nexport const meta = { title: baseTitle + ' — Site' }\nexport default function P() { return null }`,
+    )
+    const code = generateRouteModule(['computed-meta.tsx'], dir)
+    // Inliner sees `baseTitle` (an identifier), so it gives up on the
+    // literal extraction. Generator falls back to the static
+    // `import * as` shape so the loader/meta access still works.
+    expect(code).toContain('import * as')
+    expect(code).toMatch(/loader: _m\d+\.loader/)
+  })
+
+  it('mixes lazy() across files with no warnings about dual imports', () => {
     write('home.tsx', `export default function Home() { return null }`)
     write(
       'admin.tsx',
       `export const meta = { title: 'Admin' }\nexport default function Admin() { return null }`,
     )
     const code = generateRouteModule(['home.tsx', 'admin.tsx'], dir)
+    // Both routes should be lazy() — admin has meta but it's a literal,
+    // so it gets inlined and the route file lazy-loads cleanly.
     expect(code).toContain('lazy(() => import(')
-    expect(code).toContain('import * as')
-    expect(code).toMatch(/meta: \{ \.\.\._m\d+\.meta \}/)
+    expect(code).toMatch(/lazy.*home\.tsx/)
+    expect(code).toMatch(/lazy.*admin\.tsx/)
+    // Inlined meta literal — no static module import
+    expect(code).toContain("meta: { ...({ title: 'Admin' }) }")
+    expect(code).not.toContain('import * as')
     expect(code).not.toContain('_pick')
   })
 
@@ -361,9 +384,12 @@ export default function Page() { return null }
       `,
     )
     const code = generateRouteModule(['page.tsx'], dir)
-    expect(code).toMatch(/loader: _m\d+\.loader/)
-    expect(code).toMatch(/beforeEnter: _m\d+\.guard/)
-    expect(code).toMatch(/meta: \{ \.\.\._m\d+\.meta, renderMode: _m\d+\.renderMode \}/)
+    // meta + renderMode are literals → inlined.
+    // loader + guard + error are functions → wrapped in dynamic-import thunks.
+    expect(code).toContain('lazy(() => import(')
+    expect(code).toContain('loader: (ctx) => import(')
+    expect(code).toContain('beforeEnter: (to, from) => import(')
+    expect(code).toContain("meta: { ...({ title: 'Page' }), renderMode: 'ssg' }")
     expect(code).not.toContain('_pick')
   })
 
@@ -575,14 +601,44 @@ describe('generateRouteModuleFromRoutes — with detected exports', () => {
     expect(result).not.toContain('function _pick')
   })
 
-  it('emits no lazy import when all routes have metadata (no code split)', () => {
+  it('routes with loader-only and no meta literal lazy() the component + thunk-wrap the loader', () => {
+    // `a.tsx` has hasLoader=true but no `meta`/`renderMode` flags. With
+    // the framework-level inlining fix, the generator detects "no meta
+    // is needed → meta is trivially inlinable (it's empty)", takes the
+    // mixed branch, and emits a lazy() component + a dynamic-import
+    // thunk for the loader. No static `import * as` is generated.
+    const routes = [makeRoute('a.tsx', { hasLoader: true })]
+    const result = generateRouteModuleFromRoutes(routes, './routes')
+    expect(result).toContain('import { lazy }')
+    expect(result).toContain('lazy(() => import(')
+    expect(result).toContain('loader: (ctx) => import(')
+    expect(result).not.toContain('import * as')
+  })
+
+  it('routes with hasMeta but no metaLiteral fall back to static import', () => {
+    // `b.tsx` claims `hasMeta: true` via the synthetic exports map but
+    // doesn't supply a `metaLiteral` — that mimics what would happen
+    // if the literal extractor saw a non-pure expression. Generator
+    // takes the pessimistic path and emits a static `import * as`.
+    const routes = [makeRoute('b.tsx', { hasMeta: true })]
+    const result = generateRouteModuleFromRoutes(routes, './routes')
+    expect(result).toContain('import * as')
+    expect(result).not.toContain('lazy(')
+  })
+
+  it('emits lazy() when metaLiteral is supplied alongside metadata flags', () => {
     const routes = [
-      makeRoute('a.tsx', { hasLoader: true }),
-      makeRoute('b.tsx', { hasMeta: true }),
+      makeRoute('a.tsx', { hasMeta: true, metaLiteral: "{ title: 'A' }" }),
+      makeRoute('b.tsx', { hasMeta: true, metaLiteral: "{ title: 'B' }" }),
     ]
     const result = generateRouteModuleFromRoutes(routes, './routes')
-    expect(result).not.toContain('import { lazy }')
-    expect(result).not.toContain('lazy(')
+    // Both routes have inlinable meta → both get lazy() components
+    // and inlined meta literals. No static `import * as` is needed.
+    expect(result).toContain('import { lazy }')
+    expect(result).toContain('lazy(() => import(')
+    expect(result).toContain("meta: { ...({ title: 'A' }) }")
+    expect(result).toContain("meta: { ...({ title: 'B' }) }")
+    expect(result).not.toContain('import * as')
   })
 
   it('layout with metadata uses single namespace import for component AND metadata', () => {

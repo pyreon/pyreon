@@ -109,6 +109,25 @@ export interface RouteFileExports {
   hasError: boolean
   /** Has `export const middleware` */
   hasMiddleware: boolean
+  /**
+   * Raw text of the `export const meta = …` initializer, captured as a
+   * literal expression. When present, the route generator inlines this
+   * value directly into the generated routes module instead of importing
+   * it from the route file — which means the route file can be lazy()'d
+   * without forcing the entire dependency tree into the main bundle.
+   *
+   * Only set when the meta export is a top-level `export const meta = { … }`
+   * literal that can be extracted via balanced-brace scanning. Anything
+   * fancier (computed values, function calls, references to other
+   * declarations) leaves this undefined and falls back to a static module
+   * import.
+   */
+  metaLiteral?: string
+  /**
+   * Raw text of the `export const renderMode = …` initializer, captured
+   * as a literal expression. Same inlining strategy as `metaLiteral`.
+   */
+  renderModeLiteral?: string
 }
 
 /** Internal representation of a file-system route before conversion to RouteRecord. */

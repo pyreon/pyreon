@@ -155,3 +155,4 @@ function SuccessPanel() {
 export const meta = {
   title: 'Forms Wizard — Pyreon App Showcase',
 }
+
