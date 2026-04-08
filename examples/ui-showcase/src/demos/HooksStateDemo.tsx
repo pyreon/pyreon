@@ -14,14 +14,11 @@ export function HooksStateDemo() {
   const search = signal('')
   const debounced = useDebouncedValue(() => search(), 500)
 
-  // useInterval — gated by `running` flag inside the callback
-  // (useInterval takes a static delay; reading the signal inside the
-  // callback lets us start/stop without unmounting)
+  // useInterval — reactive delay getter (returns null to pause).
+  // The interval restarts whenever the getter's signal dependencies change.
   const ticks = signal(0)
   const running = signal(true)
-  useInterval(() => {
-    if (running()) ticks.set(ticks() + 1)
-  }, 1000)
+  useInterval(() => ticks.set(ticks() + 1), () => (running() ? 1000 : null))
 
   return (
     <div>
@@ -54,7 +51,10 @@ export function HooksStateDemo() {
         Live: <strong>{() => search() || '(empty)'}</strong> | Debounced: <strong>{() => debounced() || '(empty)'}</strong>
       </p>
 
-      <Title size="h3" style="margin-bottom: 12px">useInterval(fn, 1000)</Title>
+      <Title size="h3" style="margin-bottom: 12px">useInterval(fn, () =&gt; running() ? 1000 : null)</Title>
+      <p style="font-size: 13px; color: #6b7280; margin-bottom: 8px;">
+        Reactive delay getter — returns null to pause, restarts on signal change.
+      </p>
       <div style="display: flex; gap: 8px; align-items: center;">
         <Button state="primary" onClick={() => running.set(!running())}>
           {() => (running() ? 'Stop' : 'Start')}

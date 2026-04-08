@@ -104,6 +104,35 @@ describe('styled', () => {
     })
   })
 
+  describe('generic typed props', () => {
+    it('accepts a type parameter for typed interpolation props', () => {
+      // The generic provides type-safe access to consumer props inside interpolations
+      const Comp = styled('div')<{ $color: string; $size: number }>`
+        color: ${(props) => props.$color};
+        font-size: ${(props) => props.$size}px;
+      `
+      const vnode = Comp({ $color: 'red', $size: 14 }) as VNode
+      expect(vnode.props.class).toMatch(/^pyr-/)
+    })
+
+    it('different typed prop values produce different classes', () => {
+      const Comp = styled('div')<{ $variant: 'primary' | 'danger' }>`
+        background: ${(props) => (props.$variant === 'primary' ? 'blue' : 'red')};
+      `
+      const a = Comp({ $variant: 'primary' }) as VNode
+      const b = Comp({ $variant: 'danger' }) as VNode
+      expect(a.props.class).not.toBe(b.props.class)
+    })
+
+    it('default generic still allows untyped interpolations (back-compat)', () => {
+      const Comp = styled('div')`
+        color: ${(props: { color?: string }) => props.color || 'black'};
+      `
+      const vnode = Comp({ color: 'red' }) as VNode
+      expect(vnode.props.class).toMatch(/^pyr-/)
+    })
+  })
+
   describe('dynamic CSS (function interpolations)', () => {
     it('resolves function interpolations with props', () => {
       const Comp = styled('div')`

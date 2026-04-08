@@ -6,15 +6,28 @@
 
 import type { DefaultTheme } from './ThemeProvider'
 
-export type Interpolation =
+/**
+ * Props passed to interpolation functions inside tagged templates.
+ * Generic `P` allows consumers to type their custom props (e.g. transient $-prefixed):
+ *
+ * @example
+ * styled('div')<{ $color: string }>`
+ *   background: ${(props) => props.$color}; // props.$color is typed!
+ * `
+ */
+export type StyledProps<P extends object = Record<string, unknown>> = P & {
+  theme?: DefaultTheme & Record<string, unknown>
+}
+
+export type Interpolation<P extends object = Record<string, unknown>> =
   | string
   | number
   | boolean
   | null
   | undefined
   | CSSResult
-  | Interpolation[]
-  | ((props: { theme?: DefaultTheme & Record<string, any>; [key: string]: any }) => Interpolation)
+  | Interpolation<P>[]
+  | ((props: StyledProps<P>) => Interpolation<P>)
 
 /**
  * Lazy representation of a `css` tagged template. Stores the raw template

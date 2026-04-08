@@ -240,7 +240,22 @@ const styledFactory = (tag: Tag, options?: StyledOptions) => {
 // Cache template functions per tag to avoid closure allocation on every Proxy get
 const proxyCache = new Map<string, (...args: any[]) => any>()
 
-type TagTemplateFn = (strings: TemplateStringsArray, ...values: Interpolation[]) => ComponentFn
+/**
+ * Generic tagged template function returned by `styled(tag)` and `styled.tag`.
+ *
+ * Accepts an optional type parameter `<P>` for consumer-defined props
+ * (typically transient $-prefixed props that aren't forwarded to the DOM).
+ *
+ * @example
+ * const Box = styled('div')<{ $color: string }>`
+ *   background: ${(props) => props.$color};
+ * `
+ * <Box $color="red" />  // $color is required and typed
+ */
+type TagTemplateFn = <P extends object = Record<string, unknown>>(
+  strings: TemplateStringsArray,
+  ...values: Interpolation<P>[]
+) => ComponentFn<P & Record<string, unknown>>
 
 type HtmlTags =
   | 'a'
