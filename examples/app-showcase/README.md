@@ -28,7 +28,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | Chat            | ✅ available   | `store`, `virtual`, `machine` (connection FSM), `toast`, `reactivity`        |
 | Kanban          | ✅ available   | `state-tree` (snapshot undo), `permissions`, `hotkeys`, native HTML5 DnD     |
 | I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
-| Invoice Builder | 🚧 coming soon | `document`, `document-primitives`, `connector-document`                      |
+| Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
 | Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
@@ -61,8 +61,10 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /chat (store + virtual + machine + toast)
 │   │   ├── kanban/
 │   │   │   └── index.tsx    ← /kanban (state-tree undo + permissions + hotkeys + DnD)
-│   │   └── shop/
-│   │       └── index.tsx    ← /shop (i18n + cart store + persisted cart + url filter)
+│   │   ├── shop/
+│   │   │   └── index.tsx    ← /shop (i18n + cart store + persisted cart + url filter)
+│   │   └── invoice/
+│   │       └── index.tsx    ← /invoice (document tree → PDF/DOCX/HTML/MD)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -121,15 +123,25 @@ examples/app-showcase/
 │       │   └── data/
 │       │       ├── seed.ts
 │       │       └── types.ts
-│       └── shop/
-│           ├── ProductGrid.tsx
-│           ├── CartDrawer.tsx
-│           ├── Switchers.tsx          ← LocaleSwitcher + CurrencySwitcher
-│           ├── cartStore.ts           ← cart + currency persisted via @pyreon/storage
-│           ├── i18n.ts                ← createI18n with EN/DE/FR catalog
+│       ├── shop/
+│       │   ├── ProductGrid.tsx
+│       │   ├── CartDrawer.tsx
+│       │   ├── Switchers.tsx          ← LocaleSwitcher + CurrencySwitcher
+│       │   ├── cartStore.ts           ← cart + currency persisted via @pyreon/storage
+│       │   ├── i18n.ts                ← createI18n with EN/DE/FR catalog
+│       │   ├── styled.ts
+│       │   └── data/
+│       │       ├── products.ts
+│       │       └── types.ts
+│       └── invoice/
+│           ├── InvoiceForm.tsx        ← signal-bound form with line-item array
+│           ├── LivePreview.tsx        ← effect() rebuilds doc HTML on every change
+│           ├── ExportButtons.tsx      ← download as HTML/MD/PDF/DOCX via @pyreon/document
+│           ├── template.ts            ← buildInvoiceDoc(invoice) → DocNode tree
+│           ├── store.ts               ← invoice store with derived totals
 │           ├── styled.ts
 │           └── data/
-│               ├── products.ts
+│               ├── seed.ts            ← seed invoice + currency/date helpers
 │               └── types.ts
 ```
 

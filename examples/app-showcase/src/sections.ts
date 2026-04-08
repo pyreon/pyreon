@@ -87,9 +87,9 @@ export const sections: Section[] = [
   {
     path: '/invoice',
     label: 'Invoice Builder',
-    tagline: 'Generate PDF/DOCX invoices from a form',
-    features: ['document', 'document-primitives', 'connector-document', 'form'],
-    available: false,
+    tagline: 'Live form editor + HTML preview, export to PDF / DOCX / HTML / Markdown',
+    features: ['document', 'store', 'reactivity', 'toast', 'styler'],
+    available: true,
     group: 'forms',
   },
 

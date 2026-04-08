@@ -71,6 +71,7 @@
         "@pyreon/charts": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
+        "@pyreon/document": "workspace:*",
         "@pyreon/elements": "workspace:*",
         "@pyreon/form": "workspace:*",
         "@pyreon/head": "workspace:*",
