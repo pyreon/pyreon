@@ -10,8 +10,6 @@ const DocDivider = rocketstyle()({ name: 'DocDivider', component: Element })
   .attrs<{
     color?: string
     thickness?: number
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'hr',
     _documentProps: {

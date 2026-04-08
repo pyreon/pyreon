@@ -7,7 +7,7 @@ const DocLink = rocketstyle()({ name: 'DocLink', component: Text })
     textDecoration: 'underline',
   })
   .statics({ _documentType: 'link' as const })
-  .attrs<{ href?: string; tag: string; _documentProps: { href: string } }>((props) => ({
+  .attrs<{ href?: string }>((props) => ({
     tag: 'a',
     _documentProps: { href: props.href ?? '#' },
   }))

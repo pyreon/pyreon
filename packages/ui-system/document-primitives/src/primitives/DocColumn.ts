@@ -3,11 +3,9 @@ import rocketstyle from '@pyreon/rocketstyle'
 
 const DocColumn = rocketstyle()({ name: 'DocColumn', component: Element })
   .statics({ _documentType: 'column' as const })
-  .attrs<{ width?: number | string; tag: string; _documentProps: Record<string, unknown> }>(
-    (props) => ({
-      tag: 'div',
-      _documentProps: props.width != null ? { width: props.width } : {},
-    }),
-  )
+  .attrs<{ width?: number | string }>((props) => ({
+    tag: 'div',
+    _documentProps: props.width != null ? { width: props.width } : {},
+  }))
 
 export default DocColumn

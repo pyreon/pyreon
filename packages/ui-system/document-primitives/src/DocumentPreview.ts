@@ -37,8 +37,6 @@ const DocumentPreview = rocketstyle({
   .attrs<{
     size?: string
     showPageBreaks?: boolean
-    tag: string
-    _documentProps: Record<string, unknown>
   }>((props) => ({
     tag: 'div',
     _documentProps: {

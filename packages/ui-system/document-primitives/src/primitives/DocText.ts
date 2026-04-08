@@ -23,11 +23,7 @@ const DocText = rocketstyle({
     bold: { fontWeight: 'bold' },
   })
   .statics({ _documentType: 'text' as const })
-  // .attrs(
-  //   (props: any) =>
-  //     ({
-  //       tag: "p",
-  .attrs<{ tag: string; _documentProps: Record<string, unknown> }>((_props) => ({
+  .attrs(() => ({
     tag: 'p',
     _documentProps: {},
   }))
