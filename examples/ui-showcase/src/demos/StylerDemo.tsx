@@ -10,14 +10,16 @@ const Card = styled('div')`
   border: 1px solid #e9ecef;
 `
 
-// ── Dynamic interpolation via prop
-const Box = styled('div')`
+// ── Dynamic interpolation via typed transient prop
+// The <{ $color?: string }> generic gives type-safe access to props
+// inside the interpolation function — no casts needed.
+const Box = styled('div')<{ $color?: string }>`
   padding: 24px;
   border-radius: 8px;
   color: white;
   text-align: center;
   font-weight: 600;
-  background: ${(props: Record<string, unknown>) => (props.$color as string) || '#0070f3'};
+  background: ${(props) => props.$color || '#0070f3'};
 `
 
 // ── Nested selectors

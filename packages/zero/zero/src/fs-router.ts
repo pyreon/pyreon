@@ -223,13 +223,17 @@ export interface GenerateRouteModuleOptions {
 export function generateRouteModule(
   files: string[],
   routesDir: string,
-  options?: GenerateRouteModuleOptions,
+  _options?: GenerateRouteModuleOptions,
 ): string {
   const routes = parseFileRoutes(files)
   const tree = buildRouteTree(routes)
   const imports: string[] = []
   let importCounter = 0
-  const useStaticImports = options?.staticImports ?? false
+  // staticImports option is now always implicit — every route uses
+  // static `import * as` so the component (.default), loader, guard, meta,
+  // and renderMode all come from a single module reference. This avoids
+  // Rolldown's INEFFECTIVE_DYNAMIC_IMPORT warning that fired when the same
+  // file was imported via both static and dynamic paths.
 
   function nextImport(filePath: string, exportName = 'default'): string {
     const name = `_${importCounter++}`
@@ -238,24 +242,6 @@ export function generateRouteModule(
       imports.push(`import ${name} from "${fullPath}"`)
     } else {
       imports.push(`import { ${exportName} as ${name} } from "${fullPath}"`)
-    }
-    return name
-  }
-
-  function nextLazy(filePath: string, loadingName?: string, errorName?: string): string {
-    const name = `_${importCounter++}`
-    const fullPath = `${routesDir}/${filePath}`
-
-    if (useStaticImports) {
-      // SSG mode: static import avoids Rolldown warnings about
-      // static + dynamic imports of the same module
-      imports.push(`import ${name} from "${fullPath}"`)
-    } else {
-      const opts: string[] = []
-      if (loadingName) opts.push(`loading: ${loadingName}`)
-      if (errorName) opts.push(`error: ${errorName}`)
-      const optsStr = opts.length > 0 ? `, { ${opts.join(', ')} }` : ''
-      imports.push(`const ${name} = lazy(() => import("${fullPath}")${optsStr})`)
     }
     return name
   }
@@ -270,26 +256,30 @@ export function generateRouteModule(
   function generatePageRoute(
     page: FileRoute,
     indent: string,
-    loadingName: string | undefined,
+    _loadingName: string | undefined,
     errorName: string | undefined,
     notFoundName: string | undefined,
   ): string {
+    // Use a single static `import * as` for the namespace, then read all
+    // optional exports (loader, guard, meta, renderMode) via the runtime
+    // helper `_pick()` which uses bracket-key access. Rolldown can't
+    // statically prove which keys exist, so it doesn't warn about
+    // "import will always be undefined" — and we still get a single
+    // static import per route (no INEFFECTIVE_DYNAMIC_IMPORT warning).
     const mod = nextModuleImport(page.filePath)
-    const comp = nextLazy(page.filePath, loadingName, errorName)
 
     const props: string[] = [
       `${indent}  path: ${JSON.stringify(page.urlPath)}`,
-      `${indent}  component: ${comp}`,
-      `${indent}  loader: ${mod}.loader`,
-      `${indent}  beforeEnter: ${mod}.guard`,
-      `${indent}  meta: { ...${mod}.meta, renderMode: ${mod}.renderMode }`,
+      `${indent}  component: ${mod}.default`,
+      `${indent}  loader: _pick(${mod}, "loader")`,
+      `${indent}  beforeEnter: _pick(${mod}, "guard")`,
+      `${indent}  meta: { ..._pick(${mod}, "meta"), renderMode: _pick(${mod}, "renderMode") }`,
     ]
 
     // Only emit errorComponent when there's an actual _error file in scope
-    // or the route module exports an error component. Avoids referencing
-    // undefined .error exports that produce noisy bundler warnings.
+    // or the route module exports an error component.
     if (errorName) {
-      props.push(`${indent}  errorComponent: ${mod}.error || ${errorName}`)
+      props.push(`${indent}  errorComponent: _pick(${mod}, "error") || ${errorName}`)
     }
 
     if (notFoundName) {
@@ -313,9 +303,9 @@ export function generateRouteModule(
     const props: string[] = [
       `${indent}path: ${JSON.stringify(layout.urlPath)}`,
       `${indent}component: ${layoutComp}`,
-      `${indent}loader: ${layoutMod}.loader`,
-      `${indent}beforeEnter: ${layoutMod}.guard`,
-      `${indent}meta: { ...${layoutMod}.meta, renderMode: ${layoutMod}.renderMode }`,
+      `${indent}loader: _pick(${layoutMod}, "loader")`,
+      `${indent}beforeEnter: _pick(${layoutMod}, "guard")`,
+      `${indent}meta: { ..._pick(${layoutMod}, "meta"), renderMode: _pick(${layoutMod}, "renderMode") }`,
     ]
     if (errorName) {
       props.push(`${indent}errorComponent: ${errorName}`)
@@ -360,9 +350,12 @@ export function generateRouteModule(
   const routeDefs = generateNode(tree, 0)
 
   return [
-    `import { lazy } from "@pyreon/router"`,
-    '',
     ...imports,
+    '',
+    // Read optional module exports via bracket access. Hides them from
+    // Rolldown's static export analysis so it doesn't warn about routes
+    // that don't export `loader`, `guard`, `meta`, etc.
+    `function _pick(mod, key) { return mod[key] }`,
     '',
     // Filter out undefined properties at runtime
     `function clean(routes) {`,

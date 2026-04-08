@@ -1,14 +1,21 @@
 import { Element, List, Text } from '@pyreon/elements'
 import { Title, Paragraph } from '@pyreon/ui-components'
 
-function FruitItem(props: { label: string; first?: boolean; last?: boolean }) {
+function FruitItem(props: {
+  label: string
+  first?: boolean
+  last?: boolean
+  odd?: boolean
+  position?: number
+}) {
   return (
     <li
       style={() =>
-        `padding: 12px 16px; background: #f9fafb; border-bottom: ${props.last ? 'none' : '1px solid #e5e7eb'};`
+        `padding: 12px 16px; background: ${props.odd ? '#f9fafb' : 'white'}; border-bottom: ${props.last ? 'none' : '1px solid #e5e7eb'}; display: flex; justify-content: space-between;`
       }
     >
-      {props.label}
+      <span>{props.label}</span>
+      <span style="color: #9ca3af; font-size: 12px;">#{props.position}</span>
     </li>
   )
 }
@@ -114,7 +121,9 @@ export function ElementsDemo() {
 
       <Title size="h3" style="margin-bottom: 12px">List — data-driven rendering</Title>
       <Paragraph style="margin-bottom: 12px; font-size: 13px;">
-        Renders `data` array through a `component` prop with positional metadata (first, last, odd/even, position).
+        Renders `data` array through a `component` prop. Each item receives positional
+        metadata as props: <code>first</code>, <code>last</code>, <code>odd</code>,
+        <code>even</code>, <code>position</code>, <code>index</code>.
       </Paragraph>
       <ul style="list-style: none; padding: 0; max-width: 400px; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
         <List data={fruits} component={FruitItem} />

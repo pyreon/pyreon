@@ -174,10 +174,11 @@ describe('parseFileRoutes', () => {
 describe('generateRouteModule', () => {
   it('generates valid module code', () => {
     const code = generateRouteModule(['index.tsx', 'about.tsx'], '/src/routes')
-    expect(code).toContain('import { lazy } from "@pyreon/router"')
     expect(code).toContain('export const routes')
     expect(code).toContain('path: "/"')
     expect(code).toContain('path: "/about"')
+    // No more lazy import — all routes are statically imported
+    expect(code).not.toContain('import { lazy }')
   })
 
   it('imports route modules for loader/guard/meta access', () => {
@@ -186,26 +187,32 @@ describe('generateRouteModule', () => {
     expect(code).toContain('import * as')
   })
 
-  it('uses lazy() for code splitting', () => {
+  it('uses single static import for component and module exports', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('lazy(() => import(')
+    // Component is now `mod.default` from a single `import * as mod` —
+    // avoids INEFFECTIVE_DYNAMIC_IMPORT warning from importing same file twice.
+    expect(code).toContain('import * as')
+    expect(code).toContain('.default')
+    // No more lazy() calls
+    expect(code).not.toContain('lazy(')
   })
 
-  it('wires up loader from module', () => {
+  it('wires up loader from module via _pick helper', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('.loader')
+    expect(code).toContain('loader: _pick(')
+    expect(code).toContain('"loader"')
   })
 
-  it('wires up guard as beforeEnter', () => {
+  it('wires up guard as beforeEnter via _pick helper', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('beforeEnter:')
-    expect(code).toContain('.guard')
+    expect(code).toContain('beforeEnter: _pick(')
+    expect(code).toContain('"guard"')
   })
 
-  it('wires up meta from module', () => {
+  it('wires up meta from module via _pick helper', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('meta:')
-    expect(code).toContain('.meta')
+    expect(code).toContain('meta: { ..._pick(')
+    expect(code).toContain('"meta"')
   })
 
   it('wraps routes in layout when _layout exists', () => {
@@ -218,10 +225,12 @@ describe('generateRouteModule', () => {
     expect(code).toContain('errorComponent:')
   })
 
-  it('passes loading component to lazy()', () => {
+  it('imports loading component from _loading.tsx', () => {
     const code = generateRouteModule(['_loading.tsx', 'index.tsx'], '/src/routes')
-    // Loading component should be passed as option to lazy()
-    expect(code).toContain('loading:')
+    // Static-imports refactor: loading component is still imported and
+    // available; the previous lazy({ loading }) wiring was removed when
+    // we eliminated dynamic imports to fix INEFFECTIVE_DYNAMIC_IMPORT warnings.
+    expect(code).toContain('_loading')
   })
 
   it('handles nested directory routes', () => {
@@ -261,7 +270,7 @@ describe('generateRouteModule', () => {
 
   it('wires renderMode into route meta', () => {
     const code = generateRouteModule(['index.tsx'], '/src/routes')
-    expect(code).toContain('.renderMode')
+    expect(code).toContain('"renderMode"')
     expect(code).toMatch(/meta:.*renderMode/)
   })
 
@@ -363,23 +372,26 @@ describe('matchPattern', () => {
   })
 })
 
-// ─── staticImports option ─────────────────────────────────────────────────
+// ─── static imports (no lazy) ─────────────────────────────────────────────
 
-describe('generateRouteModule — staticImports option', () => {
-  it('uses lazy() by default', () => {
+describe('generateRouteModule — static imports', () => {
+  it('uses static import * for all routes (no lazy)', () => {
     const files = ['index.tsx']
     const result = generateRouteModule(files, './routes')
-    expect(result).toContain('lazy(')
-    expect(result).toContain('import(')
-  })
-
-  it('uses static import when staticImports: true', () => {
-    const files = ['index.tsx']
-    const result = generateRouteModule(files, './routes', { staticImports: true })
+    // No lazy() or dynamic import() calls — single static import * as
     expect(result).not.toContain('lazy(')
     expect(result).not.toContain('import("./routes/index.tsx")')
-    // Should have a static import instead
-    expect(result).toContain('import ')
+    expect(result).toContain('import * as')
+    // Component reference uses .default from the static module import
+    expect(result).toContain('.default')
+  })
+
+  it('legacy staticImports option still accepted (no-op now)', () => {
+    const files = ['index.tsx']
+    // Behavior is identical with or without the option — kept for back-compat
+    const a = generateRouteModule(files, './routes')
+    const b = generateRouteModule(files, './routes', { staticImports: true })
+    expect(a).toBe(b)
   })
 
   it('does not emit errorComponent without _error file', () => {
