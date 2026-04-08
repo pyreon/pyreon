@@ -1,5 +1,5 @@
 import { useContext } from '@pyreon/core'
-import { Card, Paragraph } from '@pyreon/ui-components'
+import { EmptyCard, EmptyHint, EmptyText, ListContainer } from './styled'
 import { TodoItem } from './TodoItem'
 import { TodosCtx } from './context'
 import type { Todo } from './store/types'
@@ -13,24 +13,24 @@ export function TodoList(props: TodoListProps) {
   const ctx = useContext(TodosCtx)
   if (!ctx) throw new Error('TodoList must be used inside TodosCtx provider')
 
-  return (() => {
+  return () => {
     const list = props.items()
     if (list.length === 0) {
       return (
-        <Card style="padding: 32px; text-align: center;">
-          <Paragraph style="color: #9ca3af; margin-bottom: 4px;">No todos match the current filters.</Paragraph>
-          <Paragraph style="color: #9ca3af; font-size: 12px;">
+        <EmptyCard>
+          <EmptyText>No todos match the current filters.</EmptyText>
+          <EmptyHint>
             Press <kbd>N</kbd> to add a new one or change the status filter above.
-          </Paragraph>
-        </Card>
+          </EmptyHint>
+        </EmptyCard>
       )
     }
     return (
-      <div style="display: flex; flex-direction: column; gap: 6px;">
+      <ListContainer>
         {list.map((todo) => (
           <TodoItem todo={todo} />
         ))}
-      </div>
+      </ListContainer>
     )
-  })
+  }
 }

@@ -1,9 +1,36 @@
 import { provide } from '@pyreon/core'
 import { useHotkey } from '@pyreon/hotkeys'
 import { signal } from '@pyreon/reactivity'
-import { Badge, Button, Card, Input, Kbd, Title } from '@pyreon/ui-components'
+import { Kbd } from '@pyreon/ui-components'
 import type { UrlStateSignal } from '@pyreon/url-state'
 import { useUrlState } from '@pyreon/url-state'
+import {
+  AddCard,
+  AddForm,
+  AddIcon,
+  AddInput,
+  CountBadge,
+  FilterTab,
+  FilterTabsRoot,
+  FooterActions,
+  FooterBar,
+  FooterButton,
+  ProjectButtonRoot,
+  ProjectCount,
+  ProjectLabel,
+  ProjectSwatch,
+  ShortcutItem,
+  ShortcutsList,
+  SidebarLabel,
+  SidebarSection,
+  Toolbar,
+  ToolbarSearchSlot,
+  TodosLayout,
+  TodosLead,
+  TodosMain,
+  TodosSidebar,
+  TodosTitle,
+} from '../../sections/todos/styled'
 import { TodoList } from '../../sections/todos/TodoList'
 import { TodosCtx, type TodosCtxValue } from '../../sections/todos/context'
 import { useTodos } from '../../sections/todos/store/todos'
@@ -14,8 +41,8 @@ import type { StatusFilter, Todo } from '../../sections/todos/store/types'
  *   • @pyreon/store     — composition store with derived counts
  *   • @pyreon/storage   — useStorage for cross-tab localStorage persistence
  *   • @pyreon/url-state — status filter and selected project read from URL
- *   • @pyreon/hotkeys   — N add, F focus search, X toggle done, Delete remove
- *   • @pyreon/hooks     — useFocus on the new-todo input
+ *   • @pyreon/hotkeys   — N add, / focus search, X toggle done, Del remove
+ *   • @pyreon/styler    — every visual element is a styled component
  *
  * Everything in this section runs on the client. Refresh the page or open
  * a second tab — the todos persist and stay in sync via the storage event.
@@ -25,8 +52,7 @@ export default function TodosPage() {
   const { store, patch } = todosStore
 
   // ── URL state — every filter is reflected in the URL so views are
-  //    shareable and the back button works as expected. Cast the default
-  //    so TS infers the union instead of the literal `'all'`.
+  //    shareable and the back button works as expected.
   const status = useUrlState('status', 'all' as StatusFilter)
   const projectId = useUrlState('project', 'all')
   const search = useUrlState('q', '')
@@ -103,14 +129,16 @@ export default function TodosPage() {
   }
 
   return (
-    <div style="display: grid; grid-template-columns: 220px 1fr; gap: 24px; padding: 32px 40px; max-width: 1080px;">
-      {/* Sidebar — projects */}
-      <aside>
-        <Title size="h3" style="margin-bottom: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;">
-          Projects
-        </Title>
-        <div style="display: flex; flex-direction: column; gap: 2px;">
-          <ProjectButton label="All projects" color="#9ca3af" active={() => projectId() === 'all'} onClick={() => projectId.set('all')} />
+    <TodosLayout>
+      <TodosSidebar>
+        <SidebarSection>
+          <SidebarLabel>Projects</SidebarLabel>
+          <ProjectButton
+            label="All projects"
+            color={tokensFaint}
+            active={() => projectId() === 'all'}
+            onClick={() => projectId.set('all')}
+          />
           {() =>
             store.projects().map((p) => (
               <ProjectButton
@@ -122,86 +150,82 @@ export default function TodosPage() {
               />
             ))
           }
-        </div>
+        </SidebarSection>
 
-        <Title size="h3" style="margin-top: 24px; margin-bottom: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af;">
-          Shortcuts
-        </Title>
-        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #6b7280;">
-          <ShortcutRow keys={['N']} label="New todo" />
-          <ShortcutRow keys={['/']} label="Search" />
-          <ShortcutRow keys={['X']} label="Toggle done" />
-          <ShortcutRow keys={['Del']} label="Delete" />
-          <ShortcutRow keys={['Esc']} label="Clear selection" />
-        </div>
-      </aside>
+        <SidebarSection>
+          <SidebarLabel>Shortcuts</SidebarLabel>
+          <ShortcutsList>
+            <ShortcutRow keys={['N']} label="New todo" />
+            <ShortcutRow keys={['/']} label="Search" />
+            <ShortcutRow keys={['X']} label="Toggle done" />
+            <ShortcutRow keys={['Del']} label="Delete" />
+            <ShortcutRow keys={['Esc']} label="Clear selection" />
+          </ShortcutsList>
+        </SidebarSection>
+      </TodosSidebar>
 
-      {/* Main column */}
-      <div>
-        <Title size="h1" style="margin-bottom: 4px">Todos</Title>
-        <p style="margin-bottom: 24px; font-size: 14px; color: #6b7280;">
+      <TodosMain>
+        <TodosTitle>Todos</TodosTitle>
+        <TodosLead>
           Persisted to localStorage. Filter state lives in the URL — try refreshing.
-        </p>
+        </TodosLead>
 
-        {/* Add form */}
-        <form onSubmit={submitDraft} style="margin-bottom: 16px;">
-          <Card style="padding: 12px; display: flex; gap: 8px; align-items: center;">
-            <span style="font-size: 18px; color: #c7d2fe;">+</span>
-            <Input
+        <AddForm onSubmit={submitDraft}>
+          <AddCard>
+            <AddIcon>+</AddIcon>
+            <AddInput
               innerRef={setNewTodoRef}
               type="text"
               placeholder="Add a todo and press Enter…"
               value={draft()}
               onInput={(e: Event) => draft.set((e.target as HTMLInputElement).value)}
-              style="border: none; box-shadow: none; padding: 4px 0;"
             />
-            <Button state="primary" size="small" disabled={!draft().trim()} onClick={submitDraft}>
+            <FooterButton state="primary" size="small" disabled={!draft().trim()} onClick={submitDraft}>
               Add
-            </Button>
-          </Card>
-        </form>
+            </FooterButton>
+          </AddCard>
+        </AddForm>
 
-        {/* Toolbar — status filter + search */}
-        <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        <Toolbar>
           <FilterTabs status={status} />
-          <div style="flex: 1;">
-            <Input
+          <ToolbarSearchSlot>
+            <AddInput
               type="text"
               data-search-input
               placeholder="Search todos…"
               value={search()}
               onInput={(e: Event) => search.set((e.target as HTMLInputElement).value)}
             />
-          </div>
+          </ToolbarSearchSlot>
           {() => {
             const c = store.counts()
             return (
-              <Badge state="primary" style="white-space: nowrap;">
+              <CountBadge state="primary">
                 {c.active} active / {c.all} total
-              </Badge>
+              </CountBadge>
             )
           }}
-        </div>
+        </Toolbar>
 
-        {/* List */}
         <TodoList items={filtered} />
 
-        {/* Footer */}
-        <div style="display: flex; justify-content: space-between; margin-top: 24px; font-size: 13px; color: #6b7280;">
+        <FooterBar>
           <span>{() => `${store.counts().completed} completed`}</span>
-          <div style="display: flex; gap: 8px;">
-            <Button size="small" variant="ghost" onClick={() => store.clearCompleted()}>
+          <FooterActions>
+            <FooterButton size="small" variant="ghost" onClick={() => store.clearCompleted()}>
               Clear completed
-            </Button>
-            <Button size="small" variant="ghost" onClick={() => store.resetSeed()}>
+            </FooterButton>
+            <FooterButton size="small" variant="ghost" onClick={() => store.resetSeed()}>
               Reset to seed
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+            </FooterButton>
+          </FooterActions>
+        </FooterBar>
+      </TodosMain>
+    </TodosLayout>
   )
 }
+
+const tokensFaint = '#9ca3af'
 
 function ProjectButton(props: {
   label: string
@@ -212,30 +236,22 @@ function ProjectButton(props: {
 }) {
   const count = props.count
   return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      style={() =>
-        `display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: none; background: ${props.active() ? '#eef2ff' : 'transparent'}; color: ${props.active() ? '#4338ca' : '#374151'}; font-weight: ${props.active() ? '600' : '400'}; font-size: 13px; border-radius: 6px; cursor: pointer; text-align: left; width: 100%;`
-      }
-    >
-      <span
-        style={`display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: ${props.color};`}
-      />
-      <span style="flex: 1;">{props.label}</span>
-      {count ? <span style="font-size: 11px; color: #9ca3af;">{() => count()}</span> : null}
-    </button>
+    <ProjectButtonRoot type="button" onClick={props.onClick} $active={props.active()}>
+      <ProjectSwatch $color={props.color} />
+      <ProjectLabel>{props.label}</ProjectLabel>
+      {count ? <ProjectCount>{() => count()}</ProjectCount> : null}
+    </ProjectButtonRoot>
   )
 }
 
 function ShortcutRow(props: { keys: string[]; label: string }) {
   return (
-    <div style="display: flex; align-items: center; gap: 8px;">
+    <ShortcutItem>
       {props.keys.map((k) => (
         <Kbd>{k}</Kbd>
       ))}
       <span>{props.label}</span>
-    </div>
+    </ShortcutItem>
   )
 }
 
@@ -246,19 +262,13 @@ function FilterTabs(props: { status: UrlStateSignal<StatusFilter> }) {
     { id: 'completed', label: 'Done' },
   ]
   return (
-    <div style="display: flex; gap: 4px; padding: 4px; background: #f3f4f6; border-radius: 8px;">
+    <FilterTabsRoot>
       {tabs.map((t) => (
-        <button
-          type="button"
-          onClick={() => props.status.set(t.id)}
-          style={() =>
-            `padding: 4px 12px; font-size: 12px; font-weight: 500; border: none; border-radius: 6px; cursor: pointer; background: ${props.status() === t.id ? 'white' : 'transparent'}; color: ${props.status() === t.id ? '#4338ca' : '#6b7280'}; box-shadow: ${props.status() === t.id ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'};`
-          }
-        >
+        <FilterTab type="button" onClick={() => props.status.set(t.id)} $active={props.status() === t.id}>
           {t.label}
-        </button>
+        </FilterTab>
       ))}
-    </div>
+    </FilterTabsRoot>
   )
 }
 

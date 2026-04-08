@@ -1,16 +1,20 @@
 import { useContext } from '@pyreon/core'
 import { Badge } from '@pyreon/ui-components'
 import { TodosCtx } from './context'
+import {
+  DeleteButton,
+  PriorityChip,
+  TagsRow,
+  TodoBody,
+  TodoCheckbox,
+  TodoItemRoot,
+  TodoNotes,
+  TodoTitle,
+} from './styled'
 import type { Todo } from './store/types'
 
 interface TodoItemProps {
   todo: Todo
-}
-
-const PRIORITY_COLOR: Record<NonNullable<Todo['priority']>, string> = {
-  high: '#ef4444',
-  medium: '#f59e0b',
-  low: '#6b7280',
 }
 
 export function TodoItem(props: TodoItemProps) {
@@ -36,61 +40,34 @@ export function TodoItem(props: TodoItemProps) {
   }
 
   return (
-    <div
-      onClick={onSelect}
-      style={() => {
-        const selected = isSelected()
-        const done = props.todo.done
-        return `display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: white; border: 1px solid ${selected ? '#a5b4fc' : '#e5e7eb'}; border-radius: 8px; cursor: pointer; box-shadow: ${selected ? '0 0 0 3px #eef2ff' : 'none'}; transition: border-color 0.12s, box-shadow 0.12s; opacity: ${done ? '0.6' : '1'};`
-      }}
-    >
-      <input
+    <TodoItemRoot onClick={onSelect} $selected={isSelected()} $done={props.todo.done}>
+      <TodoCheckbox
         type="checkbox"
         checked={props.todo.done}
         onChange={onToggle}
         onClick={(e: Event) => e.stopPropagation()}
-        style="width: 16px; height: 16px; cursor: pointer; flex-shrink: 0;"
       />
 
-      <div style="flex: 1; min-width: 0;">
-        <div
-          style={() =>
-            `font-size: 14px; color: #111827; ${props.todo.done ? 'text-decoration: line-through; color: #9ca3af;' : ''}`
-          }
-        >
-          {props.todo.title}
-        </div>
-        {props.todo.notes ? (
-          <div style="font-size: 12px; color: #6b7280; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            {props.todo.notes}
-          </div>
-        ) : null}
-      </div>
+      <TodoBody>
+        <TodoTitle $done={props.todo.done}>{props.todo.title}</TodoTitle>
+        {props.todo.notes ? <TodoNotes>{props.todo.notes}</TodoNotes> : null}
+      </TodoBody>
 
       {props.todo.priority ? (
-        <span
-          style={`font-size: 11px; padding: 2px 8px; border-radius: 999px; background: ${PRIORITY_COLOR[props.todo.priority]}1a; color: ${PRIORITY_COLOR[props.todo.priority]}; font-weight: 500;`}
-        >
-          {props.todo.priority}
-        </span>
+        <PriorityChip $priority={props.todo.priority}>{props.todo.priority}</PriorityChip>
       ) : null}
 
       {props.todo.tags.length > 0 ? (
-        <div style="display: flex; gap: 4px;">
+        <TagsRow>
           {props.todo.tags.map((tag) => (
             <Badge size="small">{tag}</Badge>
           ))}
-        </div>
+        </TagsRow>
       ) : null}
 
-      <button
-        type="button"
-        onClick={onRemove}
-        title="Delete todo"
-        style="background: transparent; border: none; color: #9ca3af; cursor: pointer; padding: 4px 8px; font-size: 16px; line-height: 1;"
-      >
+      <DeleteButton type="button" onClick={onRemove} title="Delete todo">
         ×
-      </button>
-    </div>
+      </DeleteButton>
+    </TodoItemRoot>
   )
 }
