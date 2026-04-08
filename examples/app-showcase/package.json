@@ -19,12 +19,14 @@
     "@pyreon/head": "workspace:*",
     "@pyreon/hooks": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
+    "@pyreon/machine": "workspace:*",
     "@pyreon/permissions": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/rx": "workspace:*",
+    "@pyreon/state-tree": "workspace:*",
     "@pyreon/storage": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/styler": "workspace:*",
@@ -34,8 +36,10 @@
     "@pyreon/ui-core": "workspace:*",
     "@pyreon/ui-theme": "workspace:*",
     "@pyreon/url-state": "workspace:*",
+    "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
-    "@pyreon/zero": "workspace:*"
+    "@pyreon/zero": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
