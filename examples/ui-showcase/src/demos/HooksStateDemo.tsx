@@ -1,6 +1,6 @@
 import { useDebouncedValue, useInterval, usePrevious, useToggle } from '@pyreon/hooks'
 import { signal } from '@pyreon/reactivity'
-import { Button, Title, Paragraph } from '@pyreon/ui-components'
+import { Button, Title } from '@pyreon/ui-components'
 
 export function HooksStateDemo() {
   // useToggle
