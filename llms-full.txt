@@ -998,6 +998,7 @@ const cache = useIndexedDB('large-data', defaultValue, { dbName: 'app' })
 ## @pyreon/i18n — Internationalization
 
 ```typescript
+// Full entry — includes JSX components (Trans, I18nProvider, useI18n)
 import { createI18n, I18nProvider, useI18n, Trans } from '@pyreon/i18n'
 
 const i18n = createI18n({
@@ -1011,6 +1012,23 @@ t('greeting', { name: 'World' })  // "Hello, World!"
 t('items', { count: 5 })          // "5 items"
 locale.set('fr')                   // switch locale reactively
 ```
+
+```typescript
+// Backend / non-JSX entry — `@pyreon/i18n/core`
+// Zero JSX dependencies, transitively only depends on @pyreon/reactivity.
+// Use this on backends, edge workers, non-Pyreon frontends, or any
+// context where you don't need the <Trans> JSX component.
+import { createI18n, interpolate, resolvePluralCategory } from '@pyreon/i18n/core'
+
+const i18n = createI18n({
+  locale: 'en',
+  messages: { en: { hello: 'Hi {{name}}' } },
+})
+i18n.t('hello', { name: 'Backend' })  // "Hi Backend"
+i18n.locale.set('de')  // reactive locale switching works the same
+```
+
+> **Two entry points**: `@pyreon/i18n` (full, with JSX) vs `@pyreon/i18n/core` (framework-agnostic). Both return identical `I18nInstance` objects, so you can switch entries later if you decide to add UI bindings. The main entry has a `/** @jsxImportSource @pyreon/core */` pragma on `trans.tsx` so even bun runtimes whose tsconfig has no `jsxImportSource` set still compile it correctly.
 
 ## @pyreon/code — Code Editor
 
@@ -1037,32 +1055,43 @@ editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
 <CodeEditor instance={editor} style="height: 400px" />
 <DiffEditor original="old code" modified="new code" language="typescript" />
 
-// Two-way binding pattern (e.g. JSON sidebar driving a flow diagram).
-// Both directions need flag-based loop prevention or you get an infinite
-// re-write cycle:
-let applyingFromExternal = false
-let applyingFromEditor = false
+// Two-way binding via `bindEditorToSignal` — replaces the recurring
+// flag-based loop-prevention pattern. The helper handles both the
+// external→editor and editor→external directions, with built-in
+// loop prevention and parse-error handling.
+import { bindEditorToSignal } from '@pyreon/code'
+
+interface Doc { name: string; count: number }
+const data = signal<Doc>({ name: 'Alice', count: 1 })
 
 const editor = createEditor({
-  value: serialize(externalState),
+  value: JSON.stringify(data(), null, 2),
   language: 'json',
-  onChange: (next) => {
-    if (applyingFromExternal) return
-    applyingFromEditor = true
-    try { externalState.set(JSON.parse(next)) } catch {}
-    applyingFromEditor = false
-  },
 })
 
-effect(() => {
-  externalState()  // subscribe
-  if (applyingFromEditor) return
-  const next = serialize(externalState())
-  if (next === editor.value.peek()) return
-  applyingFromExternal = true
-  editor.value.set(next)
-  applyingFromExternal = false
+const binding = bindEditorToSignal({
+  editor,
+  signal: data,                // accepts Signal<T> or any SignalLike<T>
+  serialize: (val) => JSON.stringify(val, null, 2),
+  parse: (text) => {
+    try { return JSON.parse(text) } catch { return null }
+  },
+  onParseError: (err) => console.warn('parse error:', err.message),
 })
+
+// Later — typically in onCleanup / onUnmount:
+binding.dispose()
+
+// What the helper guarantees:
+//   1. No infinite loops — internal flags break the format-on-input race
+//   2. Parse failures don't crash — external state stays at last valid value
+//   3. Both effects are disposable via binding.dispose()
+//
+// What the helper does NOT do:
+//   - It does NOT debounce. Every keystroke that parses successfully
+//     triggers signal.set(parsed). Wrap in your own debounced layer if needed.
+//   - It does NOT preserve cursor position when serialize re-canonicalizes
+//     (e.g. reformatting). Make serialize() deterministic to avoid this.
 ```
 
 > **Peer dep**: `@pyreon/runtime-dom` — `<CodeEditor>` JSX emits `_tpl()` calls. Consumer apps must declare it.

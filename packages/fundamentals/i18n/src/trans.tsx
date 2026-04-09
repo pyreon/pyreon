@@ -1,3 +1,41 @@
+/** @jsxImportSource @pyreon/core */
+// ─── Why the JSX pragma ───────────────────────────────────────────────
+//
+// The Pyreon JSX runtime is normally selected via tsconfig.json's
+// `jsxImportSource: '@pyreon/core'` setting. That works fine when
+// consumers run the COMPILED `lib/index.js` (the `import` condition
+// in this package's exports map) — the JSX has already been
+// transformed at build time.
+//
+// But when consumers resolve `@pyreon/i18n` via the `bun` condition,
+// bun gets `src/index.ts`, which re-exports from this file
+// (`trans.tsx`), and bun has to compile the JSX on the fly. Bun
+// reads the **consuming project's** tsconfig.json — NOT this
+// package's. If the consumer is a backend that doesn't use JSX
+// itself, its tsconfig has no `jsxImportSource` set, so bun falls
+// back to React's JSX runtime — which doesn't exist in
+// non-React-aware projects, and the import explodes with:
+//
+//   error: Cannot find module 'react/jsx-dev-runtime'
+//          from '/.../i18n/src/trans.tsx'
+//
+// **Verified end-to-end by `src/tests/backend-import.test.ts`.**
+// Removing this pragma causes a real bun subprocess in a
+// non-JSX-tsconfig fixture to crash at import time with the exact
+// error above. The regression test catches it.
+//
+// The per-file `@jsxImportSource` pragma overrides whatever
+// tsconfig says — it's a TypeScript directive that bun's
+// transpiler honors. With this comment in place, ANY consumer
+// (bun runtime, backend, non-React frontend, anything) gets the
+// correct Pyreon JSX runtime when this file is compiled.
+//
+// **Backend consumers should still prefer `@pyreon/i18n/core`**
+// (which avoids JSX entirely) — see the README. This pragma is a
+// defensive belt-and-braces fix for the case where someone imports
+// from the main entry without realizing the implications.
+//
+// ──────────────────────────────────────────────────────────────────
 import type { Props, VNode } from '@pyreon/core'
 import type { InterpolationValues } from './types'
 
