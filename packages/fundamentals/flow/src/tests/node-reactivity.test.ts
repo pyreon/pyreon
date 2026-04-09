@@ -54,7 +54,7 @@ describe('node component reactivity (F2)', () => {
           'data-selected': () => String(props.selected()),
           'data-dragging': () => String(props.dragging()),
         },
-        props.data.label,
+        props.data().label,
       )
     }
 
@@ -92,7 +92,7 @@ describe('node component reactivity (F2)', () => {
 
     function CustomNode(props: NodeComponentProps<{ label: string }>) {
       capturedSelected = props.selected
-      return h('div', { 'data-id': props.id }, props.data.label)
+      return h('div', { 'data-id': props.id }, props.data().label)
     }
 
     const { cleanup } = mountReactive(
@@ -111,6 +111,106 @@ describe('node component reactivity (F2)', () => {
     expect((capturedSelected as unknown as () => boolean)()).toBe(false)
   })
 
+  it('custom node factory runs exactly once across data updates', () => {
+    // The third leg of the contract: when consumers call
+    // `flow.updateNode(id, { data: ... })`, the data accessor
+    // inside the node component should reflect the new value
+    // WITHOUT re-mounting the component. Same fix as the position
+    // case — `<For>` reconciles by id, the children function runs
+    // once, and `data()` reads live from `instance.nodes()` from
+    // inside the accessor body so reactive scopes track the
+    // updated payload.
+    const flow = createFlow<{ label: string }>({
+      nodes: [
+        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Original' } },
+      ],
+    })
+
+    let calls = 0
+    let capturedData: (() => { label: string }) | null = null
+
+    function CustomNode(props: NodeComponentProps<{ label: string }>) {
+      calls++
+      capturedData = props.data
+      return h('div', { 'data-id': props.id }, () => props.data().label)
+    }
+
+    const { container, cleanup } = mountReactive(
+      h(Flow as any, { instance: flow, nodeTypes: { custom: CustomNode } }),
+    )
+    cleanups.push(cleanup)
+
+    expect(calls).toBe(1)
+    expect(container.textContent).toContain('Original')
+
+    // Mutate the data — the accessor should reflect the new value,
+    // the DOM text should update, and the factory should NOT re-run.
+    flow.updateNode('a', { data: { label: 'Updated' } })
+
+    expect(calls).toBe(1) // factory still ran exactly once
+    expect((capturedData as unknown as () => { label: string })().label).toBe('Updated')
+    expect(container.textContent).toContain('Updated')
+
+    flow.updateNode('a', { data: { label: 'Final' } })
+    expect(calls).toBe(1)
+    expect(container.textContent).toContain('Final')
+  })
+
+  it('custom node factory runs exactly once across position updates (drags)', () => {
+    // The trickier half of the F2 contract. Selection clicks fire
+    // once per click; position updates fire CONTINUOUSLY during a
+    // drag (one event per mouse move, easily 60+ per second). If
+    // the factory re-runs on every position update, the perf hit
+    // during drags is worse than the original selection bug.
+    //
+    // The rewrite reads `instance.nodes()` at the outer thunk level
+    // and re-emits the `nodes.map(...)` on every node array change.
+    // Whether the runtime reconciles those vnodes in place (via the
+    // `key={node.id}` prop) or remounts them is what determines
+    // whether this contract holds.
+    //
+    // If this test fails, the rewrite is incomplete: the outer
+    // subscription needs to be split so structural changes (add /
+    // remove / id) re-render the wrapper layer while position-only
+    // changes go through scoped accessors instead.
+    const flow = createFlow<{ label: string }>({
+      nodes: [
+        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } },
+        { id: 'b', type: 'custom', position: { x: 100, y: 0 }, data: { label: 'B' } },
+        { id: 'c', type: 'custom', position: { x: 200, y: 0 }, data: { label: 'C' } },
+      ],
+    })
+
+    const calls: Record<string, number> = { a: 0, b: 0, c: 0 }
+
+    function CustomNode(props: NodeComponentProps<{ label: string }>) {
+      calls[props.id] = (calls[props.id] ?? 0) + 1
+      return h('div', { 'data-id': props.id }, props.data().label)
+    }
+
+    const { cleanup } = mountReactive(
+      h(Flow as any, { instance: flow, nodeTypes: { custom: CustomNode } }),
+    )
+    cleanups.push(cleanup)
+
+    // Each node mounted exactly once initially.
+    expect(calls.a).toBe(1)
+    expect(calls.b).toBe(1)
+    expect(calls.c).toBe(1)
+
+    // Simulate a drag: 5 position updates on node 'a'.
+    flow.updateNodePosition('a', { x: 10, y: 10 })
+    flow.updateNodePosition('a', { x: 20, y: 20 })
+    flow.updateNodePosition('a', { x: 30, y: 30 })
+    flow.updateNodePosition('a', { x: 40, y: 40 })
+    flow.updateNodePosition('a', { x: 50, y: 50 })
+
+    // No node component should have been re-instantiated.
+    expect(calls.a).toBe(1)
+    expect(calls.b).toBe(1)
+    expect(calls.c).toBe(1)
+  })
+
   it('wrapper div class updates reactively when selection changes', () => {
     // Beyond the per-node component, NodeLayer also wraps each node
     // in a `<div class="pyreon-flow-node ${selected ? 'selected' : ''}">`
@@ -125,7 +225,7 @@ describe('node component reactivity (F2)', () => {
     })
 
     function CustomNode(props: NodeComponentProps<{ label: string }>) {
-      return h('span', { 'data-id': props.id }, props.data.label)
+      return h('span', { 'data-id': props.id }, props.data().label)
     }
 
     const { container, cleanup } = mountReactive(
@@ -163,7 +263,7 @@ describe('node component reactivity (F2)', () => {
 
     function CustomNode(props: NodeComponentProps<{ label: string }>) {
       capturedDragging = props.dragging
-      return h('div', { 'data-id': props.id }, props.data.label)
+      return h('div', { 'data-id': props.id }, props.data().label)
     }
 
     const { cleanup } = mountReactive(

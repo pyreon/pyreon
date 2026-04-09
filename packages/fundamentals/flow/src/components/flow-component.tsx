@@ -1,4 +1,4 @@
-import type { VNodeChild } from '@pyreon/core'
+import { For, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
 import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from '../types'
@@ -11,11 +11,11 @@ type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild
 /**
  * Default node renderer — simple labeled box.
  *
- * `props.selected` and `props.dragging` are accessor functions, not
- * plain booleans — read inside reactive scopes (here: the `style`
- * attribute thunk) so the node patches in place when selection or
- * drag state changes, instead of re-mounting on every selection
- * click.
+ * Every prop except `id` is an accessor function. `data()`, `selected()`,
+ * and `dragging()` are read inside reactive scopes (the `style` and
+ * children thunks) so the node patches in place when any underlying
+ * state changes — including drags, selection clicks, and data
+ * updates — without re-mounting the component.
  */
 function DefaultNode(props: NodeComponentProps) {
   return (
@@ -26,7 +26,9 @@ function DefaultNode(props: NodeComponentProps) {
         return `padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
       }}
     >
-      {((props.data as { label?: string } | undefined)?.label as string) ?? props.id}
+      {() =>
+        ((props.data() as { label?: string } | undefined)?.label as string) ?? props.id
+      }
     </div>
   )
 }
@@ -263,85 +265,100 @@ function NodeLayer(props: {
 }): VNodeChild {
   const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
 
-  // The outer reactive thunk subscribes ONLY to `instance.nodes()` —
-  // the actual node array. Selection state and drag state are read
-  // inside per-node accessor thunks (the `class`, `style`, and the
-  // accessor props passed to <NodeComponent />). That keeps each
-  // node mounted exactly once across selection clicks and drags;
-  // only the inline `class`/`style`/`z-index` thunks and the user's
-  // own custom node component rerun, in place.
+  // <For> keys nodes by id and runs the children function exactly
+  // ONCE per id — never re-mounts existing nodes when the underlying
+  // signal updates with a new array (which happens on every position
+  // change, every selection toggle, every data mutation).
   //
-  // Before this rewrite, the whole loop subscribed to selectedNodes
-  // and draggingNodeId at the top, so a single click would re-create
-  // every node component in the graph — N×O work for one click.
-  return () => {
-    const nodes = instance.nodes()
+  // Inside the children function, all per-node state (position,
+  // data, class, selection, drag) is read via accessors that
+  // re-read `instance.nodes()` from inside their own scope. The
+  // accessors track reactively, so individual style/class/text
+  // thunks patch in place — but the wrapper div and the user's
+  // custom NodeComponent both mount exactly once per id and never
+  // re-mount across the lifetime of the graph.
+  //
+  // Before the For-based rewrite, the outer loop did
+  // `nodes.map(node => ...)` which re-emitted every wrapper VNode
+  // on every nodes signal update — re-mounting all custom node
+  // components on every drag tick (60+ remounts/sec per node) and
+  // every selection click. The `For` swap fixes both cases.
+  return () => (
+    <For each={() => instance.nodes()} by={(n: FlowNode) => n.id}>
+      {(initialNode: FlowNode) => {
+        const id = initialNode.id
 
-    return (
-      <>
-        {nodes.map((node) => {
-          const NodeComponent = (node.type && nodeTypes[node.type]) || nodeTypes.default!
+        // Reactive node accessor — reads the LIVE node by id from
+        // `instance.nodes()` so position/data/class/style updates
+        // propagate without re-mounting. The fallback to
+        // `initialNode` covers the brief window between an
+        // updateNode call that removes the node and the For loop
+        // catching up.
+        const node = (): FlowNode => {
+          const all = instance.nodes()
+          return all.find((n) => n.id === id) ?? initialNode
+        }
 
-          // Per-node accessors. Each tracks its own scoped reactive
-          // state: `isSelected` reads `selectedNodes()` from the
-          // instance's selection set, and `isDragging` reads the
-          // current dragging-node-id signal.
-          const isSelected = (): boolean => instance.selectedNodes().includes(node.id)
-          const isDragging = (): boolean => draggingNodeId() === node.id
+        const isSelected = (): boolean => instance.selectedNodes().includes(id)
+        const isDragging = (): boolean => draggingNodeId() === id
 
-          return (
-            <div
-              key={node.id}
-              class={() =>
-                `pyreon-flow-node ${node.class ?? ''} ${
-                  isSelected() ? 'selected' : ''
-                } ${isDragging() ? 'dragging' : ''}`
+        const NodeComponent =
+          (initialNode.type && nodeTypes[initialNode.type]) || nodeTypes.default!
+
+        return (
+          <div
+            class={() => {
+              const n = node()
+              return `pyreon-flow-node ${n.class ?? ''} ${
+                isSelected() ? 'selected' : ''
+              } ${isDragging() ? 'dragging' : ''}`
+            }}
+            style={() => {
+              const n = node()
+              return `position: absolute; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
+                isDragging() ? 1000 : isSelected() ? 100 : 0
+              }; ${n.style ?? ''}`
+            }}
+            data-nodeid={id}
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation()
+              instance.selectNode(id, e.shiftKey)
+              instance._emit.nodeClick(node())
+            }}
+            onDblClick={(e: MouseEvent) => {
+              e.stopPropagation()
+              instance._emit.nodeDoubleClick(node())
+            }}
+            onPointerDown={(e: PointerEvent) => {
+              // Check if clicking a handle
+              const target = e.target as HTMLElement
+              const handle = target.closest('.pyreon-flow-handle')
+              if (handle) {
+                const hType = handle.getAttribute('data-handletype') ?? 'source'
+                const hId = handle.getAttribute('data-handleid') ?? 'source'
+                const hPos =
+                  (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
+                onHandlePointerDown(e, id, hType, hId, hPos)
+                return
               }
-              style={() =>
-                `position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${
-                  isDragging() ? 1000 : isSelected() ? 100 : 0
-                }; ${node.style ?? ''}`
+              // Otherwise start dragging node — read live state
+              const n = node()
+              if (n.draggable !== false && instance.config.nodesDraggable !== false) {
+                onNodePointerDown(e, n)
               }
-              data-nodeid={node.id}
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation()
-                instance.selectNode(node.id, e.shiftKey)
-                instance._emit.nodeClick(node)
-              }}
-              onDblClick={(e: MouseEvent) => {
-                e.stopPropagation()
-                instance._emit.nodeDoubleClick(node)
-              }}
-              onPointerDown={(e: PointerEvent) => {
-                // Check if clicking a handle
-                const target = e.target as HTMLElement
-                const handle = target.closest('.pyreon-flow-handle')
-                if (handle) {
-                  const hType = handle.getAttribute('data-handletype') ?? 'source'
-                  const hId = handle.getAttribute('data-handleid') ?? 'source'
-                  const hPos =
-                    (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
-                  onHandlePointerDown(e, node.id, hType, hId, hPos)
-                  return
-                }
-                // Otherwise start dragging node
-                if (node.draggable !== false && instance.config.nodesDraggable !== false) {
-                  onNodePointerDown(e, node)
-                }
-              }}
-            >
-              <NodeComponent
-                id={node.id}
-                data={node.data}
-                selected={isSelected}
-                dragging={isDragging}
-              />
-            </div>
-          )
-        })}
-      </>
-    )
-  }
+            }}
+          >
+            <NodeComponent
+              id={id}
+              data={() => node().data}
+              selected={isSelected}
+              dragging={isDragging}
+            />
+          </div>
+        )
+      }}
+    </For>
+  )
 }
 
 // ─── Flow Component ──────────────────────────────────────────────────────────

@@ -483,18 +483,29 @@ export interface HandleProps {
  * Props passed to custom node components registered via
  * `<Flow nodeTypes={...}>`.
  *
- * `selected` and `dragging` are **accessor functions** (`() => boolean`),
- * NOT plain booleans. Read them inside reactive scopes (JSX expressions,
+ * **All non-id props are reactive accessors** (`() => T`), NOT plain
+ * values. Read them inside reactive scopes (JSX expression thunks,
  * `effect()`, `computed()`) so the node patches in place when the
- * selection or drag state changes — instead of re-mounting the entire
- * node component on every selection click.
+ * underlying state changes — instead of re-mounting the entire node
+ * component on every change.
  *
- * **Why accessors and not booleans**: Pyreon components run **once** at
- * mount. If `selected` were a plain boolean, the parent renderer
- * (`NodeLayer`) would have to re-create every node component every time
- * any selection changed — N×O work for a single click in a 1000-node
- * graph. With accessor functions, the layer mounts each node exactly
- * once, and the accessors track their own scoped reactive state.
+ * The accessors cover:
+ *   • `data()` — the node's current `TData` payload (reflects
+ *     `flow.updateNode(id, { data: ... })` mutations)
+ *   • `selected()` — whether the node is currently selected
+ *   • `dragging()` — whether the node is currently being dragged
+ *
+ * `id` is a plain string because it never changes for a given node
+ * (it's the keyed identity). Anything else that can change at
+ * runtime is exposed as an accessor.
+ *
+ * **Why accessors and not plain values**: Pyreon components run
+ * **once** at mount. If these were plain props, the parent renderer
+ * would have to re-create every node component on every change to
+ * the underlying signal — O(N) work per mutation in an N-node graph.
+ * With accessors, each node mounts exactly once across the lifetime
+ * of the graph, regardless of how many selection clicks, drags, or
+ * data updates happen.
  *
  * @example
  * ```tsx
@@ -504,15 +515,17 @@ export interface HandleProps {
  *       class={() => (props.selected() ? 'selected' : '')}
  *       style={() => `cursor: ${props.dragging() ? 'grabbing' : 'grab'}`}
  *     >
- *       {props.data.label}
+ *       {() => props.data().label}
  *     </div>
  *   )
  * }
  * ```
  */
 export type NodeComponentProps<TData = Record<string, unknown>> = {
+  /** Stable node identity — never changes for a given node */
   id: string
-  data: TData
+  /** Reactive accessor — reflects flow.updateNode(id, { data: ... }) mutations */
+  data: () => TData
   /** Reactive accessor — read inside reactive scopes for live updates */
   selected: () => boolean
   /** Reactive accessor — read inside reactive scopes for live updates */

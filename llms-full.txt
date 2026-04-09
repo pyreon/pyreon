@@ -945,11 +945,14 @@ flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { ki
 flow.addEdge({ source: '1', target: '3' })
 await flow.layout('layered', { direction: 'RIGHT' })  // lazy-loaded elkjs
 
-// Custom node renderers — selected/dragging are REACTIVE ACCESSORS
-// `() => boolean`, not plain booleans. Read inside reactive scopes
-// (JSX expression thunks, effect, computed) so the node patches in
-// place when selection/drag state changes. Each node mounts exactly
-// once across the lifetime of the graph.
+// Custom node renderers — every prop except `id` is a REACTIVE
+// ACCESSOR (`() => T`), not a plain value. Read inside reactive
+// scopes (JSX expression thunks, effect, computed) so the node
+// patches in place when ANY underlying state changes. Each node
+// mounts EXACTLY ONCE across the lifetime of the graph regardless
+// of how many drags, selection clicks, or updateNode mutations
+// happen — internally <Flow> uses <For> keyed by node.id plus
+// per-node accessors that read live state from instance.nodes().
 function CustomNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
@@ -957,7 +960,7 @@ function CustomNode(props: NodeComponentProps<WorkflowData>) {
       style={() => `cursor: ${props.dragging() ? 'grabbing' : 'grab'}`}
     >
       <Handle type="target" position={Position.Left} />
-      {props.data.label}
+      {() => props.data().label}
       <Handle type="source" position={Position.Right} />
     </div>
   )

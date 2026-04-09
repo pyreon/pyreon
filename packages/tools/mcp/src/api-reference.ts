@@ -758,14 +758,14 @@ flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { ki
 await flow.layout('layered', { direction: 'RIGHT' })  // auto-layout via lazy-loaded elkjs
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization
 
-// Custom node renderer — selected/dragging are REACTIVE ACCESSORS
+// Custom node renderer — every prop except id is a REACTIVE ACCESSOR
 function CustomNode(props: NodeComponentProps<WorkflowData>) {
   return (
     <div
       class={() => (props.selected() ? 'selected' : '')}
       style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
     >
-      {props.data.label}
+      {() => props.data().label}
     </div>
   )
 }
@@ -776,10 +776,10 @@ function CustomNode(props: NodeComponentProps<WorkflowData>) {
   <MiniMap />
 </Flow>`,
     notes:
-      "Signal-native nodes/edges. Generic over node data shape: createFlow<TData> returns FlowInstance<TData> so node.data.kind narrows correctly. Defaults to Record<string, unknown> if no generic supplied. NodeComponentProps.selected and dragging are REACTIVE ACCESSORS (() => boolean), not plain booleans — read inside reactive scopes so the node patches in place when selection/drag state changes (mounts each node exactly once across the lifetime of the graph). Auto-layout via elkjs (lazy-loaded, ~1.4MB chunk only on first .layout() call). Pan/zoom via pointer events + CSS transforms. No D3. JSX components are NOT generic at the call site (<Flow<MyData> /> is invalid JSX) — FlowProps.instance is typed as FlowInstance<any> so typed consumers can pass FlowInstance<MyData> without casting.",
+      "Signal-native nodes/edges. Generic over node data shape: createFlow<TData> returns FlowInstance<TData> so node.data.kind narrows correctly. Defaults to Record<string, unknown> if no generic supplied. NodeComponentProps has THREE reactive accessors — data: () => TData, selected: () => boolean, dragging: () => boolean — read inside reactive scopes so the node patches in place when ANY underlying state changes. Each node mounts EXACTLY ONCE across the lifetime of the graph regardless of how many drags, selection clicks, or updateNode mutations happen. Internally <Flow> uses <For> keyed by node.id plus per-node accessors that read live state from instance.nodes() — so a 60fps drag in a 1000-node graph is O(1) instead of O(N) per frame. Auto-layout via elkjs (lazy-loaded, ~1.4MB chunk only on first .layout() call). Pan/zoom via pointer events + CSS transforms. No D3. JSX components are NOT generic at the call site (<Flow<MyData> /> is invalid JSX) — FlowProps.instance is typed as FlowInstance<any> so typed consumers can pass FlowInstance<MyData> without casting.",
     mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — flow's JSX emits _tpl() which needs runtime-dom imports
-- Reading props.selected as a boolean — it's an accessor, call it: props.selected()
-- Calling props.selected() OUTSIDE a reactive scope — captures the value once at component setup. Read it inside JSX expression thunks, effect, or computed: class={() => props.selected() ? 'on' : 'off'}
+- Reading props.data, props.selected, or props.dragging as plain values — they're ALL accessors, call them: props.data().kind, props.selected(), props.dragging()
+- Calling props.data() OUTSIDE a reactive scope — captures the value once at component setup, defeating reactivity. Read it inside JSX expression thunks, effect, or computed: {() => props.data().label}
 - Adding [key: string]: unknown index signature to your node data interface — no longer needed now that createFlow is generic. Just pass createFlow<MyData>(...)
 - Using direction: 'row' on flow's containing layout — Pyreon Element accepts 'inline'|'rows'|'reverseInline'|'reverseRows', not 'row'
 - Missing the <Flow nodeTypes={{ key: Component }}> registration — node.type strings dispatch to that map`,
