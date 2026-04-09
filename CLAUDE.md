@@ -289,18 +289,24 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `createFlow({ nodes, edges, ...config })` — reactive flow instance with signal-based state
 - Node/edge CRUD, selection, viewport (zoom/pan/fitView), auto-layout via elkjs (lazy-loaded)
-- Components: `<Flow>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`
+- Components: `<Flow nodeTypes={{ custom: MyNode }}>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`
 - Edge paths: `getBezierPath()`, `getSmoothStepPath()`, `getStraightPath()`, `getStepPath()`
+- Custom node renderers receive `NodeComponentProps<TData>`: `{ id, data, selected, dragging }` — note `selected`/`dragging` are plain props (not signals), so node components remount on selection change rather than reactively patching
+- `flow.toJSON()` / `flow.fromJSON()` for serialization round-trips, `flow.layout('layered', { direction })` for elkjs auto-layout
 - No D3 — pan/zoom via pointer events + CSS transforms
+- **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps
 
 ### @pyreon/code
 
-- `createEditor({ value, language, theme, minimap, ... })` — reactive editor instance
-- `editor.value` — reactive Signal<string>, two-way sync with CodeMirror
-- `<CodeEditor>`, `<DiffEditor>`, `<TabbedEditor>` — mount components
+- `createEditor({ value, language, theme, minimap, lineNumbers, foldGutter, onChange, ... })` — reactive editor instance
+- `editor.value` is a writable `Signal<string>` — `editor.value()` reads, `editor.value.set(next)` writes back into CodeMirror
+- `editor.cursor` / `editor.selection` / `editor.lineCount` are computed signals
+- `<CodeEditor instance={editor} />`, `<DiffEditor>`, `<TabbedEditor>` — mount components, auto-cleanup on unmount
 - `minimapExtension()` — canvas-based code overview
-- `loadLanguage(lang)` — lazy-load 17+ language grammars
+- `loadLanguage(lang)` — lazy-load 19 language grammars (`json`, `typescript`, `python`, etc.)
+- Two-way binding: pass `onChange` for editor → external, set `editor.value` for external → editor; both at once requires loop-prevention flags (see app-showcase `JsonSidebar.tsx`)
 - Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB)
+- **Peer dep**: `@pyreon/runtime-dom` is required because `<CodeEditor>` JSX emits `_tpl()` calls
 
 ### @pyreon/document
 

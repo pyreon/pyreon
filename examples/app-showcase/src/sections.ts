@@ -116,9 +116,9 @@ export const sections: Section[] = [
   {
     path: '/flow',
     label: 'Flow Editor',
-    tagline: 'Visual node editor with JSON sidebar',
+    tagline: 'Visual node editor with bidirectional JSON sidebar — drag the canvas or edit the JSON, both sync in real time',
     features: ['flow', 'code', 'store'],
-    available: false,
+    available: true,
     group: 'visual',
   },
 ]

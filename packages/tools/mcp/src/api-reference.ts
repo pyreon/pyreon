@@ -738,18 +738,31 @@ await doc.toNotion()   // Notion blocks`,
     signature: 'createFlow(config: { nodes: FlowNode[], edges: FlowEdge[], ... }): FlowInstance',
     example: `const flow = createFlow({
   nodes: [
-    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
-    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },
+    { id: '1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+    { id: '2', type: 'custom', position: { x: 200, y: 100 }, data: { label: 'End' } },
   ],
-  edges: [{ id: 'e1', source: '1', target: '2' }],
+  edges: [{ id: 'e1', source: '1', target: '2', animated: true }],
 })
 
-flow.addNode({ id: '3', position: { x: 100, y: 200 }, data: { label: 'New' } })
-await flow.layout('layered')  // auto-layout via elkjs
+flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { label: 'New' } })
+await flow.layout('layered', { direction: 'RIGHT' })  // auto-layout via lazy-loaded elkjs
+const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization
 
-<Flow instance={flow}><Background /><Controls /><MiniMap /></Flow>`,
+function CustomNode(props: NodeComponentProps<{ label: string }>) {
+  return <div>{props.data.label}</div>
+}
+
+<Flow instance={flow} nodeTypes={{ custom: CustomNode }}>
+  <Background variant="dots" />
+  <Controls />
+  <MiniMap />
+</Flow>`,
     notes:
-      'Signal-native nodes/edges. Auto-layout via elkjs (lazy-loaded). Pan/zoom via pointer events + CSS transforms. No D3.',
+      "Signal-native nodes/edges. Auto-layout via elkjs (lazy-loaded, ~1.4MB chunk only on first .layout() call). Pan/zoom via pointer events + CSS transforms. No D3. Custom node renderers receive NodeComponentProps<TData> with id/data/selected/dragging — selected/dragging are PLAIN PROPS not signals, so node components remount on selection change.",
+    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — flow's JSX emits _tpl() which needs runtime-dom imports
+- Treating selected/dragging on NodeComponentProps as reactive — they're plain props
+- Using direction: 'row' on flow's containing layout — Pyreon Element accepts 'inline'|'rows'|'reverseInline'|'reverseRows', not 'row'
+- Missing the <Flow nodeTypes={{ key: Component }}> registration — node.type strings dispatch to that map`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -758,22 +771,31 @@ await flow.layout('layered')  // auto-layout via elkjs
 
   'code/createEditor': {
     signature:
-      'createEditor(config: { value?: string, language?: string, theme?: string, minimap?: boolean, ... }): EditorInstance',
+      'createEditor(config: { value?: string, language?: EditorLanguage, theme?: EditorTheme, onChange?: (val: string) => void, minimap?: boolean, lineNumbers?: boolean, ... }): EditorInstance',
     example: `const editor = createEditor({
   value: '// hello',
   language: 'typescript',
   theme: 'dark',
   minimap: true,
+  onChange: (next) => console.log('user edit:', next),
 })
 
-editor.value()       // reactive Signal<string>
+editor.value()              // reactive Signal<string>, read inside JSX/effects
+editor.value.set('new')     // write back into CodeMirror
+editor.cursor()             // computed { line, col }
+editor.lineCount()          // computed
 editor.goToLine(42)
 editor.insert('new code')
+editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
 
-<CodeEditor instance={editor} />
-<DiffEditor original="old" modified="new" />`,
+<CodeEditor instance={editor} style="height: 400px" />
+<DiffEditor original="old" modified="new" language="typescript" />`,
     notes:
-      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). loadLanguage() for lazy grammars. TabbedEditor for multi-file.",
+      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). 19 languages via lazy-loaded grammars (declared as optionalDependencies). Two-way binding: editor.value is a writable Signal — pass onChange for editor → external, set editor.value for external → editor. <CodeEditor> auto-mounts and cleans up on unmount.",
+    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom imports
+- Both-way binding without loop-prevention flags causes infinite re-write cycles — use scoped boolean guards (applyingFromExternal / applyingFromEditor) on each side, see app-showcase JsonSidebar.tsx for the canonical pattern
+- Calling editor methods before mount — they no-op safely but changes don't persist
+- Setting both vim: true and emacs: true — emacs wins`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

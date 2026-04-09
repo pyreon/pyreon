@@ -923,26 +923,44 @@ await doc.toMarkdown()  // Markdown
 ## @pyreon/flow — Flow Diagrams
 
 ```typescript
-import { createFlow, Flow, Background, Controls, MiniMap } from '@pyreon/flow'
+import { createFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
 
 const flow = createFlow({
   nodes: [
-    { id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } },
-    { id: '2', position: { x: 200, y: 100 }, data: { label: 'End' } },
+    { id: '1', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'Start' } },
+    { id: '2', type: 'custom', position: { x: 200, y: 100 }, data: { label: 'End' } },
   ],
-  edges: [{ id: 'e1', source: '1', target: '2' }],
+  edges: [{ id: 'e1', source: '1', target: '2', animated: true }],
 })
 
-flow.addNode({ id: '3', position: { x: 100, y: 200 }, data: { label: 'New' } })
+flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { label: 'New' } })
 flow.addEdge({ source: '1', target: '3' })
-await flow.layout('layered')  // auto-layout via elkjs
+await flow.layout('layered', { direction: 'RIGHT' })  // lazy-loaded elkjs
 
-<Flow instance={flow}>
-  <Background />
-  <Controls />
-  <MiniMap />
+// Custom node renderers receive props from the runtime — selected/dragging are
+// plain props, NOT signals, so node components remount on selection change.
+function CustomNode(props: NodeComponentProps<{ label: string }>) {
+  return (
+    <div class={props.selected ? 'selected' : ''}>
+      <Handle type="target" position={Position.Left} />
+      {props.data.label}
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+<Flow instance={flow} nodeTypes={{ custom: CustomNode }}>
+  <Background variant="dots" gap={20} />
+  <Controls position="bottom-left" />
+  <MiniMap nodeColor={(node) => '#6366f1'} />
 </Flow>
+
+// Serialization round-trips for sidecar editors / persistence:
+const json = flow.toJSON()         // { nodes, edges, viewport }
+flow.fromJSON({ nodes, edges })    // restore from saved state
 ```
+
+> **Peer dep**: `@pyreon/runtime-dom` — flow's JSX components emit `_tpl()` calls. Consumer apps must declare it.
 
 ## @pyreon/storage — Persistent Reactive Storage
 
@@ -979,16 +997,56 @@ locale.set('fr')                   // switch locale reactively
 
 ```typescript
 import { createEditor, CodeEditor, DiffEditor } from '@pyreon/code'
+import { effect, signal } from '@pyreon/reactivity'
 
-const editor = createEditor({ value: '// hello', language: 'typescript', theme: 'dark', minimap: true })
-editor.value()        // reactive
-editor.cursor()       // { line, col }
+const editor = createEditor({
+  value: '// hello',
+  language: 'typescript',
+  theme: 'dark',
+  minimap: true,
+  onChange: (next) => console.log('user edited:', next),
+})
+
+editor.value()              // reactive read
+editor.value.set('new')     // write back into CodeMirror
+editor.cursor()             // { line, col }
+editor.lineCount()          // computed
 editor.goToLine(42)
 editor.insert('new code')
+editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
 
-<CodeEditor instance={editor} />
-<DiffEditor original="old code" modified="new code" />
+<CodeEditor instance={editor} style="height: 400px" />
+<DiffEditor original="old code" modified="new code" language="typescript" />
+
+// Two-way binding pattern (e.g. JSON sidebar driving a flow diagram).
+// Both directions need flag-based loop prevention or you get an infinite
+// re-write cycle:
+let applyingFromExternal = false
+let applyingFromEditor = false
+
+const editor = createEditor({
+  value: serialize(externalState),
+  language: 'json',
+  onChange: (next) => {
+    if (applyingFromExternal) return
+    applyingFromEditor = true
+    try { externalState.set(JSON.parse(next)) } catch {}
+    applyingFromEditor = false
+  },
+})
+
+effect(() => {
+  externalState()  // subscribe
+  if (applyingFromEditor) return
+  const next = serialize(externalState())
+  if (next === editor.value.peek()) return
+  applyingFromExternal = true
+  editor.value.set(next)
+  applyingFromExternal = false
+})
 ```
+
+> **Peer dep**: `@pyreon/runtime-dom` — `<CodeEditor>` JSX emits `_tpl()` calls. Consumer apps must declare it.
 
 ## @pyreon/rx — Reactive Transforms
 
