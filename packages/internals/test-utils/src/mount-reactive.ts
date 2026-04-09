@@ -85,33 +85,49 @@ export interface MountAndExpectOnceResult extends MountReactiveResult {
 }
 
 /**
- * Mount a component and run a sequence of mutations against it,
- * tracking how many times the component factory is invoked.
+ * Wrap a component factory in a counter, mount it, run a sequence of
+ * mutations against it, and expose `parentCalls()` so tests can
+ * assert how many times the factory was invoked.
  *
- * The canonical assertion is `parentCalls() === 1` — proving that
- * signal-driven updates patch the DOM in place rather than
- * re-instantiating the parent.
+ * ### Read this before using the helper
  *
- * **What this catches**: in Pyreon, components run **once** at mount
- * by design — they don't re-run on signal changes from the body's
- * static reads. The bug pattern this helper catches is when a parent
- * component is mounted *inside a reactive thunk* (e.g.
- * `{() => <Template prop={signal()} />}`), causing the entire
- * subtree to be re-created on every signal change. The resume
- * builder PR (#191) fixed exactly this — the route did
- * `{() => <ResumeTemplate resume={r.store.resume()} />}`, which
- * remounted the entire template on every keystroke. After the fix,
- * the template reads the signal accessor inside its body via
- * per-text-node thunks, and `parentCalls()` would have caught the
- * regression if a mount test had existed.
+ * **The bug pattern this helper catches**: a component is mounted
+ * *inside an outer reactive thunk* somewhere up the tree, causing
+ * the runtime to re-instantiate the component (and its entire
+ * subtree) on every signal change. Concretely, this is the resume
+ * builder bug from PR #191:
  *
- * **What it does NOT catch**: a parent that reads `signal()` directly
- * in its body (without a thunk) does NOT re-run on mutations,
- * because Pyreon components only subscribe to signals via reactive
- * scopes (`effect`, `computed`, JSX child accessors). Such a parent
- * captures the value at mount time and never updates — that's a
- * different bug, caught by asserting on the rendered DOM, not on
- * the parentCalls counter.
+ * ```tsx
+ * // BAD — re-mounts ResumeTemplate on every keystroke
+ * <PreviewFrame>
+ *   {() => <ResumeTemplate resume={store.resume()} />}
+ * </PreviewFrame>
+ * ```
+ *
+ * The fix moves the signal read inside `ResumeTemplate`'s body via
+ * per-text-node thunks, and the route stops wrapping the component
+ * in an outer thunk. After the fix, the template factory runs
+ * **exactly once** at mount, no matter how many keystrokes happen.
+ *
+ * **The bug pattern this helper does NOT catch**: a component whose
+ * body reads `signal()` directly into a captured value, without a
+ * thunk. Pyreon components only subscribe to signals via reactive
+ * scopes (`effect`, `computed`, JSX child accessors), so such a
+ * component captures the value once at mount and *never updates*.
+ * The DOM goes stale silently. That's a different class of bug,
+ * detected by asserting on the rendered output, not on the
+ * `parentCalls` counter.
+ *
+ * **The contract this helper expresses**: "this factory should run
+ * exactly once during the test, regardless of how many signal
+ * mutations happen." A passing test (`parentCalls() === 1`) proves
+ * the consumer's *call site* is wrapped correctly. A failing test
+ * means an outer thunk somewhere is re-creating the component.
+ *
+ * Phrased differently: `mountAndExpectOnce` tests **how the consumer
+ * mounts the factory**, not the factory's own internal correctness.
+ *
+ * ### Parameters
  *
  * @param factory - Component factory. Wrapped to count invocations.
  *                   Must return a VNodeChild (typically the result
@@ -119,14 +135,15 @@ export interface MountAndExpectOnceResult extends MountReactiveResult {
  * @param mutations - Synchronous function that performs N signal
  *                     mutations. Called AFTER initial mount.
  *
- * @example
+ * ### Example
+ *
  * ```ts
  * import { mountAndExpectOnce } from '@pyreon/test-utils'
  * import { signal } from '@pyreon/reactivity'
  * import { h } from '@pyreon/core'
- * import DocText from '../primitives/DocText'
+ * import { DocText } from '@pyreon/document-primitives'
  *
- * it('parent runs once across 5 signal mutations', () => {
+ * it('DocText with signal-thunk child does not re-mount on mutation', () => {
  *   const name = signal('Aisha')
  *
  *   const { container, parentCalls, cleanup } = mountAndExpectOnce(
@@ -140,8 +157,8 @@ export interface MountAndExpectOnceResult extends MountReactiveResult {
  *     },
  *   )
  *
- *   expect(parentCalls()).toBe(1)        // factory ran exactly once
- *   expect(container.textContent).toBe('Jordan')
+ *   expect(parentCalls()).toBe(1)        // factory wrapped correctly
+ *   expect(container.textContent).toBe('Jordan')  // DOM patched live
  *   cleanup()
  * })
  * ```
@@ -187,18 +204,32 @@ export function mountAndExpectOnce(
  */
 function ensureDom(helperName: string): void {
   if (typeof document === 'undefined') {
-    throw new Error(
-      `[@pyreon/test-utils] ${helperName}() requires a DOM environment. ` +
-        `Set \`environment: 'happy-dom'\` in your package's vitest.config.ts:\n\n` +
-        `  import { mergeConfig } from 'vite'\n` +
-        `  import { defineConfig } from 'vitest/config'\n` +
-        `  import { sharedConfig } from '../../../vitest.shared'\n\n` +
-        `  export default mergeConfig(\n` +
-        `    sharedConfig,\n` +
-        `    defineConfig({\n` +
-        `      test: { globals: true, environment: 'happy-dom' },\n` +
-        `    }),\n` +
-        `  )\n`,
-    )
+    throw new Error(buildDomErrorMessage(helperName))
   }
+}
+
+/**
+ * Build the helpful "you need happy-dom" error message. Extracted as
+ * a pure function so tests can verify the message text without having
+ * to actually unset `document` at runtime — which is brittle, depends
+ * on vitest internals, and pollutes the global scope. The throw site
+ * itself (in `ensureDom`) is one trivial line; what's worth testing
+ * is that the message says the right things.
+ *
+ * @internal
+ */
+export function buildDomErrorMessage(helperName: string): string {
+  return (
+    `[@pyreon/test-utils] ${helperName}() requires a DOM environment. ` +
+    `Set \`environment: 'happy-dom'\` in your package's vitest.config.ts:\n\n` +
+    `  import { mergeConfig } from 'vite'\n` +
+    `  import { defineConfig } from 'vitest/config'\n` +
+    `  import { sharedConfig } from '../../../vitest.shared'\n\n` +
+    `  export default mergeConfig(\n` +
+    `    sharedConfig,\n` +
+    `    defineConfig({\n` +
+    `      test: { globals: true, environment: 'happy-dom' },\n` +
+    `    }),\n` +
+    `  )\n`
+  )
 }

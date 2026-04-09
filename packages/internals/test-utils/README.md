@@ -84,9 +84,9 @@ it('text updates when signal mutates', () => {
 
 ```ts
 import { h } from '@pyreon/core'
+import { DocText } from '@pyreon/document-primitives'
 import { signal } from '@pyreon/reactivity'
 import { mountAndExpectOnce } from '@pyreon/test-utils'
-import DocText from '../primitives/DocText'
 
 it('parent runs once across 5 signal mutations', () => {
   const headline = signal('Senior Engineer')

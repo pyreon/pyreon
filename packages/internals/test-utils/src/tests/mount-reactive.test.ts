@@ -16,7 +16,7 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { mountAndExpectOnce, mountReactive } from '../mount-reactive'
+import { buildDomErrorMessage, mountAndExpectOnce, mountReactive } from '../mount-reactive'
 
 describe('mountReactive', () => {
   it('mounts a static vnode into a fresh container', () => {
@@ -226,5 +226,35 @@ describe('mountAndExpectOnce', () => {
     expect(factoryCalls).toBeGreaterThan(afterFirstMutation)
 
     cleanup()
+  })
+})
+
+describe('buildDomErrorMessage', () => {
+  // The error message itself is the contract — consumers see it
+  // when they forget to set `environment: 'happy-dom'`. The throw
+  // site in `ensureDom` is one trivial line. What matters is that
+  // the message tells them exactly what to do.
+
+  it('mentions the helper name so the consumer knows which call site to fix', () => {
+    expect(buildDomErrorMessage('mountReactive')).toContain('mountReactive()')
+    expect(buildDomErrorMessage('mountAndExpectOnce')).toContain('mountAndExpectOnce()')
+  })
+
+  it('points at the package source so a search reveals the cause', () => {
+    expect(buildDomErrorMessage('any')).toContain('[@pyreon/test-utils]')
+  })
+
+  it("tells the consumer the exact fix: set environment: 'happy-dom'", () => {
+    const msg = buildDomErrorMessage('any')
+    expect(msg).toContain("environment: 'happy-dom'")
+    expect(msg).toContain('vitest.config.ts')
+  })
+
+  it('includes a working code snippet the consumer can copy-paste', () => {
+    const msg = buildDomErrorMessage('any')
+    expect(msg).toContain("import { mergeConfig } from 'vite'")
+    expect(msg).toContain("import { defineConfig } from 'vitest/config'")
+    expect(msg).toContain("import { sharedConfig } from '../../../vitest.shared'")
+    expect(msg).toContain('export default mergeConfig(')
   })
 })
