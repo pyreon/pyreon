@@ -71,7 +71,13 @@ export interface FlowNode<TData = Record<string, unknown>> {
 
 // ─── Edge ────────────────────────────────────────────────────────────────────
 
-export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step'
+/**
+ * Built-in edge path types. Custom edge types registered via
+ * `<Flow edgeTypes={{ custom: MyEdge }}>` are also valid as the
+ * `type` field — the `(string & {})` widens the union to accept
+ * any string while preserving autocomplete on the built-in cases.
+ */
+export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step' | (string & {})
 
 export interface FlowEdge {
   id?: string

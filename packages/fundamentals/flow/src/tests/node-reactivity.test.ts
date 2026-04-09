@@ -211,6 +211,116 @@ describe('node component reactivity (F2)', () => {
     expect(calls.c).toBe(1)
   })
 
+  it('flow component mounts cleanly with default edges (regression for SVG marker bug)', () => {
+    // Before this PR, mounting any <Flow> with edges crashed with
+    // `TypeError: Cannot set property markerWidth of [object Object]
+    // which has only a getter`. The flow editor showcase shipped to
+    // production with this bug because no test in the repo actually
+    // mounted the Flow component with edges — the existing 291
+    // flow tests all exercised the createFlow instance API in
+    // isolation.
+    //
+    // The root cause was in @pyreon/runtime-dom: setStaticProp
+    // tried `el[key] = value` for any key in el, but SVGElement
+    // properties like markerWidth, refX, refY are read-only
+    // SVGAnimated* getters. The fix special-cases SVG/MathML
+    // namespaces to always use setAttribute().
+    //
+    // This test mounts a Flow with one edge and asserts that the
+    // svg + marker DOM exists. If the runtime regresses, this
+    // test fails with the original TypeError.
+    const flow = createFlow<{ label: string }>({
+      nodes: [
+        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } },
+        { id: 'b', type: 'custom', position: { x: 200, y: 0 }, data: { label: 'B' } },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b' }], // default bezier edge
+    })
+
+    function CustomNode(props: NodeComponentProps<{ label: string }>) {
+      return h('div', { 'data-id': props.id }, props.data().label)
+    }
+
+    const { container, cleanup } = mountReactive(
+      h(Flow as any, { instance: flow, nodeTypes: { custom: CustomNode } }),
+    )
+    cleanups.push(cleanup)
+
+    // The svg edge layer mounted without throwing.
+    const svg = container.querySelector('.pyreon-flow-edges')
+    expect(svg).not.toBeNull()
+
+    // The marker exists with the expected attributes set via
+    // setAttribute (now that the runtime falls through to
+    // setAttribute for SVG namespaces instead of trying property
+    // assignment).
+    const marker = svg?.querySelector('marker#flow-arrowhead')
+    expect(marker).not.toBeNull()
+    expect(marker?.getAttribute('markerWidth')).toBe('10')
+    expect(marker?.getAttribute('markerHeight')).toBe('7')
+    expect(marker?.getAttribute('refX')).toBe('10')
+    expect(marker?.getAttribute('refY')).toBe('3.5')
+    expect(marker?.getAttribute('orient')).toBe('auto')
+
+    // The edge path exists (default renderer's <g><path /></g>).
+    const edgePath = svg?.querySelector('path[d]')
+    expect(edgePath).not.toBeNull()
+  })
+
+  it('custom edge factory runs exactly once across position updates (drags)', () => {
+    // Same contract as nodes — the EdgeLayer must NOT re-instantiate
+    // edge components on every node drag. Edge SVG paths are
+    // recomputed from source/target node positions, so during a
+    // 60fps drag the EdgeLayer subscribes to nodes() and re-emits
+    // every edge group. If custom edge renderers re-mount, that's
+    // a 60×/sec hit per edge — strictly worse than node remounts
+    // because SVG element creation is heavier than DOM div
+    // creation.
+    const flow = createFlow<{ label: string }>({
+      nodes: [
+        { id: 'a', type: 'custom', position: { x: 0, y: 0 }, data: { label: 'A' } },
+        { id: 'b', type: 'custom', position: { x: 200, y: 0 }, data: { label: 'B' } },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b', type: 'custom' }],
+    })
+
+    const calls: Record<string, number> = { e1: 0 }
+
+    function CustomNode(props: NodeComponentProps<{ label: string }>) {
+      return h('div', { 'data-id': props.id }, props.data().label)
+    }
+
+    function CustomEdge(props: { edge: { id?: string }; selected: boolean }) {
+      const id = props.edge.id ?? 'unknown'
+      calls[id] = (calls[id] ?? 0) + 1
+      return h('g', { 'data-edgeid': id })
+    }
+
+    const { cleanup } = mountReactive(
+      h(Flow as any, {
+        instance: flow,
+        nodeTypes: { custom: CustomNode },
+        edgeTypes: { custom: CustomEdge },
+      }),
+    )
+    cleanups.push(cleanup)
+
+    // The CustomEdge ran exactly once on initial mount.
+    expect(calls.e1).toBe(1)
+
+    // Simulate a drag on node 'a': 5 position updates.
+    flow.updateNodePosition('a', { x: 10, y: 10 })
+    flow.updateNodePosition('a', { x: 20, y: 20 })
+    flow.updateNodePosition('a', { x: 30, y: 30 })
+    flow.updateNodePosition('a', { x: 40, y: 40 })
+    flow.updateNodePosition('a', { x: 50, y: 50 })
+
+    // CustomEdge should NOT have been re-instantiated. The edge's
+    // path SHOULD have been recomputed (because source position
+    // moved), but that's an inner reactive thunk, not a remount.
+    expect(calls.e1).toBe(1)
+  })
+
   it('wrapper div class updates reactively when selection changes', () => {
     // Beyond the per-node component, NodeLayer also wraps each node
     // in a `<div class="pyreon-flow-node ${selected ? 'selected' : ''}">`

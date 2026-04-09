@@ -292,6 +292,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Components: `<Flow nodeTypes={{ custom: MyNode }}>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.
 - Edge paths: `getBezierPath()`, `getSmoothStepPath()`, `getStraightPath()`, `getStepPath()`
 - Custom node renderers receive `NodeComponentProps<TData>`: `{ id, data: () => TData, selected: () => boolean, dragging: () => boolean }`. **All non-id props are reactive accessors** — read inside reactive scopes (JSX expression thunks, `effect()`, `computed()`) so the node patches in place when any underlying state changes. Each node mounts EXACTLY ONCE across the lifetime of the graph regardless of how many drags, selection clicks, or `updateNode` data mutations happen. Internally `<Flow>` uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — so a 60fps drag in a 1000-node graph is O(1) instead of O(N) per frame.
+- Custom edge renderers receive `EdgeComponentProps`: `{ edge, sourceX: () => number, sourceY: () => number, targetX: () => number, targetY: () => number, selected: () => boolean }`. Same accessor-based contract — each custom edge mounts once and recomputes path coordinates reactively when source/target nodes move. The default edge renderer (when no custom edge type is registered) uses inline reactive thunks for `d`, `stroke`, `stroke-width`, and `class`.
 - `flow.toJSON()` / `flow.fromJSON()` for serialization round-trips, `flow.layout('layered', { direction })` for elkjs auto-layout
 - No D3 — pan/zoom via pointer events + CSS transforms
 - **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps
@@ -517,6 +518,7 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 ### Runtime DOM — SVG/MathML and Custom Elements
 
 - SVG namespace: 67 SVG/MathML tags auto-detected, created via `createElementNS` with correct namespace URI
+- **SVG/MathML attribute application**: SVG and MathML elements ALWAYS use `setAttribute()` for prop forwarding, never property assignment. Many SVG properties (`SVGMarkerElement.markerWidth`, `SVGMarkerElement.refX`, `SVGRectElement.x`, etc.) are read-only `SVGAnimatedLength` getters — `el[key] = value` would crash with `Cannot set property X of [object Object] which has only a getter`. Detected by `el.namespaceURI !== 'http://www.w3.org/1999/xhtml'`. Standard React/Vue/Solid behavior.
 - Custom elements: props set as properties (not attributes) on elements with a hyphen in the tag name
 - Transition 5s timeout: if `transitionend`/`animationend` never fires, the transition completes automatically after 5 seconds
 - Duplicate key production guard: duplicate `key` values in lists emit a one-time console warning in production (not just dev)
