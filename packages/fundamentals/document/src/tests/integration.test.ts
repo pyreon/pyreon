@@ -407,29 +407,164 @@ describe('document metadata pass-through (PR #197)', () => {
     expect(md).not.toContain('description:')
   })
 
-  it('PDF renderer reads title/author/subject into the pdfmake info block', async () => {
-    // The PDF renderer was already correct (it consumed these
-    // fields before PR #197). This test locks in the contract so
-    // a future regression in the PDF renderer would be caught.
+  it('PDF renderer writes metadata to the /Info dictionary (binary verified)', async () => {
+    // End-to-end binary verification. The PDF renderer was already
+    // correct (it consumed these fields before PR #197), but we
+    // never proved it by actually inspecting a generated PDF.
     //
-    // We can't easily inspect a real PDF binary in a vitest test,
-    // but we can verify the renderer ran without throwing — and
-    // the renderer-coverage tests in renderers-coverage.test.ts
-    // already exercise the PDF renderer's full code path with
-    // metadata fields. This test is the "the contract still
-    // exists" smoke check at the integration layer.
-    const result = await render(doc, 'pdf')
-    expect(result).toBeInstanceOf(Uint8Array)
-    expect((result as Uint8Array).byteLength).toBeGreaterThan(0)
+    // PDFs store document metadata in an /Info dictionary in the
+    // trailer, with each field as an indirect object reference:
+    //
+    //   11 0 obj
+    //   << /Title 15 0 R /Author 16 0 R /Subject 17 0 R /Keywords 18 0 R ... >>
+    //   endobj
+    //   15 0 obj (My Title) endobj
+    //   16 0 obj (Alice Author) endobj
+    //
+    // We decode the PDF bytes as Latin-1 (the safe encoding for
+    // PDF stream payloads) and assert on the structural patterns
+    // AND the literal metadata strings. If pdfmake's `info` config
+    // ever stops producing these objects, this test catches it.
+    const docWithKeywords = Document({
+      title: 'My Report',
+      author: 'Alice Smith',
+      subject: 'Q4 Sales Analysis',
+      keywords: ['sales', 'q4', 'report'],
+      children: Page({
+        children: [Heading({ children: 'Sales' }), Text({ children: 'Body content' })],
+      }),
+    })
+
+    const bytes = (await render(docWithKeywords, 'pdf')) as Uint8Array
+    expect(bytes).toBeInstanceOf(Uint8Array)
+    expect(bytes.byteLength).toBeGreaterThan(0)
+
+    // Decode the entire PDF as latin-1 — PDFs are mostly ASCII +
+    // FlateDecoded streams. The /Info dictionary references and
+    // the string literal objects are in the uncompressed portion.
+    const text = new TextDecoder('latin1').decode(bytes)
+
+    // The /Info dictionary references all four metadata fields
+    expect(text).toMatch(/\/Title\s+\d+\s+0\s+R/)
+    expect(text).toMatch(/\/Author\s+\d+\s+0\s+R/)
+    expect(text).toMatch(/\/Subject\s+\d+\s+0\s+R/)
+    expect(text).toMatch(/\/Keywords\s+\d+\s+0\s+R/)
+
+    // The literal metadata values appear in the indirect objects
+    expect(text).toContain('(My Report)')
+    expect(text).toContain('(Alice Smith)')
+    expect(text).toContain('(Q4 Sales Analysis)')
+    expect(text).toContain('(sales, q4, report)')
   })
 
-  // DOCX renderer: integration test verifies rendering succeeds.
-  // The renderer-level test for the metadata pass-through is in
-  // renderers-coverage.test.ts (or would be added there if it
-  // doesn't exist yet — see TODO below).
-  it('DOCX renderer accepts metadata fields without throwing', async () => {
-    const result = await render(doc, 'docx')
-    expect(result).toBeInstanceOf(Uint8Array)
-    expect((result as Uint8Array).byteLength).toBeGreaterThan(0)
+  it('DOCX renderer writes metadata to docProps/core.xml (binary verified)', async () => {
+    // End-to-end binary verification. PR #197 added the metadata
+    // pass-through to the DOCX renderer, but we shouldn't trust
+    // the docx library's docs without proof. This test:
+    //
+    //   1. Generates a real .docx (which is just a zip)
+    //   2. Uses the system `unzip` tool to extract docProps/core.xml
+    //   3. Asserts the OOXML CoreProperties XML contains the
+    //      expected dc:* and cp:* elements
+    //
+    // The OOXML CoreProperties schema:
+    //   • <dc:title>     — title (Dublin Core)
+    //   • <dc:creator>   — author (DC's term for "creator")
+    //   • <dc:subject>   — subject
+    //   • <cp:keywords>  — keywords (OOXML core-properties extension)
+    //
+    // If the docx library ever stops writing these to core.xml, or
+    // if my mapping (`author → creator`, `keywords[] → joined`)
+    // breaks, this test catches it.
+    const { spawnSync } = await import('node:child_process')
+    const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { tmpdir } = await import('node:os')
+
+    const docWithKeywords = Document({
+      title: 'My Report',
+      author: 'Alice Smith',
+      subject: 'Q4 Sales Analysis',
+      keywords: ['sales', 'q4', 'report'],
+      children: Page({
+        children: [Heading({ children: 'Sales' }), Text({ children: 'Body content' })],
+      }),
+    })
+
+    const bytes = (await render(docWithKeywords, 'docx')) as Uint8Array
+    expect(bytes.byteLength).toBeGreaterThan(0)
+
+    // Write the .docx to a temp dir and unzip docProps/core.xml.
+    // `unzip -p` writes a single entry to stdout — no on-disk
+    // extraction of the rest of the archive.
+    const tmp = mkdtempSync(join(tmpdir(), 'pyreon-docx-test-'))
+    try {
+      const docxPath = join(tmp, 'out.docx')
+      writeFileSync(docxPath, bytes)
+
+      const result = spawnSync('unzip', ['-p', docxPath, 'docProps/core.xml'], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      })
+
+      if (result.error || result.status !== 0) {
+        throw new Error(
+          `Failed to unzip docProps/core.xml: ${result.error?.message ?? result.stderr}. ` +
+            `This test requires the system 'unzip' tool on PATH.`,
+        )
+      }
+
+      const coreXml = result.stdout
+      expect(coreXml).toContain('<dc:title>My Report</dc:title>')
+      expect(coreXml).toContain('<dc:creator>Alice Smith</dc:creator>')
+      expect(coreXml).toContain('<dc:subject>Q4 Sales Analysis</dc:subject>')
+      expect(coreXml).toContain('<cp:keywords>sales, q4, report</cp:keywords>')
+
+      // Sanity: the namespace declarations are present
+      expect(coreXml).toContain('xmlns:dc="http://purl.org/dc/elements/1.1/"')
+      expect(coreXml).toContain(
+        'xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"',
+      )
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('DOCX renderer omits empty metadata elements when fields are missing', async () => {
+    // Regression case for the conditional spread pattern in the
+    // renderer: a Document with only `title` set should produce a
+    // core.xml that has <dc:title> but NOT empty <dc:creator> or
+    // <dc:subject> elements. The docx library is well-behaved
+    // about omitting unset fields, but if our renderer code ever
+    // changed from `?... :{}` spreads to always-include with
+    // empty defaults, this test catches it.
+    const { spawnSync } = await import('node:child_process')
+    const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { tmpdir } = await import('node:os')
+
+    const titleOnly = Document({
+      title: 'Just a title',
+      children: Page({ children: [Text({ children: 'x' })] }),
+    })
+
+    const bytes = (await render(titleOnly, 'docx')) as Uint8Array
+    const tmp = mkdtempSync(join(tmpdir(), 'pyreon-docx-test-'))
+    try {
+      const docxPath = join(tmp, 'out.docx')
+      writeFileSync(docxPath, bytes)
+      const result = spawnSync('unzip', ['-p', docxPath, 'docProps/core.xml'], {
+        encoding: 'utf8',
+      })
+      const coreXml = result.stdout
+
+      expect(coreXml).toContain('<dc:title>Just a title</dc:title>')
+      // Empty creator/subject/keywords elements should NOT appear
+      expect(coreXml).not.toMatch(/<dc:creator><\/dc:creator>/)
+      expect(coreXml).not.toMatch(/<dc:subject><\/dc:subject>/)
+      expect(coreXml).not.toMatch(/<cp:keywords><\/cp:keywords>/)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
   })
 })
