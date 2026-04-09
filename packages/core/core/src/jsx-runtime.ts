@@ -445,13 +445,13 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   xmlns?: string | undefined
   fill?: string | (() => string) | undefined
   stroke?: string | (() => string) | undefined
-  'stroke-width'?: string | number | undefined
+  'stroke-width'?: string | number | (() => string | number) | undefined
   'stroke-linecap'?: 'butt' | 'round' | 'square' | undefined
   'stroke-linejoin'?: 'miter' | 'round' | 'bevel' | undefined
   'fill-rule'?: 'nonzero' | 'evenodd' | undefined
   'clip-rule'?: 'nonzero' | 'evenodd' | undefined
   'clip-path'?: string | undefined
-  d?: string | undefined
+  d?: string | (() => string) | undefined
   cx?: string | number | undefined
   cy?: string | number | undefined
   r?: string | number | undefined

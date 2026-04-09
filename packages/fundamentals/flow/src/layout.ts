@@ -62,8 +62,8 @@ interface ElkResult {
   children: Array<{ id: string; x: number; y: number }>
 }
 
-function toElkGraph(
-  nodes: FlowNode[],
+function toElkGraph<TData>(
+  nodes: FlowNode<TData>[],
   edges: FlowEdge[],
   algorithm: LayoutAlgorithm,
   options: LayoutOptions,
@@ -127,8 +127,8 @@ function toElkGraph(
  * // positions: [{ id: '1', position: { x: 0, y: 0 } }, ...]
  * ```
  */
-export async function computeLayout(
-  nodes: FlowNode[],
+export async function computeLayout<TData = Record<string, unknown>>(
+  nodes: FlowNode<TData>[],
   edges: FlowEdge[],
   algorithm: LayoutAlgorithm = 'layered',
   options: LayoutOptions = {},

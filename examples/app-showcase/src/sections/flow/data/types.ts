@@ -8,20 +8,16 @@
 export type WorkflowNodeKind = 'trigger' | 'filter' | 'transform' | 'notify'
 
 /**
- * Node data payload.
+ * Node data payload — fully typed, no index signature needed.
  *
- * The index signature is required so the type satisfies
- * `Record<string, unknown>` — `@pyreon/flow`'s `FlowNode` defaults
- * `data` to `Record<string, unknown>` and `createFlow` is non-generic,
- * so without the index signature TS rejects assignment at the
- * boundary. Keys are still strongly typed on read; the index just
- * widens the type-level shape.
+ * `@pyreon/flow`'s `createFlow<TData>` is generic, so this clean
+ * interface threads through `FlowNode<WorkflowNodeData>` end-to-end
+ * without forcing a `[key: string]: unknown` index signature. Reads
+ * on `node.data.kind` narrow to the typed union, not `unknown`.
  */
 export interface WorkflowNodeData {
   kind: WorkflowNodeKind
   label: string
   /** Optional one-line config summary surfaced in the canvas card. */
   config?: string
-  // Required by FlowNode<Record<string, unknown>> compatibility:
-  [key: string]: unknown
 }

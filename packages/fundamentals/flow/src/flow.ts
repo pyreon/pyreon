@@ -47,7 +47,9 @@ function edgeId(edge: FlowEdge): string {
  * flow.layout('layered', { direction: 'RIGHT' })
  * ```
  */
-export function createFlow(config: FlowConfig = {}): FlowInstance {
+export function createFlow<TData = Record<string, unknown>>(
+  config: FlowConfig<TData> = {},
+): FlowInstance<TData> {
   const {
     nodes: initialNodes = [],
     edges: initialEdges = [],
@@ -68,7 +70,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Core signals ─────────────────────────────────────────────────────────
 
-  const nodes = signal<FlowNode[]>([...initialNodes])
+  const nodes = signal<FlowNode<TData>[]>([...initialNodes])
   const edges = signal<FlowEdge[]>(edgesWithIds)
   const viewport = signal({ x: 0, y: 0, zoom: 1 })
   const containerSize = signal({ width: 800, height: 600 })
@@ -88,11 +90,11 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   const connectListeners = new Set<(connection: Connection) => void>()
   const nodesChangeListeners = new Set<(changes: NodeChange[]) => void>()
-  const nodeClickListeners = new Set<(node: FlowNode) => void>()
+  const nodeClickListeners = new Set<(node: FlowNode<TData>) => void>()
   const edgeClickListeners = new Set<(edge: FlowEdge) => void>()
-  const nodeDragStartListeners = new Set<(node: FlowNode) => void>()
-  const nodeDragEndListeners = new Set<(node: FlowNode) => void>()
-  const nodeDoubleClickListeners = new Set<(node: FlowNode) => void>()
+  const nodeDragStartListeners = new Set<(node: FlowNode<TData>) => void>()
+  const nodeDragEndListeners = new Set<(node: FlowNode<TData>) => void>()
+  const nodeDoubleClickListeners = new Set<(node: FlowNode<TData>) => void>()
 
   function emitNodeChanges(changes: NodeChange[]) {
     for (const cb of nodesChangeListeners) cb(changes)
@@ -100,11 +102,11 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Node operations ──────────────────────────────────────────────────────
 
-  function getNode(id: string): FlowNode | undefined {
+  function getNode(id: string): FlowNode<TData> | undefined {
     return nodes.peek().find((n) => n.id === id)
   }
 
-  function addNode(node: FlowNode): void {
+  function addNode(node: FlowNode<TData>): void {
     nodes.update((nds) => [...nds, node])
   }
 
@@ -122,7 +124,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     emitNodeChanges([{ type: 'remove', id }])
   }
 
-  function updateNode(id: string, update: Partial<FlowNode>): void {
+  function updateNode(id: string, update: Partial<FlowNode<TData>>): void {
     nodes.update((nds) => nds.map((n) => (n.id === id ? { ...n, ...update } : n)))
   }
 
@@ -424,13 +426,13 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     return edges.peek().filter((e) => e.source === nodeId || e.target === nodeId)
   }
 
-  function getIncomers(nodeId: string): FlowNode[] {
+  function getIncomers(nodeId: string): FlowNode<TData>[] {
     const incomingEdges = edges.peek().filter((e) => e.target === nodeId)
     const sourceIds = new Set(incomingEdges.map((e) => e.source))
     return nodes.peek().filter((n) => sourceIds.has(n.id))
   }
 
-  function getOutgoers(nodeId: string): FlowNode[] {
+  function getOutgoers(nodeId: string): FlowNode<TData>[] {
     const outgoingEdges = edges.peek().filter((e) => e.source === nodeId)
     const targetIds = new Set(outgoingEdges.map((e) => e.target))
     return nodes.peek().filter((n) => targetIds.has(n.id))
@@ -448,7 +450,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     return () => nodesChangeListeners.delete(callback)
   }
 
-  function onNodeClick(callback: (node: FlowNode) => void): () => void {
+  function onNodeClick(callback: (node: FlowNode<TData>) => void): () => void {
     nodeClickListeners.add(callback)
     return () => nodeClickListeners.delete(callback)
   }
@@ -458,24 +460,24 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     return () => edgeClickListeners.delete(callback)
   }
 
-  function onNodeDragStart(callback: (node: FlowNode) => void): () => void {
+  function onNodeDragStart(callback: (node: FlowNode<TData>) => void): () => void {
     nodeDragStartListeners.add(callback)
     return () => nodeDragStartListeners.delete(callback)
   }
 
-  function onNodeDragEnd(callback: (node: FlowNode) => void): () => void {
+  function onNodeDragEnd(callback: (node: FlowNode<TData>) => void): () => void {
     nodeDragEndListeners.add(callback)
     return () => nodeDragEndListeners.delete(callback)
   }
 
-  function onNodeDoubleClick(callback: (node: FlowNode) => void): () => void {
+  function onNodeDoubleClick(callback: (node: FlowNode<TData>) => void): () => void {
     nodeDoubleClickListeners.add(callback)
     return () => nodeDoubleClickListeners.delete(callback)
   }
 
   // ── Copy / Paste ────────────────────────────────────────────────────────
 
-  let clipboard: { nodes: FlowNode[]; edges: FlowEdge[] } | null = null
+  let clipboard: { nodes: FlowNode<TData>[]; edges: FlowEdge[] } | null = null
 
   function copySelected(): void {
     const selectedNodeSet = selectedNodeIds.peek()
@@ -494,7 +496,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     if (!clipboard) return
 
     const idMap = new Map<string, string>()
-    const newNodes: FlowNode[] = []
+    const newNodes: FlowNode<TData>[] = []
 
     // Create new nodes with offset positions and new ids
     for (const node of clipboard.nodes) {
@@ -531,8 +533,8 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Undo / Redo ────────────────────────────────────────────────────────
 
-  const undoStack: Array<{ nodes: FlowNode[]; edges: FlowEdge[] }> = []
-  const redoStack: Array<{ nodes: FlowNode[]; edges: FlowEdge[] }> = []
+  const undoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
+  const redoStack: Array<{ nodes: FlowNode<TData>[]; edges: FlowEdge[] }> = []
   const maxHistory = 50
 
   function pushHistory(): void {
@@ -661,7 +663,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Sub-flows / Groups ──────────────────────────────────────────────────
 
-  function getChildNodes(parentId: string): FlowNode[] {
+  function getChildNodes(parentId: string): FlowNode<TData>[] {
     return nodes.peek().filter((n) => n.parentId === parentId)
   }
 
@@ -798,7 +800,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Collision detection ────────────────────────────────────────────────
 
-  function getOverlappingNodes(nodeId: string): FlowNode[] {
+  function getOverlappingNodes(nodeId: string): FlowNode<TData>[] {
     const node = getNode(nodeId)
     if (!node) return []
 
@@ -887,14 +889,20 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
 
   // ── Search / Filter ─────────────────────────────────────────────────────
 
-  function findNodes(predicate: (node: FlowNode) => boolean): FlowNode[] {
+  function findNodes(predicate: (node: FlowNode<TData>) => boolean): FlowNode<TData>[] {
     return nodes.peek().filter(predicate)
   }
 
-  function searchNodes(query: string): FlowNode[] {
+  function searchNodes(query: string): FlowNode<TData>[] {
     const q = query.toLowerCase()
     return nodes.peek().filter((n) => {
-      const label = (n.data?.label as string) ?? n.id
+      // searchNodes is a built-in convenience that looks for a `label`
+      // string on the node's data payload — a common convention but
+      // not part of the typed `TData` shape. Cast through `unknown`
+      // to read it without forcing every consumer's data type to
+      // declare a `label` field.
+      const data = n.data as unknown as { label?: string } | undefined
+      const label = data?.label ?? n.id
       return label.toLowerCase().includes(q)
     })
   }
@@ -923,7 +931,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
   // ── Export / Import ────────────────────────────────────────────────────
 
   function toJSON(): {
-    nodes: FlowNode[]
+    nodes: FlowNode<TData>[]
     edges: FlowEdge[]
     viewport: { x: number; y: number; zoom: number }
   } {
@@ -935,7 +943,7 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
   }
 
   function fromJSON(data: {
-    nodes: FlowNode[]
+    nodes: FlowNode<TData>[]
     edges: FlowEdge[]
     viewport?: { x: number; y: number; zoom: number }
   }): void {
@@ -1045,16 +1053,16 @@ export function createFlow(config: FlowConfig = {}): FlowInstance {
     onNodeDoubleClick,
     /** @internal — used by Flow component to emit events */
     _emit: {
-      nodeDragStart: (node: FlowNode) => {
+      nodeDragStart: (node: FlowNode<TData>) => {
         for (const cb of nodeDragStartListeners) cb(node)
       },
-      nodeDragEnd: (node: FlowNode) => {
+      nodeDragEnd: (node: FlowNode<TData>) => {
         for (const cb of nodeDragEndListeners) cb(node)
       },
-      nodeDoubleClick: (node: FlowNode) => {
+      nodeDoubleClick: (node: FlowNode<TData>) => {
         for (const cb of nodeDoubleClickListeners) cb(node)
       },
-      nodeClick: (node: FlowNode) => {
+      nodeClick: (node: FlowNode<TData>) => {
         for (const cb of nodeClickListeners) cb(node)
       },
       edgeClick: (edge: FlowEdge) => {

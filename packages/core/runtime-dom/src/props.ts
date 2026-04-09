@@ -316,6 +316,19 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
+  // SVG and MathML elements: ALWAYS use setAttribute. Many of their
+  // properties are read-only `SVGAnimated*` getters (e.g.
+  // `SVGMarkerElement.refX`, `SVGMarkerElement.markerWidth`,
+  // `SVGRectElement.x`, etc.). Trying `el[key] = value` on those
+  // crashes with "Cannot set property X of [object Object] which has
+  // only a getter". The standard React/Vue/Solid behavior is to
+  // skip the property assignment optimization for non-HTML elements
+  // and always go through setAttribute.
+  if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
+    el.setAttribute(key, String(value))
+    return
+  }
+
   if (key in el) {
     ;(el as unknown as Record<string, unknown>)[key] = value
     return

@@ -1,7 +1,13 @@
-import type { VNodeChild } from '@pyreon/core'
+import { For, type VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { getEdgePath, getHandlePosition, getSmartHandlePositions, getWaypointPath } from '../edges'
-import type { Connection, FlowInstance, FlowNode, NodeComponentProps } from '../types'
+import type {
+  Connection,
+  FlowEdge,
+  FlowInstance,
+  FlowNode,
+  NodeComponentProps,
+} from '../types'
 import { Position } from '../types'
 
 // ─── Node type registry ──────────────────────────────────────────────────────
@@ -10,15 +16,25 @@ type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild
 
 /**
  * Default node renderer — simple labeled box.
+ *
+ * Every prop except `id` is an accessor function. `data()`, `selected()`,
+ * and `dragging()` are read inside reactive scopes (the `style` and
+ * children thunks) so the node patches in place when any underlying
+ * state changes — including drags, selection clicks, and data
+ * updates — without re-mounting the component.
  */
 function DefaultNode(props: NodeComponentProps) {
-  const borderColor = props.selected ? '#3b82f6' : '#ddd'
-  const cursor = props.dragging ? 'grabbing' : 'grab'
   return (
     <div
-      style={`padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`}
+      style={() => {
+        const borderColor = props.selected() ? '#3b82f6' : '#ddd'
+        const cursor = props.dragging() ? 'grabbing' : 'grab'
+        return `padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
+      }}
     >
-      {(props.data?.label as string) ?? props.id}
+      {() =>
+        ((props.data() as { label?: string } | undefined)?.label as string) ?? props.id
+      }
     </div>
   )
 }
@@ -86,6 +102,78 @@ const emptyDrag: DragState = {
 
 // ─── Edge Layer ──────────────────────────────────────────────────────────────
 
+interface EdgeGeometry {
+  sourceX: number
+  sourceY: number
+  targetX: number
+  targetY: number
+  path: string
+  labelX: number
+  labelY: number
+}
+
+/**
+ * Compute a path geometry packet from live source/target nodes. The
+ * EdgeLayer's per-edge accessor calls this inside a reactive scope
+ * so position updates flow through. Pulled out as a top-level
+ * helper so the EdgeLayer body stays readable.
+ */
+function computeEdgeGeometry(
+  edge: FlowEdge,
+  sourceNode: FlowNode,
+  targetNode: FlowNode,
+): EdgeGeometry {
+  const sourceW = sourceNode.width ?? 150
+  const sourceH = sourceNode.height ?? 40
+  const targetW = targetNode.width ?? 150
+  const targetH = targetNode.height ?? 40
+
+  const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode)
+
+  const sourcePos = getHandlePosition(
+    sourcePosition,
+    sourceNode.position.x,
+    sourceNode.position.y,
+    sourceW,
+    sourceH,
+  )
+  const targetPos = getHandlePosition(
+    targetPosition,
+    targetNode.position.x,
+    targetNode.position.y,
+    targetW,
+    targetH,
+  )
+
+  const { path, labelX, labelY } = edge.waypoints?.length
+    ? getWaypointPath({
+        sourceX: sourcePos.x,
+        sourceY: sourcePos.y,
+        targetX: targetPos.x,
+        targetY: targetPos.y,
+        waypoints: edge.waypoints,
+      })
+    : getEdgePath(
+        edge.type ?? 'bezier',
+        sourcePos.x,
+        sourcePos.y,
+        sourcePosition,
+        targetPos.x,
+        targetPos.y,
+        targetPosition,
+      )
+
+  return {
+    sourceX: sourcePos.x,
+    sourceY: sourcePos.y,
+    targetX: targetPos.x,
+    targetY: targetPos.y,
+    path,
+    labelX,
+    labelY,
+  }
+}
+
 function EdgeLayer(props: {
   instance: FlowInstance
   connectionState: () => ConnectionState
@@ -93,92 +181,89 @@ function EdgeLayer(props: {
 }): VNodeChild {
   const { instance, connectionState, edgeTypes } = props
 
-  return () => {
-    const nodes = instance.nodes()
-    const edges = instance.edges()
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]))
-    const conn = connectionState()
+  // <For> keys edges by id and runs the children function ONCE per
+  // id. Per-edge accessors read live source/target nodes from
+  // instance.nodes() inside their bodies, so node drags re-evaluate
+  // path coordinates without re-mounting the edge.
+  //
+  // Before this rewrite, EdgeLayer subscribed to nodes() AND edges()
+  // at the top of its reactive thunk, then did edges.map(...) which
+  // re-emitted every <g><path /></g> SVG element on every node drag.
+  // Custom edge components re-mounted at 60×/sec during drags —
+  // strictly worse than the NodeLayer remount bug because SVG
+  // element creation is heavier than DOM div creation.
+  return () => (
+    <svg
+      role="img"
+      aria-label="flow edges"
+      class="pyreon-flow-edges"
+      style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;"
+    >
+      <defs>
+        <marker
+          id="flow-arrowhead"
+          markerWidth="10"
+          markerHeight="7"
+          refX="10"
+          refY="3.5"
+          orient="auto"
+        >
+          <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
+        </marker>
+      </defs>
+      <For each={() => instance.edges()} by={(e: FlowEdge) => e.id ?? ''}>
+        {(initialEdge: FlowEdge) => {
+          const edgeId = initialEdge.id ?? ''
 
-    return (
-      <svg
-        role="img"
-        aria-label="flow edges"
-        class="pyreon-flow-edges"
-        style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;"
-      >
-        <defs>
-          <marker
-            id="flow-arrowhead"
-            {...{
-              markerWidth: '10',
-              markerHeight: '7',
-              refX: '10',
-              refY: '3.5',
-              orient: 'auto',
-            }}
-          >
-            <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
-          </marker>
-        </defs>
-        {edges.map((edge) => {
-          const sourceNode = nodeMap.get(edge.source)
-          const targetNode = nodeMap.get(edge.target)
-          if (!sourceNode || !targetNode) return <g key={edge.id} />
+          // Per-edge accessors that read live source/target nodes
+          // and recompute geometry on every read. Declared as `let`
+          // (not `const`) so the Pyreon JSX compiler's prop-derived
+          // variable inlining pass leaves them alone — `const`
+          // function expressions that close over `props.instance`
+          // get treated as inlinable, and the compiler's transitive
+          // resolver overflows the stack when they cross-reference.
+          // `let` declarations are explicitly skipped by the
+          // resolver (see packages/core/compiler/src — the
+          // prop-derived var scan bails on `NodeFlags.Let`).
+          // oxlint-disable prefer-const
+          let liveEdge: () => FlowEdge = () => {
+            const all = instance.edges()
+            return all.find((e) => e.id === edgeId) ?? initialEdge
+          }
 
-          const sourceW = sourceNode.width ?? 150
-          const sourceH = sourceNode.height ?? 40
-          const targetW = targetNode.width ?? 150
-          const targetH = targetNode.height ?? 40
+          let geometry: () => EdgeGeometry | null = () => {
+            const e = liveEdge()
+            const all = instance.nodes()
+            const sourceNode = all.find((n) => n.id === e.source)
+            const targetNode = all.find((n) => n.id === e.target)
+            if (!sourceNode || !targetNode) return null
+            return computeEdgeGeometry(e, sourceNode, targetNode)
+          }
 
-          const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode)
+          let isSelected: () => boolean = () =>
+            edgeId ? instance.selectedEdges().includes(edgeId) : false
+          // oxlint-enable prefer-const
 
-          const sourcePos = getHandlePosition(
-            sourcePosition,
-            sourceNode.position.x,
-            sourceNode.position.y,
-            sourceW,
-            sourceH,
-          )
-          const targetPos = getHandlePosition(
-            targetPosition,
-            targetNode.position.x,
-            targetNode.position.y,
-            targetW,
-            targetH,
-          )
-
-          const { path, labelX, labelY } = edge.waypoints?.length
-            ? getWaypointPath({
-                sourceX: sourcePos.x,
-                sourceY: sourcePos.y,
-                targetX: targetPos.x,
-                targetY: targetPos.y,
-                waypoints: edge.waypoints,
-              })
-            : getEdgePath(
-                edge.type ?? 'bezier',
-                sourcePos.x,
-                sourcePos.y,
-                sourcePosition,
-                targetPos.x,
-                targetPos.y,
-                targetPosition,
-              )
-
-          const selectedEdges = instance.selectedEdges()
-          const isSelected = edge.id ? selectedEdges.includes(edge.id) : false
-
-          // Custom edge renderer
-          const CustomEdge = edge.type && edgeTypes?.[edge.type]
+          // Custom edge renderer — mount once with accessor props.
+          // Source/target coordinate accessors and `selected` are
+          // reactive; the user's CustomEdge factory runs exactly
+          // once and reads them inside its own JSX thunks.
+          //
+          // The geometry() accessor returns null if either source
+          // or target node is missing (e.g. mid-removal). Each
+          // coordinate accessor falls back to 0 in that case so
+          // the CustomEdge keeps rendering with stale numbers
+          // instead of throwing.
+          const CustomEdge = initialEdge.type && edgeTypes?.[initialEdge.type]
           if (CustomEdge) {
             return (
-              <g key={edge.id} onClick={() => edge.id && instance.selectEdge(edge.id)}>
+              <g onClick={() => edgeId && instance.selectEdge(edgeId)}>
                 <CustomEdge
-                  edge={edge}
-                  sourceX={sourcePos.x}
-                  sourceY={sourcePos.y}
-                  targetX={targetPos.x}
-                  targetY={targetPos.y}
+                  edge={initialEdge}
+                  sourceX={() => geometry()?.sourceX ?? 0}
+                  sourceY={() => geometry()?.sourceY ?? 0}
+                  targetX={() => geometry()?.targetX ?? 0}
+                  targetY={() => geometry()?.targetY ?? 0}
                   selected={isSelected}
                 />
               </g>
@@ -186,35 +271,49 @@ function EdgeLayer(props: {
           }
 
           return (
-            <g key={edge.id}>
+            <g>
               <path
-                d={path}
+                d={() => geometry()?.path ?? ''}
                 fill="none"
-                stroke={isSelected ? '#3b82f6' : '#999'}
-                stroke-width={isSelected ? '2' : '1.5'}
+                stroke={() => (isSelected() ? '#3b82f6' : '#999')}
+                stroke-width={() => (isSelected() ? '2' : '1.5')}
                 marker-end="url(#flow-arrowhead)"
-                class={edge.animated ? 'pyreon-flow-edge-animated' : ''}
-                style={`pointer-events: stroke; cursor: pointer; ${edge.style ?? ''}`}
+                class={() => (liveEdge().animated ? 'pyreon-flow-edge-animated' : '')}
+                style={() => `pointer-events: stroke; cursor: pointer; ${liveEdge().style ?? ''}`}
                 onClick={() => {
-                  if (edge.id) instance.selectEdge(edge.id)
-                  instance._emit.edgeClick(edge)
+                  if (edgeId) instance.selectEdge(edgeId)
+                  instance._emit.edgeClick(liveEdge())
                 }}
               />
-              {edge.label && (
-                <text
-                  x={String(labelX)}
-                  y={String(labelY)}
-                  text-anchor="middle"
-                  dominant-baseline="central"
-                  style="font-size: 11px; fill: #666; pointer-events: none;"
-                >
-                  {edge.label}
-                </text>
-              )}
+              {() => {
+                const e = liveEdge()
+                const g = geometry()
+                if (!e.label || !g) return null
+                return (
+                  <text
+                    x={String(g.labelX)}
+                    y={String(g.labelY)}
+                    text-anchor="middle"
+                    dominant-baseline="central"
+                    style="font-size: 11px; fill: #666; pointer-events: none;"
+                  >
+                    {e.label}
+                  </text>
+                )
+              }}
             </g>
           )
-        })}
-        {conn.active && (
+        }}
+      </For>
+      {/*
+        Live connection-drawing path. Reactive accessors thunk into
+        connectionState() so the in-progress connection line follows
+        the cursor without re-mounting the parent svg.
+      */}
+      {() => {
+        const conn = connectionState()
+        if (!conn.active) return null
+        return (
           <path
             d={
               getEdgePath(
@@ -232,10 +331,10 @@ function EdgeLayer(props: {
             stroke-width="2"
             stroke-dasharray="5,5"
           />
-        )}
-      </svg>
-    )
-  }
+        )
+      }}
+    </svg>
+  )
 }
 
 // ─── Node Layer ──────────────────────────────────────────────────────────────
@@ -255,81 +354,143 @@ function NodeLayer(props: {
 }): VNodeChild {
   const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
 
-  return () => {
-    const nodes = instance.nodes()
-    const selectedIds = instance.selectedNodes()
-    const dragId = draggingNodeId()
+  // <For> keys nodes by id and runs the children function exactly
+  // ONCE per id — never re-mounts existing nodes when the underlying
+  // signal updates with a new array (which happens on every position
+  // change, every selection toggle, every data mutation).
+  //
+  // Inside the children function, all per-node state (position,
+  // data, class, selection, drag) is read via accessors that
+  // re-read `instance.nodes()` from inside their own scope. The
+  // accessors track reactively, so individual style/class/text
+  // thunks patch in place — but the wrapper div and the user's
+  // custom NodeComponent both mount exactly once per id and never
+  // re-mount across the lifetime of the graph.
+  //
+  // Before the For-based rewrite, the outer loop did
+  // `nodes.map(node => ...)` which re-emitted every wrapper VNode
+  // on every nodes signal update — re-mounting all custom node
+  // components on every drag tick (60+ remounts/sec per node) and
+  // every selection click. The `For` swap fixes both cases.
+  return () => (
+    <For each={() => instance.nodes()} by={(n: FlowNode) => n.id}>
+      {(initialNode: FlowNode) => {
+        const id = initialNode.id
 
-    return (
-      <>
-        {nodes.map((node) => {
-          const isSelected = selectedIds.includes(node.id)
-          const isDragging = dragId === node.id
-          const NodeComponent = (node.type && nodeTypes[node.type]) || nodeTypes.default!
+        // Reactive node accessor — reads the LIVE node by id from
+        // `instance.nodes()` so position/data/class/style updates
+        // propagate without re-mounting. The fallback to
+        // `initialNode` covers the brief window between an
+        // updateNode call that removes the node and the For loop
+        // catching up.
+        const node = (): FlowNode => {
+          const all = instance.nodes()
+          return all.find((n) => n.id === id) ?? initialNode
+        }
 
-          return (
-            <div
-              key={node.id}
-              class={`pyreon-flow-node ${node.class ?? ''} ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
-              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ''}`}
-              data-nodeid={node.id}
-              onClick={(e: MouseEvent) => {
-                e.stopPropagation()
-                instance.selectNode(node.id, e.shiftKey)
-                instance._emit.nodeClick(node)
-              }}
-              onDblClick={(e: MouseEvent) => {
-                e.stopPropagation()
-                instance._emit.nodeDoubleClick(node)
-              }}
-              onPointerDown={(e: PointerEvent) => {
-                // Check if clicking a handle
-                const target = e.target as HTMLElement
-                const handle = target.closest('.pyreon-flow-handle')
-                if (handle) {
-                  const hType = handle.getAttribute('data-handletype') ?? 'source'
-                  const hId = handle.getAttribute('data-handleid') ?? 'source'
-                  const hPos =
-                    (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
-                  onHandlePointerDown(e, node.id, hType, hId, hPos)
-                  return
-                }
-                // Otherwise start dragging node
-                if (node.draggable !== false && instance.config.nodesDraggable !== false) {
-                  onNodePointerDown(e, node)
-                }
-              }}
-            >
-              <NodeComponent
-                id={node.id}
-                data={node.data}
-                selected={isSelected}
-                dragging={isDragging}
-              />
-            </div>
-          )
-        })}
-      </>
-    )
-  }
+        const isSelected = (): boolean => instance.selectedNodes().includes(id)
+        const isDragging = (): boolean => draggingNodeId() === id
+
+        const NodeComponent =
+          (initialNode.type && nodeTypes[initialNode.type]) || nodeTypes.default!
+
+        return (
+          <div
+            class={() => {
+              const n = node()
+              return `pyreon-flow-node ${n.class ?? ''} ${
+                isSelected() ? 'selected' : ''
+              } ${isDragging() ? 'dragging' : ''}`
+            }}
+            style={() => {
+              const n = node()
+              return `position: absolute; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
+                isDragging() ? 1000 : isSelected() ? 100 : 0
+              }; ${n.style ?? ''}`
+            }}
+            data-nodeid={id}
+            onClick={(e: MouseEvent) => {
+              e.stopPropagation()
+              instance.selectNode(id, e.shiftKey)
+              instance._emit.nodeClick(node())
+            }}
+            onDblClick={(e: MouseEvent) => {
+              e.stopPropagation()
+              instance._emit.nodeDoubleClick(node())
+            }}
+            onPointerDown={(e: PointerEvent) => {
+              // Check if clicking a handle
+              const target = e.target as HTMLElement
+              const handle = target.closest('.pyreon-flow-handle')
+              if (handle) {
+                const hType = handle.getAttribute('data-handletype') ?? 'source'
+                const hId = handle.getAttribute('data-handleid') ?? 'source'
+                const hPos =
+                  (handle.getAttribute('data-handleposition') as Position) ?? Position.Right
+                onHandlePointerDown(e, id, hType, hId, hPos)
+                return
+              }
+              // Otherwise start dragging node — read live state
+              const n = node()
+              if (n.draggable !== false && instance.config.nodesDraggable !== false) {
+                onNodePointerDown(e, n)
+              }
+            }}
+          >
+            <NodeComponent
+              id={id}
+              data={() => node().data}
+              selected={isSelected}
+              dragging={isDragging}
+            />
+          </div>
+        )
+      }}
+    </For>
+  )
 }
 
 // ─── Flow Component ──────────────────────────────────────────────────────────
 
-type EdgeTypeMap = Record<
-  string,
-  (props: {
-    edge: import('../types').FlowEdge
-    sourceX: number
-    sourceY: number
-    targetX: number
-    targetY: number
-    selected: boolean
-  }) => VNodeChild
->
+/**
+ * Props passed to custom edge components registered via
+ * `<Flow edgeTypes={...}>`.
+ *
+ * The `edge` field is a stable reference (the edge id is the keyed
+ * identity). Everything else is a reactive accessor: source/target
+ * coordinates re-evaluate when either endpoint node moves, and
+ * `selected` re-evaluates when the edge selection changes. Read
+ * inside reactive scopes (JSX expression thunks, `effect()`,
+ * `computed()`) so the edge patches in place — each custom edge
+ * component mounts EXACTLY ONCE per id across the lifetime of the
+ * graph.
+ */
+export type EdgeComponentProps = {
+  edge: FlowEdge
+  /** Reactive accessor — re-evaluates when source node position changes */
+  sourceX: () => number
+  /** Reactive accessor — re-evaluates when source node position changes */
+  sourceY: () => number
+  /** Reactive accessor — re-evaluates when target node position changes */
+  targetX: () => number
+  /** Reactive accessor — re-evaluates when target node position changes */
+  targetY: () => number
+  /** Reactive accessor — re-evaluates when edge selection changes */
+  selected: () => boolean
+}
+
+type EdgeTypeMap = Record<string, (props: EdgeComponentProps) => VNodeChild>
 
 export interface FlowComponentProps {
-  instance: FlowInstance
+  /**
+   * The flow instance. Typed as `FlowInstance<any>` rather than a
+   * generic on the component itself because Pyreon JSX components
+   * cannot be parameterised at the call site (`<Flow<MyData> />` is
+   * not valid JSX). Typed consumers create `FlowInstance<MyData>`
+   * via `createFlow<MyData>(...)`, then pass it here without
+   * needing to cast.
+   */
+  instance: FlowInstance<any>
   /** Custom node type renderers */
   nodeTypes?: NodeTypeMap
   /** Custom edge type renderers */

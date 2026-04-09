@@ -2,6 +2,7 @@ import { CodeEditor, createEditor } from '@pyreon/code'
 import { effect, signal } from '@pyreon/reactivity'
 import { onMount } from '@pyreon/core'
 import type { FlowEdge, FlowNode } from '@pyreon/flow'
+import type { WorkflowNodeData } from './data/types'
 import { useFlowEditor } from './store'
 import {
   ParseError,
@@ -57,7 +58,7 @@ export function JsonSidebar() {
     const json = flow.instance.toJSON()
     return JSON.stringify(
       {
-        nodes: json.nodes.map((n: FlowNode) => ({
+        nodes: json.nodes.map((n: FlowNode<WorkflowNodeData>) => ({
           id: n.id,
           type: n.type,
           position: { x: round(n.position.x), y: round(n.position.y) },

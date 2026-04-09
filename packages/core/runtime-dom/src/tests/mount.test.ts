@@ -3247,6 +3247,75 @@ describe('mount — SVG namespace', () => {
     expect(rect.namespaceURI).toBe(SVG_NS)
   })
 
+  test('SVG marker mounts cleanly with read-only animated-length attributes', () => {
+    // Regression test for the bug fixed via the SVG namespace
+    // special case in setStaticProp: SVGMarkerElement properties
+    // like markerWidth, markerHeight, refX, refY are read-only
+    // SVGAnimatedLength getters. Before the fix, the runtime tried
+    // `el[key] = value` and crashed with `Cannot set property
+    // markerWidth of [object Object] which has only a getter`.
+    // Same for SVGRectElement.x/y/width/height and many others.
+    //
+    // The fix: SVG and MathML elements always go through
+    // setAttribute() instead of property assignment. This test
+    // mounts a marker with all the offending attributes and asserts
+    // they were applied via setAttribute.
+    const el = container()
+    mount(
+      h(
+        'svg',
+        null,
+        h(
+          'defs',
+          null,
+          h(
+            'marker',
+            {
+              id: 'arrowhead',
+              markerWidth: '10',
+              markerHeight: '7',
+              refX: '10',
+              refY: '3.5',
+              orient: 'auto',
+            },
+            h('polygon', { points: '0 0, 10 3.5, 0 7', fill: '#999' }),
+          ),
+        ),
+      ),
+      el,
+    )
+
+    const marker = el.querySelector('marker#arrowhead')
+    expect(marker).not.toBeNull()
+    expect(marker?.getAttribute('markerWidth')).toBe('10')
+    expect(marker?.getAttribute('markerHeight')).toBe('7')
+    expect(marker?.getAttribute('refX')).toBe('10')
+    expect(marker?.getAttribute('refY')).toBe('3.5')
+    expect(marker?.getAttribute('orient')).toBe('auto')
+  })
+
+  test('SVG rect mounts cleanly with read-only x/y/width/height attributes', () => {
+    // Same regression class as the marker test above. SVGRectElement
+    // exposes x, y, width, height as read-only SVGAnimatedLength.
+    const el = container()
+    mount(
+      h(
+        'svg',
+        null,
+        h('rect', { x: '5', y: '10', width: '100', height: '50', fill: 'red' }),
+      ),
+      el,
+    )
+
+    const rect = el.querySelector('rect')
+    expect(rect).not.toBeNull()
+    expect(rect?.getAttribute('x')).toBe('5')
+    expect(rect?.getAttribute('y')).toBe('10')
+    expect(rect?.getAttribute('width')).toBe('100')
+    expect(rect?.getAttribute('height')).toBe('50')
+    expect(rect?.getAttribute('fill')).toBe('red')
+  })
+
   test('elements outside svg do not get SVG namespace', () => {
     const el = container()
     mount(

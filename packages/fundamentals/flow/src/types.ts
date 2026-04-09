@@ -71,7 +71,13 @@ export interface FlowNode<TData = Record<string, unknown>> {
 
 // ─── Edge ────────────────────────────────────────────────────────────────────
 
-export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step'
+/**
+ * Built-in edge path types. Custom edge types registered via
+ * `<Flow edgeTypes={{ custom: MyEdge }}>` are also valid as the
+ * `type` field — the `(string & {})` widens the union to accept
+ * any string while preserving autocomplete on the built-in cases.
+ */
+export type EdgeType = 'bezier' | 'smoothstep' | 'straight' | 'step' | (string & {})
 
 export interface FlowEdge {
   id?: string
@@ -119,8 +125,8 @@ export interface EdgePathResult {
 
 // ─── Flow config ─────────────────────────────────────────────────────────────
 
-export interface FlowConfig {
-  nodes?: FlowNode[]
+export interface FlowConfig<TData = Record<string, unknown>> {
+  nodes?: FlowNode<TData>[]
   edges?: FlowEdge[]
   /** Default edge type */
   defaultEdgeType?: EdgeType
@@ -156,11 +162,11 @@ export interface FlowConfig {
 
 // ─── Flow instance ───────────────────────────────────────────────────────────
 
-export interface FlowInstance {
+export interface FlowInstance<TData = Record<string, unknown>> {
   // ── State (signals) ──────────────────────────────────────────────────────
 
   /** All nodes — reactive */
-  nodes: Signal<FlowNode[]>
+  nodes: Signal<FlowNode<TData>[]>
   /** All edges — reactive */
   edges: Signal<FlowEdge[]>
   /** Viewport state — reactive */
@@ -177,13 +183,13 @@ export interface FlowInstance {
   // ── Node operations ──────────────────────────────────────────────────────
 
   /** Get a single node by id */
-  getNode: (id: string) => FlowNode | undefined
+  getNode: (id: string) => FlowNode<TData> | undefined
   /** Add a node */
-  addNode: (node: FlowNode) => void
+  addNode: (node: FlowNode<TData>) => void
   /** Remove a node and its connected edges */
   removeNode: (id: string) => void
   /** Update a node's properties */
-  updateNode: (id: string, update: Partial<FlowNode>) => void
+  updateNode: (id: string, update: Partial<FlowNode<TData>>) => void
   /** Update a node's position */
   updateNodePosition: (id: string, position: XYPosition) => void
 
@@ -243,9 +249,9 @@ export interface FlowInstance {
   /** Get edges connected to a node */
   getConnectedEdges: (nodeId: string) => FlowEdge[]
   /** Get incoming edges for a node */
-  getIncomers: (nodeId: string) => FlowNode[]
+  getIncomers: (nodeId: string) => FlowNode<TData>[]
   /** Get outgoing edges from a node */
-  getOutgoers: (nodeId: string) => FlowNode[]
+  getOutgoers: (nodeId: string) => FlowNode<TData>[]
 
   // ── Listeners ────────────────────────────────────────────────────────────
 
@@ -254,15 +260,15 @@ export interface FlowInstance {
   /** Called when nodes change */
   onNodesChange: (callback: (changes: NodeChange[]) => void) => () => void
   /** Called when a node is clicked */
-  onNodeClick: (callback: (node: FlowNode) => void) => () => void
+  onNodeClick: (callback: (node: FlowNode<TData>) => void) => () => void
   /** Called when an edge is clicked */
   onEdgeClick: (callback: (edge: FlowEdge) => void) => () => void
   /** Called when a node starts being dragged */
-  onNodeDragStart: (callback: (node: FlowNode) => void) => () => void
+  onNodeDragStart: (callback: (node: FlowNode<TData>) => void) => () => void
   /** Called when a node stops being dragged */
-  onNodeDragEnd: (callback: (node: FlowNode) => void) => () => void
+  onNodeDragEnd: (callback: (node: FlowNode<TData>) => void) => () => void
   /** Called when a node is double-clicked */
-  onNodeDoubleClick: (callback: (node: FlowNode) => void) => () => void
+  onNodeDoubleClick: (callback: (node: FlowNode<TData>) => void) => () => void
 
   // ── Copy / Paste ─────────────────────────────────────────────────────────
 
@@ -297,7 +303,7 @@ export interface FlowInstance {
   // ── Sub-flows / Groups ───────────────────────────────────────────────────
 
   /** Get child nodes of a group node */
-  getChildNodes: (parentId: string) => FlowNode[]
+  getChildNodes: (parentId: string) => FlowNode<TData>[]
   /** Get absolute position of a node (accounting for parent offsets) */
   getAbsolutePosition: (nodeId: string) => XYPosition
 
@@ -333,7 +339,7 @@ export interface FlowInstance {
   // ── Collision detection ─────────────────────────────────────────────────
 
   /** Get nodes that overlap with the given node */
-  getOverlappingNodes: (nodeId: string) => FlowNode[]
+  getOverlappingNodes: (nodeId: string) => FlowNode<TData>[]
   /** Push overlapping nodes apart */
   resolveCollisions: (nodeId: string, spacing?: number) => void
 
@@ -347,18 +353,22 @@ export interface FlowInstance {
   // ── Search / Filter ─────────────────────────────────────────────────────
 
   /** Find nodes matching a predicate */
-  findNodes: (predicate: (node: FlowNode) => boolean) => FlowNode[]
+  findNodes: (predicate: (node: FlowNode<TData>) => boolean) => FlowNode<TData>[]
   /** Find nodes by label text (case-insensitive) */
-  searchNodes: (query: string) => FlowNode[]
+  searchNodes: (query: string) => FlowNode<TData>[]
   /** Focus viewport on a specific node (pan + optional zoom) */
   focusNode: (nodeId: string, zoom?: number) => void
 
   // ── Export ─────────────────────────────────────────────────────────────
 
   /** Export the flow as a JSON-serializable object */
-  toJSON: () => { nodes: FlowNode[]; edges: FlowEdge[]; viewport: Viewport }
+  toJSON: () => { nodes: FlowNode<TData>[]; edges: FlowEdge[]; viewport: Viewport }
   /** Import flow state from a JSON object */
-  fromJSON: (data: { nodes: FlowNode[]; edges: FlowEdge[]; viewport?: Viewport }) => void
+  fromJSON: (data: {
+    nodes: FlowNode<TData>[]
+    edges: FlowEdge[]
+    viewport?: Viewport
+  }) => void
 
   // ── Viewport animation ─────────────────────────────────────────────────
 
@@ -369,17 +379,17 @@ export interface FlowInstance {
 
   /** @internal */
   _emit: {
-    nodeDragStart: (node: FlowNode) => void
-    nodeDragEnd: (node: FlowNode) => void
-    nodeDoubleClick: (node: FlowNode) => void
-    nodeClick: (node: FlowNode) => void
+    nodeDragStart: (node: FlowNode<TData>) => void
+    nodeDragEnd: (node: FlowNode<TData>) => void
+    nodeDoubleClick: (node: FlowNode<TData>) => void
+    nodeClick: (node: FlowNode<TData>) => void
     edgeClick: (edge: FlowEdge) => void
   }
 
   // ── Config ───────────────────────────────────────────────────────────────
 
   /** The flow configuration */
-  config: FlowConfig
+  config: FlowConfig<TData>
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
 
@@ -416,7 +426,14 @@ export interface LayoutOptions {
 // ─── Component props ─────────────────────────────────────────────────────────
 
 export interface FlowProps {
-  instance: FlowInstance
+  /**
+   * The flow instance. Typed as `FlowInstance<any>` rather than a
+   * generic on the prop type because Pyreon JSX components cannot
+   * be parameterised at the call site (`<Flow<MyData> />` is not
+   * valid JSX). Typed consumers pass their `FlowInstance<MyData>`
+   * here without needing to cast.
+   */
+  instance: FlowInstance<any>
   style?: string
   class?: string
   children?: VNodeChild
@@ -432,7 +449,14 @@ export interface BackgroundProps {
 export interface MiniMapProps {
   style?: string
   class?: string
-  nodeColor?: string | ((node: FlowNode) => string)
+  /**
+   * `nodeColor` callback receives `FlowNode<any>` for the same reason
+   * `FlowProps.instance` is `FlowInstance<any>` — JSX components
+   * can't be parameterised at the call site, so the prop type uses
+   * `any` for the data shape and consumers narrow inside the
+   * callback if needed.
+   */
+  nodeColor?: string | ((node: FlowNode<any>) => string)
   maskColor?: string
   width?: number
   height?: number
@@ -461,9 +485,55 @@ export interface HandleProps {
   class?: string
 }
 
+/**
+ * Props passed to custom node components registered via
+ * `<Flow nodeTypes={...}>`.
+ *
+ * **All non-id props are reactive accessors** (`() => T`), NOT plain
+ * values. Read them inside reactive scopes (JSX expression thunks,
+ * `effect()`, `computed()`) so the node patches in place when the
+ * underlying state changes — instead of re-mounting the entire node
+ * component on every change.
+ *
+ * The accessors cover:
+ *   • `data()` — the node's current `TData` payload (reflects
+ *     `flow.updateNode(id, { data: ... })` mutations)
+ *   • `selected()` — whether the node is currently selected
+ *   • `dragging()` — whether the node is currently being dragged
+ *
+ * `id` is a plain string because it never changes for a given node
+ * (it's the keyed identity). Anything else that can change at
+ * runtime is exposed as an accessor.
+ *
+ * **Why accessors and not plain values**: Pyreon components run
+ * **once** at mount. If these were plain props, the parent renderer
+ * would have to re-create every node component on every change to
+ * the underlying signal — O(N) work per mutation in an N-node graph.
+ * With accessors, each node mounts exactly once across the lifetime
+ * of the graph, regardless of how many selection clicks, drags, or
+ * data updates happen.
+ *
+ * @example
+ * ```tsx
+ * function CustomNode(props: NodeComponentProps<{ label: string }>) {
+ *   return (
+ *     <div
+ *       class={() => (props.selected() ? 'selected' : '')}
+ *       style={() => `cursor: ${props.dragging() ? 'grabbing' : 'grab'}`}
+ *     >
+ *       {() => props.data().label}
+ *     </div>
+ *   )
+ * }
+ * ```
+ */
 export type NodeComponentProps<TData = Record<string, unknown>> = {
+  /** Stable node identity — never changes for a given node */
   id: string
-  data: TData
-  selected: boolean
-  dragging: boolean
+  /** Reactive accessor — reflects flow.updateNode(id, { data: ... }) mutations */
+  data: () => TData
+  /** Reactive accessor — read inside reactive scopes for live updates */
+  selected: () => boolean
+  /** Reactive accessor — read inside reactive scopes for live updates */
+  dragging: () => boolean
 }
