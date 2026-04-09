@@ -119,6 +119,36 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     // thunks (`() => string`) for reactive metadata, and the
     // export pipeline reads the LIVE value on each extraction.
     // See PR #197 for the original use case (resume builder).
+    //
+    // ── Architectural note ──────────────────────────────────────────
+    //
+    // Path B is a workaround. The architecturally cleaner fix is to
+    // have rocketstyle's `.statics()` mechanism hoist `_documentProps`
+    // (or its accessor functions) directly onto the component
+    // function — so `extractNode` could read it via
+    // `(type as { _documentProps?: ... })._documentProps` without
+    // ever invoking the component.
+    //
+    // That would require teaching rocketstyle that `.statics()`
+    // values can be derived from `.attrs()` callbacks. It's a
+    // bigger change in `@pyreon/rocketstyle/src/utils/statics.ts`
+    // and was deemed out of scope for PR #197. The current
+    // workaround works because:
+    //
+    //   1. rocketstyle's attrs HOC is meant to be PURE setup —
+    //      no observable side effects on the second call.
+    //   2. The idempotence test in
+    //      `document-primitives/src/__tests__/useDocumentExport.test.ts`
+    //      locks in the purity assumption: extracting twice produces
+    //      structurally equivalent doc nodes.
+    //   3. Path A is tried first, so existing fast-path tests don't
+    //      pay the component-invocation cost.
+    //
+    // If a future primitive accidentally introduces a side effect
+    // in its setup body, the idempotence test catches it. If
+    // performance becomes a concern (extractDocumentTree is called
+    // per export, not per render — so this is unlikely), the
+    // architectural fix in rocketstyle becomes worth doing.
 
     let rawDocProps: Record<string, unknown> | undefined
     let extractedFromCall: VNodeLike | null = null

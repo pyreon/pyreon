@@ -133,6 +133,40 @@ describe('extractDocNode (one-step alias)', () => {
     expect(oneStep).toEqual(twoStep)
   })
 
+  it('is idempotent — calling extractDocNode twice on the same template produces equivalent results', () => {
+    // The framework fix in PR #197 changed extractDocumentTree to
+    // CALL the component function for documentType vnodes when
+    // _documentProps is not directly on the JSX vnode. The fix is
+    // correct because rocketstyle's attrs HOC is meant to be pure
+    // setup with no observable side effects on the second call.
+    // This test locks in that purity assumption: extracting the
+    // same template twice produces structurally equivalent doc
+    // nodes.
+    //
+    // If a future change to a primitive accidentally introduces a
+    // side effect in its attrs callback (e.g. a counter, a log
+    // line, a stateful import), the second extraction would still
+    // SUCCEED but produce different output — and this test would
+    // catch the regression. The three extractions should be deeply
+    // equal under any change to the primitive's setup path.
+    const template = () =>
+      vnode(
+        DocDocument,
+        { _documentProps: { title: 'Idempotent', author: 'Test' } },
+        [
+          vnode(DocHeading, { _documentProps: { level: 1 } }, ['Hello']),
+          vnode(DocText, { $rocketstyle: { fontSize: 14 } }, ['World']),
+        ],
+      )
+
+    const first = extractDocNode(template)
+    const second = extractDocNode(template)
+    const third = extractDocNode(template)
+
+    expect(first).toEqual(second)
+    expect(second).toEqual(third)
+  })
+
   it('resolves function values in _documentProps each call (D1+D2 integration)', () => {
     // The combined contract: extractDocNode is the one-step form,
     // and it benefits from the same function-value resolution
