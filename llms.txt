@@ -264,8 +264,8 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/hotkeys — Keyboard shortcut management with scopes and conflict detection
 - @pyreon/permissions — Reactive permissions (RBAC, ABAC, feature flags, subscription tiers)
 - @pyreon/machine — Reactive state machines — constrained signals with type-safe transitions
-- @pyreon/flow — Reactive flow diagrams with signal-native nodes, edges, auto-layout via elkjs
-- @pyreon/code — Reactive code editor with CodeMirror 6, minimap, diff editor, tabbed editor
+- @pyreon/flow — Reactive flow diagrams with signal-native nodes, edges, custom node renderers via nodeTypes, auto-layout via lazy-loaded elkjs (peerDep: @pyreon/runtime-dom)
+- @pyreon/code — Reactive code editor with CodeMirror 6 — writable Signal<string> for two-way binding, minimap, diff/tabbed editors, lazy-loaded language grammars (peerDep: @pyreon/runtime-dom)
 - @pyreon/document — Universal document rendering — one template, 14+ output formats
 - @pyreon/rx — Signal-aware reactive transforms (filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions)
 - @pyreon/toast — Toast notifications (toast(), toast.success/error/warning/info/loading, Toaster component, a11y)

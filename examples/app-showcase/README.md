@@ -30,7 +30,7 @@ Each section lives under `src/routes/<section>/` and is registered in [src/secti
 | I18n Shop       | ✅ available   | `i18n` (3 locales), `store`, `storage` (persisted cart), `url-state`         |
 | Invoice Builder | ✅ available   | `document` (PDF/DOCX/HTML/MD export), `store`, `reactivity`, `toast`         |
 | Resume Builder  | ✅ available   | `document-primitives` + `connector-document` round-trip, `store`, `toast`    |
-| Flow Editor     | 🚧 coming soon | `flow`, `code`                                                               |
+| Flow Editor     | ✅ available   | `flow` (canvas, custom nodes, layered auto-layout), `code` (JSON), `store`   |
 
 The Todos source lives at [src/routes/todos/](src/routes/todos/) (route entry) and [src/sections/todos/](src/sections/todos/) (helpers, store).
 
@@ -66,8 +66,10 @@ examples/app-showcase/
 │   │   │   └── index.tsx    ← /shop (i18n + cart store + persisted cart + url filter)
 │   │   ├── invoice/
 │   │   │   └── index.tsx    ← /invoice (document tree → PDF/DOCX/HTML/MD)
-│   │   └── resume/
-│   │       └── index.tsx    ← /resume (document-primitives round-trip)
+│   │   ├── resume/
+│   │   │   └── index.tsx    ← /resume (document-primitives round-trip)
+│   │   └── flow/
+│   │       └── index.tsx    ← /flow (visual editor with bidirectional JSON sidebar)
 │   └── sections/            ← per-section components, stores, helpers
 │       ├── todos/
 │       │   ├── TodoList.tsx
@@ -146,18 +148,30 @@ examples/app-showcase/
 │       │   └── data/
 │       │       ├── seed.ts            ← seed invoice + currency/date helpers
 │       │       └── types.ts
-│       └── resume/
-│           ├── ResumeTemplate.tsx     ← @pyreon/document-primitives — same tree
-│           │                             renders in browser AND exports to PDF/DOCX
-│           ├── ResumeForm.tsx         ← signal-bound editor with field-array
-│           │                             siblings (Experience/Education lists)
-│           ├── ExportButtons.tsx      ← createDocumentExport → extractDocumentTree
-│           │                             → @pyreon/document download()
-│           ├── store.ts               ← single signal store for the whole resume
-│           ├── styled.ts              ← form/preview chrome (no doc styling)
+│       ├── resume/
+│       │   ├── ResumeTemplate.tsx     ← @pyreon/document-primitives — same tree
+│       │   │                             renders in browser AND exports to PDF/DOCX
+│       │   ├── ResumeForm.tsx         ← signal-bound editor with field-array
+│       │   │                             siblings (Experience/Education lists)
+│       │   ├── ExportButtons.tsx      ← createDocumentExport → extractDocumentTree
+│       │   │                             → @pyreon/document download()
+│       │   ├── store.ts               ← single signal store for the whole resume
+│       │   ├── styled.ts              ← form/preview chrome (no doc styling)
+│       │   └── data/
+│       │       ├── seed.ts
+│       │       └── types.ts
+│       └── flow/
+│           ├── WorkflowNode.tsx       ← custom node component registered via
+│           │                             <Flow nodeTypes={{ workflow: ... }}>
+│           ├── JsonSidebar.tsx        ← <CodeEditor> bidirectionally bound to
+│           │                             flow.toJSON()/fromJSON() — see the
+│           │                             loop-prevention pattern in the file
+│           ├── FlowToolbar.tsx        ← add node, layered layout, undo/redo, fit
+│           ├── store.ts               ← defineStore wrapping createFlow + helpers
+│           ├── styled.ts              ← workspace chrome + custom node card styles
 │           └── data/
-│               ├── seed.ts
-│               └── types.ts
+│               ├── seed.ts            ← initial workflow nodes/edges
+│               └── types.ts           ← WorkflowNodeKind union + node data shape
 ```
 
 > **Why split `routes/` and `sections/`?** Zero treats every file under `src/routes/` as a route — including helpers, which produces dynamic-import warnings. Putting non-route files under `src/sections/` keeps the routing tree tidy and lets Rolldown chunk per-route cleanly.

@@ -55,11 +55,13 @@
     "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
     "@vitus-labs/tools-lint": "^1.15.5"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
   },
   "optionalDependencies": {
     "@codemirror/lang-cpp": "^6.0.2",

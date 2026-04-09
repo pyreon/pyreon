@@ -69,12 +69,14 @@
       "version": "0.1.0",
       "dependencies": {
         "@pyreon/charts": "workspace:*",
+        "@pyreon/code": "workspace:*",
         "@pyreon/connector-document": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/document": "workspace:*",
         "@pyreon/document-primitives": "workspace:*",
         "@pyreon/elements": "workspace:*",
+        "@pyreon/flow": "workspace:*",
         "@pyreon/form": "workspace:*",
         "@pyreon/head": "workspace:*",
         "@pyreon/hooks": "workspace:*",
@@ -415,6 +417,7 @@
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "optionalDependencies": {
@@ -436,6 +439,7 @@
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
       },
     },
     "packages/fundamentals/dnd": {
@@ -511,11 +515,13 @@
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
       },
     },
     "packages/fundamentals/form": {
