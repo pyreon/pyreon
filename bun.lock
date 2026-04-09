@@ -753,7 +753,12 @@
       "dependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
+      },
+      "devDependencies": {
+        "@pyreon/reactivity": "workspace:^",
+        "happy-dom": "^20.8.3",
       },
     },
     "packages/tools/cli": {

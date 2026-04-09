@@ -7,6 +7,9 @@ export default mergeConfig(
   defineConfig({
     test: {
       globals: true,
+      // happy-dom required by mountReactive / mountAndExpectOnce tests.
+      // Existing non-DOM tests run fine in this environment too.
+      environment: 'happy-dom',
     },
   }),
 )

@@ -34,7 +34,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
 | `@pyreon/lint`           | Pyreon-specific linter — 56 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
-| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle                                        |
+| `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce     |
 
 ### UI System (Component Library)
 
