@@ -206,7 +206,13 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
   // updated value. The previous tests use mock vnodes — this one
   // uses the real primitive.
 
-  it('DocDocument with accessor title produces live values across multiple extractions', async () => {
+  // Long timeout: this test dynamic-imports @pyreon/test-utils,
+  // @pyreon/core, and DocDocument inside the test body. Each
+  // dynamic import triggers Vite's transform pipeline (JSX
+  // compilation, rocketstyle wrapping, etc.) which takes 5+
+  // seconds on slow CI runners on first hit. The default 5000ms
+  // timeout fails reliably on CI.
+  it('DocDocument with accessor title produces live values across multiple extractions', { timeout: 30_000 }, async () => {
     // Use happy-dom + initTestConfig like the rest of the test suite
     const { initTestConfig } = await import('@pyreon/test-utils')
     const { h } = await import('@pyreon/core')
@@ -252,7 +258,7 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
     }
   })
 
-  it('DocDocument with plain string title still works (backward compat)', async () => {
+  it('DocDocument with plain string title still works (backward compat)', { timeout: 30_000 }, async () => {
     const { initTestConfig } = await import('@pyreon/test-utils')
     const { h } = await import('@pyreon/core')
     const cleanup = initTestConfig()
@@ -273,7 +279,7 @@ describe('DocDocument reactive metadata (D1 integration)', () => {
     }
   })
 
-  it('DocDocument subject prop also accepts both string and accessor (full prop coverage)', async () => {
+  it('DocDocument subject prop also accepts both string and accessor (full prop coverage)', { timeout: 30_000 }, async () => {
     // The widening covered all three metadata props (title, author,
     // subject). The previous tests only exercise title and author —
     // this test fills the coverage gap so a typo in the subject

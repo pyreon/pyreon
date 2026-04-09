@@ -407,7 +407,12 @@ describe('document metadata pass-through (PR #197)', () => {
     expect(md).not.toContain('description:')
   })
 
-  it('PDF renderer writes metadata to the /Info dictionary (binary verified)', async () => {
+  // Long timeout: pdfmake is ~1MB and lazy-loaded on first render() call.
+  // The first PDF generation in a fresh worker can take 10+ seconds on
+  // slow CI runners (the default 5000ms timeout fails reliably). The
+  // existing renderer-coverage tests in renderers-coverage.test.ts don't
+  // hit this because they run after the lazy load is already warm.
+  it('PDF renderer writes metadata to the /Info dictionary (binary verified)', { timeout: 30_000 }, async () => {
     // End-to-end binary verification. The PDF renderer was already
     // correct (it consumed these fields before PR #197), but we
     // never proved it by actually inspecting a generated PDF.
@@ -457,7 +462,11 @@ describe('document metadata pass-through (PR #197)', () => {
     expect(text).toContain('(sales, q4, report)')
   })
 
-  it('DOCX renderer writes metadata to docProps/core.xml (binary verified)', async () => {
+  // Long timeout: same reason as the PDF test above — the docx
+  // library is lazy-loaded on first render() call, plus this test
+  // shells out to `unzip` which adds ~50ms of subprocess overhead.
+  // Stays well under 30s on every machine I've tested.
+  it('DOCX renderer writes metadata to docProps/core.xml (binary verified)', { timeout: 30_000 }, async () => {
     // End-to-end binary verification. PR #197 added the metadata
     // pass-through to the DOCX renderer, but we shouldn't trust
     // the docx library's docs without proof. This test:
@@ -530,7 +539,9 @@ describe('document metadata pass-through (PR #197)', () => {
     }
   })
 
-  it('DOCX renderer omits empty metadata elements when fields are missing', async () => {
+  // Same long timeout — second DOCX render in the same suite, but
+  // each test gets its own worker so the lazy-load cost still applies.
+  it('DOCX renderer omits empty metadata elements when fields are missing', { timeout: 30_000 }, async () => {
     // Regression case for the conditional spread pattern in the
     // renderer: a Document with only `title` set should produce a
     // core.xml that has <dc:title> but NOT empty <dc:creator> or
