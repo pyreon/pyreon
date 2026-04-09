@@ -90,20 +90,110 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
   // Component function with _documentType marker (via .statics() or direct)
   const docType = getDocumentType(type)
   if (docType) {
-    const docProps: Record<string, unknown> = {}
+    // ── _documentProps resolution ────────────────────────────────────
+    //
+    // Two paths to find _documentProps on a documentType vnode:
+    //
+    //   (A) **Pre-resolved on the JSX vnode itself** — used by
+    //       test fixtures that hand-construct vnodes without
+    //       going through rocketstyle. Less common in real usage.
+    //
+    //   (B) **Post-attrs result of calling the component** — the
+    //       real-world path. When a real `DocDocument` (or any
+    //       rocketstyle primitive with `.statics({ _documentType })`)
+    //       is rendered via JSX, the JSX vnode's `props` are the
+    //       USER-PROVIDED props (e.g. `{ title, author }`) — NOT
+    //       `_documentProps`. The rocketstyle attrs HOC adds
+    //       `_documentProps` to the wrapped component's vnode by
+    //       running the `.attrs()` callback during invocation. To
+    //       see the post-attrs result, we must CALL the component
+    //       function and read from THAT vnode's props.
+    //
+    // We try path (A) first because mock-vnode tests rely on it
+    // and we don't want to invoke component functions when we
+    // don't have to. If path (A) yields no _documentProps, we
+    // fall back to path (B) and call the component.
+    //
+    // **Function values in _documentProps are resolved at this
+    // point** — primitives like DocDocument can store accessor
+    // thunks (`() => string`) for reactive metadata, and the
+    // export pipeline reads the LIVE value on each extraction.
+    // See PR #197 for the original use case (resume builder).
+    //
+    // ── Architectural note ──────────────────────────────────────────
+    //
+    // Path B is a workaround. The architecturally cleaner fix is to
+    // have rocketstyle's `.statics()` mechanism hoist `_documentProps`
+    // (or its accessor functions) directly onto the component
+    // function — so `extractNode` could read it via
+    // `(type as { _documentProps?: ... })._documentProps` without
+    // ever invoking the component.
+    //
+    // That would require teaching rocketstyle that `.statics()`
+    // values can be derived from `.attrs()` callbacks. It's a
+    // bigger change in `@pyreon/rocketstyle/src/utils/statics.ts`
+    // and was deemed out of scope for PR #197. The current
+    // workaround works because:
+    //
+    //   1. rocketstyle's attrs HOC is meant to be PURE setup —
+    //      no observable side effects on the second call.
+    //   2. The idempotence test in
+    //      `document-primitives/src/__tests__/useDocumentExport.test.ts`
+    //      locks in the purity assumption: extracting twice produces
+    //      structurally equivalent doc nodes.
+    //   3. Path A is tried first, so existing fast-path tests don't
+    //      pay the component-invocation cost.
+    //
+    // If a future primitive accidentally introduces a side effect
+    // in its setup body, the idempotence test catches it. If
+    // performance becomes a concern (extractDocumentTree is called
+    // per export, not per render — so this is unlikely), the
+    // architectural fix in rocketstyle becomes worth doing.
 
-    // Extract document-specific props from _documentProps
+    let rawDocProps: Record<string, unknown> | undefined
+    let extractedFromCall: VNodeLike | null = null
+
+    // Path A: pre-resolved on the JSX vnode (test fixtures)
     if (props._documentProps && typeof props._documentProps === 'object') {
-      Object.assign(docProps, props._documentProps)
+      rawDocProps = props._documentProps as Record<string, unknown>
+    } else if (typeof type === 'function') {
+      // Path B: invoke the component to get the post-attrs vnode
+      const mergedProps = { ...props }
+      if (children && children.length > 0) {
+        mergedProps.children = children.length === 1 ? children[0] : children
+      }
+      const result = (type as (p: Record<string, unknown>) => unknown)(mergedProps)
+      if (isVNode(result)) {
+        extractedFromCall = result
+        const innerProps = (result as { props?: Record<string, unknown> }).props
+        if (innerProps?._documentProps && typeof innerProps._documentProps === 'object') {
+          rawDocProps = innerProps._documentProps as Record<string, unknown>
+        }
+      }
     }
 
-    // Resolve styles from $rocketstyle
+    // Resolve function values (accessors) at extraction time
+    const docProps: Record<string, unknown> = {}
+    if (rawDocProps) {
+      for (const [key, value] of Object.entries(rawDocProps)) {
+        docProps[key] = typeof value === 'function' ? (value as () => unknown)() : value
+      }
+    }
+
+    // Resolve styles from $rocketstyle. Look on the JSX vnode props
+    // first; if the call result has its own $rocketstyle (because the
+    // post-attrs vnode carries it down), use that as a fallback.
+    const stylesSource =
+      props.$rocketstyle ??
+      (extractedFromCall as { props?: Record<string, unknown> } | null)?.props?.$rocketstyle
     const styles =
-      includeStyles && props.$rocketstyle
-        ? resolveStyles(props.$rocketstyle as Record<string, unknown>, rootSize)
+      includeStyles && stylesSource
+        ? resolveStyles(stylesSource as Record<string, unknown>, rootSize)
         : undefined
 
-    // Recurse into children
+    // Children: prefer the JSX vnode's children (the user-supplied
+    // tree). The post-attrs call might wrap children in additional
+    // styled elements that aren't part of the document tree.
     const docChildren = extractChildren(children ?? [], options)
 
     const node: DocNode = {

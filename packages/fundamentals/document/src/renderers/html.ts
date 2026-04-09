@@ -47,9 +47,21 @@ function renderNode(node: DocNode): string {
 
   switch (node.type) {
     case 'document': {
+      // Document metadata is populated from DocDocument's
+      // _documentProps via extractDocumentTree (PR #197 D1).
+      // Title goes in <title>, author goes in
+      // <meta name="author">, subject goes in <meta name="description">
+      // (the closest semantic HTML equivalent — DOCX's "subject"
+      // is conceptually the same as HTML's description meta).
       const lang = (p.language as string) ?? 'en'
       const title = p.title ? `<title>${escapeHtml(p.title as string)}</title>` : ''
-      return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8">${title}<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderChildren(node.children)}</body></html>`
+      const author = p.author
+        ? `<meta name="author" content="${escapeHtml(p.author as string)}">`
+        : ''
+      const description = p.subject
+        ? `<meta name="description" content="${escapeHtml(p.subject as string)}">`
+        : ''
+      return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8">${title}${author}${description}<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderChildren(node.children)}</body></html>`
     }
 
     case 'page': {

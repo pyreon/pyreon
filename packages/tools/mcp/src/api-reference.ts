@@ -1240,37 +1240,60 @@ export const Primary: StoryObj<typeof meta> = {
   // @pyreon/document-primitives
   // ═══════════════════════════════════════════════════════════════════════════
 
-  'document-primitives/createDocumentExport': {
-    signature:
-      'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
+  'document-primitives/extractDocNode': {
+    signature: 'extractDocNode(templateFn: () => VNode, options?: ExtractOptions): DocNode',
     example: `import {
   DocDocument, DocPage, DocHeading, DocText,
-  createDocumentExport,
+  extractDocNode,
 } from '@pyreon/document-primitives'
 import { download } from '@pyreon/document'
 
-function Resume(props: { name: string }) {
+interface Resume { name: string; headline: string }
+
+function ResumeTemplate(props: { resume: () => Resume }) {
   return (
-    <DocDocument title={\`\${props.name} — Resume\`}>
+    // title and author accept reactive accessors — extractDocNode
+    // resolves them at extraction time, so each export click reads
+    // the LIVE value from the underlying signal
+    <DocDocument
+      title={() => \`\${props.resume().name} — Resume\`}
+      author={() => props.resume().name}
+    >
       <DocPage>
-        <DocHeading level="h1">{props.name}</DocHeading>
-        <DocText>Senior Engineer</DocText>
+        <DocHeading level="h1">{() => props.resume().name}</DocHeading>
+        <DocText>{() => props.resume().headline}</DocText>
       </DocPage>
     </DocDocument>
   )
 }
 
-// One template, many formats:
-const helper = createDocumentExport(() => <Resume name="Aisha" />)
-const tree = helper.getDocNode()
+// One-step extraction. The two-step createDocumentExport(...).getDocNode()
+// form is still exported for callers that want to pass the helper
+// object around, but extractDocNode is the recommended form.
+const tree = extractDocNode(() => <ResumeTemplate resume={store.resume} />)
 await download(tree, 'resume.pdf')
 await download(tree, 'resume.docx')
 await download(tree, 'resume.html')
 await download(tree, 'resume.md')`,
     notes:
-      "18 primitives: DocDocument, DocPage, DocSection, DocRow, DocColumn, DocHeading, DocText, DocLink, DocImage, DocTable, DocList, DocListItem, DocCode, DocDivider, DocSpacer, DocButton, DocQuote, DocPageBreak. Same component tree renders in browser AND exports — primitives carry _documentType statics that extractDocumentTree (from @pyreon/connector-document) walks to produce a DocNode for @pyreon/document's render() to consume.",
-    mistakes: `- DocRow direction: layout props (direction, gap) go in .attrs() not .theme(). Element accepts 'inline' | 'rows' | 'reverseInline' | 'reverseRows' — 'row' is NOT valid
-- For live preview reactivity, pass a signal accessor and read inside body: <DocText>{() => store.field()}</DocText>. Components run once — reading the signal at the top captures only the initial value
-- Don't declare runtime-filled fields (tag, _documentProps) in the rocketstyle .attrs<P>() generic — they leak as required JSX props`,
+      "18 primitives: DocDocument, DocPage, DocSection, DocRow, DocColumn, DocHeading, DocText, DocLink, DocImage, DocTable, DocList, DocListItem, DocCode, DocDivider, DocSpacer, DocButton, DocQuote, DocPageBreak. Same component tree renders in browser AND exports — primitives carry _documentType statics that extractDocumentTree (from @pyreon/connector-document) walks to produce a DocNode for @pyreon/document's render() to consume. DocDocument's title/author/subject accept either a string OR a `() => string` accessor; function values are stored in _documentProps and resolved at extraction time so reactive metadata works without `const initial = get()` workarounds. PR #197 also fixed a latent bug in extractDocumentTree: it now CALLS rocketstyle component functions to read post-attrs _documentProps, where before it only looked at the JSX vnode's props directly — every primitive's metadata was silently dropped during export until that fix landed.",
+    mistakes: `- Calling props.title() at the top of a template body to "fix" reactivity — components run ONCE at mount, so this captures the initial value forever. Pass the accessor through to DocDocument as-is: <DocDocument title={() => get().name}>
+- DocRow direction: layout props (direction, gap) go in .attrs() not .theme(). Element accepts 'inline' | 'rows' | 'reverseInline' | 'reverseRows' — 'row' is NOT valid
+- For text children reactivity, pass a signal accessor and read inside body: <DocText>{() => store.field()}</DocText>
+- Don't declare runtime-filled fields (tag, _documentProps) in the rocketstyle .attrs<P>() generic — they leak as required JSX props
+- Using createDocumentExport(...).getDocNode() in new code — prefer extractDocNode(fn) which is one call instead of two. createDocumentExport is kept for backward compat`,
+  },
+
+  'document-primitives/createDocumentExport': {
+    signature:
+      'createDocumentExport(templateFn: () => VNode): { getDocNode(): DocNode }',
+    example: `// Two-step form (kept for backward compat). New code should
+// prefer the one-step extractDocNode helper.
+import { createDocumentExport } from '@pyreon/document-primitives'
+
+const helper = createDocumentExport(() => <Resume name="Aisha" />)
+const tree = helper.getDocNode()`,
+    notes:
+      "Wrapper around extractDocNode. The wrapper-object form is kept for callers that want to pass the helper around (e.g. to wrapper components that take a DocumentExport instance). New code should use extractDocNode(templateFn) which is one call instead of two.",
   },
 }

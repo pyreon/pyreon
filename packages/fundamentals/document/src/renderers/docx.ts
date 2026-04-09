@@ -552,7 +552,39 @@ export const docxRenderer: DocumentRenderer = {
       sectionProperties.page = { margin: pageMargins }
     }
 
+    // Document metadata — `node` is the root document DocNode and
+    // its props were populated by extractDocumentTree from
+    // DocDocument's `_documentProps` (which now supports both
+    // plain strings and reactive accessors via PR #197 D1).
+    //
+    // The `docx` library writes these to the .docx file's
+    // `docProps/core.xml` metadata sheet (the OOXML CoreProperties
+    // schema), visible in Word's File > Properties > Summary tab,
+    // LibreOffice's Properties dialog, etc. Verified end-to-end by
+    // unzipping a generated .docx and inspecting the XML — see
+    // `src/tests/integration.test.ts > "DOCX core.xml contains
+    // dc:title / dc:creator / dc:subject / cp:keywords"`.
+    //
+    // The DocNode's `author` prop maps to DOCX's `creator` field
+    // (the OOXML term for the original author). The `keywords`
+    // prop is `string[]` on the DocNode but DOCX wants a single
+    // comma-separated string, so we join.
+    //
+    // `description` is intentionally NOT passed even though the
+    // docx library accepts it — `DocumentProps` doesn't expose a
+    // `description` field, so wiring it here would be dead code.
+    // If a future PR widens `DocumentProps` with `description`,
+    // add the corresponding line here.
+    const docTitle = node.props.title as string | undefined
+    const docAuthor = node.props.author as string | undefined
+    const docSubject = node.props.subject as string | undefined
+    const docKeywords = node.props.keywords as string[] | undefined
+
     const doc = new docx.Document({
+      ...(docTitle ? { title: docTitle } : {}),
+      ...(docSubject ? { subject: docSubject } : {}),
+      ...(docAuthor ? { creator: docAuthor } : {}),
+      ...(docKeywords && docKeywords.length > 0 ? { keywords: docKeywords.join(', ') } : {}),
       numbering: (numberingConfigs.length > 0 ? { config: numberingConfigs } : undefined) as any,
       sections: [
         {
