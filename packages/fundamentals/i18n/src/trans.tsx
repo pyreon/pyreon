@@ -14,12 +14,20 @@
 // package's. If the consumer is a backend that doesn't use JSX
 // itself, its tsconfig has no `jsxImportSource` set, so bun falls
 // back to React's JSX runtime — which doesn't exist in
-// non-React-aware projects, and the import explodes with a
-// `Cannot find module 'react/jsx-runtime'` error.
+// non-React-aware projects, and the import explodes with:
+//
+//   error: Cannot find module 'react/jsx-dev-runtime'
+//          from '/.../i18n/src/trans.tsx'
+//
+// **Verified end-to-end by `src/tests/backend-import.test.ts`.**
+// Removing this pragma causes a real bun subprocess in a
+// non-JSX-tsconfig fixture to crash at import time with the exact
+// error above. The regression test catches it.
 //
 // The per-file `@jsxImportSource` pragma overrides whatever
-// tsconfig says. With this comment in place, ANY consumer (bun
-// runtime, backend, non-React frontend, anything) gets the
+// tsconfig says — it's a TypeScript directive that bun's
+// transpiler honors. With this comment in place, ANY consumer
+// (bun runtime, backend, non-React frontend, anything) gets the
 // correct Pyreon JSX runtime when this file is compiled.
 //
 // **Backend consumers should still prefer `@pyreon/i18n/core`**
