@@ -8,6 +8,25 @@ Reactive internationalization for Pyreon. Async namespace loading, pluralization
 bun add @pyreon/i18n
 ```
 
+## Two entry points
+
+| Entry                 | Use when                                                                         | Includes                                                              |
+| --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `@pyreon/i18n`        | You're building a Pyreon UI and want the JSX components                          | `createI18n`, `Trans`, `I18nProvider`, `useI18n`, plus everything below |
+| `@pyreon/i18n/core`   | You're on a backend / non-Pyreon runtime / don't need JSX                        | `createI18n`, `interpolate`, `resolvePluralCategory`, types only       |
+
+The `/core` entry has **zero JSX dependencies** — it only depends on `@pyreon/reactivity` (which is framework-agnostic). Use it for backend translation pipelines, edge workers, non-Pyreon frontends, or any context where you don't need the `<Trans>` JSX component.
+
+```ts
+// Backend / non-JSX usage:
+import { createI18n } from '@pyreon/i18n/core'
+
+const i18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })
+i18n.t('hello') // "Hi"
+```
+
+The main `@pyreon/i18n` entry includes the same `createI18n` plus the JSX components — both entries return identical `I18nInstance` objects, so you can switch entries without changing your code if you decide later to add UI bindings.
+
 ## Quick Start
 
 ```ts

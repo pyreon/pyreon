@@ -220,6 +220,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `t(key, values?)` — interpolation with `{{name}}`, pluralization with `_one`/`_other` suffixes
 - Namespace lazy loading with deduplication, `addMessages()` for runtime additions
 - `I18nProvider` / `useI18n()` context, `<Trans>` component for rich JSX interpolation
+- **Two entry points**: `@pyreon/i18n` (full — includes JSX `Trans`/`I18nProvider`/`useI18n`) and `@pyreon/i18n/core` (framework-agnostic — only `createI18n`, `interpolate`, `resolvePluralCategory`, types). Use `/core` for backend translation pipelines, edge workers, or any non-JSX consumer. The `/core` entry transitively only depends on `@pyreon/reactivity` — zero JSX, zero `@pyreon/core`. The main entry has a `/** @jsxImportSource @pyreon/core */` pragma on `trans.tsx` so even bun runtimes without JSX-aware tsconfigs compile it correctly.
 
 ### @pyreon/query
 
@@ -305,7 +306,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `<CodeEditor instance={editor} />`, `<DiffEditor>`, `<TabbedEditor>` — mount components, auto-cleanup on unmount
 - `minimapExtension()` — canvas-based code overview
 - `loadLanguage(lang)` — lazy-load 19 language grammars (`json`, `typescript`, `python`, etc.)
-- Two-way binding: pass `onChange` for editor → external, set `editor.value` for external → editor; both at once requires loop-prevention flags (see app-showcase `JsonSidebar.tsx`)
+- **Two-way binding via `bindEditorToSignal({ editor, signal, serialize, parse, onParseError? })`** — replaces the recurring loop-prevention flag-pair boilerplate from PRs #191 + #192. Accepts a `Signal<T>` or any `SignalLike<T>` and round-trips through user-supplied `serialize`/`parse` functions. Internal flags break the format-on-input race; parse failures call `onParseError` and leave the external state at its last valid value. Returns `{ dispose }` for cleanup. Both directions are loop-safe and the editor itself also has internal CM↔signal loop guards.
 - Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB)
 - **Peer dep**: `@pyreon/runtime-dom` is required because `<CodeEditor>` JSX emits `_tpl()` calls
 

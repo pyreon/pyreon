@@ -257,7 +257,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE)
 - @pyreon/table — TanStack Table adapter with reactive options
 - @pyreon/virtual — TanStack Virtual adapter for element and window virtualization
-- @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation
+- @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation. Two entry points: `@pyreon/i18n` (full, includes JSX components) and `@pyreon/i18n/core` (framework-agnostic, for backends / non-JSX consumers — only depends on @pyreon/reactivity)
 - @pyreon/feature — Schema-driven CRUD primitives (`defineFeature` → queries, forms, tables, store)
 - @pyreon/charts — Reactive ECharts bridge with lazy loading and auto module detection
 - @pyreon/storage — Reactive client storage (localStorage, sessionStorage, cookies, IndexedDB)
@@ -265,7 +265,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/permissions — Reactive permissions (RBAC, ABAC, feature flags, subscription tiers)
 - @pyreon/machine — Reactive state machines — constrained signals with type-safe transitions
 - @pyreon/flow — Reactive flow diagrams: createFlow<TData> generic over node data shape, custom node renderers via nodeTypes, NodeComponentProps.selected/dragging are reactive accessors (parent runs once across selection clicks), auto-layout via lazy-loaded elkjs (peerDep: @pyreon/runtime-dom)
-- @pyreon/code — Reactive code editor with CodeMirror 6 — writable Signal<string> for two-way binding, minimap, diff/tabbed editors, lazy-loaded language grammars (peerDep: @pyreon/runtime-dom)
+- @pyreon/code — Reactive code editor with CodeMirror 6 — writable Signal<string> for two-way binding, `bindEditorToSignal({ editor, signal, serialize, parse, onParseError? })` helper for two-way external↔editor binding with built-in loop prevention, minimap, diff/tabbed editors, lazy-loaded language grammars (peerDep: @pyreon/runtime-dom)
 - @pyreon/document — Universal document rendering — one template, 14+ output formats
 - @pyreon/rx — Signal-aware reactive transforms (filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions)
 - @pyreon/toast — Toast notifications (toast(), toast.success/error/warning/info/loading, Toaster component, a11y)

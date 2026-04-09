@@ -698,7 +698,10 @@ theme.remove()    // delete from storage`,
   'i18n/createI18n': {
     signature:
       'createI18n(options: { locale: string, messages: Record<string, Record<string, string>>, loader?, fallbackLocale?, pluralRules? }): I18nInstance',
-    example: `const i18n = createI18n({
+    example: `// Full entry — includes JSX components (Trans, I18nProvider, useI18n)
+import { createI18n, useI18n } from '@pyreon/i18n'
+
+const i18n = createI18n({
   locale: 'en',
   messages: { en: { greeting: 'Hello, {{name}}!' } },
   loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
@@ -706,9 +709,19 @@ theme.remove()    // delete from storage`,
 
 const { t, locale } = useI18n()
 t('greeting', { name: 'World' }) // "Hello, World!"
-locale.set('fr')                  // switch reactively`,
+locale.set('fr')                  // switch reactively
+
+// Backend / non-JSX entry — @pyreon/i18n/core
+// Zero JSX dependencies, transitively only @pyreon/reactivity.
+// Use this on backends, edge workers, non-Pyreon frontends.
+import { createI18n } from '@pyreon/i18n/core'
+const backendI18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })
+backendI18n.t('hello')`,
     notes:
-      'Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation.',
+      'Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation. TWO ENTRY POINTS: `@pyreon/i18n` (full, with JSX components) vs `@pyreon/i18n/core` (framework-agnostic, zero JSX deps — use for backends and non-Pyreon consumers). Both return identical I18nInstance objects.',
+    mistakes: `- Using \`@pyreon/i18n\` (the main entry) on a backend without a JSX-aware tsconfig — the bun condition resolves to source which transitively includes the Trans JSX component. Use \`@pyreon/i18n/core\` instead.
+- Reading the README example and importing from \`@pyreon/i18n\` in a non-Pyreon project — that path works for Pyreon UIs but the README now documents \`/core\` as the backend recommendation.
+- Trying to use \`<Trans>\` from \`@pyreon/i18n/core\` — it's intentionally not exported there. Import it from the main \`@pyreon/i18n\` entry instead.`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -811,11 +824,46 @@ editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
 <CodeEditor instance={editor} style="height: 400px" />
 <DiffEditor original="old" modified="new" language="typescript" />`,
     notes:
-      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). 19 languages via lazy-loaded grammars (declared as optionalDependencies). Two-way binding: editor.value is a writable Signal — pass onChange for editor → external, set editor.value for external → editor. <CodeEditor> auto-mounts and cleans up on unmount.",
+      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). 19 languages via lazy-loaded grammars (declared as optionalDependencies). Two-way binding: editor.value is a writable Signal — pass onChange for editor → external, set editor.value for external → editor. For external↔editor binding with built-in loop prevention, use the higher-level `bindEditorToSignal({ editor, signal, serialize, parse })` helper instead of hand-rolling the flag pattern. <CodeEditor> auto-mounts and cleans up on unmount.",
     mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom imports
-- Both-way binding without loop-prevention flags causes infinite re-write cycles — use scoped boolean guards (applyingFromExternal / applyingFromEditor) on each side, see app-showcase JsonSidebar.tsx for the canonical pattern
+- Hand-rolling the applyingFromExternal/applyingFromEditor flag pattern for two-way binding — use the bindEditorToSignal helper instead, it handles the loop prevention correctly and is tested
 - Calling editor methods before mount — they no-op safely but changes don't persist
 - Setting both vim: true and emacs: true — emacs wins`,
+  },
+
+  'code/bindEditorToSignal': {
+    signature:
+      'bindEditorToSignal<T>(options: { editor: EditorInstance, signal: SignalLike<T>, serialize: (val: T) => string, parse: (text: string) => T | null, onParseError?: (err: Error) => void }): { dispose: () => void }',
+    example: `import { bindEditorToSignal, createEditor } from '@pyreon/code'
+import { signal } from '@pyreon/reactivity'
+
+interface Doc { name: string; count: number }
+const data = signal<Doc>({ name: 'Alice', count: 1 })
+
+const editor = createEditor({
+  value: JSON.stringify(data(), null, 2),
+  language: 'json',
+})
+
+const binding = bindEditorToSignal({
+  editor,
+  signal: data,                              // accepts Signal<T> or any SignalLike<T>
+  serialize: (val) => JSON.stringify(val, null, 2),
+  parse: (text) => {
+    try { return JSON.parse(text) } catch { return null }
+  },
+  onParseError: (err) => console.warn(err.message),
+})
+
+// Later, on unmount:
+binding.dispose()`,
+    notes:
+      "Replaces the recurring loop-prevention flag-pair boilerplate (applyingFromExternal / applyingFromEditor) that consumers had to hand-roll for two-way external↔editor binding. The helper manages both directions, breaks the format-on-input race via internal flags, catches parse errors, and returns a disposable. Accepts any SignalLike<T> (Pyreon Signal, custom store wrapper, etc.). The editor itself ALSO has internal CM↔signal loop guards — this helper adds the SECOND layer for the external↔editor boundary.",
+    mistakes: `- Forgetting to call binding.dispose() on unmount — leaks both effects until the editor instance is GC'd
+- Non-deterministic serialize() — if serialize(parse(text)) returns a string structurally different from the input text, the helper dispatches redundant editor writes that fight the user's typing. JSON.stringify with consistent indentation is fine; pretty-printing that varies on every call is not
+- Throwing in parse() without an onParseError handler — the helper catches and silently no-ops if no handler is provided. Pass onParseError to surface parse errors in your UI
+- Returning a non-null value from parse() for malformed input — the helper writes whatever you return, including partial / corrupted state. Return null on parse failure, or throw with an error message
+- Using bindEditorToSignal AND a manual editor.value.set() loop in the same component — defeats the loop prevention. Pick one binding strategy per editor instance`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,5 @@
-import { CodeEditor, createEditor } from '@pyreon/code'
-import { effect, signal } from '@pyreon/reactivity'
+import { bindEditorToSignal, CodeEditor, createEditor, type SignalLike } from '@pyreon/code'
+import { signal } from '@pyreon/reactivity'
 import { onMount } from '@pyreon/core'
 import type { FlowEdge, FlowNode } from '@pyreon/flow'
 import type { WorkflowNodeData } from './data/types'
@@ -13,107 +13,100 @@ import {
 } from './styled'
 
 /**
+ * Shape of the flow state we round-trip through the JSON editor.
+ * Mirrors the subset of `flow.toJSON()` we care about — viewport
+ * is intentionally omitted because it's not a meaningful part of
+ * the graph the user is editing.
+ */
+interface FlowState {
+  nodes: FlowNode<WorkflowNodeData>[]
+  edges: FlowEdge[]
+}
+
+/**
  * JSON sidebar — bidirectional bridge between the flow canvas and a
- * code editor.
+ * code editor, powered by `bindEditorToSignal` from `@pyreon/code`.
  *
- *   Canvas → JSON
- *     An effect watches `instance.nodes()` and `instance.edges()` and
- *     re-serializes via `toJSON()`. The result is written to
- *     `editor.value.set(...)`.
+ * Before the helper landed, this component hand-rolled the
+ * applyingFromCanvas / applyingFromEditor flag pair to break the
+ * format-on-input race (see `bind-signal.ts` JSDoc for the full
+ * explanation). Now both directions are managed by the helper, and
+ * this component only has to provide:
  *
- *   JSON → Canvas
- *     The editor's `onChange` callback parses the new value and calls
- *     `instance.fromJSON(...)` via the store helper. Parse errors are
- *     surfaced inline (the canvas keeps showing the last valid graph).
+ *   • A `SignalLike<FlowState>` that reads from `flow.instance.nodes`
+ *     and `.edges` and writes via `flow.instance.fromJSON()`
+ *   • A deterministic `serialize` function that rounds node positions
+ *     to 1 decimal (so sub-pixel drag jitter doesn't churn the editor
+ *     text every frame)
+ *   • A `parse` function that throws on shape errors and clears the
+ *     parseError signal on success
  *
- * The hard part is preventing feedback loops — without a guard, the
- * canvas → JSON write would re-trigger the editor's onChange, which
- * would re-parse and re-apply, which would re-fire the canvas effect,
- * etc. Two flags break the cycle:
- *
- *   • `applyingFromCanvas` — set to true while we write the
- *     serialized JSON into the editor. The onChange handler bails when
- *     this is set.
- *   • `applyingFromEditor` — set to true while we apply parsed JSON
- *     to the canvas. The serialization effect bails when this is set.
- *
- * The flags are bare booleans, not signals — we don't want them to
- * be tracked dependencies of either side.
+ * The helper handles the rest. Cleanup happens via `binding.dispose()`
+ * inside `onMount`'s cleanup callback.
  */
 export function JsonSidebar() {
   const flow = useFlowEditor().store
   const parseError = signal<string | null>(null)
 
-  // Mutable flags scoped to this component instance.
-  let applyingFromCanvas = false
-  let applyingFromEditor = false
-
-  /**
-   * Format the current flow as a stable, sorted JSON string. We omit
-   * the viewport (it's not a meaningful part of the graph) and round
-   * positions to 1 decimal so cursor noise from drags doesn't churn
-   * the sidebar text every frame.
-   */
-  function serialize(): string {
-    const json = flow.instance.toJSON()
-    return JSON.stringify(
-      {
-        nodes: json.nodes.map((n: FlowNode<WorkflowNodeData>) => ({
-          id: n.id,
-          type: n.type,
-          position: { x: round(n.position.x), y: round(n.position.y) },
-          data: n.data,
-        })),
-        edges: json.edges.map((e: FlowEdge) => ({
-          id: e.id,
-          source: e.source,
-          target: e.target,
-          type: e.type,
-          animated: e.animated,
-        })),
+  // SignalLike adapter — reads the live flow state when the binding
+  // calls it (which subscribes the binding's effect to nodes() and
+  // edges()), and writes back via fromJSON when the binding sets a
+  // new value. The helper sees a normal Signal-shaped object; the
+  // underlying state lives in the flow instance.
+  const flowState: SignalLike<FlowState> = Object.assign(
+    () => ({
+      nodes: flow.instance.nodes(),
+      edges: flow.instance.edges(),
+    }),
+    {
+      set: (state: FlowState) => {
+        flow.instance.pushHistory()
+        flow.instance.fromJSON(state)
       },
-      null,
-      2,
-    )
-  }
+    },
+  )
 
   const editor = createEditor({
-    value: serialize(),
+    value: serialize({
+      nodes: flow.instance.nodes(),
+      edges: flow.instance.edges(),
+    }),
     language: 'json',
     theme: 'light',
     lineNumbers: true,
     bracketMatching: true,
     foldGutter: true,
-    onChange: (next: string) => {
-      if (applyingFromCanvas) return
-      applyingFromEditor = true
-      const err = flow.loadJson(next)
-      parseError.set(err)
-      applyingFromEditor = false
-    },
   })
 
-  // Canvas → JSON. Reading nodes/edges inside the effect subscribes
-  // to both signals so any addNode / removeEdge / drag completes a
-  // full re-serialization. The drag-in-progress case is handled by
-  // the position rounding above — sub-pixel jitter doesn't change
-  // the string output.
   onMount(() => {
-    const fx = effect(() => {
-      // Subscribe to the signals.
-      flow.instance.nodes()
-      flow.instance.edges()
-
-      if (applyingFromEditor) return
-
-      const next = serialize()
-      if (next === editor.value.peek()) return
-
-      applyingFromCanvas = true
-      editor.value.set(next)
-      applyingFromCanvas = false
+    const binding = bindEditorToSignal({
+      editor,
+      signal: flowState,
+      serialize,
+      parse: (text) => {
+        let obj: unknown
+        try {
+          obj = JSON.parse(text)
+        } catch (err) {
+          throw err instanceof Error ? err : new Error('Invalid JSON')
+        }
+        if (!obj || typeof obj !== 'object') {
+          throw new Error('Expected an object with `nodes` and `edges` arrays')
+        }
+        const o = obj as { nodes?: unknown; edges?: unknown }
+        if (!Array.isArray(o.nodes) || !Array.isArray(o.edges)) {
+          throw new Error('Expected `nodes` and `edges` to be arrays')
+        }
+        // Successful parse — clear any prior error.
+        parseError.set(null)
+        return {
+          nodes: o.nodes as FlowNode<WorkflowNodeData>[],
+          edges: o.edges as FlowEdge[],
+        }
+      },
+      onParseError: (err) => parseError.set(err.message),
     })
-    return () => fx.dispose()
+    return () => binding.dispose()
   })
 
   return (
@@ -131,6 +124,36 @@ export function JsonSidebar() {
         return <ParseOk>✓ Valid — edits sync to canvas</ParseOk>
       }}
     </SidebarColumn>
+  )
+}
+
+/**
+ * Format flow state as a deterministic JSON string. Positions are
+ * rounded to 1 decimal so sub-pixel drag jitter doesn't change the
+ * output every frame. Determinism is required by `bindEditorToSignal`
+ * — if `serialize(state)` produced different strings on consecutive
+ * calls with semantically equivalent state, the helper would
+ * dispatch redundant editor writes that fight the user's typing.
+ */
+function serialize(state: FlowState): string {
+  return JSON.stringify(
+    {
+      nodes: state.nodes.map((n) => ({
+        id: n.id,
+        type: n.type,
+        position: { x: round(n.position.x), y: round(n.position.y) },
+        data: n.data,
+      })),
+      edges: state.edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: e.type,
+        animated: e.animated,
+      })),
+    },
+    null,
+    2,
   )
 }
 

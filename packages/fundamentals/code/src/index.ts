@@ -29,6 +29,13 @@ export { DiffEditor } from './components/diff-editor'
 export { TabbedEditor } from './components/tabbed-editor'
 // Core
 export { createEditor } from './editor'
+// Signal binding
+export type {
+  BindEditorToSignalOptions,
+  EditorBinding,
+  SignalLike,
+} from './bind-signal'
+export { bindEditorToSignal } from './bind-signal'
 // Languages
 export { getAvailableLanguages, loadLanguage } from './languages'
 // Minimap

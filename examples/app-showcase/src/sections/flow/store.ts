@@ -1,4 +1,4 @@
-import { createFlow, type FlowInstance, type FlowNode } from '@pyreon/flow'
+import { createFlow, type FlowInstance } from '@pyreon/flow'
 import { defineStore } from '@pyreon/store'
 import { NODE_KIND_LABELS, SEED_EDGES, SEED_NODES } from './data/seed'
 import type { WorkflowNodeData, WorkflowNodeKind } from './data/types'
@@ -13,9 +13,15 @@ import type { WorkflowNodeData, WorkflowNodeKind } from './data/types'
  *
  *   • `addNodeOfKind(kind)` — append a workflow node at a sensible
  *     position with `pushHistory()` so the action is undoable.
- *   • `loadJson(text)` — parse and `fromJSON()` a serialized graph,
- *     returning an error string on failure (no throw — the JSON
- *     sidebar surfaces the error inline).
+ *   • `reset()` — restore the seed graph and fit-view, undoable.
+ *
+ * The JSON sidebar's text-to-graph parsing used to live here as a
+ * `loadJson` helper, but it's now handled by `bindEditorToSignal`
+ * from `@pyreon/code` directly inside the sidebar component (the
+ * helper's `parse` callback throws on validation failures, and
+ * `onParseError` surfaces them inline). Removing the wrapper
+ * eliminates a layer of indirection and lets the sidebar own its
+ * own validation rules.
  *
  * The store does NOT proxy `flow.nodes` / `flow.edges` etc. — consumers
  * read those directly from `useFlowEditor().instance` so the reactivity
@@ -68,42 +74,9 @@ export const useFlowEditor = defineStore('flow-editor', () => {
     instance.fitView()
   }
 
-  /**
-   * Parse a JSON string and apply it via `fromJSON`. Returns null on
-   * success or an error message on failure. The JSON sidebar surfaces
-   * the error inline rather than throwing — keeps the editor usable
-   * mid-edit.
-   */
-  function loadJson(text: string): string | null {
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(text)
-    } catch (err) {
-      return err instanceof Error ? err.message : 'Invalid JSON'
-    }
-    if (!parsed || typeof parsed !== 'object') {
-      return 'Expected an object with `nodes` and `edges` arrays'
-    }
-    const obj = parsed as { nodes?: unknown; edges?: unknown }
-    if (!Array.isArray(obj.nodes) || !Array.isArray(obj.edges)) {
-      return 'Expected `nodes` and `edges` to be arrays'
-    }
-    try {
-      instance.pushHistory()
-      instance.fromJSON({
-        nodes: obj.nodes as FlowNode<WorkflowNodeData>[],
-        edges: obj.edges as never,
-      })
-      return null
-    } catch (err) {
-      return err instanceof Error ? err.message : 'Failed to load graph'
-    }
-  }
-
   return {
     instance,
     addNodeOfKind,
     reset,
-    loadJson,
   }
 })
