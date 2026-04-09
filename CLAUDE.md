@@ -324,6 +324,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Layout props live in `.attrs()` (not `.theme()`): `direction`, `gap`, `alignX`, `alignY`. Element accepts `direction: 'inline' | 'rows' | 'reverseInline' | 'reverseRows'` — `'row'` is invalid
 - For fine-grained reactivity in templates that drive a live preview, pass a signal accessor (not its resolved value) and read it inside the template body via per-text-node thunks: `<DocText>{() => store.field()}</DocText>` — components run once, so reading the signal at the top of the template captures only the initial value
 - Rocketstyle `.attrs<P>()` generic is the **public** prop type — runtime-filled fields like `tag` and `_documentProps` belong in the callback body, never in the generic, or they leak as required JSX props
+- **Watch for prop names that collide with read-only HTML element properties.** `HTMLTableElement.rows` and `.columns` are read-only `HTMLCollection` getters — if a prop with that name reaches the DOM forwarding step, the runtime crashes with `Cannot set property rows of [object Object] which has only a getter`. Use rocketstyle's `.attrs(callback, { filter: ['rows', 'columns', ...] })` second argument to strip export-only props before they reach the DOM. `DocTable` uses this pattern. Other risky names: `style` (writable but reserved), `cells`, `tHead`, `tBodies` on table elements; `form` on form-associated inputs.
 
 ### @pyreon/storybook
 
