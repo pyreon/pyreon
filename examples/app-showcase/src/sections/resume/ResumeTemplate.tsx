@@ -57,14 +57,15 @@ export function ResumeTemplate(props: ResumeTemplateProps) {
   // just returns the same value on every call (export path).
   const get = typeof props.resume === 'function' ? props.resume : () => props.resume as Resume
 
-  // DocDocument's title/author go into export metadata only — they
-  // don't render in the DOM preview, so a one-time read at mount is
-  // fine. The export path builds a fresh tree on each click, so the
-  // captured snapshot is always current at download time.
-  const initial = get()
-
+  // `title` and `author` are now passed as accessor functions —
+  // `extractDocumentTree` resolves them at export time so each
+  // download click reads the LIVE name from the store, not a value
+  // captured at template mount. This depends on PR D1, which
+  // widened DocDocument's prop types to accept `string | (() => string)`
+  // and updated `extractDocumentTree` to call function values when
+  // building `_documentProps`.
   return (
-    <DocDocument title={`${initial.name} — Resume`} author={initial.name}>
+    <DocDocument title={() => `${get().name} — Resume`} author={() => get().name}>
       <DocPage>
         {/* ── Header ──────────────────────────────────────────────── */}
         <DocHeading level="h1">{() => get().name}</DocHeading>

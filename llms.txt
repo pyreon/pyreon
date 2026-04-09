@@ -229,7 +229,7 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/kinetic — CSS-transition animations (Transition, Stagger, Collapse)
 - @pyreon/kinetic-presets — 120+ animation presets
 - @pyreon/connector-document — Bridge to @pyreon/document
-- @pyreon/document-primitives — 18 rocketstyle document components, render in browser AND export to 14+ formats via the same tree
+- @pyreon/document-primitives — 18 rocketstyle document components, render in browser AND export to 14+ formats via the same tree. `extractDocNode(templateFn)` one-step extraction. `DocDocument` accepts reactive accessors for title/author/subject (resolved at export time)
 
 ```typescript
 // PyreonUI — unified provider (replaces 3 separate providers)

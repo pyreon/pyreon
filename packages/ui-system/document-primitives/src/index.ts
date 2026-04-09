@@ -34,4 +34,4 @@ export type { DocumentTheme } from './theme'
 export { documentTheme } from './theme'
 // Export helper
 export type { DocumentExport, DocumentExportOptions } from './useDocumentExport'
-export { createDocumentExport } from './useDocumentExport'
+export { createDocumentExport, extractDocNode } from './useDocumentExport'

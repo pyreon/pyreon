@@ -1,5 +1,5 @@
 import { download } from '@pyreon/document'
-import { createDocumentExport } from '@pyreon/document-primitives'
+import { extractDocNode } from '@pyreon/document-primitives'
 import { toast } from '@pyreon/toast'
 import { ResumeTemplate } from './ResumeTemplate'
 import { useResume } from './store'
@@ -8,14 +8,19 @@ import { ExportButton, ToolbarRow } from './styled'
 /**
  * Export buttons.
  *
- * Uses `createDocumentExport(templateFn)` from
- * `@pyreon/document-primitives` to bridge the rocketstyle template
- * tree into a `DocNode` tree, then hands the result to
- * `@pyreon/document`'s `download()` helper for any output format.
+ * Uses `extractDocNode(templateFn)` from `@pyreon/document-primitives`
+ * — the one-step form that replaces the older
+ * `createDocumentExport(...).getDocNode()` two-step pattern. The
+ * same `<ResumeTemplate>` component renders the live preview AND
+ * gets walked by `extractDocNode` here, so the export is always
+ * the exact tree the user sees on screen. No duplicated layout
+ * code.
  *
- * The same `<ResumeTemplate>` component renders the live preview AND
- * gets walked by `extractDocumentTree` here — that's the whole point
- * of the document-primitives bridge. No duplicated layout code.
+ * `DocDocument`'s `title` and `author` are passed as accessor
+ * thunks inside ResumeTemplate, and `extractDocumentTree` resolves
+ * them at extraction time — so each export click reads the LIVE
+ * resume name from the store rather than a value frozen at template
+ * mount.
  */
 
 const FORMATS: Array<{ ext: string; label: string; emoji: string }> = [
@@ -35,11 +40,10 @@ export function ExportButtons() {
     const loadingId = toast.loading(`Generating ${ext.toUpperCase()}…`)
 
     try {
-      // Build a fresh export wrapper for this render. The template fn
-      // is invoked by `createDocumentExport` to produce a VNode tree,
-      // which then walks through `extractDocumentTree` to a DocNode.
-      const exportHelper = createDocumentExport(() => ResumeTemplate({ resume }))
-      const tree = exportHelper.getDocNode()
+      // One-step extraction. ResumeTemplate accepts a Resume snapshot
+      // OR a `() => Resume` accessor; passing the snapshot is fine
+      // here because each export click captures the current value.
+      const tree = extractDocNode(() => ResumeTemplate({ resume }))
       await download(tree, filename)
       toast.update(loadingId, { type: 'success', message: `Saved ${filename}` })
     } catch (error) {
