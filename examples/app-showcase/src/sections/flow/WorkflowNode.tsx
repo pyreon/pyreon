@@ -5,11 +5,12 @@ import { NodeCard, NodeConfig, NodeKindLabel, NodeLabel } from './styled'
 /**
  * Custom workflow node renderer registered with `<Flow nodeTypes={...}>`.
  *
- * Receives `NodeComponentProps` from the runtime: id, data, selected,
- * dragging. The `selected` and `dragging` flags are NOT signals — Flow
- * passes the current values on each render. Because Pyreon components
- * run once, we read them as plain props (Flow re-instantiates the
- * node component when its underlying selection state changes).
+ * `props.selected` and `props.dragging` are accessor functions
+ * (`() => boolean`), not plain booleans — read inside reactive scopes
+ * so the node patches in place when selection or drag state changes
+ * instead of re-mounting on every selection click. The runtime
+ * mounts each WorkflowNode exactly once across the lifetime of the
+ * graph; only the per-prop accessor reads re-evaluate.
  *
  * Each node has a target handle on the left and a source handle on
  * the right — that's enough for the linear workflow demo. A real
@@ -18,7 +19,7 @@ import { NodeCard, NodeConfig, NodeKindLabel, NodeLabel } from './styled'
  */
 export function WorkflowNode(props: NodeComponentProps<WorkflowNodeData>) {
   return (
-    <NodeCard $kind={props.data.kind} $selected={props.selected}>
+    <NodeCard $kind={props.data.kind} $selected={props.selected()}>
       <Handle type="target" position={Position.Left} />
       <NodeKindLabel $kind={props.data.kind}>{props.data.kind}</NodeKindLabel>
       <NodeLabel>{props.data.label}</NodeLabel>

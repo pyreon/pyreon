@@ -1,4 +1,4 @@
-import { createFlow, type FlowInstance } from '@pyreon/flow'
+import { createFlow, type FlowInstance, type FlowNode } from '@pyreon/flow'
 import { defineStore } from '@pyreon/store'
 import { NODE_KIND_LABELS, SEED_EDGES, SEED_NODES } from './data/seed'
 import type { WorkflowNodeData, WorkflowNodeKind } from './data/types'
@@ -22,11 +22,9 @@ import type { WorkflowNodeData, WorkflowNodeKind } from './data/types'
  * graph stays flat.
  */
 export const useFlowEditor = defineStore('flow-editor', () => {
-  // SEED_NODES uses WorkflowNodeData (which has an index signature so
-  // it satisfies FlowNode's default Record<string, unknown> data
-  // constraint). On read sites the data shape is narrowed back via
-  // the WorkflowNode component prop type.
-  const instance: FlowInstance = createFlow({
+  // createFlow is generic over the data shape — pass WorkflowNodeData
+  // explicitly so reads on `node.data.kind` narrow to the typed union.
+  const instance: FlowInstance<WorkflowNodeData> = createFlow<WorkflowNodeData>({
     nodes: SEED_NODES,
     edges: SEED_EDGES,
     defaultEdgeType: 'smoothstep',
@@ -93,7 +91,7 @@ export const useFlowEditor = defineStore('flow-editor', () => {
     try {
       instance.pushHistory()
       instance.fromJSON({
-        nodes: obj.nodes as never,
+        nodes: obj.nodes as FlowNode<WorkflowNodeData>[],
         edges: obj.edges as never,
       })
       return null

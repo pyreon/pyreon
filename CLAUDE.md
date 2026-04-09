@@ -287,11 +287,11 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 ### @pyreon/flow
 
-- `createFlow({ nodes, edges, ...config })` — reactive flow instance with signal-based state
+- `createFlow<TData>({ nodes, edges, ...config })` — generic over node `data` shape. `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` if no generic supplied.
 - Node/edge CRUD, selection, viewport (zoom/pan/fitView), auto-layout via elkjs (lazy-loaded)
-- Components: `<Flow nodeTypes={{ custom: MyNode }}>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`
+- Components: `<Flow nodeTypes={{ custom: MyNode }}>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.
 - Edge paths: `getBezierPath()`, `getSmoothStepPath()`, `getStraightPath()`, `getStepPath()`
-- Custom node renderers receive `NodeComponentProps<TData>`: `{ id, data, selected, dragging }` — note `selected`/`dragging` are plain props (not signals), so node components remount on selection change rather than reactively patching
+- Custom node renderers receive `NodeComponentProps<TData>`: `{ id, data, selected: () => boolean, dragging: () => boolean }`. **`selected` and `dragging` are reactive accessors, not plain booleans** — read inside reactive scopes (JSX expression thunks, `effect()`, `computed()`) so the node patches in place when selection/drag state changes. Mounting each node exactly once means a single click in a 1000-node graph is O(1) instead of O(N).
 - `flow.toJSON()` / `flow.fromJSON()` for serialization round-trips, `flow.layout('layered', { direction })` for elkjs auto-layout
 - No D3 — pan/zoom via pointer events + CSS transforms
 - **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps

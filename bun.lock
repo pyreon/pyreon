@@ -516,6 +516,7 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "peerDependencies": {

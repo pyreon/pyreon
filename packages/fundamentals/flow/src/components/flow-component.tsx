@@ -10,15 +10,23 @@ type NodeTypeMap = Record<string, (props: NodeComponentProps<any>) => VNodeChild
 
 /**
  * Default node renderer — simple labeled box.
+ *
+ * `props.selected` and `props.dragging` are accessor functions, not
+ * plain booleans — read inside reactive scopes (here: the `style`
+ * attribute thunk) so the node patches in place when selection or
+ * drag state changes, instead of re-mounting on every selection
+ * click.
  */
 function DefaultNode(props: NodeComponentProps) {
-  const borderColor = props.selected ? '#3b82f6' : '#ddd'
-  const cursor = props.dragging ? 'grabbing' : 'grab'
   return (
     <div
-      style={`padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`}
+      style={() => {
+        const borderColor = props.selected() ? '#3b82f6' : '#ddd'
+        const cursor = props.dragging() ? 'grabbing' : 'grab'
+        return `padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
+      }}
     >
-      {(props.data?.label as string) ?? props.id}
+      {((props.data as { label?: string } | undefined)?.label as string) ?? props.id}
     </div>
   )
 }
@@ -255,23 +263,45 @@ function NodeLayer(props: {
 }): VNodeChild {
   const { instance, nodeTypes, draggingNodeId, onNodePointerDown, onHandlePointerDown } = props
 
+  // The outer reactive thunk subscribes ONLY to `instance.nodes()` —
+  // the actual node array. Selection state and drag state are read
+  // inside per-node accessor thunks (the `class`, `style`, and the
+  // accessor props passed to <NodeComponent />). That keeps each
+  // node mounted exactly once across selection clicks and drags;
+  // only the inline `class`/`style`/`z-index` thunks and the user's
+  // own custom node component rerun, in place.
+  //
+  // Before this rewrite, the whole loop subscribed to selectedNodes
+  // and draggingNodeId at the top, so a single click would re-create
+  // every node component in the graph — N×O work for one click.
   return () => {
     const nodes = instance.nodes()
-    const selectedIds = instance.selectedNodes()
-    const dragId = draggingNodeId()
 
     return (
       <>
         {nodes.map((node) => {
-          const isSelected = selectedIds.includes(node.id)
-          const isDragging = dragId === node.id
           const NodeComponent = (node.type && nodeTypes[node.type]) || nodeTypes.default!
+
+          // Per-node accessors. Each tracks its own scoped reactive
+          // state: `isSelected` reads `selectedNodes()` from the
+          // instance's selection set, and `isDragging` reads the
+          // current dragging-node-id signal.
+          const isSelected = (): boolean => instance.selectedNodes().includes(node.id)
+          const isDragging = (): boolean => draggingNodeId() === node.id
 
           return (
             <div
               key={node.id}
-              class={`pyreon-flow-node ${node.class ?? ''} ${isSelected ? 'selected' : ''} ${isDragging ? 'dragging' : ''}`}
-              style={`position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${isDragging ? 1000 : isSelected ? 100 : 0}; ${node.style ?? ''}`}
+              class={() =>
+                `pyreon-flow-node ${node.class ?? ''} ${
+                  isSelected() ? 'selected' : ''
+                } ${isDragging() ? 'dragging' : ''}`
+              }
+              style={() =>
+                `position: absolute; transform: translate(${node.position.x}px, ${node.position.y}px); z-index: ${
+                  isDragging() ? 1000 : isSelected() ? 100 : 0
+                }; ${node.style ?? ''}`
+              }
               data-nodeid={node.id}
               onClick={(e: MouseEvent) => {
                 e.stopPropagation()
@@ -329,7 +359,15 @@ type EdgeTypeMap = Record<
 >
 
 export interface FlowComponentProps {
-  instance: FlowInstance
+  /**
+   * The flow instance. Typed as `FlowInstance<any>` rather than a
+   * generic on the component itself because Pyreon JSX components
+   * cannot be parameterised at the call site (`<Flow<MyData> />` is
+   * not valid JSX). Typed consumers create `FlowInstance<MyData>`
+   * via `createFlow<MyData>(...)`, then pass it here without
+   * needing to cast.
+   */
+  instance: FlowInstance<any>
   /** Custom node type renderers */
   nodeTypes?: NodeTypeMap
   /** Custom edge type renderers */
