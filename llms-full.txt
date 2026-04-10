@@ -943,7 +943,10 @@ const flow = createFlow<WorkflowData>({
 
 flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
 flow.addEdge({ source: '1', target: '3' })
-await flow.layout('layered', { direction: 'RIGHT' })  // lazy-loaded elkjs
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // lazy-loaded elkjs
+// `direction`/`layerSpacing`/`edgeRouting` apply to layered/tree only —
+// `force`/`stress`/`radial`/`box`/`rectpacking` silently ignore them.
+// `nodeSpacing` is the only LayoutOptions field respected by every algorithm.
 
 // Custom node renderers — every prop except `id` is a REACTIVE
 // ACCESSOR (`() => T`), not a plain value. Read inside reactive

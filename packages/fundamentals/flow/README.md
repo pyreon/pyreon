@@ -44,7 +44,9 @@ Create a reactive flow instance with signal-based state.
 
 **Viewport:** `zoomIn()`, `zoomOut()`, `zoomTo()`, `fitView()`, `panTo()`
 
-**Layout:** `flow.layout(algorithm, options)` — auto-layout via elkjs (lazy-loaded). Algorithms: layered, force, stress, tree, radial, box.
+**Layout:** `flow.layout(algorithm, options)` — auto-layout via elkjs (lazy-loaded). Algorithms: `layered`, `force`, `stress`, `tree`, `radial`, `box`, `rectpacking`.
+
+> **Algorithm-specific options**: `direction`, `layerSpacing`, and `edgeRouting` are namespaced under ELK's layered/tree pipelines and are silently ignored by `force`, `stress`, `radial`, `box`, and `rectpacking`. `nodeSpacing` is the only `LayoutOptions` field respected by every algorithm. See [`docs/docs/flow.md`](../../../docs/docs/flow.md#auto-layout) for the full applicability table.
 
 **Graph queries:** `getConnectedEdges()`, `getIncomers()`, `getOutgoers()`, `isValidConnection()`
 

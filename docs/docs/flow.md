@@ -198,27 +198,44 @@ Layout nodes automatically using elkjs (lazy-loaded — zero cost until called):
 
 ```tsx
 // Layered layout (DAG/pipeline)
-await flow.layout('layered', { direction: 'RIGHT', spacing: 50 })
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
 
 // Tree layout
-await flow.layout('tree', { direction: 'DOWN', spacing: 40 })
+await flow.layout('tree', { direction: 'DOWN', nodeSpacing: 40 })
 
 // Force-directed
-await flow.layout('force')
+await flow.layout('force', { nodeSpacing: 80 })
 
 // Available algorithms
 await flow.layout('stress')
 await flow.layout('radial')
 await flow.layout('box')
+await flow.layout('rectpacking')
 ```
 
 ### Layout Options
 
-| Option         | Type                                  | Default   | Description            |
-| -------------- | ------------------------------------- | --------- | ---------------------- |
-| `direction`    | `'DOWN' \| 'RIGHT' \| 'UP' \| 'LEFT'` | `'DOWN'`  | Layout direction       |
-| `spacing`      | `number`                              | `50`      | Spacing between nodes  |
-| `layerSpacing` | `number`                              | `spacing` | Spacing between layers |
+| Option              | Type                                          | Default        | Description                       |
+| ------------------- | --------------------------------------------- | -------------- | --------------------------------- |
+| `direction`         | `'DOWN' \| 'RIGHT' \| 'UP' \| 'LEFT'`         | `'DOWN'`       | Layout direction                  |
+| `nodeSpacing`       | `number`                                      | `50`           | Spacing between nodes             |
+| `layerSpacing`      | `number`                                      | `80`           | Spacing between layers            |
+| `edgeRouting`       | `'orthogonal' \| 'splines' \| 'polyline'`     | `'orthogonal'` | How edges are routed              |
+| `animate`           | `boolean`                                     | `true`         | Animate the layout transition     |
+| `animationDuration` | `number`                                      | `300`          | Animation duration in milliseconds |
+
+#### Algorithm Applicability
+
+Not every option applies to every algorithm. The table below is **empirically verified** — each cell records whether running the algorithm twice with two different values for that option produces a different layout (`✅`) or an identical one (`❌`).
+
+| Option         | `layered` | `tree` | `force` | `stress` | `radial` | `box` | `rectpacking` |
+| -------------- | :-------: | :----: | :-----: | :------: | :------: | :---: | :-----------: |
+| `direction`    |     ✅    |   ✅   |    ❌   |    ❌    |    ❌    |   ❌  |       ❌      |
+| `nodeSpacing`  |     ✅    |   ✅   |    ✅   |    ✅    |    ✅    |   ✅  |       ✅      |
+| `layerSpacing` |     ✅    |   ❌   |    ❌   |    ❌    |    ❌    |   ❌  |       ❌      |
+| `edgeRouting`  |     ✅    |   ❌   |    ❌   |    ❌    |    ❌    |   ❌  |       ❌      |
+
+`direction`, `layerSpacing`, and `edgeRouting` are namespaced under ELK's layered/tree pipelines. The other algorithms accept the option in `LayoutOptions` (so it typechecks) but **silently ignore** the value at layout time. Use `layered` or `tree` if you need a directional layout. `nodeSpacing` is the only option respected by every algorithm.
 
 elkjs is loaded on demand — only imported when `flow.layout()` is first called.
 
