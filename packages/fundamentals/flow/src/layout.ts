@@ -19,6 +19,54 @@ const ELK_DIRECTIONS: Record<string, string> = {
   RIGHT: 'RIGHT',
 }
 
+// ─── Algorithm-specific option applicability ─────────────────────────────────
+//
+// ELK options are namespaced under specific algorithms — passing
+// `elk.direction` to a force layout, for example, has zero effect.
+// The truth table below was verified empirically by running each
+// algorithm twice with two different values for the option and
+// checking whether the resulting node positions differ. The probe
+// script lives in the PR description for the catalog item that
+// added this table.
+//
+// Used by `warnIgnoredOptions` (dev mode only) to surface "you set
+// this and it did nothing" mistakes that would otherwise be silent.
+const DIRECTION_ALGORITHMS = new Set<LayoutAlgorithm>(['layered', 'tree'])
+const LAYER_SPACING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
+const EDGE_ROUTING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
+
+// Match the rest of the codebase: dev mode is detected via NODE_ENV.
+// Production bundles set NODE_ENV=production and tree-shake the
+// `if (!__DEV__) return` early-exit (the bundler can prove the
+// constant is false and the rest of the function dead).
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+
+function warnIgnoredOptions(algorithm: LayoutAlgorithm, options: LayoutOptions): void {
+  if (!__DEV__) return
+
+  if (options.direction !== undefined && !DIRECTION_ALGORITHMS.has(algorithm)) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] flow.layout: \`direction\` is silently ignored by the \`${algorithm}\` algorithm. ` +
+        `It applies to \`layered\` and \`tree\` only — switch the algorithm or remove the option to silence this warning.`,
+    )
+  }
+  if (options.layerSpacing !== undefined && !LAYER_SPACING_ALGORITHMS.has(algorithm)) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] flow.layout: \`layerSpacing\` is silently ignored by the \`${algorithm}\` algorithm. ` +
+        `It applies to \`layered\` only — use \`nodeSpacing\` for general spacing or switch to \`layered\`.`,
+    )
+  }
+  if (options.edgeRouting !== undefined && !EDGE_ROUTING_ALGORITHMS.has(algorithm)) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] flow.layout: \`edgeRouting\` is silently ignored by the \`${algorithm}\` algorithm. ` +
+        `It applies to \`layered\` only — switch to \`layered\` or remove the option to silence this warning.`,
+    )
+  }
+}
+
 // ─── Lazy-loaded ELK instance ────────────────────────────────────────────────
 
 let elkInstance: any = null
@@ -140,6 +188,7 @@ export async function computeLayout<TData = Record<string, unknown>>(
   algorithm: LayoutAlgorithm = 'layered',
   options: LayoutOptions = {},
 ): Promise<Array<{ id: string; position: { x: number; y: number } }>> {
+  warnIgnoredOptions(algorithm, options)
   const elk = await getELK()
   const graph = toElkGraph(nodes, edges, algorithm, options)
   const result: ElkResult = await elk.layout(graph)

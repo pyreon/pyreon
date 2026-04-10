@@ -1780,6 +1780,98 @@ describe('computeLayout', () => {
   })
 })
 
+describe('computeLayout — silent-option dev warnings', () => {
+  // Verifies the runtime warning for `LayoutOptions` fields that ELK
+  // namespaces under specific algorithms (`direction`, `layerSpacing`,
+  // `edgeRouting`). The empirically-verified applicability table:
+  //
+  //                  layered tree  force stress radial box rectpacking
+  //   direction        ✅    ✅    ❌    ❌      ❌    ❌    ❌
+  //   nodeSpacing      ✅    ✅    ✅    ✅      ✅    ✅    ✅
+  //   layerSpacing     ✅    ❌    ❌    ❌      ❌    ❌    ❌
+  //   edgeRouting      ✅    ❌    ❌    ❌      ❌    ❌    ❌
+  //
+  // The dev warning catches mistakes that would otherwise be silent —
+  // a user setting `direction: 'RIGHT'` on a force layout currently
+  // gets a layout that ignores their direction without any feedback.
+
+  const node = { id: '1', position: { x: 0, y: 0 }, data: {} }
+
+  it('warns when direction is set on a force layout', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'force', { direction: 'RIGHT' })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/direction.*silently ignored.*force/)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/layered.*tree/)
+    warn.mockRestore()
+  })
+
+  it('warns when layerSpacing is set on a tree layout (tree only respects nodeSpacing)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'tree', { layerSpacing: 100 })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/layerSpacing.*silently ignored.*tree/)
+    warn.mockRestore()
+  })
+
+  it('warns when edgeRouting is set on a radial layout', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'radial', { edgeRouting: 'splines' })
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/edgeRouting.*silently ignored.*radial/)
+    warn.mockRestore()
+  })
+
+  it('does NOT warn when direction is set on a layered layout (it applies)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'layered', { direction: 'RIGHT' })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('does NOT warn when direction is set on a tree layout (it applies)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'tree', { direction: 'DOWN' })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('does NOT warn when nodeSpacing is set on any algorithm (universally applies)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    for (const algo of [
+      'layered',
+      'tree',
+      'force',
+      'stress',
+      'radial',
+      'box',
+      'rectpacking',
+    ] as const) {
+      await computeLayout([node], [], algo, { nodeSpacing: 100 })
+    }
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it('emits multiple warnings if multiple ignored options are set', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'force', {
+      direction: 'RIGHT',
+      layerSpacing: 100,
+      edgeRouting: 'splines',
+    })
+    expect(warn).toHaveBeenCalledTimes(3)
+    warn.mockRestore()
+  })
+
+  it('does NOT warn when an ignored option is undefined (only set values are checked)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await computeLayout([node], [], 'force', { nodeSpacing: 50 })
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
 describe('flow.layout', () => {
   it('applies layout without animation', async () => {
     const flow = createFlow({

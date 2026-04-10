@@ -412,17 +412,18 @@ export interface LayoutOptions {
   /**
    * Layout direction — default: `'DOWN'`.
    *
-   * **Applies to**: `layered`, `tree` algorithms (mapped to ELK's
-   * `elk.direction` option, which is documented as a layered/tree
-   * concept). The other algorithms (`force`, `stress`, `radial`,
-   * `box`, `rectpacking`) compute positions geometrically rather than
-   * along a directed flow, so they **silently ignore** this option.
-   * Set the algorithm to `layered` or `tree` if you need a directional
-   * layout.
+   * **Applies to**: `layered`, `tree`. Maps to ELK's `elk.direction`
+   * option. The other algorithms (`force`, `stress`, `radial`, `box`,
+   * `rectpacking`) compute positions geometrically rather than along
+   * a directed flow, so they **silently ignore** this option.
+   * Verified by running each algorithm twice with `'DOWN'` vs
+   * `'RIGHT'` and checking whether the resulting positions differ.
    */
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
   /**
-   * Spacing between nodes — default: 50. Applies to all algorithms.
+   * Spacing between nodes — default: 50. **Applies to all
+   * algorithms.** Maps to ELK's `elk.spacing.nodeNode`, which is a
+   * generic spacing option respected by every algorithm in the suite.
    */
   nodeSpacing?: number
   /**
@@ -430,17 +431,18 @@ export interface LayoutOptions {
    *
    * **Applies to**: `layered` only. Maps to ELK's
    * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced
-   * under the layered algorithm. The other algorithms have no concept
-   * of "layers" and silently ignore this option.
+   * under the layered algorithm. The other algorithms (including
+   * `tree`, which uses its own `elk.mrtree.spacing.nodeNode`) have no
+   * concept of "layers between nodes" and silently ignore this option.
    */
   layerSpacing?: number
   /**
    * Edge routing — default: `'orthogonal'`.
    *
-   * **Applies to**: primarily `layered` (where ELK's edge router
-   * runs as part of the layered pipeline). Other algorithms accept
-   * the value but typically route edges as straight segments
-   * regardless.
+   * **Applies to**: `layered` only. Maps to ELK's `elk.edgeRouting`,
+   * which is consumed by the layered pipeline's edge router. The
+   * other algorithms route edges as straight segments regardless of
+   * this value.
    */
   edgeRouting?: 'orthogonal' | 'splines' | 'polyline'
   /** Whether to animate the layout transition — default: true */

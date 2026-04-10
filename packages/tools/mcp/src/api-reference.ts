@@ -768,7 +768,9 @@ const flow = createFlow<WorkflowData>({
 const trigger = flow.findNodes((n) => n.data.kind === 'trigger')
 
 flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
-await flow.layout('layered', { direction: 'RIGHT' })  // auto-layout via lazy-loaded elkjs
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // auto-layout via lazy-loaded elkjs
+// LayoutOptions applicability: direction/layerSpacing/edgeRouting apply to layered/tree only;
+// force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization
 
 // Custom node renderer — every prop except id is a REACTIVE ACCESSOR
@@ -795,6 +797,7 @@ function CustomNode(props: NodeComponentProps<WorkflowData>) {
 - Calling props.data() OUTSIDE a reactive scope — captures the value once at component setup, defeating reactivity. Read it inside JSX expression thunks, effect, or computed: {() => props.data().label}
 - Adding [key: string]: unknown index signature to your node data interface — no longer needed now that createFlow is generic. Just pass createFlow<MyData>(...)
 - Using direction: 'row' on flow's containing layout — Pyreon Element accepts 'inline'|'rows'|'reverseInline'|'reverseRows', not 'row'
+- Setting LayoutOptions.direction (or layerSpacing, or edgeRouting) on a force/stress/radial/box/rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered/tree pipelines and silently ignored by the geometric algorithms. Switch the algorithm to 'layered' or 'tree' if you need a directional layout.
 - Missing the <Flow nodeTypes={{ key: Component }}> registration — node.type strings dispatch to that map`,
   },
 
