@@ -117,6 +117,13 @@ function toElkGraph<TData>(
  *
  * elkjs is lazy-loaded — zero bundle cost until this function is called.
  *
+ * **Algorithm-specific options**: not every option in `LayoutOptions`
+ * applies to every algorithm. `direction` and `layerSpacing` are
+ * namespaced under ELK's layered/tree pipelines and are silently
+ * ignored by `force`, `stress`, `radial`, `box`, and `rectpacking`.
+ * See the JSDoc on each `LayoutOptions` field for the exact
+ * applicability rules.
+ *
  * @example
  * ```ts
  * const positions = await computeLayout(nodes, edges, 'layered', {
