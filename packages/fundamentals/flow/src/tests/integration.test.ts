@@ -1872,6 +1872,139 @@ describe('computeLayout — silent-option dev warnings', () => {
   })
 })
 
+describe('warnIgnoredOptions — gate pattern regression', () => {
+  // The whole reason `warnIgnoredOptions` exists is to fire IN A
+  // BROWSER VITE DEV BUILD where users actually call `flow.layout()`.
+  //
+  // The first attempt at this gate used `typeof process !==
+  // 'undefined' && process.env.NODE_ENV !== 'production'` — which
+  // works in vitest (where `process` exists) but is **dead code in
+  // a real browser bundle** because Vite does not polyfill
+  // `process`. The bug was invisible: the unit tests passed (vitest
+  // has `process`), but in production users got no warning at all.
+  //
+  // The fix uses `import.meta.env.DEV` — the Vite/Rolldown standard,
+  // literal-replaced at build time, independent of `process`. The
+  // bundler folds the gate to a literal in prod and tree-shakes the
+  // warning helper to zero bytes; in dev it stays live.
+  //
+  // We can't write a runtime test that simulates "browser without
+  // process" because vitest's own `import.meta.env` implementation
+  // depends on `process` (deleting `process` breaks the FIXED gate
+  // too — not because the gate is wrong, but because vitest can't
+  // resolve `import.meta.env` after `process` is gone). So this
+  // suite tests the property at TWO levels:
+  //
+  //   1. Source-pattern level: assert that the `warnIgnoredOptions`
+  //      function uses `import.meta.env.DEV` and does NOT contain
+  //      `typeof process` in its body. Catches a regression where
+  //      someone "matches the rest of the codebase" and switches
+  //      back to the broken pattern.
+  //
+  //   2. Bundle level: feed `layout.ts` to esbuild with the same
+  //      defines Vite uses, and assert the prod bundle has the
+  //      warning text tree-shaken out. Catches a regression where
+  //      the gate is rewritten in a way that the minifier can't
+  //      fold to a literal.
+
+  it('warnIgnoredOptions function source uses import.meta.env.DEV, not typeof process', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+
+    const layoutPath = path.resolve(import.meta.dirname, '../layout.ts')
+    const source = fs.readFileSync(layoutPath, 'utf-8')
+
+    // Extract the warnIgnoredOptions function body. The function
+    // declaration plus everything up to and including its closing
+    // brace at column 0.
+    const fnMatch = source.match(
+      /function warnIgnoredOptions\([^)]*\): void \{[\s\S]*?^\}/m,
+    )
+    expect(fnMatch, 'warnIgnoredOptions function should exist in layout.ts').toBeTruthy()
+    const rawFnBody = fnMatch![0]
+
+    // Strip comments before pattern-matching — the explanatory
+    // comment legitimately mentions `typeof process` to document
+    // why we don't use that pattern, and we don't want a comment
+    // to make the test pass or fail. Only the executable code
+    // should be checked.
+    const fnCode = rawFnBody
+      .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+      .replace(/^\s*\/\/.*$/gm, '') // line comments
+
+    // The gate MUST use Vite's `import.meta.env.DEV`, which is
+    // literal-replaced at build time and fires in real browser
+    // bundles.
+    expect(fnCode, 'warnIgnoredOptions must gate on import.meta.env.DEV').toMatch(
+      /import\.meta\.env\??\.DEV/,
+    )
+
+    // The gate MUST NOT contain `typeof process`, which is dead
+    // code in a Vite browser bundle (Vite does not polyfill
+    // `process`). If this assertion fails, someone reverted the
+    // gate and the warning is silent in production browsers.
+    expect(fnCode, 'warnIgnoredOptions gate must not depend on `process`').not.toMatch(
+      /typeof\s+process\s*!==\s*['"]undefined['"]/,
+    )
+    expect(fnCode, 'warnIgnoredOptions gate must not use `process.env`').not.toMatch(
+      /process\.env/,
+    )
+  })
+
+  it('layout.ts produces a tree-shaken prod bundle (esbuild + Vite-realistic defines)', async () => {
+    // Bundle layout.ts via esbuild — the same transformer Vite
+    // uses internally — with the defines a real Vite production
+    // build would inject. Assert the warning text is gone from the
+    // output and the prod bundle is smaller than the dev bundle
+    // (proves the dead-code elimination worked).
+    const esbuild = await import('esbuild')
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+
+    const layoutPath = path.resolve(import.meta.dirname, '../layout.ts')
+    const layoutSource = fs.readFileSync(layoutPath, 'utf-8')
+
+    // Stub the elkjs dynamic import so the bundle is self-contained.
+    const harness = layoutSource.replace(
+      "import('elkjs/lib/elk.bundled.js')",
+      "Promise.resolve({ default: class { layout(g){ return Promise.resolve({children:[]}) } } })",
+    )
+
+    async function bundle(mode: 'dev' | 'prod') {
+      const result = await esbuild.build({
+        stdin: { contents: harness, loader: 'ts', resolveDir: path.dirname(layoutPath) },
+        bundle: true,
+        format: 'esm',
+        write: false,
+        minify: true, // Vite prod minifies — match its behaviour
+        treeShaking: true,
+        define: {
+          'import.meta.env.DEV': mode === 'dev' ? 'true' : 'false',
+          'process.env.NODE_ENV': mode === 'dev' ? '"development"' : '"production"',
+        },
+      })
+      return result.outputFiles[0]!.text
+    }
+
+    const prodCode = await bundle('prod')
+    const devCode = await bundle('dev')
+
+    // PROD: warning must be tree-shaken to nothing.
+    expect(prodCode).not.toContain('silently ignored')
+    expect(prodCode).not.toContain('[Pyreon] flow.layout')
+
+    // DEV: warning must be present and reachable.
+    expect(devCode).toContain('silently ignored')
+    expect(devCode).toContain('[Pyreon] flow.layout')
+
+    // Sanity: the dev bundle is bigger because it carries the
+    // warning helper code. If they're the same size, something is
+    // off (e.g. esbuild not honouring the define and folding both
+    // sides to the same output).
+    expect(devCode.length).toBeGreaterThan(prodCode.length)
+  })
+})
+
 describe('flow.layout', () => {
   it('applies layout without animation', async () => {
     const flow = createFlow({

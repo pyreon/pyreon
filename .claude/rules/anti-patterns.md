@@ -39,6 +39,7 @@
 - **Duplicating controlled/uncontrolled pattern**: Use `useControllableState` from `@pyreon/hooks` instead of manual `isControlled + signal + getter` pattern. Every primitive had this duplicated before the fix.
 - **Static return null for conditional rendering**: `if (!isActive()) return null` runs once — components run once in Pyreon. Use reactive accessor: `return (() => { if (!isActive()) return null; return <div>...</div> })`. This applies to TabPanelBase, ModalBase, and any component that conditionally renders.
 - **Empty `.theme({})`**: Never chain `.theme({})` as a no-op. If a component needs no base theme, skip `.theme()` entirely.
+- **`typeof process !== 'undefined'` for dev-mode warnings**: Dead code in real Vite browser bundles because Vite does not polyfill `process`. The warning fires in vitest (where `process` exists) but is silently dead in production browsers — unit tests pass while users get nothing. Use `import.meta.env.DEV` instead — Vite/Rolldown literal-replace it at build time, the prod bundle tree-shakes the warning to zero bytes, and vitest sets it to `true` automatically. Reference implementation: `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`. Several existing files (`runtime-dom/src/transition.ts`, `core/core/src/lifecycle.ts`, etc.) use the broken pattern and need a separate cleanup PR.
 
 ## Testing Mistakes
 
