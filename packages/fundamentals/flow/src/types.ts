@@ -409,13 +409,39 @@ export type LayoutAlgorithm =
   | 'rectpacking'
 
 export interface LayoutOptions {
-  /** Layout direction — default: 'DOWN' */
+  /**
+   * Layout direction — default: `'DOWN'`.
+   *
+   * **Applies to**: `layered`, `tree` algorithms (mapped to ELK's
+   * `elk.direction` option, which is documented as a layered/tree
+   * concept). The other algorithms (`force`, `stress`, `radial`,
+   * `box`, `rectpacking`) compute positions geometrically rather than
+   * along a directed flow, so they **silently ignore** this option.
+   * Set the algorithm to `layered` or `tree` if you need a directional
+   * layout.
+   */
   direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'
-  /** Spacing between nodes — default: 50 */
+  /**
+   * Spacing between nodes — default: 50. Applies to all algorithms.
+   */
   nodeSpacing?: number
-  /** Spacing between layers — default: 80 */
+  /**
+   * Spacing between layers — default: 80.
+   *
+   * **Applies to**: `layered` only. Maps to ELK's
+   * `elk.layered.spacing.nodeNodeBetweenLayers` which is namespaced
+   * under the layered algorithm. The other algorithms have no concept
+   * of "layers" and silently ignore this option.
+   */
   layerSpacing?: number
-  /** Edge routing — default: 'orthogonal' */
+  /**
+   * Edge routing — default: `'orthogonal'`.
+   *
+   * **Applies to**: primarily `layered` (where ELK's edge router
+   * runs as part of the layered pipeline). Other algorithms accept
+   * the value but typically route edges as straight segments
+   * regardless.
+   */
   edgeRouting?: 'orthogonal' | 'splines' | 'polyline'
   /** Whether to animate the layout transition — default: true */
   animate?: boolean

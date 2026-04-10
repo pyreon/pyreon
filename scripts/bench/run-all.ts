@@ -64,11 +64,12 @@ function parseOpsLine(line: string): { label: string; opsPerSec: number; avgNs: 
   // Match lines with at least two number columns (ops/sec and avg ns/op)
   const match = line.match(/^(.+?)\s{2,}([\d,]+)\s+([\d,]+)\s*$/)
   if (!match) return null
-  const label = match[1]!.trim()
-  const opsPerSec = Number(match[2]!.replace(/,/g, ''))
-  const avgNs = Number(match[3]!.replace(/,/g, ''))
+  const [, labelRaw, opsRaw, avgRaw] = match
+  if (!labelRaw || !opsRaw || !avgRaw) return null
+  const opsPerSec = Number(opsRaw.replace(/,/g, ''))
+  const avgNs = Number(avgRaw.replace(/,/g, ''))
   if (Number.isNaN(opsPerSec) || Number.isNaN(avgNs)) return null
-  return { label, opsPerSec, avgNs }
+  return { label: labelRaw.trim(), opsPerSec, avgNs }
 }
 
 /**
@@ -80,11 +81,12 @@ function parseSSRLine(
 ): { label: string; rendersPerSec: number; avgMs: number } | null {
   const match = line.match(/^(.+?)\s{2,}([\d,]+)\s+([\d.]+)\s+([\d,]+)\s*$/)
   if (!match) return null
-  const label = match[1]!.trim()
-  const rendersPerSec = Number(match[2]!.replace(/,/g, ''))
-  const avgMs = Number(match[3]!)
+  const [, labelRaw, rendersRaw, avgRaw] = match
+  if (!labelRaw || !rendersRaw || !avgRaw) return null
+  const rendersPerSec = Number(rendersRaw.replace(/,/g, ''))
+  const avgMs = Number(avgRaw)
   if (Number.isNaN(rendersPerSec) || Number.isNaN(avgMs)) return null
-  return { label, rendersPerSec, avgMs }
+  return { label: labelRaw.trim(), rendersPerSec, avgMs }
 }
 
 // ─── Extractors ─────────────────────────────────────────────────────────────
@@ -141,7 +143,9 @@ function extractRouter(output: string, results: Record<string, BenchMetric>): vo
   for (const line of lines) {
     const sizeMatch = line.match(/Route table: (\d+) routes/)
     if (sizeMatch) {
-      currentSize = sizeMatch[1]!
+      const [, size] = sizeMatch
+      if (!size) continue
+      currentSize = size
       continue
     }
 
@@ -211,8 +215,10 @@ function extractServer(output: string, results: Record<string, BenchMetric>): vo
     // Handler throughput lines: "simple (1 route)       5,000         0.200"
     const handlerMatch = line.match(/^(.+?)\s{2,}([\d,]+)\s+([\d.]+)\s*$/)
     if (handlerMatch) {
-      const label = handlerMatch[1]!.trim()
-      const avgMs = Number(handlerMatch[3]!)
+      const [, labelRaw, , avgRaw] = handlerMatch
+      if (!labelRaw || !avgRaw) continue
+      const label = labelRaw.trim()
+      const avgMs = Number(avgRaw)
       if (!Number.isNaN(avgMs) && (label.includes('route') || label.includes('deep'))) {
         const key = label.toLowerCase().replace(/[()]/g, '').replace(/\s+/g, '-')
         results[`server/handler-${key}`] = {
