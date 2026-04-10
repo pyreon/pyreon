@@ -35,14 +35,34 @@ const DIRECTION_ALGORITHMS = new Set<LayoutAlgorithm>(['layered', 'tree'])
 const LAYER_SPACING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
 const EDGE_ROUTING_ALGORITHMS = new Set<LayoutAlgorithm>(['layered'])
 
-// Match the rest of the codebase: dev mode is detected via NODE_ENV.
-// Production bundles set NODE_ENV=production and tree-shake the
-// `if (!__DEV__) return` early-exit (the bundler can prove the
-// constant is false and the rest of the function dead).
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
-
 function warnIgnoredOptions(algorithm: LayoutAlgorithm, options: LayoutOptions): void {
-  if (!__DEV__) return
+  // Dev-mode gate via `import.meta.env.DEV` — the Vite/Rolldown standard.
+  //
+  // - **Vite browser dev** build: literal-replaced with `true` →
+  //   `!true` is `false` → falls through → warning fires.
+  // - **Vite browser prod** build (minified): literal-replaced with
+  //   `false` → `!false` is `true` → returns. esbuild's minifier
+  //   then proves the rest of the function body is unreachable and
+  //   tree-shakes it to **zero bytes**. Verified empirically by
+  //   feeding this file to esbuild with the same defines Vite uses
+  //   (`'import.meta.env.DEV': 'false'`, `minify: true`,
+  //   `treeShaking: true`) and inspecting the output bundle — the
+  //   warning function disappears entirely from prod output.
+  // - **vitest**: vitest is Vite-based and sets
+  //   `import.meta.env.DEV === true` automatically, so the warning
+  //   fires in the regression tests below without any extra setup.
+  //
+  // Why NOT `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+  // (the pattern used by `runtime-dom/src/transition.ts` and other
+  // files in this codebase): in a real Vite browser bundle, `process`
+  // is `undefined` (Vite does not polyfill it by default), so the
+  // guard is `false` and the warning is dead code WHERE USERS
+  // ACTUALLY HIT THE BUG. The codebase-wide pattern bug is tracked
+  // separately as a catalog finding — this file is the reference
+  // implementation for future dev-mode warnings.
+  // @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown
+  // at build time, not in the standard ImportMeta lib types.
+  if (!import.meta.env?.DEV) return
 
   if (options.direction !== undefined && !DIRECTION_ALGORITHMS.has(algorithm)) {
     // oxlint-disable-next-line no-console
