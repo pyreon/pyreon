@@ -5,6 +5,8 @@
 Full-stack UI framework with fine-grained reactivity (signals). SSR, SSG, islands, SPA.
 All packages under `@pyreon/*` scope.
 
+**Active improvement plan**: `.claude/plans/ecosystem-improvements-2026-q2.md` — addresses six recurring failure modes surfaced by PRs #197/#200. Tier 0 (critical bugs), Tier 1 (test parity), Tier 2 (doc pipeline), Tier 2.5 (MCP overhaul), Tier 3 (architecture), Tier 4 (strategic). Read the plan before starting any new catalog work — your task may already be addressed there or may conflict with the planned approach.
+
 ## Benchmark Results (Chromium via Playwright)
 
 Pyreon (compiled) is fastest framework on all benchmarks:
@@ -620,6 +622,19 @@ cd packages/<name> && bun run test -- --coverage  # with coverage
 ```
 
 DOM-dependent packages (runtime-dom, router, head, compat layers) use `environment: "happy-dom"` in vitest config.
+
+### Test environment parity
+
+Tests must run in the same environment as production. happy-dom is a Node-based DOM polyfill, NOT a real browser — it does not catch `typeof process` dead code, real `IntersectionObserver` timing, real CSS rendering, Vite's `import.meta.env` browser behavior, or other environment-divergence bugs. See `.claude/rules/test-environment-parity.md` for the categorization (browser packages, server packages, universal packages) and the rules for each.
+
+The recurring failure mode this prevents: tests pass because vitest provides something (`process`, hand-constructed vnodes, mocked APIs) that production does not. PR #197 (mock-vnode silent metadata drop) and PR #200 (typeof process dead in browser) were both this shape. Both bugs were invisible until a real-world consumer hit them.
+
+**Key rules**:
+
+- **Browser packages** must have at least one Playwright/browser smoke test in addition to vitest tests (planned — see `.claude/plans/ecosystem-improvements-2026-q2.md` T1.1).
+- **Mock-vnode tests must have a parallel real-`h()` test** for any contract assertion. The mock test is the fast path; the real-`h()` test is the safety net. Always have both.
+- **Dev-mode warnings must use `import.meta.env.DEV`**, not `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`. The latter is dead code in real Vite browser bundles. Reference implementation: `flow/src/layout.ts:warnIgnoredOptions`.
+- **Bisect-verify regression tests** before merge: revert the fix → run the test → assert it fails with the right error message → restore the fix → assert it passes. PR #200's first regression test passed even with the broken pattern, because esbuild's minifier folds dead code regardless. The bisect verification caught it.
 
 ## CI / Lint / Typecheck
 
