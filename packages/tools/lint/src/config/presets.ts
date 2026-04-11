@@ -30,6 +30,9 @@ function buildApp(): LintConfig {
       'pyreon/no-error-without-prefix': 'off',
       'pyreon/no-circular-import': 'off',
       'pyreon/no-cross-layer-import': 'off',
+      // `no-process-dev-gate` stays ON in `app` preset because the bug
+      // hits user-facing browser code regardless of whether it's a lib
+      // or an app.
     },
   }
 }
@@ -44,6 +47,7 @@ function buildLib(): LintConfig {
       'pyreon/no-cross-layer-import': 'error',
       'pyreon/dev-guard-warnings': 'error',
       'pyreon/no-error-without-prefix': 'error',
+      'pyreon/no-process-dev-gate': 'error',
     },
   }
 }

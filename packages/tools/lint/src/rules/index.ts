@@ -9,6 +9,7 @@ import { noCircularImport } from './architecture/no-circular-import'
 import { noCrossLayerImport } from './architecture/no-cross-layer-import'
 import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
+import { noProcessDevGate } from './architecture/no-process-dev-gate'
 import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 // Form
 import { noUnregisteredField } from './form/no-unregistered-field'
@@ -107,12 +108,13 @@ export const allRules: Rule[] = [
   noWindowInSsr,
   noMismatchRisk,
   preferRequestContext,
-  // Architecture (5)
+  // Architecture (6)
   noCircularImport,
   noDeepImport,
   noCrossLayerImport,
   devGuardWarnings,
   noErrorWithoutPrefix,
+  noProcessDevGate,
   // Store (3)
   noStoreOutsideProvider,
   noMutateStoreState,
@@ -183,6 +185,7 @@ export {
   noNestedEffect,
   noOnChange,
   noPeekInTracked,
+  noProcessDevGate,
   noPropsDestructure,
   // Hooks
   noRawAddEventListener,
