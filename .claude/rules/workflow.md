@@ -28,6 +28,8 @@
 - Check CLAUDE.md for documented patterns and conventions
 - Check if the pattern exists in another package (don't reinvent)
 - For complex changes, outline approach and get alignment first
+- **Read the active improvement plan** at `.claude/plans/ecosystem-improvements-2026-q2.md` — your task may already be addressed there or may conflict with the planned approach
+- **Ask: symptom or cause?** When picking up a catalog item, ask whether the item is fixing a symptom or addressing the underlying cause. "F3: doc note" turned into 3 PRs because the right deliverable was "make the silent footgun impossible to hit" — not "add a doc note." If a tactical fix exists alongside a strategic one, decide which level to operate at and surface the trade-off explicitly. Don't silently expand scope and don't silently leave the cause unfixed.
 
 ## Code Changes
 
@@ -54,6 +56,21 @@
 2. `bun run typecheck` — zero errors (MCP pre-existing TS2589 is known)
 3. `bun run test` — all tests pass
 4. If API surface changed: update CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference
+5. **NEVER merge PRs.** Open PRs and stop. Report the URL. The user merges every PR themselves. Never run `gh pr merge` (with or without `--auto`) unless the user explicitly says "merge it" for that specific PR. Authorization to merge does not generalize to follow-up PRs.
+
+## Bisect-verify regression tests — MANDATORY for fix PRs
+
+When a PR adds a regression test for a bug it fixes, the test must be bisect-verified before the PR is ready:
+
+1. Save the fix.
+2. Revert the fix (temporary).
+3. Run the test — assert it fails with the right error message.
+4. Restore the fix.
+5. Run the test — assert it passes.
+
+If step 3 doesn't fail, the test passes for the wrong reason and provides false confidence. PR #200's first regression test passed even with the broken pattern, because esbuild's minifier folds dead code regardless of the gate. The bisect verification caught it.
+
+Document the bisect result in the PR description: "Bisect-verified: reverted fix to broken state, test failed with `<error>`, restored, test passed." Without this line, the regression test is not load-bearing.
 
 ## Before Considering Work Complete — MANDATORY
 
@@ -66,6 +83,12 @@
    - Package `README.md` files
    - `llms.txt` / `llms-full.txt` — AI reference files
    - `packages/tools/mcp/src/api-reference.ts` — MCP tool reference
+   - JSDoc on exported APIs
+   - Source comments where the WHY isn't obvious
+   - `.claude/rules/anti-patterns.md` if a new anti-pattern was discovered
+   - `.claude/rules/` — any other rule file relevant to the change
+
+   Total: 9 surfaces. This list is unsustainable manually — see plan T2.1/T2.5.1 for the manifest-based generation that will collapse most of this to 1 source. Until that ships, every surface must be updated by hand.
 5. No breaking changes without discussion
 6. Honest quality assessment
 
