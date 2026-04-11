@@ -23,7 +23,10 @@ import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps } from './props'
 
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
+// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
+// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+const __DEV__ = import.meta.env?.DEV === true
 
 type Cleanup = () => void
 const noop: Cleanup = () => {
