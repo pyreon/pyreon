@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/document-primitives",
-  "version": "0.12.10",
+  "version": "0.12.11",
   "description": "Rocketstyle document components — render in browser, export to 18 formats",
   "license": "MIT",
   "repository": {

@@ -1,5 +1,20 @@
 # @pyreon/zero
 
+## 0.12.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.11
+  - @pyreon/head@0.12.11
+  - @pyreon/reactivity@0.12.11
+  - @pyreon/router@0.12.11
+  - @pyreon/runtime-dom@0.12.11
+  - @pyreon/runtime-server@0.12.11
+  - @pyreon/server@0.12.11
+  - @pyreon/vite-plugin@0.12.11
+  - @pyreon/meta@0.12.11
+
 ## 0.5.0
 
 ### Minor Changes
@@ -72,6 +87,7 @@
 - ## @pyreon/zero
 
   ### New Features
+
   - **API routes** — file-based `.ts` handlers in `src/routes/api/` with HTTP method exports (GET, POST, PUT, DELETE)
   - **Server actions** — `defineAction()` with automatic client/server boundary detection (direct execution on server, fetch on client)
   - **Per-route middleware** — route files export `middleware` dispatched via `virtual:zero/route-middleware`
@@ -84,6 +100,7 @@
   - **Dev route table** — `zero dev` prints page + API routes on startup
 
   ### Improvements
+
   - Bumped all @pyreon/\* core deps to ^0.5.4
   - Added `./actions`, `./api-routes`, `./cors`, `./rate-limit`, `./compression`, `./testing` subpath exports
   - Fixed static adapter build skip for SSG mode
@@ -92,16 +109,19 @@
   ## @pyreon/zero-cli
 
   ### New Commands
+
   - `zero doctor` — detect React patterns (proxies @pyreon/cli)
   - `zero context` — generate AI project context
   - `zero create <name>` — scaffold a new project
 
   ### Improvements
+
   - Dev server prints route table on startup (page routes + API routes)
 
   ## @pyreon/create-zero
 
   ### New Features
+
   - **Interactive scaffolding** with @clack/prompts — pick rendering mode, features, AI toolchain
   - Generates customized package.json, vite.config.ts, entry files based on selections
   - AI toolchain opt-in: .mcp.json, CLAUDE.md, doctor scripts
@@ -109,10 +129,12 @@
   ## @pyreon/meta
 
   ### New Packages
+
   - `@pyreon/machine` — reactive state machines (`createMachine`)
   - `@pyreon/permissions` — reactive permissions (`createPermissions`, `usePermissions`)
 
   ### Updates
+
   - All fundamentals: query ^0.5.0, virtual ^0.5.0
   - All UI system: ^0.1.1 (styler, hooks, elements, coolgrid, kinetic, etc.)
   - 75 export verification tests
