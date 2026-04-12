@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/dnd",
-  "version": "0.12.11",
+  "version": "0.12.12",
   "description": "Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"

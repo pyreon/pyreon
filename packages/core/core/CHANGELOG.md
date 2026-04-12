@@ -1,5 +1,35 @@
 # @pyreon/core
 
+## 0.12.12
+
+### Patch Changes
+
+- ## Bug Fixes
+
+  ### CSS layer cascade fixed — rocketstyle themes now correctly override element base styles ([#206](https://github.com/pyreon/pyreon/issues/206))
+
+  The 0.12.11 release had a CSS cascade regression where element base styles (padding, display, flex-direction) overrode rocketstyle theme styles (colors, borders, shadows). Three root causes:
+
+  1. **`styles/index.ts` returned a plain string** instead of a `css` tagged-template result, breaking the CSS interpolation chain for responsive styles, pseudo-selectors, and @layer wrapping.
+
+  2. **CSS layer architecture was backwards** — Elements were unlayered (highest priority per CSS cascade spec) while rocketstyle used `@layer pyreon` (lower priority). Fixed with explicit two-layer ordering: `@layer elements, rocketstyle;`. Elements use `{ layer: 'elements' }`, rocketstyle uses `{ layer: 'rocketstyle' }`.
+
+  3. **`optimizeTheme` per-property diffing** restored — only emits changed properties per breakpoint for minimal CSS output. If `padding: 8` is the same at `xs` and `md`, only `fontSize` is emitted in the `md` media query.
+
+  ### Dev warning false positives fixed ([#206](https://github.com/pyreon/pyreon/issues/206))
+
+  Two dev warnings that were dead code before 0.12.11 (due to the `typeof process` dev gate bug) fired incorrectly on valid Pyreon patterns:
+
+  - **"Component returned invalid value"** — didn't account for arrays (valid `VNodeChild[]` from Fragment) or NativeItems (from `_tpl()`). Fixed.
+  - **"Reactive accessor returned function"** — fired on ALL function returns from reactive accessors, but `() => VNodeChild` IS a valid return (conditional rendering pattern). Removed — function returns are handled correctly by `mountChild`.
+
+  ### SSR layer ordering ([#206](https://github.com/pyreon/pyreon/issues/206))
+
+  SSR output now includes `@layer elements, rocketstyle;` declaration when layered rules are present, ensuring correct cascade in server-rendered HTML.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.12.12
+
 ## 0.12.11
 
 ### Patch Changes
