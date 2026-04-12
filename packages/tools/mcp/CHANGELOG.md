@@ -1,5 +1,12 @@
 # @pyreon/mcp
 
+## 0.12.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.12.11
+
 ## 0.7.2
 
 ### Patch Changes
@@ -77,10 +84,12 @@
 ### Minor Changes
 
 - ### New packages
+
   - `@pyreon/cli` — project doctor command that detects React patterns (className, htmlFor, React imports) and auto-fixes them for Pyreon
   - `@pyreon/mcp` — Model Context Protocol server providing AI tools with project context, API reference, and documentation
 
   ### Features
+
   - **JSX type narrowing** — added `JSX.Element`, `JSX.ElementType`, and `JSX.ElementChildrenAttribute` for full TypeScript JSX compatibility
   - **Callback refs** — `ref` prop now accepts `(el: Element) => void` in addition to `{ current }` objects
   - **React pattern interceptor** (`@pyreon/compiler`) — AST-based detection and migration of React patterns to Pyreon equivalents

@@ -74,14 +74,14 @@
     "@pyreon/benchmark",
     "@pyreon/playground",
     "@pyreon/fundamentals-playground",
-    "@pyreon/example-ui-system-showcase",
-    "@pyreon/example-ui-system-kinetic",
-    "@pyreon/example-ui-system-styler",
+    "@pyreon/example-ui-showcase",
+    "@pyreon/example-app-showcase",
+    "@pyreon/ssr-showcase",
     "@pyreon/docs",
+    "@pyreon/ai-reference",
     "@pyreon/example-react-compat",
     "@pyreon/example-preact-compat",
     "@pyreon/example-vue-compat",
-    "@pyreon/example-solid-compat",
-    "@pyreon/example-ai-reference"
+    "@pyreon/example-solid-compat"
   ]
 }
