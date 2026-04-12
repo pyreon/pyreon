@@ -29,6 +29,7 @@
 
 ## Architecture Mistakes
 
+- **Circular prop-derived const chains**: `const a = b + props.x; const b = a + 1` — the compiler detects the cycle and emits a `circular-prop-derived` warning but leaves the cyclic identifier as a static reference (not reactively inlined). The result is subtly non-reactive on the cyclic part. Fix: restructure the derivation chain so every const reads from `props.*` directly or from a non-cyclic predecessor.
 - **Circular imports**: Keep dependency order (reactivity → core → runtime-dom → router → server)
 - **Build before dev**: Workspace resolution via `"bun"` condition means no build step needed
 - **`[key: string]: unknown` catch-all**: Use `data-*/aria-*` template literal index signatures
