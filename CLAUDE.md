@@ -407,10 +407,12 @@ Stateful packages expose `./devtools` subpath exports with WeakRef-based registr
 
 ## Key Architectural Patterns
 
-### Workspace resolution (no build needed)
+### Workspace resolution (no build needed for dev)
 
 Each package.json has `"bun": "./src/index.ts"` in exports.
 Root tsconfig has `"customConditions": ["bun"]`.
+
+**Bootstrap on fresh worktree/clone**: the `postinstall` script (`scripts/bootstrap.ts`) automatically builds all packages if any `lib/` directory is missing. This is needed because Vite's config bundler hardcodes `conditions: ["node"]` and resolves `import: "./lib/index.js"` — which only exists after a build. The bootstrap runs `bun run --filter='./packages/*/*' build` (~45s) once on fresh install, then is a no-op (~22ms) on subsequent installs. You do NOT need to run `bun run build` manually after cloning or creating a worktree — `bun install` handles it.
 
 ### Signal implementation
 

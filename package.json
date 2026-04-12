@@ -7,6 +7,7 @@
     "docs"
   ],
   "scripts": {
+    "postinstall": "bun scripts/bootstrap.ts",
     "build": "bun run --filter='*' build",
     "dev": "bun run --filter='*' dev",
     "test": "bun run --filter='*' test",
