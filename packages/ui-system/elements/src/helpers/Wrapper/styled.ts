@@ -55,7 +55,7 @@ const styles: ResponsiveStylesCallback = ({ theme: t, css: cssFn }) => cssFn`
 
 const platformCSS = `box-sizing: border-box;`
 
-export default styled(component)`
+export default styled(component, { layer: 'elements' })`
   position: relative;
   ${platformCSS};
 

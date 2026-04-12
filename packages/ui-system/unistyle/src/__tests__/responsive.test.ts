@@ -183,17 +183,15 @@ describe('optimizeTheme', () => {
       lg: { maxWidth: '58.75rem', height: '100%' },
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
-    // xs: full object (first breakpoint)
+    // xs: full object (first breakpoint — baseline)
     expect(result.xs).toEqual({ maxWidth: '90%', height: '100%' })
-    // sm: only maxWidth changed — height NOT duplicated
+    // sm/md/lg: only maxWidth changed — height NOT duplicated
     expect(result.sm).toEqual({ maxWidth: '33.75rem' })
-    // md: only maxWidth changed
     expect(result.md).toEqual({ maxWidth: '43.75rem' })
-    // lg: only maxWidth changed
     expect(result.lg).toEqual({ maxWidth: '58.75rem' })
   })
 
-  it('emits nothing when all properties unchanged from previous', () => {
+  it('drops breakpoint when all properties identical to previous', () => {
     const theme = {
       xs: { color: 'red', size: 12 },
       sm: { color: 'red', size: 12 },
@@ -201,17 +199,18 @@ describe('optimizeTheme', () => {
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
     expect(result.xs).toEqual({ color: 'red', size: 12 })
-    expect(result.sm).toBeUndefined() // identical to xs
+    expect(result.sm).toBeUndefined() // identical to xs — dropped
     expect(result.md).toEqual({ color: 'blue' }) // only color changed
   })
 
-  it('handles new property added at higher breakpoint', () => {
+  it('emits full breakpoint when keys differ (property added/removed)', () => {
     const theme = {
       xs: { color: 'red' },
       sm: { color: 'red', padding: 10 },
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
     expect(result.xs).toEqual({ color: 'red' })
-    expect(result.sm).toEqual({ padding: 10 }) // only the new property
+    // Different key count → full set emitted (can't just diff values)
+    expect(result.sm).toEqual({ color: 'red', padding: 10 })
   })
 })

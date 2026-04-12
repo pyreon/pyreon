@@ -53,7 +53,7 @@ const styles: MakeItResponsiveStyles<
   `
 }
 
-export default styled(component)`
+export default styled(component, { layer: 'elements' })`
   box-sizing: border-box;
 
   display: flex;

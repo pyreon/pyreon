@@ -20,7 +20,7 @@ const styles: MakeItResponsiveStyles<Pick<StyledTypes, 'width' | 'extraStyles'>>
 }
 
 /** Styled Container element. Centered via auto margins with responsive max-width. */
-export default styled(component)`
+export default styled(component, { layer: 'elements' })`
   display: flex;
   flex-direction: column;
   box-sizing: border-box;

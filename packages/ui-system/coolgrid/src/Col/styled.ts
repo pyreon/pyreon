@@ -88,7 +88,7 @@ const styles: MakeItResponsiveStyles<StyledTypes> = ({ theme, css: cssFn, rootSi
   `
 }
 
-export default styled(component)`
+export default styled(component, { layer: 'elements' })`
   box-sizing: border-box;
   justify-content: stretch;
 

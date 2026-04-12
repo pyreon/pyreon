@@ -31,8 +31,11 @@ export interface StyledOptions {
   shouldForwardProp?: (prop: string) => boolean
   /**
    * CSS @layer name. Rules are wrapped in `@layer <name> { ... }`.
-   * All framework CSS uses a single 'pyreon' layer. Source order within
-   * the layer determines override precedence (rocketstyle inserts after base).
+   * Framework CSS uses two layers with explicit ordering:
+   *   `@layer elements, rocketstyle;`
+   * Elements (base layout) use `'elements'`, rocketstyle themes use
+   * `'rocketstyle'`. The ordering ensures themes always override base
+   * styles regardless of source order.
    */
   layer?: string
 }
