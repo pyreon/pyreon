@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/reactivity",
-  "version": "0.12.11",
+  "version": "0.12.12",
   "description": "Signals-based reactivity system for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/reactivity#readme",
   "bugs": {

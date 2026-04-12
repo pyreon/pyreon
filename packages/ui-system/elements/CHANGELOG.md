@@ -1,5 +1,15 @@
 # @pyreon/elements
 
+## 0.12.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.12
+  - @pyreon/reactivity@0.12.12
+  - @pyreon/ui-core@0.12.12
+  - @pyreon/unistyle@0.12.12
+
 ## 0.12.11
 
 ### Patch Changes

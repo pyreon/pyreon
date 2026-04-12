@@ -1,5 +1,20 @@
 # @pyreon/zero
 
+## 0.12.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.12
+  - @pyreon/head@0.12.12
+  - @pyreon/reactivity@0.12.12
+  - @pyreon/router@0.12.12
+  - @pyreon/runtime-dom@0.12.12
+  - @pyreon/runtime-server@0.12.12
+  - @pyreon/server@0.12.12
+  - @pyreon/vite-plugin@0.12.12
+  - @pyreon/meta@0.12.12
+
 ## 0.12.11
 
 ### Patch Changes

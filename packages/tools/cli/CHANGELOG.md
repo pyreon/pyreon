@@ -1,5 +1,12 @@
 # @pyreon/cli
 
+## 0.12.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.12.12
+
 ## 0.12.11
 
 ### Patch Changes
