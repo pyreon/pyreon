@@ -1530,3 +1530,127 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     expect(signalMatches?.length ?? 0).toBe(1)
   })
 })
+
+// ─── Circular reference safety ─────────────────────────────────────────────
+
+describe('JSX transform — circular prop-derived var cycles do not crash', () => {
+  // Before the fix (PR #204), resolveExprTransitive used a single
+  // `excludeVar` parameter that only prevented immediate re-entry on the
+  // same variable. Multi-step cycles (a → b → a) alternated between
+  // the two identifiers and recursed infinitely, crashing the compiler
+  // with "Maximum call stack size exceeded."
+  //
+  // The fix replaces `excludeVar` with a `visited: Set<string>` that
+  // tracks the entire call stack. When a variable is already visited,
+  // the identifier is left as-is (falls back to the captured const
+  // value at runtime) and a compiler warning is emitted.
+
+  // Use transformJSX directly (not the `t` helper) so we can assert
+  // on both the code AND the warnings.
+  const full = (code: string) => transformJSX(code, 'input.tsx')
+
+  test('two-variable cycle: a ↔ b does not stack-overflow and emits warning', () => {
+    const result = full(`
+      function Comp(props) {
+        const a = b + props.x;
+        const b = a + 1;
+        return <div>{a}</div>
+      }
+    `)
+    // Should compile (not crash) and produce valid output
+    expect(result.code).toBeDefined()
+    expect(result.code).toContain('_tpl')
+
+    // Should emit a circular-prop-derived warning
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBeGreaterThanOrEqual(1)
+    expect(cycleWarnings[0]?.message).toMatch(/Circular prop-derived/)
+  })
+
+  test('three-variable cycle: a → b → c → a does not stack-overflow', () => {
+    const result = full(`
+      function Comp(props) {
+        const a = c + props.x;
+        const b = a + 1;
+        const c = b + 2;
+        return <div>{a}</div>
+      }
+    `)
+    expect(result.code).toBeDefined()
+    expect(result.code).toContain('_tpl')
+
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('self-referencing variable does not stack-overflow', () => {
+    const result = full(`
+      function Comp(props) {
+        const a = a + props.x;
+        return <div>{a}</div>
+      }
+    `)
+    expect(result.code).toBeDefined()
+
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBeGreaterThanOrEqual(1)
+    expect(cycleWarnings[0]?.message).toContain('a')
+  })
+
+  test('cycle still inlines the non-cyclic parts correctly', () => {
+    // const a = b + props.x;  const b = a + 1;
+    // When resolving `a` for JSX: `b + props.x` → `b` is cycle-broken
+    // (left as identifier `b`), `props.x` is inlined as `props.x`.
+    const result = full(`
+      function Comp(props) {
+        const a = b + props.x;
+        const b = a + 1;
+        return <div>{a}</div>
+      }
+    `)
+    // Non-cyclic part (props.x) is still inlined reactively
+    expect(result.code).toContain('props.x')
+    expect(result.code).toContain('_bind')
+    // Cyclic identifier `b` is left as-is (not further resolved)
+    // The _bind should reference `b` directly since it's the cycle-break point
+    expect(result.code).toMatch(/\bb\b/)
+  })
+
+  test('non-cyclic deep chain still works after the cycle fix', () => {
+    // Regression guard: the visited-set fix must NOT break the existing
+    // non-cyclic transitive resolution (a → b → c, no cycle).
+    const result = full(`
+      function Comp(props) {
+        const a = props.x;
+        const b = a + 1;
+        const c = b * 2;
+        return <div>{c}</div>
+      }
+    `)
+    expect(result.code).toContain('props.x')
+    expect(result.code).toContain('_bind')
+    // c should be fully inlined — not left as a static reference
+    expect(result.code).not.toMatch(/__t\d+\.data = c\b/)
+    // No cycle warnings on a non-cyclic chain
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBe(0)
+  })
+
+  test('warning message includes the cycle chain for debugging', () => {
+    const result = full(`
+      function Comp(props) {
+        const a = b + props.x;
+        const b = a + 1;
+        return <div>{a}</div>
+      }
+    `)
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBeGreaterThanOrEqual(1)
+    // The warning should mention both variables in the cycle chain
+    const msg = cycleWarnings[0]!.message
+    expect(msg).toContain('a')
+    expect(msg).toContain('b')
+    // And suggest how to fix it
+    expect(msg).toContain('props.*')
+  })
+})

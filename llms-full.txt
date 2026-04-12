@@ -758,6 +758,7 @@ _tpl('<div></div>', (__root) => {
 - Only `const` tracked — `let`/`var` are mutable, excluded from inlining
 - Non-JSX usage stays static (`console.log(x)` uses captured value — correct)
 - Works with splitProps: `const [own] = splitProps(props, ['x']); const v = own.x` → `v` inlined
+- **Circular references are safe**: `const a = b + props.x; const b = a + 1` compiles without crashing — `resolveExprTransitive` uses a `visited: Set<string>` to break cycles. The cyclic identifier is left as-is (uses its captured value). The compiler emits a `circular-prop-derived` warning so the developer knows the cyclic part isn't reactively inlined.
 
 ## React → Pyreon Migration Cheat Sheet
 

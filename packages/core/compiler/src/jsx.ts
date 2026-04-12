@@ -43,7 +43,11 @@ export interface CompilerWarning {
   /** Source file column number (0-based) */
   column: number
   /** Warning code for filtering */
-  code: 'signal-call-in-jsx' | 'missing-key-on-for' | 'signal-in-static-prop'
+  code:
+    | 'signal-call-in-jsx'
+    | 'missing-key-on-for'
+    | 'signal-in-static-prop'
+    | 'circular-prop-derived'
 }
 
 export interface TransformResult {
@@ -414,9 +418,48 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   // Resolve transitive AST: for each prop-derived var, recursively replace
   // references to other prop-derived vars in its AST with their resolved nodes.
   // Uses ts.visitNode for correct AST transformation — no string manipulation.
-  function resolveExprTransitive(node: ts.Expression, excludeVar?: string): ts.Expression {
+  //
+  // The `visited` set prevents infinite recursion on circular references:
+  //   const a = b + props.x;  const b = a + 1;
+  // Without it, resolving `a` reaches `b`, which reaches `a` again, and
+  // the compiler stack-overflows. The fix: when a variable is already in
+  // the visited set, leave the identifier as-is (it falls back to the
+  // captured const value, which is the correct runtime behavior for a
+  // circular dependency — the variable reads its value at definition time).
+  // Track which cycles have been warned about so we don't emit
+  // duplicate warnings for the same cycle seen from different vars.
+  const warnedCycles = new Set<string>()
+
+  function resolveExprTransitive(
+    node: ts.Expression,
+    visited: Set<string> = new Set(),
+    /** The source node used for warning locations. */
+    sourceNode?: ts.Node,
+  ): ts.Expression {
     return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
-      if (ts.isIdentifier(n) && propDerivedVars.has(n.text) && n.text !== excludeVar) {
+      if (ts.isIdentifier(n) && propDerivedVars.has(n.text)) {
+        // Cycle detection: if this variable is already in the visited
+        // set, we've found a circular reference. Leave the identifier
+        // as-is (falls back to captured const value) and emit a
+        // compiler warning so the developer knows reactivity is
+        // incomplete on this chain.
+        if (visited.has(n.text)) {
+          const cycleKey = [...visited, n.text].sort().join(',')
+          if (!warnedCycles.has(cycleKey)) {
+            warnedCycles.add(cycleKey)
+            const chain = [...visited, n.text].join(' → ')
+            warn(
+              sourceNode ?? n,
+              `[Pyreon] Circular prop-derived const reference: ${chain}. ` +
+                `The cyclic identifier \`${n.text}\` will use its captured value ` +
+                `instead of being reactively inlined. Break the cycle by reading ` +
+                `from \`props.*\` directly or restructuring the derivation chain.`,
+              'circular-prop-derived',
+            )
+          }
+          return n
+        }
+
         const parent = n.parent
         // ONLY inline identifiers that are REFERENCES (reads), never DECLARATIONS.
         // An identifier is a declaration when it's the .name of its parent.
@@ -429,8 +472,12 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
           if (ts.isShorthandPropertyAssignment(parent)) return n
         }
         const resolved = propDerivedVars.get(n.text)!
+        // Mark this variable as visited BEFORE recursing so cycles are
+        // detected on the next encounter rather than re-entering.
+        const nextVisited = new Set(visited)
+        nextVisited.add(n.text)
         return ts.factory.createParenthesizedExpression(
-          resolveExprTransitive(resolved, n.text),
+          resolveExprTransitive(resolved, nextVisited, sourceNode),
         )
       }
       return ts.visitEachChild(n, visit, undefined as any)
@@ -1097,7 +1144,7 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   function sliceExpr(expr: ts.Expression): string {
     // Quick check: does this expression contain any prop-derived references?
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
-      const resolved = resolveExprTransitive(expr)
+      const resolved = resolveExprTransitive(expr, new Set(), expr)
       return printer.printNode(ts.EmitHint.Expression, resolved, sf)
     }
     return code.slice(expr.getStart(sf), expr.getEnd())
