@@ -2,7 +2,13 @@ import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { createRef, Fragment, h, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+// Dev-mode gate: `import.meta.env.DEV` is the Vite/Rolldown standard,
+// literal-replaced at build time. The previous `typeof process !== 'undefined'`
+// pattern was dead code in real Vite browser bundles because Vite does not
+// polyfill `process` for the client — every wrapped warning silently never
+// fired in dev. Enforced by the `pyreon/no-process-dev-gate` lint rule.
+// @ts-ignore — `import.meta.env.DEV` is provided by Vite/Rolldown at build time
+const __DEV__ = import.meta.env?.DEV === true
 
 export interface TransitionProps {
   /**

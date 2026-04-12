@@ -21,7 +21,7 @@
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
 | @pyreon/vite-plugin | pyreon() | Vite integration |
 | @pyreon/storybook | renderToCanvas, Meta, StoryObj | Storybook renderer |
-| @pyreon/lint | lint, lintFile, listRules, applyFixes, allRules, loadConfig, createIgnoreFilter, AstCache, watchAndLint | Pyreon-specific linter (55 rules, 12 categories, config files, watch mode) |
+| @pyreon/lint | lint, lintFile, listRules, applyFixes, allRules, loadConfig, createIgnoreFilter, AstCache, watchAndLint | Pyreon-specific linter (58 rules, 12 categories, config files, watch mode). Includes `pyreon/no-process-dev-gate` — auto-fixable, forbids `typeof process` dev gates that are dead code in real Vite browser bundles. |
 | @pyreon/store | defineStore, resetStore, addStorePlugin | Global state management |
 | @pyreon/state-tree | model, getSnapshot, applySnapshot, onPatch, applyPatch | Structured reactive state tree |
 | @pyreon/form | useForm, useField, useFieldArray, useWatch, FormProvider | Signal-based forms |

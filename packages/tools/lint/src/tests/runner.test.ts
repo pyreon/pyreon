@@ -36,8 +36,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 56 rules', () => {
-    expect(allRules.length).toBe(57)
+  it('should have 58 rules', () => {
+    expect(allRules.length).toBe(58)
   })
 
   it('should have unique rule IDs', () => {
@@ -82,7 +82,7 @@ describe('Rule metadata', () => {
     expect(counts.lifecycle).toBe(4)
     expect(counts.performance).toBe(4)
     expect(counts.ssr).toBe(3)
-    expect(counts.architecture).toBe(5)
+    expect(counts.architecture).toBe(6)
     expect(counts.store).toBe(3)
     expect(counts.form).toBe(3)
     expect(counts.styling).toBe(4)
@@ -616,6 +616,266 @@ describe('Architecture rules', () => {
     expect(diags.length).toBe(0)
   })
 
+  // ── pyreon/no-process-dev-gate ────────────────────────────────────────────
+  // The recurring browser-dead-code bug we fixed in PR #200. Tests cover:
+  //   - the canonical broken pattern (typeof process first, NODE_ENV second)
+  //   - the reversed pattern (NODE_ENV first, typeof process second)
+  //   - assignment context (const __DEV__ = ...) and inline use
+  //   - the auto-fix output is the import.meta.env.DEV form
+  //   - server packages are exempt (the pattern is correct in Node)
+  //   - test files are exempt
+  //   - the correct pattern (import.meta.env.DEV) does NOT trigger the rule
+
+  it('pyreon/no-process-dev-gate: flags the canonical broken __DEV__ assignment', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+    expect(diags[0]?.fix).toBeDefined()
+    expect(diags[0]?.fix?.replacement).toBe('import.meta.env?.DEV === true')
+  })
+
+  it('pyreon/no-process-dev-gate: flags the reversed pattern (NODE_ENV first)', () => {
+    const source = `const __DEV__ = process.env.NODE_ENV !== 'production' && typeof process !== 'undefined'`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-process-dev-gate: flags inline use, not just assignment', () => {
+    // The pattern should be caught wherever it appears, not just in
+    // const declarations.
+    const source = `if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') { console.warn('hi') }`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-process-dev-gate: clean for the correct import.meta.env.DEV pattern', () => {
+    const source = `if (!import.meta.env?.DEV) return`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-process-dev-gate: exempts server-only packages (Node always has process)', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+    // packages/core/server/ is the SSR adapter — runs in Node, the pattern is correct there.
+    const result = lintFile(
+      'packages/core/server/src/handler.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-process-dev-gate: exempts runtime-server, zero, vite-plugin', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+    for (const path of [
+      'packages/core/runtime-server/src/index.ts',
+      'packages/zero/zero/src/logger.ts',
+      'packages/tools/vite-plugin/src/index.ts',
+    ]) {
+      const result = lintFile(path, source, allRules, defaultConfig())
+      const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+      expect(diags.length, `expected ${path} to be exempt`).toBe(0)
+    }
+  })
+
+  it('pyreon/no-process-dev-gate: exempts test files', () => {
+    const source = `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/tests/transition.test.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-process-dev-gate: does NOT flag isolated typeof process check', () => {
+    // A bare `typeof process !== 'undefined'` (e.g., for SSR detection) is
+    // fine — it's the COMBINATION with NODE_ENV check that flags as a dev
+    // gate. This protects against false positives on legitimate isomorphic code.
+    const source = `if (typeof process !== 'undefined') { console.log('node') }`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-process-dev-gate: does NOT flag isolated NODE_ENV check', () => {
+    // Bare NODE_ENV check (without the typeof process guard) is also fine
+    // — it's not the dead-in-browser pattern.
+    const source = `if (process.env.NODE_ENV !== 'production') { /* ... */ }`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/transition.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-process-dev-gate')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/no-process-dev-gate: codebase-wide check — all browser packages are clean', async () => {
+    // Meta-test: scan every browser-package source file and assert NONE
+    // of them contain the broken pattern. If a future PR introduces a
+    // new file with `typeof process !== 'undefined' && process.env...`
+    // anywhere in the browser packages, this test fails immediately
+    // (in addition to the per-file lint rule firing on `bun run lint`).
+    //
+    // The lint rule by itself is the primary defence — this meta-test
+    // is the safety net for cases where someone might disable the rule
+    // for a single file or commit. The two layers together make the
+    // bug class impossible to reintroduce silently.
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+
+    // Resolve the workspace root by walking up from this test file.
+    // This test file lives at `packages/tools/lint/src/tests/runner.test.ts`,
+    // so 5 levels up gets us to the workspace root.
+    const workspaceRoot = path.resolve(import.meta.dirname, '../../../../..')
+
+    // The list of source roots to scan. Mirrors the lint rule's
+    // SERVER_PACKAGE_PATTERNS exemption — these are the BROWSER-running
+    // packages that must be clean.
+    const browserPackageRoots = [
+      'packages/core/core/src',
+      'packages/core/runtime-dom/src',
+      'packages/core/router/src',
+      'packages/core/head/src',
+      'packages/fundamentals/flow/src',
+      'packages/fundamentals/code/src',
+      'packages/fundamentals/charts/src',
+      'packages/fundamentals/document/src',
+      'packages/fundamentals/form/src',
+      'packages/fundamentals/hooks/src',
+      'packages/fundamentals/store/src',
+      'packages/fundamentals/state-tree/src',
+      'packages/ui-system/styler/src',
+      'packages/ui-system/unistyle/src',
+      'packages/ui-system/elements/src',
+      'packages/ui-system/rocketstyle/src',
+      'packages/ui-system/coolgrid/src',
+      'packages/ui-system/kinetic/src',
+      'packages/ui-system/document-primitives/src',
+      'packages/ui-system/connector-document/src',
+      'packages/ui/components/src',
+      'packages/ui/primitives/src',
+    ]
+
+    // Recursively walk a directory and collect all .ts/.tsx files
+    // (excluding tests).
+    function walk(dir: string, out: string[] = []): string[] {
+      let entries: import('node:fs').Dirent[]
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true })
+      } catch {
+        // Directory may not exist (e.g., new package not yet created).
+        // The test should pass — this is a clean state.
+        return out
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name)
+        if (entry.isDirectory()) {
+          // Skip test directories — the lint rule exempts them and
+          // they may legitimately use `process` for test env detection.
+          if (
+            entry.name === 'tests' ||
+            entry.name === '__tests__' ||
+            entry.name === 'test' ||
+            entry.name === 'node_modules' ||
+            entry.name === 'dist' ||
+            entry.name === 'lib'
+          ) {
+            continue
+          }
+          walk(full, out)
+        } else if (
+          (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) &&
+          !entry.name.endsWith('.d.ts') &&
+          !entry.name.includes('.test.') &&
+          !entry.name.includes('.spec.')
+        ) {
+          out.push(full)
+        }
+      }
+      return out
+    }
+
+    const offenders: string[] = []
+    // The exact pattern we forbid. We use a strict regex that requires
+    // the FULL combined pattern including the `&&` and the NODE_ENV
+    // check, which only appears in actual buggy code (not isolated
+    // typeof process or NODE_ENV checks).
+    const brokenPattern =
+      /typeof\s+process\s*!==\s*['"]undefined['"]\s*&&\s*process\.env\.NODE_ENV\s*!==\s*['"]production['"]/
+
+    // Strip comments before matching — explanation comments in fixed
+    // files (e.g., `flow/src/layout.ts:warnIgnoredOptions`) legitimately
+    // mention the bad pattern as documentation. We only care about
+    // executable code.
+    function stripComments(source: string): string {
+      return source
+        .replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+        .replace(/^\s*\/\/.*$/gm, '') // line comments at start of line
+        .replace(/([^:])\/\/.*$/gm, '$1') // trailing line comments (avoid breaking URLs)
+    }
+
+    for (const root of browserPackageRoots) {
+      const absRoot = path.join(workspaceRoot, root)
+      const files = walk(absRoot)
+      for (const file of files) {
+        const source = fs.readFileSync(file, 'utf-8')
+        const codeOnly = stripComments(source)
+        if (brokenPattern.test(codeOnly)) {
+          offenders.push(path.relative(workspaceRoot, file))
+        }
+      }
+    }
+
+    // If this fails, the offending files are listed. Each one needs
+    // the broken pattern replaced with `import.meta.env?.DEV === true`
+    // (or the inline `if (!import.meta.env?.DEV) return` form). See
+    // `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`
+    // for the reference implementation.
+    expect(
+      offenders,
+      `Browser-package source files with the broken \`typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'\` dev gate. ` +
+        `This pattern is dead code in real Vite browser bundles because Vite does not polyfill \`process\`. ` +
+        `Replace with \`const __DEV__ = import.meta.env?.DEV === true\`. ` +
+        `See pyreon/no-process-dev-gate lint rule for details.`,
+    ).toEqual([])
+  })
+
   it('pyreon/no-error-without-prefix: flags throw without [Pyreon]', () => {
     const source = `throw new Error("something went wrong")`
     const result = lintSource(source)
@@ -1013,7 +1273,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(57)
+    expect(Object.keys(config.rules).length).toBe(58)
   })
 
   it('strict should promote all warns to errors', () => {
@@ -1034,10 +1294,19 @@ describe('Presets', () => {
     expect(app.rules['pyreon/no-cross-layer-import']).toBe('off')
   })
 
+  it('app preset KEEPS no-process-dev-gate enabled (browser bug, not a lib-only concern)', () => {
+    // The browser-dead-code bug hits user-facing code regardless of
+    // whether the project is a library or an app. Apps that build for
+    // the browser still need the warning.
+    const app = getPreset('app')
+    expect(app.rules['pyreon/no-process-dev-gate']).toBe('error')
+  })
+
   it('lib should have architecture rules as error', () => {
     const lib = getPreset('lib')
     expect(lib.rules['pyreon/no-circular-import']).toBe('error')
     expect(lib.rules['pyreon/no-cross-layer-import']).toBe('error')
     expect(lib.rules['pyreon/dev-guard-warnings']).toBe('error')
+    expect(lib.rules['pyreon/no-process-dev-gate']).toBe('error')
   })
 })

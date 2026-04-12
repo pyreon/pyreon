@@ -962,7 +962,7 @@ console.log(result.totalErrors, result.totalWarnings)
 // With config file auto-loading + rule overrides
 lint({ paths: ["."], ruleOverrides: { "pyreon/no-classname": "off" } })`,
     notes:
-      'Programmatic API. 55 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.',
+      'Programmatic API. 58 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.',
   },
 
   'lint/lintFile': {
@@ -982,10 +982,28 @@ const result = lintFile("app.tsx", source, allRules, config, cache)`,
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
-pyreon-lint --list                      # list all 55 rules
+pyreon-lint --list                      # list all 58 rules
 pyreon-lint --format json               # machine-readable`,
     notes:
       "CLI entry. Config: .pyreonlintrc.json, package.json 'pyreonlint' field. Ignore: .pyreonlintignore + .gitignore. Watch: fs.watch recursive with 100ms debounce.",
+  },
+
+  'lint/no-process-dev-gate': {
+    signature: 'rule: pyreon/no-process-dev-gate (architecture, error, auto-fixable)',
+    example: `// ❌ Wrong — dead code in real Vite browser bundles
+const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+if (__DEV__) console.warn('hello')
+
+// ✅ Correct — Vite literal-replaces import.meta.env.DEV at build time
+// @ts-ignore — provided by Vite/Rolldown at build time
+const __DEV__ = import.meta.env?.DEV === true
+if (__DEV__) console.warn('hello')`,
+    notes:
+      "The `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` pattern works in vitest (Node, `process` is defined) but is silently dead code in real Vite browser bundles because Vite does NOT polyfill `process` for the client. Every `console.warn` gated on the broken constant never fires for real users in dev mode — unit tests pass while users get nothing. Use `import.meta.env.DEV` instead — Vite/Rolldown literal-replace it at build time, prod tree-shakes the warning to zero bytes, and vitest sets it to `true` automatically. Server-only packages (`zero`, `core/server`, `core/runtime-server`, `vite-plugin`, `cli`, `lint`, `mcp`, `storybook`, `typescript`) and test files are exempt. Reference implementation: `packages/fundamentals/flow/src/layout.ts:warnIgnoredOptions`. The rule has an auto-fix that replaces the broken expression with `import.meta.env?.DEV === true`.",
+    mistakes: `- Copying the \`typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'\` pattern from existing codebases — it works in Node but is dead in browser bundles
+- Trying to test with \`delete globalThis.process\` — vitest's own \`import.meta.env\` depends on \`process\`, so deleting it breaks the FIXED gate too (not because the gate is wrong, but because vitest can't resolve it)
+- Adding \`process: { env: { ... } }\` polyfills to vite.config.ts as a workaround — fix the source instead
+- Using the rule for server-only packages — they're correctly exempt because Node always has \`process\``,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
