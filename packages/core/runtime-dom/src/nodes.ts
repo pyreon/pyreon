@@ -71,11 +71,12 @@ export function mountReactive(
       /* noop */
     }
     const value = accessor()
-    if (__DEV__ && typeof value === 'function') {
-      console.warn(
-        '[Pyreon] Reactive accessor returned a function instead of a value. Did you forget to call the signal?',
-      )
-    }
+    // Note: typeof value === 'function' is a VALID return from a reactive
+    // accessor — it represents a nested `() => VNodeChild` accessor (the
+    // conditional rendering pattern: `{() => show() ? <A /> : null}`).
+    // mountChild handles function children by calling them reactively.
+    // Do NOT warn on function returns — they are handled correctly at
+    // runtime by mountChild's function branch (line 58 above).
     if (value != null && value !== false) {
       // Mount children UNTRACKED — signal reads during child component
       // setup (useContext, useTheme, etc.) must NOT subscribe this

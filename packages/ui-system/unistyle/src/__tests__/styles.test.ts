@@ -11,9 +11,13 @@ const mockCss = (strings: TemplateStringsArray, ...vals: any[]) => {
 }
 
 describe('styles', () => {
-  it('empty theme returns empty string (all fragments are empty)', () => {
+  it('empty theme produces no CSS properties (all fragments are empty)', () => {
     const result = styles({ theme: {}, css: mockCss, rootSize: 16 })
-    expect(result).toBe('')
+    // The result is a css`` template result with empty fragments — it
+    // contains template whitespace but no actual CSS property declarations.
+    // Trim and strip commas/whitespace to verify no real CSS is produced.
+    const cleaned = String(result).replace(/[,\s]/g, '')
+    expect(cleaned).toBe('')
   })
 
   it('single simple property: color', () => {

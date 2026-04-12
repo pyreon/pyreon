@@ -484,17 +484,20 @@ describe('nodes.ts — LIS array growth and dev warnings', () => {
     el.remove()
   })
 
-  test('mountReactive — __DEV__ warning when accessor returns function', () => {
+  test('mountReactive — accessor returning function is valid (no warning)', () => {
     const el = container()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    // Reactive accessor that returns a function (not a value) — dev warning
-    const badAccessor = () => (() => 'oops') as unknown as VNodeChild
-    mount(h('div', null, badAccessor as VNodeChild), el)
+    // Reactive accessor that returns a function — this IS valid in Pyreon.
+    // Functions are a valid VNodeChild form (() => VNodeChildAtom) and are
+    // handled by mountChild's function branch recursively. The previous
+    // warning was a false positive that fired on legitimate conditional
+    // rendering patterns like {() => show() ? <A /> : null}.
+    const accessor = () => (() => 'hello') as unknown as VNodeChild
+    mount(h('div', null, accessor as VNodeChild), el)
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('returned a function instead of a value'),
-    )
+    // No warning should fire — function returns are valid
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
     el.remove()
   })

@@ -14,7 +14,7 @@ const styles: ResponsiveStylesCallback = ({ css: cssFn, theme: t }) => cssFn`
   ${t.extraStyles && extendCss(t.extraStyles)};
 `
 
-export default styled(textComponent)`
+export default styled(textComponent, { layer: 'elements' })`
   ${css`
     color: inherit;
     font-weight: inherit;

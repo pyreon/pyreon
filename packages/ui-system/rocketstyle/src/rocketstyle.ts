@@ -64,14 +64,14 @@ const rocketComponent: RocketComponent = (options) => {
   const componentName = options.name ?? options.component.displayName ?? options.component.name
 
   // Create styled component with all options.styles if available.
-  // All framework CSS lives in a single @layer pyreon. Rocketstyle
-  // overrides base via source order (inserted after base rules).
-  // A two-layer approach (base < rocketstyle) broke responsive styles
-  // because higher layers always win regardless of @media conditions.
+  // Rocketstyle CSS lives in `@layer rocketstyle`, which is declared
+  // AFTER `@layer elements` in the cascade ordering (see sheet.ts).
+  // This ensures rocketstyle theme styles always override element base
+  // styles regardless of source order.
   const STYLED_COMPONENT =
     (component.IS_ROCKETSTYLE ?? options.styled !== true)
       ? component
-      : styled(component, { layer: 'pyreon' })`
+      : styled(component, { layer: 'rocketstyle' })`
           ${calculateStyles(styles)};
         `
 

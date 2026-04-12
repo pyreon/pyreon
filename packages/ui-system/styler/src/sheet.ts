@@ -50,15 +50,24 @@ export class StyleSheet {
       this.sheet = el.sheet ?? null
     }
 
-    // Inject single @layer for all framework CSS.
-    // Using one shared layer ensures rocketstyle overrides base via source
-    // order (rocketstyle rules inserted after base), while media queries
-    // from base components still work correctly within the same layer.
-    // A two-layer approach (base < rocketstyle) breaks responsive styles
-    // because higher layers always win regardless of @media conditions.
+    // Inject CSS @layer ordering for the framework's cascade.
+    //
+    // Two layers: `elements` (base layout primitives) < `rocketstyle`
+    // (themed component styles). The explicit ordering declaration
+    // ensures rocketstyle theme styles always override element base
+    // styles regardless of source order, while media queries within
+    // each layer still work correctly (media conditions are evaluated
+    // within each layer independently).
+    //
+    // Previously this used a single `@layer pyreon` which put
+    // rocketstyle and elements in the same layer, relying on source
+    // order. That broke when Elements were rendered WITHOUT a layer
+    // (unlayered CSS always wins over layered CSS per the cascade
+    // spec), making rocketstyle themes unable to override element
+    // base styles.
     if (this.sheet) {
       try {
-        this.sheet.insertRule('@layer pyreon;', 0)
+        this.sheet.insertRule('@layer elements, rocketstyle;', 0)
         this.supportsLayer = true
       } catch {
         // @layer not supported — falls back to source order
@@ -320,7 +329,14 @@ export class StyleSheet {
   /** Returns collected CSS for SSR as a complete `<style>` tag string. */
   getStyleTag(): string {
     if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""></style>`
-    const layerDecl = this.layer ? `@layer ${this.layer};` : ''
+    // Emit the layer ordering declaration for SSR output so the cascade
+    // is correct when the browser parses the SSR HTML. On the client side
+    // this ordering is injected via insertRule in mount().
+    const layerDecl = this.hasLayeredRules()
+      ? '@layer elements, rocketstyle;'
+      : this.layer
+        ? `@layer ${this.layer};`
+        : ''
     const css = (layerDecl + this.ssrBuffer.join('')).replace(/<\/style/gi, '<\\/style')
     return `<style ${ATTR}="">${css}</style>`
   }
@@ -328,8 +344,17 @@ export class StyleSheet {
   /** Returns collected CSS rules as a raw string (useful for streaming SSR). */
   getStyles(): string {
     if (this.ssrBuffer.length === 0) return ''
-    const layerDecl = this.layer ? `@layer ${this.layer};` : ''
+    const layerDecl = this.hasLayeredRules()
+      ? '@layer elements, rocketstyle;'
+      : this.layer
+        ? `@layer ${this.layer};`
+        : ''
     return layerDecl + this.ssrBuffer.join('')
+  }
+
+  /** Check if any buffered SSR rules use @layer wrapping. */
+  private hasLayeredRules(): boolean {
+    return this.ssrBuffer.some((r) => r.startsWith('@layer '))
   }
 
   /** Reset SSR buffer and cache (call between server requests). */
@@ -391,8 +416,14 @@ export class StyleSheet {
   }
 }
 
-/** Default singleton sheet for client-side use. */
-export const sheet = new StyleSheet({ layer: 'pyreon' })
+/** Default singleton sheet for client-side use.
+ * No default layer — each consumer specifies their own:
+ *   Elements use `{ layer: 'elements' }`
+ *   Rocketstyle uses `{ layer: 'rocketstyle' }`
+ * The layer ordering `@layer elements, rocketstyle` is injected
+ * in mount() so rocketstyle always overrides elements.
+ */
+export const sheet = new StyleSheet()
 
 /**
  * Factory for creating isolated StyleSheet instances.

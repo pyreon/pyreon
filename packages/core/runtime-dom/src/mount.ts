@@ -356,9 +356,12 @@ function mountComponent(
           'Components must be synchronous — use lazy() + Suspense for async loading, ' +
           'or fetch data in onMount and store it in a signal.',
       )
-    } else if (!('type' in output)) {
+    } else if (!('type' in output) && !Array.isArray(output) && !((output as any).__isNative)) {
+      // Objects without `type` that are NOT arrays (valid VNodeChild[])
+      // and NOT NativeItems (from _tpl()) are invalid. Arrays come from
+      // Fragment returns, NativeItems come from compiled templates.
       console.warn(
-        `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, or function.`,
+        `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, function, or array.`,
       )
     }
   }
