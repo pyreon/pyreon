@@ -175,7 +175,12 @@ describe('optimizeTheme', () => {
     expect(optimizeTheme({ theme: {}, breakpoints: bpKeys })).toEqual({})
   })
 
-  it('only emits changed properties per breakpoint (property-level dedup)', () => {
+  it('keeps entire breakpoint when ANY property differs from previous (all-or-nothing)', () => {
+    // Simple all-or-nothing: if the breakpoint differs from the previous
+    // one AT ALL (via shallow comparison), emit the ENTIRE breakpoint.
+    // Matches reference implementation and original monorepo-migration
+    // version. Previous per-property "optimizations" broke shorthand/
+    // longhand interactions and property ordering guarantees.
     const theme = {
       xs: { maxWidth: '90%', height: '100%' },
       sm: { maxWidth: '33.75rem', height: '100%' },
@@ -183,24 +188,25 @@ describe('optimizeTheme', () => {
       lg: { maxWidth: '58.75rem', height: '100%' },
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
-    // xs: full object (first breakpoint — baseline)
     expect(result.xs).toEqual({ maxWidth: '90%', height: '100%' })
-    // sm/md/lg: only maxWidth changed — height NOT duplicated
-    expect(result.sm).toEqual({ maxWidth: '33.75rem' })
-    expect(result.md).toEqual({ maxWidth: '43.75rem' })
-    expect(result.lg).toEqual({ maxWidth: '58.75rem' })
+    // Full breakpoints kept — height IS duplicated but that's correct:
+    // the browser cascades one media query's properties independently,
+    // and partial property emission breaks shorthand/longhand ordering.
+    expect(result.sm).toEqual({ maxWidth: '33.75rem', height: '100%' })
+    expect(result.md).toEqual({ maxWidth: '43.75rem', height: '100%' })
+    expect(result.lg).toEqual({ maxWidth: '58.75rem', height: '100%' })
   })
 
-  it('drops breakpoint when all properties identical to previous', () => {
+  it('drops breakpoint when FULLY identical to previous (shallowEqual)', () => {
     const theme = {
       xs: { color: 'red', size: 12 },
-      sm: { color: 'red', size: 12 },
-      md: { color: 'blue', size: 12 },
+      sm: { color: 'red', size: 12 }, // identical to xs — dropped
+      md: { color: 'blue', size: 12 }, // differs → full breakpoint kept
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
     expect(result.xs).toEqual({ color: 'red', size: 12 })
-    expect(result.sm).toBeUndefined() // identical to xs — dropped
-    expect(result.md).toEqual({ color: 'blue' }) // only color changed
+    expect(result.sm).toBeUndefined()
+    expect(result.md).toEqual({ color: 'blue', size: 12 })
   })
 
   it('emits full breakpoint when keys differ (property added/removed)', () => {
@@ -210,7 +216,6 @@ describe('optimizeTheme', () => {
     }
     const result = optimizeTheme({ theme, breakpoints: bpKeys })
     expect(result.xs).toEqual({ color: 'red' })
-    // Different key count → full set emitted (can't just diff values)
     expect(result.sm).toEqual({ color: 'red', padding: 10 })
   })
 })
