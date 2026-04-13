@@ -1696,3 +1696,27 @@ describe('JSX transform — circular prop-derived var cycles do not crash', () =
     expect(cycleWarnings.length).toBe(0)
   })
 })
+
+describe('JSX transform — SSR mode', () => {
+  test('skips _tpl emission for SSR builds — falls back to plain JSX (h() via runtime)', () => {
+    const code = `function Btn() { return <button onClick={() => null}>Click {() => x()}</button> }`
+    const ssr = transformJSX(code, 'btn.tsx', { ssr: true }).code
+    const dom = transformJSX(code, 'btn.tsx').code
+
+    // Client (default) build uses the template fast path
+    expect(dom).toContain('_tpl(')
+    expect(dom).toContain('@pyreon/runtime-dom')
+
+    // SSR build emits plain JSX (the runtime's JSX automatic transform turns
+    // it into jsx() / h() calls that runtime-server can walk to a string)
+    expect(ssr).not.toContain('_tpl(')
+    expect(ssr).not.toContain('@pyreon/runtime-dom')
+    expect(ssr).toContain('<button')
+  })
+
+  test('default (no options) still emits _tpl — backwards compatible', () => {
+    const code = `function X() { return <div>hi</div> }`
+    const out = transformJSX(code, 'x.tsx').code
+    expect(out).toContain('_tpl(')
+  })
+})

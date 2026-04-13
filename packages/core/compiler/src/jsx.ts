@@ -90,7 +90,23 @@ const DELEGATED_EVENTS = new Set([
   'submit',
 ])
 
-export function transformJSX(code: string, filename = 'input.tsx'): TransformResult {
+export interface TransformOptions {
+  /**
+   * Compile for server-side rendering. When true, the compiler skips the
+   * `_tpl()` template optimization (which mutates a real DOM via
+   * `document.createElement` etc.) and falls back to plain `h()` calls so
+   * `@pyreon/runtime-server` can walk the VNode tree. Client builds keep
+   * the `_tpl()` fast path. Default: false.
+   */
+  ssr?: boolean
+}
+
+export function transformJSX(
+  code: string,
+  filename = 'input.tsx',
+  options: TransformOptions = {},
+): TransformResult {
+  const ssr = options.ssr === true
   const scriptKind =
     filename.endsWith('.tsx') || filename.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TSX // default to TSX so JSX is always parsed
 
@@ -166,6 +182,13 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
 
   /** Try to emit a template for a JsxElement. Returns true if handled. */
   function tryTemplateEmit(node: ts.JsxElement): boolean {
+    // SSR builds skip the `_tpl()` fast path entirely. `_tpl` clones a real
+    // DOM element via `document.createElement('template')` and the emitted
+    // bind callback calls `appendChild`, `createTextNode`, etc. — none of
+    // that exists in Node. Falling back to standard JSX→`h()` lets
+    // `@pyreon/runtime-server` walk the VNode tree to a string. Client
+    // builds keep the template optimization.
+    if (ssr) return false
     const elemCount = templateElementCount(node, /* isRoot */ true)
     if (elemCount < 1) return false
     const tplCall = buildTemplateCall(node)

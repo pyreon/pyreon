@@ -114,9 +114,13 @@ function hydrateReactiveChild(
     )
   }
 
-  const marker = insertMarker(parent, domNode, 'pyreon')
-  const cleanup = mountReactive(child, parent, marker, mountChild)
+  // Reactive accessor that produces a VNode/NativeItem subtree.
   const next = domNode ? nextReal(domNode) : null
+  if (domNode && domNode.parentNode) {
+    domNode.parentNode.removeChild(domNode)
+  }
+  const marker = insertMarker(parent, next, 'pyreon')
+  const cleanup = mountReactive(child, parent, marker, mountChild)
   return [cleanup, next]
 }
 
@@ -211,6 +215,29 @@ function hydrateChild(
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
     const cleanup = mountChild(child, parent, anchor)
     return [cleanup, domNode]
+  }
+
+  // NativeItem — output of the compiler's `_tpl()` template fast path. The
+  // client builds a fresh DOM subtree in memory (cloned + reactively bound).
+  // We don't yet have a true hydration mode for `_tpl` (which would adopt
+  // existing DOM nodes and rebind without remount). For now, swap the SSR
+  // subtree at this position for the freshly-mounted one — same final DOM,
+  // no duplication, reactivity intact. This is correctness-first; a true
+  // adopting hydration is a separate compiler-side change.
+  if ((child as unknown as { __isNative?: boolean })?.__isNative === true) {
+    const native = child as unknown as { __isNative: true; el: Node; cleanup?: () => void }
+    const next = domNode ? nextReal(domNode) : null
+    if (domNode && domNode.parentNode) {
+      domNode.parentNode.replaceChild(native.el, domNode)
+    } else {
+      parent.insertBefore(native.el, anchor)
+    }
+    const cleanup = () => {
+      native.cleanup?.()
+      const p = native.el.parentNode
+      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+    }
+    return [cleanup, next]
   }
 
   return hydrateVNode(child as VNode, domNode, parent, anchor, path)
