@@ -198,7 +198,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
-    transform(code, id) {
+    transform(code, id, transformOptions) {
       const ext = getExt(id)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
@@ -213,7 +213,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         return
       }
 
-      const result = transformJSX(code, id)
+      // Vite passes `ssr: true` when transforming for the SSR module graph
+      // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
+      // `h()` calls in that mode so `runtime-server` can render to a string.
+      const isSsr = transformOptions?.ssr === true
+      const result = transformJSX(code, id, { ssr: isSsr })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)

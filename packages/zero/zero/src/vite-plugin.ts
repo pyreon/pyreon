@@ -403,12 +403,47 @@ async function renderSsr(
 		],
 	);
 
-	const routerInst = routerPkg.createRouter({
+	// Build the SAME app tree the client will hydrate against. `entry-client`
+	// imports `layout` from `_layout.tsx` and passes it explicitly to
+	// `startClient` → `createApp`. We mirror that here: discover the user's
+	// `_layout` (if present) via Vite's SSR module graph and pass it along.
+	// Without this, SSR renders a different tree (no outer Layout wrapper)
+	// and hydration mismatches at the very first nesting level — cascading
+	// into duplicated mounts of every section below.
+	let userLayout: unknown
+	for (const ext of ['tsx', 'ts', 'jsx', 'js']) {
+		try {
+			const layoutMod = (await server.ssrLoadModule(
+				`/src/routes/_layout.${ext}`,
+			)) as { layout?: unknown; default?: unknown }
+			userLayout = layoutMod.layout ?? layoutMod.default
+			if (userLayout) break
+		} catch {
+			// Try the next extension. If none exist, createApp uses DefaultLayout.
+		}
+	}
+
+	// Use zero's own `createApp` rather than reassembling the tree by hand —
+	// guarantees server and client agree on every wrapper component (any
+	// future change to the App tree only needs to happen in one place).
+	// Load via `ssrLoadModule` so app.ts shares Vite's SSR module graph with
+	// the user's code: both end up importing the SAME `@pyreon/router` /
+	// `@pyreon/core` / `@pyreon/head` instances, so contexts (RouterContext,
+	// HeadContext, etc.) match between provider and consumer. A direct Node
+	// `import("./app")` would resolve those packages via Node's module graph,
+	// producing duplicate context registries that never connect.
+	const appMod = (await server.ssrLoadModule(
+		"@pyreon/zero/server",
+	)) as typeof import("./server")
+	type CreateAppLayout = NonNullable<
+		Parameters<typeof appMod.createApp>[0]["layout"]
+	>
+	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
-		mode: "history",
+		routerMode: "history",
 		url: pathname,
-		scrollBehavior: "top",
-	});
+		...(userLayout ? { layout: userLayout as CreateAppLayout } : {}),
+	})
 
 	// `preload` loads lazy route components AND runs loaders for `pathname` so
 	// the synchronous render pass produces final HTML — no loading fallbacks,
@@ -416,15 +451,7 @@ async function renderSsr(
 	await routerInst.preload(pathname);
 
 	return runtimeServer.runWithRequestContext(async () => {
-		const app = core.h(
-			headPkg.HeadProvider,
-			null,
-			core.h(
-				routerPkg.RouterProvider as Parameters<typeof core.h>[0],
-				{ router: routerInst },
-				core.h(routerPkg.RouterView as Parameters<typeof core.h>[0], null),
-			),
-		);
+		const app = core.h(App as Parameters<typeof core.h>[0], null);
 
 		const { html: appHtml, head } = await headSsr.renderWithHead(app);
 		const loaderData = routerPkg.serializeLoaderData(
