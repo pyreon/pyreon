@@ -616,6 +616,75 @@ describe('Architecture rules', () => {
     expect(diags.length).toBe(0)
   })
 
+  it('pyreon/dev-guard-warnings: clean inside `if (__DEV__ && X)` compound guard', () => {
+    const source = `if (__DEV__ && cond) { console.warn("x") }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: clean inside `if (X && __DEV__)` compound guard', () => {
+    const source = `if (cond && __DEV__) { console.warn("x") }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: clean inside `__DEV__ && console.warn(...)` short-circuit', () => {
+    const source = `__DEV__ && console.warn("x")`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: clean inside `__DEV__ ? warn : null` ternary', () => {
+    const source = `__DEV__ ? console.warn("x") : null`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: exempts console.error inside catch (production error reporting)', () => {
+    const source = `try { foo() } catch (err) { console.error("[Pyreon]", err) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: still flags console.warn inside catch (warns must be DEV-only)', () => {
+    const source = `try { foo() } catch (err) { console.warn("[Pyreon]", err) }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/dev-guard-warnings: clean inside `if (import.meta.env.DEV)` guard', () => {
+    const source = `if (import.meta.env.DEV) { console.warn("x") }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: clean after early-return DEV guard at top of function', () => {
+    const source = `function warn() {
+      if (!__DEV__) return
+      console.warn("a"); console.warn("b"); console.warn("c")
+    }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
+  it('pyreon/dev-guard-warnings: clean after early-return `import.meta.env.DEV` guard', () => {
+    const source = `function warn() {
+      if (!import.meta.env?.DEV) return
+      console.warn("x")
+    }`
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/dev-guard-warnings')
+    expect(diags.length).toBe(0)
+  })
+
   // ── pyreon/no-process-dev-gate ────────────────────────────────────────────
   // The recurring browser-dead-code bug we fixed in PR #200. Tests cover:
   //   - the canonical broken pattern (typeof process first, NODE_ENV second)
