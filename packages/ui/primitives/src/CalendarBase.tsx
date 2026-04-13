@@ -1,5 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
+import { useControllableState } from '@pyreon/hooks'
 import { computed, signal } from '@pyreon/reactivity'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -122,12 +123,14 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
   // ─── State ─────────────────────────────────────────────────────────
 
-  const isControlled = own.value !== undefined
   const today = getToday()
   const initial = own.defaultValue ?? own.value ?? null
 
-  const _selected = signal<CalendarDate | null>(isControlled ? null : initial)
-  const selected = () => (isControlled ? own.value ?? null : _selected())
+  const [selected, setSelected] = useControllableState<CalendarDate | null>({
+    value: () => own.value,
+    defaultValue: initial,
+    onChange: own.onChange as ((value: CalendarDate | null) => void) | undefined,
+  })
 
   const _viewMonth = signal(initial?.month ?? today.month)
   const _viewYear = signal(initial?.year ?? today.year)
@@ -224,8 +227,7 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
   function select(date: CalendarDate) {
     if (isDateDisabled(date)) return
-    if (!isControlled) _selected.set(date)
-    own.onChange?.(date)
+    setSelected(date)
   }
 
   function prevMonth() {
