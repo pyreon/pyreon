@@ -1,5 +1,79 @@
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
+
+// ─── Mock echarts subpath imports ────────────────────────────────────────────
+// Mocking these eliminates the wall-clock dependency of real dynamic imports
+// under CI load (Vite's dep optimizer fetching ~300KB of echarts/core was
+// exceeding the 5s vitest timeout on shared runners). The loader's state
+// machine, caching, and auto-detection logic are still fully exercised — only
+// the module acquisition is stubbed.
+
+vi.mock('echarts/core', () => {
+  const init = vi.fn(() => ({
+    setOption: vi.fn(),
+    resize: vi.fn(),
+    dispose: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+  }))
+  const use = vi.fn()
+  return { init, use, default: { init, use } }
+})
+
+const makeStub = (name: string) => ({ __echartsStub: name })
+
+vi.mock('echarts/charts', () => ({
+  BarChart: makeStub('BarChart'),
+  LineChart: makeStub('LineChart'),
+  PieChart: makeStub('PieChart'),
+  ScatterChart: makeStub('ScatterChart'),
+  RadarChart: makeStub('RadarChart'),
+  HeatmapChart: makeStub('HeatmapChart'),
+  TreemapChart: makeStub('TreemapChart'),
+  SunburstChart: makeStub('SunburstChart'),
+  SankeyChart: makeStub('SankeyChart'),
+  FunnelChart: makeStub('FunnelChart'),
+  GaugeChart: makeStub('GaugeChart'),
+  GraphChart: makeStub('GraphChart'),
+  TreeChart: makeStub('TreeChart'),
+  BoxplotChart: makeStub('BoxplotChart'),
+  CandlestickChart: makeStub('CandlestickChart'),
+  ParallelChart: makeStub('ParallelChart'),
+  ThemeRiverChart: makeStub('ThemeRiverChart'),
+  EffectScatterChart: makeStub('EffectScatterChart'),
+  LinesChart: makeStub('LinesChart'),
+  PictorialBarChart: makeStub('PictorialBarChart'),
+  CustomChart: makeStub('CustomChart'),
+  MapChart: makeStub('MapChart'),
+}))
+
+vi.mock('echarts/components', () => ({
+  GridComponent: makeStub('GridComponent'),
+  PolarComponent: makeStub('PolarComponent'),
+  RadarComponent: makeStub('RadarComponent'),
+  GeoComponent: makeStub('GeoComponent'),
+  TooltipComponent: makeStub('TooltipComponent'),
+  LegendComponent: makeStub('LegendComponent'),
+  ToolboxComponent: makeStub('ToolboxComponent'),
+  TitleComponent: makeStub('TitleComponent'),
+  DataZoomComponent: makeStub('DataZoomComponent'),
+  VisualMapComponent: makeStub('VisualMapComponent'),
+  TimelineComponent: makeStub('TimelineComponent'),
+  GraphicComponent: makeStub('GraphicComponent'),
+  BrushComponent: makeStub('BrushComponent'),
+  CalendarComponent: makeStub('CalendarComponent'),
+  DatasetComponent: makeStub('DatasetComponent'),
+  AriaComponent: makeStub('AriaComponent'),
+  MarkPointComponent: makeStub('MarkPointComponent'),
+  MarkLineComponent: makeStub('MarkLineComponent'),
+  MarkAreaComponent: makeStub('MarkAreaComponent'),
+}))
+
+vi.mock('echarts/renderers', () => ({
+  CanvasRenderer: makeStub('CanvasRenderer'),
+  SVGRenderer: makeStub('SVGRenderer'),
+}))
+
 import { Chart } from '../chart-component'
 import { _resetLoader, ensureModules, getCore, getCoreSync, manualUse } from '../loader'
 
