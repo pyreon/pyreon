@@ -1,6 +1,7 @@
 import { h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
-import { PyreonUI } from '../PyreonUI'
+import { PyreonUI, type PyreonUIProps } from '../PyreonUI'
 
 // Spy on provide to verify context provision
 const provideSpy = vi.spyOn(await import('@pyreon/core'), 'provide')
@@ -96,5 +97,96 @@ describe('PyreonUI', () => {
     // inside their own reactive scopes for reactive mode switching.
     expect(typeof modeGetter).toBe('function')
     expect(modeGetter()).toBe('dark')
+  })
+
+  // ─── Reactivity regression tests ──────────────────────────────────────────
+  // Components run ONCE in Pyreon. Destructuring props at setup captures
+  // values statically, breaking reactivity. PyreonUI used to destructure
+  // `{ theme, mode, inversed, children }` which made `inversed` permanently
+  // static — toggling it in a parent had no effect.
+  //
+  // The fix: read `props.X` lazily inside `resolveMode()`. With reactive
+  // props (signal-backed via the compiler's _rp() wrapping, or signal
+  // reads inside a getter prop), the computed correctly tracks the
+  // dependencies and re-evaluates on change.
+  //
+  // These tests use real signals to simulate the compiler-emitted reactive
+  // prop pattern: `<PyreonUI inversed={isInversed()}>` becomes
+  // `_rp(() => isInversed())` which is converted to a getter by
+  // makeReactiveProps. The getter reads the signal each time, registering
+  // it as a dependency of any reactive scope (like our `computed`).
+
+  it('inversed mode reacts when backed by a signal (regression for destructuring bug)', () => {
+    const inversed = signal(false)
+    // Simulate makeReactiveProps output: define `inversed` as a getter
+    // that reads the signal. This matches what the compiler emits for
+    // reactive props in real usage.
+    const props = {} as PyreonUIProps
+    Object.assign(props, { theme, mode: 'light' as const, children: null })
+    Object.defineProperty(props, 'inversed', {
+      get: () => inversed(),
+      enumerable: true,
+      configurable: true,
+    })
+
+    PyreonUI(props)
+    const modeGetter = getProvideValue(2)
+
+    // Initial: inversed=false, mode=light → resolved=light
+    expect(modeGetter()).toBe('light')
+
+    // Toggle inversed via the signal — mimics a parent's signal change
+    // that would, in real usage, drive a re-render's reactive prop.
+    inversed.set(true)
+
+    // The mode getter MUST see the new value. If destructured (the old
+    // bug), the local `inversed` boolean was captured at setup and this
+    // would still return 'light'.
+    expect(modeGetter()).toBe('dark')
+
+    // And back
+    inversed.set(false)
+    expect(modeGetter()).toBe('light')
+  })
+
+  it('mode reacts when backed by a signal getter (no destructuring)', () => {
+    // The function form (mode={() => signal()}) is the documented way
+    // to make mode reactive. The destructuring bug never broke this
+    // form because `typeof mode === 'function'` correctly called it
+    // each time. But this test guards against future regressions.
+    const mode = signal<'light' | 'dark'>('light')
+    PyreonUI({ theme, mode: () => mode(), children: null })
+    const modeGetter = getProvideValue(2)
+
+    expect(modeGetter()).toBe('light')
+
+    mode.set('dark')
+
+    expect(modeGetter()).toBe('dark')
+  })
+
+  it('inversed false → true → false toggles correctly through the full cycle', () => {
+    // Full cycle: verifies the inverted-mode dependency chain
+    // (mode + inversed both feeding into resolveMode) reacts correctly
+    // to multiple toggles of the signal.
+    const inversed = signal(false)
+    const props = {} as PyreonUIProps
+    Object.assign(props, { theme, mode: 'dark' as const, children: null })
+    Object.defineProperty(props, 'inversed', {
+      get: () => inversed(),
+      enumerable: true,
+      configurable: true,
+    })
+
+    PyreonUI(props)
+    const modeGetter = getProvideValue(2)
+
+    expect(modeGetter()).toBe('dark') // dark + not inversed → dark
+
+    inversed.set(true)
+    expect(modeGetter()).toBe('light') // dark + inversed → light
+
+    inversed.set(false)
+    expect(modeGetter()).toBe('dark') // dark + not inversed → dark again
   })
 })

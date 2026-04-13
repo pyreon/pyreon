@@ -438,6 +438,27 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
   ): ts.Expression {
     return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
       if (ts.isIdentifier(n) && propDerivedVars.has(n.text)) {
+        // FIRST: skip non-reference positions. An identifier is NOT a
+        // variable read when it's a property name, binding name, or
+        // shorthand property key. Those positions can happen to match
+        // a tracked variable name (e.g. `own.beforeContentDirection`
+        // when `beforeContentDirection` is also a tracked const) and
+        // would otherwise trigger false-positive cycle warnings.
+        //
+        // This check MUST run before the cycle check — otherwise a
+        // property access like `own.X` where X matches a tracked var
+        // that's already in `visited` would falsely fire the warning.
+        const parent = n.parent
+        if (parent) {
+          // Declaration positions — identifier defines a name, not reads one.
+          // Also catches PropertyAccessExpression.name (property access),
+          // VariableDeclaration.name (binding), PropertyAssignment.name
+          // (object literal key), etc.
+          if ('name' in parent && (parent as any).name === n) return n
+          // Shorthand property: { x } — the identifier is both key and value
+          if (ts.isShorthandPropertyAssignment(parent)) return n
+        }
+
         // Cycle detection: if this variable is already in the visited
         // set, we've found a circular reference. Leave the identifier
         // as-is (falls back to captured const value) and emit a
@@ -460,17 +481,6 @@ export function transformJSX(code: string, filename = 'input.tsx'): TransformRes
           return n
         }
 
-        const parent = n.parent
-        // ONLY inline identifiers that are REFERENCES (reads), never DECLARATIONS.
-        // An identifier is a declaration when it's the .name of its parent.
-        // Skip all non-reference positions to avoid replacing binding names,
-        // parameter names, property names, etc. with ParenthesizedExpressions.
-        if (parent) {
-          // Declaration positions — identifier defines a name, not reads one
-          if ('name' in parent && (parent as any).name === n) return n
-          // Shorthand property: { x } — the identifier is both key and value
-          if (ts.isShorthandPropertyAssignment(parent)) return n
-        }
         const resolved = propDerivedVars.get(n.text)!
         // Mark this variable as visited BEFORE recursing so cycles are
         // detected on the next encounter rather than re-entering.

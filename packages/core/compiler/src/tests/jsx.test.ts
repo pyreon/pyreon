@@ -1653,4 +1653,46 @@ describe('JSX transform — circular prop-derived var cycles do not crash', () =
     // And suggest how to fix it
     expect(msg).toContain('props.*')
   })
+
+  test('property access with name matching tracked var is NOT flagged as cycle', () => {
+    // Regression: `own.beforeContentDirection` where `beforeContentDirection`
+    // is ALSO a tracked const used to trigger a false-positive self-cycle
+    // warning. The property name identifier happens to match a prop-derived
+    // var name, but it's not a reference — it's a property name. The
+    // declaration-position check MUST run before the cycle check to
+    // skip property names, binding names, and shorthand keys.
+    //
+    // This pattern is extremely common in Elements component.tsx and
+    // similar splitProps-heavy destructuring codebases.
+    const result = full(`
+      function Comp(props) {
+        const [own, rest] = splitProps(props, ['beforeContentDirection'])
+        const defaultDirection = 'inline'
+        const beforeContentDirection = own.beforeContentDirection ?? defaultDirection
+        return <div data-dir={beforeContentDirection}>hello</div>
+      }
+    `)
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    // No cycle — the property name `beforeContentDirection` in
+    // `own.beforeContentDirection` is a property access, not a reference.
+    expect(cycleWarnings.length).toBe(0)
+    // And the inlining should still work — props.beforeContentDirection
+    // appears in the bind (via own destructure from splitProps).
+    expect(result.code).toContain('beforeContentDirection')
+  })
+
+  test('shorthand property key matching tracked var is NOT flagged as cycle', () => {
+    // Another false-positive shape: `{ foo }` shorthand in an object
+    // literal where `foo` is a tracked var. The shorthand key would
+    // match propDerivedVars but its parent is ShorthandPropertyAssignment.
+    const result = full(`
+      function Comp(props) {
+        const foo = props.x
+        const config = { foo }
+        return <div data-config={JSON.stringify(config)}>{foo}</div>
+      }
+    `)
+    const cycleWarnings = result.warnings.filter((w) => w.code === 'circular-prop-derived')
+    expect(cycleWarnings.length).toBe(0)
+  })
 })
