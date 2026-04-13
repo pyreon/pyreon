@@ -7,14 +7,22 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
   "dependencies": {
+    "@pyreon/coolgrid": "workspace:*",
     "@pyreon/core": "workspace:*",
+    "@pyreon/elements": "workspace:*",
     "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
+    "@pyreon/styler": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
+    "@pyreon/unistyle": "workspace:*",
     "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {
