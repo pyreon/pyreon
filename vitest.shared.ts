@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import type { UserConfig } from 'vite'
+import type { UserConfig as VitestUserConfig } from 'vitest/config'
 
 const root = import.meta.dirname
 
@@ -134,6 +134,22 @@ for (const pkg of zeroPackages) {
   })
 }
 
-export const sharedConfig: UserConfig = {
+export const sharedConfig: VitestUserConfig = {
   resolve: { alias, conditions: ['bun'] },
 }
+
+// Packages that also run browser tests via `vitest.browser.config.ts` must
+// extend their regular vitest config with this to exclude `.browser.test.*`
+// from the default Node/happy-dom runner. Kept separate from `sharedConfig`
+// because `mergeConfig` appends array fields, so a shared exclude would leak
+// into the browser config and re-exclude the browser tests.
+export const nodeExcludeBrowserTests = {
+  test: {
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/lib/**',
+      '**/*.browser.test.{ts,tsx}',
+    ],
+  },
+} satisfies VitestUserConfig
