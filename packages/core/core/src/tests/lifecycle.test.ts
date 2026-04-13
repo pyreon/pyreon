@@ -206,3 +206,48 @@ describe('lifecycle hooks interaction', () => {
     expect(hooks2.mount).toHaveLength(2)
   })
 })
+
+// ─── Call-site warning enhancement (Phase 4) ───────────────────────────────
+// Dev warnings now include the first non-framework stack frame so the
+// developer can see WHICH of their components called the hook outside
+// setup — previously the warning just said "lifecycle.ts:17" which was
+// useless for debugging.
+
+describe('warnOutsideSetup — call-site capture', () => {
+  afterEach(() => {
+    setCurrentHooks(null)
+  })
+
+  test('warning includes a "Called from:" frame for debugging', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Call onUnmount outside setup — from a user-land helper so the stack
+    // has a distinct non-framework frame we can assert against.
+    const userLandHelper = () => {
+      onUnmount(() => {})
+    }
+    userLandHelper()
+    expect(warnSpy).toHaveBeenCalled()
+    const message = warnSpy.mock.calls[0]?.[0] as string
+    expect(message).toContain('onUnmount() called outside component setup')
+    expect(message).toContain('Called from:')
+    warnSpy.mockRestore()
+  })
+
+  test('onUnmount warning includes provide() hint for diagnosability', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    onUnmount(() => {})
+    const message = warnSpy.mock.calls[0]?.[0] as string
+    expect(message).toContain('provide()')
+    warnSpy.mockRestore()
+  })
+
+  test('onMount warning does NOT include the onUnmount-specific hint', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    onMount(() => {})
+    const message = warnSpy.mock.calls[0]?.[0] as string
+    // The hint is specific to onUnmount (provide() uses it), so onMount
+    // shouldn't carry it — keeps the warning message targeted.
+    expect(message).not.toContain('provide()')
+    warnSpy.mockRestore()
+  })
+})
