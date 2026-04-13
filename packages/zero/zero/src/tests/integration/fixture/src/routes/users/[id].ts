@@ -1,3 +1,4 @@
+import { h } from '@pyreon/core'
 import { useLoaderData } from '@pyreon/router'
 import type { LoaderContext } from '@pyreon/zero'
 
@@ -12,8 +13,8 @@ export async function loader(ctx: LoaderContext): Promise<LoaderData> {
 
 export default function UserPage() {
   const data = useLoaderData<LoaderData | undefined>()
-  if (!data) return <h1 data-no-data>User Page (no loader data)</h1>
-  return <h1 data-user-name={data.name}>{data.name}</h1>
+  if (!data) return h('h1', null, 'User Page (no loader data)')
+  return h('h1', { 'data-user-name': data.name }, data.name)
 }
 
 export const meta = {

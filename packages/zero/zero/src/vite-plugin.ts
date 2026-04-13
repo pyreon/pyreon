@@ -1,6 +1,7 @@
+import { readFile } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Plugin } from 'vite'
+import type { Plugin, ViteDevServer } from 'vite'
 import { generateApiRouteModule } from './api-routes'
 import { resolveConfig } from './config'
 
@@ -19,6 +20,21 @@ function scanPyreonPackages(root: string): string[] {
   } catch {
     return []
   }
+}
+
+/**
+ * Resolve a package that isn't at the app's top-level `node_modules` but is
+ * nested under another `@pyreon/*` package. Used to alias `@pyreon/runtime-server`
+ * to the copy under `node_modules/@pyreon/zero/node_modules/@pyreon/runtime-server`
+ * so `ssrLoadModule` works without requiring the app to declare it as a
+ * direct dep.
+ */
+function resolveNestedPackage(root: string, name: string): string | undefined {
+  const direct = join(root, 'node_modules', name)
+  if (existsSync(direct)) return direct
+  const nested = join(root, 'node_modules', '@pyreon', 'zero', 'node_modules', name)
+  if (existsSync(nested)) return nested
+  return undefined
 }
 import { matchPattern } from "./entry-server";
 import { renderErrorOverlay } from "./error-overlay";
@@ -111,6 +127,41 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 		},
 
 		configureServer(server) {
+			// Dev-mode SSR middleware — for mode: "ssr", actually render each
+			// matched route server-side instead of serving the SPA shell.
+			// Runs BEFORE the 404 handler so matched routes are SSR'd and
+			// unmatched ones fall through to the 404 handler.
+			if (config.mode === "ssr") {
+				server.middlewares.use((req, res, next) => {
+					const accept = req.headers.accept ?? "";
+					if (!accept.includes("text/html") && !accept.includes("*/*"))
+						return next();
+					const pathname = req.url?.split("?")[0] ?? "/";
+					if (pathname.startsWith("/@") || pathname.startsWith("/__"))
+						return next();
+					if (/\.\w+$/.test(pathname)) return next();
+
+					renderSsr(server, root, req.originalUrl ?? pathname, pathname).then(
+						(result) => {
+							if (result === null) return next();
+							res.statusCode = 200;
+							res.setHeader("Content-Type", "text/html; charset=utf-8");
+							res.setHeader("Content-Length", Buffer.byteLength(result));
+							res.end(result);
+						},
+						(err: unknown) => {
+							const error = err instanceof Error ? err : new Error(String(err));
+							server.ssrFixStacktrace(error);
+							const html = renderErrorOverlay(error);
+							res.statusCode = 500;
+							res.setHeader("Content-Type", "text/html; charset=utf-8");
+							res.setHeader("Content-Length", Buffer.byteLength(html));
+							res.end(html);
+						},
+					);
+				});
+			}
+
 			// 404 handler — check if the requested path matches any route.
 			// If not, render the nearest _404.tsx component with a 404 status.
 			// Uses a sync wrapper that calls the async handler, since Connect
@@ -210,9 +261,33 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 			const root = userConfig.root ?? process.cwd()
 			const pyreonExclude = scanPyreonPackages(root)
 
+			// `@pyreon/runtime-server` is only imported by zero's dev SSR
+			// middleware and the production server entry — apps rarely list it
+			// as a direct dep. Resolve it to the copy nested under zero so
+			// `ssrLoadModule("@pyreon/runtime-server")` works uniformly.
+			const runtimeServerAlias = resolveNestedPackage(
+				root,
+				"@pyreon/runtime-server",
+			)
+
 			return {
 				resolve: {
 					conditions: ['bun'],
+					...(runtimeServerAlias
+						? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
+						: {}),
+				},
+				// Vite's SSR module graph has its own resolver that defaults to the
+				// "node" condition — which would pick the built `lib/index.js` for
+				// every `@pyreon/*` package and bypass workspace source edits. Mirror
+				// the client-side "bun" condition + alias so dev SSR uses `src/`.
+				ssr: {
+					resolve: {
+						conditions: ['bun'],
+						...(runtimeServerAlias
+							? { alias: { '@pyreon/runtime-server': runtimeServerAlias } }
+							: {}),
+					},
 				},
 				optimizeDeps: {
 					exclude: pyreonExclude,
@@ -265,6 +340,106 @@ async function handle404(
 	res.setHeader("Content-Length", Buffer.byteLength(html));
 	res.end(html);
 	return true;
+}
+
+/**
+ * Dev-mode SSR render pipeline. Returns the composed HTML string, or `null`
+ * if the URL doesn't match any known route (caller falls through to the 404
+ * middleware). Mirrors the production `createServer` flow:
+ *   1. Load virtual:zero/routes + app.ts via Vite's ssrLoadModule
+ *   2. Create a per-request router bound to the request URL
+ *   3. Pre-run loaders for the matched route(s)
+ *   4. Render app tree with head tag collection
+ *   5. Serialize loader data into `window.__PYREON_LOADER_DATA__`
+ *   6. Inject everything into the user's transformed index.html (so Vite
+ *      still gets a chance to inject its HMR client + JSX runtime prelude)
+ */
+async function renderSsr(
+	server: ViteDevServer,
+	root: string,
+	originalUrl: string,
+	pathname: string,
+): Promise<string | null> {
+	// Pattern check FIRST — otherwise SSR would try (and likely crash) on
+	// asset paths that happened to accept text/html (e.g. curl-style).
+	const routesMod = await server.ssrLoadModule(VIRTUAL_ROUTES_ID);
+	const routes = routesMod.routes as Array<{
+		path?: string;
+		children?: unknown[];
+	}>;
+	const patterns = flattenRoutePatterns(routes);
+	if (!patterns.some((pattern) => matchPattern(pattern, pathname))) {
+		return null;
+	}
+
+	// Read + transform index.html (Vite injects the HMR client / JSX prelude).
+	let template = await readFile(join(root, "index.html"), "utf-8");
+	template = await server.transformIndexHtml(originalUrl, template);
+
+	// Framework modules load through Vite's SSR module graph so user code (which
+	// imports the same packages) shares a single module instance — otherwise two
+	// copies of `@pyreon/router` would hold separate `RouterContext` IDs and
+	// `useContext` in RouterLink would miss the RouterProvider's value.
+	// `@pyreon/runtime-server` isn't a direct dep of most apps, so zero's
+	// `config()` hook registers an alias that points it at the copy under
+	// zero's own `node_modules` — same path → same Vite module → same instance.
+	const [core, headPkg, headSsr, routerPkg, runtimeServer] = await Promise.all(
+		[
+			server.ssrLoadModule("@pyreon/core") as Promise<
+				typeof import("@pyreon/core")
+			>,
+			server.ssrLoadModule("@pyreon/head") as Promise<
+				typeof import("@pyreon/head")
+			>,
+			server.ssrLoadModule("@pyreon/head/ssr") as Promise<
+				typeof import("@pyreon/head/ssr")
+			>,
+			server.ssrLoadModule("@pyreon/router") as Promise<
+				typeof import("@pyreon/router")
+			>,
+			server.ssrLoadModule("@pyreon/runtime-server") as Promise<
+				typeof import("@pyreon/runtime-server")
+			>,
+		],
+	);
+
+	const routerInst = routerPkg.createRouter({
+		routes: routes as import("@pyreon/router").RouteRecord[],
+		mode: "history",
+		url: pathname,
+		scrollBehavior: "top",
+	});
+
+	// `preload` loads lazy route components AND runs loaders for `pathname` so
+	// the synchronous render pass produces final HTML — no loading fallbacks,
+	// no `useLoaderData() === undefined`.
+	await routerInst.preload(pathname);
+
+	return runtimeServer.runWithRequestContext(async () => {
+		const app = core.h(
+			headPkg.HeadProvider,
+			null,
+			core.h(
+				routerPkg.RouterProvider as Parameters<typeof core.h>[0],
+				{ router: routerInst },
+				core.h(routerPkg.RouterView as Parameters<typeof core.h>[0], null),
+			),
+		);
+
+		const { html: appHtml, head } = await headSsr.renderWithHead(app);
+		const loaderData = routerPkg.serializeLoaderData(
+			routerInst as Parameters<typeof routerPkg.serializeLoaderData>[0],
+		);
+		const hasData = loaderData && Object.keys(loaderData).length > 0;
+		const loaderScript = hasData
+			? `<script>window.__PYREON_LOADER_DATA__=${JSON.stringify(loaderData).replace(/<\//g, "<\\/")}</script>`
+			: "";
+
+		return template
+			.replace("<!--pyreon-head-->", head)
+			.replace("<!--pyreon-app-->", appHtml)
+			.replace("<!--pyreon-scripts-->", loaderScript);
+	});
 }
 
 /** Extract all URL patterns from a nested route tree. */

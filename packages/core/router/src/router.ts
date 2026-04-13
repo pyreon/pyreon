@@ -861,6 +861,43 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       return router._readyPromise
     },
 
+    async preload(path: string) {
+      const resolved = resolveRoute(path, routes)
+      // Load lazy components in parallel and populate the component cache so
+      // the synchronous render pass finds ready components instead of kicking
+      // off async imports (which would fall back to loadingComponent).
+      await Promise.all(
+        resolved.matched.map(async (record) => {
+          if (componentCache.has(record)) return
+          const raw = record.component
+          if (!isLazy(raw)) {
+            componentCache.set(record, raw)
+            return
+          }
+          const mod = await raw.loader()
+          const comp = typeof mod === 'function' ? mod : mod.default
+          componentCache.set(record, comp)
+        }),
+      )
+      // Run loaders for the matched path — uses the same code path SSR
+      // already relied on, so loader data ends up in `_loaderData` under the
+      // matched route records.
+      const ac = new AbortController()
+      router._abortController = ac
+      await Promise.all(
+        resolved.matched
+          .filter((r) => r.loader)
+          .map(async (r) => {
+            const data = await r.loader?.({
+              params: resolved.params,
+              query: resolved.query,
+              signal: ac.signal,
+            })
+            router._loaderData.set(r, data)
+          }),
+      )
+    },
+
     destroy() {
       if (_popstateHandler) {
         window.removeEventListener('popstate', _popstateHandler)

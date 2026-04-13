@@ -312,6 +312,19 @@ export interface Router<TNames extends string = string> {
    * Useful for SSR and for delaying rendering until the first route is resolved.
    */
   isReady(): Promise<void>
+  /**
+   * Resolve `path` and prepare everything needed to render it: load any lazy
+   * route components into the router's cache and run the matched routes'
+   * loaders. After this resolves, a `RouterView` rendered against this router
+   * for `path` will produce final HTML synchronously — no loading fallbacks,
+   * no `useLoaderData()` returning `undefined`.
+   *
+   * Used by SSR/SSG to hydrate the route tree before `renderToString`.
+   * The router's `currentRoute` is NOT changed by `preload` — pass the path
+   * separately when creating the router (`createRouter({ url, ... })`) or
+   * call this for the same `url` you initialised the router with.
+   */
+  preload(path: string): Promise<void>
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
   destroy(): void
 }

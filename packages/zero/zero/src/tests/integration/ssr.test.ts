@@ -161,14 +161,33 @@ describe("SSR integration", () => {
 		expect(paths).toContain("/broken");
 	});
 
-	it("known broken route returns 200 (SPA fallback in dev)", async () => {
-		// In dev mode without full SSR middleware, Vite serves index.html for
-		// known routes. The broken.tsx error only manifests during SSR rendering.
+	it("broken route surfaces SSR error via the dev error overlay", async () => {
+		// In `mode: "ssr"` dev, the zero plugin actually server-renders each
+		// matched route. A component that throws produces a 500 with the dev
+		// error overlay page (not the SPA shell).
 		const res = await fetch(`${baseUrl}/broken`);
-		// Vite's SPA fallback serves 200 with the HTML shell
-		expect(res.status).toBe(200);
+		expect(res.status).toBe(500);
 		const html = await res.text();
-		expect(html).toContain("<!DOCTYPE html>");
+		expect(html).toContain("SSR Error");
+		expect(html).toContain("Intentional SSR error for testing");
+	});
+
+	it("renders route HTML server-side (not just the SPA shell)", async () => {
+		// The zero dev SSR middleware should produce fully rendered markup
+		// before the client entry runs. This separates true SSR from the old
+		// "serve index.html + hydrate on client" dev behavior.
+		const homeRes = await fetch(`${baseUrl}/`);
+		expect(homeRes.status).toBe(200);
+		const homeHtml = await homeRes.text();
+		expect(homeHtml).toContain("Hello from Zero");
+
+		const userRes = await fetch(`${baseUrl}/users/42`);
+		expect(userRes.status).toBe(200);
+		const userHtml = await userRes.text();
+		// Loader data flows through to the server-rendered markup
+		expect(userHtml).toContain("User 42");
+		// And is embedded for client hydration
+		expect(userHtml).toContain("__PYREON_LOADER_DATA__");
 	});
 
 	// ─── API routes ────────────────────────────────────────────────────────────
