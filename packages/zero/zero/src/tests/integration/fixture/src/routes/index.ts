@@ -1,5 +1,7 @@
+import { h } from '@pyreon/core'
+
 export default function Home() {
-  return <h1>Hello from Zero</h1>
+  return h('h1', null, 'Hello from Zero')
 }
 
 export const meta = {

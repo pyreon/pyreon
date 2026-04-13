@@ -1,5 +1,6 @@
 import { hydrateLoaderData, prefetchLoaderData, serializeLoaderData } from '../loader'
 import { createRouter, setActiveRouter, useIsActive, useSearchParams } from '../router'
+import { lazy } from '../types'
 import type { RouteRecord, RouterInstance } from '../types'
 
 const Home = () => null
@@ -511,5 +512,54 @@ describe('router — staleWhileRevalidate', () => {
     // Give background revalidation time
     await new Promise<void>((r) => setTimeout(r, 50))
     expect(loaderCallCount).toBe(2)
+  })
+})
+
+describe('router.preload', () => {
+  test('runs loaders for the preloaded path', async () => {
+    let calls = 0
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/u/:id',
+        component: User,
+        loader: async ({ params }) => {
+          calls++
+          return { id: params.id, name: `User ${params.id}` }
+        },
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    await router.preload('/u/7')
+
+    expect(calls).toBe(1)
+    expect(router._loaderData.get(routes[1] as RouteRecord)).toEqual({
+      id: '7',
+      name: 'User 7',
+    })
+    // currentRoute is unchanged — preload prepares data, doesn't navigate
+    expect(router.currentRoute().path).toBe('/')
+  })
+
+  test('loads lazy components into the cache so render is synchronous', async () => {
+    let lazyLoadCalls = 0
+    const Lazy = () => null
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/lazy',
+        component: lazy(async () => {
+          lazyLoadCalls++
+          return Lazy
+        }),
+      },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+
+    await router.preload('/lazy')
+
+    expect(lazyLoadCalls).toBe(1)
+    expect(router._componentCache.get(routes[1] as RouteRecord)).toBe(Lazy)
   })
 })
