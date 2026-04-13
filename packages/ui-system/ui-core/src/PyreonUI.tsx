@@ -96,23 +96,39 @@ function autoInit(): void {
  * <PyreonUI theme={theme} mode="system">
  * ```
  */
-export function PyreonUI({ theme, mode = 'light', inversed, children }: PyreonUIProps): VNodeChild {
+export function PyreonUI(props: PyreonUIProps): VNodeChild {
   autoInit()
+
+  // IMPORTANT: do NOT destructure props. Components run once in Pyreon, and
+  // destructuring captures values at setup time — losing reactivity. Reading
+  // `props.mode` / `props.inversed` lazily inside `resolveMode()` lets the
+  // computed re-evaluate when the underlying reactive props change (parent
+  // re-renders with a different value, or signal-driven mode toggling).
+  //
+  // Previously this destructured `{ theme, mode = 'light', inversed, children }`
+  // which made `inversed` permanently static — toggling inversed in a parent
+  // had no effect because the local boolean was captured once. See
+  // `.claude/rules/anti-patterns.md` "Destructuring props" entry.
 
   // Create a reactive mode getter that resolves "system" and applies inversion.
   // This getter is provided via context — consumers read it lazily in their
   // own reactive scopes, so mode changes propagate automatically.
   const resolveMode = (): ThemeMode => {
+    const mode = props.mode ?? 'light'
     const raw = typeof mode === 'function' ? mode() : mode
     const resolved = raw === 'system' ? getSystemMode()() : raw
-    return inversed ? INVERSED[resolved] : resolved
+    return props.inversed ? INVERSED[resolved] : resolved
   }
 
   // Wrap in computed for memoization
   const modeComputed = computed(resolveMode)
 
-  // Enrich theme with responsive utilities (__PYREON__)
-  const enrichedTheme = enrichTheme(theme)
+  // Enrich theme with responsive utilities (__PYREON__).
+  // Theme is still captured once at setup — themes are typically stable
+  // objects defined at module load. If the user wants to swap the theme
+  // object dynamically, that's a future enhancement (would need a
+  // computed wrapper here too).
+  const enrichedTheme = enrichTheme(props.theme)
 
   // Provide to all three context layers:
 
@@ -132,5 +148,5 @@ export function PyreonUI({ theme, mode = 'light', inversed, children }: PyreonUI
   // 3. Mode context — getter function for useMode()
   provide(ModeContext, () => modeComputed())
 
-  return children ?? null
+  return props.children ?? null
 }
