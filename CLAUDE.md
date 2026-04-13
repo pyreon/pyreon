@@ -619,11 +619,14 @@ Rule of thumb:
 
 ```bash
 bun run test                          # all package tests (via workspace filter)
+bun run test:browser                  # all real-browser smoke tests (Chromium via @vitest/browser)
 cd packages/<name> && bun run test    # single package
 cd packages/<name> && bun run test -- --coverage  # with coverage
 ```
 
 DOM-dependent packages (runtime-dom, router, head, compat layers) use `environment: "happy-dom"` in vitest config.
+
+Real-browser smoke tests run under `@vitest/browser` with Playwright Chromium — files named `*.browser.test.ts(x)`, opt in per-package via `vitest.browser.config.ts` + `test:browser` script. Reference: `packages/internals/test-utils/src/browser/sanity.browser.test.ts`. See `.claude/rules/test-environment-parity.md` for the setup recipe.
 
 ### Test environment parity
 
