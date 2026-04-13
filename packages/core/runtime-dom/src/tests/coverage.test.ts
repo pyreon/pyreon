@@ -1006,13 +1006,15 @@ describe('props.ts — uncovered branches', () => {
     setSanitizer(null)
   })
 
-  test('dangerouslySetInnerHTML warns in dev mode', () => {
+  test('dangerouslySetInnerHTML does NOT warn (name itself is the warning, matches React)', () => {
     const el = container()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     mount(h('div', { dangerouslySetInnerHTML: { __html: '<em>raw</em>' } }), el)
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('dangerouslySetInnerHTML'))
+    // Previously this warned on every applyProp call, flooding the console
+    // on re-renders. The name "dangerouslySetInnerHTML" IS the warning.
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
