@@ -101,12 +101,15 @@ describe('styles', () => {
 
   it('special property: hideEmpty', () => {
     const result = styles({ theme: { hideEmpty: true }, css: mockCss, rootSize: 16 })
-    expect(result).toContain('&:empty { display: none; }')
+    // CSS template output — normalize whitespace for comparison
+    const normalized = String(result).replace(/\s+/g, ' ')
+    expect(normalized).toContain('&:empty { display: none; }')
   })
 
   it('special property: clearFix', () => {
     const result = styles({ theme: { clearFix: true }, css: mockCss, rootSize: 16 })
-    expect(result).toContain('&::after { clear: both; content: ""; display: table; }')
+    const normalized = String(result).replace(/\s+/g, ' ')
+    expect(normalized).toContain("&::after { clear: both; content: ''; display: table; }")
   })
 
   it('string values for convert properties pass through', () => {

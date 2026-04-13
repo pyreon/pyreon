@@ -152,7 +152,9 @@ describe('processDescriptor', () => {
         mockEdge as any,
         mockBorderRadius as any,
       )
-      expect(result).toBe('background-image: url(url.png);')
+      // Result is a css`` template result — normalize whitespace
+      const normalized = String(result).replace(/\s+/g, ' ').trim()
+      expect(normalized).toContain('background-image: url(url.png);')
     })
 
     it('returns animation CSS when keyframe is set', () => {

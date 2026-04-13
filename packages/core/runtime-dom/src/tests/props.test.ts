@@ -258,14 +258,15 @@ describe('applyProp — innerHTML', () => {
     expect(el.innerHTML).not.toContain('<script>')
   })
 
-  test('dangerouslySetInnerHTML bypasses sanitization', () => {
+  test('dangerouslySetInnerHTML bypasses sanitization (no warning — name is the warning, like React)', () => {
     const el = document.createElement('div')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     applyProp(el, 'dangerouslySetInnerHTML', { __html: '<em>raw</em>' })
     expect(el.innerHTML).toBe('<em>raw</em>')
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('dangerouslySetInnerHTML bypasses sanitization'),
-    )
+    // No warning — the name "dangerouslySetInnerHTML" is the warning.
+    // React doesn't log here, neither do we. Previously this warned on
+    // every prop application, flooding the console on every re-render.
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 })

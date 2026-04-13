@@ -207,7 +207,13 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
  */
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
   if (typeof value !== 'function') {
-    if (__DEV__) {
+    // `undefined` and `null` are legitimate — conditional handler pattern:
+    //   <button onClick={condition ? handler : undefined}>
+    // The runtime silently bails on nullish values. Only warn for
+    // actually-wrong types (strings, numbers, objects) that indicate
+    // a real bug in the caller (e.g. `onClick={someSignal()}` where
+    // the signal returns a value instead of a handler function).
+    if (__DEV__ && value != null) {
       console.warn(
         `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
           `Expected a function. Did you mean ${key}={() => ...}?`,
@@ -244,13 +250,11 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
     }
     return null
   }
-  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React)
+  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React).
+  // The name itself is the warning — React doesn't log, neither should we.
+  // Previously this warned on every prop application, flooding the console
+  // on re-renders (one warning per render per instance).
   if (key === 'dangerouslySetInnerHTML') {
-    if (__DEV__) {
-      console.warn(
-        '[Pyreon] dangerouslySetInnerHTML bypasses sanitization. Ensure the HTML is trusted.',
-      )
-    }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
   }
