@@ -1,6 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isServerOnlyFile } from '../../utils/server-only'
+import { isServerOnlyFile } from '../../utils/package-classification'
 
 /**
  * `pyreon/no-process-dev-gate` — flag the broken `typeof process` dev-mode gate

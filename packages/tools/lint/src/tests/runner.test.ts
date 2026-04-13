@@ -563,6 +563,18 @@ describe('SSR rules', () => {
     expect(diags.length).toBe(0)
   })
 
+  it('pyreon/no-window-in-ssr: exempt for runtime-dom (DOM renderer must touch DOM)', () => {
+    const source = `const w = window.innerWidth; document.createElement('div')`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/foo.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
   it('pyreon/no-mismatch-risk: flags Date.now() in JSX', () => {
     const source = `const App = () => <div>{Date.now()}</div>`
     const result = lintSource(source)
@@ -1126,6 +1138,18 @@ describe('Hooks rules', () => {
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-raw-addeventlistener')
     expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-raw-addeventlistener: exempt for runtime-dom (foundation of useEventListener)', () => {
+    const source = `el.addEventListener("click", handler)`
+    const result = lintFile(
+      'packages/core/runtime-dom/src/delegate.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-raw-addeventlistener')
+    expect(diags.length).toBe(0)
   })
 
   it('pyreon/no-raw-setinterval: flags setInterval outside onMount', () => {
