@@ -1,5 +1,14 @@
 # @pyreon/react-compat
 
+## 0.12.13
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.13
+  - @pyreon/reactivity@0.12.13
+  - @pyreon/runtime-dom@0.12.13
+
 ## 0.12.12
 
 ### Patch Changes

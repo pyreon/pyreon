@@ -1,5 +1,38 @@
 # @pyreon/meta
 
+## 0.12.13
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.12.13
+  - @pyreon/charts@0.12.13
+  - @pyreon/code@0.12.13
+  - @pyreon/feature@0.12.13
+  - @pyreon/flow@0.12.13
+  - @pyreon/form@0.12.13
+  - @pyreon/hooks@0.12.13
+  - @pyreon/hotkeys@0.12.13
+  - @pyreon/i18n@0.12.13
+  - @pyreon/machine@0.12.13
+  - @pyreon/permissions@0.12.13
+  - @pyreon/query@0.12.13
+  - @pyreon/state-tree@0.12.13
+  - @pyreon/storage@0.12.13
+  - @pyreon/store@0.12.13
+  - @pyreon/table@0.12.13
+  - @pyreon/validation@0.12.13
+  - @pyreon/virtual@0.12.13
+  - @pyreon/attrs@0.12.13
+  - @pyreon/coolgrid@0.12.13
+  - @pyreon/elements@0.12.13
+  - @pyreon/kinetic-presets@0.12.13
+  - @pyreon/kinetic@0.12.13
+  - @pyreon/rocketstyle@0.12.13
+  - @pyreon/styler@0.12.13
+  - @pyreon/ui-core@0.12.13
+  - @pyreon/unistyle@0.12.13
+
 ## 0.12.12
 
 ### Patch Changes

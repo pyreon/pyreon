@@ -1,5 +1,34 @@
 # @pyreon/core
 
+## 0.12.13
+
+### Patch Changes
+
+- ## Bug Fixes
+
+  ### Responsive CSS pipeline — restore `css` template results in `processDescriptor` ([#208](https://github.com/pyreon/pyreon/issues/208))
+
+  Follow-up to the 0.12.12 regression fix. `processDescriptor.ts` had the same plain-string bug as `styles/index.ts` — special descriptors (`fullScreen`, `backgroundImage`, `hideEmpty`, `clearFix`) were returning plain strings instead of `css` tagged-template results. This broke the CSS interpolation chain at a deeper level than the 0.12.12 fix addressed, causing media queries to not generate correctly for responsive props like `maxWidth: { xs: 640, md: 840 }`.
+
+  Restored the `css` template wrapping throughout the responsive pipeline, matching the reference implementation.
+
+  ### `onClick=undefined` warning silenced ([#208](https://github.com/pyreon/pyreon/issues/208))
+
+  The conditional handler pattern is idiomatic and was flooding the dev console with false-positive warnings:
+
+  ```tsx
+  <button onClick={condition ? handler : undefined}>  // now quiet
+  ```
+
+  The runtime correctly bails on nullish values. The warning now only fires for actually-wrong types (strings, numbers, objects) that indicate real bugs.
+
+  ### `dangerouslySetInnerHTML` warning removed ([#208](https://github.com/pyreon/pyreon/issues/208))
+
+  Was firing on every prop application, flooding the console on every re-render. The name `dangerouslySetInnerHTML` IS the warning — matches React's behavior (no log).
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.12.13
+
 ## 0.12.12
 
 ### Patch Changes

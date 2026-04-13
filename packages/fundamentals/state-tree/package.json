@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/state-tree",
-  "version": "0.12.12",
+  "version": "0.12.13",
   "description": "Structured reactive state tree — composable models with snapshots, patches, and middleware",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/state-tree#readme",
   "bugs": {

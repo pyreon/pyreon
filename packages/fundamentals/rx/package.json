@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/rx",
-  "version": "0.12.12",
+  "version": "0.12.13",
   "description": "Signal-aware reactive transforms — filter, map, sort, group, pipe for Pyreon signals",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"

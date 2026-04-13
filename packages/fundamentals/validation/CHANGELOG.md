@@ -1,5 +1,12 @@
 # @pyreon/validation
 
+## 0.12.13
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/form@0.12.13
+
 ## 0.12.12
 
 ### Patch Changes
