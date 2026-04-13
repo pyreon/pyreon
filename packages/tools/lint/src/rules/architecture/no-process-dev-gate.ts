@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isServerOnlyFile } from '../../utils/server-only'
 
 /**
  * `pyreon/no-process-dev-gate` — flag the broken `typeof process` dev-mode gate
@@ -35,33 +36,8 @@ import { getSpan } from '../../utils/ast'
  *
  * **Server-package exception**: server-only files run in Node where `process`
  * is always defined, so the pattern is correct there. The rule skips files
- * matching `packages/zero/`, `packages/core/server/`, `packages/core/runtime-server/`,
- * `packages/tools/vite-plugin/`, and any file containing `/server/` in its
- * path. Add new server packages to `SERVER_PACKAGE_PATTERNS` below.
+ * whose paths match `SERVER_PACKAGE_PATTERNS` in `utils/server-only.ts`.
  */
-/**
- * File-path patterns for server-only packages. Substring match against the
- * file path passed to the rule. Patterns intentionally do NOT start with `/`
- * so they match both absolute paths (`/Users/.../packages/zero/...`) and
- * relative paths (`packages/zero/...`) — different lint runners pass paths
- * differently.
- */
-const SERVER_PACKAGE_PATTERNS = [
-  'packages/zero/',
-  'packages/core/server/',
-  'packages/core/runtime-server/',
-  'packages/tools/vite-plugin/',
-  'packages/tools/cli/',
-  'packages/tools/lint/',
-  'packages/tools/mcp/',
-  'packages/tools/storybook/',
-  'packages/tools/typescript/',
-  'scripts/',
-]
-
-function isServerOnlyFile(filePath: string): boolean {
-  return SERVER_PACKAGE_PATTERNS.some((pat) => filePath.includes(pat))
-}
 
 export const noProcessDevGate: Rule = {
   meta: {
