@@ -11,6 +11,20 @@ import { useChart } from '../use-chart'
 //   - errors land on .error signal instead of throwing
 //   - lazy-loads ECharts and renders a <canvas>
 //   - reactive options re-apply without remounting the canvas
+//   - useChart.instance() exposes the documented ECharts API surface
+//
+// The 3 canvas-rendering tests share a precondition (ECharts must
+// load successfully — gated on the `tslib` alias from
+// `vitest.browser.config.ts`) but each asserts a DISTINCT observation:
+//   1. dimensions test catches "canvas appears but is 0×0" (sizing
+//      bug or container.style not propagated)
+//   2. reactive-options test catches "signal change remounts canvas"
+//      (chart bridge reinitializes instead of `setOption`-ing)
+//   3. instance API test catches "ECharts loaded but `useChart` didn't
+//      expose its instance signal correctly"
+// Removing the alias makes all 3 fail (ECharts can't load — verified
+// in this PR's commit body). Each observation also catches a unique
+// regression in Pyreon code separate from the alias contract.
 //
 // The ECharts loading path was blocked through Phase 3 (PR #231) by a
 // tslib + esbuild interop bug. Resolved in this PR via a `tslib` alias
