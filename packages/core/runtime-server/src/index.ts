@@ -150,7 +150,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     enqueue('<!--pyreon-for-->')
     for (const item of each()) {
       const key = by(item)
-      enqueue(`<!--k:${key}-->`)
+      enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
     enqueue('<!--/pyreon-for-->')
@@ -347,7 +347,7 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
     let forHtml = '<!--pyreon-for-->'
     for (const item of each()) {
       const key = by(item)
-      forHtml += `<!--k:${key}-->`
+      forHtml += `<!--k:${safeKeyForMarker(key)}-->`
       forHtml += await renderNode(children(item) as VNodeChild)
     }
     forHtml += '<!--/pyreon-for-->'
@@ -510,6 +510,20 @@ const ESCAPE_MAP: Record<string, string> = {
   '>': '&gt;',
   '"': '&quot;',
   "'": '&#39;',
+}
+
+/**
+ * Encode a For-list key so it's safe to inline inside an HTML comment
+ * marker `<!--k:KEY-->`. If a user-supplied key contains `-->` the naive
+ * form breaks out of the comment and may inject markup. Per-byte URL
+ * encoding with an extra `-` substitution makes `-->` impossible in the
+ * output: `%2D%2D>` no longer terminates the comment. Client-side
+ * hydration does not read the marker body today, so any reversible-or-
+ * irreversible encoding works; this one is predictable enough for a
+ * future consumer to decode if needed.
+ */
+function safeKeyForMarker(key: unknown): string {
+  return encodeURIComponent(String(key)).replace(/-/g, '%2D')
 }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
