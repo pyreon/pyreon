@@ -29,7 +29,14 @@ describe('Row', () => {
     mockUseContext.mockReturnValue({})
   })
 
-  it('returns a VNode', async () => {
+  // First test in this file pays the cold-import cost for the entire coolgrid
+  // module graph (@pyreon/core + ui-core + unistyle + styler + rocketstyle).
+  // Warm it takes ~200ms, but on cold CI shared runners the Vite transform of
+  // that graph can spike past the 15s default and time out (PR #225 flakes).
+  // Per-test timeout bump — subsequent tests in the file reuse the cached
+  // module and run in 0ms, so the global 15s budget stays strict everywhere
+  // else.
+  it('returns a VNode', { timeout: 30000 }, async () => {
     const Row = (await import('../Row')).default
     const result = asVNode(Row({ children: 'test' }))
     expect(result).toBeDefined()
