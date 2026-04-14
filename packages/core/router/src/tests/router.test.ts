@@ -4476,4 +4476,249 @@ describe('View Transitions API', () => {
     expect(router.currentRoute().path).toBe('/about')
     router.destroy()
   })
+
+  it('await router.push() resolves AFTER updateCallbackDone (DOM live, not animation)', async () => {
+    // Key contract: the promise returned by push() resolves once the
+    // ViewTransition's `updateCallbackDone` settles (callback finished,
+    // DOM swapped) — NOT once `.finished` settles (full animation done).
+    // Test verifies both:
+    //   1. push() awaits the callback-done promise
+    //   2. push() does NOT wait for `.finished`
+    const deferred: { resolve?: () => void } = {}
+    const updateCallbackDone = Promise.resolve()
+    const finished = new Promise<void>((r) => {
+      deferred.resolve = r
+    })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished, // intentionally never resolved during the test
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    // push() MUST settle even though `.finished` never resolves.
+    let pushSettled = false
+    const pushPromise = router.push('/about').then(() => {
+      pushSettled = true
+    })
+    await pushPromise
+    expect(pushSettled).toBe(true)
+    expect(router.currentRoute().path).toBe('/about')
+
+    // Resolve .finished after the fact — should be a no-op.
+    deferred.resolve?.()
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('VT callback throwing does not hang navigation (updateCallbackDone rejection is swallowed)', async () => {
+    // If the user-land state commit inside the transition callback
+    // throws (e.g. a signal subscriber throws synchronously),
+    // `updateCallbackDone` rejects. The router's try/catch around the
+    // await ensures the navigation chain still settles.
+    const updateCallbackDone = Promise.reject(new Error('callback threw'))
+    // Attach a .catch here to silence Node's "unhandled rejection"
+    // warning on the test fixture itself (unrelated to the router).
+    updateCallbackDone.catch(() => {})
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    // Navigation still settles without throwing.
+    await expect(router.push('/about')).resolves.toBeUndefined()
+    // State still committed inside the callback (cb ran before the
+    // promise rejected).
+    expect(router.currentRoute().path).toBe('/about')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('`.ready` and `.finished` rejecting with AbortError does not break navigation', async () => {
+    // Node-side smoke for the AbortError-swallowing contract. The
+    // browser test in router.browser.test.tsx asserts the stronger
+    // property (no unhandled rejection escapes to the event loop);
+    // happy-dom doesn't fire `unhandledrejection` reliably, so here
+    // we just assert that navigation still completes when those
+    // promises reject.
+    const ready = Promise.reject(new DOMException('Transition was skipped', 'AbortError'))
+    const finished = Promise.reject(new DOMException('Transition was skipped', 'AbortError'))
+    // Pre-catch on the test side so happy-dom's process.exit('unhandled')
+    // doesn't trip on the test fixture itself.
+    ready.catch(() => {})
+    finished.catch(() => {})
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone: Promise.resolve(),
+        ready,
+        finished,
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+    await expect(router.push('/about')).resolves.toBeUndefined()
+    expect(router.currentRoute().path).toBe('/about')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('afterEach hook sees the NEW route state (post-commit ordering)', async () => {
+    // Regression: before the VT-await fix, afterEach hooks fired after
+    // commitNavigation() returned but BEFORE the VT callback actually
+    // ran — so hooks briefly saw the OLD currentPath. After the fix,
+    // hooks fire AFTER vt.updateCallbackDone, so they observe the NEW
+    // state. This is the correct behavior per the hook's documented
+    // semantics ("after-navigation hook") — assert it to prevent a
+    // future refactor from moving the loop back above the await.
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone: Promise.resolve(),
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    const observed: { to: string; current: string }[] = []
+    router.afterEach((to) => {
+      observed.push({ to: to.path, current: router.currentRoute().path })
+    })
+
+    await router.push('/about')
+
+    // Hook fired exactly once with the new state live.
+    expect(observed).toHaveLength(1)
+    expect(observed[0]).toEqual({ to: '/about', current: '/about' })
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('useTransition() loading signal stays TRUE during VT commit, FALSE only after DOM swap', async () => {
+    // The loadingSignal is decremented AFTER commitNavigation completes
+    // (i.e. after vt.updateCallbackDone). A subscriber observing the
+    // signal during `await router.push()` must not see it flip to 0
+    // before the DOM is live. Prevents regressions where someone moves
+    // the decrement above the await to "save a microtask."
+    const deferred: { resolve?: () => void } = {}
+    const updateCallbackDone = new Promise<void>((r) => {
+      deferred.resolve = r
+    })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    const observations: number[] = []
+    // Fire push without awaiting yet.
+    const pushPromise = router.push('/about')
+
+    // Drain all pending microtasks (guards + middleware + loaders) so
+    // navigate() reaches its `await commitNavigation(...)` — which in
+    // turn parks on `await vt.updateCallbackDone` (held pending by our
+    // deferred). One `setTimeout(0)` cycle yields to the macrotask
+    // queue, which guarantees all pending microtasks have drained.
+    await new Promise<void>((r) => setTimeout(r, 0))
+    // At this point, commitNavigation IS suspended on updateCallbackDone.
+    // If the fix holds, the loadingSignal decrement hasn't run yet.
+    // If the fix regresses (decrement moved above the await), the signal
+    // would already be 0 here — this assertion catches that.
+    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+
+    // Release updateCallbackDone; navigate unwinds, push() settles.
+    deferred.resolve?.()
+    await pushPromise
+    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+
+    // Observation 1: in-flight → loadingSignal > 0.
+    expect(observations[0]).toBeGreaterThan(0)
+    // Observation 2: after await → loadingSignal = 0.
+    expect(observations[1]).toBe(0)
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('meta.viewTransition:false opt-out skips VT even when the API is available', async () => {
+    // Tripwire: startViewTransition is installed on document, but the
+    // route opts out via meta.viewTransition:false. The router must
+    // skip the VT branch AND still commit the navigation. Regression
+    // guard for the meta-check that's part of the useVT conjunction.
+    let vtCalled = false
+    ;(document as any).startViewTransition = () => {
+      vtCalled = true
+      return { updateCallbackDone: Promise.resolve() }
+    }
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/no-vt', component: About, meta: { viewTransition: false } },
+      ],
+      url: '/',
+    })
+
+    await router.push('/no-vt')
+    expect(vtCalled).toBe(false)
+    expect(router.currentRoute().path).toBe('/no-vt')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
 })

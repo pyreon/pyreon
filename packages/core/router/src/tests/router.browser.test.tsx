@@ -28,23 +28,36 @@ const User = (props: Record<string, unknown>) => {
   return h('div', { id: 'user' }, `User: ${params.id}`)
 }
 
-// Opt out of View Transitions so `await router.push()` is deterministic.
-// With VT enabled, the signal commit runs inside an async transition
-// callback that resolves AFTER push() returns — see commitNavigation
-// in router.ts. View Transitions are covered by a dedicated test.
+// View Transitions stay enabled (the Chromium default). `commitNavigation`
+// now awaits `vt.updateCallbackDone` so `await router.push()` resolves
+// AFTER the DOM swap — no more per-route opt-outs to keep tests
+// deterministic.
 const routes = [
-  { path: '/', component: Home, meta: { viewTransition: false } },
-  { path: '/about', component: About, meta: { viewTransition: false } },
-  { path: '/user/:id', component: User, meta: { viewTransition: false } },
+  { path: '/', component: Home },
+  { path: '/about', component: About },
+  { path: '/user/:id', component: User },
 ]
 
 describe('router in real browser', () => {
+  // Track unhandled promise rejections across each test so regressions
+  // of the "Transition was skipped AbortError leaks as unhandled
+  // rejection" bug fail loudly instead of silently polluting the run.
+  const unhandledRejections: unknown[] = []
+  const onUnhandledRejection = (e: PromiseRejectionEvent) => {
+    unhandledRejections.push(e.reason)
+    // Let vitest's own handler still see the event (so other unrelated
+    // regressions still surface).
+  }
+
   beforeEach(() => {
     // Reset hash so each test starts at '/'.
     window.location.hash = ''
+    unhandledRejections.length = 0
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
   })
 
   afterEach(() => {
+    window.removeEventListener('unhandledrejection', onUnhandledRejection)
     setActiveRouter(null)
     window.location.hash = ''
   })
@@ -117,29 +130,33 @@ describe('router in real browser', () => {
     unmount()
   })
 
-  it('View Transitions API is invoked in Chromium (happy-dom cannot test this)', async () => {
-    const vtRoutes = [
-      { path: '/', component: Home },
-      { path: '/about', component: About },
-    ]
-    const router = createRouter({ routes: vtRoutes, mode: 'hash' })
+  it('View Transitions API — `await router.push()` resolves AFTER the DOM swap', async () => {
+    // Regression for the bug fixed alongside this PR:
+    //   commitNavigation() was sync, so when the browser ran `doCommit`
+    //   inside `startViewTransition(cb)`, `await router.push()` resolved
+    //   BEFORE `cb` fired. Browser tests had to opt out of View
+    //   Transitions per-route to stay deterministic.
+    //
+    // After the fix, commitNavigation awaits `vt.updateCallbackDone`;
+    // `await router.push()` resolves once the DOM state is live (but
+    // before the animation finishes, which would block 200-300ms).
+    const router = createRouter({ routes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
     )
     expect(container.querySelector('#home')).not.toBeNull()
 
-    // Real Chromium exposes document.startViewTransition — this is the
-    // branch the router takes when meta.viewTransition is not false.
-    expect(typeof (document as unknown as { startViewTransition?: unknown }).startViewTransition)
-      .toBe('function')
+    // Sanity: Chromium exposes the API this test exercises.
+    expect(
+      typeof (document as unknown as { startViewTransition?: unknown }).startViewTransition,
+    ).toBe('function')
 
     await router.push('/about')
-    // Transition runs async inside the startViewTransition callback.
-    // Poll briefly for the DOM swap to land.
-    for (let i = 0; i < 20 && !container.querySelector('#about'); i++) {
-      await new Promise<void>((r) => setTimeout(r, 25))
-    }
+    // No polling — immediately after the await, the DOM MUST reflect
+    // the new route. If this ever regresses, the rest of the suite
+    // will fail too.
     expect(container.querySelector('#about')?.textContent).toBe('About Page')
+    expect(container.querySelector('#home')).toBeNull()
     unmount()
   })
 
@@ -192,12 +209,12 @@ describe('router in real browser', () => {
 
   it('beforeEnter guard returning false blocks navigation (DOM unchanged)', async () => {
     const guardedRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/', component: Home },
       {
         path: '/protected',
         component: About,
         beforeEnter: () => false,
-        meta: { viewTransition: false },
+
       },
     ]
     const router = createRouter({ routes: guardedRoutes, mode: 'hash' })
@@ -217,14 +234,14 @@ describe('router in real browser', () => {
   it('beforeEnter guard returning a string redirects', async () => {
     const Redirected = () => h('div', { id: 'redirected' }, 'Redirected')
     const guardRedirect = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/', component: Home },
       {
         path: '/old',
         component: About,
         beforeEnter: () => '/new',
-        meta: { viewTransition: false },
+
       },
-      { path: '/new', component: Redirected, meta: { viewTransition: false } },
+      { path: '/new', component: Redirected },
     ]
     const router = createRouter({ routes: guardRedirect, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
@@ -240,9 +257,9 @@ describe('router in real browser', () => {
   it('static `redirect` field on route record forwards', async () => {
     const Target = () => h('div', { id: 'tgt' }, 'Target')
     const redirRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/', component: Home },
       { path: '/source', redirect: '/target', component: Home },
-      { path: '/target', component: Target, meta: { viewTransition: false } },
+      { path: '/target', component: Target },
     ]
     const router = createRouter({ routes: redirRoutes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
@@ -262,7 +279,7 @@ describe('router in real browser', () => {
       return h('div', { id: 'profile' }, () => `User: ${data.user}`)
     }
     const loaderRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/', component: Home },
       {
         path: '/profile',
         component: Profile,
@@ -271,7 +288,7 @@ describe('router in real browser', () => {
           seen.push('loader')
           return { user: 'Alice' }
         },
-        meta: { viewTransition: false },
+
       },
     ]
     const router = createRouter({ routes: loaderRoutes, mode: 'hash' })
@@ -293,8 +310,8 @@ describe('router in real browser', () => {
       return h('div', { id: 'q' }, () => `q=${params().q ?? ''}`)
     }
     const searchRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
-      { path: '/search', component: Search, meta: { viewTransition: false } },
+      { path: '/', component: Home },
+      { path: '/search', component: Search },
     ]
     const router = createRouter({ routes: searchRoutes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
@@ -312,8 +329,8 @@ describe('router in real browser', () => {
 
   it('named navigation: router.push({ name, params }) resolves to URL', async () => {
     const namedRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
-      { path: '/user/:id', component: User, name: 'user', meta: { viewTransition: false } },
+      { path: '/', component: Home },
+      { path: '/user/:id', component: User, name: 'user' },
     ]
     const router = createRouter({ routes: namedRoutes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
@@ -330,8 +347,8 @@ describe('router in real browser', () => {
   it('catch-all wildcard route renders for unknown paths', async () => {
     const NotFound = () => h('div', { id: 'nf' }, 'Not found')
     const wildcardRoutes = [
-      { path: '/', component: Home, meta: { viewTransition: false } },
-      { path: '*', component: NotFound, meta: { viewTransition: false } },
+      { path: '/', component: Home },
+      { path: '*', component: NotFound },
     ]
     const router = createRouter({ routes: wildcardRoutes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
@@ -372,7 +389,14 @@ describe('router in real browser', () => {
     unmount()
   })
 
-  it('rapid push() calls — only the final destination wins', async () => {
+  it('rapid push() calls — only the final destination wins, no unhandled rejections', async () => {
+    // Each push() starts a new ViewTransition. The older in-flight
+    // transition(s) get skipped, which makes their `.ready` and
+    // `.finished` promises reject with `AbortError: Transition was
+    // skipped`. The router installs `.catch(() => {})` on both so the
+    // rejections don't escape. This test asserts both contracts:
+    //   1. Final destination resolves correctly.
+    //   2. `window.onunhandledrejection` fires zero times.
     const router = createRouter({ routes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
@@ -389,6 +413,30 @@ describe('router in real browser', () => {
     expect(container.querySelector('#user')?.textContent).toBe('User: 2')
     expect(container.querySelector('#about')).toBeNull()
     expect(window.location.hash).toBe('#/user/2')
+
+    // Give the microtask queue a chance to surface any leaked rejection.
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(unhandledRejections).toEqual([])
+    unmount()
+  })
+
+  it('await router.replace() resolves after DOM swap (same VT contract as push)', async () => {
+    // `push` and `replace` both go through `navigate()` which awaits
+    // `commitNavigation()`. This test locks in that the DOM-after-await
+    // contract holds for replace() too — so a future refactor that
+    // splits their code paths can't silently regress one without the
+    // other.
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    expect(container.querySelector('#home')).not.toBeNull()
+
+    await router.replace('/about')
+    // Immediate — no polling, no flush(). If the VT await chain skips
+    // replace(), this assertion fails.
+    expect(container.querySelector('#about')?.textContent).toBe('About Page')
+    expect(container.querySelector('#home')).toBeNull()
     unmount()
   })
 })
