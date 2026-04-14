@@ -1733,9 +1733,11 @@ describe('no-bare-signal-in-jsx: render() helper exemption', () => {
 
 // `no-window-in-ssr` — `watch()` from @pyreon/reactivity and
 // `requestAnimationFrame` are safe contexts: their callbacks only fire
-// after initial setup / inside a browser frame.
+// after initial setup / inside a browser frame. watch is handled
+// precisely: only the 2nd arg (callback) is safe, the 1st (source) is
+// evaluated at setup and stays under normal analysis.
 describe('no-window-in-ssr: watch() and requestAnimationFrame safe contexts', () => {
-  it('silent inside watch(() => signal(), callback)', () => {
+  it('silent in the callback arg of watch(source, callback)', () => {
     const source = `
       watch(() => stage(), (s) => {
         cancelAnimationFrame(frameId)
@@ -1743,6 +1745,16 @@ describe('no-window-in-ssr: watch() and requestAnimationFrame safe contexts', ()
     `
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('FIRES for browser globals in the SOURCE arg of watch (setup-time)', () => {
+    // The source arg runs at setup to track signals — browser globals there
+    // would break SSR. Only the 2nd-arg callback is deferred.
+    const source = `
+      watch(() => window.innerWidth, (w) => {})
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
   })
 
   it('silent inside requestAnimationFrame callback', () => {

@@ -155,6 +155,10 @@ export const noWindowInSsr: Rule = {
     // contributed by early-return guards inside this function — popped on
     // function exit to keep the depth balanced.
     const earlyReturnStack: number[] = []
+    // Callback nodes (2nd arg of `watch(source, cb)`) pre-marked so the
+    // function-scope visitor bumps safeDepth only inside them. The source
+    // arg (evaluated at setup) stays unmarked and gets normal analysis.
+    const watchCallbackNodes = new WeakSet<any>()
     // Stack of parameter names that shadow browser globals for the current
     // function scope. E.g. `function push(location)` — any `location`
     // identifier inside this function refers to the parameter, not the
@@ -186,12 +190,24 @@ export const noWindowInSsr: Rule = {
     function pushFunctionScope(node?: any) {
       earlyReturnStack.push(0)
       shadowedNamesStack.push(node ? collectParamNames(node.params ?? []) : new Set())
+      if (node && watchCallbackNodes.has(node)) {
+        safeDepth++
+        watchCallbackSafeDepthStack.push(1)
+      } else {
+        watchCallbackSafeDepthStack.push(0)
+      }
     }
     function popFunctionScope() {
       const bumps = earlyReturnStack.pop() ?? 0
       typeofGuardDepth -= bumps
       shadowedNamesStack.pop()
+      const watchBump = watchCallbackSafeDepthStack.pop() ?? 0
+      if (watchBump > 0) safeDepth -= watchBump
     }
+    // Parallel stack recording whether the current function scope bumped
+    // safeDepth for being a watch callback. Paired with `popFunctionScope`
+    // so the depth is balanced even with nested watch calls.
+    const watchCallbackSafeDepthStack: number[] = []
     function noteEarlyReturnGuardVisit() {
       typeofGuardDepth++
       if (earlyReturnStack.length > 0) {
@@ -215,20 +231,35 @@ export const noWindowInSsr: Rule = {
       ArrowFunctionExpression: pushFunctionScope,
       'ArrowFunctionExpression:exit': popFunctionScope,
       CallExpression(node: any) {
-        // `onUnmount` is also a safe context — by the time it runs, the
-        // component is in the browser DOM (else it never mounted). And
-        // `effect`/`renderEffect` only run after first render, so they're
-        // browser-only too.
+        // `onMount` / `onUnmount` / `onCleanup` / `effect` / `renderEffect` /
+        // `requestAnimationFrame` — the whole call's arguments are safe:
+        // the callback runs post-mount / in a browser frame, and those
+        // hooks accept a single callback arg (no setup-time source).
         if (
           isCallTo(node, 'onMount') ||
           isCallTo(node, 'onUnmount') ||
           isCallTo(node, 'onCleanup') ||
           isCallTo(node, 'effect') ||
           isCallTo(node, 'renderEffect') ||
-          isCallTo(node, 'watch') ||
           isCallTo(node, 'requestAnimationFrame')
         ) {
           safeDepth++
+          return
+        }
+        // `watch(source, cb)` — the SOURCE arg is evaluated synchronously
+        // at setup time (to track signals) so browser-global access inside
+        // it is NOT safe. Only the CALLBACK arg fires deferred. Pre-mark
+        // the second arg so the ArrowFn/FunctionExpression visitor bumps
+        // safeDepth only there — not across the whole CallExpression.
+        if (isCallTo(node, 'watch')) {
+          const cb = node.arguments?.[1]
+          if (
+            cb?.type === 'ArrowFunctionExpression' ||
+            cb?.type === 'FunctionExpression' ||
+            cb?.type === 'FunctionDeclaration'
+          ) {
+            watchCallbackNodes.add(cb)
+          }
         }
       },
       'CallExpression:exit'(node: any) {
@@ -238,7 +269,6 @@ export const noWindowInSsr: Rule = {
           isCallTo(node, 'onCleanup') ||
           isCallTo(node, 'effect') ||
           isCallTo(node, 'renderEffect') ||
-          isCallTo(node, 'watch') ||
           isCallTo(node, 'requestAnimationFrame')
         ) {
           safeDepth--

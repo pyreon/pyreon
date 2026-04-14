@@ -18,23 +18,21 @@ describe('@pyreon/kinetic browser smoke', () => {
     unmount()
   })
 
-  it('Transition reacts to a `show` signal change', async () => {
+  it('Transition fires onLeave when show signal goes true → false', async () => {
+    let onLeaveCalls = 0
     const show = signal(true)
-    const { container, unmount } = mountInBrowser(
-      <Transition show={show}>
+    const { unmount } = mountInBrowser(
+      <Transition show={show} onLeave={() => { onLeaveCalls++ }}>
         <div data-id="t">hi</div>
       </Transition>,
     )
-    expect(container.querySelector('[data-id="t"]')).not.toBeNull()
+    expect(onLeaveCalls).toBe(0)
     show.set(false)
     await flush()
-    // After leave animation and unmount, element should be gone.
-    // Transition default timeout fires rAF+animationend; allow rAF flush.
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
-    // In happy-dom CSS transitions don't fire `transitionend`, so the
-    // timeout path in useAnimationEnd will eventually unmount.
-    // Just verify the `show` signal has propagated — no assertion on removal
-    // timing in a real-browser smoke test.
+    // onLeave fires once the leave transition starts — asserts the
+    // signal → stage machine → lifecycle callback path ran end-to-end.
+    expect(onLeaveCalls).toBe(1)
     unmount()
   })
 
