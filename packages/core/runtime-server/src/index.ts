@@ -150,7 +150,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     enqueue('<!--pyreon-for-->')
     for (const item of each()) {
       const key = by(item)
-      enqueue(`<!--k:${key}-->`)
+      enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
     enqueue('<!--/pyreon-for-->')
@@ -190,6 +190,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
 
 async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
   const tag = vnode.type as string
+  warnIfUnsafeTag(tag)
   let open = `<${tag}`
   const props = vnode.props as Record<string, unknown>
   for (const key in props) {
@@ -347,7 +348,7 @@ async function renderNode(node: VNodeChild | (() => VNodeChild)): Promise<string
     let forHtml = '<!--pyreon-for-->'
     for (const item of each()) {
       const key = by(item)
-      forHtml += `<!--k:${key}-->`
+      forHtml += `<!--k:${safeKeyForMarker(key)}-->`
       forHtml += await renderNode(children(item) as VNodeChild)
     }
     forHtml += '<!--/pyreon-for-->'
@@ -383,6 +384,7 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
 
 async function renderElement(vnode: VNode): Promise<string> {
   const tag = vnode.type as string
+  warnIfUnsafeTag(tag)
   let html = `<${tag}`
 
   const props = vnode.props as Record<string, unknown>
@@ -510,6 +512,51 @@ const ESCAPE_MAP: Record<string, string> = {
   '>': '&gt;',
   '"': '&quot;',
   "'": '&#39;',
+}
+
+/**
+ * Encode a For-list key so it's safe to inline inside an HTML comment
+ * marker `<!--k:KEY-->`. If a user-supplied key contains `-->` the naive
+ * form breaks out of the comment and may inject markup. Per-byte URL
+ * encoding with an extra `-` substitution makes `-->` impossible in the
+ * output: `%2D%2D>` no longer terminates the comment. Client-side
+ * hydration does not read the marker body today, so any reversible-or-
+ * irreversible encoding works; this one is predictable enough for a
+ * future consumer to decode if needed.
+ */
+function safeKeyForMarker(key: unknown): string {
+  return encodeURIComponent(String(key)).replace(/-/g, '%2D')
+}
+
+/**
+ * Inverse of `safeKeyForMarker` — decode a marker-safe key back to the
+ * original string. Not used by runtime today (hydration does not read
+ * per-item `<!--k:KEY-->` markers) but shipped alongside the encoder so
+ * future hydration or devtools consumers decode symmetrically without
+ * having to re-derive the encoding from source.
+ */
+export function decodeKeyFromMarker(encoded: string): string {
+  return decodeURIComponent(encoded.replace(/%2D/gi, '-'))
+}
+
+// Detect tag names that would break out of the `<TAG>` or `</TAG>` form
+// and inject HTML. If user data ever feeds `h(userTag, ...)` the attack
+// `userTag = 'div><script>alert(1)</script><div'` yields executable
+// markup. Framework doesn't HTML-escape tag names (React/Vue/Solid
+// match) — responsibility is on the caller — but a dev-mode warning
+// catches the mistake before it reaches prod. Safe tag pattern covers
+// HTML element names and custom elements (letter start, then
+// alphanumerics + hyphens).
+const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
+function warnIfUnsafeTag(tag: string): void {
+  if (!__DEV__) return
+  if (SAFE_TAG_RE.test(tag)) return
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
+      `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
+      `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
+  )
 }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)

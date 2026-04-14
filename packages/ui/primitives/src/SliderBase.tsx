@@ -49,7 +49,7 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
   return (
     <input
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       type="range"
       value={value()}
       min={own.min ?? 0}

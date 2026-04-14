@@ -16,7 +16,7 @@
  * Falls back to mountChild() whenever DOM structure doesn't match the VNode.
  */
 
-import type { ComponentFn, Ref, VNode, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
   dispatchToErrorBoundary,
   ForSymbol,
@@ -272,7 +272,7 @@ function hydrateElement(
     cleanups.push(childCleanup)
 
     // Set ref
-    const ref = vnode.props.ref as Ref<Element> | ((el: Element) => void) | undefined
+    const ref = vnode.props.ref as RefProp<Element> | undefined
     if (ref) {
       if (typeof ref === 'function') ref(el)
       else ref.current = el
@@ -280,7 +280,7 @@ function hydrateElement(
 
     const cleanup = () => {
       if (ref) {
-        if (typeof ref === 'function') (ref as (el: Element | null) => void)(null)
+        if (typeof ref === 'function') ref(null)
         else ref.current = null
       }
       for (const c of cleanups) c()

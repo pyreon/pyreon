@@ -48,7 +48,7 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
   return (
     <label
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="checkbox"
       aria-checked={own.indeterminate ? 'mixed' : checked()}
       aria-disabled={own.disabled || undefined}

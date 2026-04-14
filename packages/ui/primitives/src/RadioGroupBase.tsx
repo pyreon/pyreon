@@ -58,7 +58,7 @@ export const RadioGroupBase: ComponentFn<RadioGroupBaseProps> = (props) => {
   return (
     <div
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="radiogroup"
       aria-invalid={own['aria-invalid'] || undefined}
     >
@@ -107,7 +107,7 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
   return (
     <label
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="radio"
       aria-checked={checked()}
       aria-disabled={isDisabled() || undefined}

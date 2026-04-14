@@ -42,7 +42,7 @@ export const TabsBase: ComponentFn<TabsBaseProps> = (props) => {
   return (
     <div
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
     >
       {own.children}
     </div>
@@ -77,7 +77,7 @@ export const TabBase: ComponentFn<TabBaseProps> = (props) => {
   return (
     <button
       {...(rest as Record<string, unknown>)}
-      ref={own.ref as ((el: HTMLElement) => void) | undefined}
+      ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       type="button"
       role="tab"
       aria-selected={isActive()}
@@ -116,7 +116,7 @@ export const TabPanelBase: ComponentFn<TabPanelBaseProps> = (props) => {
     return (
       <div
         {...(rest as Record<string, unknown>)}
-        ref={own.ref as ((el: HTMLElement) => void) | undefined}
+        ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
         role="tabpanel"
       >
         {own.children}
