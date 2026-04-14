@@ -3,14 +3,14 @@ import { join } from 'node:path'
 import type { PackageManifest } from '../types'
 
 /**
- * Integration test: iterate every real `manifest.ts` across the
- * monorepo and assert it conforms to `PackageManifest`. Today there
- * are zero manifests — the test is a no-op but present so the day
- * the first manifest lands, it gets validated without another PR.
+ * Integration test: iterate every real `src/manifest.ts` across the
+ * monorepo and assert it conforms to `PackageManifest`. Activates
+ * automatically when a package ships a manifest.
  *
- * The test walks `packages/<category>/<pkg>/manifest.ts` (not
- * `packages/<category>/<pkg>/src/manifest.ts`) because the generator
- * looks at the package root for the manifest file.
+ * The test walks `packages/<category>/<pkg>/src/manifest.ts` —
+ * manifests live under `src/` so each package's `rootDir: "./src"`
+ * tsconfig constraint holds uniformly (tests importing the manifest
+ * stay inside rootDir too).
  */
 
 const REPO_ROOT = join(__dirname, '../../../../..')
@@ -33,7 +33,7 @@ function findManifestFiles(): string[] {
       } catch {
         continue
       }
-      const manifestPath = join(pkgDir, 'manifest.ts')
+      const manifestPath = join(pkgDir, 'src', 'manifest.ts')
       try {
         if (statSync(manifestPath).isFile()) results.push(manifestPath)
       } catch {
@@ -44,7 +44,7 @@ function findManifestFiles(): string[] {
   return results
 }
 
-describe('real-manifests — every packages/*/*/manifest.ts conforms to PackageManifest', () => {
+describe('real-manifests — every packages/<cat>/<pkg>/src/manifest.ts conforms to PackageManifest', () => {
   const manifestPaths = findManifestFiles()
 
   it('scanner finds the manifest directory structure', () => {

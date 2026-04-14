@@ -293,6 +293,62 @@ jobs:
         # but is still listed as exempt).
         run: bun run lint:browser-smoke
 
+  docs-sync:
+    name: Docs Sync
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only run when inputs that could change generator output are touched.
+    # Prevents docs-sync from burning CI minutes on PRs that touch only
+    # source code in migrated packages (those updates are caught by the
+    # package's own tests, not docs-sync).
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Detect whether docs-sync inputs changed
+        id: changes
+        # Compares the PR's range against the base. If any file matching
+        # the patterns below changed, `should_run=true`. For push events
+        # (non-PR) on main and merge_group events, always run.
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" || echo '')
+          if echo "$CHANGED" | grep -qE '(^packages/[^/]+/[^/]+/src/manifest\.ts$|^llms\.txt$|^scripts/gen-docs(-core)?\.ts$|^packages/internals/manifest/|^package\.json$)'; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "No docs-sync-relevant files changed — skipping."
+          fi
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.changes.outputs.should_run == 'true'
+        with:
+          bun-version: latest
+      - name: Cache node_modules
+        if: steps.changes.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        id: node-modules-cache
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: node-modules-${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+        if: steps.changes.outputs.should_run == 'true' && steps.node-modules-cache.outputs.cache-hit != 'true'
+      - name: Check manifest-generated docs are in sync
+        if: steps.changes.outputs.should_run == 'true'
+        # Single source of truth for "in sync": gen-docs --check exits 1
+        # if any generated file would change, printing a minimal diff.
+        # Failure message tells reviewers the fix.
+        run: bun run gen-docs --check
+
   secrets-scan:
     name: Secrets Scan
     runs-on: ubuntu-latest

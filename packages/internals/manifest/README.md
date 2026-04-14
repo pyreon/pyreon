@@ -2,7 +2,7 @@
 
 Internal (private) package. Type + identity helper for per-package manifests that feed the monorepo's doc and MCP generators.
 
-Not published to npm. Consumed via workspace protocol by manifest files at `packages/<category>/<pkg>/manifest.ts` and by `scripts/gen-docs.ts` (separate PR).
+Not published to npm. Consumed via workspace protocol by manifest files at `packages/<category>/<pkg>/src/manifest.ts` and by `scripts/gen-docs.ts`.
 
 ## Why
 
@@ -15,7 +15,7 @@ See `.claude/plans/ecosystem-improvements-2026-q2.md` → T2.1 for the broader c
 ## Usage
 
 ```ts
-// packages/fundamentals/flow/manifest.ts
+// packages/fundamentals/flow/src/manifest.ts
 import { defineManifest } from '@pyreon/manifest'
 
 export default defineManifest({
@@ -115,7 +115,7 @@ It does NOT `Object.freeze` the manifest at runtime. Consumers can still mutate 
 ## What this package does NOT contain
 
 - Generator logic — lives in `scripts/gen-docs.ts` (follow-up PR).
-- Manifest entries — those live in consumer packages (`packages/*/*/manifest.ts`).
+- Manifest entries — those live in consumer packages (`packages/*/*/src/manifest.ts`).
 - MCP integration — consumed later in T2.5.1.
 - Templates / output formatting — the generator owns those.
 
