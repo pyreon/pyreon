@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Affected-package filter — emits `--filter='@pyreon/x'` flags for `bun run`.
+ * Affected-package filter — emits `--filter=@pyreon/x` flags for `bun run`.
  *
  * ## Why
  *
@@ -203,7 +203,7 @@ function main(): void {
     })
   } catch {
     // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
-    process.stdout.write("--filter='*'")
+    process.stdout.write('--filter=*')
     return
   }
 
@@ -216,7 +216,7 @@ function main(): void {
   // Root-file safety net first.
   for (const path of changed) {
     if (isRootFile(path)) {
-      process.stdout.write("--filter='*'")
+      process.stdout.write('--filter=*')
       return
     }
   }
@@ -235,7 +235,11 @@ function main(): void {
   }
 
   const closure = transitiveDependents(seeds, workspaces)
-  const flags = [...closure].sort().map((name) => `--filter='${name}'`)
+  // Emit unquoted flags — quoting is the shell's job, and embedding literal
+  // single quotes here breaks GitHub Actions step outputs (the quotes are
+  // preserved verbatim and bun receives `--filter='@pyreon/x'` literally,
+  // matching no packages).
+  const flags = [...closure].sort().map((name) => `--filter=${name}`)
   process.stdout.write(flags.join(' '))
 }
 

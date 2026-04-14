@@ -90,6 +90,9 @@ jobs:
             echo "No affected packages — skipping typecheck."
             exit 0
           fi
+          # set -f disables shell glob expansion so --filter=* reaches bun
+          # literally (bun does its own glob matching against workspace names).
+          set -f
           bun run $FILTER typecheck
 
   # Note: matrix sharding (vitest --shard=i/n) was considered and rejected.
@@ -149,6 +152,7 @@ jobs:
             echo "No affected packages — skipping tests."
             exit 0
           fi
+          set -f
           bun run $FILTER test
 
   test-browser:
@@ -232,6 +236,7 @@ jobs:
             echo "No affected packages — skipping build."
             exit 0
           fi
+          set -f
           bun run $FILTER build
 
   lint:
