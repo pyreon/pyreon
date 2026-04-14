@@ -1057,8 +1057,20 @@ if (__DEV__) console.warn('hello')`,
     notes:
       "Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.claude/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations.",
     mistakes: `- Adding a new browser-running package without a browser test — the rule will fail your PR
-- Hardcoding the browser-package list in the rule — use \`additionalPackages\` config option instead
-- Disabling the rule globally — use \`exemptPaths\` to exempt specific packages still under construction`,
+- Hardcoding the browser-package list in the rule — the list lives in \`.claude/rules/browser-packages.json\` (single source of truth), not in the rule source
+- Disabling the rule globally — use \`exemptPaths\` to exempt specific packages still under construction
+- Shipping a \`sanity.browser.test.ts\` with \`expect(1).toBe(1)\` just to satisfy the rule — it passes but provides zero signal. The rule is a GATE, not a quality check; review actual contents on PR`,
+  },
+
+  'mcp/get_browser_smoke_status': {
+    signature: 'tool: get_browser_smoke_status — no args',
+    example: `// Ask the MCP server:
+//   "which Pyreon packages are missing browser smoke coverage?"
+// Tool walks packages/, matches against .claude/rules/browser-packages.json,
+// returns a coverage report.`,
+    notes:
+      "Companion to the `pyreon/require-browser-smoke-test` lint rule. Reports which browser-categorized Pyreon packages have at least one `*.browser.test.{ts,tsx}` file under `src/`. Uses the same `.claude/rules/browser-packages.json` single source of truth as the rule + the CI script. Lets an AI agent check coverage before writing a new browser package (so it adds a smoke test in the same PR) instead of discovering the failure when CI runs. Falls back with a clear message if the JSON isn't present (e.g. consumer apps that don't ship the Pyreon monorepo layout).",
+    mistakes: `- Using the tool's output as a substitute for running the CI script — this tool only checks file existence, not the self-expiring-exemption check that \`bun run lint:browser-smoke\` performs`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

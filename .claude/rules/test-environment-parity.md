@@ -12,6 +12,8 @@ Categorize each package into one of three buckets and apply the matching rule:
 
 These run in real browsers in production. **Must have at least one Playwright/browser smoke test** in addition to vitest tests.
 
+The canonical machine-readable list lives at [`.claude/rules/browser-packages.json`](./browser-packages.json) — consumed by the `pyreon/require-browser-smoke-test` lint rule, the MCP `get_browser_smoke_status` tool, and the CI script `scripts/check-browser-smoke.ts`. Update the JSON when adding a new browser-running package; this prose list is kept in sync manually.
+
 - `@pyreon/runtime-dom`
 - `@pyreon/router`
 - `@pyreon/head`

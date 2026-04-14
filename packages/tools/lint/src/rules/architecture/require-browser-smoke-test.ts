@@ -46,33 +46,76 @@ import { isPathExempt } from '../../utils/exempt-paths'
  *   }
  * }
  * ```
+ *
+ * **Known limitation — file existence, not test quality.** The rule only
+ * checks that at least one `*.browser.test.*` file exists under `src/`;
+ * it cannot assess whether the test is meaningful. A package could ship
+ * `sanity.browser.test.ts` with `expect(1).toBe(1)` and satisfy the
+ * rule. That's accepted by design — the rule is a *gate* against
+ * packages shipping with zero smoke coverage, not a quality check.
+ * Review the actual test contents on PR. If drive-by one-liner tests
+ * become a pattern, add a per-package coverage threshold or a
+ * complementary rule that inspects test file contents.
  */
 
-// Browser-categorized packages that MUST have a *.browser.test.* file.
-// Keep in sync with `.claude/rules/test-environment-parity.md`.
-const DEFAULT_BROWSER_PACKAGES = new Set<string>([
-  '@pyreon/runtime-dom',
-  '@pyreon/router',
-  '@pyreon/head',
-  '@pyreon/flow',
-  '@pyreon/code',
-  '@pyreon/charts',
-  '@pyreon/document-primitives',
-  '@pyreon/connector-document',
-  '@pyreon/elements',
-  '@pyreon/styler',
-  '@pyreon/unistyle',
-  '@pyreon/rocketstyle',
-  '@pyreon/coolgrid',
-  '@pyreon/kinetic',
-  '@pyreon/ui-components',
-  '@pyreon/ui-primitives',
-  '@pyreon/ui-theme',
-  '@pyreon/react-compat',
-  '@pyreon/preact-compat',
-  '@pyreon/vue-compat',
-  '@pyreon/solid-compat',
-])
+/**
+ * Single source of truth for browser-categorized packages lives at
+ * `.claude/rules/browser-packages.json`. Loading it lazily here means:
+ *
+ *   1. Updating the list never requires re-publishing `@pyreon/lint`.
+ *   2. The script `scripts/check-browser-smoke.ts` + the human-readable
+ *      `.claude/rules/test-environment-parity.md` share the same source,
+ *      so they can't drift out of sync silently.
+ *
+ * The JSON is searched for by walking up from the linted file's directory
+ * to the first ancestor containing `.claude/rules/browser-packages.json`.
+ * If not found (rule running in a consumer repo that doesn't ship the
+ * JSON), the rule falls back to an empty list — `additionalPackages`
+ * becomes the only signal and the rule stays opt-in, not a footgun.
+ *
+ * Cached globally because the list is tiny and lint runs lint thousands
+ * of files per invocation.
+ */
+let _cachedBrowserPackages: Set<string> | null = null
+
+function loadBrowserPackages(fromFile: string): Set<string> {
+  if (_cachedBrowserPackages) return _cachedBrowserPackages
+  let dir = path.dirname(fromFile)
+  // Walk up to /; bounded in practice by the project root.
+  for (let i = 0; i < 30; i++) {
+    const candidate = path.join(dir, '.claude', 'rules', 'browser-packages.json')
+    if (existsSync(candidate)) {
+      try {
+        const fs = require('node:fs') as typeof import('node:fs')
+        const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8')) as {
+          packages?: unknown
+        }
+        if (Array.isArray(parsed.packages)) {
+          _cachedBrowserPackages = new Set(
+            parsed.packages.filter((p): p is string => typeof p === 'string'),
+          )
+          return _cachedBrowserPackages
+        }
+      } catch {
+        // fall through to empty-list fallback
+      }
+      break
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  _cachedBrowserPackages = new Set()
+  return _cachedBrowserPackages
+}
+
+/**
+ * Test-only: reset the cached list so unit tests can exercise the
+ * filesystem-discovery path multiple times within one process.
+ */
+export function _resetBrowserPackagesCache(): void {
+  _cachedBrowserPackages = null
+}
 
 /**
  * Walk a directory looking for `*.browser.test.{ts,tsx}` files. Bails
@@ -160,7 +203,7 @@ export const requireBrowserSmokeTest: Rule = {
     const additional = Array.isArray(options.additionalPackages)
       ? (options.additionalPackages.filter((s) => typeof s === 'string') as string[])
       : []
-    const browserPackages = new Set(DEFAULT_BROWSER_PACKAGES)
+    const browserPackages = new Set(loadBrowserPackages(filePath))
     for (const p of additional) browserPackages.add(p)
 
     if (!browserPackages.has(pkgName)) return {}

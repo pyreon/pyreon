@@ -284,10 +284,13 @@ jobs:
           # oxlint is path-based and very fast; the affected filter only gates
           # the empty-changes case (skip when nothing to lint).
           bun run lint
-      - name: Enforce browser smoke test contract
+      - name: Enforce pyreon/require-browser-smoke-test
         # Runs the focused `pyreon/require-browser-smoke-test` rule across
-        # every package. Always runs (not gated on affected filter) because
-        # adding/renaming a smoke test in any package affects the contract.
+        # every package. Not gated on the affected filter because adding or
+        # renaming a smoke test in any package affects the contract for the
+        # whole monorepo. Also verifies that PHASE_5_PENDING_PACKAGES
+        # exemptions haven't gone stale (package now has a browser test
+        # but is still listed as exempt).
         run: bun run lint:browser-smoke
 
   secrets-scan:
