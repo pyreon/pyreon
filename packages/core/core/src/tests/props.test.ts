@@ -160,6 +160,51 @@ describe('splitProps — getter reactivity', () => {
   })
 })
 
+describe('mergeProps — non-configurable getter sources (regression)', () => {
+  // Regression: when a source object has a getter defined via
+  // Object.defineProperty without an explicit `configurable: true`,
+  // configurable defaults to false. mergeProps forwarded the descriptor as-is,
+  // so a later source overriding the same key crashed with
+  // "Cannot redefine property". Real-world trigger: defineProperty-based
+  // observables, some test mocks, some Proxy getter wrappers.
+  test('mergeProps handles getters without explicit configurable flag', () => {
+    const a: Record<string, unknown> = {}
+    Object.defineProperty(a, 'x', { get: () => 1, enumerable: true })
+    const b = { x: 2 }
+    expect(() => mergeProps(a, b)).not.toThrow()
+    expect(mergeProps(a, b).x).toBe(2)
+  })
+
+  test('mergeProps result properties are configurable (can be overridden later)', () => {
+    const a: Record<string, unknown> = {}
+    Object.defineProperty(a, 'x', { get: () => 1, enumerable: true })
+    const b = { y: 'b' }
+    const merged = mergeProps(a, b)
+    expect(() =>
+      Object.defineProperty(merged, 'x', { value: 42, enumerable: true, configurable: true }),
+    ).not.toThrow()
+    expect(() =>
+      Object.defineProperty(merged, 'y', { value: 99, enumerable: true, configurable: true }),
+    ).not.toThrow()
+  })
+
+  test('splitProps result properties are configurable (can be overridden later)', () => {
+    const a: Record<string, unknown> = { other: 'x' }
+    Object.defineProperty(a, 'v', { get: () => 1, enumerable: true })
+    const [own, rest] = splitProps(a, ['v'])
+    expect(() =>
+      Object.defineProperty(own, 'v', { value: 42, enumerable: true, configurable: true }),
+    ).not.toThrow()
+    expect(() =>
+      Object.defineProperty(rest, 'other', {
+        value: 'y',
+        enumerable: true,
+        configurable: true,
+      }),
+    ).not.toThrow()
+  })
+})
+
 describe('createUniqueId', () => {
   test('returns incrementing IDs', () => {
     const id1 = createUniqueId()
