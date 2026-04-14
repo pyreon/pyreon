@@ -10,6 +10,23 @@ import type { PackageManifest } from './types'
  * it's a pure type-level helper with no filesystem or CLI concerns —
  * the same reasoning that keeps `defineManifest` here. Tests import it
  * via `@pyreon/manifest`, avoiding rootDir cross-package headaches.
+ *
+ * @example
+ * ```ts
+ * import { defineManifest, renderLlmsTxtLine } from '@pyreon/manifest'
+ *
+ * const m = defineManifest({
+ *   name: '@pyreon/flow',
+ *   tagline: 'Reactive flow diagrams',
+ *   description: 'd',
+ *   category: 'browser',
+ *   peerDeps: ['@pyreon/runtime-dom'],
+ *   features: [],
+ *   api: [],
+ * })
+ * renderLlmsTxtLine(m)
+ * // → "- @pyreon/flow — Reactive flow diagrams (peer: @pyreon/runtime-dom)"
+ * ```
  */
 export function renderLlmsTxtLine(m: PackageManifest): string {
   const peerSuffix =
@@ -31,6 +48,14 @@ export function renderLlmsTxtLine(m: PackageManifest): string {
  * Complexity is O(m * n) in time + space on the line count. Fine for
  * our largest file (llms.txt < 500 lines); if we ever diff a 10k-line
  * surface, swap in a proper Myers implementation.
+ *
+ * @example
+ * ```ts
+ * import { formatLineDiff } from '@pyreon/manifest'
+ *
+ * formatLineDiff('a\nb\nc', 'a\nX\nc')
+ * // → "- b\n+ X"
+ * ```
  */
 export function formatLineDiff(before: string, after: string): string {
   const a = before.split('\n')

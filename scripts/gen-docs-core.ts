@@ -1,85 +1,23 @@
 /**
- * gen-docs core — filesystem-walking + orchestration for the generator.
+ * gen-docs core — orchestration logic for the manifest → docs pipeline.
  *
- * Pure rendering lives in `@pyreon/manifest` (`src/render.ts`): a
- * manifest → llms.txt bullet is a type-level concern, reusable by any
- * caller that wants to render without dragging in `fs` / `path`.
- *
- * This file owns:
- * - `findManifests(repoRoot)` — walks `packages/<cat>/<pkg>/src/manifest.ts`
- * - `regenerateLlmsTxt(contents, manifests)` — replaces matched bullets
- *
- * Consumers:
- * - `scripts/gen-docs.ts` — CLI entry
- * - `packages/internals/manifest/src/tests/generator.test.ts` — tests
+ * Pure rendering (manifest → line) lives in `@pyreon/manifest` along
+ * with filesystem walking (`findManifests`). This file owns the
+ * orchestration step: given a file's contents + a set of manifests,
+ * compute the regenerated contents. Also owns the `main()` entry
+ * point that the CLI wraps, with injectable I/O so tests can run
+ * in-process without `spawnSync` overhead.
  */
 
-import { readdirSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
-import { renderLlmsTxtLine } from '../packages/internals/manifest/src/render'
-// Relative import (not `@pyreon/manifest`) because scripts/ lives
-// outside any package — bun resolves workspace specifiers from a
-// package's node_modules, scripts/ has none. Type-only.
-import type { PackageManifest } from '../packages/internals/manifest/src/types'
-
-export const PACKAGE_CATEGORIES = [
-  'core',
-  'fundamentals',
-  'tools',
-  'ui-system',
-  'internals',
-  'zero',
-] as const
-
-export interface LoadedManifest {
-  path: string
-  manifest: PackageManifest
-}
-
-/**
- * Walk `packages/<category>/<pkg>/src/manifest.ts` under the given repo
- * root. Returns every default-exported manifest it finds. Throws if a
- * manifest file exists but has no default export — silent "no default
- * exported" was a foot-gun in the original generator.
- *
- * Manifests live under `src/` so they respect each package's
- * `rootDir: "./src"` tsconfig constraint.
- */
-export async function findManifests(repoRoot: string): Promise<LoadedManifest[]> {
-  const found: LoadedManifest[] = []
-  for (const category of PACKAGE_CATEGORIES) {
-    const categoryDir = join(repoRoot, 'packages', category)
-    let pkgs: string[]
-    try {
-      pkgs = readdirSync(categoryDir)
-    } catch {
-      continue
-    }
-    for (const pkg of pkgs) {
-      const pkgDir = join(categoryDir, pkg)
-      try {
-        if (!statSync(pkgDir).isDirectory()) continue
-      } catch {
-        continue
-      }
-      const manifestPath = join(pkgDir, 'src', 'manifest.ts')
-      try {
-        if (!statSync(manifestPath).isFile()) continue
-      } catch {
-        continue
-      }
-      const mod = (await import(pathToFileURL(manifestPath).href)) as {
-        default?: PackageManifest
-      }
-      if (!mod.default) {
-        throw new Error(`[gen-docs] ${manifestPath} has no default export`)
-      }
-      found.push({ path: manifestPath, manifest: mod.default })
-    }
-  }
-  return found
-}
+import {
+  findManifests,
+  formatLineDiff,
+  type LoadedManifest,
+  type PackageManifest,
+  renderLlmsTxtLine,
+} from '../packages/internals/manifest/src'
 
 export interface RegenerateResult {
   contents: string
@@ -90,9 +28,21 @@ export interface RegenerateResult {
 /**
  * Replace existing `- <name> —` bullets in llms.txt with regenerated
  * content from the manifests. Returns the list of manifest names whose
- * bullet line could NOT be found in llms.txt — the caller should treat
- * this as a hard error (manifests without a landing line produce
- * silent no-ops that drift untracked).
+ * bullet line could NOT be found in llms.txt — the caller should
+ * treat this as a hard error (manifests without a landing line
+ * produce silent no-ops that drift untracked).
+ *
+ * @example
+ * ```ts
+ * import { regenerateLlmsTxt } from './gen-docs-core'
+ * import { findManifests } from '@pyreon/manifest'
+ * import { readFileSync } from 'node:fs'
+ *
+ * const manifests = await findManifests(process.cwd())
+ * const before = readFileSync('llms.txt', 'utf8')
+ * const { contents, missingEntries } = regenerateLlmsTxt(before, manifests)
+ * if (missingEntries.length > 0) throw new Error(`missing: ${missingEntries.join(', ')}`)
+ * ```
  */
 export function regenerateLlmsTxt(
   contents: string,
@@ -117,7 +67,109 @@ export function regenerateLlmsTxt(
   return { contents: next, changedLines, missingEntries }
 }
 
+/**
+ * Injectable I/O for `main()` — tests replace these to capture output
+ * in-process. Default bindings point at the real process streams.
+ */
+export interface CliIO {
+  stdout: (s: string) => void
+  stderr: (s: string) => void
+  exit: (code: number) => never
+}
+
+export const defaultIO: CliIO = {
+  stdout: (s) => {
+    // oxlint-disable-next-line no-console
+    console.log(s)
+  },
+  stderr: (s) => {
+    // oxlint-disable-next-line no-console
+    console.error(s)
+  },
+  exit: (code) => process.exit(code),
+}
+
+/**
+ * Main entry — orchestrates find → regenerate → write (or `--check`).
+ * Injectable I/O keeps tests fast in-process and avoids shelling out
+ * to `bun` via `spawnSync` for every scenario.
+ *
+ * @example
+ * ```ts
+ * const stdout: string[] = []
+ * const stderr: string[] = []
+ * try {
+ *   await main(repoRoot, ['--check'], {
+ *     stdout: (s) => stdout.push(s),
+ *     stderr: (s) => stderr.push(s),
+ *     exit: (c) => { throw new Error(`exit ${c}`) },
+ *   })
+ * } catch (e) {
+ *   // inspect exit code + captured streams
+ * }
+ * ```
+ */
+export async function main(
+  repoRoot: string,
+  argv: string[],
+  io: CliIO = defaultIO,
+): Promise<void> {
+  const check = argv.includes('--check')
+  const manifests = await findManifests(repoRoot)
+
+  if (!check) {
+    io.stdout(
+      `[gen-docs] found ${manifests.length} manifest${manifests.length === 1 ? '' : 's'}`,
+    )
+  }
+  if (manifests.length === 0) {
+    if (!check) io.stdout('[gen-docs] no manifests found — nothing to regenerate')
+    return
+  }
+
+  const llmsTxtPath = join(repoRoot, 'llms.txt')
+  const before = readFileSync(llmsTxtPath, 'utf8')
+  const { contents: after, changedLines, missingEntries } = regenerateLlmsTxt(
+    before,
+    manifests,
+  )
+
+  if (missingEntries.length > 0) {
+    io.stderr(
+      `[gen-docs] ERROR: these manifests have no matching bullet in llms.txt\n` +
+        `(expected a line starting with "- <name> —" — placement goes under the\n` +
+        `package list section that matches the package's category — "core",\n` +
+        `"fundamentals", "tools", "ui-system", "internals", or "zero"):\n` +
+        missingEntries.map((n) => `  - ${n}`).join('\n') +
+        `\n\nAdd the bullet by hand first (form: \`- <name> — <any text>\`, the\n` +
+        `generator will then regenerate the tail), then re-run gen-docs.`,
+    )
+    return io.exit(1)
+  }
+
+  if (before !== after) {
+    if (check) {
+      io.stderr('[gen-docs] llms.txt is out of sync with manifests.\n')
+      io.stderr(formatLineDiff(before, after))
+      io.stderr('\nFix: run `bun run gen-docs` and commit the result.')
+      return io.exit(1)
+    }
+    writeFileSync(llmsTxtPath, after)
+    io.stdout(
+      `[gen-docs] llms.txt: ${changedLines} line${changedLines === 1 ? '' : 's'} regenerated`,
+    )
+  } else if (!check) {
+    io.stdout(`[gen-docs] llms.txt: no changes (already in sync)`)
+  }
+}
+
 // Re-export for test convenience — keeps a single import origin for
-// consumers that don't care about the physical split between pure
-// render and orchestration.
-export { formatLineDiff, renderLlmsTxtLine } from '../packages/internals/manifest/src/render'
+// consumers that don't care about the physical split between
+// @pyreon/manifest (pure helpers) and this file (orchestration).
+export {
+  findManifests,
+  formatLineDiff,
+  type LoadedManifest,
+  type PackageManifest,
+  renderLlmsTxtLine,
+} from '../packages/internals/manifest/src'

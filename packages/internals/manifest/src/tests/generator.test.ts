@@ -1,12 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  findManifests,
-  formatLineDiff,
-  renderLlmsTxtLine,
-  regenerateLlmsTxt,
-} from '../../../../../scripts/gen-docs-core'
+import { regenerateLlmsTxt } from '../../../../../scripts/gen-docs-core'
+import { findManifests, formatLineDiff, renderLlmsTxtLine } from '../index'
 import type { PackageManifest } from '../types'
 
 // Unit coverage for scripts/gen-docs.ts. Lives in @pyreon/manifest
@@ -229,5 +225,18 @@ describe('formatLineDiff', () => {
 
   it('reports multiple changes together', () => {
     expect(formatLineDiff('a\nb\nc\nd', 'a\nX\nc\nY')).toBe('- b\n+ X\n- d\n+ Y')
+  })
+
+  it('handles trailing-newline difference without garbage output', () => {
+    // `'a\nb'` vs `'a\nb\n'`: the trailing \n splits into [''] at the
+    // tail. Expected: one `+ ` line (the empty string added).
+    expect(formatLineDiff('a\nb', 'a\nb\n')).toBe('+ ')
+  })
+
+  it('handles mid-file insertions via LCS backtrace (not naive index-pair)', () => {
+    // Naive index-pair would emit `- b, + X, - c, + b, - d, + c`
+    // (pairing every index where strings differ). LCS correctly
+    // identifies b and c as common — only X is inserted.
+    expect(formatLineDiff('a\nb\nc\nd', 'a\nX\nb\nc\nd')).toBe('+ X')
   })
 })
