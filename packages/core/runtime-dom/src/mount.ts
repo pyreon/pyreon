@@ -268,14 +268,20 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
       }
     const refToClean = ref
     return () => {
-      if (refToClean && typeof refToClean === 'object') refToClean.current = null
+      if (refToClean) {
+        if (typeof refToClean === 'function') refToClean(null)
+        else refToClean.current = null
+      }
       if (propCleanup) propCleanup()
       childCleanup()
     }
   }
 
   return () => {
-    if (ref && typeof ref === 'object') ref.current = null
+    if (ref) {
+      if (typeof ref === 'function') ref(null)
+      else ref.current = null
+    }
     if (propCleanup) propCleanup()
     childCleanup()
     const p = el.parentNode

@@ -19,8 +19,11 @@ export type RefCallback<T = unknown> = (el: T | null) => void
 
 /**
  * Union of object ref and callback ref — accepted by the JSX ref prop.
- * Also accepts `(el: T) => void` (mount-only callback) for convenience —
- * these are called with the element on mount but NOT called with null on unmount.
+ * Callback refs are called with the element on mount and with `null` on
+ * unmount (matches React/Solid/Vue behavior). The `(el: T) => void` arm
+ * is a TypeScript convenience for mount-only handlers — if you care
+ * about cleanup, use `RefCallback<T>` explicitly and handle the null
+ * case, or use an object `Ref<T>` and read `ref.current` when needed.
  */
 export type RefProp<T = unknown> = Ref<T> | RefCallback<T> | ((el: T) => void)
 
