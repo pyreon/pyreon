@@ -280,7 +280,7 @@ function hydrateElement(
 
     const cleanup = () => {
       if (ref) {
-        if (typeof ref === 'function') ref(null)
+        if (typeof ref === 'function') (ref as (el: Element | null) => void)(null)
         else ref.current = null
       }
       for (const c of cleanups) c()
