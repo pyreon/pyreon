@@ -48,4 +48,5 @@ export type {
 // ─── Testing ─────────────────────────────────────────────────────────────────
 
 export { _resetDBCache } from './indexed-db'
+export { _resetStorageListener } from './local'
 export { _resetRegistry } from './registry'

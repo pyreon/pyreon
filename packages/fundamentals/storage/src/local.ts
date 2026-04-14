@@ -5,22 +5,58 @@ import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
-let listenerAttached = false
+// Refcount the active localStorage signals so we can detach the `storage`
+// event listener when nothing subscribes anymore. Before the refcount, the
+// listener was attached on first `useStorage` and NEVER removed, leaking a
+// window-level handler across the lifetime of the page even after all
+// signals disposed via `.remove()`.
+let activeCount = 0
+let storageHandler: ((e: StorageEvent) => void) | null = null
 
-function attachStorageListener(): void {
-  if (listenerAttached || !isBrowser()) return
-  listenerAttached = true
+function onStorageEvent(e: StorageEvent): void {
+  if (!e.key) return
+  const entry = getEntry('local', e.key)
+  if (!entry) return
 
-  window.addEventListener('storage', (e) => {
-    if (!e.key) return
-    const entry = getEntry('local', e.key)
-    if (!entry) return
+  const newValue =
+    e.newValue !== null ? deserialize(e.newValue, entry.defaultValue) : entry.defaultValue
 
-    const newValue =
-      e.newValue !== null ? deserialize(e.newValue, entry.defaultValue) : entry.defaultValue
+  entry.signal.set(newValue)
+}
 
-    entry.signal.set(newValue)
-  })
+function retainStorageListener(): void {
+  if (!isBrowser()) return
+  activeCount++
+  if (storageHandler === null) {
+    storageHandler = onStorageEvent
+    window.addEventListener('storage', storageHandler)
+  }
+}
+
+/**
+ * Test-only: force-detach the cross-tab listener and reset the refcount.
+ * Used in test teardown to keep `_resetRegistry` and listener state in sync.
+ */
+export function _resetStorageListener(): void {
+  if (storageHandler !== null && isBrowser()) {
+    window.removeEventListener('storage', storageHandler)
+  }
+  storageHandler = null
+  activeCount = 0
+}
+
+/**
+ * Release one refcount on the cross-tab listener. Detaches the window-level
+ * handler when the count drops to zero. Called from `.remove()`.
+ */
+export function releaseStorageListener(): void {
+  if (!isBrowser()) return
+  if (activeCount === 0) return
+  activeCount--
+  if (activeCount === 0 && storageHandler !== null) {
+    window.removeEventListener('storage', storageHandler)
+    storageHandler = null
+  }
 }
 
 // ─── useStorage ──────────────────────────────────────────────────────────────
@@ -63,7 +99,7 @@ export function useStorage<T>(
   const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
 
   setEntry('local', key, storageSig, defaultValue)
-  attachStorageListener()
+  retainStorageListener()
 
   return storageSig
 }
@@ -124,6 +160,9 @@ export function createStorageSignal<T>(
       storage.removeItem(key)
     }
     removeEntry(backend, key)
+    if (backend === 'local') {
+      releaseStorageListener()
+    }
   }
 
   return storageSig
