@@ -67,6 +67,12 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      - name: Cache bootstrap (lib/) builds
+        uses: actions/cache@v4
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+          restore-keys: bootstrap-${{ runner.os }}-
       - name: Compute affected filter
         id: affected
         run: |
@@ -120,6 +126,12 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      - name: Cache bootstrap (lib/) builds
+        uses: actions/cache@v4
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+          restore-keys: bootstrap-${{ runner.os }}-
       - name: Compute affected filter
         id: affected
         run: |
@@ -197,6 +209,12 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      - name: Cache bootstrap (lib/) builds
+        uses: actions/cache@v4
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+          restore-keys: bootstrap-${{ runner.os }}-
       - name: Compute affected filter
         id: affected
         run: |
