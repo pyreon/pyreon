@@ -767,6 +767,13 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/internals/manifest": {
+      "name": "@pyreon/manifest",
+      "version": "0.0.0",
+      "devDependencies": {
+        "vitest": "^4.1.4",
+      },
+    },
     "packages/internals/test-utils": {
       "name": "@pyreon/test-utils",
       "version": "0.12.10",
@@ -1860,6 +1867,8 @@
     "@pyreon/lint": ["@pyreon/lint@workspace:packages/tools/lint"],
 
     "@pyreon/machine": ["@pyreon/machine@workspace:packages/fundamentals/machine"],
+
+    "@pyreon/manifest": ["@pyreon/manifest@workspace:packages/internals/manifest"],
 
     "@pyreon/mcp": ["@pyreon/mcp@workspace:packages/tools/mcp"],
 
