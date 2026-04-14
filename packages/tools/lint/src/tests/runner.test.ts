@@ -1152,11 +1152,35 @@ describe('Hooks rules', () => {
     expect(diags.length).toBe(0)
   })
 
+  it('pyreon/no-raw-addeventlistener: exempt for @pyreon/hooks (implements the wrappers)', () => {
+    const source = `el.addEventListener("click", handler)`
+    const result = lintFile(
+      'packages/fundamentals/hooks/src/useClickOutside.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-raw-addeventlistener')
+    expect(diags.length).toBe(0)
+  })
+
   it('pyreon/no-raw-setinterval: flags setInterval outside onMount', () => {
     const source = `setInterval(() => {}, 1000)`
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-raw-setinterval')
     expect(diags.length).toBe(1)
+  })
+
+  it('pyreon/no-raw-setinterval: exempt for @pyreon/hooks (implements useInterval)', () => {
+    const source = `setInterval(() => callback(), d)`
+    const result = lintFile(
+      'packages/fundamentals/hooks/src/useInterval.ts',
+      source,
+      allRules,
+      defaultConfig(),
+    )
+    const diags = findByRule(result, 'pyreon/no-raw-setinterval')
+    expect(diags.length).toBe(0)
   })
 
   it('pyreon/no-raw-localstorage: flags localStorage.getItem()', () => {
