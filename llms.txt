@@ -385,3 +385,14 @@ Full docs at `docs/` (VitePress site, 52 pages): `cd docs && bun run dev`
 - `pyreon doctor --fix` — auto-fix React patterns to Pyreon equivalents
 - `pyreon context` — generate .pyreon/context.json with routes, components, islands
 - MCP server: `bunx @pyreon/mcp` — live API lookup, validation, migration, diagnostics
+
+## Dev-mode warnings — bundler tree-shake
+
+Pyreon dev warnings are gated on `import.meta.env?.DEV`. Source pattern × bundler tree-shake:
+
+- inline `if (!import.meta.env?.DEV) return` — tree-shaken in both Vite and raw esbuild.
+- `const __DEV__ = ...; if (__DEV__) ...` — tree-shaken in Vite, mostly tree-shaken in raw esbuild.
+- `const __DEV__ = ...; __DEV__ && cond && warn(...)` (chained &&) — tree-shaken in Vite, runtime-gated only in raw esbuild (string survives in bundle but warn doesn't fire because gate is false).
+- `typeof process !== 'undefined'` — dead code in all browser bundlers; forbidden by `pyreon/no-process-dev-gate` lint rule.
+
+Vite is Pyreon's primary supported bundler. Non-Vite consumers using the chained form pay a small bundle-size cost only — runtime is correct. Tests live in `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite + non-Vite runtime smoke) and `flow/src/tests/integration.test.ts` (esbuild for the inline pattern).

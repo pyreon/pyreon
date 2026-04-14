@@ -115,6 +115,19 @@ const App = () => (
 
 `TransitionProps`, `TransitionGroupProps`, `KeepAliveProps`, `SanitizeFn`, `DevtoolsComponentEntry`, `PyreonDevtools`
 
+## Dev-mode warnings — bundler tree-shake
+
+Dev warnings are gated on `import.meta.env?.DEV`. Tree-shake behavior depends on both the source pattern and the consumer bundler:
+
+| Source pattern | Vite prod | Raw esbuild prod | Test |
+| --- | --- | --- | --- |
+| `if (!import.meta.env?.DEV) return` (inline early-return) | tree-shaken | tree-shaken | `flow/src/tests/integration.test.ts` (esbuild) |
+| `const __DEV__ = ...; if (__DEV__) ...` | tree-shaken | mostly tree-shaken | `runtime-dom/src/tests/dev-gate-treeshake.test.ts` (Vite) |
+| `const __DEV__ = ...; __DEV__ && cond && warn(...)` (chained &&) | tree-shaken | runtime-gated only | `runtime-dom/.../dev-gate-treeshake.test.ts` (Vite + non-Vite runtime smoke) |
+| `typeof process !== 'undefined'` | dead in browser | dead in browser | `pyreon/no-process-dev-gate` lint rule |
+
+Vite is Pyreon's primary supported bundler. Non-Vite consumers (webpack, bunchee, raw esbuild) using the chained `&&` form may retain warning strings as data, but the runtime gate evaluates to `false` when `import.meta.env.DEV` is undefined — warnings don't fire. Only a small bundle-size cost.
+
 ## License
 
 MIT
