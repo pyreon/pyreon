@@ -458,7 +458,7 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 Context-based: `RouterContext = createContext<RouterInstance | null>(null)`.
 `RouterProvider` pushes to context stack + sets module fallback.
 Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update.
-View Transitions API integration: route changes wrapped in `document.startViewTransition()` when available.
+View Transitions API integration: route changes wrapped in `document.startViewTransition()` when available. `await router.push()` / `.replace()` resolves AFTER the DOM swap (the transition's `updateCallbackDone` promise) so callers can inspect the new route state immediately. It does NOT wait for `.finished` (the full animation — 200-300ms), which would add unwanted latency to every programmatic navigation.
 Middleware chain: `RouteMiddleware[]` runs before guards, `ctx.data` passed through, `useMiddlewareData()` reads in components.
 Hash scrolling: after navigation, `#id` fragments auto-scroll to matching DOM element.
 

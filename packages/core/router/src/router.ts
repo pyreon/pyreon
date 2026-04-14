@@ -608,12 +608,12 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     return true
   }
 
-  function commitNavigation(
+  async function commitNavigation(
     path: string,
     replace: boolean,
     to: ResolvedRoute,
     from: ResolvedRoute,
-  ): void {
+  ): Promise<void> {
     scrollManager.save(from.path)
 
     const doCommit = () => {
@@ -638,9 +638,54 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       && typeof (document as any).startViewTransition === 'function'
 
     if (useVT) {
-      (document as any).startViewTransition(() => {
-        doCommit()
-      })
+      // `startViewTransition(cb)` runs `cb` inside an async transition. Its
+      // `.updateCallbackDone` promise resolves as soon as the callback
+      // finishes — DOM has swapped, state is live, but the fade/slide
+      // animation is still running. That's what `await router.push()`
+      // should wait for: callers need the new route live before they act
+      // (e.g. focus an element, inspect `location`, query a new DOM node);
+      // they don't want to block on the full animation (`.finished`),
+      // which would add 200-300ms to every programmatic navigation.
+      //
+      // Before this await, `commitNavigation` was sync: the transition
+      // callback ran in a later microtask, so `await router.push()`
+      // resolved BEFORE the DOM swap. Browser smoke tests had to opt out
+      // of View Transitions per-route via `meta: { viewTransition: false }`
+      // to stay deterministic — a flag whose only purpose was to paper
+      // over this bug.
+      type ViewTransitionLike = {
+        updateCallbackDone?: Promise<void>
+        ready?: Promise<void>
+        finished?: Promise<void>
+      }
+      const vt = (document as { startViewTransition?: (cb: () => void) => ViewTransitionLike | undefined })
+        .startViewTransition!(() => {
+          doCommit()
+        })
+      // `startViewTransition` may return `undefined` in test doubles
+      // that shim it with a bare `(cb) => cb()`. Guard accordingly.
+      if (vt) {
+        // The ViewTransition object exposes THREE promises —
+        // `updateCallbackDone`, `ready`, `finished`. When a newer
+        // `startViewTransition()` starts while this one is in flight,
+        // `ready` and `finished` reject with `AbortError: Transition
+        // was skipped`. We only need to wait on `updateCallbackDone`
+        // (the DOM-commit signal), but the other two MUST still be
+        // handled or the rejection surfaces as an unhandled promise
+        // rejection that breaks test runners and CI dashboards.
+        vt.ready?.catch(() => {})
+        vt.finished?.catch(() => {})
+        if (vt.updateCallbackDone) {
+          try {
+            await vt.updateCallbackDone
+          } catch {
+            // `updateCallbackDone` rejects if the callback itself throws.
+            // The DOM may be in a partial-commit state; the newer
+            // navigation (if any) will re-commit. Swallow so the
+            // navigation chain never hangs on a transition error.
+          }
+        }
+      }
     } else {
       doCommit()
     }
@@ -756,7 +801,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       return
     }
 
-    commitNavigation(path, replace, to, from)
+    await commitNavigation(path, replace, to, from)
     loadingSignal.update((n) => n - 1)
   }
 
