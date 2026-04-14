@@ -7,6 +7,8 @@ import {
   RouterProvider,
   RouterView,
   useIsActive,
+  useLoaderData,
+  useSearchParams,
 } from '../index'
 import { setActiveRouter } from '../router'
 
@@ -185,6 +187,208 @@ describe('router in real browser', () => {
     await router.push('/')
     await flush()
     expect(container.querySelector('#badge')?.textContent).toBe('off-about')
+    unmount()
+  })
+
+  it('beforeEnter guard returning false blocks navigation (DOM unchanged)', async () => {
+    const guardedRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      {
+        path: '/protected',
+        component: About,
+        beforeEnter: () => false,
+        meta: { viewTransition: false },
+      },
+    ]
+    const router = createRouter({ routes: guardedRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    expect(container.querySelector('#home')).not.toBeNull()
+
+    await router.push('/protected')
+    await flush()
+    // Still on home — guard blocked.
+    expect(container.querySelector('#home')).not.toBeNull()
+    expect(container.querySelector('#about')).toBeNull()
+    unmount()
+  })
+
+  it('beforeEnter guard returning a string redirects', async () => {
+    const Redirected = () => h('div', { id: 'redirected' }, 'Redirected')
+    const guardRedirect = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      {
+        path: '/old',
+        component: About,
+        beforeEnter: () => '/new',
+        meta: { viewTransition: false },
+      },
+      { path: '/new', component: Redirected, meta: { viewTransition: false } },
+    ]
+    const router = createRouter({ routes: guardRedirect, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+
+    await router.push('/old')
+    await flush()
+    expect(container.querySelector('#redirected')?.textContent).toBe('Redirected')
+    unmount()
+  })
+
+  it('static `redirect` field on route record forwards', async () => {
+    const Target = () => h('div', { id: 'tgt' }, 'Target')
+    const redirRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/source', redirect: '/target', component: Home },
+      { path: '/target', component: Target, meta: { viewTransition: false } },
+    ]
+    const router = createRouter({ routes: redirRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    await router.push('/source')
+    await flush()
+    expect(container.querySelector('#tgt')?.textContent).toBe('Target')
+    unmount()
+  })
+
+  it('route loader runs before component renders; useLoaderData reads the result', async () => {
+    const seen: string[] = []
+    const Profile = () => {
+      const data = useLoaderData<{ user: string }>()
+      seen.push(`render:${data.user}`)
+      return h('div', { id: 'profile' }, () => `User: ${data.user}`)
+    }
+    const loaderRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      {
+        path: '/profile',
+        component: Profile,
+        loader: async () => {
+          await Promise.resolve()
+          seen.push('loader')
+          return { user: 'Alice' }
+        },
+        meta: { viewTransition: false },
+      },
+    ]
+    const router = createRouter({ routes: loaderRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    await router.push('/profile')
+    await flush()
+
+    expect(container.querySelector('#profile')?.textContent).toBe('User: Alice')
+    // Loader runs before render.
+    expect(seen[0]).toBe('loader')
+    unmount()
+  })
+
+  it('useSearchParams reads typed search-string + signal updates from push', async () => {
+    const Search = () => {
+      const [params] = useSearchParams()
+      return h('div', { id: 'q' }, () => `q=${params().q ?? ''}`)
+    }
+    const searchRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/search', component: Search, meta: { viewTransition: false } },
+    ]
+    const router = createRouter({ routes: searchRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    await router.push('/search?q=hello')
+    await flush()
+    expect(container.querySelector('#q')?.textContent).toBe('q=hello')
+
+    await router.push('/search?q=world')
+    await flush()
+    expect(container.querySelector('#q')?.textContent).toBe('q=world')
+    unmount()
+  })
+
+  it('named navigation: router.push({ name, params }) resolves to URL', async () => {
+    const namedRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '/user/:id', component: User, name: 'user', meta: { viewTransition: false } },
+    ]
+    const router = createRouter({ routes: namedRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+
+    await router.push({ name: 'user', params: { id: '7' } })
+    await flush()
+    expect(container.querySelector('#user')?.textContent).toBe('User: 7')
+    expect(window.location.hash).toBe('#/user/7')
+    unmount()
+  })
+
+  it('catch-all wildcard route renders for unknown paths', async () => {
+    const NotFound = () => h('div', { id: 'nf' }, 'Not found')
+    const wildcardRoutes = [
+      { path: '/', component: Home, meta: { viewTransition: false } },
+      { path: '*', component: NotFound, meta: { viewTransition: false } },
+    ]
+    const router = createRouter({ routes: wildcardRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    await router.push('/totally/does/not/exist')
+    await flush()
+    expect(container.querySelector('#nf')).not.toBeNull()
+    unmount()
+  })
+
+  it('RouterLink with replace=true does NOT add to history', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(
+        RouterProvider,
+        { router },
+        h(
+          'div',
+          null,
+          h(RouterLink, { to: '/about', id: 'l1' }, 'about'),
+          h(RouterLink, { to: '/', id: 'l2', replace: true }, 'home-replace'),
+          h(RouterView, {}),
+        ),
+      ),
+    )
+
+    container.querySelector<HTMLAnchorElement>('#l1')!.click()
+    await flush()
+    expect(container.querySelector('#about')).not.toBeNull()
+
+    const histLenBefore = window.history.length
+    container.querySelector<HTMLAnchorElement>('#l2')!.click()
+    await flush()
+    expect(container.querySelector('#home')).not.toBeNull()
+    // replace navigation should not increase history length.
+    expect(window.history.length).toBe(histLenBefore)
+    unmount()
+  })
+
+  it('rapid push() calls — only the final destination wins', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+
+    // Don't await — fire all three before any has settled.
+    const p1 = router.push('/about')
+    const p2 = router.push('/user/1')
+    const p3 = router.push('/user/2')
+    await Promise.all([p1, p2, p3])
+    await flush()
+
+    // Final destination resolves and renders.
+    expect(container.querySelector('#user')?.textContent).toBe('User: 2')
+    expect(container.querySelector('#about')).toBeNull()
+    expect(window.location.hash).toBe('#/user/2')
     unmount()
   })
 })
