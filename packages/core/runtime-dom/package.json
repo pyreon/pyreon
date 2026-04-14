@@ -37,6 +37,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
@@ -48,6 +49,8 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/compiler": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4",
     "@pyreon/runtime-server": "workspace:^",
     "happy-dom": "^20.8.3"
   }
