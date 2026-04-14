@@ -1509,7 +1509,77 @@ describe('component-context exemption (rules that only fire inside components/ho
       const diags = findByRule(result, rule)
       expect(diags.length).toBeGreaterThanOrEqual(1)
     })
+
+    it(`${rule}: fires inside an arrow-form component (\`const MyComp = () => …\`)`, () => {
+      const wrapped = `const MyComp = () => { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it(`${rule}: fires inside an arrow-form hook (\`const useFoo = () => …\`)`, () => {
+      const wrapped = `const useFoo = () => { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
   }
+})
+
+// Arrow-form hook implementations are now correctly detected by
+// `no-theme-outside-provider` (fixes a silent bug where the rule ignored
+// the most common React/Solid hook idiom).
+describe('no-theme-outside-provider: arrow-form hook implementation', () => {
+  it('silent inside `const useFoo = (...) => { useTheme() }` (hook delegates provider to caller)', () => {
+    const source = `
+      import { useTheme } from '@pyreon/styler'
+      export const useThemeValue = (path) => {
+        const theme = useTheme()
+        return theme?.[path]
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-theme-outside-provider')
+    expect(diags.length).toBe(0)
+  })
+
+  it('still fires inside a non-hook arrow function calling useTheme', () => {
+    const source = `
+      import { useTheme } from '@pyreon/styler'
+      export const getColor = () => useTheme()?.colors?.primary
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-theme-outside-provider')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// `no-window-in-ssr` recognizes the const-captured typeof guard idiom:
+// `const isBrowser = typeof window !== 'undefined'; if (isBrowser) { window.X }`.
+describe('no-window-in-ssr: const-captured typeof guard', () => {
+  it('silent under `if (isBrowser)` after `const isBrowser = typeof window !== "undefined"`', () => {
+    const source = `
+      const isBrowser = typeof window !== 'undefined'
+      if (isBrowser) {
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('still fires when the const is not a typeof check', () => {
+    const source = `
+      const isBrowser = true
+      if (isBrowser) {
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
 })
 
 // ── Test-file heuristic (C-rules) ────────────────────────────────────────────

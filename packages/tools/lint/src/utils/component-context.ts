@@ -67,38 +67,40 @@ export interface ComponentContextTracker {
 export function createComponentContextTracker(): ComponentContextTracker {
   let depth = 0
 
-  function nameOfFunction(node: any, parent: any): string | null {
-    // function Foo() {} / function useFoo() {}
-    if (node.type === 'FunctionDeclaration') return node.id?.name ?? null
-
-    // const Foo = () => {} / const useFoo = () => {}
-    // const Foo = function () {}
-    if (parent?.type === 'VariableDeclarator' && parent.id?.type === 'Identifier') {
-      return parent.id.name
-    }
-
-    // export default function Foo() {} / export default function useFoo() {}
-    // (handled by FunctionDeclaration above when name is present)
-
-    return null
-  }
-
-  function maybeEnter(node: any, parent: any) {
-    if (isComponentOrHookName(nameOfFunction(node, parent))) depth++
-  }
-  function maybeExit(node: any, parent: any) {
-    if (isComponentOrHookName(nameOfFunction(node, parent))) depth--
+  // For arrow / function expressions assigned to a `const X = (...) => …`,
+  // we can't read the binding name from the function node — and the oxc
+  // visitor doesn't pass `parent` to callbacks. Instead, hook the parent
+  // `VariableDeclarator` enter/exit: it visits BEFORE its `init` child
+  // (the function expression) and EXITS AFTER, so a depth bump tied to
+  // the declarator correctly brackets the function body.
+  function declaratorIsComponentOrHook(node: any): boolean {
+    if (node?.id?.type !== 'Identifier') return false
+    const init = node.init
+    if (
+      init?.type !== 'ArrowFunctionExpression' &&
+      init?.type !== 'FunctionExpression'
+    )
+      return false
+    return isComponentOrHookName(node.id.name)
   }
 
   return {
     isInComponentOrHook: () => depth > 0,
     callbacks: {
-      FunctionDeclaration: maybeEnter,
-      'FunctionDeclaration:exit': maybeExit,
-      FunctionExpression: maybeEnter,
-      'FunctionExpression:exit': maybeExit,
-      ArrowFunctionExpression: maybeEnter,
-      'ArrowFunctionExpression:exit': maybeExit,
+      // function MyComp() {} / function useFoo() {}
+      FunctionDeclaration(node: any) {
+        if (isComponentOrHookName(node.id?.name)) depth++
+      },
+      'FunctionDeclaration:exit'(node: any) {
+        if (isComponentOrHookName(node.id?.name)) depth--
+      },
+      // const MyComp = () => {} / const useFoo = function () {}
+      VariableDeclarator(node: any) {
+        if (declaratorIsComponentOrHook(node)) depth++
+      },
+      'VariableDeclarator:exit'(node: any) {
+        if (declaratorIsComponentOrHook(node)) depth--
+      },
     },
   }
 }

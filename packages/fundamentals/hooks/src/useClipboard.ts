@@ -1,4 +1,4 @@
-import { onCleanup, signal } from '@pyreon/reactivity'
+import { batch, onCleanup, signal } from '@pyreon/reactivity'
 
 export interface UseClipboardResult {
   /** Copy text to clipboard. Returns true on success. */
@@ -32,8 +32,13 @@ export function useClipboard(options?: { timeout?: number }): UseClipboardResult
   const copy = async (value: string): Promise<boolean> => {
     try {
       await navigator.clipboard.writeText(value)
-      text.set(value)
-      copied.set(true)
+      // Batch the two synchronous writes so subscribers reading both
+      // (e.g. a `<Show when={copied()}>{text()}</Show>`) see one update,
+      // not two.
+      batch(() => {
+        text.set(value)
+        copied.set(true)
+      })
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => copied.set(false), timeout)
       return true
