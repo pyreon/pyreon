@@ -86,6 +86,15 @@ jobs:
           fi
           bun run $FILTER typecheck
 
+  # Note: matrix sharding (vitest --shard=i/n) was considered and rejected.
+  # Branch protection required-status checks pin the literal job name "Test";
+  # adding `strategy.matrix.shard: [1,2,3,4]` would rename the contexts to
+  # "Test (shard 1)" etc. and break protection. The simpler alternative
+  # (sharding via a sibling job named "Test Shard" while keeping "Test"
+  # gated to push/merge_group) was also evaluated, but the affected-filter
+  # + node_modules cache + bootstrap-lib cache combo already brings PR runs
+  # well under the threshold where sharding would pay for itself. Revisit
+  # if Test wall-clock on push:main creeps past ~5 min.
   test:
     name: Test
     needs: install
