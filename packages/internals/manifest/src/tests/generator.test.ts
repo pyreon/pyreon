@@ -481,6 +481,50 @@ describe('regenerateLlmsFullTxt', () => {
     expect(result.contents).toContain('different')
   })
 
+  it('handles a section that starts at file offset 0 (no preceding newline)', () => {
+    // `findSectionRange` has a dedicated path for the case where the
+    // section header is the literal first content — no `\n## <name> —`
+    // to match on, so it falls through to `content.startsWith(...)`.
+    // Previously untested; regression guard for anyone refactoring
+    // the section-finder.
+    const m: PackageManifest = {
+      name: '@pyreon/first',
+      title: 'First',
+      tagline: 'first pkg',
+      description: 'first description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `const first = 1`,
+    }
+    const content = [
+      '## @pyreon/first — First',
+      '',
+      'old first',
+      '',
+      '```typescript',
+      'old body',
+      '```',
+      '',
+      '## @pyreon/second — Second',
+      '',
+      'second body untouched',
+      '',
+    ].join('\n')
+
+    const result = regenerateLlmsFullTxt(content, [{ path: '/first', manifest: m }])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(1)
+    expect(result.contents).toContain('## @pyreon/first — First')
+    expect(result.contents).toContain('first description')
+    expect(result.contents).toContain('const first = 1')
+    expect(result.contents).not.toContain('old body')
+    // Neighbour section survives — the at-offset-0 path still finds
+    // the next header correctly.
+    expect(result.contents).toContain('## @pyreon/second — Second')
+    expect(result.contents).toContain('second body untouched')
+  })
+
   it('regenerates multiple sections without index-drift between replacements', () => {
     // Two manifests, two sections. Section A's replacement may shrink
     // or grow the file; section B's range must still find its header

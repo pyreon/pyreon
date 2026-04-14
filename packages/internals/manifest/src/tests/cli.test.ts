@@ -175,6 +175,31 @@ describe('gen-docs main() — in-process', () => {
     expect(err).toContain('fundamentals')
   })
 
+  it('exits 1 on llms-full missing-entry when llms.txt has the bullet but llms-full lacks the section', async () => {
+    // Second missing-entry branch in main(): manifest lands in
+    // llms.txt (so the llms.txt check passes), but llms-full.txt has
+    // no matching section header. Error message distinguishes the
+    // source file + surfaces the right placement hint.
+    writeManifest(
+      fx.root,
+      'fundamentals',
+      'x',
+      `export default { name: '@pyreon/ghost', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'x' }`,
+    )
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/ghost — t\n',
+      '# llms-full.txt\n\nnothing here\n',
+    )
+    const out = await runMain(fx.root, ['--check'])
+    expect(out.exitCode).toBe(1)
+    const err = out.stderr.join('\n')
+    expect(err).toContain('no matching llms-full.txt entry')
+    expect(err).toContain('@pyreon/ghost')
+    // llms-full placement hint uses section form, not bullet form
+    expect(err).toContain('## <name> — <title>')
+  })
+
   it('write mode actually writes both llms.txt and llms-full.txt', async () => {
     writeManifest(
       fx.root,
