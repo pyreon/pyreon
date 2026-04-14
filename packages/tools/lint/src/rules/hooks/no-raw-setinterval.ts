@@ -1,5 +1,8 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isCleanupWrapperFoundation } from '../../utils/package-classification'
+import {
+  isCleanupWrapperFoundation,
+  isTestFile,
+} from '../../utils/package-classification'
 import { getSpan, isCallTo } from '../../utils/ast'
 
 const TIMER_FNS = new Set(['setInterval', 'setTimeout'])
@@ -18,6 +21,9 @@ export const noRawSetInterval: Rule = {
     // wrappers but the wrappers themselves must call raw `setInterval` /
     // `setTimeout`.
     if (isCleanupWrapperFoundation(context.getFilePath())) return {}
+    // Tests legitimately use real `setInterval`/`setTimeout` for time-based
+    // simulation (advancing scheduler ticks, asserting cleanup, etc.).
+    if (isTestFile(context.getFilePath())) return {}
 
     let mountDepth = 0
     const callbacks: VisitorCallbacks = {

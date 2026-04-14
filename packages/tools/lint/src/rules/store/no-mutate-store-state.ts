@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noMutateStoreState: Rule = {
   meta: {
@@ -10,6 +11,9 @@ export const noMutateStoreState: Rule = {
     fixable: false,
   },
   create(context) {
+    // Store tests directly mutate state to assert reactivity / patch behavior.
+    if (isTestFile(context.getFilePath())) return {}
+
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         const callee = node.callee

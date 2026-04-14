@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noUnregisteredField: Rule = {
   meta: {
@@ -10,6 +11,10 @@ export const noUnregisteredField: Rule = {
     fixable: false,
   },
   create(context) {
+    // Form tests use `useField` directly to assert field state without
+    // wiring a real `register()` call to a DOM input.
+    if (isTestFile(context.getFilePath())) return {}
+
     const fieldDecls = new Map<string, { span: { start: number; end: number } }>()
     const registeredNames = new Set<string>()
 

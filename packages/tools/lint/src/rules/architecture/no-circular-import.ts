@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { isPyreonImport } from '../../utils/imports'
+import { isTestFile } from '../../utils/package-classification'
 
 const LAYER_ORDER: Record<string, number> = {
   '@pyreon/reactivity': 0,
@@ -35,6 +36,11 @@ export const noCircularImport: Rule = {
   },
   create(context) {
     const filePath = context.getFilePath()
+    // Tests legitimately import from any layer for integration coverage
+    // (e.g. a `runtime-dom` test importing from `runtime-server` to compare
+    // SSR vs CSR output). The layer-order discipline applies to production
+    // code, not test setups.
+    if (isTestFile(filePath)) return {}
     const fileLayer = getFileLayer(filePath)
     if (fileLayer === null) return {}
 

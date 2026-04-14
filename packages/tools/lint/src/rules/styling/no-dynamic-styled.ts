@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noDynamicStyled: Rule = {
   meta: {
@@ -11,6 +12,10 @@ export const noDynamicStyled: Rule = {
     fixable: false,
   },
   create(context) {
+    // Styler's own test suite intentionally exercises the dynamic
+    // `styled()`-inside-function path to verify it works.
+    if (isTestFile(context.getFilePath())) return {}
+
     let functionDepth = 0
     const callbacks: VisitorCallbacks = {
       FunctionDeclaration() {

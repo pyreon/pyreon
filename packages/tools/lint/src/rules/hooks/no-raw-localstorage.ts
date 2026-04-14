@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 const STORAGE_OBJECTS = new Set(['localStorage', 'sessionStorage'])
 const STORAGE_METHODS = new Set(['getItem', 'setItem', 'removeItem'])
@@ -13,6 +14,13 @@ export const noRawLocalStorage: Rule = {
     fixable: false,
   },
   create(context) {
+    const filePath = context.getFilePath()
+    // `@pyreon/storage` IS the package implementing `useStorage`/`useSessionStorage` —
+    // its source legitimately accesses raw `localStorage`/`sessionStorage`.
+    if (filePath.includes('packages/fundamentals/storage/')) return {}
+    // Tests directly probe storage APIs to assert behavior.
+    if (isTestFile(filePath)) return {}
+
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         const callee = node.callee

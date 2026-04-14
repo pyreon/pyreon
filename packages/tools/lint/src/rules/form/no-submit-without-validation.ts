@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noSubmitWithoutValidation: Rule = {
   meta: {
@@ -10,6 +11,10 @@ export const noSubmitWithoutValidation: Rule = {
     fixable: false,
   },
   create(context) {
+    // Form tests deliberately submit without validation to assert the
+    // un-validated path's behavior.
+    if (isTestFile(context.getFilePath())) return {}
+
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
         if (!isCallTo(node, 'useForm')) return

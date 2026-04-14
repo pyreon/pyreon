@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noDuplicateStoreId: Rule = {
   meta: {
@@ -10,6 +11,9 @@ export const noDuplicateStoreId: Rule = {
     fixable: false,
   },
   create(context) {
+    // Store tests intentionally duplicate IDs to assert collision handling.
+    if (isTestFile(context.getFilePath())) return {}
+
     const storeIds = new Map<string, { start: number; end: number }>()
 
     const callbacks: VisitorCallbacks = {

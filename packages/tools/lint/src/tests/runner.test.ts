@@ -1427,3 +1427,32 @@ describe('Presets', () => {
     expect(lib.rules['pyreon/no-process-dev-gate']).toBe('error')
   })
 })
+
+// ── Test-file exemption ──────────────────────────────────────────────────────
+//
+// Eight rules target patterns tests legitimately exercise — duplicate store
+// IDs to assert collision handling, raw `setInterval` for time-based test
+// logic, mutating store state, etc. Each rule's `create()` early-returns
+// when the file path matches `isTestFile()`, eliminating the noise that
+// previously masked real signal in non-test code.
+
+describe('test-file exemption (rules that intentionally skip *.test.* files)', () => {
+  const cases: Array<[string, string, string]> = [
+    ['pyreon/no-raw-setinterval', 'src/tests/timing.test.ts', `setInterval(() => {}, 100)`],
+    ['pyreon/no-dynamic-styled', 'src/tests/styled.test.ts', `function f() { styled('div')\`color:red\` }`],
+    ['pyreon/no-submit-without-validation', 'src/tests/form.test.tsx', `useForm({ onSubmit: () => {} })`],
+    ['pyreon/no-raw-localstorage', 'src/tests/storage.test.ts', `localStorage.getItem('k')`],
+    ['pyreon/no-duplicate-store-id', 'src/tests/store.test.ts', `defineStore('a', () => {}); defineStore('a', () => {})`],
+    ['pyreon/no-unregistered-field', 'src/tests/form.test.ts', `const f = useField(form, 'x')`],
+    ['pyreon/no-mutate-store-state', 'src/tests/store.test.ts', `store.count.set(5)`],
+    ['pyreon/no-circular-import', 'packages/core/runtime-dom/src/tests/integration.test.ts', `import { renderToString } from '@pyreon/runtime-server'`],
+  ]
+
+  for (const [rule, filePath, source] of cases) {
+    it(`${rule}: exempt in ${filePath}`, () => {
+      const result = lintFile(filePath, source, allRules, defaultConfig())
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBe(0)
+    })
+  }
+})
