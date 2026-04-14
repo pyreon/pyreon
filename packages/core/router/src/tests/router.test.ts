@@ -4669,12 +4669,19 @@ describe('View Transitions API', () => {
     // Fire push without awaiting yet.
     const pushPromise = router.push('/about')
 
-    // Give the microtask queue a tick; loading signal should still be > 0.
-    await Promise.resolve()
+    // Drain all pending microtasks (guards + middleware + loaders) so
+    // navigate() reaches its `await commitNavigation(...)` — which in
+    // turn parks on `await vt.updateCallbackDone` (held pending by our
+    // deferred). One `setTimeout(0)` cycle yields to the macrotask
+    // queue, which guarantees all pending microtasks have drained.
+    await new Promise<void>((r) => setTimeout(r, 0))
+    // At this point, commitNavigation IS suspended on updateCallbackDone.
+    // If the fix holds, the loadingSignal decrement hasn't run yet.
+    // If the fix regresses (decrement moved above the await), the signal
+    // would already be 0 here — this assertion catches that.
     observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
 
-    // Now release the updateCallbackDone; push() should settle and the
-    // signal should drop to 0.
+    // Release updateCallbackDone; navigate unwinds, push() settles.
     deferred.resolve?.()
     await pushPromise
     observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
@@ -4688,11 +4695,11 @@ describe('View Transitions API', () => {
     router.destroy()
   })
 
-  it('SSR mode: push() resolves without touching startViewTransition', async () => {
-    // Router running in SSR (no window, no document.startViewTransition).
-    // The _isBrowser gate should skip the VT branch entirely.
-    // Simulate by deleting the global, keeping a tripwire that records
-    // if startViewTransition is called — which it must not be.
+  it('meta.viewTransition:false opt-out skips VT even when the API is available', async () => {
+    // Tripwire: startViewTransition is installed on document, but the
+    // route opts out via meta.viewTransition:false. The router must
+    // skip the VT branch AND still commit the navigation. Regression
+    // guard for the meta-check that's part of the useVT conjunction.
     let vtCalled = false
     ;(document as any).startViewTransition = () => {
       vtCalled = true
@@ -4702,16 +4709,14 @@ describe('View Transitions API', () => {
     const router = createRouter({
       routes: [
         { path: '/', component: Home },
-        { path: '/ssr-target', component: About, meta: { viewTransition: false } },
+        { path: '/no-vt', component: About, meta: { viewTransition: false } },
       ],
       url: '/',
     })
 
-    // Route with meta.viewTransition: false — VT path should be skipped
-    // regardless of the global.
-    await router.push('/ssr-target')
+    await router.push('/no-vt')
     expect(vtCalled).toBe(false)
-    expect(router.currentRoute().path).toBe('/ssr-target')
+    expect(router.currentRoute().path).toBe('/no-vt')
 
     delete (document as any).startViewTransition
     router.destroy()
