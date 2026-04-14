@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
 import { BROWSER_GLOBALS } from '../../utils/imports'
+import { isDomRuntimeFile } from '../../utils/package-classification'
 
 export const noWindowInSsr: Rule = {
   meta: {
@@ -11,6 +12,11 @@ export const noWindowInSsr: Rule = {
     fixable: false,
   },
   create(context) {
+    // `runtime-dom` IS the DOM renderer — its job is to touch document/window
+    // unguarded. There's no SSR scenario for it (`runtime-server` is the SSR
+    // counterpart). Flagging it would only flag the package for existing.
+    if (isDomRuntimeFile(context.getFilePath())) return {}
+
     let safeDepth = 0
     let typeofGuardDepth = 0
 
