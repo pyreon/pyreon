@@ -37,6 +37,10 @@ function buildApp(): LintConfig {
       'pyreon/no-error-without-prefix': 'off',
       'pyreon/no-circular-import': 'off',
       'pyreon/no-cross-layer-import': 'off',
+      // `require-browser-smoke-test` is a per-package contract that
+      // applies to published libraries — apps don't ship as packages
+      // with smoke obligations.
+      'pyreon/require-browser-smoke-test': 'off',
       // `no-process-dev-gate` stays ON in `app` preset because the bug
       // hits user-facing browser code regardless of whether it's a lib
       // or an app.
@@ -55,6 +59,7 @@ function buildLib(): LintConfig {
       'pyreon/dev-guard-warnings': 'error',
       'pyreon/no-error-without-prefix': 'error',
       'pyreon/no-process-dev-gate': 'error',
+      'pyreon/require-browser-smoke-test': 'error',
     },
   }
 }

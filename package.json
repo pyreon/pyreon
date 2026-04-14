@@ -14,6 +14,7 @@
     "test:browser": "bun run --filter='*' test:browser",
     "test:watch": "vitest",
     "lint": "oxlint .",
+    "lint:browser-smoke": "bun scripts/check-browser-smoke.ts",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "typecheck": "bun run --filter='*' typecheck",

@@ -12,6 +12,8 @@ Categorize each package into one of three buckets and apply the matching rule:
 
 These run in real browsers in production. **Must have at least one Playwright/browser smoke test** in addition to vitest tests.
 
+The canonical machine-readable list lives at [`.claude/rules/browser-packages.json`](./browser-packages.json) — consumed by the `pyreon/require-browser-smoke-test` lint rule, the MCP `get_browser_smoke_status` tool, and the CI script `scripts/check-browser-smoke.ts`. Update the JSON when adding a new browser-running package; this prose list is kept in sync manually.
+
 - `@pyreon/runtime-dom`
 - `@pyreon/router`
 - `@pyreon/head`
@@ -25,6 +27,8 @@ These run in real browsers in production. **Must have at least one Playwright/br
 - All `compat` packages (`react-compat`, `preact-compat`, `vue-compat`, `solid-compat`)
 
 The smoke test imports the public API, mounts a minimal example, exercises 1-2 key flows, and asserts observable behavior in a real browser. Not exhaustive — just enough to catch environment divergence.
+
+**This rule is enforced by the lint rule `pyreon/require-browser-smoke-test`** — every package in the list above MUST have at least one `*.browser.test.{ts,tsx}` file under `src/`. The rule fires on each package's `src/index.ts` during `bun run lint`. The default browser-package list inside the rule mirrors the categorization above; keep them in sync when adding a new browser-running package. Use the rule's `additionalPackages` option to extend, or `exemptPaths` to opt out (e.g. for packages still under construction).
 
 ### Server packages
 

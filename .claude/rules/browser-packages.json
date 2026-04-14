@@ -1,0 +1,26 @@
+{
+  "$comment": "Single source of truth for browser-categorized Pyreon packages. Consumed by: packages/tools/lint/src/rules/architecture/require-browser-smoke-test.ts (default package list) + scripts/check-browser-smoke.ts (CI enforcement) + .claude/rules/test-environment-parity.md (human docs, kept in sync manually). Add a package here when you ship it as browser-running; the lint rule + CI gate start requiring a browser smoke test within the next push.",
+  "packages": [
+    "@pyreon/runtime-dom",
+    "@pyreon/router",
+    "@pyreon/head",
+    "@pyreon/flow",
+    "@pyreon/code",
+    "@pyreon/charts",
+    "@pyreon/document-primitives",
+    "@pyreon/connector-document",
+    "@pyreon/elements",
+    "@pyreon/styler",
+    "@pyreon/unistyle",
+    "@pyreon/rocketstyle",
+    "@pyreon/coolgrid",
+    "@pyreon/kinetic",
+    "@pyreon/ui-components",
+    "@pyreon/ui-primitives",
+    "@pyreon/ui-theme",
+    "@pyreon/react-compat",
+    "@pyreon/preact-compat",
+    "@pyreon/vue-compat",
+    "@pyreon/solid-compat"
+  ]
+}

@@ -10,6 +10,7 @@ import { noCrossLayerImport } from './architecture/no-cross-layer-import'
 import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noProcessDevGate } from './architecture/no-process-dev-gate'
+import { requireBrowserSmokeTest } from './architecture/require-browser-smoke-test'
 import { noSubmitWithoutValidation } from './form/no-submit-without-validation'
 // Form
 import { noUnregisteredField } from './form/no-unregistered-field'
@@ -108,13 +109,14 @@ export const allRules: Rule[] = [
   noWindowInSsr,
   noMismatchRisk,
   preferRequestContext,
-  // Architecture (6)
+  // Architecture (7)
   noCircularImport,
   noDeepImport,
   noCrossLayerImport,
   devGuardWarnings,
   noErrorWithoutPrefix,
   noProcessDevGate,
+  requireBrowserSmokeTest,
   // Store (3)
   noStoreOutsideProvider,
   noMutateStoreState,
@@ -187,6 +189,7 @@ export {
   noPeekInTracked,
   noProcessDevGate,
   noPropsDestructure,
+  requireBrowserSmokeTest,
   // Hooks
   noRawAddEventListener,
   noRawLocalStorage,
