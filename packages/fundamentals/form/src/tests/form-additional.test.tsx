@@ -514,32 +514,37 @@ describe('debounced validation — additional', () => {
   })
 
   it('field-level reset clears debounce timer for that field', async () => {
-    let callCount = 0
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: () => {
-            callCount++
-            return undefined
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: () => {
+              callCount++
+              return undefined
+            },
           },
-        },
-        validateOn: 'blur',
-        debounceMs: 50,
-        onSubmit: () => {
-          /* noop */
-        },
-      }),
-    )
+          validateOn: 'blur',
+          debounceMs: 50,
+          onSubmit: () => {
+            /* noop */
+          },
+        }),
+      )
 
-    form.fields.name.setTouched()
-    // Reset the individual field before debounce fires
-    form.fields.name.reset()
+      form.fields.name.setTouched()
+      // Reset the individual field before debounce fires
+      form.fields.name.reset()
 
-    await new Promise((r) => setTimeout(r, 80))
-    // Timer was cleared by field reset
-    expect(callCount).toBe(0)
-    unmount()
+      await vi.advanceTimersByTimeAsync(80)
+      // Timer was cleared by field reset
+      expect(callCount).toBe(0)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
