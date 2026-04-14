@@ -28,12 +28,16 @@ export const removeClasses = (el: HTMLElement, classes: string | undefined) => {
 /**
  * Executes callback after two animation frames (double-rAF).
  * Ensures the browser paints the current state before applying changes,
- * which is required for CSS transitions to trigger.
+ * which is required for CSS transitions to trigger. Returns 0 on SSR —
+ * the typeof-window guard makes the SSR-safety contract explicit (callers
+ * are always browser-only via `onMount`, but the rule can't AST-trace it).
  */
-export const nextFrame = (callback: () => void): number =>
-  requestAnimationFrame(() => {
+export const nextFrame = (callback: () => void): number => {
+  if (typeof requestAnimationFrame === 'undefined') return 0
+  return requestAnimationFrame(() => {
     requestAnimationFrame(callback)
   })
+}
 
 /** Merges two className strings, filtering undefined/empty. */
 export const mergeClassNames = (

@@ -2,13 +2,16 @@ import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 
 // `use…`/`get…`/`is…`/`has…` are conventional hook/getter prefixes — not
-// signal reads. `[A-Z]…` covers component invocations. `render` is the
-// @pyreon/ui-core VNode-producing helper (takes a ComponentFn/string/VNode
-// and returns a VNodeChild) — its call sites always produce JSX, not signal
-// values. Matching here is on the full identifier name, so user-defined
-// signals named `render` would slip through; in that case rename to
-// `rendered`/`renderSignal` or move the read outside JSX.
-const SKIP_NAMES = new Set(['render'])
+// signal reads. `[A-Z]…` covers component invocations. The skip-names set
+// covers framework VNode-producing helpers whose call sites always produce
+// JSX, not signal values:
+//   - `render`     — `@pyreon/ui-core` render-prop helper
+//   - `h`          — `@pyreon/core` hyperscript (JSX runtime)
+//   - `cloneVNode` — `@pyreon/core` VNode-tree cloner (used by kinetic)
+// Matching is on full identifier name, so user-defined signals with these
+// exact names would slip through; rename to `rendered`/`hyperscript`/etc.
+// or move the read outside JSX.
+const SKIP_NAMES = new Set(['render', 'h', 'cloneVNode'])
 const SKIP_PREFIXES = /^(use|get|is|has|[A-Z])/
 
 export const noBareSignalInJsx: Rule = {

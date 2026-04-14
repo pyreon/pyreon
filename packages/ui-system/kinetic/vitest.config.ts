@@ -1,5 +1,6 @@
 import { createVitestConfig } from '@vitus-labs/tools-vitest'
 import { defineConfig, mergeConfig } from 'vitest/config'
+import { nodeExcludeBrowserTests } from '../../../vitest.shared'
 
 export default mergeConfig(
   createVitestConfig({
@@ -10,9 +11,12 @@ export default mergeConfig(
       functions: 85,
     },
   }),
-  defineConfig({
-    resolve: {
-      conditions: ['bun'],
-    },
-  }),
+  mergeConfig(
+    defineConfig({
+      resolve: {
+        conditions: ['bun'],
+      },
+    }),
+    nodeExcludeBrowserTests,
+  ),
 )
