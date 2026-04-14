@@ -49,6 +49,7 @@ export {
 } from './edges'
 // Core
 export { createFlow } from './flow'
+export { useFlow } from './use-flow'
 // Layout
 export { computeLayout } from './layout'
 // Styles
