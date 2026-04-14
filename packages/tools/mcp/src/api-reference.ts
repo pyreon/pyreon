@@ -993,7 +993,7 @@ lint({
   },
 })`,
     notes:
-      'Programmatic API. 58 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses oxc-parser with AST caching.',
+      'Programmatic API. 59 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses oxc-parser with AST caching.',
   },
 
   'lint/lintFile': {
@@ -1015,7 +1015,7 @@ const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
-pyreon-lint --list                      # list all 58 rules
+pyreon-lint --list                      # list all 59 rules
 pyreon-lint --format json               # machine-readable
 pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
     notes:
@@ -1038,6 +1038,27 @@ if (__DEV__) console.warn('hello')`,
 - Trying to test with \`delete globalThis.process\` — vitest's own \`import.meta.env\` depends on \`process\`, so deleting it breaks the FIXED gate too (not because the gate is wrong, but because vitest can't resolve it)
 - Adding \`process: { env: { ... } }\` polyfills to vite.config.ts as a workaround — fix the source instead
 - Using the rule for server-only packages — they're correctly exempt because Node always has \`process\``,
+  },
+
+  'lint/require-browser-smoke-test': {
+    signature: 'rule: pyreon/require-browser-smoke-test (architecture, error in recommended/strict/lib, off in app)',
+    example: `// Per-package config (optional — defaults cover all known browser packages)
+{
+  "rules": {
+    "pyreon/require-browser-smoke-test": [
+      "error",
+      {
+        "additionalPackages": ["@my-org/my-browser-pkg"],
+        "exemptPaths": ["packages/experimental/"]
+      }
+    ]
+  }
+}`,
+    notes:
+      "Locks in the durability of the T1.1 browser smoke harness (PRs #224, #227, #229, #231). Every browser-categorized package MUST ship at least one \`*.browser.test.{ts,tsx}\` file under \`src/\`. Without this rule, new browser packages can quietly ship without smoke coverage and we drift back to the world before T1.1 — happy-dom silently masks environment-divergence bugs (PR #197 mock-vnode metadata drop, PR #200 \`typeof process\` dead code, multi-word event delegation bug). Default browser-package list mirrors \`.claude/rules/test-environment-parity.md\`. The rule fires once per package on its \`src/index.ts\`, walks the package directory looking for \`*.browser.test.*\`, and reports if none are found. Off in \`app\` preset because apps don't ship as packages with smoke obligations.",
+    mistakes: `- Adding a new browser-running package without a browser test — the rule will fail your PR
+- Hardcoding the browser-package list in the rule — use \`additionalPackages\` config option instead
+- Disabling the rule globally — use \`exemptPaths\` to exempt specific packages still under construction`,
   },
 
   // ═══════════════════════════════════════════════════════════════════════════

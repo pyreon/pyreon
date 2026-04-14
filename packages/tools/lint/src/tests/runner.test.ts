@@ -53,8 +53,8 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
-  it('should have 58 rules', () => {
-    expect(allRules.length).toBe(58)
+  it('should have 59 rules', () => {
+    expect(allRules.length).toBe(59)
   })
 
   it('should have unique rule IDs', () => {
@@ -99,7 +99,7 @@ describe('Rule metadata', () => {
     expect(counts.lifecycle).toBe(4)
     expect(counts.performance).toBe(4)
     expect(counts.ssr).toBe(3)
-    expect(counts.architecture).toBe(6)
+    expect(counts.architecture).toBe(7)
     expect(counts.store).toBe(3)
     expect(counts.form).toBe(3)
     expect(counts.styling).toBe(4)
@@ -1420,7 +1420,7 @@ describe('Ignore filter', () => {
 describe('Presets', () => {
   it('recommended should include all rules', () => {
     const config = getPreset('recommended')
-    expect(Object.keys(config.rules).length).toBe(58)
+    expect(Object.keys(config.rules).length).toBe(59)
   })
 
   it('strict should promote all warns to errors', () => {
@@ -1818,6 +1818,174 @@ describe('config-file round-trip', () => {
       expect(findByRule(fires, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ── pyreon/require-browser-smoke-test ─────────────────────────────────────
+//
+// Locks in the durability of the T1.1 browser smoke harness. Without this
+// rule, any new browser-running package can quietly ship without smoke
+// coverage and we drift back to the world before T1.1.
+
+describe('pyreon/require-browser-smoke-test', () => {
+  // Helpers shared by the suite — set up a fake package directory in
+  // a tmpdir, write a package.json + src/index.ts, optionally write a
+  // browser test, then lint and assert.
+  async function setupFakePackage(opts: {
+    pkgName: string
+    withBrowserTest: boolean
+  }): Promise<{ dir: string; indexPath: string; cleanup: () => void }> {
+    const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+
+    const dir = mkdtempSync(join(tmpdir(), 'pyreon-require-browser-smoke-'))
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: opts.pkgName, version: '0.0.0' }),
+    )
+    mkdirSync(join(dir, 'src'))
+    const indexPath = join(dir, 'src', 'index.ts')
+    writeFileSync(indexPath, `export const x = 1\n`)
+    if (opts.withBrowserTest) {
+      writeFileSync(
+        join(dir, 'src', 'mount.browser.test.ts'),
+        `import { it } from 'vitest'; it('ok', () => {})\n`,
+      )
+    }
+    return {
+      dir,
+      indexPath,
+      cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    }
+  }
+
+  it('reports an error when a browser package ships no .browser.test.* file', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@pyreon/runtime-dom', // a real browser package name
+      withBrowserTest: false,
+    })
+    try {
+      const result = lintWith(
+        'pyreon/require-browser-smoke-test',
+        `export const x = 1`,
+        fake.indexPath,
+      )
+      const diags = findByRule(result, 'pyreon/require-browser-smoke-test')
+      expect(diags.length).toBe(1)
+      expect(diags[0]?.message).toMatch(/no `\*\.browser\.test/)
+      expect(diags[0]?.message).toMatch(/@pyreon\/runtime-dom/)
+    } finally {
+      fake.cleanup()
+    }
+  })
+
+  it('passes when the package has at least one .browser.test.ts file', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@pyreon/runtime-dom',
+      withBrowserTest: true,
+    })
+    try {
+      const result = lintWith(
+        'pyreon/require-browser-smoke-test',
+        `export const x = 1`,
+        fake.indexPath,
+      )
+      expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
+    } finally {
+      fake.cleanup()
+    }
+  })
+
+  it('skips packages not in the browser-categorized list', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@pyreon/server', // server-only, not categorized
+      withBrowserTest: false,
+    })
+    try {
+      const result = lintWith(
+        'pyreon/require-browser-smoke-test',
+        `export const x = 1`,
+        fake.indexPath,
+      )
+      expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
+    } finally {
+      fake.cleanup()
+    }
+  })
+
+  it('runs only on src/index.ts — internal files are skipped', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@pyreon/runtime-dom',
+      withBrowserTest: false,
+    })
+    try {
+      const { writeFileSync } = await import('node:fs')
+      const { join } = await import('node:path')
+      const internalPath = join(fake.dir, 'src', 'internal.ts')
+      writeFileSync(internalPath, `export const y = 2\n`)
+      const result = lintWith(
+        'pyreon/require-browser-smoke-test',
+        `export const y = 2`,
+        internalPath,
+      )
+      // Internal file → no report (rule short-circuits).
+      expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
+    } finally {
+      fake.cleanup()
+    }
+  })
+
+  it('additionalPackages option opts new packages into the requirement', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@my-org/my-browser-pkg', // not in the default list
+      withBrowserTest: false,
+    })
+    try {
+      const cfg: LintConfig = {
+        rules: {
+          'pyreon/require-browser-smoke-test': [
+            'error',
+            { additionalPackages: ['@my-org/my-browser-pkg'] },
+          ],
+        },
+      }
+      const result = lintFile(
+        fake.indexPath,
+        `export const x = 1`,
+        allRules,
+        cfg,
+      )
+      expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(1)
+    } finally {
+      fake.cleanup()
+    }
+  })
+
+  it('exemptPaths option opts packages out of the requirement', async () => {
+    const fake = await setupFakePackage({
+      pkgName: '@pyreon/runtime-dom',
+      withBrowserTest: false,
+    })
+    try {
+      const cfg: LintConfig = {
+        rules: {
+          'pyreon/require-browser-smoke-test': [
+            'error',
+            { exemptPaths: [fake.dir] },
+          ],
+        },
+      }
+      const result = lintFile(
+        fake.indexPath,
+        `export const x = 1`,
+        allRules,
+        cfg,
+      )
+      expect(findByRule(result, 'pyreon/require-browser-smoke-test').length).toBe(0)
+    } finally {
+      fake.cleanup()
     }
   })
 })

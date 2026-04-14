@@ -210,6 +210,7 @@ The `$schema` reference enables IDE autocomplete + validation when editing the c
 - `pyreon/no-raw-setinterval` — packages implementing `useInterval` / `useTimeout`
 - `pyreon/no-process-dev-gate` — server-only directories (Node environments)
 - `pyreon/dev-guard-warnings` — server-only + demo / example directories
+- `pyreon/require-browser-smoke-test` — packages explicitly opted out (e.g. experimental); also accepts `additionalPackages: string[]` to extend the browser-categorized list
 
 **Validation.** Each rule declares its option shape in `meta.schema`. The runner validates user config once per `(rule, options)` pair:
 

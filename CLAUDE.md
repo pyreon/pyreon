@@ -35,7 +35,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/react-compat`   | useState, useEffect, useMemo, lazy, Suspense shims                                                                                            |
 | `@pyreon/storybook`      | Storybook renderer — mount, render, and interact with Pyreon components                                                                       |
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
-| `@pyreon/lint`           | Pyreon-specific linter — 58 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
+| `@pyreon/lint`           | Pyreon-specific linter — 59 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
 | `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce     |
 
 ### UI System (Component Library)
@@ -370,15 +370,16 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `lint(options?)` — programmatic API: lint files, returns `LintResult` with counts
 - `lintFile(filePath, sourceText, rules, config)` — lint a single file
-- `listRules()` — returns metadata for all 58 rules
+- `listRules()` — returns metadata for all 59 rules
 - `applyFixes(sourceText, diagnostics)` — apply auto-fixes
 - `loadConfig(cwd)` — load `.pyreonlintrc.json` / `package.json` `"pyreonlint"` field
 - `createIgnoreFilter(cwd)` — load `.pyreonlintignore` + `.gitignore` patterns
 - `AstCache` — FNV-1a hash-keyed AST cache for repeat runs
 - `watchAndLint(options)` — file watcher with 100ms debounce, re-lints changed files
 - CLI: `pyreon-lint [--preset recommended|strict|app|lib] [--fix] [--format text|json|compact] [--quiet] [--list] [--watch] [--config path] [--ignore path] [--rule id=severity] [path...]`
-- 58 rules across 12 categories: reactivity (10), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (6), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
+- 59 rules across 12 categories: reactivity (10), jsx (11), lifecycle (4), performance (4), ssr (3), architecture (7), store (3), form (3), styling (4), hooks (3), accessibility (3), router (4)
 - New in 2026-Q2: `pyreon/no-process-dev-gate` (architecture, error, auto-fixable) — flags `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` dev gates that are dead code in real Vite browser bundles. Use `import.meta.env?.DEV === true` instead.
+- New in T1.1 Phase 4: `pyreon/require-browser-smoke-test` (architecture, error, in `recommended`/`strict`/`lib`, off in `app`) — every browser-categorized package must ship at least one `*.browser.test.{ts,tsx}` file under `src/`. Locks in the T1.1 smoke harness so new browser packages can't quietly ship without coverage. `additionalPackages` option opts new packages in, `exemptPaths` opts out.
 - 4 presets: `recommended`, `strict` (warns→errors), `app` (lib rules off), `lib` (strict + architecture)
 - Powered by `oxc-parser` — ESTree/TS-ESTree AST with Visitor
 - **Per-rule options** via ESLint-style tuple form in config — `"pyreon/no-window-in-ssr": ["error", { "exemptPaths": ["packages/core/runtime-dom/"] }]`. Rules that support path-based exemption read `options.exemptPaths: string[]`. Each rule declares its option shape in `meta.schema` (`Record<string, 'string' | 'string[]' | 'number' | 'boolean'>`); wrong-typed values disable the rule and surface an error on `LintResult.configDiagnostics`, unknown keys emit a warning. The Pyreon monorepo's `.pyreonlintrc.json` at repo root configures server-only / DOM-runtime / hook-foundation exemptions that were previously hardcoded in rule source. JSON Schema for the config file ships at `@pyreon/lint/schema/pyreonlintrc.schema.json` (reference via `"$schema"` for IDE autocomplete). CLI flag `--rule-options id='{json}'` passes options for a single run.
