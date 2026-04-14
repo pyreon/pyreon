@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { isPyreonImport } from '../../utils/imports'
+import { isTestFile } from '../../utils/package-classification'
 
 const LAYER_ORDER: Record<string, number> = {
   '@pyreon/reactivity': 0,
@@ -35,6 +36,12 @@ export const noCircularImport: Rule = {
   },
   create(context) {
     const filePath = context.getFilePath()
+    // Tests don't ship as part of the layered production dep graph — they're
+    // verification scaffolding. Cross-layer imports are routine and correct
+    // there (e.g. a `runtime-dom` test importing `renderToString` from
+    // `runtime-server` to compare SSR vs CSR output). Path-based skip is the
+    // semantic truth for this rule, not a heuristic.
+    if (isTestFile(filePath)) return {}
     const fileLayer = getFileLayer(filePath)
     if (fileLayer === null) return {}
 

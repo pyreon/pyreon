@@ -996,8 +996,11 @@ defineStore("user", () => {})
     expect(diags.length).toBe(0)
   })
 
-  it('pyreon/no-mutate-store-state: flags store.signal.set()', () => {
-    const result = lintWith('pyreon/no-mutate-store-state', `userStore.count.set(5)`)
+  it('pyreon/no-mutate-store-state: flags store.signal.set() inside a component', () => {
+    const result = lintWith(
+      'pyreon/no-mutate-store-state',
+      `function MyComp() { userStore.count.set(5) }`,
+    )
     expect(result.diagnostics.length).toBe(1)
   })
 
@@ -1164,8 +1167,8 @@ describe('Hooks rules', () => {
     expect(diags.length).toBe(0)
   })
 
-  it('pyreon/no-raw-setinterval: flags setInterval outside onMount', () => {
-    const source = `setInterval(() => {}, 1000)`
+  it('pyreon/no-raw-setinterval: flags setInterval inside a component (outside onMount)', () => {
+    const source = `function MyComp() { setInterval(() => {}, 1000) }`
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-raw-setinterval')
     expect(diags.length).toBe(1)
@@ -1183,8 +1186,8 @@ describe('Hooks rules', () => {
     expect(diags.length).toBe(0)
   })
 
-  it('pyreon/no-raw-localstorage: flags localStorage.getItem()', () => {
-    const source = `const v = localStorage.getItem("key")`
+  it('pyreon/no-raw-localstorage: flags localStorage.getItem() inside a component', () => {
+    const source = `function MyComp() { const v = localStorage.getItem("key") }`
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-raw-localstorage')
     expect(diags.length).toBe(1)
@@ -1426,4 +1429,89 @@ describe('Presets', () => {
     expect(lib.rules['pyreon/dev-guard-warnings']).toBe('error')
     expect(lib.rules['pyreon/no-process-dev-gate']).toBe('error')
   })
+})
+
+// ── Component-context detection (B-rules) ──────────────────────────────────
+//
+// Four rules only matter inside a component or hook setup body. They no
+// longer rely on `isTestFile` path heuristics — the
+// `createComponentContextTracker()` utility detects the semantic context
+// directly. Module-level + utility-function callsites are exempt by design;
+// test callbacks (anonymous arrows passed to `it()`) are exempt because
+// they aren't named like a component or hook.
+
+describe('component-context exemption (rules that only fire inside components/hooks)', () => {
+  const cases: Array<[string, string]> = [
+    ['pyreon/no-raw-setinterval', `setInterval(() => {}, 100)`],
+    ['pyreon/no-dynamic-styled', `function helper() { styled('div')\`color:red\` }`],
+    ['pyreon/no-raw-localstorage', `localStorage.getItem('k')`],
+    ['pyreon/no-mutate-store-state', `store.count.set(5)`],
+  ]
+
+  for (const [rule, source] of cases) {
+    it(`${rule}: silent at module scope (no component on the stack)`, () => {
+      const result = lintSource(source)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBe(0)
+    })
+
+    it(`${rule}: silent in plain utility function (PascalCase / use-prefix not present)`, () => {
+      const wrapped = `function doStuff() { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBe(0)
+    })
+
+    it(`${rule}: silent in a test callback (anonymous arrow)`, () => {
+      const wrapped = `it('does the thing', () => { ${source} })`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBe(0)
+    })
+
+    it(`${rule}: fires inside a PascalCase component`, () => {
+      const wrapped = `function MyComp() { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it(`${rule}: fires inside a use-prefixed hook`, () => {
+      const wrapped = `function useThing() { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
+  }
+})
+
+// ── Test-file heuristic (C-rules) ────────────────────────────────────────────
+//
+// Three rules can't distinguish "intentional test stub" from "real production
+// usage" purely from the AST (the rule's premise is intent-dependent: did
+// you forget validation, did you mean to duplicate this id, did you mean
+// to leave the field unregistered). For these we keep an explicit test-file
+// heuristic and document it as such — a `// pyreon-lint-disable-next-line`
+// is the right tool for intentional exceptions in production code.
+//
+// `no-circular-import` also keeps file-path skip but for a different reason —
+// tests don't ship as part of the layered production dep graph, so the
+// layer-order discipline genuinely doesn't apply to them. Categorical, not
+// a heuristic.
+
+describe('test-file heuristic (rules that intentionally skip *.test.* files)', () => {
+  const cases: Array<[string, string, string]> = [
+    ['pyreon/no-submit-without-validation', 'src/tests/form.test.tsx', `useForm({ onSubmit: () => {} })`],
+    ['pyreon/no-duplicate-store-id', 'src/tests/store.test.ts', `defineStore('a', () => {}); defineStore('a', () => {})`],
+    ['pyreon/no-unregistered-field', 'src/tests/form.test.ts', `const f = useField(form, 'x')`],
+    ['pyreon/no-circular-import', 'packages/core/runtime-dom/src/tests/integration.test.ts', `import { renderToString } from '@pyreon/runtime-server'`],
+  ]
+
+  for (const [rule, filePath, source] of cases) {
+    it(`${rule}: exempt in ${filePath}`, () => {
+      const result = lintFile(filePath, source, allRules, defaultConfig())
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBe(0)
+    })
+  }
 })

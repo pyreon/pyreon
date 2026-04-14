@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isTestFile } from '../../utils/package-classification'
 
 export const noDuplicateStoreId: Rule = {
   meta: {
@@ -10,6 +11,16 @@ export const noDuplicateStoreId: Rule = {
     fixable: false,
   },
   create(context) {
+    // Heuristic: skip test files. The rule catches a real bug (two
+    // `defineStore('foo', ...)` calls in production code clobber each
+    // other), but store tests deliberately duplicate IDs to assert
+    // collision-handling behavior. A truly precise check would need to
+    // detect "this duplicate is wrapped in `expect(...).toThrow`" or
+    // similar — impractical at lint level. For prod code that intentionally
+    // (re)defines a store ID, use `// pyreon-lint-disable-next-line` at
+    // the second declaration.
+    if (isTestFile(context.getFilePath())) return {}
+
     const storeIds = new Map<string, { start: number; end: number }>()
 
     const callbacks: VisitorCallbacks = {

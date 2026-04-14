@@ -78,3 +78,28 @@ export const CLEANUP_WRAPPER_FOUNDATION_PATTERNS = [
 export function isCleanupWrapperFoundation(filePath: string): boolean {
   return CLEANUP_WRAPPER_FOUNDATION_PATTERNS.some((pat) => filePath.includes(pat))
 }
+
+// ─── Test files ──────────────────────────────────────────────────────────────
+//
+// Rules that target patterns tests legitimately exercise (e.g. raw
+// `setInterval` for time-based tests, duplicate store IDs to cover
+// collision handling, submitting forms without validation to assert
+// validation ran, direct `localStorage` probes, mutating store state
+// to assert immutability protections, etc.) skip test files via this
+// helper. Tests are where we *demonstrate* the anti-pattern to verify
+// production code handles it — flagging them inside tests produces
+// noise that masks real signal elsewhere.
+//
+// Rules where the pattern is wrong in any context (e.g. `<For>`
+// without `by`, bare signal in JSX) do NOT use this — those
+// legitimately apply to tests too.
+
+export function isTestFile(filePath: string): boolean {
+  return (
+    filePath.includes('/tests/') ||
+    filePath.includes('/test/') ||
+    filePath.includes('/__tests__/') ||
+    filePath.includes('.test.') ||
+    filePath.includes('.spec.')
+  )
+}
