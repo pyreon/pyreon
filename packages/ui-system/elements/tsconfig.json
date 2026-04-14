@@ -2,7 +2,7 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "types": ["vitest/globals", "node"],
+    "types": ["vitest/globals", "node", "vite/client"],
     "jsx": "react-jsx"
   },
   "include": ["src"]

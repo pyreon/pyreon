@@ -10,7 +10,7 @@ export const devGuardWarnings: Rule = {
     description: 'Require console.warn/error calls to be wrapped in `if (__DEV__)` guards.',
     severity: 'error',
     fixable: false,
-    schema: { exemptPaths: 'string[]' },
+    schema: { exemptPaths: 'string[]', devFlagNames: 'string[]' },
   },
   create(context) {
     // Skip test files — universal convention (`*.test.*` etc. exist in
@@ -23,12 +23,55 @@ export const devGuardWarnings: Rule = {
     // as documentation rather than production).
     if (isPathExempt(context)) return {}
 
+    // Project-level additions to the built-in dev-flag name list. Merged
+    // with the defaults so a custom flag like `__DEBUG__` still picks up
+    // the built-in `__DEV__`/`IS_DEVELOPMENT`/etc. without restating them.
+    const userFlagNames = context.getOptions().devFlagNames
+    const extraFlagNames = Array.isArray(userFlagNames)
+      ? userFlagNames.filter((n): n is string => typeof n === 'string')
+      : []
+
+    // Identifiers bound via `const X = <devFlag expression>` — e.g.
+    // `const IS_DEVELOPMENT = import.meta.env.DEV === true`. These act as
+    // the same dev-mode gate as the raw flag at their call sites.
+    const devFlagBoundConsts = new Set<string>()
+    function exprResolvesToDevFlag(expr: any): boolean {
+      if (!expr) return false
+      if (expr.type === 'ChainExpression') return exprResolvesToDevFlag(expr.expression)
+      if (isDevFlag(expr)) return true
+      // `import.meta.env.DEV === true` / `true === import.meta.env.DEV`
+      if (
+        expr.type === 'BinaryExpression' &&
+        (expr.operator === '===' || expr.operator === '==')
+      ) {
+        return exprResolvesToDevFlag(expr.left) || exprResolvesToDevFlag(expr.right)
+      }
+      return false
+    }
+
+    // Conventional identifier names treated as dev-mode gates. Covers both
+    // local `const __DEV__ = …` style and imported flags like `IS_DEV` /
+    // `IS_DEVELOPMENT` from a package's shared utils module. The rule can't
+    // follow cross-module imports to verify that the binding really resolves
+    // to `import.meta.env.DEV`, so we fall back to the name convention —
+    // consistent with how the existing `__DEV__` identifier works. Projects
+    // can extend the list via the `devFlagNames` rule option.
+    const DEV_FLAG_NAMES = new Set<string>([
+      '__DEV__',
+      'IS_DEV',
+      'IS_DEVELOPMENT',
+      'isDev',
+      ...extraFlagNames,
+    ])
+
     // Direct dev-mode flags this rule treats as guards.
     function isDevFlag(node: any): boolean {
       if (!node) return false
       if (node.type === 'ChainExpression') return isDevFlag(node.expression)
-      // `__DEV__`
-      if (node.type === 'Identifier' && node.name === '__DEV__') return true
+      // Conventional dev-flag identifier names.
+      if (node.type === 'Identifier' && DEV_FLAG_NAMES.has(node.name)) return true
+      // Const-bound dev flag, e.g. `const devMode = import.meta.env.DEV`.
+      if (node.type === 'Identifier' && devFlagBoundConsts.has(node.name)) return true
       // `import.meta.env.DEV` (and `import.meta.env?.DEV` after ChainExpression unwrap)
       if (
         node.type === 'MemberExpression' &&
@@ -102,6 +145,13 @@ export const devGuardWarnings: Rule = {
     }
 
     const callbacks: VisitorCallbacks = {
+      VariableDeclaration(node: any) {
+        for (const decl of node.declarations ?? []) {
+          if (decl.id?.type === 'Identifier' && exprResolvesToDevFlag(decl.init)) {
+            devFlagBoundConsts.add(decl.id.name)
+          }
+        }
+      },
       FunctionDeclaration: enterFunction,
       'FunctionDeclaration:exit': exitFunction,
       FunctionExpression: enterFunction,

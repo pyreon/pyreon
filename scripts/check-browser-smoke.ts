@@ -41,7 +41,6 @@ const PHASE_5_PENDING_PACKAGES = [
   // ui-system (7) — Phase 5 rollout
   'packages/ui-system/styler/',
   'packages/ui-system/unistyle/',
-  'packages/ui-system/elements/',
   'packages/ui-system/rocketstyle/',
   'packages/ui-system/coolgrid/',
   'packages/ui-system/kinetic/',
