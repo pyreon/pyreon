@@ -48,6 +48,21 @@ function writeManifest(root: string, category: string, pkg: string, body: string
   writeFileSync(join(dir, 'manifest.ts'), body)
 }
 
+/**
+ * Write minimal llms.txt + llms-full.txt into the fixture. `main()`
+ * reads both; absence of either triggers an ENOENT before the sync
+ * check. A section landing-point for every manifest is required so
+ * the "missing entry" path only fires when deliberately tested.
+ */
+function writeLlmsFiles(
+  root: string,
+  llmsTxtBody: string,
+  llmsFullBody = '# llms-full.txt\n',
+) {
+  writeFileSync(join(root, 'llms.txt'), llmsTxtBody)
+  writeFileSync(join(root, 'llms-full.txt'), llmsFullBody)
+}
+
 interface Captured {
   stdout: string[]
   stderr: string[]
@@ -99,7 +114,7 @@ describe('gen-docs main() — in-process', () => {
   })
 
   it('reports no manifests when fixture is empty', async () => {
-    writeFileSync(join(fx.root, 'llms.txt'), '# llms.txt\n')
+    writeLlmsFiles(fx.root, '# llms.txt\n')
     const out = await runMain(fx.root, [])
     expect(out.exitCode).toBeUndefined() // no exit = success
     expect(out.stdout.join('\n')).toContain('no manifests found')
@@ -110,9 +125,13 @@ describe('gen-docs main() — in-process', () => {
       fx.root,
       'fundamentals',
       'x',
-      `export default { name: '@pyreon/x', tagline: 'does things', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+      `export default { name: '@pyreon/x', tagline: 'does things', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'const x = 1' }`,
     )
-    writeFileSync(join(fx.root, 'llms.txt'), '# llms.txt\n\n- @pyreon/x — does things\n')
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/x — does things\n',
+      '# llms-full.txt\n\n## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n',
+    )
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBeUndefined()
   })
@@ -122,9 +141,13 @@ describe('gen-docs main() — in-process', () => {
       fx.root,
       'fundamentals',
       'x',
-      `export default { name: '@pyreon/x', tagline: 'NEW', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+      `export default { name: '@pyreon/x', tagline: 'NEW', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'const x = 1' }`,
     )
-    writeFileSync(join(fx.root, 'llms.txt'), '# llms.txt\n\n- @pyreon/x — old\n')
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/x — old\n',
+      '# llms-full.txt\n\n## @pyreon/x — old\n\n```typescript\nold body\n```\n',
+    )
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBe(1)
     const err = out.stderr.join('\n')
@@ -139,47 +162,61 @@ describe('gen-docs main() — in-process', () => {
       fx.root,
       'fundamentals',
       'x',
-      `export default { name: '@pyreon/orphan', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+      `export default { name: '@pyreon/orphan', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'x' }`,
     )
-    writeFileSync(join(fx.root, 'llms.txt'), '# llms.txt\n\n- @pyreon/other — nope\n')
+    writeLlmsFiles(fx.root, '# llms.txt\n\n- @pyreon/other — nope\n', '# llms-full.txt\n')
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBe(1)
     const err = out.stderr.join('\n')
-    expect(err).toContain('no matching bullet')
+    expect(err).toContain('no matching llms.txt entry')
     expect(err).toContain('@pyreon/orphan')
     // Placement hint lists the valid category sections
     expect(err).toContain('core')
     expect(err).toContain('fundamentals')
   })
 
-  it('write mode actually writes llms.txt', async () => {
+  it('write mode actually writes both llms.txt and llms-full.txt', async () => {
     writeManifest(
       fx.root,
       'fundamentals',
       'x',
-      `export default { name: '@pyreon/x', tagline: 'NEW', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+      `export default { name: '@pyreon/x', tagline: 'NEW', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'new body' }`,
     )
     const llmsPath = join(fx.root, 'llms.txt')
-    writeFileSync(llmsPath, '# llms.txt\n\n- @pyreon/x — old\n')
+    const llmsFullPath = join(fx.root, 'llms-full.txt')
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/x — old\n',
+      '# llms-full.txt\n\n## @pyreon/x — old\n\n```typescript\nold body\n```\n',
+    )
     const out = await runMain(fx.root, [])
     expect(out.exitCode).toBeUndefined()
-    expect(out.stdout.join('\n')).toContain('1 line regenerated')
+    const stdout = out.stdout.join('\n')
+    expect(stdout).toContain('llms.txt: 1 line regenerated')
+    expect(stdout).toContain('llms-full.txt: 1 section regenerated')
     expect(readFileSync(llmsPath, 'utf8')).toContain('- @pyreon/x — NEW')
+    expect(readFileSync(llmsFullPath, 'utf8')).toContain('new body')
   })
 
-  it('is idempotent — second run reports no changes', async () => {
+  it('is idempotent — second run reports no changes on both files', async () => {
     writeManifest(
       fx.root,
       'fundamentals',
       'x',
-      `export default { name: '@pyreon/x', tagline: 'stable', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+      `export default { name: '@pyreon/x', tagline: 'stable', description: 'd', category: 'universal' as const, features: [], api: [], longExample: 'body' }`,
     )
-    writeFileSync(join(fx.root, 'llms.txt'), '# llms.txt\n\n- @pyreon/x — stable\n')
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/x — stable\n',
+      '# llms-full.txt\n\n## @pyreon/x — stable\n\n```typescript\nbody\n```\n',
+    )
     const first = await runMain(fx.root, [])
     expect(first.exitCode).toBeUndefined()
     const second = await runMain(fx.root, [])
     expect(second.exitCode).toBeUndefined()
-    expect(second.stdout.join('\n')).toContain('no changes')
+    const stdout = second.stdout.join('\n')
+    expect(stdout).toContain('llms.txt: no changes')
+    expect(stdout).toContain('llms-full.txt: no changes')
   })
 })
 

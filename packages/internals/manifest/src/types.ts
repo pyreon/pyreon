@@ -210,6 +210,27 @@ export interface PackageManifest {
    */
   gotchas?: string[]
   /**
+   * Optional narrative code block for the `llms-full.txt` per-package
+   * section. When set, the generator emits this verbatim inside a
+   * TypeScript code fence instead of composing individual `api[]`
+   * examples. Use for packages whose idiomatic usage is best shown
+   * as one end-to-end example rather than disjoint API snippets
+   * (e.g. `@pyreon/flow` — create flow + add node + layout + render).
+   *
+   * Omit for packages whose API entries' individual `example` fields
+   * compose into a natural whole; the generator will concatenate
+   * them with headers.
+   */
+  longExample?: string
+  /**
+   * Optional short title for the `llms-full.txt` section header
+   * (`## @pyreon/<name> — <title>`). Defaults to the `tagline` when
+   * omitted, but existing sections use short, punchy titles
+   * ("Flow Diagrams", "State Management") that the long tagline
+   * wouldn't match. Keep ≤40 chars to match existing convention.
+   */
+  title?: string
+  /**
    * Package version the manifest was last audited against. Generator
    * may cross-check against the real `package.json` `version` field in
    * a future PR. Must be `MAJOR.MINOR.PATCH`.

@@ -1,8 +1,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { regenerateLlmsTxt } from '../../../../../scripts/gen-docs-core'
-import { findManifests, formatLineDiff, renderLlmsTxtLine } from '../index'
+import {
+  regenerateLlmsFullTxt,
+  regenerateLlmsTxt,
+} from '../../../../../scripts/gen-docs-core'
+import {
+  findManifests,
+  formatLineDiff,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '../index'
 import type { PackageManifest } from '../types'
 
 // Unit coverage for scripts/gen-docs.ts. Lives in @pyreon/manifest
@@ -238,5 +246,187 @@ describe('formatLineDiff', () => {
     // (pairing every index where strings differ). LCS correctly
     // identifies b and c as common — only X is inserted.
     expect(formatLineDiff('a\nb\nc\nd', 'a\nX\nb\nc\nd')).toBe('+ X')
+  })
+})
+
+describe('renderLlmsFullSection', () => {
+  const base: PackageManifest = {
+    name: '@pyreon/x',
+    tagline: 'does things',
+    description: 'd',
+    category: 'universal',
+    features: [],
+    api: [],
+  }
+
+  it('emits a header with the title (when set) and a typescript code block', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      title: 'X Package',
+      longExample: `const x = 1`,
+    })
+    expect(out).toBe('## @pyreon/x — X Package\n\n```typescript\nconst x = 1\n```\n')
+  })
+
+  it('falls back to tagline when title is unset', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      longExample: `const x = 1`,
+    })
+    expect(out.startsWith('## @pyreon/x — does things\n')).toBe(true)
+  })
+
+  it('synthesizes body from api[].example when longExample is absent', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      api: [
+        {
+          name: 'fn1',
+          kind: 'function',
+          signature: '() => void',
+          summary: 's',
+          example: `fn1()`,
+        },
+        {
+          name: 'fn2',
+          kind: 'function',
+          signature: '() => number',
+          summary: 's',
+          example: `const n = fn2()`,
+        },
+      ],
+    })
+    expect(out).toContain('fn1()\n\nconst n = fn2()')
+  })
+
+  it('appends peerDeps as a blockquote when present', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/runtime-dom'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer dep**: @pyreon/runtime-dom')
+  })
+
+  it('pluralizes "Peer deps" for multiple entries', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/a', '@pyreon/b'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer deps**: @pyreon/a, @pyreon/b')
+  })
+
+  it('emits one blockquote note per gotcha with `> **Note**:` prefix', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: ['first gotcha', 'second gotcha'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Note**: first gotcha')
+    expect(out).toContain('> **Note**: second gotcha')
+  })
+
+  it('joins peerDeps and gotchas with blockquote separator `>`', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/runtime-dom'],
+      gotchas: ['watch out'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer dep**: @pyreon/runtime-dom\n>\n> **Note**: watch out')
+  })
+
+  it('terminates with a single trailing newline', () => {
+    const out = renderLlmsFullSection({ ...base, longExample: `code` })
+    expect(out.endsWith('\n')).toBe(true)
+    expect(out.endsWith('\n\n')).toBe(false)
+  })
+})
+
+describe('regenerateLlmsFullTxt', () => {
+  const baseline = [
+    '# llms-full.txt',
+    '',
+    '## @pyreon/a — A',
+    '',
+    '```typescript',
+    'old A body',
+    '```',
+    '',
+    '## @pyreon/flow — Flow Diagrams',
+    '',
+    '```typescript',
+    'old flow body',
+    '```',
+    '',
+    '> **Peer dep**: old',
+    '',
+    '## @pyreon/z — Z',
+    '',
+    'end',
+    '',
+  ].join('\n')
+
+  const flowManifest: PackageManifest = {
+    name: '@pyreon/flow',
+    title: 'Flow Diagrams',
+    tagline: 'Reactive flow diagrams',
+    description: 'd',
+    category: 'browser',
+    peerDeps: ['@pyreon/runtime-dom'],
+    features: [],
+    api: [],
+    longExample: `const flow = createFlow({})`,
+  }
+
+  function wrap(m: PackageManifest) {
+    return [{ path: '/virtual/manifest.ts', manifest: m }]
+  }
+
+  it('replaces the flow section body without touching neighbours', () => {
+    const result = regenerateLlmsFullTxt(baseline, wrap(flowManifest))
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(1)
+    // Flow's new body landed
+    expect(result.contents).toContain('const flow = createFlow({})')
+    // Old body is gone
+    expect(result.contents).not.toContain('old flow body')
+    // Neighbours untouched
+    expect(result.contents).toContain('old A body')
+    expect(result.contents).toContain('## @pyreon/z — Z')
+  })
+
+  it('reports manifests whose section cannot be found', () => {
+    const result = regenerateLlmsFullTxt(
+      baseline,
+      wrap({ ...flowManifest, name: '@pyreon/missing' }),
+    )
+    expect(result.missingEntries).toEqual(['@pyreon/missing'])
+    expect(result.contents).toBe(baseline)
+  })
+
+  it('is idempotent', () => {
+    const once = regenerateLlmsFullTxt(baseline, wrap(flowManifest))
+    const twice = regenerateLlmsFullTxt(once.contents, wrap(flowManifest))
+    expect(twice.changedLines).toBe(0)
+    expect(twice.contents).toBe(once.contents)
+  })
+
+  it('does not match sections for other packages with similar names', () => {
+    const content = [
+      '## @pyreon/flow — Real',
+      '',
+      'real flow',
+      '',
+      '## @pyreon/flow-extra — Different',
+      '',
+      'different',
+      '',
+    ].join('\n')
+    const result = regenerateLlmsFullTxt(content, wrap(flowManifest))
+    expect(result.contents).toContain('## @pyreon/flow — Flow Diagrams')
+    expect(result.contents).toContain('## @pyreon/flow-extra — Different')
+    expect(result.contents).toContain('different')
   })
 })

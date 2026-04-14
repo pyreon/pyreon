@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import flowManifest from '../../../../fundamentals/flow/src/manifest'
 import {
   findManifests,
+  regenerateLlmsFullTxt,
   regenerateLlmsTxt,
 } from '../../../../../scripts/gen-docs-core'
 
@@ -31,15 +32,20 @@ describe('gen-docs — end-to-end', () => {
   it('flow manifest produces a bullet that appears verbatim in llms.txt', async () => {
     const llmsTxtPath = join(REPO_ROOT, 'llms.txt')
     const current = readFileSync(llmsTxtPath, 'utf8')
-    // Pull in flow's manifest + pipe through regenerateLlmsTxt against
-    // the checked-in file as input — assert the resulting content is
-    // unchanged. This is the full path from manifest source to final
-    // generated output.
     const { contents } = regenerateLlmsTxt(current, [
       { path: 'flow', manifest: flowManifest },
     ])
     expect(contents).toBe(current)
     expect(current).toContain(`- ${flowManifest.name} — ${flowManifest.tagline}`)
+  })
+
+  it('regenerating from all real manifests yields the checked-in llms-full.txt byte-for-byte', async () => {
+    const manifests = await findManifests(REPO_ROOT)
+    const llmsFullPath = join(REPO_ROOT, 'llms-full.txt')
+    const current = readFileSync(llmsFullPath, 'utf8')
+    const { contents, missingEntries } = regenerateLlmsFullTxt(current, manifests)
+    expect(missingEntries).toEqual([])
+    expect(contents).toBe(current)
   })
 })
 

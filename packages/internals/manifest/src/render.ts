@@ -36,6 +36,78 @@ export function renderLlmsTxtLine(m: PackageManifest): string {
 }
 
 /**
+ * Render a manifest to its `llms-full.txt` per-package section. Emits:
+ *
+ * ```
+ * ## @pyreon/<name> — <title OR tagline>
+ *
+ * ```typescript
+ * <longExample OR synthesized from api[].example concatenation>
+ * ```
+ *
+ * > **Peer dep**: ...   (only if peerDeps set)
+ * >
+ * > **Note**: ...       (one blockquote per gotcha)
+ * ```
+ *
+ * Output terminates with a single trailing newline so the generator
+ * can concatenate multiple sections with blank-line separators that
+ * match the existing file's shape.
+ *
+ * @example
+ * ```ts
+ * import { defineManifest, renderLlmsFullSection } from '@pyreon/manifest'
+ *
+ * const m = defineManifest({
+ *   name: '@pyreon/flow',
+ *   title: 'Flow Diagrams',
+ *   tagline: 'Reactive flow diagrams',
+ *   description: 'd',
+ *   category: 'browser',
+ *   features: [],
+ *   api: [],
+ *   longExample: `const flow = createFlow({ nodes: [], edges: [] })`,
+ * })
+ * renderLlmsFullSection(m)
+ * // → "## @pyreon/flow — Flow Diagrams\n\n```typescript\n...\n```\n"
+ * ```
+ */
+export function renderLlmsFullSection(m: PackageManifest): string {
+  const title = m.title ?? m.tagline
+  const header = `## ${m.name} — ${title}`
+
+  const body = m.longExample ?? synthesizeExampleFromApi(m)
+  const codeBlock = `\`\`\`typescript\n${body}\n\`\`\``
+
+  const blockquotes: string[] = []
+  if (m.peerDeps && m.peerDeps.length > 0) {
+    blockquotes.push(
+      `> **Peer dep${m.peerDeps.length === 1 ? '' : 's'}**: ${m.peerDeps.join(', ')}`,
+    )
+  }
+  for (const gotcha of m.gotchas ?? []) {
+    blockquotes.push(`> **Note**: ${gotcha}`)
+  }
+
+  const parts = [header, '', codeBlock]
+  if (blockquotes.length > 0) {
+    parts.push('', blockquotes.join('\n>\n'))
+  }
+  return parts.join('\n') + '\n'
+}
+
+function synthesizeExampleFromApi(m: PackageManifest): string {
+  // Fallback path when `longExample` is not set — concatenate
+  // individual `api[].example` blocks with blank-line separators.
+  // Not as narrative as a hand-crafted longExample but gives
+  // something coherent for packages that skip the optional field.
+  return m.api
+    .filter((entry) => entry.example.trim().length > 0)
+    .map((entry) => entry.example)
+    .join('\n\n')
+}
+
+/**
  * Unified-diff output for the gen-docs CLI `--check` failure message.
  * Uses an LCS (longest-common-subsequence) backtrace so inserted or
  * removed lines mid-file produce a coherent diff instead of the

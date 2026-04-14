@@ -318,7 +318,7 @@ jobs:
           fi
           git fetch origin "${{ github.base_ref }}" --depth=1 || true
           CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" || echo '')
-          if echo "$CHANGED" | grep -qE '(^packages/[^/]+/[^/]+/src/manifest\.ts$|^llms\.txt$|^scripts/gen-docs(-core)?\.ts$|^packages/internals/manifest/|^package\.json$)'; then
+          if echo "$CHANGED" | grep -qE '(^packages/[^/]+/[^/]+/src/manifest\.ts$|^llms(-full)?\.txt$|^scripts/gen-docs(-core)?\.ts$|^packages/internals/manifest/|^package\.json$)'; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_run=false" >> "$GITHUB_OUTPUT"
