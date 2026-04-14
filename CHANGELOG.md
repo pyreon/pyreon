@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **@pyreon/manifest** (private) — Internal type package providing `PackageManifest`, `ApiEntry`, and `defineManifest()`. Foundation for T2.1 single-source doc manifest pipeline. No external consumers in this release; follow-up PRs add the generator and migrate individual packages.
+- **`scripts/gen-docs.ts` + `bun run gen-docs`** — Walks every `packages/<category>/<pkg>/manifest.ts` and regenerates `llms.txt` bullets in place. `--check` flag exits non-zero when files are out of sync (local equivalent of the CI `Docs Sync` gate). First real consumer: `@pyreon/flow` — its hand-written `llms.txt` entry now generates from `packages/fundamentals/flow/manifest.ts`. Contributors editing migrated packages edit the manifest, not the generated output.
+- **CI `Docs Sync` job** — Runs the generator and `git diff --exit-code`. Fails any PR where the checked-in generated files drift from the manifests; error message tells reviewers the fix.
 
 ### Security
 
