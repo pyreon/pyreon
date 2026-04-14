@@ -159,6 +159,10 @@ export const noWindowInSsr: Rule = {
     // function-scope visitor bumps safeDepth only inside them. The source
     // arg (evaluated at setup) stays unmarked and gets normal analysis.
     const watchCallbackNodes = new WeakSet<any>()
+    // Parallel stack recording whether the current function scope bumped
+    // safeDepth for being a watch callback. Paired with `popFunctionScope`
+    // so the depth is balanced even with nested watch calls.
+    const watchCallbackSafeDepthStack: number[] = []
     // Stack of parameter names that shadow browser globals for the current
     // function scope. E.g. `function push(location)` — any `location`
     // identifier inside this function refers to the parameter, not the
@@ -204,10 +208,6 @@ export const noWindowInSsr: Rule = {
       const watchBump = watchCallbackSafeDepthStack.pop() ?? 0
       if (watchBump > 0) safeDepth -= watchBump
     }
-    // Parallel stack recording whether the current function scope bumped
-    // safeDepth for being a watch callback. Paired with `popFunctionScope`
-    // so the depth is balanced even with nested watch calls.
-    const watchCallbackSafeDepthStack: number[] = []
     function noteEarlyReturnGuardVisit() {
       typeofGuardDepth++
       if (earlyReturnStack.length > 0) {
