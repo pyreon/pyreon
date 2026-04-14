@@ -546,6 +546,16 @@ const { isTransitioning } = useTransition()
 // ::view-transition-new(root) { animation: fade-in 300ms ease-out }
 ```
 
+**What `await router.push()` waits for:** the router awaits the ViewTransition's `updateCallbackDone` promise (DOM committed, new state live). It does NOT await `.finished` (full animation — 200-300ms), which would add unwanted latency to every programmatic navigation. `.ready` and `.finished` get empty `.catch()` handlers so their `AbortError: Transition was skipped` rejections (fired when a newer navigation interrupts an in-flight transition) don't leak as unhandled promise rejections.
+
+| Promise | Resolves when | Router awaits? |
+| --- | --- | --- |
+| `updateCallbackDone` | Callback done; DOM swapped; state live | yes |
+| `ready` | Snapshot captured, pseudo-elements ready | no — `.catch()` only |
+| `finished` | Full animation completed | no — `.catch()` only |
+
+**Hook ordering**: `afterEach` hooks and `scrollManager.restore` fire AFTER the VT callback completes — they observe the NEW route state, consistent with the hook's documented "after-navigation" semantics. (Pre-fix they fired between `commitNavigation` returning and the VT callback running, briefly observing OLD state. No internal consumer was affected; external apps using `router.afterEach()` for analytics now see the correct current route when the hook fires.)
+
 ### Hash Scrolling
 ```typescript
 // Navigating to /docs#installation auto-scrolls to element with id="installation"

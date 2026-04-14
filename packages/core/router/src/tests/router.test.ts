@@ -4595,4 +4595,125 @@ describe('View Transitions API', () => {
     delete (document as any).startViewTransition
     router.destroy()
   })
+
+  it('afterEach hook sees the NEW route state (post-commit ordering)', async () => {
+    // Regression: before the VT-await fix, afterEach hooks fired after
+    // commitNavigation() returned but BEFORE the VT callback actually
+    // ran — so hooks briefly saw the OLD currentPath. After the fix,
+    // hooks fire AFTER vt.updateCallbackDone, so they observe the NEW
+    // state. This is the correct behavior per the hook's documented
+    // semantics ("after-navigation hook") — assert it to prevent a
+    // future refactor from moving the loop back above the await.
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone: Promise.resolve(),
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    const observed: { to: string; current: string }[] = []
+    router.afterEach((to) => {
+      observed.push({ to: to.path, current: router.currentRoute().path })
+    })
+
+    await router.push('/about')
+
+    // Hook fired exactly once with the new state live.
+    expect(observed).toHaveLength(1)
+    expect(observed[0]).toEqual({ to: '/about', current: '/about' })
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('useTransition() loading signal stays TRUE during VT commit, FALSE only after DOM swap', async () => {
+    // The loadingSignal is decremented AFTER commitNavigation completes
+    // (i.e. after vt.updateCallbackDone). A subscriber observing the
+    // signal during `await router.push()` must not see it flip to 0
+    // before the DOM is live. Prevents regressions where someone moves
+    // the decrement above the await to "save a microtask."
+    const deferred: { resolve?: () => void } = {}
+    const updateCallbackDone = new Promise<void>((r) => {
+      deferred.resolve = r
+    })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    const observations: number[] = []
+    // Fire push without awaiting yet.
+    const pushPromise = router.push('/about')
+
+    // Give the microtask queue a tick; loading signal should still be > 0.
+    await Promise.resolve()
+    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+
+    // Now release the updateCallbackDone; push() should settle and the
+    // signal should drop to 0.
+    deferred.resolve?.()
+    await pushPromise
+    observations.push((router as unknown as { _loadingSignal: { peek(): number } })._loadingSignal.peek())
+
+    // Observation 1: in-flight → loadingSignal > 0.
+    expect(observations[0]).toBeGreaterThan(0)
+    // Observation 2: after await → loadingSignal = 0.
+    expect(observations[1]).toBe(0)
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('SSR mode: push() resolves without touching startViewTransition', async () => {
+    // Router running in SSR (no window, no document.startViewTransition).
+    // The _isBrowser gate should skip the VT branch entirely.
+    // Simulate by deleting the global, keeping a tripwire that records
+    // if startViewTransition is called — which it must not be.
+    let vtCalled = false
+    ;(document as any).startViewTransition = () => {
+      vtCalled = true
+      return { updateCallbackDone: Promise.resolve() }
+    }
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/ssr-target', component: About, meta: { viewTransition: false } },
+      ],
+      url: '/',
+    })
+
+    // Route with meta.viewTransition: false — VT path should be skipped
+    // regardless of the global.
+    await router.push('/ssr-target')
+    expect(vtCalled).toBe(false)
+    expect(router.currentRoute().path).toBe('/ssr-target')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
 })

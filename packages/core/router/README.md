@@ -98,3 +98,17 @@ const data = useLoaderData<typeof loader>()
 ### Types
 
 `ExtractParams`, `RouteMeta`, `ResolvedRoute`, `RouteRecord`, `RouterOptions`, `Router`, `NavigationGuard`, `AfterEachHook`, `ScrollBehaviorFn`, `LoaderContext`, `RouteLoaderFn`
+
+## View Transitions
+
+Route changes are wrapped in `document.startViewTransition()` automatically when the browser supports it. Opt out per-route with `meta: { viewTransition: false }`.
+
+`await router.push()` / `.replace()` resolves once the DOM has committed to the new route -- specifically, when the ViewTransition's `updateCallbackDone` promise settles. It does NOT wait for the full animation (`.finished`, 200-300ms), because blocking every programmatic navigation on an animation is unacceptable.
+
+| Promise | Resolves when | Router awaits? |
+| --- | --- | --- |
+| `updateCallbackDone` | Callback done; DOM swapped; state live | yes |
+| `ready` | Snapshot captured, pseudo-elements ready | no -- `.catch()` only |
+| `finished` | Full animation completed | no -- `.catch()` only |
+
+`afterEach` hooks and scroll restoration fire after the VT callback completes, so they observe the new route state when invoked.

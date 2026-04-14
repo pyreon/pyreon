@@ -366,6 +366,9 @@ const { isTransitioning } = useTransition()
 
 // View Transitions API — auto-enabled, opt out per route:
 { path: '/modal', component: Modal, meta: { viewTransition: false } }
+// `await router.push()` / `.replace()` resolves AFTER the DOM swap (vt.updateCallbackDone),
+// NOT after the full animation (.finished, 200-300ms). afterEach hooks + scrollManager.restore
+// also fire post-commit — they see the NEW route state.
 
 // Middleware chain with data passing
 const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx.request) }
