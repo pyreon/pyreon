@@ -1,6 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isDomRuntimeFile } from '../../utils/package-classification'
+import { isCleanupWrapperFoundation } from '../../utils/package-classification'
 
 export const noRawAddEventListener: Rule = {
   meta: {
@@ -11,9 +11,11 @@ export const noRawAddEventListener: Rule = {
     fixable: false,
   },
   create(context) {
-    // `runtime-dom` is the DOM renderer that wires real listeners — it can't
-    // use `useEventListener` (a hook built on top of it).
-    if (isDomRuntimeFile(context.getFilePath())) return {}
+    // `runtime-dom` + `@pyreon/hooks` IMPLEMENT the auto-cleanup wrappers this
+    // rule steers consumers toward. `useEventListener`, `useClickOutside`,
+    // `useKeyboard`, `useMediaQuery`, `useOnline`, etc. each must call raw
+    // `addEventListener` internally. Same for `runtime-dom`'s event delegation.
+    if (isCleanupWrapperFoundation(context.getFilePath())) return {}
 
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {

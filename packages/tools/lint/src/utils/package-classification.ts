@@ -56,3 +56,25 @@ export const DOM_RUNTIME_PATTERNS = [
 export function isDomRuntimeFile(filePath: string): boolean {
   return DOM_RUNTIME_PATTERNS.some((pat) => filePath.includes(pat))
 }
+
+// ─── Cleanup-wrapper foundation packages ─────────────────────────────────────
+//
+// Packages that *implement* the auto-cleanup hook wrappers the codebase
+// encourages elsewhere. A rule like `pyreon/no-raw-addeventlistener` exists
+// to push consumers toward `useEventListener()` — but `useEventListener()`
+// itself has to call raw `el.addEventListener(...)` somewhere, and that
+// somewhere is `@pyreon/hooks`. Same for `useInterval` / `setInterval`.
+// `runtime-dom` also belongs here because it wires raw event delegation
+// at the root container.
+//
+// Rules that target "prefer the cleanup-wrapper" patterns skip these
+// packages so they don't flag the wrappers themselves.
+
+export const CLEANUP_WRAPPER_FOUNDATION_PATTERNS = [
+  'packages/core/runtime-dom/',
+  'packages/fundamentals/hooks/',
+]
+
+export function isCleanupWrapperFoundation(filePath: string): boolean {
+  return CLEANUP_WRAPPER_FOUNDATION_PATTERNS.some((pat) => filePath.includes(pat))
+}
