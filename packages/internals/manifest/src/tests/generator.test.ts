@@ -66,6 +66,18 @@ describe('renderLlmsTxtLine', () => {
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: [], gotchas: [] }),
     ).toBe('- @pyreon/x — does things')
   })
+
+  it('teases the labeled-gotcha note (not the label itself) for `{label, note}` form', () => {
+    // The label is a heading cue for llms-full blockquotes, not for
+    // the one-line bullet teaser — we want the content, not "Note" /
+    // "Mount once" / etc. showing up in the bullet.
+    expect(
+      renderLlmsTxtLine({
+        ...minimalManifest,
+        gotchas: [{ label: 'Mount once', note: 'nodes mount exactly once' }],
+      }),
+    ).toBe('- @pyreon/x — does things. nodes mount exactly once')
+  })
 })
 
 describe('regenerateLlmsTxt', () => {
@@ -259,13 +271,14 @@ describe('renderLlmsFullSection', () => {
     api: [],
   }
 
-  it('emits a header with the title (when set) and a typescript code block', () => {
+  it('emits header, description, and a typescript code block', () => {
     const out = renderLlmsFullSection({
       ...base,
       title: 'X Package',
       longExample: `const x = 1`,
     })
-    expect(out).toBe('## @pyreon/x — X Package\n\n```typescript\nconst x = 1\n```\n')
+    // description "d" sits between header and code block
+    expect(out).toBe('## @pyreon/x — X Package\n\nd\n\n```typescript\nconst x = 1\n```\n')
   })
 
   it('falls back to tagline when title is unset', () => {
@@ -274,6 +287,15 @@ describe('renderLlmsFullSection', () => {
       longExample: `const x = 1`,
     })
     expect(out.startsWith('## @pyreon/x — does things\n')).toBe(true)
+  })
+
+  it('uses tagline as prose fallback when description is empty', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      description: '',
+      longExample: `const x = 1`,
+    })
+    expect(out).toContain('## @pyreon/x — does things\n\ndoes things\n\n')
   })
 
   it('synthesizes body from api[].example when longExample is absent', () => {
@@ -317,7 +339,7 @@ describe('renderLlmsFullSection', () => {
     expect(out).toContain('> **Peer deps**: @pyreon/a, @pyreon/b')
   })
 
-  it('emits one blockquote note per gotcha with `> **Note**:` prefix', () => {
+  it('emits one blockquote note per bare-string gotcha with `> **Note**:` prefix', () => {
     const out = renderLlmsFullSection({
       ...base,
       gotchas: ['first gotcha', 'second gotcha'],
@@ -325,6 +347,35 @@ describe('renderLlmsFullSection', () => {
     })
     expect(out).toContain('> **Note**: first gotcha')
     expect(out).toContain('> **Note**: second gotcha')
+  })
+
+  it('uses the custom label for `{label, note}` gotchas', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: [
+        { label: 'Migration v1→v2', note: 'rename foo → bar' },
+        { label: 'JSX generics', note: 'not parameterisable at call site' },
+      ],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Migration v1→v2**: rename foo → bar')
+    expect(out).toContain('> **JSX generics**: not parameterisable at call site')
+    expect(out).not.toContain('> **Note**:')
+  })
+
+  it('mixes bare strings and labeled objects in one gotchas array', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: [
+        'first (bare)',
+        { label: 'Custom', note: 'second (labeled)' },
+        'third (bare)',
+      ],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Note**: first (bare)')
+    expect(out).toContain('> **Custom**: second (labeled)')
+    expect(out).toContain('> **Note**: third (bare)')
   })
 
   it('joins peerDeps and gotchas with blockquote separator `>`', () => {
@@ -428,5 +479,90 @@ describe('regenerateLlmsFullTxt', () => {
     expect(result.contents).toContain('## @pyreon/flow — Flow Diagrams')
     expect(result.contents).toContain('## @pyreon/flow-extra — Different')
     expect(result.contents).toContain('different')
+  })
+
+  it('regenerates multiple sections without index-drift between replacements', () => {
+    // Two manifests, two sections. Section A's replacement may shrink
+    // or grow the file; section B's range must still find its header
+    // after A's replacement. Regression guard for the
+    // "find-then-splice loop" approach — each iteration recomputes the
+    // section range against the MUTATED `next` string, so it stays
+    // correct by construction. This test proves that.
+    const manifestA: PackageManifest = {
+      name: '@pyreon/a',
+      title: 'Package A',
+      tagline: 'a tagline',
+      description: 'a description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `new A body (longer than original)`,
+    }
+    const manifestB: PackageManifest = {
+      name: '@pyreon/b',
+      title: 'Package B',
+      tagline: 'b tagline',
+      description: 'b description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `new B body`,
+    }
+
+    const content = [
+      '# preamble',
+      '',
+      '## @pyreon/a — A',
+      '',
+      'old a prose',
+      '',
+      '```typescript',
+      'short A',
+      '```',
+      '',
+      '## @pyreon/middle — Untouched',
+      '',
+      'neighbour that must survive',
+      '',
+      '```typescript',
+      'middle body',
+      '```',
+      '',
+      '## @pyreon/b — B',
+      '',
+      'old b prose',
+      '',
+      '```typescript',
+      'short B',
+      '```',
+      '',
+    ].join('\n')
+
+    const result = regenerateLlmsFullTxt(content, [
+      { path: '/a', manifest: manifestA },
+      { path: '/b', manifest: manifestB },
+    ])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(2)
+
+    // Both sections updated
+    expect(result.contents).toContain('new A body (longer than original)')
+    expect(result.contents).toContain('new B body')
+    // Both old bodies gone
+    expect(result.contents).not.toContain('short A')
+    expect(result.contents).not.toContain('short B')
+    // Middle section survived intact — the critical assertion:
+    // section A's replacement changed the file length BEFORE B's
+    // range lookup, yet B was still found correctly AND middle's
+    // body survived between them.
+    expect(result.contents).toContain('## @pyreon/middle — Untouched')
+    expect(result.contents).toContain('neighbour that must survive')
+    expect(result.contents).toContain('middle body')
+    // Section order preserved
+    const idxA = result.contents.indexOf('## @pyreon/a —')
+    const idxMiddle = result.contents.indexOf('## @pyreon/middle —')
+    const idxB = result.contents.indexOf('## @pyreon/b —')
+    expect(idxA).toBeLessThan(idxMiddle)
+    expect(idxMiddle).toBeLessThan(idxB)
   })
 })

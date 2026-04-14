@@ -130,7 +130,7 @@ describe('gen-docs main() — in-process', () => {
     writeLlmsFiles(
       fx.root,
       '# llms.txt\n\n- @pyreon/x — does things\n',
-      '# llms-full.txt\n\n## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n',
+      '# llms-full.txt\n\n## @pyreon/x — does things\n\nd\n\n```typescript\nconst x = 1\n```\n',
     )
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBeUndefined()
@@ -146,7 +146,7 @@ describe('gen-docs main() — in-process', () => {
     writeLlmsFiles(
       fx.root,
       '# llms.txt\n\n- @pyreon/x — old\n',
-      '# llms-full.txt\n\n## @pyreon/x — old\n\n```typescript\nold body\n```\n',
+      '# llms-full.txt\n\n## @pyreon/x — old\n\nd\n\n```typescript\nold body\n```\n',
     )
     const out = await runMain(fx.root, ['--check'])
     expect(out.exitCode).toBe(1)
@@ -187,7 +187,7 @@ describe('gen-docs main() — in-process', () => {
     writeLlmsFiles(
       fx.root,
       '# llms.txt\n\n- @pyreon/x — old\n',
-      '# llms-full.txt\n\n## @pyreon/x — old\n\n```typescript\nold body\n```\n',
+      '# llms-full.txt\n\n## @pyreon/x — old\n\nd\n\n```typescript\nold body\n```\n',
     )
     const out = await runMain(fx.root, [])
     expect(out.exitCode).toBeUndefined()
@@ -208,7 +208,7 @@ describe('gen-docs main() — in-process', () => {
     writeLlmsFiles(
       fx.root,
       '# llms.txt\n\n- @pyreon/x — stable\n',
-      '# llms-full.txt\n\n## @pyreon/x — stable\n\n```typescript\nbody\n```\n',
+      '# llms-full.txt\n\n## @pyreon/x — stable\n\nd\n\n```typescript\nbody\n```\n',
     )
     const first = await runMain(fx.root, [])
     expect(first.exitCode).toBeUndefined()

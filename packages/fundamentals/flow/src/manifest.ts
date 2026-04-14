@@ -194,10 +194,20 @@ flow.fromJSON({ nodes, edges })    // restore from saved state`,
   gotchas: [
     // First gotcha also feeds the llms.txt one-liner teaser — keep it
     // the most distinctive user-facing foot-gun, not a peer-dep note
-    // that duplicates the `(peer: ...)` bullet suffix.
+    // that duplicates the `(peer: ...)` bullet suffix. Bare string
+    // form → rendered as `> **Note**: ...` in llms-full.
     'LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it.',
-    'Each node mounts exactly once across the lifetime of the graph — drags, selection, and updateNode mutations patch via per-node reactive accessors, not remount.',
-    '`@pyreon/runtime-dom` is required in consumer apps because flow JSX components emit `_tpl()` / `_bind()` calls — declare it as a direct dependency, not a transitive one.',
-    'Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.',
+    {
+      label: 'Mount once',
+      note: 'Each node mounts exactly once across the lifetime of the graph — drags, selection, and updateNode mutations patch via per-node reactive accessors, not remount.',
+    },
+    {
+      label: 'Peer dep rationale',
+      note: '`@pyreon/runtime-dom` is required in consumer apps because flow JSX components emit `_tpl()` / `_bind()` calls — declare it as a direct dependency, not a transitive one.',
+    },
+    {
+      label: 'JSX generics',
+      note: 'Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.',
+    },
   ],
 })

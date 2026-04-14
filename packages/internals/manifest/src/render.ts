@@ -1,4 +1,13 @@
-import type { PackageManifest } from './types'
+import type { Gotcha, PackageManifest } from './types'
+
+/**
+ * Coerce a `Gotcha` (bare string or `{label, note}`) into its text pair.
+ * Shared by both the llms.txt one-liner teaser and the llms-full
+ * blockquote renderer.
+ */
+function gotchaParts(g: Gotcha): { label: string; note: string } {
+  return typeof g === 'string' ? { label: 'Note', note: g } : g
+}
 
 /**
  * Render a manifest to its one-line `llms.txt` bullet form. Compact by
@@ -31,7 +40,11 @@ import type { PackageManifest } from './types'
 export function renderLlmsTxtLine(m: PackageManifest): string {
   const peerSuffix =
     m.peerDeps && m.peerDeps.length > 0 ? ` (peer: ${m.peerDeps.join(', ')})` : ''
-  const gotchaSuffix = m.gotchas && m.gotchas.length > 0 ? `. ${m.gotchas[0]}` : ''
+  // Teaser uses the first gotcha's `note` text regardless of form —
+  // the `label` is a heading cue for llms-full blockquotes, not for
+  // the one-line bullet.
+  const gotchaSuffix =
+    m.gotchas && m.gotchas.length > 0 ? `. ${gotchaParts(m.gotchas[0]!).note}` : ''
   return `- ${m.name} — ${m.tagline}${peerSuffix}${gotchaSuffix}`
 }
 
@@ -41,13 +54,17 @@ export function renderLlmsTxtLine(m: PackageManifest): string {
  * ```
  * ## @pyreon/<name> — <title OR tagline>
  *
+ * <description paragraph — from manifest.description>
+ *
  * ```typescript
  * <longExample OR synthesized from api[].example concatenation>
  * ```
  *
- * > **Peer dep**: ...   (only if peerDeps set)
+ * > **Peer dep**: ...              (only if peerDeps set)
  * >
- * > **Note**: ...       (one blockquote per gotcha)
+ * > **<Label>**: ...               (one blockquote per gotcha —
+ *                                    labeled form uses the label,
+ *                                    bare string defaults to "Note")
  * ```
  *
  * Output terminates with a single trailing newline so the generator
@@ -62,14 +79,15 @@ export function renderLlmsTxtLine(m: PackageManifest): string {
  *   name: '@pyreon/flow',
  *   title: 'Flow Diagrams',
  *   tagline: 'Reactive flow diagrams',
- *   description: 'd',
+ *   description: 'Reactive flow diagrams for Pyreon. Signal-native nodes and edges.',
  *   category: 'browser',
  *   features: [],
  *   api: [],
  *   longExample: `const flow = createFlow({ nodes: [], edges: [] })`,
+ *   gotchas: [{ label: 'JSX generics', note: '<Flow<T> /> is invalid JSX.' }],
  * })
  * renderLlmsFullSection(m)
- * // → "## @pyreon/flow — Flow Diagrams\n\n```typescript\n...\n```\n"
+ * // → "## @pyreon/flow — Flow Diagrams\n\nReactive flow diagrams for Pyreon. ...\n\n```typescript\n...\n```\n\n> **JSX generics**: ...\n"
  * ```
  */
 export function renderLlmsFullSection(m: PackageManifest): string {
@@ -86,10 +104,20 @@ export function renderLlmsFullSection(m: PackageManifest): string {
     )
   }
   for (const gotcha of m.gotchas ?? []) {
-    blockquotes.push(`> **Note**: ${gotcha}`)
+    const { label, note } = gotchaParts(gotcha)
+    blockquotes.push(`> **${label}**: ${note}`)
   }
 
-  const parts = [header, '', codeBlock]
+  // description sits between the header and the code block when
+  // present. For packages with short descriptions ("d" etc. in tests),
+  // it's still emitted — the hand-written file occasionally skipped
+  // the description paragraph but authors can also set it to an empty
+  // string to suppress. A missing description uses the tagline as
+  // fallback prose so the section still has narrative context above
+  // the code.
+  const prose = (m.description ?? '').trim() || m.tagline
+
+  const parts = [header, '', prose, '', codeBlock]
   if (blockquotes.length > 0) {
     parts.push('', blockquotes.join('\n>\n'))
   }
