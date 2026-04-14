@@ -333,6 +333,8 @@
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
       },
       "peerDependencies": {
         "@pyreon/runtime-server": "workspace:^",
@@ -355,6 +357,8 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
       },
     },
@@ -401,6 +405,8 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "echarts": "^6.0.0",
       },
       "peerDependencies": {
@@ -428,6 +434,8 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "optionalDependencies": {
@@ -527,6 +535,7 @@
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "peerDependencies": {
