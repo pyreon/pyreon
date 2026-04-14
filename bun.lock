@@ -1010,7 +1010,12 @@
       "name": "@pyreon/kinetic",
       "version": "0.12.13",
       "devDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
       "peerDependencies": {

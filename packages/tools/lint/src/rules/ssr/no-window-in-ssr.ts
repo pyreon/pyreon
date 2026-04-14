@@ -224,7 +224,9 @@ export const noWindowInSsr: Rule = {
           isCallTo(node, 'onUnmount') ||
           isCallTo(node, 'onCleanup') ||
           isCallTo(node, 'effect') ||
-          isCallTo(node, 'renderEffect')
+          isCallTo(node, 'renderEffect') ||
+          isCallTo(node, 'watch') ||
+          isCallTo(node, 'requestAnimationFrame')
         ) {
           safeDepth++
         }
@@ -235,7 +237,9 @@ export const noWindowInSsr: Rule = {
           isCallTo(node, 'onUnmount') ||
           isCallTo(node, 'onCleanup') ||
           isCallTo(node, 'effect') ||
-          isCallTo(node, 'renderEffect')
+          isCallTo(node, 'renderEffect') ||
+          isCallTo(node, 'watch') ||
+          isCallTo(node, 'requestAnimationFrame')
         ) {
           safeDepth--
         }

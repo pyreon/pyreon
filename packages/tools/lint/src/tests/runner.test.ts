@@ -1717,6 +1717,43 @@ describe('no-bare-signal-in-jsx: render() helper exemption', () => {
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThanOrEqual(1)
   })
+
+  it('silent for h() hyperscript in JSX text (VNode-producing helper)', () => {
+    const source = `const App = () => <Show>{h('span', null, 'y')}</Show>`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
+  })
+
+  it('silent for cloneVNode() in JSX text (VNode-producing helper)', () => {
+    const source = `const App = (props) => <Show>{cloneVNode(props.children, { ref: r })}</Show>`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
+  })
+})
+
+// `no-window-in-ssr` — `watch()` from @pyreon/reactivity and
+// `requestAnimationFrame` are safe contexts: their callbacks only fire
+// after initial setup / inside a browser frame.
+describe('no-window-in-ssr: watch() and requestAnimationFrame safe contexts', () => {
+  it('silent inside watch(() => signal(), callback)', () => {
+    const source = `
+      watch(() => stage(), (s) => {
+        cancelAnimationFrame(frameId)
+      })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent inside requestAnimationFrame callback', () => {
+    const source = `
+      requestAnimationFrame(() => {
+        const w = window.innerWidth
+      })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
 })
 
 // `no-window-in-ssr` — parameter-shadowing and typeof-derived const via

@@ -68,16 +68,7 @@ const applyReducedMotion = (
  * Renders a single element with CSS transition enter/exit animation.
  * Uses h(config.tag) — no cloneElement needed.
  */
-const TransitionRenderer = ({
-  config,
-  htmlProps,
-  show,
-  appear,
-  unmount,
-  timeout,
-  callbacks,
-  children,
-}: TransitionRendererProps): VNode | null => {
+const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
   const reducedMotion = useReducedMotion()
   const {
     stage,
@@ -85,15 +76,15 @@ const TransitionRenderer = ({
     shouldMount,
     complete,
   } = useTransitionState({
-    show,
-    appear: appear ?? config.appear ?? false,
+    show: props.show,
+    appear: props.appear ?? props.config.appear ?? false,
   })
 
   const elementRef = createRef<HTMLElement>()
   const mergedRef = mergeRefs(elementRef, stateRef)
 
-  const effectiveUnmount = unmount ?? config.unmount ?? true
-  const effectiveTimeout = timeout ?? config.timeout ?? 5000
+  const effectiveUnmount = props.unmount ?? props.config.unmount ?? true
+  const effectiveTimeout = props.timeout ?? props.config.timeout ?? 5000
 
   useAnimationEnd({
     ref: elementRef,
@@ -101,9 +92,9 @@ const TransitionRenderer = ({
     timeout: effectiveTimeout,
     onEnd: () => {
       if (stage() === 'entering') {
-        callbacks.onAfterEnter?.()
+        props.callbacks.onAfterEnter?.()
       } else if (stage() === 'leaving') {
-        callbacks.onAfterLeave?.()
+        props.callbacks.onAfterLeave?.()
       }
       complete()
     },
@@ -116,24 +107,24 @@ const TransitionRenderer = ({
       if (!el) return
 
       if (reducedMotion()) {
-        applyReducedMotion(currentStage, callbacks, complete)
+        applyReducedMotion(currentStage, props.callbacks, complete)
         return
       }
 
       if (currentStage === 'entering') {
-        callbacks.onEnter?.()
-        const frameId = applyEnter(el, config)
+        props.callbacks.onEnter?.()
+        const frameId = applyEnter(el, props.config)
         return () => cancelAnimationFrame(frameId)
       }
 
       if (currentStage === 'leaving') {
-        callbacks.onLeave?.()
-        const frameId = applyLeave(el, config)
+        props.callbacks.onLeave?.()
+        const frameId = applyLeave(el, props.config)
         return () => cancelAnimationFrame(frameId)
       }
 
       if (currentStage === 'entered') {
-        removeClasses(el, config.enter)
+        removeClasses(el, props.config.enter)
         el.style.transition = ''
       }
     },
@@ -147,20 +138,20 @@ const TransitionRenderer = ({
         effectiveUnmount
           ? null
           : h(
-              config.tag,
+              props.config.tag,
               {
                 ref: mergedRef,
-                ...htmlProps,
+                ...props.htmlProps,
                 style: {
-                  ...((htmlProps.style as CSSProperties) ?? {}),
+                  ...((props.htmlProps.style as CSSProperties) ?? {}),
                   display: 'none',
                 },
               },
-              children,
+              props.children,
             )
       }
     >
-      {h(config.tag, { ref: mergedRef, ...htmlProps }, children)}
+      {h(props.config.tag, { ref: mergedRef, ...props.htmlProps }, props.children)}
     </Show>
   )
 }
