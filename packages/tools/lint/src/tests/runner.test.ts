@@ -1719,6 +1719,114 @@ describe('no-bare-signal-in-jsx: render() helper exemption', () => {
   })
 })
 
+// `no-window-in-ssr` — parameter-shadowing and typeof-derived const via
+// logical-and chains. Driven by false-positives surfaced in @pyreon/router.
+describe('no-window-in-ssr: parameter shadowing + typeof-derived AND chains', () => {
+  it('silent when a function parameter named `location` shadows the global', () => {
+    const source = `
+      function push(location) {
+        if (typeof location === 'string') return location.toUpperCase()
+        return JSON.stringify(location)
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('still fires when the global is used in a sibling scope without shadowing', () => {
+    const source = `
+      function push(location) { return location }
+      const hostname = window.location.hostname
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('silent under `if (useVT)` when useVT binds from `_isBrowser && ... && typeof X === "function"`', () => {
+    const source = `
+      const _isBrowser = typeof window !== 'undefined'
+      const useVT = _isBrowser && meta && typeof document.startViewTransition === 'function'
+      if (useVT) {
+        document.startViewTransition(() => {})
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for destructured parameter named `location`', () => {
+    const source = `
+      function route({ location, path }) { return location + path }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+})
+
+// `no-imperative-navigate-in-render` — navigate calls inside nested
+// functions (event handlers, effect callbacks, ref callbacks) are deferred
+// execution and must not be flagged.
+describe('no-imperative-navigate-in-render: deferred-execution callbacks', () => {
+  it('silent when router.push is inside an event handler assigned to a local const', () => {
+    const source = `
+      const RouterLink = (props) => {
+        const handleClick = (e) => {
+          router.push(props.to)
+        }
+        return <a onClick={handleClick} />
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBe(0)
+  })
+
+  it('silent when navigate is inside a setTimeout callback', () => {
+    const source = `
+      const Comp = (props) => {
+        setTimeout(() => { navigate('/home') }, 100)
+        return <div />
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBe(0)
+  })
+
+  it('still fires for router.push directly in component body', () => {
+    const source = `
+      const Comp = (props) => {
+        router.push('/elsewhere')
+        return <div />
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// `no-dom-in-setup` — recognises `requestAnimationFrame`, `onUnmount`,
+// `onCleanup`, `renderEffect` as safe contexts (post-mount browser only).
+describe('no-dom-in-setup: expanded safe-context set', () => {
+  it('silent inside requestAnimationFrame callback', () => {
+    const source = `
+      requestAnimationFrame(() => {
+        const el = document.getElementById('x')
+      })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+
+  it('silent inside onCleanup / onUnmount / renderEffect', () => {
+    const source = `
+      onCleanup(() => { document.querySelector('.x') })
+      onUnmount(() => { document.getElementById('y') })
+      renderEffect(() => { document.getElementsByClassName('z') })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+})
+
 // `dev-guard-warnings` — conventional name-based flag recognition. The rule
 // can't follow cross-module imports to verify a binding really resolves to
 // `import.meta.env.DEV`, so well-known dev-flag identifiers (`__DEV__`,

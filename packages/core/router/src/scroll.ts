@@ -16,7 +16,11 @@ export class ScrollManager {
 
   /** Call before navigating away — saves current scroll position for `fromPath` */
   save(fromPath: string): void {
-    // save/restore are only called from browser navigation paths (guarded by caller)
+    // ScrollManager methods are only invoked from browser navigation paths,
+    // but an explicit early-return documents the SSR-safety contract at the
+    // callsite (the `no-window-in-ssr` lint rule can't AST-trace indirect
+    // calls from router setup).
+    if (typeof window === 'undefined') return
     this._positions.set(fromPath, window.scrollY)
   }
 
@@ -35,6 +39,7 @@ export class ScrollManager {
   }
 
   private _applyResult(result: 'top' | 'restore' | 'none' | number, toPath: string): void {
+    if (typeof window === 'undefined') return
     // Hash scrolling: if the path contains #, scroll to the element
     const hashIdx = toPath.indexOf('#')
     if (hashIdx >= 0) {

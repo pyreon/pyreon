@@ -18,12 +18,25 @@ export const noDomInSetup: Rule = {
     fixable: false,
   },
   create(context) {
-    let safeDepth = 0 // inside onMount or effect
+    let safeDepth = 0
+    function isSafeContextCall(node: any): boolean {
+      // Lifecycle + effect hooks only run post-mount in a browser.
+      // `onUnmount` / `onCleanup` fire after the component has mounted so
+      // the DOM exists. `renderEffect` is the signal-system equivalent of
+      // `effect`. `requestAnimationFrame` only schedules its callback
+      // inside a browser frame, so its body is always post-setup execution.
+      return (
+        isCallTo(node, 'onMount') ||
+        isCallTo(node, 'onUnmount') ||
+        isCallTo(node, 'onCleanup') ||
+        isCallTo(node, 'effect') ||
+        isCallTo(node, 'renderEffect') ||
+        isCallTo(node, 'requestAnimationFrame')
+      )
+    }
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
-        if (isCallTo(node, 'onMount') || isCallTo(node, 'effect')) {
-          safeDepth++
-        }
+        if (isSafeContextCall(node)) safeDepth++
 
         if (safeDepth > 0) return
 
@@ -43,9 +56,7 @@ export const noDomInSetup: Rule = {
         }
       },
       'CallExpression:exit'(node: any) {
-        if (isCallTo(node, 'onMount') || isCallTo(node, 'effect')) {
-          safeDepth--
-        }
+        if (isSafeContextCall(node)) safeDepth--
       },
     }
     return callbacks

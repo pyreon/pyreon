@@ -11,50 +11,70 @@ export const noImperativeNavigateInRender: Rule = {
     fixable: false,
   },
   create(context) {
-    // Track depth of component functions and safe callback wrappers
-    // We detect components via VariableDeclarator with PascalCase name + ArrowFunctionExpression init,
-    // or FunctionDeclaration with PascalCase name.
-    // "Safe" = onMount/effect/onUnmount callbacks or JSX event handlers.
+    // The rule fires ONLY when `navigate()` / `router.push()` is evaluated
+    // synchronously as part of rendering the component — i.e. directly in
+    // the component function body, not inside a nested function (event
+    // handler, effect callback, lifecycle hook, ref callback, `.then` etc).
+    // Nested functions are deferred execution: they run on user events or
+    // after mount, so the navigate call isn't part of the render loop.
     let componentBodyDepth = 0
-    let safeDepth = 0
+    // `nestedFnDepth` counts nested ArrowFn/FunctionExpression/FunctionDecl
+    // INSIDE a component body — i.e. not the component function itself.
+    // When > 0, we're in deferred execution and the rule stays silent.
+    let nestedFnDepth = 0
+    // Arrow/Function expressions that are the direct init of a PascalCase
+    // `VariableDeclarator` (= component assignment) — marked here so the
+    // ArrowFn/FunctionExpression visitor knows to NOT count them as nested.
+    const componentInits = new WeakSet<any>()
+
+    function isComponentFunctionDecl(node: any): boolean {
+      return /^[A-Z]/.test(node.id?.name ?? '')
+    }
 
     const callbacks: VisitorCallbacks = {
       FunctionDeclaration(node: any) {
-        const name: string = node.id?.name ?? ''
-        if (/^[A-Z]/.test(name)) {
-          componentBodyDepth++
-        }
+        if (isComponentFunctionDecl(node)) componentBodyDepth++
+        else if (componentBodyDepth > 0) nestedFnDepth++
       },
       'FunctionDeclaration:exit'(node: any) {
-        const name: string = node.id?.name ?? ''
-        if (/^[A-Z]/.test(name)) {
-          componentBodyDepth--
-        }
+        if (isComponentFunctionDecl(node)) componentBodyDepth--
+        else if (componentBodyDepth > 0) nestedFnDepth--
       },
-      // For arrow functions, we use VariableDeclarator to detect component assignment
       VariableDeclarator(node: any) {
-        const name: string = node.id?.name ?? ''
-        if (/^[A-Z]/.test(name) && node.init?.type === 'ArrowFunctionExpression') {
+        if (
+          /^[A-Z]/.test(node.id?.name ?? '') &&
+          (node.init?.type === 'ArrowFunctionExpression' || node.init?.type === 'FunctionExpression')
+        ) {
           componentBodyDepth++
+          componentInits.add(node.init)
         }
       },
       'VariableDeclarator:exit'(node: any) {
-        const name: string = node.id?.name ?? ''
-        if (/^[A-Z]/.test(name) && node.init?.type === 'ArrowFunctionExpression') {
+        if (
+          /^[A-Z]/.test(node.id?.name ?? '') &&
+          (node.init?.type === 'ArrowFunctionExpression' || node.init?.type === 'FunctionExpression')
+        ) {
           componentBodyDepth--
         }
       },
-      // Track safe callback boundaries: onMount(() => ...), effect(() => ...), etc.
+      ArrowFunctionExpression(node: any) {
+        if (componentInits.has(node)) return
+        if (componentBodyDepth > 0) nestedFnDepth++
+      },
+      'ArrowFunctionExpression:exit'(node: any) {
+        if (componentInits.has(node)) return
+        if (componentBodyDepth > 0) nestedFnDepth--
+      },
+      FunctionExpression(node: any) {
+        if (componentInits.has(node)) return
+        if (componentBodyDepth > 0) nestedFnDepth++
+      },
+      'FunctionExpression:exit'(node: any) {
+        if (componentInits.has(node)) return
+        if (componentBodyDepth > 0) nestedFnDepth--
+      },
       CallExpression(node: any) {
-        if (componentBodyDepth <= 0) return
-
-        // Check if this is a safe wrapper entering
-        if (isSafeWrapperCall(node)) {
-          safeDepth++
-        }
-
-        // Only report if we're in a component body and NOT inside a safe callback
-        if (safeDepth > 0) return
+        if (componentBodyDepth <= 0 || nestedFnDepth > 0) return
 
         if (isCallTo(node, 'navigate') || isMemberCallTo(node, 'router', 'push')) {
           context.report({
@@ -64,20 +84,7 @@ export const noImperativeNavigateInRender: Rule = {
           })
         }
       },
-      'CallExpression:exit'(node: any) {
-        if (componentBodyDepth <= 0) return
-        if (isSafeWrapperCall(node)) {
-          safeDepth--
-        }
-      },
     }
     return callbacks
   },
-}
-
-function isSafeWrapperCall(node: any): boolean {
-  const callee = node.callee
-  if (!callee || callee.type !== 'Identifier') return false
-  const name: string = callee.name
-  return name === 'onMount' || name === 'effect' || name === 'onUnmount'
 }

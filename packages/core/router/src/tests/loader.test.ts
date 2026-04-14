@@ -120,7 +120,7 @@ describe('useIsActive — edge cases', () => {
   })
 
   test('throws when no router installed', () => {
-    expect(() => useIsActive('/')).toThrow('[pyreon-router] No router installed')
+    expect(() => useIsActive('/')).toThrow('[Pyreon] No router installed')
   })
 
   test('exact match for root path', () => {
@@ -228,7 +228,7 @@ describe('useSearchParams — edge cases', () => {
   })
 
   test('throws when no router installed', () => {
-    expect(() => useSearchParams()).toThrow('[pyreon-router] No router installed')
+    expect(() => useSearchParams()).toThrow('[Pyreon] No router installed')
   })
 
   test('returns query params from current route', () => {
