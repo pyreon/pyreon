@@ -77,4 +77,9 @@ async function main() {
   }
 }
 
-await main()
+// Guard the CLI entry so tests can import this module without running
+// `main()` as a side effect. `import.meta.main` is true only when bun
+// invokes the file as the entry script.
+if (import.meta.main) {
+  await main()
+}

@@ -11,7 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **@pyreon/manifest** (private) — Internal type package providing `PackageManifest`, `ApiEntry`, and `defineManifest()`. Foundation for T2.1 single-source doc manifest pipeline. No external consumers in this release; follow-up PRs add the generator and migrate individual packages.
 - **`scripts/gen-docs.ts` + `bun run gen-docs`** — Walks every `packages/<category>/<pkg>/manifest.ts` and regenerates `llms.txt` bullets in place. `--check` flag exits non-zero when files are out of sync (local equivalent of the CI `Docs Sync` gate). First real consumer: `@pyreon/flow` — its hand-written `llms.txt` entry now generates from `packages/fundamentals/flow/manifest.ts`. Contributors editing migrated packages edit the manifest, not the generated output.
-- **CI `Docs Sync` job** — Runs the generator and `git diff --exit-code`. Fails any PR where the checked-in generated files drift from the manifests; error message tells reviewers the fix.
+- **CI `Docs Sync` job** — Runs `bun run gen-docs --check` and fails on drift. `--check` flag prints a unified diff (LCS-based) of exactly what would change, so reviewers see the fix without re-running the generator locally.
+
+### Changed (internal convention)
+
+- **Manifests now live at `packages/<category>/<pkg>/src/manifest.ts`** (previously at package root). Matches each package's `rootDir: "./src"` tsconfig constraint — `tsc --noEmit` now type-checks manifests uniformly with the rest of the package sources, and test files importing a manifest stay inside rootDir. No API change; the generator walks the new location and the integration test iterates it.
 
 ### Security
 
