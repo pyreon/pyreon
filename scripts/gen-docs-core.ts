@@ -126,23 +126,28 @@ export function regenerateLlmsFullTxt(
  * `llms-full.txt`. Returns null if the section doesn't exist. A
  * section starts at the line beginning `## <name> — ` and runs until
  * the next `^## ` header or end-of-file.
+ *
+ * Implementation note: a sentinel `'\n'` is logically prepended to the
+ * content so we can search for `\n## <name> —` uniformly whether the
+ * header is at file offset 0 or elsewhere. The returned indices are
+ * adjusted back to the original content's coordinate space. This
+ * collapses what was previously a forked control flow (offset-0 vs
+ * anywhere-else) into a single search.
  */
 function findSectionRange(content: string, name: string): [number, number] | null {
-  // Match the header line. `\n## ` to force line-start without the
-  // multiline flag (which has footgun interactions with `^` anchors).
+  const sentinel = '\n' + content
   const headerPattern = `\n## ${name} —`
-  const headerIdx = content.indexOf(headerPattern)
-  if (headerIdx === -1) {
-    // Might be at position 0 (no preceding newline).
-    if (!content.startsWith(`## ${name} —`)) return null
-    // Start at 0; search for the NEXT header from after the first line.
-    const firstHeaderEnd = 0
-    const nextHeaderIdx = content.indexOf('\n## ', firstHeaderEnd + 1)
-    return [0, nextHeaderIdx === -1 ? content.length : nextHeaderIdx + 1]
-  }
-  const sectionStart = headerIdx + 1 // skip the `\n`
-  const nextHeaderIdx = content.indexOf('\n## ', sectionStart + 1)
-  const sectionEnd = nextHeaderIdx === -1 ? content.length : nextHeaderIdx + 1
+  const headerIdx = sentinel.indexOf(headerPattern)
+  if (headerIdx === -1) return null
+  // Sentinel→original coordinate conversion: the `##` byte sits at
+  // sentinel position `headerIdx + 1`, which maps to original
+  // position `headerIdx + 1 - 1 = headerIdx`. Same trick for the
+  // next-header lookup — the `##` byte of the NEXT header sits at
+  // original position `nextHeaderIdx` in sentinel-space, which is
+  // already the correct exclusive upper bound in original-space.
+  const sectionStart = headerIdx
+  const nextHeaderIdx = sentinel.indexOf('\n## ', headerIdx + 1)
+  const sectionEnd = nextHeaderIdx === -1 ? content.length : nextHeaderIdx
   return [sectionStart, sectionEnd]
 }
 

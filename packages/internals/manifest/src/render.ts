@@ -109,15 +109,15 @@ export function renderLlmsFullSection(m: PackageManifest): string {
   }
 
   // description sits between the header and the code block when
-  // present. For packages with short descriptions ("d" etc. in tests),
-  // it's still emitted — the hand-written file occasionally skipped
-  // the description paragraph but authors can also set it to an empty
-  // string to suppress. A missing description uses the tagline as
-  // fallback prose so the section still has narrative context above
-  // the code.
-  const prose = (m.description ?? '').trim() || m.tagline
+  // present. Empty / whitespace-only / missing descriptions suppress
+  // the paragraph entirely — no silent fallback to tagline. Authors
+  // who want prose above the code block set `description` to a real
+  // sentence; everyone else gets `## header → code block` directly.
+  const prose = (m.description ?? '').trim()
 
-  const parts = [header, '', prose, '', codeBlock]
+  const parts = prose
+    ? [header, '', prose, '', codeBlock]
+    : [header, '', codeBlock]
   if (blockquotes.length > 0) {
     parts.push('', blockquotes.join('\n>\n'))
   }

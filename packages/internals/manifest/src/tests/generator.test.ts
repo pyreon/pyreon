@@ -289,13 +289,23 @@ describe('renderLlmsFullSection', () => {
     expect(out.startsWith('## @pyreon/x — does things\n')).toBe(true)
   })
 
-  it('uses tagline as prose fallback when description is empty', () => {
+  it('suppresses the prose paragraph when description is empty', () => {
     const out = renderLlmsFullSection({
       ...base,
       description: '',
       longExample: `const x = 1`,
     })
-    expect(out).toContain('## @pyreon/x — does things\n\ndoes things\n\n')
+    // Empty description → no prose paragraph between header and code
+    expect(out).toBe('## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n')
+  })
+
+  it('suppresses the prose paragraph when description is whitespace-only', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      description: '   \n  ',
+      longExample: `const x = 1`,
+    })
+    expect(out).toBe('## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n')
   })
 
   it('synthesizes body from api[].example when longExample is absent', () => {
