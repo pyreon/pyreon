@@ -1,7 +1,13 @@
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createRouter, RouterLink, RouterProvider, RouterView } from '../index'
+import {
+  createRouter,
+  RouterLink,
+  RouterProvider,
+  RouterView,
+  useIsActive,
+} from '../index'
 import { setActiveRouter } from '../router'
 
 // Real-Chromium smoke suite for @pyreon/router.
@@ -154,6 +160,31 @@ describe('router in real browser', () => {
 
     expect(container.querySelector('#home')?.textContent).toBe('Home Page')
     expect(container.querySelector('#about')).toBeNull()
+    unmount()
+  })
+
+  it('useIsActive() reactively flips when the route changes', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const ActiveBadge = () => {
+      const isAbout = useIsActive('/about', true)
+      return h('span', { id: 'badge' }, () => (isAbout() ? 'on-about' : 'off-about'))
+    }
+    const { container, unmount } = mountInBrowser(
+      h(
+        RouterProvider,
+        { router },
+        h('div', null, h(ActiveBadge, {}), h(RouterView, {})),
+      ),
+    )
+    expect(container.querySelector('#badge')?.textContent).toBe('off-about')
+
+    await router.push('/about')
+    await flush()
+    expect(container.querySelector('#badge')?.textContent).toBe('on-about')
+
+    await router.push('/')
+    await flush()
+    expect(container.querySelector('#badge')?.textContent).toBe('off-about')
     unmount()
   })
 })
