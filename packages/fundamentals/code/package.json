@@ -37,6 +37,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
@@ -56,6 +57,8 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-lint": "^1.15.5"
   },
   "peerDependencies": {

@@ -405,6 +405,8 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "echarts": "^6.0.0",
       },
       "peerDependencies": {
@@ -432,6 +434,8 @@
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "optionalDependencies": {
@@ -531,6 +535,7 @@
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
       "peerDependencies": {
