@@ -1,5 +1,5 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import { isCleanupWrapperFoundation } from '../../utils/package-classification'
+import { isPathExempt } from '../../utils/exempt-paths'
 import { createComponentContextTracker } from '../../utils/component-context'
 import { getSpan, isCallTo } from '../../utils/ast'
 
@@ -12,13 +12,12 @@ export const noRawSetInterval: Rule = {
     description: 'Suggest wrapping setInterval/setTimeout in onMount for automatic cleanup.',
     severity: 'info',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    // `runtime-dom` + `@pyreon/hooks` implement `useInterval` / `useTimeout`
-    // + the raw delegation layer — the rule steers consumers toward those
-    // wrappers but the wrappers themselves must call raw `setInterval` /
-    // `setTimeout`.
-    if (isCleanupWrapperFoundation(context.getFilePath())) return {}
+    // Configurable `exemptPaths` — for packages that IMPLEMENT
+    // `useInterval` / `useTimeout` (they can't use themselves).
+    if (isPathExempt(context)) return {}
 
     // Only flag when *inside* a component / hook setup body. Module-level
     // timers, utility functions, and test callbacks have their own

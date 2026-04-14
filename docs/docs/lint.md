@@ -68,6 +68,7 @@ pyreon-lint --config ./custom-lint.json
 | `--watch`           | Watch mode — re-lint on file changes                    |
 | `--list`            | List all available rules                                |
 | `--rule <id>=<sev>` | Override rule severity                                  |
+| `--rule-options <id>=<json>` | Override per-rule options (JSON object)        |
 | `--config <path>`   | Custom config file path                                 |
 | `--ignore <path>`   | Custom ignore file path                                 |
 | `--version, -v`     | Show version                                            |
@@ -81,15 +82,26 @@ Create `.pyreonlintrc.json` in your project root:
 
 ```json
 {
+  "$schema": "./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
   "preset": "recommended",
   "rules": {
     "pyreon/no-classname": "off",
-    "pyreon/no-eager-import": "warn"
+    "pyreon/no-eager-import": "warn",
+    "pyreon/no-window-in-ssr": [
+      "error",
+      { "exemptPaths": ["src/foundation/"] }
+    ]
   },
   "include": ["src/**/*.{ts,tsx}"],
   "exclude": ["**/*.test.ts", "**/generated/**"]
 }
 ```
+
+**Rule options.** Each rule entry is either a bare severity (`"error"`) or a `[severity, options]` tuple (ESLint-style). Rules that support path-based exemption read `options.exemptPaths: string[]` — each entry is a substring match against the file path. Currently: `no-window-in-ssr`, `no-raw-addeventlistener`, `no-raw-setinterval`, `no-process-dev-gate`, `dev-guard-warnings`.
+
+**Validation.** Each rule declares its option shape in `meta.schema`. The runner validates user config once per `(rule, options)` pair — unknown option keys emit a warning, wrong-typed values emit an error and disable the rule for the run. Diagnostics surface on `LintResult.configDiagnostics` (and stderr) so CI / LSP / JSON reporters pick them up.
+
+**JSON Schema.** The `$schema` reference above enables IDE autocomplete + validation while editing the config in VSCode, IntelliJ, Zed, or any JSON-aware editor.
 
 Or add a `"pyreonlint"` field to your `package.json`:
 

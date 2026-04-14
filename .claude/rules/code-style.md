@@ -4,12 +4,13 @@
 
 - **oxlint** for general JS/TS linting (400+ rules, Rust-powered)
 - **oxfmt** for formatting (Rust-powered, Prettier-compatible)
-- **@pyreon/lint** for Pyreon-specific rules (55 rules, 12 categories)
-- Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting)
+- **@pyreon/lint** for Pyreon-specific rules (58 rules, 12 categories)
+- Config files: `.oxlintrc.json` (linting), `.oxfmtrc.json` (formatting), `.pyreonlintrc.json` (Pyreon-specific rules)
 - Run lint: `bun run lint` (runs `oxlint .` from root)
 - Run format: `bun run format` (runs `oxfmt --write .`)
 - Check format: `bun run format:check` (runs `oxfmt --check .`)
 - Inline suppression: `// oxlint-disable-next-line rule-name` (not `biome-ignore`)
+- **Pyreon-lint rule options.** Config entries accept a bare severity (`"error"`) or a `[severity, options]` tuple. Rules that support path-based exemption read `options.exemptPaths: string[]` — each entry is a substring match against the file path. The monorepo's `.pyreonlintrc.json` at repo root configures exemptions for DOM-runtime / server-only / cleanup-wrapper-foundation packages (e.g. `packages/core/runtime-dom/` is exempt from `no-window-in-ssr`). **Do NOT hardcode monorepo-specific paths in rule source** — they ship to user apps as dead code at best, leaked internals at worst. Use the `exemptPaths` option instead.
 
 ## TypeScript
 

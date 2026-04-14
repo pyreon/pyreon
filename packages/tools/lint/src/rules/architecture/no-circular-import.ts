@@ -1,7 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { isPyreonImport } from '../../utils/imports'
-import { isTestFile } from '../../utils/package-classification'
+import { isTestFile } from '../../utils/file-roles'
 
 const LAYER_ORDER: Record<string, number> = {
   '@pyreon/reactivity': 0,

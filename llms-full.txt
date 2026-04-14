@@ -21,7 +21,7 @@
 | @pyreon/typescript | base, app, lib | TypeScript config presets |
 | @pyreon/vite-plugin | pyreon() | Vite integration |
 | @pyreon/storybook | renderToCanvas, Meta, StoryObj | Storybook renderer |
-| @pyreon/lint | lint, lintFile, listRules, applyFixes, allRules, loadConfig, createIgnoreFilter, AstCache, watchAndLint | Pyreon-specific linter (58 rules, 12 categories, config files, watch mode). Includes `pyreon/no-process-dev-gate` — auto-fixable, forbids `typeof process` dev gates that are dead code in real Vite browser bundles. |
+| @pyreon/lint | lint, lintFile, listRules, applyFixes, allRules, loadConfig, createIgnoreFilter, AstCache, watchAndLint, isPathExempt, isTestFile | Pyreon-specific linter (58 rules, 12 categories, config files, watch mode). Includes `pyreon/no-process-dev-gate` — auto-fixable, forbids `typeof process` dev gates that are dead code in real Vite browser bundles. Per-rule options via ESLint-style tuple form (`[severity, options]`); `RuleContext.getOptions()`; `RuleMeta.schema` validates user config; `LintResult.configDiagnostics` surfaces malformed-config errors to CI/LSP; JSON Schema at `@pyreon/lint/schema/pyreonlintrc.schema.json`; CLI `--rule-options id='{json}'`. |
 | @pyreon/store | defineStore, resetStore, addStorePlugin | Global state management |
 | @pyreon/state-tree | model, getSnapshot, applySnapshot, onPatch, applyPatch | Structured reactive state tree |
 | @pyreon/form | useForm, useField, useFieldArray, useWatch, FormProvider | Signal-based forms |

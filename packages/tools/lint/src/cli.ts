@@ -18,7 +18,8 @@ function printUsage() {
     --format <fmt>     Output: text (default), json, compact
     --quiet            Only show errors
     --list             List all available rules
-    --rule <id>=<sev>  Override rule severity
+    --rule <id>=<sev>          Override rule severity (e.g. --rule pyreon/no-window-in-ssr=off)
+    --rule-options <id>=<json> Override rule options (e.g. --rule-options pyreon/no-window-in-ssr='{"exemptPaths":["src/foundation/"]}')
     --config <path>    Config file path
     --ignore <path>    Ignore file path
     --watch            Watch mode — re-lint on file changes
@@ -57,6 +58,8 @@ interface CliArgs {
   configPath: string | undefined
   ignorePath: string | undefined
   ruleOverrides: Record<string, Severity>
+  /** Per-rule options parsed from `--rule-options id='{json}'`. */
+  ruleOptionsOverrides: Record<string, Record<string, unknown>>
   paths: string[]
 }
 
@@ -86,6 +89,7 @@ function parseArgs(argv: string[]): CliArgs {
     configPath: undefined,
     ignorePath: undefined,
     ruleOverrides: {},
+    ruleOptionsOverrides: {},
     paths: [],
   }
 
@@ -127,6 +131,10 @@ function parseValueFlag(arg: string, nextArg: string | undefined, result: CliArg
     parseRuleOverride(nextArg, result.ruleOverrides)
     return 1
   }
+  if (arg === '--rule-options') {
+    parseRuleOptionsOverride(nextArg, result.ruleOptionsOverrides)
+    return 1
+  }
   if (arg) {
     result.paths.push(arg)
   }
@@ -140,6 +148,32 @@ function parseRuleOverride(val: string | undefined, overrides: Record<string, Se
   const ruleId = val.slice(0, eqIdx)
   const severity = val.slice(eqIdx + 1) as Severity
   overrides[ruleId] = severity
+}
+
+/** Exported for testing only. */
+export function parseRuleOptionsOverride(
+  val: string | undefined,
+  overrides: Record<string, Record<string, unknown>>,
+): void {
+  if (!val) return
+  const eqIdx = val.indexOf('=')
+  if (eqIdx === -1) return
+  const ruleId = val.slice(0, eqIdx)
+  const json = val.slice(eqIdx + 1)
+  try {
+    const parsed = JSON.parse(json)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      overrides[ruleId] = parsed as Record<string, unknown>
+    } else {
+      // oxlint-disable-next-line no-console
+      console.error(
+        `[pyreon-lint] --rule-options ${ruleId}: expected JSON object, got ${typeof parsed}`,
+      )
+    }
+  } catch (err) {
+    // oxlint-disable-next-line no-console
+    console.error(`[pyreon-lint] --rule-options ${ruleId}: invalid JSON — ${(err as Error).message}`)
+  }
 }
 
 function main() {
@@ -176,6 +210,7 @@ function main() {
       fix: args.fix,
       quiet: args.quiet,
       ruleOverrides: args.ruleOverrides,
+      ruleOptionsOverrides: args.ruleOptionsOverrides,
       config: args.configPath,
       ignore: args.ignorePath,
       format: args.format,
@@ -189,6 +224,7 @@ function main() {
     fix: args.fix,
     quiet: args.quiet,
     ruleOverrides: args.ruleOverrides,
+    ruleOptionsOverrides: args.ruleOptionsOverrides,
     config: args.configPath,
     ignore: args.ignorePath,
   })
@@ -207,4 +243,10 @@ function main() {
   }
 }
 
-main()
+// Only invoke `main()` when this module is the entry point. Importing
+// CLI internals from tests must NOT trigger a real lint run +
+// `process.exit`. `import.meta.main === true` under Bun when the file
+// is the script; `undefined` / `false` under static imports.
+if ((import.meta as { main?: boolean }).main === true) {
+  main()
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://pyreon.dev/schemas/pyreonlintrc.json",
+  "title": "@pyreon/lint configuration",
+  "description": "Schema for .pyreonlintrc.json — configures the @pyreon/lint linter. Reference this in your config via `\"$schema\": \"./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json\"` for IDE autocomplete + validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "preset": {
+      "description": "Base preset to extend. Recommended is the safe default. Use `lib` for strict mode + architecture rules; `app` to disable lib-only rules.",
+      "enum": ["recommended", "strict", "app", "lib"]
+    },
+    "rules": {
+      "description": "Per-rule configuration. Each entry is either a bare severity (`\"error\"` / `\"warn\"` / `\"info\"` / `\"off\"`) or an `[severity, options]` tuple. Rules that support path-based exemption read `options.exemptPaths: string[]`.",
+      "type": "object",
+      "patternProperties": {
+        "^.+$": {
+          "oneOf": [
+            { "$ref": "#/definitions/severity" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": [
+                { "$ref": "#/definitions/severity" },
+                { "$ref": "#/definitions/ruleOptions" }
+              ]
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "include": {
+      "description": "Glob patterns of files to lint (relative to the config file).",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "exclude": {
+      "description": "Glob patterns of files to skip (relative to the config file). `.pyreonlintignore` and `.gitignore` are honored automatically.",
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "definitions": {
+    "severity": {
+      "enum": ["error", "warn", "info", "off"],
+      "description": "Diagnostic severity. `off` disables the rule entirely."
+    },
+    "ruleOptions": {
+      "type": "object",
+      "description": "Per-rule options. Most rules support `exemptPaths: string[]` for path-based exemption (each entry is a substring matched against the file path).",
+      "properties": {
+        "exemptPaths": {
+          "description": "File-path substrings to exempt from this rule. Useful for foundation packages that legitimately implement what the rule recommends (e.g. a DOM renderer cannot use `useEventListener`).",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

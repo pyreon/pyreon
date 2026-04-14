@@ -1,0 +1,65 @@
+{
+  "$schema": "./packages/tools/lint/schema/pyreonlintrc.schema.json",
+  "preset": "recommended",
+  "rules": {
+    "pyreon/no-window-in-ssr": [
+      "error",
+      {
+        "exemptPaths": ["packages/core/runtime-dom/"]
+      }
+    ],
+    "pyreon/no-raw-addeventlistener": [
+      "info",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/",
+          "packages/fundamentals/hooks/"
+        ]
+      }
+    ],
+    "pyreon/no-raw-setinterval": [
+      "info",
+      {
+        "exemptPaths": [
+          "packages/core/runtime-dom/",
+          "packages/fundamentals/hooks/"
+        ]
+      }
+    ],
+    "pyreon/no-process-dev-gate": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/",
+          "packages/core/server/",
+          "packages/core/runtime-server/",
+          "packages/tools/vite-plugin/",
+          "packages/tools/cli/",
+          "packages/tools/lint/",
+          "packages/tools/mcp/",
+          "packages/tools/storybook/",
+          "packages/tools/typescript/",
+          "scripts/"
+        ]
+      }
+    ],
+    "pyreon/dev-guard-warnings": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/zero/",
+          "packages/core/server/",
+          "packages/core/runtime-server/",
+          "packages/tools/vite-plugin/",
+          "packages/tools/cli/",
+          "packages/tools/lint/",
+          "packages/tools/mcp/",
+          "packages/tools/storybook/",
+          "packages/tools/typescript/",
+          "scripts/",
+          "examples/"
+        ]
+      }
+    ]
+  }
+}

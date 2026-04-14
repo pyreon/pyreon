@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isServerOnlyFile } from '../../utils/package-classification'
+import { isPathExempt } from '../../utils/exempt-paths'
+import { isTestFile } from '../../utils/file-roles'
 
 export const devGuardWarnings: Rule = {
   meta: {
@@ -9,22 +10,18 @@ export const devGuardWarnings: Rule = {
     description: 'Require console.warn/error calls to be wrapped in `if (__DEV__)` guards.',
     severity: 'error',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    const filePath = context.getFilePath()
-    // Skip test, example, and server-only files. The latter run in Node
-    // where dev/prod is `process.env.NODE_ENV`, console output is often
-    // user-facing CLI/build UX, and `__DEV__` isn't conventionally defined.
-    if (
-      filePath.includes('/tests/') ||
-      filePath.includes('/test/') ||
-      filePath.includes('/examples/') ||
-      filePath.includes('.test.') ||
-      filePath.includes('.spec.') ||
-      isServerOnlyFile(filePath)
-    ) {
-      return {}
-    }
+    // Skip test files — universal convention (`*.test.*` etc. exist in
+    // every project this linter runs on and don't ship to production).
+    if (isTestFile(context.getFilePath())) return {}
+
+    // Configurable `exemptPaths` — projects opt out directories where the
+    // rule's premise doesn't apply (server-only code where dev/prod is
+    // `process.env.NODE_ENV`, or example / demo directories that ship
+    // as documentation rather than production).
+    if (isPathExempt(context)) return {}
 
     // Direct dev-mode flags this rule treats as guards.
     function isDevFlag(node: any): boolean {

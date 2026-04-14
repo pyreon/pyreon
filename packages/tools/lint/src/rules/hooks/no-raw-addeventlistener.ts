@@ -1,6 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isCleanupWrapperFoundation } from '../../utils/package-classification'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 export const noRawAddEventListener: Rule = {
   meta: {
@@ -9,13 +9,13 @@ export const noRawAddEventListener: Rule = {
     description: 'Suggest useEventListener() instead of raw .addEventListener() calls.',
     severity: 'info',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    // `runtime-dom` + `@pyreon/hooks` IMPLEMENT the auto-cleanup wrappers this
-    // rule steers consumers toward. `useEventListener`, `useClickOutside`,
-    // `useKeyboard`, `useMediaQuery`, `useOnline`, etc. each must call raw
-    // `addEventListener` internally. Same for `runtime-dom`'s event delegation.
-    if (isCleanupWrapperFoundation(context.getFilePath())) return {}
+    // Configurable `exemptPaths` — for packages that IMPLEMENT the cleanup
+    // wrapper this rule recommends (they can't use themselves). Configure
+    // per-project; user apps typically leave empty.
+    if (isPathExempt(context)) return {}
 
     const callbacks: VisitorCallbacks = {
       CallExpression(node: any) {
