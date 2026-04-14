@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **@pyreon/manifest** (private) — Internal type package providing `PackageManifest`, `ApiEntry`, and `defineManifest()`. Foundation for T2.1 single-source doc manifest pipeline. No external consumers in this release; follow-up PRs add the generator and migrate individual packages.
+
 ### Security
 
 - **@pyreon/runtime-server** — `<For>` SSR key markers (`<!--k:KEY-->`) now URL-encode keys and replace every `-` with `%2D` so user-controlled keys can never form `-->` and break out of the HTML comment. Previously, a key of `'--><script>…</script><!--'` from untrusted data (DB, URL params, user input) produced executable markup when the browser parsed the SSR output. The fix ships with a symmetric `decodeKeyFromMarker` helper for future hydration or devtools consumers.

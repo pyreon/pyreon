@@ -75,6 +75,43 @@ For each field that appears both in a manifest and somewhere in source (JSDoc, c
 
 `PackageManifest.api[]` is author-controlled. The generator preserves insertion order across every surface. Convention: public entry points first (typically `createX`/`useX`), then supporting types, then advanced or rare APIs. Do not alphabetize — usage-relevance beats A-Z.
 
+### Overloaded APIs — one entry per symbol
+
+A TypeScript function with multiple overload signatures gets **one** `ApiEntry`. The `signature` shows the user-facing primary form (usually the most permissive or most common). Document alternative overloads in the `summary` ("also accepts `(options: X)` form for advanced use") or, when an overload is a footgun, in `mistakes`.
+
+Rationale: MCP search, docs cross-references, and `seeAlso` all key on the symbol name. Splitting overloads into multiple entries fragments the keyspace and surfaces as duplicate hits in AI-assisted lookup. One symbol = one entry.
+
+### Constant-kind semantics
+
+For `kind: 'constant'`, the `signature` field holds the **TYPE of the value**, not a literal. Examples:
+
+```ts
+{ name: 'EMPTY_PROPS', kind: 'constant', signature: 'Readonly<Record<string, never>>', ... }
+{ name: 'ForSymbol',   kind: 'constant', signature: 'unique symbol', ... }
+```
+
+The `example` field shows USE of the constant (import + typical call-site), not its definition. This lets MCP surface constants next to the functions that consume them without leaking implementation details.
+
+### Soft invariants — convention over enforcement
+
+The type definition documents length/shape conventions via `INVARIANT` notes in JSDoc:
+
+- `tagline` ≤120 chars
+- `summary` ≤400 chars
+- `example` 5-15 lines
+- `signature` ≤200 chars, single line
+- `features` 3-8 bullets
+
+**These are not enforced by the type.** Authoring tools (your editor, eslint) do not fail on violations. Rationale: strictness here creates friction during authoring (counting chars / bullets) for a payoff that mostly matters for the generated output, which can paper over violations cosmetically. A future lint rule may enforce them once the generator is battle-tested.
+
+Reviewers should flag obvious violations in PR review; the reviewer bar is "does the generated output look right?", not "does every field hit its character budget?".
+
+### `defineManifest` — type narrowing without runtime freeze
+
+`defineManifest<const M>(m)` uses the `const` type-parameter modifier so string literals in the argument are preserved in the returned type (`category: 'browser'` stays `'browser'` instead of widening to the full union). This matters for downstream discriminated-union consumers.
+
+It does NOT `Object.freeze` the manifest at runtime. Consumers can still mutate the returned object; they should not (the generator treats manifests as immutable input), but the ergonomic cost of runtime freezing (surprise `TypeError`s in tests that push to `features`) outweighs the defensive benefit at this stage. Future enforcement (`Object.freeze(deepFreeze(m))` in a production wrapper) is an option once the shape stabilizes.
+
 ## What this package does NOT contain
 
 - Generator logic — lives in `scripts/gen-docs.ts` (follow-up PR).

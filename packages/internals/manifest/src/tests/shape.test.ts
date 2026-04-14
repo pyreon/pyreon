@@ -1,5 +1,5 @@
 import { expectTypeOf } from 'vitest'
-import type { ApiEntry, PackageManifest } from '../types'
+import type { ApiEntry, PackageManifest, SemVer } from '../types'
 
 describe('PackageManifest — type shape', () => {
   it('accepts a minimal valid manifest', () => {
@@ -118,5 +118,54 @@ describe('PackageManifest — type shape', () => {
       api: [],
     }
     expectTypeOf<typeof m.category>().toEqualTypeOf<'browser' | 'server' | 'universal'>()
+  })
+
+  it('SemVer literal template accepts valid version strings', () => {
+    const good1: SemVer = '0.1.0'
+    const good2: SemVer = '1.2.3'
+    const good3: SemVer = '10.20.30'
+    expectTypeOf(good1).toEqualTypeOf<SemVer>()
+    expectTypeOf(good2).toEqualTypeOf<SemVer>()
+    expectTypeOf(good3).toEqualTypeOf<SemVer>()
+  })
+
+  it('SemVer rejects obvious typos at compile time', () => {
+    // @ts-expect-error — missing patch
+    const _bad1: SemVer = '1.0'
+    // @ts-expect-error — double dot
+    const _bad2: SemVer = '0..1.0'
+    // @ts-expect-error — single component
+    const _bad3: SemVer = '1'
+    // @ts-expect-error — leading v
+    const _bad4: SemVer = 'v1.0.0'
+    void _bad1
+    void _bad2
+    void _bad3
+    void _bad4
+  })
+
+  it('accepts kind: constant with a type signature', () => {
+    const e: ApiEntry = {
+      name: 'EMPTY_PROPS',
+      kind: 'constant',
+      signature: 'Readonly<Record<string, never>>',
+      summary: 'Shared empty props sentinel.',
+      example: `import { EMPTY_PROPS } from '@pyreon/core'\nconst props = userProps ?? EMPTY_PROPS`,
+    }
+    expectTypeOf(e.kind).toEqualTypeOf<ApiEntry['kind']>()
+  })
+
+  it('deprecated.since and removeIn are SemVer-typed', () => {
+    const e: ApiEntry = {
+      name: 'oldFn',
+      kind: 'function',
+      signature: '() => void',
+      summary: 's',
+      example: 'e',
+      stability: 'deprecated',
+      deprecated: { since: '0.2.0', removeIn: '0.4.0' },
+    }
+    expectTypeOf(e.deprecated!.since).toEqualTypeOf<SemVer>()
+    expectTypeOf(e.deprecated!.removeIn).toEqualTypeOf<SemVer | undefined>()
   })
 })

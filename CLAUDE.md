@@ -37,6 +37,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/typescript`     | TypeScript config presets: base, app (noEmit), lib (declarations)                                                                             |
 | `@pyreon/lint`           | Pyreon-specific linter — 59 rules, 12 categories, config files, watch mode, AST cache, LSP server                                             |
 | `@pyreon/test-utils`     | Testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce     |
+| `@pyreon/manifest`       | Private: type + `defineManifest` helper for per-package manifests that feed the doc + MCP generators (T2.1)                                    |
 
 ### UI System (Component Library)
 
@@ -566,13 +567,13 @@ cd docs && bun run preview   # preview production build
 
 ## Monorepo Structure
 
-51 packages across 5 categories under `packages/`:
+52 packages across 5 categories under `packages/`:
 
 - `packages/core/` — 8 packages: reactivity, core, compiler, runtime-dom, runtime-server, router, head, server
 - `packages/fundamentals/` — 21 packages: store, state-tree, form, validation, query, table, virtual, i18n, feature, charts, storage, hooks, hotkeys, permissions, machine, flow, code, document, rx, toast, url-state
 - `packages/tools/` — 10 packages: cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat
 - `packages/ui-system/` — 11 packages: ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
-- `packages/internals/` — 1 package: test-utils (private, not published)
+- `packages/internals/` — 2 packages: test-utils, manifest (both private, not published)
 
 Plus: `docs/` (VitePress site), `examples/` (example apps).
 

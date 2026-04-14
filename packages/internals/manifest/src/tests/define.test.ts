@@ -59,4 +59,25 @@ describe('defineManifest', () => {
       api: [],
     })
   })
+
+  it('preserves runtime mutability while narrowing literal types', () => {
+    // The `<const M>` generic narrows string literals in the returned
+    // type but does NOT readonly-freeze the object at runtime.
+    // Consumers can still mutate (though they should not — the
+    // generator treats manifests as immutable, and future readonly
+    // enforcement may be added).
+    const m = defineManifest({
+      name: '@pyreon/x',
+      tagline: 't',
+      description: 'd',
+      category: 'universal',
+      features: [],
+      api: [],
+    })
+    // Runtime mutation works (no Object.freeze applied).
+    ;(m.features as string[]).push('added after define')
+    expect(m.features).toEqual(['added after define'])
+    // But the type-level narrowing on category is preserved.
+    expectTypeOf(m.category).toEqualTypeOf<'universal'>()
+  })
 })
