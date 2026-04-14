@@ -1,5 +1,7 @@
 import { resolve } from 'node:path'
-import type { UserConfig as VitestUserConfig } from 'vitest/config'
+// vitest 4.x renamed `UserConfig` → `ViteUserConfig` (the re-export from
+// vite). Keeping the local alias name `VitestUserConfig` for stability.
+import type { ViteUserConfig as VitestUserConfig } from 'vitest/config'
 
 const root = import.meta.dirname
 

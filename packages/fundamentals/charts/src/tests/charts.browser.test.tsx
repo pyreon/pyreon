@@ -1,15 +1,43 @@
 import { h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Chart } from '../chart-component'
 import { useChart } from '../use-chart'
 
-// Real-Chromium smoke for @pyreon/charts.
+// Real-Chromium smoke for @pyreon/charts. Covers:
+//   - <Chart> mounts the wrapper div
+//   - useChart signal surface (ref/instance/loading/error/resize)
+//   - errors land on .error signal instead of throwing
+//   - lazy-loads ECharts and renders a <canvas>
+//   - reactive options re-apply without remounting the canvas
+//   - useChart.instance() exposes the documented ECharts API surface
 //
-// SCOPE NOTE: ECharts ships CommonJS that Vite's pre-bundler cannot
-// transform under @vitest/browser. See vitest.browser.config.ts for
-// the full investigation log. Bridge tests here lock down the parts
-// of @pyreon/charts contract that don't require ECharts to load.
+// The 3 canvas-rendering tests share a precondition (ECharts must
+// load successfully — gated on the `tslib` alias from
+// `vitest.browser.config.ts`) but each asserts a DISTINCT observation:
+//   1. dimensions test catches "canvas appears but is 0×0" (sizing
+//      bug or container.style not propagated)
+//   2. reactive-options test catches "signal change remounts canvas"
+//      (chart bridge reinitializes instead of `setOption`-ing)
+//   3. instance API test catches "ECharts loaded but `useChart` didn't
+//      expose its instance signal correctly"
+// Removing the alias makes all 3 fail (ECharts can't load — verified
+// in this PR's commit body). Each observation also catches a unique
+// regression in Pyreon code separate from the alias contract.
+//
+// The ECharts loading path was blocked through Phase 3 (PR #231) by a
+// tslib + esbuild interop bug. Resolved in this PR via a `tslib` alias
+// to `tslib.es6.js`. See `vitest.browser.config.ts` for the full
+// investigation.
+
+const waitFor = async (predicate: () => boolean, timeoutMs = 5000): Promise<boolean> => {
+  const start = Date.now()
+  while (!predicate() && Date.now() - start < timeoutMs) {
+    await new Promise<void>((r) => setTimeout(r, 25))
+  }
+  return predicate()
+}
 
 describe('charts in real browser', () => {
   afterEach(() => {
@@ -63,6 +91,71 @@ describe('charts in real browser', () => {
     expect(result.loading()).toBe(false)
     const ok = result.instance() !== null || result.error() !== null
     expect(ok).toBe(true)
+    el.remove()
+  })
+
+  it('lazy-loads ECharts and renders a real canvas with non-zero dimensions', async () => {
+    const options = () => ({
+      xAxis: { type: 'category' as const, data: ['Mon', 'Tue', 'Wed'] },
+      yAxis: { type: 'value' as const },
+      series: [{ data: [1, 2, 3], type: 'bar' as const }],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(Chart, { options, style: 'width: 400px; height: 300px' }),
+    )
+
+    const ok = await waitFor(() => container.querySelector('canvas') !== null, 5000)
+    expect(ok).toBe(true)
+    const canvas = container.querySelector<HTMLCanvasElement>('canvas')!
+    expect(canvas.width).toBeGreaterThan(0)
+    expect(canvas.height).toBeGreaterThan(0)
+    unmount()
+  })
+
+  it('reactive options getter — signal change re-applies without remounting canvas', async () => {
+    const data = signal([1, 2, 3])
+    const options = () => ({
+      xAxis: { type: 'category' as const, data: ['a', 'b', 'c'] },
+      yAxis: { type: 'value' as const },
+      series: [{ data: data(), type: 'line' as const }],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(Chart, { options, style: 'width: 400px; height: 300px' }),
+    )
+    const ready = await waitFor(() => container.querySelector('canvas') !== null, 5000)
+    expect(ready).toBe(true)
+    const canvasBefore = container.querySelector('canvas')
+
+    data.set([10, 20, 30, 40])
+    await new Promise<void>((r) => setTimeout(r, 100))
+
+    const canvasAfter = container.querySelector('canvas')
+    // Same canvas element — chart updates via setOption, not remount.
+    expect(canvasAfter).toBe(canvasBefore)
+    unmount()
+  })
+
+  it('useChart.instance() resolves to a real ECharts instance after mount', async () => {
+    const result = useChart(() => ({
+      xAxis: { type: 'category' as const, data: ['x'] },
+      yAxis: { type: 'value' as const },
+      series: [{ data: [1], type: 'bar' as const }],
+    }))
+    const el = document.createElement('div')
+    el.style.cssText = 'width: 200px; height: 100px'
+    document.body.appendChild(el)
+    result.ref(el)
+
+    const ok = await waitFor(() => result.instance() !== null, 5000)
+    expect(ok).toBe(true)
+    expect(result.error()).toBeNull()
+    expect(result.loading()).toBe(false)
+
+    // ECharts instance has the documented API surface.
+    const inst = result.instance()!
+    expect(typeof inst.setOption).toBe('function')
+    expect(typeof inst.resize).toBe('function')
+    expect(typeof inst.dispose).toBe('function')
     el.remove()
   })
 })

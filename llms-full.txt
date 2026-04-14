@@ -31,7 +31,7 @@
 | @pyreon/virtual | useVirtualizer, useWindowVirtualizer | TanStack Virtual adapter |
 | @pyreon/i18n | createI18n, I18nProvider, useI18n, Trans | Reactive i18n |
 | @pyreon/feature | defineFeature, reference, extractFields | Schema-driven CRUD primitives |
-| @pyreon/charts | useChart, Chart | Reactive ECharts bridge |
+| @pyreon/charts | useChart, Chart | Reactive ECharts bridge. **Vite + browser tests need a `tslib` alias** to `tslib.es6.js` (microsoft/tslib#189). Use `tslibBrowserAlias()` from `vitest.browser.ts` in test configs; add `resolve.alias: { tslib: 'tslib/tslib.es6.js' }` to consumer apps' `vite.config.ts`. |
 | @pyreon/storage | useStorage, useSessionStorage, useCookie, useIndexedDB | Reactive client storage |
 | @pyreon/hotkeys | useHotkey, useHotkeyScope, registerHotkey | Keyboard shortcuts |
 | @pyreon/permissions | createPermissions, PermissionsProvider, usePermissions | Reactive permissions |

@@ -157,3 +157,29 @@ Canvas renders the entire chart as a single `<canvas>` element. SVG creates hund
 - Memory efficiency
 
 Use `renderer: 'svg'` only when you need CSS styling on individual elements or PDF export.
+
+## Bundler note: tslib alias
+
+ECharts imports TypeScript helpers from `tslib`. tslib's `package.json` `exports` map points the `import` condition at `./modules/index.js`, which destructures named helpers (`__extends`, `__assign`, etc.) from a CJS default export. Vite/esbuild's pre-bundler wraps the CJS via `__toESM(require_tslib())` and the destructure throws at runtime:
+
+```text
+TypeError: Cannot destructure property '__extends' of '__toESM(...).default' as it is undefined
+```
+
+Known upstream issue: [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189).
+
+**Fix in your `vite.config.ts`:**
+
+```ts
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  resolve: {
+    alias: {
+      tslib: 'tslib/tslib.es6.js', // flat ESM file with proper named exports
+    },
+  },
+})
+```
+
+`tslib.es6.js` is a flat ESM module with proper `export function __extends(...)` declarations — sidesteps the broken `modules/index.js` indirection entirely. The Pyreon monorepo's browser test infrastructure handles this automatically via the `tslibBrowserAlias()` helper in `vitest.browser.ts`.

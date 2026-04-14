@@ -259,7 +259,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/virtual — TanStack Virtual adapter for element and window virtualization
 - @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation. Two entry points: `@pyreon/i18n` (full, includes JSX components) and `@pyreon/i18n/core` (framework-agnostic, for backends / non-JSX consumers — only depends on @pyreon/reactivity)
 - @pyreon/feature — Schema-driven CRUD primitives (`defineFeature` → queries, forms, tables, store)
-- @pyreon/charts — Reactive ECharts bridge with lazy loading and auto module detection
+- @pyreon/charts — Reactive ECharts bridge with lazy loading and auto module detection. Browser tests + apps using Vite must alias `tslib` to `tslib.es6.js` (see [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189) — tslib's `modules/index.js` ESM entry destructures named helpers from a CJS default and fails under esbuild's pre-bundler). The shared `tslibBrowserAlias()` helper from `vitest.browser.ts` handles this for tests; consumer apps add the same alias to `vite.config.ts`.
 - @pyreon/storage — Reactive client storage (localStorage, sessionStorage, cookies, IndexedDB)
 - @pyreon/hotkeys — Keyboard shortcut management with scopes and conflict detection
 - @pyreon/permissions — Reactive permissions (RBAC, ABAC, feature flags, subscription tiers)
