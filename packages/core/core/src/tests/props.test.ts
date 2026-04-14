@@ -205,6 +205,40 @@ describe('mergeProps — non-configurable getter sources (regression)', () => {
   })
 })
 
+describe('splitProps / mergeProps — symbol keys (regression)', () => {
+  // Regression: Object.keys silently drops symbol-keyed properties, so any
+  // Symbol.for('pyreon.reactiveProp')-branded prop or user-supplied symbol
+  // key would disappear from both picked and rest. Use Reflect.ownKeys.
+  test('splitProps preserves symbol-keyed properties in rest', () => {
+    const SYM = Symbol('marker')
+    const props = { label: 'x', [SYM]: 'branded' } as Record<string | symbol, unknown>
+    const [own, rest] = splitProps(props as { label: string }, ['label'])
+    expect(own.label).toBe('x')
+    expect((rest as Record<symbol, unknown>)[SYM]).toBe('branded')
+  })
+
+  test('splitProps moves a symbol key to picked when it is named in keys', () => {
+    const SYM = Symbol('marker')
+    const props = { label: 'x', [SYM]: 'branded' } as Record<string | symbol, unknown>
+    const [own, rest] = splitProps(
+      props as { label: string; [SYM]: string },
+      ['label', SYM] as Array<'label' | typeof SYM>,
+    )
+    expect((own as Record<symbol, unknown>)[SYM]).toBe('branded')
+    expect((rest as Record<symbol, unknown>)[SYM]).toBeUndefined()
+  })
+
+  test('mergeProps preserves symbol-keyed properties from every source', () => {
+    const A = Symbol('a')
+    const B = Symbol('b')
+    const src1 = { [A]: 1 } as Record<string | symbol, unknown>
+    const src2 = { [B]: 2 } as Record<string | symbol, unknown>
+    const merged = mergeProps(src1, src2) as Record<string | symbol, unknown>
+    expect(merged[A]).toBe(1)
+    expect(merged[B]).toBe(2)
+  })
+})
+
 describe('createUniqueId', () => {
   test('returns incrementing IDs', () => {
     const id1 = createUniqueId()

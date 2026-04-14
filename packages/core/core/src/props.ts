@@ -16,7 +16,11 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   const rest = {} as Omit<T, K[number]>
   const keySet = new Set<string | symbol>(keys as (string | symbol)[])
 
-  for (const key of Object.keys(props)) {
+  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them
+  // silently. Without this, symbol-keyed props (e.g. branded reactive props
+  // under Symbol.for('pyreon.reactiveProp')) would vanish from both picked
+  // and rest.
+  for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
     if (!desc) continue
     // Force configurable: true when copying to a fresh object. Source descriptors
@@ -107,10 +111,11 @@ function mergeProperty(
 export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): T {
   const result = {} as T
   for (const source of sources) {
-    for (const key of Object.keys(source)) {
+    // See splitProps for why this uses Reflect.ownKeys instead of Object.keys.
+    for (const key of Reflect.ownKeys(source)) {
       const desc = Object.getOwnPropertyDescriptor(source, key)
       if (!desc) continue
-      mergeProperty(result, key, desc)
+      mergeProperty(result, key as string, desc)
     }
   }
   return result
