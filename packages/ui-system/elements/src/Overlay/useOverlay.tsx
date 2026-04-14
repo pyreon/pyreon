@@ -61,6 +61,12 @@ const devWarn = (msg: string) => {
   console.warn(msg)
 }
 
+// Positioning helpers touch `window.innerWidth/innerHeight` to decide whether
+// a dropdown/modal fits in the viewport. They're only called from event
+// handlers registered inside `onMount` (so never from an SSR render path),
+// but an explicit early-return on `typeof window === 'undefined'` makes the
+// SSR-safety contract visible at the callsite AND silences `no-window-in-ssr`
+// (the rule can't trace AST-disjoint callbacks).
 const calcDropdownVertical = (
   c: DOMRect,
   t: DOMRect,
@@ -69,6 +75,7 @@ const calcDropdownVertical = (
   offsetX: number,
   offsetY: number,
 ): PositionResult => {
+  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: alignX, resolvedAlignY: 'top' }
   const pos: OverlayPosition = {}
 
   const topPos = t.top - offsetY - c.height
@@ -120,6 +127,7 @@ const calcDropdownHorizontal = (
   offsetX: number,
   offsetY: number,
 ): PositionResult => {
+  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: 'left', resolvedAlignY: alignY }
   const pos: OverlayPosition = {}
 
   const leftPos = t.left - offsetX - c.width
@@ -170,6 +178,7 @@ const calcModalPos = (
   offsetX: number,
   offsetY: number,
 ): OverlayPosition => {
+  if (typeof window === 'undefined') return {}
   const pos: OverlayPosition = {}
 
   switch (alignX) {
@@ -374,6 +383,7 @@ const useOverlay = ({
 
   // Position calculation helpers
   const getAncestorOffset = () => {
+    if (typeof document === 'undefined') return { top: 0, left: 0 }
     if (position !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
     }
@@ -460,6 +470,7 @@ const useOverlay = ({
   // Set up all event listeners on mount, clean up on unmount
   // --------------------------------------------------------------------------
   const setupListeners = () => {
+    if (typeof window === 'undefined') return () => {}
     const cleanups: (() => void)[] = []
 
     // Click-based open/close

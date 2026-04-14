@@ -84,6 +84,13 @@ export const noWindowInSsr: Rule = {
       if (isPositiveTypeofCheck(test)) return true
       // `if (isBrowser)` — bound from a typeof, body is browser-safe.
       if (test.type === 'Identifier' && typeofBoundConsts.has(test.name)) return true
+      // `if (typeofGuard && other)` / `if (other && typeofGuard)` — either
+      // side being a typeof guard means the body only runs when the guard
+      // is truthy (AND short-circuits). Common in ternary tests like
+      // `IS_BROWSER && active() ? <Portal … /> : null`.
+      if (test.type === 'LogicalExpression' && test.operator === '&&') {
+        return testIsTypeofGuard(test.left) || testIsTypeofGuard(test.right)
+      }
       return false
     }
 

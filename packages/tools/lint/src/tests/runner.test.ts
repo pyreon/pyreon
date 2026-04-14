@@ -1670,6 +1670,55 @@ describe('no-window-in-ssr: precision (oxc no-parent fixes)', () => {
   })
 })
 
+// Additional precision: `IS_BROWSER && active()` as ternary/if test — the
+// LogicalAnd short-circuits so the body only runs when the typeof-derived
+// const is truthy. Common pattern in Portal/Overlay conditional rendering.
+describe('no-window-in-ssr: logical-and guards with typeof-derived const', () => {
+  it('silent under `IS_BROWSER && cond()` ternary test', () => {
+    const source = `
+      const IS_BROWSER = typeof window !== 'undefined'
+      const vnode = IS_BROWSER && cond() ? document.body : null
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under `cond() && IS_BROWSER` ternary test (either side)', () => {
+    const source = `
+      const IS_BROWSER = typeof window !== 'undefined'
+      const vnode = cond() && IS_BROWSER ? document.body : null
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('fires when neither side is a typeof guard', () => {
+    const source = `
+      const vnode = flag && cond() ? document.body : null
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// The `render` VNode-producing helper from `@pyreon/ui-core` takes a
+// ComponentFn/string/VNode and returns a VNodeChild — its call sites in JSX
+// always produce a VNode, not a signal value. Exempted from the bare-signal
+// heuristic.
+describe('no-bare-signal-in-jsx: render() helper exemption', () => {
+  it('silent for render(content, props) in JSX text', () => {
+    const source = `const App = () => <div>{render(own.trigger, { active: true })}</div>`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
+  })
+
+  it('still fires for other bare identifiers in JSX text', () => {
+    const source = `const App = () => <div>{count()}</div>`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // ── Test-file heuristic (C-rules) ────────────────────────────────────────────
 //
 // Three rules can't distinguish "intentional test stub" from "real production

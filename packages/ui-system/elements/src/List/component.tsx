@@ -5,6 +5,7 @@
  * is wrapped in an Element that receives all non-iterator props (e.g.,
  * layout, alignment, css), allowing the list to be styled as a single block.
  */
+import { splitProps } from '@pyreon/core'
 import { omit, pick } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { ElementProps, PyreonElement } from '../Element'
@@ -32,17 +33,14 @@ type ListProps = {
 
 export type Props = MergeTypes<[IteratorProps, ListProps]> & Partial<Omit<ElementProps, 'children' | 'content' | 'label'>>
 
-const Component: PyreonElement<Props> = (({
-  rootElement = false,
-  ref,
-  ...props
-}: Partial<Props & ElementProps>) => {
+const Component: PyreonElement<Props> = ((allProps: Partial<Props & ElementProps>) => {
+  const [own, props] = splitProps(allProps, ['rootElement', 'ref'])
   const renderedList = <Iterator {...pick(props, Iterator.RESERVED_PROPS)} />
 
-  if (!rootElement) return renderedList
+  if (!own.rootElement) return renderedList
 
   return (
-    <Element {...(ref ? { ref } : {})} {...omit(props, Iterator.RESERVED_PROPS)}>
+    <Element {...(own.ref ? { ref: own.ref } : {})} {...omit(props, Iterator.RESERVED_PROPS)}>
       {renderedList}
     </Element>
   )
