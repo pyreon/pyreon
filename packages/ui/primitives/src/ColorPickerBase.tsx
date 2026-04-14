@@ -1,5 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
+import { useControllableState } from '@pyreon/hooks'
 import { computed, signal } from '@pyreon/reactivity'
 
 export interface ColorPickerBaseProps {
@@ -107,18 +108,20 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     'value', 'defaultValue', 'onChange', 'alpha', 'children',
   ])
 
-  const isControlled = own.value !== undefined
   const initial = own.defaultValue ?? own.value ?? '#3b82f6'
   const initialRgb = hexToRgb(initial)
   const initialHsb = rgbToHsb(initialRgb.r, initialRgb.g, initialRgb.b)
 
-  const _hex = signal(initial)
+  const [hex, setHex] = useControllableState<string>({
+    value: () => own.value,
+    defaultValue: initial,
+    onChange: own.onChange,
+  })
+
   const _hue = signal(initialHsb.h)
   const _saturation = signal(initialHsb.s)
   const _brightness = signal(initialHsb.b)
   const _alpha = signal(1)
-
-  const hex = () => (isControlled ? own.value! : _hex())
 
   function updateFromHSB(h: number, s: number, b: number) {
     const rgb = hsbToRgb(h, s, b)
@@ -126,8 +129,7 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     _hue.set(h)
     _saturation.set(s)
     _brightness.set(b)
-    if (!isControlled) _hex.set(newHex)
-    own.onChange?.(newHex)
+    setHex(newHex)
   }
 
   const rgb = computed(() => hexToRgb(hex()))
@@ -135,13 +137,12 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
   const state: ColorPickerState = {
     hex,
     setHex: (h) => {
-      if (!isControlled) _hex.set(h)
+      setHex(h)
       const rgb = hexToRgb(h)
       const hsb = rgbToHsb(rgb.r, rgb.g, rgb.b)
       _hue.set(hsb.h)
       _saturation.set(hsb.s)
       _brightness.set(hsb.b)
-      own.onChange?.(h)
     },
     hue: _hue,
     saturation: _saturation,
