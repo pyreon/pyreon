@@ -330,45 +330,64 @@ describe('useSSE', () => {
   })
 
   it('auto-reconnects when EventSource closes', async () => {
-    const client = makeClient()
+    // Fake timers eliminate wall-clock dependence on CI — the previous real
+    // setTimeout(100ms) could resolve before the scheduled reconnectDelay(50)
+    // timer actually fired under shared-runner load. Narrow fake-timer scope
+    // (only the reconnect scheduler uses setTimeout; signals/effects in
+    // useSSE are synchronous) keeps this safe despite the general
+    // "prefer real timers" guideline.
+    vi.useFakeTimers()
+    try {
+      const client = makeClient()
 
-    const unmount = withProvider(client, () => {
-      useSSE({
-        url: 'http://example.com/events',
-        reconnect: true,
-        reconnectDelay: 50,
+      const unmount = withProvider(client, () => {
+        useSSE({
+          url: 'http://example.com/events',
+          reconnect: true,
+          reconnectDelay: 50,
+        })
       })
-    })
 
-    expect(mockInstances).toHaveLength(1)
-    lastMockES()._simulateOpen()
+      expect(mockInstances).toHaveLength(1)
+      lastMockES()._simulateOpen()
 
-    // Simulate error with CLOSED readyState (browser gave up)
-    lastMockES()._simulateError(true)
+      // Simulate error with CLOSED readyState (browser gave up)
+      lastMockES()._simulateError(true)
 
-    // Wait for reconnect
-    await new Promise((r) => setTimeout(r, 100))
+      // Deterministically advance past the reconnect delay
+      await vi.advanceTimersByTimeAsync(50)
 
-    expect(mockInstances).toHaveLength(2)
-    unmount()
+      expect(mockInstances).toHaveLength(2)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not reconnect when reconnect is false', async () => {
-    const client = makeClient()
+    // Fake timers prevent any reconnect timer leaked from a prior test (e.g.
+    // the `auto-reconnects` case above) from firing inside this test's window
+    // after mockInstances was cleared in beforeEach.
+    vi.useFakeTimers()
+    try {
+      const client = makeClient()
 
-    const unmount = withProvider(client, () => {
-      useSSE({
-        url: 'http://example.com/events',
-        reconnect: false,
+      const unmount = withProvider(client, () => {
+        useSSE({
+          url: 'http://example.com/events',
+          reconnect: false,
+        })
       })
-    })
 
-    lastMockES()._simulateOpen()
-    lastMockES()._simulateError(true)
+      lastMockES()._simulateOpen()
+      lastMockES()._simulateError(true)
 
-    await new Promise((r) => setTimeout(r, 100))
-    expect(mockInstances).toHaveLength(1)
-    unmount()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(mockInstances).toHaveLength(1)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not reconnect after intentional close()', async () => {

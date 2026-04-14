@@ -499,38 +499,48 @@ describe('useForm', () => {
   })
 
   it('debounceMs delays validation', async () => {
-    let callCount = 0
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: (v) => {
-            callCount++
-            return !v ? 'Required' : undefined
+    // Fake timers eliminate wall-clock dependence under CI load — same shape
+    // as the fix in form-additional.test.tsx (`debounced validation on blur
+    // only fires after delay`). The 10ms pre-debounce assertion window can
+    // slide past the 50ms debounce on shared runners, letting the scheduler
+    // fire early. Drive time explicitly.
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: (v) => {
+              callCount++
+              return !v ? 'Required' : undefined
+            },
           },
-        },
-        onSubmit: () => {
-          /* noop */
-        },
-        validateOn: 'blur',
-        debounceMs: 50,
-      }),
-    )
+          onSubmit: () => {
+            /* noop */
+          },
+          validateOn: 'blur',
+          debounceMs: 50,
+        }),
+      )
 
-    // Trigger multiple rapid blurs
-    form.fields.name.setTouched()
-    form.fields.name.setTouched()
-    form.fields.name.setTouched()
+      // Trigger multiple rapid blurs
+      form.fields.name.setTouched()
+      form.fields.name.setTouched()
+      form.fields.name.setTouched()
 
-    // Should not have validated yet
-    await new Promise((r) => setTimeout(r, 10))
-    expect(callCount).toBe(0)
+      // Should not have validated yet — still inside the debounce window
+      await vi.advanceTimersByTimeAsync(10)
+      expect(callCount).toBe(0)
 
-    // After debounce period, should have validated once
-    await new Promise((r) => setTimeout(r, 60))
-    expect(callCount).toBe(1)
-    expect(form.fields.name.error()).toBe('Required')
-    unmount()
+      // After debounce period, should have validated once
+      await vi.advanceTimersByTimeAsync(60)
+      expect(callCount).toBe(1)
+      expect(form.fields.name.error()).toBe('Required')
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('validate() bypasses debounce for immediate validation', async () => {
@@ -1132,95 +1142,110 @@ describe('validateOn: submit', () => {
 
 describe('debounceMs field validation', () => {
   it('debounced validation on change mode', async () => {
-    let callCount = 0
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: (v) => {
-            callCount++
-            return !v ? 'Required' : undefined
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: (v) => {
+              callCount++
+              return !v ? 'Required' : undefined
+            },
           },
-        },
-        onSubmit: () => {
-          /* noop */
-        },
-        validateOn: 'change',
-        debounceMs: 50,
-      }),
-    )
+          onSubmit: () => {
+            /* noop */
+          },
+          validateOn: 'change',
+          debounceMs: 50,
+        }),
+      )
 
-    // Change should trigger debounced validation
-    form.fields.name.setValue('a')
-    form.fields.name.setValue('ab')
-    form.fields.name.setValue('abc')
+      // Change should trigger debounced validation
+      form.fields.name.setValue('a')
+      form.fields.name.setValue('ab')
+      form.fields.name.setValue('abc')
 
-    // Not yet validated
-    await new Promise((r) => setTimeout(r, 10))
-    expect(callCount).toBe(0)
+      // Not yet validated — still inside the debounce window
+      await vi.advanceTimersByTimeAsync(10)
+      expect(callCount).toBe(0)
 
-    // After debounce, should validate
-    await new Promise((r) => setTimeout(r, 80))
-    expect(callCount).toBeGreaterThanOrEqual(1)
-    expect(form.fields.name.error()).toBeUndefined()
-    unmount()
+      // After debounce, should validate
+      await vi.advanceTimersByTimeAsync(80)
+      expect(callCount).toBeGreaterThanOrEqual(1)
+      expect(form.fields.name.error()).toBeUndefined()
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('debounced validation resolves after timer fires', async () => {
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: (v) => (!v ? 'Required' : undefined),
-        },
-        onSubmit: () => {
-          /* noop */
-        },
-        validateOn: 'blur',
-        debounceMs: 30,
-      }),
-    )
+    vi.useFakeTimers()
+    try {
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: (v) => (!v ? 'Required' : undefined),
+          },
+          onSubmit: () => {
+            /* noop */
+          },
+          validateOn: 'blur',
+          debounceMs: 30,
+        }),
+      )
 
-    form.fields.name.setTouched()
+      form.fields.name.setTouched()
 
-    // Before debounce fires
-    await new Promise((r) => setTimeout(r, 5))
-    expect(form.fields.name.error()).toBeUndefined()
+      // Before debounce fires
+      await vi.advanceTimersByTimeAsync(5)
+      expect(form.fields.name.error()).toBeUndefined()
 
-    // After debounce fires
-    await new Promise((r) => setTimeout(r, 50))
-    expect(form.fields.name.error()).toBe('Required')
-    unmount()
+      // After debounce fires
+      await vi.advanceTimersByTimeAsync(50)
+      expect(form.fields.name.error()).toBe('Required')
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reset clears pending debounce timers', async () => {
-    let callCount = 0
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: (v) => {
-            callCount++
-            return !v ? 'Required' : undefined
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: (v) => {
+              callCount++
+              return !v ? 'Required' : undefined
+            },
           },
-        },
-        onSubmit: () => {
-          /* noop */
-        },
-        validateOn: 'blur',
-        debounceMs: 50,
-      }),
-    )
+          onSubmit: () => {
+            /* noop */
+          },
+          validateOn: 'blur',
+          debounceMs: 50,
+        }),
+      )
 
-    form.fields.name.setTouched()
-    // Reset before debounce fires
-    form.reset()
+      form.fields.name.setTouched()
+      // Reset before debounce fires
+      form.reset()
 
-    await new Promise((r) => setTimeout(r, 80))
-    // Validator should not have been called since timer was cleared
-    expect(callCount).toBe(0)
-    expect(form.fields.name.error()).toBeUndefined()
-    unmount()
+      await vi.advanceTimersByTimeAsync(80)
+      // Validator should not have been called since timer was cleared
+      expect(callCount).toBe(0)
+      expect(form.fields.name.error()).toBeUndefined()
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -1500,36 +1525,41 @@ describe('validate() branch coverage', () => {
 
 describe('debounceMs with validateOn change', () => {
   it('debounces validation on change', async () => {
-    let callCount = 0
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { name: '' },
-        validators: {
-          name: async (v) => {
-            callCount++
-            return v.length < 3 ? 'Too short' : undefined
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { name: '' },
+          validators: {
+            name: async (v) => {
+              callCount++
+              return v.length < 3 ? 'Too short' : undefined
+            },
           },
-        },
-        validateOn: 'change',
-        debounceMs: 50,
-        onSubmit: () => {
-          /* noop */
-        },
-      }),
-    )
+          validateOn: 'change',
+          debounceMs: 50,
+          onSubmit: () => {
+            /* noop */
+          },
+        }),
+      )
 
-    form.fields.name.setValue('a')
-    form.fields.name.setValue('ab')
-    form.fields.name.setValue('abc')
+      form.fields.name.setValue('a')
+      form.fields.name.setValue('ab')
+      form.fields.name.setValue('abc')
 
-    // None should have fired yet
-    expect(callCount).toBe(0)
+      // None should have fired yet
+      expect(callCount).toBe(0)
 
-    await new Promise((r) => setTimeout(r, 80))
-    // Only the last one should have fired after debounce
-    expect(callCount).toBe(1)
-    expect(form.fields.name.error()).toBeUndefined()
-    unmount()
+      await vi.advanceTimersByTimeAsync(80)
+      // Only the last one should have fired after debounce
+      expect(callCount).toBe(1)
+      expect(form.fields.name.error()).toBeUndefined()
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
