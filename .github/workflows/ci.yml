@@ -49,6 +49,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
@@ -65,7 +67,24 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
-      - run: bun run typecheck
+      - name: Compute affected filter
+        id: affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+            echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          else
+            echo "filter=--filter=*" >> $GITHUB_OUTPUT
+          fi
+      - name: Run typecheck
+        run: |
+          FILTER="${{ steps.affected.outputs.filter }}"
+          if [ -z "$FILTER" ]; then
+            echo "No affected packages — skipping typecheck."
+            exit 0
+          fi
+          bun run $FILTER typecheck
 
   test:
     name: Test
@@ -74,6 +93,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
@@ -90,7 +111,24 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
-      - run: bun run test
+      - name: Compute affected filter
+        id: affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+            echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          else
+            echo "filter=--filter=*" >> $GITHUB_OUTPUT
+          fi
+      - name: Run tests
+        run: |
+          FILTER="${{ steps.affected.outputs.filter }}"
+          if [ -z "$FILTER" ]; then
+            echo "No affected packages — skipping tests."
+            exit 0
+          fi
+          bun run $FILTER test
 
   test-browser:
     name: Test (browser)
@@ -132,6 +170,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
@@ -148,7 +188,24 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
-      - run: bun run build
+      - name: Compute affected filter
+        id: affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+            echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          else
+            echo "filter=--filter=*" >> $GITHUB_OUTPUT
+          fi
+      - name: Run build
+        run: |
+          FILTER="${{ steps.affected.outputs.filter }}"
+          if [ -z "$FILTER" ]; then
+            echo "No affected packages — skipping build."
+            exit 0
+          fi
+          bun run $FILTER build
 
   lint:
     name: Lint
@@ -157,6 +214,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
@@ -173,7 +232,26 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
-      - run: bun run lint
+      - name: Compute affected filter
+        id: affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+            echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          else
+            echo "filter=--filter=*" >> $GITHUB_OUTPUT
+          fi
+      - name: Run lint
+        run: |
+          FILTER="${{ steps.affected.outputs.filter }}"
+          if [ -z "$FILTER" ]; then
+            echo "No affected packages — skipping lint."
+            exit 0
+          fi
+          # oxlint is path-based and very fast; the affected filter only gates
+          # the empty-changes case (skip when nothing to lint).
+          bun run lint
 
   secrets-scan:
     name: Secrets Scan
