@@ -34,6 +34,20 @@ const flow = createFlow({
 
 Create a reactive flow instance with signal-based state.
 
+### `useFlow(config)`
+
+Component-scoped wrapper around `createFlow` — auto-disposes the instance when the component unmounts. Prefer this inside component bodies; use `createFlow` directly only for flows owned outside the component tree (app stores, singletons).
+
+```tsx
+const MyDiagram = () => {
+  const flow = useFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+    edges: [],
+  })
+  return <Flow instance={flow}><Background /></Flow>
+}
+```
+
 **Reactive state:** `flow.nodes`, `flow.edges`, `flow.viewport`
 
 **Node operations:** `addNode()`, `removeNode()`, `updateNode()`, `updateNodePosition()`

@@ -87,6 +87,29 @@ const flow = createFlow({
 | `minZoom`         | `number`                                     | `0.1`   | Minimum zoom level                       |
 | `maxZoom`         | `number`                                     | `4`     | Maximum zoom level                       |
 
+### `useFlow(config)` — Component-Scoped Flows
+
+For flows that live and die with a component, use `useFlow` instead of `createFlow`. It wraps the instance with an `onUnmount(() => flow.dispose())` so you don't need to write the disposal boilerplate yourself.
+
+```tsx
+import { useFlow, Flow, Background } from '@pyreon/flow'
+
+const MyDiagram = () => {
+  const flow = useFlow({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'Start' } }],
+    edges: [],
+  })
+
+  return (
+    <Flow instance={flow}>
+      <Background />
+    </Flow>
+  )
+}
+```
+
+Use `createFlow` directly when the flow is owned outside the component tree (app store, singleton, SSR-shared state) — those cases require manual `flow.dispose()` at the correct lifecycle point.
+
 ## Reactive Signals
 
 All state is exposed as reactive signals:

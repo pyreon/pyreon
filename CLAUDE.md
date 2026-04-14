@@ -291,6 +291,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 ### @pyreon/flow
 
 - `createFlow<TData>({ nodes, edges, ...config })` — generic over node `data` shape. `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` if no generic supplied.
+- `useFlow<TData>(config)` — component-scoped wrapper around `createFlow` that auto-disposes the instance on unmount. Use inside a component body; use `createFlow` directly only for app-store / singleton flows that outlive the component tree.
 - Node/edge CRUD, selection, viewport (zoom/pan/fitView), auto-layout via elkjs (lazy-loaded)
 - Components: `<Flow nodeTypes={{ custom: MyNode }}>`, `<Background>`, `<MiniMap>`, `<Controls>`, `<Handle>`, `<Panel>`. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.
 - Edge paths: `getBezierPath()`, `getSmoothStepPath()`, `getStraightPath()`, `getStepPath()`
@@ -614,6 +615,8 @@ Rule of thumb:
 - `onClick={undefined}` crashes in production → runtime now bails on non-function handlers
 - Context destructuring loses reactivity → keep the object reference, access properties lazily
 - Theme mode switching broken → PyreonUI now uses getter properties for reactive mode
+- `mergeProps` throwing `Cannot redefine property` → a source's getter descriptor was created without `configurable: true`. `mergeProps` now forces `configurable: true` on copied descriptors, but when authoring your own `Object.defineProperty` on an object that may later be merged, always set `configurable: true` explicitly.
+- Symbol-keyed props silently dropped by `splitProps` / `mergeProps` → now preserved. Both utilities use `Reflect.ownKeys` so symbol-keyed brands (e.g. `REACTIVE_PROP`) survive the split and merge.
 
 ## Testing
 
