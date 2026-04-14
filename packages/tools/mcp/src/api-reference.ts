@@ -801,6 +801,29 @@ function CustomNode(props: NodeComponentProps<WorkflowData>) {
 - Missing the <Flow nodeTypes={{ key: Component }}> registration — node.type strings dispatch to that map`,
   },
 
+  'flow/useFlow': {
+    signature:
+      'useFlow<TData = Record<string, unknown>>(config: FlowConfig<TData>): FlowInstance<TData>',
+    example: `// Component-scoped flow — auto-disposes when the component unmounts.
+// Identical shape to createFlow, plus an implicit onUnmount(() => flow.dispose()).
+const MyDiagram = () => {
+  const flow = useFlow<WorkflowData>({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'Start' } }],
+    edges: [],
+  })
+  return (
+    <Flow instance={flow}>
+      <Background />
+    </Flow>
+  )
+}`,
+    notes:
+      'Wrapper around createFlow that registers onUnmount(() => flow.dispose()). Use inside component bodies to avoid the manual dispose boilerplate. For flows owned outside the component tree (app stores, singletons, SSR-shared state) keep calling createFlow directly and dispose at the correct lifecycle point.',
+    mistakes: `- Using useFlow outside a component body — the onUnmount hook registration requires an active component setup context, same constraint as every useX hook
+- Using createFlow inside a component and forgetting onUnmount(() => flow.dispose()) — that was the footgun useFlow exists to prevent
+- Storing the returned instance in a module-level variable — that bypasses the auto-dispose guarantee; prefer createFlow for that pattern`,
+  },
+
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/code
   // ═══════════════════════════════════════════════════════════════════════════

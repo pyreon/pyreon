@@ -16,13 +16,23 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   const rest = {} as Omit<T, K[number]>
   const keySet = new Set<string | symbol>(keys as (string | symbol)[])
 
-  for (const key of Object.keys(props)) {
+  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them
+  // silently. Without this, symbol-keyed props (e.g. branded reactive props
+  // under Symbol.for('pyreon.reactiveProp')) would vanish from both picked
+  // and rest.
+  for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
     if (!desc) continue
+    // Force configurable: true when copying to a fresh object. Source descriptors
+    // may be non-configurable (default when created with `Object.defineProperty`
+    // and the caller omitted `configurable`). If we preserved that, any later
+    // `Object.defineProperty` on the same key — including subsequent splitProps
+    // post-processing or test mocks — would throw "Cannot redefine property".
+    const safe = { ...desc, configurable: true }
     if (keySet.has(key)) {
-      Object.defineProperty(picked, key, desc)
+      Object.defineProperty(picked, key, safe)
     } else {
-      Object.defineProperty(rest, key, desc)
+      Object.defineProperty(rest, key, safe)
     }
   }
 
@@ -56,7 +66,7 @@ function mergeStaticWithGetter(
   existingGet: () => unknown,
 ): void {
   if (desc.value !== undefined) {
-    Object.defineProperty(result, key, desc)
+    Object.defineProperty(result, key, { ...desc, configurable: true })
   } else {
     Object.defineProperty(result, key, {
       get: existingGet,
@@ -76,12 +86,17 @@ function mergeProperty(
   if (desc.get && existing) {
     mergeGetterWithExisting(result, key, desc, existing)
   } else if (desc.get) {
-    Object.defineProperty(result, key, desc)
+    // Force configurable: true — source getters may have been defined via
+    // `Object.defineProperty` without an explicit configurable flag (which
+    // defaults to false). Without this, a later source in the same mergeProps
+    // call that overrides the same key would crash with TypeError:
+    // "Cannot redefine property".
+    Object.defineProperty(result, key, { ...desc, configurable: true })
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
   } else if (desc.value !== undefined || !existing) {
     // Both static — later value wins if defined
-    Object.defineProperty(result, key, desc)
+    Object.defineProperty(result, key, { ...desc, configurable: true })
   }
 }
 
@@ -96,10 +111,11 @@ function mergeProperty(
 export function mergeProps<T extends Record<string, unknown>>(...sources: T[]): T {
   const result = {} as T
   for (const source of sources) {
-    for (const key of Object.keys(source)) {
+    // See splitProps for why this uses Reflect.ownKeys instead of Object.keys.
+    for (const key of Reflect.ownKeys(source)) {
       const desc = Object.getOwnPropertyDescriptor(source, key)
       if (!desc) continue
-      mergeProperty(result, key, desc)
+      mergeProperty(result, key as string, desc)
     }
   }
   return result

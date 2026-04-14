@@ -36,7 +36,7 @@
 | @pyreon/hotkeys | useHotkey, useHotkeyScope, registerHotkey | Keyboard shortcuts |
 | @pyreon/permissions | createPermissions, PermissionsProvider, usePermissions | Reactive permissions |
 | @pyreon/machine | createMachine | Reactive state machines |
-| @pyreon/flow | createFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
+| @pyreon/flow | createFlow, useFlow, Flow, Background, MiniMap, Controls, Handle | Flow diagrams |
 | @pyreon/code | createEditor, CodeEditor, DiffEditor, TabbedEditor | Code editor (CodeMirror 6) |
 | @pyreon/document | render, createDocument, Document, Page, Heading, Text, Table | Universal document rendering |
 | @pyreon/rx | filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search, pipe | Signal-aware reactive transforms |
@@ -924,7 +924,7 @@ await doc.toMarkdown()  // Markdown
 ## @pyreon/flow — Flow Diagrams
 
 ```typescript
-import { createFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
+import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
 
 // createFlow is generic over node `data` shape — typed consumers
 // pass their data type explicitly and `node.data.kind` narrows
@@ -948,6 +948,14 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // `direction`/`layerSpacing`/`edgeRouting` apply to layered/tree only —
 // `force`/`stress`/`radial`/`box`/`rectpacking` silently ignore them.
 // `nodeSpacing` is the only LayoutOptions field respected by every algorithm.
+
+// Prefer `useFlow` inside components — it's `createFlow` + auto-dispose
+// on unmount. Use `createFlow` only for singleton/app-store flows that
+// outlive the component tree.
+const MyDiagram = () => {
+  const flow = useFlow<WorkflowData>({ nodes: [], edges: [] })
+  return <Flow instance={flow}><Background /></Flow>
+}
 
 // Custom node renderers — every prop except `id` is a REACTIVE
 // ACCESSOR (`() => T`), not a plain value. Read inside reactive

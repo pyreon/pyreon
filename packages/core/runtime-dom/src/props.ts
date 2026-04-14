@@ -275,16 +275,48 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
 const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
+// Track the CSS property names an element's last-applied style object set,
+// so a reactive style going from `{ color, fontSize }` to `{ color }` removes
+// the stale `fontSize`. React/Vue/Solid all do this diff; previously Pyreon
+// only applied new keys, leaking the removed ones onto the DOM.
+const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
+
 /** Apply a style prop (string or object). */
 function applyStyleProp(el: HTMLElement, value: unknown): void {
   if (typeof value === 'string') {
+    // cssText replaces everything — drop any tracked object-mode keys.
     el.style.cssText = value
-  } else if (value != null && typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    for (const k in obj) {
-      const css = normalizeStyleValue(k, obj[k])
-      el.style.setProperty(k.startsWith('--') ? k : toKebabCase(k), css)
+    _prevStyleKeys.delete(el)
+    return
+  }
+
+  const prev = _prevStyleKeys.get(el)
+
+  if (value == null) {
+    // Explicit null/undefined: clear whatever object-mode keys we set.
+    if (prev) {
+      for (const propName of prev) el.style.removeProperty(propName)
+      _prevStyleKeys.delete(el)
     }
+    return
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const next = new Set<string>()
+    for (const k in obj) {
+      const propName = k.startsWith('--') ? k : toKebabCase(k)
+      next.add(propName)
+      const css = normalizeStyleValue(k, obj[k])
+      el.style.setProperty(propName, css)
+    }
+    if (prev) {
+      for (const propName of prev) {
+        if (!next.has(propName)) el.style.removeProperty(propName)
+      }
+    }
+    if (next.size === 0) _prevStyleKeys.delete(el)
+    else _prevStyleKeys.set(el, next)
   }
 }
 

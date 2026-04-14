@@ -219,21 +219,22 @@ describe('mount — refs', () => {
     expect(refEl).toBeInstanceOf(HTMLDivElement)
   })
 
-  test('callback ref element is not nulled on unmount', () => {
+  test('callback ref is invoked with null on unmount', () => {
     const el = container()
     let refEl: Element | null = null
     const unmount = mount(
       h('div', {
-        ref: (e: Element) => {
+        ref: (e: Element | null) => {
           refEl = e
         },
       }),
       el,
     )
-    expect(refEl).not.toBeNull()
-    unmount()
-    // Callback refs don't get called with null on cleanup
     expect(refEl).toBeInstanceOf(HTMLDivElement)
+    unmount()
+    // Fixed: callback refs are now called with null on cleanup
+    // to match React/Solid/Vue behavior and the RefCallback<T> type.
+    expect(refEl).toBeNull()
   })
 
   test('ref is not emitted as an HTML attribute', () => {

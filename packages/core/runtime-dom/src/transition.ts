@@ -93,17 +93,25 @@ export function Transition(props: TransitionProps): VNodeChild {
     requestAnimationFrame(() => {
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
         // Remove both listeners — only one fires, so clean up the other
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        // Clear the safety timeout — without this, when transitionend fires
+        // normally the 5s timer would still fire later and re-invoke done(),
+        // leaking timer refs and re-firing onAfterEnter.
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
       // Safety timeout: if CSS animation never fires (bad CSS, off-screen), force cleanup
-      setTimeout(done, 5000)
+      safetyTimer = setTimeout(done, 5000)
     })
   }
 
@@ -114,10 +122,16 @@ export function Transition(props: TransitionProps): VNodeChild {
     requestAnimationFrame(() => {
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
         // Remove both listeners — only one fires, so clean up the other
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        // Clear the safety timeout (see applyEnter for rationale).
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.la, cls.lt)
         pendingLeaveCancel = null
         isMounted.set(false)
@@ -126,12 +140,16 @@ export function Transition(props: TransitionProps): VNodeChild {
       pendingLeaveCancel = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.lf, cls.la, cls.lt)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
       // Safety timeout: if CSS animation never fires, force cleanup
-      setTimeout(done, 5000)
+      safetyTimer = setTimeout(done, 5000)
     })
   }
 
