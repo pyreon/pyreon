@@ -12,6 +12,7 @@ export { allRules } from './rules/index'
 export { applyFixes, lintFile } from './runner'
 // Types
 export type {
+  ConfigDiagnostic,
   Diagnostic,
   Fix,
   ImportInfo,
@@ -20,16 +21,22 @@ export type {
   LintFileResult,
   LintOptions,
   LintResult,
+  OptionType,
   PresetName,
   Rule,
   RuleCategory,
   RuleContext,
+  RuleEntry,
   RuleMeta,
+  RuleOptions,
+  RuleOptionsSchema,
   Severity,
   SourceLocation,
   Span,
   VisitorCallbacks,
 } from './types'
+export { isPathExempt } from './utils/exempt-paths'
+export { isTestFile } from './utils/file-roles'
 export {
   extractImportInfo,
   getLocalName,

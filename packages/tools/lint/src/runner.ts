@@ -1,16 +1,28 @@
 import { parseSync, Visitor } from 'oxc-parser'
 import type { AstCache } from './cache'
 import type {
+  ConfigDiagnostic,
   Diagnostic,
   LintConfig,
   LintFileResult,
   Rule,
   RuleContext,
+  RuleOptions,
   Severity,
   VisitorCallbacks,
 } from './types'
 import { JS_EXTENSIONS } from './utils/index'
 import { LineIndex } from './utils/source'
+import { validateRuleOptions } from './utils/validate-options'
+
+// Per-process cache so we only validate a given (rule, options) pair once
+// and only print-once even across a multi-file lint run.
+const VALIDATION_CACHE = new Map<string, { ok: boolean; diagnostics: ConfigDiagnostic[] }>()
+
+/** Reset caches — exposed for tests; not part of the public surface. */
+export function _resetConfigDiagnosticsCache(): void {
+  VALIDATION_CACHE.clear()
+}
 
 function getExtension(filePath: string): string {
   const lastDot = filePath.lastIndexOf('.')
@@ -28,6 +40,7 @@ function getLang(ext: string): OxcLang {
 function createRuleContext(
   rule: Rule,
   severity: Severity,
+  options: RuleOptions,
   diagnostics: Diagnostic[],
   lineIndex: LineIndex,
   sourceText: string,
@@ -49,6 +62,9 @@ function createRuleContext(
     },
     getFilePath() {
       return filePath
+    },
+    getOptions() {
+      return options
     },
   }
 }
@@ -96,6 +112,12 @@ export function lintFile(
   rules: Rule[],
   config: LintConfig,
   cache?: AstCache | undefined,
+  /**
+   * Optional sink for config-level diagnostics (malformed rule options).
+   * When provided, diagnostics are appended to it instead of printed to
+   * stderr — `lint()` uses this to surface them on `LintResult`.
+   */
+  configDiagnosticsSink?: ConfigDiagnostic[],
 ): LintFileResult {
   const ext = getExtension(filePath)
   if (!JS_EXTENSIONS.has(ext)) {
@@ -128,9 +150,66 @@ export function lintFile(
   // Filter to enabled rules and create visitor callbacks
   const allCallbacks: VisitorCallbacks[] = []
   for (const rule of rules) {
-    const severity = config.rules[rule.meta.id]
-    if (severity === undefined || severity === 'off') continue
-    const ctx = createRuleContext(rule, severity, diagnostics, lineIndex, sourceText, filePath)
+    const entry = config.rules[rule.meta.id]
+    if (entry === undefined) continue
+    // Normalize bare severity vs `[severity, options]` tuple.
+    const [severity, options]: [Severity, RuleOptions] = Array.isArray(entry)
+      ? [entry[0] as Severity, (entry[1] ?? {}) as RuleOptions]
+      : [entry as Severity, {}]
+    if (severity === 'off') continue
+
+    // Validate options against the rule's declared schema. Cached per
+    // (rule, options) pair — config doesn't change within a run.
+    const cacheKey = `${rule.meta.id}::${JSON.stringify(options)}`
+    let cached = VALIDATION_CACHE.get(cacheKey)
+    if (!cached) {
+      const { errors, warnings } = validateRuleOptions(rule, options)
+      const configDiags: ConfigDiagnostic[] = []
+      for (const message of warnings) {
+        configDiags.push({ ruleId: rule.meta.id, severity: 'warn', message })
+      }
+      for (const message of errors) {
+        configDiags.push({ ruleId: rule.meta.id, severity: 'error', message })
+      }
+      cached = { ok: errors.length === 0, diagnostics: configDiags }
+      VALIDATION_CACHE.set(cacheKey, cached)
+    }
+    // Surface config diagnostics once per (rule, options) pair: prefer
+    // the caller-supplied sink (so `lint()` can put them on LintResult);
+    // fall back to stderr for standalone `lintFile` usage.
+    if (cached.diagnostics.length > 0) {
+      if (configDiagnosticsSink) {
+        // Dedupe within the sink by (ruleId, message) so two different rules
+        // that happen to produce an identical message don't collapse.
+        for (const d of cached.diagnostics) {
+          if (
+            !configDiagnosticsSink.some(
+              (x) => x.ruleId === d.ruleId && x.message === d.message,
+            )
+          ) {
+            configDiagnosticsSink.push(d)
+          }
+        }
+      } else {
+        for (const d of cached.diagnostics) {
+          // oxlint-disable-next-line no-console
+          const emit = d.severity === 'error' ? console.error : console.warn
+          emit(`[pyreon-lint] ${d.message}`)
+        }
+      }
+    }
+    // Hard error in options → skip this rule entirely for the run.
+    if (!cached.ok) continue
+
+    const ctx = createRuleContext(
+      rule,
+      severity,
+      options,
+      diagnostics,
+      lineIndex,
+      sourceText,
+      filePath,
+    )
     allCallbacks.push(rule.create(ctx))
   }
 

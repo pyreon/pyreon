@@ -10,11 +10,18 @@ function buildRecommended(): LintConfig {
   return { rules }
 }
 
+function severityOf(entry: LintConfig['rules'][string]): Severity {
+  // Presets are built from bare severities (no tuple form). If a future
+  // preset adds tuple form, extract the severity from the tuple.
+  return Array.isArray(entry) ? (entry[0] as Severity) : (entry as Severity)
+}
+
 /** Build a config where every warn is promoted to error. */
 function buildStrict(): LintConfig {
   const base = buildRecommended()
   const rules: Record<string, Severity> = {}
-  for (const [id, sev] of Object.entries(base.rules)) {
+  for (const [id, entry] of Object.entries(base.rules)) {
+    const sev = severityOf(entry)
     rules[id] = sev === 'warn' ? 'error' : sev
   }
   return { rules }

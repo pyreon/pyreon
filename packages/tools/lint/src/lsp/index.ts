@@ -20,11 +20,24 @@
 import { AstCache } from '../cache'
 import { getPreset } from '../config/presets'
 import { allRules } from '../rules/index'
-import { lintFile } from '../runner'
+import { _resetConfigDiagnosticsCache, lintFile } from '../runner'
 import type { Diagnostic, LintConfig } from '../types'
 
 const cache = new AstCache()
-const config: LintConfig = getPreset('recommended')
+let config: LintConfig = getPreset('recommended')
+
+/**
+ * Reload the LSP's lint config. Resets the runner's per-process
+ * validation cache so newly-configured options are re-validated against
+ * rule schemas on the next lint pass — needed when the user edits
+ * `.pyreonlintrc.json` mid-session. Future hookup point for an LSP
+ * `workspace/didChangeConfiguration` notification.
+ */
+export function _reloadConfig(next: LintConfig): void {
+  config = next
+  _resetConfigDiagnosticsCache()
+  cache.clear()
+}
 
 // ─── JSON-RPC message types ────────────────────────────────────────────────
 

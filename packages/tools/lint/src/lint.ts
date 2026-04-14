@@ -6,7 +6,16 @@ import { loadConfig, loadConfigFromPath } from './config/loader'
 import { getPreset } from './config/presets'
 import { allRules } from './rules/index'
 import { applyFixes, lintFile } from './runner'
-import type { LintConfig, LintFileResult, LintOptions, LintResult, RuleMeta } from './types'
+import type {
+  ConfigDiagnostic,
+  LintConfig,
+  LintFileResult,
+  LintOptions,
+  LintResult,
+  RuleMeta,
+  RuleOptions,
+  Severity,
+} from './types'
 import { hasJsExtension } from './utils/index'
 
 function isHiddenOrVendor(entry: string): boolean {
@@ -96,17 +105,37 @@ function buildConfig(options: LintOptions): {
   const presetName = options.preset ?? fileConfig?.preset ?? 'recommended'
   const config = getPreset(presetName)
 
-  // Merge config file rule overrides
+  // Merge config file rule overrides. Entries can be a bare severity or a
+  // `[severity, options]` tuple — passed through verbatim; the runner
+  // normalizes at use-site.
   if (fileConfig?.rules) {
-    for (const [id, severity] of Object.entries(fileConfig.rules)) {
+    for (const [id, entry] of Object.entries(fileConfig.rules)) {
+      config.rules[id] = entry
+    }
+  }
+
+  // CLI rule severity overrides (highest priority for severity).
+  if (options.ruleOverrides) {
+    for (const [id, severity] of Object.entries(options.ruleOverrides)) {
       config.rules[id] = severity
     }
   }
 
-  // CLI rule overrides (highest priority)
-  if (options.ruleOverrides) {
-    for (const [id, severity] of Object.entries(options.ruleOverrides)) {
-      config.rules[id] = severity
+  // CLI rule options overrides (`--rule-options id='{json}'`). Merged
+  // on top of any options already configured for the rule. If the rule
+  // is currently bare-severity, we promote it to tuple form using its
+  // existing severity (or `recommended` default if not present).
+  if (options.ruleOptionsOverrides) {
+    for (const [id, optionOverrides] of Object.entries(options.ruleOptionsOverrides)) {
+      const existing = config.rules[id]
+      const [currentSeverity, currentOptions]: [Severity, RuleOptions] = Array.isArray(existing)
+        ? [existing[0] as Severity, (existing[1] ?? {}) as RuleOptions]
+        : [(existing ?? 'off') as Severity, {}]
+      if (currentSeverity === 'off') continue
+      config.rules[id] = [
+        currentSeverity,
+        { ...currentOptions, ...optionOverrides },
+      ] as const
     }
   }
 
@@ -175,11 +204,13 @@ export function lint(options: LintOptions): LintResult {
   const cache = new AstCache()
   const files = gatherFiles(options.paths, isIgnored, include, exclude)
 
+  const configDiagnostics: ConfigDiagnostic[] = []
   const results: LintResult = {
     files: [],
     totalErrors: 0,
     totalWarnings: 0,
     totalInfos: 0,
+    configDiagnostics,
   }
 
   for (const filePath of files) {
@@ -189,7 +220,7 @@ export function lint(options: LintOptions): LintResult {
     } catch {
       continue
     }
-    const fileResult = lintFile(filePath, source, allRules, config, cache)
+    const fileResult = lintFile(filePath, source, allRules, config, cache, configDiagnostics)
     if (options.fix) {
       applyFixesToFile(fileResult, source)
     }

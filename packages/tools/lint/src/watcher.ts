@@ -34,6 +34,7 @@ export function watchAndLint(options: LintOptions & { format: string }): void {
   const config = getPreset(preset)
 
   applyOverrides(config, options.ruleOverrides)
+  applyOptionsOverrides(config, options.ruleOptionsOverrides)
 
   const cwd = resolve('.')
   const isIgnored = createIgnoreFilter(cwd, options.ignore)
@@ -81,6 +82,21 @@ function applyOverrides(
   }
 }
 
+function applyOptionsOverrides(
+  config: LintConfig,
+  overrides?: Record<string, Record<string, unknown>> | undefined,
+): void {
+  if (!overrides) return
+  for (const [id, opts] of Object.entries(overrides)) {
+    const existing = config.rules[id]
+    const [severity, current]: [Severity, Record<string, unknown>] = Array.isArray(existing)
+      ? [existing[0] as Severity, (existing[1] ?? {}) as Record<string, unknown>]
+      : [(existing ?? 'off') as Severity, {}]
+    if (severity === 'off') continue
+    config.rules[id] = [severity, { ...current, ...opts }] as const
+  }
+}
+
 function relintFile(filePath: string, config: LintConfig, cache: AstCache, format: string): void {
   let source: string
   try {
@@ -98,6 +114,7 @@ function relintFile(filePath: string, config: LintConfig, cache: AstCache, forma
     totalErrors: 0,
     totalWarnings: 0,
     totalInfos: 0,
+    configDiagnostics: [],
   }
 
   for (const d of fileResult.diagnostics) {

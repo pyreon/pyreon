@@ -1,6 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isTestFile } from '../../utils/package-classification'
+import { isTestFile } from '../../utils/file-roles'
 
 export const noUnregisteredField: Rule = {
   meta: {

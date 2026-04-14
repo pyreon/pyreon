@@ -981,34 +981,45 @@ Posts.useTable()   // TanStack Table config`,
 
 const result = lint({ paths: ["src/"], preset: "recommended" })
 console.log(result.totalErrors, result.totalWarnings)
+// Config-level diagnostics (malformed rule options, etc.)
+for (const d of result.configDiagnostics) console.log(d.ruleId, d.message)
 
-// With config file auto-loading + rule overrides
-lint({ paths: ["."], ruleOverrides: { "pyreon/no-classname": "off" } })`,
+// Severity overrides + per-rule options overrides
+lint({
+  paths: ["."],
+  ruleOverrides: { "pyreon/no-classname": "off" },
+  ruleOptionsOverrides: {
+    "pyreon/no-window-in-ssr": { exemptPaths: ["src/foundation/"] },
+  },
+})`,
     notes:
-      'Programmatic API. 58 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Uses oxc-parser with AST caching.',
+      'Programmatic API. 58 rules across 12 categories. Auto-loads .pyreonlintrc.json. Presets: recommended, strict, app, lib. Per-rule options via tuple form in config (`["error", { exemptPaths: [...] }]`) or `ruleOptionsOverrides`. Wrong-typed options surface on `result.configDiagnostics`. Uses oxc-parser with AST caching.',
   },
 
   'lint/lintFile': {
     signature:
-      'lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache): LintFileResult',
+      'lintFile(filePath: string, sourceText: string, rules: Rule[], config: LintConfig, cache?: AstCache, configDiagnosticsSink?: ConfigDiagnostic[]): LintFileResult',
     example: `import { lintFile, allRules, getPreset, AstCache } from "@pyreon/lint"
 
 const cache = new AstCache()
 const config = getPreset("recommended")
-const result = lintFile("app.tsx", source, allRules, config, cache)`,
-    notes: 'Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed).',
+const configSink: ConfigDiagnostic[] = []
+const result = lintFile("app.tsx", source, allRules, config, cache, configSink)`,
+    notes:
+      'Low-level single-file API. Optional AstCache for repeat runs (FNV-1a hash keyed). Optional `configDiagnosticsSink` collects malformed-option diagnostics; without it they print to stderr.',
   },
 
   'lint/cli': {
     signature:
-      'pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [path...]',
+      'pyreon-lint [--preset name] [--fix] [--format text|json|compact] [--quiet] [--watch] [--list] [--config path] [--ignore path] [--rule id=severity] [--rule-options id=\'{json}\'] [path...]',
     example: `pyreon-lint --preset strict --quiet    # CI mode
 pyreon-lint --fix                       # auto-fix
 pyreon-lint --watch src/                # watch mode
 pyreon-lint --list                      # list all 58 rules
-pyreon-lint --format json               # machine-readable`,
+pyreon-lint --format json               # machine-readable
+pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/`,
     notes:
-      "CLI entry. Config: .pyreonlintrc.json, package.json 'pyreonlint' field. Ignore: .pyreonlintignore + .gitignore. Watch: fs.watch recursive with 100ms debounce.",
+      "CLI entry. Config: .pyreonlintrc.json (reference schema/pyreonlintrc.schema.json for IDE autocomplete), package.json 'pyreonlint' field. Ignore: .pyreonlintignore + .gitignore. Watch: fs.watch recursive with 100ms debounce. `--rule-options id='{json}'` passes per-rule options on a single run.",
   },
 
   'lint/no-process-dev-gate': {

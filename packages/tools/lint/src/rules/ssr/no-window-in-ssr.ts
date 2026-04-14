@@ -1,7 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 import { BROWSER_GLOBALS } from '../../utils/imports'
-import { isDomRuntimeFile } from '../../utils/package-classification'
 
 export const noWindowInSsr: Rule = {
   meta: {
@@ -10,12 +10,14 @@ export const noWindowInSsr: Rule = {
     description: 'Disallow browser globals outside onMount/effect/typeof guards — they break SSR.',
     severity: 'error',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
-    // `runtime-dom` IS the DOM renderer — its job is to touch document/window
-    // unguarded. There's no SSR scenario for it (`runtime-server` is the SSR
-    // counterpart). Flagging it would only flag the package for existing.
-    if (isDomRuntimeFile(context.getFilePath())) return {}
+    // Configurable `exemptPaths` option — projects opt out directories
+    // that legitimately run in a DOM-only environment (e.g. a DOM renderer
+    // package has no SSR scenario). Monorepo configures its own paths in
+    // `.pyreonlintrc.json`; user apps typically leave this empty.
+    if (isPathExempt(context)) return {}
 
     let safeDepth = 0
     let typeofGuardDepth = 0

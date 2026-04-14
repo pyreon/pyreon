@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
-import { isServerOnlyFile } from '../../utils/package-classification'
+import { isPathExempt } from '../../utils/exempt-paths'
+import { isTestFile } from '../../utils/file-roles'
 
 /**
  * `pyreon/no-process-dev-gate` — flag the broken `typeof process` dev-mode gate
@@ -34,9 +35,18 @@ import { isServerOnlyFile } from '../../utils/package-classification'
  * Does NOT delete the const declaration — that has to happen by hand because
  * the variable name and downstream usages may need updating in callers.
  *
- * **Server-package exception**: server-only files run in Node where `process`
- * is always defined, so the pattern is correct there. The rule skips files
- * whose paths match `SERVER_PACKAGE_PATTERNS` in `utils/server-only.ts`.
+ * **Server-only exemption**: projects configure `exemptPaths` per-file for
+ * server-only code (Node environments where `process` is always defined and
+ * the pattern is correct). Configure in `.pyreonlintrc.json`:
+ *
+ *     {
+ *       "rules": {
+ *         "pyreon/no-process-dev-gate": [
+ *           "error",
+ *           { "exemptPaths": ["packages/zero/", "packages/core/server/"] }
+ *         ]
+ *       }
+ *     }
  */
 
 export const noProcessDevGate: Rule = {
@@ -49,25 +59,12 @@ export const noProcessDevGate: Rule = {
     fixable: true,
   },
   create(context) {
-    const filePath = context.getFilePath()
-
     // Skip test files — vitest has `process`, the gate works there, and
-    // tests are not shipped to users.
-    if (
-      filePath.includes('/tests/') ||
-      filePath.includes('/test/') ||
-      filePath.includes('/__tests__/') ||
-      filePath.includes('.test.') ||
-      filePath.includes('.spec.')
-    ) {
-      return {}
-    }
+    // tests are not shipped to users. Universal, not a heuristic.
+    if (isTestFile(context.getFilePath())) return {}
 
-    // Skip server-only packages — they run in Node where `process` is
-    // always defined, so the pattern is correct there.
-    if (isServerOnlyFile(filePath)) {
-      return {}
-    }
+    // Configurable `exemptPaths` option for server-only directories.
+    if (isPathExempt(context)) return {}
 
     /**
      * Match the broken pattern at the AST level. We're looking for any

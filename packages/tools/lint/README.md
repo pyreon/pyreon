@@ -182,6 +182,49 @@ const fileResult = lintFile('app.tsx', source, allRules, getPreset('recommended'
 | `app`         | Recommended minus library-only rules |
 | `lib`         | Strict plus architecture checks      |
 
+## Rule Options
+
+Every rule entry in your config accepts either a bare severity or a `[severity, options]` tuple — ESLint-style. The tuple form lets you pass per-rule options without a bespoke API per rule.
+
+```json
+// .pyreonlintrc.json
+{
+  "$schema": "./node_modules/@pyreon/lint/schema/pyreonlintrc.schema.json",
+  "preset": "recommended",
+  "rules": {
+    "pyreon/no-window-in-ssr": "error",
+    "pyreon/no-raw-addeventlistener": [
+      "info",
+      { "exemptPaths": ["packages/core/runtime-dom/", "src/foundation/"] }
+    ]
+  }
+}
+```
+
+The `$schema` reference enables IDE autocomplete + validation when editing the config — VSCode, IntelliJ, Zed, and the LSP all pick it up automatically.
+
+**Convention: `exemptPaths`.** Rules that support path-based exemption read `options.exemptPaths: string[]`. Each entry is a substring match against the file path. Missing or empty → no exemptions. Rules currently supporting `exemptPaths`:
+
+- `pyreon/no-window-in-ssr` — packages that are DOM-only (no SSR scenario)
+- `pyreon/no-raw-addeventlistener` — packages implementing `useEventListener` / event delegation
+- `pyreon/no-raw-setinterval` — packages implementing `useInterval` / `useTimeout`
+- `pyreon/no-process-dev-gate` — server-only directories (Node environments)
+- `pyreon/dev-guard-warnings` — server-only + demo / example directories
+
+**Validation.** Each rule declares its option shape in `meta.schema`. The runner validates user config once per `(rule, options)` pair:
+
+- Unknown option keys → warning surfaced on `LintResult.configDiagnostics` (and stderr), rule stays enabled
+- Wrong-typed values → error surfaced on `LintResult.configDiagnostics` (and stderr), rule disabled for that run
+- Rules without a schema accept any options (no validation)
+
+Programmatic consumers (CI dashboards, LSP, JSON reporters) read `result.configDiagnostics` alongside `result.files[].diagnostics`.
+
+**CLI option overrides.** `--rule-options id='{json}'` passes JSON-encoded options to a specific rule from the command line — useful for one-off lint runs without editing the config file:
+
+```bash
+pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
+```
+
 ## Custom Rules
 
 ```ts
@@ -194,11 +237,20 @@ const myRule: Rule = {
     description: 'My custom rule',
     severity: 'warn',
     fixable: false,
+    // Optional: declare options shape. If present, the runner validates
+    // user config against it. Supported types:
+    //   'string' | 'string[]' | 'number' | 'boolean'
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    // Read options from user config (tuple form).
+    const options = context.getOptions()
+    // Or use the `isPathExempt` helper for the `exemptPaths` convention:
+    //   import { isPathExempt } from '@pyreon/lint'
+    //   if (isPathExempt(context)) return {}
+
     return {
-      CallExpression(node, parent) {
-        // Your rule logic
+      CallExpression(node) {
         context.report({
           message: 'Something is wrong',
           span: { start: node.start, end: node.end },
