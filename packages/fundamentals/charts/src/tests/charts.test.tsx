@@ -103,7 +103,14 @@ afterEach(() => {
 
 // ─── Loader ───────────────────────────────────────────────────────────────────
 
-describe('loader', () => {
+// Even with `vi.mock` on all `echarts/*` subpaths, tests that fan out 6+
+// concurrent `import('echarts/...')` calls (e.g. `auto-detects components
+// from config keys`) can exceed the default 5s timeout under loaded CI
+// parallel workers — vitest's mock resolution for dynamic imports still
+// goes through the Vite module graph per-import, and shared-runner contention
+// stacks the microtask chain. Bump the suite timeout so these remain
+// deterministic without refactoring the loader to remove `import()` entirely.
+describe('loader', { timeout: 15_000 }, () => {
   it('lazily loads echarts/core on first call', async () => {
     const core = await getCore()
     expect(core).toBeDefined()
