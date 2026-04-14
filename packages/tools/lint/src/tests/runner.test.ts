@@ -1582,6 +1582,94 @@ describe('no-window-in-ssr: const-captured typeof guard', () => {
   })
 })
 
+// `no-window-in-ssr` precision improvements introduced alongside the hooks
+// anti-pattern cleanup. Each block targets one of the silent-false-positive
+// sources previously caused by oxc's visitor not passing `parent`.
+describe('no-window-in-ssr: precision (oxc no-parent fixes)', () => {
+  it('silent when `typeof X` is the expression itself (the mention of X is not a global ref)', () => {
+    const source = `const t = typeof window`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for member-expression property names (x.addEventListener)', () => {
+    const source = `function f(x) { x.addEventListener('click', () => {}) }`
+    const result = lintSource(source)
+    // `addEventListener` is a property name, not a global — must not fire.
+    // (`x` is also not a browser global.)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for object-property keys ({ document: 1 })', () => {
+    const source = `const o = { document: 1, window: 2 }`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for import-specifier names', () => {
+    const source = `import { window as w } from './foo'`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for TS type-position identifiers (let x: Window)', () => {
+    const source = `let x: Window | null = null`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under early-return-on-typeof guard', () => {
+    const source = `
+      function load() {
+        if (typeof window === 'undefined') return
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under OR-chained early-return-on-typeof guard', () => {
+    const source = `
+      function load() {
+        if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return
+        const o = new IntersectionObserver(() => {})
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent inside onUnmount / onCleanup / renderEffect', () => {
+    const source = `
+      onUnmount(() => { window.removeEventListener('x', () => {}) })
+      onCleanup(() => { document.body.style.overflow = '' })
+      renderEffect(() => { const w = window.innerWidth })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent in ternary consequent of typeof check', () => {
+    const source = `const w = typeof window !== 'undefined' ? window.innerWidth : 0`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('still fires for the negated form body (safety check on testIsTypeofGuard split)', () => {
+    // `if (typeof window === 'undefined') { window.X }` — the body is the
+    // SSR-fallback branch, NOT a browser-safe zone. Must fire.
+    const source = `
+      if (typeof window === 'undefined') {
+        const w = window.innerWidth
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // ── Test-file heuristic (C-rules) ────────────────────────────────────────────
 //
 // Three rules can't distinguish "intentional test stub" from "real production

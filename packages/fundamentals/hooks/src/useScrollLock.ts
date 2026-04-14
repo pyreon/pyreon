@@ -11,6 +11,10 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   let isLocked = false
 
   const lock = () => {
+    // SSR-safe: scroll locking is meaningless without a document. Guards
+    // against accidental call from a non-browser context (e.g. SSR
+    // rendering a component that opens a modal in its setup).
+    if (typeof document === 'undefined') return
     if (isLocked) return
     isLocked = true
     if (lockCount === 0) {
@@ -21,6 +25,7 @@ export function useScrollLock(): { lock: () => void; unlock: () => void } {
   }
 
   const unlock = () => {
+    if (typeof document === 'undefined') return
     if (!isLocked) return
     isLocked = false
     lockCount--

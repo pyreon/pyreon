@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo, isSetCall } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 interface ScopeInfo {
   setCalls: Array<{ span: { start: number; end: number } }>
@@ -15,8 +16,10 @@ export const noUnbatchedUpdates: Rule = {
     description: 'Warn when 3+ .set() calls occur in the same function without batch().',
     severity: 'warn',
     fixable: false,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    if (isPathExempt(context)) return {}
     const scopeStack: ScopeInfo[] = []
     let batchDepth = 0
 

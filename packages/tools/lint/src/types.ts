@@ -92,7 +92,14 @@ export interface RuleContext {
   getOptions(): RuleOptions
 }
 
-export type VisitorCallback = (node: any, parent?: any) => void
+/**
+ * Visitor callback. oxc's walker only passes the current node — it does NOT
+ * pass `parent`. Rules that need parent context must track it via
+ * enter/exit depth counters or pre-mark child nodes via WeakSet on the way
+ * in. An earlier `parent?: any` signature here was a false promise that
+ * silently disabled `parent.type === '…'` checks across multiple rules.
+ */
+export type VisitorCallback = (node: any) => void
 
 export interface VisitorCallbacks {
   [nodeType: string]: VisitorCallback

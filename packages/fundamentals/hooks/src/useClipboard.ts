@@ -30,6 +30,7 @@ export function useClipboard(options?: { timeout?: number }): UseClipboardResult
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const copy = async (value: string): Promise<boolean> => {
+    if (typeof navigator === 'undefined') return false
     try {
       await navigator.clipboard.writeText(value)
       // Batch the two synchronous writes so subscribers reading both
