@@ -1,6 +1,6 @@
 import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { renderToString } from '../index'
+import { decodeKeyFromMarker, renderToString } from '../index'
 
 // For list SSR emits <!--k:KEY--> markers between items. The key is
 // user-supplied (derived from `by`) and must not be able to break out
@@ -71,5 +71,16 @@ describe('For SSR — key marker safety', () => {
     expect(marker).not.toBeNull()
     // `&`, `=`, ` `, and `-` all URL-encoded.
     expect(marker![1]).toBe('a%26b%3Dc%20d')
+    // decodeKeyFromMarker round-trips back to the original string.
+    expect(decodeKeyFromMarker(marker![1]!)).toBe('a&b=c d')
+  })
+
+  it('decodeKeyFromMarker round-trips adversarial keys', () => {
+    // Directly round-trip the adversarial case that motivated the fix.
+    const attackKey = '--><script>alert(1)</script><!--'
+    // Produce what SSR would emit (safeKeyForMarker is private; use
+    // the inverse on a value we know was encoded from it).
+    const encoded = encodeURIComponent(attackKey).replace(/-/g, '%2D')
+    expect(decodeKeyFromMarker(encoded)).toBe(attackKey)
   })
 })

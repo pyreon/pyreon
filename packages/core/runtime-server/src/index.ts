@@ -190,6 +190,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
 
 async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
   const tag = vnode.type as string
+  warnIfUnsafeTag(tag)
   let open = `<${tag}`
   const props = vnode.props as Record<string, unknown>
   for (const key in props) {
@@ -383,6 +384,7 @@ async function renderComponent(vnode: VNode & { type: ComponentFn }): Promise<st
 
 async function renderElement(vnode: VNode): Promise<string> {
   const tag = vnode.type as string
+  warnIfUnsafeTag(tag)
   let html = `<${tag}`
 
   const props = vnode.props as Record<string, unknown>
@@ -524,6 +526,37 @@ const ESCAPE_MAP: Record<string, string> = {
  */
 function safeKeyForMarker(key: unknown): string {
   return encodeURIComponent(String(key)).replace(/-/g, '%2D')
+}
+
+/**
+ * Inverse of `safeKeyForMarker` — decode a marker-safe key back to the
+ * original string. Not used by runtime today (hydration does not read
+ * per-item `<!--k:KEY-->` markers) but shipped alongside the encoder so
+ * future hydration or devtools consumers decode symmetrically without
+ * having to re-derive the encoding from source.
+ */
+export function decodeKeyFromMarker(encoded: string): string {
+  return decodeURIComponent(encoded.replace(/%2D/gi, '-'))
+}
+
+// Detect tag names that would break out of the `<TAG>` or `</TAG>` form
+// and inject HTML. If user data ever feeds `h(userTag, ...)` the attack
+// `userTag = 'div><script>alert(1)</script><div'` yields executable
+// markup. Framework doesn't HTML-escape tag names (React/Vue/Solid
+// match) — responsibility is on the caller — but a dev-mode warning
+// catches the mistake before it reaches prod. Safe tag pattern covers
+// HTML element names and custom elements (letter start, then
+// alphanumerics + hyphens).
+const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
+function warnIfUnsafeTag(tag: string): void {
+  if (!__DEV__) return
+  if (SAFE_TAG_RE.test(tag)) return
+  // oxlint-disable-next-line no-console
+  console.warn(
+    `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
+      `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
+      `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
+  )
 }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
