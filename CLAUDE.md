@@ -260,6 +260,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `useChart<TOption>(optionsFn, config?)` — reactive ECharts bridge with lazy loading
 - `<Chart />` component with event binding, auto-detects chart types and dynamically imports
 - `@pyreon/charts/manual` entry for tree-shaking control
+- **Browser tests need a tslib alias**: ECharts imports `tslib` for TypeScript helpers (`__extends`, `__assign`, etc.). tslib's `./modules/index.js` ESM entry is broken — it does `import tslib from '../tslib.js'` then destructures named helpers from `default`, which fails when esbuild wraps the CJS file via `__toESM(require_tslib())`. The fix is `resolve.alias: { tslib: '<path-to>/tslib.es6.js' }` — that file is a flat ESM module with proper named exports. See `packages/fundamentals/charts/vitest.browser.config.ts`. Tracking upstream: [microsoft/tslib#189](https://github.com/microsoft/tslib/issues/189).
 
 ### @pyreon/storage
 
