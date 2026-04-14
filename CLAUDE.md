@@ -458,7 +458,19 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 Context-based: `RouterContext = createContext<RouterInstance | null>(null)`.
 `RouterProvider` pushes to context stack + sets module fallback.
 Hash mode uses `history.pushState` (not `window.location.hash`) to avoid double-update.
-View Transitions API integration: route changes wrapped in `document.startViewTransition()` when available. `await router.push()` / `.replace()` resolves AFTER the DOM swap (the transition's `updateCallbackDone` promise) so callers can inspect the new route state immediately. It does NOT wait for `.finished` (the full animation — 200-300ms), which would add unwanted latency to every programmatic navigation.
+View Transitions API integration: route changes wrapped in `document.startViewTransition()` when available.
+
+**What `await router.push()` / `.replace()` waits for** — the ViewTransition object exposes three promises, and picking the wrong one is easy to re-break:
+
+| Promise | Resolves when | Router awaits? |
+| --- | --- | --- |
+| `updateCallbackDone` | Callback (DOM commit) finished; new state is live | ✅ yes |
+| `ready` | Snapshot captured, pseudo-elements ready for animation | no — just `.catch()` |
+| `finished` | Full animation completed (typically 200-300ms) | no — just `.catch()` |
+
+The router awaits `updateCallbackDone` so callers can inspect the new route immediately after `await router.push()`. It does NOT wait for `.finished` because blocking every programmatic navigation on a 200-300ms animation is unacceptable. `.ready` + `.finished` get empty `.catch()` handlers so their `AbortError: Transition was skipped` rejections (fired when a newer navigation interrupts an in-flight transition) don't leak as unhandled promise rejections.
+
+**Hook ordering changed alongside this fix** — `afterEach` hooks and `scrollManager.restore` now fire AFTER the VT callback completes (previously they fired after `commitNavigation` returned but BEFORE the VT callback ran, which meant hooks briefly saw the OLD route state). This is the correct behavior per the hook's documented semantics ("after-navigation hook") but it is a silent behavior change for any app that relied on hooks running pre-commit.
 Middleware chain: `RouteMiddleware[]` runs before guards, `ctx.data` passed through, `useMiddlewareData()` reads in components.
 Hash scrolling: after navigation, `#id` fragments auto-scroll to matching DOM element.
 

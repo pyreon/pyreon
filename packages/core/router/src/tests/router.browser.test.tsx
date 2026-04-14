@@ -39,12 +39,25 @@ const routes = [
 ]
 
 describe('router in real browser', () => {
+  // Track unhandled promise rejections across each test so regressions
+  // of the "Transition was skipped AbortError leaks as unhandled
+  // rejection" bug fail loudly instead of silently polluting the run.
+  const unhandledRejections: unknown[] = []
+  const onUnhandledRejection = (e: PromiseRejectionEvent) => {
+    unhandledRejections.push(e.reason)
+    // Let vitest's own handler still see the event (so other unrelated
+    // regressions still surface).
+  }
+
   beforeEach(() => {
     // Reset hash so each test starts at '/'.
     window.location.hash = ''
+    unhandledRejections.length = 0
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
   })
 
   afterEach(() => {
+    window.removeEventListener('unhandledrejection', onUnhandledRejection)
     setActiveRouter(null)
     window.location.hash = ''
   })
@@ -376,7 +389,14 @@ describe('router in real browser', () => {
     unmount()
   })
 
-  it('rapid push() calls — only the final destination wins', async () => {
+  it('rapid push() calls — only the final destination wins, no unhandled rejections', async () => {
+    // Each push() starts a new ViewTransition. The older in-flight
+    // transition(s) get skipped, which makes their `.ready` and
+    // `.finished` promises reject with `AbortError: Transition was
+    // skipped`. The router installs `.catch(() => {})` on both so the
+    // rejections don't escape. This test asserts both contracts:
+    //   1. Final destination resolves correctly.
+    //   2. `window.onunhandledrejection` fires zero times.
     const router = createRouter({ routes, mode: 'hash' })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
@@ -393,6 +413,30 @@ describe('router in real browser', () => {
     expect(container.querySelector('#user')?.textContent).toBe('User: 2')
     expect(container.querySelector('#about')).toBeNull()
     expect(window.location.hash).toBe('#/user/2')
+
+    // Give the microtask queue a chance to surface any leaked rejection.
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(unhandledRejections).toEqual([])
+    unmount()
+  })
+
+  it('await router.replace() resolves after DOM swap (same VT contract as push)', async () => {
+    // `push` and `replace` both go through `navigate()` which awaits
+    // `commitNavigation()`. This test locks in that the DOM-after-await
+    // contract holds for replace() too — so a future refactor that
+    // splits their code paths can't silently regress one without the
+    // other.
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    expect(container.querySelector('#home')).not.toBeNull()
+
+    await router.replace('/about')
+    // Immediate — no polling, no flush(). If the VT await chain skips
+    // replace(), this assertion fails.
+    expect(container.querySelector('#about')?.textContent).toBe('About Page')
+    expect(container.querySelector('#home')).toBeNull()
     unmount()
   })
 })

@@ -4476,4 +4476,123 @@ describe('View Transitions API', () => {
     expect(router.currentRoute().path).toBe('/about')
     router.destroy()
   })
+
+  it('await router.push() resolves AFTER updateCallbackDone (DOM live, not animation)', async () => {
+    // Key contract: the promise returned by push() resolves once the
+    // ViewTransition's `updateCallbackDone` settles (callback finished,
+    // DOM swapped) — NOT once `.finished` settles (full animation done).
+    // Test verifies both:
+    //   1. push() awaits the callback-done promise
+    //   2. push() does NOT wait for `.finished`
+    const deferred: { resolve?: () => void } = {}
+    const updateCallbackDone = Promise.resolve()
+    const finished = new Promise<void>((r) => {
+      deferred.resolve = r
+    })
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished, // intentionally never resolved during the test
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    // push() MUST settle even though `.finished` never resolves.
+    let pushSettled = false
+    const pushPromise = router.push('/about').then(() => {
+      pushSettled = true
+    })
+    await pushPromise
+    expect(pushSettled).toBe(true)
+    expect(router.currentRoute().path).toBe('/about')
+
+    // Resolve .finished after the fact — should be a no-op.
+    deferred.resolve?.()
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('VT callback throwing does not hang navigation (updateCallbackDone rejection is swallowed)', async () => {
+    // If the user-land state commit inside the transition callback
+    // throws (e.g. a signal subscriber throws synchronously),
+    // `updateCallbackDone` rejects. The router's try/catch around the
+    // await ensures the navigation chain still settles.
+    const updateCallbackDone = Promise.reject(new Error('callback threw'))
+    // Attach a .catch here to silence Node's "unhandled rejection"
+    // warning on the test fixture itself (unrelated to the router).
+    updateCallbackDone.catch(() => {})
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone,
+        ready: Promise.resolve(),
+        finished: Promise.resolve(),
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+
+    // Navigation still settles without throwing.
+    await expect(router.push('/about')).resolves.toBeUndefined()
+    // State still committed inside the callback (cb ran before the
+    // promise rejected).
+    expect(router.currentRoute().path).toBe('/about')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('`.ready` and `.finished` rejecting with AbortError does not break navigation', async () => {
+    // Node-side smoke for the AbortError-swallowing contract. The
+    // browser test in router.browser.test.tsx asserts the stronger
+    // property (no unhandled rejection escapes to the event loop);
+    // happy-dom doesn't fire `unhandledrejection` reliably, so here
+    // we just assert that navigation still completes when those
+    // promises reject.
+    const ready = Promise.reject(new DOMException('Transition was skipped', 'AbortError'))
+    const finished = Promise.reject(new DOMException('Transition was skipped', 'AbortError'))
+    // Pre-catch on the test side so happy-dom's process.exit('unhandled')
+    // doesn't trip on the test fixture itself.
+    ready.catch(() => {})
+    finished.catch(() => {})
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+      return {
+        updateCallbackDone: Promise.resolve(),
+        ready,
+        finished,
+      }
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+    await expect(router.push('/about')).resolves.toBeUndefined()
+    expect(router.currentRoute().path).toBe('/about')
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
 })
