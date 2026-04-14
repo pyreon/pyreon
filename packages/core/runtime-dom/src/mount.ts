@@ -269,7 +269,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     const refToClean = ref
     return () => {
       if (refToClean) {
-        if (typeof refToClean === 'function') (refToClean as (el: Element | null) => void)(null)
+        if (typeof refToClean === 'function') refToClean(null)
         else refToClean.current = null
       }
       if (propCleanup) propCleanup()
@@ -279,7 +279,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
   return () => {
     if (ref) {
-      if (typeof ref === 'function') (ref as (el: Element | null) => void)(null)
+      if (typeof ref === 'function') ref(null)
       else ref.current = null
     }
     if (propCleanup) propCleanup()

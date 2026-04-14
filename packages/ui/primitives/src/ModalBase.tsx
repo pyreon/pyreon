@@ -59,7 +59,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
       <Portal target={document.body}>
         <div
           {...(rest as Record<string, unknown>)}
-          ref={own.ref as ((el: HTMLElement) => void) | undefined}
+          ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
           role="dialog"
           aria-modal="true"
           onClick={handleOverlayClick}

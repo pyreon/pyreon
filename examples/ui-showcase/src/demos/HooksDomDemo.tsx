@@ -31,7 +31,7 @@ export function HooksDomDemo() {
       <Title size="h3" style="margin-bottom: 12px">useElementSize(ref)</Title>
       <Paragraph style="margin-bottom: 12px; font-size: 13px;">Resize the box (drag the corner):</Paragraph>
       <div
-        ref={(el: HTMLElement) => { sizeEl = el }}
+        ref={(el: HTMLElement | null) => { sizeEl = el }}
         style="padding: 24px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 8px; resize: both; overflow: auto; min-width: 150px; min-height: 80px; max-width: 100%; margin-bottom: 8px;"
       >
         Drag corner to resize
@@ -46,7 +46,7 @@ export function HooksDomDemo() {
         {() =>
           open() ? (
             <div
-              ref={(el: HTMLElement) => { dropdownEl = el }}
+              ref={(el: HTMLElement | null) => { dropdownEl = el }}
               style="position: absolute; top: 100%; left: 0; margin-top: 8px; padding: 12px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 200px;"
             >
               Click outside to close.
@@ -60,7 +60,7 @@ export function HooksDomDemo() {
       <div style="height: 200px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 8px; padding: 16px;">
         <div style="height: 250px;">Scroll down ↓</div>
         <div
-          ref={(el: HTMLElement) => { intersectEl = el }}
+          ref={(el: HTMLElement | null) => { intersectEl = el }}
           style={() =>
             `padding: 16px; background: ${(intersection() as IntersectionObserverEntry | null)?.isIntersecting ? '#dcfce7' : '#fef3c7'}; border-radius: 6px; transition: background 0.3s;`
           }
