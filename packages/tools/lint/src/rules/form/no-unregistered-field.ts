@@ -11,8 +11,12 @@ export const noUnregisteredField: Rule = {
     fixable: false,
   },
   create(context) {
-    // Form tests use `useField` directly to assert field state without
-    // wiring a real `register()` call to a DOM input.
+    // Heuristic: skip test files. The rule fires when `useField()` is
+    // called but no matching `register()` is found — usually a real bug
+    // (the field is dead). But form tests routinely call `useField` to
+    // assert field state without rendering a real DOM input. A precise
+    // check would need to detect "the return is not destructured into
+    // props passed to a JSX element" — impractical at lint level.
     if (isTestFile(context.getFilePath())) return {}
 
     const fieldDecls = new Map<string, { span: { start: number; end: number } }>()

@@ -1,8 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
-import {
-  isCleanupWrapperFoundation,
-  isTestFile,
-} from '../../utils/package-classification'
+import { isCleanupWrapperFoundation } from '../../utils/package-classification'
+import { createComponentContextTracker } from '../../utils/component-context'
 import { getSpan, isCallTo } from '../../utils/ast'
 
 const TIMER_FNS = new Set(['setInterval', 'setTimeout'])
@@ -21,18 +19,22 @@ export const noRawSetInterval: Rule = {
     // wrappers but the wrappers themselves must call raw `setInterval` /
     // `setTimeout`.
     if (isCleanupWrapperFoundation(context.getFilePath())) return {}
-    // Tests legitimately use real `setInterval`/`setTimeout` for time-based
-    // simulation (advancing scheduler ticks, asserting cleanup, etc.).
-    if (isTestFile(context.getFilePath())) return {}
+
+    // Only flag when *inside* a component / hook setup body. Module-level
+    // timers, utility functions, and test callbacks have their own
+    // lifecycle and don't need component-tied cleanup.
+    const ctx = createComponentContextTracker()
 
     let mountDepth = 0
     const callbacks: VisitorCallbacks = {
+      ...ctx.callbacks,
       CallExpression(node: any) {
         if (isCallTo(node, 'onMount')) {
           mountDepth++
         }
 
         if (mountDepth > 0) return
+        if (!ctx.isInComponentOrHook()) return
 
         const callee = node.callee
         if (!callee || callee.type !== 'Identifier') return

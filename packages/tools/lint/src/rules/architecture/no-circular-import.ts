@@ -36,10 +36,11 @@ export const noCircularImport: Rule = {
   },
   create(context) {
     const filePath = context.getFilePath()
-    // Tests legitimately import from any layer for integration coverage
-    // (e.g. a `runtime-dom` test importing from `runtime-server` to compare
-    // SSR vs CSR output). The layer-order discipline applies to production
-    // code, not test setups.
+    // Tests don't ship as part of the layered production dep graph — they're
+    // verification scaffolding. Cross-layer imports are routine and correct
+    // there (e.g. a `runtime-dom` test importing `renderToString` from
+    // `runtime-server` to compare SSR vs CSR output). Path-based skip is the
+    // semantic truth for this rule, not a heuristic.
     if (isTestFile(filePath)) return {}
     const fileLayer = getFileLayer(filePath)
     if (fileLayer === null) return {}

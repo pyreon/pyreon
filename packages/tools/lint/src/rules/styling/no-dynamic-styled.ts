@@ -1,60 +1,44 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
-import { isTestFile } from '../../utils/package-classification'
+import { createComponentContextTracker } from '../../utils/component-context'
 
 export const noDynamicStyled: Rule = {
   meta: {
     id: 'pyreon/no-dynamic-styled',
     category: 'styling',
     description:
-      'Warn when styled() is called inside a function — it creates new CSS on every render.',
+      'Warn when styled() is called inside a component or hook — it creates new CSS on every render.',
     severity: 'warn',
     fixable: false,
   },
   create(context) {
-    // Styler's own test suite intentionally exercises the dynamic
-    // `styled()`-inside-function path to verify it works.
-    if (isTestFile(context.getFilePath())) return {}
+    // Only flag when *inside* a component / hook setup body. Module-level
+    // `styled()` is the correct pattern. Inside a utility function, factory,
+    // or test callback `styled()` runs once per call but isn't tied to a
+    // render path — the per-render-allocation warning doesn't apply.
+    const ctx = createComponentContextTracker()
 
-    let functionDepth = 0
     const callbacks: VisitorCallbacks = {
-      FunctionDeclaration() {
-        functionDepth++
-      },
-      'FunctionDeclaration:exit'() {
-        functionDepth--
-      },
-      FunctionExpression() {
-        functionDepth++
-      },
-      'FunctionExpression:exit'() {
-        functionDepth--
-      },
-      ArrowFunctionExpression() {
-        functionDepth++
-      },
-      'ArrowFunctionExpression:exit'() {
-        functionDepth--
-      },
+      ...ctx.callbacks,
       CallExpression(node: any) {
-        if (functionDepth === 0) return
+        if (!ctx.isInComponentOrHook()) return
         if (isCallTo(node, 'styled')) {
           context.report({
             message:
-              '`styled()` inside a function — this creates new CSS rules on every render. Move `styled()` to module scope.',
+              '`styled()` inside a component or hook — this creates new CSS rules on every render. Move `styled()` to module scope.',
             span: getSpan(node),
           })
         }
       },
       TaggedTemplateExpression(node: any) {
-        if (functionDepth === 0) return
+        if (!ctx.isInComponentOrHook()) return
         const tag = node.tag
         if (!tag) return
         // styled('div')`...` — tag is a CallExpression of styled
         if (tag.type === 'CallExpression' && isCallTo(tag, 'styled')) {
           context.report({
             message:
-              '`styled()` tagged template inside a function — this creates new CSS rules on every render. Move to module scope.',
+              '`styled()` tagged template inside a component or hook — this creates new CSS rules on every render. Move to module scope.',
             span: getSpan(node),
           })
         }

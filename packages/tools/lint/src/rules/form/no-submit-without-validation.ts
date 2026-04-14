@@ -11,8 +11,12 @@ export const noSubmitWithoutValidation: Rule = {
     fixable: false,
   },
   create(context) {
-    // Form tests deliberately submit without validation to assert the
-    // un-validated path's behavior.
+    // Heuristic: skip test files. The rule fires on any `useForm({ onSubmit })`
+    // missing validators, but tests deliberately exercise the un-validated
+    // path. A truly precise check would need to detect "this `useForm` is
+    // a test stub vs a real production form" — impractical at lint level.
+    // Keep the heuristic; consumers who want to test forms with validation
+    // explicitly opted-out should use `// pyreon-lint-disable-next-line`.
     if (isTestFile(context.getFilePath())) return {}
 
     const callbacks: VisitorCallbacks = {
