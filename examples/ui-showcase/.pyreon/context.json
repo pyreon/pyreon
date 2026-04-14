@@ -1,0 +1,1168 @@
+{
+  "framework": "pyreon",
+  "version": "workspace:*",
+  "generatedAt": "2026-04-07T10:58:59.747Z",
+  "routes": [
+    {
+      "path": "/",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/box",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/stack",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/group",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/center",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/divider",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/simplegrid",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/aspectratio",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/title",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/paragraph",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/code",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/highlight",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/button",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/iconbutton",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/closebutton",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/actionicon",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/buttongroup",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/formfield",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/input",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/textarea",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/select",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/checkbox",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/radio",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/switch",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/slider",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/numberinput",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/pininput",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/combobox",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/autocomplete",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/multiselect",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/fileupload",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/inputgroup",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/colorpicker",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/colorswatch",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/segmented",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/badge",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/chip",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/card",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/avatar",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/indicator",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/image",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/kbd",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/table",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/timeline",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/alert",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/notification",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/progress",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/loader",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/skeleton",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/modal",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/drawer",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/dialog",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/tooltip",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/popover",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/hovercard",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/menu",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/tabs",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/breadcrumb",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/pagination",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/navlink",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/stepper",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/accordion",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/spoiler",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/calendar",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/datepicker",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/daterangepicker",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/tree",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/visuallyhidden",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/login",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/dashboard",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/settings",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/ecommerce",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/notifications",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/profile",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/datatable",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    },
+    {
+      "path": "/wizard",
+      "hasLoader": false,
+      "hasGuard": false,
+      "params": []
+    }
+  ],
+  "components": [
+    {
+      "name": "NavItem",
+      "file": "src/App.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "App",
+      "file": "src/App.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "LoaderDemo",
+      "file": "src/demos/LoaderDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "DividerDemo",
+      "file": "src/demos/DividerDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AlertDemo",
+      "file": "src/demos/AlertDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AvatarDemo",
+      "file": "src/demos/AvatarDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "TitleDemo",
+      "file": "src/demos/TitleDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "NumberInputDemo",
+      "file": "src/demos/NumberInputDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "quantity"
+      ],
+      "props": []
+    },
+    {
+      "name": "ColorPickerDemo",
+      "file": "src/demos/ColorPickerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "color"
+      ],
+      "props": []
+    },
+    {
+      "name": "SkeletonDemo",
+      "file": "src/demos/SkeletonDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "InputGroupDemo",
+      "file": "src/demos/InputGroupDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "HighlightDemo",
+      "file": "src/demos/HighlightDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "RadioDemo",
+      "file": "src/demos/RadioDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "plan",
+        "color",
+        "size"
+      ],
+      "props": []
+    },
+    {
+      "name": "ModalDemo",
+      "file": "src/demos/ModalDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "smOpen",
+        "mdOpen",
+        "lgOpen",
+        "xlOpen",
+        "fullOpen",
+        "formOpen"
+      ],
+      "props": []
+    },
+    {
+      "name": "NotificationDemo",
+      "file": "src/demos/NotificationDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "StepperDemo",
+      "file": "src/demos/StepperDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "currentStep"
+      ],
+      "props": []
+    },
+    {
+      "name": "EcommerceDemo",
+      "file": "src/demos/EcommerceDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "cartCount",
+        "wishlist"
+      ],
+      "props": []
+    },
+    {
+      "name": "BreadcrumbDemo",
+      "file": "src/demos/BreadcrumbDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "ChipDemo",
+      "file": "src/demos/ChipDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selectedChips"
+      ],
+      "props": []
+    },
+    {
+      "name": "PopoverDemo",
+      "file": "src/demos/PopoverDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "SimpleGridDemo",
+      "file": "src/demos/SimpleGridDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "ComboboxDemo",
+      "file": "src/demos/ComboboxDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selected"
+      ],
+      "props": []
+    },
+    {
+      "name": "DialogDemo",
+      "file": "src/demos/DialogDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "smOpen",
+        "mdOpen",
+        "dangerOpen",
+        "infoOpen"
+      ],
+      "props": []
+    },
+    {
+      "name": "BoxDemo",
+      "file": "src/demos/BoxDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "CodeDemo",
+      "file": "src/demos/CodeDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "count"
+      ],
+      "props": []
+    },
+    {
+      "name": "Counter",
+      "file": "src/demos/CodeDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "count"
+      ],
+      "props": []
+    },
+    {
+      "name": "NavLinkDemo",
+      "file": "src/demos/NavLinkDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "activeLink"
+      ],
+      "props": []
+    },
+    {
+      "name": "ActionIconDemo",
+      "file": "src/demos/ActionIconDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "TreeDemo",
+      "file": "src/demos/TreeDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selected"
+      ],
+      "props": []
+    },
+    {
+      "name": "CenterDemo",
+      "file": "src/demos/CenterDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "CardDemo",
+      "file": "src/demos/CardDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "NotificationCenterDemo",
+      "file": "src/demos/NotificationCenterDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "notifications",
+        "activeTab"
+      ],
+      "props": []
+    },
+    {
+      "name": "SliderDemo",
+      "file": "src/demos/SliderDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "volume",
+        "brightness",
+        "temperature"
+      ],
+      "props": []
+    },
+    {
+      "name": "SpoilerDemo",
+      "file": "src/demos/SpoilerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "show1",
+        "show2",
+        "show3"
+      ],
+      "props": []
+    },
+    {
+      "name": "ImageDemo",
+      "file": "src/demos/ImageDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "TabsDemo",
+      "file": "src/demos/TabsDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "lineTab",
+        "enclosedTab",
+        "pillsTab",
+        "manyTab"
+      ],
+      "props": []
+    },
+    {
+      "name": "DashboardDemo",
+      "file": "src/demos/DashboardDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "DatePickerDemo",
+      "file": "src/demos/DatePickerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "showCal1",
+        "date1",
+        "showCal2",
+        "date2"
+      ],
+      "props": []
+    },
+    {
+      "name": "TooltipDemo",
+      "file": "src/demos/TooltipDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "MenuDemo",
+      "file": "src/demos/MenuDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "TimelineDemo",
+      "file": "src/demos/TimelineDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "StackDemo",
+      "file": "src/demos/StackDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AutocompleteDemo",
+      "file": "src/demos/AutocompleteDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selected"
+      ],
+      "props": []
+    },
+    {
+      "name": "TextareaDemo",
+      "file": "src/demos/TextareaDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "bio",
+        "autoText"
+      ],
+      "props": []
+    },
+    {
+      "name": "ButtonGroupDemo",
+      "file": "src/demos/ButtonGroupDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "DrawerDemo",
+      "file": "src/demos/DrawerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "leftOpen",
+        "rightOpen",
+        "topOpen",
+        "bottomOpen",
+        "lgOpen"
+      ],
+      "props": []
+    },
+    {
+      "name": "FormFieldDemo",
+      "file": "src/demos/FormFieldDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "name",
+        "email"
+      ],
+      "props": []
+    },
+    {
+      "name": "TOTAL_STEPS",
+      "file": "src/demos/WizardDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "activeStep",
+        "name",
+        "email",
+        "plan",
+        "teamSize",
+        "agreedToTerms"
+      ],
+      "props": [
+        "4\n\nconst stepLabels",
+        "'Plan'",
+        "'Review'",
+        "'Complete']\n\nexport function WizardDemo("
+      ]
+    },
+    {
+      "name": "UserProfileDemo",
+      "file": "src/demos/UserProfileDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "InputDemo",
+      "file": "src/demos/InputDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "text"
+      ],
+      "props": []
+    },
+    {
+      "name": "PaginationDemo",
+      "file": "src/demos/PaginationDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "page1",
+        "page2",
+        "page3"
+      ],
+      "props": []
+    },
+    {
+      "name": "ColorSwatchDemo",
+      "file": "src/demos/ColorSwatchDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AccordionDemo",
+      "file": "src/demos/AccordionDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "CalendarDemo",
+      "file": "src/demos/CalendarDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selectedDate",
+        "selectedDate2"
+      ],
+      "props": []
+    },
+    {
+      "name": "FileUploadDemo",
+      "file": "src/demos/FileUploadDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "uploadedFiles"
+      ],
+      "props": []
+    },
+    {
+      "name": "GroupDemo",
+      "file": "src/demos/GroupDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "AspectRatioDemo",
+      "file": "src/demos/AspectRatioDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "SettingsDemo",
+      "file": "src/demos/SettingsDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "name",
+        "email",
+        "bio",
+        "emailNotifications",
+        "pushNotifications",
+        "darkMode",
+        "language",
+        "timezone",
+        "saved"
+      ],
+      "props": []
+    },
+    {
+      "name": "SegmentedControlDemo",
+      "file": "src/demos/SegmentedControlDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "view",
+        "period",
+        "theme"
+      ],
+      "props": []
+    },
+    {
+      "name": "ButtonDemo",
+      "file": "src/demos/ButtonDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "clickCount"
+      ],
+      "props": []
+    },
+    {
+      "name": "CloseButtonDemo",
+      "file": "src/demos/CloseButtonDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "IconButtonDemo",
+      "file": "src/demos/IconButtonDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "HoverCardDemo",
+      "file": "src/demos/HoverCardDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "CheckboxDemo",
+      "file": "src/demos/CheckboxDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "checked",
+        "toppings"
+      ],
+      "props": []
+    },
+    {
+      "name": "ProgressDemo",
+      "file": "src/demos/ProgressDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "BadgeDemo",
+      "file": "src/demos/BadgeDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "PinInputDemo",
+      "file": "src/demos/PinInputDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "DateRangePickerDemo",
+      "file": "src/demos/DateRangePickerDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "showCal",
+        "startDate",
+        "endDate",
+        "selectingEnd"
+      ],
+      "props": []
+    },
+    {
+      "name": "KbdDemo",
+      "file": "src/demos/KbdDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "IndicatorDemo",
+      "file": "src/demos/IndicatorDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "SelectDemo",
+      "file": "src/demos/SelectDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "country"
+      ],
+      "props": []
+    },
+    {
+      "name": "LoginFormDemo",
+      "file": "src/demos/LoginFormDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "email",
+        "password",
+        "remember",
+        "submitted",
+        "loading"
+      ],
+      "props": []
+    },
+    {
+      "name": "ParagraphDemo",
+      "file": "src/demos/ParagraphDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "TableDemo",
+      "file": "src/demos/TableDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    },
+    {
+      "name": "MultiSelectDemo",
+      "file": "src/demos/MultiSelectDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "selected"
+      ],
+      "props": []
+    },
+    {
+      "name": "PAGE_SIZE",
+      "file": "src/demos/DataTableDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "search",
+        "statusFilter",
+        "currentPage",
+        "sortField",
+        "sortDir",
+        "loading"
+      ],
+      "props": [
+        "5\n\nconst statusState"
+      ]
+    },
+    {
+      "name": "DataTableDemo",
+      "file": "src/demos/DataTableDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "search",
+        "statusFilter",
+        "currentPage",
+        "sortField",
+        "sortDir",
+        "loading"
+      ],
+      "props": []
+    },
+    {
+      "name": "SwitchDemo",
+      "file": "src/demos/SwitchDemo.tsx",
+      "hasSignals": true,
+      "signalNames": [
+        "darkMode",
+        "notifications",
+        "autoSave"
+      ],
+      "props": []
+    },
+    {
+      "name": "VisuallyHiddenDemo",
+      "file": "src/demos/VisuallyHiddenDemo.tsx",
+      "hasSignals": false,
+      "signalNames": [],
+      "props": []
+    }
+  ],
+  "islands": []
+}
