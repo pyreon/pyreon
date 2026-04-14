@@ -1,10 +1,13 @@
-import flowManifest from '../../../../fundamentals/flow/manifest'
-import { renderLlmsTxtLine } from '../../../../../scripts/gen-docs'
+import { renderLlmsTxtLine } from '@pyreon/manifest'
+import flowManifest from '../manifest'
 
-// Snapshot of the exact rendered llms.txt line for @pyreon/flow. Locks
-// the public output so a future generator tweak (or accidental manifest
-// edit) surfaces in diff. Update deliberately by running the test with
-// `-u` if you changed the format or the manifest on purpose.
+// Snapshot of the exact rendered llms.txt line for @pyreon/flow. Lives
+// inside @pyreon/flow (not in @pyreon/manifest) so ownership sits where
+// the manifest does — a future flow API change that needs a manifest
+// edit + regenerated snapshot stays within this package's review scope.
+//
+// Update intentionally via `bun run test -- -u` after a deliberate
+// manifest change.
 
 describe('gen-docs — flow snapshot', () => {
   it('renders @pyreon/flow to its expected llms.txt bullet', () => {

@@ -316,16 +316,11 @@ jobs:
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
-      - name: Regenerate docs from manifests
-        run: bun run gen-docs
-      - name: Verify no drift
-        # If any doc surface would differ after regeneration, fail the job.
-        # Fix: run `bun run gen-docs` locally and commit the result.
-        run: |
-          if ! git diff --exit-code -- llms.txt; then
-            echo "::error::llms.txt is out of sync with manifests. Run 'bun run gen-docs' locally and commit the result."
-            exit 1
-          fi
+      - name: Check manifest-generated docs are in sync
+        # Single source of truth for "in sync": gen-docs --check exits 1
+        # if any generated file would change, printing a minimal diff.
+        # Failure message tells reviewers the fix.
+        run: bun run gen-docs --check
 
   secrets-scan:
     name: Secrets Scan

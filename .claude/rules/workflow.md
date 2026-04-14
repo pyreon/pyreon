@@ -91,6 +91,8 @@ Document the bisect result in the PR description: "Bisect-verified: reverted fix
    Total: 9 surfaces. This list is unsustainable manually — see plan T2.1/T2.5.1 for the manifest-based generation that will collapse most of this to 1 source. The generator is now live: `bun run gen-docs` regenerates `llms.txt` from every `packages/<category>/<pkg>/manifest.ts` that exists. If a package has a `manifest.ts`, edit the manifest — do NOT touch the generated line in llms.txt directly; the `Docs Sync` CI job will fail if the two drift. Run `bun run gen-docs --check` locally for the same signal before pushing. Unmigrated packages (those without a `manifest.ts`) still need every surface updated by hand.
 
    **Rollback / override**: if a bug in `scripts/gen-docs.ts` blocks an urgent merge, a repo admin can temporarily remove `Docs Sync` from the required-checks list in branch-protection settings. File a follow-up to fix the generator, then restore the check. **Do not bypass by hand-editing generated lines** — the next gen-docs run will revert them silently.
+
+   **Manifest snapshot tests**: each migrated package owns an inline-snapshot test of its rendered `llms.txt` bullet (see `packages/fundamentals/flow/src/tests/manifest-snapshot.test.ts` for the reference). Intentional format changes require updating the snapshot via `bun run test -- -u` in that package, or by accepting the new value in the failure diff via your editor. CI fails loudly on snapshot mismatch, so unintended regressions surface immediately.
 5. No breaking changes without discussion
 6. Honest quality assessment
 

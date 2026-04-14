@@ -1,4 +1,12 @@
-import { renderLlmsTxtLine, regenerateLlmsTxt } from '../../../../../scripts/gen-docs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  findManifests,
+  formatLineDiff,
+  renderLlmsTxtLine,
+  regenerateLlmsTxt,
+} from '../../../../../scripts/gen-docs-core'
 import type { PackageManifest } from '../types'
 
 // Unit coverage for scripts/gen-docs.ts. Lives in @pyreon/manifest
@@ -118,5 +126,108 @@ describe('regenerateLlmsTxt', () => {
     )
     expect(result.contents).toContain('- @pyreon/flow — updated')
     expect(result.contents).toContain('- @pyreon/flow-extra — a different package')
+  })
+})
+
+describe('findManifests', () => {
+  let tmpRoot: string
+
+  beforeEach(() => {
+    tmpRoot = mkdtempSync(join(tmpdir(), 'gen-docs-test-'))
+  })
+
+  afterEach(() => {
+    rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  function writeManifest(category: string, pkg: string, body: string): string {
+    const dir = join(tmpRoot, 'packages', category, pkg, 'src')
+    mkdirSync(dir, { recursive: true })
+    const path = join(dir, 'manifest.ts')
+    writeFileSync(path, body)
+    return path
+  }
+
+  it('returns an empty array when no packages/ directory exists', async () => {
+    const result = await findManifests(tmpRoot)
+    expect(result).toEqual([])
+  })
+
+  it('discovers a manifest under packages/<category>/<pkg>/manifest.ts', async () => {
+    writeManifest(
+      'fundamentals',
+      'fake',
+      `export default {
+        name: '@pyreon/fake',
+        tagline: 'fake pkg',
+        description: 'd',
+        category: 'universal' as const,
+        features: [],
+        api: [],
+      }`,
+    )
+    const result = await findManifests(tmpRoot)
+    expect(result).toHaveLength(1)
+    expect(result[0]?.manifest.name).toBe('@pyreon/fake')
+  })
+
+  it('discovers multiple manifests across different categories', async () => {
+    writeManifest(
+      'core',
+      'a',
+      `export default { name: '@pyreon/a', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [] }`,
+    )
+    writeManifest(
+      'fundamentals',
+      'b',
+      `export default { name: '@pyreon/b', tagline: 't', description: 'd', category: 'browser' as const, features: [], api: [] }`,
+    )
+    writeManifest(
+      'internals',
+      'c',
+      `export default { name: '@pyreon/c', tagline: 't', description: 'd', category: 'server' as const, features: [], api: [] }`,
+    )
+    const result = await findManifests(tmpRoot)
+    const names = result.map((r) => r.manifest.name).sort()
+    expect(names).toEqual(['@pyreon/a', '@pyreon/b', '@pyreon/c'])
+  })
+
+  it('throws when a manifest file has no default export', async () => {
+    writeManifest(
+      'core',
+      'broken',
+      `export const manifest = { name: '@pyreon/broken' }`,
+    )
+    await expect(findManifests(tmpRoot)).rejects.toThrow(/has no default export/)
+  })
+
+  it('skips packages without a src/manifest.ts', async () => {
+    const dir = join(tmpRoot, 'packages', 'fundamentals', 'no-manifest')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(join(dir, 'package.json'), '{}')
+    const result = await findManifests(tmpRoot)
+    expect(result).toEqual([])
+  })
+})
+
+describe('formatLineDiff', () => {
+  it('returns empty string when contents are identical', () => {
+    expect(formatLineDiff('a\nb\nc', 'a\nb\nc')).toBe('')
+  })
+
+  it('marks a changed line with - / + pair', () => {
+    expect(formatLineDiff('a\nb\nc', 'a\nX\nc')).toBe('- b\n+ X')
+  })
+
+  it('handles added lines (longer after)', () => {
+    expect(formatLineDiff('a\nb', 'a\nb\nc')).toBe('+ c')
+  })
+
+  it('handles removed lines (shorter after)', () => {
+    expect(formatLineDiff('a\nb\nc', 'a\nb')).toBe('- c')
+  })
+
+  it('reports multiple changes together', () => {
+    expect(formatLineDiff('a\nb\nc\nd', 'a\nX\nc\nY')).toBe('- b\n+ X\n- d\n+ Y')
   })
 })

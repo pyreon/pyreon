@@ -131,9 +131,11 @@ export interface ApiEntry {
 
 /**
  * Shape of a single package's manifest. One manifest per package,
- * placed at `packages/<category>/<pkg>/manifest.ts`. Consumed by
- * `scripts/gen-docs.ts` to produce `llms.txt`, `llms-full.txt`, the
- * MCP api-reference, and the CLAUDE.md package table.
+ * placed at `packages/<category>/<pkg>/src/manifest.ts` — inside the
+ * package's `rootDir` so tsc type-checks it alongside the rest of
+ * the source. Consumed by `scripts/gen-docs.ts` to produce `llms.txt`,
+ * `llms-full.txt`, the MCP api-reference, and the CLAUDE.md package
+ * table.
  *
  * **Source-of-truth boundary** (decided 9/10 pass):
  * - Structured fields (`signature`, `example`, `mistakes`) — the
