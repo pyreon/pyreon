@@ -56,7 +56,7 @@ export function useRouter(): Router {
   const router = useContext(RouterContext) ?? _activeRouter
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return router
 }
@@ -68,7 +68,7 @@ export function useRoute<TPath extends string = string>(): () => ResolvedRoute<
   const router = useContext(RouterContext) ?? _activeRouter
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return router.currentRoute as never
 }
@@ -87,7 +87,7 @@ export function onBeforeRouteLeave(guard: NavigationGuard): () => void {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   // Register as a global guard that only fires when leaving the current route
   const currentMatched = router.currentRoute().matched
@@ -116,7 +116,7 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   const currentMatched = router.currentRoute().matched
   const wrappedGuard: NavigationGuard = (to, from) => {
@@ -148,7 +148,7 @@ export function useBlocker(fn: BlockerFn): Blocker {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   router._blockers.add(fn)
 
@@ -207,7 +207,7 @@ export function useIsActive(path: string, exact = false): () => boolean {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return () => {
     const current = router.currentRoute().path
@@ -331,7 +331,7 @@ function _getRouter(): RouterInstance {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
     throw new Error(
-      '[pyreon-router] No router installed. Wrap your app in <RouterProvider router={router}>.',
+      '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   return router
 }
@@ -428,19 +428,17 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
   const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
-  // Browser event listeners — stored so destroy() can remove them
-  let _popstateHandler: (() => void) | null = null
-  let _hashchangeHandler: (() => void) | null = null
+  // Browser event listeners — stored so destroy() can remove them.
+  // Ternary-bound on `_isBrowser` (a typeof-derived const) so the lint rule
+  // can trace these to an SSR-safe shape without needing `if (_isBrowser &&
+  // handler)` contortions at every use site.
+  const _popstateHandler: (() => void) | null =
+    _isBrowser && mode === 'history' ? () => currentPath.set(getCurrentLocation()) : null
+  const _hashchangeHandler: (() => void) | null =
+    _isBrowser && mode !== 'history' ? () => currentPath.set(getCurrentLocation()) : null
 
-  if (_isBrowser) {
-    if (mode === 'history') {
-      _popstateHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener('popstate', _popstateHandler)
-    } else {
-      _hashchangeHandler = () => currentPath.set(getCurrentLocation())
-      window.addEventListener('hashchange', _hashchangeHandler)
-    }
-  }
+  if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
+  if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
 
   const componentCache = new Map<RouteRecord, ComponentFn>()
   const loadingSignal = signal(0)
@@ -944,14 +942,8 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     },
 
     destroy() {
-      if (_popstateHandler) {
-        window.removeEventListener('popstate', _popstateHandler)
-        _popstateHandler = null
-      }
-      if (_hashchangeHandler) {
-        window.removeEventListener('hashchange', _hashchangeHandler)
-        _hashchangeHandler = null
-      }
+      if (_popstateHandler) window.removeEventListener('popstate', _popstateHandler)
+      if (_hashchangeHandler) window.removeEventListener('hashchange', _hashchangeHandler)
       guards.length = 0
       afterHooks.length = 0
       router._blockers.clear()

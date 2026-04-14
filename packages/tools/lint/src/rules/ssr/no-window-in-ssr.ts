@@ -71,6 +71,22 @@ export const noWindowInSsr: Rule = {
       )
         return true
       if (expr.type === 'UnaryExpression' && expr.operator === 'typeof') return true
+      // `const useVT = _isBrowser && ... && typeof X === 'function'` — if
+      // any term in an AND chain is a typeof check (direct or via another
+      // typeof-bound const), the whole expression is typeof-derived: every
+      // non-falsy value requires every term to have evaluated truthy.
+      if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
+        return isTypeofCheckForBinding(expr.left) || isTypeofCheckForBinding(expr.right)
+      }
+      // `const handler = _isBrowser ? (e) => … : null` / `_isBrowser ? fn()
+      // : null` — ternary with a typeof-derived const as test. The non-null
+      // branch only exists when the guard is truthy, so the binding is
+      // transitively typeof-derived. Same for `_isBrowser ? X : null`
+      // where `X` is typeof-derived.
+      if (expr.type === 'ConditionalExpression') {
+        return isTypeofCheckForBinding(expr.test)
+      }
+      if (expr.type === 'Identifier' && typeofBoundConsts.has(expr.name)) return true
       return false
     }
     /**
@@ -139,12 +155,42 @@ export const noWindowInSsr: Rule = {
     // contributed by early-return guards inside this function — popped on
     // function exit to keep the depth balanced.
     const earlyReturnStack: number[] = []
-    function pushFunctionScope() {
+    // Stack of parameter names that shadow browser globals for the current
+    // function scope. E.g. `function push(location)` — any `location`
+    // identifier inside this function refers to the parameter, not the
+    // browser global. Pushed on function enter, popped on exit.
+    const shadowedNamesStack: Array<Set<string>> = []
+    function collectParamNames(params: any[]): Set<string> {
+      const names = new Set<string>()
+      const walk = (p: any) => {
+        if (!p) return
+        if (p.type === 'Identifier' && BROWSER_GLOBALS.has(p.name)) names.add(p.name)
+        else if (p.type === 'AssignmentPattern') walk(p.left)
+        else if (p.type === 'RestElement') walk(p.argument)
+        else if (p.type === 'ArrayPattern') for (const el of p.elements ?? []) walk(el)
+        else if (p.type === 'ObjectPattern')
+          for (const prop of p.properties ?? []) {
+            if (prop.type === 'RestElement') walk(prop.argument)
+            else walk(prop.value)
+          }
+      }
+      for (const p of params ?? []) walk(p)
+      return names
+    }
+    function isNameShadowed(name: string): boolean {
+      for (let i = shadowedNamesStack.length - 1; i >= 0; i--) {
+        if (shadowedNamesStack[i]!.has(name)) return true
+      }
+      return false
+    }
+    function pushFunctionScope(node?: any) {
       earlyReturnStack.push(0)
+      shadowedNamesStack.push(node ? collectParamNames(node.params ?? []) : new Set())
     }
     function popFunctionScope() {
       const bumps = earlyReturnStack.pop() ?? 0
       typeofGuardDepth -= bumps
+      shadowedNamesStack.pop()
     }
     function noteEarlyReturnGuardVisit() {
       typeofGuardDepth++
@@ -269,6 +315,10 @@ export const noWindowInSsr: Rule = {
         if (safeDepth > 0 || typeofGuardDepth > 0 || inTypeofExpr > 0 || inTsTypePos > 0) return
         if (skipPropertyNodes.has(node)) return
         if (!BROWSER_GLOBALS.has(node.name)) return
+        // Skip identifiers shadowed by a parameter of the same name —
+        // `function push(location)` inside: every `location` refers to the
+        // parameter, not `window.location`.
+        if (isNameShadowed(node.name)) return
 
         context.report({
           message: `Browser global \`${node.name}\` used outside \`onMount\`/\`effect\`/typeof guard — this will fail during SSR. Wrap in \`onMount(() => { ... })\`.`,

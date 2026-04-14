@@ -1195,11 +1195,11 @@ describe('useRouter / useRoute', () => {
   })
 
   test('useRouter throws when no router installed', () => {
-    expect(() => useRouter()).toThrow('[pyreon-router] No router installed')
+    expect(() => useRouter()).toThrow('[Pyreon] No router installed')
   })
 
   test('useRoute throws when no router installed', () => {
-    expect(() => useRoute()).toThrow('[pyreon-router] No router installed')
+    expect(() => useRoute()).toThrow('[Pyreon] No router installed')
   })
 
   test('useRouter returns router after setActiveRouter', () => {
