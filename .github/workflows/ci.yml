@@ -293,6 +293,40 @@ jobs:
         # but is still listed as exempt).
         run: bun run lint:browser-smoke
 
+  docs-sync:
+    name: Docs Sync
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        id: node-modules-cache
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: node-modules-${{ runner.os }}-bun-
+      - run: bun install --frozen-lockfile
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      - name: Regenerate docs from manifests
+        run: bun run gen-docs
+      - name: Verify no drift
+        # If any doc surface would differ after regeneration, fail the job.
+        # Fix: run `bun run gen-docs` locally and commit the result.
+        run: |
+          if ! git diff --exit-code -- llms.txt; then
+            echo "::error::llms.txt is out of sync with manifests. Run 'bun run gen-docs' locally and commit the result."
+            exit 1
+          fi
+
   secrets-scan:
     name: Secrets Scan
     runs-on: ubuntu-latest

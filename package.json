@@ -19,6 +19,7 @@
     "format:check": "oxfmt --check .",
     "typecheck": "bun run --filter='*' typecheck",
     "size": "bun run scripts/bundle-size.ts",
+    "gen-docs": "bun scripts/gen-docs.ts",
     "bench:reactivity": "bun scripts/bench/core/reactivity.ts",
     "bench:compiler": "bun scripts/bench/core/compiler.ts",
     "bench:router": "bun scripts/bench/core/router.ts",

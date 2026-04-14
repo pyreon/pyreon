@@ -88,7 +88,7 @@ Document the bisect result in the PR description: "Bisect-verified: reverted fix
    - `.claude/rules/anti-patterns.md` if a new anti-pattern was discovered
    - `.claude/rules/` — any other rule file relevant to the change
 
-   Total: 9 surfaces. This list is unsustainable manually — see plan T2.1/T2.5.1 for the manifest-based generation that will collapse most of this to 1 source. The `@pyreon/manifest` foundation type is shipped (private pkg at `packages/internals/manifest/`); once a package has a `manifest.ts`, API-surface updates belong there, not spread across llms.txt / llms-full.txt / MCP api-reference. Until every package is migrated, unmigrated packages still need every surface updated by hand.
+   Total: 9 surfaces. This list is unsustainable manually — see plan T2.1/T2.5.1 for the manifest-based generation that will collapse most of this to 1 source. The generator is now live: `bun run gen-docs` regenerates `llms.txt` from every `packages/<category>/<pkg>/manifest.ts` that exists. Migrated packages so far: `@pyreon/flow`. For migrated packages, edit the manifest — do NOT touch the generated line in llms.txt directly; the `Docs Sync` CI job will fail if the two drift. Unmigrated packages still need every surface updated by hand.
 5. No breaking changes without discussion
 6. Honest quality assessment
 
