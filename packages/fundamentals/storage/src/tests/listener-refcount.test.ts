@@ -31,7 +31,7 @@ describe('useStorage — cross-tab listener refcount (regression)', () => {
   })
 
   const countCalls = (spy: ReturnType<typeof vi.spyOn>, event: string): number =>
-    spy.mock.calls.filter((c) => c[0] === event).length
+    spy.mock.calls.filter((c: unknown[]) => c[0] === event).length
 
   it('attaches the storage listener exactly once when multiple signals exist', () => {
     useStorage('a', 0)
