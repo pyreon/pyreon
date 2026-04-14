@@ -1,4 +1,13 @@
-import type { PackageManifest } from './types'
+import type { Gotcha, PackageManifest } from './types'
+
+/**
+ * Coerce a `Gotcha` (bare string or `{label, note}`) into its text pair.
+ * Shared by both the llms.txt one-liner teaser and the llms-full
+ * blockquote renderer.
+ */
+function gotchaParts(g: Gotcha): { label: string; note: string } {
+  return typeof g === 'string' ? { label: 'Note', note: g } : g
+}
 
 /**
  * Render a manifest to its one-line `llms.txt` bullet form. Compact by
@@ -31,8 +40,99 @@ import type { PackageManifest } from './types'
 export function renderLlmsTxtLine(m: PackageManifest): string {
   const peerSuffix =
     m.peerDeps && m.peerDeps.length > 0 ? ` (peer: ${m.peerDeps.join(', ')})` : ''
-  const gotchaSuffix = m.gotchas && m.gotchas.length > 0 ? `. ${m.gotchas[0]}` : ''
+  // Teaser uses the first gotcha's `note` text regardless of form —
+  // the `label` is a heading cue for llms-full blockquotes, not for
+  // the one-line bullet.
+  const gotchaSuffix =
+    m.gotchas && m.gotchas.length > 0 ? `. ${gotchaParts(m.gotchas[0]!).note}` : ''
   return `- ${m.name} — ${m.tagline}${peerSuffix}${gotchaSuffix}`
+}
+
+/**
+ * Render a manifest to its `llms-full.txt` per-package section. Emits:
+ *
+ * ```
+ * ## @pyreon/<name> — <title OR tagline>
+ *
+ * <description paragraph — from manifest.description>
+ *
+ * ```typescript
+ * <longExample OR synthesized from api[].example concatenation>
+ * ```
+ *
+ * > **Peer dep**: ...              (only if peerDeps set)
+ * >
+ * > **<Label>**: ...               (one blockquote per gotcha —
+ *                                    labeled form uses the label,
+ *                                    bare string defaults to "Note")
+ * ```
+ *
+ * Output terminates with a single trailing newline so the generator
+ * can concatenate multiple sections with blank-line separators that
+ * match the existing file's shape.
+ *
+ * @example
+ * ```ts
+ * import { defineManifest, renderLlmsFullSection } from '@pyreon/manifest'
+ *
+ * const m = defineManifest({
+ *   name: '@pyreon/flow',
+ *   title: 'Flow Diagrams',
+ *   tagline: 'Reactive flow diagrams',
+ *   description: 'Reactive flow diagrams for Pyreon. Signal-native nodes and edges.',
+ *   category: 'browser',
+ *   features: [],
+ *   api: [],
+ *   longExample: `const flow = createFlow({ nodes: [], edges: [] })`,
+ *   gotchas: [{ label: 'JSX generics', note: '<Flow<T> /> is invalid JSX.' }],
+ * })
+ * renderLlmsFullSection(m)
+ * // → "## @pyreon/flow — Flow Diagrams\n\nReactive flow diagrams for Pyreon. ...\n\n```typescript\n...\n```\n\n> **JSX generics**: ...\n"
+ * ```
+ */
+export function renderLlmsFullSection(m: PackageManifest): string {
+  const title = m.title ?? m.tagline
+  const header = `## ${m.name} — ${title}`
+
+  const body = m.longExample ?? synthesizeExampleFromApi(m)
+  const codeBlock = `\`\`\`typescript\n${body}\n\`\`\``
+
+  const blockquotes: string[] = []
+  if (m.peerDeps && m.peerDeps.length > 0) {
+    blockquotes.push(
+      `> **Peer dep${m.peerDeps.length === 1 ? '' : 's'}**: ${m.peerDeps.join(', ')}`,
+    )
+  }
+  for (const gotcha of m.gotchas ?? []) {
+    const { label, note } = gotchaParts(gotcha)
+    blockquotes.push(`> **${label}**: ${note}`)
+  }
+
+  // description sits between the header and the code block when
+  // present. Empty / whitespace-only / missing descriptions suppress
+  // the paragraph entirely — no silent fallback to tagline. Authors
+  // who want prose above the code block set `description` to a real
+  // sentence; everyone else gets `## header → code block` directly.
+  const prose = (m.description ?? '').trim()
+
+  const parts = prose
+    ? [header, '', prose, '', codeBlock]
+    : [header, '', codeBlock]
+  if (blockquotes.length > 0) {
+    parts.push('', blockquotes.join('\n>\n'))
+  }
+  return parts.join('\n') + '\n'
+}
+
+function synthesizeExampleFromApi(m: PackageManifest): string {
+  // Fallback path when `longExample` is not set — concatenate
+  // individual `api[].example` blocks with blank-line separators.
+  // Not as narrative as a hand-crafted longExample but gives
+  // something coherent for packages that skip the optional field.
+  return m.api
+    .filter((entry) => entry.example.trim().length > 0)
+    .map((entry) => entry.example)
+    .join('\n\n')
 }
 
 /**

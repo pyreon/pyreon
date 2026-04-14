@@ -1,12 +1,12 @@
 /**
  * gen-docs core — orchestration logic for the manifest → docs pipeline.
  *
- * Pure rendering (manifest → line) lives in `@pyreon/manifest` along
- * with filesystem walking (`findManifests`). This file owns the
- * orchestration step: given a file's contents + a set of manifests,
- * compute the regenerated contents. Also owns the `main()` entry
- * point that the CLI wraps, with injectable I/O so tests can run
- * in-process without `spawnSync` overhead.
+ * Pure rendering (manifest → line, manifest → section) lives in
+ * `@pyreon/manifest` along with filesystem walking (`findManifests`).
+ * This file owns the orchestration step: given a file's contents + a
+ * set of manifests, compute the regenerated contents. Also owns the
+ * `main()` entry point that the CLI wraps, with injectable I/O so
+ * tests can run in-process without `spawnSync` overhead.
  */
 
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -16,6 +16,7 @@ import {
   formatLineDiff,
   type LoadedManifest,
   type PackageManifest,
+  renderLlmsFullSection,
   renderLlmsTxtLine,
 } from '../packages/internals/manifest/src'
 
@@ -68,6 +69,89 @@ export function regenerateLlmsTxt(
 }
 
 /**
+ * Replace per-package sections in `llms-full.txt` with content
+ * regenerated from the manifests. A section starts at
+ * `^## <name> — ` and runs until the next `^## ` header or
+ * end-of-file. The render already terminates with one newline; we
+ * add a blank line separator to match the hand-written file's shape.
+ *
+ * Manifests without a matching section are reported in
+ * `missingEntries` so callers can treat them as hard errors.
+ *
+ * @example
+ * ```ts
+ * import { regenerateLlmsFullTxt } from './gen-docs-core'
+ *
+ * const before = readFileSync('llms-full.txt', 'utf8')
+ * const { contents, missingEntries } = regenerateLlmsFullTxt(before, manifests)
+ * if (missingEntries.length > 0) throw new Error(`missing: ${missingEntries.join(', ')}`)
+ * ```
+ */
+export function regenerateLlmsFullTxt(
+  contents: string,
+  manifests: LoadedManifest[],
+): RegenerateResult {
+  let next = contents
+  let changedLines = 0
+  const missingEntries: string[] = []
+  for (const { manifest } of manifests) {
+    const sectionRange = findSectionRange(next, manifest.name)
+    if (!sectionRange) {
+      missingEntries.push(manifest.name)
+      continue
+    }
+    const [start, end] = sectionRange
+    const prev = next
+    // `renderLlmsFullSection` output ends with one `\n`. We replace the
+    // exclusive range [start, end).
+    //
+    // The existing file shape separates sections with a blank line
+    // (body ends `\n`, next line is `## next` — producing `...\n\n##
+    // next`). Original [start, end) covers body up to but not
+    // including `## next`, so it includes the intermediate `\n`
+    // separator. Append that `\n` ONLY when the section wasn't last
+    // in file — at EOF there's no separator to preserve.
+    const hadNextHeader = end < next.length
+    const replacement = renderLlmsFullSection(manifest) + (hadNextHeader ? '\n' : '')
+    next = next.slice(0, start) + replacement + next.slice(end)
+    // Count one per SECTION modified, not per line — matches the
+    // stdout message "N sections regenerated".
+    if (prev !== next) changedLines++
+  }
+  return { contents: next, changedLines, missingEntries }
+}
+
+/**
+ * Find the character range `[start, end)` of a per-package section in
+ * `llms-full.txt`. Returns null if the section doesn't exist. A
+ * section starts at the line beginning `## <name> — ` and runs until
+ * the next `^## ` header or end-of-file.
+ *
+ * Implementation note: a sentinel `'\n'` is logically prepended to the
+ * content so we can search for `\n## <name> —` uniformly whether the
+ * header is at file offset 0 or elsewhere. The returned indices are
+ * adjusted back to the original content's coordinate space. This
+ * collapses what was previously a forked control flow (offset-0 vs
+ * anywhere-else) into a single search.
+ */
+function findSectionRange(content: string, name: string): [number, number] | null {
+  const sentinel = '\n' + content
+  const headerPattern = `\n## ${name} —`
+  const headerIdx = sentinel.indexOf(headerPattern)
+  if (headerIdx === -1) return null
+  // Sentinel→original coordinate conversion: the `##` byte sits at
+  // sentinel position `headerIdx + 1`, which maps to original
+  // position `headerIdx + 1 - 1 = headerIdx`. Same trick for the
+  // next-header lookup — the `##` byte of the NEXT header sits at
+  // original position `nextHeaderIdx` in sentinel-space, which is
+  // already the correct exclusive upper bound in original-space.
+  const sectionStart = headerIdx
+  const nextHeaderIdx = sentinel.indexOf('\n## ', headerIdx + 1)
+  const sectionEnd = nextHeaderIdx === -1 ? content.length : nextHeaderIdx
+  return [sectionStart, sectionEnd]
+}
+
+/**
  * Injectable I/O for `main()` — tests replace these to capture output
  * in-process. Default bindings point at the real process streams.
  */
@@ -93,6 +177,9 @@ export const defaultIO: CliIO = {
  * Main entry — orchestrates find → regenerate → write (or `--check`).
  * Injectable I/O keeps tests fast in-process and avoids shelling out
  * to `bun` via `spawnSync` for every scenario.
+ *
+ * Regenerates both `llms.txt` (one-line bullets) and `llms-full.txt`
+ * (per-package sections) from the same manifest set.
  *
  * @example
  * ```ts
@@ -127,49 +214,87 @@ export async function main(
     return
   }
 
+  // ─── llms.txt ─────────────────────────────────────────────────────────
   const llmsTxtPath = join(repoRoot, 'llms.txt')
-  const before = readFileSync(llmsTxtPath, 'utf8')
-  const { contents: after, changedLines, missingEntries } = regenerateLlmsTxt(
-    before,
-    manifests,
-  )
+  const llmsBefore = readFileSync(llmsTxtPath, 'utf8')
+  const llmsResult = regenerateLlmsTxt(llmsBefore, manifests)
 
-  if (missingEntries.length > 0) {
-    io.stderr(
-      `[gen-docs] ERROR: these manifests have no matching bullet in llms.txt\n` +
-        `(expected a line starting with "- <name> —" — placement goes under the\n` +
-        `package list section that matches the package's category — "core",\n` +
-        `"fundamentals", "tools", "ui-system", "internals", or "zero"):\n` +
-        missingEntries.map((n) => `  - ${n}`).join('\n') +
-        `\n\nAdd the bullet by hand first (form: \`- <name> — <any text>\`, the\n` +
-        `generator will then regenerate the tail), then re-run gen-docs.`,
-    )
+  if (llmsResult.missingEntries.length > 0) {
+    io.stderr(buildMissingEntriesError('llms.txt', llmsResult.missingEntries))
     return io.exit(1)
   }
 
-  if (before !== after) {
-    if (check) {
-      io.stderr('[gen-docs] llms.txt is out of sync with manifests.\n')
-      io.stderr(formatLineDiff(before, after))
+  // ─── llms-full.txt ────────────────────────────────────────────────────
+  const llmsFullPath = join(repoRoot, 'llms-full.txt')
+  const llmsFullBefore = readFileSync(llmsFullPath, 'utf8')
+  const llmsFullResult = regenerateLlmsFullTxt(llmsFullBefore, manifests)
+
+  if (llmsFullResult.missingEntries.length > 0) {
+    io.stderr(buildMissingEntriesError('llms-full.txt', llmsFullResult.missingEntries))
+    return io.exit(1)
+  }
+
+  // ─── Apply or check ───────────────────────────────────────────────────
+  const llmsChanged = llmsBefore !== llmsResult.contents
+  const llmsFullChanged = llmsFullBefore !== llmsFullResult.contents
+
+  if (check) {
+    if (llmsChanged || llmsFullChanged) {
+      io.stderr('[gen-docs] generated docs are out of sync with manifests.\n')
+      if (llmsChanged) {
+        io.stderr('\n--- llms.txt ---')
+        io.stderr(formatLineDiff(llmsBefore, llmsResult.contents))
+      }
+      if (llmsFullChanged) {
+        io.stderr('\n--- llms-full.txt ---')
+        io.stderr(formatLineDiff(llmsFullBefore, llmsFullResult.contents))
+      }
       io.stderr('\nFix: run `bun run gen-docs` and commit the result.')
       return io.exit(1)
     }
-    writeFileSync(llmsTxtPath, after)
+    return
+  }
+
+  if (llmsChanged) {
+    writeFileSync(llmsTxtPath, llmsResult.contents)
     io.stdout(
-      `[gen-docs] llms.txt: ${changedLines} line${changedLines === 1 ? '' : 's'} regenerated`,
+      `[gen-docs] llms.txt: ${llmsResult.changedLines} line${llmsResult.changedLines === 1 ? '' : 's'} regenerated`,
     )
-  } else if (!check) {
-    io.stdout(`[gen-docs] llms.txt: no changes (already in sync)`)
+  } else {
+    io.stdout('[gen-docs] llms.txt: no changes (already in sync)')
+  }
+
+  if (llmsFullChanged) {
+    writeFileSync(llmsFullPath, llmsFullResult.contents)
+    io.stdout(
+      `[gen-docs] llms-full.txt: ${llmsFullResult.changedLines} section${llmsFullResult.changedLines === 1 ? '' : 's'} regenerated`,
+    )
+  } else {
+    io.stdout('[gen-docs] llms-full.txt: no changes (already in sync)')
   }
 }
 
-// Re-export for test convenience — keeps a single import origin for
-// consumers that don't care about the physical split between
-// @pyreon/manifest (pure helpers) and this file (orchestration).
+function buildMissingEntriesError(fileLabel: string, names: string[]): string {
+  const placementHint =
+    fileLabel === 'llms.txt'
+      ? 'bullet (form: `- <name> — <any text>`) under the package list section that matches the package\'s category'
+      : 'section (form: `## <name> — <title>` followed by a code block) at an appropriate location'
+  return (
+    `[gen-docs] ERROR: these manifests have no matching ${fileLabel} entry\n` +
+    `(valid category sections: "core", "fundamentals", "tools", "ui-system",\n` +
+    `"internals", "zero"):\n` +
+    names.map((n) => `  - ${n}`).join('\n') +
+    `\n\nAdd the ${placementHint} by hand first — the generator will\n` +
+    `then regenerate the body — and re-run gen-docs.`
+  )
+}
+
+// Re-export for test convenience.
 export {
   findManifests,
   formatLineDiff,
   type LoadedManifest,
   type PackageManifest,
+  renderLlmsFullSection,
   renderLlmsTxtLine,
 } from '../packages/internals/manifest/src'

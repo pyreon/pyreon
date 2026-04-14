@@ -130,6 +130,16 @@ export interface ApiEntry {
 }
 
 /**
+ * A package-level gotcha. Accepts either a bare string (rendered as a
+ * generic `> **Note**: <text>` blockquote) or an object with an
+ * explicit `label` that becomes the blockquote heading (`> **<label>**:
+ * <note>`). The labeled form preserves specificity for gotchas that
+ * warrant their own heading — e.g. "Peer dep", "JSX generics",
+ * "Migration v1→v2" — matching the hand-written `llms-full.txt` style.
+ */
+export type Gotcha = string | { label: string; note: string }
+
+/**
  * Shape of a single package's manifest. One manifest per package,
  * placed at `packages/<category>/<pkg>/src/manifest.ts` — inside the
  * package's `rootDir` so tsc type-checks it alongside the rest of
@@ -205,10 +215,36 @@ export interface PackageManifest {
    * runtime surprises, cross-package interactions. Feeds the Common
    * Issues section in CLAUDE.md and the MCP `diagnose` tool (T2.5.5).
    *
+   * Entries accept two forms (see `Gotcha` type):
+   *
+   *   - bare `string` — rendered as `> **Note**: <text>`
+   *   - `{ label, note }` — rendered as `> **<label>**: <note>`
+   *
    * Per-API mistakes go on the `mistakes` field of the individual
    * `ApiEntry` instead.
    */
-  gotchas?: string[]
+  gotchas?: Gotcha[]
+  /**
+   * Optional narrative code block for the `llms-full.txt` per-package
+   * section. When set, the generator emits this verbatim inside a
+   * TypeScript code fence instead of composing individual `api[]`
+   * examples. Use for packages whose idiomatic usage is best shown
+   * as one end-to-end example rather than disjoint API snippets
+   * (e.g. `@pyreon/flow` — create flow + add node + layout + render).
+   *
+   * Omit for packages whose API entries' individual `example` fields
+   * compose into a natural whole; the generator will concatenate
+   * them with headers.
+   */
+  longExample?: string
+  /**
+   * Optional short title for the `llms-full.txt` section header
+   * (`## @pyreon/<name> — <title>`). Defaults to the `tagline` when
+   * omitted, but existing sections use short, punchy titles
+   * ("Flow Diagrams", "State Management") that the long tagline
+   * wouldn't match. Keep ≤40 chars to match existing convention.
+   */
+  title?: string
   /**
    * Package version the manifest was last audited against. Generator
    * may cross-check against the real `package.json` `version` field in

@@ -1,8 +1,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { regenerateLlmsTxt } from '../../../../../scripts/gen-docs-core'
-import { findManifests, formatLineDiff, renderLlmsTxtLine } from '../index'
+import {
+  regenerateLlmsFullTxt,
+  regenerateLlmsTxt,
+} from '../../../../../scripts/gen-docs-core'
+import {
+  findManifests,
+  formatLineDiff,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '../index'
 import type { PackageManifest } from '../types'
 
 // Unit coverage for scripts/gen-docs.ts. Lives in @pyreon/manifest
@@ -57,6 +65,18 @@ describe('renderLlmsTxtLine', () => {
     expect(
       renderLlmsTxtLine({ ...minimalManifest, peerDeps: [], gotchas: [] }),
     ).toBe('- @pyreon/x — does things')
+  })
+
+  it('teases the labeled-gotcha note (not the label itself) for `{label, note}` form', () => {
+    // The label is a heading cue for llms-full blockquotes, not for
+    // the one-line bullet teaser — we want the content, not "Note" /
+    // "Mount once" / etc. showing up in the bullet.
+    expect(
+      renderLlmsTxtLine({
+        ...minimalManifest,
+        gotchas: [{ label: 'Mount once', note: 'nodes mount exactly once' }],
+      }),
+    ).toBe('- @pyreon/x — does things. nodes mount exactly once')
   })
 })
 
@@ -238,5 +258,365 @@ describe('formatLineDiff', () => {
     // (pairing every index where strings differ). LCS correctly
     // identifies b and c as common — only X is inserted.
     expect(formatLineDiff('a\nb\nc\nd', 'a\nX\nb\nc\nd')).toBe('+ X')
+  })
+})
+
+describe('renderLlmsFullSection', () => {
+  const base: PackageManifest = {
+    name: '@pyreon/x',
+    tagline: 'does things',
+    description: 'd',
+    category: 'universal',
+    features: [],
+    api: [],
+  }
+
+  it('emits header, description, and a typescript code block', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      title: 'X Package',
+      longExample: `const x = 1`,
+    })
+    // description "d" sits between header and code block
+    expect(out).toBe('## @pyreon/x — X Package\n\nd\n\n```typescript\nconst x = 1\n```\n')
+  })
+
+  it('falls back to tagline when title is unset', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      longExample: `const x = 1`,
+    })
+    expect(out.startsWith('## @pyreon/x — does things\n')).toBe(true)
+  })
+
+  it('suppresses the prose paragraph when description is empty', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      description: '',
+      longExample: `const x = 1`,
+    })
+    // Empty description → no prose paragraph between header and code
+    expect(out).toBe('## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n')
+  })
+
+  it('suppresses the prose paragraph when description is whitespace-only', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      description: '   \n  ',
+      longExample: `const x = 1`,
+    })
+    expect(out).toBe('## @pyreon/x — does things\n\n```typescript\nconst x = 1\n```\n')
+  })
+
+  it('synthesizes body from api[].example when longExample is absent', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      api: [
+        {
+          name: 'fn1',
+          kind: 'function',
+          signature: '() => void',
+          summary: 's',
+          example: `fn1()`,
+        },
+        {
+          name: 'fn2',
+          kind: 'function',
+          signature: '() => number',
+          summary: 's',
+          example: `const n = fn2()`,
+        },
+      ],
+    })
+    expect(out).toContain('fn1()\n\nconst n = fn2()')
+  })
+
+  it('appends peerDeps as a blockquote when present', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/runtime-dom'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer dep**: @pyreon/runtime-dom')
+  })
+
+  it('pluralizes "Peer deps" for multiple entries', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/a', '@pyreon/b'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer deps**: @pyreon/a, @pyreon/b')
+  })
+
+  it('emits one blockquote note per bare-string gotcha with `> **Note**:` prefix', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: ['first gotcha', 'second gotcha'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Note**: first gotcha')
+    expect(out).toContain('> **Note**: second gotcha')
+  })
+
+  it('uses the custom label for `{label, note}` gotchas', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: [
+        { label: 'Migration v1→v2', note: 'rename foo → bar' },
+        { label: 'JSX generics', note: 'not parameterisable at call site' },
+      ],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Migration v1→v2**: rename foo → bar')
+    expect(out).toContain('> **JSX generics**: not parameterisable at call site')
+    expect(out).not.toContain('> **Note**:')
+  })
+
+  it('mixes bare strings and labeled objects in one gotchas array', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      gotchas: [
+        'first (bare)',
+        { label: 'Custom', note: 'second (labeled)' },
+        'third (bare)',
+      ],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Note**: first (bare)')
+    expect(out).toContain('> **Custom**: second (labeled)')
+    expect(out).toContain('> **Note**: third (bare)')
+  })
+
+  it('joins peerDeps and gotchas with blockquote separator `>`', () => {
+    const out = renderLlmsFullSection({
+      ...base,
+      peerDeps: ['@pyreon/runtime-dom'],
+      gotchas: ['watch out'],
+      longExample: `code`,
+    })
+    expect(out).toContain('> **Peer dep**: @pyreon/runtime-dom\n>\n> **Note**: watch out')
+  })
+
+  it('terminates with a single trailing newline', () => {
+    const out = renderLlmsFullSection({ ...base, longExample: `code` })
+    expect(out.endsWith('\n')).toBe(true)
+    expect(out.endsWith('\n\n')).toBe(false)
+  })
+})
+
+describe('regenerateLlmsFullTxt', () => {
+  const baseline = [
+    '# llms-full.txt',
+    '',
+    '## @pyreon/a — A',
+    '',
+    '```typescript',
+    'old A body',
+    '```',
+    '',
+    '## @pyreon/flow — Flow Diagrams',
+    '',
+    '```typescript',
+    'old flow body',
+    '```',
+    '',
+    '> **Peer dep**: old',
+    '',
+    '## @pyreon/z — Z',
+    '',
+    'end',
+    '',
+  ].join('\n')
+
+  const flowManifest: PackageManifest = {
+    name: '@pyreon/flow',
+    title: 'Flow Diagrams',
+    tagline: 'Reactive flow diagrams',
+    description: 'd',
+    category: 'browser',
+    peerDeps: ['@pyreon/runtime-dom'],
+    features: [],
+    api: [],
+    longExample: `const flow = createFlow({})`,
+  }
+
+  function wrap(m: PackageManifest) {
+    return [{ path: '/virtual/manifest.ts', manifest: m }]
+  }
+
+  it('replaces the flow section body without touching neighbours', () => {
+    const result = regenerateLlmsFullTxt(baseline, wrap(flowManifest))
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(1)
+    // Flow's new body landed
+    expect(result.contents).toContain('const flow = createFlow({})')
+    // Old body is gone
+    expect(result.contents).not.toContain('old flow body')
+    // Neighbours untouched
+    expect(result.contents).toContain('old A body')
+    expect(result.contents).toContain('## @pyreon/z — Z')
+  })
+
+  it('reports manifests whose section cannot be found', () => {
+    const result = regenerateLlmsFullTxt(
+      baseline,
+      wrap({ ...flowManifest, name: '@pyreon/missing' }),
+    )
+    expect(result.missingEntries).toEqual(['@pyreon/missing'])
+    expect(result.contents).toBe(baseline)
+  })
+
+  it('is idempotent', () => {
+    const once = regenerateLlmsFullTxt(baseline, wrap(flowManifest))
+    const twice = regenerateLlmsFullTxt(once.contents, wrap(flowManifest))
+    expect(twice.changedLines).toBe(0)
+    expect(twice.contents).toBe(once.contents)
+  })
+
+  it('does not match sections for other packages with similar names', () => {
+    const content = [
+      '## @pyreon/flow — Real',
+      '',
+      'real flow',
+      '',
+      '## @pyreon/flow-extra — Different',
+      '',
+      'different',
+      '',
+    ].join('\n')
+    const result = regenerateLlmsFullTxt(content, wrap(flowManifest))
+    expect(result.contents).toContain('## @pyreon/flow — Flow Diagrams')
+    expect(result.contents).toContain('## @pyreon/flow-extra — Different')
+    expect(result.contents).toContain('different')
+  })
+
+  it('handles a section that starts at file offset 0 (no preceding newline)', () => {
+    // `findSectionRange` has a dedicated path for the case where the
+    // section header is the literal first content — no `\n## <name> —`
+    // to match on, so it falls through to `content.startsWith(...)`.
+    // Previously untested; regression guard for anyone refactoring
+    // the section-finder.
+    const m: PackageManifest = {
+      name: '@pyreon/first',
+      title: 'First',
+      tagline: 'first pkg',
+      description: 'first description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `const first = 1`,
+    }
+    const content = [
+      '## @pyreon/first — First',
+      '',
+      'old first',
+      '',
+      '```typescript',
+      'old body',
+      '```',
+      '',
+      '## @pyreon/second — Second',
+      '',
+      'second body untouched',
+      '',
+    ].join('\n')
+
+    const result = regenerateLlmsFullTxt(content, [{ path: '/first', manifest: m }])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(1)
+    expect(result.contents).toContain('## @pyreon/first — First')
+    expect(result.contents).toContain('first description')
+    expect(result.contents).toContain('const first = 1')
+    expect(result.contents).not.toContain('old body')
+    // Neighbour section survives — the at-offset-0 path still finds
+    // the next header correctly.
+    expect(result.contents).toContain('## @pyreon/second — Second')
+    expect(result.contents).toContain('second body untouched')
+  })
+
+  it('regenerates multiple sections without index-drift between replacements', () => {
+    // Two manifests, two sections. Section A's replacement may shrink
+    // or grow the file; section B's range must still find its header
+    // after A's replacement. Regression guard for the
+    // "find-then-splice loop" approach — each iteration recomputes the
+    // section range against the MUTATED `next` string, so it stays
+    // correct by construction. This test proves that.
+    const manifestA: PackageManifest = {
+      name: '@pyreon/a',
+      title: 'Package A',
+      tagline: 'a tagline',
+      description: 'a description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `new A body (longer than original)`,
+    }
+    const manifestB: PackageManifest = {
+      name: '@pyreon/b',
+      title: 'Package B',
+      tagline: 'b tagline',
+      description: 'b description',
+      category: 'universal',
+      features: [],
+      api: [],
+      longExample: `new B body`,
+    }
+
+    const content = [
+      '# preamble',
+      '',
+      '## @pyreon/a — A',
+      '',
+      'old a prose',
+      '',
+      '```typescript',
+      'short A',
+      '```',
+      '',
+      '## @pyreon/middle — Untouched',
+      '',
+      'neighbour that must survive',
+      '',
+      '```typescript',
+      'middle body',
+      '```',
+      '',
+      '## @pyreon/b — B',
+      '',
+      'old b prose',
+      '',
+      '```typescript',
+      'short B',
+      '```',
+      '',
+    ].join('\n')
+
+    const result = regenerateLlmsFullTxt(content, [
+      { path: '/a', manifest: manifestA },
+      { path: '/b', manifest: manifestB },
+    ])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(2)
+
+    // Both sections updated
+    expect(result.contents).toContain('new A body (longer than original)')
+    expect(result.contents).toContain('new B body')
+    // Both old bodies gone
+    expect(result.contents).not.toContain('short A')
+    expect(result.contents).not.toContain('short B')
+    // Middle section survived intact — the critical assertion:
+    // section A's replacement changed the file length BEFORE B's
+    // range lookup, yet B was still found correctly AND middle's
+    // body survived between them.
+    expect(result.contents).toContain('## @pyreon/middle — Untouched')
+    expect(result.contents).toContain('neighbour that must survive')
+    expect(result.contents).toContain('middle body')
+    // Section order preserved
+    const idxA = result.contents.indexOf('## @pyreon/a —')
+    const idxMiddle = result.contents.indexOf('## @pyreon/middle —')
+    const idxB = result.contents.indexOf('## @pyreon/b —')
+    expect(idxA).toBeLessThan(idxMiddle)
+    expect(idxMiddle).toBeLessThan(idxB)
   })
 })

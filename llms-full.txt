@@ -933,6 +933,8 @@ await doc.toMarkdown()  // Markdown
 
 ## @pyreon/flow — Flow Diagrams
 
+Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.
+
 ```typescript
 import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
 
@@ -999,9 +1001,15 @@ const json = flow.toJSON()         // { nodes, edges, viewport }
 flow.fromJSON({ nodes, edges })    // restore from saved state
 ```
 
-> **Peer dep**: `@pyreon/runtime-dom` — flow's JSX components emit `_tpl()` calls. Consumer apps must declare it.
+> **Peer dep**: @pyreon/runtime-dom
 >
-> **Note on JSX generics**: Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.
+> **Note**: LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it.
+>
+> **Mount once**: Each node mounts exactly once across the lifetime of the graph — drags, selection, and updateNode mutations patch via per-node reactive accessors, not remount.
+>
+> **Peer dep rationale**: `@pyreon/runtime-dom` is required in consumer apps because flow JSX components emit `_tpl()` / `_bind()` calls — declare it as a direct dependency, not a transitive one.
+>
+> **JSX generics**: Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.
 
 ## @pyreon/storage — Persistent Reactive Storage
 

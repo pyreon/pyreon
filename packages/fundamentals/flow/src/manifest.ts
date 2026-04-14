@@ -8,12 +8,76 @@ import { defineManifest } from '@pyreon/manifest'
  */
 export default defineManifest({
   name: '@pyreon/flow',
+  title: 'Flow Diagrams',
   tagline:
     'Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs',
   description:
     'Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events + CSS transforms, auto-layout via lazy-loaded elkjs. No D3 dependency. Each node mounts exactly once across the lifetime of the graph; drags and selection patches are O(1) via per-node reactive accessors, so a 60fps drag in a 1000-node graph stays cheap.',
   category: 'browser',
   peerDeps: ['@pyreon/runtime-dom'],
+  longExample: `import { createFlow, useFlow, Flow, Background, Controls, MiniMap, Handle, Position, type NodeComponentProps } from '@pyreon/flow'
+
+// createFlow is generic over node \`data\` shape — typed consumers
+// pass their data type explicitly and \`node.data.kind\` narrows
+// correctly without any index signature on the data interface.
+interface WorkflowData {
+  kind: 'trigger' | 'filter' | 'transform' | 'notify'
+  label: string
+}
+
+const flow = createFlow<WorkflowData>({
+  nodes: [
+    { id: '1', type: 'custom', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'Start' } },
+    { id: '2', type: 'custom', position: { x: 200, y: 100 }, data: { kind: 'notify', label: 'End' } },
+  ],
+  edges: [{ id: 'e1', source: '1', target: '2', animated: true }],
+})
+
+flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
+flow.addEdge({ source: '1', target: '3' })
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // lazy-loaded elkjs
+// \`direction\`/\`layerSpacing\`/\`edgeRouting\` apply to layered/tree only —
+// \`force\`/\`stress\`/\`radial\`/\`box\`/\`rectpacking\` silently ignore them.
+// \`nodeSpacing\` is the only LayoutOptions field respected by every algorithm.
+
+// Prefer \`useFlow\` inside components — it's \`createFlow\` + auto-dispose
+// on unmount. Use \`createFlow\` only for singleton/app-store flows that
+// outlive the component tree.
+const MyDiagram = () => {
+  const flow = useFlow<WorkflowData>({ nodes: [], edges: [] })
+  return <Flow instance={flow}><Background /></Flow>
+}
+
+// Custom node renderers — every prop except \`id\` is a REACTIVE
+// ACCESSOR (\`() => T\`), not a plain value. Read inside reactive
+// scopes (JSX expression thunks, effect, computed) so the node
+// patches in place when ANY underlying state changes. Each node
+// mounts EXACTLY ONCE across the lifetime of the graph regardless
+// of how many drags, selection clicks, or updateNode mutations
+// happen — internally <Flow> uses <For> keyed by node.id plus
+// per-node accessors that read live state from instance.nodes().
+function CustomNode(props: NodeComponentProps<WorkflowData>) {
+  return (
+    <div
+      class={() => (props.selected() ? 'selected' : '')}
+      style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
+    >
+      <Handle type="target" position={Position.Left} />
+      {() => props.data().label}
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+<Flow instance={flow} nodeTypes={{ custom: CustomNode }}>
+  <Background variant="dots" gap={20} />
+  <Controls position="bottom-left" />
+  <MiniMap nodeColor={(node) => '#6366f1'} />
+</Flow>
+
+// Serialization round-trips for sidecar editors / persistence:
+const json = flow.toJSON()         // { nodes, edges, viewport }
+flow.fromJSON({ nodes, edges })    // restore from saved state`,
   features: [
     'createFlow<TData> generic over node data shape',
     'useFlow(config) component-scoped wrapper that auto-disposes on unmount',
@@ -128,8 +192,22 @@ export default defineManifest({
     },
   ],
   gotchas: [
+    // First gotcha also feeds the llms.txt one-liner teaser — keep it
+    // the most distinctive user-facing foot-gun, not a peer-dep note
+    // that duplicates the `(peer: ...)` bullet suffix. Bare string
+    // form → rendered as `> **Note**: ...` in llms-full.
     'LayoutOptions.direction / layerSpacing / edgeRouting apply to layered/tree only — force/stress/radial/box/rectpacking silently ignore them. nodeSpacing is the only field respected by every algorithm. Dev-mode console.warn fires when an option is set on an algorithm that ignores it.',
-    'Each node mounts exactly once across the lifetime of the graph — drags, selection, and updateNode mutations patch via per-node reactive accessors, not remount.',
-    '@pyreon/runtime-dom is a peer dep (required in consumer apps) because flow JSX templates emit _tpl() / _bind() calls.',
+    {
+      label: 'Mount once',
+      note: 'Each node mounts exactly once across the lifetime of the graph — drags, selection, and updateNode mutations patch via per-node reactive accessors, not remount.',
+    },
+    {
+      label: 'Peer dep rationale',
+      note: '`@pyreon/runtime-dom` is required in consumer apps because flow JSX components emit `_tpl()` / `_bind()` calls — declare it as a direct dependency, not a transitive one.',
+    },
+    {
+      label: 'JSX generics',
+      note: 'Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.',
+    },
   ],
 })
