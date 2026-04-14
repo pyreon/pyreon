@@ -45,6 +45,24 @@ describe('reactive style object — stale keys are removed', () => {
     expect(el.style.padding).toBe('')
   })
 
+  it('clears every tracked key when reactive style shrinks to an empty object', () => {
+    // Empty-object edge flagged on PR #233: if the new value is `{}`, the
+    // `value == null` branch in applyStyleProp is skipped, but the key-diff
+    // loop still iterates the prior tracked set and removes each one.
+    const style = signal<Record<string, string>>({ color: 'green', margin: '2px' })
+
+    mount(h('div', { style: () => style() }), container)
+
+    const el = container.querySelector('div') as HTMLDivElement
+    expect(el.style.color).toBe('green')
+    expect(el.style.margin).toBe('2px')
+
+    style.set({})
+
+    expect(el.style.color).toBe('')
+    expect(el.style.margin).toBe('')
+  })
+
   it('handles object → string → object transitions without leaking keys', () => {
     const style = signal<string | Record<string, string>>({ color: 'red' })
 
