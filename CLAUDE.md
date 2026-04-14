@@ -618,6 +618,8 @@ Rule of thumb:
 - Theme mode switching broken → PyreonUI now uses getter properties for reactive mode
 - `mergeProps` throwing `Cannot redefine property` → a source's getter descriptor was created without `configurable: true`. `mergeProps` now forces `configurable: true` on copied descriptors, but when authoring your own `Object.defineProperty` on an object that may later be merged, always set `configurable: true` explicitly.
 - Symbol-keyed props silently dropped by `splitProps` / `mergeProps` → now preserved. Both utilities use `Reflect.ownKeys` so symbol-keyed brands (e.g. `REACTIVE_PROP`) survive the split and merge.
+- `RefProp<T> = Ref<T> | RefCallback<T>` — the old narrow `(el: T) => void` mount-only arm was removed. Callback refs ALWAYS receive `el | null` at runtime; if you need a mount-only handler, accept `T | null` and early-return when null. Pairs with #233's null-on-unmount fix.
+- `<For>` SSR key markers (`<!--k:KEY-->`) now URL-encode the key and replace every `-` with `%2D` so user-controlled keys can never form `-->` and break out of the HTML comment.
 
 ## Testing
 

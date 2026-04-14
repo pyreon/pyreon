@@ -9,7 +9,8 @@ import { renderToString } from '../index'
 
 describe('For SSR — key marker safety', () => {
   it('emits one marker per item with the expected key for normal ids', async () => {
-    const items = signal([
+    type Row = { id: number; label: string }
+    const items = signal<Row[]>([
       { id: 1, label: 'a' },
       { id: 2, label: 'b' },
       { id: 3, label: 'c' },
@@ -17,8 +18,8 @@ describe('For SSR — key marker safety', () => {
     const html = await renderToString(
       h(For, {
         each: () => items(),
-        by: (r) => r.id,
-        children: (r: { id: number; label: string }) => h('li', null, r.label),
+        by: (r: Row) => r.id,
+        children: (r: Row) => h('li', null, r.label),
       }),
     )
 
@@ -34,11 +35,12 @@ describe('For SSR — key marker safety', () => {
     // Adversarial: a key that would, unsanitized, close the comment and
     // inject a <script> tag.
     const attackKey = '--><script>alert(1)</script><!--'
-    const items = signal([{ id: attackKey }])
+    type Row = { id: string }
+    const items = signal<Row[]>([{ id: attackKey }])
     const html = await renderToString(
       h(For, {
         each: () => items(),
-        by: (r) => r.id,
+        by: (r: Row) => r.id,
         children: () => h('li', null, 'x'),
       }),
     )
@@ -55,11 +57,12 @@ describe('For SSR — key marker safety', () => {
   })
 
   it('URL-encodes keys with special chars safely', async () => {
-    const items = signal([{ id: 'a&b=c d' }])
+    type Row = { id: string }
+    const items = signal<Row[]>([{ id: 'a&b=c d' }])
     const html = await renderToString(
       h(For, {
         each: () => items(),
-        by: (r) => r.id,
+        by: (r: Row) => r.id,
         children: () => h('li', null, 'x'),
       }),
     )
