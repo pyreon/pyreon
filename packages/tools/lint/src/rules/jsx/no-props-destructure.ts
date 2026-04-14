@@ -42,25 +42,40 @@ export const noPropsDestructure: Rule = {
   },
   create(context) {
     let functionDepth = 0
+    // oxc visitor doesn't pass `parent` to callbacks — previous
+    // `parent?.type === 'CallExpression'` check was silently inert. Pre-mark
+    // function nodes that appear as CallExpression arguments on the way in.
+    const callArgFns = new WeakSet<any>()
 
     const callbacks: VisitorCallbacks = {
+      CallExpression(node: any) {
+        for (const arg of node.arguments ?? []) {
+          if (
+            arg?.type === 'ArrowFunctionExpression' ||
+            arg?.type === 'FunctionExpression' ||
+            arg?.type === 'FunctionDeclaration'
+          ) {
+            callArgFns.add(arg)
+          }
+        }
+      },
       ArrowFunctionExpression(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth)
+        checkFunction(node, context, functionDepth, callArgFns)
       },
       'ArrowFunctionExpression:exit'() {
         functionDepth--
       },
       FunctionDeclaration(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth)
+        checkFunction(node, context, functionDepth, callArgFns)
       },
       'FunctionDeclaration:exit'() {
         functionDepth--
       },
       FunctionExpression(node: any) {
         functionDepth++
-        checkFunction(node, context, functionDepth)
+        checkFunction(node, context, functionDepth, callArgFns)
       },
       'FunctionExpression:exit'() {
         functionDepth--
@@ -70,7 +85,7 @@ export const noPropsDestructure: Rule = {
   },
 }
 
-function checkFunction(node: any, context: any, depth: number) {
+function checkFunction(node: any, context: any, depth: number, callArgFns: WeakSet<any>) {
   const params = node.params
   if (!params || params.length === 0) return
 
@@ -82,8 +97,7 @@ function checkFunction(node: any, context: any, depth: number) {
 
   // Skip functions passed as arguments to HOC factories
   // e.g. createLink(({ href, ...rest }) => <a {...rest} />)
-  const parent = node.parent
-  if (parent?.type === 'CallExpression' && parent.arguments?.includes(node)) return
+  if (callArgFns.has(node)) return
 
   const body = node.body
   if (!body) return

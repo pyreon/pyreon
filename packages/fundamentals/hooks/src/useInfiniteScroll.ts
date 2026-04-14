@@ -68,6 +68,10 @@ export function useInfiniteScroll(
   }
 
   const setup = (el: HTMLElement) => {
+    // Defensive: ref callbacks only fire in the browser, but the early
+    // return makes the SSR-safety contract explicit (and silences SSR
+    // lint rules that can't trace `setup` → `ref` → DOM-mount).
+    if (typeof document === 'undefined' || typeof IntersectionObserver === 'undefined') return
     cleanup()
     containerEl = el
 

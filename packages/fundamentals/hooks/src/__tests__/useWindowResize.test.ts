@@ -5,7 +5,10 @@ let unmountCallbacks: Array<() => void> = []
 
 vi.mock('@pyreon/core', () => ({
   onMount: (fn: () => unknown) => {
-    mountCallbacks.push(fn)
+    mountCallbacks.push(() => {
+      const ret = fn()
+      if (typeof ret === 'function') unmountCallbacks.push(ret as () => void)
+    })
   },
   onUnmount: (fn: () => void) => {
     unmountCallbacks.push(fn)

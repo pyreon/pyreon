@@ -1,4 +1,4 @@
-import { onMount, onUnmount } from '@pyreon/core'
+import { onMount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 export interface WindowSize {
@@ -18,24 +18,24 @@ export function useWindowResize(debounceMs = 200): () => WindowSize {
     height: typeof window !== 'undefined' ? window.innerHeight : 0,
   })
 
-  let timer: ReturnType<typeof setTimeout> | undefined
-
-  function onResize() {
-    if (timer !== undefined) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = undefined
-      size.set({ width: window.innerWidth, height: window.innerHeight })
-    }, debounceMs)
-  }
-
+  // Define listener inside `onMount` so the `window` reference is
+  // co-located with its registration (both run only in the browser).
+  // `onMount`'s return cleanup replaces the separate `onUnmount` call
+  // and keeps `onResize` in closure for `removeEventListener`.
   onMount(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const onResize = () => {
+      if (timer !== undefined) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = undefined
+        size.set({ width: window.innerWidth, height: window.innerHeight })
+      }, debounceMs)
+    }
     window.addEventListener('resize', onResize)
-    return undefined
-  })
-
-  onUnmount(() => {
-    window.removeEventListener('resize', onResize)
-    if (timer !== undefined) clearTimeout(timer)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (timer !== undefined) clearTimeout(timer)
+    }
   })
 
   return size

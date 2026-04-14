@@ -1509,7 +1509,165 @@ describe('component-context exemption (rules that only fire inside components/ho
       const diags = findByRule(result, rule)
       expect(diags.length).toBeGreaterThanOrEqual(1)
     })
+
+    it(`${rule}: fires inside an arrow-form component (\`const MyComp = () => …\`)`, () => {
+      const wrapped = `const MyComp = () => { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it(`${rule}: fires inside an arrow-form hook (\`const useFoo = () => …\`)`, () => {
+      const wrapped = `const useFoo = () => { ${source} }`
+      const result = lintSource(wrapped)
+      const diags = findByRule(result, rule)
+      expect(diags.length).toBeGreaterThanOrEqual(1)
+    })
   }
+})
+
+// Arrow-form hook implementations are now correctly detected by
+// `no-theme-outside-provider` (fixes a silent bug where the rule ignored
+// the most common React/Solid hook idiom).
+describe('no-theme-outside-provider: arrow-form hook implementation', () => {
+  it('silent inside `const useFoo = (...) => { useTheme() }` (hook delegates provider to caller)', () => {
+    const source = `
+      import { useTheme } from '@pyreon/styler'
+      export const useThemeValue = (path) => {
+        const theme = useTheme()
+        return theme?.[path]
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-theme-outside-provider')
+    expect(diags.length).toBe(0)
+  })
+
+  it('still fires inside a non-hook arrow function calling useTheme', () => {
+    const source = `
+      import { useTheme } from '@pyreon/styler'
+      export const getColor = () => useTheme()?.colors?.primary
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-theme-outside-provider')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// `no-window-in-ssr` recognizes the const-captured typeof guard idiom:
+// `const isBrowser = typeof window !== 'undefined'; if (isBrowser) { window.X }`.
+describe('no-window-in-ssr: const-captured typeof guard', () => {
+  it('silent under `if (isBrowser)` after `const isBrowser = typeof window !== "undefined"`', () => {
+    const source = `
+      const isBrowser = typeof window !== 'undefined'
+      if (isBrowser) {
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBe(0)
+  })
+
+  it('still fires when the const is not a typeof check', () => {
+    const source = `
+      const isBrowser = true
+      if (isBrowser) {
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    const diags = findByRule(result, 'pyreon/no-window-in-ssr')
+    expect(diags.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// `no-window-in-ssr` precision improvements introduced alongside the hooks
+// anti-pattern cleanup. Each block targets one of the silent-false-positive
+// sources previously caused by oxc's visitor not passing `parent`.
+describe('no-window-in-ssr: precision (oxc no-parent fixes)', () => {
+  it('silent when `typeof X` is the expression itself (the mention of X is not a global ref)', () => {
+    const source = `const t = typeof window`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for member-expression property names (x.addEventListener)', () => {
+    const source = `function f(x) { x.addEventListener('click', () => {}) }`
+    const result = lintSource(source)
+    // `addEventListener` is a property name, not a global — must not fire.
+    // (`x` is also not a browser global.)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for object-property keys ({ document: 1 })', () => {
+    const source = `const o = { document: 1, window: 2 }`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for import-specifier names', () => {
+    const source = `import { window as w } from './foo'`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for TS type-position identifiers (let x: Window)', () => {
+    const source = `let x: Window | null = null`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under early-return-on-typeof guard', () => {
+    const source = `
+      function load() {
+        if (typeof window === 'undefined') return
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under OR-chained early-return-on-typeof guard', () => {
+    const source = `
+      function load() {
+        if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') return
+        const o = new IntersectionObserver(() => {})
+        window.addEventListener('online', () => {})
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent inside onUnmount / onCleanup / renderEffect', () => {
+    const source = `
+      onUnmount(() => { window.removeEventListener('x', () => {}) })
+      onCleanup(() => { document.body.style.overflow = '' })
+      renderEffect(() => { const w = window.innerWidth })
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent in ternary consequent of typeof check', () => {
+    const source = `const w = typeof window !== 'undefined' ? window.innerWidth : 0`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('still fires for the negated form body (safety check on testIsTypeofGuard split)', () => {
+    // `if (typeof window === 'undefined') { window.X }` — the body is the
+    // SSR-fallback branch, NOT a browser-safe zone. Must fire.
+    const source = `
+      if (typeof window === 'undefined') {
+        const w = window.innerWidth
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
 })
 
 // ── Test-file heuristic (C-rules) ────────────────────────────────────────────
