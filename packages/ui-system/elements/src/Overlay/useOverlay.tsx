@@ -75,7 +75,11 @@ const calcDropdownVertical = (
   offsetX: number,
   offsetY: number,
 ): PositionResult => {
-  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: alignX, resolvedAlignY: 'top' }
+  // Unreachable in SSR — positioning only runs in the mounted browser
+  // context. The guard is here to make the SSR-safety contract explicit and
+  // lets `no-window-in-ssr` prove it locally. Return shape mirrors the
+  // "no element" path below (empty `pos`, alignment preserved).
+  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: alignX, resolvedAlignY: align }
   const pos: OverlayPosition = {}
 
   const topPos = t.top - offsetY - c.height
@@ -127,7 +131,7 @@ const calcDropdownHorizontal = (
   offsetX: number,
   offsetY: number,
 ): PositionResult => {
-  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: 'left', resolvedAlignY: alignY }
+  if (typeof window === 'undefined') return { pos: {}, resolvedAlignX: align, resolvedAlignY: alignY }
   const pos: OverlayPosition = {}
 
   const leftPos = t.left - offsetX - c.width

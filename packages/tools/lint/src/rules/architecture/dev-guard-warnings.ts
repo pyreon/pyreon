@@ -10,7 +10,7 @@ export const devGuardWarnings: Rule = {
     description: 'Require console.warn/error calls to be wrapped in `if (__DEV__)` guards.',
     severity: 'error',
     fixable: false,
-    schema: { exemptPaths: 'string[]' },
+    schema: { exemptPaths: 'string[]', devFlagNames: 'string[]' },
   },
   create(context) {
     // Skip test files — universal convention (`*.test.*` etc. exist in
@@ -22,6 +22,14 @@ export const devGuardWarnings: Rule = {
     // `process.env.NODE_ENV`, or example / demo directories that ship
     // as documentation rather than production).
     if (isPathExempt(context)) return {}
+
+    // Project-level additions to the built-in dev-flag name list. Merged
+    // with the defaults so a custom flag like `__DEBUG__` still picks up
+    // the built-in `__DEV__`/`IS_DEVELOPMENT`/etc. without restating them.
+    const userFlagNames = context.getOptions().devFlagNames
+    const extraFlagNames = Array.isArray(userFlagNames)
+      ? userFlagNames.filter((n): n is string => typeof n === 'string')
+      : []
 
     // Identifiers bound via `const X = <devFlag expression>` — e.g.
     // `const IS_DEVELOPMENT = import.meta.env.DEV === true`. These act as
@@ -46,8 +54,15 @@ export const devGuardWarnings: Rule = {
     // `IS_DEVELOPMENT` from a package's shared utils module. The rule can't
     // follow cross-module imports to verify that the binding really resolves
     // to `import.meta.env.DEV`, so we fall back to the name convention —
-    // consistent with how the existing `__DEV__` identifier works.
-    const DEV_FLAG_NAMES = new Set(['__DEV__', 'IS_DEV', 'IS_DEVELOPMENT', 'isDev'])
+    // consistent with how the existing `__DEV__` identifier works. Projects
+    // can extend the list via the `devFlagNames` rule option.
+    const DEV_FLAG_NAMES = new Set<string>([
+      '__DEV__',
+      'IS_DEV',
+      'IS_DEVELOPMENT',
+      'isDev',
+      ...extraFlagNames,
+    ])
 
     // Direct dev-mode flags this rule treats as guards.
     function isDevFlag(node: any): boolean {

@@ -1719,6 +1719,70 @@ describe('no-bare-signal-in-jsx: render() helper exemption', () => {
   })
 })
 
+// `dev-guard-warnings` — conventional name-based flag recognition. The rule
+// can't follow cross-module imports to verify a binding really resolves to
+// `import.meta.env.DEV`, so well-known dev-flag identifiers (`__DEV__`,
+// `IS_DEV`, `IS_DEVELOPMENT`, `isDev`) are recognised by name.
+describe('dev-guard-warnings: dev-flag identifier conventions', () => {
+  it('silent under `if (!IS_DEVELOPMENT) return` early-return guard', () => {
+    const source = `
+      function devWarn(msg) {
+        if (!IS_DEVELOPMENT) return
+        console.warn(msg)
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBe(0)
+  })
+
+  it('silent under `IS_DEV && console.warn(...)` logical-and guard', () => {
+    const source = `IS_DEV && console.warn('hello')`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBe(0)
+  })
+
+  it('still fires without any guard', () => {
+    const source = `console.warn('no guard')`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('silent under locally-bound dev flag: `const D = import.meta.env.DEV === true; if (D) { console.warn(…) }`', () => {
+    const source = `
+      const D = import.meta.env.DEV === true
+      if (D) { console.warn('boom') }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBe(0)
+  })
+
+  it('user-supplied `devFlagNames` extends the default set', () => {
+    const source = `
+      if (__DEBUG__) { console.warn('hello') }
+      // Built-ins still work:
+      if (__DEV__) { console.warn('world') }
+    `
+    const base = getPreset('recommended')
+    const existing = base.rules['pyreon/dev-guard-warnings']
+    const severity = Array.isArray(existing) ? existing[0] : existing
+    const cfg: LintConfig = {
+      ...base,
+      rules: {
+        ...base.rules,
+        'pyreon/dev-guard-warnings': [severity as 'error', { devFlagNames: ['__DEBUG__'] }],
+      },
+    }
+    const result = lintFile('src/foo.ts', source, allRules, cfg)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBe(0)
+  })
+
+  it('unknown identifier does NOT act as a guard (negative case)', () => {
+    const source = `if (random_flag) { console.warn('hi') }`
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/dev-guard-warnings').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // ── Test-file heuristic (C-rules) ────────────────────────────────────────────
 //
 // Three rules can't distinguish "intentional test stub" from "real production
