@@ -6,22 +6,10 @@ import { useChart } from '../use-chart'
 
 // Real-Chromium smoke for @pyreon/charts.
 //
-// SCOPE NOTE: ECharts ships CommonJS that Vite's pre-bundler mishandles
-// inside @vitest/browser (TypeError: Cannot destructure property
-// '__extends' of '__toESM(...).default'). Resolving that is a separate
-// vite/optimizeDeps investigation worth its own PR.
-//
-// What this suite still locks down:
-// - <Chart> mounts a real <div> with the supplied style/class through
-//   to the live DOM (proves the JSX transform + ref forwarding work)
-// - useChart() exposes the documented signals (instance / loading /
-//   error / resize) under real-browser conditions
-// - When ECharts fails to load (the situation we're in here), the
-//   `error` signal captures it instead of throwing — this is the
-//   contract consumers rely on for graceful degradation
-//
-// A follow-up PR can fix the optimizeDeps issue and add full
-// canvas-rendering tests on top of these.
+// SCOPE NOTE: ECharts ships CommonJS that Vite's pre-bundler cannot
+// transform under @vitest/browser. See vitest.browser.config.ts for
+// the full investigation log. Bridge tests here lock down the parts
+// of @pyreon/charts contract that don't require ECharts to load.
 
 describe('charts in real browser', () => {
   afterEach(() => {

@@ -100,4 +100,95 @@ describe('head in real browser', () => {
     unmount()
     expect(document.head.querySelector('link[rel="canonical"]')).toBeNull()
   })
+
+  it('htmlAttrs / bodyAttrs are written to <html> and <body>', () => {
+    const { unmount } = mountInBrowser(
+      h(
+        HeadProvider,
+        null,
+        h(Page, {
+          setup: () =>
+            useHead({
+              htmlAttrs: { lang: 'en', dir: 'ltr' },
+              bodyAttrs: { class: 'theme-dark' },
+            }),
+        }),
+      ),
+    )
+    expect(document.documentElement.getAttribute('lang')).toBe('en')
+    expect(document.documentElement.getAttribute('dir')).toBe('ltr')
+    expect(document.body.getAttribute('class')).toBe('theme-dark')
+    unmount()
+    // After unmount the helpers remove the contributed attrs.
+    expect(document.documentElement.getAttribute('lang')).toBeNull()
+  })
+
+  it('titleTemplate wraps the resolved title', () => {
+    const { unmount } = mountInBrowser(
+      h(
+        HeadProvider,
+        null,
+        h(Page, {
+          setup: () => useHead({ title: 'Dashboard', titleTemplate: '%s | MyApp' }),
+        }),
+      ),
+    )
+    expect(document.title).toBe('Dashboard | MyApp')
+    unmount()
+  })
+
+  it('jsonLd convenience emits a <script type="application/ld+json"> with stringified content', () => {
+    const ld = { '@context': 'https://schema.org', '@type': 'Organization', name: 'Pyreon' }
+    const { unmount } = mountInBrowser(
+      h(
+        HeadProvider,
+        null,
+        h(Page, { setup: () => useHead({ jsonLd: ld }) }),
+      ),
+    )
+    const script = document.head.querySelector<HTMLScriptElement>(
+      'script[type="application/ld+json"]',
+    )
+    expect(script).not.toBeNull()
+    expect(JSON.parse(script!.textContent ?? '{}')).toEqual(ld)
+    unmount()
+  })
+
+  it('innermost useHead wins when multiple components contribute the same key', async () => {
+    const Inner = () => {
+      useHead({ title: 'Inner Wins' })
+      return h('div', { id: 'inner' }, 'inner')
+    }
+    const Outer = () => {
+      useHead({ title: 'Outer Loses' })
+      return h('div', { id: 'outer' }, h(Inner, {}))
+    }
+    const { unmount } = mountInBrowser(h(HeadProvider, null, h(Outer, {})))
+    await flush()
+    // Innermost component's title takes precedence.
+    expect(document.title).toBe('Inner Wins')
+    unmount()
+  })
+
+  it('script tags inserted with src + async + defer attributes', () => {
+    const { unmount } = mountInBrowser(
+      h(
+        HeadProvider,
+        null,
+        h(Page, {
+          setup: () =>
+            useHead({
+              script: [{ src: 'https://example.com/analytics.js', async: '', defer: '' }],
+            }),
+        }),
+      ),
+    )
+    const s = document.head.querySelector<HTMLScriptElement>(
+      'script[src="https://example.com/analytics.js"]',
+    )
+    expect(s).not.toBeNull()
+    expect(s?.async).toBe(true)
+    expect(s?.defer).toBe(true)
+    unmount()
+  })
 })

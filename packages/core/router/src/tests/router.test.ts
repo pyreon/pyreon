@@ -1511,7 +1511,7 @@ describe('RouterLink', () => {
     // applyProp converts onMouseEnter -> addEventListener("mouseEnter", ...) via:
     //   key[2].toLowerCase() + key.slice(3) = "m" + "ouseEnter" = "mouseEnter"
     // So the event type is "mouseEnter" (camelCase), not "mouseenter"
-    anchor.dispatchEvent(new Event('mouseEnter'))
+    anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCalled).toBe(true)
   })
@@ -2079,12 +2079,12 @@ describe('prefetch error handling', () => {
     const router = createRouter({ routes: failRoutes, url: '/' })
     mount(h(RouterProvider, { router }, h(RouterLink, { to: '/fail' }, 'Fail')), el)
     const anchor = el.querySelector('a') as HTMLAnchorElement
-    anchor.dispatchEvent(new Event('mouseEnter'))
+    anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCallCount).toBe(1)
     // After the error, the path is removed from prefetched set, so hovering again
     // should trigger another attempt
-    anchor.dispatchEvent(new Event('mouseEnter'))
+    anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCallCount).toBe(2)
   })
@@ -3065,7 +3065,7 @@ describe('RouterLink handleMouseEnter without router', () => {
     mount(h(RouterLink, { to: '/test' }), el)
     const anchor = el.querySelector('a') as HTMLAnchorElement
     // Dispatch mouseEnter — handleMouseEnter should return early since no router
-    expect(() => anchor.dispatchEvent(new Event('mouseEnter'))).not.toThrow()
+    expect(() => anchor.dispatchEvent(new Event('mouseenter'))).not.toThrow()
   })
 })
 
@@ -3090,11 +3090,11 @@ describe('RouterLink prefetch deduplication', () => {
     mount(h(RouterProvider, { router }, h(RouterLink, { to: '/dedup' }, 'Dedup')), el)
     const anchor = el.querySelector('a') as HTMLAnchorElement
     // First hover
-    anchor.dispatchEvent(new Event('mouseEnter'))
+    anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCallCount).toBe(1)
     // Second hover — should be deduplicated
-    anchor.dispatchEvent(new Event('mouseEnter'))
+    anchor.dispatchEvent(new Event('mouseenter'))
     await new Promise<void>((r) => setTimeout(r, 100))
     expect(loaderCallCount).toBe(1) // still 1, deduplication via set.has(path)
   })

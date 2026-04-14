@@ -83,6 +83,57 @@ describe('flow in real browser', () => {
     unmount()
   })
 
+  it('drags a node via real PointerEvent sequence (down/move/up)', async () => {
+    const flow = createFlow({
+      nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { label: 'A' } }],
+    })
+    const seenDragStart: string[] = []
+    flow.onNodeDragStart((n) => seenDragStart.push(n.id))
+
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    const node = container.querySelector<HTMLElement>('[data-nodeid="1"]')!
+    const flowEl = container.querySelector<HTMLElement>('.pyreon-flow')!
+
+    const dispatch = (
+      el: Element,
+      type: 'pointerdown' | 'pointermove' | 'pointerup',
+      x: number,
+      y: number,
+    ) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId: 1,
+          isPrimary: true,
+          pointerType: 'mouse',
+          button: type === 'pointermove' ? -1 : 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          clientX: x,
+          clientY: y,
+        }),
+      )
+
+    dispatch(node, 'pointerdown', 10, 10)
+    // Confirms drag actually started before we move.
+    expect(seenDragStart).toEqual(['1'])
+
+    // After setPointerCapture(1) on the flow container, subsequent
+    // pointer events for pointerId=1 are routed to the container.
+    dispatch(flowEl, 'pointermove', 60, 40)
+    dispatch(flowEl, 'pointermove', 110, 80)
+    dispatch(flowEl, 'pointerup', 110, 80)
+    await flush()
+
+    const pos = flow.nodes()[0]!.position
+    expect(pos.x).toBeGreaterThan(0)
+    expect(pos.y).toBeGreaterThan(0)
+    unmount()
+  })
+
   it('node click selects via real click event (not just selectNode API)', async () => {
     const flow = createFlow({
       nodes: [

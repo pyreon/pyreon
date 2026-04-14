@@ -221,7 +221,15 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
     }
     return null
   }
-  const eventName = key[2]?.toLowerCase() + key.slice(3)
+  // `onPointerDown` -> `pointerdown`. Multi-word DOM event names are
+  // all-lowercase (`pointerdown`, `dblclick`, `mouseover`), so we
+  // lowercase the WHOLE name — not just the first letter, as a previous
+  // version did. That bug silently dropped delegation for every
+  // multi-word event (pointerdown/up/move, mousedown/up/move, dblclick,
+  // touchstart/end/move, etc.) — the handler was attached via
+  // `addEventListener('pointerDown', ...)` which never fires because
+  // real events use the lowercase name.
+  const eventName = (key[2]?.toLowerCase() + key.slice(3)).toLowerCase()
   const handler = value as EventListener
 
   if (DELEGATED_EVENTS.has(eventName)) {
