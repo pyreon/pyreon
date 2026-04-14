@@ -330,45 +330,63 @@ describe('useSubscription', () => {
   })
 
   it('auto-reconnects on unexpected close', async () => {
-    const client = makeClient()
+    // Fake timers eliminate wall-clock dependence on CI — the previous real
+    // setTimeout(100ms) could resolve before the scheduled reconnectDelay(50)
+    // timer actually fired under shared-runner load. Mirrors the fix applied
+    // to sse.test.tsx in the same PR — MockWebSocket and MockEventSource
+    // share the identical scheduler-race + cross-test timer-leak pattern.
+    vi.useFakeTimers()
+    try {
+      const client = makeClient()
 
-    const unmount = withProvider(client, () => {
-      useSubscription({
-        url: 'wss://example.com/ws',
-        onMessage: noop,
-        reconnect: true,
-        reconnectDelay: 50,
+      const unmount = withProvider(client, () => {
+        useSubscription({
+          url: 'wss://example.com/ws',
+          onMessage: noop,
+          reconnect: true,
+          reconnectDelay: 50,
+        })
       })
-    })
 
-    expect(mockInstances).toHaveLength(1)
-    lastMockWS()._simulateOpen()
-    lastMockWS()._simulateClose()
+      expect(mockInstances).toHaveLength(1)
+      lastMockWS()._simulateOpen()
+      lastMockWS()._simulateClose()
 
-    // Wait for reconnect
-    await new Promise((r) => setTimeout(r, 100))
+      // Deterministically advance past the reconnect delay
+      await vi.advanceTimersByTimeAsync(50)
 
-    expect(mockInstances).toHaveLength(2)
-    unmount()
+      expect(mockInstances).toHaveLength(2)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not reconnect when reconnect is false', async () => {
-    const client = makeClient()
+    // Fake timers prevent any reconnect timer leaked from a prior test (e.g.
+    // the `auto-reconnects` case above) from firing inside this test's window
+    // after mockInstances was cleared in beforeEach.
+    vi.useFakeTimers()
+    try {
+      const client = makeClient()
 
-    const unmount = withProvider(client, () => {
-      useSubscription({
-        url: 'wss://example.com/ws',
-        onMessage: noop,
-        reconnect: false,
+      const unmount = withProvider(client, () => {
+        useSubscription({
+          url: 'wss://example.com/ws',
+          onMessage: noop,
+          reconnect: false,
+        })
       })
-    })
 
-    lastMockWS()._simulateOpen()
-    lastMockWS()._simulateClose()
+      lastMockWS()._simulateOpen()
+      lastMockWS()._simulateClose()
 
-    await new Promise((r) => setTimeout(r, 100))
-    expect(mockInstances).toHaveLength(1)
-    unmount()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(mockInstances).toHaveLength(1)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('does not reconnect after intentional close()', async () => {

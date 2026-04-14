@@ -468,37 +468,49 @@ describe('form.reset() comprehensive', () => {
 
 describe('debounced validation — additional', () => {
   it('debounced validation on blur only fires after delay', async () => {
-    const calls: string[] = []
-    const { result: form, unmount } = mountWith(() =>
-      useForm({
-        initialValues: { query: '' },
-        validators: {
-          query: (v) => {
-            calls.push(v as string)
-            return undefined
+    // Fake timers eliminate wall-clock dependence on CI. With real timers,
+    // the 10ms pre-debounce assertion window could slide past the 40ms
+    // debounce under shared-runner load — the scheduler fired early and
+    // `calls` was already ['ab'] by the time the assertion ran. Driving
+    // time explicitly isolates the debounce-delay contract from wall-clock
+    // jitter. The debounce in use-form.ts is a single setTimeout per field,
+    // so it is fake-timer-safe.
+    vi.useFakeTimers()
+    try {
+      const calls: string[] = []
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { query: '' },
+          validators: {
+            query: (v) => {
+              calls.push(v as string)
+              return undefined
+            },
           },
-        },
-        validateOn: 'blur',
-        debounceMs: 40,
-        onSubmit: () => {
-          /* noop */
-        },
-      }),
-    )
+          validateOn: 'blur',
+          debounceMs: 40,
+          onSubmit: () => {
+            /* noop */
+          },
+        }),
+      )
 
-    form.fields.query.setValue('a')
-    form.fields.query.setTouched()
-    form.fields.query.setValue('ab')
-    form.fields.query.setTouched()
+      form.fields.query.setValue('a')
+      form.fields.query.setTouched()
+      form.fields.query.setValue('ab')
+      form.fields.query.setTouched()
 
-    // Nothing fired yet
-    await new Promise((r) => setTimeout(r, 10))
-    expect(calls).toHaveLength(0)
+      // Nothing fired yet — still inside the debounce window
+      await vi.advanceTimersByTimeAsync(10)
+      expect(calls).toHaveLength(0)
 
-    // After debounce, only the last blur validation fires
-    await new Promise((r) => setTimeout(r, 60))
-    expect(calls).toHaveLength(1)
-    unmount()
+      // After debounce completes, only the last blur validation fires
+      await vi.advanceTimersByTimeAsync(60)
+      expect(calls).toHaveLength(1)
+      unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('field-level reset clears debounce timer for that field', async () => {
