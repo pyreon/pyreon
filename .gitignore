@@ -11,6 +11,8 @@ coverage
 .next
 .source
 test-results
+.vitest-attachments
+**/__screenshots__
 scripts/visual-test/current/*.png
 scripts/visual-test/diffs/*.png
 

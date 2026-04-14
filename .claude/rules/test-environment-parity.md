@@ -108,9 +108,26 @@ If a test mocks `@pyreon/core`, `@pyreon/runtime-dom`, or any other framework pa
 
 ## How to add a browser smoke test
 
-(This section will be expanded once `@pyreon/browser-tests` is set up — see plan T1.1.)
+The harness is set up (T1.1 Phase 1). Tests run in real Chromium via `@vitest/browser` + Playwright — not happy-dom, not Node.
 
-Provisional: each browser-running package gets a `browser/` directory next to `src/` with Playwright tests. CI runs them on PR + main. Per-package config keeps them isolated.
+Per-package opt-in:
+
+1. Add `vitest.browser.config.ts` next to the existing `vitest.config.ts`:
+
+   ```ts
+   import { playwright } from '@vitest/browser-playwright'
+   import { defineBrowserConfig } from '../../../vitest.browser'
+   export default defineBrowserConfig(playwright())
+   ```
+
+2. Add `"test:browser": "vitest run --config ./vitest.browser.config.ts"` to the package's `package.json` scripts.
+3. Add `@vitest/browser-playwright` to the package's devDeps (required for Vite's static resolver inside the package directory).
+4. If the package also has a regular `vitest.config.ts`, merge `nodeExcludeBrowserTests` from `vitest.shared` into it so `bun run test` skips `.browser.test.*` files.
+5. Write tests as `*.browser.test.ts(x)` anywhere under `src/`. Import `mountInBrowser` + `flush` from `@pyreon/test-utils/browser` for a disposable container + a microtask+rAF flush helper.
+
+CI runs the root `test:browser` script across every opt-in package via the `Test (browser)` job. Playwright Chromium is cached between runs.
+
+Reference implementation: [packages/internals/test-utils/src/browser/sanity.browser.test.ts](../../packages/internals/test-utils/src/browser/sanity.browser.test.ts).
 
 ## Bisect-verify regression tests
 
