@@ -1761,6 +1761,30 @@ describe('no-window-in-ssr: parameter shadowing + typeof-derived AND chains', ()
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
   })
+
+  it('silent under `if (handler)` when handler is bound via `_isBrowser ? fn : null`', () => {
+    // Ternary-derived bindings: `handler` is only non-null when the guard
+    // was truthy, so `if (handler)` implicitly asserts the guard held.
+    const source = `
+      const _isBrowser = typeof window !== 'undefined'
+      const handler = _isBrowser ? (e) => e.preventDefault() : null
+      if (handler) {
+        window.addEventListener('beforeunload', handler)
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under `if (h)` when h is bound via `_isBrowser && mode === X ? fn : null`', () => {
+    const source = `
+      const _isBrowser = typeof window !== 'undefined'
+      const h = _isBrowser && mode === 'history' ? () => {} : null
+      if (h) { window.addEventListener('popstate', h) }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
 })
 
 // `no-imperative-navigate-in-render` — navigate calls inside nested
@@ -1800,6 +1824,32 @@ describe('no-imperative-navigate-in-render: deferred-execution callbacks', () =>
     `
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('fires when a nested fn is DEFINED and immediately CALLED in the render body', () => {
+    // `const fn = () => router.push(); fn()` — the navigate runs synchronously
+    // on every render (same infinite-loop bug as a direct call).
+    const source = `
+      const Comp = (props) => {
+        const goHome = () => router.push('/home')
+        goHome()
+        return <div />
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('silent when a nested fn containing navigate is defined but NOT called synchronously', () => {
+    // Defined-and-stored pattern — the navigate never runs during render.
+    const source = `
+      const Comp = (props) => {
+        const goHome = () => navigate('/home')
+        return <a onClick={goHome} />
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-imperative-navigate-in-render').length).toBe(0)
   })
 })
 

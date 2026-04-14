@@ -78,6 +78,14 @@ export const noWindowInSsr: Rule = {
       if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
         return isTypeofCheckForBinding(expr.left) || isTypeofCheckForBinding(expr.right)
       }
+      // `const handler = _isBrowser ? (e) => … : null` / `_isBrowser ? fn()
+      // : null` — ternary with a typeof-derived const as test. The non-null
+      // branch only exists when the guard is truthy, so the binding is
+      // transitively typeof-derived. Same for `_isBrowser ? X : null`
+      // where `X` is typeof-derived.
+      if (expr.type === 'ConditionalExpression') {
+        return isTypeofCheckForBinding(expr.test)
+      }
       if (expr.type === 'Identifier' && typeofBoundConsts.has(expr.name)) return true
       return false
     }
