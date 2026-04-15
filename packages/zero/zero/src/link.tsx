@@ -71,34 +71,47 @@ export interface UseLinkReturn {
 }
 
 const MAX_PREFETCH_CACHE = 200
-const prefetched = new Set<string>()
+// Maps href → list of <link> elements injected into <head>. When the
+// cache evicts an href (FIFO at MAX_PREFETCH_CACHE), the matching <link>
+// elements must be removed too — otherwise head bloats unboundedly
+// across long SPA sessions (every Link interaction added 2 <link> nodes
+// with no cleanup).
+const prefetched = new Map<string, Element[]>()
 
 function doPrefetch(href: string) {
   // Prefetch only fires from browser-mounted Link interactions (hover /
   // click intent). Explicit guard documents the SSR-safety contract.
   if (typeof document === 'undefined') return
   if (prefetched.has(href)) return
-  // Evict oldest entries when cache is full
+  // Evict oldest entries when cache is full — AND remove their DOM nodes.
   if (prefetched.size >= MAX_PREFETCH_CACHE) {
-    const first = prefetched.values().next().value
-    if (first) prefetched.delete(first)
+    const firstEntry = prefetched.entries().next().value
+    if (firstEntry) {
+      const [oldestHref, oldestLinks] = firstEntry
+      for (const link of oldestLinks) link.remove()
+      prefetched.delete(oldestHref)
+    }
   }
-  prefetched.add(href)
 
+  const injected: Element[] = []
   const docLink = document.createElement('link')
   docLink.rel = 'prefetch'
   docLink.href = href
   docLink.as = 'document'
   document.head.appendChild(docLink)
+  injected.push(docLink)
 
   try {
     const chunkHint = document.createElement('link')
     chunkHint.rel = 'modulepreload'
     chunkHint.href = href
     document.head.appendChild(chunkHint)
+    injected.push(chunkHint)
   } catch {
     // modulepreload is a hint, not critical
   }
+
+  prefetched.set(href, injected)
 }
 
 /**

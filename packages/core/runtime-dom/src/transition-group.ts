@@ -94,14 +94,23 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     requestAnimationFrame(() => {
       el.classList.remove(cls.ef)
       el.classList.add(cls.et)
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
+      // Safety timeout: if CSS animation never fires (off-screen, zero
+      // duration, `display: none`), force cleanup so the entry's
+      // onAfterEnter runs and the listener + closure don't leak.
+      safetyTimer = setTimeout(done, 5000)
     })
   }
 
@@ -112,15 +121,26 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     requestAnimationFrame(() => {
       el.classList.remove(cls.lf)
       el.classList.add(cls.lt)
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.la, cls.lt)
         props.onAfterLeave?.(el)
         onDone()
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
+      // Safety timeout: CRITICAL for transition-group. Without it, a list
+      // item whose leave transition never fires (off-screen, zero
+      // duration, `display: none`) stays in the `entries` Map forever
+      // because `onDone` never runs to `entries.delete(key)` — a real
+      // memory leak that grows with every list mutation.
+      safetyTimer = setTimeout(done, 5000)
     })
   }
 
@@ -168,13 +188,19 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       el.classList.add(cls.mv)
       el.style.transform = ''
       el.style.transition = ''
+      let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
         el.classList.remove(cls.mv)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
+      safetyTimer = setTimeout(done, 5000)
     })
   }
 

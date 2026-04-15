@@ -96,6 +96,47 @@ describe('renderToString — reactive props (signal snapshots)', () => {
   })
 })
 
+// Regression: `innerHTML` and `dangerouslySetInnerHTML` were rendered as
+// literal HTML attributes (`<span innerHTML="...">`) in the open tag instead
+// of as element INNER content. That produced wasted bytes, a hydration
+// mismatch, AND (with the client-side innerHTML bug) the literal closure
+// text was visible before hydration replaced it with the real SVG.
+describe('renderToString — innerHTML / dangerouslySetInnerHTML inner-content rendering', () => {
+  test('innerHTML renders as inner content, not as an attribute', async () => {
+    const html = await renderToString(h('span', { innerHTML: '<em>x</em>' }))
+    expect(html).toBe('<span><em>x</em></span>')
+    expect(html).not.toContain('innerHTML=')
+  })
+
+  test('dangerouslySetInnerHTML renders as inner content, not as an attribute', async () => {
+    const html = await renderToString(h('span', { dangerouslySetInnerHTML: { __html: '<em>x</em>' } }))
+    expect(html).toBe('<span><em>x</em></span>')
+    expect(html).not.toContain('dangerouslySetInnerHTML=')
+  })
+
+  test('reactive innerHTML accessor is called at render time', async () => {
+    const icon = signal('<svg>moon</svg>')
+    const html = await renderToString(h('span', { innerHTML: () => icon() }))
+    expect(html).toBe('<span><svg>moon</svg></span>')
+    // The literal closure text must NOT appear.
+    expect(html).not.toContain('=>')
+  })
+
+  test('reactive dangerouslySetInnerHTML accessor is called at render time', async () => {
+    const inner = signal('<em>x</em>')
+    const html = await renderToString(
+      h('div', { dangerouslySetInnerHTML: () => ({ __html: inner() }) }),
+    )
+    expect(html).toBe('<div><em>x</em></div>')
+    expect(html).not.toContain('=>')
+  })
+
+  test('empty/null innerHTML falls back to children', async () => {
+    const html = await renderToString(h('span', { innerHTML: '' }, h('em', null, 'child')))
+    expect(html).toBe('<span><em>child</em></span>')
+  })
+})
+
 describe('renderToString — Fragment', () => {
   test('renders Fragment children without wrapper', async () => {
     const vnode = h(Fragment, null, h('span', null, 'a'), h('span', null, 'b'))
