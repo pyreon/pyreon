@@ -38,7 +38,7 @@ const CardGrid = () => {
   const toggle = () => expanded.set(!expanded())
 
   return (
-    <Background secondary>
+    <Background variant="secondary">
       <Section id="card-grid">
         <SectionHeader title="Experience Cards">
           Each card uses a hover transition (lift + shadow). The "Show more"

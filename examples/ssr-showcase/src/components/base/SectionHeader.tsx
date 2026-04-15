@@ -38,7 +38,7 @@ type Props = {
 const SectionHeader = (props: Props) => (
   <Wrapper>
     <Title>{props.title}</Title>
-    <Body centered>{props.children}</Body>
+    <Body multiple={['centered']}>{props.children}</Body>
   </Wrapper>
 )
 

@@ -72,7 +72,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - **Pseudo-states in `.theme()`**: `hover: {}`, `focus: {}`, `active: {}`, `disabled: {}` objects — bases generate `:hover`/`:focus-visible`/`:active`/`:disabled` CSS
 - **`:hover` is unconditional** — applied to ALL components with hover theme, not just interactive ones. Only `cursor: pointer` is gated on `onClick`/`href`
 - **CSS property naming**: unistyle convention (`borderWidthTop`) not CSS-spec (`borderTopWidth`)
-- **useBooleans: false**: dimension props accept string values (`state="primary"`), not booleans
+- **useBooleans: false** is the rocketstyle default (both type-level and runtime) — dimension props accept string values (`state="primary"`, `size="level3"`), not booleans. Opt in with `rocketstyle({ useBooleans: true })` for vitus-labs-style boolean shorthand. Before April 2026 the type default was `true` while the runtime default was `false` — boolean props typechecked but were silently dropped at runtime. Fixed by aligning the type default (rocketstyle `init.ts`)
 - Theme augmentation: `@pyreon/ui-theme` augments `ThemeDefault extends Theme` and `StylesDefault extends ITheme` — apps must NOT re-augment
 
 ### UI System — Key Technical Details
