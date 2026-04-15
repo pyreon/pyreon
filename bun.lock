@@ -567,6 +567,7 @@
       "name": "@pyreon/hooks",
       "version": "0.12.13",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },

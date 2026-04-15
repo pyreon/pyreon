@@ -428,14 +428,19 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Middleware chain — `RouteMiddleware` with `ctx.data` for passing data between middleware, `useMiddlewareData()` to read in components
 - `Router<TNames>` generic — typed named navigation (`router.push({ name: 'user', params: { id: '42' } })`)
 
-### @pyreon/hooks — New Hooks
+### @pyreon/hooks
 
-- `useClipboard()` — copy text to clipboard + `copied` reactive state with auto-reset
-- `useDialog()` — native `<dialog>` management (open, close, return value)
-- `useTimeAgo(date)` — reactive relative time string ("5 minutes ago"), auto-updates
-- `useOnline()` — reactive `navigator.onLine` signal
-- `useEventListener(target, event, handler, options?)` — auto-cleanup on unmount
-- `useInfiniteScroll(onLoadMore, options)` — IntersectionObserver-based infinite loading
+- 35 signal-based hooks across 6 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
+- **State**: `useToggle`, `usePrevious`, `useLatest`, `useControllableState`
+- **DOM**: `useEventListener`, `useClickOutside`, `useFocus`, `useHover`, `useFocusTrap`, `useElementSize`, `useWindowResize`, `useScrollLock`, `useIntersection`, `useInfiniteScroll`
+- **Responsive**: `useBreakpoint` (theme-driven), `useMediaQuery` (raw escape hatch), `useColorScheme`, `useReducedMotion`, `useThemeValue`, `useSpacing`, `useRootSize`
+- **Timing**: `useDebouncedValue`, `useDebouncedCallback`, `useThrottledCallback`, `useInterval`, `useTimeout`, `useTimeAgo`
+- **Interaction**: `useClipboard` (auto-resets `copied` after 2s), `useDialog` (native `<dialog>`), `useKeyboard`, `useOnline`
+- **Composition**: `useMergedRef`, `useUpdateEffect` (skips first run), `useIsomorphicLayoutEffect` (layout effect on client, no-op on SSR)
+- **`useControllableState({ value, defaultValue, onChange })`** is the canonical controlled/uncontrolled pattern — every `@pyreon/ui-primitives` component uses it. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed
+- **Never reach for `addEventListener` / `removeEventListener` directly in primitives** — use `useEventListener`. Same for observers (`useIntersection` / `useElementSize`) and timers (`useInterval` / `useTimeout`). The cleanup is the hook's job
+- **`useBreakpoint` reads the theme**, `useMediaQuery` is raw — use the former for layout decisions tied to the design system, the latter for one-off queries (`(prefers-contrast: more)`, `(orientation: landscape)`, etc.)
+- Manifest-driven docs (T2.1): `packages/fundamentals/hooks/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### Devtools
 
