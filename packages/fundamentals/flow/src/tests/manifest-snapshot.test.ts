@@ -132,7 +132,7 @@ describe('gen-docs — flow snapshot', () => {
     ])
     // Spot-check the highest-density entry — createFlow is the
     // flagship API and carries the largest mistakes list.
-    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(7)
+    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(8)
     expect(record['flow/createFlow']!.notes).toContain('elkjs')
     expect(record['flow/createFlow']!.notes).toContain('no D3')
   })
