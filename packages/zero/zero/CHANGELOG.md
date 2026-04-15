@@ -1,5 +1,60 @@
 # @pyreon/zero
 
+## 0.12.15
+
+### Patch Changes
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero/isr): bound the in-memory ISR cache with LRU eviction
+
+  `createISRHandler` kept an unbounded `Map<pathname, CacheEntry>` — on
+  parametrised routes like `/user/:id` where `:id` is free-form, the
+  cache grew without limit over the server's lifetime. Long-running
+  deployments accumulated one entry per distinct URL forever.
+
+  Fix: added `ISRConfig.maxEntries` (default: `1000`) with LRU eviction.
+  Every cache read `.delete()` + `.set()`s the entry to bump it to newest
+  (preserving insertion-order LRU). Writes evict the oldest entries
+  until size is under the cap.
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero/link): evict DOM `<link>` nodes when the prefetch cache rolls over
+
+  `doPrefetch` injected `<link rel="prefetch">` and `<link rel="modulepreload">`
+  elements into `document.head` with NO cleanup. The in-memory `prefetched`
+  Set was capped at 200 with FIFO eviction, but the matching DOM nodes
+  stayed forever. Long SPA sessions accumulated thousands of stale
+  `<link>` nodes in `<head>`.
+
+  Fix: `prefetched` is now a `Map<href, Element[]>` — when the cache
+  evicts the oldest href, its matching `<link>` elements are also
+  `.remove()`d from `document.head`.
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero/theme): make `resolvedTheme()` reactive to OS color-scheme changes
+
+  `resolvedTheme()` read `window.matchMedia('(prefers-color-scheme: dark)').matches`
+  as a one-shot check — no signal tracked the OS preference. Components
+  reading `resolvedTheme()` subscribed only to the `theme` signal (explicit
+  user choice). When the user flipped dark mode at the OS level, the
+  `<html data-theme>` attribute updated (via the `onChange` handler in
+  `initTheme`), but every component using `resolvedTheme()` stayed on
+  stale state — inverse theme effectively not reactive.
+
+  Fix: introduced an `_osPrefersDark` signal that `initTheme` seeds from
+  `matchMedia.matches` and updates on every `'change'` event. When
+  `theme === 'system'`, `resolvedTheme()` reads `_osPrefersDark()` —
+  subscribing components to both the user preference AND the OS
+  preference. Changing either now re-renders the whole tree.
+
+- Updated dependencies [[`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa)]:
+  - @pyreon/router@0.12.15
+  - @pyreon/runtime-dom@0.12.15
+  - @pyreon/runtime-server@0.12.15
+  - @pyreon/core@0.12.15
+  - @pyreon/head@0.12.15
+  - @pyreon/reactivity@0.12.15
+  - @pyreon/server@0.12.15
+  - @pyreon/vite-plugin@0.12.15
+  - @pyreon/meta@0.12.15
+
 ## 0.12.14
 
 ### Patch Changes

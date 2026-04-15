@@ -1,5 +1,71 @@
 # @pyreon/runtime-dom
 
+## 0.12.15
+
+### Patch Changes
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): make `innerHTML` and `dangerouslySetInnerHTML` reactive
+
+  The JSX compiler wraps prop expressions containing signal reads in
+  `_bind`-style `() => …` accessors. The runtime's `applyProp` checked for
+  the `innerHTML` / `dangerouslySetInnerHTML` keys BEFORE checking if the
+  value was a function, so the closure was stringified and set as literal
+  text — `innerHTML={getIcon(props.x ? "moon" : "sun")}` rendered the
+  literal text `() => getIcon(props.x ? "moon" : "sun")` in the DOM
+  instead of the SVG.
+
+  Fix: when `value` is a function, wrap in `renderEffect` so the accessor
+  is called and the result is set as HTML on each tracked-signal change.
+  Same treatment for `dangerouslySetInnerHTML` (function returns
+  `{ __html: string }`).
+
+  Found via bokisch.com `/resume` route — the symptom was literal closure
+  text in icon SVG slots, plus a render loop that consumed several GB of
+  RAM (the closure-as-string DOM mutation triggered re-evaluations).
+
+  2 new regression tests in `packages/core/runtime-dom/src/tests/props.test.ts`.
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): cancel in-progress transitions on unmount
+
+  `<Transition>` and `<TransitionGroup>` added a 5-second safety timer to
+  their enter/leave/move callbacks (so CSS transitions that never fire
+  don't leak listeners). Without a matching cancel on component unmount,
+  that timer kept running after the component was detached — firing
+  `onAfterEnter` / `onAfterLeave` on now-detached elements up to 5 seconds
+  later.
+
+  Fix:
+
+  - `<Transition>`: track `pendingEnterCancel` (parallel to the existing
+    `pendingLeaveCancel`). `onUnmount` calls both to tear down listeners,
+    clear safety timers, and strip active-state classes WITHOUT firing
+    the onAfterX callback.
+  - `<TransitionGroup>`: each `ItemEntry` gains a `cancelTransition`
+    function that applyEnter / applyLeave / startMoveAnimation install.
+    Container `onUnmount` iterates entries and cancels in-progress
+    transitions before tearing down each entry's DOM.
+
+- [#256](https://github.com/pyreon/pyreon/pull/256) [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): add safety timeout to `<TransitionGroup>` enter/leave/move
+
+  `TransitionGroup`'s per-item `applyEnter` / `applyLeave` /
+  `startMoveAnimation` added `transitionend` / `animationend` listeners
+  with `{ once: true }` but had NO safety timeout — unlike the matching
+  code in `transition.ts`.
+
+  If a CSS transition never fires (off-screen element, zero-duration,
+  `display: none`, visibility: hidden), the `done` callback never runs,
+  `onAfterLeave` never fires, and `entries.delete(key)` is never called —
+  **the item stays in the `entries` Map forever.** Real memory leak that
+  grows with every list mutation; the impact compounds in long-running
+  SPA sessions where list items cycle in and out frequently.
+
+  Fix: added a 5-second safety `setTimeout` (same pattern as
+  `transition.ts`). When CSS never fires, the timer forces the cleanup.
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.15
+  - @pyreon/reactivity@0.12.15
+
 ## 0.12.14
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/create-zero",
-  "version": "0.12.14",
+  "version": "0.12.15",
   "description": "Create a new Pyreon Zero project",
   "license": "MIT",
   "author": "Vit Bokisch",

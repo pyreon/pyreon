@@ -1,5 +1,17 @@
 # @pyreon/server
 
+## 0.12.15
+
+### Patch Changes
+
+- Updated dependencies [[`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa), [`8c0667d`](https://github.com/pyreon/pyreon/commit/8c0667dccd22d5b794032153c64bc0a029419aaa)]:
+  - @pyreon/router@0.12.15
+  - @pyreon/runtime-dom@0.12.15
+  - @pyreon/runtime-server@0.12.15
+  - @pyreon/core@0.12.15
+  - @pyreon/head@0.12.15
+  - @pyreon/reactivity@0.12.15
+
 ## 0.12.14
 
 ### Patch Changes
