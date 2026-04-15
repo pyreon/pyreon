@@ -252,7 +252,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 
 - @pyreon/store — Global state management with composition stores (`defineStore`)
 - @pyreon/state-tree — Structured reactive models with snapshots and patches
-- @pyreon/form — Signal-based form management with fields, validation, arrays
+- @pyreon/form — Signal-based form management with fields, validation, arrays, and cross-field watchers. Fields validate on blur by default so users aren't scolded mid-keystroke. Use `validateOn: "change"` for instant feedback (often paired with `debounceMs: 300` to avoid thrashing async validators), or `validateOn: "submit"` for zero-feedback-until-submit forms. `showError` (from `useField`) gates on `touched`, so even with `validateOn: "change"` errors won't appear until the user has blurred at least once — this is intentional.
 - @pyreon/validation — Schema adapters (Zod, Valibot, ArkType)
 - @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE). `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION (not an object) so `queryKey` and other fields can read Pyreon signals. TanStack core uses an object; Pyreon wraps so changing a tracked signal re-runs the observer options and refetches automatically.
 - @pyreon/table — TanStack Table adapter with reactive options

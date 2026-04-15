@@ -212,10 +212,15 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - `useForm({ initialValues, onSubmit, validators?, schema?, validateOn?, debounceMs? })` — reactive form state
 - `useField(form, name)` — single-field hook with `hasError`, `showError`, `register()`
-- `useFieldArray(initial?)` — dynamic array fields with stable keys, append/remove/move/swap
-- `useWatch(form, name?)` — reactive field watcher (single, multiple, or all fields)
-- `useFormState(form, selector?)` — computed form state summary
-- `FormProvider` / `useFormContext()` — context pattern for nested components
+- `useFieldArray(initial?)` — dynamic array fields with stable keys. Full mutation surface: `append` / `prepend` / `insert` / `remove` / `update` / `move` / `swap` / `replace`. Always render with `<For each={items()} by={i => i.key}>` — `.key` is a monotonic number assigned at insert time, not the array index
+- `useWatch(form, name?)` — typed overloads: single field → `Signal<T>`, multiple fields → tuple of signals, no args → `Computed<TValues>`
+- `useFormState(form, selector?)` — computed form-level summary (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Selector narrows the tracked subset so a button gated on `canSubmit` doesn't re-render when `submitCount` changes
+- `FormProvider` / `useFormContext<TValues>()` — context pattern for nested components, no prop drilling
+- Per-field fine-grained signals: `value`, `error`, `touched`, `dirty` are independent `Signal<T>` — reading one doesn't subscribe to others
+- `validateOn: 'blur' | 'change' | 'submit'` — **default is `'blur'`**, not `'change'`, so users aren't scolded mid-keystroke. `showError` (from `useField`) always gates on `touched` so even `validateOn: 'change'` forms don't flash errors until first blur
+- Async validators are version-tracked — stale results discarded if user types faster than the validator resolves. Combine with `debounceMs` to cut in-flight request count. `isValidating` signal true while any field has a pending async validation
+- Server errors: `form.setFieldError(name, msg)` / `form.setErrors({ email: 'Taken' })` — does NOT touch `touched` state, so errors display immediately regardless of blur status
+- Manifest-driven docs (T2.1): `packages/fundamentals/form/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### @pyreon/i18n
 
