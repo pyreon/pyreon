@@ -1,5 +1,54 @@
 # @pyreon/zero
 
+## 0.12.14
+
+### Patch Changes
+
+- [#251](https://github.com/pyreon/pyreon/pull/251) [`290ea64`](https://github.com/pyreon/pyreon/commit/290ea64ee90b5e749008d2b437084fc001ad24f1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Zero meta-framework anti-pattern cleanup + lint rule precision
+
+  `@pyreon/zero`:
+
+  - `link.tsx` `doPrefetch`: added `typeof document === 'undefined'` early-return.
+    Prefetch only fires from browser-mounted Link interactions but the explicit
+    guard documents the SSR-safety contract.
+  - `client.ts` `startClient`: added `typeof document === 'undefined' → throw`
+    early-return. Browser entry point hard-fails in SSR with a clearer error
+    than `document is not defined`.
+  - `script.tsx` `loadScript`: typeof-document early-return at function entry
+    (the function is only invoked from `onMount` but the rule can't
+    AST-trace the indirect call).
+  - Error prefix normalisation: `[zero]` / `[zero:adapter]` / `[zero:image]` /
+    etc. → `[Pyreon]` across 9 source files. Test assertions updated.
+  - `font.ts`: added `[Pyreon] ` prefix to two `Failed to fetch / download`
+    errors.
+
+  `@pyreon/lint`:
+
+  - `no-window-in-ssr` and `no-dom-in-setup`: early-return-guard heuristic
+    now recognises `throw` as a function-terminating statement (in addition
+    to `return`). Common in entry-point functions like `startClient` that
+    hard-fail in SSR rather than silently no-op.
+  - `no-dom-in-setup`: added the same early-return-on-typeof-document/window
+    guard tracking that `no-window-in-ssr` already had — `if (typeof document
+=== 'undefined') return …` at function head implicitly guards the rest
+    of the body for both rules now.
+  - `BROWSER_GLOBALS`: removed `fetch`. It's a universal global in Node 18+,
+    Bun, Deno, browsers, and edge runtimes. Code using `fetch` isn't
+    browser-specific. (`XMLHttpRequest` and `WebSocket` remain DOM-only.)
+
+  5 new bisect-verified regression tests for the rule changes.
+
+- Updated dependencies [[`95e7e00`](https://github.com/pyreon/pyreon/commit/95e7e00bd3e3b3926bd8348cf91f88494605ccc6), [`779f61f`](https://github.com/pyreon/pyreon/commit/779f61f99e1f403485871c1848fc82489d20960f)]:
+  - @pyreon/router@0.12.14
+  - @pyreon/server@0.12.14
+  - @pyreon/core@0.12.14
+  - @pyreon/head@0.12.14
+  - @pyreon/reactivity@0.12.14
+  - @pyreon/runtime-dom@0.12.14
+  - @pyreon/runtime-server@0.12.14
+  - @pyreon/vite-plugin@0.12.14
+  - @pyreon/meta@0.12.14
+
 ## 0.12.13
 
 ### Patch Changes

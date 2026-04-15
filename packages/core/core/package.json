@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/core",
-  "version": "0.12.13",
+  "version": "0.12.14",
   "description": "Core component model and lifecycle for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core#readme",
   "bugs": {

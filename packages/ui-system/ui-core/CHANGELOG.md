@@ -1,5 +1,15 @@
 # @pyreon/ui-core
 
+## 0.12.14
+
+### Patch Changes
+
+- Updated dependencies [[`10a4e3b`](https://github.com/pyreon/pyreon/commit/10a4e3b53eb38b401f65f8436b94809ec4f1ee13)]:
+  - @pyreon/styler@0.12.14
+  - @pyreon/unistyle@0.12.14
+  - @pyreon/core@0.12.14
+  - @pyreon/reactivity@0.12.14
+
 ## 0.12.13
 
 ### Patch Changes
