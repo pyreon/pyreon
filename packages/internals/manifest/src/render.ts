@@ -260,12 +260,67 @@ function toMcpEntry(api: ApiEntry): McpApiReferenceEntry {
     signature: api.signature,
     example: api.example,
   }
-  const notes = api.summary.trim()
+  const notes = buildNotes(api)
   if (notes) entry.notes = notes
   if (api.mistakes && api.mistakes.length > 0) {
     entry.mistakes = api.mistakes.map((m) => `- ${m}`).join('\n')
   }
   return entry
+}
+
+/**
+ * Compose an ApiEntry's auxiliary fields into the MCP `notes`
+ * prose. The manifest type splits surface metadata across several
+ * structured fields; MCP's `notes` is a single free-form string.
+ * This helper stitches them together in a stable order so MCP
+ * consumers see the full picture without the manifest needing to
+ * duplicate data into `summary`.
+ *
+ * Order (each section omitted when absent):
+ *
+ * 1. `[DEPRECATED]` / `[EXPERIMENTAL]` prefix (stability banner).
+ * 2. The `summary` body verbatim.
+ * 3. Deprecation metadata — replacement + removeIn version — when
+ *    `deprecated: { ... }` is set.
+ * 4. `See also: a, b, c` trailer for `seeAlso` cross-references.
+ * 5. `@since vX.Y.Z` trailer when `since` is set.
+ *
+ * Result is trimmed — an ApiEntry with an empty summary and none
+ * of the auxiliary fields set returns `''` (and `toMcpEntry` omits
+ * `notes` entirely for that case).
+ */
+function buildNotes(api: ApiEntry): string {
+  const parts: string[] = []
+
+  const summary = api.summary.trim()
+  if (api.stability === 'deprecated') {
+    parts.push(summary ? `[DEPRECATED] ${summary}` : '[DEPRECATED]')
+  } else if (api.stability === 'experimental') {
+    parts.push(summary ? `[EXPERIMENTAL] ${summary}` : '[EXPERIMENTAL]')
+  } else if (summary) {
+    parts.push(summary)
+  }
+
+  if (api.deprecated) {
+    const { since, replacement, removeIn } = api.deprecated
+    const bits: string[] = [`Deprecated since v${since}`]
+    if (replacement) bits.push(`replaced by ${replacement}`)
+    if (removeIn) bits.push(`removal planned in v${removeIn}`)
+    parts.push(bits.join(', ') + '.')
+  }
+
+  if (api.seeAlso && api.seeAlso.length > 0) {
+    parts.push(`See also: ${api.seeAlso.join(', ')}.`)
+  }
+
+  // `since` on a non-deprecated entry — "Added in vX.Y.Z" trailer.
+  // Deprecated entries already print their `deprecated.since`
+  // above; `api.since` (first-shipped version) is redundant there.
+  if (api.since && api.stability !== 'deprecated') {
+    parts.push(`Added in v${api.since}.`)
+  }
+
+  return parts.join(' ')
 }
 
 function renderSingleEntry(key: string, e: McpApiReferenceEntry): string {

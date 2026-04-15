@@ -88,6 +88,142 @@ describe('renderApiReferenceEntries', () => {
     expect(record['flow/createFlow']).not.toHaveProperty('mistakes')
   })
 
+  it('stability: deprecated prefixes [DEPRECATED] onto notes', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'oldFn',
+          kind: 'function',
+          signature: 's',
+          summary: 'Legacy helper.',
+          example: 'oldFn()',
+          stability: 'deprecated',
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/oldFn']!.notes).toBe('[DEPRECATED] Legacy helper.')
+  })
+
+  it('stability: experimental prefixes [EXPERIMENTAL] onto notes', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'newFn',
+          kind: 'function',
+          signature: 's',
+          summary: 'Try me.',
+          example: 'newFn()',
+          stability: 'experimental',
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/newFn']!.notes).toBe('[EXPERIMENTAL] Try me.')
+  })
+
+  it('deprecated metadata appends since / replacement / removeIn to notes', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'oldFn',
+          kind: 'function',
+          signature: 's',
+          summary: 'Old.',
+          example: 'oldFn()',
+          stability: 'deprecated',
+          deprecated: {
+            since: '1.2.0',
+            replacement: 'newFn()',
+            removeIn: '2.0.0',
+          },
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/oldFn']!.notes).toBe(
+      '[DEPRECATED] Old. Deprecated since v1.2.0, replaced by newFn(), removal planned in v2.0.0.',
+    )
+  })
+
+  it('seeAlso appends a `See also: a, b, c` trailer', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'fnA',
+          kind: 'function',
+          signature: 's',
+          summary: 'Does A.',
+          example: 'fnA()',
+          seeAlso: ['fnB', 'fnC'],
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/fnA']!.notes).toBe('Does A. See also: fnB, fnC.')
+  })
+
+  it('since on a stable entry appends `Added in vX.Y.Z`', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'fn',
+          kind: 'function',
+          signature: 's',
+          summary: 'Does it.',
+          example: 'fn()',
+          since: '0.12.0',
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/fn']!.notes).toBe('Does it. Added in v0.12.0.')
+  })
+
+  it('since on a deprecated entry is suppressed (deprecated.since carries the version)', () => {
+    // Rationale: a deprecated entry already prints its `deprecated.since`
+    // version; adding an `Added in vX.Y.Z` trailer would be noise.
+    const m = mk({
+      api: [
+        {
+          name: 'fn',
+          kind: 'function',
+          signature: 's',
+          summary: 'Does it.',
+          example: 'fn()',
+          stability: 'deprecated',
+          since: '0.5.0',
+          deprecated: { since: '1.0.0', replacement: 'newFn()' },
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    const notes = record['flow/fn']!.notes!
+    expect(notes).toContain('Deprecated since v1.0.0')
+    expect(notes).not.toContain('Added in v0.5.0')
+  })
+
+  it('composes multiple aux fields in stable order: stability → summary → deprecated meta → seeAlso → since', () => {
+    const m = mk({
+      api: [
+        {
+          name: 'kitchenSink',
+          kind: 'function',
+          signature: 's',
+          summary: 'Does everything.',
+          example: 'kitchenSink()',
+          stability: 'experimental',
+          seeAlso: ['otherFn'],
+          since: '0.9.0',
+        },
+      ],
+    })
+    const record = renderApiReferenceEntries(m)
+    expect(record['flow/kitchenSink']!.notes).toBe(
+      '[EXPERIMENTAL] Does everything. See also: otherFn. Added in v0.9.0.',
+    )
+  })
+
   it('preserves insertion order across api[]', () => {
     const m = mk({
       api: [

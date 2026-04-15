@@ -773,7 +773,7 @@ await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing
 // LayoutOptions applicability: direction / layerSpacing / edgeRouting apply to layered/tree only;
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
 const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
-    notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout via lazy-loaded elkjs (first `.layout()` call fetches a ~1.4MB chunk). Pan / zoom uses pointer events + CSS transforms — no D3.',
+    notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout via lazy-loaded elkjs (first `.layout()` call fetches a ~1.4MB chunk). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
     mistakes: `- Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
@@ -799,7 +799,7 @@ const MyDiagram = () => {
     </Flow>
   )
 }`,
-    notes: `Component-scoped wrapper around \`createFlow\` — identical shape plus an implicit \`onUnmount(() => flow.dispose())\`. Prefer inside component bodies; use \`createFlow\` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you'll dispose at the correct lifecycle point yourself.`,
+    notes: `Component-scoped wrapper around \`createFlow\` — identical shape plus an implicit \`onUnmount(() => flow.dispose())\`. Prefer inside component bodies; use \`createFlow\` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you'll dispose at the correct lifecycle point yourself. See also: createFlow.`,
     mistakes: `- Using \`useFlow\` outside a component body — the \`onUnmount\` hook registration requires an active component setup context, same constraint as every \`useX\` hook
 - Using \`createFlow\` inside a component and forgetting \`onUnmount(() => flow.dispose())\` — that was the footgun \`useFlow\` exists to prevent
 - Storing the returned instance in a module-level variable — bypasses the auto-dispose guarantee; use \`createFlow\` for that pattern`,
@@ -824,7 +824,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
     </div>
   )
 }`,
-    notes: 'Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.',
+    notes: 'Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting. See also: createFlow, Background, Controls, MiniMap, Handle.',
     mistakes: `- \`<Flow<MyData> />\` is invalid JSX — the component is not generic at the call site; pass a typed \`FlowInstance<MyData>\` via \`instance\` prop
 - Missing \`nodeTypes\` entry for a \`node.type\` string — falls through to the default renderer
 - Mutating \`instance.nodes()\` return value directly — use \`instance.addNode\` / \`updateNode\` / \`removeNode\` so the internal signals fire`,
@@ -835,7 +835,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
     example: `<Flow instance={flow}>
   <Background variant="dots" gap={24} color="#e5e7eb" />
 </Flow>`,
-    notes: 'Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order.',
+    notes: 'Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order. See also: Flow, Controls, MiniMap.',
   },
 
   'flow/Controls': {
@@ -843,7 +843,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
     example: `<Flow instance={flow}>
   <Controls position="bottom-left" />
 </Flow>`,
-    notes: 'Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-right"`). Each button dispatches to the corresponding `FlowInstance` viewport method.',
+    notes: 'Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-right"`). Each button dispatches to the corresponding `FlowInstance` viewport method. See also: Flow, Background, MiniMap.',
   },
 
   'flow/MiniMap': {
@@ -851,7 +851,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
     example: `<Flow instance={flow}>
   <MiniMap nodeColor={(node) => node.data.highlighted ? '#f59e0b' : '#6366f1'} />
 </Flow>`,
-    notes: 'Overview minimap of the full graph. `nodeColor` is a per-node color function (default grey), `maskColor` fills the area outside the current viewport (default semi-transparent black). Clicks on the minimap recenter the main viewport.',
+    notes: 'Overview minimap of the full graph. `nodeColor` is a per-node color function (default grey), `maskColor` fills the area outside the current viewport (default semi-transparent black). Clicks on the minimap recenter the main viewport. See also: Flow, Background, Controls.',
   },
 
   'flow/Handle': {
@@ -869,7 +869,7 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
 
 // Edge referencing a specific source handle by id
 flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
-    notes: 'Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`.',
+    notes: 'Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`. See also: Flow, Position.',
     mistakes: `- Multiple \`source\` / \`target\` handles on one node without distinct \`id\` values — edges cannot disambiguate which handle they connect to
 - Nesting a \`<Handle>\` inside a non-node component (a \`<Background>\` child, a \`<Panel>\`, etc.) — the connection machinery expects handles to live inside a node renderer`,
   },
@@ -882,7 +882,7 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
     <button onClick={() => flow.toJSON()}>Export</button>
   </Panel>
 </Flow>`,
-    notes: 'Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component.',
+    notes: 'Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component. See also: Flow, Controls.',
   },
   // <gen-docs:api-reference:end @pyreon/flow>
 
