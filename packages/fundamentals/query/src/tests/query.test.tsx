@@ -62,7 +62,7 @@ function deferred<T>() {
 describe('QueryClientProvider / useQueryClient', () => {
   it('useQueryClient throws when no provider is present', () => {
     // Call directly outside any renderer — context stack is empty so it must throw.
-    expect(() => useQueryClient()).toThrow('[@pyreon/query]')
+    expect(() => useQueryClient()).toThrow('[Pyreon]')
   })
 
   it('provides the QueryClient to descendants', () => {

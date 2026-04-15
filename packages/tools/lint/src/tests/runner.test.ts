@@ -1977,6 +1977,76 @@ describe('early-return guards: throw terminator', () => {
   })
 })
 
+// Typeof-guard functions — `function isBrowser() { return typeof window !==
+// 'undefined' }` is structurally a typeof check at its call sites. Common
+// pattern in storage adapters and SSR-aware utilities. Conventional names
+// (`isBrowser`/`isClient`/`isServer`/`isSSR`) are pre-seeded so cross-module
+// imports work without follow-the-import analysis.
+describe('no-window-in-ssr: typeof-guard functions', () => {
+  it('silent under `if (!isBrowser()) return` early-return (locally-defined)', () => {
+    const source = `
+      function isBrowser() { return typeof window !== 'undefined' }
+      function getStorage() {
+        if (!isBrowser()) return null
+        return window.localStorage
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under `if (isBrowser())` positive guard (arrow form)', () => {
+    const source = `
+      const isBrowser = () => typeof window !== 'undefined'
+      function attach() {
+        if (isBrowser()) {
+          window.addEventListener('storage', () => {})
+        }
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent under `!isBrowser()` even when imported (name-based fallback)', () => {
+    const source = `
+      import { isBrowser } from './utils'
+      function getStorage() {
+        if (!isBrowser()) return null
+        return window.localStorage
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for a function with AND-chained typeof body', () => {
+    const source = `
+      function isBrowser() {
+        return typeof window !== 'undefined' && typeof document !== 'undefined'
+      }
+      function read() {
+        if (!isBrowser()) return null
+        return document.cookie
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('still fires for a non-conventional function name with no typeof body', () => {
+    const source = `
+      function notAGuard() { return true }
+      function getStorage() {
+        if (!notAGuard()) return null
+        return window.localStorage
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBeGreaterThanOrEqual(1)
+  })
+})
+
 // `no-imperative-navigate-in-render` — navigate calls inside nested
 // functions (event handlers, effect callbacks, ref callbacks) are deferred
 // execution and must not be flagged.

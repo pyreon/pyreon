@@ -39,7 +39,7 @@ export function useQueryClient(): QueryClient {
   const client = useContext(QueryClientContext)
   if (!client) {
     throw new Error(
-      '[@pyreon/query] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.',
+      '[Pyreon] No QueryClient found. Wrap your app with <QueryClientProvider client={client}>.',
     )
   }
   return client

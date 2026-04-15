@@ -8,6 +8,9 @@ import { deserialize, isBrowser, serialize } from './utils'
 const dbCache = new Map<string, Promise<IDBDatabase>>()
 
 function openDB(dbName: string, storeName: string): Promise<IDBDatabase> {
+  if (typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('[Pyreon] indexedDB is not available in this environment'))
+  }
   const cacheKey = `${dbName}:${storeName}`
   const cached = dbCache.get(cacheKey)
   if (cached) return cached

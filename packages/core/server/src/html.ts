@@ -37,7 +37,7 @@ export interface CompiledTemplate {
 
 export function compileTemplate(template: string): CompiledTemplate {
   if (!template.includes('<!--pyreon-app-->')) {
-    throw new Error('[pyreon/server] Template must contain <!--pyreon-app--> placeholder')
+    throw new Error('[Pyreon] Template must contain <!--pyreon-app--> placeholder')
   }
   const [beforeHead, afterHead] = splitOnce(template, '<!--pyreon-head-->')
   const [betweenHeadApp, afterApp] = splitOnce(afterHead, '<!--pyreon-app-->')

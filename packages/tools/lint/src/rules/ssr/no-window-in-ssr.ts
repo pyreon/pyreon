@@ -100,6 +100,13 @@ export const noWindowInSsr: Rule = {
       if (isPositiveTypeofCheck(test)) return true
       // `if (isBrowser)` — bound from a typeof, body is browser-safe.
       if (test.type === 'Identifier' && typeofBoundConsts.has(test.name)) return true
+      // `if (isBrowser())` — function whose body returns a typeof check.
+      if (
+        test.type === 'CallExpression' &&
+        test.callee?.type === 'Identifier' &&
+        typeofGuardFunctions.has(test.callee.name)
+      )
+        return true
       // `if (typeofGuard && other)` / `if (other && typeofGuard)` — either
       // side being a typeof guard means the body only runs when the guard
       // is truthy (AND short-circuits). Common in ternary tests like
@@ -107,6 +114,43 @@ export const noWindowInSsr: Rule = {
       if (test.type === 'LogicalExpression' && test.operator === '&&') {
         return testIsTypeofGuard(test.left) || testIsTypeofGuard(test.right)
       }
+      return false
+    }
+    // Functions whose body is `return <typeof check expr>` — invoked as
+    // the convention `isBrowser()` / `isClient()` early-return guards.
+    // E.g. `function isBrowser() { return typeof window !== 'undefined' }`.
+    // Calls to these functions count as typeof checks for guard analysis.
+    // Pre-seeded with conventional names (recognised across module
+    // boundaries — same approach as `dev-guard-warnings` recognises
+    // `__DEV__`/`IS_DEV`/etc. by name): user-supplied implementations of
+    // `isBrowser` / `isClient` / `isServer` / `isSSR` are treated as
+    // typeof guards even when imported from another file. Each file's
+    // local `function isBrowser() { return typeof window !== 'undefined' }`
+    // also adds itself to the set.
+    const typeofGuardFunctions = new Set<string>(['isBrowser', 'isClient', 'isServer', 'isSSR'])
+    function bodyIsTypeofGuard(body: any): boolean {
+      if (!body) return false
+      // Arrow concise body: `() => typeof window !== 'undefined'` →
+      // body IS the expression directly, not a BlockStatement.
+      if (body.type !== 'BlockStatement') return isReturnedTypeofExpr(body)
+      // Block body: must be a single `return <expr>` statement.
+      const stmts = body.body ?? []
+      if (stmts.length !== 1) return false
+      const stmt = stmts[0]
+      if (stmt?.type !== 'ReturnStatement') return false
+      return isReturnedTypeofExpr(stmt.argument)
+    }
+    function isReturnedTypeofExpr(expr: any): boolean {
+      if (!expr) return false
+      if (isPositiveTypeofCheck(expr)) return true
+      // AND-chain of typeof checks (or typeof-bound consts) — a function
+      // returning `typeof window !== 'undefined' && typeof document !== 'undefined'`
+      // is still a typeof guard.
+      if (expr.type === 'LogicalExpression' && expr.operator === '&&') {
+        return isReturnedTypeofExpr(expr.left) && isReturnedTypeofExpr(expr.right)
+      }
+      // Identifier reference to a previously-bound typeof const.
+      if (expr.type === 'Identifier' && typeofBoundConsts.has(expr.name)) return true
       return false
     }
 
@@ -131,6 +175,16 @@ export const noWindowInSsr: Rule = {
         test.operator === '!' &&
         test.argument?.type === 'Identifier' &&
         typeofBoundConsts.has(test.argument.name)
+      )
+        return true
+      // `!isBrowser()` where isBrowser is a typeof-guard function — common
+      // SSR pattern in storage adapters: `if (!isBrowser()) return null`.
+      if (
+        test.type === 'UnaryExpression' &&
+        test.operator === '!' &&
+        test.argument?.type === 'CallExpression' &&
+        test.argument.callee?.type === 'Identifier' &&
+        typeofGuardFunctions.has(test.argument.callee.name)
       )
         return true
       // `typeof X === 'undefined' || typeof Y === 'undefined'` — chained
@@ -226,14 +280,30 @@ export const noWindowInSsr: Rule = {
 
     const callbacks: VisitorCallbacks = {
       VariableDeclaration(node: any) {
-        // const isBrowser = typeof window !== 'undefined'
         for (const decl of node.declarations ?? []) {
-          if (decl.id?.type === 'Identifier' && isTypeofCheckForBinding(decl.init)) {
+          if (decl.id?.type !== 'Identifier') continue
+          // const isBrowser = typeof window !== 'undefined'
+          if (isTypeofCheckForBinding(decl.init)) {
             typeofBoundConsts.add(decl.id.name)
+          }
+          // const isBrowser = () => typeof window !== 'undefined'
+          // const isBrowser = function () { return typeof window !== 'undefined' }
+          if (
+            (decl.init?.type === 'ArrowFunctionExpression' ||
+              decl.init?.type === 'FunctionExpression') &&
+            bodyIsTypeofGuard(decl.init.body)
+          ) {
+            typeofGuardFunctions.add(decl.id.name)
           }
         }
       },
-      FunctionDeclaration: pushFunctionScope,
+      FunctionDeclaration(node: any) {
+        // function isBrowser() { return typeof window !== 'undefined' }
+        if (node.id?.type === 'Identifier' && bodyIsTypeofGuard(node.body)) {
+          typeofGuardFunctions.add(node.id.name)
+        }
+        pushFunctionScope(node)
+      },
       'FunctionDeclaration:exit': popFunctionScope,
       FunctionExpression: pushFunctionScope,
       'FunctionExpression:exit': popFunctionScope,

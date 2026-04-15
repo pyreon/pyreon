@@ -89,6 +89,7 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   }
 
   function connect(): void {
+    if (typeof WebSocket === 'undefined') return
     if (ws) {
       ws.onopen = null
       ws.onmessage = null
@@ -161,12 +162,14 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   }
 
   function send(data: string | Blob | BufferSource): void {
+    if (typeof WebSocket === 'undefined') return
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(data)
     }
   }
 
   function close(): void {
+    if (typeof WebSocket === 'undefined') return
     intentionalClose = true
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer)
