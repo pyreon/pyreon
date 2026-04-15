@@ -17,6 +17,12 @@ const VIEWPORT_COLOR = 'rgba(59, 130, 246, 0.15)'
 const VIEWPORT_BORDER = 'rgba(59, 130, 246, 0.4)'
 
 function createMinimapCanvas(): HTMLCanvasElement {
+  // Called only by the CodeMirror plugin mount path — never in SSR. The
+  // explicit typeof guard documents the SSR-safety contract and lets
+  // `no-window-in-ssr` prove it locally; the cast satisfies the return type
+  // (the dummy object never actually escapes — the plugin doesn't mount in
+  // SSR so this branch is unreachable at runtime).
+  if (typeof document === 'undefined') return null as unknown as HTMLCanvasElement
   const canvas = document.createElement('canvas')
   canvas.style.cssText = `position: absolute; right: 0; top: 0; width: ${MINIMAP_WIDTH}px; height: 100%; cursor: pointer; z-index: 5;`
   canvas.width = MINIMAP_WIDTH * 2 // retina
@@ -128,6 +134,7 @@ export function minimapExtension(): Extension {
         }
 
         update(update: ViewUpdate) {
+          if (typeof window === 'undefined') return
           if (update.docChanged || update.viewportChanged || update.geometryChanged) {
             if (this.animFrame) cancelAnimationFrame(this.animFrame)
             this.animFrame = requestAnimationFrame(() => this.render())
@@ -135,6 +142,7 @@ export function minimapExtension(): Extension {
         }
 
         destroy() {
+          if (typeof window === 'undefined') return
           if (this.animFrame) cancelAnimationFrame(this.animFrame)
           this.canvas.remove()
         }

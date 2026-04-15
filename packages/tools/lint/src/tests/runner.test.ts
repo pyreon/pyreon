@@ -1811,6 +1811,35 @@ describe('no-window-in-ssr: parameter shadowing + typeof-derived AND chains', ()
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
   })
 
+  it('silent when a browser-global name is shadowed by a top-level import binding', () => {
+    // `import { history } from '@codemirror/commands'` — every later
+    // `history` identifier in the file is the import, not `window.history`.
+    const source = `
+      import { history } from '@codemirror/commands'
+      const ext = history()
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for default-import binding shadowing a browser global', () => {
+    const source = `
+      import history from '@codemirror/commands'
+      const ext = history()
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('silent for namespace-import binding shadowing a browser global', () => {
+    const source = `
+      import * as location from './location-utils'
+      const x = location()
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
   it('silent under `if (handler)` when handler is bound via `_isBrowser ? fn : null`', () => {
     // Ternary-derived bindings: `handler` is only non-null when the guard
     // was truthy, so `if (handler)` implicitly asserts the guard held.
@@ -1833,6 +1862,39 @@ describe('no-window-in-ssr: parameter shadowing + typeof-derived AND chains', ()
     `
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+})
+
+// Inline suppression — both the long-form and short-form syntaxes are accepted.
+describe('inline suppression comments', () => {
+  it('suppresses next-line diagnostic via `// pyreon-lint-ignore <rule-id>`', () => {
+    const source = [
+      'const x = signal(0)',
+      '// pyreon-lint-ignore pyreon/no-peek-in-tracked',
+      'const c = computed(() => x.peek())',
+    ].join('\n')
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBe(0)
+  })
+
+  it('suppresses next-line diagnostic via `// pyreon-lint-disable-next-line <rule-id>` (alias)', () => {
+    const source = [
+      'const x = signal(0)',
+      '// pyreon-lint-disable-next-line pyreon/no-peek-in-tracked',
+      'const c = computed(() => x.peek())',
+    ].join('\n')
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBe(0)
+  })
+
+  it('still fires when the suppression comment names a different rule', () => {
+    const source = [
+      'const x = signal(0)',
+      '// pyreon-lint-disable-next-line pyreon/no-window-in-ssr',
+      'const c = computed(() => x.peek())',
+    ].join('\n')
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBeGreaterThanOrEqual(1)
   })
 })
 

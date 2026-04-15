@@ -198,7 +198,8 @@ export function bindEditorToSignal<T>(
     const value = signal()
     if (applyingFromEditor) return
     const next = serialize(value)
-    if (next === editor.value.peek()) return
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    if (next === editor.value.peek()) return // intentional: loop-prevention
     applyingFromExternal = true
     try {
       editor.value.set(next)
