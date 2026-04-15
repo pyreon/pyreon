@@ -269,6 +269,33 @@ describe('applyProp — innerHTML', () => {
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
+
+  test('reactive innerHTML accessor — function value is called, not stringified', async () => {
+    // Regression: the JSX compiler emits `innerHTML={getIcon(props.x ? "a" : "b")}`
+    // as a `() => …` accessor. Without function-value handling here, the
+    // closure was set as literal text — `() => getIcon(...)` rendered
+    // verbatim instead of the SVG.
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const which = signal<'a' | 'b'>('a')
+    const cleanup = applyProp(el, 'innerHTML', () => `<span data-x="${which()}">x</span>`)
+    expect(el.querySelector('[data-x="a"]')).not.toBeNull()
+    expect(el.innerHTML).not.toContain('=>')
+    which.set('b')
+    expect(el.querySelector('[data-x="b"]')).not.toBeNull()
+    cleanup?.()
+  })
+
+  test('reactive dangerouslySetInnerHTML accessor — function value is called, not stringified', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const html = signal('<em>one</em>')
+    const cleanup = applyProp(el, 'dangerouslySetInnerHTML', () => ({ __html: html() }))
+    expect(el.innerHTML).toBe('<em>one</em>')
+    html.set('<em>two</em>')
+    expect(el.innerHTML).toBe('<em>two</em>')
+    cleanup?.()
+  })
 })
 
 // ─── applyProp — URL safety ──────────────────────────────────────────────────

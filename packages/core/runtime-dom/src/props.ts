@@ -249,13 +249,26 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
-  // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer
+  // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer.
+  // Reactive accessor support: if `value` is a function, wrap in a
+  // `renderEffect` so each accessor call writes the current HTML. Without
+  // this, the JSX compiler's `_bind`-style reactive prop wrapper for
+  // `innerHTML={getIcon(props.x ? 'a' : 'b')}` would have its closure
+  // stringified and set as literal text — `() => getIcon(...)` rendered
+  // instead of the SVG.
   if (key === 'innerHTML') {
-    if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === 'function') {
-      ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(value as string)
-    } else {
-      ;(el as HTMLElement).innerHTML = sanitizeHtml(value as string)
+    const setInnerHTML = (raw: unknown): void => {
+      const html = String(raw ?? '')
+      if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === 'function') {
+        ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(html)
+      } else {
+        ;(el as HTMLElement).innerHTML = sanitizeHtml(html)
+      }
     }
+    if (typeof value === 'function') {
+      return renderEffect(() => setInnerHTML((value as () => unknown)()))
+    }
+    setInnerHTML(value)
     return null
   }
   // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React).
@@ -263,6 +276,12 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // Previously this warned on every prop application, flooding the console
   // on re-renders (one warning per render per instance).
   if (key === 'dangerouslySetInnerHTML') {
+    if (typeof value === 'function') {
+      return renderEffect(() => {
+        const v = (value as () => unknown)() as { __html: string } | null | undefined
+        ;(el as HTMLElement).innerHTML = v?.__html ?? ''
+      })
+    }
     ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
     return null
   }
