@@ -78,6 +78,24 @@ describe('loader data serialization — edge cases', () => {
     expect(values[0]).toEqual(complexData)
   })
 
+  test('prefetchLoaderData does NOT clobber router._abortController', async () => {
+    // Regression: `prefetchLoaderData` used to overwrite
+    // `router._abortController` with its own fresh controller. Hovering
+    // a <Link> during an in-flight navigation destroyed the nav's
+    // abort capability — subsequent navigations couldn't cancel the
+    // first one. Fix: prefetch uses a LOCAL controller.
+    const routes: RouteRecord[] = [
+      { path: '/data', component: Home, loader: async () => 'ok' },
+    ]
+    const router = createRouter({ routes, url: '/' }) as RouterInstance
+    const navController = new AbortController()
+    router._abortController = navController
+    await prefetchLoaderData(router, '/data')
+    // Prefetch finished; nav's controller must be untouched.
+    expect(router._abortController).toBe(navController)
+    expect(navController.signal.aborted).toBe(false)
+  })
+
   test('prefetchLoaderData passes AbortSignal to loaders', async () => {
     let receivedSignal: AbortSignal | undefined
     const routes: RouteRecord[] = [

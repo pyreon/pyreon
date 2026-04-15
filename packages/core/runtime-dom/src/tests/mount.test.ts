@@ -3177,6 +3177,95 @@ describe('TransitionGroup — cleanup', () => {
   })
 })
 
+// ─── TransitionGroup — leak regression tests ─────────────────────────────────
+// Regression for the two fixes:
+// 1. No safety timeout on applyLeave meant an item whose transition never
+//    fired stayed in the `entries` Map forever (`entries.delete(key)` was
+//    gated on the `done` callback firing).
+// 2. Unmount during in-flight transition left the 5s safety timer running,
+//    firing `onAfterEnter` / `onAfterLeave` on detached elements.
+
+describe('TransitionGroup — leak regressions', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('onAfterLeave fires via 5s safety timeout when transitionend never fires', async () => {
+    const el = container()
+    const items = signal([{ id: 1 }, { id: 2 }])
+    const onAfterLeave = vi.fn()
+    mount(
+      h(TransitionGroup, {
+        tag: 'div',
+        name: 'fade',
+        items,
+        keyFn: (item: { id: number }) => item.id,
+        render: (item: { id: number }) => h('span', { class: 'item' }, String(item.id)),
+        onAfterLeave,
+      }),
+      el,
+    )
+    await vi.advanceTimersByTimeAsync(20)
+    items.set([{ id: 1 }])
+    await vi.advanceTimersByTimeAsync(20)
+    // transitionend never fires — before the fix this would leak forever.
+    expect(onAfterLeave).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(5100)
+    expect(onAfterLeave).toHaveBeenCalledTimes(1)
+  })
+
+  test('onAfterEnter does NOT fire after container unmount during in-flight enter', async () => {
+    const el = container()
+    const items = signal<{ id: number }[]>([])
+    const onAfterEnter = vi.fn()
+    const dispose = mount(
+      h(TransitionGroup, {
+        tag: 'div',
+        name: 'fade',
+        items,
+        keyFn: (item: { id: number }) => item.id,
+        render: (item: { id: number }) => h('span', { class: 'item' }, String(item.id)),
+        onAfterEnter,
+      }),
+      el,
+    )
+    await vi.advanceTimersByTimeAsync(20)
+    items.set([{ id: 1 }])
+    await vi.advanceTimersByTimeAsync(20)
+    // Mid-transition — unmount. The 5s safety timer must NOT fire the
+    // callback on a detached element.
+    dispose()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(onAfterEnter).not.toHaveBeenCalled()
+  })
+
+  test('onAfterLeave does NOT fire after container unmount during in-flight leave', async () => {
+    const el = container()
+    const items = signal([{ id: 1 }])
+    const onAfterLeave = vi.fn()
+    const dispose = mount(
+      h(TransitionGroup, {
+        tag: 'div',
+        name: 'fade',
+        items,
+        keyFn: (item: { id: number }) => item.id,
+        render: (item: { id: number }) => h('span', { class: 'item' }, String(item.id)),
+        onAfterLeave,
+      }),
+      el,
+    )
+    await vi.advanceTimersByTimeAsync(20)
+    items.set([])
+    await vi.advanceTimersByTimeAsync(20)
+    dispose()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(onAfterLeave).not.toHaveBeenCalled()
+  })
+})
+
 // ─── Error paths (no ErrorBoundary) ──────────────────────────────────────────
 
 describe('mount — error paths', () => {
