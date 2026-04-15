@@ -38,10 +38,6 @@ const repoRoot = path.resolve(here, '..')
 // errors if a listed package now has a *.browser.test.* file so the
 // removal can't be forgotten.
 const PHASE_5_PENDING_PACKAGES = [
-  // ui-system — Phase 5 rollout
-  'packages/ui-system/rocketstyle/',
-  'packages/ui-system/coolgrid/',
-  'packages/ui-system/connector-document/',
   // ui (theme + components + primitives) — Phase 5 rollout
   'packages/ui/theme/',
   'packages/ui/components/',
