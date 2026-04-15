@@ -639,6 +639,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
