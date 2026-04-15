@@ -144,10 +144,14 @@ export const noWindowInSsr: Rule = {
     function isEarlyReturnTypeofGuard(stmt: any): boolean {
       if (!stmt || stmt.type !== 'IfStatement') return false
       if (!isNegatedTypeofExpr(stmt.test)) return false
-      // Consequent must be a return (bare or in a single-statement block).
+      // Consequent must terminate the function — either a return or a throw
+      // (both bail out, leaving the rest of the body implicitly guarded).
+      // Bare statement OR single-statement block are both accepted.
       const c = stmt.consequent
-      if (c?.type === 'ReturnStatement') return true
-      if (c?.type === 'BlockStatement' && c.body.length === 1 && c.body[0]?.type === 'ReturnStatement')
+      const isTerminator = (s: any): boolean =>
+        s?.type === 'ReturnStatement' || s?.type === 'ThrowStatement'
+      if (isTerminator(c)) return true
+      if (c?.type === 'BlockStatement' && c.body.length === 1 && isTerminator(c.body[0]))
         return true
       return false
     }

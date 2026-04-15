@@ -290,6 +290,6 @@ describe('route integration — adapter resolution', () => {
     expect(() =>
       // @ts-expect-error testing invalid input
       resolveAdapter({ adapter: 'unknown' }),
-    ).toThrow('[zero] Unknown adapter: "unknown"')
+    ).toThrow('[Pyreon] Unknown adapter: "unknown"')
   })
 })

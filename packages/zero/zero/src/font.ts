@@ -282,7 +282,7 @@ async function downloadGoogleFontsCSS(url: string): Promise<string> {
     },
   })
   if (!response.ok) {
-    throw new Error(`Failed to fetch Google Fonts CSS: ${response.status}`)
+    throw new Error(`[Pyreon] Failed to fetch Google Fonts CSS: ${response.status}`)
   }
   return response.text()
 }
@@ -292,7 +292,7 @@ async function downloadGoogleFontsCSS(url: string): Promise<string> {
  */
 async function downloadFontFile(url: string): Promise<Buffer> {
   const response = await fetch(url)
-  if (!response.ok) throw new Error(`Failed to download font: ${url}`)
+  if (!response.ok) throw new Error(`[Pyreon] Failed to download font: ${url}`)
   const arrayBuffer = await response.arrayBuffer()
   return Buffer.from(arrayBuffer)
 }

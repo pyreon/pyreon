@@ -9,7 +9,7 @@ function warnSharpMissing() {
   sharpWarned = true
   // oxlint-disable-next-line no-console
   console.warn(
-    '\n[zero:favicon] sharp not installed — favicons will not be generated. Install for full support: bun add -D sharp\n',
+    '\n[Pyreon] sharp not installed — favicons will not be generated. Install for full support: bun add -D sharp\n',
   )
 }
 
@@ -25,7 +25,7 @@ function warnSharpMissing() {
 //
 // Usage:
 //   import { faviconPlugin } from "@pyreon/zero"
-//   export default { plugins: [zero(), faviconPlugin({ source: "./icon.svg" })] }
+//   export default { plugins: [Pyreon] }
 
 export interface FaviconLocaleConfig {
   /** Locale-specific source icon (SVG or PNG). */
@@ -404,7 +404,7 @@ async function generateFaviconSet(
   const sourcePath = join(rootDir, source)
   if (!existsSync(sourcePath)) {
     // oxlint-disable-next-line no-console
-    console.warn(`[zero:favicon] Source not found: ${sourcePath}`)
+    console.warn(`[Pyreon] Source not found: ${sourcePath}`)
     return
   }
 

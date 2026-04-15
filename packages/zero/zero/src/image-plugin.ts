@@ -9,7 +9,7 @@ function warnSharpMissing() {
   sharpWarned = true
   // oxlint-disable-next-line no-console
   console.warn(
-    '\n[zero:image] sharp not installed — images will not be optimized. Install for full support: bun add -D sharp\n',
+    '\n[Pyreon] sharp not installed — images will not be optimized. Install for full support: bun add -D sharp\n',
   )
 }
 

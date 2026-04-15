@@ -74,6 +74,9 @@ const MAX_PREFETCH_CACHE = 200
 const prefetched = new Set<string>()
 
 function doPrefetch(href: string) {
+  // Prefetch only fires from browser-mounted Link interactions (hover /
+  // click intent). Explicit guard documents the SSR-safety contract.
+  if (typeof document === 'undefined') return
   if (prefetched.has(href)) return
   // Evict oldest entries when cache is full
   if (prefetched.size >= MAX_PREFETCH_CACHE) {

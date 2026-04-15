@@ -50,8 +50,14 @@ export interface StartClientOptions {
  * startClient({ routes })
  */
 export function startClient(options: StartClientOptions) {
+  // `startClient` is the browser entry point — only ever called from a
+  // user's `client.ts` mounted in the browser. Explicit guard documents
+  // that contract and gives a clearer error than `document is not defined`.
+  if (typeof document === 'undefined') {
+    throw new Error('[Pyreon] startClient() can only be called in the browser.')
+  }
   const container = document.getElementById('app')
-  if (!container) throw new Error('[zero] Missing #app container element')
+  if (!container) throw new Error('[Pyreon] Missing #app container element')
 
   const { App, router } = createApp({
     routes: options.routes,
@@ -103,7 +109,7 @@ export function startClient(options: StartClientOptions) {
       if (import.meta.env?.DEV === true) {
         // oxlint-disable-next-line no-console
         console.warn(
-          '[zero] Initial loader run failed for route:',
+          '[Pyreon] Initial loader run failed for route:',
           currentPath,
           err,
         )

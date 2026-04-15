@@ -48,7 +48,10 @@ export const BROWSER_GLOBALS = new Set([
   'localStorage',
   'sessionStorage',
   'indexedDB',
-  'fetch',
+  // NOTE: `fetch` is intentionally OMITTED — it's a universal global in
+  // Node 18+, Bun, Deno, browsers, and edge runtimes. Code using it isn't
+  // browser-specific. (`XMLHttpRequest`/`WebSocket` are still here because
+  // they're DOM-only and Node code uses different libraries.)
   'XMLHttpRequest',
   'WebSocket',
   'requestAnimationFrame',

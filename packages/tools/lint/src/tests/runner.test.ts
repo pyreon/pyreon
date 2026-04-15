@@ -1918,6 +1918,65 @@ describe('inline suppression comments', () => {
   })
 })
 
+// Early-return guards with `throw` (not just `return`) — common in entry-point
+// functions like `startClient` that hard-fail in SSR rather than silently
+// no-op. Both `no-window-in-ssr` and `no-dom-in-setup` recognise the form.
+describe('early-return guards: throw terminator', () => {
+  it('no-window-in-ssr silent under `if (typeof X === "undefined") throw …` early-return', () => {
+    const source = `
+      function startClient() {
+        if (typeof document === 'undefined') throw new Error('browser only')
+        const el = document.body
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+
+  it('no-dom-in-setup silent under `if (typeof document === "undefined") return` at function head', () => {
+    const source = `
+      function loadScript() {
+        if (typeof document === 'undefined') return
+        const x = document.getElementById('app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+
+  it('no-dom-in-setup silent under `if (typeof window === "undefined") throw …` early-return', () => {
+    const source = `
+      function init() {
+        if (typeof window === 'undefined') throw new Error('browser only')
+        const x = document.querySelector('#app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBe(0)
+  })
+
+  it('no-dom-in-setup still fires without an early-return guard', () => {
+    const source = `
+      function init() {
+        const x = document.querySelector('#app')
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-dom-in-setup').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('no-window-in-ssr does NOT fire on `fetch` (universal in Node 18+/Bun/Deno/browsers/edge)', () => {
+    const source = `
+      async function loadJson(url) {
+        const res = await fetch(url)
+        return res.json()
+      }
+    `
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-window-in-ssr').length).toBe(0)
+  })
+})
+
 // `no-imperative-navigate-in-render` — navigate calls inside nested
 // functions (event handlers, effect callbacks, ref callbacks) are deferred
 // execution and must not be flagged.
