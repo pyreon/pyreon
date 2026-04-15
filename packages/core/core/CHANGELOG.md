@@ -1,5 +1,12 @@
 # @pyreon/core
 
+## 0.12.15
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.12.15
+
 ## 0.12.14
 
 ### Patch Changes

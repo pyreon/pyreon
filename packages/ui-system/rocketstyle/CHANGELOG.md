@@ -1,5 +1,17 @@
 # @pyreon/rocketstyle
 
+## 0.12.15
+
+### Patch Changes
+
+- [#257](https://github.com/pyreon/pyreon/pull/257) [`f2c2606`](https://github.com/pyreon/pyreon/commit/f2c2606f59584f564b28b2f188d6537766d3060b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Align `useBooleans` type default with runtime default (`false`). Previously the type default was `true` while the runtime default was `false`, so boolean dimension props like `<Heading level3 />` typechecked but were silently dropped at runtime — components rendered with only their base `.theme()` styles, missing all `.sizes()` / `.variants()` / `.states()` overrides. Consumers that relied on boolean shorthand must either pass `useBooleans: true` explicitly or switch to the object form (`size="level3"`, `state="primary"`, `variant="secondary"`).
+
+- Updated dependencies []:
+  - @pyreon/core@0.12.15
+  - @pyreon/reactivity@0.12.15
+  - @pyreon/styler@0.12.15
+  - @pyreon/ui-core@0.12.15
+
 ## 0.12.14
 
 ### Patch Changes
