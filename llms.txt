@@ -221,7 +221,7 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/ui-core — Config engine, init(), PyreonUI provider, useMode(), utilities
 - @pyreon/styler — CSS-in-JS: styled(), css, keyframes, theming
 - @pyreon/unistyle — Responsive breakpoints, CSS property mappings, enrichTheme()
-- @pyreon/hooks — 33+ signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.)
+- @pyreon/hooks — 35 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect). `useControllableState({ value, defaultValue, onChange })` is the canonical controlled/uncontrolled pattern. Every primitive in `@pyreon/ui-primitives` uses it. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively — a plain value loses prop-driven controlled/uncontrolled detection.
 - @pyreon/elements — Foundational primitives (Element, Text, List, Overlay, Portal)
 - @pyreon/attrs — Chainable HOC factory (.attrs(), .config())
 - @pyreon/rocketstyle — Multi-state styling (states, sizes, variants, themes, dark mode)
