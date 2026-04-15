@@ -33,7 +33,7 @@ const LogoItem = element
   }))
 
 const LogoGrid = () => (
-  <Background secondary>
+  <Background variant="secondary">
     <Section id="logo-grid">
       <SectionHeader title="Partners & Clients">
         A grid of random logo placeholders to exercise image loading and

@@ -94,6 +94,34 @@ describe('rocketstyle factory', () => {
     })
     expect(Button).toBeDefined()
   })
+
+  // Regression: type default and runtime default must agree. When they
+  // diverged (type default `true`, runtime default `false`), boolean
+  // dimension props like `<Heading level3 />` typechecked but were silently
+  // dropped at runtime — producing components with only base .theme() styles
+  // and missing .sizes()/.variants()/.states() overrides.
+  it('type default matches runtime default (both false)', () => {
+    // Runtime: boolean shorthand is IGNORED when useBooleans is false
+    const Button: any = rocketstyle()({ name: 'TypeTest', component: BaseComponent })
+      .sizes(() => ({ level3: { fontSize: 24 } }))
+    const ignored = getComputedTheme(Button, { level3: true })
+    expect(ignored.fontSize).toBeUndefined()
+
+    // Runtime: object form IS applied
+    const applied = getComputedTheme(Button, { size: 'level3' })
+    expect(applied.fontSize).toBe(24)
+
+    // Type-level regression: when useBooleans is omitted, UB infers to
+    // `false`, so boolean dimension props must NOT be on the public surface.
+    // Before the fix (type default `true`), `level3: true` would typecheck —
+    // silently matching the bokisch / ssr-showcase regression.
+    const TypedComponent = (_props: { children?: unknown }): null => null
+    const Typed = rocketstyle()({ name: 'T', component: TypedComponent })
+      .sizes(() => ({ level3: { fontSize: 24 } }))
+    type Props = (typeof Typed)['$$types']
+    const _hasNoBooleanShorthand: 'level3' extends keyof Props ? false : true = true
+    void _hasNoBooleanShorthand
+  })
 })
 
 // --------------------------------------------------------

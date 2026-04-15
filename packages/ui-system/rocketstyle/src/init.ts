@@ -14,7 +14,7 @@ import {
 
 export type Rocketstyle = <
   const D extends Dimensions = DefaultDimensions,
-  UB extends boolean = true,
+  UB extends boolean = false,
 >({
   dimensions,
   useBooleans,
