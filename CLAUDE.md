@@ -229,9 +229,15 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 
 - Full TanStack Query adapter: `useQuery`, `useMutation`, `useInfiniteQuery`, `useQueries`
 - Suspense: `useSuspenseQuery`, `useSuspenseInfiniteQuery`, `QuerySuspense` boundary
+- Error recovery: `QueryErrorResetBoundary` (component) + `useQueryErrorResetBoundary()` (hook returning `{ reset }`) — pair with a sibling `ErrorBoundary` so fallback retry clears errored queries
 - `useSubscription(options)` — reactive WebSocket with auto-reconnect, integrates with QueryClient for cache invalidation
-- `useSSE(options)` — Server-Sent Events hook with QueryClient integration, same pattern as useSubscription but read-only
-- Fine-grained signals per field (data, error, isFetching independent)
+- `useSSE(options)` — Server-Sent Events hook with QueryClient integration, same pattern as useSubscription but read-only. Honours the SSE `id` field via `lastEventId()` for resumable reconnects
+- Global counters: `useIsFetching(filters?)` / `useIsMutating(filters?)` → `Signal<number>` for top-of-page spinners
+- `useQueryClient()` — imperative access to the nearest `QueryClient` (throws if no provider mounted)
+- TanStack core re-exports: `QueryClient`, `QueryCache`, `MutationCache`, `dehydrate`, `hydrate`, `keepPreviousData`, `hashKey`, `isCancelledError`, `CancelledError`, `defaultShouldDehydrateQuery`, `defaultShouldDehydrateMutation` (+ all types: `QueryKey`, `QueryFilters`, `DehydratedState`, etc.) — consumers import everything from `@pyreon/query`
+- Fine-grained signals per field (data, error, isFetching independent) — each field-level read only subscribes to that field
+- **Options as a function**: `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION (not an object) so `queryKey` and other fields can read Pyreon signals — changing a tracked signal re-runs the observer options and refetches automatically. `useMutation` options are a plain object (mutations are imperative, no tracking needed).
+- Manifest-driven docs (T2.1): `packages/fundamentals/query/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### @pyreon/table
 

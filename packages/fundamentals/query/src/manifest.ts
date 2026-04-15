@@ -245,6 +245,25 @@ const user = useQuery(() => ({
       seeAlso: ['QuerySuspense', 'useSuspenseInfiniteQuery', 'useQuery'],
     },
     {
+      name: 'useSuspenseInfiniteQuery',
+      kind: 'hook',
+      signature:
+        '<TQueryFnData, TError>(options: () => InfiniteQueryObserverOptions<...>) => UseSuspenseInfiniteQueryResult<TQueryFnData, TError>',
+      summary:
+        'Like `useInfiniteQuery` but `data` is `Signal<InfiniteData<TQueryFnData>>` (never undefined) — for use inside a `QuerySuspense` boundary. Returns the same fetchNextPage / fetchPreviousPage surface as `useInfiniteQuery`.',
+      example: `const feed = useSuspenseInfiniteQuery(() => ({
+  queryKey: ['feed'],
+  queryFn: ({ pageParam }) => fetchPage(pageParam),
+  initialPageParam: 0,
+  getNextPageParam: (last) => last.nextCursor,
+}))
+
+<QuerySuspense query={feed} fallback={<Spinner />}>
+  {() => <Feed pages={feed.data().pages} onMore={feed.fetchNextPage} />}
+</QuerySuspense>`,
+      seeAlso: ['useSuspenseQuery', 'useInfiniteQuery', 'QuerySuspense'],
+    },
+    {
       name: 'QuerySuspense',
       kind: 'component',
       signature: '(props: QuerySuspenseProps) => VNodeChild',
@@ -294,6 +313,17 @@ const user = useQuery(() => ({
       seeAlso: ['QuerySuspense'],
     },
     {
+      name: 'useQueryErrorResetBoundary',
+      kind: 'hook',
+      signature: '() => { reset: () => void }',
+      summary:
+        'Imperative access to the nearest `QueryErrorResetBoundary`. Call `reset()` to clear errored queries in the subtree — useful when an error fallback has its own retry button outside the render-prop form of `QueryErrorResetBoundary`.',
+      example: `const { reset } = useQueryErrorResetBoundary()
+// Inside an ErrorBoundary fallback:
+<button onClick={() => { reset(); retry() }}>Try again</button>`,
+      seeAlso: ['QueryErrorResetBoundary'],
+    },
+    {
       name: 'useQueryClient',
       kind: 'hook',
       signature: '() => QueryClient',
@@ -303,6 +333,24 @@ const user = useQuery(() => ({
 client.invalidateQueries({ queryKey: ['posts'] })
 await client.prefetchQuery({ queryKey: ['user', 1], queryFn: fetchUser })`,
       seeAlso: ['QueryClientProvider'],
+    },
+    {
+      name: 'TanStack core re-exports',
+      kind: 'function',
+      signature:
+        "import { QueryClient, QueryCache, MutationCache, dehydrate, hydrate, keepPreviousData, hashKey, isCancelledError, CancelledError, defaultShouldDehydrateQuery, defaultShouldDehydrateMutation } from '@pyreon/query'",
+      summary:
+        '`@pyreon/query` re-exports the framework-agnostic TanStack surface so consumers import every primitive from one entry: `QueryClient` / `QueryCache` / `MutationCache` (instance classes), `dehydrate` / `hydrate` (SSR serialization), `keepPreviousData` (placeholder helper), `hashKey` / `isCancelledError` / `CancelledError`, and the `defaultShouldDehydrate*` predicates. Types (`QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`) re-export alongside the runtime values.',
+      example: `// SSR dehydration round-trip:
+import { QueryClient, dehydrate, hydrate } from '@pyreon/query'
+
+const server = new QueryClient()
+await server.prefetchQuery({ queryKey: ['users'], queryFn: fetchUsers })
+const snapshot = dehydrate(server)
+
+const client = new QueryClient()
+hydrate(client, snapshot)`,
+      seeAlso: ['QueryClientProvider', 'useQueryClient'],
     },
   ],
   gotchas: [
