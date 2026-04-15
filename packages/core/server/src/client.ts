@@ -53,12 +53,15 @@ export interface StartClientOptions {
  * Returns a cleanup function that unmounts the app.
  */
 export function startClient(options: StartClientOptions): () => void {
+  if (typeof document === 'undefined') {
+    throw new Error('[Pyreon] startClient() can only be called in the browser.')
+  }
   const { App, routes, container = '#app' } = options
 
   const el = typeof container === 'string' ? document.querySelector(container) : container
 
   if (!el) {
-    throw new Error(`[pyreon/client] Container "${container}" not found`)
+    throw new Error(`[Pyreon] Container "${container}" not found`)
   }
 
   // Create client-side router (history mode to match SSR)
@@ -101,6 +104,7 @@ type IslandLoader = () => Promise<{ default: ComponentFn } | ComponentFn>
  * Returns a cleanup function that disconnects any pending observers/listeners.
  */
 export function hydrateIslands(registry: Record<string, IslandLoader>): () => void {
+  if (typeof document === 'undefined') return () => {}
   const islands = document.querySelectorAll('pyreon-island')
   const cleanups: (() => void)[] = []
 
@@ -132,6 +136,7 @@ function scheduleHydration(
   propsJson: string,
   strategy: HydrationStrategy,
 ): (() => void) | null {
+  if (typeof window === 'undefined') return null
   let cancelled = false
   const hydrate = () => {
     if (!cancelled) hydrateIsland(el, loader, propsJson)
@@ -216,6 +221,7 @@ async function hydrateIsland(
 }
 
 function observeVisibility(el: HTMLElement, callback: () => void): (() => void) | null {
+  if (typeof window === 'undefined') return null
   if (!('IntersectionObserver' in window)) {
     callback()
     return null
