@@ -224,16 +224,21 @@ export function lintFile(
   //   // pyreon-lint-disable-next-line <rule-id>       — alias of `ignore <rule-id>`
   // The `disable-next-line` form is the convention several rule docstrings
   // already document — we accept both so the docs and runtime match.
+  // Word-boundary matching prevents typos like `// pyreon-lint-ignored` from
+  // accidentally being treated as suppressions.
   const lines = sourceText.split('\n')
-  const SUPPRESS_PREFIXES = ['// pyreon-lint-ignore', '// pyreon-lint-disable-next-line']
+  const SUPPRESS_RE = /^\/\/\s*pyreon-lint-(?:ignore|disable-next-line)(?:\s+(\S+))?\s*$/
   const filtered = diagnostics.filter((d) => {
     const prevLineIdx = d.loc.line - 2
     if (prevLineIdx < 0) return true
     const prevLine = lines[prevLineIdx]?.trim() ?? ''
-    const matchedPrefix = SUPPRESS_PREFIXES.find((p) => prevLine.startsWith(p))
-    if (!matchedPrefix) return true
-    const rest = prevLine.slice(matchedPrefix.length).trim()
-    return rest.length > 0 && rest !== d.ruleId
+    const match = SUPPRESS_RE.exec(prevLine)
+    if (!match) return true
+    const ruleId = match[1]
+    // Bare suppression (no rule id) → suppress every diagnostic on next line.
+    if (!ruleId) return false
+    // Rule-specific suppression → drop only the matching rule.
+    return ruleId !== d.ruleId
   })
 
   filtered.sort((a, b) => a.span.start - b.span.start)

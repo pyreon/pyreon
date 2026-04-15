@@ -1896,6 +1896,26 @@ describe('inline suppression comments', () => {
     const result = lintSource(source)
     expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBeGreaterThanOrEqual(1)
   })
+
+  it('bare suppression (no rule id) suppresses ALL diagnostics on the next line', () => {
+    const source = [
+      'const x = signal(0)',
+      '// pyreon-lint-disable-next-line',
+      'const c = computed(() => x.peek())',
+    ].join('\n')
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBe(0)
+  })
+
+  it('does NOT match typoed variants like `// pyreon-lint-ignored` (word-boundary)', () => {
+    const source = [
+      'const x = signal(0)',
+      '// pyreon-lint-ignored pyreon/no-peek-in-tracked',
+      'const c = computed(() => x.peek())',
+    ].join('\n')
+    const result = lintSource(source)
+    expect(findByRule(result, 'pyreon/no-peek-in-tracked').length).toBeGreaterThanOrEqual(1)
+  })
 })
 
 // `no-imperative-navigate-in-render` — navigate calls inside nested

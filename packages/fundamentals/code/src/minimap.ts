@@ -16,14 +16,11 @@ const TEXT_COLOR_LIGHT = '#94a3b8'
 const VIEWPORT_COLOR = 'rgba(59, 130, 246, 0.15)'
 const VIEWPORT_BORDER = 'rgba(59, 130, 246, 0.4)'
 
-function createMinimapCanvas(): HTMLCanvasElement {
-  // Called only by the CodeMirror plugin mount path — never in SSR. The
-  // explicit typeof guard documents the SSR-safety contract and lets
-  // `no-window-in-ssr` prove it locally; the cast satisfies the return type
-  // (the dummy object never actually escapes — the plugin doesn't mount in
-  // SSR so this branch is unreachable at runtime).
-  if (typeof document === 'undefined') return null as unknown as HTMLCanvasElement
-  const canvas = document.createElement('canvas')
+function createMinimapCanvas(view: EditorView): HTMLCanvasElement {
+  // Use the host EditorView's ownerDocument instead of the global — both
+  // SSR-safe (no `document` access) and more correct (multi-document
+  // scenarios like iframes / shadow roots use their own document instance).
+  const canvas = view.dom.ownerDocument.createElement('canvas')
   canvas.style.cssText = `position: absolute; right: 0; top: 0; width: ${MINIMAP_WIDTH}px; height: 100%; cursor: pointer; z-index: 5;`
   canvas.width = MINIMAP_WIDTH * 2 // retina
   return canvas
@@ -112,7 +109,7 @@ export function minimapExtension(): Extension {
 
         constructor(view: EditorView) {
           this.view = view
-          this.canvas = createMinimapCanvas()
+          this.canvas = createMinimapCanvas(view)
           view.dom.style.position = 'relative'
           view.dom.appendChild(this.canvas)
 
@@ -134,16 +131,20 @@ export function minimapExtension(): Extension {
         }
 
         update(update: ViewUpdate) {
-          if (typeof window === 'undefined') return
           if (update.docChanged || update.viewportChanged || update.geometryChanged) {
-            if (this.animFrame) cancelAnimationFrame(this.animFrame)
-            this.animFrame = requestAnimationFrame(() => this.render())
+            // Use the host view's window via `ownerDocument.defaultView`
+            // instead of the global — SSR-safe and correctly scoped to the
+            // view's own window in multi-frame scenarios.
+            const w = this.view.dom.ownerDocument.defaultView
+            if (!w) return
+            if (this.animFrame) w.cancelAnimationFrame(this.animFrame)
+            this.animFrame = w.requestAnimationFrame(() => this.render())
           }
         }
 
         destroy() {
-          if (typeof window === 'undefined') return
-          if (this.animFrame) cancelAnimationFrame(this.animFrame)
+          const w = this.view.dom.ownerDocument.defaultView
+          if (w && this.animFrame) w.cancelAnimationFrame(this.animFrame)
           this.canvas.remove()
         }
       },
