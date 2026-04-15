@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { onMount, onUnmount } from '@pyreon/core'
+import { onMount } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 
 // ─── Theme system ───────────────────────────────────────────────────────────
@@ -17,6 +17,19 @@ const STORAGE_KEY = 'zero-theme'
 /** Reactive theme signal. */
 export const theme = signal<Theme>('system')
 
+/**
+ * Reactive signal tracking the OS color-scheme preference. Updated by the
+ * `matchMedia('(prefers-color-scheme: dark)').change` event registered in
+ * `initTheme`. Components reading `resolvedTheme()` subscribe to BOTH
+ * `theme` and this signal, so a user toggling dark mode at the OS level
+ * re-renders everything reactively — not just the `<html data-theme>`
+ * attribute.
+ *
+ * SSR default is `_ssrDefault` (mutable via `setSSRThemeDefault`) so the
+ * server-rendered theme can differ from the client's OS preference.
+ */
+const _osPrefersDark = signal<boolean>(false)
+
 /** SSR fallback when system preference can't be detected. Default: 'light'. */
 let _ssrDefault: 'light' | 'dark' = 'light'
 
@@ -28,12 +41,17 @@ export function setSSRThemeDefault(value: 'light' | 'dark'): void {
   _ssrDefault = value
 }
 
-/** Computed resolved theme (what's actually applied). */
+/**
+ * Reactive read of the resolved theme. Subscribes to `theme` (explicit
+ * user choice) and — when `theme === 'system'` — to `_osPrefersDark`
+ * (OS color-scheme preference). Components using `resolvedTheme()`
+ * inside JSX / effects / computeds re-render when either changes.
+ */
 export function resolvedTheme(): 'light' | 'dark' {
   const t = theme()
   if (t === 'system') {
     if (typeof window === 'undefined') return _ssrDefault
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    return _osPrefersDark() ? 'dark' : 'light'
   }
   return t
 }
@@ -76,15 +94,17 @@ export function initTheme() {
     // Apply to document
     document.documentElement.dataset.theme = resolvedTheme()
 
-    // Watch for system preference changes
+    // Watch for system preference changes. Seed the signal from the
+    // current media-query state, then update reactively on each OS
+    // preference flip. Components reading `resolvedTheme()` pick up the
+    // change automatically (they subscribe to `_osPrefersDark` when
+    // `theme === 'system'`).
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    function onChange() {
-      if (theme() === 'system') {
-        document.documentElement.dataset.theme = resolvedTheme()
-      }
+    _osPrefersDark.set(mq.matches)
+    function onChange(e: MediaQueryListEvent) {
+      _osPrefersDark.set(e.matches)
     }
     mq.addEventListener('change', onChange)
-    onUnmount(() => mq.removeEventListener('change', onChange))
 
     // Re-apply when theme signal changes — updates data-theme + favicons
     const dispose = effect(() => {
@@ -97,9 +117,11 @@ export function initTheme() {
         link.media = link.dataset.faviconTheme === mode ? '' : 'not all'
       }
     })
-    if (dispose) onUnmount(() => dispose.dispose())
 
-    return undefined
+    return () => {
+      mq.removeEventListener('change', onChange)
+      dispose?.dispose()
+    }
   })
 }
 

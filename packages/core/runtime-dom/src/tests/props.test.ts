@@ -269,6 +269,123 @@ describe('applyProp — innerHTML', () => {
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
+
+  test('reactive innerHTML accessor — function value is called, not stringified', async () => {
+    // Regression: the JSX compiler emits `innerHTML={getIcon(props.x ? "a" : "b")}`
+    // as a `() => …` accessor. Without function-value handling here, the
+    // closure was set as literal text — `() => getIcon(...)` rendered
+    // verbatim instead of the SVG.
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const which = signal<'a' | 'b'>('a')
+    const cleanup = applyProp(el, 'innerHTML', () => `<span data-x="${which()}">x</span>`)
+    expect(el.querySelector('[data-x="a"]')).not.toBeNull()
+    expect(el.innerHTML).not.toContain('=>')
+    which.set('b')
+    expect(el.querySelector('[data-x="b"]')).not.toBeNull()
+    cleanup?.()
+  })
+
+  test('reactive dangerouslySetInnerHTML accessor — function value is called, not stringified', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const html = signal('<em>one</em>')
+    const cleanup = applyProp(el, 'dangerouslySetInnerHTML', () => ({ __html: html() }))
+    expect(el.innerHTML).toBe('<em>one</em>')
+    html.set('<em>two</em>')
+    expect(el.innerHTML).toBe('<em>two</em>')
+    cleanup?.()
+  })
+
+  test('dev warning fires if a function reaches applyStaticProp directly (defensive guard)', () => {
+    // applyStaticProp is internal — reachable only if a future special-case
+    // branch in applyProp bypasses the reactive-wrap dance. The dev guard
+    // catches that regression at first render.
+    const el = document.createElement('div')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Indirect: trigger by routing a function through `applyProp` for a
+    // key that DOESN'T have a special case — exercises the reactive path,
+    // which calls the accessor + passes the result. The accessor itself
+    // returning a function would surface the warning.
+    applyProp(el, 'innerHTML', () => () => '<em>nested</em>')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('applyStaticProp received a function for "innerHTML"'),
+    )
+    warnSpy.mockRestore()
+  })
+})
+
+// Comprehensive sweep: every string-typed sink must handle reactive
+// (function) values. The original bug was specific to innerHTML, but the
+// structural fix should cover ALL sinks the same way. These tests assert
+// that.
+describe('applyProp — reactive function values across all sink kinds', () => {
+  test('reactive href accessor on <a>', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('a')
+    const path = signal('/one')
+    const cleanup = applyProp(el, 'href', () => path())
+    expect(el.getAttribute('href')).toBe('/one')
+    path.set('/two')
+    expect(el.getAttribute('href')).toBe('/two')
+    cleanup?.()
+  })
+
+  test('reactive src accessor on <img>', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('img')
+    const url = signal('/a.png')
+    const cleanup = applyProp(el, 'src', () => url())
+    // <img> exposes `src` as a normalized absolute URL — assert via getAttribute
+    expect(el.getAttribute('src')).toBe('/a.png')
+    url.set('/b.png')
+    expect(el.getAttribute('src')).toBe('/b.png')
+    cleanup?.()
+  })
+
+  test('reactive value accessor on <input>', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('input')
+    const val = signal('alpha')
+    const cleanup = applyProp(el, 'value', () => val())
+    expect((el as HTMLInputElement).value).toBe('alpha')
+    val.set('beta')
+    expect((el as HTMLInputElement).value).toBe('beta')
+    cleanup?.()
+  })
+
+  test('reactive title accessor (data attribute pattern)', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const tip = signal('hello')
+    const cleanup = applyProp(el, 'title', () => tip())
+    expect(el.getAttribute('title')).toBe('hello')
+    tip.set('world')
+    expect(el.getAttribute('title')).toBe('world')
+    cleanup?.()
+  })
+
+  test('reactive class accessor (string form)', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const cls = signal('one')
+    const cleanup = applyProp(el, 'class', () => cls())
+    expect(el.className).toBe('one')
+    cls.set('two')
+    expect(el.className).toBe('two')
+    cleanup?.()
+  })
+
+  test('reactive style accessor (object form)', async () => {
+    const { signal } = await import('@pyreon/reactivity')
+    const el = document.createElement('div')
+    const color = signal('red')
+    const cleanup = applyProp(el, 'style', () => ({ color: color() }))
+    expect(el.style.color).toBe('red')
+    color.set('blue')
+    expect(el.style.color).toBe('blue')
+    cleanup?.()
+  })
 })
 
 // ─── applyProp — URL safety ──────────────────────────────────────────────────

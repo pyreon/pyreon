@@ -78,4 +78,49 @@ describe('Transition — safety-timer leak (regression)', () => {
     await vi.advanceTimersByTimeAsync(6000)
     expect(onAfterLeave).toHaveBeenCalledTimes(1)
   })
+
+  // Regression: component unmount during an in-flight transition used to
+  // leave the 5s safety timer running. onAfterEnter / onAfterLeave would
+  // fire on a detached element up to 5 seconds after unmount.
+  test('onAfterEnter does NOT fire after component unmount during enter transition', async () => {
+    const el = container()
+    const show = signal(false)
+    const onAfterEnter = vi.fn()
+    const dispose = mount(
+      h(
+        Transition,
+        { name: 'fade', show: () => show(), onAfterEnter },
+        h('div', { class: 'unmount-enter' }, 'x'),
+      ),
+      el,
+    )
+
+    show.set(true)
+    await vi.advanceTimersByTimeAsync(20)
+    // Mid-transition — unmount without firing transitionend.
+    dispose()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(onAfterEnter).not.toHaveBeenCalled()
+  })
+
+  test('onAfterLeave does NOT fire after component unmount during leave transition', async () => {
+    const el = container()
+    const show = signal(true)
+    const onAfterLeave = vi.fn()
+    const dispose = mount(
+      h(
+        Transition,
+        { name: 'fade', show: () => show(), onAfterLeave },
+        h('div', { class: 'unmount-leave' }, 'x'),
+      ),
+      el,
+    )
+    await vi.advanceTimersByTimeAsync(20)
+
+    show.set(false)
+    await vi.advanceTimersByTimeAsync(20)
+    dispose()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(onAfterLeave).not.toHaveBeenCalled()
+  })
 })

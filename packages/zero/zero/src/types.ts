@@ -48,6 +48,13 @@ export type RenderMode = 'ssr' | 'ssg' | 'spa' | 'isr'
 export interface ISRConfig {
   /** Revalidation interval in seconds. */
   revalidate: number
+  /**
+   * Maximum number of distinct URL paths to keep in the in-memory cache.
+   * Oldest-first LRU eviction once the cap is reached. Default: `1000`.
+   * Set higher for SSG-heavy sites, lower for routes with unbounded URL
+   * space (e.g. `/user/:id` where `:id` is free-form).
+   */
+  maxEntries?: number
 }
 
 // ─── Zero config ─────────────────────────────────────────────────────────────

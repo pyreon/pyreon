@@ -202,9 +202,22 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     return
   }
   enqueue(`${open}>`)
-  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | undefined
-  if (dangerous?.__html) {
-    enqueue(dangerous.__html)
+  // `dangerouslySetInnerHTML` and `innerHTML` both become inner content
+  // of the element (NOT attributes). Skipped in `renderPropSkipped` to
+  // keep them out of the open-tag attribute list. Function values —
+  // emitted by the compiler for signal-derived prop expressions — are
+  // called once at render time (SSR is one-shot; any reactivity happens
+  // post-hydration on the client).
+  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | (() => { __html: string }) | undefined
+  const innerHtml = props.innerHTML as string | (() => string) | undefined
+  const dangerousHtml =
+    typeof dangerous === 'function' ? (dangerous as () => { __html: string })()?.__html : dangerous?.__html
+  const plainInnerHtml =
+    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+  if (dangerousHtml) {
+    enqueue(dangerousHtml)
+  } else if (plainInnerHtml != null && plainInnerHtml !== '') {
+    enqueue(String(plainInnerHtml))
   } else {
     for (const child of vnode.children) await streamNode(child, enqueue)
   }
@@ -400,10 +413,26 @@ async function renderElement(vnode: VNode): Promise<string> {
 
   html += '>'
 
-  // dangerouslySetInnerHTML — inject raw HTML, skip children
-  const dangerous = props.dangerouslySetInnerHTML as { __html: string } | undefined
-  if (dangerous?.__html) {
-    html += dangerous.__html
+  // `dangerouslySetInnerHTML` and `innerHTML` become inner content of the
+  // element (NOT attributes — skipped in `renderPropSkipped`). Function
+  // values — emitted by the compiler for signal-derived prop expressions —
+  // are called once at render time (SSR is one-shot; reactivity happens
+  // post-hydration on the client). Kept in sync with `streamElementNode`.
+  const dangerous = props.dangerouslySetInnerHTML as
+    | { __html: string }
+    | (() => { __html: string })
+    | undefined
+  const innerHtml = props.innerHTML as string | (() => string) | undefined
+  const dangerousHtml =
+    typeof dangerous === 'function'
+      ? (dangerous as () => { __html: string })()?.__html
+      : dangerous?.__html
+  const plainInnerHtml =
+    typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
+  if (dangerousHtml) {
+    html += dangerousHtml
+  } else if (plainInnerHtml != null && plainInnerHtml !== '') {
+    html += String(plainInnerHtml)
   } else {
     for (const child of vnode.children) {
       html += await renderNode(child)
@@ -418,7 +447,15 @@ const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 function renderPropSkipped(key: string): boolean {
-  if (key === 'key' || key === 'ref' || key === 'dangerouslySetInnerHTML') return true
+  // `innerHTML` and `dangerouslySetInnerHTML` are NOT attributes — they
+  // get written as inner content in `streamElementNode`. Without this
+  // skip, `innerHTML` would be emitted as a literal HTML attribute
+  // (`<span innerHTML="&lt;svg&gt;…">`) and the client hydration would
+  // fix it up — wasted bytes, hydration mismatch, and (with the recent
+  // client-side `innerHTML` bug) literal closure text visible before
+  // hydration completed.
+  if (key === 'key' || key === 'ref') return true
+  if (key === 'innerHTML' || key === 'dangerouslySetInnerHTML') return true
   if (/^on[A-Z]/.test(key)) return true
   return false
 }
