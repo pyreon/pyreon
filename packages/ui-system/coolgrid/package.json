@@ -35,12 +35,16 @@
     "build:watch": "bun run vl_rolldown_build-watch",
     "lint": "oxlint .",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
+    "@vitest/browser-playwright": "^4.1.4",
     "@vitus-labs/tools-rolldown": "^1.15.3"
   },
   "peerDependencies": {

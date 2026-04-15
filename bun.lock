@@ -938,7 +938,10 @@
       "devDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/document": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.4",
       },
       "peerDependencies": {
@@ -950,7 +953,10 @@
       "name": "@pyreon/coolgrid",
       "version": "0.12.13",
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
       "peerDependencies": {
@@ -1040,6 +1046,8 @@
       "devDependencies": {
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
       "peerDependencies": {
