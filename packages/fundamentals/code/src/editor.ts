@@ -118,6 +118,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   const cursor = computed(() => {
     docVersion() // subscribe to changes
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return { line: 1, col: 1 }
     const pos = v.state.selection.main.head
@@ -127,6 +128,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   const selection = computed(() => {
     docVersion()
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return { from: 0, to: 0, text: '' }
     const sel = v.state.selection.main
@@ -139,6 +141,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   const lineCount = computed(() => {
     docVersion()
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     return v ? v.state.doc.lines : initialValue.split('\n').length
   })
@@ -196,8 +199,12 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       this.markerClass = opts.class ?? ''
     }
 
-    override toDOM() {
-      const el = document.createElement('span')
+    override toDOM(view: EditorView): HTMLElement {
+      // Use the host EditorView's ownerDocument instead of the global —
+      // this is both SSR-safe (no `document` global access) and more
+      // correct (multi-document scenarios like iframes / shadow roots use
+      // their own document instance).
+      const el = view.dom.ownerDocument.createElement('span')
       el.textContent = this.markerText
       el.title = this.markerTitle
       if (this.markerClass) el.className = this.markerClass
@@ -331,7 +338,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Sync signal → editor for value changes from outside
     effect(() => {
       const val = value()
-      const v = view.peek()
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
       if (!v) return
       const current = v.state.doc.toString()
       if (val !== current) {
@@ -344,7 +352,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Sync language changes
     effect(() => {
       const lang = language()
-      const v = view.peek()
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
       if (!v) return
       loadLanguage(lang).then((ext) => {
         v.dispatch({ effects: languageCompartment.reconfigure(ext) })
@@ -354,7 +363,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Sync theme changes
     effect(() => {
       const t = theme()
-      const v = view.peek()
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
       if (!v) return
       v.dispatch({ effects: themeCompartment.reconfigure(resolveTheme(t)) })
     })
@@ -362,7 +372,8 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // Sync readOnly changes
     effect(() => {
       const ro = readOnly()
-      const v = view.peek()
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const v = view.peek()
       if (!v) return
       v.dispatch({
         effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(ro)),
@@ -377,6 +388,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function insert(text: string): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     const pos = v.state.selection.main.head
@@ -384,24 +396,28 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function replaceSelection(text: string): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch(v.state.replaceSelection(text))
   }
 
   function select(from: number, to: number): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch({ selection: { anchor: from, head: to } })
   }
 
   function selectAll(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } })
   }
 
   function goToLine(line: number): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     const lineInfo = v.state.doc.line(Math.min(Math.max(1, line), v.state.doc.lines))
@@ -413,16 +429,19 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function undo(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) cmUndo(v)
   }
 
   function redo(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) cmRedo(v)
   }
 
   function foldAll(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     const { foldAll: foldAllCmd } = require('@codemirror/language')
@@ -430,6 +449,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function unfoldAll(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     const { unfoldAll: unfoldAllCmd } = require('@codemirror/language')
@@ -439,6 +459,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   // ── Diagnostics ────────────────────────────────────────────────────
 
   function setDiagnostics(diagnostics: import('./types').Diagnostic[]): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch(
@@ -456,6 +477,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function clearDiagnostics(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch(cmSetDiagnostics(v.state, []))
@@ -466,12 +488,14 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   function highlightLine(line: number, className: string): void {
     lineHighlights.set(line, className)
     // Force re-render of decorations
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) v.dispatch({ effects: [] })
   }
 
   function clearLineHighlights(): void {
     lineHighlights.clear()
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) v.dispatch({ effects: [] })
   }
@@ -480,12 +504,14 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
 
   function setGutterMarker(line: number, marker: import('./types').GutterMarker): void {
     gutterMarkers.set(line, marker)
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) v.dispatch({ effects: [] })
   }
 
   function clearGutterMarkers(): void {
     gutterMarkers.clear()
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) v.dispatch({ effects: [] })
   }
@@ -502,6 +528,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
         return true
       },
     })
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch({
@@ -512,6 +539,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   // ── Text queries ───────────────────────────────────────────────────
 
   function getLine(line: number): string {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return ''
     const clamped = Math.min(Math.max(1, line), v.state.doc.lines)
@@ -519,6 +547,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function getWordAtCursor(): string {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return ''
     const pos = v.state.selection.main.head
@@ -536,6 +565,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function scrollTo(pos: number): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
     v.dispatch({
@@ -546,6 +576,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   // ── Vim / Emacs mode loading ───────────────────────────────────────
 
   async function loadKeyMode(): Promise<void> {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
 
@@ -577,6 +608,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function dispose(): void {
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) {
       v.destroy()

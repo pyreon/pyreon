@@ -168,6 +168,11 @@ export const noWindowInSsr: Rule = {
     // identifier inside this function refers to the parameter, not the
     // browser global. Pushed on function enter, popped on exit.
     const shadowedNamesStack: Array<Set<string>> = []
+    // Module-level names that shadow browser globals via imports — e.g.
+    // `import { history } from '@codemirror/commands'`. Any `history`
+    // identifier in the file then refers to the import, not `window.history`.
+    // Populated by ImportSpecifier / ImportDefaultSpecifier / ImportNamespaceSpecifier.
+    const importShadowedNames = new Set<string>()
     function collectParamNames(params: any[]): Set<string> {
       const names = new Set<string>()
       const walk = (p: any) => {
@@ -338,12 +343,25 @@ export const noWindowInSsr: Rule = {
         if (node.imported?.type === 'Identifier') skipPropertyNodes.add(node.imported)
         if (node.local?.type === 'Identifier' && node.local !== node.imported)
           skipPropertyNodes.add(node.local)
+        // Track imported names that shadow a browser global so all later
+        // uses of that name in the file are skipped — e.g. `import { history }
+        // from '@codemirror/commands'` makes every `history` identifier a
+        // CodeMirror reference, not `window.history`.
+        if (node.local?.type === 'Identifier' && BROWSER_GLOBALS.has(node.local.name)) {
+          importShadowedNames.add(node.local.name)
+        }
       },
       ImportDefaultSpecifier(node: any) {
-        if (node.local?.type === 'Identifier') skipPropertyNodes.add(node.local)
+        if (node.local?.type === 'Identifier') {
+          skipPropertyNodes.add(node.local)
+          if (BROWSER_GLOBALS.has(node.local.name)) importShadowedNames.add(node.local.name)
+        }
       },
       ImportNamespaceSpecifier(node: any) {
-        if (node.local?.type === 'Identifier') skipPropertyNodes.add(node.local)
+        if (node.local?.type === 'Identifier') {
+          skipPropertyNodes.add(node.local)
+          if (BROWSER_GLOBALS.has(node.local.name)) importShadowedNames.add(node.local.name)
+        }
       },
       Identifier(node: any) {
         if (safeDepth > 0 || typeofGuardDepth > 0 || inTypeofExpr > 0 || inTsTypePos > 0) return
@@ -353,6 +371,8 @@ export const noWindowInSsr: Rule = {
         // `function push(location)` inside: every `location` refers to the
         // parameter, not `window.location`.
         if (isNameShadowed(node.name)) return
+        // Skip identifiers shadowed by a module-level import binding.
+        if (importShadowedNames.has(node.name)) return
 
         context.report({
           message: `Browser global \`${node.name}\` used outside \`onMount\`/\`effect\`/typeof guard — this will fail during SSR. Wrap in \`onMount(() => { ... })\`.`,

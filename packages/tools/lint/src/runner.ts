@@ -217,17 +217,28 @@ export function lintFile(
   const visitor = new Visitor(mergeCallbacks(allCallbacks))
   visitor.visit(program)
 
-  // Filter suppressed diagnostics:
-  // // pyreon-lint-ignore             — suppress all on next line
-  // // pyreon-lint-ignore rule-name   — suppress specific rule on next line
+  // Filter suppressed diagnostics. Two equivalent comment syntaxes:
+  //   // pyreon-lint-ignore                            — suppress all on next line
+  //   // pyreon-lint-ignore <rule-id>                  — suppress one rule
+  //   // pyreon-lint-disable-next-line                 — alias of `ignore`
+  //   // pyreon-lint-disable-next-line <rule-id>       — alias of `ignore <rule-id>`
+  // The `disable-next-line` form is the convention several rule docstrings
+  // already document — we accept both so the docs and runtime match.
+  // Word-boundary matching prevents typos like `// pyreon-lint-ignored` from
+  // accidentally being treated as suppressions.
   const lines = sourceText.split('\n')
+  const SUPPRESS_RE = /^\/\/\s*pyreon-lint-(?:ignore|disable-next-line)(?:\s+(\S+))?\s*$/
   const filtered = diagnostics.filter((d) => {
     const prevLineIdx = d.loc.line - 2
     if (prevLineIdx < 0) return true
-    const prevLine = lines[prevLineIdx]?.trim()
-    if (!prevLine?.startsWith('// pyreon-lint-ignore')) return true
-    const rest = prevLine.slice('// pyreon-lint-ignore'.length).trim()
-    return rest.length > 0 && rest !== d.ruleId
+    const prevLine = lines[prevLineIdx]?.trim() ?? ''
+    const match = SUPPRESS_RE.exec(prevLine)
+    if (!match) return true
+    const ruleId = match[1]
+    // Bare suppression (no rule id) → suppress every diagnostic on next line.
+    if (!ruleId) return false
+    // Rule-specific suppression → drop only the matching rule.
+    return ruleId !== d.ruleId
   })
 
   filtered.sort((a, b) => a.span.start - b.span.start)
