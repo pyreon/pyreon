@@ -1,4 +1,8 @@
-import { renderLlmsFullSection, renderLlmsTxtLine } from '@pyreon/manifest'
+import {
+  renderApiReferenceEntries,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '@pyreon/manifest'
 import flowManifest from '../manifest'
 
 // Snapshot of the exact rendered llms.txt line for @pyreon/flow. Lives
@@ -106,5 +110,30 @@ describe('gen-docs — flow snapshot', () => {
       > **JSX generics**: Pyreon JSX components cannot be parameterised at the call site (\`<Flow<MyData> />\` is not valid JSX). \`FlowProps.instance\` is typed as \`FlowInstance<any>\` so typed consumers can pass their \`FlowInstance<MyData>\` without casting.
       "
     `)
+  })
+
+  it('renders @pyreon/flow to MCP api-reference entries — one per api[] item', () => {
+    // Validates the MCP surface: every manifest api[] entry becomes
+    // a `flow/<name>` record key with the MCP `{ signature, example,
+    // notes, mistakes }` shape. Pairs with the en-masse gen-docs
+    // integration that emits these between region markers in
+    // `packages/tools/mcp/src/api-reference.ts`. Any manifest change
+    // surfaces here AND there (via the `gen-docs --check` gate).
+    const record = renderApiReferenceEntries(flowManifest)
+    expect(Object.keys(record)).toEqual([
+      'flow/createFlow',
+      'flow/useFlow',
+      'flow/Flow',
+      'flow/Background',
+      'flow/Controls',
+      'flow/MiniMap',
+      'flow/Handle',
+      'flow/Panel',
+    ])
+    // Spot-check the highest-density entry — createFlow is the
+    // flagship API and carries the largest mistakes list.
+    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(7)
+    expect(record['flow/createFlow']!.notes).toContain('elkjs')
+    expect(record['flow/createFlow']!.notes).toContain('no D3')
   })
 })

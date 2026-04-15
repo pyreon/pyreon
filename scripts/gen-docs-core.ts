@@ -16,6 +16,7 @@ import {
   formatLineDiff,
   type LoadedManifest,
   type PackageManifest,
+  renderApiReferenceBlock,
   renderLlmsFullSection,
   renderLlmsTxtLine,
 } from '../packages/internals/manifest/src'
@@ -152,6 +153,96 @@ function findSectionRange(content: string, name: string): [number, number] | nul
 }
 
 /**
+ * Replace per-package regions in `packages/tools/mcp/src/api-reference.ts`
+ * with content regenerated from each manifest's `api[]`. A region is
+ * delimited by matching marker comments inside the exported
+ * `API_REFERENCE` record literal:
+ *
+ * ```ts
+ *   // <gen-docs:api-reference:start @pyreon/flow>
+ *   'flow/createFlow': { ... },
+ *   'flow/useFlow': { ... },
+ *   // <gen-docs:api-reference:end @pyreon/flow>
+ * ```
+ *
+ * The generator rewrites the block BETWEEN the markers (exclusive of
+ * the marker lines themselves). The start-marker line, end-marker
+ * line, and leading / trailing blank lines adjacent to the block are
+ * preserved verbatim so the surrounding hand-written entries stay
+ * stable.
+ *
+ * This file is opt-in per package — manifests whose package does not
+ * have a region pair are simply skipped (NOT reported as missing). A
+ * package can be migrated incrementally: land the markers + flip one
+ * package at a time, the other packages continue to live as
+ * hand-written literals in the same file.
+ *
+ * @example
+ * ```ts
+ * import { regenerateApiReferenceTs } from './gen-docs-core'
+ *
+ * const before = readFileSync('packages/tools/mcp/src/api-reference.ts', 'utf8')
+ * const { contents, changedLines } = regenerateApiReferenceTs(before, manifests)
+ * ```
+ */
+export function regenerateApiReferenceTs(
+  contents: string,
+  manifests: LoadedManifest[],
+): RegenerateResult {
+  let next = contents
+  let changedLines = 0
+  for (const { manifest } of manifests) {
+    const range = findApiReferenceRegion(next, manifest.name)
+    if (!range) {
+      // Opt-in: a package without markers stays hand-written. No
+      // `missingEntries` push — this mirrors the explicit decision
+      // to migrate the MCP surface one package at a time.
+      continue
+    }
+    const [start, end] = range
+    const prev = next
+    const block = renderApiReferenceBlock(manifest)
+    // `block` has no leading / trailing newlines — we splice it
+    // between `\n` boundaries so the marker lines stay on their own
+    // lines.
+    const replacement = block.length > 0 ? `\n${block}\n` : '\n'
+    next = next.slice(0, start) + replacement + next.slice(end)
+    if (prev !== next) changedLines++
+  }
+  return { contents: next, changedLines, missingEntries: [] }
+}
+
+/**
+ * Locate the `[start, end)` byte range BETWEEN the start and end
+ * markers for `name` inside an api-reference.ts source. `start` points
+ * at the byte AFTER the start-marker's trailing newline; `end` points
+ * at the byte OF the end-marker's indentation. Returns null if either
+ * marker is absent or mis-paired (start but no matching end).
+ *
+ * Using the literal package name (with `@pyreon/` scope) in the
+ * marker keeps search / replace tooling honest — the marker text
+ * appears verbatim in exactly one place.
+ */
+function findApiReferenceRegion(content: string, name: string): [number, number] | null {
+  const startMarker = `// <gen-docs:api-reference:start ${name}>`
+  const endMarker = `// <gen-docs:api-reference:end ${name}>`
+  const startIdx = content.indexOf(startMarker)
+  if (startIdx === -1) return null
+  const endIdx = content.indexOf(endMarker, startIdx + startMarker.length)
+  if (endIdx === -1) return null
+  // `start` = first byte after the start-marker line's trailing `\n`.
+  const afterStartLine = content.indexOf('\n', startIdx)
+  if (afterStartLine === -1) return null
+  // `end` = start of the end-marker line (including its leading
+  // indentation). Walk back from endIdx to the last `\n` + 1 so the
+  // marker line itself is preserved.
+  const endLineStart = content.lastIndexOf('\n', endIdx) + 1
+  const rangeStart = afterStartLine + 1
+  if (rangeStart > endLineStart) return null
+  return [rangeStart, endLineStart]
+}
+
+/**
  * Injectable I/O for `main()` — tests replace these to capture output
  * in-process. Default bindings point at the real process streams.
  */
@@ -234,12 +325,21 @@ export async function main(
     return io.exit(1)
   }
 
+  // ─── packages/tools/mcp/src/api-reference.ts ──────────────────────────
+  const apiRefPath = join(repoRoot, 'packages/tools/mcp/src/api-reference.ts')
+  const apiRefBefore = readFileSync(apiRefPath, 'utf8')
+  const apiRefResult = regenerateApiReferenceTs(apiRefBefore, manifests)
+  // Note: regenerateApiReferenceTs never emits missingEntries — MCP
+  // migration is opt-in per package, so a manifest without markers
+  // stays hand-written silently.
+
   // ─── Apply or check ───────────────────────────────────────────────────
   const llmsChanged = llmsBefore !== llmsResult.contents
   const llmsFullChanged = llmsFullBefore !== llmsFullResult.contents
+  const apiRefChanged = apiRefBefore !== apiRefResult.contents
 
   if (check) {
-    if (llmsChanged || llmsFullChanged) {
+    if (llmsChanged || llmsFullChanged || apiRefChanged) {
       io.stderr('[gen-docs] generated docs are out of sync with manifests.\n')
       if (llmsChanged) {
         io.stderr('\n--- llms.txt ---')
@@ -248,6 +348,10 @@ export async function main(
       if (llmsFullChanged) {
         io.stderr('\n--- llms-full.txt ---')
         io.stderr(formatLineDiff(llmsFullBefore, llmsFullResult.contents))
+      }
+      if (apiRefChanged) {
+        io.stderr('\n--- packages/tools/mcp/src/api-reference.ts ---')
+        io.stderr(formatLineDiff(apiRefBefore, apiRefResult.contents))
       }
       io.stderr('\nFix: run `bun run gen-docs` and commit the result.')
       return io.exit(1)
@@ -271,6 +375,15 @@ export async function main(
     )
   } else {
     io.stdout('[gen-docs] llms-full.txt: no changes (already in sync)')
+  }
+
+  if (apiRefChanged) {
+    writeFileSync(apiRefPath, apiRefResult.contents)
+    io.stdout(
+      `[gen-docs] api-reference.ts: ${apiRefResult.changedLines} region${apiRefResult.changedLines === 1 ? '' : 's'} regenerated`,
+    )
+  } else {
+    io.stdout('[gen-docs] api-reference.ts: no changes (already in sync)')
   }
 }
 

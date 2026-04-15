@@ -328,6 +328,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
   **Why test runtime-dom with Vite (not raw esbuild)**: raw `esbuild --minify` cannot propagate a module-scope `const __DEV__` through chained `&&` patterns. Pyreon's runtime-dom uses that const pattern across multiple files. Raw esbuild is the wrong baseline for testing those files — Vite's full pipeline (Rolldown + `import.meta.env` replacement + tree-shake passes) is what consumers actually run. The flow test uses the inline early-return form and so works under raw esbuild; the runtime-dom test uses Vite's `build()` API to match the consumer pipeline.
 - No D3 — pan/zoom via pointer events + CSS transforms
 - **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps
+- **MCP api-reference is manifest-driven (T2.5.1)**: the flow region in `packages/tools/mcp/src/api-reference.ts` regenerates from the same manifest's `api[]`. Eight entries today (`createFlow`, `useFlow`, `Flow`, `Background`, `Controls`, `MiniMap`, `Handle`, `Panel`) — a strict superset of the previous hand-written surface, covering all child components. First real consumer of the marker-based `<gen-docs:api-reference:start/end @pyreon/<name>>` region protocol — `query` / `form` / `hooks` flip to the same protocol in follow-up PRs as their manifests are enriched to MCP density.
 
 ### @pyreon/code
 

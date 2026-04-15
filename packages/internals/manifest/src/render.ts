@@ -1,4 +1,4 @@
-import type { Gotcha, PackageManifest } from './types'
+import type { ApiEntry, Gotcha, PackageManifest } from './types'
 
 /**
  * Coerce a `Gotcha` (bare string or `{label, note}`) into its text pair.
@@ -157,6 +157,158 @@ function synthesizeExampleFromApi(m: PackageManifest): string {
  * // → "- b\n+ X"
  * ```
  */
+/**
+ * MCP `api-reference.ts` record value shape — kept local so
+ * `@pyreon/manifest` does not take a dev dep on `@pyreon/mcp`.
+ * Must stay in sync with `packages/tools/mcp/src/api-reference.ts`.
+ */
+export interface McpApiReferenceEntry {
+  signature: string
+  example: string
+  notes?: string
+  mistakes?: string
+}
+
+/**
+ * Render a manifest's `api[]` to the MCP `api-reference.ts`
+ * record shape: `{ "pkg/symbol": { signature, example, notes?,
+ * mistakes? } }`. The `pkg` key strips the `@pyreon/` scope.
+ *
+ * Field mapping:
+ * - `ApiEntry.signature` → `signature` (verbatim)
+ * - `ApiEntry.example`   → `example` (verbatim)
+ * - `ApiEntry.summary`   → `notes` (verbatim when non-empty)
+ * - `ApiEntry.mistakes`  → `mistakes` (joined as `- item` bullets
+ *    so MCP clients render them as a markdown list)
+ *
+ * Rationale for the field remap: the MCP shape pre-dates the
+ * manifest type and exposes its own hand-written vocabulary
+ * (`notes`/`mistakes`) that was designed to be free-form prose.
+ * The manifest splits the same concept into structured
+ * `summary`/`mistakes` (arrays for per-item control). This helper
+ * bridges the two without either surface needing to adopt the
+ * other's shape.
+ *
+ * @example
+ * ```ts
+ * import { defineManifest, renderApiReferenceEntries } from '@pyreon/manifest'
+ *
+ * const m = defineManifest({
+ *   name: '@pyreon/flow',
+ *   tagline: 't',
+ *   description: 'd',
+ *   category: 'browser',
+ *   features: [],
+ *   api: [{
+ *     name: 'createFlow',
+ *     kind: 'function',
+ *     signature: 'createFlow(config): FlowInstance',
+ *     summary: 'Create a reactive flow.',
+ *     example: 'const f = createFlow({})',
+ *     mistakes: ['Missing peer dep'],
+ *   }],
+ * })
+ * renderApiReferenceEntries(m)
+ * // → { 'flow/createFlow': { signature: ..., example: ..., notes: 'Create a reactive flow.', mistakes: '- Missing peer dep' } }
+ * ```
+ */
+export function renderApiReferenceEntries(
+  m: PackageManifest,
+): Record<string, McpApiReferenceEntry> {
+  const shortName = stripPyreonScope(m.name)
+  const out: Record<string, McpApiReferenceEntry> = {}
+  for (const api of m.api) {
+    out[`${shortName}/${api.name}`] = toMcpEntry(api)
+  }
+  return out
+}
+
+/**
+ * Render a manifest's `api[]` to the source-code form that lives
+ * between the region markers in
+ * `packages/tools/mcp/src/api-reference.ts` — indented TS
+ * object-literal entries, one per API, joined by blank lines, with
+ * the closing brace comma-terminated to match the file's style.
+ *
+ * Output matches the file's indentation (two-space + two-space
+ * inner) and uses template literals for multi-line `example` /
+ * `mistakes` values. The generator injects this between the
+ * `// <gen-docs:api-reference:start @pyreon/<name>>` and matching
+ * `end` markers; insertion order follows `manifest.api[]`.
+ *
+ * @example
+ * ```ts
+ * renderApiReferenceBlock(flowManifest)
+ * // → "  'flow/createFlow': {\n    signature: '...',\n    ...\n  },\n\n  'flow/useFlow': { ... },"
+ * ```
+ */
+export function renderApiReferenceBlock(m: PackageManifest): string {
+  const shortName = stripPyreonScope(m.name)
+  const chunks: string[] = []
+  for (const api of m.api) {
+    chunks.push(renderSingleEntry(`${shortName}/${api.name}`, toMcpEntry(api)))
+  }
+  return chunks.join('\n\n')
+}
+
+function stripPyreonScope(name: string): string {
+  return name.startsWith('@pyreon/') ? name.slice('@pyreon/'.length) : name
+}
+
+function toMcpEntry(api: ApiEntry): McpApiReferenceEntry {
+  const entry: McpApiReferenceEntry = {
+    signature: api.signature,
+    example: api.example,
+  }
+  const notes = api.summary.trim()
+  if (notes) entry.notes = notes
+  if (api.mistakes && api.mistakes.length > 0) {
+    entry.mistakes = api.mistakes.map((m) => `- ${m}`).join('\n')
+  }
+  return entry
+}
+
+function renderSingleEntry(key: string, e: McpApiReferenceEntry): string {
+  // Indentation matches the file: keys + simple fields at 2 spaces,
+  // long / multi-line string literals use backtick template form
+  // even for single-line values so the emitted code is stable
+  // across trivial changes.
+  const lines: string[] = []
+  lines.push(`  '${key}': {`)
+  lines.push(`    signature: ${renderStringLiteral(e.signature)},`)
+  lines.push(`    example: ${renderStringLiteral(e.example)},`)
+  if (e.notes !== undefined) {
+    lines.push(`    notes: ${renderStringLiteral(e.notes)},`)
+  }
+  if (e.mistakes !== undefined) {
+    lines.push(`    mistakes: ${renderStringLiteral(e.mistakes)},`)
+  }
+  lines.push(`  },`)
+  return lines.join('\n')
+}
+
+/**
+ * Emit a TS string-literal form of `s`. Single-line strings without
+ * `'` or backslash use a quoted literal; anything else uses a
+ * backtick template literal with `${` and `` ` `` escaped. Keeps
+ * the emitted code readable while remaining round-trippable.
+ */
+function renderStringLiteral(s: string): string {
+  const hasNewline = s.includes('\n')
+  const hasBacktick = s.includes('`')
+  const hasBackslash = s.includes('\\')
+  const hasDollarBrace = s.includes('${')
+
+  if (!hasNewline && !hasBackslash && !s.includes("'")) {
+    return `'${s}'`
+  }
+  // Template literal — escape backticks and `${`.
+  let body = s
+  if (hasBacktick) body = body.replace(/`/g, '\\`')
+  if (hasDollarBrace) body = body.replace(/\$\{/g, '\\${')
+  return `\`${body}\``
+}
+
 export function formatLineDiff(before: string, after: string): string {
   const a = before.split('\n')
   const b = after.split('\n')
