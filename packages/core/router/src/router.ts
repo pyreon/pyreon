@@ -924,9 +924,12 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       )
       // Run loaders for the matched path — uses the same code path SSR
       // already relied on, so loader data ends up in `_loaderData` under the
-      // matched route records.
+      // matched route records. Uses a LOCAL AbortController: `preload` is
+      // a prefetch operation and must NOT clobber `router._abortController`,
+      // which belongs to the active navigation. Without this, calling
+      // `router.preload(...)` during a navigation destroyed the nav's
+      // abort capability.
       const ac = new AbortController()
-      router._abortController = ac
       await Promise.all(
         resolved.matched
           .filter((r) => r.loader)

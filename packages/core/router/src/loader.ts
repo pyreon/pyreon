@@ -35,8 +35,11 @@ export function useLoaderData<T = unknown>(): T {
  */
 export async function prefetchLoaderData(router: RouterInstance, path: string): Promise<void> {
   const route = router._resolve(path)
+  // Use a local AbortController — prefetch is best-effort and must NOT
+  // clobber `router._abortController`, which belongs to the active
+  // navigation. Previously, hovering a link during a navigation replaced
+  // the nav's controller, destroying its abort capability.
   const ac = new AbortController()
-  router._abortController = ac
   await Promise.all(
     route.matched
       .filter((r) => r.loader)

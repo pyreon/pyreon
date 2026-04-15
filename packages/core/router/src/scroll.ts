@@ -6,6 +6,12 @@ import type { ResolvedRoute, RouterOptions } from './types'
  * Saves scroll position before each navigation and restores it when
  * navigating back to a previously visited path.
  */
+// LRU cap — in SPAs with unbounded URL space (`/user/:id`, query-string
+// variations, etc.) the `_positions` Map would grow per unique path
+// forever. 100 entries covers typical back-navigation depth; beyond that,
+// scroll restoration is a nice-to-have not a correctness requirement.
+const MAX_SCROLL_POSITIONS = 100
+
 export class ScrollManager {
   private readonly _positions = new Map<string, number>()
   private readonly _behavior: RouterOptions['scrollBehavior']
@@ -21,7 +27,14 @@ export class ScrollManager {
     // callsite (the `no-window-in-ssr` lint rule can't AST-trace indirect
     // calls from router setup).
     if (typeof window === 'undefined') return
+    // LRU: re-insert moves the entry to newest. Evict oldest when over cap.
+    if (this._positions.has(fromPath)) this._positions.delete(fromPath)
     this._positions.set(fromPath, window.scrollY)
+    while (this._positions.size > MAX_SCROLL_POSITIONS) {
+      const oldest = this._positions.keys().next().value
+      if (oldest === undefined) break
+      this._positions.delete(oldest)
+    }
   }
 
   /** Call after navigation is committed — applies scroll behavior */
