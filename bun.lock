@@ -834,6 +834,9 @@
         "@pyreon/compiler": "workspace:^",
         "zod": "^4.3.6",
       },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+      },
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },

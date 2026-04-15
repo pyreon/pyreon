@@ -93,6 +93,14 @@ Document the bisect result in the PR description: "Bisect-verified: reverted fix
    **Rollback / override**: if a bug in `scripts/gen-docs.ts` blocks an urgent merge, a repo admin can temporarily remove `Docs Sync` from the required-checks list in branch-protection settings. File a follow-up to fix the generator, then restore the check. **Do not bypass by hand-editing generated lines** — the next gen-docs run will revert them silently.
 
    **Manifest snapshot tests**: each migrated package owns an inline-snapshot test of its rendered `llms.txt` bullet (see `packages/fundamentals/flow/src/tests/manifest-snapshot.test.ts` for the reference). Intentional format changes require updating the snapshot via `bun run test -- -u` in that package, or by accepting the new value in the failure diff via your editor. CI fails loudly on snapshot mismatch, so unintended regressions surface immediately.
+
+   **MCP api-reference generation (T2.5.1)**: `bun run gen-docs` ALSO regenerates `packages/tools/mcp/src/api-reference.ts` between `// <gen-docs:api-reference:start @pyreon/<name>>` / `// <gen-docs:api-reference:end @pyreon/<name>>` marker pairs. Migration is opt-in per package: a package with markers gets its region generated from its manifest's `api[]`; a package without markers stays hand-written. To migrate a package to the pipeline:
+   1. Enrich the manifest's `api[]` entries to MCP density — each `summary` is a dense 2-3 sentence paragraph (becomes MCP `notes`), each `mistakes` list is the real foot-gun catalog (6+ items for flagship APIs). The existing hand-written MCP entries are the quality bar.
+   2. Wrap the existing hand-written `flow/*` / `query/*` / etc. block in `api-reference.ts` with the marker pair.
+   3. Run `bun run gen-docs` — the region flips to generated.
+   4. Add `renderApiReferenceEntries(manifest)` assertions to the package's `manifest-snapshot.test.ts` (see the flow reference — spot-checks entry count + key fields rather than a full-body inline snapshot, since MCP text is prose-dense and inline snapshots rot fast).
+
+   Reference implementation: `@pyreon/flow` (PR landed T2.5.1). Four migrated packages today (`flow`, `query`, `form`, `hooks`) have manifests; only `flow` is flipped to the MCP pipeline in the T2.5.1 ship — `query`/`form`/`hooks` get flipped in follow-up PRs as their `api[]` entries are enriched to MCP density.
 5. No breaking changes without discussion
 6. Honest quality assessment
 

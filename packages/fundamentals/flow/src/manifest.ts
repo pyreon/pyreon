@@ -86,6 +86,12 @@ flow.fromJSON({ nodes, edges })    // restore from saved state`,
     'Auto-layout via lazy-loaded elkjs',
     'toJSON / fromJSON round-trip serialization',
   ],
+  // Enriched to MCP density — each summary is a dense 2-3 sentence
+  // paragraph that feeds the MCP api-reference `notes` field; each
+  // mistakes list enumerates the real foot-guns consumers hit. The
+  // llms-full.txt section uses `longExample` (above), not these
+  // per-API examples, so the extra density here is strictly for the
+  // MCP surface.
   api: [
     {
       name: 'createFlow',
@@ -93,18 +99,38 @@ flow.fromJSON({ nodes, edges })    // restore from saved state`,
       signature:
         '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
       summary:
-        "Create a reactive flow instance. Generic over node data shape so node.data.kind narrows correctly. Defaults to Record<string, unknown> when no generic is supplied.",
-      example: `const flow = createFlow<MyData>({
+        'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout via lazy-loaded elkjs (first `.layout()` call fetches a ~1.4MB chunk). Pan / zoom uses pointer events + CSS transforms — no D3.',
+      example: `// Generic over node data shape — typed consumers get strong narrowing
+interface WorkflowData {
+  kind: 'trigger' | 'filter' | 'transform' | 'notify'
+  label: string
+}
+
+const flow = createFlow<WorkflowData>({
   nodes: [
-    { id: '1', position: { x: 0, y: 0 }, data: { kind: 'start' } },
-    { id: '2', position: { x: 200, y: 100 }, data: { kind: 'end' } },
+    { id: '1', type: 'custom', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'Start' } },
+    { id: '2', type: 'custom', position: { x: 200, y: 100 }, data: { kind: 'notify', label: 'End' } },
   ],
-  edges: [{ source: '1', target: '2' }],
-})`,
+  edges: [{ id: 'e1', source: '1', target: '2', animated: true }],
+})
+
+// node.data.kind narrows to the typed union, not unknown
+const trigger = flow.findNodes((n) => n.data.kind === 'trigger')
+
+flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
+// LayoutOptions applicability: direction / layerSpacing / edgeRouting apply to layered/tree only;
+// force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
+const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
       mistakes: [
-        'Missing @pyreon/runtime-dom in consumer deps — flow JSX emits _tpl()',
-        'Reading NodeComponentProps.data / .selected / .dragging as plain values — all three are reactive accessors',
-        'Using createFlow inside a component body without onUnmount(() => flow.dispose()) — use useFlow instead',
+        'Forgetting to declare `@pyreon/runtime-dom` in consumer app deps — flow\'s JSX emits `_tpl()` which needs runtime-dom imports',
+        'Reading `NodeComponentProps.data` / `.selected` / `.dragging` as plain values — all three are REACTIVE ACCESSORS: `props.data()`, `props.selected()`, `props.dragging()`',
+        'Calling `props.data()` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, `effect`, or `computed`',
+        'Adding `[key: string]: unknown` index signature to your node data interface — no longer needed now that `createFlow` is generic. Pass `createFlow<MyData>(...)` instead',
+        'Setting `LayoutOptions.direction` (or `layerSpacing`, or `edgeRouting`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK\'s layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode `console.warn` fires when this happens',
+        'Missing `<Flow nodeTypes={{ key: Component }}>` registration — `node.type` strings dispatch to that map, unregistered types fall through to the default renderer',
+        'Using `createFlow` inside a component body without `onUnmount(() => flow.dispose())` — prefer `useFlow` which auto-disposes',
+        "Using `direction: 'row'` on flow's containing Element layout — Pyreon `Element` accepts `'inline'` / `'rows'` / `'reverseInline'` / `'reverseRows'`, not CSS flex-direction values like `'row'` or `'column'`",
       ],
       seeAlso: ['useFlow', 'FlowInstance', 'Flow'],
     },
@@ -114,14 +140,24 @@ flow.fromJSON({ nodes, edges })    // restore from saved state`,
       signature:
         '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
       summary:
-        "Component-scoped wrapper around createFlow that auto-disposes the instance on unmount. Prefer inside component bodies; use createFlow directly only for flows owned outside the component tree (app stores, singletons).",
-      example: `const MyDiagram = () => {
-  const flow = useFlow<MyData>({ nodes: [], edges: [] })
-  return <Flow instance={flow}><Background /></Flow>
+        'Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. Prefer inside component bodies; use `createFlow` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you\'ll dispose at the correct lifecycle point yourself.',
+      example: `// Component-scoped flow — auto-disposes when the component unmounts.
+// Identical shape to createFlow, plus an implicit onUnmount(() => flow.dispose()).
+const MyDiagram = () => {
+  const flow = useFlow<WorkflowData>({
+    nodes: [{ id: '1', position: { x: 0, y: 0 }, data: { kind: 'trigger', label: 'Start' } }],
+    edges: [],
+  })
+  return (
+    <Flow instance={flow}>
+      <Background />
+    </Flow>
+  )
 }`,
       mistakes: [
-        'Using useFlow outside a component body — the onUnmount hook needs an active setup context',
-        'Storing the returned instance in a module-level variable — bypasses the auto-dispose guarantee',
+        'Using `useFlow` outside a component body — the `onUnmount` hook registration requires an active component setup context, same constraint as every `useX` hook',
+        'Using `createFlow` inside a component and forgetting `onUnmount(() => flow.dispose())` — that was the footgun `useFlow` exists to prevent',
+        'Storing the returned instance in a module-level variable — bypasses the auto-dispose guarantee; use `createFlow` for that pattern',
       ],
       seeAlso: ['createFlow'],
     },
@@ -130,65 +166,106 @@ flow.fromJSON({ nodes, edges })    // restore from saved state`,
       kind: 'component',
       signature: '(props: FlowComponentProps) => VNodeChild',
       summary:
-        "Main flow container. Accepts a FlowInstance via `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. NOT generic at the JSX call site — `FlowProps.instance` is typed as FlowInstance<any> so typed consumers can pass FlowInstance<MyData> without casting.",
-      example: `<Flow instance={flow} nodeTypes={{ custom: MyNode }}>
-  <Background variant="dots" />
-  <Controls />
-  <MiniMap />
-</Flow>`,
+        'Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.',
+      example: `<Flow instance={flow} nodeTypes={{ custom: MyNode }} edgeTypes={{ arrow: ArrowEdge }}>
+  <Background variant="dots" gap={20} />
+  <Controls position="bottom-left" />
+  <MiniMap nodeColor={(node) => '#6366f1'} />
+</Flow>
+
+// Custom node renderer — every prop except id is a REACTIVE ACCESSOR
+function MyNode(props: NodeComponentProps<WorkflowData>) {
+  return (
+    <div
+      class={() => (props.selected() ? 'selected' : '')}
+      style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
+    >
+      {() => props.data().label}
+    </div>
+  )
+}`,
       mistakes: [
-        '<Flow<MyData> /> is invalid JSX — the component is not generic at the call site',
-        'Missing nodeTypes entry for a node.type string — falls through to the default renderer',
+        '`<Flow<MyData> />` is invalid JSX — the component is not generic at the call site; pass a typed `FlowInstance<MyData>` via `instance` prop',
+        'Missing `nodeTypes` entry for a `node.type` string — falls through to the default renderer',
+        'Mutating `instance.nodes()` return value directly — use `instance.addNode` / `updateNode` / `removeNode` so the internal signals fire',
       ],
-      seeAlso: ['createFlow', 'Background', 'Controls', 'MiniMap'],
+      seeAlso: ['createFlow', 'Background', 'Controls', 'MiniMap', 'Handle'],
     },
     {
       name: 'Background',
       kind: 'component',
-      signature: '(props: { variant?: "dots" | "lines" }) => VNodeChild',
-      summary: 'Dot or line grid background inside a Flow. Place as a child of <Flow>.',
-      example: `<Flow instance={flow}><Background variant="dots" /></Flow>`,
-      seeAlso: ['Flow'],
+      signature: '(props: { variant?: "dots" | "lines"; gap?: number; color?: string }) => VNodeChild',
+      summary:
+        'Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order.',
+      example: `<Flow instance={flow}>
+  <Background variant="dots" gap={24} color="#e5e7eb" />
+</Flow>`,
+      seeAlso: ['Flow', 'Controls', 'MiniMap'],
     },
     {
       name: 'Controls',
       kind: 'component',
-      signature: '() => VNodeChild',
-      summary: 'Zoom in / zoom out / fit-view button cluster. Place as a child of <Flow>.',
-      example: `<Flow instance={flow}><Controls /></Flow>`,
-      seeAlso: ['Flow'],
+      signature:
+        '(props?: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild',
+      summary:
+        'Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-right"`). Each button dispatches to the corresponding `FlowInstance` viewport method.',
+      example: `<Flow instance={flow}>
+  <Controls position="bottom-left" />
+</Flow>`,
+      seeAlso: ['Flow', 'Background', 'MiniMap'],
     },
     {
       name: 'MiniMap',
       kind: 'component',
-      signature: '() => VNodeChild',
-      summary: 'Overview minimap showing the full graph. Place as a child of <Flow>.',
-      example: `<Flow instance={flow}><MiniMap /></Flow>`,
-      seeAlso: ['Flow'],
+      signature:
+        '(props?: { nodeColor?: (node: FlowNode) => string; maskColor?: string }) => VNodeChild',
+      summary:
+        'Overview minimap of the full graph. `nodeColor` is a per-node color function (default grey), `maskColor` fills the area outside the current viewport (default semi-transparent black). Clicks on the minimap recenter the main viewport.',
+      example: `<Flow instance={flow}>
+  <MiniMap nodeColor={(node) => node.data.highlighted ? '#f59e0b' : '#6366f1'} />
+</Flow>`,
+      seeAlso: ['Flow', 'Background', 'Controls'],
     },
     {
       name: 'Handle',
       kind: 'component',
-      signature: '(props: { type: "source" | "target"; position: Position }) => VNodeChild',
-      summary: 'Connection handle on a custom node. Exposes a connectable point that edges attach to.',
+      signature:
+        '(props: { type: "source" | "target"; position: Position; id?: string }) => VNodeChild',
+      summary:
+        'Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`.',
       example: `function CustomNode(props: NodeComponentProps<MyData>) {
   return (
     <div>
       <Handle type="target" position={Position.Left} />
       {() => props.data().label}
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} id="out-primary" />
+      <Handle type="source" position={Position.Bottom} id="out-fallback" />
     </div>
   )
-}`,
-      seeAlso: ['Position'],
+}
+
+// Edge referencing a specific source handle by id
+flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
+      mistakes: [
+        'Multiple `source` / `target` handles on one node without distinct `id` values — edges cannot disambiguate which handle they connect to',
+        'Nesting a `<Handle>` inside a non-node component (a `<Background>` child, a `<Panel>`, etc.) — the connection machinery expects handles to live inside a node renderer',
+      ],
+      seeAlso: ['Flow', 'Position'],
     },
     {
       name: 'Panel',
       kind: 'component',
-      signature: '(props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild',
-      summary: 'Overlay panel positioned absolutely relative to the flow viewport.',
-      example: `<Flow instance={flow}><Panel position="top-right"><button>Save</button></Panel></Flow>`,
-      seeAlso: ['Flow'],
+      signature:
+        '(props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; children: VNodeChild }) => VNodeChild',
+      summary:
+        'Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component.',
+      example: `<Flow instance={flow}>
+  <Panel position="top-right">
+    <button onClick={() => flow.fitView()}>Fit</button>
+    <button onClick={() => flow.toJSON()}>Export</button>
+  </Panel>
+</Flow>`,
+      seeAlso: ['Flow', 'Controls'],
     },
   ],
   gotchas: [

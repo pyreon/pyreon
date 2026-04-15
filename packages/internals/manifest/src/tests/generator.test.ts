@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  regenerateApiReferenceTs,
   regenerateLlmsFullTxt,
   regenerateLlmsTxt,
 } from '../../../../../scripts/gen-docs-core'
@@ -618,5 +619,165 @@ describe('regenerateLlmsFullTxt', () => {
     const idxB = result.contents.indexOf('## @pyreon/b —')
     expect(idxA).toBeLessThan(idxMiddle)
     expect(idxMiddle).toBeLessThan(idxB)
+  })
+})
+
+describe('regenerateApiReferenceTs', () => {
+  function mkManifest(
+    name: string,
+    api: PackageManifest['api'] = [],
+  ): PackageManifest {
+    return {
+      name,
+      tagline: 't',
+      description: 'd',
+      category: 'universal',
+      features: [],
+      api,
+    }
+  }
+
+  it('replaces the region between matching markers with generated entries', () => {
+    const manifest = mkManifest('@pyreon/flow', [
+      {
+        name: 'createFlow',
+        kind: 'function',
+        signature: 'createFlow(c): F',
+        summary: 'Create.',
+        example: 'const f = createFlow({})',
+        mistakes: ['Missing peer'],
+      },
+    ])
+    const before = [
+      'export const API_REFERENCE = {',
+      "  'reactivity/signal': { signature: 's', example: 'e' },",
+      '',
+      '  // <gen-docs:api-reference:start @pyreon/flow>',
+      "  'flow/oldEntry': { signature: 'old', example: 'old' },",
+      '  // <gen-docs:api-reference:end @pyreon/flow>',
+      '',
+      "  'core/h': { signature: 'h', example: 'h' },",
+      '}',
+    ].join('\n')
+    const result = regenerateApiReferenceTs(before, [
+      { path: '/flow', manifest },
+    ])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(1)
+    // Old entry replaced
+    expect(result.contents).not.toContain("'flow/oldEntry'")
+    // New entry present
+    expect(result.contents).toContain("'flow/createFlow'")
+    expect(result.contents).toContain("notes: 'Create.'")
+    // Markers preserved verbatim
+    expect(result.contents).toContain('// <gen-docs:api-reference:start @pyreon/flow>')
+    expect(result.contents).toContain('// <gen-docs:api-reference:end @pyreon/flow>')
+    // Surrounding hand-written entries untouched
+    expect(result.contents).toContain("'reactivity/signal'")
+    expect(result.contents).toContain("'core/h'")
+  })
+
+  it('is a no-op for manifests whose package has no region markers', () => {
+    const manifest = mkManifest('@pyreon/not-migrated', [
+      { name: 'foo', kind: 'function', signature: 's', summary: 'u', example: 'e' },
+    ])
+    const before = [
+      'export const API_REFERENCE = {',
+      "  'reactivity/signal': { signature: 's', example: 'e' },",
+      '}',
+    ].join('\n')
+    const result = regenerateApiReferenceTs(before, [
+      { path: '/x', manifest },
+    ])
+    expect(result.missingEntries).toEqual([])
+    expect(result.changedLines).toBe(0)
+    expect(result.contents).toBe(before)
+  })
+
+  it('is idempotent — a second run after the first writes zero changes', () => {
+    const manifest = mkManifest('@pyreon/flow', [
+      {
+        name: 'createFlow',
+        kind: 'function',
+        signature: 'createFlow(c): F',
+        summary: 'Create.',
+        example: 'const f = createFlow({})',
+      },
+    ])
+    // Start with a stale region, run the generator to get the
+    // canonical form, then run again — the second run MUST be a
+    // no-op. Proves the replacement shape matches what the lookup
+    // would extract on subsequent runs (the bug that broke the
+    // llms-full trailing-newline tests before the sentinel fix).
+    const before = [
+      'export const API_REFERENCE = {',
+      '  // <gen-docs:api-reference:start @pyreon/flow>',
+      "  'flow/stale': { signature: 's', example: 'e' },",
+      '  // <gen-docs:api-reference:end @pyreon/flow>',
+      '}',
+    ].join('\n')
+    const first = regenerateApiReferenceTs(before, [
+      { path: '/flow', manifest },
+    ])
+    expect(first.changedLines).toBe(1)
+    const second = regenerateApiReferenceTs(first.contents, [
+      { path: '/flow', manifest },
+    ])
+    expect(second.changedLines).toBe(0)
+    expect(second.contents).toBe(first.contents)
+  })
+
+  it('handles multiple migrated packages in one pass without cross-interference', () => {
+    const manifestA = mkManifest('@pyreon/a', [
+      { name: 'fnA', kind: 'function', signature: 'fnA()', summary: 'A.', example: 'fnA()' },
+    ])
+    const manifestB = mkManifest('@pyreon/b', [
+      { name: 'fnB', kind: 'function', signature: 'fnB()', summary: 'B.', example: 'fnB()' },
+    ])
+    const before = [
+      'export const API_REFERENCE = {',
+      '  // <gen-docs:api-reference:start @pyreon/a>',
+      "  'a/stale': { signature: 's', example: 'e' },",
+      '  // <gen-docs:api-reference:end @pyreon/a>',
+      '',
+      "  'middle/unchanged': { signature: 'm', example: 'm' },",
+      '',
+      '  // <gen-docs:api-reference:start @pyreon/b>',
+      "  'b/stale': { signature: 's', example: 'e' },",
+      '  // <gen-docs:api-reference:end @pyreon/b>',
+      '}',
+    ].join('\n')
+    const result = regenerateApiReferenceTs(before, [
+      { path: '/a', manifest: manifestA },
+      { path: '/b', manifest: manifestB },
+    ])
+    expect(result.changedLines).toBe(2)
+    expect(result.contents).toContain("'a/fnA'")
+    expect(result.contents).toContain("'b/fnB'")
+    expect(result.contents).not.toContain("'a/stale'")
+    expect(result.contents).not.toContain("'b/stale'")
+    // Middle hand-written entry survives intact — critical assertion
+    // that a's replacement didn't shift b's marker lookup out of
+    // alignment (analogous to the llms-full ordered-replace test).
+    expect(result.contents).toContain("'middle/unchanged'")
+  })
+
+  it('empty api[] produces an empty body between the markers (still valid TS)', () => {
+    const manifest = mkManifest('@pyreon/empty', [])
+    const before = [
+      'export const API_REFERENCE = {',
+      '  // <gen-docs:api-reference:start @pyreon/empty>',
+      "  'empty/stale': { signature: 's', example: 'e' },",
+      '  // <gen-docs:api-reference:end @pyreon/empty>',
+      '}',
+    ].join('\n')
+    const result = regenerateApiReferenceTs(before, [
+      { path: '/empty', manifest },
+    ])
+    expect(result.changedLines).toBe(1)
+    expect(result.contents).not.toContain("'empty/stale'")
+    // Both markers still present so the package remains opt-in.
+    expect(result.contents).toContain('// <gen-docs:api-reference:start @pyreon/empty>')
+    expect(result.contents).toContain('// <gen-docs:api-reference:end @pyreon/empty>')
   })
 })

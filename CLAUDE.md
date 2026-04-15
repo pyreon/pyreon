@@ -328,6 +328,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
   **Why test runtime-dom with Vite (not raw esbuild)**: raw `esbuild --minify` cannot propagate a module-scope `const __DEV__` through chained `&&` patterns. Pyreon's runtime-dom uses that const pattern across multiple files. Raw esbuild is the wrong baseline for testing those files — Vite's full pipeline (Rolldown + `import.meta.env` replacement + tree-shake passes) is what consumers actually run. The flow test uses the inline early-return form and so works under raw esbuild; the runtime-dom test uses Vite's `build()` API to match the consumer pipeline.
 - No D3 — pan/zoom via pointer events + CSS transforms
 - **Peer dep**: `@pyreon/runtime-dom` is required because the JSX templates emit `_tpl()` calls — declare it in consumer apps' deps
+- **MCP api-reference is manifest-driven (T2.5.1)**: the flow region in `packages/tools/mcp/src/api-reference.ts` regenerates from the same manifest's `api[]`. Eight entries today (`createFlow`, `useFlow`, `Flow`, `Background`, `Controls`, `MiniMap`, `Handle`, `Panel`) — a strict superset of the previous hand-written surface, covering all child components. First real consumer of the marker-based `<gen-docs:api-reference:start/end @pyreon/<name>>` region protocol — `query` / `form` / `hooks` flip to the same protocol in follow-up PRs as their manifests are enriched to MCP density.
 
 ### @pyreon/code
 
@@ -600,6 +601,15 @@ const ModeCtx = createReactiveContext<'light' | 'dark'>('light')
 ### exactOptionalPropertyTypes
 
 Enabled in root tsconfig — optional properties need explicit `| undefined` when assigned from functions that may return undefined.
+
+### Manifest-driven docs pipeline (T2.1 + T2.5.1)
+
+One source of truth per package — `packages/<category>/<pkg>/src/manifest.ts` — feeds every generated doc surface. `bun run gen-docs` regenerates `llms.txt` (bullets), `llms-full.txt` (per-package sections), and `packages/tools/mcp/src/api-reference.ts` (MCP regions). CI `Docs Sync` job runs `bun run gen-docs --check` against all three.
+
+- **llms.txt / llms-full.txt** are regenerated wholesale for every migrated package.
+- **api-reference.ts** uses OPT-IN region markers per package: `// <gen-docs:api-reference:start @pyreon/<name>>` / `... end @pyreon/<name>>`. Marker-less packages stay hand-written. This lets query / form / hooks (migrated for llms but not yet for MCP) flip individually once their `api[]` entries are enriched to MCP density. Flow is the first (and currently only) package on the MCP pipeline (T2.5.1).
+- **Field mapping** (manifest `ApiEntry` → MCP `ApiEntry`): `signature` / `example` passthrough; `summary` → `notes` (with `[DEPRECATED]` / `[EXPERIMENTAL]` prefix when `stability` is set, plus `seeAlso: X, Y`, `Added in vX.Y.Z`, `Deprecated since vX.Y.Z` trailers); `mistakes[]` → `mistakes` (joined `- item` bullets). The `McpApiReferenceEntry` type in `@pyreon/manifest` is asserted structurally equal to MCP's real `ApiEntry` via a compile-time `Equal<...>` check in `packages/tools/mcp/src/tests/api-reference.test.ts` — any drift fails `tsc --noEmit` before the generator produces stale output.
+- **Migration recipe** for flipping a package to the MCP pipeline: (1) enrich the manifest's `api[]` entries to MCP density — 2-3 sentence `summary` carrying architectural rationale + per-API foot-gun `mistakes[]` catalog (see flow's manifest for the quality bar); (2) wrap the existing hand-written block in `api-reference.ts` with the marker pair; (3) `bun run gen-docs`; (4) add `renderApiReferenceEntries(manifest)` spot-checks to the package's `manifest-snapshot.test.ts`.
 
 ## Docs Website
 

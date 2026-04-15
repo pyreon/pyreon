@@ -49,18 +49,32 @@ function writeManifest(root: string, category: string, pkg: string, body: string
 }
 
 /**
- * Write minimal llms.txt + llms-full.txt into the fixture. `main()`
- * reads both; absence of either triggers an ENOENT before the sync
- * check. A section landing-point for every manifest is required so
- * the "missing entry" path only fires when deliberately tested.
+ * Write minimal llms.txt + llms-full.txt + api-reference.ts into
+ * the fixture. `main()` reads all three; absence of any triggers
+ * ENOENT before the sync check. Section / bullet / marker landing
+ * points for every manifest are required so "missing entry" paths
+ * only fire when deliberately tested.
+ *
+ * `apiRefBody` defaults to an empty record literal — no region
+ * markers means the api-reference.ts stage is a silent no-op for
+ * the fixture manifests (MCP migration is opt-in per package).
+ * Pass explicit marker blocks to exercise the api-reference branch.
  */
 function writeLlmsFiles(
   root: string,
   llmsTxtBody: string,
   llmsFullBody = '# llms-full.txt\n',
+  apiRefBody = 'export const API_REFERENCE = {}\n',
 ) {
   writeFileSync(join(root, 'llms.txt'), llmsTxtBody)
   writeFileSync(join(root, 'llms-full.txt'), llmsFullBody)
+  // api-reference.ts lives inside packages/tools/mcp/src/ — the
+  // real repo location, mirrored here so the generator's
+  // join(repoRoot, 'packages/tools/mcp/src/api-reference.ts')
+  // resolves.
+  const apiRefDir = join(root, 'packages', 'tools', 'mcp', 'src')
+  mkdirSync(apiRefDir, { recursive: true })
+  writeFileSync(join(apiRefDir, 'api-reference.ts'), apiRefBody)
 }
 
 interface Captured {
@@ -221,6 +235,40 @@ describe('gen-docs main() — in-process', () => {
     expect(stdout).toContain('llms-full.txt: 1 section regenerated')
     expect(readFileSync(llmsPath, 'utf8')).toContain('- @pyreon/x — NEW')
     expect(readFileSync(llmsFullPath, 'utf8')).toContain('new body')
+  })
+
+  it('write mode regenerates api-reference.ts regions for manifests with markers', async () => {
+    // End-to-end: manifest with api[] + api-reference.ts fixture
+    // containing the matching region markers → generator rewrites
+    // the block between markers + reports the write in stdout.
+    // Markerless packages stay untouched (opt-in semantics).
+    writeManifest(
+      fx.root,
+      'fundamentals',
+      'x',
+      `export default { name: '@pyreon/x', tagline: 't', description: 'd', category: 'universal' as const, features: [], api: [{ name: 'doThing', kind: 'function' as const, signature: 'doThing(): void', summary: 'Does a thing.', example: 'doThing()' }], longExample: 'body' }`,
+    )
+    const apiRefPath = join(fx.root, 'packages', 'tools', 'mcp', 'src', 'api-reference.ts')
+    writeLlmsFiles(
+      fx.root,
+      '# llms.txt\n\n- @pyreon/x — t\n',
+      '# llms-full.txt\n\n## @pyreon/x — t\n\nd\n\n```typescript\nbody\n```\n',
+      [
+        'export const API_REFERENCE = {',
+        '  // <gen-docs:api-reference:start @pyreon/x>',
+        "  'x/stale': { signature: 'old', example: 'old' },",
+        '  // <gen-docs:api-reference:end @pyreon/x>',
+        '}',
+      ].join('\n'),
+    )
+    const out = await runMain(fx.root, [])
+    expect(out.exitCode).toBeUndefined()
+    const stdout = out.stdout.join('\n')
+    expect(stdout).toContain('api-reference.ts: 1 region regenerated')
+    const apiRef = readFileSync(apiRefPath, 'utf8')
+    expect(apiRef).toContain("'x/doThing'")
+    expect(apiRef).toContain("notes: 'Does a thing.'")
+    expect(apiRef).not.toContain("'x/stale'")
   })
 
   it('is idempotent — second run reports no changes on both files', async () => {

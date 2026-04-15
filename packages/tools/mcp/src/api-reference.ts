@@ -747,9 +747,10 @@ await doc.toNotion()   // Notion blocks`,
   // @pyreon/flow
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/flow>
+
   'flow/createFlow': {
-    signature:
-      'createFlow<TData = Record<string, unknown>>(config: FlowConfig<TData>): FlowInstance<TData>',
+    signature: '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
     example: `// Generic over node data shape — typed consumers get strong narrowing
 interface WorkflowData {
   kind: 'trigger' | 'filter' | 'transform' | 'notify'
@@ -768,42 +769,23 @@ const flow = createFlow<WorkflowData>({
 const trigger = flow.findNodes((n) => n.data.kind === 'trigger')
 
 flow.addNode({ id: '3', type: 'custom', position: { x: 100, y: 200 }, data: { kind: 'transform', label: 'New' } })
-await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })  // auto-layout via lazy-loaded elkjs
-// LayoutOptions applicability: direction/layerSpacing/edgeRouting apply to layered/tree only;
+await flow.layout('layered', { direction: 'RIGHT', nodeSpacing: 50, layerSpacing: 100 })
+// LayoutOptions applicability: direction / layerSpacing / edgeRouting apply to layered/tree only;
 // force/stress/radial/box/rectpacking silently ignore them. nodeSpacing applies to all algorithms.
-const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization
-
-// Custom node renderer — every prop except id is a REACTIVE ACCESSOR
-function CustomNode(props: NodeComponentProps<WorkflowData>) {
-  return (
-    <div
-      class={() => (props.selected() ? 'selected' : '')}
-      style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
-    >
-      {() => props.data().label}
-    </div>
-  )
-}
-
-<Flow instance={flow} nodeTypes={{ custom: CustomNode }}>
-  <Background variant="dots" />
-  <Controls />
-  <MiniMap />
-</Flow>`,
-    notes:
-      "Signal-native nodes/edges. Generic over node data shape: createFlow<TData> returns FlowInstance<TData> so node.data.kind narrows correctly. Defaults to Record<string, unknown> if no generic supplied. NodeComponentProps has THREE reactive accessors — data: () => TData, selected: () => boolean, dragging: () => boolean — read inside reactive scopes so the node patches in place when ANY underlying state changes. Each node mounts EXACTLY ONCE across the lifetime of the graph regardless of how many drags, selection clicks, or updateNode mutations happen. Internally <Flow> uses <For> keyed by node.id plus per-node accessors that read live state from instance.nodes() — so a 60fps drag in a 1000-node graph is O(1) instead of O(N) per frame. Auto-layout via elkjs (lazy-loaded, ~1.4MB chunk only on first .layout() call). Pan/zoom via pointer events + CSS transforms. No D3. JSX components are NOT generic at the call site (<Flow<MyData> /> is invalid JSX) — FlowProps.instance is typed as FlowInstance<any> so typed consumers can pass FlowInstance<MyData> without casting.",
-    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — flow's JSX emits _tpl() which needs runtime-dom imports
-- Reading props.data, props.selected, or props.dragging as plain values — they're ALL accessors, call them: props.data().kind, props.selected(), props.dragging()
-- Calling props.data() OUTSIDE a reactive scope — captures the value once at component setup, defeating reactivity. Read it inside JSX expression thunks, effect, or computed: {() => props.data().label}
-- Adding [key: string]: unknown index signature to your node data interface — no longer needed now that createFlow is generic. Just pass createFlow<MyData>(...)
-- Using direction: 'row' on flow's containing layout — Pyreon Element accepts 'inline'|'rows'|'reverseInline'|'reverseRows', not 'row'
-- Setting LayoutOptions.direction (or layerSpacing, or edgeRouting) on a force/stress/radial/box/rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered/tree pipelines and silently ignored by the geometric algorithms. Switch the algorithm to 'layered' or 'tree' if you need a directional layout.
-- Missing the <Flow nodeTypes={{ key: Component }}> registration — node.type strings dispatch to that map`,
+const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serialization`,
+    notes: 'Create a reactive flow instance. Generic over node data shape — `createFlow<MyData>(...)` returns `FlowInstance<MyData>` so `node.data.kind` narrows correctly without an `[key: string]: unknown` index signature on consumer types. Defaults to `Record<string, unknown>` when no generic is supplied. The returned instance owns signal-native nodes / edges and exposes CRUD, selection, viewport (zoom / pan / fitView), and auto-layout via lazy-loaded elkjs (first `.layout()` call fetches a ~1.4MB chunk). Pan / zoom uses pointer events + CSS transforms — no D3. See also: useFlow, FlowInstance, Flow.',
+    mistakes: `- Forgetting to declare \`@pyreon/runtime-dom\` in consumer app deps — flow's JSX emits \`_tpl()\` which needs runtime-dom imports
+- Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
+- Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
+- Adding \`[key: string]: unknown\` index signature to your node data interface — no longer needed now that \`createFlow\` is generic. Pass \`createFlow<MyData>(...)\` instead
+- Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
+- Missing \`<Flow nodeTypes={{ key: Component }}>\` registration — \`node.type\` strings dispatch to that map, unregistered types fall through to the default renderer
+- Using \`createFlow\` inside a component body without \`onUnmount(() => flow.dispose())\` — prefer \`useFlow\` which auto-disposes
+- Using \`direction: 'row'\` on flow's containing Element layout — Pyreon \`Element\` accepts \`'inline'\` / \`'rows'\` / \`'reverseInline'\` / \`'reverseRows'\`, not CSS flex-direction values like \`'row'\` or \`'column'\``,
   },
 
   'flow/useFlow': {
-    signature:
-      'useFlow<TData = Record<string, unknown>>(config: FlowConfig<TData>): FlowInstance<TData>',
+    signature: '<TData = Record<string, unknown>>(config: FlowConfig<TData>) => FlowInstance<TData>',
     example: `// Component-scoped flow — auto-disposes when the component unmounts.
 // Identical shape to createFlow, plus an implicit onUnmount(() => flow.dispose()).
 const MyDiagram = () => {
@@ -817,12 +799,92 @@ const MyDiagram = () => {
     </Flow>
   )
 }`,
-    notes:
-      'Wrapper around createFlow that registers onUnmount(() => flow.dispose()). Use inside component bodies to avoid the manual dispose boilerplate. For flows owned outside the component tree (app stores, singletons, SSR-shared state) keep calling createFlow directly and dispose at the correct lifecycle point.',
-    mistakes: `- Using useFlow outside a component body — the onUnmount hook registration requires an active component setup context, same constraint as every useX hook
-- Using createFlow inside a component and forgetting onUnmount(() => flow.dispose()) — that was the footgun useFlow exists to prevent
-- Storing the returned instance in a module-level variable — that bypasses the auto-dispose guarantee; prefer createFlow for that pattern`,
+    notes: `Component-scoped wrapper around \`createFlow\` — identical shape plus an implicit \`onUnmount(() => flow.dispose())\`. Prefer inside component bodies; use \`createFlow\` directly only for flows owned outside the component tree (app stores, singletons, SSR-shared state) where you'll dispose at the correct lifecycle point yourself. See also: createFlow.`,
+    mistakes: `- Using \`useFlow\` outside a component body — the \`onUnmount\` hook registration requires an active component setup context, same constraint as every \`useX\` hook
+- Using \`createFlow\` inside a component and forgetting \`onUnmount(() => flow.dispose())\` — that was the footgun \`useFlow\` exists to prevent
+- Storing the returned instance in a module-level variable — bypasses the auto-dispose guarantee; use \`createFlow\` for that pattern`,
   },
+
+  'flow/Flow': {
+    signature: '(props: FlowComponentProps) => VNodeChild',
+    example: `<Flow instance={flow} nodeTypes={{ custom: MyNode }} edgeTypes={{ arrow: ArrowEdge }}>
+  <Background variant="dots" gap={20} />
+  <Controls position="bottom-left" />
+  <MiniMap nodeColor={(node) => '#6366f1'} />
+</Flow>
+
+// Custom node renderer — every prop except id is a REACTIVE ACCESSOR
+function MyNode(props: NodeComponentProps<WorkflowData>) {
+  return (
+    <div
+      class={() => (props.selected() ? 'selected' : '')}
+      style={() => \`cursor: \${props.dragging() ? 'grabbing' : 'grab'}\`}
+    >
+      {() => props.data().label}
+    </div>
+  )
+}`,
+    notes: 'Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting. See also: createFlow, Background, Controls, MiniMap, Handle.',
+    mistakes: `- \`<Flow<MyData> />\` is invalid JSX — the component is not generic at the call site; pass a typed \`FlowInstance<MyData>\` via \`instance\` prop
+- Missing \`nodeTypes\` entry for a \`node.type\` string — falls through to the default renderer
+- Mutating \`instance.nodes()\` return value directly — use \`instance.addNode\` / \`updateNode\` / \`removeNode\` so the internal signals fire`,
+  },
+
+  'flow/Background': {
+    signature: '(props: { variant?: "dots" | "lines"; gap?: number; color?: string }) => VNodeChild',
+    example: `<Flow instance={flow}>
+  <Background variant="dots" gap={24} color="#e5e7eb" />
+</Flow>`,
+    notes: 'Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order. See also: Flow, Controls, MiniMap.',
+  },
+
+  'flow/Controls': {
+    signature: '(props?: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild',
+    example: `<Flow instance={flow}>
+  <Controls position="bottom-left" />
+</Flow>`,
+    notes: 'Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-right"`). Each button dispatches to the corresponding `FlowInstance` viewport method. See also: Flow, Background, MiniMap.',
+  },
+
+  'flow/MiniMap': {
+    signature: '(props?: { nodeColor?: (node: FlowNode) => string; maskColor?: string }) => VNodeChild',
+    example: `<Flow instance={flow}>
+  <MiniMap nodeColor={(node) => node.data.highlighted ? '#f59e0b' : '#6366f1'} />
+</Flow>`,
+    notes: 'Overview minimap of the full graph. `nodeColor` is a per-node color function (default grey), `maskColor` fills the area outside the current viewport (default semi-transparent black). Clicks on the minimap recenter the main viewport. See also: Flow, Background, Controls.',
+  },
+
+  'flow/Handle': {
+    signature: '(props: { type: "source" | "target"; position: Position; id?: string }) => VNodeChild',
+    example: `function CustomNode(props: NodeComponentProps<MyData>) {
+  return (
+    <div>
+      <Handle type="target" position={Position.Left} />
+      {() => props.data().label}
+      <Handle type="source" position={Position.Right} id="out-primary" />
+      <Handle type="source" position={Position.Bottom} id="out-fallback" />
+    </div>
+  )
+}
+
+// Edge referencing a specific source handle by id
+flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
+    notes: 'Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`. See also: Flow, Position.',
+    mistakes: `- Multiple \`source\` / \`target\` handles on one node without distinct \`id\` values — edges cannot disambiguate which handle they connect to
+- Nesting a \`<Handle>\` inside a non-node component (a \`<Background>\` child, a \`<Panel>\`, etc.) — the connection machinery expects handles to live inside a node renderer`,
+  },
+
+  'flow/Panel': {
+    signature: '(props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; children: VNodeChild }) => VNodeChild',
+    example: `<Flow instance={flow}>
+  <Panel position="top-right">
+    <button onClick={() => flow.fitView()}>Fit</button>
+    <button onClick={() => flow.toJSON()}>Export</button>
+  </Panel>
+</Flow>`,
+    notes: 'Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component. See also: Flow, Controls.',
+  },
+  // <gen-docs:api-reference:end @pyreon/flow>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/code
