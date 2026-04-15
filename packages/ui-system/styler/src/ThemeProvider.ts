@@ -12,16 +12,38 @@
  *   }
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { createContext, provide, useContext } from '@pyreon/core'
+import { createReactiveContext, provide, useContext } from '@pyreon/core'
 
 export interface DefaultTheme {}
 
 type Theme = DefaultTheme & Record<string, unknown>
 
-export const ThemeContext = createContext<Theme>({} as Theme)
+/**
+ * Reactive theme context. Consumers receive `() => Theme` from
+ * `useContext(ThemeContext)`; calling the accessor inside a reactive scope
+ * (effect / computed / JSX accessor) tracks theme changes, so swapping the
+ * provided theme re-resolves CSS and swaps class names without remounting.
+ *
+ * `useTheme()` wraps this: calls the accessor and returns `Theme`. Inside
+ * a component body the read is a snapshot; inside an effect it tracks.
+ * For explicit reactive reads (e.g. inside a resolver effect), prefer
+ * `useThemeAccessor()` which returns the raw `() => Theme`.
+ */
+export const ThemeContext = createReactiveContext<Theme>({} as Theme)
 
-/** Hook to read the current theme from the nearest ThemeProvider. */
-export const useTheme = <T extends object = Theme>(): T => useContext(ThemeContext) as T
+/**
+ * Hook to read the current theme from the nearest ThemeProvider.
+ *
+ * Returns a `Theme` snapshot at call time. When called inside a reactive
+ * scope (effect, computed, JSX accessor), subsequent theme swaps re-run
+ * the surrounding scope. When called in a static body, returns the theme
+ * at that moment — use `useThemeAccessor()` if you need to re-read later.
+ */
+export const useTheme = <T extends object = Theme>(): T => useContext(ThemeContext)() as T
+
+/** Returns the raw `() => Theme` accessor. Call inside effects for tracking. */
+export const useThemeAccessor = <T extends object = Theme>(): (() => T) =>
+  useContext(ThemeContext) as () => T
 
 /**
  * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
@@ -38,6 +60,8 @@ export function ThemeProvider({
   theme: Theme
   children?: VNodeChild
 }): VNode | null {
-  provide(ThemeContext, theme)
+  // Reactive context expects an accessor. Static theme still works — the
+  // accessor just returns the same value every call.
+  provide(ThemeContext, () => theme)
   return (children ?? null) as VNode | null
 }
