@@ -245,56 +245,76 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
   return () => el.removeEventListener(eventName, batched)
 }
 
+/**
+ * Sink for a single prop's CALLED value (always a primitive / object /
+ * `null` — never a function). Called both directly for static values and
+ * from the reactive `renderEffect` for accessor-bound values.
+ *
+ * NOTE on architecture: extracting the special-cased sinks
+ * (`innerHTML` / `dangerouslySetInnerHTML`) into this single dispatch
+ * function ensures every prop kind goes through the same reactive
+ * wrapping at `applyProp`'s entry. Previously each special case had its
+ * own early-return branch that needed to remember to handle function
+ * values; missing the dance once meant the closure was stringified and
+ * set as literal text. The structural fix (one reactive-wrap, then
+ * dispatch) eliminates the entire bug class.
+ */
+function applyStaticProp(el: Element, key: string, value: unknown): void {
+  if (__DEV__ && typeof value === 'function') {
+    // Defensive: function values must be unwrapped via `renderEffect`
+    // before reaching here. If we see one, a NEW special-case branch
+    // somewhere upstream skipped the reactive-wrapping dance — exactly
+    // the bug class the structural refactor was meant to eliminate.
+    console.warn(
+      `[Pyreon] applyStaticProp received a function for "${key}". ` +
+        `This likely means a new special-cased prop sink in applyProp() ` +
+        `bypassed the reactive-wrap path. The closure would be stringified ` +
+        `and set as a literal value. Verify the dispatch in applyProp().`,
+    )
+  }
+
+  // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer.
+  if (key === 'innerHTML') {
+    const html = String(value ?? '')
+    if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === 'function') {
+      ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(html)
+    } else {
+      ;(el as HTMLElement).innerHTML = sanitizeHtml(html)
+    }
+    return
+  }
+
+  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization
+  // (same as React). The name itself is the warning — React doesn't log,
+  // neither should we.
+  if (key === 'dangerouslySetInnerHTML') {
+    const v = value as { __html: string } | null | undefined
+    ;(el as HTMLElement).innerHTML = v?.__html ?? ''
+    return
+  }
+
+  setStaticProp(el, key, value)
+}
+
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
-  // innerHTML — sanitized via Sanitizer API or fallback allowlist sanitizer.
-  // Reactive accessor support: if `value` is a function, wrap in a
-  // `renderEffect` so each accessor call writes the current HTML. Without
-  // this, the JSX compiler's `_bind`-style reactive prop wrapper for
-  // `innerHTML={getIcon(props.x ? 'a' : 'b')}` would have its closure
-  // stringified and set as literal text — `() => getIcon(...)` rendered
-  // instead of the SVG.
-  if (key === 'innerHTML') {
-    const setInnerHTML = (raw: unknown): void => {
-      const html = String(raw ?? '')
-      if (typeof (el as HTMLElement & { setHTML?: (h: string) => void }).setHTML === 'function') {
-        ;(el as HTMLElement & { setHTML: (h: string) => void }).setHTML(html)
-      } else {
-        ;(el as HTMLElement).innerHTML = sanitizeHtml(html)
-      }
-    }
-    if (typeof value === 'function') {
-      return renderEffect(() => setInnerHTML((value as () => unknown)()))
-    }
-    setInnerHTML(value)
-    return null
-  }
-  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as React).
-  // The name itself is the warning — React doesn't log, neither should we.
-  // Previously this warned on every prop application, flooding the console
-  // on re-renders (one warning per render per instance).
-  if (key === 'dangerouslySetInnerHTML') {
-    if (typeof value === 'function') {
-      return renderEffect(() => {
-        const v = (value as () => unknown)() as { __html: string } | null | undefined
-        ;(el as HTMLElement).innerHTML = v?.__html ?? ''
-      })
-    }
-    ;(el as HTMLElement).innerHTML = (value as { __html: string }).__html
-    return null
-  }
-
-  // Reactive prop — function that returns the actual value
-  // Uses renderEffect (lighter than effect — no scope registration, no WeakMap)
-  // since lifecycle is managed by mountElement's cleanup array.
+  // Reactive prop — function value is an accessor closure. The JSX compiler
+  // emits `prop={someExpr(signal())}` as a `() => someExpr(signal())` thunk
+  // so the prop tracks the signal automatically. We wrap in `renderEffect`
+  // ONCE here, before any prop-kind dispatch, so EVERY sink gets the same
+  // reactive treatment. Previously special-cased sinks (innerHTML etc.) had
+  // early-return branches that bypassed this wrap and stringified the
+  // closure — the bug fixed by this restructure.
+  //
+  // Uses renderEffect (lighter than effect — no scope registration, no
+  // WeakMap) since lifecycle is managed by mountElement's cleanup array.
   if (typeof value === 'function') {
-    const dispose = renderEffect(() => setStaticProp(el, key, (value as () => unknown)()))
-    return dispose
+    return renderEffect(() => applyStaticProp(el, key, (value as () => unknown)()))
   }
 
-  setStaticProp(el, key, value)
+  applyStaticProp(el, key, value)
   return null
 }
 
