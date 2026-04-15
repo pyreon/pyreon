@@ -41,6 +41,15 @@ type ItemEntry = {
   ref: ReturnType<typeof createRef<HTMLElement>>
   cleanup: () => void
   leaving: boolean
+  /**
+   * Cancel function for an in-progress enter / leave / move transition —
+   * removes listeners, clears the safety timer, strips active-state
+   * classes, but does NOT fire the onAfterX callback. Called when a
+   * transition is superseded or when the whole TransitionGroup unmounts
+   * mid-transition (so onAfterEnter/Leave doesn't fire on a detached
+   * element and the 5s timer doesn't leak past unmount).
+   */
+  cancelTransition: (() => void) | null
 }
 
 /**
@@ -87,7 +96,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   const ready = signal(false)
   let firstRun = true
 
-  const applyEnter = (el: HTMLElement) => {
+  const applyEnter = (entry: ItemEntry, el: HTMLElement) => {
     props.onBeforeEnter?.(el)
     el.classList.remove(cls.lf, cls.la, cls.lt)
     el.classList.add(cls.ef, cls.ea)
@@ -102,8 +111,18 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
           clearTimeout(safetyTimer)
           safetyTimer = null
         }
+        entry.cancelTransition = null
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
+      }
+      entry.cancelTransition = () => {
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
+        el.classList.remove(cls.ef, cls.ea, cls.et)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
@@ -114,7 +133,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     })
   }
 
-  const applyLeave = (el: HTMLElement, onDone: () => void) => {
+  const applyLeave = (entry: ItemEntry, el: HTMLElement, onDone: () => void) => {
     props.onBeforeLeave?.(el)
     el.classList.remove(cls.ef, cls.ea, cls.et)
     el.classList.add(cls.lf, cls.la)
@@ -129,9 +148,19 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
           clearTimeout(safetyTimer)
           safetyTimer = null
         }
+        entry.cancelTransition = null
         el.classList.remove(cls.la, cls.lt)
         props.onAfterLeave?.(el)
         onDone()
+      }
+      entry.cancelTransition = () => {
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
+        el.classList.remove(cls.lf, cls.la, cls.lt)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
@@ -151,7 +180,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       entry.leaving = true
       const el = entry.ref.current
       if (el) {
-        applyLeave(el, () => {
+        applyLeave(entry, el, () => {
           entry.cleanup()
           entries.delete(key)
         })
@@ -176,20 +205,30 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
           ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
           : rawVNode
       const cleanup = mountChild(vnode, container, null)
-      const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false }
+      const entry: ItemEntry = { key, ref: itemRef, cleanup, leaving: false, cancelTransition: null }
       entries.set(key, entry)
       newEntries.push(entry)
     }
     return newEntries
   }
 
-  const startMoveAnimation = (el: HTMLElement) => {
+  const startMoveAnimation = (entry: ItemEntry, el: HTMLElement) => {
     requestAnimationFrame(() => {
       el.classList.add(cls.mv)
       el.style.transform = ''
       el.style.transition = ''
       let safetyTimer: ReturnType<typeof setTimeout> | null = null
       const done = () => {
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
+        entry.cancelTransition = null
+        el.classList.remove(cls.mv)
+      }
+      entry.cancelTransition = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
         if (safetyTimer !== null) {
@@ -213,7 +252,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     const el = entry.ref.current
     el.style.transform = `translate(${dx}px, ${dy}px)`
     el.style.transition = 'none'
-    startMoveAnimation(el)
+    startMoveAnimation(entry, el)
   }
 
   /** Apply FLIP move animations for items that shifted position. */
@@ -250,7 +289,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
   const animateNewEntries = (newEntries: ItemEntry[]) => {
     for (const entry of newEntries) {
       queueMicrotask(() => {
-        if (entry.ref.current) applyEnter(entry.ref.current)
+        if (entry.ref.current) applyEnter(entry, entry.ref.current)
       })
     }
   }
@@ -281,7 +320,14 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
 
   onUnmount(() => {
     e.dispose()
-    for (const entry of entries.values()) entry.cleanup()
+    for (const entry of entries.values()) {
+      // Cancel any in-progress enter/leave/move transition so the 5s
+      // safety timer doesn't keep running past container unmount and
+      // onAfterEnter / onAfterLeave don't fire on a detached element.
+      entry.cancelTransition?.()
+      entry.cancelTransition = null
+      entry.cleanup()
+    }
     entries.clear()
   })
 

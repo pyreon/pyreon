@@ -80,13 +80,20 @@ export function Transition(props: TransitionProps): VNodeChild {
   const ref = createRef<HTMLElement>()
   const isMounted = signal(runUntracked<boolean>(props.show))
 
-  // Cancel an in-progress leave when re-entering before the animation ends
+  // Cancel in-progress enter / leave when the component unmounts or when a
+  // new transition supersedes the current one. Both are set inside their
+  // respective applyX(). Calling the cancel removes event listeners, clears
+  // the safety timer, and strips active-state classes — WITHOUT firing the
+  // onAfterX callback (which would run on a detached element after unmount).
+  let pendingEnterCancel: (() => void) | null = null
   let pendingLeaveCancel: (() => void) | null = null
   let initialized = false
 
   const applyEnter = (el: HTMLElement) => {
     pendingLeaveCancel?.()
     pendingLeaveCancel = null
+    pendingEnterCancel?.()
+    pendingEnterCancel = null
     props.onBeforeEnter?.(el)
     el.classList.remove(cls.lf, cls.la, cls.lt)
     el.classList.add(cls.ef, cls.ea)
@@ -105,8 +112,20 @@ export function Transition(props: TransitionProps): VNodeChild {
           clearTimeout(safetyTimer)
           safetyTimer = null
         }
+        pendingEnterCancel = null
         el.classList.remove(cls.ea, cls.et)
         props.onAfterEnter?.(el)
+      }
+      // Cancel path (called from onUnmount or a superseding transition): tears
+      // down without firing onAfterEnter on a detached element.
+      pendingEnterCancel = () => {
+        el.removeEventListener('transitionend', done)
+        el.removeEventListener('animationend', done)
+        if (safetyTimer !== null) {
+          clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
+        el.classList.remove(cls.ef, cls.ea, cls.et)
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
@@ -116,6 +135,8 @@ export function Transition(props: TransitionProps): VNodeChild {
   }
 
   const applyLeave = (el: HTMLElement) => {
+    pendingEnterCancel?.()
+    pendingEnterCancel = null
     props.onBeforeLeave?.(el)
     el.classList.remove(cls.ef, cls.ea, cls.et)
     el.classList.add(cls.lf, cls.la)
@@ -181,6 +202,10 @@ export function Transition(props: TransitionProps): VNodeChild {
   })
 
   onUnmount(() => {
+    // Cancel both pending transitions so neither fires its onAfterX
+    // callback on a now-detached element after the 5s safety window.
+    pendingEnterCancel?.()
+    pendingEnterCancel = null
     pendingLeaveCancel?.()
     pendingLeaveCancel = null
   })
