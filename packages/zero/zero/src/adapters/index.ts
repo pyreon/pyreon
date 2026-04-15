@@ -34,6 +34,6 @@ export function resolveAdapter(config: ZeroConfig): Adapter {
     case 'netlify':
       return netlifyAdapter()
     default:
-      throw new Error(`[zero] Unknown adapter: "${name}". Use "node", "bun", "static", "vercel", "cloudflare", or "netlify".`)
+      throw new Error(`[Pyreon] Unknown adapter: "${name}". Use "node", "bun", "static", "vercel", "cloudflare", or "netlify".`)
   }
 }

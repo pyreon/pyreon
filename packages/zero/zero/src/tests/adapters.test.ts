@@ -50,7 +50,7 @@ describe('resolveAdapter', () => {
     expect(() =>
       // @ts-expect-error testing invalid input
       resolveAdapter({ adapter: 'unknown-platform' }),
-    ).toThrow('[zero] Unknown adapter: "unknown-platform"')
+    ).toThrow('[Pyreon] Unknown adapter: "unknown-platform"')
   })
 })
 

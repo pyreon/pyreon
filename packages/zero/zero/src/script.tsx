@@ -52,6 +52,10 @@ export type ScriptStrategy =
  */
 export function Script(props: ScriptProps): VNodeChild {
   function loadScript() {
+    // Only invoked from `onMount` — explicit guard documents the
+    // SSR-safety contract at the callsite (the rule can't AST-trace the
+    // indirect call).
+    if (typeof document === 'undefined') return
     // Deduplication
     if (props.id && document.getElementById(props.id)) return
 

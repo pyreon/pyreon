@@ -8,9 +8,9 @@ import type { AdapterBuildOptions } from '../types'
 export async function validateBuildInputs(options: AdapterBuildOptions): Promise<void> {
   const { existsSync } = await import('node:fs')
   if (!existsSync(options.clientOutDir)) {
-    throw new Error(`[zero:adapter] Client build output not found: ${options.clientOutDir}. Run "vite build" first.`)
+    throw new Error(`[Pyreon] Client build output not found: ${options.clientOutDir}. Run "vite build" first.`)
   }
   if (!existsSync(options.serverEntry)) {
-    throw new Error(`[zero:adapter] Server entry not found: ${options.serverEntry}. Run "vite build --ssr" first.`)
+    throw new Error(`[Pyreon] Server entry not found: ${options.serverEntry}. Run "vite build --ssr" first.`)
   }
 }

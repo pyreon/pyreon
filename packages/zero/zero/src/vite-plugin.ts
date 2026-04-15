@@ -185,7 +185,7 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin {
 					},
 					(err) => {
 						// oxlint-disable-next-line no-console
-						console.error('[zero] Error in 404 handler:', err);
+						console.error('[Pyreon] Error in 404 handler:', err);
 						next();
 					},
 				);

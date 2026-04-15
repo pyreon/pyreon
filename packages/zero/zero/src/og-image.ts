@@ -38,7 +38,7 @@ function warnSharpMissing() {
   sharpWarned = true
   // oxlint-disable-next-line no-console
   console.warn(
-    '\n[zero:og-image] sharp not installed — OG images will not be generated. Install for full support: bun add -D sharp\n',
+    '\n[Pyreon] sharp not installed — OG images will not be generated. Install for full support: bun add -D sharp\n',
   )
 }
 
@@ -357,7 +357,7 @@ export function ogImagePlugin(config: OgImagePluginConfig): Plugin {
             const bgPath = join(root, template.background)
             if (!existsSync(bgPath)) {
               // oxlint-disable-next-line no-console
-              console.warn(`[zero:og-image] Background not found: ${bgPath}`)
+              console.warn(`[Pyreon] Background not found: ${bgPath}`)
               continue
             }
           }

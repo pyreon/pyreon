@@ -34,7 +34,56 @@ export const noDomInSetup: Rule = {
         isCallTo(node, 'requestAnimationFrame')
       )
     }
+    // `if (typeof document === 'undefined') return|throw` at the head of a
+    // function makes the rest of the body implicitly browser-safe — the
+    // SSR path bailed out. Same heuristic as `no-window-in-ssr`.
+    function isNegatedTypeofDocument(test: any): boolean {
+      if (!test) return false
+      if (
+        test.type === 'BinaryExpression' &&
+        (test.operator === '===' || test.operator === '==') &&
+        test.left?.type === 'UnaryExpression' &&
+        test.left.operator === 'typeof' &&
+        test.left.argument?.type === 'Identifier' &&
+        (test.left.argument.name === 'document' || test.left.argument.name === 'window')
+      )
+        return true
+      return false
+    }
+    function isEarlyReturnDocumentGuard(stmt: any): boolean {
+      if (!stmt || stmt.type !== 'IfStatement') return false
+      if (!isNegatedTypeofDocument(stmt.test)) return false
+      const c = stmt.consequent
+      const isTerminator = (s: any): boolean =>
+        s?.type === 'ReturnStatement' || s?.type === 'ThrowStatement'
+      if (isTerminator(c)) return true
+      if (c?.type === 'BlockStatement' && c.body.length === 1 && isTerminator(c.body[0]))
+        return true
+      return false
+    }
+    // Per-function depth bumps from early-return guards — popped on exit.
+    const earlyReturnStack: number[] = []
+    function pushFunctionScope(node: any) {
+      const body = node?.body
+      const stmts = body?.type === 'BlockStatement' ? body.body : null
+      let bumps = 0
+      if (stmts && stmts.length > 0 && isEarlyReturnDocumentGuard(stmts[0])) {
+        bumps = 1
+        safeDepth++
+      }
+      earlyReturnStack.push(bumps)
+    }
+    function popFunctionScope() {
+      const bumps = earlyReturnStack.pop() ?? 0
+      if (bumps > 0) safeDepth -= bumps
+    }
     const callbacks: VisitorCallbacks = {
+      FunctionDeclaration: pushFunctionScope,
+      'FunctionDeclaration:exit': popFunctionScope,
+      FunctionExpression: pushFunctionScope,
+      'FunctionExpression:exit': popFunctionScope,
+      ArrowFunctionExpression: pushFunctionScope,
+      'ArrowFunctionExpression:exit': popFunctionScope,
       CallExpression(node: any) {
         if (isSafeContextCall(node)) safeDepth++
 

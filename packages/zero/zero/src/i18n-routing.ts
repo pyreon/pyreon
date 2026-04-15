@@ -13,7 +13,7 @@ import type { Plugin } from 'vite'
 //
 // Usage:
 //   import { i18nRouting } from "@pyreon/zero"
-//   export default { plugins: [zero(), i18nRouting({ locales: ["en", "de"], defaultLocale: "en" })] }
+//   export default { plugins: [Pyreon], defaultLocale: "en" })] }
 
 export interface I18nRoutingConfig {
   /** Supported locales. e.g. ["en", "de", "cs"] */

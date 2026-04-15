@@ -160,7 +160,7 @@ export function oneOf<T extends string>(
 class EnvError extends Error {
   constructor(key: string, message: string, description?: string) {
     const desc = description ? ` (${description})` : ''
-    super(`[zero:env] ${key}${desc}: ${message}`)
+    super(`[Pyreon] ${key}${desc}: ${message}`)
     this.name = 'EnvError'
   }
 }
@@ -193,7 +193,7 @@ function toValidator(value: unknown): EnvValidator<unknown> {
   if (typeof value === 'boolean') return bool({ default: value })
   if (typeof value === 'string') return str({ default: value })
 
-  throw new Error(`[zero:env] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`)
+  throw new Error(`[Pyreon] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`)
 }
 
 // ─── Type inference ─────────────────────────────────────────────────────────
@@ -261,8 +261,8 @@ export function validateEnv<T extends Record<string, SchemaEntry>>(
   }
 
   if (errors.length > 0) {
-    const header = `\n[zero:env] Environment validation failed (${errors.length} error${errors.length > 1 ? 's' : ''}):\n`
-    const body = errors.map((e) => `  ✗ ${e.replace('[zero:env] ', '')}`).join('\n')
+    const header = `\n[Pyreon] Environment validation failed (${errors.length} error${errors.length > 1 ? 's' : ''}):\n`
+    const body = errors.map((e) => `  ✗ ${e.replace('[Pyreon] ', '')}`).join('\n')
     throw new Error(header + body + '\n')
   }
 
@@ -331,13 +331,13 @@ export function schema<T>(parse: (raw: string) => T): EnvValidator<T> {
     defaultValue: undefined,
     parse(raw: string | undefined, key: string) {
       if (raw === undefined || raw === '') {
-        throw new Error(`[zero:env] ${key}: is required but not set`)
+        throw new Error(`[Pyreon] ${key}: is required but not set`)
       }
       try {
         return parse(raw)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        throw new Error(`[zero:env] ${key}: ${msg}`)
+        throw new Error(`[Pyreon] ${key}: ${msg}`)
       }
     },
   }
