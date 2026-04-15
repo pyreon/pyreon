@@ -112,26 +112,36 @@ const rocketComponent: RocketComponent = (options) => {
     const themeAttrs = useTheme(options)
 
     // --------------------------------------------------
-    // Theme structure — cached by theme object identity.
-    // Theme object itself doesn't change (enrichTheme produces a stable ref),
-    // only mode switches change which mode-variant is resolved.
+    // Dimension KEY structure is theme-independent — dimension names (e.g.
+    // `level3`, `primary`) come from the .sizes()/.states()/.variants()
+    // callback structure at component-definition time, not from theme values.
+    // Compute reservedPropNames + dimensions once using the initial theme;
+    // they remain stable across theme swaps.
+    //
+    // Dimension VALUES (used in $rocketstyleAccessor) DO depend on theme and
+    // are resolved inside the accessor on each tracked invocation — allowing
+    // whole-theme swaps (user preference themes) to re-resolve CSS without
+    // remounting. WeakMap caches in ThemeManager keep the common static-theme
+    // case O(1).
     // --------------------------------------------------
-    const theme = themeAttrs.theme
-
-    const baseThemeHelper = ThemeManager.baseTheme
-    if (!baseThemeHelper.has(theme)) {
-      baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
-    }
-    const baseTheme = baseThemeHelper.get(theme)
-
-    const dimHelper = ThemeManager.dimensionsThemes
-    if (!dimHelper.has(theme)) {
-      dimHelper.set(theme, getDimensionThemes(theme, options))
-    }
-    const themes = dimHelper.get(theme)
+    const initialTheme = themeAttrs.theme
+    const initialBaseTheme = (() => {
+      const helper = ThemeManager.baseTheme
+      if (!helper.has(initialTheme)) {
+        helper.set(initialTheme, getThemeFromChain(options.theme, initialTheme))
+      }
+      return helper.get(initialTheme)
+    })()
+    const initialDimensionThemes = (() => {
+      const helper = ThemeManager.dimensionsThemes
+      if (!helper.has(initialTheme)) {
+        helper.set(initialTheme, getDimensionThemes(initialTheme, options))
+      }
+      return helper.get(initialTheme)
+    })()
 
     const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
-      themes,
+      themes: initialDimensionThemes,
       useBooleans: options.useBooleans,
     })
 
@@ -139,17 +149,32 @@ const rocketComponent: RocketComponent = (options) => {
 
     // --------------------------------------------------
     // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
-    // Re-evaluates when mode OR dimension props change.
+    // Re-evaluates when THEME, MODE, or dimension props change.
     // Props are resolved fresh each call so reactive prop accessors
     // (signals, getters) produce updated dimension values.
     // --------------------------------------------------
     const $rocketstyleAccessor = () => {
-      // Only read mode and dimension props — NOT pseudo state.
-      // Pseudo state (hover, focus, pressed) is read by .styles()
-      // via $rocketstate inside runUntracked(). Reading pseudo signals
-      // here would subscribe this accessor to hover/focus/pressed,
-      // causing CSS recomputation on every mouse event.
+      // Read theme + mode LAZILY via the getter-backed themeAttrs object.
+      // Both reads are tracked when this accessor runs inside a reactive
+      // scope (styler's effect), so theme swap / mode toggle re-runs the
+      // surrounding resolver and swaps the generated class.
+      const theme = themeAttrs.theme // reactive: tracks theme signal
       const mode = themeAttrs.mode // reactive: tracks mode signal
+
+      // Resolve base + dimension themes for the CURRENT theme. WeakMap
+      // keyed on theme identity — stable-theme renders hit cache in O(1),
+      // theme swaps fall through to recompute (once per new theme).
+      const baseThemeHelper = ThemeManager.baseTheme
+      if (!baseThemeHelper.has(theme)) {
+        baseThemeHelper.set(theme, getThemeFromChain(options.theme, theme))
+      }
+      const baseTheme = baseThemeHelper.get(theme)
+
+      const dimHelper = ThemeManager.dimensionsThemes
+      if (!dimHelper.has(theme)) {
+        dimHelper.set(theme, getDimensionThemes(theme, options))
+      }
+      const themes = dimHelper.get(theme)
 
       // Resolve active dimensions from props (not localCtx which has pseudo getters)
       const rocketstate = _calculateStylingAttrs({
@@ -178,6 +203,12 @@ const rocketComponent: RocketComponent = (options) => {
         appTheme: theme,
       })
     }
+
+    // Silence "unused" warnings for initialBaseTheme / initialDimensionThemes —
+    // they're eagerly populated into ThemeManager caches so the first accessor
+    // call hits cache, but not referenced directly.
+    void initialBaseTheme
+    void initialDimensionThemes
 
     // --------------------------------------------------
     // $rocketstate as a FUNCTION ACCESSOR — reactive on prop changes.

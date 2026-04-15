@@ -82,7 +82,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `styled('div')\`color: red\``→ returns`ComponentFn`
 - `css\`...\``→ lazy`CSSResult`, resolved on use
 - `keyframes\`...\`` → returns animation name string
-- Theme: `ThemeContext` (Context object) + `useTheme()` helper
+- Theme: `ThemeContext` is a **reactive** context (`createReactiveContext<Theme>`); `useTheme()` returns a `Theme` snapshot at call time, `useThemeAccessor()` returns the raw `() => Theme` accessor for tracking inside effects. Whole-theme swaps (user-preference themes) propagate through the resolver effect in `styled()` DynamicStyled and re-resolve CSS + swap class names without remounting the VNode. `PyreonUI` wraps `enrichTheme(props.theme)` in `computed` so the enriched theme updates when `props.theme` changes
 - `createGlobalStyle\`...\`` → inject global CSS
 - Singleton `StyleSheet` with FNV-1a hashing, dedup cache, SSR support
 - `createSheet()` for isolated sheet instances

@@ -124,22 +124,31 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   const modeComputed = computed(resolveMode)
 
   // Enrich theme with responsive utilities (__PYREON__).
-  // Theme is still captured once at setup — themes are typically stable
-  // objects defined at module load. If the user wants to swap the theme
-  // object dynamically, that's a future enhancement (would need a
-  // computed wrapper here too).
-  const enrichedTheme = enrichTheme(props.theme)
+  //
+  // Wrapped in `computed` so that when `props.theme` changes (parent re-renders
+  // with a new theme object — e.g. user-preference theme swap), the enriched
+  // theme updates and all downstream consumers of ThemeContext / coreContext
+  // re-resolve. Components run once, so reading `props.theme` here inside a
+  // computed is the reactive hook: if the parent passes a signal-derived
+  // theme or re-renders with a different theme value, the computed re-runs.
+  //
+  // `enrichTheme` builds a fresh `__PYREON__` block each call (media-query
+  // helpers, sortedBreakpoints). That's fine — WeakMap caches in rocketstyle
+  // and makeItResponsive key on the resulting object identity, which is
+  // stable across renders where props.theme hasn't changed.
+  const enrichedTheme = computed(() => enrichTheme(props.theme))
 
   // Provide to all three context layers:
 
-  // 1. Styler ThemeContext — for styled() components and useTheme()
-  provide(ThemeContext, enrichedTheme)
+  // 1. Styler ThemeContext — reactive accessor. Styled components read this
+  //    inside their resolver effect to re-resolve CSS on theme swap.
+  provide(ThemeContext, () => enrichedTheme())
 
   // 2. Core context — provide a reactive getter function.
   //    coreContext is a ReactiveContext, so provide(() => value).
   //    Rocketstyle reads mode/isDark/isLight by calling the getter.
   provide(coreContext, () => ({
-    theme: enrichedTheme,
+    theme: enrichedTheme(),
     mode: modeComputed(),
     isDark: modeComputed() === 'dark',
     isLight: modeComputed() === 'light',

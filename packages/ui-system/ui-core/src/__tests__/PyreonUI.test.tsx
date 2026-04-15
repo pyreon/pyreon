@@ -79,7 +79,9 @@ describe('PyreonUI', () => {
   it('enriches theme with __PYREON__ before providing', () => {
     PyreonUI({ theme, children: null })
 
-    const providedTheme = getProvideValue(0)
+    // ThemeContext is reactive — the provided value is an accessor `() => Theme`.
+    const providedThemeGetter = getProvideValue(0)
+    const providedTheme = providedThemeGetter()
     expect(providedTheme.__PYREON__).toBeDefined()
     expect(providedTheme.__PYREON__.sortedBreakpoints).toEqual(['xs', 'sm', 'md'])
     expect(providedTheme.colors).toEqual({ primary: '#228be6' })
