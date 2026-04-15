@@ -254,7 +254,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/state-tree — Structured reactive models with snapshots and patches
 - @pyreon/form — Signal-based form management with fields, validation, arrays
 - @pyreon/validation — Schema adapters (Zod, Valibot, ArkType)
-- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE)
+- @pyreon/query — TanStack Query adapter with signal-driven results + WebSocket subscriptions + SSE (useSSE). `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION (not an object) so `queryKey` and other fields can read Pyreon signals. TanStack core uses an object; Pyreon wraps so changing a tracked signal re-runs the observer options and refetches automatically.
 - @pyreon/table — TanStack Table adapter with reactive options
 - @pyreon/virtual — TanStack Virtual adapter for element and window virtualization
 - @pyreon/i18n — Reactive i18n with async namespace loading, plurals, interpolation. Two entry points: `@pyreon/i18n` (full, includes JSX components) and `@pyreon/i18n/core` (framework-agnostic, for backends / non-JSX consumers — only depends on @pyreon/reactivity)

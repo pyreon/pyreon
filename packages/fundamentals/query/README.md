@@ -177,7 +177,42 @@ Suspense wrapper component with built-in error handling.
 
 ### `QueryErrorResetBoundary` / `useQueryErrorResetBoundary()`
 
-Error boundary for resetting query errors on retry.
+Error boundary for resetting query errors on retry. Wrap `QueryErrorResetBoundary` around a `QuerySuspense` + `ErrorBoundary` pair so a sibling `ErrorBoundary` recovery automatically clears errored queries. `useQueryErrorResetBoundary()` returns `{ reset }` for imperative access from inside an `ErrorBoundary` fallback outside the render-prop form.
+
+### `useSubscription(options)`
+
+Reactive WebSocket with auto-reconnect and QueryClient cache integration. `onMessage` receives the active `QueryClient` so push updates can invalidate or directly patch cached queries. Exponential backoff on reconnect (default 1s doubling, max 10 attempts). `url` and `enabled` may be signals.
+
+**Returns:** `UseSubscriptionResult` with `status` (signal), `send(data)`, `close()`, `reconnect()`.
+
+```ts
+const sub = useSubscription({
+  url: 'wss://api.example.com/feed',
+  onMessage: (event, client) => {
+    if (JSON.parse(event.data).type === 'post-created') {
+      client.invalidateQueries({ queryKey: ['posts'] })
+    }
+  },
+})
+```
+
+### `useSSE(options)`
+
+Reactive Server-Sent Events hook — same pattern as `useSubscription` but read-only. `parse` deserializes each event; `events` filters named event types. Honours the SSE `id` field via `lastEventId()` for resumable reconnects.
+
+**Returns:** `UseSSEResult<T>` with `data` (signal of last parsed message), `status` (signal), `error` (signal), `lastEventId()`, `readyState()`, `close()`, `reconnect()`.
+
+```ts
+const sse = useSSE({
+  url: '/api/events',
+  parse: JSON.parse,
+  onMessage: (data, queryClient) => {
+    if (data.type === 'order-updated') {
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+    }
+  },
+})
+```
 
 ### `useIsFetching(filters?)` / `useIsMutating(filters?)`
 
