@@ -1,5 +1,38 @@
 # @pyreon/meta
 
+## 0.12.14
+
+### Patch Changes
+
+- Updated dependencies [[`d199b67`](https://github.com/pyreon/pyreon/commit/d199b67edb4f2efa87721caa9708915278337513), [`ee1bc2b`](https://github.com/pyreon/pyreon/commit/ee1bc2b0dd3ce853eee4a72bcc8629ed0aa1cea5), [`a8ab19d`](https://github.com/pyreon/pyreon/commit/a8ab19d2db8b764f3643f2fa50f721727b8ba0d1), [`c69e178`](https://github.com/pyreon/pyreon/commit/c69e178c2f0155c073a680f357ff71c8f9eec6a8), [`10a4e3b`](https://github.com/pyreon/pyreon/commit/10a4e3b53eb38b401f65f8436b94809ec4f1ee13), [`25949e7`](https://github.com/pyreon/pyreon/commit/25949e79484f169ac905bb9feecf31c702de1db6), [`779f61f`](https://github.com/pyreon/pyreon/commit/779f61f99e1f403485871c1848fc82489d20960f)]:
+  - @pyreon/code@0.12.14
+  - @pyreon/elements@0.12.14
+  - @pyreon/hooks@0.12.14
+  - @pyreon/kinetic@0.12.14
+  - @pyreon/styler@0.12.14
+  - @pyreon/unistyle@0.12.14
+  - @pyreon/rocketstyle@0.12.14
+  - @pyreon/coolgrid@0.12.14
+  - @pyreon/storage@0.12.14
+  - @pyreon/query@0.12.14
+  - @pyreon/reactivity@0.12.14
+  - @pyreon/charts@0.12.14
+  - @pyreon/feature@0.12.14
+  - @pyreon/flow@0.12.14
+  - @pyreon/form@0.12.14
+  - @pyreon/hotkeys@0.12.14
+  - @pyreon/i18n@0.12.14
+  - @pyreon/machine@0.12.14
+  - @pyreon/permissions@0.12.14
+  - @pyreon/state-tree@0.12.14
+  - @pyreon/store@0.12.14
+  - @pyreon/table@0.12.14
+  - @pyreon/validation@0.12.14
+  - @pyreon/virtual@0.12.14
+  - @pyreon/attrs@0.12.14
+  - @pyreon/kinetic-presets@0.12.14
+  - @pyreon/ui-core@0.12.14
+
 ## 0.12.13
 
 ### Patch Changes
