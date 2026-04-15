@@ -1051,7 +1051,9 @@
       "name": "@pyreon/styler",
       "version": "0.12.13",
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
       "peerDependencies": {
@@ -1077,7 +1079,9 @@
       "name": "@pyreon/unistyle",
       "version": "0.12.13",
       "devDependencies": {
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@vitest/browser-playwright": "^4.1.4",
         "@vitus-labs/tools-rolldown": "^1.15.3",
       },
       "peerDependencies": {
