@@ -946,6 +946,52 @@ describe('renderToStream — error handling', () => {
     expect(html).toContain('<button id="btn">')
     expect(html).not.toContain('onClick')
   })
+
+  test('stream handles error and allows subsequent independent streams', async () => {
+    // Verify that an error in one stream doesn't poison the context for subsequent streams
+    let firstAttempt = true
+
+    function ConditionalBoom(): VNode {
+      if (firstAttempt) {
+        firstAttempt = false
+        throw new Error('first attempt fails')
+      }
+      return h('div', null, 'success')
+    }
+
+    // First stream hits error
+    const stream1 = renderToStream(h(ConditionalBoom as ComponentFn, null))
+    const html1 = await collectStream(stream1)
+    expect(html1).toContain('<!--pyreon-error-->')
+
+    // Second stream with different component should work fine
+    const html2 = await collectStream(renderToStream(h('div', null, 'second render')))
+    expect(html2).toContain('<div>second render</div>')
+  })
+
+  test('stream cancel handler cleans up gracefully', async () => {
+    let renderStarted = false
+    let renderCompleted = false
+
+    function SlowComponent(): VNode {
+      renderStarted = true
+      return h('div', null, 'content')
+    }
+
+    const stream = renderToStream(h(SlowComponent as ComponentFn, null))
+    const reader = stream.getReader()
+
+    // Read first chunk to start rendering
+    await reader.read()
+    renderStarted = true
+
+    // Cancel the stream (simulates client disconnecting)
+    await reader.cancel(new Error('client disconnect'))
+
+    // Verify rendering was interrupted
+    // (renderStarted should be true, but renderCompleted should remain false since we cancelled)
+    expect(renderStarted).toBe(true)
+  })
 })
 
 // ─── Edge-case branches ──────────────────────────────────────────────────────

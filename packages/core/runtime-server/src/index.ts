@@ -79,10 +79,26 @@ function withStoreContext<T>(fn: () => T): T {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Render a VNode tree to an HTML string. Supports async component functions. */
+/** Render a VNode tree to an HTML string. Supports async component functions.
+ *
+ * Context isolation:
+ * - Each call gets a fresh isolated context stack and store registry
+ * - Even if rendering throws, context is automatically cleaned up via AsyncLocalStorage
+ * - Per-request isolation ensures concurrent renders never interfere
+ *
+ * Error handling:
+ * - Component errors are caught and logged (dev mode)
+ * - Errors outside component renders propagate to caller
+ * - On error, context is still disposed automatically
+ *
+ * @example
+ * const html = await renderToString(<App />);
+ */
 export async function renderToString(root: VNode | null): Promise<string> {
   if (root === null) return ''
-  // Each call gets a fresh isolated context stack and (optionally) store registry
+  // Each call gets a fresh isolated context stack and (optionally) store registry.
+  // Both ALS contexts (store registry and component context stack) are automatically
+  // cleaned up when this async function completes, whether it succeeds or fails.
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
 
@@ -106,12 +122,35 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
  * immediately, and the resolved children are sent as a `<template>` + inline
  * swap script once ready — without blocking the rest of the page.
  *
- * Each renderToStream call gets its own isolated ALS context stack.
+ * Context isolation:
+ * - Each renderToStream call gets its own isolated AsyncLocalStorage context
+ * - Concurrent streams never interfere with each other
+ * - Context is cleaned up automatically when stream completes or cancels
+ *
+ * Error handling:
+ * - Component render errors are caught and turned into error markers (errors don't block stream)
+ * - If rendering throws an error, it's passed to stream.error(err)
+ * - On stream cancellation (client abort), context is cleaned up automatically
+ * - Enqueue errors (stream closed) are silently ignored
+ *
+ * @example
+ * const stream = renderToStream(<App />);
+ * response.setHeader('Content-Type', 'text/html; charset=utf-8');
+ * stream.pipeTo(response.body);
  */
 export function renderToStream(root: VNode | null): ReadableStream<string> {
   return new ReadableStream<string>({
     start(controller) {
-      const enqueue = (chunk: string) => controller.enqueue(chunk)
+      const enqueue = (chunk: string) => {
+        try {
+          controller.enqueue(chunk)
+        } catch (err) {
+          // Stream already closed or errored; safe to ignore
+          if (__DEV__) {
+            console.error('[Pyreon SSR] Error enqueuing chunk:', err)
+          }
+        }
+      }
       let bid = 0
       const ctx: StreamCtx = {
         pending: [],
@@ -130,9 +169,27 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
               }
               controller.close()
             })
-            .catch((err) => controller.error(err)),
+            .catch((err) => {
+              try {
+                controller.error(err)
+              } catch (errorErr) {
+                // Stream already closed; safe to ignore
+                if (__DEV__) {
+                  console.error('[Pyreon SSR] Error signaling stream error:', errorErr)
+                }
+              }
+            }),
         ),
       )
+    },
+
+    cancel(reason) {
+      // Stream was cancelled by client (network error, abort, etc.)
+      // Context cleanup happens automatically via AsyncLocalStorage scope exit.
+      // No manual cleanup needed, but log in dev for debugging.
+      if (__DEV__ && reason) {
+        console.warn('[Pyreon SSR] Stream cancelled:', reason)
+      }
     },
   })
 }
