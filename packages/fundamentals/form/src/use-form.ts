@@ -40,8 +40,12 @@ export function useForm<TValues extends Record<string, unknown>>(
 
   const fields = {} as { [K in keyof TValues]: FieldState<TValues[K]> }
 
-  // Debounce timers per field (only allocated when debounceMs is set)
+  // Abort controller for cancelling in-flight validators on unmount
+  const abortController = new AbortController()
+
+  // Debounce timers per field — stored in Set for better tracking
   const debounceTimers: Partial<Record<keyof TValues, ReturnType<typeof setTimeout>>> = {}
+  const allTimers = new Set<ReturnType<typeof setTimeout>>()
 
   // Validation version per field — used to discard stale async results
   const validationVersions: Partial<Record<keyof TValues, number>> = {}
@@ -62,6 +66,7 @@ export function useForm<TValues extends Record<string, unknown>>(
       clearTimeout(debounceTimers[key as keyof TValues])
       delete debounceTimers[key as keyof TValues]
     }
+    allTimers.clear()
   }
 
   const isValidating = signal(false)
@@ -86,13 +91,17 @@ export function useForm<TValues extends Record<string, unknown>>(
         validationVersions[name] = (validationVersions[name] ?? 0) + 1
         const currentVersion = validationVersions[name]
         try {
-          const result = await fieldValidator(value, getValues())
+          const result = await fieldValidator(value, getValues(), abortController.signal)
           // Only apply result if this is still the latest validation and not disposed
           if (!disposed && validationVersions[name] === currentVersion) {
             errorSig.set(result)
           }
           return result
         } catch (err) {
+          // Abort errors are expected when form unmounts; don't treat as validation error
+          if (err instanceof Error && err.name === 'AbortError') {
+            return undefined
+          }
           // Validator threw — treat as error string if possible
           if (!disposed && validationVersions[name] === currentVersion) {
             const message = err instanceof Error ? err.message : String(err)
@@ -109,9 +118,16 @@ export function useForm<TValues extends Record<string, unknown>>(
       ? (value: TValues[typeof name]) => {
           clearTimeout(debounceTimers[name])
           return new Promise<ValidationError>((resolve) => {
-            debounceTimers[name] = setTimeout(async () => {
-              resolve(await runValidation(value))
+            const timer = setTimeout(async () => {
+              allTimers.delete(timer)
+              try {
+                resolve(await runValidation(value))
+              } catch (err) {
+                resolve(err instanceof Error ? err.message : String(err))
+              }
             }, debounceMs)
+            debounceTimers[name] = timer
+            allTimers.add(timer)
           })
         }
       : runValidation
@@ -150,10 +166,11 @@ export function useForm<TValues extends Record<string, unknown>>(
     } as FieldState<TValues[typeof name]>
   }
 
-  // Clean up debounce timers and cancel in-flight validators on unmount
+  // Clean up debounce timers, cancel in-flight validators, and dispose on unmount
   onUnmount(() => {
     disposed = true
     clearAllTimers()
+    abortController.abort()
   })
 
   const isSubmitting = signal(false)
@@ -206,12 +223,20 @@ export function useForm<TValues extends Record<string, unknown>>(
             validationVersions[name] = (validationVersions[name] ?? 0) + 1
             const currentVersion = validationVersions[name]
             try {
-              const error = await fieldValidator(fields[name].value.peek(), allValues)
+              const error = await fieldValidator(
+                fields[name].value.peek(),
+                allValues,
+                abortController.signal,
+              )
               if (validationVersions[name] === currentVersion) {
                 fields[name].error.set(error)
               }
             } catch (err) {
               if (validationVersions[name] === currentVersion) {
+                // Don't treat AbortError as a validation error
+                if (err instanceof Error && err.name === 'AbortError') {
+                  return
+                }
                 fields[name].error.set(err instanceof Error ? err.message : String(err))
               }
             }

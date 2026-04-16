@@ -10,11 +10,13 @@ export type Accessor<T> = Signal<T> | Computed<T>
 
 /**
  * Field validator function. Receives the field value and all current form values
- * for cross-field validation.
+ * for cross-field validation. The optional signal can be checked to detect
+ * cancellation (e.g., via AbortController when the form unmounts).
  */
 export type ValidateFn<T, TValues = Record<string, unknown>> = (
   value: T,
   allValues: TValues,
+  signal?: AbortSignal,
 ) => ValidationError | Promise<ValidationError>
 
 export type SchemaValidateFn<TValues> = (
