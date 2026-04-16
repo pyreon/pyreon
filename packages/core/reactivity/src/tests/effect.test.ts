@@ -396,4 +396,57 @@ describe('effect — error handling', () => {
 
     setErrorHandler((_err) => {})
   })
+
+  test('detects circular dependencies', () => {
+    const s1 = signal(0)
+    const s2 = signal(0)
+    const errors: unknown[] = []
+
+    setErrorHandler((err) => {
+      errors.push(err)
+    })
+
+    // Create circular dependency: effect A sets s2, effect B sets s1
+    effect(() => {
+      s1() // track s1
+      s2.set(s1() + 1) // trigger B
+    })
+
+    effect(() => {
+      s2() // track s2
+      s1.set(s2() + 1) // trigger A (circular!)
+    })
+
+    // Trigger the circular dependency
+    s1.set(1)
+
+    // Should have detected the circular dependency
+    expect(errors.length).toBeGreaterThan(0)
+    expect((errors[0] as Error).message).toContain('Circular effect dependency')
+
+    setErrorHandler((_err) => {})
+  })
+
+  test('allows legitimate effect chains', () => {
+    const s1 = signal(0)
+    const s2 = signal(0)
+    let s1Changes = 0
+    let s2Changes = 0
+
+    effect(() => {
+      s1()
+      s1Changes++
+    })
+
+    effect(() => {
+      s2()
+      s2Changes++
+    })
+
+    s1.set(1)
+    s2.set(2)
+
+    expect(s1Changes).toBe(2) // initial + 1 change
+    expect(s2Changes).toBe(2) // initial + 1 change
+  })
 })

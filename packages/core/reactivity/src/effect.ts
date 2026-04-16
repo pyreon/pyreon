@@ -39,6 +39,27 @@ export let _errorHandler: (err: unknown) => void = (err) => {
   console.error('[pyreon] Unhandled effect error:', err)
 }
 
+// ─── Circular Dependency Detection ───────────────────────────────────────────
+// Track effect execution stack to detect circular dependencies.
+// If an effect triggers a signal that notifies itself, we prevent infinite loops.
+let _effectStack: Set<Effect> | null = null
+
+function enableCircularDepDetection(e: Effect): void {
+  if (!_effectStack) _effectStack = new Set()
+  _effectStack.add(e)
+}
+
+function disableCircularDepDetection(e: Effect): void {
+  if (_effectStack) {
+    _effectStack.delete(e)
+    if (_effectStack.size === 0) _effectStack = null
+  }
+}
+
+function isCircularDependency(e: Effect): boolean {
+  return !!(_effectStack && _effectStack.has(e))
+}
+
 export function setErrorHandler(fn: (err: unknown) => void): void {
   _errorHandler = fn
 }
@@ -66,6 +87,16 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   let cleanups: (() => void)[] | undefined
 
+  // Create effect object early so run() can reference it
+  const e: Effect = {
+    dispose() {
+      runCleanup()
+      disposed = true
+      cleanupLocalDeps(deps, run)
+      disableCircularDepDetection(this)
+    },
+  }
+
   const runCleanup = () => {
     if (cleanups) {
       for (const c of cleanups) {
@@ -89,9 +120,24 @@ export function effect(fn: () => (() => void) | void): Effect {
 
   const run = () => {
     if (disposed) return
+    // Detect circular dependencies before running
+    // If this effect is already on the execution stack, attempting to run it again
+    // means it triggered a signal that notified itself (directly or indirectly)
+    if (isCircularDependency(e)) {
+      _errorHandler(
+        new Error(
+          '[pyreon] Circular effect dependency detected. ' +
+          'An effect is triggering a signal that notifies itself. ' +
+          'Check your effect logic for signal updates that trigger dependent effects.'
+        )
+      )
+      return
+    }
     // Run previous cleanup before re-running
     runCleanup()
     try {
+      // Mark this effect as executing
+      enableCircularDepDetection(e)
       cleanupLocalDeps(deps, run)
       setDepsCollector(deps)
       // Collect onCleanup() registrations during execution
@@ -105,6 +151,9 @@ export function effect(fn: () => (() => void) | void): Effect {
       _cleanupCollector = null
       setDepsCollector(null)
       _errorHandler(err)
+    } finally {
+      // Unmark this effect as executing
+      disableCircularDepDetection(e)
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
@@ -113,14 +162,6 @@ export function effect(fn: () => (() => void) | void): Effect {
   }
 
   run()
-
-  const e: Effect = {
-    dispose() {
-      runCleanup()
-      disposed = true
-      cleanupLocalDeps(deps, run)
-    },
-  }
 
   // Auto-register with the active EffectScope (if any)
   getCurrentScope()?.add(e)
