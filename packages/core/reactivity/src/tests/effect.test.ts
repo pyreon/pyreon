@@ -292,7 +292,8 @@ describe('onCleanup', () => {
       onCleanup(() => log.push('b'))
     })
     s.set(1)
-    expect(log).toEqual(['a', 'b'])
+    // LIFO: last registered (b) runs first
+    expect(log).toEqual(['b', 'a'])
   })
 
   test('works alongside return cleanup', () => {
@@ -327,7 +328,7 @@ describe('onCleanup', () => {
     expect(log).toEqual(['onCleanup-0', 'return-0', 'onCleanup-1', 'return-1'])
   })
 
-  test('multiple onCleanup callbacks run in registration order', () => {
+  test('multiple onCleanup callbacks run in LIFO order', () => {
     const s = signal(0)
     const log: string[] = []
     effect(() => {
@@ -337,7 +338,8 @@ describe('onCleanup', () => {
       onCleanup(() => log.push('third'))
     })
     s.set(1)
-    expect(log).toEqual(['first', 'second', 'third'])
+    // LIFO: last registered (third) runs first
+    expect(log).toEqual(['third', 'second', 'first'])
   })
 
   test('cleanup runs on dispose even when effect never re-ran', () => {
@@ -448,5 +450,45 @@ describe('effect — error handling', () => {
 
     expect(s1Changes).toBe(2) // initial + 1 change
     expect(s2Changes).toBe(2) // initial + 1 change
+  })
+
+  test('onCleanup runs in LIFO order', () => {
+    const order: number[] = []
+
+    const e = effect(() => {
+      onCleanup(() => order.push(1))
+      onCleanup(() => order.push(2))
+      onCleanup(() => order.push(3))
+    })
+
+    e.dispose()
+
+    // Should be LIFO: last registered (3) runs first
+    expect(order).toEqual([3, 2, 1])
+  })
+
+  test('onCleanup errors do not prevent subsequent cleanups', () => {
+    const order: number[] = []
+    const errors: unknown[] = []
+
+    setErrorHandler((err) => {
+      errors.push(err)
+    })
+
+    const e = effect(() => {
+      onCleanup(() => order.push(1))
+      onCleanup(() => {
+        throw new Error('cleanup 2 error')
+      })
+      onCleanup(() => order.push(3))
+    })
+
+    e.dispose()
+
+    // All cleanups should run despite error in middle
+    expect(order).toEqual([3, 1])
+    expect(errors.length).toBeGreaterThan(0)
+
+    setErrorHandler((_err) => {})
   })
 })

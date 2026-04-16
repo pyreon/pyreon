@@ -29,7 +29,8 @@ let _cleanupCollector: (() => void)[] | null = null
  */
 export function onCleanup(fn: () => void): void {
   if (_cleanupCollector) {
-    _cleanupCollector.push(fn)
+    // Prepend for LIFO order: last registered, first executed
+    _cleanupCollector.unshift(fn)
   }
 }
 
