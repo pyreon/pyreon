@@ -109,8 +109,13 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
   validators?: Partial<{
     [K in keyof TValues]: ValidateFn<TValues[K], TValues>
   }>
-  /** Schema-level validator (runs after field validators). */
-  schema?: SchemaValidateFn<TValues>
+  /**
+   * Schema-level validator (runs after field validators).
+   * Can be either a plain SchemaValidateFn<TValues> or a TypedSchemaAdapter
+   * (from @pyreon/validation) which preserves type information for compile-time
+   * field name validation.
+   */
+  schema?: SchemaValidateFn<TValues> | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */

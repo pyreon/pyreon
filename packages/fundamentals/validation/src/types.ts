@@ -15,6 +15,25 @@ export interface ValidationIssue {
 }
 
 /**
+ * Branded type for schema adapters. Captures the inferred schema type
+ * for use with useForm so field names are validated at compile time.
+ *
+ * @example
+ * ```ts
+ * const schema = zodSchema(userSchema) // Infers TValues from userSchema
+ * const form = useForm({ schema }) // TValues is automatically extracted
+ * form.register('name') // ✅ Type-safe field name
+ * form.register('invalid') // ❌ Type error!
+ * ```
+ */
+export interface TypedSchemaAdapter<TValues extends Record<string, unknown>> {
+  /** Brand type for type extraction — not used at runtime. */
+  readonly _infer: TValues
+  /** The actual schema validator function. */
+  readonly validator: SchemaValidateFn<TValues>
+}
+
+/**
  * A generic schema adapter transforms library-specific parse results
  * into a flat record of field → error message.
  */

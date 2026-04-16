@@ -69,21 +69,21 @@ describe('zodSchema', () => {
   })
 
   it('returns empty record for valid data', async () => {
-    const validate = zodSchema(schema)
-    const result = await validate({ email: 'a@b.com', password: '12345678' })
+    const adapter = zodSchema(schema)
+    const result = await adapter.validator({ email: 'a@b.com', password: '12345678' })
     expect(result).toEqual({})
   })
 
   it('returns field errors for invalid data', async () => {
-    const validate = zodSchema(schema)
-    const result = await validate({ email: 'bad', password: 'short' })
+    const adapter = zodSchema(schema)
+    const result = await adapter.validator({ email: 'bad', password: 'short' })
     expect(result.email).toBe('Invalid email')
     expect(result.password).toBe('Min 8 chars')
   })
 
   it('returns error for single invalid field', async () => {
-    const validate = zodSchema(schema)
-    const result = await validate({ email: 'a@b.com', password: 'short' })
+    const adapter = zodSchema(schema)
+    const result = await adapter.validator({ email: 'a@b.com', password: 'short' })
     expect(result.email).toBeUndefined()
     expect(result.password).toBe('Min 8 chars')
   })
@@ -162,21 +162,21 @@ describe('valibotSchema', () => {
   })
 
   it('returns empty record for valid data', async () => {
-    const validate = valibotSchema(schema, v.safeParseAsync)
-    const result = await validate({ email: 'a@b.com', password: '12345678' })
+    const adapter = valibotSchema(schema, v.safeParseAsync)
+    const result = await adapter.validator({ email: 'a@b.com', password: '12345678' })
     expect(result).toEqual({})
   })
 
   it('returns field errors for invalid data', async () => {
-    const validate = valibotSchema(schema, v.safeParseAsync)
-    const result = await validate({ email: 'bad', password: 'short' })
+    const adapter = valibotSchema(schema, v.safeParseAsync)
+    const result = await adapter.validator({ email: 'bad', password: 'short' })
     expect(result.email).toBe('Invalid email')
     expect(result.password).toBe('Min 8 chars')
   })
 
   it('works with sync safeParse', async () => {
-    const validate = valibotSchema(schema, v.safeParse)
-    const result = await validate({ email: 'bad', password: 'short' })
+    const adapter = valibotSchema(schema, v.safeParse)
+    const result = await adapter.validator({ email: 'bad', password: 'short' })
     expect(result.email).toBe('Invalid email')
   })
 
@@ -186,8 +186,8 @@ describe('valibotSchema', () => {
       success: false as const,
       issues: [{ message: 'Schema-level error' }],
     })
-    const validate = valibotSchema({}, mockSafeParse)
-    const result = await validate({})
+    const adapter = valibotSchema({}, mockSafeParse)
+    const result = await adapter.validator({})
     // Issue without path maps to empty string key
     expect(result['' as keyof typeof result]).toBe('Schema-level error')
   })
@@ -197,8 +197,8 @@ describe('valibotSchema', () => {
       success: false as const,
       // issues is undefined
     })
-    const validate = valibotSchema({}, mockSafeParse)
-    const result = await validate({})
+    const adapter = valibotSchema({}, mockSafeParse)
+    const result = await adapter.validator({})
     expect(result).toEqual({})
   })
 })
@@ -257,14 +257,14 @@ describe('arktypeSchema', () => {
   })
 
   it('returns empty record for valid data', async () => {
-    const validate = arktypeSchema(schema)
-    const result = await validate({ email: 'a@b.com', password: '12345678' })
+    const adapter = arktypeSchema(schema)
+    const result = await adapter.validator({ email: 'a@b.com', password: '12345678' })
     expect(result).toEqual({})
   })
 
   it('returns field errors for invalid data', async () => {
-    const validate = arktypeSchema(schema)
-    const result = await validate({ email: 'bad', password: 'short' })
+    const adapter = arktypeSchema(schema)
+    const result = await adapter.validator({ email: 'bad', password: 'short' })
     expect(result.email).toBeDefined()
     expect(result.password).toBeDefined()
   })
@@ -294,8 +294,8 @@ describe('zodSchema catch branch', () => {
         throw new Error('Zod schema exploded')
       },
     }
-    const validate = zodSchema(throwingSchema as any)
-    const result = await validate({ email: '', password: '' })
+    const adapter = zodSchema(throwingSchema as any)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('Zod schema exploded')
   })
 
@@ -308,8 +308,8 @@ describe('zodSchema catch branch', () => {
         throw 'raw string error'
       },
     }
-    const validate = zodSchema(throwingSchema as any)
-    const result = await validate({ email: '', password: '' })
+    const adapter = zodSchema(throwingSchema as any)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('raw string error')
   })
 })
@@ -349,8 +349,8 @@ describe('valibotSchema catch branch', () => {
     const throwingParse = () => {
       throw new Error('Valibot schema exploded')
     }
-    const validate = valibotSchema({}, throwingParse)
-    const result = await validate({ email: '', password: '' })
+    const adapter = valibotSchema({}, throwingParse)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('Valibot schema exploded')
   })
 
@@ -358,8 +358,8 @@ describe('valibotSchema catch branch', () => {
     const throwingParse = () => {
       throw 'raw valibot schema error'
     }
-    const validate = valibotSchema({}, throwingParse)
-    const result = await validate({ email: '', password: '' })
+    const adapter = valibotSchema({}, throwingParse)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('raw valibot schema error')
   })
 })
@@ -389,8 +389,8 @@ describe('arktypeSchema catch branch', () => {
     const throwingSchema = () => {
       throw new Error('ArkType schema exploded')
     }
-    const validate = arktypeSchema(throwingSchema)
-    const result = await validate({ email: '', password: '' })
+    const adapter = arktypeSchema(throwingSchema)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('ArkType schema exploded')
   })
 
@@ -398,8 +398,8 @@ describe('arktypeSchema catch branch', () => {
     const throwingSchema = () => {
       throw 'raw arktype schema error'
     }
-    const validate = arktypeSchema(throwingSchema)
-    const result = await validate({ email: '', password: '' })
+    const adapter = arktypeSchema(throwingSchema)
+    const result = await adapter.validator({ email: '', password: '' })
     expect(result['' as keyof typeof result]).toBe('raw arktype schema error')
   })
 })

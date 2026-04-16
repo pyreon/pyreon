@@ -30,7 +30,10 @@ import type {
 export function useForm<TValues extends Record<string, unknown>>(
   options: UseFormOptions<TValues>,
 ): FormState<TValues> {
-  const { initialValues, onSubmit, validators, schema, validateOn = 'blur', debounceMs } = options
+  const { initialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = options
+
+  // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
+  const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
 
   // Build field states
   const fieldEntries = Object.entries(initialValues) as [

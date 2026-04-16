@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { ValidationIssue } from './types'
+import type { TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -36,6 +36,7 @@ function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
 /**
  * Create a form-level schema validator from a Zod schema.
  * Supports both sync and async Zod schemas (uses `safeParseAsync`).
+ * Returns a TypedSchemaAdapter that preserves type information for form field validation.
  *
  * @example
  * import { z } from 'zod'
@@ -48,14 +49,18 @@ function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
  *
  * const form = useForm({
  *   initialValues: { email: '', password: '' },
- *   schema: zodSchema(schema),
+ *   schema: zodSchema(schema),  // ✅ Types inferred
  *   onSubmit: (values) => { ... },
  * })
+ *
+ * // Field names are type-safe:
+ * form.register('email')    // ✅ OK
+ * form.register('invalid')  // ❌ Type error!
  */
 export function zodSchema<TValues extends Record<string, unknown>>(
   schema: ZodSchema<TValues>,
-): SchemaValidateFn<TValues> {
-  return async (values: TValues) => {
+): TypedSchemaAdapter<TValues> {
+  const validator: SchemaValidateFn<TValues> = async (values: TValues) => {
     try {
       const result = await schema.safeParseAsync(values)
       if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
@@ -65,6 +70,11 @@ export function zodSchema<TValues extends Record<string, unknown>>(
         '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
+  }
+
+  return {
+    _infer: undefined as any,
+    validator,
   }
 }
 
