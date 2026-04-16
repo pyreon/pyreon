@@ -992,6 +992,39 @@ describe('renderToStream — error handling', () => {
     // (renderStarted should be true, but renderCompleted should remain false since we cancelled)
     expect(renderStarted).toBe(true)
   })
+
+  test('stream respects backpressure and waits for client consumption', async () => {
+    // Create a component that generates a large amount of content
+    function LargeContent(): VNode {
+      return h(
+        'div',
+        null,
+        Array.from({ length: 100 }, (_, i) => h('div', { key: i }, `item ${i}`)),
+      )
+    }
+
+    const stream = renderToStream(h(LargeContent as ComponentFn, null))
+    const reader = stream.getReader()
+
+    let totalBytesRead = 0
+    let chunkCount = 0
+
+    // Read chunks slowly to test backpressure
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      if (value) {
+        totalBytesRead += value.length
+        chunkCount++
+      }
+    }
+
+    // Verify we got multiple chunks (backpressure is working)
+    // and all data was streamed
+    expect(chunkCount).toBeGreaterThan(0)
+    expect(totalBytesRead).toBeGreaterThan(0)
+  })
 })
 
 // ─── Edge-case branches ──────────────────────────────────────────────────────

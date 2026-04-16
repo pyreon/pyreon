@@ -33,9 +33,11 @@ const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'prod
 interface StreamCtx {
   pending: Promise<void>[]
   nextId: () => number
-  mainEnqueue: (s: string) => void
+  mainEnqueue: (s: string) => Promise<void>
   /** Depth counter — non-zero when rendering inside a Suspense child resolution. */
   suspenseDepth: number
+  /** Track if swap function was already emitted (emit once per stream) */
+  swapFnEmitted: boolean
 }
 
 const _streamCtxAls = new AsyncLocalStorage<StreamCtx>()
@@ -122,6 +124,12 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
  * immediately, and the resolved children are sent as a `<template>` + inline
  * swap script once ready — without blocking the rest of the page.
  *
+ * Backpressure handling:
+ * - Respects ReadableStream backpressure (controller.desiredSize)
+ * - If client can't consume data fast enough, rendering pauses until buffer drains
+ * - Prevents memory exhaustion on slow clients or large responses
+ * - Timeout (100ms) prevents indefinite stall on disconnected clients
+ *
  * Context isolation:
  * - Each renderToStream call gets its own isolated AsyncLocalStorage context
  * - Concurrent streams never interfere with each other
@@ -141,22 +149,53 @@ export function runWithRequestContext<T>(fn: () => Promise<T>): Promise<T> {
 export function renderToStream(root: VNode | null): ReadableStream<string> {
   return new ReadableStream<string>({
     start(controller) {
-      const enqueue = (chunk: string) => {
-        try {
-          controller.enqueue(chunk)
-        } catch (err) {
-          // Stream already closed or errored; safe to ignore
-          if (__DEV__) {
-            console.error('[Pyreon SSR] Error enqueuing chunk:', err)
+      // Create a backpressure-aware enqueue function that respects stream buffer size
+      const createBackpressureAware = () => {
+        let backpressureResolve: (() => void) | null = null
+
+        // Set up pull handler to handle backpressure
+        const originalPull = (controller as any).pull?.bind(controller)
+        ;(controller as any).pull = async () => {
+          if (backpressureResolve) {
+            backpressureResolve()
+            backpressureResolve = null
+          }
+          if (originalPull) return originalPull()
+        }
+
+        return async (chunk: string) => {
+          try {
+            // Check backpressure: desiredSize indicates how much buffer space is available
+            const desired = controller.desiredSize ?? 16 * 1024 // Default ~16KB
+            
+            // If buffer is full or nearly full, wait for consumer to drain before enqueueing more
+            if (desired <= 0) {
+              // Yield to the event loop and wait for next pull() to be called
+              await new Promise<void>((resolve) => {
+                backpressureResolve = resolve
+                // Fallback timeout to prevent indefinite stall (client disconnected)
+                setTimeout(resolve, 100)
+              })
+            }
+
+            controller.enqueue(chunk)
+          } catch (err) {
+            // Stream already closed or errored; safe to ignore
+            if (__DEV__) {
+              console.error('[Pyreon SSR] Error enqueuing chunk:', err)
+            }
           }
         }
       }
+
+      const enqueue = createBackpressureAware()
       let bid = 0
       const ctx: StreamCtx = {
         pending: [],
         nextId: () => bid++,
         mainEnqueue: enqueue,
         suspenseDepth: 0,
+        swapFnEmitted: false,
       }
       return withStoreContext(() =>
         _contextAls.run([], () =>
@@ -196,7 +235,7 @@ export function renderToStream(root: VNode | null): ReadableStream<string> {
 
 // ─── Streaming renderer ───────────────────────────────────────────────────────
 
-async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+async function streamVNode(vnode: VNode, enqueue: (s: string) => Promise<void>): Promise<void> {
   if (vnode.type === Fragment) {
     for (const child of vnode.children) await streamNode(child, enqueue)
     return
@@ -204,13 +243,13 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
 
   if (vnode.type === (ForSymbol as unknown as string)) {
     const { each, children, by } = vnode.props as unknown as ForProps<unknown>
-    enqueue('<!--pyreon-for-->')
+    await enqueue('<!--pyreon-for-->')
     for (const item of each()) {
       const key = by(item)
-      enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
+      await enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
-    enqueue('<!--/pyreon-for-->')
+    await enqueue('<!--/pyreon-for-->')
     return
   }
 
@@ -222,7 +261,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
   await streamElementNode(vnode, enqueue)
 }
 
-async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+async function streamComponentNode(vnode: VNode, enqueue: (s: string) => Promise<void>): Promise<void> {
   if (vnode.type === Suspense) {
     await streamSuspenseBoundary(vnode, enqueue)
     return
@@ -241,11 +280,11 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     // error and emit a marker so the stream can continue.
     const ctx = _streamCtxAls.getStore()
     if (ctx && ctx.suspenseDepth > 0) throw err
-    enqueue('<!--pyreon-error-->')
+    await enqueue('<!--pyreon-error-->')
   }
 }
 
-async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+async function streamElementNode(vnode: VNode, enqueue: (s: string) => Promise<void>): Promise<void> {
   const tag = vnode.type as string
   warnIfUnsafeTag(tag)
   let open = `<${tag}`
@@ -255,10 +294,10 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     if (attr) open += ` ${attr}`
   }
   if (isVoidElement(tag)) {
-    enqueue(`${open} />`)
+    await enqueue(`${open} />`)
     return
   }
-  enqueue(`${open}>`)
+  await enqueue(`${open}>`)
   // `dangerouslySetInnerHTML` and `innerHTML` both become inner content
   // of the element (NOT attributes). Skipped in `renderPropSkipped` to
   // keep them out of the open-tag attribute list. Function values —
@@ -272,29 +311,29 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   const plainInnerHtml =
     typeof innerHtml === 'function' ? (innerHtml as () => string)() : innerHtml
   if (dangerousHtml) {
-    enqueue(dangerousHtml)
+    await enqueue(dangerousHtml)
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
-    enqueue(String(plainInnerHtml))
+    await enqueue(String(plainInnerHtml))
   } else {
     for (const child of vnode.children) await streamNode(child, enqueue)
   }
-  enqueue(`</${tag}>`)
+  await enqueue(`</${tag}>`)
 }
 
 async function streamNode(
   node: VNodeChild | null | (() => VNodeChild),
-  enqueue: (s: string) => void,
+  enqueue: (s: string) => Promise<void>,
 ): Promise<void> {
   if (typeof node === 'function') {
     return streamNode((node as () => VNodeChild)(), enqueue)
   }
   if (node == null || node === false) return
   if (typeof node === 'string') {
-    enqueue(escapeHtml(node))
+    await enqueue(escapeHtml(node))
     return
   }
   if (typeof node === 'number' || typeof node === 'boolean') {
-    enqueue(String(node))
+    await enqueue(String(node))
     return
   }
   if (Array.isArray(node)) {
@@ -317,7 +356,7 @@ const SUSPENSE_SWAP_FN =
  * The actual children HTML is buffered until fully resolved, then emitted to the
  * main stream enqueue so it always arrives after the fallback placeholder.
  */
-async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
+async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => Promise<void>): Promise<void> {
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
@@ -332,12 +371,15 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const { mainEnqueue } = ctx
 
   // Emit the swap helper function once (before first use)
-  if (id === 0) mainEnqueue(SUSPENSE_SWAP_FN)
+  if (!ctx.swapFnEmitted) {
+    await mainEnqueue(SUSPENSE_SWAP_FN)
+    ctx.swapFnEmitted = true
+  }
 
   // Stream the fallback synchronously (no await on children)
-  mainEnqueue(`<div id="pyreon-s-${id}">`)
+  await mainEnqueue(`<div id="pyreon-s-${id}">`)
   await streamNode(fallback ?? null, enqueue)
-  mainEnqueue('</div>')
+  await mainEnqueue('</div>')
 
   // Capture the context store for the async resolution so it inherits context
   const ctxStore = _contextAls.getStore() ?? []
@@ -355,7 +397,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
         // Race the async children against a timeout
         const result = await Promise.race([
-          streamNode(children ?? null, (s) => buf.push(s)).then(() => 'resolved' as const),
+          streamNode(children ?? null, async (s) => buf.push(s)).then(() => 'resolved' as const),
           new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), SUSPENSE_TIMEOUT_MS)),
         ])
 
@@ -371,8 +413,8 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 
         // Escape </template> in buffered content to prevent early close + XSS
         const content = buf.join('').replace(/<\/template/gi, '<\\/template')
-        mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
-        mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
+        await mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
+        await mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {
         if (__DEV__) {
           console.error(
