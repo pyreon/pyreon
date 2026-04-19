@@ -272,4 +272,201 @@ describe('api-reference', () => {
       expect(entry?.mistakes).toContain('overflow')
     })
   })
+
+  describe('@pyreon/reactivity — manifest-driven region', () => {
+    const EXPECTED_REACTIVITY_KEYS = [
+      'reactivity/signal',
+      'reactivity/computed',
+      'reactivity/effect',
+      'reactivity/batch',
+      'reactivity/onCleanup',
+      'reactivity/watch',
+      'reactivity/createStore',
+      'reactivity/untrack',
+    ]
+
+    it.each(EXPECTED_REACTIVITY_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('signal carries 6 mistakes covering the callable-function contract', () => {
+      const entry = API_REFERENCE['reactivity/signal']
+      expect(entry?.mistakes?.split('\n').length).toBe(6)
+      expect(entry?.notes).toContain('CALLABLE FUNCTION')
+    })
+
+    it('signal notes explain the .set() / .update() / .peek() API', () => {
+      const entry = API_REFERENCE['reactivity/signal']
+      expect(entry?.notes).toContain('.set(')
+      expect(entry?.notes).toContain('.update(')
+      expect(entry?.notes).toContain('.peek()')
+    })
+
+    it('effect documents the auto-tracking contract + 4 mistakes', () => {
+      const entry = API_REFERENCE['reactivity/effect']
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+      expect(entry?.notes).toContain('auto-tracks')
+    })
+
+    it('batch documents the pointer-swap implementation', () => {
+      const entry = API_REFERENCE['reactivity/batch']
+      expect(entry?.notes).toContain('pointer swap')
+    })
+  })
+
+  describe('@pyreon/core — manifest-driven region', () => {
+    const EXPECTED_CORE_KEYS = [
+      'core/h',
+      'core/Fragment',
+      'core/onMount',
+      'core/onUnmount',
+      'core/onUpdate',
+      'core/onErrorCaptured',
+      'core/createContext',
+      'core/createReactiveContext',
+      'core/provide',
+      'core/useContext',
+      'core/Show',
+      'core/Switch',
+      'core/Match',
+      'core/For',
+      'core/Suspense',
+      'core/ErrorBoundary',
+      'core/lazy',
+      'core/Dynamic',
+      'core/cx',
+      'core/splitProps',
+      'core/mergeProps',
+      'core/createUniqueId',
+      'core/Portal',
+      'core/mapArray',
+      'core/createRef',
+      'core/untrack',
+      'core/ExtractProps',
+      'core/HigherOrderComponent',
+    ]
+
+    it.each(EXPECTED_CORE_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('h() documents the VNode creation contract + JSX compilation', () => {
+      const entry = API_REFERENCE['core/h']
+      expect(entry?.notes).toContain('JSX')
+      expect(entry?.notes).toContain('VNode')
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+    })
+
+    it('For documents the by-not-key contract', () => {
+      const entry = API_REFERENCE['core/For']
+      expect(entry?.notes).toContain('by')
+      expect(entry?.mistakes).toContain('key')
+    })
+
+    it('splitProps documents the reactivity-preserving contract', () => {
+      const entry = API_REFERENCE['core/splitProps']
+      expect(entry?.notes).toContain('reactivity')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+    })
+
+    it('onMount documents cleanup return value', () => {
+      const entry = API_REFERENCE['core/onMount']
+      expect(entry?.notes).toContain('cleanup')
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+    })
+  })
+
+  describe('@pyreon/runtime-dom — manifest-driven region', () => {
+    const EXPECTED_RUNTIME_DOM_KEYS = [
+      'runtime-dom/mount',
+      'runtime-dom/render',
+      'runtime-dom/hydrateRoot',
+      'runtime-dom/Transition',
+      'runtime-dom/TransitionGroup',
+      'runtime-dom/KeepAlive',
+      'runtime-dom/_tpl',
+      'runtime-dom/_bindText',
+      'runtime-dom/sanitizeHtml',
+    ]
+
+    it.each(EXPECTED_RUNTIME_DOM_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('mount documents the container + unmount contract + 4 mistakes', () => {
+      const entry = API_REFERENCE['runtime-dom/mount']
+      expect(entry?.notes).toContain('container')
+      expect(entry?.notes).toContain('unmount')
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+    })
+
+    it('Transition documents the 5s safety timeout', () => {
+      const entry = API_REFERENCE['runtime-dom/Transition']
+      expect(entry?.notes).toContain('5')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+    })
+  })
+
+  describe('@pyreon/router — manifest-driven region', () => {
+    const EXPECTED_ROUTER_KEYS = [
+      'router/createRouter',
+      'router/RouterProvider',
+      'router/RouterView',
+      'router/RouterLink',
+      'router/useRouter',
+      'router/useRoute',
+      'router/useIsActive',
+      'router/useTypedSearchParams',
+      'router/useTransition',
+      'router/useMiddlewareData',
+      'router/useLoaderData',
+      'router/useSearchParams',
+      'router/useBlocker',
+      'router/onBeforeRouteLeave',
+      'router/onBeforeRouteUpdate',
+    ]
+
+    it.each(EXPECTED_ROUTER_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('createRouter carries 4 mistakes covering hash mode + catch-all', () => {
+      const entry = API_REFERENCE['router/createRouter']
+      expect(entry?.notes).toContain('routes')
+      expect(entry?.notes).toContain('Router')
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+    })
+
+    it('useRouter documents the View Transition await semantics', () => {
+      const entry = API_REFERENCE['router/useRouter']
+      expect(entry?.notes).toContain('updateCallbackDone')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+    })
+
+    it('useIsActive documents segment-aware prefix matching', () => {
+      const entry = API_REFERENCE['router/useIsActive']
+      expect(entry?.notes).toContain('Segment')
+    })
+
+    it('useBlocker documents the beforeunload integration', () => {
+      const entry = API_REFERENCE['router/useBlocker']
+      expect(entry?.notes).toContain('beforeunload')
+    })
+  })
 })

@@ -321,6 +321,9 @@
       "dependencies": {
         "@pyreon/reactivity": "workspace:^",
       },
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+      },
     },
     "packages/core/head": {
       "name": "@pyreon/head",
@@ -346,6 +349,9 @@
     "packages/core/reactivity": {
       "name": "@pyreon/reactivity",
       "version": "0.12.15",
+      "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
+      },
     },
     "packages/core/router": {
       "name": "@pyreon/router",
@@ -357,6 +363,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@vitest/browser-playwright": "^4.1.4",
         "happy-dom": "^20.8.3",
@@ -372,6 +379,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/compiler": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@vitest/browser-playwright": "^4.1.4",

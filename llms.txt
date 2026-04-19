@@ -216,6 +216,13 @@ mount(<App />, document.getElementById("app")!)
 - `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
 
+## Core Framework (4 packages)
+
+- @pyreon/reactivity — Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack. Pyreon signals are NOT `.value` getters (Vue ref) or `[state, setState]` tuples (React useState). The signal IS the function: `count()` reads, `count.set(v)` writes, `count.update(fn)` derives. This is the #1 confusion for developers coming from other frameworks.
+- @pyreon/core — VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId. Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, `effect()`, `computed()`), not from re-running the component function. `if (!cond()) return null` at the top level runs once and is static — use `return (() => { if (!cond()) return null; return <div /> })` for reactive conditional rendering.
+- @pyreon/runtime-dom — DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements. SVG and MathML elements ALWAYS use `setAttribute()` for prop forwarding, never property assignment. Many SVG properties (`markerWidth`, `refX`, etc.) are read-only `SVGAnimatedLength` getters — `el[key] = value` crashes. Detected by `el.namespaceURI !== "http://www.w3.org/1999/xhtml"`.
+- @pyreon/router — hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
+
 ## UI System (12 packages)
 
 - @pyreon/ui-core — Config engine, init(), PyreonUI provider, useMode(), utilities

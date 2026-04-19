@@ -33,6 +33,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "devDependencies": {
+    "@pyreon/manifest": "workspace:*"
+  },
   "scripts": {
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
