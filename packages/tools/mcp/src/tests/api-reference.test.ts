@@ -153,5 +153,25 @@ describe('api-reference', () => {
       const entry = API_REFERENCE['query/useSSE']
       expect(entry?.notes).toContain('Last-Event-ID')
     })
+
+    it('TanStack core re-exports mentions QueryClient + dehydrate/hydrate for SSR consumers', () => {
+      const entry = API_REFERENCE['query/TanStack core re-exports']
+      expect(entry?.notes).toContain('QueryClient')
+      expect(entry?.notes).toContain('dehydrate')
+      expect(entry?.notes).toContain('hydrate')
+      expect(entry?.notes).toContain('QueryKey')
+    })
+
+    it('useSuspenseInfiniteQuery carries boundary-requirement mistakes', () => {
+      const entry = API_REFERENCE['query/useSuspenseInfiniteQuery']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('QuerySuspense')
+    })
+
+    it('useQueries warns about static arrays losing reactive tracking', () => {
+      const entry = API_REFERENCE['query/useQueries']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('static array')
+    })
   })
 })

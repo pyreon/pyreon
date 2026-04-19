@@ -658,7 +658,7 @@ const user = useQuery(() => ({
   onSuccess: () => client.invalidateQueries({ queryKey: ['posts'] }),
 })
 // <button onClick={() => create.mutate({ title: 'New' })}>Create</button>`,
-    notes: 'Run a mutation (create / update / delete). Returns reactive `pending` / `success` / `error` signals plus two firing modes: `mutate(vars)` (fire-and-forget — errors go to the `error` signal) and `mutateAsync(vars)` (returns a promise for try/catch). `reset()` returns state to idle. Unlike `useQuery`, options is a plain object — mutations are imperative, no reactive-tracking needed. `onSuccess` / `onError` / `onSettled` callbacks fire synchronously after the mutation resolves, useful for cache invalidation (`client.invalidateQueries`). See also: useQuery, useIsMutating.',
+    notes: 'Run a mutation (create / update / delete). Returns reactive `pending` / `success` / `error` signals plus two firing modes: `mutate(vars)` (fire-and-forget — errors go to the `error` signal) and `mutateAsync(vars)` (returns a promise for try/catch). `reset()` returns state to idle. Unlike `useQuery`, options is a plain OBJECT (not a function) because mutations are imperative — there are no reactive queryKeys to re-evaluate, so the function-wrapper overhead would add no value. `onSuccess` / `onError` / `onSettled` callbacks fire synchronously after the mutation resolves, useful for cache invalidation (`client.invalidateQueries`). See also: useQuery, useIsMutating.',
     mistakes: `- \`mutate()\` swallows errors into the \`error\` signal — use \`mutateAsync()\` with try/catch if you need programmatic error handling
 - Calling \`mutate()\` inside a \`useQuery\` \`queryFn\` — mutations are imperative user actions, not data-fetching side effects; this causes infinite loops if the mutation invalidates the query that spawned it
 - Reading \`mutation.data()\` outside a reactive scope — same rule as \`useQuery\`: read inside \`() => mutation.data()\` or effects`,
@@ -684,7 +684,8 @@ const user = useQuery(() => ({
 )
 // results() is QueryObserverResult[] — one entry per input query`,
     notes: 'Subscribe to multiple queries in parallel. Returns a `Signal<QueryObserverResult[]>` — one entry per input query. Options is a function so the query list can depend on signals (e.g. derive one query per item in a reactive array). Each inner query independently tracks its own `data` / `error` / `isFetching` — the outer signal fires when ANY inner query updates. See also: useQuery.',
-    mistakes: '- Expecting per-query fine-grained signals — `useQueries` returns a single combined signal, not individual `UseQueryResult` objects. For independent per-query tracking, call `useQuery` N times',
+    mistakes: `- Expecting per-query fine-grained signals — \`useQueries\` returns a single combined signal, not individual \`UseQueryResult\` objects. For independent per-query tracking, call \`useQuery\` N times
+- Passing a static array instead of a function — loses reactive query-list tracking; if the list of IDs changes (e.g. \`userIds()\` is a signal), the queries won't re-evaluate. Always wrap: \`useQueries(() => ids().map(...))\``,
   },
 
   'query/useSubscription': {
@@ -749,6 +750,8 @@ const user = useQuery(() => ({
   {() => <Feed pages={feed.data().pages} onMore={feed.fetchNextPage} />}
 </QuerySuspense>`,
     notes: 'Like `useInfiniteQuery` but `data` is narrowed to `Signal<InfiniteData<TQueryFnData>>` (never undefined) — for use inside a `QuerySuspense` boundary. Returns the same `fetchNextPage` / `fetchPreviousPage` / `hasNextPage` / `hasPreviousPage` surface as `useInfiniteQuery`. Same caveats as `useSuspenseQuery` regarding Suspense boundary requirement. See also: useSuspenseQuery, useInfiniteQuery, QuerySuspense.',
+    mistakes: `- Using without a \`QuerySuspense\` wrapper — same boundary-requirement as \`useSuspenseQuery\`; the narrowed type assumes success, but \`data()\` CAN be the initial value during the first render cycle without a boundary
+- Mixing \`useSuspenseInfiniteQuery\` and \`useInfiniteQuery\` for the same \`queryKey\` — the Suspense observer and the regular observer can race; use one or the other per key`,
   },
 
   'query/QuerySuspense': {
