@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   _resetHotkeys,
   disableScope,
@@ -455,5 +455,67 @@ describe('getRegisteredHotkeys', () => {
     expect(getRegisteredHotkeys()).toHaveLength(1)
     unsub()
     expect(getRegisteredHotkeys()).toHaveLength(0)
+  })
+})
+
+describe('Event listener cleanup', () => {
+  beforeEach(() => {
+    _resetHotkeys()
+  })
+
+  afterEach(() => {
+    _resetHotkeys()
+  })
+
+  it('attaches listener on first registration', () => {
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+    const noop = () => {}
+
+    registerHotkey('ctrl+s', noop)
+
+    expect(addEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
+    addEventListenerSpy.mockRestore()
+  })
+
+  it('detaches listener when all hotkeys are unregistered', () => {
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+    const noop = () => {}
+
+    const unsub1 = registerHotkey('ctrl+s', noop)
+    const unsub2 = registerHotkey('ctrl+z', noop)
+
+    // Both registered — listener still attached
+    unsub1()
+    expect(removeEventListenerSpy).not.toHaveBeenCalled()
+
+    // Last one unregistered — listener should detach
+    unsub2()
+    expect(removeEventListenerSpy).toHaveBeenCalledWith('keydown', expect.any(Function))
+
+    removeEventListenerSpy.mockRestore()
+  })
+
+  it('reattaches listener when new hotkey registered after cleanup', () => {
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+    const noop = () => {}
+
+    const unsub1 = registerHotkey('ctrl+s', noop)
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(1)
+
+    unsub1()
+    expect(removeEventListenerSpy).toHaveBeenCalledTimes(1)
+
+    // Register new hotkey — should reattach
+    registerHotkey('ctrl+z', noop)
+    expect(addEventListenerSpy).toHaveBeenCalledTimes(2)
+
+    addEventListenerSpy.mockRestore()
+    removeEventListenerSpy.mockRestore()
+  })
+
+  it('preserves vi for test environment', () => {
+    // This test just verifies vi is available (vitest spy helpers)
+    expect(typeof vi).toBe('object')
   })
 })

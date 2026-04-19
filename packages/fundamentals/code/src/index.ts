@@ -36,6 +36,7 @@ export type {
   SignalLike,
 } from './bind-signal'
 export { bindEditorToSignal } from './bind-signal'
+export { useEditorSignal } from './use-editor-signal'
 // Languages
 export { getAvailableLanguages, loadLanguage } from './languages'
 // Minimap

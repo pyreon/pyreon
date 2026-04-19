@@ -3,6 +3,7 @@ export type {
   FieldAdapter,
   SchemaAdapter,
   SchemaValidateFn,
+  TypedSchemaAdapter,
   ValidateFn,
   ValidationError,
   ValidationIssue,

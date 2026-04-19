@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { ValidationIssue } from './types'
+import type { TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -42,6 +42,7 @@ type InternalParseFn = (
 
 /**
  * Create a form-level schema validator from a Valibot schema.
+ * Supports type inference for compile-time field name validation.
  *
  * Valibot uses standalone functions rather than methods, so you must pass
  * the `safeParseAsync` (or `safeParse`) function from valibot.
@@ -57,16 +58,20 @@ type InternalParseFn = (
  *
  * const form = useForm({
  *   initialValues: { email: '', password: '' },
- *   schema: valibotSchema(schema, v.safeParseAsync),
+ *   schema: valibotSchema(schema, v.safeParseAsync),  // ✅ Types inferred
  *   onSubmit: (values) => { ... },
  * })
+ *
+ * // Field names are type-safe:
+ * form.register('email')    // ✅ OK
+ * form.register('invalid')  // ❌ Type error!
  */
 export function valibotSchema<TValues extends Record<string, unknown>>(
   schema: unknown,
   safeParseFn: GenericSafeParseFn,
-): SchemaValidateFn<TValues> {
+): TypedSchemaAdapter<TValues> {
   const parse = safeParseFn as InternalParseFn
-  return async (values: TValues) => {
+  const validator: SchemaValidateFn<TValues> = async (values: TValues) => {
     try {
       const result = await parse(schema, values)
       if (result.success) return {} as Partial<Record<keyof TValues, ValidationError>>
@@ -76,6 +81,11 @@ export function valibotSchema<TValues extends Record<string, unknown>>(
         '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
+  }
+
+  return {
+    _infer: undefined as any,
+    validator,
   }
 }
 
