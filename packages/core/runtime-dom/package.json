@@ -49,6 +49,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
     "@pyreon/compiler": "workspace:^",
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@vitest/browser-playwright": "^4.1.4",

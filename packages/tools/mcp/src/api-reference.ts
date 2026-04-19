@@ -17,152 +17,135 @@ export const API_REFERENCE: Record<string, ApiEntry> = {
   // @pyreon/reactivity
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/reactivity>
+
   'reactivity/signal': {
-    signature: 'signal<T>(initialValue: T, options?: { name?: string }): Signal<T>',
+    signature: '<T>(initialValue: T, options?: { name?: string }) => Signal<T>',
     example: `const count = signal(0)
-
-// Read (subscribes to updates):
-count()          // 0
-
-// Write:
-count.set(5)     // sets to 5
-
-// Update:
+count()              // 0 (subscribes to updates)
+count.set(5)         // sets to 5
 count.update(n => n + 1)  // 6
-
-// Read without subscribing:
-count.peek()     // 6`,
-    notes:
-      'Signals are callable functions, NOT .value getters. Components run once — signal reads in JSX auto-subscribe. Optional { name } for debugging — auto-injected by @pyreon/vite-plugin in dev mode.',
-    mistakes: `- \`count.value\` → Use \`count()\` to read
-- \`{count}\` in JSX → Use \`{count()}\` to read (or let the compiler wrap it)
-- \`const [val, setVal] = signal(0)\` → Not destructurable. Use \`const val = signal(0)\``,
+count.peek()         // 6 (does NOT subscribe)`,
+    notes: 'Create a reactive signal. The returned value is a CALLABLE FUNCTION — `count()` reads (and subscribes), `count.set(v)` writes, `count.update(fn)` derives, `count.peek()` reads without subscribing. This is NOT a `.value` getter/setter pattern (React/Vue) — Pyreon signals are functions. Optional `{ name }` for debugging; auto-injected by `@pyreon/vite-plugin` in dev mode. See also: computed, effect, batch.',
+    mistakes: `- \`count.value\` — does not exist. Use \`count()\` to read
+- \`count = 5\` — reassigning the variable replaces the signal, does not write to it. Use \`count.set(5)\`
+- \`signal(5)\` called with an argument after creation — reads and ignores the argument (dev mode warns). Use \`.set(5)\` to write
+- \`const [val, setVal] = signal(0)\` — signals are not destructurable tuples. The whole return value IS the signal
+- \`{count}\` in JSX — renders the signal function itself, not its value. Use \`{count()}\` or \`{() => count()}\`
+- \`.peek()\` inside \`effect()\` / \`computed()\` — bypasses tracking, creates stale reads. Only use \`.peek()\` for loop-prevention guards`,
   },
 
   'reactivity/computed': {
-    signature:
-      'computed<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }): Computed<T>',
+    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
     example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
-
 doubled()  // 0
 count.set(5)
 doubled()  // 10`,
-    notes:
-      'Dependencies auto-tracked. No dependency array needed. Memoized — only recomputes when dependencies change.',
-    mistakes: `- \`computed(() => count)\` → Must call signal: \`computed(() => count())\`
-- Don't use for side effects — use effect() instead`,
+    notes: 'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. Custom `equals` function prevents downstream effects from firing on structurally-equal updates (default: `Object.is`). See also: signal, effect.',
+    mistakes: `- \`computed(() => count)\` — must CALL the signal: \`computed(() => count())\`
+- Using \`computed()\` for side effects — use \`effect()\` instead; computed is for pure derivation
+- Expecting \`computed()\` to re-run when a \`.peek()\`-read signal changes — \`.peek()\` bypasses tracking`,
   },
 
   'reactivity/effect': {
-    signature: 'effect(fn: () => (() => void) | void): () => void',
+    signature: '(fn: () => (() => void) | void) => () => void',
     example: `const count = signal(0)
-
-// Auto-tracks count() dependency:
 const dispose = effect(() => {
-  console.log("Count is:", count())
+  console.log("Count:", count())
+  onCleanup(() => console.log("cleaning up"))
 })
-
-// With onCleanup:
-effect(() => {
-  const handler = () => console.log(count())
-  window.addEventListener("resize", handler)
-  onCleanup(() => window.removeEventListener("resize", handler))
-})
-
-// Or return cleanup (also works):
+// Or return cleanup directly:
 effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   return () => window.removeEventListener("resize", handler)
 })`,
-    notes:
-      'Returns a dispose function. Dependencies auto-tracked on each run. Use onCleanup() inside to register cleanup that runs before re-execution. For DOM-specific effects, use renderEffect().',
-    mistakes: `- Don't pass a dependency array — Pyreon auto-tracks
-- \`effect(() => { count })\` → Must call: \`effect(() => { count() })\``,
+    notes: 'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead. See also: onCleanup, computed, renderEffect.',
+    mistakes: `- Passing a dependency array — Pyreon auto-tracks; no array needed
+- \`effect(() => { count })\` — must call the signal: \`effect(() => { count() })\`
+- Nesting \`effect()\` inside \`effect()\` — use \`computed()\` for derived values instead
+- Creating signals inside an effect — they re-create on every run; create once outside`,
+  },
+
+  'reactivity/batch': {
+    signature: '(fn: () => void) => void',
+    example: `const a = signal(1)
+const b = signal(2)
+batch(() => {
+  a.set(10)
+  b.set(20)
+})
+// Effects that read both a() and b() fire once, not twice`,
+    notes: 'Group multiple signal writes so subscribers fire only once — after the batch completes. Uses pointer swap (zero allocation). Essential when updating 3+ signals that downstream effects read together; without batch, each `.set()` triggers an independent notification pass. See also: signal, effect.',
+    mistakes: `- Reading a signal inside \`batch()\` and expecting the NEW value before the batch completes — reads inside the batch see the new value (writes are synchronous), but effects fire only after the batch callback returns
+- Forgetting \`batch()\` when updating 3+ related signals — causes N intermediate re-renders`,
   },
 
   'reactivity/onCleanup': {
-    signature: 'onCleanup(fn: () => void): void',
+    signature: '(fn: () => void) => void',
     example: `effect(() => {
   const handler = () => console.log(count())
   window.addEventListener("resize", handler)
   onCleanup(() => window.removeEventListener("resize", handler))
 })`,
-    notes:
-      'Registers a cleanup function inside an effect. Runs between re-executions (before the effect re-runs) and when the effect is disposed.',
-    mistakes: `- Using onCleanup outside an effect — it only works inside effect() or renderEffect()
-- Confusing with onUnmount — onCleanup is for effects, onUnmount is for components`,
+    notes: 'Register a cleanup function inside an `effect()` or `renderEffect()`. Runs before each re-execution of the effect (when dependencies change) and once on final dispose. Equivalent to returning a cleanup function from the effect body — both forms work, `onCleanup` is useful when you need to register cleanup at a different point than the end of the body. See also: effect.',
+    mistakes: `- Using \`onCleanup\` outside an effect — it only works inside \`effect()\` or \`renderEffect()\` body
+- Confusing with \`onUnmount\` — \`onCleanup\` is for effects, \`onUnmount\` is for component lifecycle`,
   },
 
-  'reactivity/batch': {
-    signature: 'batch(fn: () => void): void',
-    example: `const a = signal(1)
-const b = signal(2)
-
-// Updates subscribers only once:
-batch(() => {
-  a.set(10)
-  b.set(20)
+  'reactivity/watch': {
+    signature: '<T>(source: () => T, callback: (next: T, prev: T) => void, options?: WatchOptions) => () => void',
+    example: `watch(() => count(), (next, prev) => {
+  console.log(\`changed from \${prev} to \${next}\`)
 })`,
-    notes: 'Defers all signal notifications until the batch completes. Nested batches are merged.',
+    notes: 'Explicit reactive watcher — tracks `source` and fires `callback` when it changes. Unlike `effect()`, the callback receives both `next` and `prev` values and does NOT auto-track signals read inside the callback body. `source` is evaluated at setup time to establish tracking; reading browser globals there still fires SSR lint rules. Returns a dispose function. See also: effect, computed.',
+    mistakes: `- Reading browser globals in the \`source\` function — it runs at setup time (not just in mounted context), so \`no-window-in-ssr\` fires on \`window.X\` there
+- Expecting signals read inside the \`callback\` to be tracked — only the \`source\` function establishes tracking; the callback is untracked`,
   },
 
   'reactivity/createStore': {
-    signature: 'createStore<T extends object>(initialValue: T): T',
+    signature: '<T extends object>(initial: T) => T',
     example: `const store = createStore({
-  user: { name: "Alice", age: 30 },
-  items: [1, 2, 3]
+  todos: [{ text: 'Learn Pyreon', done: false }],
+  filter: 'all',
 })
-
-// Granular reactivity — only rerenders what changed:
-store.user.name = "Bob"  // only name subscribers fire
-store.items.push(4)      // only items subscribers fire`,
-    notes:
-      'Deep proxy — nested objects are automatically reactive. Use reconcile() for bulk updates.',
-  },
-
-  'reactivity/createResource': {
-    signature:
-      'createResource<T>(fetcher: () => Promise<T>, options?: ResourceOptions): Resource<T>',
-    example: `const users = createResource(() => fetch("/api/users").then(r => r.json()))
-
-// In JSX:
-<Show when={!users.loading()}>
-  <For each={users()} by={u => u.id}>
-    {user => <li>{user.name}</li>}
-  </For>
-</Show>`,
-    notes:
-      'Integrates with Suspense. Access .loading(), .error(), and call resource() for the value.',
+store.todos[0].done = true   // fine-grained — only 'done' subscribers fire
+store.todos.push({ text: 'Build app', done: false })  // array methods work`,
+    notes: 'Create a deeply reactive proxy-based object. Mutations at any depth trigger fine-grained updates — `store.todos[0].done = true` only re-runs effects that read `store.todos[0].done`, not effects that read `store.todos.length` or other items. No immer, no spread-copy, no `produce()` — just mutate. Works with nested objects, arrays, Maps, and Sets. See also: signal.',
+    mistakes: `- Replacing the entire store object — \`store = { ... }\` replaces the variable, not the proxy. Mutate properties instead: \`store.filter = "active"\`
+- Destructuring store properties at setup — \`const { filter } = store\` captures the value once, losing reactivity. Read \`store.filter\` inside reactive scopes
+- Using \`createStore\` for simple scalar state — use \`signal()\` for primitives; \`createStore\` adds proxy overhead that only pays off for nested objects`,
   },
 
   'reactivity/untrack': {
-    signature: 'untrack<T>(fn: () => T): T',
-    example: `import { untrack } from "@pyreon/reactivity"
-
-// Read signals without subscribing:
-effect(() => {
-  const name = untrack(() => userName())
-  console.log("Count changed:", count(), "user is", name)
+    signature: '(fn: () => T) => T',
+    example: `effect(() => {
+  const current = count()        // tracked — effect re-runs on count change
+  const other = untrack(() => otherSignal())  // NOT tracked — just reads the current value
 })`,
-    notes:
-      'Alias for runUntracked. Reads signals inside fn without adding them as dependencies of the current effect/computed.',
+    notes: `Execute a function reading signals WITHOUT subscribing to them. Alias for \`runUntracked\`. Use inside effects when you need to read a signal's current value as a one-shot snapshot without the effect re-running when that signal changes. See also: signal, effect.`,
+    mistakes: '- Using `untrack` as the default — signals should be tracked by default; `untrack` is the escape hatch for specific optimization or loop-prevention cases',
   },
+  // <gen-docs:api-reference:end @pyreon/reactivity>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/core
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/core>
+
   'core/h': {
-    signature:
-      'h<P>(type: ComponentFn<P> | string | symbol, props: P | null, ...children: VNodeChild[]): VNode',
-    example: `// Usually use JSX instead:
-const vnode = h("div", { class: "container" },
+    signature: 'h<P extends Props>(type: ComponentFn<P> | string | symbol, props: P | null, ...children: VNodeChild[]): VNode',
+    example: `const vnode = h("div", { class: "container" },
   h("h1", null, "Hello"),
   h(Counter, { initial: 0 })
 )`,
-    notes: 'Low-level API. Prefer JSX which compiles to h() calls (or _tpl() for templates).',
+    notes: 'Create a VNode from a component function, HTML tag string, or symbol (Fragment, Portal). Low-level API — prefer JSX which compiles to `h()` calls (or `_tpl()` + `_bind()` for template-optimized paths). Children are stored in `vnode.children`; components must merge them via `props.children = vnode.children.length === 1 ? vnode.children[0] : vnode.children`. See also: Fragment, Dynamic, lazy.',
+    mistakes: `- \`h("div", "text")\` — second arg is always props (or null). Text children go in the third+ positions: \`h("div", null, "text")\`
+- \`h(MyComponent, { children: <span /> })\` — children go as rest args, not a prop: \`h(MyComponent, null, <span />)\`
+- \`h("input", { className: "x" })\` — use \`class\` not \`className\` (Pyreon uses standard HTML attributes)
+- \`h("input", { onChange: handler })\` — use \`onInput\` for keypress-by-keypress updates (native DOM events)`,
   },
 
   'core/Fragment': {
@@ -175,6 +158,7 @@ const vnode = h("div", { class: "container" },
 
 // h() API:
 h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
+    notes: 'Symbol used as the type for fragment VNodes that group children without producing a wrapper DOM element. In JSX, `<>...</>` compiles to `h(Fragment, null, ...)`. Useful when a component needs to return multiple sibling elements. See also: h.',
   },
 
   'core/onMount': {
@@ -184,13 +168,16 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
 
   onMount(() => {
     const id = setInterval(() => count.update(n => n + 1), 1000)
-    return () => clearInterval(id)  // cleanup
+    return () => clearInterval(id)  // cleanup on unmount
   })
 
-  return <div>{count()}</div>
+  return <div>{() => count()}</div>
 }`,
-    notes: 'Optionally return a cleanup function that runs on unmount.',
-    mistakes: `- Forgetting cleanup: \`onMount(() => { const id = setInterval(...) })\` → Return cleanup: \`onMount(() => { const id = setInterval(...); return () => clearInterval(id) })\``,
+    notes: 'Register a callback that runs after the component mounts into the DOM. The callback can optionally return a cleanup function that runs on unmount — this is the idiomatic pattern for event listeners, timers, and subscriptions. Must be called during component setup (the synchronous function body), not inside effects or async callbacks. See also: onUnmount, onUpdate.',
+    mistakes: `- Forgetting cleanup: \`onMount(() => { const id = setInterval(...) })\` leaks the interval. Return cleanup: \`return () => clearInterval(id)\`
+- Using \`onMount\` + separate \`onUnmount\` for paired setup/teardown — prefer returning cleanup from \`onMount\` instead
+- Calling \`onMount\` inside an \`effect()\` or async callback — it only works during synchronous component setup
+- Accessing DOM refs before mount — the callback runs AFTER mount, which is the right place for DOM measurements`,
   },
 
   'core/onUnmount': {
@@ -198,62 +185,121 @@ h(Fragment, null, h("h1", null, "Title"), h("p", null, "Content"))`,
     example: `onUnmount(() => {
   console.log("Component removed from DOM")
 })`,
+    notes: 'Register a callback that runs when the component is removed from the DOM. For paired setup/teardown, prefer returning a cleanup function from `onMount` instead — it co-locates the cleanup with the setup. `onUnmount` is useful when cleanup needs to reference state computed separately from the mount callback. See also: onMount.',
+  },
+
+  'core/onUpdate': {
+    signature: 'onUpdate(fn: () => void): void',
+    example: `onUpdate(() => {
+  console.log("Component updated, DOM is current")
+})`,
+    notes: 'Register a callback that runs after the component updates (reactive dependencies change and DOM patches complete). Rarely needed — most update logic belongs in `effect()` or `computed()`. Useful for imperative DOM measurements that need to run after all reactive updates have flushed. See also: onMount, onUnmount.',
+  },
+
+  'core/onErrorCaptured': {
+    signature: 'onErrorCaptured(fn: (error: unknown) => boolean | void): void',
+    example: `onErrorCaptured((error) => {
+  console.error("Caught:", error)
+  return false  // stop propagation
+})`,
+    notes: 'Register an error handler that captures errors thrown by descendant components. Return `false` to prevent the error from propagating further up the tree. Works alongside `ErrorBoundary` for programmatic error handling. See also: ErrorBoundary.',
   },
 
   'core/createContext': {
     signature: 'createContext<T>(defaultValue: T): Context<T>',
-    example: `const ThemeContext = createContext<"light" | "dark">("light")
+    example: `const ThemeCtx = createContext<"light" | "dark">("light")
 
 // Provide:
 const App = () => {
-  provide(ThemeContext, "dark")
+  provide(ThemeCtx, "dark")
   return <Child />
 }
 
 // Consume:
 const Child = () => {
-  const theme = useContext(ThemeContext)
+  const theme = useContext(ThemeCtx)  // "dark" — safe to destructure
   return <div class={theme}>...</div>
 }`,
+    notes: 'Create a static context. `useContext()` returns the value directly (`T`), so it is safe to destructure. Use this for values that do not change after being provided (theme name, locale string, config object). For values that change reactively (mode signal, locale signal), use `createReactiveContext` instead — otherwise consumers capture a stale snapshot at setup time. See also: createReactiveContext, provide, useContext.',
+    mistakes: `- \`provide(ThemeCtx, () => modeSignal())\` with a static context — the consumer receives the function itself, not the signal value. Use \`createReactiveContext\` for dynamic values
+- Destructuring a reactive context value: \`const { mode } = useContext(reactiveCtx)\` captures once. Keep the object reference and access lazily
+- Calling \`useContext\` outside a component body — it reads from the component context stack, which only exists during setup`,
   },
 
-  'core/useContext': {
-    signature: 'useContext<T>(ctx: Context<T>): T',
-    example: `const theme = useContext(ThemeContext)  // returns provided value or default`,
+  'core/createReactiveContext': {
+    signature: 'createReactiveContext<T>(defaultValue: T): ReactiveContext<T>',
+    example: `const ModeCtx = createReactiveContext<"light" | "dark">("light")
+
+// Provide:
+const App = () => {
+  const mode = signal<"light" | "dark">("dark")
+  provide(ModeCtx, () => mode())
+  return <Child />
+}
+
+// Consume:
+const Child = () => {
+  const getMode = useContext(ModeCtx)  // () => "dark"
+  return <div class={getMode()}>...</div>
+}`,
+    notes: 'Create a reactive context. `useContext()` returns `() => T` — an accessor that must be called to read the current value. Use this for values that change over time (mode, locale, user). The accessor subscribes to updates when read inside reactive scopes (`effect()`, JSX thunks, `computed()`). See also: createContext, provide, useContext.',
   },
 
   'core/provide': {
-    signature: 'provide<T>(ctx: Context<T>, value: T): void',
+    signature: 'provide<T>(ctx: Context<T> | ReactiveContext<T>, value: T): void',
     example: `const ThemeCtx = createContext<"light" | "dark">("light")
 
 function App() {
   provide(ThemeCtx, "dark")
   return <Child />
 }`,
-    notes:
-      'Pushes a context value and auto-cleans up on unmount. Preferred over manual pushContext/popContext. Must be called during component setup.',
+    notes: 'Push a context value for all descendant components. Auto-cleans up on unmount. Must be called during component setup (synchronous function body). Preferred over manual `pushContext`/`popContext`. For reactive values, provide a getter function to a `ReactiveContext`: `provide(ModeCtx, () => modeSignal())`. See also: createContext, createReactiveContext, useContext.',
+    mistakes: `- \`provide(ctx, "static")\` for a value that changes — use \`createReactiveContext\` + \`provide(ctx, () => signal())\`
+- Calling \`provide\` inside \`onMount\` or \`effect\` — it must run during synchronous component setup
+- Providing the same context twice in one component — the second \`provide\` shadows the first for that subtree`,
   },
 
-  'core/ExtractProps': {
-    signature: 'type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T',
-    example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
-
-type Props = ExtractProps<typeof Greet>
-// { name: string }`,
-    notes:
-      'Extracts the props type from a ComponentFn. Passes through unchanged if T is not a ComponentFn.',
+  'core/useContext': {
+    signature: 'useContext<T>(ctx: Context<T>): T',
+    example: `const theme = useContext(ThemeContext)  // static: returns T
+const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
+    notes: 'Read the nearest provided value for a context. For static `Context<T>`, returns `T` directly. For `ReactiveContext<T>`, returns `() => T` — must call the accessor to read. Falls back to the default value if no ancestor provides the context. See also: provide, createContext, createReactiveContext.',
   },
 
-  'core/HigherOrderComponent': {
-    signature: 'type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>',
-    example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
-  return (props) => {
-    console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)
-    return <Wrapped {...props} />
-  }
-}`,
-    notes:
-      "Typed HOC pattern — HOP is the props the HOC adds, P is the wrapped component's own props.",
+  'core/Show': {
+    signature: '<Show when={condition} fallback={alternative}>{children}</Show>',
+    example: `<Show when={isLoggedIn()} fallback={<LoginForm />}>
+  <Dashboard />
+</Show>`,
+    notes: 'Reactive conditional rendering. Mounts children when `when` is truthy, unmounts and shows `fallback` when falsy. More efficient than ternary for signal-driven conditions because it avoids re-evaluating the entire branch expression on every signal change — `Show` only transitions between mounted/unmounted when the boolean flips. See also: Switch, Match, For.',
+    mistakes: `- \`{cond() ? <A /> : <B />}\` — works but less efficient than \`<Show>\` for signal-driven conditions
+- \`<Show when={items().length}>\` — works (truthy check), but be explicit: \`<Show when={items().length > 0}>\`
+- \`<Show when={user}>\` without calling the signal — must call: \`<Show when={user()}>\``,
+  },
+
+  'core/Switch': {
+    signature: '<Switch fallback={default}>{Match children}</Switch>',
+    example: `<Switch fallback={<p>Unknown status</p>}>
+  <Match when={status() === "loading"}>
+    <Spinner />
+  </Match>
+  <Match when={status() === "error"}>
+    <ErrorDisplay />
+  </Match>
+  <Match when={status() === "success"}>
+    <Results />
+  </Match>
+</Switch>`,
+    notes: 'Multi-branch conditional rendering. Renders the first `<Match>` child whose `when` prop is truthy. If no match, renders the `fallback`. More readable than nested `<Show>` for multi-way conditions. See also: Match, Show.',
+  },
+
+  'core/Match': {
+    signature: '<Match when={condition}>{children}</Match>',
+    example: `<Switch>
+  <Match when={tab() === "home"}><Home /></Match>
+  <Match when={tab() === "settings"}><Settings /></Match>
+</Switch>`,
+    notes: 'A branch inside a `<Switch>`. Renders its children when `when` is truthy and it is the first truthy `<Match>` in the parent `<Switch>`. Must be a direct child of `<Switch>`. See also: Switch, Show.',
   },
 
   'core/For': {
@@ -264,21 +310,13 @@ type Props = ExtractProps<typeof Greet>
 ])
 
 <For each={items()} by={item => item.id}>
-  {item => <li>{item.name}</li>}
+  {(item, index) => <li>{item.name}</li>}
 </For>`,
-    notes: "Uses 'by' prop (not 'key') because JSX extracts 'key' as a special VNode prop.",
-    mistakes: `- \`<For each={items}>\` → Must call signal: \`<For each={items()}>\`
-- \`<For each={items()} key={...}>\` → Use \`by\` not \`key\`
-- \`{items().map(...)}\` → Use <For> for reactive list rendering`,
-  },
-
-  'core/Show': {
-    signature: '<Show when={condition} fallback={alternative}>{children}</Show>',
-    example: `<Show when={isLoggedIn()} fallback={<LoginForm />}>
-  <Dashboard />
-</Show>`,
-    notes:
-      'More efficient than ternary for signal-driven conditions. Only mounts/unmounts when condition changes.',
+    notes: 'Keyed reactive list rendering. Uses the `by` prop (not `key`) for the key function because JSX extracts `key` as a special VNode reconciliation prop. The render function receives each item and its index. Internally uses an LIS-based reconciler for minimal DOM mutations when the list changes. See also: Show, mapArray.',
+    mistakes: `- \`<For each={items}>\` — must call the signal: \`<For each={items()}>\`
+- \`<For each={items()} key={...}>\` — use \`by\` not \`key\` (JSX reserves \`key\` for VNode reconciliation)
+- \`{items().map(...)}\` — use \`<For>\` for reactive list rendering; \`.map()\` re-creates all DOM nodes on every change
+- \`<For each={items()} by={index}>\` — using array index as key defeats the reconciler; use a stable identity like \`item.id\``,
   },
 
   'core/Suspense': {
@@ -288,25 +326,7 @@ type Props = ExtractProps<typeof Greet>
 <Suspense fallback={<div>Loading...</div>}>
   <LazyPage />
 </Suspense>`,
-  },
-
-  'core/lazy': {
-    signature:
-      'lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent',
-    example: `const Settings = lazy(() => import("./pages/Settings"))
-
-// Use in JSX (wrap with Suspense):
-<Suspense fallback={<Spinner />}>
-  <Settings />
-</Suspense>`,
-  },
-
-  'core/Dynamic': {
-    signature: '<Dynamic component={comp} {...props} />',
-    example: `const components = { home: HomePage, about: AboutPage }
-const current = signal("home")
-
-<Dynamic component={components[current()]} />`,
+    notes: 'Async boundary that shows `fallback` while any `lazy()` component or async child inside is loading. SSR mode streams the fallback immediately and swaps in the resolved content when ready (30s timeout). Nested Suspense boundaries are independent — an inner boundary resolving does not affect the outer. See also: lazy, ErrorBoundary.',
   },
 
   'core/ErrorBoundary': {
@@ -317,13 +337,32 @@ const current = signal("home")
 >
   <App />
 </ErrorBoundary>`,
+    notes: 'Catches render errors thrown by descendant components. The `fallback` receives the error object for display. `onCatch` fires with the error for logging/telemetry. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. See also: Suspense, onErrorCaptured.',
+  },
+
+  'core/lazy': {
+    signature: 'lazy(loader: () => Promise<{ default: ComponentFn }>, options?: LazyOptions): LazyComponent',
+    example: `const Settings = lazy(() => import("./pages/Settings"))
+
+// Use in JSX (wrap with Suspense):
+<Suspense fallback={<Spinner />}>
+  <Settings />
+</Suspense>`,
+    notes: 'Wrap a dynamic import for code splitting. Returns a component that integrates with `Suspense` — the parent Suspense boundary shows its fallback until the import resolves. The loaded component is cached after first resolution. See also: Suspense, Dynamic.',
+  },
+
+  'core/Dynamic': {
+    signature: '<Dynamic component={comp} {...props} />',
+    example: `const components = { home: HomePage, about: AboutPage }
+const current = signal("home")
+
+<Dynamic component={components[current()]} />`,
+    notes: 'Renders a component by reference or string tag name. Useful when the component to render is determined at runtime (tab panels, plugin systems, polymorphic containers). When `component` changes, the previous component unmounts and the new one mounts. See also: lazy, h.',
   },
 
   'core/cx': {
     signature: 'cx(...values: ClassValue[]): string',
-    example: `import { cx } from "@pyreon/core"
-
-cx("foo", "bar")                         // "foo bar"
+    example: `cx("foo", "bar")                         // "foo bar"
 cx("base", isActive && "active")         // conditional
 cx({ base: true, active: isActive() })   // object syntax
 cx(["a", ["b", { c: true }]])            // nested arrays
@@ -331,43 +370,35 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 // class prop accepts ClassValue directly:
 <div class={["base", cond && "active"]} />
 <div class={{ base: true, active: isActive() }} />`,
-    notes:
-      'Combines class values into a single string. Accepts strings, booleans, objects, arrays (nested). Falsy values are ignored. ClassValue type is also exported from @pyreon/core.',
-    mistakes: `- \`class={cx(...)}\` works but is redundant — class prop already accepts ClassValue
-- \`class={condition ? "a" : undefined}\` → Use \`class={[condition && "a"]}\` or \`class={{ a: condition }}\``,
+    notes: 'Combine class values into a single string. Accepts strings, booleans (falsy values ignored), objects (`{ active: true }`), and arrays (nested). The `class` prop on JSX elements already accepts `ClassValue` directly, so explicit `cx()` is only needed when building class strings outside JSX or when composing values from multiple sources. See also: splitProps, mergeProps.',
   },
 
   'core/splitProps': {
     signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
-    example: `import { splitProps } from "@pyreon/core"
-
-const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
+    example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
   const [local, rest] = splitProps(props, ["class"])
   return <button {...rest} class={cx("btn", local.class)} />
 }`,
-    notes:
-      'Splits a props object into two: picked keys and the rest. Preserves signal reactivity on both halves.',
-    mistakes: `- Destructuring props directly breaks reactivity — use splitProps instead
-- \`const { class: cls, ...rest } = props\` → \`const [local, rest] = splitProps(props, ["class"])\``,
+    notes: 'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity. See also: mergeProps, cx.',
+    mistakes: `- \`const { class: cls, ...rest } = props\` — destructuring captures once, loses reactivity. Use \`splitProps(props, ["class"])\`
+- Passing a non-props object — \`splitProps\` relies on reactive getter descriptors that the compiler creates on props objects
+- Forgetting that symbol-keyed props are preserved — \`splitProps\` uses \`Reflect.ownKeys\` so symbols (like \`REACTIVE_PROP\`) survive`,
   },
 
   'core/mergeProps': {
     signature: 'mergeProps<T extends object[]>(...sources: T): MergedProps<T>',
-    example: `import { mergeProps } from "@pyreon/core"
-
-const Button = (props: { size?: string; variant?: string }) => {
+    example: `const Button = (props: { size?: string; variant?: string }) => {
   const merged = mergeProps({ size: "md", variant: "primary" }, props)
   return <button class={\`btn-\${merged.size} btn-\${merged.variant}\`} />
 }`,
-    notes:
-      'Merges multiple props objects. Last source wins for each key. Preserves reactivity — reads are lazy.',
+    notes: 'Merge multiple props objects with last-source-wins semantics. Reads are lazy — the merged object delegates to the source objects via getters, so signal reactivity is preserved. Commonly used to inject default props: `mergeProps({ size: "md" }, props)`. Forces `configurable: true` on copied descriptors to prevent "Cannot redefine property" errors. See also: splitProps, cx.',
+    mistakes: `- \`Object.assign({}, defaults, props)\` — loses reactivity. Use \`mergeProps(defaults, props)\` instead
+- \`mergeProps(props, defaults)\` — wrong order. Defaults go FIRST, actual props last (last source wins)`,
   },
 
   'core/createUniqueId': {
     signature: 'createUniqueId(): string',
-    example: `import { createUniqueId } from "@pyreon/core"
-
-const LabeledInput = (props: { label: string }) => {
+    example: `const LabeledInput = (props: { label: string }) => {
   const id = createUniqueId()
   return (
     <>
@@ -376,13 +407,68 @@ const LabeledInput = (props: { label: string }) => {
     </>
   )
 }`,
-    notes:
-      'Returns a unique string ID ("pyreon-1", "pyreon-2", etc.). SSR-safe — IDs are consistent between server and client when called in the same order.',
+    notes: 'Generate a unique string ID ("pyreon-1", "pyreon-2", ...) that is consistent between server and client when called in the same order. SSR-safe — the counter resets per request context. Use for `id`/`for`/`aria-*` attribute pairing in components. See also: splitProps.',
   },
+
+  'core/Portal': {
+    signature: '<Portal target={element}>{children}</Portal>',
+    example: `<Portal target={document.body}>
+  <div class="modal-overlay">
+    <div class="modal">Content</div>
+  </div>
+</Portal>`,
+    notes: 'Render children into a DOM element outside the component tree (typically `document.body`). Useful for modals, tooltips, and overlays that need to escape parent overflow/z-index stacking contexts. Context values from the Portal source tree are preserved. See also: Dynamic.',
+  },
+
+  'core/mapArray': {
+    signature: 'mapArray<T, U>(list: () => T[], mapFn: (item: T, index: () => number) => U): () => U[]',
+    example: `const items = signal([1, 2, 3])
+const doubled = mapArray(() => items(), (item) => item * 2)
+// doubled() → [2, 4, 6] — updates reactively`,
+    notes: 'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array signal through a transform function, caching results per item identity. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering. See also: For.',
+  },
+
+  'core/createRef': {
+    signature: 'createRef<T>(): Ref<T>',
+    example: `const inputRef = createRef<HTMLInputElement>()
+onMount(() => inputRef.current?.focus())
+return <input ref={inputRef} />`,
+    notes: 'Create a mutable ref object (`{ current: T | null }`) for holding DOM element references. Pass as the `ref` prop on JSX elements — the runtime sets `.current` after mount and clears it on unmount. Callback refs (`(el: T | null) => void`) are also supported via `RefProp<T>`. See also: onMount.',
+  },
+
+  'core/untrack': {
+    signature: '(fn: () => T) => T',
+    example: `effect(() => {
+  const current = count()        // tracked
+  const other = untrack(() => otherSignal())  // NOT tracked
+})`,
+    notes: 'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked` from `@pyreon/reactivity`. Use inside effects when you need a one-shot snapshot of a signal value without the effect re-running when that signal changes. See also: @pyreon/reactivity.',
+  },
+
+  'core/ExtractProps': {
+    signature: 'type ExtractProps<T> = T extends ComponentFn<infer P> ? P : T',
+    example: `const Greet: ComponentFn<{ name: string }> = ({ name }) => <h1>{name}</h1>
+type Props = ExtractProps<typeof Greet>  // { name: string }`,
+    notes: `Extracts the props type from a \`ComponentFn\`. Passes through unchanged if \`T\` is not a \`ComponentFn\`. Useful for HOC patterns and typed wrappers that need to infer the wrapped component's prop interface. See also: HigherOrderComponent.`,
+  },
+
+  'core/HigherOrderComponent': {
+    signature: 'type HigherOrderComponent<HOP, P> = ComponentFn<HOP & P>',
+    example: `function withLogger<P>(Wrapped: ComponentFn<P>): HigherOrderComponent<{ logLevel?: string }, P> {
+  return (props) => {
+    console.log(\`[\${props.logLevel ?? "info"}] Rendering\`)
+    return <Wrapped {...props} />
+  }
+}`,
+    notes: `Typed HOC pattern where \`HOP\` is the props the HOC adds and \`P\` is the wrapped component's own props. The resulting component accepts both sets of props. See also: ExtractProps.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/core>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/router
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/router>
 
   'router/createRouter': {
     signature: 'createRouter(options: RouterOptions | RouteRecord[]): Router',
@@ -393,6 +479,11 @@ const LabeledInput = (props: { label: string }) => {
     { path: "settings", component: Settings },
   ]},
 ])`,
+    notes: 'Create a router instance with route records, guards, middleware, and mode configuration. Accepts either an array of route records (shorthand) or a full `RouterOptions` object with `routes`, `mode` (`"history"` | `"hash"`), `scrollBehavior`, `beforeEach`, `afterEach`, and `middleware`. The returned `Router` is generic over route names for typed programmatic navigation. See also: RouterProvider, useRouter, useRoute.',
+    mistakes: `- \`createRouter({ routes: [...], mode: "hash" })\` and using \`window.location.hash\` elsewhere — hash mode uses \`history.pushState\`, not \`location.hash\`. Reading \`location.hash\` directly will not reflect router state
+- Defining route paths without leading \`/\` in root routes — all root-level paths must start with \`/\`
+- Using \`redirect: "/target"\` with a guard on the same route — redirects bypass guards. Use \`beforeEnter\` to conditionally redirect instead
+- Forgetting the catch-all route — \`{ path: "(.*)", component: NotFound }\` should be the last route to handle 404s`,
   },
 
   'router/RouterProvider': {
@@ -403,6 +494,7 @@ const LabeledInput = (props: { label: string }) => {
     <RouterView />
   </RouterProvider>
 )`,
+    notes: 'Provide the router instance to the component tree via `RouterContext`. Must wrap the entire app (or the routed section). Sets up the context stack so `useRouter()`, `useRoute()`, and other hooks can access the router. See also: createRouter, RouterView, RouterLink.',
   },
 
   'router/RouterView': {
@@ -417,12 +509,17 @@ const Admin = () => (
     <RouterView />  {/* renders Settings, Users, etc. */}
   </div>
 )`,
+    notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. See also: RouterProvider, createRouter.`,
   },
 
   'router/RouterLink': {
-    signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls} />',
+    signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
     example: `<RouterLink to="/" activeClass="nav-active">Home</RouterLink>
 <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>`,
+    notes: 'Declarative navigation link that renders an `<a>` element. Supports string paths or named route objects (`{ name, params }`). Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Click handler calls `router.push()` and prevents default. See also: useRouter, useIsActive.',
+    mistakes: `- \`<a href="/about" onClick={() => router.push("/about")}>\` — use \`<RouterLink to="/about">\` instead; it handles the anchor element, active class, and click interception
+- \`<RouterLink to="/about" target="_blank">\` — external navigation bypasses the router; use a plain \`<a>\` for external links
+- \`<RouterLink to={dynamicPath}>\` without calling the signal — must call: \`<RouterLink to={dynamicPath()}>\` (or let the compiler handle it via \`_rp()\`)`,
   },
 
   'router/useRouter': {
@@ -435,6 +532,10 @@ router.replace("/login")
 router.back()
 router.forward()
 router.go(-2)`,
+    notes: 'Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes. See also: useRoute, RouterLink, createRouter.',
+    mistakes: `- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
+- \`await router.push("/path")\` expecting animation completion — \`push\` resolves after DOM commit (\`updateCallbackDone\`), not after View Transition animation finishes. Use the returned transition object's \`.finished\` if you need to wait for animation
+- Calling \`useRouter()\` outside a \`<RouterProvider>\` — throws because no router context exists`,
   },
 
   'router/useRoute': {
@@ -446,18 +547,53 @@ const userId = route().params.id  // string
 // Access query, meta, etc:
 route().query
 route().meta`,
+    notes: 'Access the current resolved route as a reactive accessor. Generic over the path string for typed params — `useRoute<"/user/:id">()` yields `route().params.id: string`. Returns a function (accessor) that must be called to read the current route — reads inside reactive scopes track route changes. See also: useRouter, useSearchParams, useLoaderData.',
   },
 
-  'router/useSearchParams': {
-    signature:
-      'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]',
-    example: `const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
+  'router/useIsActive': {
+    signature: 'useIsActive(path: string, exact?: boolean): () => boolean',
+    example: `const isHome = useIsActive("/")
+const isAdmin = useIsActive("/admin")          // prefix match
+const isExactAdmin = useIsActive("/admin", true)  // exact only
 
-// Read:
-search().page  // "1"
+// Reactive — updates when route changes:
+<a class={{ active: isAdmin() }} href="/admin">Admin</a>`,
+    notes: 'Returns a reactive boolean for whether a path matches the current route. Segment-aware prefix matching: `/admin` matches `/admin/users` but NOT `/admin-panel`. Pass `exact=true` for exact-only matching. Updates reactively when the route changes. See also: useRoute, RouterLink.',
+    mistakes: `- \`useIsActive("/admin")\` matching \`/admin-panel\` — this does NOT happen. Matching is segment-aware: \`/admin\` only matches paths starting with \`/admin/\` or exactly \`/admin\`
+- \`if (useIsActive("/settings")())\` at component top level — the outer call returns an accessor; make sure to read it inside a reactive scope for updates
+- Using \`useIsActive\` for complex route matching — it only does path prefix/exact matching. For query-param-aware or meta-aware checks, use \`useRoute()\` directly`,
+  },
 
-// Write:
-setSearch({ page: "2" })`,
+  'router/useTypedSearchParams': {
+    signature: 'useTypedSearchParams<T>(schema: T): TypedSearchParams<T>',
+    example: `const params = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
+params.page()    // number (auto-coerced)
+params.q()       // string
+params.set({ page: 2 })  // updates URL`,
+    notes: 'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns an object where each key is a reactive accessor and `.set()` updates the URL. See also: useSearchParams, useRoute.',
+  },
+
+  'router/useTransition': {
+    signature: 'useTransition(): { isTransitioning: () => boolean }',
+    example: `const { isTransitioning } = useTransition()
+
+<Show when={isTransitioning()}>
+  <ProgressBar />
+</Show>`,
+    notes: 'Reactive signal for route transition state. `isTransitioning()` is true during navigation (while guards run + loaders resolve), false when the new route is mounted. Useful for progress bars and global loading indicators. See also: useRouter, useRoute.',
+  },
+
+  'router/useMiddlewareData': {
+    signature: 'useMiddlewareData<T>(): T',
+    example: `// Middleware:
+const authMiddleware: RouteMiddleware = async (ctx) => {
+  ctx.data.user = await getUser(ctx.to)
+}
+
+// Component:
+const data = useMiddlewareData<{ user: User }>()
+// data.user is available`,
+    notes: 'Read data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are available to all downstream components via this hook. See also: createRouter, useLoaderData.',
   },
 
   'router/useLoaderData': {
@@ -468,7 +604,52 @@ const User = () => {
   const data = useLoaderData<UserData>()
   return <div>{data.name}</div>
 }`,
+    notes: `Access the data returned by the current route's \`loader\` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type. See also: useMiddlewareData, useRoute.`,
   },
+
+  'router/useSearchParams': {
+    signature: 'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]',
+    example: `const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
+
+// Read:
+search().page  // "1"
+
+// Write:
+setSearch({ page: "2" })`,
+    notes: 'Access and update URL search params as a reactive tuple. Returns `[get, set]` where `get()` reads the current params and `set()` updates them via `replaceState`. For typed params with auto-coercion, prefer `useTypedSearchParams`. See also: useTypedSearchParams, useRoute.',
+  },
+
+  'router/useBlocker': {
+    signature: 'useBlocker(shouldBlock: () => boolean): Blocker',
+    example: `const blocker = useBlocker(() => form.isDirty())
+
+<Show when={blocker.isBlocked()}>
+  <Dialog>
+    <p>Unsaved changes. Leave anyway?</p>
+    <button onClick={blocker.proceed}>Leave</button>
+    <button onClick={blocker.reset}>Stay</button>
+  </Dialog>
+</Show>`,
+    notes: `Block navigation when a condition is true (e.g., unsaved form changes). Returns a \`Blocker\` object with \`proceed()\` and \`reset()\` methods. Also hooks into the browser's \`beforeunload\` event to warn on tab close. Uses a shared ref-counted listener for \`beforeunload\` — N blockers share one event handler. See also: useRouter.`,
+  },
+
+  'router/onBeforeRouteLeave': {
+    signature: 'onBeforeRouteLeave(guard: NavigationGuard): void',
+    example: `onBeforeRouteLeave((to, from) => {
+  if (hasUnsavedChanges()) return false  // cancel navigation
+})`,
+    notes: 'Register a per-component navigation guard that fires when leaving the current route. Return `false` to cancel, a string path to redirect, or `undefined` to allow. Must be called during component setup. See also: onBeforeRouteUpdate, useBlocker.',
+  },
+
+  'router/onBeforeRouteUpdate': {
+    signature: 'onBeforeRouteUpdate(guard: NavigationGuard): void',
+    example: `onBeforeRouteUpdate((to, from) => {
+  if (to.params.id === from.params.id) return  // no change
+  // reload data for new ID...
+})`,
+    notes: 'Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave`. See also: onBeforeRouteLeave, useRoute.',
+  },
+  // <gen-docs:api-reference:end @pyreon/router>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/head
@@ -537,6 +718,8 @@ export default createHandler({
   // @pyreon/runtime-dom
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/runtime-dom>
+
   'runtime-dom/mount': {
     signature: 'mount(root: VNodeChild, container: Element): () => void',
     example: `import { mount } from "@pyreon/runtime-dom"
@@ -545,20 +728,31 @@ const dispose = mount(<App />, document.getElementById("app")!)
 
 // To unmount:
 dispose()`,
-    mistakes: `- \`createRoot(container).render(<App />)\` → Use \`mount(<App />, container)\`
-- Container must not be null/undefined`,
+    notes: 'Mount a VNode tree into a container element. Clears the container first, sets up event delegation, then mounts the given child. Returns an `unmount` function that removes everything and disposes all effects. In dev mode, throws if `container` is null/undefined with an actionable error message. See also: hydrateRoot, render.',
+    mistakes: `- \`createRoot(container).render(<App />)\` — Pyreon uses a single function call: \`mount(<App />, container)\`
+- \`mount(<App />, document.getElementById("app"))\` without \`!\` — getElementById returns \`Element | null\`. The runtime throws in dev if null, but TypeScript needs the assertion
+- \`mount(<App />, document.body)\` — mounting directly to body is discouraged; use a dedicated container element
+- Forgetting to call the returned unmount function — leaks event listeners and effects. Store and call it on cleanup`,
+  },
+
+  'runtime-dom/render': {
+    signature: 'render(root: VNodeChild, container: Element): () => void',
+    example: `import { render } from "@pyreon/runtime-dom"
+render(<App />, document.getElementById("app")!)`,
+    notes: 'Alias for `mount`. Provided for API familiarity — both names point to the same function. See also: mount.',
   },
 
   'runtime-dom/hydrateRoot': {
     signature: 'hydrateRoot(root: VNodeChild, container: Element): () => void',
     example: `import { hydrateRoot } from "@pyreon/runtime-dom"
 
-// Hydrate server-rendered HTML:
+// Hydrate SSR-rendered HTML:
 hydrateRoot(<App />, document.getElementById("app")!)`,
+    notes: 'Hydrate server-rendered HTML. Walks the existing DOM and attaches reactive bindings without recreating elements. Expects the DOM to match the VNode tree structure — mismatches emit dev-mode warnings. Returns an unmount function. See also: mount, @pyreon/runtime-server.',
   },
 
   'runtime-dom/Transition': {
-    signature: '<Transition name={name} mode={mode}>{children}</Transition>',
+    signature: '<Transition name={name} mode={mode} onEnter={fn} onLeave={fn}>{children}</Transition>',
     example: `<Transition name="fade" mode="out-in">
   <Show when={visible()}>
     <div>Content</div>
@@ -569,7 +763,63 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
+    notes: 'CSS-based enter/leave animation wrapper. Applies `{name}-enter-from`, `{name}-enter-active`, `{name}-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `mode` controls sequencing: `"out-in"` waits for leave to complete before entering, `"in-out"` enters first. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. See also: TransitionGroup, @pyreon/kinetic.',
+    mistakes: `- Missing CSS classes — \`<Transition name="fade">\` does nothing without \`.fade-enter-active\` / \`.fade-leave-active\` CSS
+- Wrapping multiple root elements — Transition expects a single child (or null). Multiple children cause undefined behavior
+- Using \`mode="in-out"\` when you want sequential — \`"out-in"\` is almost always what you want (old leaves, then new enters)`,
   },
+
+  'runtime-dom/TransitionGroup': {
+    signature: '<TransitionGroup name={name} tag={tag}>{children}</TransitionGroup>',
+    example: `<TransitionGroup name="list" tag="ul">
+  <For each={items()} by={i => i.id}>
+    {item => <li>{item.name}</li>}
+  </For>
+</TransitionGroup>
+
+/* CSS:
+.list-enter-active, .list-leave-active { transition: all 0.3s }
+.list-enter-from, .list-leave-to { opacity: 0; transform: translateY(10px) }
+.list-move { transition: transform 0.3s }
+*/`,
+    notes: 'Animate list item additions and removals with CSS transitions. Each item gets enter/leave classes on mount/unmount. The `tag` prop controls the wrapper element (defaults to a fragment). Works with `<For>` for reactive lists. Also applies `-move` classes for FLIP-animated reordering. See also: Transition, For.',
+  },
+
+  'runtime-dom/KeepAlive': {
+    signature: '<KeepAlive include={pattern} exclude={pattern} max={number}>{children}</KeepAlive>',
+    example: `const tab = signal<"a" | "b">("a")
+
+<KeepAlive>
+  <Show when={tab() === "a"}><ExpensiveFormA /></Show>
+  <Show when={tab() === "b"}><ExpensiveFormB /></Show>
+</KeepAlive>`,
+    notes: 'Cache component instances across mount/unmount cycles so their state (signals, scroll position, form inputs) is preserved when they are toggled out and back in. `include`/`exclude` filter by component name. `max` limits cache size (LRU eviction). Useful for tab panels and multi-step forms. See also: Transition, Show.',
+  },
+
+  'runtime-dom/_tpl': {
+    signature: '_tpl(html: string): () => DocumentFragment',
+    example: `// Compiler output (not hand-written):
+const _$t0 = _tpl("<div class=\"container\"><span></span></div>")`,
+    notes: 'Compiler-internal: create a template factory from an HTML string. First call parses the HTML into a `<template>` element; subsequent calls use `cloneNode(true)` for zero-parse instantiation. Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+  },
+
+  'runtime-dom/_bindText': {
+    signature: '_bindText(fn: () => string, node: Text): void',
+    example: `// Compiler output for <div>{count()}</div>:
+const _$t = _tpl("<div> </div>")
+const _$n = _$t()
+_bindText(() => count(), _$n.firstChild)`,
+    notes: 'Compiler-internal: bind a reactive expression to a text node via `TextNode.data` assignment. Creates a `renderEffect` that re-runs when tracked signals change. Each text node gets its own independent binding for fine-grained reactivity. See also: _tpl, _bindDirect.',
+  },
+
+  'runtime-dom/sanitizeHtml': {
+    signature: 'sanitizeHtml(html: string): string',
+    example: `import { setSanitizer, sanitizeHtml } from "@pyreon/runtime-dom"
+setSanitizer(DOMPurify.sanitize)
+const clean = sanitizeHtml(userInput)`,
+    notes: 'Sanitize an HTML string using the registered sanitizer (set via `setSanitizer()`). Falls back to the identity function if no sanitizer is registered. Used by the runtime when setting `innerHTML` on elements. See also: setSanitizer.',
+  },
+  // <gen-docs:api-reference:end @pyreon/runtime-dom>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/store
@@ -1696,58 +1946,6 @@ filters.sort()   // "name"
 filters.set({ page: 2, sort: 'date' })`,
     notes:
       'Auto type coercion (numbers, booleans, arrays). Uses replaceState (no history spam). Configurable debounce. SSR-safe — reads request URL on server.',
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // @pyreon/router — useIsActive
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  'router/useIsActive': {
-    signature: 'useIsActive(path: string, exact?: boolean): () => boolean',
-    example: `import { useIsActive } from '@pyreon/router'
-
-const isHome = useIsActive('/')
-const isAdmin = useIsActive('/admin')          // prefix match
-const isExactAdmin = useIsActive('/admin', true)  // exact only
-
-// Reactive — updates when route changes:
-<a class={{ active: isAdmin() }} href="/admin">Admin</a>`,
-    notes:
-      'Returns a reactive boolean. Segment-aware prefix matching: /admin matches /admin/users but not /admin-panel. Pass exact=true for exact-only matching.',
-  },
-
-  'router/useTypedSearchParams': {
-    signature:
-      "useTypedSearchParams<T>(schema: T): TypedSearchParams<T>",
-    example: `import { useTypedSearchParams } from '@pyreon/router'
-
-const params = useTypedSearchParams({ page: 'number', q: 'string', active: 'boolean' })
-params.page()    // number (auto-coerced)
-params.q()       // string
-params.set({ page: 2 })  // updates URL`,
-    notes:
-      'Type-safe search params with auto-coercion from URL strings. Supports "string", "number", and "boolean" types.',
-  },
-
-  'router/useTransition': {
-    signature: 'useTransition(): { isTransitioning: () => boolean }',
-    example: `import { useTransition } from '@pyreon/router'
-
-const { isTransitioning } = useTransition()
-// true during navigation (guards + loaders), false when mounted`,
-    notes:
-      'Reactive signal for route transition state. Useful for progress bars and loading indicators.',
-  },
-
-  'router/useMiddlewareData': {
-    signature: 'useMiddlewareData<T>(): T',
-    example: `import { useMiddlewareData } from '@pyreon/router'
-
-// After middleware sets ctx.data.user:
-const data = useMiddlewareData<{ user: User }>()
-// data.user is available in the component`,
-    notes:
-      'Reads data set by RouteMiddleware in the middleware chain. Middleware sets ctx.data properties, components read them.',
   },
 
   'storybook/renderToCanvas': {
