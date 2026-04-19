@@ -91,13 +91,15 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
   function connect(): void {
     if (typeof WebSocket === 'undefined') return
     if (ws) {
+      // Close BEFORE nulling handlers — a queued message arriving between
+      // null-assignment and close() would fire a null handler and crash.
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
       ws.onerror = null
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close()
-      }
     }
 
     if (!isEnabled()) {
@@ -176,13 +178,13 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
       reconnectTimer = null
     }
     if (ws) {
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        ws.close()
+      }
       ws.onopen = null
       ws.onmessage = null
       ws.onclose = null
       ws.onerror = null
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close()
-      }
       ws = null
     }
     status.set('disconnected')
@@ -194,13 +196,14 @@ export function useSubscription(options: UseSubscriptionOptions): UseSubscriptio
     connect()
   }
 
-  // Track reactive URL and enabled state
+  // Track reactive URL and enabled state — reconnect when either changes.
+  // Respect intentionalClose: if user explicitly called close(), don't
+  // auto-reconnect just because a dependency signal changed.
   effect(() => {
-    // Read reactive values to subscribe to changes
     if (typeof options.url === 'function') options.url()
     if (typeof options.enabled === 'function') options.enabled()
 
-    intentionalClose = false
+    if (intentionalClose) return
     reconnectAttempts = 0
     connect()
   })

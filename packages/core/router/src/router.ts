@@ -144,6 +144,31 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
  * })
  * // later: blocker.remove()
  */
+// Shared beforeunload handler — single listener for all active blockers.
+// Attached when the first blocker registers, detached when the last one is
+// removed. Avoids listener accumulation from multiple useBlocker() calls.
+let _beforeUnloadRefCount = 0
+const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+  e.preventDefault()
+}
+
+function retainBeforeUnload(): void {
+  if (!_isBrowser) return
+  if (_beforeUnloadRefCount === 0) {
+    window.addEventListener('beforeunload', _beforeUnloadHandler)
+  }
+  _beforeUnloadRefCount++
+}
+
+function releaseBeforeUnload(): void {
+  if (!_isBrowser) return
+  _beforeUnloadRefCount--
+  if (_beforeUnloadRefCount <= 0) {
+    _beforeUnloadRefCount = 0
+    window.removeEventListener('beforeunload', _beforeUnloadHandler)
+  }
+}
+
 export function useBlocker(fn: BlockerFn): Blocker {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
@@ -151,22 +176,11 @@ export function useBlocker(fn: BlockerFn): Blocker {
       '[Pyreon] No router installed. Wrap your app in <RouterProvider router={router}>.',
     )
   router._blockers.add(fn)
-
-  // Warn before tab/window close while this blocker is registered
-  const beforeUnloadHandler = _isBrowser
-    ? (e: BeforeUnloadEvent) => {
-        e.preventDefault()
-      }
-    : null
-  if (beforeUnloadHandler) {
-    window.addEventListener('beforeunload', beforeUnloadHandler)
-  }
+  retainBeforeUnload()
 
   const remove = () => {
     router._blockers.delete(fn)
-    if (beforeUnloadHandler) {
-      window.removeEventListener('beforeunload', beforeUnloadHandler)
-    }
+    releaseBeforeUnload()
   }
 
   // Auto-remove when the component that called useBlocker unmounts
@@ -949,11 +963,15 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
       if (_hashchangeHandler) window.removeEventListener('hashchange', _hashchangeHandler)
       guards.length = 0
       afterHooks.length = 0
+      // Release beforeunload for any remaining blockers
+      for (let i = router._blockers.size; i > 0; i--) releaseBeforeUnload()
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()
       router._abortController?.abort()
       router._abortController = null
+      // Clear global ref so stale router doesn't survive in SSR or re-creation
+      if (_activeRouter === router) _activeRouter = null
     },
 
     _resolve: (rawPath: string) => resolveRoute(rawPath, routes),

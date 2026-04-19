@@ -24,6 +24,9 @@
  * AsyncLocalStorage-backed provider so each request gets isolated store state.
  */
 
+// @ts-ignore — import.meta.env.DEV is Vite/Rolldown literal-replaced at build time
+const __DEV__: boolean = import.meta.env?.DEV === true
+
 export type { Signal } from '@pyreon/reactivity'
 export { batch, computed, effect, signal } from '@pyreon/reactivity'
 
@@ -330,12 +333,16 @@ export function defineStore<T extends Record<string, unknown>>(
       },
     }
 
-    // Run plugins — errors in one plugin should not break store creation
+    // Run plugins — errors in one plugin should not break store creation,
+    // but they must be visible in dev mode so developers can diagnose.
     for (const plugin of _plugins) {
       try {
         plugin(api as StoreApi<Record<string, unknown>>)
-      } catch (_err) {
-        // Plugin errors should not break store creation
+      } catch (err) {
+        if (__DEV__) {
+          // oxlint-disable-next-line no-console
+          console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+        }
       }
     }
 
