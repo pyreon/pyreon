@@ -137,6 +137,13 @@ describe('api-reference', () => {
       expect(entry?.mistakes?.split('\n').length).toBe(5)
     })
 
+    it('useMutation explains the plain-object rationale + 3 mistakes', () => {
+      const entry = API_REFERENCE['query/useMutation']
+      expect(entry?.notes).toContain('plain OBJECT')
+      expect(entry?.notes).toContain('imperative')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+    })
+
     it('useSubscription documents auto-reconnect + 3 WebSocket foot-guns', () => {
       const entry = API_REFERENCE['query/useSubscription']
       expect(entry?.notes).toContain('auto-reconnect')

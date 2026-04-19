@@ -162,5 +162,21 @@ describe('gen-docs — query snapshot', () => {
     expect(sub.mistakes?.split('\n').length).toBe(3)
     expect(sub.notes).toContain('auto-reconnect')
     expect(sub.notes).toContain('QueryClient')
+
+    // useMutation explains WHY options is a plain object
+    const mut = record['query/useMutation']!
+    expect(mut.mistakes?.split('\n').length).toBe(3)
+    expect(mut.notes).toContain('plain OBJECT')
+    expect(mut.notes).toContain('imperative')
+
+    // useSuspenseInfiniteQuery carries boundary-requirement mistakes
+    const suspInf = record['query/useSuspenseInfiniteQuery']!
+    expect(suspInf.mistakes?.split('\n').length).toBe(2)
+    expect(suspInf.mistakes).toContain('QuerySuspense')
+
+    // useQueries warns about static arrays
+    const queries = record['query/useQueries']!
+    expect(queries.mistakes?.split('\n').length).toBe(2)
+    expect(queries.mistakes).toContain('static array')
   })
 })
