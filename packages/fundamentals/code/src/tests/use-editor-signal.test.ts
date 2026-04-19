@@ -23,12 +23,6 @@ const PARSE = (text: string): TestData | null => {
 
 describe('useEditorSignal', () => {
   it('exports the hook without throwing', () => {
-    const data = signal<TestData>({ name: 'Test', value: 42 })
-    const editor = createEditor({
-      value: SERIALIZE(data()),
-    })
-
-    // Verify the hook is callable (will need lifecycle context in real component)
     expect(typeof useEditorSignal).toBe('function')
   })
 
