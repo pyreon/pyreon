@@ -109,7 +109,7 @@ form.setErrors({ email: 'Already registered' })`,
       signature:
         '<TValues extends Record<string, unknown>>(options: UseFormOptions<TValues>) => FormState<TValues>',
       summary:
-        'Create a signal-based form. `initialValues` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (`useField` field name, `useWatch` keys, validator signatures) are fully typed without annotation. Returns `FormState<TValues>` with per-field signals, form-level signals (`isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`), and handlers (`handleSubmit`, `reset`, `validate`).',
+        'Create a signal-based form. `initialValues` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (`useField` field name, `useWatch` keys, validator signatures) are fully typed without annotation. Returns `FormState<TValues>` with per-field signals, form-level signals (`isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `submitError`), and handlers (`handleSubmit`, `reset`, `validate`). `validateOn` defaults to `"blur"` (not `"change"`) so users aren\'t scolded mid-keystroke; optional `schema` integrates with `@pyreon/validation` adapters (`zodSchema`, `valibotSchema`, `arktypeSchema`) for whole-form validation after per-field validators run.',
       example: `const form = useForm({
   initialValues: { email: '', password: '' },
   validators: {
@@ -123,8 +123,11 @@ form.setErrors({ email: 'Already registered' })`,
 // h('input', form.register('email'))
 // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })`,
       mistakes: [
-        'Mutating initialValues after creation — it is read once at setup, use setFieldValue for updates',
-        'Reading form.fields[name].value as a plain value — it is Signal<T>, call it',
+        'Mutating `initialValues` after creation — it is read once at setup; use `setFieldValue` for programmatic updates',
+        'Reading `form.fields[name].value` as a plain value — it is `Signal<T>`, call it: `form.fields.email.value()`',
+        'Passing `validateOn: "change"` without `debounceMs` on async validators — fires a network request on every keystroke',
+        'Calling `form.handleSubmit()` without attaching it as a form `onSubmit` handler — it calls `preventDefault()` so it must receive the form event, or be called with no argument for programmatic submit',
+        'Forgetting that `schema` runs AFTER per-field `validators` — errors from both sources merge; if a field validator already set an error, the schema can override it',
       ],
       seeAlso: ['useField', 'FormProvider', 'useFormState'],
     },
@@ -134,7 +137,11 @@ form.setErrors({ email: 'Already registered' })`,
       signature:
         '<TValues, K extends keyof TValues & string>(form: FormState<TValues>, name: K) => UseFieldResult<TValues[K]>',
       summary:
-        'Extract a single field for isolated components — avoids passing the whole form. Returns all `FieldState` signals plus two computeds: `hasError` (true when an error exists) and `showError` (true when touched AND errored — the typical UI condition).',
+        'Extract a single field\'s state and helpers from a form instance — avoids passing the entire `FormState` to leaf components. Returns all `FieldState` signals (`value`, `error`, `touched`, `dirty`) plus two convenience computeds: `hasError` (true when an error string exists) and `showError` (true when touched AND errored — the typical UI condition for gating error display). Also exposes `register(opts?)` to bind an `<input>` element with a single spread.',
+      mistakes: [
+        'Destructuring `const { value } = useField(form, "email")` and calling `value()` — works, but the getter evaluates to the Signal itself; storing `value()` at setup captures the initial value and defeats reactivity',
+        'Forgetting `showError` and reimplementing `touched() && hasError()` in every template — `showError` is a `Computed<boolean>`, use it directly',
+      ],
       example: `function EmailField({ form }: { form: FormState<{ email: string }> }) {
   const field = useField(form, 'email')
   return (
@@ -175,7 +182,10 @@ tags.remove(0)
       signature:
         '(form, name) => Signal<TValues[K]> | (form, names[]) => Signal<T>[] | (form) => Computed<TValues>',
       summary:
-        'Typed overloads for reactively watching form field values. Single-field form returns `Signal<T>` (fast path — same signal, no wrapper), multi-field returns a tuple of signals, no-args returns a `Computed<TValues>` over the whole values object. Prefer the narrowest form — watching everything re-runs your effect when any field changes.',
+        'Typed overloads for reactively watching form field values. Single-field form returns `Signal<T>` (fast path — same signal, no wrapper), multi-field returns a tuple of signals, no-args returns a `Computed<TValues>` over the whole values object. Prefer the narrowest form — watching everything re-runs your effect when ANY field changes.',
+      mistakes: [
+        'Using the all-fields overload (`useWatch(form)`) to derive a single computed — re-runs when any field changes, not just the one you care about. Use `useWatch(form, "email")` for single-field precision',
+      ],
       example: `const email = useWatch(form, 'email')            // Signal<string>
 const [first, last] = useWatch(form, ['firstName', 'lastName'])
 const everything = useWatch(form)                 // Computed<TValues>
@@ -190,7 +200,10 @@ effect(() => { preview.set(\`Hello \${email()}\`) })`,
       signature:
         '<TValues, T>(form: FormState<TValues>, selector?: (s: FormStateSummary) => T) => Computed<T>',
       summary:
-        'Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Passing a selector restricts the tracked subset — a button driven by `canSubmit` should not re-render just because `submitCount` changed.',
+        'Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Passing a selector restricts the tracked subset — a button driven by `canSubmit` should not re-render just because `submitCount` changed. Without a selector, the computed re-derives on ANY form-level state change.',
+      mistakes: [
+        'Omitting the selector and reading `useFormState(form)` as a whole — triggers on every field change, every validation, every submit count bump. Always pass a selector for UI-bound computeds',
+      ],
       example: `const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
 <button disabled={() => !canSubmit()}>Save</button>`,
       seeAlso: ['useForm', 'useWatch'],
@@ -200,7 +213,10 @@ effect(() => { preview.set(\`Hello \${email()}\`) })`,
       kind: 'component',
       signature: '<TValues>(props: { form: FormState<TValues>; children: VNodeChild }) => VNode',
       summary:
-        'Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. Every call to `useFormContext` inside the provider returns the same instance.',
+        'Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. Every call to `useFormContext` inside the provider tree returns the same `FormState` instance. Nest inside `PyreonUI` or any other provider — the form context is independent.',
+      mistakes: [
+        'Nesting `FormProvider` within itself expecting scoped forms — the inner provider shadows the outer; for multi-form pages, use separate providers at sibling level, not nested',
+      ],
       example: `<FormProvider form={form}>
   <PersonalInfoSection />
   <AddressSection />
@@ -216,7 +232,11 @@ const form = useFormContext<typeof values>()`,
       kind: 'hook',
       signature: '<TValues>() => FormState<TValues>',
       summary:
-        'Read the nearest `FormProvider` form from context. Throws at dev time if no provider is mounted. Pass the expected `TValues` generic so downstream typings stay end-to-end typed.',
+        'Read the nearest `FormProvider` form from context. Throws at dev time if no provider is mounted above the call site. Pass the expected `TValues` generic so downstream typings (`useField` field names, `useWatch` keys) stay end-to-end typed. Returns the same `FormState<TValues>` instance that was passed to `FormProvider`.',
+      mistakes: [
+        'Calling at module scope — hooks require an active component setup context; call inside a component body',
+        'Omitting the `<TValues>` generic — TypeScript infers `FormState<Record<string, unknown>>` and `useField` field names lose type narrowing',
+      ],
       example: `const form = useFormContext<{ email: string; password: string }>()
 const field = useField(form, 'email')`,
       seeAlso: ['FormProvider', 'useForm'],

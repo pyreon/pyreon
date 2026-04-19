@@ -126,6 +126,10 @@ useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client
 useEventListener(() => panelRef(), 'keydown', (e) => {
   if (e.key === 'Escape') setOpen(false)
 })`,
+      mistakes: [
+        'Using raw `addEventListener` instead of `useEventListener` — you lose automatic `onUnmount` cleanup',
+        'Passing a static `window` / `document` when the target might not exist on SSR — `useEventListener` handles SSR-safe registration internally, but the target must be resolvable at `onMount` time',
+      ],
       seeAlso: ['useClickOutside', 'useKeyboard'],
     },
     {
@@ -135,6 +139,9 @@ useEventListener(() => panelRef(), 'keydown', (e) => {
       summary:
         'Fire a callback when the user clicks outside the referenced element. Foundation for click-to-dismiss popovers, dropdowns, modals. Pair with `useFocusTrap` + `useScrollLock` for the full modal package.',
       example: `useClickOutside(() => panelRef(), () => setOpen(false))`,
+      mistakes: [
+        'Attaching to a ref that encompasses the entire viewport — every click anywhere except the ref itself triggers the handler; use a more specific ref (the popover panel, not the whole page)',
+      ],
       seeAlso: ['useFocusTrap', 'useScrollLock', 'useDialog'],
     },
     {
@@ -156,6 +163,10 @@ effect(() => console.log('Box is', size().width, 'x', size().height))`,
       example: `const isOpen = signal(false)
 useFocusTrap(() => modalRef(), () => isOpen())
 useScrollLock(() => isOpen())`,
+      mistakes: [
+        'Forgetting the second argument `active` — always pass a reactive boolean (`() => isOpen()`) so the trap deactivates when the modal closes; a static `true` traps focus forever',
+        'Using on an element that isn\'t rendered yet — the ref getter must return the element at the time `active` becomes true; pair with a `<Show>` or reactive accessor that mounts the element first',
+      ],
       seeAlso: ['useScrollLock', 'useDialog', 'useClickOutside'],
     },
     {
@@ -166,6 +177,9 @@ useScrollLock(() => isOpen())`,
         'Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Use `useMediaQuery` for one-off arbitrary queries.',
       example: `const bp = useBreakpoint()
 {() => bp().md ? <DesktopNav /> : <MobileNav />}`,
+      mistakes: [
+        'Using `useBreakpoint` for a one-off media query like `(prefers-contrast: more)` — `useBreakpoint` reads theme breakpoints only; use `useMediaQuery` for arbitrary media queries',
+      ],
       seeAlso: ['useMediaQuery', 'useThemeValue'],
     },
     {
@@ -177,6 +191,9 @@ useScrollLock(() => isOpen())`,
       example: `const search = signal('')
 const debouncedSearch = useDebouncedValue(search, 300)
 effect(() => fetchResults(debouncedSearch()))`,
+      mistakes: [
+        'Reading the debounced signal immediately after setting the source — it still holds the OLD value during the debounce window; effects downstream of the debounced signal are correct, but imperative reads in the same tick are stale',
+      ],
       seeAlso: ['useDebouncedCallback', 'useThrottledCallback'],
     },
     {
@@ -198,6 +215,9 @@ effect(() => fetchResults(debouncedSearch()))`,
       example: `const dialog = useDialog()
 <dialog ref={dialog.ref}>...</dialog>
 <button onClick={dialog.open}>Open</button>`,
+      mistakes: [
+        'Calling `dialog.open()` before the ref callback has fired — Pyreon components run once, so the `<dialog>` must be in the initial render (not behind a conditional `<Show>`); the ref callback fires synchronously during mount, and `dialog.open()` before that point has no element to call `showModal()` on',
+      ],
       seeAlso: ['useFocusTrap', 'useScrollLock'],
     },
     {
@@ -220,6 +240,10 @@ effect(() => fetchResults(debouncedSearch()))`,
       example: `const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
 <For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
 <div ref={sentinelRef}>{() => isLoading() && 'Loading…'}</div>`,
+      mistakes: [
+        'Placing the sentinel inside a container with `overflow: hidden` and no scroll — IntersectionObserver never fires because the sentinel is always clipped; the sentinel must be inside the scrollable container',
+        'Forgetting to pass `enabled: () => hasMore()` — the hook keeps calling `onLoadMore` even after the last page',
+      ],
       seeAlso: ['useIntersection'],
     },
     {

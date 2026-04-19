@@ -1,4 +1,8 @@
-import { renderLlmsFullSection, renderLlmsTxtLine } from '@pyreon/manifest'
+import {
+  renderApiReferenceEntries,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '@pyreon/manifest'
 import hooksManifest from '../manifest'
 
 // Snapshot of the exact rendered llms.txt line + llms-full.txt section
@@ -98,5 +102,26 @@ describe('gen-docs — hooks snapshot', () => {
       > **\`useBreakpoint\` reads the theme, \`useMediaQuery\` is raw**: \`useBreakpoint()\` reads \`theme.breakpoints\` so swapping themes (or unit systems) Just Works — use it for layout decisions tied to the design system. \`useMediaQuery("(max-width: 640px)")\` is a raw media-query escape hatch — use it for one-off queries that don't correspond to a theme breakpoint (\`(prefers-contrast: more)\`, \`(orientation: landscape)\`, etc.).
       "
     `)
+  })
+
+  it('renders @pyreon/hooks to MCP api-reference entries — one per api[] item', () => {
+    const record = renderApiReferenceEntries(hooksManifest)
+    expect(Object.keys(record).length).toBe(14)
+    expect(Object.keys(record)).toContain('hooks/useControllableState')
+    expect(Object.keys(record)).toContain('hooks/useEventListener')
+    expect(Object.keys(record)).toContain('hooks/useFocusTrap')
+    expect(Object.keys(record)).toContain('hooks/useInfiniteScroll')
+    expect(Object.keys(record)).toContain('hooks/useIsomorphicLayoutEffect')
+
+    const ctrl = record['hooks/useControllableState']!
+    expect(ctrl.mistakes?.split('\n').length).toBe(2)
+    expect(ctrl.notes).toContain('controlled/uncontrolled')
+
+    const focusTrap = record['hooks/useFocusTrap']!
+    expect(focusTrap.mistakes?.split('\n').length).toBe(2)
+
+    const infinite = record['hooks/useInfiniteScroll']!
+    expect(infinite.mistakes?.split('\n').length).toBe(2)
+    expect(infinite.notes).toContain('IntersectionObserver')
   })
 })
