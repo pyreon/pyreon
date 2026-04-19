@@ -1,5 +1,5 @@
 import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { ValidationIssue } from './types'
+import type { TypedSchemaAdapter, ValidationIssue } from './types'
 import { issuesToRecord } from './utils'
 
 /**
@@ -33,6 +33,7 @@ function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
 
 /**
  * Create a form-level schema validator from an ArkType schema.
+ * Supports type inference for compile-time field name validation.
  *
  * Accepts any callable ArkType `Type` instance. The schema is duck-typed —
  * no ArkType import required.
@@ -48,14 +49,18 @@ function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
  *
  * const form = useForm({
  *   initialValues: { email: '', password: '' },
- *   schema: arktypeSchema(schema),
+ *   schema: arktypeSchema(schema),  // ✅ Types inferred
  *   onSubmit: (values) => { ... },
  * })
+ *
+ * // Field names are type-safe:
+ * form.register('email')    // ✅ OK
+ * form.register('invalid')  // ❌ Type error!
  */
 export function arktypeSchema<TValues extends Record<string, unknown>>(
   schema: ArkTypeCallable,
-): SchemaValidateFn<TValues> {
-  return (values: TValues) => {
+): TypedSchemaAdapter<TValues> {
+  const validator: SchemaValidateFn<TValues> = (values: TValues) => {
     try {
       const result = schema(values)
       if (!isArkErrors(result)) return {} as Partial<Record<keyof TValues, ValidationError>>
@@ -65,6 +70,11 @@ export function arktypeSchema<TValues extends Record<string, unknown>>(
         '': err instanceof Error ? err.message : String(err),
       } as Partial<Record<keyof TValues, ValidationError>>
     }
+  }
+
+  return {
+    _infer: undefined as any,
+    validator,
   }
 }
 

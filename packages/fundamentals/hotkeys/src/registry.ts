@@ -8,6 +8,7 @@ import type { HotkeyEntry, HotkeyOptions } from './types'
 const entries: HotkeyEntry[] = []
 const activeScopes = signal<Set<string>>(new Set(['global']))
 let listenerAttached = false
+let keydownHandler: ((event: KeyboardEvent) => void) | null = null
 
 // ─── Input detection ─────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ function attachListener(): void {
   if (typeof window === 'undefined') return
   listenerAttached = true
 
-  window.addEventListener('keydown', (event) => {
+  keydownHandler = (event) => {
     const scopes = activeScopes.peek()
 
     for (const entry of entries) {
@@ -53,7 +54,16 @@ function attachListener(): void {
       if (entry.options.stopPropagation) event.stopPropagation()
       entry.handler(event)
     }
-  })
+  }
+
+  window.addEventListener('keydown', keydownHandler)
+}
+
+function detachListener(): void {
+  if (!listenerAttached || !keydownHandler) return
+  window.removeEventListener('keydown', keydownHandler)
+  listenerAttached = false
+  keydownHandler = null
 }
 
 // ─── Registration ────────────────────────────────────────────────────────────
@@ -93,6 +103,11 @@ export function registerHotkey(
   return () => {
     const idx = entries.indexOf(entry)
     if (idx !== -1) entries.splice(idx, 1)
+
+    // Detach listener if no more entries
+    if (entries.length === 0) {
+      detachListener()
+    }
   }
 }
 
@@ -143,9 +158,10 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
   }))
 }
 
-// ─── Reset (for testing) ────────────────────────────────────────────────────
+// ─── Reset (for testing) ────────────────────────────────────────────────
 
 export function _resetHotkeys(): void {
   entries.length = 0
   activeScopes.set(new Set(['global']))
+  detachListener()
 }

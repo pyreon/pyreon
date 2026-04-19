@@ -546,6 +546,82 @@ describe('debounced validation — additional', () => {
       vi.useRealTimers()
     }
   })
+
+  it('unmount aborts in-flight validators and clears debounce timers', async () => {
+    vi.useFakeTimers()
+    try {
+      let callCount = 0
+      let receivedSignal: AbortSignal | undefined
+
+      const { result: form, unmount } = mountWith(() =>
+        useForm({
+          initialValues: { email: '' },
+          validators: {
+            email: async (v, _allValues, signal) => {
+              receivedSignal = signal
+              callCount++
+              // Simulate async work
+              await new Promise((resolve) => setTimeout(resolve, 100))
+              return undefined
+            },
+          },
+          validateOn: 'change',
+          debounceMs: 40,
+          onSubmit: () => {
+            /* noop */
+          },
+        }),
+      )
+
+      form.fields.email.setValue('test@example.com')
+
+      // Advance past debounce so validation starts
+      await vi.advanceTimersByTimeAsync(50)
+
+      // Validator should have been called once
+      expect(callCount).toBe(1)
+      expect(receivedSignal).toBeInstanceOf(AbortSignal)
+
+      // Unmount while async validator is still running
+      unmount()
+
+      // After unmount, signal should be aborted
+      expect(receivedSignal?.aborted).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('abort signal is passed to validators during validate() call', async () => {
+    const signals: Array<AbortSignal | undefined> = []
+
+    const { result: form, unmount } = mountWith(() =>
+      useForm({
+        initialValues: { name: '' },
+        validators: {
+          name: async (_v, _allValues, signal) => {
+            signals.push(signal)
+            return undefined
+          },
+        },
+        onSubmit: () => {
+          /* noop */
+        },
+      }),
+    )
+
+    form.fields.name.setValue('test')
+    await form.validate()
+
+    expect(signals.length).toBeGreaterThan(0)
+    expect(signals[0]).toBeInstanceOf(AbortSignal)
+    expect(signals[0]?.aborted).toBe(false)
+
+    unmount()
+
+    // After unmount, signal should be aborted
+    expect(signals[0]?.aborted).toBe(true)
+  })
 })
 
 // ─── FormProvider with direct VNode children ─────────────────────────────────

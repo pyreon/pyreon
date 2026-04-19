@@ -94,7 +94,7 @@ function createValidator<TValues extends Record<string, unknown>>(
     'safeParseAsync' in schema &&
     typeof (schema as Record<string, unknown>).safeParseAsync === 'function'
   ) {
-    return zodSchema(schema as Parameters<typeof zodSchema>[0]) as SchemaValidateFn<TValues>
+    return zodSchema(schema as Parameters<typeof zodSchema>[0]).validator as SchemaValidateFn<TValues>
   }
 
   return undefined
