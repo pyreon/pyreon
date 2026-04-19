@@ -220,7 +220,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `validateOn: 'blur' | 'change' | 'submit'` — **default is `'blur'`**, not `'change'`, so users aren't scolded mid-keystroke. `showError` (from `useField`) always gates on `touched` so even `validateOn: 'change'` forms don't flash errors until first blur
 - Async validators are version-tracked — stale results discarded if user types faster than the validator resolves. Combine with `debounceMs` to cut in-flight request count. `isValidating` signal true while any field has a pending async validation
 - Server errors: `form.setFieldError(name, msg)` / `form.setErrors({ email: 'Taken' })` — does NOT touch `touched` state, so errors display immediately regardless of blur status
-- Manifest-driven docs (T2.1): `packages/fundamentals/form/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
+- Manifest-driven docs (T2.1 + T2.5.1): `packages/fundamentals/form/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section + MCP `api-reference.ts` region. 7 MCP entries generated from the manifest's enriched `api[]` (was 2 hand-written). Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### @pyreon/i18n
 
@@ -444,7 +444,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - **`useControllableState({ value, defaultValue, onChange })`** is the canonical controlled/uncontrolled pattern — every `@pyreon/ui-primitives` component uses it. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed
 - **Never reach for `addEventListener` / `removeEventListener` directly in primitives** — use `useEventListener`. Same for observers (`useIntersection` / `useElementSize`) and timers (`useInterval` / `useTimeout`). The cleanup is the hook's job
 - **`useBreakpoint` reads the theme**, `useMediaQuery` is raw — use the former for layout decisions tied to the design system, the latter for one-off queries (`(prefers-contrast: more)`, `(orientation: landscape)`, etc.)
-- Manifest-driven docs (T2.1): `packages/fundamentals/hooks/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
+- Manifest-driven docs (T2.1 + T2.5.1): `packages/fundamentals/hooks/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section + MCP `api-reference.ts` region. 14 MCP entries generated from the manifest's enriched `api[]` (was 0 hand-written — hooks had no MCP entries before). Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### Devtools
 

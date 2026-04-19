@@ -594,28 +594,107 @@ store.increment()  // reactive update`,
   // @pyreon/form
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/form>
+
   'form/useForm': {
-    signature:
-      'useForm<T>(options: { initialValues: T, onSubmit: (values: T) => void | Promise<void>, schema?, validateOn?, debounceMs? }): FormInstance<T>',
+    signature: '<TValues extends Record<string, unknown>>(options: UseFormOptions<TValues>) => FormState<TValues>',
     example: `const form = useForm({
-  initialValues: { name: '', email: '' },
-  onSubmit: async (values) => await api.save(values),
-  validateOn: 'blur',
+  initialValues: { email: '', password: '' },
+  validators: {
+    email: (v) => (!v ? 'Required' : undefined),
+    password: (v, all) => (v.length < 8 ? 'Too short' : undefined),
+  },
+  onSubmit: async (values) => { await login(values) },
 })
 
-form.handleSubmit()  // triggers validation + onSubmit
-form.reset()         // reset to initial values`,
-    notes:
-      'Signal-based form state. Use useField() for individual field binding, useFieldArray() for dynamic arrays.',
+// Bind inputs with register():
+// h('input', form.register('email'))
+// h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })`,
+    notes: `Create a signal-based form. \`initialValues\` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (\`useField\` field name, \`useWatch\` keys, validator signatures) are fully typed without annotation. Returns \`FormState<TValues>\` with per-field signals, form-level signals (\`isSubmitting\`, \`isValidating\`, \`isValid\`, \`isDirty\`, \`submitCount\`, \`submitError\`), and handlers (\`handleSubmit\`, \`reset\`, \`validate\`). \`validateOn\` defaults to \`"blur"\` (not \`"change"\`) so users aren't scolded mid-keystroke; optional \`schema\` integrates with \`@pyreon/validation\` adapters (\`zodSchema\`, \`valibotSchema\`, \`arktypeSchema\`) for whole-form validation after per-field validators run. See also: useField, FormProvider, useFormState.`,
+    mistakes: `- Mutating \`initialValues\` after creation — it is read once at setup; use \`setFieldValue\` for programmatic updates
+- Reading \`form.fields[name].value\` as a plain value — it is \`Signal<T>\`, call it: \`form.fields.email.value()\`
+- Passing \`validateOn: "change"\` without \`debounceMs\` on async validators — fires a network request on every keystroke
+- Calling \`form.handleSubmit()\` without attaching it as a form \`onSubmit\` handler — it calls \`preventDefault()\` so it must receive the form event, or be called with no argument for programmatic submit
+- Forgetting that \`schema\` runs AFTER per-field \`validators\` — errors from both sources merge; if a field validator already set an error, the schema can override it`,
   },
 
   'form/useField': {
-    signature: 'useField<T>(form: FormInstance<T>, name: keyof T): FieldInstance',
-    example: `const name = useField(form, 'name')
-
-<input {...name.register()} />
-// name.value(), name.error(), name.hasError(), name.showError()`,
+    signature: '<TValues, K extends keyof TValues & string>(form: FormState<TValues>, name: K) => UseFieldResult<TValues[K]>',
+    example: `function EmailField({ form }: { form: FormState<{ email: string }> }) {
+  const field = useField(form, 'email')
+  return (
+    <>
+      <input {...field.register()} />
+      {() => field.showError() && <span>{field.error()}</span>}
+    </>
+  )
+}`,
+    notes: `Extract a single field's state and helpers from a form instance — avoids passing the entire \`FormState\` to leaf components. Returns all \`FieldState\` signals (\`value\`, \`error\`, \`touched\`, \`dirty\`) plus two convenience computeds: \`hasError\` (true when an error string exists) and \`showError\` (true when touched AND errored — the typical UI condition for gating error display). Also exposes \`register(opts?)\` to bind an \`<input>\` element with a single spread. See also: useForm, useWatch.`,
+    mistakes: `- Destructuring \`const { value } = useField(form, "email")\` and calling \`value()\` — works, but the getter evaluates to the Signal itself; storing \`value()\` at setup captures the initial value and defeats reactivity
+- Forgetting \`showError\` and reimplementing \`touched() && hasError()\` in every template — \`showError\` is a \`Computed<boolean>\`, use it directly`,
   },
+
+  'form/useFieldArray': {
+    signature: '<T>(initial?: T[]) => UseFieldArrayResult<T>',
+    example: `const tags = useFieldArray<string>([])
+tags.append('typescript')
+tags.prepend('signals')
+tags.insert(1, 'reactive')
+tags.move(0, 2)
+tags.remove(0)
+
+// Keyed rendering — never drop the \`by={i => i.key}\`
+<For each={tags.items()} by={(i) => i.key}>
+  {(item) => <input value={item.value()} onInput={(e) => item.value.set(e.currentTarget.value)} />}
+</For>`,
+    notes: 'Manage a dynamic array of form fields with stable keys. Each item is `{ key: number, value: Signal<T> }` — use `item.key` inside `<For by={i => i.key}>` so reordering / inserts do not remount child components. Full mutation surface: `append`, `prepend`, `insert`, `remove`, `update`, `move`, `swap`, `replace`. See also: useForm.',
+    mistakes: `- Rendering with <For by={(_, i) => i}> — index-based keys lose identity on reorder, defeating the stable-key design
+- Calling tags.items() inside setup and storing the array — it is a Signal, read inside reactive scopes`,
+  },
+
+  'form/useWatch': {
+    signature: '(form, name) => Signal<TValues[K]> | (form, names[]) => Signal<T>[] | (form) => Computed<TValues>',
+    example: `const email = useWatch(form, 'email')            // Signal<string>
+const [first, last] = useWatch(form, ['firstName', 'lastName'])
+const everything = useWatch(form)                 // Computed<TValues>
+
+// Derive and sync: preview displays the email as the user types.
+effect(() => { preview.set(\`Hello \${email()}\`) })`,
+    notes: 'Typed overloads for reactively watching form field values. Single-field form returns `Signal<T>` (fast path — same signal, no wrapper), multi-field returns a tuple of signals, no-args returns a `Computed<TValues>` over the whole values object. Prefer the narrowest form — watching everything re-runs your effect when ANY field changes. See also: useFormState, useField.',
+    mistakes: '- Using the all-fields overload (`useWatch(form)`) to derive a single computed — re-runs when any field changes, not just the one you care about. Use `useWatch(form, "email")` for single-field precision',
+  },
+
+  'form/useFormState': {
+    signature: '<TValues, T>(form: FormState<TValues>, selector?: (s: FormStateSummary) => T) => Computed<T>',
+    example: `const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.isDirty)
+<button disabled={() => !canSubmit()}>Save</button>`,
+    notes: 'Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). Passing a selector restricts the tracked subset — a button driven by `canSubmit` should not re-render just because `submitCount` changed. Without a selector, the computed re-derives on ANY form-level state change. See also: useForm, useWatch.',
+    mistakes: '- Omitting the selector and reading `useFormState(form)` as a whole — triggers on every field change, every validation, every submit count bump. Always pass a selector for UI-bound computeds',
+  },
+
+  'form/FormProvider': {
+    signature: '<TValues>(props: { form: FormState<TValues>; children: VNodeChild }) => VNode',
+    example: `<FormProvider form={form}>
+  <PersonalInfoSection />
+  <AddressSection />
+  <SubmitButton />
+</FormProvider>
+
+// Inside any descendant:
+const form = useFormContext<typeof values>()`,
+    notes: 'Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. Every call to `useFormContext` inside the provider tree returns the same `FormState` instance. Nest inside `PyreonUI` or any other provider — the form context is independent. See also: useFormContext, useForm.',
+    mistakes: '- Nesting `FormProvider` within itself expecting scoped forms — the inner provider shadows the outer; for multi-form pages, use separate providers at sibling level, not nested',
+  },
+
+  'form/useFormContext': {
+    signature: '<TValues>() => FormState<TValues>',
+    example: `const form = useFormContext<{ email: string; password: string }>()
+const field = useField(form, 'email')`,
+    notes: 'Read the nearest `FormProvider` form from context. Throws at dev time if no provider is mounted above the call site. Pass the expected `TValues` generic so downstream typings (`useField` field names, `useWatch` keys) stay end-to-end typed. Returns the same `FormState<TValues>` instance that was passed to `FormProvider`. See also: FormProvider, useForm.',
+    mistakes: `- Calling at module scope — hooks require an active component setup context; call inside a component body
+- Omitting the \`<TValues>\` generic — TypeScript infers \`FormState<Record<string, unknown>>\` and \`useField\` field names lose type narrowing`,
+  },
+  // <gen-docs:api-reference:end @pyreon/form>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/query
@@ -825,6 +904,138 @@ hydrate(client, snapshot)`,
     notes: '`@pyreon/query` re-exports the framework-agnostic TanStack surface so consumers import every primitive from one entry: `QueryClient` / `QueryCache` / `MutationCache` (instance classes), `dehydrate` / `hydrate` (SSR serialization), `keepPreviousData` (placeholder helper), `hashKey` / `isCancelledError` / `CancelledError`, and the `defaultShouldDehydrate*` predicates. Types (`QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`) re-export alongside the runtime values. See also: QueryClientProvider, useQueryClient.',
   },
   // <gen-docs:api-reference:end @pyreon/query>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/hooks
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/hooks>
+
+  'hooks/useControllableState': {
+    signature: '<T>(opts: { value?: () => T | undefined; defaultValue: () => T; onChange?: (v: T) => void }) => [Signal<T>, (v: T) => void]',
+    example: `function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange?: (v: boolean) => void }) {
+  const [checked, setChecked] = useControllableState({
+    value: () => props.checked,
+    defaultValue: () => props.defaultChecked ?? false,
+    onChange: props.onChange,
+  })
+  return <button onClick={() => setChecked(!checked())}>{() => checked() ? 'on' : 'off'}</button>
+}`,
+    notes: 'Canonical controlled/uncontrolled state pattern. Returns a `[value, setValue]` tuple where the setter respects controlled mode (calls `onChange` only if controlled, mutates internal signal if uncontrolled). Used by every primitive in `@pyreon/ui-primitives`. Never reimplement the `isControlled + signal + getter` shape by hand. `value` and `defaultValue` are FUNCTIONS so signal reads track reactively — passing a plain value loses controlled/uncontrolled detection on prop changes. See also: useToggle, usePrevious.',
+    mistakes: `- Passing \`value: props.checked\` (not a function) — loses reactivity on prop changes
+- Mutating the returned signal directly with \`.set()\` instead of using the returned setter — bypasses the controlled-mode check`,
+  },
+
+  'hooks/useEventListener': {
+    signature: '(target: EventTarget | (() => EventTarget | null), event: string, handler: EventListener, options?: AddEventListenerOptions) => void',
+    example: `useEventListener(window, 'resize', () => layoutSig.set(measure()))
+useEventListener(() => panelRef(), 'keydown', (e) => {
+  if (e.key === 'Escape') setOpen(false)
+})`,
+    notes: `Register a DOM event listener with automatic cleanup on unmount. Use this instead of raw \`addEventListener\` in primitives — never \`addEventListener\` / \`removeEventListener\` directly in component code (the cleanup is the hook's whole job). \`target\` may be a getter so reactive refs (\`() => buttonRef()\`) re-bind when the underlying element changes. See also: useClickOutside, useKeyboard.`,
+    mistakes: `- Using raw \`addEventListener\` instead of \`useEventListener\` — you lose automatic \`onUnmount\` cleanup
+- Passing a static \`window\` / \`document\` when the target might not exist on SSR — \`useEventListener\` handles SSR-safe registration internally, but the target must be resolvable at \`onMount\` time`,
+  },
+
+  'hooks/useClickOutside': {
+    signature: '(ref: () => HTMLElement | null, handler: (e: MouseEvent) => void) => void',
+    example: 'useClickOutside(() => panelRef(), () => setOpen(false))',
+    notes: 'Fire a callback when the user clicks outside the referenced element. Foundation for click-to-dismiss popovers, dropdowns, modals. Pair with `useFocusTrap` + `useScrollLock` for the full modal package. See also: useFocusTrap, useScrollLock, useDialog.',
+    mistakes: '- Attaching to a ref that encompasses the entire viewport — every click anywhere except the ref itself triggers the handler; use a more specific ref (the popover panel, not the whole page)',
+  },
+
+  'hooks/useElementSize': {
+    signature: '(ref: () => HTMLElement | null) => Signal<{ width: number; height: number }>',
+    example: `const size = useElementSize(() => boxRef())
+effect(() => console.log('Box is', size().width, 'x', size().height))`,
+    notes: 'Reactive element size via `ResizeObserver`. Returns `Signal<{ width, height }>` that updates whenever the observed element resizes. SSR-safe (returns `{ width: 0, height: 0 }` until mount). See also: useWindowResize, useRootSize.',
+  },
+
+  'hooks/useFocusTrap': {
+    signature: '(ref: () => HTMLElement | null, active: () => boolean) => void',
+    example: `const isOpen = signal(false)
+useFocusTrap(() => modalRef(), () => isOpen())
+useScrollLock(() => isOpen())`,
+    notes: 'Trap Tab/Shift+Tab focus inside the referenced element while `active()` is true. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. Returns focus to the previously-focused element on deactivation. See also: useScrollLock, useDialog, useClickOutside.',
+    mistakes: `- Forgetting the second argument \`active\` — always pass a reactive boolean (\`() => isOpen()\`) so the trap deactivates when the modal closes; a static \`true\` traps focus forever
+- Using on an element that isn't rendered yet — the ref getter must return the element at the time \`active\` becomes true; pair with a \`<Show>\` or reactive accessor that mounts the element first`,
+  },
+
+  'hooks/useBreakpoint': {
+    signature: '() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>',
+    example: `const bp = useBreakpoint()
+{() => bp().md ? <DesktopNav /> : <MobileNav />}`,
+    notes: 'Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Use `useMediaQuery` for one-off arbitrary queries. See also: useMediaQuery, useThemeValue.',
+    mistakes: '- Using `useBreakpoint` for a one-off media query like `(prefers-contrast: more)` — `useBreakpoint` reads theme breakpoints only; use `useMediaQuery` for arbitrary media queries',
+  },
+
+  'hooks/useDebouncedValue': {
+    signature: '<T>(source: Signal<T> | (() => T), delayMs: number) => Signal<T>',
+    example: `const search = signal('')
+const debouncedSearch = useDebouncedValue(search, 300)
+effect(() => fetchResults(debouncedSearch()))`,
+    notes: `Returns a debounced signal that only updates after \`delayMs\` of source-signal idle. Use for search-as-you-type, filter inputs, anywhere downstream effects shouldn't fire on every keystroke. The PAIR — \`useDebouncedCallback\` — debounces a function call instead of a value. See also: useDebouncedCallback, useThrottledCallback.`,
+    mistakes: '- Reading the debounced signal immediately after setting the source — it still holds the OLD value during the debounce window; effects downstream of the debounced signal are correct, but imperative reads in the same tick are stale',
+  },
+
+  'hooks/useClipboard': {
+    signature: '(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }',
+    example: `const { copy, copied } = useClipboard()
+<button onClick={() => copy(token)}>{() => copied() ? 'Copied!' : 'Copy'}</button>`,
+    notes: '`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). Use the `copied` signal to flash a "Copied!" UI cue without manual timer management. See also: useDialog, useOnline.',
+  },
+
+  'hooks/useDialog': {
+    signature: '() => { ref: (el: HTMLDialogElement | null) => void; open: () => void; close: (returnValue?: string) => void; isOpen: Signal<boolean>; returnValue: Signal<string> }',
+    example: `const dialog = useDialog()
+<dialog ref={dialog.ref}>...</dialog>
+<button onClick={dialog.open}>Open</button>`,
+    notes: `Native \`<dialog>\` element wrapper with reactive \`isOpen\` / \`returnValue\` signals. Handles \`showModal()\` / \`close()\` plumbing and the \`cancel\`/\`close\` event wiring so consumers don't reimplement the boilerplate. See also: useFocusTrap, useScrollLock.`,
+    mistakes: '- Calling `dialog.open()` before the `<dialog>` element is mounted — `ref` must have received the element first; place the `<dialog>` in the initial render, not behind a conditional `<Show>`',
+  },
+
+  'hooks/useTimeAgo': {
+    signature: '(date: Date | (() => Date), opts?: UseTimeAgoOptions) => Signal<string>',
+    example: `const sent = useTimeAgo(message.sentAt)
+<span>{sent}</span>`,
+    notes: 'Reactive "5 minutes ago" / "in 2 hours" relative-time string. Auto-updates on a sensible interval (every minute under an hour, every hour under a day, etc.) so the UI stays accurate without manual scheduling. Cleans up the interval on unmount. See also: useInterval, useDebouncedValue.',
+  },
+
+  'hooks/useInfiniteScroll': {
+    signature: '(onLoadMore: () => void | Promise<void>, opts?: { rootMargin?: string; threshold?: number; enabled?: () => boolean }) => { sentinelRef: (el: HTMLElement | null) => void; isLoading: Signal<boolean> }',
+    example: `const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
+<For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
+<div ref={sentinelRef}>{() => isLoading() && 'Loading…'}</div>`,
+    notes: `\`IntersectionObserver\`-based infinite loading. Attach the returned \`sentinelRef\` to a node at the bottom of the list — when it scrolls into view, \`onLoadMore\` fires. \`isLoading\` blocks re-fires until the promise resolves. \`enabled\` accessor lets you stop observing once you've loaded the last page. See also: useIntersection.`,
+    mistakes: `- Placing the sentinel inside a container with \`overflow: hidden\` and no scroll — IntersectionObserver never fires because the sentinel is always clipped; the sentinel must be inside the scrollable container
+- Forgetting to pass \`enabled: () => hasMore()\` — the hook keeps calling \`onLoadMore\` even after the last page`,
+  },
+
+  'hooks/useMergedRef': {
+    signature: '<T>(...refs: (Ref<T> | RefCallback<T> | null | undefined)[]) => RefCallback<T>',
+    example: `const localRef = ref<HTMLDivElement>()
+const merged = useMergedRef(localRef, props.ref)
+<div ref={merged}>...</div>`,
+    notes: 'Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to the same element. Each provided ref (callback or object) receives the element on mount and `null` on unmount. See also: useEventListener.',
+  },
+
+  'hooks/useUpdateEffect': {
+    signature: '(fn: () => void | (() => void), deps: Signal<unknown>[]) => void',
+    example: `useUpdateEffect(() => api.save(value()), [value])
+// Doesn't fire on initial mount — only on subsequent value changes`,
+    notes: 'Like `effect` but skips the initial run — only fires when one of the tracked signals updates *after* mount. Use for "save on change but not on first render" patterns where the initial value is already persisted. See also: useIsomorphicLayoutEffect.',
+  },
+
+  'hooks/useIsomorphicLayoutEffect': {
+    signature: '(fn: () => void | (() => void)) => void',
+    example: `const ref = signal<HTMLDivElement | null>(null)
+useIsomorphicLayoutEffect(() => {
+  const el = ref()
+  if (el) widthSig.set(el.getBoundingClientRect().width)
+})`,
+    notes: 'Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. Use when you need to read DOM measurements before the next paint without triggering an SSR mismatch warning. See also: useUpdateEffect, useElementSize.',
+  },
+  // <gen-docs:api-reference:end @pyreon/hooks>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/permissions

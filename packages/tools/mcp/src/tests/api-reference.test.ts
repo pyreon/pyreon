@@ -181,4 +181,81 @@ describe('api-reference', () => {
       expect(entry?.mistakes).toContain('static array')
     })
   })
+
+  describe('@pyreon/form — manifest-driven region', () => {
+    const EXPECTED_FORM_KEYS = [
+      'form/useForm',
+      'form/useField',
+      'form/useFieldArray',
+      'form/useWatch',
+      'form/useFormState',
+      'form/FormProvider',
+      'form/useFormContext',
+    ]
+
+    it.each(EXPECTED_FORM_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('useForm carries 5 mistakes covering validateOn + schema ordering', () => {
+      const entry = API_REFERENCE['form/useForm']
+      expect(entry?.mistakes?.split('\n').length).toBe(5)
+      expect(entry?.notes).toContain('validateOn')
+    })
+
+    it('useFormContext warns about module-scope calls + generic omission', () => {
+      const entry = API_REFERENCE['form/useFormContext']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('module scope')
+    })
+  })
+
+  describe('@pyreon/hooks — manifest-driven region', () => {
+    const EXPECTED_HOOKS_KEYS = [
+      'hooks/useControllableState',
+      'hooks/useEventListener',
+      'hooks/useClickOutside',
+      'hooks/useElementSize',
+      'hooks/useFocusTrap',
+      'hooks/useBreakpoint',
+      'hooks/useDebouncedValue',
+      'hooks/useClipboard',
+      'hooks/useDialog',
+      'hooks/useTimeAgo',
+      'hooks/useInfiniteScroll',
+      'hooks/useMergedRef',
+      'hooks/useUpdateEffect',
+      'hooks/useIsomorphicLayoutEffect',
+    ]
+
+    it.each(EXPECTED_HOOKS_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('useControllableState documents the canonical pattern + 2 mistakes', () => {
+      const entry = API_REFERENCE['hooks/useControllableState']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.notes).toContain('controlled/uncontrolled')
+    })
+
+    it('useFocusTrap documents the active-signal requirement', () => {
+      const entry = API_REFERENCE['hooks/useFocusTrap']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('active')
+    })
+
+    it('useInfiniteScroll documents the sentinel placement + enabled guard', () => {
+      const entry = API_REFERENCE['hooks/useInfiniteScroll']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('overflow')
+    })
+  })
 })

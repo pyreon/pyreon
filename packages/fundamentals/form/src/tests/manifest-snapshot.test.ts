@@ -1,4 +1,8 @@
-import { renderLlmsFullSection, renderLlmsTxtLine } from '@pyreon/manifest'
+import {
+  renderApiReferenceEntries,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '@pyreon/manifest'
 import formManifest from '../manifest'
 
 // Snapshot of the exact rendered llms.txt line + llms-full.txt section
@@ -109,5 +113,28 @@ describe('gen-docs — form snapshot', () => {
       > **Server errors via \`setFieldError\` / \`setErrors\`**: After a failed submit, attach server-side errors with \`form.setFieldError(name, msg)\` or \`form.setErrors({ email: "Taken" })\`. These do NOT touch \`touched\` state, so errors display immediately regardless of blur status. \`clearErrors()\` wipes them on the next keystroke if \`validateOn: "change"\` is set, or on next submit otherwise.
       "
     `)
+  })
+
+  it('renders @pyreon/form to MCP api-reference entries — one per api[] item', () => {
+    const record = renderApiReferenceEntries(formManifest)
+    expect(Object.keys(record).length).toBe(7)
+    expect(Object.keys(record)).toContain('form/useForm')
+    expect(Object.keys(record)).toContain('form/useField')
+    expect(Object.keys(record)).toContain('form/useFieldArray')
+    expect(Object.keys(record)).toContain('form/useWatch')
+    expect(Object.keys(record)).toContain('form/useFormState')
+    expect(Object.keys(record)).toContain('form/FormProvider')
+    expect(Object.keys(record)).toContain('form/useFormContext')
+
+    const useForm = record['form/useForm']!
+    expect(useForm.mistakes?.split('\n').length).toBe(5)
+    expect(useForm.notes).toContain('validateOn')
+
+    const useField = record['form/useField']!
+    expect(useField.mistakes?.split('\n').length).toBe(2)
+    expect(useField.notes).toContain('showError')
+
+    const useFormContext = record['form/useFormContext']!
+    expect(useFormContext.mistakes?.split('\n').length).toBe(2)
   })
 })
