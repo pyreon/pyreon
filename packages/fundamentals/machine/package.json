@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@vitus-labs/tools-lint": "^1.15.5"
   },

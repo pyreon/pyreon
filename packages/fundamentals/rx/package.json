@@ -37,6 +37,7 @@
     "lint": "oxlint ."
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^"
   },
   "peerDependencies": {

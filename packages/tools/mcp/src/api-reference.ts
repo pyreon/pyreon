@@ -825,20 +825,125 @@ const clean = sanitizeHtml(userInput)`,
   // @pyreon/store
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/store>
+
   'store/defineStore': {
-    signature: 'defineStore<T>(id: string, setup: () => T): () => StoreApi<T>',
+    signature: '<T extends Record<string, unknown>>(id: string, setup: () => T) => () => StoreApi<T>',
     example: `const useCounter = defineStore('counter', () => {
   const count = signal(0)
+  const double = computed(() => count() * 2)
   const increment = () => count.update(n => n + 1)
-  return { count, increment }
+  return { count, double, increment }
 })
 
-const { store } = useCounter()
-store.count()      // 0
-store.increment()  // reactive update`,
-    notes:
-      'Composition-style stores. Singleton by ID. Returns StoreApi with .store, .patch(), .subscribe(), .onAction(), .reset(), .dispose().',
+const { store, patch, subscribe, reset } = useCounter()
+store.count()       // 0
+store.increment()   // reactive update
+patch({ count: 42 })`,
+    notes: 'Define a composition-style store. The setup function runs once per store ID, returning an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance. See also: StoreApi, addStorePlugin, resetStore.',
+    mistakes: `- Calling \`useCounter()\` expecting a new instance — stores are singletons by ID, the setup function only runs once
+- Reading \`store.count\` without calling it — signals are functions, use \`store.count()\` to read the value
+- Calling \`store.count.set()\` instead of using \`patch()\` when updating multiple signals — \`patch()\` batches updates into a single notification
+- Forgetting \`dispose()\` in tests — store persists in the registry across test cases, leaking state. Use \`resetStore(id)\` or \`resetAllStores()\` in test cleanup`,
   },
+
+  'store/addStorePlugin': {
+    signature: '(plugin: StorePlugin) => void',
+    example: `addStorePlugin((api) => {
+  api.subscribe((mutation, state) => {
+    console.log(\`[\${api.id}] \${mutation.type}:\`, mutation.events)
+  })
+})`,
+    notes: 'Register a global store plugin that runs when any store is first created. Plugin receives the full StoreApi, enabling cross-cutting concerns like logging, persistence, or devtools integration. Plugin errors are caught and logged in dev mode without breaking store creation. See also: defineStore, StoreApi.',
+  },
+
+  'store/setStoreRegistryProvider': {
+    signature: '(provider: () => Map<string, StoreApi<any>>) => void',
+    example: `import { setStoreRegistryProvider } from '@pyreon/store'
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+const als = new AsyncLocalStorage<Map<string, any>>()
+setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
+    notes: 'Replace the default global store registry with a provider function. Essential for concurrent SSR — pass an AsyncLocalStorage-backed provider so each request gets isolated store state instead of sharing a single global map across concurrent requests. See also: defineStore.',
+    mistakes: '- Forgetting to call this on the SSR server — all concurrent requests share the same store instances, causing cross-request state leaks',
+  },
+
+  'store/resetStore': {
+    signature: '(id: string) => void',
+    example: `resetStore('counter') // next useCounter() call creates a fresh store`,
+    notes: 'Remove a store from the registry by ID. The next call to the store hook re-runs the setup function from scratch. Useful for testing isolation and HMR. See also: resetAllStores, defineStore.',
+  },
+
+  'store/resetAllStores': {
+    signature: '() => void',
+    example: 'afterEach(() => resetAllStores())',
+    notes: 'Clear the entire store registry. All subsequent store hook calls create fresh instances. Primary use case is test cleanup and SSR request isolation. See also: resetStore.',
+  },
+  // <gen-docs:api-reference:end @pyreon/store>
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/state-tree
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/state-tree>
+
+  'state-tree/model': {
+    signature: '(definition: { state: StateShape, views?: (self: ModelSelf) => Record<string, () => any>, actions?: (self: ModelSelf) => Record<string, (...args: any[]) => any> }) => ModelDefinition',
+    example: `const Counter = model({
+  state: { count: 0 },
+  views: (self) => ({
+    doubled: () => self.count() * 2,
+  }),
+  actions: (self) => ({
+    increment: () => self.count.update(n => n + 1),
+  }),
+})
+
+const counter = Counter.create({ count: 10 })
+counter.count()    // 10
+counter.increment()
+counter.doubled()  // 22`,
+    notes: 'Define a structured reactive model. `state` declares signal-backed fields with their initial values. `views` are computed derivations. `actions` are the only way to mutate state — enabling middleware interception and patch recording. Returns a `ModelDefinition` with `.create(initial?)` for instances and `.asHook(id)` for singleton access. See also: getSnapshot, applySnapshot, onPatch, addMiddleware.',
+    mistakes: `- Mutating state outside of actions — bypasses middleware and patch recording, breaks the structured contract
+- Forgetting that \`self.count\` is a signal — read with \`self.count()\`, write with \`self.count.set(v)\` or \`.update(fn)\` inside actions
+- Nesting plain objects in state instead of child models — plain objects are not signal-backed, changes to their properties are not reactive`,
+  },
+
+  'state-tree/getSnapshot': {
+    signature: '(instance: ModelInstance) => Snapshot',
+    example: 'const snap = getSnapshot(counter) // { count: 10 }',
+    notes: 'Recursively serialize a model instance into a plain JSON-safe snapshot. Reads all signal values via `.peek()` to avoid tracking subscriptions. Nested models are recursively serialized. See also: applySnapshot, model.',
+  },
+
+  'state-tree/applySnapshot': {
+    signature: '(instance: ModelInstance, snapshot: Snapshot) => void',
+    example: 'applySnapshot(counter, { count: 0 }) // reset to zero',
+    notes: `Replace a model instance's state wholesale from a snapshot. Recursively applies to nested models. Triggers patch listeners with replace operations. See also: getSnapshot, model.`,
+  },
+
+  'state-tree/onPatch': {
+    signature: '(instance: ModelInstance, listener: PatchListener) => () => void',
+    example: `const dispose = onPatch(counter, (patch) => {
+  console.log(patch) // { op: 'replace', path: '/count', value: 11 }
+})`,
+    notes: 'Subscribe to JSON patches emitted by actions on a model instance. Each patch records the path, operation (add/replace/remove), and value. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization. See also: applyPatch, model.',
+  },
+
+  'state-tree/applyPatch': {
+    signature: '(instance: ModelInstance, patch: Patch | Patch[]) => void',
+    example: `applyPatch(counter, { op: 'replace', path: '/count', value: 0 })`,
+    notes: 'Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. Used with `onPatch` for undo/redo and state synchronization. See also: onPatch, model.',
+  },
+
+  'state-tree/addMiddleware': {
+    signature: '(instance: ModelInstance, middleware: MiddlewareFn) => () => void',
+    example: `addMiddleware(counter, (call, next) => {
+  console.log(\`\${call.name}(\${call.args.join(', ')})\`)
+  return next(call)
+})`,
+    notes: 'Add an action interception middleware to a model instance. The middleware receives the action call context and a `next` function — call `next(call)` to proceed or return early to block the action. Returns an unsubscribe function. See also: model.',
+  },
+  // <gen-docs:api-reference:end @pyreon/state-tree>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/form
@@ -1291,8 +1396,10 @@ useIsomorphicLayoutEffect(() => {
   // @pyreon/permissions
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/permissions>
+
   'permissions/createPermissions': {
-    signature: 'createPermissions<T extends PermissionMap>(initial?: T): PermissionsInstance',
+    signature: '<T extends PermissionMap>(initial?: T) => Permissions',
     example: `const can = createPermissions({
   'posts.read': true,
   'posts.delete': (post) => post.authorId === userId,
@@ -1303,17 +1410,39 @@ can('posts.read')         // true (reactive)
 can('posts.delete', post) // evaluates predicate
 can.not('admin.dashboard')
 can.all('posts.read', 'posts.create')
-can.any('admin.users', 'posts.read')`,
-    notes:
-      "Reactive permissions. Supports RBAC, ABAC, feature flags, subscription tiers. Wildcard matching with '*'. PermissionsProvider/usePermissions for context.",
+can.any('admin.users', 'posts.read')
+can.set({ 'admin.*': true })  // replace all
+can.patch({ 'posts.delete': true })  // merge`,
+    notes: 'Create a reactive permissions instance. Returns a callable object — `can(key, context?)` checks a permission reactively (reads as a signal in effects and JSX). Permissions can be booleans or predicate functions `(context?) => boolean`. Supports wildcard keys (`admin.*`). The instance exposes `.not()`, `.all()`, `.any()` for multi-checks, and `.set()` / `.patch()` for runtime updates. See also: PermissionsProvider, usePermissions.',
+    mistakes: `- Reading \`can("key")\` outside a reactive scope and expecting updates — the check is a signal read, it only re-evaluates inside \`effect()\`, \`computed()\`, or JSX expression thunks
+- Using a static object instead of a predicate for context-dependent checks — \`'posts.update': true\` always passes, use \`(post) => post.authorId === userId()\` for ABAC
+- Forgetting that wildcard \`admin.*\` only matches one level — \`admin.users.list\` is NOT matched by \`admin.*\`, only \`admin.users\` is`,
   },
+
+  'permissions/PermissionsProvider': {
+    signature: '(props: { value: Permissions; children: VNodeChild }) => VNodeChild',
+    example: `<PermissionsProvider value={can}>
+  <App />
+</PermissionsProvider>`,
+    notes: 'Context provider that makes a permissions instance available to descendant components via `usePermissions()`. Enables SSR isolation (per-request permissions) and testing (override permissions per test). See also: usePermissions, createPermissions.',
+  },
+
+  'permissions/usePermissions': {
+    signature: '() => Permissions',
+    example: `const can = usePermissions()
+return (() => can('admin.dashboard') ? <Dashboard /> : <AccessDenied />)`,
+    notes: 'Consume the nearest `PermissionsProvider` value. Returns the same callable `Permissions` instance. Throws if no provider is mounted. See also: PermissionsProvider, createPermissions.',
+  },
+  // <gen-docs:api-reference:end @pyreon/permissions>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/machine
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/machine>
+
   'machine/createMachine': {
-    signature: 'createMachine<S, E>(config: MachineConfig<S, E>): Machine<S, E>',
+    signature: '<S extends string, E extends string>(config: MachineConfig<S, E>) => Machine<S, E>',
     example: `const traffic = createMachine({
   initial: 'red',
   states: {
@@ -1327,57 +1456,111 @@ traffic()            // 'red' (reactive)
 traffic.send('NEXT') // 'green'
 traffic.matches('green') // true
 traffic.can('NEXT')  // true`,
-    notes:
-      'Constrained signal with type-safe transitions. Guards: { target, guard: (payload?) => boolean }. No context — use signals alongside.',
+    notes: 'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects. See also: Machine, MachineConfig.',
+    mistakes: `- Expecting \`machine.send()\` to return the new state — it returns void; read the state with \`machine()\` after sending
+- Calling \`machine.set()\` — machines are constrained signals, they do not expose \`.set()\`. State changes only happen through \`machine.send(event)\`
+- Using a machine for data storage — machines only hold the current state string. Use regular signals alongside the machine for associated data
+- Forgetting guard payloads — \`machine.send("LOGIN")\` without the required payload silently fails the guard`,
   },
+  // <gen-docs:api-reference:end @pyreon/machine>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storage
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/storage>
+
   'storage/useStorage': {
-    signature:
-      'useStorage<T>(key: string, defaultValue: T, options?: StorageOptions<T>): StorageSignal<T>',
+    signature: '<T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
     example: `const theme = useStorage('theme', 'light')
 theme()           // 'light'
 theme.set('dark') // persists + cross-tab sync
-theme.remove()    // delete from storage`,
-    notes:
-      'localStorage by default. Also: useSessionStorage, useCookie, useIndexedDB, useMemoryStorage, createStorage(backend). All return StorageSignal<T> extending Signal<T> with .remove().',
+theme.remove()    // delete from storage, reset to default`,
+    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serialize`/`deserialize` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
+    mistakes: `- Expecting cross-tab sync with \`useSessionStorage\` — only \`useStorage\` (localStorage) fires storage events across tabs
+- Storing non-serializable values (functions, class instances) without custom \`serialize\`/\`deserialize\` — JSON.stringify drops them silently
+- Reading \`.remove()\` return value — it returns void, not the removed value`,
   },
+
+  'storage/useCookie': {
+    signature: '<T>(key: string, defaultValue: T, options?: CookieOptions) => StorageSignal<T>',
+    example: `const locale = useCookie('locale', 'en', { maxAge: 365 * 86400, path: '/' })
+locale.set('fr')`,
+    notes: 'Reactive signal backed by browser cookies. SSR-readable — on the server, reads from the request cookie header via `setCookieSource()`. Options include `maxAge`, `path`, `domain`, `sameSite`, `secure`. Same `StorageSignal<T>` return type as other hooks. See also: useStorage, setCookieSource.',
+  },
+
+  'storage/useIndexedDB': {
+    signature: '<T>(key: string, defaultValue: T, options?: IndexedDBOptions) => StorageSignal<T>',
+    example: `const draft = useIndexedDB('article-draft', { title: '', body: '' })
+draft.set({ title: 'New Article', body: 'Content...' })`,
+    notes: 'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode. See also: useStorage, useMemoryStorage.',
+  },
+
+  'storage/createStorage': {
+    signature: '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
+    example: `const useEncrypted = createStorage({
+  getItem: (key) => decrypt(localStorage.getItem(key)),
+  setItem: (key, value) => localStorage.setItem(key, encrypt(value)),
+  removeItem: (key) => localStorage.removeItem(key),
+})
+const secret = useEncrypted('api-key', '')`,
+    notes: 'Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer. See also: useStorage.',
+  },
+  // <gen-docs:api-reference:end @pyreon/storage>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/i18n
   // ═══════════════════════════════════════════════════════════════════════════
 
-  'i18n/createI18n': {
-    signature:
-      'createI18n(options: { locale: string, messages: Record<string, Record<string, string>>, loader?, fallbackLocale?, pluralRules? }): I18nInstance',
-    example: `// Full entry — includes JSX components (Trans, I18nProvider, useI18n)
-import { createI18n, useI18n } from '@pyreon/i18n'
+  // <gen-docs:api-reference:start @pyreon/i18n>
 
-const i18n = createI18n({
+  'i18n/createI18n': {
+    signature: '(options: I18nOptions) => I18nInstance',
+    example: `const i18n = createI18n({
   locale: 'en',
   messages: { en: { greeting: 'Hello, {{name}}!' } },
   loader: (locale, ns) => import(\`./locales/\${locale}/\${ns}.json\`),
+  fallbackLocale: 'en',
 })
 
-const { t, locale } = useI18n()
-t('greeting', { name: 'World' }) // "Hello, World!"
-locale.set('fr')                  // switch reactively
-
-// Backend / non-JSX entry — @pyreon/i18n/core
-// Zero JSX dependencies, transitively only @pyreon/reactivity.
-// Use this on backends, edge workers, non-Pyreon frontends.
-import { createI18n } from '@pyreon/i18n/core'
-const backendI18n = createI18n({ locale: 'en', messages: { en: { hello: 'Hi' } } })
-backendI18n.t('hello')`,
-    notes:
-      'Interpolation with {{name}}, pluralization with _one/_other suffixes. Namespace lazy loading. <Trans> component for rich JSX interpolation. TWO ENTRY POINTS: `@pyreon/i18n` (full, with JSX components) vs `@pyreon/i18n/core` (framework-agnostic, zero JSX deps — use for backends and non-Pyreon consumers). Both return identical I18nInstance objects.',
-    mistakes: `- Using \`@pyreon/i18n\` (the main entry) on a backend without a JSX-aware tsconfig — the bun condition resolves to source which transitively includes the Trans JSX component. Use \`@pyreon/i18n/core\` instead.
-- Reading the README example and importing from \`@pyreon/i18n\` in a non-Pyreon project — that path works for Pyreon UIs but the README now documents \`/core\` as the backend recommendation.
-- Trying to use \`<Trans>\` from \`@pyreon/i18n/core\` — it's intentionally not exported there. Import it from the main \`@pyreon/i18n\` entry instead.`,
+i18n.t('greeting', { name: 'World' })  // "Hello, World!"
+i18n.locale.set('fr')  // switch reactively`,
+    notes: 'Create a reactive i18n instance. Returns `{ t, locale, addMessages, loadNamespace }`. The `t(key, values?)` function resolves translations reactively — changing `locale` via `.set()` re-evaluates all `t()` reads in reactive scopes. Supports `{{name}}` interpolation, `_one`/`_other` plural suffixes, namespace lazy loading with deduplication, fallback locale, and custom plural rules. Available from both `@pyreon/i18n` and `@pyreon/i18n/core`. See also: I18nProvider, useI18n, Trans, interpolate.',
+    mistakes: `- Reading \`t(key)\` outside a reactive scope and expecting updates on locale change — \`t()\` is a reactive signal read, wrap in JSX thunk or \`effect()\`
+- Using \`@pyreon/i18n\` on the backend — use \`@pyreon/i18n/core\` instead, it has zero JSX/core dependencies
+- Forgetting \`fallbackLocale\` — missing keys in the current locale return the key string instead of falling back to another language`,
   },
+
+  'i18n/I18nProvider': {
+    signature: '(props: I18nProviderProps) => VNodeChild',
+    example: `<I18nProvider value={i18n}>
+  <App />
+</I18nProvider>`,
+    notes: 'Context provider that makes an i18n instance available to descendant components via `useI18n()`. Only available from the full `@pyreon/i18n` entry, not from `/core`. See also: useI18n, createI18n.',
+  },
+
+  'i18n/useI18n': {
+    signature: '() => I18nInstance',
+    example: `const { t, locale } = useI18n()
+return <div>{() => t('greeting', { name: 'User' })}</div>`,
+    notes: 'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry. See also: I18nProvider, createI18n.',
+  },
+
+  'i18n/Trans': {
+    signature: '(props: TransProps) => VNodeChild',
+    example: `// Message: "Please <link>click here</link> to continue"
+<Trans key="action" components={{ link: <a href="/next" /> }}>
+  Please <link>click here</link> to continue
+</Trans>`,
+    notes: 'Rich text interpolation component. Translates a key and replaces named placeholders with JSX components. Use for translations that contain markup (bold, links, etc.) that cannot be expressed as plain string interpolation. See also: createI18n, useI18n.',
+  },
+
+  'i18n/interpolate': {
+    signature: '(template: string, values?: InterpolationValues) => string',
+    example: `interpolate('Hello, {{name}}!', { name: 'World' })  // 'Hello, World!'`,
+    notes: 'Pure string interpolation — replaces `{{name}}` placeholders with values from the map. Available from both entries. Use directly when you need interpolation without the full i18n instance (e.g. server-side email templates). See also: createI18n.',
+  },
+  // <gen-docs:api-reference:end @pyreon/i18n>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/document
@@ -1851,79 +2034,82 @@ const theme = enrichTheme({
   // @pyreon/rx
   // ═══════════════════════════════════════════════════════════════════════════
 
-  'rx/filter': {
-    signature:
-      'filter<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean): Computed<T[]> | T[]',
-    example: `import { filter } from '@pyreon/rx'
+  // <gen-docs:api-reference:start @pyreon/rx>
 
-// Signal input → Computed output (auto-tracks):
-const items = signal([1, 2, 3, 4, 5])
-const evens = filter(items, n => n % 2 === 0)  // Computed<number[]>
-evens()  // [2, 4]
-
-// Plain input → plain output:
-const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
-    notes:
-      'Every @pyreon/rx function is overloaded: Signal<T[]> input produces Computed<T[]>, plain T[] input produces plain T[]. 24 functions total: filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search.',
+  'rx/rx': {
+    signature: 'Readonly<{ filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search, pipe }>',
+    example: `const active = rx.filter(users, u => u.active)      // Computed<User[]>
+const sorted = rx.sortBy(active, 'name')             // Computed<User[]>
+const total = rx.sum(users, u => u.age)              // Computed<number>
+const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, User[]>>`,
+    notes: 'Namespaced object exposing all 24 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter.',
+    mistakes: `- Expecting \`rx.filter(signal, pred)\` to return a plain array — signal inputs always produce \`Computed\` outputs. Call the result to read: \`active()\`
+- Passing a signal accessor (\`() => items()\`) instead of the signal itself — pass \`items\` not \`() => items()\`; the function checks for \`.subscribe\` to detect signals`,
   },
 
   'rx/pipe': {
-    signature: 'pipe<T>(source: Signal<T[]> | T[], ...operators: Operator[]): Computed<T[]> | T[]',
-    example: `import { pipe, filter, sortBy, map } from '@pyreon/rx'
-
-const users = signal([
-  { name: 'Charlie', age: 35 },
-  { name: 'Alice', age: 25 },
-  { name: 'Bob', age: 30 },
-])
-
-// Compose transforms left-to-right:
-const result = pipe(
+    signature: '<T>(source: Signal<T[]> | T[], ...operators: Operator[]) => Computed<T[]> | T[]',
+    example: `const result = pipe(
   users,
-  filter(u => u.age >= 30),
+  filter(u => u.active),
   sortBy('name'),
   map(u => u.name),
+  take(10),
 )
-// Computed<string[]> → ["Bob", "Charlie"]`,
-    notes:
-      'Pipe composes operators left-to-right. Signal source produces reactive Computed that re-derives when source changes.',
+// Computed<string[]> when users is a signal`,
+    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx.',
+    mistakes: '- Calling the non-curried form inside pipe — `pipe(users, filter(users, pred))` is wrong; use the curried form: `pipe(users, filter(pred))`',
   },
+
+  'rx/filter': {
+    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]',
+    example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]>
+const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
+    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes. Also available in curried form `filter(pred)` for use with `pipe()`. See also: rx, pipe.',
+  },
+  // <gen-docs:api-reference:end @pyreon/rx>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/toast
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/toast>
+
   'toast/toast': {
-    signature:
-      'toast(message: string, options?: ToastOptions): string\ntoast.success/error/warning/info/loading(message): string\ntoast.update(id, options): void\ntoast.dismiss(id?): void\ntoast.promise(promise, { loading, success, error }): string',
-    example: `import { toast, Toaster } from '@pyreon/toast'
-
-// Basic:
+    signature: '(message: string, options?: ToastOptions) => string',
+    example: `// Basic:
 toast('Hello!')
-toast.success('Saved!')
-toast.error('Failed!')
+const id = toast.success('Saved!')
 
-// Loading → success pattern:
-const id = toast.loading('Saving...')
+// Loading → success:
+const loadId = toast.loading('Saving...')
 await save()
-toast.update(id, { type: 'success', message: 'Done!' })
+toast.update(loadId, { type: 'success', message: 'Done!' })
 
 // Promise helper:
 toast.promise(fetchData(), {
   loading: 'Loading...',
   success: 'Loaded!',
-  error: 'Failed to load',
+  error: 'Failed',
 })
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all
-
-// Mount Toaster once in your app:
-<Toaster />`,
-    notes:
-      "Imperative API — call from anywhere, no context needed. <Toaster /> renders via Portal with CSS transitions, auto-dismiss, pause on hover. Accessible: role='alert', aria-live='polite'.",
+toast.dismiss()    // all`,
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying existing toasts, `.dismiss(id?)` for removal, and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+    mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
+- Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
+- Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\``,
   },
+
+  'toast/Toaster': {
+    signature: '(props?: ToasterProps) => VNodeChild',
+    example: '<Toaster position="top-right" duration={5000} />',
+    notes: 'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and pause-on-hover behavior. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms). See also: toast.',
+    mistakes: `- Mounting multiple \`<Toaster />\` instances — toasts render in all of them, causing duplicates
+- Conditional rendering of \`<Toaster />\` — if unmounted, toasts created via \`toast()\` are queued but invisible until the Toaster mounts`,
+  },
+  // <gen-docs:api-reference:end @pyreon/toast>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/url-state

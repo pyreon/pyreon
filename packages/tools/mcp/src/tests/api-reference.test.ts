@@ -469,4 +469,76 @@ describe('api-reference', () => {
       expect(entry?.notes).toContain('beforeunload')
     })
   })
+
+  describe('@pyreon/store — manifest-driven region', () => {
+    it.each(['store/defineStore', 'store/addStorePlugin', 'store/setStoreRegistryProvider', 'store/resetStore', 'store/resetAllStores'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('defineStore documents composition stores', () => {
+      expect(API_REFERENCE['store/defineStore']?.notes).toContain('composition')
+    })
+  })
+
+  describe('@pyreon/state-tree — manifest-driven region', () => {
+    it.each(['state-tree/model', 'state-tree/getSnapshot', 'state-tree/applySnapshot', 'state-tree/onPatch', 'state-tree/applyPatch', 'state-tree/addMiddleware'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('model documents structured reactive state', () => {
+      expect(API_REFERENCE['state-tree/model']?.notes).toContain('model')
+    })
+  })
+
+  describe('@pyreon/permissions — manifest-driven region', () => {
+    it.each(['permissions/createPermissions', 'permissions/PermissionsProvider', 'permissions/usePermissions'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('createPermissions documents reactive callable', () => {
+      expect(API_REFERENCE['permissions/createPermissions']?.notes).toContain('callable')
+    })
+  })
+
+  describe('@pyreon/machine — manifest-driven region', () => {
+    it.each(['machine/createMachine'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('createMachine documents type-safe transitions', () => {
+      expect(API_REFERENCE['machine/createMachine']?.notes).toContain('transition')
+    })
+  })
+
+  describe('@pyreon/i18n — manifest-driven region', () => {
+    it.each(['i18n/createI18n', 'i18n/I18nProvider', 'i18n/useI18n', 'i18n/Trans', 'i18n/interpolate'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('createI18n documents two entry points', () => {
+      expect(API_REFERENCE['i18n/createI18n']?.notes).toContain('locale')
+    })
+  })
+
+  describe('@pyreon/storage — manifest-driven region', () => {
+    it.each(['storage/useStorage', 'storage/useCookie', 'storage/useIndexedDB', 'storage/createStorage'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useStorage documents cross-tab sync', () => {
+      expect(API_REFERENCE['storage/useStorage']?.notes).toContain('syncs across browser tabs')
+    })
+  })
+
+  describe('@pyreon/toast — manifest-driven region', () => {
+    it.each(['toast/toast', 'toast/Toaster'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('toast documents imperative API', () => {
+      expect(API_REFERENCE['toast/toast']?.notes).toContain('toast')
+    })
+  })
+
+  describe('@pyreon/rx — manifest-driven region', () => {
+    it.each(['rx/rx', 'rx/pipe', 'rx/filter'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('rx namespace documents Signal overloading', () => {
+      expect(API_REFERENCE['rx/rx']?.notes).toContain('Signal')
+    })
+  })
 })
