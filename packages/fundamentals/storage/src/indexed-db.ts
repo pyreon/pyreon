@@ -3,6 +3,9 @@ import { getEntry, removeEntry, setEntry } from './registry'
 import type { IndexedDBOptions, StorageSignal } from './types'
 import { deserialize, isBrowser, serialize } from './utils'
 
+// @ts-ignore — import.meta.env.DEV is Vite/Rolldown literal-replaced at build time
+const __DEV__: boolean = import.meta.env?.DEV === true
+
 // ─── Database management ─────────────────────────────────────────────────────
 
 const dbCache = new Map<string, Promise<IDBDatabase>>()
@@ -105,8 +108,12 @@ export function useIndexedDB<T>(
           sig.set(value)
         }
       })
-      .catch(() => {
-        // IndexedDB not available — signal keeps defaultValue
+      .catch((err) => {
+        if (__DEV__) {
+          // oxlint-disable-next-line no-console
+          console.warn(`[Pyreon] IndexedDB "${key}" init failed, using default:`, err)
+        }
+        options.onError?.(err instanceof Error ? err : new Error(String(err)))
       })
   }
 

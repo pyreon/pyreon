@@ -61,6 +61,13 @@
 - **Testing internals**: Test public API behavior, not implementation details
 - **DOM tests without happy-dom**: Packages with DOM need `environment: "happy-dom"` in vitest config
 
+## Lifecycle & Cleanup Mistakes
+
+- **Per-call global event listeners**: `useBlocker` previously created a new `beforeunload` handler per call — N blockers = N listeners. Use a shared ref-counted listener: one `addEventListener` on first retain, one `removeEventListener` on last release. Same pattern applies to any global listener shared across component instances.
+- **Nulling WebSocket handlers before `close()`**: `ws.onmessage = null; ws.close()` — a queued message arriving between null-assignment and close fires a null handler and crashes. Always `close()` FIRST, then null the handlers.
+- **`intentionalClose` reset on reactive dependency change**: If a user explicitly calls `close()` on a WebSocket subscription and a reactive dependency (URL, enabled) changes, don't silently override `intentionalClose` and reconnect. Respect the user's explicit close unless `enabled` was explicitly provided and transitions to `true`.
+- **Silent plugin/init error swallowing**: `catch (_err) { /* silent */ }` in plugin runners or async initialization hides bugs. Always log in `__DEV__` mode and call user-provided `onError` callbacks. Reference: `store/src/index.ts` (plugins), `storage/src/indexed-db.ts` (IndexedDB init).
+
 ## Documentation Mistakes
 
 - **Forgetting to update all surfaces**: CLAUDE.md, docs/, README, llms.txt, llms-full.txt, MCP api-reference must all stay in sync
