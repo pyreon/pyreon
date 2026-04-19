@@ -267,7 +267,12 @@ const query = useQuery(() => ({
 ## Gotchas
 
 - Each field on `UseQueryResult` is an independent signal. Reading `query.data()` does not re-run when `isFetching` changes, and vice versa.
-- `useQuery` options must be a function `() => opts`, not a plain object. This is required for reactive option tracking.
-- `useMutation` options are a plain object (not a function) since mutations are imperative.
+- `useQuery` options must be a function `() => opts`, not a plain object. This is required for reactive option tracking. Changing a signal inside the function re-evaluates options + refetches.
+- `useMutation` options are a plain object (not a function) — mutations are imperative, there are no reactive queryKeys to re-evaluate, so the function-wrapper overhead would add no value.
 - `mutate()` swallows errors into the `error` signal. Use `mutateAsync()` if you need try/catch.
+- `useQueries` accepts a function too — pass `useQueries(() => ids().map(...))` for reactive query lists. A static array loses tracking.
+- `useSuspenseQuery` / `useSuspenseInfiniteQuery` require a `QuerySuspense` boundary — without it, the narrowed `data: Signal<TData>` type lies: `data()` CAN be undefined during the first render cycle.
+- `QuerySuspense` children must be a function `{() => <UI />}` — plain JSX children evaluate eagerly, defeating the Suspense gate.
+- `useSubscription` `onMessage` runs on every WebSocket frame — debounce cache invalidations for high-frequency streams.
+- `useSSE` requires `parse` for typed data — without it, `data()` is raw `string` (the event payload as-is).
 - Observer subscriptions are cleaned up automatically on component unmount via `onUnmount`.

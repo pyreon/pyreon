@@ -1,4 +1,8 @@
-import { renderLlmsFullSection, renderLlmsTxtLine } from '@pyreon/manifest'
+import {
+  renderApiReferenceEntries,
+  renderLlmsFullSection,
+  renderLlmsTxtLine,
+} from '@pyreon/manifest'
 import queryManifest from '../manifest'
 
 // Snapshot of the exact rendered llms.txt line + llms-full.txt section
@@ -123,5 +127,56 @@ describe('gen-docs — query snapshot', () => {
       > **Suspense data is non-undefined**: \`useSuspenseQuery\` narrows \`data: Signal<TData>\` (never undefined). Read it unconditionally inside \`QuerySuspense\` children — the boundary guarantees success before rendering. Outside the boundary, use \`useQuery\` and handle the undefined case.
       "
     `)
+  })
+
+  it('renders @pyreon/query to MCP api-reference entries — one per api[] item', () => {
+    const record = renderApiReferenceEntries(queryManifest)
+    const keys = Object.keys(record)
+    expect(keys).toContain('query/QueryClientProvider')
+    expect(keys).toContain('query/useQuery')
+    expect(keys).toContain('query/useMutation')
+    expect(keys).toContain('query/useInfiniteQuery')
+    expect(keys).toContain('query/useQueries')
+    expect(keys).toContain('query/useSubscription')
+    expect(keys).toContain('query/useSSE')
+    expect(keys).toContain('query/useSuspenseQuery')
+    expect(keys).toContain('query/useSuspenseInfiniteQuery')
+    expect(keys).toContain('query/QuerySuspense')
+    expect(keys).toContain('query/useIsFetching')
+    expect(keys).toContain('query/useIsMutating')
+    expect(keys).toContain('query/QueryErrorResetBoundary')
+    expect(keys).toContain('query/useQueryErrorResetBoundary')
+    expect(keys).toContain('query/useQueryClient')
+    expect(keys).toContain('query/TanStack core re-exports')
+    expect(keys.length).toBe(16)
+
+    // Spot-check flagship entry density
+    const useQuery = record['query/useQuery']!
+    expect(useQuery.mistakes?.split('\n').length).toBe(5)
+    expect(useQuery.notes).toContain('fine-grained reactive signals')
+    expect(useQuery.notes).toContain('FUNCTION')
+    expect(useQuery.notes).toContain('See also:')
+
+    // useSubscription carries WebSocket foot-guns
+    const sub = record['query/useSubscription']!
+    expect(sub.mistakes?.split('\n').length).toBe(3)
+    expect(sub.notes).toContain('auto-reconnect')
+    expect(sub.notes).toContain('QueryClient')
+
+    // useMutation explains WHY options is a plain object
+    const mut = record['query/useMutation']!
+    expect(mut.mistakes?.split('\n').length).toBe(3)
+    expect(mut.notes).toContain('plain OBJECT')
+    expect(mut.notes).toContain('imperative')
+
+    // useSuspenseInfiniteQuery carries boundary-requirement mistakes
+    const suspInf = record['query/useSuspenseInfiniteQuery']!
+    expect(suspInf.mistakes?.split('\n').length).toBe(2)
+    expect(suspInf.mistakes).toContain('QuerySuspense')
+
+    // useQueries warns about static arrays
+    const queries = record['query/useQueries']!
+    expect(queries.mistakes?.split('\n').length).toBe(2)
+    expect(queries.mistakes).toContain('static array')
   })
 })

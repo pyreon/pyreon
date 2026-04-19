@@ -242,7 +242,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - TanStack core re-exports: `QueryClient`, `QueryCache`, `MutationCache`, `dehydrate`, `hydrate`, `keepPreviousData`, `hashKey`, `isCancelledError`, `CancelledError`, `defaultShouldDehydrateQuery`, `defaultShouldDehydrateMutation` (+ all types: `QueryKey`, `QueryFilters`, `DehydratedState`, etc.) — consumers import everything from `@pyreon/query`
 - Fine-grained signals per field (data, error, isFetching independent) — each field-level read only subscribes to that field
 - **Options as a function**: `useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION (not an object) so `queryKey` and other fields can read Pyreon signals — changing a tracked signal re-runs the observer options and refetches automatically. `useMutation` options are a plain object (mutations are imperative, no tracking needed).
-- Manifest-driven docs (T2.1): `packages/fundamentals/query/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section. Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
+- Manifest-driven docs (T2.1 + T2.5.1): `packages/fundamentals/query/src/manifest.ts` is the single source for the `llms.txt` bullet + `llms-full.txt` section + MCP `api-reference.ts` region. 16 MCP entries generated from the manifest's enriched `api[]` (was 2 hand-written). Inline-snapshot test (`manifest-snapshot.test.ts`) locks the rendered output locally in addition to the CI `Docs Sync` gate.
 
 ### @pyreon/table
 
