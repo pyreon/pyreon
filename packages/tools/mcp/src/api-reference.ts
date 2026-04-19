@@ -991,7 +991,7 @@ effect(() => fetchResults(debouncedSearch()))`,
 <dialog ref={dialog.ref}>...</dialog>
 <button onClick={dialog.open}>Open</button>`,
     notes: `Native \`<dialog>\` element wrapper with reactive \`isOpen\` / \`returnValue\` signals. Handles \`showModal()\` / \`close()\` plumbing and the \`cancel\`/\`close\` event wiring so consumers don't reimplement the boilerplate. See also: useFocusTrap, useScrollLock.`,
-    mistakes: '- Calling `dialog.open()` before the `<dialog>` element is mounted — `ref` must have received the element first; place the `<dialog>` in the initial render, not behind a conditional `<Show>`',
+    mistakes: '- Calling `dialog.open()` before the ref callback has fired — Pyreon components run once, so the `<dialog>` must be in the initial render (not behind a conditional `<Show>`); the ref callback fires synchronously during mount, and `dialog.open()` before that point has no element to call `showModal()` on',
   },
 
   'hooks/useTimeAgo': {

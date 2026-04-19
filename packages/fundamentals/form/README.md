@@ -253,7 +253,11 @@ const form = useForm({
 ## Gotchas
 
 - `register()` results are memoized per field+type combo. Calling `register("email")` twice returns the same object.
-- `validateOn: "change"` creates an `effect()` per field — for large forms, prefer `"blur"` or `"submit"`.
+- `validateOn: "change"` creates an `effect()` per field — for large forms, prefer `"blur"` or `"submit"`. Pair with `debounceMs` for async validators.
 - Field validators receive all current form values as the second argument for cross-field validation.
-- `handleSubmit` marks all fields as touched before validating, so error messages appear on submit.
+- `handleSubmit` marks all fields as touched before validating, so error messages appear on submit. It calls `preventDefault()` so it must receive the form event, or be called with no argument for programmatic submit.
+- `schema` validators run AFTER per-field `validators` — errors from both merge; a schema error can override a field-level error on the same key.
 - Debounce timers and in-flight validators are automatically cleaned up on component unmount.
+- `useFormState(form)` without a selector re-derives on ANY form-level state change — always pass a selector for UI-bound computeds.
+- `FormProvider` does not support nesting — the inner provider shadows the outer. For multi-form pages, use separate sibling providers.
+- `useFormContext<TValues>()` — pass the generic or TypeScript infers `Record<string, unknown>` and field names lose type narrowing.

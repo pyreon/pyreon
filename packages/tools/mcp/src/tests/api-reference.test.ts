@@ -212,6 +212,13 @@ describe('api-reference', () => {
       expect(entry?.mistakes?.split('\n').length).toBe(2)
       expect(entry?.mistakes).toContain('module scope')
     })
+
+    it('useFieldArray documents the stable-key contract', () => {
+      const entry = API_REFERENCE['form/useFieldArray']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('index-based keys')
+      expect(entry?.notes).toContain('stable keys')
+    })
   })
 
   describe('@pyreon/hooks — manifest-driven region', () => {
@@ -238,6 +245,13 @@ describe('api-reference', () => {
       expect(entry!.signature).toBeTruthy()
       expect(entry!.example).toBeTruthy()
       expect(entry!.notes).toBeTruthy()
+    })
+
+    it('useEventListener documents the cleanup contract + 2 mistakes', () => {
+      const entry = API_REFERENCE['hooks/useEventListener']
+      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes).toContain('addEventListener')
+      expect(entry?.notes).toContain('automatic cleanup')
     })
 
     it('useControllableState documents the canonical pattern + 2 mistakes', () => {

@@ -182,6 +182,18 @@ import { useDebouncedValue } from '@pyreon/hooks'
 const debouncedSearch = useDebouncedValue(searchTerm, 300)
 ```
 
+## Gotchas
+
+- Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`.
+- Every hook is SSR-safe — browser API access is guarded inside `onMount`. Do NOT wrap hook calls in `typeof window !== 'undefined'`; the hook does it for you.
+- Never reach for `addEventListener` / `removeEventListener` directly — use `useEventListener`. Same for observers and timers.
+- `useControllableState` is the canonical controlled/uncontrolled pattern. Every `@pyreon/ui-primitives` component uses it. Pass `value` and `defaultValue` as FUNCTIONS.
+- `useFocusTrap` requires a reactive `active` boolean — a static `true` traps focus forever. Always pass `() => isOpen()`.
+- `useBreakpoint` reads theme breakpoints; `useMediaQuery` is the raw escape hatch for one-off queries.
+- `useInfiniteScroll` sentinel must be inside the scrollable container — `overflow: hidden` with no scroll means IntersectionObserver never fires.
+- `useDialog` — the `<dialog>` must be in the initial render (not behind `<Show>`) so the ref callback fires before `dialog.open()`.
+- `useDebouncedValue` — the debounced signal holds the OLD value during the debounce window.
+
 ## Peer Dependencies
 
 | Package            | Version  |
