@@ -101,4 +101,57 @@ describe('api-reference', () => {
       expect(handle?.mistakes).toContain('distinct `id`')
     })
   })
+
+  describe('@pyreon/query — manifest-driven region', () => {
+    const EXPECTED_QUERY_KEYS = [
+      'query/QueryClientProvider',
+      'query/useQuery',
+      'query/useMutation',
+      'query/useInfiniteQuery',
+      'query/useQueries',
+      'query/useSubscription',
+      'query/useSSE',
+      'query/useSuspenseQuery',
+      'query/useSuspenseInfiniteQuery',
+      'query/QuerySuspense',
+      'query/useIsFetching',
+      'query/useIsMutating',
+      'query/QueryErrorResetBoundary',
+      'query/useQueryErrorResetBoundary',
+      'query/useQueryClient',
+      'query/TanStack core re-exports',
+    ]
+
+    it.each(EXPECTED_QUERY_KEYS)('exposes %s with the full MCP shape', (key) => {
+      const entry = API_REFERENCE[key]
+      expect(entry, `${key} missing from API_REFERENCE`).toBeDefined()
+      expect(entry!.signature).toBeTruthy()
+      expect(entry!.example).toBeTruthy()
+      expect(entry!.notes).toBeTruthy()
+    })
+
+    it('useQuery carries the enriched options-as-function explanation + 5 mistakes', () => {
+      const entry = API_REFERENCE['query/useQuery']
+      expect(entry?.notes).toContain('FUNCTION')
+      expect(entry?.notes).toContain('fine-grained reactive signals')
+      expect(entry?.mistakes?.split('\n').length).toBe(5)
+    })
+
+    it('useSubscription documents auto-reconnect + 3 WebSocket foot-guns', () => {
+      const entry = API_REFERENCE['query/useSubscription']
+      expect(entry?.notes).toContain('auto-reconnect')
+      expect(entry?.notes).toContain('QueryClient')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+    })
+
+    it('QuerySuspense warns about eager children', () => {
+      const entry = API_REFERENCE['query/QuerySuspense']
+      expect(entry?.mistakes).toContain('function')
+    })
+
+    it('useSSE documents the Last-Event-ID resumption', () => {
+      const entry = API_REFERENCE['query/useSSE']
+      expect(entry?.notes).toContain('Last-Event-ID')
+    })
+  })
 })
