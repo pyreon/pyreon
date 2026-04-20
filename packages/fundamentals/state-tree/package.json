@@ -47,7 +47,9 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.8.9",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/reactivity": "workspace:^",
+    "bun-types": "^1.3.12"
   },
   "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
