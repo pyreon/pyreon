@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { normalizeCSS, resolve } from '../resolve'
-import { sheet } from '../sheet'
 
 /**
  * Tier 2 cache correctness proof: demonstrates that the WeakMap cache
