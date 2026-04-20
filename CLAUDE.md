@@ -471,6 +471,9 @@ Subscribers tracked via `Set<() => void>`. Batch uses pointer swap.
 - `h<P extends Props>(type, props, ...children)` — lower-level API, children stored in `vnode.children`
 - Components must merge: `props.children = vnode.children.length === 1 ? vnode.children[0] : vnode.children`
 - `ComponentFn<P> = (props: P) => VNodeChild`
+- `VNodeChild = VNodeChildAccessor | VNodeChildAtom | VNodeChildAtom[]` — accessor-first so `{() => cond && <X />}` typechecks
+- `VNodeChildAccessor = () => VNodeChildAtom | VNodeChildAtom[]` — reactive child expression
+- `VNodeChildAtom = VNode | string | number | boolean | null | undefined` — `boolean` included so `&&` patterns work without ternary
 - `<For each={items} by={r => r.id}>{r => <li>...</li>}</For>` — keyed list rendering
   - Prop is `by` (not `key`) because JSX extracts `key` as a special VNode reconciliation prop
 - `class` prop accepts strings, arrays, objects, or nested mix — processed by `cx()` at runtime

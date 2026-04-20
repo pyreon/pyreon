@@ -82,7 +82,9 @@ function Counter() {
 
 ### Types
 
-`VNode`, `VNodeChild`, `VNodeChildAtom`, `Props`, `ComponentFn`, `ExtractProps`, `HigherOrderComponent`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`, `ClassValue`, `TargetedEvent`, `PyreonHTMLAttributes`, `CSSProperties`, `StyleValue`, `CanvasAttributes`
+`VNode`, `VNodeChild`, `VNodeChildAtom`, `VNodeChildAccessor`, `Props`, `ComponentFn`, `ExtractProps`, `HigherOrderComponent`, `ComponentInstance`, `LifecycleHooks`, `CleanupFn`, `NativeItem`, `Ref`, `Context`, `LazyComponent`, `ShowProps`, `SwitchProps`, `MatchProps`, `ForProps`, `PortalProps`, `ErrorContext`, `ErrorHandler`, `ClassValue`, `TargetedEvent`, `PyreonHTMLAttributes`, `CSSProperties`, `StyleValue`, `CanvasAttributes`
+
+**VNodeChild union ordering**: `VNodeChild = VNodeChildAccessor | VNodeChildAtom | VNodeChildAtom[]` — the accessor type is FIRST so TypeScript matches `{() => cond && <X />}` against the function arm without falling through to `VNodeChildAtom` and erroring on `false | VNode`.
 
 ## License
 
