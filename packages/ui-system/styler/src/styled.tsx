@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { computed, runUntracked } from '@pyreon/reactivity'
+import { computed, renderEffect, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -211,13 +211,31 @@ const createStyledComponent = (
       : doResolve($rs, $rsState, theme)
     const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
-    // Reactive path: override class with accessor for renderEffect
+    // Reactive path: lightweight renderEffect that reads the pre-computed
+    // class string and toggles classList. This is NOT the old PR #258
+    // approach — the expensive resolve() already happened inside the
+    // computed. This renderEffect only does: read string → compare → toggle.
     if (cssClass) {
-      finalProps.class = () => {
-        const newClass = cssClass()
-        const userClass = rawProps.class || rawProps.className
-        return userClass ? `${newClass} ${userClass}` : newClass
+      let el: Element | null = null
+      let currentClassName = className
+
+      const originalRef = finalProps.ref
+      finalProps.ref = (node: Element | null) => {
+        el = node
+        if (originalRef) {
+          if (typeof originalRef === 'function') originalRef(node)
+          else if (originalRef && typeof originalRef === 'object') (originalRef as any).current = node
+        }
       }
+
+      renderEffect(() => {
+        const newClass = cssClass() // reads computed — O(1), just string
+        if (el && newClass !== currentClassName) {
+          if (currentClassName) el.classList.remove(currentClassName)
+          if (newClass) el.classList.add(newClass)
+          currentClassName = newClass
+        }
+      })
     }
 
     return h(
