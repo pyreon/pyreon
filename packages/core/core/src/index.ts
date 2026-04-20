@@ -61,5 +61,6 @@ export type {
   Props,
   VNode,
   VNodeChild,
+  VNodeChildAccessor,
   VNodeChildAtom,
 } from './types'

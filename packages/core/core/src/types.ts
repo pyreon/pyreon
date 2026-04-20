@@ -2,7 +2,9 @@
 
 // Reactive getter returning a child — wraps dynamic expressions in `() =>`
 export type VNodeChildAtom = VNode | string | number | boolean | null | undefined
-export type VNodeChild = VNodeChildAtom | VNodeChildAtom[] | (() => VNodeChildAtom | VNodeChildAtom[])
+/** Reactive accessor — TS checks this arm FIRST so `{() => cond && <X />}` resolves correctly */
+export type VNodeChildAccessor = () => VNodeChildAtom | VNodeChildAtom[]
+export type VNodeChild = VNodeChildAccessor | VNodeChildAtom | VNodeChildAtom[]
 
 export interface VNode {
   /** Tag name, component function, or special symbol (Fragment) */
