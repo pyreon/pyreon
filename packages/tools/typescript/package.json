@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/typescript",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "TypeScript configuration presets for Pyreon projects",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/typescript#readme",
   "bugs": {

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-components",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "description": "Pyreon UI component library — 58 production-ready rocketstyle components",
   "bugs": {

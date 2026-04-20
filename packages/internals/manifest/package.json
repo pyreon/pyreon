@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/manifest",
   "private": true,
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Internal type + helper for per-package manifests that feed doc + MCP generators",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/vue-compat",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Vue 3-compatible Composition API shim for Pyreon — write Vue-style code that runs on Pyreon's reactive engine",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/vue-compat#readme",
   "bugs": {
