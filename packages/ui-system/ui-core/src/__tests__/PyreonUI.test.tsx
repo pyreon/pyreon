@@ -79,7 +79,7 @@ describe('PyreonUI', () => {
   it('enriches theme with __PYREON__ before providing', () => {
     PyreonUI({ theme, children: null })
 
-    // ThemeContext is reactive — the provided value is an accessor `() => Theme`.
+    // ThemeContext is reactive — the provided value is an accessor.
     const providedThemeGetter = getProvideValue(0)
     const providedTheme = providedThemeGetter()
     expect(providedTheme.__PYREON__).toBeDefined()

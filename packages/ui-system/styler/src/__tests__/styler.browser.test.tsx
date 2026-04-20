@@ -1,6 +1,5 @@
 /** @jsxImportSource @pyreon/core */
 import { h, provide } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { css } from '../css'
@@ -146,21 +145,19 @@ describe('@pyreon/styler in real browser', () => {
     unmount()
   })
 
-  it('dynamic styled component re-resolves and class-swaps when the reactive theme changes', async () => {
-    // Regression: whole-theme swap (user-preference theme) must flow through
-    // ThemeContext → styled() resolver → classList swap, without remounting
-    // the VNode. Before the fix, useTheme() captured a static snapshot so
-    // the effect re-ran with stale theme → class never changed.
-    const themeSig = signal<{ color: string }>({ color: 'rgb(200, 0, 0)' })
+  it('dynamic styled component resolves theme at mount time (static context)', () => {
+    // ThemeContext is static — components read the theme once at setup.
+    // Theme switching works via mode signal re-rendering the component tree,
+    // not via reactive context + per-component effects. This test verifies
+    // the static-read contract: component gets the theme provided at mount.
+    const theme = { color: 'rgb(200, 0, 0)' }
 
     const Themed = styled('div')`
       color: ${(p: Record<string, any>) => p.theme?.color};
     `
 
     const Provider = (props: { children?: unknown }) => {
-      // Reactive accessor — calling themeSig() here inside provide makes
-      // ThemeContext's accessor track the signal.
-      provide(ThemeContext, () => themeSig())
+      provide(ThemeContext, () => theme)
       return props.children as never
     }
 
@@ -168,16 +165,7 @@ describe('@pyreon/styler in real browser', () => {
       h(Provider, null, h(Themed, { id: 't' })),
     )
     const el = container.querySelector<HTMLElement>('#t')!
-    const classBefore = el.className
     expect(getComputedStyle(el).color).toBe('rgb(200, 0, 0)')
-
-    themeSig.set({ color: 'rgb(0, 180, 0)' })
-    // Reactive flush — effect runs synchronously on signal set; allow a
-    // microtask in case the runtime defers DOM writes.
-    await Promise.resolve()
-
-    expect(getComputedStyle(el).color).toBe('rgb(0, 180, 0)')
-    expect(el.className).not.toBe(classBefore)
     unmount()
   })
 

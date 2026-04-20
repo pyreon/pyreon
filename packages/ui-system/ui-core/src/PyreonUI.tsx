@@ -113,35 +113,40 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
   // Create a reactive mode getter that resolves "system" and applies inversion.
   // This getter is provided via context — consumers read it lazily in their
   // own reactive scopes, so mode changes propagate automatically.
+  //
+  // When `inversed` is set without an explicit `mode`, inherit the parent's
+  // mode and flip it. This makes nested `<PyreonUI inversed>` work reactively:
+  // outer light → inner dark, outer dark → inner light.
+  //
+  // useContext(ModeContext) returns the reactive accessor from the nearest
+  // parent PyreonUI. At root level (no parent), the ReactiveContext default
+  // returns 'light'. This read is TRACKED inside the computed below, so when
+  // the parent's mode changes, this child's computed re-evaluates.
+  const parentModeAccessor = useContext(ModeContext)
   const resolveMode = (): ThemeMode => {
-    const mode = props.mode ?? 'light'
-    const raw = typeof mode === 'function' ? mode() : mode
-    const resolved = raw === 'system' ? getSystemMode()() : raw
+    const mode = props.mode
+    let resolved: ThemeMode
+    if (mode === undefined || mode === null) {
+      // No explicit mode — inherit from parent context
+      resolved = parentModeAccessor()
+    } else {
+      const raw = typeof mode === 'function' ? mode() : mode
+      resolved = raw === 'system' ? getSystemMode()() : raw
+    }
     return props.inversed ? INVERSED[resolved] : resolved
   }
 
   // Wrap in computed for memoization
   const modeComputed = computed(resolveMode)
 
-  // Enrich theme with responsive utilities (__PYREON__).
-  //
-  // Wrapped in `computed` so that when `props.theme` changes (parent re-renders
-  // with a new theme object — e.g. user-preference theme swap), the enriched
-  // theme updates and all downstream consumers of ThemeContext / coreContext
-  // re-resolve. Components run once, so reading `props.theme` here inside a
-  // computed is the reactive hook: if the parent passes a signal-derived
-  // theme or re-renders with a different theme value, the computed re-runs.
-  //
-  // `enrichTheme` builds a fresh `__PYREON__` block each call (media-query
-  // helpers, sortedBreakpoints). That's fine — WeakMap caches in rocketstyle
-  // and makeItResponsive key on the resulting object identity, which is
-  // stable across renders where props.theme hasn't changed.
+  // Enrich theme — wrapped in computed so user-preference theme swaps
+  // propagate. The enrichment itself is cheap (builds a __PYREON__ block).
   const enrichedTheme = computed(() => enrichTheme(props.theme))
 
   // Provide to all three context layers:
 
-  // 1. Styler ThemeContext — reactive accessor. Styled components read this
-  //    inside their resolver effect to re-resolve CSS on theme swap.
+  // 1. Styler ThemeContext — reactive accessor. DynamicStyled reads this
+  //    inside its computed() to re-resolve CSS on theme swap.
   provide(ThemeContext, () => enrichedTheme())
 
   // 2. Core context — provide a reactive getter function.

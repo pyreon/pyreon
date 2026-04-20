@@ -255,7 +255,10 @@ const rocketComponent: RocketComponent = (options) => {
       ]),
       ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
       ref: props.ref,
-      // FUNCTION accessors — styled component resolves them reactively
+      // Function accessors — DynamicStyled wraps them in a computed() so
+      // mode/dimension changes produce a new CSS class reactively. The
+      // computed tracks only these two accessors; the resolve itself runs
+      // untracked to prevent exponential cascade from theme deep-reads.
       $rocketstyle: $rocketstyleAccessor,
       $rocketstate: $rocketstateAccessor,
     }

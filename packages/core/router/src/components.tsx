@@ -151,6 +151,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     if (!router) return ''
     const current = router.currentRoute().path
     const target = props.to
+    if (typeof target !== 'string') return ''
     const isExact = current === target
     const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
 
