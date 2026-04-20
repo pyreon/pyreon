@@ -1,5 +1,12 @@
 # @pyreon/state-tree
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.13.0
+
 ## 0.12.15
 
 ### Patch Changes
@@ -85,13 +92,13 @@
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 
 - Add @pyreon/permissions (reactive type-safe permissions) and @pyreon/machine (reactive state machines). Update AI building rules.
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 

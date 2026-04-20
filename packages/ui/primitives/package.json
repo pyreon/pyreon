@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-primitives",
-  "version": "0.0.1",
+  "version": "0.13.0",
   "private": true,
   "description": "Headless base components for the Pyreon UI library — state management, ARIA, keyboard nav",
   "bugs": {

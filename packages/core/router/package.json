@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/router",
-  "version": "0.12.15",
+  "version": "0.13.0",
   "description": "Official router for Pyreon",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/router#readme",
   "bugs": {

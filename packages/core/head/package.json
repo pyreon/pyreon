@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/head",
-  "version": "0.12.15",
+  "version": "0.13.0",
   "description": "Head tag management for Pyreon — works in SSR and CSR",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/head#readme",
   "bugs": {
