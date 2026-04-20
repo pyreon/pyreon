@@ -29,7 +29,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -55,7 +55,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -68,7 +68,7 @@ jobs:
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -117,7 +117,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -130,7 +130,7 @@ jobs:
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -166,7 +166,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -179,7 +179,7 @@ jobs:
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -201,7 +201,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -214,7 +214,7 @@ jobs:
       - run: bun install --frozen-lockfile
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -252,7 +252,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -330,7 +330,7 @@ jobs:
           bun-version: latest
       - name: Cache node_modules
         if: steps.changes.outputs.should_run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -372,7 +372,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
@@ -397,7 +397,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: node-modules-cache
         with:
           path: |
