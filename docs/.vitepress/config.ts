@@ -159,7 +159,7 @@ export default defineConfig({
     socialLinks: [{ icon: 'github', link: 'https://github.com/pyreon' }],
 
     editLink: {
-      pattern: 'https://github.com/pyreon/docs/edit/main/:path',
+      pattern: 'https://github.com/pyreon/pyreon/edit/main/docs/:path',
       text: 'Edit this page on GitHub',
     },
 
