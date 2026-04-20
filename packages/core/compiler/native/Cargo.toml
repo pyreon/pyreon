@@ -1,0 +1,25 @@
+[package]
+name = "pyreon-compiler-native"
+version = "0.13.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi9"] }
+napi-derive = "2"
+oxc_parser = "0.126"
+oxc_allocator = "0.126"
+oxc_ast = "0.126"
+oxc_span = "0.126"
+oxc_syntax = "0.126"
+rustc-hash = "2"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = "symbols"
+opt-level = 3
