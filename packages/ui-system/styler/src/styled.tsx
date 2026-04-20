@@ -22,7 +22,7 @@ import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
 import { sheet } from './sheet'
-import { useTheme, useThemeAccessor } from './ThemeProvider'
+import { useThemeAccessor } from './ThemeProvider'
 
 type Tag = string | ComponentFn<any>
 
