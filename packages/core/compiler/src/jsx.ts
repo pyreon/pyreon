@@ -17,23 +17,18 @@
  *    values, and all children are text nodes or other static JSX nodes.
  *
  * Template emission:
- *  - JSX element trees with ≥ 2 DOM elements (no components, no spread attrs)
- *    are compiled to `_tpl(html, bindFn)` calls instead of nested `h()` calls.
+ *  - JSX element trees with ≥ 1 DOM elements (no components, no spread attrs on
+ *    inner elements) are compiled to `_tpl(html, bindFn)` calls instead of nested
+ *    `h()` calls.
  *  - The HTML string is parsed once via <template>.innerHTML, then cloneNode(true)
  *    for each instance (~5-10x faster than sequential createElement calls).
  *  - Static attributes are baked into the HTML string; dynamic attributes and
  *    text content use renderEffect in the bind function.
  *
- * Implementation: TypeScript parser for positions + magic-string replacements.
- * No extra runtime dependencies — `typescript` is already in devDependencies.
- *
- * Known limitation (v0): expressions inside *nested* JSX within a child
- * expression container are not individually wrapped. They are still reactive
- * because the outer wrapper re-evaluates the whole subtree, just at a coarser
- * granularity. Fine-grained nested wrapping is planned for a future pass.
+ * Implementation: oxc-parser (Rust NAPI) for fast ESTree AST + string replacements.
  */
 
-import ts from 'typescript'
+import { parseSync } from 'oxc-parser'
 
 export interface CompilerWarning {
   /** Warning message */
@@ -65,41 +60,94 @@ const SKIP_PROPS = new Set(['key', 'ref'])
 const EVENT_RE = /^on[A-Z]/
 // Events delegated to the container — must match runtime DELEGATED_EVENTS set
 const DELEGATED_EVENTS = new Set([
-  'click',
-  'dblclick',
-  'contextmenu',
-  'focusin',
-  'focusout',
-  'input',
-  'change',
-  'keydown',
-  'keyup',
-  'mousedown',
-  'mouseup',
-  'mousemove',
-  'mouseover',
-  'mouseout',
-  'pointerdown',
-  'pointerup',
-  'pointermove',
-  'pointerover',
-  'pointerout',
-  'touchstart',
-  'touchend',
-  'touchmove',
+  'click', 'dblclick', 'contextmenu', 'focusin', 'focusout', 'input',
+  'change', 'keydown', 'keyup', 'mousedown', 'mouseup', 'mousemove',
+  'mouseover', 'mouseout', 'pointerdown', 'pointerup', 'pointermove',
+  'pointerover', 'pointerout', 'touchstart', 'touchend', 'touchmove',
   'submit',
 ])
 
 export interface TransformOptions {
   /**
    * Compile for server-side rendering. When true, the compiler skips the
-   * `_tpl()` template optimization (which mutates a real DOM via
-   * `document.createElement` etc.) and falls back to plain `h()` calls so
-   * `@pyreon/runtime-server` can walk the VNode tree. Client builds keep
-   * the `_tpl()` fast path. Default: false.
+   * `_tpl()` template optimization and falls back to plain `h()` calls so
+   * `@pyreon/runtime-server` can walk the VNode tree. Default: false.
    */
   ssr?: boolean
 }
+
+// ─── oxc ESTree helpers ───────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type N = any // ESTree node — untyped for speed, matches the lint package approach
+
+function getLang(filename: string): 'tsx' | 'jsx' {
+  if (filename.endsWith('.jsx')) return 'jsx'
+  // Default to tsx so JSX is always parsed — matches the original TypeScript
+  // parser behavior which forced ScriptKind.TSX for all files.
+  return 'tsx'
+}
+
+/** Binary search for line/column from byte offset. */
+function makeLineIndex(code: string): (offset: number) => { line: number; column: number } {
+  const lineStarts = [0]
+  for (let i = 0; i < code.length; i++) {
+    if (code[i] === '\n') lineStarts.push(i + 1)
+  }
+  return (offset: number) => {
+    let lo = 0
+    let hi = lineStarts.length - 1
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1
+      if (lineStarts[mid]! <= offset) lo = mid + 1
+      else hi = mid - 1
+    }
+    return { line: lo, column: offset - lineStarts[lo - 1]! }
+  }
+}
+
+/** Iterate all direct children of an ESTree node via known property keys. */
+function forEachChild(node: N, cb: (child: N) => void): void {
+  if (!node || typeof node !== 'object') return
+  const keys = Object.keys(node)
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!
+    // Skip metadata fields for speed
+    if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range') continue
+    const val = node[key]
+    if (Array.isArray(val)) {
+      for (let j = 0; j < val.length; j++) {
+        const item = val[j]
+        if (item && typeof item === 'object' && item.type) cb(item)
+      }
+    } else if (val && typeof val === 'object' && val.type) {
+      cb(val)
+    }
+  }
+}
+
+// ─── JSX element helpers ────────────────────────────────────────────────────
+
+function jsxTagName(node: N): string {
+  const opening = node.openingElement
+  if (!opening) return ''
+  const name = opening.name
+  return name?.type === 'JSXIdentifier' ? name.name : ''
+}
+
+function isSelfClosing(node: N): boolean {
+  return node.type === 'JSXElement' && node.openingElement?.selfClosing === true
+}
+
+function jsxAttrs(node: N): N[] {
+  return node.openingElement?.attributes ?? []
+}
+
+function jsxChildren(node: N): N[] {
+  return node.children ?? []
+}
+
+// ─── Main transform ─────────────────────────────────────────────────────────
 
 export function transformJSX(
   code: string,
@@ -107,24 +155,67 @@ export function transformJSX(
   options: TransformOptions = {},
 ): TransformResult {
   const ssr = options.ssr === true
-  const scriptKind =
-    filename.endsWith('.tsx') || filename.endsWith('.jsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TSX // default to TSX so JSX is always parsed
 
-  const sf = ts.createSourceFile(
-    filename,
-    code,
-    ts.ScriptTarget.ESNext,
-    /* setParentNodes */ true,
-    scriptKind,
-  )
+  let program: N
+  try {
+    const result = parseSync(filename, code, {
+      sourceType: 'module',
+      lang: getLang(filename),
+    })
+    program = result.program
+  } catch {
+    return { code, warnings: [] }
+  }
+
+  const locate = makeLineIndex(code)
 
   type Replacement = { start: number; end: number; text: string }
   const replacements: Replacement[] = []
   const warnings: CompilerWarning[] = []
 
-  function warn(node: ts.Node, message: string, warnCode: CompilerWarning['code']): void {
-    const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf))
-    warnings.push({ message, line: line + 1, column: character, code: warnCode })
+  function warn(node: N, message: string, warnCode: CompilerWarning['code']): void {
+    const { line, column } = locate(node.start as number)
+    warnings.push({ message, line, column, code: warnCode })
+  }
+
+  // ── Parent + children maps (built once, eliminates repeated Object.keys) ──
+  const parentMap = new WeakMap<object, N>()
+  const childrenMap = new WeakMap<object, N[]>()
+
+  /** Build parent pointers + cached children arrays for the entire AST. */
+  function buildMaps(node: N): void {
+    const kids: N[] = []
+    const keys = Object.keys(node)
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]!
+      if (key === 'type' || key === 'start' || key === 'end' || key === 'loc' || key === 'range') continue
+      const val = node[key]
+      if (Array.isArray(val)) {
+        for (let j = 0; j < val.length; j++) {
+          const item = val[j]
+          if (item && typeof item === 'object' && item.type) kids.push(item)
+        }
+      } else if (val && typeof val === 'object' && val.type) {
+        kids.push(val)
+      }
+    }
+    childrenMap.set(node, kids)
+    for (let i = 0; i < kids.length; i++) {
+      parentMap.set(kids[i]!, node)
+      buildMaps(kids[i]!)
+    }
+  }
+  buildMaps(program)
+
+  function findParent(node: N): N | undefined {
+    return parentMap.get(node)
+  }
+
+  /** Fast child iteration using pre-computed children array. */
+  function forEachChildFast(node: N, cb: (child: N) => void): void {
+    const kids = childrenMap.get(node)
+    if (!kids) return
+    for (let i = 0; i < kids.length; i++) cb(kids[i]!)
   }
 
   // ── Static hoisting state ─────────────────────────────────────────────────
@@ -139,444 +230,406 @@ export function transformJSX(
   let needsApplyPropsImportGlobal = false
   let needsMountSlotImportGlobal = false
 
-  /**
-   * If `node` is a fully-static JSX element/fragment, register a module-scope
-   * hoist for it and return the generated variable name. Otherwise return null.
-   */
-  function maybeHoist(node: ts.Node): string | null {
+  function maybeHoist(node: N): string | null {
     if (
-      (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) &&
-      isStaticJSXNode(node as ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment)
+      (node.type === 'JSXElement' || node.type === 'JSXFragment') &&
+      isStaticJSXNode(node)
     ) {
       const name = `_$h${hoistIdx++}`
-      const text = code.slice(node.getStart(sf), node.getEnd())
+      const text = code.slice(node.start as number, node.end as number)
       hoists.push({ name, text })
       return name
     }
     return null
   }
 
-  function wrap(expr: ts.Expression): void {
-    const start = expr.getStart(sf)
-    const end = expr.getEnd()
-    // Object literals need parens: `() => { ... }` is a function body with
-    // labeled statements, not an object expression. Use `() => ({ ... })`.
+  function wrap(expr: N): void {
+    const start = expr.start as number
+    const end = expr.end as number
     const sliced = sliceExpr(expr)
-    const text = ts.isObjectLiteralExpression(expr)
+    const text = expr.type === 'ObjectExpression'
       ? `() => (${sliced})`
       : `() => ${sliced}`
     replacements.push({ start, end, text })
   }
 
-  /** Try to hoist or wrap an expression, pushing a replacement if needed. */
-  function hoistOrWrap(expr: ts.Expression): void {
+  function hoistOrWrap(expr: N): void {
     const hoistName = maybeHoist(expr)
     if (hoistName) {
-      replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+      replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
     } else if (shouldWrap(expr)) {
       wrap(expr)
     }
   }
 
-  // ── walk sub-handlers ───────────────────────────────────────────────────────
+  // ── Template emit ─────────────────────────────────────────────────────────
 
-  /** Try to emit a template for a JsxElement. Returns true if handled. */
-  function tryTemplateEmit(node: ts.JsxElement): boolean {
-    // SSR builds skip the `_tpl()` fast path entirely. `_tpl` clones a real
-    // DOM element via `document.createElement('template')` and the emitted
-    // bind callback calls `appendChild`, `createTextNode`, etc. — none of
-    // that exists in Node. Falling back to standard JSX→`h()` lets
-    // `@pyreon/runtime-server` walk the VNode tree to a string. Client
-    // builds keep the template optimization.
+  function tryTemplateEmit(node: N): boolean {
     if (ssr) return false
-    const elemCount = templateElementCount(node, /* isRoot */ true)
+    if (isSelfClosing(node)) return false
+    const elemCount = templateElementCount(node, true)
     if (elemCount < 1) return false
     const tplCall = buildTemplateCall(node)
     if (!tplCall) return false
-    const start = node.getStart(sf)
-    const end = node.getEnd()
-    const parent = node.parent
-    const needsBraces = parent && (ts.isJsxElement(parent) || ts.isJsxFragment(parent))
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${tplCall}}` : tplCall })
     needsTplImport = true
     return true
   }
 
-  /** Emit warnings for common JSX mistakes (e.g. <For> without by). */
-  function checkForWarnings(node: ts.JsxElement | ts.JsxSelfClosingElement): void {
-    const opening = ts.isJsxElement(node) ? node.openingElement : node
-    const tagName = ts.isIdentifier(opening.tagName) ? opening.tagName.text : ''
+  function checkForWarnings(node: N): void {
+    const tagName = jsxTagName(node)
     if (tagName !== 'For') return
-    const hasBy = opening.attributes.properties.some(
-      (p) => ts.isJsxAttribute(p) && ts.isIdentifier(p.name) && p.name.text === 'by',
+    const hasBy = jsxAttrs(node).some(
+      (p: N) => p.type === 'JSXAttribute' && p.name?.type === 'JSXIdentifier' && p.name.name === 'by',
     )
     if (!hasBy) {
       warn(
-        opening.tagName,
+        node.openingElement?.name ?? node,
         `<For> without a "by" prop will use index-based diffing, which is slower and may cause bugs with stateful children. Add by={(item) => item.id} for efficient keyed reconciliation.`,
         'missing-key-on-for',
       )
     }
   }
 
-  /** Handle a JSX attribute node — wrap or hoist its value if needed.
-   *
-   * Both DOM and component props are processed:
-   * - DOM props: () => expr — applyProp creates renderEffect
-   * - Component props: _rp(() => expr) — makeReactiveProps converts to getters
-   *
-   * The _rp() brand distinguishes compiler wrappers from user-written accessor
-   * props (like Show's when, For's each) so makeReactiveProps only converts
-   * compiler-emitted wrappers.
-   */
-  function handleJsxAttribute(node: ts.JsxAttribute): void {
-    const name = ts.isIdentifier(node.name) ? node.name.text : ''
+  function handleJsxAttribute(node: N, parentElement: N): void {
+    const name = node.name?.type === 'JSXIdentifier' ? node.name.name : ''
     if (SKIP_PROPS.has(name) || EVENT_RE.test(name)) return
-    if (!node.initializer || !ts.isJsxExpression(node.initializer)) return
-    const expr = node.initializer.expression
-    if (!expr) return
+    if (!node.value || node.value.type !== 'JSXExpressionContainer') return
+    const expr = node.value.expression
+    if (!expr || expr.type === 'JSXEmptyExpression') return
 
-    const openingEl = node.parent.parent as ts.JsxOpeningElement | ts.JsxSelfClosingElement
-    const tagName = ts.isIdentifier(openingEl.tagName) ? openingEl.tagName.text : ''
+    const tagName = jsxTagName(parentElement)
     const isComponent = tagName.length > 0 && tagName.charAt(0) !== tagName.charAt(0).toLowerCase()
 
     if (isComponent) {
-      // Component prop: wrap with _rp() brand so makeReactiveProps recognizes it.
-      //
-      // EXCEPTION: If the expression is a single JSX element (not a conditional),
-      // do NOT wrap the outer expression. The JSX element is created once (stable VNode).
-      // Its own inner props will be wrapped individually via recursive walk().
-      // This prevents remounting: <Icon name={x()} /> stays one Icon instance,
-      // only its name prop updates reactively.
-      const isSingleJsx = ts.isJsxElement(expr) || ts.isJsxSelfClosingElement(expr)
+      const isSingleJsx = expr.type === 'JSXElement' || expr.type === 'JSXFragment'
       if (isSingleJsx) {
-        // Don't wrap — recurse into the JSX element's attributes instead
-        ts.forEachChild(expr, walk)
+        walkNode(expr)
         return
       }
-
       const hoistName = maybeHoist(expr)
       if (hoistName) {
-        replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+        replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
       } else if (shouldWrap(expr)) {
-        const start = expr.getStart(sf)
-        const end = expr.getEnd()
-        // Object literals need parens to disambiguate from arrow function body
+        const start = expr.start as number
+        const end = expr.end as number
         const sliced = sliceExpr(expr)
-        const inner = ts.isObjectLiteralExpression(expr) ? `(${sliced})` : sliced
+        const inner = expr.type === 'ObjectExpression' ? `(${sliced})` : sliced
         replacements.push({ start, end, text: `_rp(() => ${inner})` })
         needsRpImport = true
       }
     } else {
-      // DOM prop: standard () => expr wrapping
       hoistOrWrap(expr)
     }
   }
 
-  /** Handle a JSX expression in child position — wrap, hoist, or recurse. */
-  function handleJsxExpression(node: ts.JsxExpression): void {
+  function handleJsxExpression(node: N): void {
     const expr = node.expression
-    if (!expr) return
+    if (!expr || expr.type === 'JSXEmptyExpression') return
     const hoistName = maybeHoist(expr)
     if (hoistName) {
-      replacements.push({ start: expr.getStart(sf), end: expr.getEnd(), text: hoistName })
+      replacements.push({ start: expr.start as number, end: expr.end as number, text: hoistName })
       return
     }
     if (shouldWrap(expr)) {
       wrap(expr)
       return
     }
-    // Not hoisted, not wrapped (e.g., arrow function in For callback).
-    // Recurse into the expression body to find nested JSX elements
-    // that should be compiled to _tpl() calls.
-    ts.forEachChild(expr, walk)
+    walkNode(expr)
   }
 
-  // ── Prop-derived variable tracking ─────────────────────────────────────────
-  // Pre-pass: find variables derived from props/splitProps results inside
-  // component functions. These are inlined at JSX use sites so the compiler's
-  // existing wrapping makes them reactive.
-  //
-  // Example:
-  //   const align = props.alignX ?? 'left'
-  //   return <div class={align}>  ← inlined to: class={props.alignX ?? 'left'}
-  //                                 ← compiler wraps: class={() => props.alignX ?? 'left'}
-
-  /** Names that refer to the props object or splitProps results. */
+  // ── Prop-derived variable tracking (collected during the single walk) ─────
   const propsNames = new Set<string>()
+  const propDerivedVars = new Map<string, { start: number; end: number }>()
 
-  /** Map of variable name → AST node of the original expression.
-   *  Using AST nodes instead of text avoids all string manipulation edge cases. */
-  const propDerivedVars = new Map<string, ts.Expression>()
-
-  /** Check if an expression reads from a tracked props-like object. */
-  function readsFromProps(node: ts.Node): boolean {
-    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-      return propsNames.has(node.expression.text)
+  function readsFromProps(node: N): boolean {
+    if (node.type === 'MemberExpression' && node.object?.type === 'Identifier') {
+      if (propsNames.has(node.object.name)) return true
     }
-    if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression)) {
-      return propsNames.has(node.expression.text)
-    }
-    // Check children recursively — e.g. props.x ?? 'default'
     let found = false
-    ts.forEachChild(node, (child) => {
+    forEachChildFast(node, (child) => {
       if (found) return
       if (readsFromProps(child)) found = true
     })
     return found
   }
 
-  /** Pre-pass: scan a function body for prop-derived variable declarations.
-   *  callbackDepth tracks nesting inside callback arguments (map, filter, etc.)
-   *  to avoid tracking variables declared inside callbacks as prop-derived. */
-  let _callbackDepth = 0
-  function scanForPropDerivedVars(node: ts.Node): void {
-    // Track callback nesting — don't track vars inside callbacks
-    if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node))) {
-      const parent = node.parent
-      if (parent && ts.isCallExpression(parent) && parent.arguments.includes(node as any)) {
-        _callbackDepth++
-        ts.forEachChild(node, scanForPropDerivedVars)
-        _callbackDepth--
-        return
-      }
-    }
-    // Track the function's first parameter as a props name.
-    // Only for COMPONENT functions — not callbacks like .map(item => <div>...)
-    // Heuristic: component functions are named declarations, const assignments,
-    // or export defaults — NOT inline arguments to calls like .map(), .filter().
-    if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node))
-      && node.parameters.length > 0) {
-
-      // Skip functions that are arguments to a call (map/filter callbacks)
-      const parent = node.parent
-      if (parent && ts.isCallExpression(parent) && parent.arguments.includes(node as any)) {
-        ts.forEachChild(node, scanForPropDerivedVars)
-        return
-      }
-
-      const firstParam = node.parameters[0]!
-      if (ts.isIdentifier(firstParam.name)) {
-        // Check if this function returns JSX (is a component)
-        let hasJSX = false
-        ts.forEachChild(node, function checkJSX(n) {
-          if (hasJSX) return
-          if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) {
-            hasJSX = true
-            return
-          }
-          ts.forEachChild(n, checkJSX)
-        })
-        if (hasJSX) propsNames.add(firstParam.name.text)
-      }
-    }
-
-    // Track splitProps results: const [own, rest] = splitProps(props, [...])
-    if (ts.isVariableStatement(node)) {
-      for (const decl of node.declarationList.declarations) {
-        if (ts.isArrayBindingPattern(decl.name) && decl.initializer
-          && ts.isCallExpression(decl.initializer)) {
-          const callee = decl.initializer.expression
-          if (ts.isIdentifier(callee) && callee.text === 'splitProps') {
-            for (const el of decl.name.elements) {
-              if (ts.isBindingElement(el) && ts.isIdentifier(el.name)) {
-                propsNames.add(el.name.text)
-              }
-            }
-          }
-        }
-
-        // Track: const x = props.y ?? z  OR  const x = own.y
-        // Skip let/var — mutable variables can be reassigned, unsafe to inline
-        // Skip declarations inside callbacks (map, filter, etc.)
-        // Skip stateful calls (signal, computed, effect) — inlining creates new instances
-        if (!(node.declarationList.flags & ts.NodeFlags.Const)) continue
-        if (_callbackDepth > 0) continue
-        if (ts.isIdentifier(decl.name) && decl.initializer) {
-          if (isStatefulCall(decl.initializer)) continue
-          if (readsFromProps(decl.initializer)) {
-            propDerivedVars.set(decl.name.text, decl.initializer)
-          }
-        }
-      }
-    }
-
-    ts.forEachChild(node, scanForPropDerivedVars)
-  }
-
-  // Run pre-pass
-  scanForPropDerivedVars(sf)
-
-  // Transitive resolution: if const b = a + 1 where a is prop-derived,
-  // then b is also prop-derived. Store its AST node.
-  // Fixed-point iteration until no new variables are added.
-  let changed = true
-  while (changed) {
-    changed = false
-    sf.forEachChild(function scanTransitive(node) {
-      if (!ts.isVariableStatement(node)) { ts.forEachChild(node, scanTransitive); return }
-      for (const decl of node.declarationList.declarations) {
-        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue
-        const varName = decl.name.text
-        if (propDerivedVars.has(varName)) continue
-        if (node.declarationList.flags & ts.NodeFlags.Let) continue
-        let usesPropVar = false
-        ts.forEachChild(decl.initializer, function check(n) {
-          if (usesPropVar) return
-          if (ts.isIdentifier(n) && propDerivedVars.has(n.text)) {
-            const parent = n.parent
-            if (parent && ts.isPropertyAccessExpression(parent) && parent.name === n) return
-            usesPropVar = true
-          }
-          ts.forEachChild(n, check)
-        })
-        if (usesPropVar) {
-          propDerivedVars.set(varName, decl.initializer)
-          changed = true
-        }
-      }
-    })
-  }
-
-  // Resolve transitive AST: for each prop-derived var, recursively replace
-  // references to other prop-derived vars in its AST with their resolved nodes.
-  // Uses ts.visitNode for correct AST transformation — no string manipulation.
-  //
-  // The `visited` set prevents infinite recursion on circular references:
-  //   const a = b + props.x;  const b = a + 1;
-  // Without it, resolving `a` reaches `b`, which reaches `a` again, and
-  // the compiler stack-overflows. The fix: when a variable is already in
-  // the visited set, leave the identifier as-is (it falls back to the
-  // captured const value, which is the correct runtime behavior for a
-  // circular dependency — the variable reads its value at definition time).
-  // Track which cycles have been warned about so we don't emit
-  // duplicate warnings for the same cycle seen from different vars.
-  const warnedCycles = new Set<string>()
-
-  function resolveExprTransitive(
-    node: ts.Expression,
-    visited: Set<string> = new Set(),
-    /** The source node used for warning locations. */
-    sourceNode?: ts.Node,
-  ): ts.Expression {
-    return ts.visitNode(node, function visit(n: ts.Node): ts.Node {
-      if (ts.isIdentifier(n) && propDerivedVars.has(n.text)) {
-        // FIRST: skip non-reference positions. An identifier is NOT a
-        // variable read when it's a property name, binding name, or
-        // shorthand property key. Those positions can happen to match
-        // a tracked variable name (e.g. `own.beforeContentDirection`
-        // when `beforeContentDirection` is also a tracked const) and
-        // would otherwise trigger false-positive cycle warnings.
-        //
-        // This check MUST run before the cycle check — otherwise a
-        // property access like `own.X` where X matches a tracked var
-        // that's already in `visited` would falsely fire the warning.
-        const parent = n.parent
-        if (parent) {
-          // Declaration positions — identifier defines a name, not reads one.
-          // Also catches PropertyAccessExpression.name (property access),
-          // VariableDeclaration.name (binding), PropertyAssignment.name
-          // (object literal key), etc.
-          if ('name' in parent && (parent as any).name === n) return n
-          // Shorthand property: { x } — the identifier is both key and value
-          if (ts.isShorthandPropertyAssignment(parent)) return n
-        }
-
-        // Cycle detection: if this variable is already in the visited
-        // set, we've found a circular reference. Leave the identifier
-        // as-is (falls back to captured const value) and emit a
-        // compiler warning so the developer knows reactivity is
-        // incomplete on this chain.
-        if (visited.has(n.text)) {
-          const cycleKey = [...visited, n.text].sort().join(',')
-          if (!warnedCycles.has(cycleKey)) {
-            warnedCycles.add(cycleKey)
-            const chain = [...visited, n.text].join(' → ')
-            warn(
-              sourceNode ?? n,
-              `[Pyreon] Circular prop-derived const reference: ${chain}. ` +
-                `The cyclic identifier \`${n.text}\` will use its captured value ` +
-                `instead of being reactively inlined. Break the cycle by reading ` +
-                `from \`props.*\` directly or restructuring the derivation chain.`,
-              'circular-prop-derived',
-            )
-          }
-          return n
-        }
-
-        const resolved = propDerivedVars.get(n.text)!
-        // Mark this variable as visited BEFORE recursing so cycles are
-        // detected on the next encounter rather than re-entering.
-        const nextVisited = new Set(visited)
-        nextVisited.add(n.text)
-        return ts.factory.createParenthesizedExpression(
-          resolveExprTransitive(resolved, nextVisited, sourceNode),
-        )
-      }
-      return ts.visitEachChild(n, visit, undefined as any)
-    }) as ts.Expression
-  }
-
-  /** Print an AST expression back to source text. */
-  const printer = ts.createPrinter({ removeComments: false })
-
-  /**
-   * Enhanced dynamic check — combines containsCall with props awareness.
-   * Returns true if an expression is reactive (contains signal calls,
-   * accesses props members, or references prop-derived variables).
-   */
-  function isDynamic(node: ts.Node): boolean {
-    if (containsCall(node)) return true
-    return accessesProps(node)
-  }
-
-  /** Check if an expression accesses a tracked props object or a prop-derived variable. */
-  function accessesProps(node: ts.Node): boolean {
-    if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-      if (propsNames.has(node.expression.text)) return true
-    }
-    if (ts.isIdentifier(node) && propDerivedVars.has(node.text)) {
-      const parent = node.parent
-      if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) return false
+  /** Check if an expression references any prop-derived variable. */
+  function referencesPropDerived(node: N): boolean {
+    if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
+      const p = findParent(node)
+      if (p && p.type === 'MemberExpression' && p.property === node && !p.computed) return false
       return true
     }
     let found = false
-    ts.forEachChild(node, (child) => {
+    forEachChildFast(node, (child) => {
       if (found) return
-      if (ts.isArrowFunction(child) || ts.isFunctionExpression(child)) return
+      if (referencesPropDerived(child)) found = true
+    })
+    return found
+  }
+
+  /** Collect prop-derived variable info from a VariableDeclaration node.
+   *  Called inline during the single-pass walk when we encounter a declaration. */
+  function collectPropDerivedFromDecl(node: N, callbackDepth: number): void {
+    if (node.type !== 'VariableDeclaration') return
+    for (const decl of node.declarations ?? []) {
+      // splitProps: const [own, rest] = splitProps(props, [...])
+      if (decl.id?.type === 'ArrayPattern' && decl.init?.type === 'CallExpression') {
+        const callee = decl.init.callee
+        if (callee?.type === 'Identifier' && callee.name === 'splitProps') {
+          for (const el of decl.id.elements ?? []) {
+            if (el?.type === 'Identifier') propsNames.add(el.name)
+          }
+        }
+      }
+      if (node.kind !== 'const') continue
+      if (callbackDepth > 0) continue
+      if (decl.id?.type === 'Identifier' && decl.init) {
+        if (isStatefulCall(decl.init)) continue
+        // Direct prop read OR transitive (references another prop-derived var)
+        if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
+          propDerivedVars.set(decl.id.name, { start: decl.init.start as number, end: decl.init.end as number })
+        }
+      }
+    }
+  }
+
+  /** Detect component functions and register their first param as a props name.
+   *  Called inline during the walk when entering a function. */
+  function maybeRegisterComponentProps(node: N): void {
+    if (
+      (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') &&
+      (node.params?.length ?? 0) > 0
+    ) {
+      const parent = findParent(node)
+      // Skip callback functions (arguments to calls like .map, .filter)
+      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) return
+      const firstParam = node.params[0]
+      if (firstParam?.type === 'Identifier') {
+        let hasJSX = false
+        function checkJSX(n: N): void {
+          if (hasJSX) return
+          if (n.type === 'JSXElement' || n.type === 'JSXFragment') { hasJSX = true; return }
+          forEachChildFast(n, checkJSX)
+        }
+        forEachChildFast(node, checkJSX)
+        if (hasJSX) propsNames.add(firstParam.name)
+      }
+    }
+  }
+
+  // ── String-based transitive resolution ─────────────────────────────────────
+  const resolvedCache = new Map<string, string>()
+  const resolving = new Set<string>()
+  const warnedCycles = new Set<string>()
+
+  function resolveVarToString(varName: string, sourceNode?: N): string {
+    if (resolvedCache.has(varName)) return resolvedCache.get(varName)!
+    if (resolving.has(varName)) {
+      const cycleKey = [...resolving, varName].sort().join(',')
+      if (!warnedCycles.has(cycleKey)) {
+        warnedCycles.add(cycleKey)
+        const chain = [...resolving, varName].join(' → ')
+        warn(
+          sourceNode ?? program,
+          `[Pyreon] Circular prop-derived const reference: ${chain}. ` +
+            `The cyclic identifier \`${varName}\` will use its captured value ` +
+            `instead of being reactively inlined. Break the cycle by reading ` +
+            `from \`props.*\` directly or restructuring the derivation chain.`,
+          'circular-prop-derived',
+        )
+      }
+      return varName
+    }
+    resolving.add(varName)
+    const span = propDerivedVars.get(varName)!
+    const rawText = code.slice(span.start, span.end)
+    const resolved = resolveIdentifiersInText(rawText, span.start, sourceNode)
+    resolving.delete(varName)
+    resolvedCache.set(varName, resolved)
+    return resolved
+  }
+
+  function resolveIdentifiersInText(text: string, baseOffset: number, sourceNode?: N): string {
+    const endOffset = baseOffset + text.length
+    const idents: { start: number; end: number; name: string }[] = []
+
+    // Walk the AST to find identifiers in the span, passing parent context
+    // to skip non-reference positions (property names, declarations, etc.)
+    function findIdents(node: N, parent: N | null): void {
+      const nodeStart = node.start as number
+      const nodeEnd = node.end as number
+      if (nodeStart >= endOffset || nodeEnd <= baseOffset) return
+      if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
+        if (parent) {
+          if (parent.type === 'MemberExpression' && parent.property === node && !parent.computed) { /* skip */ }
+          else if (parent.type === 'VariableDeclarator' && parent.id === node) { /* skip */ }
+          else if (parent.type === 'Property' && parent.key === node && !parent.computed) { /* skip */ }
+          else if (parent.type === 'Property' && parent.shorthand) { /* skip */ }
+          else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
+            idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
+          }
+        } else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
+          idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
+        }
+      }
+      forEachChildFast(node, (child) => findIdents(child, node))
+    }
+    findIdents(program, null)
+
+    if (idents.length === 0) return text
+
+    idents.sort((a, b) => a.start - b.start)
+    const parts: string[] = []
+    let lastPos = baseOffset
+    for (const id of idents) {
+      parts.push(code.slice(lastPos, id.start))
+      parts.push(`(${resolveVarToString(id.name, sourceNode)})`)
+      lastPos = id.end
+    }
+    parts.push(code.slice(lastPos, endOffset))
+    return parts.join('')
+  }
+
+  // ── Analysis helpers with memoization (Phase 3) ────────────────────────────
+  // Cache results keyed by node.start (unique per node in a file).
+  // Eliminates redundant subtree traversals for containsCall + accessesProps.
+  const _isDynamicCache = new Map<number, boolean>()
+
+  /** Fused isDynamic: checks both containsCall and accessesProps in one traversal. */
+  function isDynamic(node: N): boolean {
+    const key = node.start as number
+    const cached = _isDynamicCache.get(key)
+    if (cached !== undefined) return cached
+    const result = _isDynamicImpl(node)
+    _isDynamicCache.set(key, result)
+    return result
+  }
+
+  function _isDynamicImpl(node: N): boolean {
+    // Call expression (non-pure)
+    if (node.type === 'CallExpression') {
+      if (!isPureStaticCall(node)) return true
+    }
+    if (node.type === 'TaggedTemplateExpression') return true
+    // Props access
+    if (node.type === 'MemberExpression' && !node.computed && node.object?.type === 'Identifier') {
+      if (propsNames.has(node.object.name)) return true
+    }
+    // Prop-derived variable reference
+    if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+        // This is a property name position, not a reference — fall through
+      } else {
+        return true
+      }
+    }
+    // Don't recurse into nested functions
+    if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
+    // Recurse into children
+    let found = false
+    forEachChildFast(node, (child) => {
+      if (found) return
+      if (isDynamic(child)) found = true
+    })
+    return found
+  }
+
+  /** accessesProps — kept for sliceExpr's quick check (does this need resolution?) */
+  function accessesProps(node: N): boolean {
+    if (node.type === 'MemberExpression' && !node.computed && node.object?.type === 'Identifier') {
+      if (propsNames.has(node.object.name)) return true
+    }
+    if (node.type === 'Identifier' && propDerivedVars.has(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
+      return true
+    }
+    let found = false
+    forEachChildFast(node, (child) => {
+      if (found) return
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
       if (accessesProps(child)) found = true
     })
     return found
   }
 
-  function shouldWrap(node: ts.Expression): boolean {
-    if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
+  function shouldWrap(node: N): boolean {
+    if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
     if (isStatic(node)) return false
-    if (ts.isCallExpression(node) && isPureStaticCall(node)) return false
+    if (node.type === 'CallExpression' && isPureStaticCall(node)) return false
     return isDynamic(node)
   }
 
-  function walk(node: ts.Node): void {
-    if (ts.isJsxElement(node) && tryTemplateEmit(node)) return
-    if (ts.isJsxSelfClosingElement(node) || ts.isJsxElement(node)) checkForWarnings(node)
-    if (ts.isJsxAttribute(node)) {
-      handleJsxAttribute(node)
+  // ── Single unified walk (Phase 2) ─────────────────────────────────────────
+  // Merges the old 3-pass architecture (scanForPropDerivedVars + transitive
+  // resolution + JSX walk) into one top-down traversal. Works because `const`
+  // declarations have a temporal dead zone — they're always before their use.
+  let _callbackDepth = 0
+
+  function walkNode(node: N): void {
+    // ── Component function detection (was pass 1) ──
+    if (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+      // Track callback nesting for prop-derived var exclusion
+      const parent = findParent(node)
+      const isCallbackArg = parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
+      if (isCallbackArg) _callbackDepth++
+      // Register component props (only for non-callback functions with JSX)
+      maybeRegisterComponentProps(node)
+    }
+
+    // ── Variable declaration collection (was pass 1 + 2) ──
+    if (node.type === 'VariableDeclaration') {
+      collectPropDerivedFromDecl(node, _callbackDepth)
+    }
+
+    // ── JSX processing (was pass 3) ──
+    if (node.type === 'JSXElement') {
+      if (!isSelfClosing(node) && tryTemplateEmit(node)) {
+        // Template emitted — don't recurse into this subtree
+        return
+      }
+      checkForWarnings(node)
+      for (const attr of jsxAttrs(node)) {
+        if (attr.type === 'JSXAttribute') handleJsxAttribute(attr, node)
+      }
+      for (const child of jsxChildren(node)) {
+        if (child.type === 'JSXExpressionContainer') handleJsxExpression(child)
+        else walkNode(child)
+      }
+      // Restore callback depth if this was a function
+      if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+        const parent = findParent(node)
+        if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) _callbackDepth--
+      }
       return
     }
-    if (ts.isJsxExpression(node)) {
+    if (node.type === 'JSXExpressionContainer') {
       handleJsxExpression(node)
       return
     }
-    ts.forEachChild(node, walk)
+
+    // Generic descent
+    forEachChildFast(node, walkNode)
+
+    // Restore callback depth after leaving function
+    if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+      const parent = findParent(node)
+      if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) _callbackDepth--
+    }
   }
 
-  walk(sf)
+  walkNode(program)
 
   if (replacements.length === 0 && hoists.length === 0) return { code, warnings }
 
-  // Apply replacements left-to-right via string builder — O(n) single join
   replacements.sort((a, b) => a.start - b.start)
-
   const parts: string[] = []
   let lastPos = 0
   for (const r of replacements) {
@@ -587,13 +640,11 @@ export function transformJSX(
   parts.push(code.slice(lastPos))
   let result = parts.join('')
 
-  // Prepend module-scope hoisted static VNode declarations
   if (hoists.length > 0) {
     const preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text}\n`).join('')
     result = preamble + result
   }
 
-  // Prepend template imports if _tpl() was emitted
   if (needsTplImport) {
     const runtimeDomImports = ['_tpl']
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
@@ -608,65 +659,45 @@ export function transformJSX(
       result
   }
 
-  // Prepend _rp import if reactive component props were emitted
   if (needsRpImport) {
     result = `import { _rp } from "@pyreon/core";\n` + result
   }
 
   return { code: result, usesTemplates: needsTplImport, warnings }
 
-  // ── Template emission helpers (closures over sf, code) ──────────────────────
+  // ── Template emission helpers ─────────────────────────────────────────────
 
-  /**
-   * Check if attributes prevent template emission.
-   * - `key` always bails (VNode reconciliation prop)
-   * - Spread on inner elements bails (too complex to merge in _bind)
-   * - Spread on root element is allowed — applied via applyProps in _bind
-   */
-  function hasBailAttr(node: ts.JsxElement | ts.JsxSelfClosingElement, isRoot = false): boolean {
+  function hasBailAttr(node: N, isRoot = false): boolean {
     for (const attr of jsxAttrs(node)) {
-      if (ts.isJsxSpreadAttribute(attr)) {
-        // Allow spread on root element — handled in buildTemplateCall
+      if (attr.type === 'JSXSpreadAttribute') {
         if (isRoot) continue
         return true
       }
-      if (ts.isJsxAttribute(attr) && ts.isIdentifier(attr.name) && attr.name.text === 'key')
+      if (attr.type === 'JSXAttribute' && attr.name?.type === 'JSXIdentifier' && attr.name.name === 'key')
         return true
     }
     return false
   }
 
-  /**
-   * Count template-eligible elements for a single JSX child.
-   * Returns 0 for skippable children, -1 for bail, positive for element count.
-   */
-  function countChildForTemplate(child: ts.JsxChild): number {
-    if (ts.isJsxText(child)) return 0
-    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child))
-      return templateElementCount(child)
-    if (ts.isJsxExpression(child)) {
-      if (!child.expression) return 0
-      return containsJSXInExpr(child.expression) ? -1 : 0
+  function countChildForTemplate(child: N): number {
+    if (child.type === 'JSXText') return 0
+    if (child.type === 'JSXElement') return templateElementCount(child)
+    if (child.type === 'JSXExpressionContainer') {
+      const expr = child.expression
+      if (!expr || expr.type === 'JSXEmptyExpression') return 0
+      return containsJSXInExpr(expr) ? -1 : 0
     }
-    if (ts.isJsxFragment(child)) return templateFragmentCount(child)
+    if (child.type === 'JSXFragment') return templateFragmentCount(child)
     return -1
   }
 
-  /**
-   * Count DOM elements in a JSX subtree. Returns -1 if the tree is not
-   * eligible for template emission.
-   */
-  function templateElementCount(
-    node: ts.JsxElement | ts.JsxSelfClosingElement,
-    isRoot = false,
-  ): number {
+  function templateElementCount(node: N, isRoot = false): number {
     const tag = jsxTagName(node)
     if (!tag || !isLowerCase(tag)) return -1
     if (hasBailAttr(node, isRoot)) return -1
-    if (!ts.isJsxElement(node)) return 1
-
+    if (isSelfClosing(node)) return 1
     let count = 1
-    for (const child of node.children) {
+    for (const child of jsxChildren(node)) {
       const c = countChildForTemplate(child)
       if (c === -1) return -1
       count += c
@@ -674,10 +705,9 @@ export function transformJSX(
     return count
   }
 
-  /** Count template-eligible elements inside a fragment. */
-  function templateFragmentCount(frag: ts.JsxFragment): number {
+  function templateFragmentCount(frag: N): number {
     let count = 0
-    for (const child of frag.children) {
+    for (const child of jsxChildren(frag)) {
       const c = countChildForTemplate(child)
       if (c === -1) return -1
       count += c
@@ -685,35 +715,25 @@ export function transformJSX(
     return count
   }
 
-  /**
-   * Build the complete `_tpl("html", (__root) => { ... })` call string
-   * for a template-eligible JSX element tree. Returns null if codegen fails.
-   */
-  function buildTemplateCall(node: ts.JsxElement | ts.JsxSelfClosingElement): string | null {
+  function buildTemplateCall(node: N): string | null {
     const bindLines: string[] = []
     const disposerNames: string[] = []
     let varIdx = 0
     let dispIdx = 0
-    // Reactive expressions that will be combined into a single _bind call
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
     let needsBindDirectImport = false
     let needsApplyPropsImport = false
     let needsMountSlotImport = false
 
-    function nextVar(): string {
-      return `__e${varIdx++}`
-    }
+    function nextVar(): string { return `__e${varIdx++}` }
     function nextDisp(): string {
       const name = `__d${dispIdx++}`
       disposerNames.push(name)
       return name
     }
-    function nextTextVar(): string {
-      return `__t${varIdx++}`
-    }
+    function nextTextVar(): string { return `__t${varIdx++}` }
 
-    /** Resolve the variable name for an element given its accessor path. */
     function resolveElementVar(accessor: string, hasDynamic: boolean): string {
       if (accessor === '__root') return '__root'
       if (hasDynamic) {
@@ -724,14 +744,11 @@ export function transformJSX(
       return accessor
     }
 
-    /** Emit bind line for a ref attribute. */
-    function emitRef(attr: ts.JsxAttribute, varName: string): void {
-      if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
-      const expr = attr.initializer.expression
-      if (!expr) return
-      // Function ref: ref={(el) => { ... }} or ref={fn} → call with element
-      // Object ref: ref={myRef} → assign element to .current
-      if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    function emitRef(attr: N, varName: string): void {
+      if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
+      const expr = attr.value.expression
+      if (!expr || expr.type === 'JSXEmptyExpression') return
+      if (expr.type === 'ArrowFunctionExpression' || expr.type === 'FunctionExpression') {
         bindLines.push(`(${sliceExpr(expr)})(${varName})`)
       } else {
         bindLines.push(
@@ -740,87 +757,67 @@ export function transformJSX(
       }
     }
 
-    /** Emit event handler bind line — delegated (expando) or addEventListener. */
-    function emitEventListener(attr: ts.JsxAttribute, attrName: string, varName: string): void {
+    function emitEventListener(attr: N, attrName: string, varName: string): void {
       const eventName = (attrName[2] ?? '').toLowerCase() + attrName.slice(3)
-      if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return
-      if (!attr.initializer.expression) return
-      const handler = sliceExpr(attr.initializer.expression)
+      if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
+      const expr = attr.value.expression
+      if (!expr || expr.type === 'JSXEmptyExpression') return
+      const handler = sliceExpr(expr)
       if (DELEGATED_EVENTS.has(eventName)) {
-        // Delegated: store handler as expando property — container listener picks it up
         bindLines.push(`${varName}.__ev_${eventName} = ${handler}`)
       } else {
         bindLines.push(`${varName}.addEventListener("${eventName}", ${handler})`)
       }
     }
 
-    /** Return HTML string for a static attribute expression, or null if not static. */
-    function staticAttrToHtml(exprNode: ts.Expression, htmlAttrName: string): string | null {
+    function staticAttrToHtml(exprNode: N, htmlAttrName: string): string | null {
       if (!isStatic(exprNode)) return null
-      if (ts.isStringLiteral(exprNode)) return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.text)}"`
-      if (ts.isNumericLiteral(exprNode)) return ` ${htmlAttrName}="${exprNode.text}"`
-      if (exprNode.kind === ts.SyntaxKind.TrueKeyword) return ` ${htmlAttrName}`
+      // String literal
+      if ((exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') && typeof exprNode.value === 'string')
+        return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.value)}"`
+      // Numeric literal
+      if ((exprNode.type === 'Literal' || exprNode.type === 'NumericLiteral') && typeof exprNode.value === 'number')
+        return ` ${htmlAttrName}="${exprNode.value}"`
+      // Boolean true
+      if ((exprNode.type === 'Literal' || exprNode.type === 'BooleanLiteral') && exprNode.value === true)
+        return ` ${htmlAttrName}`
       return '' // false/null/undefined → omit
     }
 
-    /**
-     * Try to extract a direct signal reference from an expression.
-     * Returns the callee text (e.g. "count" or "row.label") if the expression
-     * is a single call with no arguments, otherwise null.
-     */
-    function tryDirectSignalRef(exprNode: ts.Expression): string | null {
+    function tryDirectSignalRef(exprNode: N): string | null {
       let inner = exprNode
-      // Unwrap concise arrow: () => expr
-      if (ts.isArrowFunction(inner) && !ts.isBlock(inner.body)) {
-        inner = inner.body as ts.Expression
+      if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
+        inner = inner.body
       }
-      if (!ts.isCallExpression(inner)) return null
-      if (inner.arguments.length > 0) return null
-      const callee = inner.expression
-      // Only match simple identifiers: count() → _bindText(count, node)
-      // Property access like obj.method() is NOT safe — detaching the method
-      // loses `this` context (e.g. value.toLocaleString becomes unbound).
-      if (ts.isIdentifier(callee)) {
-        return sliceExpr(callee)
-      }
+      if (inner.type !== 'CallExpression') return null
+      if ((inner.arguments?.length ?? 0) > 0) return null
+      const callee = inner.callee
+      if (callee?.type === 'Identifier') return sliceExpr(callee)
       return null
     }
 
-    /** Unwrap a reactive accessor expression for use inside _bind(). */
-    function unwrapAccessor(exprNode: ts.Expression): { expr: string; isReactive: boolean } {
-      // Concise arrow: () => value() → unwrap to "value()"
-      if (ts.isArrowFunction(exprNode) && !ts.isBlock(exprNode.body)) {
-        return { expr: sliceExpr(exprNode.body as ts.Expression), isReactive: true }
+    function unwrapAccessor(exprNode: N): { expr: string; isReactive: boolean } {
+      if (exprNode.type === 'ArrowFunctionExpression' && exprNode.body?.type !== 'BlockStatement') {
+        return { expr: sliceExpr(exprNode.body), isReactive: true }
       }
-      // Block-body arrow/function: invoke it
-      if (ts.isArrowFunction(exprNode) || ts.isFunctionExpression(exprNode)) {
+      if (exprNode.type === 'ArrowFunctionExpression' || exprNode.type === 'FunctionExpression') {
         return { expr: `(${sliceExpr(exprNode)})()`, isReactive: true }
       }
       return { expr: sliceExpr(exprNode), isReactive: isDynamic(exprNode) }
     }
 
-    /** Build a setter expression for an attribute. */
     function attrSetter(htmlAttrName: string, varName: string, expr: string): string {
       if (htmlAttrName === 'class') return `${varName}.className = ${expr}`
       if (htmlAttrName === 'style') return `${varName}.style.cssText = ${expr}`
       return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
     }
 
-    /** Emit bind line for a dynamic (non-static) attribute. */
-    function emitDynamicAttr(
-      _expr: string,
-      exprNode: ts.Expression,
-      htmlAttrName: string,
-      varName: string,
-    ): void {
+    function emitDynamicAttr(_expr: string, exprNode: N, htmlAttrName: string, varName: string): void {
       const { expr, isReactive } = unwrapAccessor(exprNode)
-
       if (!isReactive) {
         bindLines.push(attrSetter(htmlAttrName, varName, expr))
         return
       }
-
-      // Direct signal binding for bare signal calls (e.g. class={() => active()})
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
         needsBindDirectImport = true
@@ -834,111 +831,79 @@ export function transformJSX(
         bindLines.push(`const ${d} = _bindDirect(${directRef}, ${updater})`)
         return
       }
-
       reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr))
     }
 
-    /** Emit bind line or HTML for an expression attribute value. */
-    function emitAttrExpression(
-      exprNode: ts.Expression,
-      htmlAttrName: string,
-      varName: string,
-    ): string {
+    function emitAttrExpression(exprNode: N, htmlAttrName: string, varName: string): string {
       const staticHtml = staticAttrToHtml(exprNode, htmlAttrName)
       if (staticHtml !== null) return staticHtml
-
-      // style={{...}} → Object.assign(el.style, {...}) for object expressions
-      if (htmlAttrName === 'style' && ts.isObjectLiteralExpression(exprNode)) {
+      if (htmlAttrName === 'style' && exprNode.type === 'ObjectExpression') {
         bindLines.push(`Object.assign(${varName}.style, ${sliceExpr(exprNode)})`)
         return ''
       }
-
       emitDynamicAttr(sliceExpr(exprNode), exprNode, htmlAttrName, varName)
       return ''
     }
 
-    /** Emit side-effects for special attrs (ref, event). Returns true if handled. */
-    function tryEmitSpecialAttr(attr: ts.JsxAttribute, attrName: string, varName: string): boolean {
-      if (attrName === 'ref') {
-        emitRef(attr, varName)
-        return true
-      }
-      if (EVENT_RE.test(attrName)) {
-        emitEventListener(attr, attrName, varName)
-        return true
-      }
+    function tryEmitSpecialAttr(attr: N, attrName: string, varName: string): boolean {
+      if (attrName === 'ref') { emitRef(attr, varName); return true }
+      if (EVENT_RE.test(attrName)) { emitEventListener(attr, attrName, varName); return true }
       return false
     }
 
-    /** Convert an attribute initializer to HTML. Returns empty string for side-effect-only attrs. */
-    function attrInitializerToHtml(
-      attr: ts.JsxAttribute,
-      htmlAttrName: string,
-      varName: string,
-    ): string {
-      if (!attr.initializer) return ` ${htmlAttrName}`
-      if (ts.isStringLiteral(attr.initializer))
-        return ` ${htmlAttrName}="${escapeHtmlAttr(attr.initializer.text)}"`
-      if (ts.isJsxExpression(attr.initializer) && attr.initializer.expression)
-        return emitAttrExpression(attr.initializer.expression, htmlAttrName, varName)
+    function attrInitializerToHtml(attr: N, htmlAttrName: string, varName: string): string {
+      if (!attr.value) return ` ${htmlAttrName}`
+      // JSX string attribute: class="foo"
+      if (attr.value.type === 'StringLiteral' || (attr.value.type === 'Literal' && typeof attr.value.value === 'string'))
+        return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
+      if (attr.value.type === 'JSXExpressionContainer') {
+        const expr = attr.value.expression
+        if (expr && expr.type !== 'JSXEmptyExpression') return emitAttrExpression(expr, htmlAttrName, varName)
+      }
       return ''
     }
 
-    /** Process a single attribute, returning HTML to append. */
-    function processOneAttr(attr: ts.JsxAttributeLike, varName: string): string {
-      // Spread attribute: apply all props at runtime
-      if (ts.isJsxSpreadAttribute(attr)) {
-        const expr = sliceExpr(attr.expression)
-        // Use runtime-dom's applyProps which handles class, style, events, etc.
+    function processOneAttr(attr: N, varName: string): string {
+      if (attr.type === 'JSXSpreadAttribute') {
+        const expr = sliceExpr(attr.argument)
         needsApplyPropsImport = true
-        if (isDynamic(attr.expression)) {
+        if (isDynamic(attr.argument)) {
           reactiveBindExprs.push(`_applyProps(${varName}, ${expr})`)
         } else {
           bindLines.push(`_applyProps(${varName}, ${expr})`)
         }
         return ''
       }
-      if (!ts.isJsxAttribute(attr)) return ''
-      const attrName = ts.isIdentifier(attr.name) ? attr.name.text : ''
+      if (attr.type !== 'JSXAttribute') return ''
+      const attrName = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
       if (attrName === 'key') return ''
       if (tryEmitSpecialAttr(attr, attrName, varName)) return ''
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName)
     }
 
-    /** Process all attributes on an element, returning the HTML attribute string. */
-    function processAttrs(el: ts.JsxElement | ts.JsxSelfClosingElement, varName: string): string {
+    function processAttrs(el: N, varName: string): string {
       let htmlAttrs = ''
       for (const attr of jsxAttrs(el)) htmlAttrs += processOneAttr(attr, varName)
       return htmlAttrs
     }
 
-    /** Emit bind lines for a reactive text expression child. */
     function emitReactiveTextChild(
-      expr: string,
-      exprNode: ts.Expression,
-      varName: string,
-      parentRef: string,
-      childNodeIdx: number,
-      needsPlaceholder: boolean,
+      expr: string, exprNode: N, varName: string,
+      parentRef: string, childNodeIdx: number, needsPlaceholder: boolean,
     ): string {
       const tVar = nextTextVar()
       bindLines.push(`const ${tVar} = document.createTextNode("")`)
       if (needsPlaceholder) {
-        bindLines.push(
-          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
-        )
+        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
       } else {
         bindLines.push(`${varName}.appendChild(${tVar})`)
       }
-      // Direct signal binding: bypass effect system entirely
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
         needsBindTextImport = true
         const d = nextDisp()
         bindLines.push(`const ${d} = _bindText(${directRef}, ${tVar})`)
       } else {
-        // Each reactive text child gets its own _bind — independent tracking.
-        // When r.name() changes, r.email()'s _bind doesn't re-run.
         needsBindImportGlobal = true
         const d = nextDisp()
         bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
@@ -946,34 +911,88 @@ export function transformJSX(
       return needsPlaceholder ? '<!>' : ''
     }
 
-    /** Emit bind lines for a static text expression child. */
     function emitStaticTextChild(
-      expr: string,
-      varName: string,
-      parentRef: string,
-      childNodeIdx: number,
-      needsPlaceholder: boolean,
+      expr: string, varName: string,
+      parentRef: string, childNodeIdx: number, needsPlaceholder: boolean,
     ): string {
       if (needsPlaceholder) {
         const tVar = nextTextVar()
         bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-        bindLines.push(
-          `${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`,
-        )
+        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${parentRef}.childNodes[${childNodeIdx}])`)
         return '<!>'
       }
       bindLines.push(`${varName}.textContent = ${expr}`)
       return ''
     }
 
-    /** Process a single flat child, returning the HTML contribution or null on failure. */
+    type FlatChild =
+      | { kind: 'text'; text: string }
+      | { kind: 'element'; node: N; elemIdx: number }
+      | { kind: 'expression'; expression: N }
+
+    function classifyJsxChild(
+      child: N, out: FlatChild[],
+      elemIdxRef: { value: number },
+      recurse: (kids: N[]) => void,
+    ): void {
+      if (child.type === 'JSXText') {
+        const raw = child.value ?? child.raw ?? ''
+        const trimmed = raw.replace(/\n\s*/g, '').trim()
+        if (trimmed) out.push({ kind: 'text', text: trimmed })
+        return
+      }
+      if (child.type === 'JSXElement') {
+        out.push({ kind: 'element', node: child, elemIdx: elemIdxRef.value++ })
+        return
+      }
+      if (child.type === 'JSXExpressionContainer') {
+        const expr = child.expression
+        if (expr && expr.type !== 'JSXEmptyExpression') out.push({ kind: 'expression', expression: expr })
+        return
+      }
+      if (child.type === 'JSXFragment') recurse(jsxChildren(child))
+    }
+
+    function flattenChildren(children: N[]): FlatChild[] {
+      const flatList: FlatChild[] = []
+      const elemIdxRef = { value: 0 }
+      function addChildren(kids: N[]): void {
+        for (const child of kids) classifyJsxChild(child, flatList, elemIdxRef, addChildren)
+      }
+      addChildren(children)
+      return flatList
+    }
+
+    function analyzeChildren(flatChildren: FlatChild[]): { useMixed: boolean; useMultiExpr: boolean } {
+      const hasElem = flatChildren.some((c) => c.kind === 'element')
+      const hasNonElem = flatChildren.some((c) => c.kind !== 'element')
+      const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
+      return { useMixed: hasElem && hasNonElem, useMultiExpr: exprCount > 1 }
+    }
+
+    function attrIsDynamic(attr: N): boolean {
+      if (attr.type !== 'JSXAttribute') return false
+      const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
+      if (name === 'ref') return true
+      if (EVENT_RE.test(name)) return true
+      if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return false
+      const expr = attr.value.expression
+      return expr && expr.type !== 'JSXEmptyExpression' ? !isStatic(expr) : false
+    }
+
+    function elementHasDynamic(node: N): boolean {
+      if (jsxAttrs(node).some(attrIsDynamic)) return true
+      if (!isSelfClosing(node)) {
+        return jsxChildren(node).some((c: N) =>
+          c.type === 'JSXExpressionContainer' && c.expression && c.expression.type !== 'JSXEmptyExpression',
+        )
+      }
+      return false
+    }
+
     function processOneChild(
-      child: FlatChild,
-      varName: string,
-      parentRef: string,
-      useMixed: boolean,
-      useMultiExpr: boolean,
-      childNodeIdx: number,
+      child: FlatChild, varName: string, parentRef: string,
+      useMixed: boolean, useMultiExpr: boolean, childNodeIdx: number,
     ): string | null {
       if (child.kind === 'text') return escapeHtmlText(child.text)
       if (child.kind === 'element') {
@@ -982,12 +1001,8 @@ export function transformJSX(
           : `${parentRef}.children[${child.elemIdx}]`
         return processElement(child.node, childAccessor)
       }
-      // expression
       const needsPlaceholder = useMixed || useMultiExpr
       const { expr, isReactive } = unwrapAccessor(child.expression)
-
-      // Children slot: expression accesses .children (e.g. props.children, own.children)
-      // These can contain VNodes — use _mountSlot instead of text node binding.
       if (isChildrenExpression(child.expression, expr)) {
         needsMountSlotImport = true
         const placeholder = `${parentRef}.childNodes[${childNodeIdx}]`
@@ -995,64 +1010,38 @@ export function transformJSX(
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
-
       if (isReactive) {
-        return emitReactiveTextChild(
-          expr,
-          child.expression,
-          varName,
-          parentRef,
-          childNodeIdx,
-          needsPlaceholder,
-        )
+        return emitReactiveTextChild(expr, child.expression, varName, parentRef, childNodeIdx, needsPlaceholder)
       }
       return emitStaticTextChild(expr, varName, parentRef, childNodeIdx, needsPlaceholder)
     }
 
-    /** Process children of a JsxElement, returning the children HTML. */
-    function processChildren(el: ts.JsxElement, varName: string, accessor: string): string | null {
-      const flatChildren = flattenChildren(el.children)
+    function processChildren(el: N, varName: string, accessor: string): string | null {
+      const flatChildren = flattenChildren(jsxChildren(el))
       const { useMixed, useMultiExpr } = analyzeChildren(flatChildren)
       const parentRef = accessor === '__root' ? '__root' : varName
-
       let html = ''
       let childNodeIdx = 0
-
       for (const child of flatChildren) {
-        const childHtml = processOneChild(
-          child,
-          varName,
-          parentRef,
-          useMixed,
-          useMultiExpr,
-          childNodeIdx,
-        )
+        const childHtml = processOneChild(child, varName, parentRef, useMixed, useMultiExpr, childNodeIdx)
         if (childHtml === null) return null
         html += childHtml
         childNodeIdx++
       }
-
       return html
     }
 
-    /** Process a single DOM element for template emission. Returns the HTML string or null. */
-    function processElement(
-      el: ts.JsxElement | ts.JsxSelfClosingElement,
-      accessor: string,
-    ): string | null {
+    function processElement(el: N, accessor: string): string | null {
       const tag = jsxTagName(el)
       if (!tag) return null
-
       const varName = resolveElementVar(accessor, elementHasDynamic(el))
       const htmlAttrs = processAttrs(el, varName)
       let html = `<${tag}${htmlAttrs}>`
-
-      if (ts.isJsxElement(el)) {
+      if (!isSelfClosing(el)) {
         const childHtml = processChildren(el, varName, accessor)
         if (childHtml === null) return null
         html += childHtml
       }
-
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
       return html
     }
@@ -1065,15 +1054,8 @@ export function transformJSX(
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
 
-    // Build bind function body
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
-    // Emit combined _bind for reactive attribute/text expressions that
-    // weren't handled by _bindText. This merges N separate _bind calls into
-    // one — saving N-1 closures + deps arrays per template instance.
-    // Emit a single combined _bind for all reactive attribute/text expressions
-    // that weren't handled by _bindText. Merges N separate _bind calls into one —
-    // saving N-1 closures + deps arrays per template instance.
     if (reactiveBindExprs.length > 0) {
       needsBindImportGlobal = true
       const combinedName = nextDisp()
@@ -1095,127 +1077,21 @@ export function transformJSX(
     return `_tpl("${escaped}", (__root) => {\n${body}\n})`
   }
 
-  /** Flat child descriptor for template children processing */
-  type FlatChild =
-    | { kind: 'text'; text: string }
-    | { kind: 'element'; node: ts.JsxElement | ts.JsxSelfClosingElement; elemIdx: number }
-    | { kind: 'expression'; expression: ts.Expression }
-
-  /** Classify a single JSX child into a FlatChild descriptor. */
-  function classifyJsxChild(
-    child: ts.JsxChild,
-    out: FlatChild[],
-    elemIdxRef: { value: number },
-    recurse: (kids: ts.NodeArray<ts.JsxChild>) => void,
-  ): void {
-    if (ts.isJsxText(child)) {
-      const trimmed = child.text.replace(/\n\s*/g, '').trim()
-      if (trimmed) out.push({ kind: 'text', text: trimmed })
-      return
-    }
-    if (ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) {
-      out.push({ kind: 'element', node: child, elemIdx: elemIdxRef.value++ })
-      return
-    }
-    if (ts.isJsxExpression(child)) {
-      if (child.expression) out.push({ kind: 'expression', expression: child.expression })
-      return
-    }
-    if (ts.isJsxFragment(child)) recurse(child.children)
-  }
-
-  /**
-   * Flatten JSX children, inlining fragment children and stripping whitespace-only text.
-   * Returns a flat array of child descriptors with element indices pre-computed.
-   */
-  function flattenChildren(children: ts.NodeArray<ts.JsxChild>): FlatChild[] {
-    const flatList: FlatChild[] = []
-    const elemIdxRef = { value: 0 }
-
-    function addChildren(kids: ts.NodeArray<ts.JsxChild>): void {
-      for (const child of kids) classifyJsxChild(child, flatList, elemIdxRef, addChildren)
-    }
-
-    addChildren(children)
-    return flatList
-  }
-
-  /** Analyze flat children to determine indexing strategy. */
-  function analyzeChildren(flatChildren: FlatChild[]): {
-    useMixed: boolean
-    useMultiExpr: boolean
-  } {
-    const hasElem = flatChildren.some((c) => c.kind === 'element')
-    const hasNonElem = flatChildren.some((c) => c.kind !== 'element')
-    const exprCount = flatChildren.filter((c) => c.kind === 'expression').length
-    return { useMixed: hasElem && hasNonElem, useMultiExpr: exprCount > 1 }
-  }
-
-  /** Check if a single attribute is dynamic (has ref, event, or non-static expression). */
-  function attrIsDynamic(attr: ts.JsxAttributeLike): boolean {
-    if (!ts.isJsxAttribute(attr)) return false
-    const name = ts.isIdentifier(attr.name) ? attr.name.text : ''
-    if (name === 'ref') return true
-    if (EVENT_RE.test(name)) return true
-    if (!attr.initializer || !ts.isJsxExpression(attr.initializer)) return false
-    const expr = attr.initializer.expression
-    return expr ? !isStatic(expr) : false
-  }
-
-  /** Check if an element has any dynamic attributes, events, ref, or expression children */
-  function elementHasDynamic(node: ts.JsxElement | ts.JsxSelfClosingElement): boolean {
-    if (jsxAttrs(node).some(attrIsDynamic)) return true
-    if (ts.isJsxElement(node)) {
-      return node.children.some((c) => ts.isJsxExpression(c) && c.expression !== undefined)
-    }
-    return false
-  }
-
-  /** Slice expression source from the original code.
-   *  Resolves any prop-derived identifiers found anywhere in the expression
-   *  via AST transformation — handles template literals, ternaries, etc. */
-  function sliceExpr(expr: ts.Expression): string {
-    // Quick check: does this expression contain any prop-derived references?
+  function sliceExpr(expr: N): string {
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
-      const resolved = resolveExprTransitive(expr, new Set(), expr)
-      return printer.printNode(ts.EmitHint.Expression, resolved, sf)
+      const start = expr.start as number
+      const end = expr.end as number
+      return resolveIdentifiersInText(code.slice(start, end), start, expr)
     }
-    return code.slice(expr.getStart(sf), expr.getEnd())
-  }
-
-  /** Get tag name string */
-  function jsxTagName(node: ts.JsxElement | ts.JsxSelfClosingElement): string {
-    const tag = ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName
-    return ts.isIdentifier(tag) ? tag.text : ''
-  }
-
-  /** Get attribute list */
-  function jsxAttrs(
-    node: ts.JsxElement | ts.JsxSelfClosingElement,
-  ): ts.NodeArray<ts.JsxAttributeLike> {
-    return ts.isJsxElement(node)
-      ? node.openingElement.attributes.properties
-      : node.attributes.properties
+    return code.slice(expr.start as number, expr.end as number)
   }
 }
 
-// ─── Template constants ──────────────────────────────────────────────────────
+// ─── Module-scope constants and helpers ─────────────────────────────────────
 
 const VOID_ELEMENTS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
+  'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+  'link', 'meta', 'param', 'source', 'track', 'wbr',
 ])
 
 const JSX_TO_HTML_ATTR: Record<string, string> = {
@@ -1223,11 +1099,6 @@ const JSX_TO_HTML_ATTR: Record<string, string> = {
   htmlFor: 'for',
 }
 
-/**
- * Detect if an expression is a stateful call that must NOT be inlined.
- * signal(), computed(), effect() etc. create state — inlining them would
- * create new instances at each use site instead of referencing the original.
- */
 const STATEFUL_CALLS = new Set([
   'signal', 'computed', 'effect', 'batch',
   'createContext', 'createReactiveContext',
@@ -1236,24 +1107,16 @@ const STATEFUL_CALLS = new Set([
   'defineStore', 'useStore',
 ])
 
-function isStatefulCall(node: ts.Node): boolean {
-  if (!ts.isCallExpression(node)) return false
-  const callee = node.expression
-  if (ts.isIdentifier(callee)) return STATEFUL_CALLS.has(callee.text)
+function isStatefulCall(node: N): boolean {
+  if (node.type !== 'CallExpression') return false
+  const callee = node.callee
+  if (callee?.type === 'Identifier') return STATEFUL_CALLS.has(callee.name)
   return false
 }
 
-/**
- * Detect if an expression accesses `.children` — these can contain VNodes
- * and must use _mountSlot instead of text node binding in templates.
- * Matches: props.children, own.children, x.children, or bare `children` identifier.
- */
-function isChildrenExpression(node: ts.Expression, expr: string): boolean {
-  // Direct property access: props.children, own.children
-  if (ts.isPropertyAccessExpression(node) && node.name.text === 'children') return true
-  // Bare identifier named 'children'
-  if (ts.isIdentifier(node) && node.text === 'children') return true
-  // String fallback for inlined expressions
+function isChildrenExpression(node: N, expr: string): boolean {
+  if (node.type === 'MemberExpression' && !node.computed && node.property?.type === 'Identifier' && node.property.name === 'children') return true
+  if (node.type === 'Identifier' && node.name === 'children') return true
   if (expr.endsWith('.children') || expr === 'children') return true
   return false
 }
@@ -1262,11 +1125,14 @@ function isLowerCase(s: string): boolean {
   return s.length > 0 && s[0] === s[0]?.toLowerCase()
 }
 
-/** Check if an expression subtree contains JSX nodes */
-function containsJSXInExpr(node: ts.Node): boolean {
-  if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node))
-    return true
-  return ts.forEachChild(node, containsJSXInExpr) ?? false
+function containsJSXInExpr(node: N): boolean {
+  if (node.type === 'JSXElement' || node.type === 'JSXFragment') return true
+  let found = false
+  forEachChild(node, (child) => {
+    if (found) return
+    if (containsJSXInExpr(child)) found = true
+  })
+  return found
 }
 
 function escapeHtmlAttr(s: string): string {
@@ -1274,71 +1140,57 @@ function escapeHtmlAttr(s: string): string {
 }
 
 function escapeHtmlText(s: string): string {
-  // TypeScript's JsxText preserves HTML entities as-is (e.g. "&lt;" stays "&lt;",
-  // not decoded to "<"). Since the template is parsed via innerHTML, entities are
-  // already valid HTML — pass them through. Only escape raw `<` and raw `&` that
-  // are NOT part of existing entities.
   return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
 }
 
-// ─── Static JSX analysis ──────────────────────────────────────────────────────
-
-type StaticJSXNode = ts.JsxElement | ts.JsxSelfClosingElement | ts.JsxFragment
-
-function isStaticJSXNode(node: StaticJSXNode): boolean {
-  if (ts.isJsxSelfClosingElement(node)) {
-    return isStaticAttrs(node.attributes)
+function isStaticJSXNode(node: N): boolean {
+  if (node.type === 'JSXElement' && node.openingElement?.selfClosing) {
+    return isStaticAttrs(node.openingElement.attributes ?? [])
   }
-  if (ts.isJsxFragment(node)) {
-    return node.children.every(isStaticChild)
+  if (node.type === 'JSXFragment') {
+    return (node.children ?? []).every(isStaticChild)
   }
-  // JsxElement
-  return isStaticAttrs(node.openingElement.attributes) && node.children.every(isStaticChild)
+  if (node.type === 'JSXElement') {
+    return isStaticAttrs(node.openingElement?.attributes ?? []) && (node.children ?? []).every(isStaticChild)
+  }
+  return false
 }
 
-function isStaticAttrs(attrs: ts.JsxAttributes): boolean {
-  return attrs.properties.every((prop) => {
-    // Spread attribute — always dynamic
-    if (!ts.isJsxAttribute(prop)) return false
-    // Boolean shorthand: <input disabled />
-    if (!prop.initializer) return true
-    // String literal: class="foo"
-    if (ts.isStringLiteral(prop.initializer)) return true
-    // Must be JsxExpression — the only remaining JsxAttributeValue type
-    const expr = (prop.initializer as ts.JsxExpression).expression
-    return expr ? isStatic(expr) : true
+function isStaticAttrs(attrs: N[]): boolean {
+  return attrs.every((prop: N) => {
+    if (prop.type !== 'JSXAttribute') return false
+    if (!prop.value) return true
+    if (prop.value.type === 'StringLiteral' || (prop.value.type === 'Literal' && typeof prop.value.value === 'string')) return true
+    if (prop.value.type === 'JSXExpressionContainer') {
+      const expr = prop.value.expression
+      if (!expr || expr.type === 'JSXEmptyExpression') return true
+      return isStatic(expr)
+    }
+    return false
   })
 }
 
-function isStaticChild(child: ts.JsxChild): boolean {
-  // Plain text content
-  if (ts.isJsxText(child)) return true
-  // Nested JSX elements
-  if (ts.isJsxSelfClosingElement(child)) return isStaticJSXNode(child)
-  if (ts.isJsxElement(child)) return isStaticJSXNode(child)
-  if (ts.isJsxFragment(child)) return isStaticJSXNode(child)
-  // Must be JsxExpression — the only remaining JsxChild type
-  const expr = (child as ts.JsxExpression).expression
-  return expr ? isStatic(expr) : true
+function isStaticChild(child: N): boolean {
+  if (child.type === 'JSXText') return true
+  if (child.type === 'JSXElement') return isStaticJSXNode(child)
+  if (child.type === 'JSXFragment') return isStaticJSXNode(child)
+  if (child.type === 'JSXExpressionContainer') {
+    const expr = child.expression
+    if (!expr || expr.type === 'JSXEmptyExpression') return true
+    return isStatic(expr)
+  }
+  return false
 }
 
-// ─── General helpers ──────────────────────────────────────────────────────────
-
-function isStatic(node: ts.Expression): boolean {
-  return (
-    ts.isStringLiteral(node) ||
-    ts.isNumericLiteral(node) ||
-    ts.isNoSubstitutionTemplateLiteral(node) ||
-    node.kind === ts.SyntaxKind.TrueKeyword ||
-    node.kind === ts.SyntaxKind.FalseKeyword ||
-    node.kind === ts.SyntaxKind.NullKeyword ||
-    node.kind === ts.SyntaxKind.UndefinedKeyword
-  )
-  // Note: object/array literals are NOT static — they need runtime application
-  // (e.g., style={{ color: "red" }} requires Object.assign at runtime).
+function isStatic(node: N): boolean {
+  if (node.type === 'Literal') return true
+  if (node.type === 'StringLiteral' || node.type === 'NumericLiteral' || node.type === 'BooleanLiteral' || node.type === 'NullLiteral') return true
+  if (node.type === 'TemplateLiteral' && (node.expressions?.length ?? 0) === 0) return true
+  // Note: `undefined` is an Identifier in ESTree, not a keyword literal.
+  // It is NOT treated as static — it goes through the dynamic attr path.
+  return false
 }
 
-/** Known pure global functions that don't read signals. */
 const PURE_CALLS = new Set([
   'Math.max', 'Math.min', 'Math.abs', 'Math.floor', 'Math.ceil', 'Math.round',
   'Math.pow', 'Math.sqrt', 'Math.random', 'Math.trunc', 'Math.sign',
@@ -1353,30 +1205,29 @@ const PURE_CALLS = new Set([
   'Date.now',
 ])
 
-/** Check if a call expression calls a known pure function with static args. */
-function isPureStaticCall(node: ts.CallExpression): boolean {
-  const callee = node.expression
+function isPureStaticCall(node: N): boolean {
+  const callee = node.callee
   let name = ''
-
-  if (ts.isIdentifier(callee)) {
-    name = callee.text
-  } else if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
-    name = `${callee.expression.text}.${callee.name.text}`
+  if (callee?.type === 'Identifier') {
+    name = callee.name
+  } else if (callee?.type === 'MemberExpression' && !callee.computed && callee.object?.type === 'Identifier' && callee.property?.type === 'Identifier') {
+    name = `${callee.object.name}.${callee.property.name}`
   }
-
   if (!PURE_CALLS.has(name)) return false
-  // Pure call with all static arguments → result is static
-  return node.arguments.every((arg) => !ts.isSpreadElement(arg) && isStatic(arg))
+  return (node.arguments ?? []).every((arg: N) => arg.type !== 'SpreadElement' && isStatic(arg))
 }
 
-function containsCall(node: ts.Node): boolean {
-  if (ts.isCallExpression(node)) {
-    // Skip pure calls with static args
-    if (isPureStaticCall(node as ts.CallExpression)) return false
+function containsCall(node: N): boolean {
+  if (node.type === 'CallExpression') {
+    if (isPureStaticCall(node)) return false
     return true
   }
-  if (ts.isTaggedTemplateExpression(node)) return true
-  // Don't recurse into nested functions — they're self-contained
-  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false
-  return ts.forEachChild(node, containsCall) ?? false
+  if (node.type === 'TaggedTemplateExpression') return true
+  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
+  let found = false
+  forEachChild(node, (child) => {
+    if (found) return
+    if (containsCall(child)) found = true
+  })
+  return found
 }
