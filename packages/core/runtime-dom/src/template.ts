@@ -68,7 +68,8 @@ export function _bindText(
   if (source.direct) {
     const textUpdate = () => {
       const v = source._v
-      node.data = v == null || v === false ? '' : String(v as string | number)
+      const next = v == null || v === false ? '' : String(v as string | number)
+      if (next !== node.data) node.data = next
     }
     textUpdate()
     return source.direct(textUpdate)
@@ -77,7 +78,8 @@ export function _bindText(
   const fn = source as unknown as () => unknown
   return renderEffect(() => {
     const v = fn()
-    node.data = v == null || v === false ? '' : String(v as string | number)
+    const next = v == null || v === false ? '' : String(v as string | number)
+    if (next !== node.data) node.data = next
   })
 }
 

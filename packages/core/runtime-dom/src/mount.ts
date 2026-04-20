@@ -72,7 +72,8 @@ export function mountChild(
       parent.insertBefore(text, anchor)
       const dispose = renderEffect(() => {
         const v = (child as () => unknown)()
-        text.data = v == null || v === false ? '' : String(v as string | number)
+        const next = v == null || v === false ? '' : String(v as string | number)
+        if (next !== text.data) text.data = next
       })
       if (_elementDepth > 0) return dispose
       return () => {

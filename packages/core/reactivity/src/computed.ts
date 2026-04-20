@@ -82,6 +82,10 @@ function computedLazy<T>(fn: () => T): Computed<T> {
     if (dirty) {
       try {
         if (tracked) {
+          // Deps already established from first run — skip adding to
+          // subscriber Sets again (they already contain recompute).
+          // Still need withTracking so activeEffect is set correctly
+          // for any NEW signals read on this evaluation.
           setSkipDepsCollection(true)
           value = withTracking(recompute, fn)
           setSkipDepsCollection(false)
@@ -90,7 +94,6 @@ function computedLazy<T>(fn: () => T): Computed<T> {
           tracked = true
         }
       } catch (err) {
-        setSkipDepsCollection(false)
         _errorHandler(err)
       }
       dirty = false
