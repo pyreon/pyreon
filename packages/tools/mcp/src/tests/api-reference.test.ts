@@ -541,4 +541,85 @@ describe('api-reference', () => {
       expect(API_REFERENCE['rx/rx']?.notes).toContain('Signal')
     })
   })
+
+  describe('@pyreon/table — manifest-driven region', () => {
+    it.each(['table/useTable', 'table/flexRender'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useTable documents options-as-function contract', () => {
+      expect(API_REFERENCE['table/useTable']?.notes).toContain('Computed<Table<T>>')
+    })
+  })
+
+  describe('@pyreon/virtual — manifest-driven region', () => {
+    it.each(['virtual/useVirtualizer', 'virtual/useWindowVirtualizer'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useVirtualizer documents reactive virtualItems', () => {
+      expect(API_REFERENCE['virtual/useVirtualizer']?.notes).toContain('virtualItems')
+    })
+  })
+
+  describe('@pyreon/feature — manifest-driven region', () => {
+    it.each(['feature/defineFeature', 'feature/reference'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('defineFeature documents composing 5 packages', () => {
+      expect(API_REFERENCE['feature/defineFeature']?.notes).toContain('@pyreon/query')
+    })
+  })
+
+  describe('@pyreon/code — manifest-driven region', () => {
+    it.each(['code/createEditor', 'code/bindEditorToSignal', 'code/CodeEditor', 'code/DiffEditor', 'code/loadLanguage', 'code/minimapExtension'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('createEditor documents writable Signal<string> value', () => {
+      expect(API_REFERENCE['code/createEditor']?.notes).toContain('writable Signal<string>')
+    })
+  })
+
+  describe('@pyreon/document — manifest-driven region', () => {
+    it.each(['document/render', 'document/createDocument', 'document/Document', 'document/download'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('render documents lazy-loaded heavy renderers', () => {
+      expect(API_REFERENCE['document/render']?.notes).toContain('lazy-loaded')
+    })
+  })
+
+  describe('@pyreon/hotkeys — manifest-driven region', () => {
+    it.each(['hotkeys/useHotkey', 'hotkeys/useHotkeyScope', 'hotkeys/registerHotkey'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useHotkey documents mod alias + form element filtering', () => {
+      expect(API_REFERENCE['hotkeys/useHotkey']?.notes).toContain('mod')
+    })
+  })
+
+  describe('@pyreon/url-state — manifest-driven region', () => {
+    it.each(['url-state/useUrlState', 'url-state/setUrlRouter'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useUrlState documents auto type coercion + SSR safety', () => {
+      expect(API_REFERENCE['url-state/useUrlState']?.notes).toContain('SSR-safe')
+    })
+  })
+
+  describe('@pyreon/charts — manifest-driven region', () => {
+    it.each(['charts/useChart', 'charts/Chart'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('useChart documents lazy loading', () => {
+      expect(API_REFERENCE['charts/useChart']?.notes).toContain('Lazy-loads')
+    })
+  })
+
+  describe('@pyreon/validation — manifest-driven region', () => {
+    it.each(['validation/zodSchema', 'validation/zodField', 'validation/valibotSchema', 'validation/valibotField', 'validation/arktypeSchema', 'validation/arktypeField'])('exposes %s', (key) => {
+      const e = API_REFERENCE[key]; expect(e).toBeDefined(); expect(e!.signature).toBeTruthy()
+    })
+    it('zodSchema documents duck-typing', () => {
+      expect(API_REFERENCE['validation/zodSchema']?.notes).toContain('Duck-typed')
+    })
+  })
 })

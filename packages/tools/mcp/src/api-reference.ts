@@ -947,6 +947,73 @@ counter.doubled()  // 22`,
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/form
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/validation
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/validation>
+
+  'validation/zodSchema': {
+    signature: '<T>(schema: ZodType<T>) => SchemaAdapter<T>',
+    example: `const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
+const form = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: zodSchema(schema),
+  onSubmit: (values) => save(values),
+})`,
+    notes: 'Create a whole-form schema adapter from a Zod schema. Duck-typed against the `.safeParse()` method so it works with both Zod v3 and v4 without version checks. Pass the result to `useForm({ schema })` for automatic full-form validation on submit or blur. See also: zodField, valibotSchema, arktypeSchema.',
+    mistakes: `- Passing zodSchema AND per-field validators for the same field — both run and errors may conflict
+- Using zodSchema with a non-object schema (z.string()) — form schemas must validate an object shape matching initialValues`,
+  },
+
+  'validation/zodField': {
+    signature: '<T>(schema: ZodType<T>) => ValidateFn<T>',
+    example: `const form = useForm({
+  initialValues: { username: '' },
+  validators: { username: zodField(z.string().min(3).max(20)) },
+  onSubmit: (values) => save(values),
+})`,
+    notes: `Create a per-field validator from a Zod schema. Returns a function compatible with \`useForm({ validators: { fieldName: zodField(z.string().email()) } })\`. Use when individual fields have independent validation rules that don't need cross-field context. See also: zodSchema, valibotField.`,
+  },
+
+  'validation/valibotSchema': {
+    signature: '<T>(schema: ValibotSchema<T>, safeParse: SafeParseFn) => SchemaAdapter<T>',
+    example: `import * as v from 'valibot'
+const schema = v.object({ email: v.pipe(v.string(), v.email()) })
+const form = useForm({
+  initialValues: { email: '' },
+  schema: valibotSchema(schema, v.safeParse),
+  onSubmit: (values) => save(values),
+})`,
+    notes: `Create a whole-form schema adapter from a Valibot schema. Requires passing the \`safeParse\` function explicitly (Valibot uses standalone functions, not methods). This keeps the adapter independent of Valibot's internal module structure across versions. See also: valibotField, zodSchema.`,
+    mistakes: '- Forgetting to pass v.safeParse as the second argument — the adapter cannot call safeParse without it since Valibot uses standalone functions',
+  },
+
+  'validation/valibotField': {
+    signature: '<T>(schema: ValibotSchema<T>, safeParse: SafeParseFn) => ValidateFn<T>',
+    example: 'validators: { email: valibotField(v.pipe(v.string(), v.email()), v.safeParse) }',
+    notes: 'Create a per-field validator from a Valibot schema. Same standalone-function-style as valibotSchema — pass `v.safeParse` explicitly. See also: valibotSchema, zodField.',
+  },
+
+  'validation/arktypeSchema': {
+    signature: '<T>(schema: ArkTypeSchema<T>) => SchemaAdapter<T>',
+    example: `import { type } from 'arktype'
+const schema = type({ email: 'email', age: 'number > 18' })
+const form = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: arktypeSchema(schema),
+  onSubmit: (values) => save(values),
+})`,
+    notes: 'Create a whole-form schema adapter from an ArkType type. ArkType validation is synchronous only — async validators are not supported through this adapter. Returns errors via the ArkType `problems` array. See also: arktypeField, zodSchema.',
+  },
+
+  'validation/arktypeField': {
+    signature: '<T>(schema: ArkTypeSchema<T>) => ValidateFn<T>',
+    example: `validators: { age: arktypeField(type('number > 18')) }`,
+    notes: 'Create a per-field validator from an ArkType type. Synchronous only, same as arktypeSchema. See also: arktypeSchema, zodField.',
+  },
+  // <gen-docs:api-reference:end @pyreon/validation>
   // ═══════════════════════════════════════════════════════════════════════════
 
   // <gen-docs:api-reference:start @pyreon/form>
@@ -1566,20 +1633,57 @@ return <div>{() => t('greeting', { name: 'User' })}</div>`,
   // @pyreon/document
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/document>
+
+  'document/render': {
+    signature: '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
+    example: `const pdf = await render(doc, 'pdf')            // Uint8Array
+const html = await render(doc, 'html')           // string
+const email = await render(doc, 'email')         // Outlook-safe HTML
+const md = await render(doc, 'md')               // Markdown string
+const slack = await render(doc, 'slack')          // Slack Block Kit JSON`,
+    notes: 'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 14+ built-in formats plus custom renderers registered via `registerRenderer()`. See also: createDocument, Document, download, registerRenderer.',
+    mistakes: `- Not awaiting the render call — render() is always async due to lazy-loaded format renderers
+- Expecting render("pdf") to return a string — PDF, DOCX, XLSX, PPTX return Uint8Array
+- Passing a VNode instead of a DocNode — render() expects the output of JSX primitives (Document, Page, etc.) or createDocument(), not arbitrary Pyreon VNodes`,
+  },
+
   'document/createDocument': {
-    signature: 'createDocument(props?: DocumentProps): DocumentBuilder',
+    signature: '(props?: DocumentProps) => DocumentBuilder',
     example: `const doc = createDocument({ title: 'Report' })
   .heading('Sales Report')
+  .text('Q4 2026 summary.')
   .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
 
-await doc.toPdf()      // PDF
+await doc.toPdf()      // PDF Uint8Array
 await doc.toEmail()    // Outlook-safe HTML
-await doc.toDocx()     // Word document
-await doc.toSlack()    // Slack Block Kit JSON
-await doc.toNotion()   // Notion blocks`,
-    notes:
-      '14+ output formats. JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, etc. Heavy renderers lazy-loaded.',
+await doc.toDocx()     // Word document`,
+    notes: 'Fluent builder API for constructing documents without JSX. Chain `.heading()`, `.text()`, `.table()`, `.image()`, `.list()`, `.code()`, `.divider()`, `.page()` calls. Terminal methods: `.toPdf()`, `.toDocx()`, `.toEmail()`, `.toSlack()`, `.toNotion()`, `.toHtml()`, `.toMarkdown()`, etc. Each terminal method calls `render()` internally. See also: render, Document.',
+    mistakes: `- Forgetting to await terminal methods — toPdf(), toDocx(), etc. are async
+- Calling builder methods after a terminal method — the builder is consumed; create a new one`,
   },
+
+  'document/Document': {
+    signature: '(props: DocumentProps) => DocNode',
+    example: `const doc = (
+  <Document title="Report" author="Team">
+    <Page>
+      <Heading>Title</Heading>
+      <Text>Content</Text>
+    </Page>
+  </Document>
+)
+await render(doc, 'pdf')`,
+    notes: 'Root JSX primitive for document trees. Accepts `title`, `author`, `subject` as metadata props. Children should be `Page` elements (or other block-level primitives for single-page documents). The returned DocNode is passed to `render()` for output. See also: render, Page, createDocument.',
+  },
+
+  'document/download': {
+    signature: '(data: Uint8Array | string, filename: string) => void',
+    example: `const pdf = await render(doc, 'pdf')
+download(pdf, 'report.pdf')`,
+    notes: 'Browser helper that triggers a file download from rendered document data. Creates a temporary Blob URL and clicks a hidden anchor element. Works with both Uint8Array (PDF, DOCX) and string (HTML, Markdown) outputs from `render()`. See also: render.',
+  },
+  // <gen-docs:api-reference:end @pyreon/document>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/flow
@@ -1726,146 +1830,294 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/code
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // @pyreon/charts
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/charts>
+
+  'charts/useChart': {
+    signature: '<TOption extends EChartsOption = EChartsOption>(optionsFn: () => TOption, config?: UseChartConfig) => UseChartResult',
+    example: `const chart = useChart(() => ({
+  xAxis: { type: 'category', data: months() },
+  yAxis: { type: 'value' },
+  series: [{ type: 'bar', data: revenue() }],
+}))
+
+<div ref={chart.ref} style="height: 400px" />
+// chart.loading() — true until ECharts modules loaded + chart initialized
+// chart.instance() — raw ECharts instance for imperative API`,
+    notes: 'Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal<ECharts | null>), `loading` (Signal<boolean>), `error` (Signal<Error | null>), and `resize()`. Auto-resizes via ResizeObserver and disposes on unmount. See also: Chart.',
+    mistakes: `- Forgetting to set a height on the container div — ECharts requires explicit dimensions, it does not auto-size to content
+- Passing options as a plain object instead of a function — signal reads are not tracked and the chart never updates
+- Reading chart.instance() immediately after useChart — the instance is null until the async module load completes; check chart.loading() first
+- Calling chart.resize() during SSR — useChart is browser-only; the hook no-ops safely on the server but resize is meaningless`,
+  },
+
+  'charts/Chart': {
+    signature: '(props: ChartProps) => VNodeChild',
+    example: `<Chart
+  options={() => ({
+    series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
+  })}
+  style="height: 300px"
+  onClick={(params) => alert(params.name)}
+/>`,
+    notes: 'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers (`onClick`, `onMouseover`, etc.) that bind to the ECharts instance. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases. See also: useChart.',
+    mistakes: `- Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions
+- Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively`,
+  },
+  // <gen-docs:api-reference:end @pyreon/charts>
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // <gen-docs:api-reference:start @pyreon/code>
+
   'code/createEditor': {
-    signature:
-      'createEditor(config: { value?: string, language?: EditorLanguage, theme?: EditorTheme, onChange?: (val: string) => void, minimap?: boolean, lineNumbers?: boolean, ... }): EditorInstance',
+    signature: '(config: EditorConfig) => EditorInstance',
     example: `const editor = createEditor({
   value: '// hello',
   language: 'typescript',
   theme: 'dark',
   minimap: true,
-  onChange: (next) => console.log('user edit:', next),
+  onChange: (next) => console.log('edit:', next),
 })
 
-editor.value()              // reactive Signal<string>, read inside JSX/effects
-editor.value.set('new')     // write back into CodeMirror
-editor.cursor()             // computed { line, col }
+editor.value()              // reactive read
+editor.value.set('new')     // write into CodeMirror
+editor.cursor()             // { line, col }
 editor.lineCount()          // computed
 editor.goToLine(42)
-editor.insert('new code')
-editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
+editor.insert('code')
 
-<CodeEditor instance={editor} style="height: 400px" />
-<DiffEditor original="old" modified="new" language="typescript" />`,
-    notes:
-      "Built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). 19 languages via lazy-loaded grammars (declared as optionalDependencies). Two-way binding: editor.value is a writable Signal — pass onChange for editor → external, set editor.value for external → editor. For external↔editor binding with built-in loop prevention, use the higher-level `bindEditorToSignal({ editor, signal, serialize, parse })` helper instead of hand-rolling the flag pattern. <CodeEditor> auto-mounts and cleans up on unmount.",
-    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom imports
-- Hand-rolling the applyingFromExternal/applyingFromEditor flag pattern for two-way binding — use the bindEditorToSignal helper instead, it handles the loop prevention correctly and is tested
+<CodeEditor instance={editor} style="height: 400px" />`,
+    notes: 'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, onChange, and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`. See also: CodeEditor, bindEditorToSignal, loadLanguage.',
+    mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom
+- Hand-rolling the applyingFromExternal/applyingFromEditor flag pattern — use bindEditorToSignal instead
 - Calling editor methods before mount — they no-op safely but changes don't persist
 - Setting both vim: true and emacs: true — emacs wins`,
   },
 
   'code/bindEditorToSignal': {
-    signature:
-      'bindEditorToSignal<T>(options: { editor: EditorInstance, signal: SignalLike<T>, serialize: (val: T) => string, parse: (text: string) => T | null, onParseError?: (err: Error) => void }): { dispose: () => void }',
-    example: `import { bindEditorToSignal, createEditor } from '@pyreon/code'
-import { signal } from '@pyreon/reactivity'
-
-interface Doc { name: string; count: number }
-const data = signal<Doc>({ name: 'Alice', count: 1 })
-
-const editor = createEditor({
-  value: JSON.stringify(data(), null, 2),
-  language: 'json',
-})
+    signature: '<T>(options: BindEditorToSignalOptions<T>) => EditorBinding',
+    example: `const data = signal<Doc>({ name: 'Alice', count: 1 })
+const editor = createEditor({ value: JSON.stringify(data(), null, 2), language: 'json' })
 
 const binding = bindEditorToSignal({
   editor,
-  signal: data,                              // accepts Signal<T> or any SignalLike<T>
+  signal: data,
   serialize: (val) => JSON.stringify(val, null, 2),
-  parse: (text) => {
-    try { return JSON.parse(text) } catch { return null }
-  },
+  parse: (text) => { try { return JSON.parse(text) } catch { return null } },
   onParseError: (err) => console.warn(err.message),
 })
-
-// Later, on unmount:
-binding.dispose()`,
-    notes:
-      "Replaces the recurring loop-prevention flag-pair boilerplate (applyingFromExternal / applyingFromEditor) that consumers had to hand-roll for two-way external↔editor binding. The helper manages both directions, breaks the format-on-input race via internal flags, catches parse errors, and returns a disposable. Accepts any SignalLike<T> (Pyreon Signal, custom store wrapper, etc.). The editor itself ALSO has internal CM↔signal loop guards — this helper adds the SECOND layer for the external↔editor boundary.",
-    mistakes: `- Forgetting to call binding.dispose() on unmount — leaks both effects until the editor instance is GC'd
-- Non-deterministic serialize() — if serialize(parse(text)) returns a string structurally different from the input text, the helper dispatches redundant editor writes that fight the user's typing. JSON.stringify with consistent indentation is fine; pretty-printing that varies on every call is not
-- Throwing in parse() without an onParseError handler — the helper catches and silently no-ops if no handler is provided. Pass onParseError to surface parse errors in your UI
-- Returning a non-null value from parse() for malformed input — the helper writes whatever you return, including partial / corrupted state. Return null on parse failure, or throw with an error message
-- Using bindEditorToSignal AND a manual editor.value.set() loop in the same component — defeats the loop prevention. Pick one binding strategy per editor instance`,
+// binding.dispose() on unmount`,
+    notes: 'Two-way binding between an editor instance and an external Signal<T> (or SignalLike<T>). Replaces the recurring loop-prevention flag-pair boilerplate. Round-trips through user-supplied `serialize`/`parse` functions. Internal flags break the format-on-input race; parse failures call `onParseError` and leave the external state at its last valid value. Returns `{ dispose }` for cleanup. See also: createEditor.',
+    mistakes: `- Forgetting to call binding.dispose() on unmount — leaks both effects
+- Non-deterministic serialize() — if serialize(parse(text)) varies on each call, the helper dispatches redundant writes that fight the user's typing
+- Returning a non-null value from parse() for malformed input — return null on failure, or throw
+- Using bindEditorToSignal AND a manual editor.value.set() loop — defeats loop prevention`,
   },
+
+  'code/CodeEditor': {
+    signature: '(props: CodeEditorProps) => VNodeChild',
+    example: '<CodeEditor instance={editor} style="height: 400px" class="my-editor" />',
+    notes: 'Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render and cleans up on unmount. See also: createEditor, DiffEditor, TabbedEditor.',
+  },
+
+  'code/DiffEditor': {
+    signature: '(props: DiffEditorProps) => VNodeChild',
+    example: '<DiffEditor original="old code" modified="new code" language="typescript" />',
+    notes: 'Side-by-side diff editor. Accepts `original` and `modified` strings plus optional `language` and `theme`. Renders two CodeMirror instances with unified diff highlighting via @codemirror/merge. See also: CodeEditor, TabbedEditor.',
+  },
+
+  'code/loadLanguage': {
+    signature: '(lang: EditorLanguage) => Promise<void>',
+    example: `await loadLanguage('python')
+// Now 'python' is available in createEditor({ language: 'python' })`,
+    notes: 'Lazy-load a language grammar. Supports 19 languages: json, typescript, javascript, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, and more. Grammars are declared as optional dependencies and loaded on demand. See also: createEditor, getAvailableLanguages.',
+  },
+
+  'code/minimapExtension': {
+    signature: '() => Extension',
+    example: `const editor = createEditor({ value: longCode, minimap: true })
+// or: import { minimapExtension } from '@pyreon/code'`,
+    notes: 'CodeMirror extension that renders a canvas-based code overview minimap. Enable via `createEditor({ minimap: true })` or add the extension manually to a CodeMirror state. See also: createEditor.',
+  },
+  // <gen-docs:api-reference:end @pyreon/code>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/hotkeys
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/hotkeys>
+
   'hotkeys/useHotkey': {
-    signature:
-      'useHotkey(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions): void',
+    signature: '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void',
     example: `useHotkey('mod+s', (e) => {
   e.preventDefault()
   save()
-})
+}, { description: 'Save' })
 
-useHotkey('mod+k', () => openSearch(), { scope: 'global' })
-useHotkeyScope('editor')  // activate scope for component lifetime`,
-    notes:
-      "Component-scoped, auto-unregisters on unmount. 'mod' = ⌘ on Mac, Ctrl elsewhere. Scope-based activation for context-aware shortcuts.",
+useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
+useHotkey('escape', () => close(), { enableOnFormElements: true })`,
+    notes: `Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: \`mod+s\`, \`ctrl+shift+p\`, \`escape\`, etc. \`mod\` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with \`enableOnFormElements: true\`. Supports \`scope\` option for context-aware activation and \`description\` for introspection. See also: useHotkeyScope, registerHotkey.`,
+    mistakes: `- Forgetting e.preventDefault() for browser-reserved shortcuts (mod+s, mod+p) — the browser dialog fires alongside your handler
+- Registering the same shortcut in overlapping scopes without priority — both handlers fire; use scope isolation to prevent conflicts
+- Using useHotkey outside a component body — the onUnmount cleanup requires an active component setup context
+- Not activating the scope — useHotkey with a scope option does nothing unless useHotkeyScope(scope) is called or enableScope(scope) is invoked`,
   },
+
+  'hotkeys/useHotkeyScope': {
+    signature: '(scope: string) => void',
+    example: `// In an editor component:
+useHotkeyScope('editor')
+useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
+
+// In a modal component:
+useHotkeyScope('modal')
+useHotkey('escape', () => close(), { scope: 'modal' })`,
+    notes: 'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. Multiple components can activate the same scope — it stays active until the last one unmounts. See also: useHotkey, enableScope, disableScope.',
+    mistakes: `- Using useHotkeyScope outside a component body — the lifecycle hooks require an active setup context
+- Assuming scope deactivation is immediate on unmount — if another component also activated the scope, it stays active`,
+  },
+
+  'hotkeys/registerHotkey': {
+    signature: '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void',
+    example: `const unregister = registerHotkey('ctrl+q', () => quit(), { scope: 'global' })
+// Later:
+unregister()`,
+    notes: 'Imperative hotkey registration for non-component contexts (stores, global setup). Returns an unregister function. Unlike useHotkey, this does NOT auto-cleanup on unmount — caller is responsible for calling the returned unregister function. See also: useHotkey.',
+  },
+  // <gen-docs:api-reference:end @pyreon/hotkeys>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/table
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/table>
+
   'table/useTable': {
-    signature: 'useTable<T>(options: TableOptions<T>): Table<T>',
-    example: `const table = useTable({
-  data: () => users(),
+    signature: '<TData extends RowData>(options: () => TableOptions<TData>) => Computed<Table<TData>>',
+    example: `const table = useTable(() => ({
+  data: users(),
   columns: [
     { accessorKey: 'name', header: 'Name' },
     { accessorKey: 'email', header: 'Email' },
   ],
-})
+  getCoreRowModel: getCoreRowModel(),
+}))
 
-// flexRender for column templates:
-flexRender(cell.column.columnDef.cell, cell.getContext())`,
-    notes: 'TanStack Table adapter with reactive options and auto state sync.',
+// Read inside reactive scope:
+<For each={() => table().getRowModel().rows} by={(r) => r.id}>
+  {(row) => <tr>...</tr>}
+</For>`,
+    notes: 'Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside and the table updates automatically when they change. Returns a Computed<Table<T>> — read it inside JSX expression thunks or effects to track state changes. Internal state management uses a version counter to force re-notification even when the table reference is the same object. See also: flexRender.',
+    mistakes: `- Passing options as a plain object instead of a function — signal reads are not tracked and the table never updates when data changes
+- Reading \`table\` without calling it — \`table\` is a Computed, you must call \`table()\` to get the Table instance
+- Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws
+- Using \`.map()\` on rows instead of \`<For>\` — loses Pyreon's keyed reconciliation and fine-grained DOM updates`,
   },
+
+  'table/flexRender': {
+    signature: '<TData extends RowData, TValue>(component: Renderable<TValue>, props: TValue) => unknown',
+    example: `// Header:
+flexRender(header.column.columnDef.header, header.getContext())
+// Cell:
+flexRender(cell.column.columnDef.cell, cell.getContext())`,
+    notes: 'Render a TanStack Table column definition template (header, cell, or footer). Handles strings, numbers, functions (component functions or render functions), and VNodes. Returns the rendered output or null for undefined/null inputs. Use in JSX to render column definitions provided by TanStack Table. See also: useTable.',
+    mistakes: `- Wrapping flexRender output in an extra function accessor — the result is already renderable JSX content
+- Passing the column def directly instead of calling getContext() — TanStack Table requires the context object`,
+  },
+  // <gen-docs:api-reference:end @pyreon/table>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/virtual
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/virtual>
+
   'virtual/useVirtualizer': {
-    signature:
-      'useVirtualizer(options: VirtualizerOptions): { virtualItems: Signal, totalSize: Signal, scrollToIndex: (i) => void, ... }',
-    example: `const { virtualItems, totalSize } = useVirtualizer({
-  count: 10000,
-  getScrollElement: () => scrollRef.current,
+    signature: '(options: UseVirtualizerOptions) => UseVirtualizerResult',
+    example: `const virtualizer = useVirtualizer({
+  count: () => items().length,
+  getScrollElement: () => scrollRef,
   estimateSize: () => 35,
-})`,
-    notes: 'TanStack Virtual adapter. Also: useWindowVirtualizer for window-scoped virtualization.',
+  overscan: 5,
+})
+
+// virtualItems() is reactive — re-evaluates as user scrolls
+<For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+  {(item) => <div style={() => \`top: \${item.start}px\`}>{item.index}</div>}
+</For>`,
+    notes: 'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals plus `scrollToIndex()` and `scrollToOffset()` for programmatic control. Options that accept functions (`count`, `estimateSize`) track signal reads reactively. See also: useWindowVirtualizer.',
+    mistakes: `- Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure
+- Passing count as a plain number instead of a function when the list length is dynamic — the virtualizer won't update when items change
+- Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll
+- Using .map() instead of <For> on virtualItems — loses keyed reconciliation`,
   },
+
+  'virtual/useWindowVirtualizer': {
+    signature: '(options: UseWindowVirtualizerOptions) => UseWindowVirtualizerResult',
+    example: `const virtualizer = useWindowVirtualizer({
+  count: () => items().length,
+  estimateSize: () => 50,
+})
+
+<div style={() => \`height: \${virtualizer.totalSize()}px; position: relative\`}>
+  <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+    {(item) => <div style={() => \`position: absolute; top: \${item.start}px\`}>Row {item.index}</div>}
+  </For>
+</div>`,
+    notes: 'Create a window-scoped virtualizer that uses the browser window as the scroll container. SSR-safe — checks for browser environment before attaching scroll listeners. Same return shape as `useVirtualizer` (virtualItems, totalSize, isScrolling, scrollToIndex). Use for long page-level lists where the entire page scrolls. See also: useVirtualizer.',
+    mistakes: `- Using useWindowVirtualizer inside a scrollable container that is not the window — use useVirtualizer with getScrollElement instead
+- Forgetting to position items absolutely inside a relative container with the total height — items overlap or collapse`,
+  },
+  // <gen-docs:api-reference:end @pyreon/virtual>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/feature
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/feature>
+
   'feature/defineFeature': {
-    signature:
-      'defineFeature<T>(config: { name: string, schema: FeatureSchema<T>, api: FeatureApi<T> }): Feature<T>',
+    signature: '<T>(config: FeatureConfig<T>) => Feature<T>',
     example: `const Posts = defineFeature({
   name: 'posts',
-  schema: { title: 'string', body: 'string', author: reference('users') },
+  schema: {
+    title: 'string',
+    body: 'string',
+    author: reference('users'),
+  },
   api: { baseUrl: '/api/posts' },
 })
 
-// Auto-generated hooks:
-Posts.useList()    // paginated query
-Posts.useById(id)  // single item query
-Posts.useCreate()  // mutation
-Posts.useForm(id)  // edit form with validation
-Posts.useTable()   // TanStack Table config`,
-    notes:
-      'Schema-driven CRUD. Composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table.',
+Posts.useList({ page: 1 })
+Posts.useById('123')
+Posts.useCreate()
+Posts.useForm('123')
+Posts.useTable({ columns: ['title', 'author'] })`,
+    notes: 'Define a schema-driven CRUD feature. Accepts a name, field schema, and API config. Returns a Feature object with auto-generated hooks: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`. Composes @pyreon/query (data fetching), @pyreon/form (form state), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). Schema field types are inferred for TypeScript autocompletion across all generated hooks. See also: reference, extractFields, defaultInitialValues.',
+    mistakes: `- Forgetting to install peer dependencies — defineFeature composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table internally
+- Using defineFeature without a QueryClient provider — useList/useById/useSearch/useCreate/useUpdate/useDelete all depend on @pyreon/query which requires a QueryClient in context
+- Passing schema field types as TypeScript types instead of string literals — schema values must be runtime strings like \`"string"\`, \`"number"\`, \`"boolean"\`, or \`reference("otherFeature")\`
+- Calling useForm without an id for edit mode — pass an id to load existing data, omit it for create mode`,
   },
+
+  'feature/reference': {
+    signature: '(featureName: string) => ReferenceSchema',
+    example: `const Posts = defineFeature({
+  name: 'posts',
+  schema: {
+    title: 'string',
+    author: reference('users'),    // FK to users feature
+    category: reference('categories'),
+  },
+  api: { baseUrl: '/api/posts' },
+})`,
+    notes: 'Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). See also: defineFeature.',
+  },
+  // <gen-docs:api-reference:end @pyreon/feature>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/storybook
@@ -2115,43 +2367,40 @@ toast.dismiss()    // all`,
   // @pyreon/url-state
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // <gen-docs:api-reference:start @pyreon/url-state>
+
   'url-state/useUrlState': {
-    signature:
-      'useUrlState<T>(key: string, defaultValue: T): UrlStateSignal<T>\nuseUrlState<T extends Record<string, unknown>>(schema: T): UrlStateSchema<T>',
-    example: `import { useUrlState } from '@pyreon/url-state'
-
-// Single param — synced to ?page=:
+    signature: '<T>(key: string, defaultValue: T, options?: UrlStateOptions) => UrlStateSignal<T>',
+    example: `// Single param:
 const page = useUrlState('page', 1)
-page()       // 1 (auto-coerced number)
-page.set(2)  // URL → ?page=2
+page()        // 1
+page.set(2)   // URL → ?page=2
 
-// Schema mode — multiple params:
-const filters = useUrlState({ page: 1, sort: 'name', desc: false })
-filters.page()   // 1
-filters.sort()   // "name"
-filters.set({ page: 2, sort: 'date' })`,
-    notes:
-      'Auto type coercion (numbers, booleans, arrays). Uses replaceState (no history spam). Configurable debounce. SSR-safe — reads request URL on server.',
+// Schema mode:
+const { q, sort } = useUrlState({ q: '', sort: 'name' })
+q.set('hello')  // ?q=hello&sort=name
+
+// Array with repeated keys:
+const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
+tags.set(['a', 'b'])  // ?tags=a&tags=b`,
+    notes: 'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — reads from the request URL on server. See also: setUrlRouter.',
+    mistakes: `- Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass \`{ replaceState: false }\` on a high-frequency input, the browser back button breaks
+- Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)
+- Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
+- Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet`,
   },
 
-  'storybook/renderToCanvas': {
-    signature: 'renderToCanvas(context: StoryContext, canvasElement: HTMLElement): void',
-    example: `// .storybook/main.ts:
-export default { framework: '@pyreon/storybook' }
+  'url-state/setUrlRouter': {
+    signature: '(router: UrlRouter) => void',
+    example: `import { useRouter } from '@pyreon/router'
+import { setUrlRouter } from '@pyreon/url-state'
 
-// Story file:
-import type { Meta, StoryObj } from '@pyreon/storybook'
-import { Button } from './Button'
-
-const meta: Meta<typeof Button> = { component: Button }
-export default meta
-
-export const Primary: StoryObj<typeof meta> = {
-  args: { variant: 'primary', label: 'Click me' },
-}`,
-    notes:
-      'Storybook renderer for Pyreon components. Re-exports h, Fragment, signal, computed, effect, mount for story convenience.',
+const router = useRouter()
+setUrlRouter(router)
+// Now useUrlState uses router.replace() internally`,
+    notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw \`history.replaceState\`. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. See also: useUrlState.`,
   },
+  // <gen-docs:api-reference:end @pyreon/url-state>
 
   // ═══════════════════════════════════════════════════════════════════════════
   // @pyreon/document-primitives

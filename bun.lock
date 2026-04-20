@@ -414,6 +414,7 @@
       "version": "0.12.15",
       "devDependencies": {
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -443,6 +444,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -493,6 +495,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@types/pdfmake": "^0.3.2",
         "@vitus-labs/tools-lint": "^1.15.5",
@@ -525,6 +528,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "zod": "^4.3.6",
@@ -592,6 +596,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
@@ -722,6 +727,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },
@@ -752,6 +758,7 @@
       "version": "0.12.15",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@vitus-labs/tools-lint": "^1.15.5",
       },
@@ -766,6 +773,7 @@
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
         "@pyreon/form": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
         "arktype": "^2.2.0",
@@ -785,6 +793,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.8.9",
         "@pyreon/core": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/runtime-dom": "workspace:^",
       },

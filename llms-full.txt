@@ -464,6 +464,281 @@ _tpl('<div></div>', (__root) => {
 | `import from "react-dom"` | `import from "@pyreon/runtime-dom"` | Different package |
 | `createRoot(el).render()` | `mount(<App/>, el)` | Simpler API |
 
+## @pyreon/table — TanStack Table Adapter
+
+Reactive TanStack Table adapter for Pyreon. Options are passed as a function so signal reads inside (data, columns, sorting) automatically re-sync the table when any tracked signal changes. Returns a Computed<Table<T>> that consumers read inside templates or effects. Re-exports all TanStack Table core utilities and types for single-import convenience.
+
+```typescript
+import { useTable, flexRender, getCoreRowModel, getSortedRowModel, type ColumnDef } from '@pyreon/table'
+import { signal } from '@pyreon/reactivity'
+
+interface User { name: string; email: string; age: number }
+
+const users = signal<User[]>([
+  { name: 'Alice', email: 'alice@example.com', age: 30 },
+  { name: 'Bob', email: 'bob@example.com', age: 25 },
+])
+
+const columns: ColumnDef<User>[] = [
+  { accessorKey: 'name', header: 'Name' },
+  { accessorKey: 'email', header: 'Email' },
+  { accessorKey: 'age', header: 'Age' },
+]
+
+// Options as a FUNCTION — signal reads inside auto-track.
+// Changing users() re-syncs the entire table reactively.
+const table = useTable(() => ({
+  data: users(),
+  columns,
+  getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
+}))
+
+// In JSX — read table() inside reactive scopes:
+<table>
+  <thead>
+    <For each={() => table().getHeaderGroups()} by={(g) => g.id}>
+      {(group) => (
+        <tr>
+          <For each={() => group.headers} by={(h) => h.id}>
+            {(header) => (
+              <th onClick={header.column.getToggleSortingHandler()}>
+                {flexRender(header.column.columnDef.header, header.getContext())}
+              </th>
+            )}
+          </For>
+        </tr>
+      )}
+    </For>
+  </thead>
+  <tbody>
+    <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+      {(row) => (
+        <tr>
+          <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+            {(cell) => <td>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>}
+          </For>
+        </tr>
+      )}
+    </For>
+  </tbody>
+</table>
+```
+
+> **Note**: Options must be a FUNCTION `() => TableOptions<T>`, not a plain object. Signal reads inside the function are tracked reactively — changing any tracked signal re-syncs the table automatically.
+>
+> **Re-exports**: All TanStack Table core utilities (getCoreRowModel, getSortedRowModel, getFilteredRowModel, getPaginationRowModel, etc.) and types are re-exported from `@pyreon/table` — no need to import from `@tanstack/table-core` separately.
+>
+> **Computed return**: useTable returns Computed<Table<T>>, not Table<T>. Always call `table()` to get the instance. Reading it inside `<For each={() => table().getRowModel().rows}>` makes the list reactive.
+
+## @pyreon/virtual — TanStack Virtual Adapter
+
+Reactive TanStack Virtual adapter for Pyreon. Signal-driven virtualizer that returns reactive `virtualItems`, `totalSize`, and `isScrolling` signals. Supports element-scoped (`useVirtualizer`) and window-scoped (`useWindowVirtualizer`) variants. SSR-safe — window virtualizer checks for browser environment before attaching scroll listeners.
+
+```typescript
+import { useVirtualizer, useWindowVirtualizer } from '@pyreon/virtual'
+import { signal } from '@pyreon/reactivity'
+
+// Element-scoped virtualizer — attach to a scrollable container
+const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, label: `Item ${i}` })))
+
+const MyList = () => {
+  let scrollRef!: HTMLDivElement
+
+  const virtualizer = useVirtualizer({
+    count: () => items().length,
+    getScrollElement: () => scrollRef,
+    estimateSize: () => 35,            // px per row
+    overscan: 5,                       // render 5 extra items above/below viewport
+  })
+
+  return (
+    <div ref={(el) => (scrollRef = el)} style="height: 400px; overflow: auto">
+      <div style={() => `height: ${virtualizer.totalSize()}px; position: relative`}>
+        <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+          {(item) => (
+            <div
+              style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px; width: 100%`}
+            >
+              {() => items()[item.index].label}
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+  )
+}
+
+// Window-scoped virtualizer — scrolls with the page
+const WindowList = () => {
+  const virtualizer = useWindowVirtualizer({
+    count: () => items().length,
+    estimateSize: () => 50,
+  })
+
+  return (
+    <div style={() => `height: ${virtualizer.totalSize()}px; position: relative`}>
+      <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
+        {(item) => (
+          <div style={() => `position: absolute; top: ${item.start}px; height: ${item.size}px`}>
+            {() => items()[item.index].label}
+          </div>
+        )}
+      </For>
+    </div>
+  )
+}
+```
+
+> **Note**: Both hooks return reactive signals (`virtualItems()`, `totalSize()`, `isScrolling()`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll.
+>
+> **Absolute positioning**: Virtual items must be positioned absolutely inside a container whose height equals `totalSize()`. Each item's `start` property gives its pixel offset from the top.
+>
+> **Re-exports**: TanStack Virtual core types and utilities (VirtualItem, Virtualizer, measureElement, etc.) are re-exported from `@pyreon/virtual` for single-import convenience.
+
+## @pyreon/validation — Schema Validation Adapters
+
+Validation adapters that bridge schema libraries (Zod, Valibot, ArkType) with `@pyreon/form`. Each adapter provides a `*Schema()` function for whole-form validation and a `*Field()` function for single-field validation. Duck-typed so version mismatches are handled gracefully. All three schema libraries are optional peer dependencies — install only the one you use.
+
+```typescript
+import { useForm } from '@pyreon/form'
+import { zodSchema, zodField } from '@pyreon/validation'
+import { z } from 'zod'
+
+// Whole-form validation via zodSchema
+const schema = z.object({
+  email: z.string().email(),
+  age: z.number().min(18),
+})
+
+const form = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: zodSchema(schema),        // validates all fields at once
+  onSubmit: (values) => save(values),
+})
+
+// Per-field validation via zodField — use when fields have independent rules
+const form2 = useForm({
+  initialValues: { username: '', bio: '' },
+  validators: {
+    username: zodField(z.string().min(3).max(20)),
+    bio: zodField(z.string().max(500)),
+  },
+  onSubmit: (values) => save(values),
+})
+
+// Valibot adapter — standalone-function style
+import { valibotSchema, valibotField } from '@pyreon/validation'
+import * as v from 'valibot'
+
+const vSchema = v.object({ email: v.pipe(v.string(), v.email()) })
+const form3 = useForm({
+  initialValues: { email: '' },
+  schema: valibotSchema(vSchema, v.safeParse),  // pass safeParse explicitly
+  onSubmit: (values) => save(values),
+})
+
+// ArkType adapter — sync validation only
+import { arktypeSchema } from '@pyreon/validation'
+import { type } from 'arktype'
+
+const atSchema = type({ email: 'email', age: 'number > 18' })
+const form4 = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: arktypeSchema(atSchema),
+  onSubmit: (values) => save(values),
+})
+```
+
+> **Note**: All three schema libraries are optional peer dependencies. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
+>
+> **Valibot standalone functions**: Valibot uses standalone functions (not methods), so `valibotSchema` and `valibotField` require passing `v.safeParse` as an explicit argument. This is by design to avoid internal coupling to Valibot's module structure.
+>
+> **Duck typing**: The Zod adapter is duck-typed against `.safeParse()` — it works with both Zod v3 and v4 without version detection. If a future Zod version changes the safeParse return shape, the adapter will need updating.
+
+## @pyreon/feature — Schema-Driven CRUD
+
+Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.
+
+```typescript
+import { defineFeature, reference } from '@pyreon/feature'
+
+// 1. Define feature schema + API config
+const Posts = defineFeature({
+  name: 'posts',
+  schema: {
+    title: 'string',
+    body: 'string',
+    published: 'boolean',
+    author: reference('users'),     // foreign key reference
+  },
+  api: {
+    baseUrl: '/api/posts',
+    // Optional overrides: listUrl, getUrl, createUrl, updateUrl, deleteUrl, searchUrl
+  },
+})
+
+// 2. Use auto-generated hooks in components:
+
+// Paginated list query
+const ListPage = () => {
+  const { data, isLoading } = Posts.useList({ page: 1, limit: 20 })
+  return <For each={() => data()?.items ?? []} by={(p) => p.id}>
+    {(post) => <div>{post.title}</div>}
+  </For>
+}
+
+// Single item query
+const DetailPage = (props: { id: string }) => {
+  const { data } = Posts.useById(props.id)
+  return <div>{() => data()?.title}</div>
+}
+
+// Search with debounce (via @pyreon/query)
+const SearchPage = () => {
+  const query = signal('')
+  const { data } = Posts.useSearch(() => query())
+  // ...
+}
+
+// Create mutation
+const CreateForm = () => {
+  const { mutate, isLoading } = Posts.useCreate()
+  return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
+    {() => isLoading() ? 'Creating...' : 'Create'}
+  </button>
+}
+
+// Edit form with schema validation (via @pyreon/form + @pyreon/validation)
+const EditForm = (props: { id: string }) => {
+  const { form, field, submit, isSubmitting } = Posts.useForm(props.id)
+  return (
+    <form onSubmit={submit}>
+      <input {...field('title').register()} />
+      <textarea {...field('body').register()} />
+      <button disabled={isSubmitting}>Save</button>
+    </form>
+  )
+}
+
+// Table with sorting/filtering/pagination (via @pyreon/table)
+const TableView = () => {
+  const { table } = Posts.useTable({ columns: ['title', 'author', 'published'] })
+  // table is a Computed<Table<Post>> — render with flexRender
+}
+
+// Global store access
+const store = Posts.useStore()
+store.items()   // cached items
+store.loading() // loading state
+```
+
+> **Note**: defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work.
+>
+> **Schema is runtime**: The schema object uses runtime string values (`"string"`, `"number"`, `"boolean"`) and `reference()` calls — not TypeScript types. TypeScript infers the value types from these runtime markers for end-to-end type safety.
+>
+> **API config**: The `api.baseUrl` is the only required API field. Individual endpoint URLs default to RESTful conventions (`GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`, `GET /search`). Override with `listUrl`, `getUrl`, etc.
+
 ## @pyreon/store — State Management
 
 Composition-style global state management built on @pyreon/reactivity signals. Stores are singletons identified by string ID — the setup function runs once, returning signals (auto-tracked as state), computeds (pass-through), and functions (auto-wrapped as actions with onAction interception). The returned StoreApi provides batch patching, mutation subscription, action hooks, reset, and dispose. For concurrent SSR, setStoreRegistryProvider() swaps the store map to an AsyncLocalStorage-backed provider so each request gets isolated state.
@@ -917,29 +1192,69 @@ const Status = () => (
 >
 > **Signal compatibility**: The machine reads like a signal (`machine()`) and subscribes like one — it works in `effect()`, `computed()`, and JSX expression thunks without special handling.
 
-## @pyreon/document — Universal Rendering
+## @pyreon/document — Universal Document Rendering
+
+Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers (PDF ~300KB, DOCX ~100KB, XLSX ~500KB, PPTX ~200KB) are lazy-loaded on demand. Supports both JSX primitives and a fluent builder API.
 
 ```typescript
-import { createDocument, render } from '@pyreon/document'
+import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
-// Builder pattern:
+// JSX primitives — compose a document tree
+const report = (
+  <Document title="Q4 Sales Report" author="Analytics Team">
+    <Page>
+      <Heading level={1}>Sales Report</Heading>
+      <Text>Q4 2026 performance summary.</Text>
+      <Table
+        columns={['Region', 'Revenue', 'Growth']}
+        rows={[
+          ['US', '$1.2M', '+15%'],
+          ['EU', '$800K', '+8%'],
+          ['APAC', '$500K', '+22%'],
+        ]}
+      />
+      <Divider />
+      <Heading level={2}>Notes</Heading>
+      <List items={['Record quarter for APAC', 'EU impacted by currency exchange']} />
+      <Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>
+    </Page>
+  </Document>
+)
+
+// Render to any format:
+const pdf = await render(report, 'pdf')            // Uint8Array
+const html = await render(report, 'html')           // string
+const email = await render(report, 'email')         // Outlook-safe HTML
+const docx = await render(report, 'docx')           // Uint8Array
+const xlsx = await render(report, 'xlsx')           // Uint8Array
+const md = await render(report, 'md')               // Markdown string
+const slack = await render(report, 'slack')          // Slack Block Kit JSON
+const notion = await render(report, 'notion')        // Notion blocks
+const teams = await render(report, 'teams')          // Adaptive Card JSON
+
+// Browser download helper:
+download(pdf, 'report.pdf')
+
+// Builder API — alternative to JSX:
 const doc = createDocument({ title: 'Report' })
-  .heading('Q4 Sales')
-  .text('Revenue increased by 25%.')
-  .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M'], ['EU', '$800K']] })
+  .heading('Sales Report')
+  .text('Q4 2026 performance summary.')
+  .table({ columns: ['Region', 'Revenue'], rows: [['US', '$1M']] })
 
-await doc.toPdf()       // PDF (pdfmake)
-await doc.toDocx()      // Word (docx)
-await doc.toEmail()     // Outlook-safe HTML
-await doc.toSlack()     // Slack Block Kit JSON
+await doc.toPdf()       // PDF
+await doc.toEmail()     // email-safe HTML
+await doc.toDocx()      // Word document
+await doc.toSlack()     // Slack Block Kit
 await doc.toNotion()    // Notion blocks
-await doc.toMarkdown()  // Markdown
-
-// JSX primitives:
-<Document title="Report">
-  <Page><Heading level={1}>Title</Heading><Text>Body</Text></Page>
-</Document>
 ```
+
+> **Note**: Heavy format renderers are lazy-loaded: PDF (~300KB via pdfmake), DOCX (~100KB via docx), XLSX (~500KB via exceljs), PPTX (~200KB via pptxgenjs). First render of each format has an async import overhead; subsequent renders are instant.
+>
+> **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, gchat, svg) return string.
+>
+> **JSX vs Builder**: Both APIs produce the same DocNode tree. JSX primitives are better for complex layouts with conditional sections. The builder API is better for programmatic generation (e.g. loop over data to build rows).
+>
+> **document-primitives**: For components that render in the browser AND export to documents, use `@pyreon/document-primitives` (rocketstyle-based) + `@pyreon/connector-document` — not the raw primitives from this package.
 
 ## @pyreon/flow — Flow Diagrams
 
@@ -1226,71 +1541,181 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'
 >
 > **Devtools**: Import `@pyreon/i18n/devtools` for a WeakRef-based registry of live i18n instances. Tree-shakeable — zero cost unless imported.
 
-## @pyreon/code — Code Editor
+## @pyreon/charts — Reactive ECharts
+
+Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.
 
 ```typescript
-import { createEditor, CodeEditor, DiffEditor } from '@pyreon/code'
-import { effect, signal } from '@pyreon/reactivity'
+import { Chart, useChart, type EChartsOption, type ComposeOption, type BarSeriesOption, type LineSeriesOption } from '@pyreon/charts'
+import { signal } from '@pyreon/reactivity'
 
+const months = signal(['Jan', 'Feb', 'Mar', 'Apr'])
+const revenue = signal([100, 200, 150, 300])
+
+// Declarative component — simplest usage
+<Chart
+  options={() => ({
+    xAxis: { type: 'category', data: months() },
+    yAxis: { type: 'value' },
+    series: [{ type: 'bar', data: revenue() }],
+    tooltip: { trigger: 'axis' },
+  })}
+  style="height: 400px"
+  onClick={(params) => console.log('clicked:', params.name)}
+/>
+
+// useChart hook — full control over instance lifecycle
+const MyChart = () => {
+  const chart = useChart(() => ({
+    xAxis: { type: 'category', data: months() },
+    yAxis: { type: 'value' },
+    series: [
+      { type: 'bar', data: revenue() },
+      { type: 'line', data: revenue().map((v) => v * 1.1) },
+    ],
+  }))
+
+  return (
+    <div>
+      {() => chart.loading() ? 'Loading chart...' : null}
+      <div ref={chart.ref} style="height: 400px" />
+      <button onClick={() => chart.resize()}>Resize</button>
+    </div>
+  )
+}
+
+// Strict typed options — only bar + line allowed
+type MyOption = ComposeOption<BarSeriesOption | LineSeriesOption>
+const typedChart = useChart<MyOption>(() => ({
+  series: [{ type: 'bar', data: [1, 2, 3] }],  // only 'bar' | 'line' autocomplete
+}))
+
+// Manual entry for tree-shaking control:
+// import { useChart, Chart } from '@pyreon/charts/manual'
+// — you register ECharts components yourself
+```
+
+> **tslib browser alias**: ECharts imports `tslib` whose ESM entry is broken under esbuild. Browser tests and Vite apps need `resolve.alias: { tslib: "tslib/tslib.es6.js" }`. The shared `tslibBrowserAlias(import.meta.url)` helper from `@pyreon/test-utils` resolves the correct path across install layouts. Tracking upstream: microsoft/tslib#189.
+>
+> **Note**: Options must be a FUNCTION `() => EChartsOption`, not a plain object. Signal reads inside the function are tracked — changing any tracked signal reactively updates the chart.
+>
+> **Lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check `loading()` or `<Chart>` handles it internally. Zero ECharts bytes in your initial bundle.
+>
+> **Manual entry**: `@pyreon/charts/manual` skips auto-detection — you register ECharts components yourself via `use()` for maximum tree-shaking control.
+
+## @pyreon/code — Code Editor
+
+Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.
+
+```typescript
+import { createEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
+import { signal } from '@pyreon/reactivity'
+
+// Create a reactive editor instance
 const editor = createEditor({
-  value: '// hello',
+  value: 'const x = 1',
   language: 'typescript',
   theme: 'dark',
   minimap: true,
-  onChange: (next) => console.log('user edited:', next),
+  lineNumbers: true,
+  onChange: (next) => console.log('user edit:', next),
 })
 
-editor.value()              // reactive read
-editor.value.set('new')     // write back into CodeMirror
-editor.cursor()             // { line, col }
-editor.lineCount()          // computed
-editor.goToLine(42)
-editor.insert('new code')
-editor.setDiagnostics([{ from: 0, to: 5, severity: 'error', message: '...' }])
+// editor.value is a writable Signal<string>
+editor.value()           // read reactively — tracks in effects/JSX
+editor.value.set('new')  // write back into CodeMirror
+editor.cursor()          // computed { line, col }
+editor.lineCount()       // computed number
 
+// Mount with JSX component:
 <CodeEditor instance={editor} style="height: 400px" />
+
+// Diff editor — side-by-side comparison:
 <DiffEditor original="old code" modified="new code" language="typescript" />
 
-// Two-way binding via `bindEditorToSignal` — replaces the recurring
-// flag-based loop-prevention pattern. The helper handles both the
-// external→editor and editor→external directions, with built-in
-// loop prevention and parse-error handling.
-import { bindEditorToSignal } from '@pyreon/code'
+// Two-way binding to external signal (e.g. form field, store):
+interface Config { host: string; port: number }
+const config = signal<Config>({ host: 'localhost', port: 3000 })
 
-interface Doc { name: string; count: number }
-const data = signal<Doc>({ name: 'Alice', count: 1 })
-
-const editor = createEditor({
-  value: JSON.stringify(data(), null, 2),
-  language: 'json',
-})
+const configEditor = createEditor({ value: JSON.stringify(config(), null, 2), language: 'json' })
 
 const binding = bindEditorToSignal({
-  editor,
-  signal: data,                // accepts Signal<T> or any SignalLike<T>
+  editor: configEditor,
+  signal: config,
   serialize: (val) => JSON.stringify(val, null, 2),
-  parse: (text) => {
-    try { return JSON.parse(text) } catch { return null }
-  },
-  onParseError: (err) => console.warn('parse error:', err.message),
+  parse: (text) => { try { return JSON.parse(text) } catch { return null } },
+  onParseError: (err) => console.warn('Invalid JSON:', err.message),
 })
+// binding.dispose() on unmount
 
-// Later — typically in onCleanup / onUnmount:
-binding.dispose()
+// Lazy-load a language grammar:
+await loadLanguage('python')
 
-// What the helper guarantees:
-//   1. No infinite loops — internal flags break the format-on-input race
-//   2. Parse failures don't crash — external state stays at last valid value
-//   3. Both effects are disposable via binding.dispose()
-//
-// What the helper does NOT do:
-//   - It does NOT debounce. Every keystroke that parses successfully
-//     triggers signal.set(parsed). Wrap in your own debounced layer if needed.
-//   - It does NOT preserve cursor position when serialize re-canonicalizes
-//     (e.g. reformatting). Make serialize() deterministic to avoid this.
+// Tabbed editor — multiple files:
+<TabbedEditor
+  tabs={[
+    { id: 'main', label: 'main.ts', language: 'typescript', value: 'export {}' },
+    { id: 'styles', label: 'styles.css', language: 'css', value: 'body {}' },
+  ]}
+/>
 ```
 
-> **Peer dep**: `@pyreon/runtime-dom` — `<CodeEditor>` JSX emits `_tpl()` calls. Consumer apps must declare it.
+> **Peer dep**: @pyreon/runtime-dom
+>
+> **Peer dep**: `@pyreon/runtime-dom` is required in consumer apps because `<CodeEditor>` JSX emits `_tpl()` / `_bind()` calls.
+>
+> **Note**: editor.value is a writable Signal<string>. Read with `editor.value()` (reactive), write with `editor.value.set(next)` (pushes into CodeMirror). Do NOT call `editor.value(newText)` — that reads and ignores the argument.
+>
+> **Two-way binding**: For external signal <-> editor synchronization, use `bindEditorToSignal` — it handles loop prevention, format-on-input races, and parse error recovery. Hand-rolling the flag pattern is the #1 source of bugs.
+>
+> **Bundle size**: Built on CodeMirror 6 (~250KB) vs Monaco (~2.5MB). Language grammars are optional dependencies loaded on demand via `loadLanguage()`.
+
+## @pyreon/hotkeys — Keyboard Shortcuts
+
+Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, scope-based activation for context-aware shortcuts, and conflict detection. Component-scoped hooks auto-unregister on unmount. Imperative API available for non-component contexts.
+
+```typescript
+import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, enableScope, disableScope } from '@pyreon/hotkeys'
+
+// Global shortcut — auto-unregisters on unmount
+useHotkey('mod+s', (e) => {
+  e.preventDefault()  // prevent browser save dialog
+  save()
+}, { description: 'Save document' })
+
+// Platform-aware: mod = ⌘ on Mac, Ctrl on Windows/Linux
+useHotkey('mod+k', () => openCommandPalette())
+
+// Multi-key combo
+useHotkey('ctrl+shift+p', () => openPreferences())
+
+// Scoped shortcuts — only active when scope is enabled
+useHotkeyScope('editor')  // activates 'editor' scope for this component's lifetime
+
+useHotkey('ctrl+z', () => undo(), { scope: 'editor', description: 'Undo' })
+useHotkey('ctrl+shift+z', () => redo(), { scope: 'editor', description: 'Redo' })
+useHotkey('ctrl+d', () => duplicateLine(), { scope: 'editor' })
+
+// Imperative API — for non-component contexts (stores, middleware)
+const unregister = registerHotkey('ctrl+q', () => quit(), { scope: 'global' })
+// unregister() when done
+
+// Introspection
+const hotkeys = getRegisteredHotkeys()  // all registered shortcuts
+enableScope('modal')                     // programmatically enable a scope
+disableScope('editor')                   // programmatically disable a scope
+
+// Shortcuts can filter input elements — by default, shortcuts
+// don't fire when focused on <input>, <textarea>, <select>.
+// Override with:
+useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
+```
+
+> **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass `enableOnFormElements: true` in options to override. Escape is a common candidate for this override.
+>
+> **mod alias**: `mod` maps to Command on macOS, Ctrl on Windows/Linux. Write `mod+s` instead of platform-specific `ctrl+s` / `cmd+s` for cross-platform shortcuts.
+>
+> **Scopes**: Scoped shortcuts only fire when their scope is active. Activate with `useHotkeyScope(scope)` (component-scoped) or `enableScope(scope)` (imperative). Without activation, scoped handlers are silently dormant.
 
 ## @pyreon/rx — Reactive Transforms
 
@@ -1409,25 +1834,51 @@ toast.dismiss()         // dismiss all
 >
 > **Pause on hover**: The auto-dismiss timer pauses while the user hovers over a toast and resumes when the cursor leaves. This is built into `<Toaster />` with no configuration needed.
 
-## @pyreon/url-state — URL-Synced State
+## @pyreon/url-state — URL State
+
+Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (reads from request URL on server).
 
 ```typescript
-import { useUrlState } from '@pyreon/url-state'
+import { useUrlState, setUrlRouter } from '@pyreon/url-state'
+import { signal } from '@pyreon/reactivity'
 
-// Single param — synced to ?page=:
+// Single parameter — type inferred from default value
 const page = useUrlState('page', 1)
-page()       // 1 (auto-coerced from URL string to number)
-page.set(2)  // updates URL to ?page=2 via replaceState
+page()        // 1 (number, auto-coerced from ?page=1)
+page.set(2)   // URL → ?page=2 via replaceState
+page.reset()  // removes ?page, signal returns default (1)
+page.remove() // removes ?page entirely
 
-// Schema mode — multiple params:
-const filters = useUrlState({ page: 1, sort: 'name', desc: false })
-filters.page()   // 1
-filters.sort()   // "name"
-filters.desc()   // false (auto-coerced boolean)
-filters.set({ page: 2, sort: 'date' })  // updates ?page=2&sort=date&desc=false
+// Schema mode — multiple params from a single call
+const filters = useUrlState({ q: '', sort: 'name', desc: false })
+filters.q.set('hello')       // ?q=hello&sort=name&desc=false
+filters.sort.set('date')     // ?q=hello&sort=date&desc=false
+filters.desc.set(true)       // ?q=hello&sort=date&desc=true
+
+// Array parameters with repeated keys
+const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
+tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
+
+// Debounce for high-frequency updates (e.g. search input)
+const search = useUrlState('q', '', { debounceMs: 300 })
+// typing "hello" fires one URL update after 300ms pause, not 5
+
+// Router integration — uses router.replace() when available
+import { useRouter } from '@pyreon/router'
+const router = useRouter()
+setUrlRouter(router)  // now useUrlState uses router.replace() internally
 
 // SSR-safe — reads from request URL on server, window.location on client
+// No typeof window checks needed in your components
 ```
+
+> **Note**: Type coercion is based on the default value: `useUrlState("page", 1)` coerces `?page=2` to number `2`. `useUrlState("page", "1")` keeps it as string `"1"`. Always provide the right type as default.
+>
+> **History**: Uses `replaceState` by default — no history entries per update. This prevents the back button from stepping through every intermediate value during typing.
+>
+> **SSR**: SSR-safe out of the box. On the server, reads from the request URL. On the client, reads from `window.location.search`. No environment checks needed in component code.
+>
+> **Debounce**: For high-frequency updates (search inputs, sliders), pass `{ debounceMs: 300 }` to batch URL updates. Without debounce, every keystroke triggers a replaceState call.
 
 ## @pyreon/router — useIsActive
 
