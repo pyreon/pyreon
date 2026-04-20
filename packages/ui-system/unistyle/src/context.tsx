@@ -29,8 +29,7 @@ function Provider(props: TProvider): VNode | null {
   // AND the styler ThemeContext (for styled() components and makeItResponsive).
   // Without this, styled() components receive an empty theme and all responsive
   // styles are skipped (@media queries produce NaN values).
-  // ThemeContext is a ReactiveContext — providers pass an accessor. Static
-  // theme still works: the accessor returns the same value every call.
+  // ThemeContext is a ReactiveContext — provide an accessor.
   provide(ThemeContext, () => enrichedTheme)
 
   return CoreProvider({ theme: enrichedTheme, children }) as VNode | null

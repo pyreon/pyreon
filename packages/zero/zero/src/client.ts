@@ -85,7 +85,11 @@ export function startClient(options: StartClientOptions) {
   const vnode = h(App, null)
 
   // ── Mount vs hydrate ───────────────────────────────────────────────────────
-  const hasSSRContent = container.childNodes.length > 0
+  // Ignore comment nodes (Vite injects <!--app-html-->) — only real DOM
+  // elements or text nodes count as SSR content worth hydrating.
+  const hasSSRContent = Array.from(container.childNodes).some(
+    (n) => n.nodeType === 1 || (n.nodeType === 3 && n.textContent!.trim().length > 0),
+  )
   const cleanup = hasSSRContent ? hydrateRoot(container, vnode) : mount(vnode, container)
 
   // ── Loader run (SPA cold-start path) ───────────────────────────────────────

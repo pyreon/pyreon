@@ -17,7 +17,7 @@
  */
 import type { ComponentFn, VNode } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { effect, runUntracked } from '@pyreon/reactivity'
+import { computed, runUntracked } from '@pyreon/reactivity'
 import { buildProps } from './forward'
 import { type Interpolation, normalizeCSS, resolve } from './resolve'
 import { isDynamic } from './shared'
@@ -126,93 +126,100 @@ const createStyledComponent = (
     return StaticStyled
   }
 
-  // DYNAMIC PATH: resolve CSS on every render with theme/props.
-  // When $rocketstyle is a function accessor (from rocketstyle's
-  // EnhancedComponent) OR the theme context changes, we resolve initially
-  // for the first class, then set up an effect to reactively swap classes.
-  // This avoids VNode remounting — only classList updates on the DOM element.
+  // ─── Tier 2: Per-definition class cache ───────────────────────────────────
+  // Two-level WeakMap: $rocketstyle → $rocketstate → className.
+  // 50 identical Items with the same resolved theme → 1 resolve + 49 hits.
+  const classCache = new WeakMap<object, WeakMap<object, string>>()
+
+  // DYNAMIC PATH: uses computed() for reactive class derivation.
+  //
+  // Architecture:
+  // - $rocketstyle/$rocketstate may be function ACCESSORS (from rocketstyle)
+  //   or plain objects (from direct styled() usage).
+  // - When they're accessors, a computed() tracks them so mode/dimension
+  //   signal changes produce a new CSS class reactively.
+  // - The resolve() itself runs UNTRACKED inside the computed to prevent
+  //   exponential cascade from theme deep-reads in interpolation functions.
+  // - The computed memoizes by string equality — same CSS class = no DOM update.
+  // - Pyreon's built-in renderEffect handles the DOM class attribute update
+  //   when the computed value changes.
+  //
+  // This gives reactive mode/dimension switching WITHOUT per-component effect().
   const DynamicStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
-    // Reactive theme accessor — read inside the effect below to track theme swaps.
-    const getTheme = useThemeAccessor()
+    const themeAccessor = useThemeAccessor()
+    const theme = themeAccessor() // snapshot for initial + static path
     const $rs = rawProps.$rocketstyle
     const $rsState = rawProps.$rocketstate
     const isReactiveRS = typeof $rs === 'function'
     const isReactiveState = typeof $rsState === 'function'
 
-    // Resolve initial accessor values — both $rocketstyle and $rocketstate
-    // must be plain objects when passed to resolve(), because .styles()
-    // interpolation functions destructure them directly:
-    //   const { hover, pressed } = $rocketstate.pseudo
-    //   const { hover: hoverStyles } = $rocketstyle
-    const resolvedRS = isReactiveRS ? $rs() : $rs
-    const resolvedState = isReactiveState ? $rsState() : $rsState
-    const initialProps = {
-      ...rawProps,
-      ...(isReactiveRS ? { $rocketstyle: resolvedRS } : {}),
-      ...(isReactiveState ? { $rocketstate: resolvedState } : {}),
+    // Helper: resolve CSS + cache result
+    const doResolve = (rs: any, rsState: any, t: any): string => {
+      // Tier 2 cache: skip resolve if same object identity seen before
+      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
+        const inner = classCache.get(rs)
+        if (inner) {
+          const cached = inner.get(rsState)
+          if (cached !== undefined) return cached
+        }
+      }
+
+      const resolveProps = {
+        ...rawProps,
+        ...(isReactiveRS ? { $rocketstyle: rs } : {}),
+        ...(isReactiveState ? { $rocketstate: rsState } : {}),
+        theme: t,
+      }
+      const cssText = normalizeCSS(resolve(strings, values, resolveProps))
+      const className = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
+
+      if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
+        let inner = classCache.get(rs)
+        if (!inner) {
+          inner = new WeakMap()
+          classCache.set(rs, inner)
+        }
+        inner.set(rsState, className)
+      }
+      return className
     }
-    const cssText = normalizeCSS(resolve(strings, values, { ...initialProps, theme: getTheme() }))
-    const initialClassName = cssText.length > 0 ? sheet.insert(cssText, false, insertLayer) : ''
+
+    // If any axis is reactive, wrap in computed that tracks all three:
+    //   1. $rocketstyle accessor (mode + dimension signals)
+    //   2. $rocketstate accessor (state descriptor)
+    //   3. themeAccessor (user-preference theme swap)
+    // The resolve itself runs UNTRACKED to prevent exponential cascade.
+    const hasReactive = isReactiveRS || isReactiveState
+    const cssClass = hasReactive
+      ? computed(() => {
+          // TRACKED reads:
+          const rs = isReactiveRS ? $rs() : $rs
+          const rsState = isReactiveState ? $rsState() : $rsState
+          const t = themeAccessor() // TRACKED — theme swap
+
+          // UNTRACKED: resolve + sheet insert
+          return runUntracked(() => doResolve(rs, rsState, t))
+        }, { equals: (a, b) => a === b })
+      : null
 
     const finalTag = rawProps.as || tag
     const isDOM = typeof finalTag === 'string'
 
-    // Track mounted element for reactive class updates
-    let el: Element | null = null
-    let currentClassName = initialClassName
+    // Initial class: computed (reactive) or direct resolve (static)
+    const className = cssClass
+      ? cssClass()
+      : doResolve($rs, $rsState, theme)
+    const finalProps = buildProps(rawProps, className, isDOM, customFilter)
 
-    const originalRef = rawProps.ref
-    const refCallback = (node: Element | null) => {
-      el = node
-      if (originalRef) {
-        if (typeof originalRef === 'function') originalRef(node)
-        else if (originalRef && typeof originalRef === 'object') originalRef.current = node
+    // Reactive path: override class with accessor for renderEffect
+    if (cssClass) {
+      finalProps.class = () => {
+        const newClass = cssClass()
+        const userClass = rawProps.class || rawProps.className
+        return userClass ? `${newClass} ${userClass}` : newClass
       }
     }
 
-    // Always wire a ref callback on the dynamic path so theme-swap effects
-    // can mutate classList even when there's no reactive $rocketstyle.
-    const finalProps = buildProps(
-      { ...rawProps, ref: refCallback },
-      initialClassName,
-      isDOM,
-      customFilter,
-    )
-
-    // Set up reactive class swap. Two tracked sources:
-    //   1. $rocketstyle accessor (mode + dimension signals) — when present
-    //   2. Theme context — fires on whole-theme swap (user preference themes)
-    // CRITICAL: only the tracked reads happen in the tracked scope. resolve()
-    // and DOM mutations run inside runUntracked() to prevent subscribing to
-    // signals read by interpolation functions (theme deep-reads, context
-    // getters, etc.) — that would cause an exponential cascade across every
-    // styled component on any signal change.
-    effect(() => {
-      const newRS = isReactiveRS ? $rs() : resolvedRS // TRACKED when reactive
-      const newState = isReactiveState ? $rsState() : resolvedState // TRACKED when reactive
-      const newTheme = getTheme() // TRACKED — theme swap
-
-      runUntracked(() => {
-        // UNTRACKED: resolve + DOM mutation — no additional subscriptions
-        const newResolvedProps = {
-          ...rawProps,
-          ...(isReactiveRS ? { $rocketstyle: newRS } : {}),
-          ...(isReactiveState ? { $rocketstate: newState } : {}),
-        }
-        const newCss = normalizeCSS(
-          resolve(strings, values, { ...newResolvedProps, theme: newTheme }),
-        )
-        const newClass = newCss.length > 0 ? sheet.insert(newCss, false, insertLayer) : ''
-
-        if (el && newClass !== currentClassName) {
-          if (currentClassName) el.classList.remove(currentClassName)
-          if (newClass) el.classList.add(newClass)
-          currentClassName = newClass
-        }
-      })
-    })
-
-    // STATIC VNode — created once, never remounted on mode change
     return h(
       finalTag as string,
       finalProps,

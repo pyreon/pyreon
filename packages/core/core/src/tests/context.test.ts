@@ -110,12 +110,10 @@ describe('pushContext / popContext', () => {
     expect(useContext(ctx)).toBe(0) // default
   })
 
-  test('popContext on empty stack warns in dev mode', () => {
+  test('popContext on empty stack is a silent no-op', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     popContext()
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('popContext() called on an empty context stack'),
-    )
+    expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 })

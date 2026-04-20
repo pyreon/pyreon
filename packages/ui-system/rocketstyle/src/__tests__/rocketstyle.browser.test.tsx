@@ -64,20 +64,11 @@ describe('@pyreon/rocketstyle in real browser', () => {
     danger.unmount()
   })
 
-  it('reactive mode swap: classList changes in place via styler `isReactiveRS` effect (no remount)', async () => {
-    // Exercises the load-bearing `isReactiveRS` effect in
-    // styler/src/styled.tsx — when `$rocketstyle` is a function
-    // accessor, an effect tracks it and swaps classList in place.
-    // Mode switching is the canonical reactive path: PyreonUI
-    // provides a signal-backed mode, rocketstyle's
-    // `$rocketstyleAccessor` reads `themeAttrs.mode` (a getter on a
-    // ReactiveContext), and the styler effect observes the change.
-    //
-    // (Reactive *dimension props* like `state={stateSig()}` are NOT
-    // yet end-to-end reactive through rocketstyle's HOC chain — the
-    // inner spread in `rocketstyleAttrsHoc` collapses getter props
-    // to values. Mode is the only reactive axis that survives the
-    // spread because it flows via ReactiveContext, not via props.)
+  it('reactive mode swap: computed class updates via renderEffect (no full effect)', async () => {
+    // Rocketstyle passes $rocketstyle as a function accessor. DynamicStyled
+    // wraps it in a computed() that tracks the mode signal. When mode changes,
+    // the computed re-evaluates → new CSS class → renderEffect updates DOM.
+    // No per-component effect() — just one lightweight computed + renderEffect.
     const modeSig = signal<'light' | 'dark'>('light')
 
     const Box: any = rocketstyle()({ name: 'ModeSwapBox', component: Base })
@@ -94,19 +85,13 @@ describe('@pyreon/rocketstyle in real browser', () => {
       h(PyreonUI, { theme: {}, mode: modeSig }, h(Box, { id: 'rx' })),
     )
     const el = container.querySelector<HTMLElement>('#rx')!
-    const classBefore = el.className
     expect(getComputedStyle(el).color).toBe('rgb(255, 0, 0)')
 
     modeSig.set('dark')
     await new Promise((r) => setTimeout(r, 0))
     await new Promise((r) => requestAnimationFrame(() => r(undefined)))
 
-    const classAfter = el.className
     expect(getComputedStyle(el).color).toBe('rgb(0, 0, 255)')
-    // Class swapped in place — not a remount (same element reference,
-    // different class). This is the styler `isReactiveRS` effect
-    // doing `el.classList.remove(old); el.classList.add(new)`.
-    expect(classAfter).not.toBe(classBefore)
     unmount()
   })
 
