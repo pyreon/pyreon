@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'Pyreon',
   description: 'A signal-based UI framework with fine-grained reactivity and a rich ecosystem.',
 
+  base: '/pyreon/',
   cleanUrls: true,
   lastUpdated: true,
 
