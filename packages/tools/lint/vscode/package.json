@@ -2,7 +2,7 @@
   "name": "pyreon-lint",
   "displayName": "Pyreon Lint",
   "description": "Pyreon-specific lint rules for VS Code — signals, JSX, SSR, performance, reactivity",
-  "version": "0.1.0",
+  "version": "0.13.0",
   "publisher": "pyreon",
   "license": "MIT",
   "repository": {

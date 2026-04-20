@@ -1,5 +1,27 @@
 # @pyreon/feature
 
+## 0.13.0
+
+### Patch Changes
+
+- [#261](https://github.com/pyreon/pyreon/pull/261) [`72b2023`](https://github.com/pyreon/pyreon/commit/72b2023609bf539e804f64dbefcf2586edf7162f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Triaged safe changes from architecture review PR [#260](https://github.com/pyreon/pyreon/issues/260):
+
+  - **hotkeys**: detach global `keydown` listener when last hotkey unregisters (prevents listener accumulation across component remounts)
+  - **code**: new `useEditorSignal()` hook — wraps `bindEditorToSignal` with `onUnmount` auto-cleanup (eliminates manual `dispose()` calls)
+  - **form**: `ValidateFn` accepts optional `AbortSignal`; `useForm` creates per-cycle `AbortController` cancelled on unmount (prevents orphaned async validators)
+  - **validation**: `zodSchema()` / `valibotSchema()` / `arktypeSchema()` return `TypedSchemaAdapter<TValues>` with `.validator` and phantom `_infer` type for compile-time field name validation. `useForm({ schema })` accepts both the new adapter and plain `SchemaValidateFn` (backward compatible).
+
+  Dropped from the original PR: onCleanup LIFO ordering change (breaking behavioral change), circular effect detection (redundant with batch), SSR streaming backpressure (architecturally wrong implementation).
+
+- Updated dependencies [[`72b2023`](https://github.com/pyreon/pyreon/commit/72b2023609bf539e804f64dbefcf2586edf7162f), [`ec30b4e`](https://github.com/pyreon/pyreon/commit/ec30b4e2188fb493fdde77a77f521abe000beae0), [`a05c4ba`](https://github.com/pyreon/pyreon/commit/a05c4bab713f5168acd56eb233520102735bd80a)]:
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/store@0.13.0
+  - @pyreon/core@0.13.0
+  - @pyreon/reactivity@0.13.0
+  - @pyreon/table@0.13.0
+
 ## 0.12.15
 
 ### Patch Changes
@@ -78,11 +100,11 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
 ## 0.8.0
 
@@ -99,11 +121,11 @@
 ### Patch Changes
 
 - Updated dependencies [[`075dd4f`](https://github.com/pyreon/fundamentals/commit/075dd4fe4a325fe5a5637a68e209dffe665bb84e)]:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
 ## 0.7.0
 
@@ -121,11 +143,11 @@
 ### Patch Changes
 
 - Updated dependencies [[`deb9834`](https://github.com/pyreon/fundamentals/commit/deb983456472cc685d80e97b21196588af53b502)]:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
 ## 0.6.0
 
@@ -145,13 +167,13 @@
 ### Patch Changes
 
 - Updated dependencies [[`5610cdf`](https://github.com/pyreon/fundamentals/commit/5610cdffb69022aacd44419d7c71b97bdcf8403f)]:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 
@@ -160,13 +182,13 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 
@@ -175,11 +197,11 @@
 ### Patch Changes
 
 - Updated dependencies []:
-  - @pyreon/store@1.0.0
-  - @pyreon/form@1.0.0
-  - @pyreon/validation@1.0.0
-  - @pyreon/query@1.0.0
-  - @pyreon/table@1.0.0
+  - @pyreon/store@0.13.0
+  - @pyreon/form@0.13.0
+  - @pyreon/validation@0.13.0
+  - @pyreon/query@0.13.0
+  - @pyreon/table@0.13.0
 
 ## 0.1.0
 

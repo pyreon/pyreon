@@ -1,5 +1,21 @@
 # @pyreon/store
 
+## 0.13.0
+
+### Patch Changes
+
+- [#262](https://github.com/pyreon/pyreon/pull/262) [`ec30b4e`](https://github.com/pyreon/pyreon/commit/ec30b4e2188fb493fdde77a77f521abe000beae0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - QA audit fixes (5 HIGH + 2 MEDIUM):
+
+  - **router**: `useBlocker` uses shared ref-counted `beforeunload` listener instead of per-blocker — prevents listener accumulation across multiple blockers
+  - **router**: `destroy()` clears `_activeRouter` global ref and releases remaining blocker listeners — prevents stale router surviving in SSR/re-creation
+  - **query/useSubscription**: close WebSocket BEFORE nulling handlers — prevents race where queued message fires null handler
+  - **query/useSubscription**: respect `intentionalClose` when reactive deps change — user's explicit `close()` no longer gets overridden by signal change
+  - **store**: plugin errors now logged with `__DEV__` console.warn instead of silently swallowed
+  - **storage/IndexedDB**: initialization errors (corrupted DB, quota exceeded) now call `onError` callback and log in dev mode instead of silently falling back to default
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.13.0
+
 ## 0.12.15
 
 ### Patch Changes
@@ -85,13 +101,13 @@
   - Use `provide()` for context providers (query, form, i18n, permissions)
   - Fix error message prefixes across packages
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 
 - Add @pyreon/permissions (reactive type-safe permissions) and @pyreon/machine (reactive state machines). Update AI building rules.
 
-## 1.0.0
+## 0.13.0
 
 ### Minor Changes
 
