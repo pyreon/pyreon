@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-core",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Core utilities, config, and context for Pyreon UI System",
   "license": "MIT",
   "repository": {
