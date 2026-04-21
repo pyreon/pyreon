@@ -29,6 +29,8 @@ export interface RenderContext {
   pendingLayoutEffects: EffectEntry[]
   /** Set to true when the component is unmounted */
   unmounted: boolean
+  /** Hook count from the previous render (dev-mode ordering guard) */
+  _hookCount?: number
 }
 
 export interface EffectEntry {
@@ -39,6 +41,7 @@ export interface EffectEntry {
 
 let _currentCtx: RenderContext | null = null
 let _hookIndex = 0
+let _expectedHookCount = -1
 
 export function getCurrentCtx(): RenderContext | null {
   return _currentCtx
@@ -54,9 +57,30 @@ export function beginRender(ctx: RenderContext): void {
   ctx.pendingInsertionEffects = []
   ctx.pendingEffects = []
   ctx.pendingLayoutEffects = []
+
+  // On re-renders, remember the hook count from last render
+  if (ctx._hookCount !== undefined) {
+    _expectedHookCount = ctx._hookCount
+  } else {
+    _expectedHookCount = -1
+  }
 }
 
 export function endRender(): void {
+  if (_currentCtx) {
+    // Dev-mode: check hook count matches expected
+    if (
+      (import.meta as { env?: { DEV?: boolean } }).env?.DEV &&
+      _expectedHookCount !== -1 &&
+      _hookIndex !== _expectedHookCount
+    ) {
+      console.error(
+        `[Pyreon] Hook count changed between renders (expected ${_expectedHookCount}, got ${_hookIndex}). ` +
+          `This usually means a hook is called conditionally. Hooks must be called in the same order every render.`,
+      )
+    }
+    _currentCtx._hookCount = _hookIndex
+  }
   _currentCtx = null
   _hookIndex = 0
 }

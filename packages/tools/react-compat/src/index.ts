@@ -241,37 +241,62 @@ export function useId(): string {
 
 // ─── Optimization ────────────────────────────────────────────────────────────
 
+function shallowEqual<P extends Record<string, unknown>>(a: P, b: P): boolean {
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  for (const k of keysA) {
+    if (!Object.is(a[k], b[k])) return false
+  }
+  return true
+}
+
 /**
  * React-compatible `memo` — wraps a component to skip re-render when props
  * are shallowly equal.
+ *
+ * Each component INSTANCE gets its own props/result cache via a hook slot,
+ * so two `<MemoComp />` usages don't share memoization state.
  */
 export function memo<P extends Record<string, unknown>>(
   component: (props: P) => VNodeChild,
   areEqual?: (prevProps: P, nextProps: P) => boolean,
 ): (props: P) => VNodeChild {
-  const compare =
-    areEqual ??
-    ((a: P, b: P) => {
-      const keysA = Object.keys(a)
-      const keysB = Object.keys(b)
-      if (keysA.length !== keysB.length) return false
-      for (const k of keysA) {
-        if (!Object.is(a[k], b[k])) return false
-      }
-      return true
-    })
+  const compare = areEqual ?? shallowEqual
 
-  let prevProps: P | null = null
-  let prevResult: VNodeChild = null
+  const MEMO_MARKER = Symbol.for('pyreon:memo')
+
+  // Fallback closure-level cache for calls outside a compat render context
+  // (e.g. direct function calls in tests). Inside a render context, each
+  // component instance gets its own cache via a hook slot.
+  let _fallbackPrevProps: P | null = null
+  let _fallbackPrevResult: VNodeChild = null
 
   const memoized = (props: P) => {
-    if (prevProps !== null && compare(prevProps, props)) {
-      return prevResult
+    const ctx = getCurrentCtx()
+    if (ctx) {
+      // Per-instance cache via hook slot
+      const idx = getHookIndex()
+      if (ctx.hooks.length <= idx) {
+        ctx.hooks.push({ prevProps: null as P | null, prevResult: null as VNodeChild })
+      }
+      const cache = ctx.hooks[idx] as { prevProps: P | null; prevResult: VNodeChild }
+      if (cache.prevProps !== null && compare(cache.prevProps, props)) {
+        return cache.prevResult
+      }
+      cache.prevProps = props
+      cache.prevResult = component(props)
+      return cache.prevResult
     }
-    prevProps = props
-    prevResult = (component as (p: P) => VNodeChild)(props)
-    return prevResult
+    // No compat context — use closure-level fallback cache
+    if (_fallbackPrevProps !== null && compare(_fallbackPrevProps, props)) {
+      return _fallbackPrevResult
+    }
+    _fallbackPrevProps = props
+    _fallbackPrevResult = component(props)
+    return _fallbackPrevResult
   }
+  ;(memoized as unknown as Record<symbol, boolean>)[MEMO_MARKER] = true
   memoized.displayName =
     (component as unknown as { displayName?: string }).displayName || component.name || 'Memo'
   return memoized
@@ -387,10 +412,20 @@ export const Children = {
   map<T>(children: VNodeChild | VNodeChild[], fn: (child: VNodeChild, index: number) => T): T[] {
     const flat = flattenChildren(children)
     const result: T[] = []
+    let validIndex = 0
     for (let i = 0; i < flat.length; i++) {
       const child = flat[i]
       if (child == null || child === true || child === false) continue
-      result.push(fn(child, i))
+      const mapped = fn(child, validIndex)
+      // Assign key to mapped VNode children if they don't already have one
+      if (mapped && typeof mapped === 'object' && 'type' in mapped && 'props' in mapped) {
+        const vnode = mapped as unknown as VNode
+        if (vnode.key == null) {
+          vnode.key = `.${validIndex}`
+        }
+      }
+      result.push(mapped)
+      validIndex++
     }
     return result
   },
@@ -400,10 +435,11 @@ export const Children = {
    */
   forEach(children: VNodeChild | VNodeChild[], fn: (child: VNodeChild, index: number) => void): void {
     const flat = flattenChildren(children)
+    let validIndex = 0
     for (let i = 0; i < flat.length; i++) {
       const child = flat[i]
       if (child == null || child === true || child === false) continue
-      fn(child, i)
+      fn(child, validIndex++)
     }
   },
 
@@ -443,30 +479,63 @@ export const Children = {
 
 /**
  * React-compatible `useSyncExternalStore` — subscribes to an external store.
+ * Re-subscribes automatically when the `subscribe` function identity changes.
  */
 export function useSyncExternalStore<T>(
   subscribe: (onStoreChange: () => void) => () => void,
   getSnapshot: () => T,
-  _getServerSnapshot?: () => T,
+  getServerSnapshot?: () => T,
 ): T {
   const ctx = requireCtx()
   const idx = getHookIndex()
 
+  // SSR path
+  if (typeof window === 'undefined' && getServerSnapshot) {
+    if (ctx.hooks.length <= idx) {
+      ctx.hooks.push({ subscribe, unsubscribe: undefined, snapshot: getServerSnapshot() })
+    }
+    return (ctx.hooks[idx] as { snapshot: T }).snapshot
+  }
+
   if (ctx.hooks.length <= idx) {
     const snapshot = getSnapshot()
-    const entry = { unsubscribe: undefined as (() => void) | undefined, snapshot }
-    entry.unsubscribe = subscribe(() => {
+    const entry = {
+      subscribe,
+      unsubscribe: undefined as (() => void) | undefined,
+      snapshot,
+    }
+    const onChange = () => {
       const next = getSnapshot()
       if (!Object.is(entry.snapshot, next)) {
         entry.snapshot = next
         ctx.scheduleRerender()
       }
-    })
+    }
+    entry.unsubscribe = subscribe(onChange)
     ctx.hooks.push(entry)
     return snapshot
   }
 
-  const entry = ctx.hooks[idx] as { unsubscribe: (() => void) | undefined; snapshot: T }
+  const entry = ctx.hooks[idx] as {
+    subscribe: typeof subscribe
+    unsubscribe: (() => void) | undefined
+    snapshot: T
+  }
+
+  // Re-subscribe if subscribe function identity changed
+  if (entry.subscribe !== subscribe) {
+    if (entry.unsubscribe) entry.unsubscribe()
+    const onChange = () => {
+      const next = getSnapshot()
+      if (!Object.is(entry.snapshot, next)) {
+        entry.snapshot = next
+        ctx.scheduleRerender()
+      }
+    }
+    entry.unsubscribe = subscribe(onChange)
+    entry.subscribe = subscribe
+  }
+
   // Always read fresh snapshot during render
   entry.snapshot = getSnapshot()
   return entry.snapshot
@@ -482,6 +551,11 @@ const _promiseCache = new WeakMap<
 /**
  * React-compatible `use` — reads a Context or suspends on a Promise.
  * Can be called conditionally (unlike other hooks).
+ *
+ * IMPORTANT: Promises must have a stable identity across renders.
+ * Create promises outside the component or memoize them. Calling
+ * `use(fetch('/api'))` creates a new promise each render and will
+ * cause infinite suspension.
  */
 export function use<T>(resource: Context<T> | Promise<T>): T {
   // Context path
@@ -568,10 +642,14 @@ export function useDebugValue<T>(_value: T, _format?: (v: T) => unknown): void {
 // ─── flushSync ──────────────────────────────────────────────────────────────
 
 /**
- * React-compatible `flushSync` — runs the callback and returns its result.
- * In Pyreon's compat model, state updates are batched via queueMicrotask.
- * flushSync cannot truly synchronously flush those — it runs the callback
- * and returns. The microtask-scheduled rerenders will still fire asynchronously.
+ * React-compatible `flushSync` — runs the callback synchronously.
+ *
+ * BEHAVIORAL DIFFERENCE: In Pyreon's compat model, state updates are
+ * batched via microtask. flushSync runs the callback and returns its
+ * result, but the DOM updates triggered by state changes inside the
+ * callback still fire asynchronously. For DOM measurement after state
+ * updates, use `await act(() => setState(...))` in tests, or
+ * `requestAnimationFrame` in production code.
  */
 export function flushSync<T>(fn: () => T): T {
   return fn()

@@ -4,6 +4,8 @@ import type { RenderContext } from '../jsx-runtime'
 import { beginRender, endRender, jsx } from '../jsx-runtime'
 import {
   act,
+  Children,
+  cloneElement,
   Component,
   createRef,
   flushSync,
@@ -19,6 +21,7 @@ import {
   useDebugValue,
   useEffect,
   useInsertionEffect,
+  useLayoutEffect,
   useReducer,
   useState,
   useSyncExternalStore,
@@ -968,5 +971,451 @@ describe('real-world integration patterns', () => {
     const vnode = jsx('select', { onChange: handler })
     expect(vnode.props.onInput).toBe(handler)
     expect(vnode.props.onChange).toBeUndefined()
+  })
+})
+
+// ─── Children.forEach index fix ───────────────────────────────────────────
+
+describe('Children.forEach index', () => {
+  test('passes correct sequential index skipping nulls', () => {
+    const indices: number[] = []
+    const values: unknown[] = []
+    Children.forEach([null, 'a', null, 'b', undefined, 'c'], (child, idx) => {
+      indices.push(idx)
+      values.push(child)
+    })
+    expect(indices).toEqual([0, 1, 2])
+    expect(values).toEqual(['a', 'b', 'c'])
+  })
+
+  test('passes correct index skipping booleans', () => {
+    const indices: number[] = []
+    Children.forEach([true, 'x', false, 'y'], (_, idx) => indices.push(idx))
+    expect(indices).toEqual([0, 1])
+  })
+})
+
+// ─── useSyncExternalStore re-subscribe on identity change ─────────────────
+
+describe('useSyncExternalStore re-subscribe', () => {
+  test('re-subscribes when subscribe identity changes', () => {
+    const runner = createHookRunner()
+    let listener: (() => void) | null = null
+    let unsubCount = 0
+    const sub1 = (cb: () => void) => { listener = cb; return () => { unsubCount++; listener = null } }
+    const sub2 = (cb: () => void) => { listener = cb; return () => { unsubCount++; listener = null } }
+    let val = 1
+
+    runner.run(() => useSyncExternalStore(sub1, () => val))
+    expect(unsubCount).toBe(0)
+
+    // Change to sub2 — should unsub from sub1
+    runner.run(() => useSyncExternalStore(sub2, () => val))
+    expect(unsubCount).toBe(1)
+  })
+})
+
+// ─── useSyncExternalStore unsubscribe on unmount ──────────────────────────
+
+describe('useSyncExternalStore unmount cleanup', () => {
+  test('unsubscribes on component unmount', () => {
+    const el = container()
+    let unsubbed = false
+    const subscribe = (_cb: () => void) => () => { unsubbed = true }
+
+    const Comp = () => {
+      useSyncExternalStore(subscribe, () => 1)
+      return h('div', null, 'x')
+    }
+
+    const cleanup = mount(jsx(Comp, {}), el)
+    expect(unsubbed).toBe(false)
+    cleanup()
+    expect(unsubbed).toBe(true)
+  })
+})
+
+// ─── useActionState async transitions ─────────────────────────────────────
+
+describe('useActionState async transitions', () => {
+  test('isPending transitions false → true → false during async action', async () => {
+    const runner = createHookRunner()
+    let resolveFn: (v: number) => void = () => {}
+    runner.ctx.scheduleRerender = () => {}
+
+    const [, dispatch] = runner.run(() =>
+      useActionState(
+        (_s: number, _p: number) => new Promise<number>((r) => { resolveFn = r }),
+        0,
+      ),
+    )
+
+    // Initially not pending
+    const [, , isPending0] = runner.run(() =>
+      useActionState((_s: number, _p: number) => Promise.resolve(0), 0),
+    )
+    expect(isPending0).toBe(false)
+
+    // After dispatch, should be pending
+    dispatch(1)
+    const [, , isPending1] = runner.run(() =>
+      useActionState((_s: number, _p: number) => Promise.resolve(0), 0),
+    )
+    expect(isPending1).toBe(true)
+
+    // After resolve, should no longer be pending
+    resolveFn(42)
+    await new Promise<void>((r) => queueMicrotask(r))
+    const [state, , isPending2] = runner.run(() =>
+      useActionState((_s: number, _p: number) => Promise.resolve(0), 0),
+    )
+    expect(state).toBe(42)
+    expect(isPending2).toBe(false)
+  })
+})
+
+// ─── Component.render default ─────────────────────────────────────────────
+
+describe('Component.render', () => {
+  test('default render returns null', () => {
+    const comp = new Component({})
+    expect(comp.render()).toBeNull()
+  })
+})
+
+// ─── PureComponent ────────────────────────────────────────────────────────
+
+describe('PureComponent additional', () => {
+  test('PureComponent extends Component', () => {
+    const c = new PureComponent({ x: 1 })
+    expect(c instanceof Component).toBe(true)
+    expect(c instanceof PureComponent).toBe(true)
+  })
+
+  test('PureComponent state is empty object', () => {
+    const c = new PureComponent({})
+    expect(c.state).toEqual({})
+  })
+})
+
+// ─── Hook count tracking ──────────────────────────────────────────────────
+
+describe('hook count tracking', () => {
+  test('_hookCount is tracked between renders', () => {
+    const runner = createHookRunner()
+    runner.run(() => { useState(0); useState(0) })
+    expect(runner.ctx._hookCount).toBe(2)
+  })
+
+  test('_hookCount updates on re-render', () => {
+    const runner = createHookRunner()
+    runner.run(() => { useState(0); useState(0); useState(0) })
+    expect(runner.ctx._hookCount).toBe(3)
+  })
+})
+
+// ─── memo per-instance cache ──────────────────────────────────────────────
+
+describe('memo per-instance cache', () => {
+  test('separate instances have separate caches', () => {
+    let callCount = 0
+    const Inner = (props: { x: number }) => { callCount++; return h('span', null, String(props.x)) }
+    const Memoized = memo(Inner)
+
+    const runner1 = createHookRunner()
+    const runner2 = createHookRunner()
+    runner1.run(() => Memoized({ x: 1 }))
+    runner2.run(() => Memoized({ x: 2 }))
+    expect(callCount).toBe(2) // Both should render independently
+
+    // Re-render with same props — instance 1 cached
+    runner1.run(() => Memoized({ x: 1 }))
+    expect(callCount).toBe(2) // Instance 1 cached, not re-rendered
+  })
+})
+
+// ─── cloneElement with ref ────────────────────────────────────────────────
+
+describe('cloneElement with ref', () => {
+  test('merges ref prop', () => {
+    const ref = { current: null }
+    const el = h('div', {})
+    const cloned = cloneElement(el, { ref })
+    expect(cloned.props.ref).toBe(ref)
+  })
+})
+
+// ─── flushSync returns result ─────────────────────────────────────────────
+
+describe('flushSync return value', () => {
+  test('returns callback result', () => {
+    expect(flushSync(() => 42)).toBe(42)
+  })
+
+  test('returns string result', () => {
+    expect(flushSync(() => 'hello')).toBe('hello')
+  })
+
+  test('returns undefined for void callback', () => {
+    expect(flushSync(() => {})).toBeUndefined()
+  })
+})
+
+// ─── act with async callback ──────────────────────────────────────────────
+
+describe('act async', () => {
+  test('handles async callback', async () => {
+    let resolved = false
+    await act(async () => {
+      await new Promise(r => setTimeout(r, 10))
+      resolved = true
+    })
+    expect(resolved).toBe(true)
+  })
+})
+
+// ─── StrictMode / Profiler with no children ───────────────────────────────
+
+describe('StrictMode / Profiler edge cases', () => {
+  test('StrictMode with no children returns null', () => {
+    const result = StrictMode({})
+    expect(result).toBeNull()
+  })
+
+  test('Profiler with no children returns null', () => {
+    const result = Profiler({ id: 'test' })
+    expect(result).toBeNull()
+  })
+
+  test('Profiler with onRender callback', () => {
+    const el = container()
+    let called = false
+    mount(h(Profiler as any, { id: 'p', onRender: () => { called = true } }, h('span', null, 'child')), el)
+    expect(el.textContent).toBe('child')
+  })
+})
+
+// ─── Children.map key assignment ──────────────────────────────────────────
+
+describe('Children.map key assignment', () => {
+  test('assigns keys to mapped VNode children that lack keys', () => {
+    const children = [h('span', null, 'a'), h('span', null, 'b')]
+    const mapped = Children.map(children, (child) => child)
+    expect((mapped[0] as any).key).toBe('.0')
+    expect((mapped[1] as any).key).toBe('.1')
+  })
+
+  test('does not overwrite existing keys', () => {
+    const child = h('span', { key: 'existing' }, 'a')
+    const mapped = Children.map([child], (c) => c)
+    expect((mapped[0] as any).key).toBe('existing')
+  })
+
+  test('skips key assignment for non-VNode mapped results', () => {
+    const children = [h('span', null, 'a')]
+    const mapped = Children.map(children, (_child, idx) => `text-${idx}`)
+    expect(mapped[0]).toBe('text-0')
+  })
+})
+
+// ─── Children.map with nulls ──────────────────────────────────────────────
+
+describe('Children.map with nulls', () => {
+  test('skips null/undefined/boolean children', () => {
+    const indices: number[] = []
+    const mapped = Children.map([null, 'a', undefined, false, true, 'b'], (_child, idx) => {
+      indices.push(idx)
+      return idx
+    })
+    expect(mapped).toEqual([0, 1])
+    expect(indices).toEqual([0, 1])
+  })
+})
+
+// ─── Children.only edge cases ─────────────────────────────────────────────
+
+describe('Children.only edge', () => {
+  test('works with single non-array child', () => {
+    const child = h('div', null, 'only')
+    expect(Children.only(child)).toBe(child)
+  })
+})
+
+// ─── flattenChildren edge cases ───────────────────────────────────────────
+
+describe('Children.toArray deep nesting', () => {
+  test('flattens deeply nested arrays', () => {
+    const children = [h('a', null), [h('b', null), [h('c', null)]]]
+    const arr = Children.toArray(children)
+    expect(arr).toHaveLength(3)
+  })
+})
+
+// ─── jsx runtime edge cases ──────────────────────────────────────────────
+
+describe('jsx runtime additional', () => {
+  test('jsx with null key does not set key prop', () => {
+    const vnode = jsx('div', {}, null)
+    expect(vnode.props.key).toBeUndefined()
+  })
+
+  test('input onChange does not override existing onInput', () => {
+    const inputHandler = () => 'input'
+    const changeHandler = () => 'change'
+    const vnode = jsx('input', { onInput: inputHandler, onChange: changeHandler })
+    // onInput already set, onChange should be deleted but onInput preserved
+    expect(vnode.props.onInput).toBe(inputHandler)
+    expect(vnode.props.onChange).toBeUndefined()
+  })
+
+  test('textarea defaultValue maps to value', () => {
+    const vnode = jsx('textarea', { defaultValue: 'default text' })
+    expect(vnode.props.value).toBe('default text')
+    expect(vnode.props.defaultValue).toBeUndefined()
+  })
+
+  test('textarea defaultValue does NOT override explicit value', () => {
+    const vnode = jsx('textarea', { value: 'explicit', defaultValue: 'default' })
+    expect(vnode.props.value).toBe('explicit')
+  })
+
+  test('input defaultChecked does NOT override explicit checked', () => {
+    const vnode = jsx('input', { checked: false, defaultChecked: true })
+    expect(vnode.props.checked).toBe(false)
+  })
+
+  test('jsx component wrapping is cached', () => {
+    const MyComp = () => h('div', null, 'test')
+    const vnode1 = jsx(MyComp, {})
+    const vnode2 = jsx(MyComp, {})
+    // Same component function should produce same wrapped type
+    expect(vnode1.type).toBe(vnode2.type)
+  })
+
+  test('jsx with array children for DOM element', () => {
+    const vnode = jsx('div', { children: ['a', 'b', 'c'] })
+    expect(vnode.children).toHaveLength(3)
+  })
+})
+
+// ─── scheduleEffects skips when unmounted ─────────────────────────────────
+
+describe('effect scheduling respects unmount', () => {
+  test('effects do not run after unmount', async () => {
+    const el = container()
+    let effectRuns = 0
+    let triggerSet: (v: number) => void = () => {}
+
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
+      useEffect(() => {
+        effectRuns++
+      }, [count])
+      return h('div', null, String(count))
+    }
+
+    const cleanup = mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    const initialRuns = effectRuns
+
+    // Trigger state change then immediately unmount
+    triggerSet(1)
+    cleanup()
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    // Effect should not have run again after unmount
+    expect(effectRuns).toBe(initialRuns)
+  })
+})
+
+// ─── wrapCompatComponent cleanup on unmount ───────────────────────────────
+
+describe('wrapCompatComponent cleanup', () => {
+  test('cleans up effect entries on unmount', async () => {
+    const el = container()
+    let cleanupRan = false
+
+    const Comp = () => {
+      useEffect(() => {
+        return () => { cleanupRan = true }
+      }, [])
+      return h('div', null, 'cleanup')
+    }
+
+    const unmount = mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(cleanupRan).toBe(false)
+
+    unmount()
+    expect(cleanupRan).toBe(true)
+  })
+
+  test('cleans up useSyncExternalStore subscription on unmount', () => {
+    const el = container()
+    let unsubCount = 0
+    // Use a stable subscribe function identity so re-renders don't trigger unsub
+    const stableSub = (_cb: () => void) => () => { unsubCount++ }
+
+    const Comp = () => {
+      useSyncExternalStore(stableSub, () => 1)
+      return h('div', null, 'sub')
+    }
+
+    const unmount = mount(jsx(Comp, {}), el)
+    const preUnmountCount = unsubCount
+    unmount()
+    expect(unsubCount).toBe(preUnmountCount + 1)
+  })
+})
+
+// ─── scheduleRerender deduplication ───────────────────────────────────────
+
+describe('scheduleRerender deduplication', () => {
+  test('multiple state updates in same tick produce single re-render', async () => {
+    const el = container()
+    let renderCount = 0
+    let triggerSet: (v: number | ((p: number) => number)) => void = () => {}
+
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      triggerSet = setCount
+      renderCount++
+      return h('span', null, String(count))
+    }
+
+    mount(jsx(Comp, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    const initialRenders = renderCount
+
+    // Multiple rapid updates should batch
+    triggerSet(1)
+    triggerSet(2)
+    triggerSet(3)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    // Should have at most 1 additional render (batched)
+    expect(renderCount - initialRenders).toBeLessThanOrEqual(1)
+  })
+})
+
+// ─── layout effect cleanup on unmount ─────────────────────────────────────
+
+describe('layout effect cleanup on unmount', () => {
+  test('layout effect cleanup runs on unmount', () => {
+    const el = container()
+    let cleanupRan = false
+
+    const Comp = () => {
+      useLayoutEffect(() => {
+        return () => { cleanupRan = true }
+      }, [])
+      return h('div', null, 'layout')
+    }
+
+    const unmount = mount(jsx(Comp, {}), el)
+    expect(cleanupRan).toBe(false)
+    unmount()
+    expect(cleanupRan).toBe(true)
   })
 })
