@@ -2472,3 +2472,250 @@ describe('nodes.ts — keyed list LIS reorder', () => {
     el.remove()
   })
 })
+
+// ─── Lazy hooks null paths — mount.ts + hydrate.ts ──────────────────────────
+// LifecycleHooks arrays are now null-initialized (lazy allocation).
+// Components with no hooks exercise the null paths; components with hooks
+// exercise the allocated paths. Both sides must be covered.
+
+describe('lazy hooks — null and allocated paths', () => {
+  test('component with no hooks skips hook iteration (null paths)', () => {
+    const el = container()
+    // Plain component — no onMount/onUnmount/onUpdate/onErrorCaptured
+    const NoHooks = defineComponent(() => h('div', null, 'no hooks'))
+    const unmount = mount(h(NoHooks, null), el)
+    expect(el.textContent).toBe('no hooks')
+    // Cleanup exercises the null unmount path
+    unmount()
+  })
+
+  test('component with onMount returning cleanup exercises mount + cleanup paths', () => {
+    const el = container()
+    let mounted = false
+    let cleanedUp = false
+    const WithHooks = defineComponent(() => {
+      onMount(() => {
+        mounted = true
+        return () => {
+          cleanedUp = true
+        }
+      })
+      return h('div', null, 'with hooks')
+    })
+    const unmount = mount(h(WithHooks, null), el)
+    expect(mounted).toBe(true)
+    unmount()
+    expect(cleanedUp).toBe(true)
+    el.remove()
+  })
+
+  test('hydrate component with no hooks exercises null hydration paths', () => {
+    const el = container()
+    el.innerHTML = '<div>hydrate no hooks</div>'
+    const NoHooks = defineComponent(() => h('div', null, 'hydrate no hooks'))
+    const cleanup = hydrateRoot(el, h(NoHooks, null))
+    expect(el.textContent).toContain('hydrate no hooks')
+    cleanup()
+  })
+
+  test('hydrate component with onMount exercises allocated hooks path', () => {
+    const el = container()
+    el.innerHTML = '<div>hydrate with mount</div>'
+    let mounted = false
+    const WithMount = defineComponent(() => {
+      onMount(() => {
+        mounted = true
+      })
+      return h('div', null, 'hydrate with mount')
+    })
+    const cleanup = hydrateRoot(el, h(WithMount, null))
+    expect(mounted).toBe(true)
+    cleanup()
+  })
+})
+
+// ─── nodes.ts — additional uncovered branches ──────────────────────────────
+
+// ─── transition.ts — safety timer cancellation branches ─────────────────────
+
+describe('Transition — safety timer and cancel branches', () => {
+  test('enter transition completes via transitionend and cancels safety timer (lines 111-113)', async () => {
+    const el = container()
+    const visible = signal(true)
+    let afterEnterCalled = false
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'slide',
+        appear: true,
+        onAfterEnter: () => {
+          afterEnterCalled = true
+        },
+        children: h('div', { id: 'timer-test' }, 'content'),
+      }),
+      el,
+    )
+
+    // Wait for mount + first rAF (adds from class)
+    await new Promise<void>((r) => queueMicrotask(r))
+    // Wait for second rAF (swaps from→to class, adds transitionend listener)
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    const target = el.querySelector('#timer-test') as HTMLElement
+    if (target) {
+      // Fire transitionend — this should cancel the safety timer
+      target.dispatchEvent(new Event('transitionend'))
+    }
+    expect(afterEnterCalled).toBe(true)
+    el.remove()
+  })
+
+  test('leave transition completes via animationend (lines 148-155)', async () => {
+    const el = container()
+    const visible = signal(true)
+    let afterLeaveCalled = false
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'fade',
+        onAfterLeave: () => {
+          afterLeaveCalled = true
+        },
+        children: h('div', { id: 'leave-anim' }, 'content'),
+      }),
+      el,
+    )
+
+    const target = el.querySelector('#leave-anim') as HTMLElement
+
+    // Start leave
+    visible.set(false)
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Fire animationend on leave
+    if (target) target.dispatchEvent(new Event('animationend'))
+    expect(afterLeaveCalled).toBe(true)
+
+    el.remove()
+  })
+
+  test('rapid show/hide/show exercises enter cancel + leave cancel (lines 121-129, 161-167)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'test',
+        appear: true,
+        children: h('div', { id: 'rapid' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Rapid toggle: enter → leave → enter
+    visible.set(false)
+    await new Promise<void>((r) => queueMicrotask(r))
+    visible.set(true)
+    await new Promise<void>((r) => queueMicrotask(r))
+    visible.set(false)
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    el.remove()
+  })
+})
+
+describe('nodes.ts — additional keyed diff + warning branches', () => {
+  test('mountFor by returning null warns about null key (line 479)', () => {
+    const el = container()
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const items = signal([{ val: 'a' }, { val: 'b' }])
+    mount(
+      h(
+        'div',
+        null,
+        For({
+          each: items,
+          by: () => null as unknown as string,
+          children: (r: { val: string }) => h('span', null, r.val),
+        }),
+      ),
+      el,
+    )
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('returned null'))
+    warnSpy.mockRestore()
+    el.remove()
+  })
+
+  test('keyed diff with mixed new + moved entries (lines 733-736)', () => {
+    const el = container()
+    const items = signal([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ])
+
+    mount(
+      h(
+        'div',
+        null,
+        For({
+          each: items,
+          by: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h('span', null, r.label),
+        }),
+      ),
+      el,
+    )
+    expect(el.textContent).toBe('abc')
+
+    // Mix of new keys + reordered old keys — exercises the !entry continue branch
+    items.set([
+      { id: 5, label: 'e' }, // new
+      { id: 3, label: 'c' }, // moved
+      { id: 6, label: 'f' }, // new
+      { id: 1, label: 'a' }, // moved
+    ])
+    expect(el.textContent).toBe('ecfa')
+
+    el.remove()
+  })
+
+  test('keyed diff with complete key replacement', () => {
+    const el = container()
+    const items = signal([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+    ])
+
+    mount(
+      h(
+        'div',
+        null,
+        For({
+          each: items,
+          by: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h('span', null, r.label),
+        }),
+      ),
+      el,
+    )
+
+    // All new keys — exercises the clear-and-remount fast path
+    items.set([
+      { id: 10, label: 'x' },
+      { id: 11, label: 'y' },
+    ])
+    expect(el.textContent).toBe('xy')
+
+    el.remove()
+  })
+})
