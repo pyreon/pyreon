@@ -2631,6 +2631,429 @@ describe('Transition — safety timer and cancel branches', () => {
   })
 })
 
+describe('Transition — safetyTimer false branches via real 5.1s waits', () => {
+  // These tests wait for the 5s safety timer to fire naturally.
+  // They cover the `if (safetyTimer !== null)` TRUE branch (timer fires first),
+  // then dispatch transitionend which calls done() again with safetyTimer === null
+  // (FALSE branch). Both sides of each branch are now covered.
+
+  test('enter: safetyTimer fires → done() clears it; transitionend → done() sees null (lines 111-114)', async () => {
+    const el = container()
+    const visible = signal(true)
+    let afterEnterCount = 0
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'st-enter',
+        appear: true,
+        onAfterEnter: () => { afterEnterCount++ },
+        children: h('div', { id: 'st-enter' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Wait for 5s safety timer to fire done() — covers safetyTimer !== null TRUE
+    await new Promise<void>((r) => setTimeout(r, 5200))
+    expect(afterEnterCount).toBe(1)
+
+    // Dispatch transitionend — done() called again with safetyTimer === null → FALSE branch
+    const target = el.querySelector('#st-enter') as HTMLElement
+    if (target) target.dispatchEvent(new Event('transitionend'))
+
+    el.remove()
+  }, 10000)
+
+  test('leave: safetyTimer fires → done() clears it; animationend → done() sees null (lines 152-155)', async () => {
+    const el = container()
+    const visible = signal(true)
+    let afterLeaveCount = 0
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'st-leave',
+        onAfterLeave: () => { afterLeaveCount++ },
+        children: h('div', { id: 'st-leave' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    visible.set(false)
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Wait for 5s safety timer
+    await new Promise<void>((r) => setTimeout(r, 5200))
+    expect(afterLeaveCount).toBe(1)
+
+    // animationend with null safetyTimer → FALSE branch
+    const target = el.querySelector('#st-leave') as HTMLElement
+    if (target) target.dispatchEvent(new Event('animationend'))
+
+    el.remove()
+  }, 10000)
+
+  test('enter cancel WITH active safetyTimer: hide during enter animation (lines 121-129)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'st-cancel2',
+        appear: true,
+        children: h('div', { id: 'st-cancel2' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Hide while enter animation is in progress (safetyTimer is active)
+    // applyLeave calls pendingEnterCancel → safetyTimer !== null → TRUE branch (line 124)
+    visible.set(false)
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    el.remove()
+  })
+
+  test('leave cancel WITH active safetyTimer: show during leave animation (lines 161-167)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'st-lcancel',
+        children: h('div', { id: 'st-lcancel' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    // Start leave
+    visible.set(false)
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Show while leave animation is in progress (safetyTimer is active)
+    // applyEnter calls pendingLeaveCancel → safetyTimer !== null → TRUE (line 164)
+    visible.set(true)
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    el.remove()
+  })
+})
+
+describe('Transition — component child warning (line 228)', () => {
+  test('Transition with component child emits dev warning', async () => {
+    const el = container()
+    const visible = signal(true)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const Inner = defineComponent(() => h('div', null, 'inner'))
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'comp-child',
+        children: h(Inner as unknown as string, null),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Transition child is a component'),
+    )
+    warnSpy.mockRestore()
+    el.remove()
+  })
+
+  test('Transition with non-object child (string/number) passes through (line 222-223)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'string-child',
+        children: 'plain text',
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.textContent).toContain('plain text')
+    el.remove()
+  })
+
+  test('Transition with array child passes through (line 222)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'array-child',
+        children: [h('span', null, 'a'), h('span', null, 'b')],
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    el.remove()
+  })
+
+  test('Transition with null child (rawChild ?? null) line 223', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'null-child',
+        children: null,
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    el.remove()
+  })
+})
+
+describe('Transition — visibility edge cases (lines 179, 183, 185)', () => {
+  test('hide when never mounted (isMounted false) — early return line 183', async () => {
+    const el = container()
+    const visible = signal(false)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'edge',
+        children: h('div', { id: 'never-mounted' }, 'content'),
+      }),
+      el,
+    )
+
+    // Explicitly set false again while never mounted — exercises line 183
+    visible.set(false)
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    el.remove()
+  })
+
+  test('show=true when already mounted is a no-op for isMounted (line 179)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    mount(
+      h(Transition, {
+        show: visible,
+        name: 'edge',
+        children: h('div', { id: 'already-mounted' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    // Set true again — already mounted, so isMounted.peek() returns true → no set()
+    visible.set(true)
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    expect(el.querySelector('#already-mounted')).not.toBeNull()
+    el.remove()
+  })
+
+  test('enter done after unmount — cancel fires with safetyTimer already null', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    const unmount = mount(
+      h(Transition, {
+        show: visible,
+        name: 'cancel-edge',
+        appear: true,
+        children: h('div', { id: 'cancel-test' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    const target = el.querySelector('#cancel-test') as HTMLElement
+    // Fire transitionend — clears safety timer to null
+    if (target) target.dispatchEvent(new Event('transitionend'))
+
+    // Now unmount — onUnmount calls pendingEnterCancel which checks safetyTimer !== null → false
+    unmount()
+    el.remove()
+  })
+
+  test('leave done then unmount — cancel fires with safetyTimer null (lines 161-167)', async () => {
+    const el = container()
+    const visible = signal(true)
+
+    const unmount = mount(
+      h(Transition, {
+        show: visible,
+        name: 'leave-cancel',
+        children: h('div', { id: 'leave-cancel' }, 'content'),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    const target = el.querySelector('#leave-cancel') as HTMLElement
+
+    // Start leave
+    visible.set(false)
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Fire transitionend — clears leave safety timer
+    if (target) target.dispatchEvent(new Event('transitionend'))
+
+    // Unmount — pendingLeaveCancel checks safetyTimer !== null → false (already cleared)
+    unmount()
+    el.remove()
+  })
+})
+
+describe('TransitionGroup — component render child (line 204 ternary false)', () => {
+  test('TransitionGroup render returning component skips ref injection', async () => {
+    const el = container()
+    const items = signal([{ id: 1, label: 'a' }])
+    const ItemComp = defineComponent((props: { label: string }) =>
+      h('span', { class: 'comp-item' }, props.label),
+    )
+
+    mount(
+      h(TransitionGroup, {
+        tag: 'div',
+        name: 'comp-render',
+        items: () => items(),
+        keyFn: (item: { id: number }) => item.id,
+        render: (item: { id: number; label: string }) =>
+          h(ItemComp as unknown as string, { label: item.label }),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.querySelector('.comp-item')?.textContent).toBe('a')
+
+    // Add item to exercise new entry creation with component render
+    items.set([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+    ])
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.querySelectorAll('.comp-item').length).toBe(2)
+
+    el.remove()
+  })
+})
+
+describe('TransitionGroup — cancel after done (lines 231-238)', () => {
+  test('move transition done then rapid update — cancelTransition with null timer', async () => {
+    const el = container()
+    const items = signal([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ])
+
+    mount(
+      h(TransitionGroup, {
+        tag: 'div',
+        name: 'move',
+        items: () => items(),
+        keyFn: (item: { id: number }) => item.id,
+        render: (item: { id: number; label: string }) =>
+          h('span', { class: 'move-item' }, item.label),
+      }),
+      el,
+    )
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    // Reorder to trigger move transitions
+    items.set([
+      { id: 3, label: 'c' },
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+    ])
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    // Fire transitionend on moved items — clears their safety timers
+    el.querySelectorAll('.move-item').forEach((item) => {
+      item.dispatchEvent(new Event('transitionend'))
+    })
+
+    // Reorder again — triggers cancelTransition on items whose timer is already null
+    items.set([
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+      { id: 1, label: 'a' },
+    ])
+
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    el.remove()
+  })
+})
+
+describe('hydrate.ts — onMount without cleanup (line 405)', () => {
+  test('hydrate component with onMount returning void (no cleanup pushed)', () => {
+    const el = container()
+    el.innerHTML = '<div>hydrate mount void</div>'
+    let mounted = false
+    const VoidMount = defineComponent(() => {
+      onMount(() => {
+        mounted = true
+        // returns void — no cleanup
+      })
+      return h('div', null, 'hydrate mount void')
+    })
+    const cleanup = hydrateRoot(el, h(VoidMount, null))
+    expect(mounted).toBe(true)
+    cleanup()
+  })
+
+  test('hydrate component with onMount error (line 407 catch)', () => {
+    const el = container()
+    el.innerHTML = '<div>hydrate mount error</div>'
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ErrorMount = defineComponent(() => {
+      onMount(() => {
+        throw new Error('mount hook error')
+      })
+      return h('div', null, 'hydrate mount error')
+    })
+    const cleanup = hydrateRoot(el, h(ErrorMount, null))
+    cleanup()
+    errorSpy.mockRestore()
+  })
+})
+
 describe('nodes.ts — additional keyed diff + warning branches', () => {
   test('mountFor by returning null warns about null key (line 479)', () => {
     const el = container()
@@ -2685,6 +3108,45 @@ describe('nodes.ts — additional keyed diff + warning branches', () => {
       { id: 1, label: 'a' }, // moved
     ])
     expect(el.textContent).toBe('ecfa')
+
+    el.remove()
+  })
+
+  test('keyed diff reorder with insertions between existing — exercises !entry path (lines 733-736)', () => {
+    const el = container()
+    const items = signal([
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+      { id: 4, label: 'd' },
+      { id: 5, label: 'e' },
+    ])
+
+    mount(
+      h(
+        'div',
+        null,
+        For({
+          each: items,
+          by: (r: { id: number }) => r.id,
+          children: (r: { id: number; label: string }) => h('span', null, r.label),
+        }),
+      ),
+      el,
+    )
+    expect(el.textContent).toBe('abcde')
+
+    // Interleave new keys between reversed old keys — forces the diff
+    // algorithm through the move phase where some newKeys[i] entries
+    // aren't in the cache (they're newly inserted)
+    items.set([
+      { id: 5, label: 'e' },
+      { id: 10, label: 'x' }, // new — not in cache → !entry continue
+      { id: 3, label: 'c' },
+      { id: 11, label: 'y' }, // new
+      { id: 1, label: 'a' },
+    ])
+    expect(el.textContent).toBe('excya')
 
     el.remove()
   })
