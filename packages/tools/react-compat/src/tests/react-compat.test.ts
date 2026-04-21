@@ -39,6 +39,7 @@ function withHookCtx<T>(fn: () => T): T {
   const ctx: RenderContext = {
     hooks: [],
     scheduleRerender: () => {},
+    pendingInsertionEffects: [],
     pendingEffects: [],
     pendingLayoutEffects: [],
     unmounted: false,
@@ -54,6 +55,7 @@ function createHookRunner() {
   const ctx: RenderContext = {
     hooks: [],
     scheduleRerender: () => {},
+    pendingInsertionEffects: [],
     pendingEffects: [],
     pendingLayoutEffects: [],
     unmounted: false,
