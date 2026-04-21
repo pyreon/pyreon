@@ -172,14 +172,14 @@ describe('runWithHooks()', () => {
 
     const { vnode, hooks } = runWithHooks(Comp, {})
     expect(vnode).not.toBeNull()
-    expect(hooks.mount).toHaveLength(1)
-    expect(hooks.mount[0]).toBe(mountFn)
-    expect(hooks.unmount).toHaveLength(1)
-    expect(hooks.unmount[0]).toBe(unmountFn)
-    expect(hooks.update).toHaveLength(1)
-    expect(hooks.update[0]).toBe(updateFn)
-    expect(hooks.error).toHaveLength(1)
-    expect(hooks.error[0]).toBe(errorFn)
+    expect(hooks.mount!).toHaveLength(1)
+    expect(hooks.mount![0]).toBe(mountFn)
+    expect(hooks.unmount!).toHaveLength(1)
+    expect(hooks.unmount![0]).toBe(unmountFn)
+    expect(hooks.update!).toHaveLength(1)
+    expect(hooks.update![0]).toBe(updateFn)
+    expect(hooks.error!).toHaveLength(1)
+    expect(hooks.error![0]).toBe(errorFn)
   })
 
   test('returns null vnode when component returns null', () => {
@@ -208,7 +208,7 @@ describe('runWithHooks()', () => {
     }
 
     const { hooks } = runWithHooks(Comp, {})
-    expect(hooks.mount).toHaveLength(3)
+    expect(hooks.mount!).toHaveLength(3)
   })
 
   test('passes props to component function', () => {
@@ -350,7 +350,7 @@ describe('createContext / useContext', () => {
     // Context is available after provide()
     expect(useContext(ctx)).toBe('provided')
     // Running unmount hooks should pop the context
-    for (const fn of hooks.unmount) fn()
+    for (const fn of hooks.unmount!) fn()
     expect(useContext(ctx)).toBe('default')
   })
 })
@@ -663,7 +663,7 @@ describe('ErrorBoundary', () => {
     }, {})
     expect(vnode).not.toBeNull()
     // Should have registered onUnmount for cleanup
-    expect(hooks.unmount.length).toBeGreaterThanOrEqual(1)
+    expect(hooks.unmount!.length).toBeGreaterThanOrEqual(1)
   })
 
   test('renders children when no error', () => {

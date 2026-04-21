@@ -42,8 +42,8 @@ describe('onMount', () => {
     setCurrentHooks(hooks)
     const fn = () => undefined
     onMount(fn)
-    expect(hooks.mount).toHaveLength(1)
-    expect(hooks.mount[0]).toBe(fn)
+    expect(hooks.mount!).toHaveLength(1)
+    expect(hooks.mount![0]).toBe(fn)
   })
 
   test('multiple onMount calls accumulate', () => {
@@ -52,7 +52,7 @@ describe('onMount', () => {
     onMount(() => undefined)
     onMount(() => undefined)
     onMount(() => undefined)
-    expect(hooks.mount).toHaveLength(3)
+    expect(hooks.mount!).toHaveLength(3)
   })
 
   test('warns when called outside component setup', () => {
@@ -73,16 +73,16 @@ describe('onMount', () => {
     setCurrentHooks(hooks)
     const cleanup = () => {}
     onMount(() => cleanup)
-    expect(hooks.mount).toHaveLength(1)
-    expect(hooks.mount[0]!()).toBe(cleanup)
+    expect(hooks.mount!).toHaveLength(1)
+    expect(hooks.mount![0]!()).toBe(cleanup)
   })
 
   test('accepts callback returning void', () => {
     const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
     setCurrentHooks(hooks)
     onMount(() => {})
-    expect(hooks.mount).toHaveLength(1)
-    expect(hooks.mount[0]!()).toBeUndefined()
+    expect(hooks.mount!).toHaveLength(1)
+    expect(hooks.mount![0]!()).toBeUndefined()
   })
 })
 
@@ -96,8 +96,8 @@ describe('onUnmount', () => {
     setCurrentHooks(hooks)
     const fn = () => {}
     onUnmount(fn)
-    expect(hooks.unmount).toHaveLength(1)
-    expect(hooks.unmount[0]).toBe(fn)
+    expect(hooks.unmount!).toHaveLength(1)
+    expect(hooks.unmount![0]).toBe(fn)
   })
 
   test('warns when called outside component setup', () => {
@@ -120,8 +120,8 @@ describe('onUpdate', () => {
     setCurrentHooks(hooks)
     const fn = () => {}
     onUpdate(fn)
-    expect(hooks.update).toHaveLength(1)
-    expect(hooks.update[0]).toBe(fn)
+    expect(hooks.update!).toHaveLength(1)
+    expect(hooks.update![0]).toBe(fn)
   })
 
   test('warns when called outside component setup', () => {
@@ -144,8 +144,8 @@ describe('onErrorCaptured', () => {
     setCurrentHooks(hooks)
     const fn = () => true
     onErrorCaptured(fn)
-    expect(hooks.error).toHaveLength(1)
-    expect(hooks.error[0]).toBe(fn)
+    expect(hooks.error!).toHaveLength(1)
+    expect(hooks.error![0]).toBe(fn)
   })
 
   test('warns when called outside component setup', () => {
@@ -167,7 +167,7 @@ describe('onErrorCaptured', () => {
     })
     // Simulate calling the handler
     const testError = new Error('test')
-    hooks.error[0]!(testError)
+    hooks.error![0]!(testError)
     expect(captured).toBe(testError)
   })
 })
@@ -186,10 +186,10 @@ describe('lifecycle hooks interaction', () => {
     onUpdate(() => {})
     onErrorCaptured(() => true)
 
-    expect(hooks.mount).toHaveLength(1)
-    expect(hooks.unmount).toHaveLength(1)
-    expect(hooks.update).toHaveLength(1)
-    expect(hooks.error).toHaveLength(1)
+    expect(hooks.mount!).toHaveLength(1)
+    expect(hooks.unmount!).toHaveLength(1)
+    expect(hooks.update!).toHaveLength(1)
+    expect(hooks.error!).toHaveLength(1)
   })
 
   test('hooks from different setCurrentHooks calls go to different stores', () => {

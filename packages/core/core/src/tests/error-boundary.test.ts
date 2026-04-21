@@ -76,7 +76,7 @@ describe('ErrorBoundary', () => {
       })
       return null
     }, {})
-    expect(hooks.unmount.length).toBeGreaterThanOrEqual(1)
+    expect(hooks.unmount!.length).toBeGreaterThanOrEqual(1)
   })
 
   test('warns when fallback is not a function', () => {

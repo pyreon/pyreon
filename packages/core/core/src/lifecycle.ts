@@ -79,7 +79,10 @@ function warnOutsideSetup(hookName: string): void {
  */
 export function onMount(fn: () => CleanupFn | void | undefined) {
   warnOutsideSetup('onMount')
-  _current?.mount.push(fn)
+  if (_current) {
+    if (_current.mount === null) _current.mount = []
+    _current.mount.push(fn)
+  }
 }
 
 /**
@@ -87,7 +90,10 @@ export function onMount(fn: () => CleanupFn | void | undefined) {
  */
 export function onUnmount(fn: () => void) {
   warnOutsideSetup('onUnmount')
-  _current?.unmount.push(fn)
+  if (_current) {
+    if (_current.unmount === null) _current.unmount = []
+    _current.unmount.push(fn)
+  }
 }
 
 /**
@@ -95,7 +101,10 @@ export function onUnmount(fn: () => void) {
  */
 export function onUpdate(fn: () => void) {
   warnOutsideSetup('onUpdate')
-  _current?.update.push(fn)
+  if (_current) {
+    if (_current.update === null) _current.update = []
+    _current.update.push(fn)
+  }
 }
 
 /**
@@ -113,5 +122,8 @@ export function onUpdate(fn: () => void) {
  */
 export function onErrorCaptured(fn: (err: unknown) => boolean | undefined) {
   warnOutsideSetup('onErrorCaptured')
-  _current?.error.push(fn)
+  if (_current) {
+    if (_current.error === null) _current.error = []
+    _current.error.push(fn)
+  }
 }

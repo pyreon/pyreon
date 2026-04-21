@@ -40,7 +40,9 @@ let _elementDepth = 0
 
 // Stack tracking which component is currently being mounted (depth-first order).
 // Used to infer parent/child relationships for DevTools.
-const _mountingStack: string[] = []
+// Only allocated in dev — production mounts skip devtools entirely.
+let _mountingStack: string[] | undefined
+if (__DEV__) _mountingStack = []
 
 /**
  * Mount a single child into `parent`, inserting before `anchor` (null = append).
@@ -304,9 +306,17 @@ function mountComponent(
   let output: VNodeChild
 
   const componentName = (vnode.type.name || 'Anonymous') as string
-  const compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
-  const parentId = _mountingStack[_mountingStack.length - 1] ?? null
-  _mountingStack.push(compId)
+
+  // Devtools: generate ID + track parent/child hierarchy (dev only).
+  // In production, compId/devParentId are never assigned — Vite tree-shakes
+  // all __DEV__ blocks + the devtools module import to zero bytes.
+  let compId: string | undefined
+  let devParentId: string | null | undefined
+  if (__DEV__) {
+    compId = `${componentName}-${Math.random().toString(36).slice(2, 9)}`
+    devParentId = _mountingStack![_mountingStack!.length - 1] ?? null
+    _mountingStack!.push(compId)
+  }
 
   // Merge vnode.children into props.children if not already set
   const children = vnode.children ?? []
@@ -328,7 +338,7 @@ function mountComponent(
     hooks = result.hooks
     output = result.vnode
   } catch (err) {
-    _mountingStack.pop()
+    if (__DEV__) _mountingStack!.pop()
     setCurrentScope(null)
     scope.stop()
     reportError({
@@ -373,15 +383,15 @@ function mountComponent(
     }
   }
 
-  for (const fn of hooks.update) {
-    scope.addUpdateHook(fn)
+  if (hooks.update) {
+    for (const fn of hooks.update) scope.addUpdateHook(fn)
   }
 
   let subtreeCleanup: Cleanup = noop
   try {
     subtreeCleanup = output != null ? mountChild(output, parent, anchor) : noop
   } catch (err) {
-    _mountingStack.pop()
+    if (__DEV__) _mountingStack!.pop()
     scope.stop()
     const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
     if (!handled) {
@@ -397,44 +407,53 @@ function mountComponent(
     return noop
   }
 
-  _mountingStack.pop()
+  if (__DEV__) {
+    _mountingStack!.pop()
+    const firstEl = parent instanceof Element ? parent.firstElementChild : null
+    registerComponent(compId!, componentName, firstEl, devParentId!)
+  }
 
-  const firstEl = parent instanceof Element ? parent.firstElementChild : null
-  registerComponent(compId, componentName, firstEl, parentId)
-
-  // Fire onMount hooks inline — effects created inside are tracked by the scope
-  const mountCleanups: Cleanup[] = []
-  for (const fn of hooks.mount) {
-    try {
-      let cleanup: (() => void) | undefined
-      scope.runInScope(() => {
-        cleanup = fn() as (() => void) | undefined
-      })
-      if (cleanup) mountCleanups.push(cleanup)
-    } catch (err) {
-      console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
-      reportError({ component: componentName, phase: 'mount', error: err, timestamp: Date.now() })
+  // Fire onMount hooks inline — effects created inside are tracked by the scope.
+  // Lazy-allocate mountCleanups only when an onMount callback returns a cleanup fn.
+  let mountCleanups: Cleanup[] | null = null
+  if (hooks.mount) {
+    for (const fn of hooks.mount) {
+      try {
+        let cleanup: (() => void) | undefined
+        scope.runInScope(() => {
+          cleanup = fn() as (() => void) | undefined
+        })
+        if (cleanup) {
+          if (mountCleanups === null) mountCleanups = []
+          mountCleanups.push(cleanup)
+        }
+      } catch (err) {
+        console.error(`[Pyreon] Error in onMount hook of <${componentName}>:`, err)
+        reportError({ component: componentName, phase: 'mount', error: err, timestamp: Date.now() })
+      }
     }
   }
 
   return () => {
-    unregisterComponent(compId)
+    if (__DEV__) unregisterComponent(compId!)
     scope.stop()
     subtreeCleanup()
-    for (const fn of hooks.unmount) {
-      try {
-        fn()
-      } catch (err) {
-        console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
-        reportError({
-          component: componentName,
-          phase: 'unmount',
-          error: err,
-          timestamp: Date.now(),
-        })
+    if (hooks.unmount) {
+      for (const fn of hooks.unmount) {
+        try {
+          fn()
+        } catch (err) {
+          console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
+          reportError({
+            component: componentName,
+            phase: 'unmount',
+            error: err,
+            timestamp: Date.now(),
+          })
+        }
       }
     }
-    for (const fn of mountCleanups) fn()
+    if (mountCleanups) for (const fn of mountCleanups) fn()
   }
 }
 

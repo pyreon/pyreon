@@ -105,12 +105,12 @@ describe('runWithHooks', () => {
     expect(hooks.unmount).toHaveLength(2)
   })
 
-  test('empty hooks when component registers none', () => {
+  test('null hooks when component registers none (lazy allocation)', () => {
     const { hooks } = runWithHooks(() => h('div', null), {})
-    expect(hooks.mount).toHaveLength(0)
-    expect(hooks.unmount).toHaveLength(0)
-    expect(hooks.update).toHaveLength(0)
-    expect(hooks.error).toHaveLength(0)
+    expect(hooks.mount).toBeNull()
+    expect(hooks.unmount).toBeNull()
+    expect(hooks.update).toBeNull()
+    expect(hooks.error).toBeNull()
   })
 })
 
