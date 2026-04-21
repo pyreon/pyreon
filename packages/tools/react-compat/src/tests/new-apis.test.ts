@@ -400,8 +400,7 @@ describe('startTransition', () => {
   })
 
   test('returns void', () => {
-    const result = startTransition(() => {})
-    expect(result).toBeUndefined()
+    expect(startTransition(() => {})).toBeUndefined()
   })
 })
 
@@ -954,7 +953,7 @@ describe('real-world integration patterns', () => {
     const effectLog: string[] = []
 
     const Comp = () => {
-      const [count, setCount] = useState(0)
+      const [count] = useState(0)
       useEffect(() => {
         effectLog.push(`effect:${count}`)
         return () => {
