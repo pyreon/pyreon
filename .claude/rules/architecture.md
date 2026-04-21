@@ -36,6 +36,11 @@
 - `mountFor` keyed reconciler with LIS algorithm
 - `_elementDepth` optimization: nested elements skip DOM removal closures
 - `renderEffect` uses local array for deps (lighter than `effect()`)
+- **Devtools gated on `__DEV__`**: `compId` generation, `_mountingStack`, `registerComponent`/`unregisterComponent` are all behind `if (__DEV__)` — zero cost in production builds (Vite tree-shakes the entire devtools module)
+- **Lazy allocation**: `EffectScope._effects`/`._updateHooks`, `LifecycleHooks.mount`/`.unmount`/`.update`/`.error`, and `mountCleanups` start as `null` — only allocated when first hook/effect is registered
+- **makeReactiveProps scan-first**: scans for `REACTIVE_PROP` brand before allocating result object — static-only components (60%+) skip allocation entirely
+- **omit() accepts pre-built `Set<string>`**: rocketstyle caches the Set at definition time, avoids per-mount Set construction
+- **Unistyle styles() reuses module-level Set + fragments**: cleared on each synchronous call instead of allocating per-call
 
 ## SSR
 

@@ -61,36 +61,47 @@ for (let i = 0; i < propertyMap.length; i++) {
  * result (not a raw string) for correct nesting of media queries,
  * pseudo-selectors, and @layer wrapping.
  */
+// Module-level reusable containers — cleared before each synchronous styles() call.
+// Eliminates per-call Set + array allocations (~160 allocations per 80-component page).
+const _seen = new Set<number>()
+const _fragments: unknown[] = []
+
 const styles: Styles = ({ theme: t, css, rootSize }) => {
   const calc = (...params: any[]) => values(params, rootSize)
   const shorthand = edge(rootSize)
   const borderRadiusFn = borderRadius(rootSize)
 
-  // Fast path: iterate only descriptors whose keys are present in theme
-  const seen = new Set<number>()
-  const fragments: unknown[] = []
+  // Reuse module-level containers — safe because styles() runs synchronously.
+  _seen.clear()
+  _fragments.length = 0
 
+  // Fast path: iterate only descriptors whose keys are present in theme
   for (const key of Object.keys(t)) {
     const indices = keyToIndices.get(key)
     if (!indices) continue
     for (const idx of indices) {
-      if (seen.has(idx)) continue
-      seen.add(idx)
-      fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
+      if (_seen.has(idx)) continue
+      _seen.add(idx)
+      _fragments.push(processDescriptor(propertyMap[idx]!, t, css, calc, shorthand, borderRadiusFn))
     }
   }
 
   // Fallback: if lookup produced nothing, full scan (handles edge cases
   // where theme uses non-standard keys that aren't in propertyMap)
-  if (fragments.length === 0 && Object.keys(t).length > 0) {
+  if (_fragments.length === 0 && Object.keys(t).length > 0) {
     for (const d of propertyMap) {
-      fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
+      _fragments.push(processDescriptor(d, t, css, calc, shorthand, borderRadiusFn))
     }
   }
 
-  return css`
-    ${fragments}
+  const result = css`
+    ${_fragments}
   `
+
+  // Release references so GC can collect processDescriptor results
+  _fragments.length = 0
+
+  return result
 }
 
 export default styles

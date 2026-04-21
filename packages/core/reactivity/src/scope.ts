@@ -2,14 +2,16 @@
 // and disposes them all at once when the component unmounts.
 
 export class EffectScope {
-  private _effects: { dispose(): void }[] = []
+  private _effects: { dispose(): void }[] | null = null
   private _active = true
-  private _updateHooks: (() => void)[] = []
+  private _updateHooks: (() => void)[] | null = null
   private _updatePending = false
 
   /** Register an effect/computed to be disposed when this scope stops. */
   add(e: { dispose(): void }): void {
-    if (this._active) this._effects.push(e)
+    if (!this._active) return
+    if (this._effects === null) this._effects = []
+    this._effects.push(e)
   }
 
   /**
@@ -30,6 +32,7 @@ export class EffectScope {
 
   /** Register a callback to run after any reactive update in this scope. */
   addUpdateHook(fn: () => void): void {
+    if (this._updateHooks === null) this._updateHooks = []
     this._updateHooks.push(fn)
   }
 
@@ -38,11 +41,11 @@ export class EffectScope {
    * Schedules onUpdate hooks via microtask so all synchronous effects settle first.
    */
   notifyEffectRan(): void {
-    if (!this._active || this._updateHooks.length === 0 || this._updatePending) return
+    if (!this._active || !this._updateHooks || this._updateHooks.length === 0 || this._updatePending) return
     this._updatePending = true
     queueMicrotask(() => {
       this._updatePending = false
-      if (!this._active) return
+      if (!this._active || !this._updateHooks) return
       for (const fn of this._updateHooks) {
         try {
           fn()
@@ -56,9 +59,11 @@ export class EffectScope {
   /** Dispose all tracked effects. */
   stop(): void {
     if (!this._active) return
-    for (const e of this._effects) e.dispose()
-    this._effects = []
-    this._updateHooks = []
+    if (this._effects) {
+      for (const e of this._effects) e.dispose()
+    }
+    this._effects = null
+    this._updateHooks = null
     this._updatePending = false
     this._active = false
   }

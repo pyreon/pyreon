@@ -121,6 +121,70 @@ describe('_bindText', () => {
 
     dispose()
   })
+
+  test('skips DOM write when value unchanged (fast path)', () => {
+    const s = signal('same')
+    const node = document.createTextNode('')
+
+    const dispose = _bindText(s, node)
+    expect(node.data).toBe('same')
+
+    // Set same value — should skip the DOM write (next !== node.data is false)
+    s.set('same')
+    expect(node.data).toBe('same')
+
+    dispose()
+  })
+
+  test('fallback path: null/false/undefined → empty string', () => {
+    const s = signal<string | null | false | undefined>('text')
+    const getter = () => s()
+    const node = document.createTextNode('')
+
+    const dispose = _bindText(getter as unknown as Parameters<typeof _bindText>[0], node)
+    expect(node.data).toBe('text')
+
+    s.set(null)
+    expect(node.data).toBe('')
+
+    s.set(false)
+    expect(node.data).toBe('')
+
+    s.set(undefined)
+    expect(node.data).toBe('')
+
+    s.set('restored')
+    expect(node.data).toBe('restored')
+
+    dispose()
+  })
+
+  test('fallback path: skips DOM write when value unchanged', () => {
+    const s = signal('x')
+    const getter = () => s()
+    const node = document.createTextNode('')
+
+    const dispose = _bindText(getter as unknown as Parameters<typeof _bindText>[0], node)
+    expect(node.data).toBe('x')
+
+    s.set('x') // same value — skip
+    expect(node.data).toBe('x')
+
+    dispose()
+  })
+
+  test('number coercion via String()', () => {
+    const s = signal<number>(42)
+    const node = document.createTextNode('')
+
+    const dispose = _bindText(s, node)
+    expect(node.data).toBe('42')
+
+    s.set(0)
+    expect(node.data).toBe('0')
+
+    dispose()
+  })
 })
 
 // ─── _bindDirect ────────────────────────────────────────────────────────────

@@ -196,9 +196,9 @@ describe('provide', () => {
     // Context should still be available after runWithHooks
     expect(useContext(ctx)).toBe('provided-value')
     // unmount hooks should include the popContext cleanup
-    expect(hooks.unmount.length).toBeGreaterThanOrEqual(1)
+    expect(hooks.unmount!.length).toBeGreaterThanOrEqual(1)
     // Running unmount cleans up
-    for (const fn of hooks.unmount) fn()
+    for (const fn of hooks.unmount!) fn()
     expect(useContext(ctx)).toBe('default')
   })
 
@@ -216,7 +216,7 @@ describe('provide', () => {
     expect(useContext(ctxA)).toBe('A-value')
     expect(useContext(ctxB)).toBe('B-value')
     // Clean up
-    for (const fn of hooks.unmount) fn()
+    for (const fn of hooks.unmount!) fn()
     expect(useContext(ctxA)).toBe('a')
     expect(useContext(ctxB)).toBe('b')
   })

@@ -19,7 +19,7 @@ export function runWithHooks<P extends Props>(
   fn: ComponentFn<P>,
   props: P,
 ): { vnode: VNodeChild; hooks: LifecycleHooks } {
-  const hooks: LifecycleHooks = { mount: [], unmount: [], update: [], error: [] }
+  const hooks: LifecycleHooks = { mount: null, unmount: null, update: null, error: null }
   setCurrentHooks(hooks)
   let vnode: VNodeChild = null
   try {
@@ -35,6 +35,7 @@ export function runWithHooks<P extends Props>(
  * Returns true if any handler marked the error as handled.
  */
 export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
+  if (!hooks.error) return false
   for (const handler of hooks.error) {
     if (handler(err) === true) return true
   }

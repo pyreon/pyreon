@@ -384,8 +384,8 @@ function hydrateComponent(
   const { vnode: output, hooks } = result
 
   // Register onUpdate hooks with the scope
-  for (const fn of hooks.update) {
-    scope.addUpdateHook(fn)
+  if (hooks.update) {
+    for (const fn of hooks.update) scope.addUpdateHook(fn)
   }
 
   if (output != null) {
@@ -395,22 +395,24 @@ function hydrateComponent(
   }
 
   // Fire onMount hooks; effects created inside are tracked by the scope via runInScope
-  for (const fn of hooks.mount) {
-    try {
-      let c: (() => void) | undefined
-      scope.runInScope(() => {
-        c = fn() as (() => void) | undefined
-      })
-      if (c) mountCleanups.push(c)
-    } catch (err) {
-      reportError({ component: componentName, phase: 'mount', error: err, timestamp: Date.now() })
+  if (hooks.mount) {
+    for (const fn of hooks.mount) {
+      try {
+        let c: (() => void) | undefined
+        scope.runInScope(() => {
+          c = fn() as (() => void) | undefined
+        })
+        if (c) mountCleanups.push(c)
+      } catch (err) {
+        reportError({ component: componentName, phase: 'mount', error: err, timestamp: Date.now() })
+      }
     }
   }
 
   const cleanup: Cleanup = () => {
     scope.stop()
     subtreeCleanup()
-    for (const fn of hooks.unmount) fn()
+    if (hooks.unmount) for (const fn of hooks.unmount) fn()
     for (const fn of mountCleanups) fn()
   }
 

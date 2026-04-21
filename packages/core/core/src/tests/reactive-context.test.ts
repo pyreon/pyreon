@@ -30,7 +30,7 @@ describe('createReactiveContext', () => {
     expect(seen).toEqual(['light', 'dark'])
 
     // Unmount the provider — outside the scope, useContext returns the default.
-    for (const fn of hooks.unmount) fn()
+    for (const fn of hooks.unmount!) fn()
     const outerGetter = useContext(Ctx)
     expect(outerGetter()).toBe('light')
   })
@@ -50,7 +50,7 @@ describe('createReactiveContext', () => {
         return null
       }, {})
       // Run the inner provider's unmount to pop its frame.
-      for (const fn of innerRun.hooks.unmount) fn()
+      for (const fn of innerRun.hooks.unmount!) fn()
 
       // Outer provider is restored.
       expect(outerGetter()).toBe('outer')
@@ -58,7 +58,7 @@ describe('createReactiveContext', () => {
     }, {})
 
     // Clean up outer frame.
-    for (const fn of outerRun.hooks.unmount) fn()
+    for (const fn of outerRun.hooks.unmount!) fn()
 
     // After full teardown, useContext falls back to the default accessor.
     expect(useContext(Ctx)()).toBe('default')

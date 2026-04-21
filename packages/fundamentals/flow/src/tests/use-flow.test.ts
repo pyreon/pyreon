@@ -22,7 +22,7 @@ describe('useFlow', () => {
     }, {})
 
     expect(disposeSpy).not.toHaveBeenCalled()
-    for (const fn of run.hooks.unmount) fn()
+    for (const fn of run.hooks.unmount!) fn()
     expect(disposeSpy).toHaveBeenCalledTimes(1)
   })
 })
