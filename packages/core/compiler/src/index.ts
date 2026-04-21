@@ -1,7 +1,7 @@
 // @pyreon/compiler — JSX reactive transform for Pyreon
 
 export type { CompilerWarning, TransformResult } from './jsx'
-export { transformJSX } from './jsx'
+export { transformJSX, transformJSX_JS } from './jsx'
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from './project-scanner'
 export { generateContext } from './project-scanner'
 export type {

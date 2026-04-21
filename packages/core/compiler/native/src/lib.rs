@@ -977,7 +977,9 @@ pub fn transform_jsx(code: String, filename: String, ssr: bool) -> TransformResu
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, &code, source_type).parse();
 
-    if ret.panicked || !ret.errors.is_empty() {
+    // Only bail on panicked parser — recoverable errors (like empty JSX
+    // expressions `{/* comment */}`) still produce a valid AST.
+    if ret.panicked {
         return TransformResult {
             code,
             uses_templates: None,
