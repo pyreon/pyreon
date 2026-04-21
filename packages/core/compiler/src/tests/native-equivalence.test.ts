@@ -410,3 +410,107 @@ describeNative('Native vs JS equivalence — complex real-world patterns', () =>
     }
   `))
 })
+
+// ─── Unicode and multi-byte character safety ────────────────────────────────
+
+describeNative('Native vs JS equivalence — Unicode', () => {
+  test('emoji before JSX expression', () => compare(`
+    function C() { return <div>🔥{count()}</div> }
+  `))
+  test('CJK characters before JSX', () => compare(`
+    function C() { return <div>日本語{name()}</div> }
+  `))
+  test('accented chars in identifier', () => compare(`
+    function C() { const café = "test"; return <div>{café}</div> }
+  `))
+  test('emoji in prop value', () => compare(`
+    <div title="🎉 Party">text</div>
+  `))
+  test('multi-byte chars in template literal', () => compare(`
+    <div>{\`Hello 世界 \${name()}\`}</div>
+  `))
+  test('unicode in component name', () => compare(`
+    <Ñoño value={x()} />
+  `))
+  test('mixed unicode and ASCII', () => compare(`
+    function Comp(props) {
+      const naïve = props.naïve ?? "default"
+      return <div class={naïve}>{props.résumé}</div>
+    }
+  `))
+})
+
+// ─── String literal collision resistance ────────────────────────────────────
+
+describeNative('Native vs JS equivalence — string literal collision', () => {
+  test('prop name matches string in ternary', () => compare(`
+    function C(props) {
+      const required = props.required
+      return <div class={required ? 'required' : ''}>{required}</div>
+    }
+  `))
+  test('prop name in template literal string part', () => compare(`
+    function C(props) {
+      const mode = props.mode
+      return <div>{\`mode is \${mode}\`}</div>
+    }
+  `))
+  test('prop name in object key position', () => compare(`
+    function C(props) {
+      const x = props.x
+      return <div style={{ x: x }}></div>
+    }
+  `))
+  test('prop name in nested string', () => compare(`
+    function C(props) {
+      const label = props.label
+      return <div title={label || "label"}>text</div>
+    }
+  `))
+})
+
+// ─── Additional robustness tests ────────────────────────────────────────────
+
+describeNative('Native vs JS equivalence — additional edge cases', () => {
+  test('deeply nested template', () => compare(`
+    <div><section><article><header><h1>{title()}</h1></header><p>{body()}</p></article></section></div>
+  `))
+  test('multiple components in one file', () => compare(`
+    function A(props) { return <div>{props.a}</div> }
+    function B(props) { return <span>{props.b}</span> }
+  `))
+  test('component returning fragment', () => compare(`
+    function C(props) { return <>{props.children}</> }
+  `))
+  test('empty component', () => compare(`
+    function C() { return <div></div> }
+  `))
+  test('array destructuring from signal', () => compare(`
+    function C(props) {
+      const [a, b] = props.items
+      return <div>{a}</div>
+    }
+  `))
+  test('nested function not confused with component', () => compare(`
+    function App(props) {
+      function helper() { return props.x + 1 }
+      return <div>{helper()}</div>
+    }
+  `))
+  test('class with JSX method', () => compare(`
+    class C { render(props) { return <div>{props.name}</div> } }
+  `))
+  test('immediately invoked arrow', () => compare(`
+    const el = (() => <div>{count()}</div>)()
+  `))
+  test('JSX in variable init', () => compare(`
+    const header = <header><h1>Title</h1></header>
+  `))
+  test('multiple JSX returns', () => compare(`
+    function C(props) {
+      if (props.loading) return <div>Loading...</div>
+      if (props.error) return <div>Error</div>
+      return <div>{props.data}</div>
+    }
+  `))
+})

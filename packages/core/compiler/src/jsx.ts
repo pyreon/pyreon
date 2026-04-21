@@ -29,18 +29,26 @@
  */
 
 import { parseSync } from 'oxc-parser'
-import { resolve, join } from 'node:path'
+import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 
 // ─── Native binary auto-detection ────────────────────────────────────────────
 // Try to load the Rust napi-rs binary for 3.7-8.2x faster transforms.
 // Falls back to the JS implementation below if the binary isn't available
 // (wrong platform, CI environment, WASM runtime like StackBlitz, etc.)
-let nativeTransformJsx: ((code: string, filename: string, ssr: boolean) => TransformResult) | null = null
+//
+// Uses createRequire for ESM compatibility — __dirname and require() don't
+// exist in ESM modules.
+type NativeTransformFn = (code: string, filename: string, ssr: boolean) => TransformResult
+let nativeTransformJsx: NativeTransformFn | null = null
 
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const __filename = fileURLToPath(import.meta.url)
+  const __dirname = dirname(__filename)
+  const nativeRequire = createRequire(import.meta.url)
   const nativePath = join(__dirname, '..', 'native', 'pyreon-compiler.node')
-  const native = require(nativePath) as { transformJsx: (code: string, filename: string, ssr: boolean) => TransformResult }
+  const native = nativeRequire(nativePath) as { transformJsx: NativeTransformFn }
   nativeTransformJsx = native.transformJsx
 } catch {
   // Native binary not available — JS fallback will be used
@@ -170,9 +178,16 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
-  // Try Rust native binary first (3.7-8.2x faster)
+  // Try Rust native binary first (3.7-8.2x faster).
+  // Per-call try/catch: if the native binary panics on an edge case
+  // (bad UTF-8, unexpected AST shape), fall back gracefully instead
+  // of crashing the Vite dev server.
   if (nativeTransformJsx) {
-    return nativeTransformJsx(code, filename, options.ssr === true)
+    try {
+      return nativeTransformJsx(code, filename, options.ssr === true)
+    } catch {
+      // Native transform failed — fall through to JS implementation
+    }
   }
   return transformJSX_JS(code, filename, options)
 }
@@ -1244,19 +1259,4 @@ function isPureStaticCall(node: N): boolean {
   }
   if (!PURE_CALLS.has(name)) return false
   return (node.arguments ?? []).every((arg: N) => arg.type !== 'SpreadElement' && isStatic(arg))
-}
-
-function containsCall(node: N): boolean {
-  if (node.type === 'CallExpression') {
-    if (isPureStaticCall(node)) return false
-    return true
-  }
-  if (node.type === 'TaggedTemplateExpression') return true
-  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
-  let found = false
-  forEachChild(node, (child) => {
-    if (found) return
-    if (containsCall(child)) found = true
-  })
-  return found
 }

@@ -171,14 +171,12 @@ fn escape_html_attr(s: &str) -> String {
 
 fn escape_html_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'<' {
+    let mut chars = s.char_indices().peekable();
+    while let Some((i, ch)) = chars.next() {
+        if ch == '<' {
             out.push_str("&lt;");
-            i += 1;
-        } else if bytes[i] == b'&' {
-            // Check if this is already an HTML entity
+        } else if ch == '&' {
+            // Check if this is already an HTML entity: &...;
             if let Some(semi_pos) = s[i + 1..].find(';') {
                 let entity = &s[i + 1..i + 1 + semi_pos];
                 let is_entity = entity.starts_with('#')
@@ -187,15 +185,12 @@ fn escape_html_text(s: &str) -> String {
                         .all(|c| c.is_ascii_alphanumeric() || c == 'x' || c == 'X');
                 if is_entity && !entity.is_empty() {
                     out.push('&');
-                    i += 1;
                     continue;
                 }
             }
             out.push_str("&amp;");
-            i += 1;
         } else {
-            out.push(bytes[i] as char);
-            i += 1;
+            out.push(ch);
         }
     }
     out
@@ -932,23 +927,300 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     resolved
 }
 
-/// Walk the initializer text, find Identifier references to prop-derived vars,
-/// and replace them with their resolved text (recursively).
+/// Resolve prop-derived vars in an expression by walking its AST subtree.
 ///
-/// Uses string-level scanning with word-boundary and string-literal awareness
-/// to avoid replacing occurrences inside string/template literals.
+/// Finds `IdentifierReference` nodes whose name matches a key in
+/// `ctx.prop_derived_vars`, skipping property-name positions and nested
+/// function scopes. Replaces each matching span with the resolved initializer.
+fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
+    let span = expr.span();
+    let source_slice = &ctx.source[span.start as usize..span.end as usize];
+
+    // Collect identifier references to prop-derived vars in this expression subtree
+    let mut idents: Vec<(u32, u32, String)> = Vec::new(); // (start, end, var_name)
+    collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
+
+    if idents.is_empty() {
+        return source_slice.to_string();
+    }
+
+    // Sort by position, deduplicate overlapping
+    idents.sort_by_key(|i| i.0);
+    let mut deduped: Vec<(u32, u32, String)> = Vec::new();
+    for ident in idents {
+        if deduped.last().map_or(true, |last| ident.0 >= last.1) {
+            deduped.push(ident);
+        }
+    }
+
+    // Build replacement string using absolute source offsets
+    let mut result = String::new();
+    let mut last = span.start;
+    for (start, end, var_name) in &deduped {
+        result.push_str(&ctx.source[last as usize..*start as usize]);
+        let resolved = resolve_var_to_string(var_name, ctx);
+        result.push_str(&format!("({})", resolved));
+        last = *end;
+    }
+    result.push_str(&ctx.source[last as usize..span.end as usize]);
+    result
+}
+
+/// Walk an expression AST subtree, collecting IdentifierReference nodes whose
+/// name matches a prop-derived var. Skips property-name positions (static member
+/// `.property`), nested function scopes, and shorthand object property keys.
+fn collect_prop_derived_idents(
+    expr: &Expression,
+    prop_derived_vars: &FxHashMap<String, Span>,
+    out: &mut Vec<(u32, u32, String)>,
+) {
+    match expr {
+        Expression::Identifier(id) => {
+            if prop_derived_vars.contains_key(id.name.as_str()) {
+                out.push((id.span.start, id.span.end, id.name.to_string()));
+            }
+        }
+        // Static member: only recurse into .object, NOT .property
+        Expression::StaticMemberExpression(m) => {
+            collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+        }
+        // Computed member: both object and expression
+        Expression::ComputedMemberExpression(m) => {
+            collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+            collect_prop_derived_idents(&m.expression, prop_derived_vars, out);
+        }
+        // Binary / logical
+        Expression::BinaryExpression(b) => {
+            collect_prop_derived_idents(&b.left, prop_derived_vars, out);
+            collect_prop_derived_idents(&b.right, prop_derived_vars, out);
+        }
+        Expression::LogicalExpression(l) => {
+            collect_prop_derived_idents(&l.left, prop_derived_vars, out);
+            collect_prop_derived_idents(&l.right, prop_derived_vars, out);
+        }
+        // Conditional (ternary)
+        Expression::ConditionalExpression(c) => {
+            collect_prop_derived_idents(&c.test, prop_derived_vars, out);
+            collect_prop_derived_idents(&c.consequent, prop_derived_vars, out);
+            collect_prop_derived_idents(&c.alternate, prop_derived_vars, out);
+        }
+        // Unary / update
+        Expression::UnaryExpression(u) => {
+            collect_prop_derived_idents(&u.argument, prop_derived_vars, out);
+        }
+        Expression::UpdateExpression(u) => {
+            collect_prop_derived_idents_in_assignment_target(&u.argument, prop_derived_vars, out);
+        }
+        // Call expression: callee + args
+        Expression::CallExpression(call) => {
+            collect_prop_derived_idents(&call.callee, prop_derived_vars, out);
+            for arg in &call.arguments {
+                match arg {
+                    Argument::SpreadElement(s) => {
+                        collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
+                    }
+                    _ => {
+                        if let Some(e) = arg.as_expression() {
+                            collect_prop_derived_idents(e, prop_derived_vars, out);
+                        }
+                    }
+                }
+            }
+        }
+        // New expression: callee + args
+        Expression::NewExpression(n) => {
+            collect_prop_derived_idents(&n.callee, prop_derived_vars, out);
+            for arg in &n.arguments {
+                match arg {
+                    Argument::SpreadElement(s) => {
+                        collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
+                    }
+                    _ => {
+                        if let Some(e) = arg.as_expression() {
+                            collect_prop_derived_idents(e, prop_derived_vars, out);
+                        }
+                    }
+                }
+            }
+        }
+        // Array expression
+        Expression::ArrayExpression(arr) => {
+            for el in &arr.elements {
+                match el {
+                    ArrayExpressionElement::SpreadElement(s) => {
+                        collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
+                    }
+                    _ => {
+                        if let Some(e) = el.as_expression() {
+                            collect_prop_derived_idents(e, prop_derived_vars, out);
+                        }
+                    }
+                }
+            }
+        }
+        // Object expression: recurse into values and computed keys only
+        Expression::ObjectExpression(obj) => {
+            for prop in &obj.properties {
+                match prop {
+                    ObjectPropertyKind::ObjectProperty(p) => {
+                        // Only recurse into key if computed
+                        if p.computed {
+                            collect_prop_derived_idents_in_prop_key(&p.key, prop_derived_vars, out);
+                        }
+                        collect_prop_derived_idents(&p.value, prop_derived_vars, out);
+                    }
+                    ObjectPropertyKind::SpreadProperty(s) => {
+                        collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
+                    }
+                }
+            }
+        }
+        // Template literal: only expressions (quasis are static text)
+        Expression::TemplateLiteral(t) => {
+            for e in &t.expressions {
+                collect_prop_derived_idents(e, prop_derived_vars, out);
+            }
+        }
+        // Tagged template
+        Expression::TaggedTemplateExpression(t) => {
+            collect_prop_derived_idents(&t.tag, prop_derived_vars, out);
+            for e in &t.quasi.expressions {
+                collect_prop_derived_idents(e, prop_derived_vars, out);
+            }
+        }
+        // Sequence expression
+        Expression::SequenceExpression(s) => {
+            for e in &s.expressions {
+                collect_prop_derived_idents(e, prop_derived_vars, out);
+            }
+        }
+        // Parenthesized
+        Expression::ParenthesizedExpression(p) => {
+            collect_prop_derived_idents(&p.expression, prop_derived_vars, out);
+        }
+        // Assignment: only right side (left is a target, not a reference)
+        Expression::AssignmentExpression(a) => {
+            collect_prop_derived_idents(&a.right, prop_derived_vars, out);
+        }
+        // TypeScript expression wrappers
+        Expression::TSAsExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        Expression::TSSatisfiesExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        Expression::TSNonNullExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        Expression::TSTypeAssertion(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        // Optional chaining
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::StaticMemberExpression(m) => {
+                collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+            }
+            ChainElement::ComputedMemberExpression(m) => {
+                collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+                collect_prop_derived_idents(&m.expression, prop_derived_vars, out);
+            }
+            ChainElement::CallExpression(call) => {
+                collect_prop_derived_idents(&call.callee, prop_derived_vars, out);
+                for arg in &call.arguments {
+                    match arg {
+                        Argument::SpreadElement(s) => {
+                            collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
+                        }
+                        _ => {
+                            if let Some(e) = arg.as_expression() {
+                                collect_prop_derived_idents(e, prop_derived_vars, out);
+                            }
+                        }
+                    }
+                }
+            }
+            ChainElement::PrivateFieldExpression(p) => {
+                collect_prop_derived_idents(&p.object, prop_derived_vars, out);
+            }
+            ChainElement::TSNonNullExpression(e) => {
+                collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+            }
+        },
+        // Yield (generator expression)
+        Expression::YieldExpression(y) => {
+            if let Some(arg) = &y.argument {
+                collect_prop_derived_idents(arg, prop_derived_vars, out);
+            }
+        }
+        // Await
+        Expression::AwaitExpression(a) => {
+            collect_prop_derived_idents(&a.argument, prop_derived_vars, out);
+        }
+        // Do NOT recurse into function scopes — they create new scope
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => {}
+        // Literals, ThisExpression, etc. — no identifiers to find
+        _ => {}
+    }
+}
+
+/// Helper to recurse into a computed property key expression.
+fn collect_prop_derived_idents_in_prop_key(
+    key: &PropertyKey,
+    prop_derived_vars: &FxHashMap<String, Span>,
+    out: &mut Vec<(u32, u32, String)>,
+) {
+    if let Some(expr) = key.as_expression() {
+        collect_prop_derived_idents(expr, prop_derived_vars, out);
+    }
+}
+
+/// Helper to collect prop-derived idents from a SimpleAssignmentTarget
+/// (used by UpdateExpression.argument).
+fn collect_prop_derived_idents_in_assignment_target(
+    target: &SimpleAssignmentTarget,
+    prop_derived_vars: &FxHashMap<String, Span>,
+    out: &mut Vec<(u32, u32, String)>,
+) {
+    match target {
+        SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
+            if prop_derived_vars.contains_key(id.name.as_str()) {
+                out.push((id.span.start, id.span.end, id.name.to_string()));
+            }
+        }
+        SimpleAssignmentTarget::StaticMemberExpression(m) => {
+            collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+        }
+        SimpleAssignmentTarget::ComputedMemberExpression(m) => {
+            collect_prop_derived_idents(&m.object, prop_derived_vars, out);
+            collect_prop_derived_idents(&m.expression, prop_derived_vars, out);
+        }
+        SimpleAssignmentTarget::TSAsExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        SimpleAssignmentTarget::TSSatisfiesExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        SimpleAssignmentTarget::TSNonNullExpression(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        SimpleAssignmentTarget::TSTypeAssertion(e) => {
+            collect_prop_derived_idents(&e.expression, prop_derived_vars, out);
+        }
+        _ => {}
+    }
+}
+
+/// Resolve prop-derived vars in an initializer's source text using string-level
+/// scanning with word-boundary awareness. Used only by `resolve_var_to_string`
+/// for transitive resolution of initializer expressions (where we don't have
+/// the AST node readily available). The direct `slice_expr` path uses the
+/// AST-based `resolve_expr_with_props` instead.
 fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> String {
     if ctx.prop_derived_vars.is_empty() {
         return text.to_string();
     }
 
     let _end_offset = base_offset + text.len() as u32;
-
-    // Build a set of byte ranges that are inside string literals (single-quoted,
-    // double-quoted, or backtick template literals). We skip any identifier match
-    // whose start falls inside one of these ranges.
-    let string_ranges = find_string_literal_ranges(text);
-
     let var_names: Vec<String> = ctx.prop_derived_vars.keys().cloned().collect();
     let mut replacements: Vec<(usize, usize, String)> = Vec::new();
 
@@ -984,9 +1256,7 @@ fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> S
                     }
                     text_bytes[idx] != b'.'
                 };
-                // Check it's not inside a string literal
-                let not_in_string = !string_ranges.iter().any(|&(s, e)| start >= s && start < e);
-                if before_ok && after_ok && not_property && not_in_string {
+                if before_ok && after_ok && not_property {
                     let resolved = resolve_var_to_string(var_name, ctx);
                     replacements.push((start, end, format!("({})", resolved)));
                 }
@@ -1021,61 +1291,15 @@ fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> S
     result
 }
 
-/// Find byte ranges of string literal contents (including quotes) in source text.
-/// Handles single-quoted, double-quoted, and backtick template strings.
-/// Returns Vec<(start, end)> where start..end covers the entire quoted region.
-fn find_string_literal_ranges(text: &str) -> Vec<(usize, usize)> {
-    let bytes = text.as_bytes();
-    let mut ranges = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        if b == b'\'' || b == b'"' || b == b'`' {
-            let quote = b;
-            let start = i;
-            i += 1;
-            while i < bytes.len() {
-                if bytes[i] == b'\\' {
-                    i += 2; // skip escaped char
-                    continue;
-                }
-                if bytes[i] == quote {
-                    i += 1; // past closing quote
-                    break;
-                }
-                i += 1;
-            }
-            ranges.push((start, i));
-        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
-            // Line comment — skip to end of line
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
-        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
-            // Block comment — skip to */
-            i += 2;
-            while i + 1 < bytes.len() {
-                if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    break;
-                }
-                i += 1;
-            }
-        } else {
-            i += 1;
-        }
-    }
-    ranges
-}
-
 /// Slice source text for an expression, resolving prop-derived vars if needed.
+/// Uses AST-based resolution to correctly skip identifiers inside string
+/// literals, comments, template literal quasis, and property-name positions.
 fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     let span = expr.span();
-    let raw = &ctx.source[span.start as usize..span.end as usize];
     if !ctx.prop_derived_vars.is_empty() && accesses_props(expr, ctx) {
-        resolve_identifiers_in_text(raw, span.start, ctx)
+        resolve_expr_with_props(expr, ctx)
     } else {
-        raw.to_string()
+        ctx.source[span.start as usize..span.end as usize].to_string()
     }
 }
 
@@ -1155,6 +1379,33 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
         Statement::BlockStatement(block) => {
             for stmt in &block.body {
                 walk_statement(stmt, ctx);
+            }
+        }
+        Statement::ClassDeclaration(class) => {
+            // Walk class body methods for JSX
+            for element in &class.body.body {
+                match element {
+                    ClassElement::MethodDefinition(method) => {
+                        // Method value is a Function
+                        maybe_register_component_props_fn(&method.value, ctx);
+                        if let Some(body) = &method.value.body {
+                            for stmt in &body.statements {
+                                walk_statement(stmt, ctx);
+                            }
+                        }
+                    }
+                    ClassElement::PropertyDefinition(prop) => {
+                        if let Some(value) = &prop.value {
+                            walk_expression(value, ctx);
+                        }
+                    }
+                    ClassElement::StaticBlock(block) => {
+                        for stmt in &block.body {
+                            walk_statement(stmt, ctx);
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
         Statement::ForStatement(for_stmt) => {
