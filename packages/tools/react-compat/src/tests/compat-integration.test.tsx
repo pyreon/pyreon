@@ -25,6 +25,7 @@ function createHookRunner() {
   const ctx: RenderContext = {
     hooks: [],
     scheduleRerender: () => {},
+    pendingInsertionEffects: [],
     pendingEffects: [],
     pendingLayoutEffects: [],
     unmounted: false,

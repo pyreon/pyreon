@@ -12,10 +12,10 @@
  *   import { createRoot } from "react-dom/client"         // aliased by vite plugin
  */
 
-export type { Props, VNode as ReactNode, VNodeChild } from '@pyreon/core'
-export { Fragment, h as createElement, h } from '@pyreon/core'
+export type { Props, VNode, VNodeChild } from '@pyreon/core'
+export { Fragment, h as createElement, h, createRef } from '@pyreon/core'
 
-import type { VNode, VNodeChild } from '@pyreon/core'
+import type { Context, VNode, VNodeChild } from '@pyreon/core'
 import { createContext, ErrorBoundary, h, Portal, Suspense, useContext } from '@pyreon/core'
 import { batch } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
@@ -68,16 +68,26 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
 
 /**
  * React-compatible `useReducer` — returns `[state, dispatch]`.
+ * Supports the 3-argument form: `useReducer(reducer, initialArg, init)`.
  */
 export function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
-  initial: S | (() => S),
+  initialArg: S | (() => S),
+  init?: (arg: S) => S,
 ): [S, (action: A) => void] {
   const ctx = requireCtx()
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === 'function' ? (initial as () => S)() : initial)
+    let initial: S
+    if (init) {
+      initial = init(initialArg as S)
+    } else if (typeof initialArg === 'function') {
+      initial = (initialArg as () => S)()
+    } else {
+      initial = initialArg
+    }
+    ctx.hooks.push(initial)
   }
 
   const state = ctx.hooks[idx] as S
@@ -134,6 +144,28 @@ export function useLayoutEffect(fn: () => (() => void) | void, deps?: unknown[])
       entry.fn = fn
       entry.deps = deps
       ctx.pendingLayoutEffects.push(entry)
+    }
+  }
+}
+
+/**
+ * React-compatible `useInsertionEffect` — runs synchronously before layout effects.
+ * Intended for CSS-in-JS libraries to inject styles before DOM reads.
+ */
+export function useInsertionEffect(fn: () => (() => void) | void, deps?: unknown[]): void {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const entry: EffectEntry = { fn, deps, cleanup: undefined }
+    ctx.hooks.push(entry)
+    ctx.pendingInsertionEffects.push(entry)
+  } else {
+    const entry = ctx.hooks[idx] as EffectEntry
+    if (depsChanged(entry.deps, deps)) {
+      entry.fn = fn
+      entry.deps = deps
+      ctx.pendingInsertionEffects.push(entry)
     }
   }
 }
@@ -232,7 +264,7 @@ export function memo<P extends Record<string, unknown>>(
   let prevProps: P | null = null
   let prevResult: VNodeChild = null
 
-  return (props: P) => {
+  const memoized = (props: P) => {
     if (prevProps !== null && compare(prevProps, props)) {
       return prevResult
     }
@@ -240,6 +272,9 @@ export function memo<P extends Record<string, unknown>>(
     prevResult = (component as (p: P) => VNodeChild)(props)
     return prevResult
   }
+  memoized.displayName =
+    (component as unknown as { displayName?: string }).displayName || component.name || 'Memo'
+  return memoized
 }
 
 /**
@@ -302,10 +337,13 @@ export { ErrorBoundary, Suspense }
 export function forwardRef<P extends Record<string, unknown>>(
   render: (props: P, ref: { current: unknown } | null) => VNodeChild,
 ): (props: P & { ref?: { current: unknown } | null }) => VNodeChild {
-  return (props: P & { ref?: { current: unknown } | null }) => {
+  const forwarded = (props: P & { ref?: { current: unknown } | null }) => {
     const { ref, ...rest } = props
     return render(rest as P, ref ?? null)
   }
+  forwarded.displayName =
+    (render as unknown as { displayName?: string }).displayName || render.name || 'ForwardRef'
+  return forwarded
 }
 
 // ─── cloneElement ───────────────────────────────────────────────────────────
@@ -400,3 +438,265 @@ export const Children = {
     return arr[0] as VNodeChild
   },
 }
+
+// ─── useSyncExternalStore ───────────────────────────────────────────────────
+
+/**
+ * React-compatible `useSyncExternalStore` — subscribes to an external store.
+ */
+export function useSyncExternalStore<T>(
+  subscribe: (onStoreChange: () => void) => () => void,
+  getSnapshot: () => T,
+  _getServerSnapshot?: () => T,
+): T {
+  const ctx = requireCtx()
+  const idx = getHookIndex()
+
+  if (ctx.hooks.length <= idx) {
+    const snapshot = getSnapshot()
+    const entry = { unsubscribe: undefined as (() => void) | undefined, snapshot }
+    entry.unsubscribe = subscribe(() => {
+      const next = getSnapshot()
+      if (!Object.is(entry.snapshot, next)) {
+        entry.snapshot = next
+        ctx.scheduleRerender()
+      }
+    })
+    ctx.hooks.push(entry)
+    return snapshot
+  }
+
+  const entry = ctx.hooks[idx] as { unsubscribe: (() => void) | undefined; snapshot: T }
+  // Always read fresh snapshot during render
+  entry.snapshot = getSnapshot()
+  return entry.snapshot
+}
+
+// ─── use ────────────────────────────────────────────────────────────────────
+
+const _promiseCache = new WeakMap<
+  Promise<unknown>,
+  { status: 'pending' | 'resolved' | 'rejected'; value?: unknown; error?: unknown }
+>()
+
+/**
+ * React-compatible `use` — reads a Context or suspends on a Promise.
+ * Can be called conditionally (unlike other hooks).
+ */
+export function use<T>(resource: Context<T> | Promise<T>): T {
+  // Context path
+  if (resource && typeof resource === 'object' && 'id' in resource && 'defaultValue' in resource) {
+    return useContext(resource as Context<T>)
+  }
+  // Promise path — suspend via throw
+  const promise = resource as Promise<T>
+  let entry = _promiseCache.get(promise)
+  if (!entry) {
+    entry = { status: 'pending' }
+    _promiseCache.set(promise, entry)
+    promise.then(
+      (value) => {
+        entry!.status = 'resolved'
+        entry!.value = value
+      },
+      (error) => {
+        entry!.status = 'rejected'
+        entry!.error = error
+      },
+    )
+  }
+  if (entry.status === 'resolved') return entry.value as T
+  if (entry.status === 'rejected') throw entry.error
+  throw promise // Suspense catches this
+}
+
+// ─── useActionState ─────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `useActionState` — manages async action state with pending indicator.
+ */
+export function useActionState<S, P>(
+  action: (state: S, payload: P) => S | Promise<S>,
+  initialState: S,
+): [S, (payload: P) => void, boolean] {
+  const [state, setState] = useState(initialState)
+  const [isPending, setIsPending] = useState(false)
+
+  const dispatch = (payload: P) => {
+    setIsPending(true)
+    const result = action(state, payload)
+    if (result instanceof Promise) {
+      result.then((next) => {
+        setState(next)
+        setIsPending(false)
+      })
+    } else {
+      setState(result)
+      setIsPending(false)
+    }
+  }
+
+  return [state, dispatch, isPending]
+}
+
+// ─── startTransition ────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `startTransition` — runs the callback synchronously.
+ * No concurrent mode in Pyreon, so transitions are immediate.
+ */
+export function startTransition(fn: () => void): void {
+  fn()
+}
+
+// ─── isValidElement ─────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `isValidElement` — checks if a value is a VNode.
+ */
+export function isValidElement(value: unknown): value is VNode {
+  return value != null && typeof value === 'object' && 'type' in value && 'props' in value
+}
+
+// ─── useDebugValue ──────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `useDebugValue` — no-op in Pyreon (no React DevTools integration).
+ */
+export function useDebugValue<T>(_value: T, _format?: (v: T) => unknown): void {}
+
+// ─── flushSync ──────────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `flushSync` — runs the callback and returns its result.
+ * In Pyreon's compat model, state updates are batched via queueMicrotask.
+ * flushSync cannot truly synchronously flush those — it runs the callback
+ * and returns. The microtask-scheduled rerenders will still fire asynchronously.
+ */
+export function flushSync<T>(fn: () => T): T {
+  return fn()
+}
+
+// ─── act (testing) ──────────────────────────────────────────────────────────
+
+/**
+ * React-compatible `act` — flushes pending microtasks for testing.
+ */
+export async function act(fn: () => void | Promise<void>): Promise<void> {
+  const result = fn()
+  if (result instanceof Promise) await result
+  // Flush two rounds of microtasks to drain pending effects and rerenders
+  await new Promise<void>((r) => queueMicrotask(r))
+  await new Promise<void>((r) => queueMicrotask(r))
+}
+
+// ─── version ────────────────────────────────────────────────────────────────
+
+export const version = '19.0.0-pyreon'
+
+// ─── StrictMode / Profiler ──────────────────────────────────────────────────
+
+/**
+ * React-compatible `StrictMode` — pass-through in Pyreon (no double-invoke behavior).
+ */
+export function StrictMode(props: { children?: VNodeChild }): VNodeChild {
+  return props.children ?? null
+}
+
+/**
+ * React-compatible `Profiler` — pass-through in Pyreon (no profiling integration).
+ */
+export function Profiler(props: {
+  id: string
+  onRender?: (...args: unknown[]) => void
+  children?: VNodeChild
+}): VNodeChild {
+  return props.children ?? null
+}
+
+// ─── Component / PureComponent (class stubs) ────────────────────────────────
+
+/**
+ * React-compatible `Component` class stub.
+ * Class components are not fully supported — use function components with hooks.
+ */
+export class Component<P = Record<string, unknown>, S = Record<string, unknown>> {
+  props: Readonly<P>
+  state: Readonly<S>
+
+  constructor(props: P) {
+    this.props = props
+    this.state = {} as S
+  }
+
+  setState(_partial: Partial<S> | ((prev: S) => Partial<S>)): void {
+    console.warn(
+      '[Pyreon] Class component setState is not supported. Use function components with hooks.',
+    )
+  }
+
+  forceUpdate(): void {
+    console.warn(
+      '[Pyreon] Class component forceUpdate is not supported. Use function components with hooks.',
+    )
+  }
+
+  render(): VNodeChild {
+    return null
+  }
+}
+
+/**
+ * React-compatible `PureComponent` class stub.
+ */
+export class PureComponent<
+  P = Record<string, unknown>,
+  S = Record<string, unknown>,
+> extends Component<P, S> {}
+
+// ─── React-compatible type exports ──────────────────────────────────────────
+
+export type { Context }
+
+export type FC<P = Record<string, unknown>> = (props: P) => VNodeChild
+export type FunctionComponent<P = Record<string, unknown>> = FC<P>
+export type ReactElement = VNode
+export type ReactNode = VNodeChild
+export type JSXElementConstructor<P> = (props: P) => VNodeChild
+export type Dispatch<A> = (action: A) => void
+export type SetStateAction<S> = S | ((prev: S) => S)
+export type RefObject<T> = { readonly current: T | null }
+export type MutableRefObject<T> = { current: T }
+export type RefCallback<T> = (instance: T | null) => void
+export type ForwardedRef<T> = RefObject<T> | RefCallback<T> | null
+export type PropsWithChildren<P = Record<string, unknown>> = P & { children?: ReactNode }
+export type PropsWithRef<P> = P & { ref?: RefObject<unknown> | RefCallback<unknown> | null }
+export type { CSSProperties } from '@pyreon/core'
+
+// Event types — aliases for TargetedEvent patterns
+export type SyntheticEvent<T = Element> = Event & { currentTarget: T }
+export type ChangeEvent<T = Element> = Event & { currentTarget: T; target: T }
+export type FormEvent<T = Element> = Event & { currentTarget: T }
+export type MouseEvent<T = Element> = globalThis.MouseEvent & { currentTarget: T }
+export type KeyboardEvent<T = Element> = globalThis.KeyboardEvent & { currentTarget: T }
+export type FocusEvent<T = Element> = globalThis.FocusEvent & { currentTarget: T }
+export type DragEvent<T = Element> = globalThis.DragEvent & { currentTarget: T }
+export type PointerEvent<T = Element> = globalThis.PointerEvent & { currentTarget: T }
+export type TouchEvent<T = Element> = globalThis.TouchEvent & { currentTarget: T }
+export type ClipboardEvent<T = Element> = globalThis.ClipboardEvent & { currentTarget: T }
+export type AnimationEvent<T = Element> = globalThis.AnimationEvent & { currentTarget: T }
+export type TransitionEvent<T = Element> = globalThis.TransitionEvent & { currentTarget: T }
+export type WheelEvent<T = Element> = globalThis.WheelEvent & { currentTarget: T }
+
+// HTML attribute types
+export type HTMLAttributes<T = HTMLElement> = Record<string, unknown> & {
+  ref?: RefObject<T> | RefCallback<T> | null
+}
+export type InputHTMLAttributes<T = HTMLInputElement> = HTMLAttributes<T>
+export type TextareaHTMLAttributes<T = HTMLTextAreaElement> = HTMLAttributes<T>
+export type SelectHTMLAttributes<T = HTMLSelectElement> = HTMLAttributes<T>
+export type ButtonHTMLAttributes<T = HTMLButtonElement> = HTMLAttributes<T>
+export type AnchorHTMLAttributes<T = HTMLAnchorElement> = HTMLAttributes<T>
+export type FormHTMLAttributes<T = HTMLFormElement> = HTMLAttributes<T>
+export type ImgHTMLAttributes<T = HTMLImageElement> = HTMLAttributes<T>
+export type SVGAttributes<T = SVGElement> = HTMLAttributes<T>
