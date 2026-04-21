@@ -485,6 +485,28 @@ describeNative('Native vs JS equivalence — additional edge cases', () => {
   test('empty component', () => compare(`
     function C() { return <div></div> }
   `))
+  test('template inside fragment wraps in braces', () => compare(`
+    function C() { return <><button type="button">text</button><span /></> }
+  `))
+  test('template inside nested fragment', () => compare(`
+    function C() { return <><><div>inner</div></></> }
+  `))
+  test('template in JSX attribute value (not brace-wrapped)', () => compare(`
+    <Show fallback={<div><p>Not logged in</p></div>}><span /></Show>
+  `))
+  test('full Showcase pattern with Show + fallback', () => compare(`
+    function Demo(props) {
+      const open = signal(false)
+      return (
+        <Show
+          when={() => open()}
+          fallback={<div class="demo"><p>Fallback</p><button type="button">Action</button></div>}
+        >
+          <div><p>Content</p></div>
+        </Show>
+      )
+    }
+  `))
   test('array destructuring from signal', () => compare(`
     function C(props) {
       const [a, b] = props.items

@@ -1669,9 +1669,12 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             handle_jsx_element(el, ctx);
         }
         Expression::JSXFragment(frag) => {
+            let old = ctx.parent_is_jsx;
+            ctx.parent_is_jsx = true;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
+            ctx.parent_is_jsx = old;
         }
         Expression::ArrowFunctionExpression(arrow) => {
             maybe_register_component_props_arrow(arrow, ctx);
@@ -1848,9 +1851,12 @@ fn walk_jsx_child(child: &JSXChild, ctx: &mut Ctx) {
     match child {
         JSXChild::Element(el) => handle_jsx_element(el, ctx),
         JSXChild::Fragment(frag) => {
+            let old = ctx.parent_is_jsx;
+            ctx.parent_is_jsx = true;
             for child in &frag.children {
                 walk_jsx_child(child, ctx);
             }
+            ctx.parent_is_jsx = old;
         }
         JSXChild::ExpressionContainer(container) => {
             handle_jsx_expression_child(container, ctx);
@@ -1956,7 +1962,12 @@ fn handle_jsx_attribute(
         // For component props: single JSX children are just recursed into
         let is_single_jsx = matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
         if is_single_jsx {
+            // Reset parent_is_jsx — we're inside an attribute value `prop={<Elem/>}`,
+            // not a JSX child, so templates shouldn't get brace-wrapped.
+            let old = ctx.parent_is_jsx;
+            ctx.parent_is_jsx = false;
             walk_expression(expr, ctx);
+            ctx.parent_is_jsx = old;
             return;
         }
 
