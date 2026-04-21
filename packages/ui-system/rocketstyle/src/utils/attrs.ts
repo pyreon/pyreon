@@ -80,53 +80,49 @@ export const calculateStylingAttrs: CalculateStylingAttrs =
     const result: Record<string, any> = {}
 
     // (1) find dimension keys values & initialize
-    // object with possible options
-    Object.keys(dimensions).forEach((item) => {
+    for (const item in dimensions) {
       const pickedProp = props[item]
       const t = typeof pickedProp
 
-      // if the property is multi key, allow assign array as well
       if (multiKeys?.[item] && Array.isArray(pickedProp)) {
         result[item] = pickedProp
-      }
-      // assign when it's only a string or number otherwise it's considered
-      // as invalid param
-      else if (t === 'string' || t === 'number') {
+      } else if (t === 'string' || t === 'number') {
         result[item] = pickedProp
       } else {
         result[item] = undefined
       }
-    })
+    }
 
     // (2) if booleans are being used let's find the rest
+    // Use `in` operator on the dimension map instead of allocating
+    // a new Set per dimension — the map is already an object with
+    // the keywords as keys.
     if (useBooleans) {
-      const propsKeys = Object.keys(props)
+      for (const key in result) {
+        if (result[key]) continue // already assigned
 
-      Object.entries(result).forEach(([key, value]) => {
+        const dimensionMap = dimensions[key] as Record<string, unknown>
         const isMultiKey = multiKeys?.[key]
+        let newDimensionValue: string | string[] | undefined
 
-        // when value in result is not assigned yet
-        if (!value) {
-          let newDimensionValue: string | string[] | undefined
-          const keywordSet = new Set(Object.keys(dimensions[key] as Record<string, unknown>))
-
-          if (isMultiKey) {
-            newDimensionValue = propsKeys.filter((propKey) => keywordSet.has(propKey))
-          } else {
-            // iterate backwards to guarantee the last one will have
-            // a priority over previous ones
-            for (let i = propsKeys.length - 1; i >= 0; i--) {
-              const k = propsKeys[i] as string
-              if (keywordSet.has(k) && props[k]) {
-                newDimensionValue = k
-                break
-              }
+        if (isMultiKey) {
+          const matches: string[] = []
+          for (const propKey in props) {
+            if (propKey in dimensionMap) matches.push(propKey)
+          }
+          newDimensionValue = matches.length > 0 ? matches : undefined
+        } else {
+          // Iterate props to find last matching keyword
+          // (last wins for priority)
+          for (const k in props) {
+            if (k in dimensionMap && props[k]) {
+              newDimensionValue = k
             }
           }
-
-          result[key] = newDimensionValue
         }
-      })
+
+        result[key] = newDimensionValue
+      }
     }
 
     return result

@@ -87,6 +87,23 @@ const rocketComponent: RocketComponent = (options) => {
   // --------------------------------------------------------
   const ThemeManager = new LocalThemeManager()
 
+  // ── Per-definition caches (shared across all instances) ──────────────
+  // getDimensionsMap + Object.keys(reservedPropNames) are theme-independent
+  // (dimension structure comes from .sizes()/.states()/.variants() chain,
+  // not from runtime theme values). Cache them so 50 instances of the same
+  // component definition skip the rebuild entirely.
+  const _dimensionsCache = new WeakMap<object, { keysMap: Record<string, unknown>; keywords: Record<string, true | undefined> }>()
+  const _reservedKeysCache = new WeakMap<object, string[]>()
+
+  // Pre-compute merged key arrays once per definition (not per mount)
+  const ALL_PSEUDO_KEYS = [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]
+  // Static portion of omit keys — PSEUDO_KEYS + filterAttrs + 'pseudo' are definition-scoped.
+  // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
+  // 'pseudo' is included here so we can skip the destructuring spread of mergeProps.
+  const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...(options.filterAttrs ?? [])]
+  // Full omit key arrays, keyed by the dimension-dependent reserved keys array
+  const _omitKeysCache = new WeakMap<string[], string[]>()
+
   // --------------------------------------------------------
   // COMPOSE - high-order components
   // --------------------------------------------------------
@@ -140,12 +157,24 @@ const rocketComponent: RocketComponent = (options) => {
       return helper.get(initialTheme)
     })()
 
-    const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
-      themes: initialDimensionThemes,
-      useBooleans: options.useBooleans,
-    })
+    // Cache getDimensionsMap per dimension-themes identity — all instances
+    // of the same component definition share the same dimension structure.
+    let dimResult = _dimensionsCache.get(initialDimensionThemes as object)
+    if (!dimResult) {
+      dimResult = getDimensionsMap({
+        themes: initialDimensionThemes,
+        useBooleans: options.useBooleans,
+      })
+      _dimensionsCache.set(initialDimensionThemes as object, dimResult)
+    }
+    const { keysMap: dimensions, keywords: reservedPropNames } = dimResult
 
-    const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
+    // Cache Object.keys() result — same dimension structure = same keys
+    let RESERVED_STYLING_PROPS_KEYS = _reservedKeysCache.get(reservedPropNames as object)
+    if (!RESERVED_STYLING_PROPS_KEYS) {
+      RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
+      _reservedKeysCache.set(reservedPropNames as object, RESERVED_STYLING_PROPS_KEYS)
+    }
 
     // --------------------------------------------------
     // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
@@ -228,7 +257,7 @@ const rocketComponent: RocketComponent = (options) => {
       // Read pseudo props fresh each call — props may have reactive getters
       // from _rp() wrapping. Reading inside the accessor (which runs in an
       // effect) ensures changes to pseudo props like active={isDark()} are tracked.
-      const propPseudo = pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS])
+      const propPseudo = pick(props, ALL_PSEUDO_KEYS)
 
       return {
         ...rocketstate,
@@ -237,22 +266,23 @@ const rocketComponent: RocketComponent = (options) => {
     }
 
     // --------------------------------------------------
-    // Static mergeProps for final prop filtering (non-dimension props)
-    // --------------------------------------------------
-    const { pseudo: _pseudo, ...mergeProps } = {
-      ...localCtx,
-      ...props,
-    }
-
-    // --------------------------------------------------
     // final props passed to WrappedComponent
     // --------------------------------------------------
+    // Cache the full omit key array per dimension structure — same definition
+    // always produces the same RESERVED_STYLING_PROPS_KEYS, so we compute
+    // the merged array once and reuse across all instances.
+    let omitKeys = _omitKeysCache.get(RESERVED_STYLING_PROPS_KEYS)
+    if (!omitKeys) {
+      omitKeys = [...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS]
+      _omitKeysCache.set(RESERVED_STYLING_PROPS_KEYS, omitKeys)
+    }
+
+    // Merge localCtx + props without an intermediate spread object.
+    // omit() handles 'pseudo' removal (included in STATIC_OMIT_KEYS).
+    const mergeProps = localCtx ? { ...localCtx, ...props } : props
+
     const finalProps: Record<string, any> = {
-      ...omit(mergeProps, [
-        ...RESERVED_STYLING_PROPS_KEYS,
-        ...PSEUDO_KEYS,
-        ...options.filterAttrs,
-      ]),
+      ...omit(mergeProps as Record<string, unknown>, omitKeys),
       ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
       ref: props.ref,
       // Function accessors — DynamicStyled wraps them in a computed() so
