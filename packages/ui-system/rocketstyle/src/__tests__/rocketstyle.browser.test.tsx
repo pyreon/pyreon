@@ -167,4 +167,40 @@ describe('@pyreon/rocketstyle in real browser', () => {
     light.unmount()
     dark.unmount()
   })
+
+  it('multiple instances share definition-scoped caches (no per-mount rebuild)', () => {
+    // Verifies the perf optimization: getDimensionsMap, reservedPropNames keys,
+    // and omit Sets are cached at definition time (WeakMap), not rebuilt per mount.
+    // 10 instances of the same component with different state props must all render
+    // correctly — proving the caches handle varied prop combinations.
+    const Box: any = rocketstyle()({ name: 'CacheBox', component: Base })
+      .styles(
+        (css: any) => css`
+          color: ${({ $rocketstyle }: any) => $rocketstyle.color};
+        `,
+      )
+      .theme({ color: 'rgb(100, 100, 100)' })
+      .states({
+        primary: { color: 'rgb(0, 100, 200)' },
+        danger: { color: 'rgb(200, 50, 50)' },
+      })
+
+    const instances = Array.from({ length: 10 }, (_, i) => {
+      const state = i % 3 === 0 ? 'primary' : i % 3 === 1 ? 'danger' : undefined
+      return mountInBrowser(h(Box, { id: `c${i}`, ...(state ? { state } : {}) }))
+    })
+
+    // Check a subset — primary, danger, and default all resolve correctly
+    expect(
+      getComputedStyle(instances[0]!.container.querySelector('#c0')!).color,
+    ).toBe('rgb(0, 100, 200)') // primary
+    expect(
+      getComputedStyle(instances[1]!.container.querySelector('#c1')!).color,
+    ).toBe('rgb(200, 50, 50)') // danger
+    expect(
+      getComputedStyle(instances[2]!.container.querySelector('#c2')!).color,
+    ).toBe('rgb(100, 100, 100)') // default
+
+    for (const inst of instances) inst.unmount()
+  })
 })

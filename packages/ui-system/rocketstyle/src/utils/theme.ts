@@ -60,26 +60,21 @@ type GetDimensionThemes = (
 ) => Record<string, any>
 
 export const getDimensionThemes: GetDimensionThemes = (theme, options) => {
-  const result = {}
+  const dims = options.dimensions
+  if (isEmpty(dims)) return {}
 
-  if (isEmpty(options.dimensions)) return result
+  const result: Record<string, any> = {}
 
-  return Object.entries(options.dimensions).reduce(
-    (acc, [key, value]) => {
-      const [, dimension] = isMultiKey(value as string | Record<string, unknown>)
+  for (const key in dims) {
+    const [, dimension] = isMultiKey(dims[key] as string | Record<string, unknown>)
+    const helper = options[key]
 
-      const helper = options[key]
+    if (Array.isArray(helper) && helper.length > 0) {
+      result[dimension] = removeNullableValues(getThemeFromChain(helper, theme))
+    }
+  }
 
-      if (Array.isArray(helper) && helper.length > 0) {
-        const finalDimensionThemes = getThemeFromChain(helper, theme)
-
-        acc[dimension] = removeNullableValues(finalDimensionThemes)
-      }
-
-      return acc
-    },
-    result as Record<string, any>,
-  )
+  return result
 }
 
 // --------------------------------------------------------
@@ -119,54 +114,62 @@ export type GetTheme = (params: {
   appTheme?: Record<string, any>
 }) => Record<string, unknown>
 
-export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKeys, appTheme }) => {
-  let finalTheme = { ...baseTheme }
-  const deferredTransforms: Array<
-    (
-      currentTheme: Record<string, any>,
-      currentAppTheme: Record<string, any>,
-      mode: typeof themeModeCallback,
-      cssFn: typeof config.css,
-    ) => Record<string, any>
-  > = []
+// Shared empty object for pseudo-state defaults — allocated once, reused by
+// every getTheme call. Frozen to prevent accidental mutation.
+const EMPTY_PSEUDO: Record<string, never> = Object.freeze({}) as Record<string, never>
 
-  Object.entries(rocketstate).forEach(([key, value]: [string, string | string[]]) => {
+export const getTheme: GetTheme = ({ rocketstate, themes, baseTheme, transformKeys, appTheme }) => {
+  // Spread baseTheme into result — this is unavoidable (we must not mutate
+  // the cached baseTheme). But we merge dimension slices in-place onto
+  // finalTheme instead of creating a new {} target each merge() call.
+  const finalTheme: Record<string, any> = { ...baseTheme }
+  type TransformFn = (
+    currentTheme: Record<string, any>,
+    currentAppTheme: Record<string, any>,
+    mode: typeof themeModeCallback,
+    cssFn: typeof config.css,
+  ) => Record<string, any>
+  const deferredTransforms: TransformFn[] = []
+
+  for (const key in rocketstate) {
+    const value = rocketstate[key]
+    if (value == null) continue
     const keyTheme: Record<string, any> = themes[key] ?? {}
     const isTransform = transformKeys?.[key]
 
     const mergeValue = (item: string) => {
       const val = keyTheme[item]
+      if (val == null) return
       if (isTransform && typeof val === 'function') {
-        deferredTransforms.push(val)
+        deferredTransforms.push(val as TransformFn)
       } else {
-        finalTheme = merge({}, finalTheme, val)
+        // Merge in-place onto finalTheme — avoids allocating a fresh {}
+        // as merge target on every dimension slice.
+        merge(finalTheme, val)
       }
     }
 
     if (Array.isArray(value)) {
-      value.forEach(mergeValue)
+      for (let i = 0; i < value.length; i++) mergeValue(value[i] as string)
     } else {
-      mergeValue(value)
+      mergeValue(value as string)
     }
-  })
+  }
 
   // Apply transform dimension values last with the fully accumulated theme
-  for (const transform of deferredTransforms) {
-    finalTheme = merge(
-      {},
-      finalTheme,
-      transform(finalTheme, appTheme ?? {}, themeModeCallback, config.css),
-    )
+  for (let i = 0; i < deferredTransforms.length; i++) {
+    merge(finalTheme, deferredTransforms[i]!(finalTheme, appTheme ?? {}, themeModeCallback, config.css))
   }
 
   // Ensure pseudo-state keys always exist as objects so .styles() can
   // destructure without defaults: const { hover, focus, ... } = $rocketstyle
-  finalTheme.hover ??= {}
-  finalTheme.focus ??= {}
-  finalTheme.active ??= {}
-  finalTheme.disabled ??= {}
-  finalTheme.pressed ??= {}
-  finalTheme.readOnly ??= {}
+  // Uses a frozen shared empty object instead of allocating 6 new {} per call.
+  finalTheme.hover ??= EMPTY_PSEUDO
+  finalTheme.focus ??= EMPTY_PSEUDO
+  finalTheme.active ??= EMPTY_PSEUDO
+  finalTheme.disabled ??= EMPTY_PSEUDO
+  finalTheme.pressed ??= EMPTY_PSEUDO
+  finalTheme.readOnly ??= EMPTY_PSEUDO
 
   return finalTheme
 }

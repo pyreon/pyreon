@@ -1,5 +1,5 @@
 import { isEmpty } from '@pyreon/ui-core'
-import { ALL_RESERVED_KEYS } from './constants'
+import { ALL_RESERVED_KEYS, __DEV__ } from './constants'
 import defaultDimensions from './constants/defaultDimensions'
 import rocketComponent from './rocketstyle'
 import type { DefaultDimensions, Dimensions } from './types/dimensions'
@@ -73,7 +73,7 @@ const validateInit = (name: string, component: unknown, dimensions: Dimensions) 
 
 const rocketstyle = (({ dimensions = defaultDimensions, useBooleans = false } = {}) =>
   ({ name, component }: { name: string; component: any }) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (__DEV__) {
       validateInit(name, component, dimensions)
     }
 

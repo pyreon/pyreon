@@ -1,6 +1,6 @@
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
-import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS } from './constants'
+import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS, __DEV__ } from './constants'
 import createLocalProvider from './context/createLocalProvider'
 import { useLocalContext } from './context/localContext'
 import { rocketstyleAttrsHoc } from './hoc'
@@ -101,8 +101,9 @@ const rocketComponent: RocketComponent = (options) => {
   // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
   // 'pseudo' is included here so we can skip the destructuring spread of mergeProps.
   const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...(options.filterAttrs ?? [])]
-  // Full omit key arrays, keyed by the dimension-dependent reserved keys array
-  const _omitKeysCache = new WeakMap<string[], string[]>()
+  // Pre-built Set for omit() — avoids per-call Set allocation. Built once the
+  // dimension-dependent reserved keys are known (first mount), then reused.
+  const _omitSetCache = new WeakMap<string[], Set<string>>()
 
   // --------------------------------------------------------
   // COMPOSE - high-order components
@@ -268,33 +269,37 @@ const rocketComponent: RocketComponent = (options) => {
     // --------------------------------------------------
     // final props passed to WrappedComponent
     // --------------------------------------------------
-    // Cache the full omit key array per dimension structure — same definition
-    // always produces the same RESERVED_STYLING_PROPS_KEYS, so we compute
-    // the merged array once and reuse across all instances.
-    let omitKeys = _omitKeysCache.get(RESERVED_STYLING_PROPS_KEYS)
-    if (!omitKeys) {
-      omitKeys = [...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS]
-      _omitKeysCache.set(RESERVED_STYLING_PROPS_KEYS, omitKeys)
+    // Cache a pre-built Set for omit() — avoids building a new Set from
+    // the key array on every mount. Same dimension structure = same Set.
+    let omitSet = _omitSetCache.get(RESERVED_STYLING_PROPS_KEYS)
+    if (!omitSet) {
+      omitSet = new Set([...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS])
+      _omitSetCache.set(RESERVED_STYLING_PROPS_KEYS, omitSet)
     }
 
     // Merge localCtx + props without an intermediate spread object.
     // omit() handles 'pseudo' removal (included in STATIC_OMIT_KEYS).
     const mergeProps = localCtx ? { ...localCtx, ...props } : props
 
-    const finalProps: Record<string, any> = {
-      ...omit(mergeProps as Record<string, unknown>, omitKeys),
-      ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
-      ref: props.ref,
-      // Function accessors — DynamicStyled wraps them in a computed() so
-      // mode/dimension changes produce a new CSS class reactively. The
-      // computed tracks only these two accessors; the resolve itself runs
-      // untracked to prevent exponential cascade from theme deep-reads.
-      $rocketstyle: $rocketstyleAccessor,
-      $rocketstate: $rocketstateAccessor,
+    // omit() already returns a fresh object — assign directly onto it
+    // instead of spreading into another {} (saves one object allocation).
+    const finalProps = omit(mergeProps as Record<string, unknown>, omitSet) as Record<string, any>
+
+    if (options.passProps) {
+      const passed = pick(mergeProps, options.passProps)
+      for (const k in passed) finalProps[k] = passed[k]
     }
 
-    // development debugging
-    if (process.env.NODE_ENV !== 'production') {
+    finalProps.ref = props.ref
+    // Function accessors — DynamicStyled wraps them in a computed() so
+    // mode/dimension changes produce a new CSS class reactively. The
+    // computed tracks only these two accessors; the resolve itself runs
+    // untracked to prevent exponential cascade from theme deep-reads.
+    finalProps.$rocketstyle = $rocketstyleAccessor
+    finalProps.$rocketstate = $rocketstateAccessor
+
+    // development debugging — tree-shaken in production via import.meta.env.DEV
+    if (__DEV__) {
       finalProps['data-rocketstyle'] = componentName
 
       if (options.DEBUG) {
