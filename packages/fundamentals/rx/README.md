@@ -31,19 +31,35 @@ const result = rx.pipe(
 )
 ```
 
-## API
+## API (37 functions)
 
-**Collections:** `filter`, `map`, `sortBy`, `groupBy`, `keyBy`, `uniqBy`, `take`, `skip`, `last`, `chunk`, `flatten`, `find`, `mapValues`
+**Collections (21):** `filter`, `map`, `sortBy`, `groupBy`, `keyBy`, `uniqBy`, `take`, `skip`, `last`, `chunk`, `flatten`, `find`, `mapValues`, `first`, `compact`, `reverse`, `partition`, `takeWhile`, `dropWhile`, `unique`, `sample`
 
-**Aggregation:** `count`, `sum`, `min`, `max`, `average`
+**Aggregation (8):** `count`, `sum`, `min`, `max`, `average`, `reduce`, `every`, `some`
 
-**Operators:** `distinct`, `scan`, `combine`
+**Operators (5):** `distinct`, `scan`, `combine`, `zip`, `merge`
 
-**Timing:** `debounce`, `throttle`
+**Timing (2):** `debounce`, `throttle`
 
-**Search:** `search`
+**Search:** `search` | **Pipe:** `pipe`
 
-**Pipe:** `pipe`
+### New in v0.14
+
+| Function | Description |
+| --- | --- |
+| `reduce(source, reducer, initial)` | Fold array to single value |
+| `every(source, predicate)` | All items match? → `boolean` |
+| `some(source, predicate)` | Any item matches? → `boolean` |
+| `first(source)` | First element (reactive head) |
+| `compact(source)` | Remove null/undefined/false/0/'' |
+| `reverse(source)` | Reversed copy (no mutation) |
+| `partition(source, predicate)` | Split into `[matches, rest]` |
+| `takeWhile(source, predicate)` | Take while predicate true |
+| `dropWhile(source, predicate)` | Skip while predicate true |
+| `unique(source)` | Primitive dedup via Set |
+| `sample(source, n)` | Random n items (Fisher-Yates) |
+| `zip(...sources)` | Element-by-element pairing |
+| `merge(...sources)` | Concatenate arrays |
 
 ## License
 

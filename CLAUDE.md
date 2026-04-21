@@ -174,7 +174,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/flow`        | Reactive flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout via elkjs                                                                  |
 | `@pyreon/code`        | Reactive code editor — CodeMirror 6 with signals, minimap, diff editor                                                                                |
 | `@pyreon/document`    | Universal document rendering — 18 primitives, 14+ output formats                                                                                      |
-| `@pyreon/rx`          | Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions                                               |
+| `@pyreon/rx`          | Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions                                               |
 | `@pyreon/toast`       | Toast notifications — toast(), toast.success/error/warning/info/loading, Toaster component, a11y                                                      |
 | `@pyreon/url-state`   | URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe                                                             |
 
@@ -380,7 +380,12 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 ### @pyreon/rx
 
 - Signal-aware reactive transforms — every function overloaded: `Signal<T[]> → Computed`, `T[] → plain`
-- 24 functions: `filter`, `map`, `sortBy`, `groupBy`, `keyBy`, `uniqBy`, `take`, `skip`, `last`, `chunk`, `flatten`, `find`, `mapValues`, `count`, `sum`, `min`, `max`, `average`, `distinct`, `scan`, `combine`, `debounce`, `throttle`, `search`
+- 37 functions across 6 categories:
+  - **Collections (21):** `filter`, `map`, `sortBy`, `groupBy`, `keyBy`, `uniqBy`, `take`, `skip`, `last`, `chunk`, `flatten`, `find`, `mapValues`, `first`, `compact`, `reverse`, `partition`, `takeWhile`, `dropWhile`, `unique`, `sample`
+  - **Aggregation (8):** `count`, `sum`, `min`, `max`, `average`, `reduce`, `every`, `some`
+  - **Operators (5):** `distinct`, `scan`, `combine`, `zip`, `merge`
+  - **Timing (2):** `debounce`, `throttle`
+  - **Search (1):** `search`
 - `pipe(source, op1, op2, ...)` — compose transforms left-to-right
 - Signal inputs produce `Computed` outputs that auto-track and re-derive when the source signal changes
 

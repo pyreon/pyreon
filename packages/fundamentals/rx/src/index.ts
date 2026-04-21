@@ -1,20 +1,28 @@
-import { average, count, max, min, sum } from './aggregation'
+import { average, count, every, max, min, reduce, some, sum } from './aggregation'
 import {
   chunk,
+  compact,
+  dropWhile,
   filter,
   find,
+  first,
   flatten,
   groupBy,
   keyBy,
   last,
   map,
   mapValues,
+  partition,
+  reverse,
+  sample,
   skip,
   sortBy,
   take,
+  takeWhile,
   uniqBy,
+  unique,
 } from './collections'
-import { combine, distinct, scan } from './operators'
+import { combine, distinct, merge, scan, zip } from './operators'
 import { pipe } from './pipe'
 import { search } from './search'
 import { debounce, throttle } from './timing'
@@ -60,6 +68,14 @@ export const rx = {
   flatten,
   find,
   mapValues,
+  first,
+  compact,
+  reverse,
+  partition,
+  takeWhile,
+  dropWhile,
+  unique,
+  sample,
 
   // Aggregation
   count,
@@ -67,11 +83,16 @@ export const rx = {
   min,
   max,
   average,
+  reduce,
+  every,
+  some,
 
   // Operators
   distinct,
   scan,
   combine,
+  zip,
+  merge,
 
   // Timing
   debounce,
@@ -89,11 +110,15 @@ export {
   average,
   chunk,
   combine,
+  compact,
   count,
   debounce,
   distinct,
+  dropWhile,
+  every,
   filter,
   find,
+  first,
   flatten,
   groupBy,
   keyBy,
@@ -101,14 +126,23 @@ export {
   map,
   mapValues,
   max,
+  merge,
   min,
+  partition,
   pipe,
+  reduce,
+  reverse,
+  sample,
   scan,
   search,
   skip,
+  some,
   sortBy,
   sum,
   take,
+  takeWhile,
   throttle,
   uniqBy,
+  unique,
+  zip,
 }

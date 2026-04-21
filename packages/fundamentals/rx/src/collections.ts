@@ -168,6 +168,186 @@ export function last<T>(source: ReadableSignal<T[]> | T[], n: number): any {
   return reactive(source, (arr: T[]) => arr.slice(-n))
 }
 
+/**
+ * Get the first element of an array.
+ *
+ * @example
+ * ```ts
+ * const items = signal([1, 2, 3])
+ * const head = rx.first(items) // Computed<number | undefined>
+ * ```
+ */
+export function first<T>(
+  source: ReadableSignal<T[]>,
+): ReturnType<typeof computed<T | undefined>>
+export function first<T>(source: T[]): T | undefined
+export function first<T>(source: ReadableSignal<T[]> | T[]): any {
+  return reactive(source, (arr: T[]) => arr[0])
+}
+
+/**
+ * Remove all falsy values (null, undefined, false, 0, '').
+ *
+ * @example
+ * ```ts
+ * compact([0, 1, null, 2, '', 3, false]) // [1, 2, 3]
+ * ```
+ */
+export function compact<T>(
+  source: ReadableSignal<(T | null | undefined | false | 0 | '')[]>,
+): ReturnType<typeof computed<T[]>>
+export function compact<T>(source: (T | null | undefined | false | 0 | '')[]): T[]
+export function compact<T>(
+  source: ReadableSignal<(T | null | undefined | false | 0 | '')[]> | (T | null | undefined | false | 0 | '')[],
+): any {
+  return reactive(source, (arr: any[]) => arr.filter(Boolean))
+}
+
+/**
+ * Reverse an array (returns a new copy).
+ *
+ * @example
+ * ```ts
+ * reverse([1, 2, 3]) // [3, 2, 1]
+ * ```
+ */
+export function reverse<T>(source: ReadableSignal<T[]>): ReturnType<typeof computed<T[]>>
+export function reverse<T>(source: T[]): T[]
+export function reverse<T>(source: ReadableSignal<T[]> | T[]): any {
+  return reactive(source, (arr: T[]) => [...arr].reverse())
+}
+
+/**
+ * Split an array into two groups: items that match the predicate and items that don't.
+ *
+ * @example
+ * ```ts
+ * const [even, odd] = partition([1, 2, 3, 4], n => n % 2 === 0)
+ * // even: [2, 4], odd: [1, 3]
+ * ```
+ */
+export function partition<T>(
+  source: ReadableSignal<T[]>,
+  predicate: (item: T, index: number) => boolean,
+): ReturnType<typeof computed<[T[], T[]]>>
+export function partition<T>(
+  source: T[],
+  predicate: (item: T, index: number) => boolean,
+): [T[], T[]]
+export function partition<T>(
+  source: ReadableSignal<T[]> | T[],
+  predicate: (item: T, index: number) => boolean,
+): any {
+  return reactive(source, (arr: T[]) => {
+    const pass: T[] = []
+    const fail: T[] = []
+    for (let i = 0; i < arr.length; i++) {
+      ;(predicate(arr[i] as T, i) ? pass : fail).push(arr[i] as T)
+    }
+    return [pass, fail] as [T[], T[]]
+  })
+}
+
+/**
+ * Take items from the start while the predicate returns true.
+ * Stops at the first item that doesn't match.
+ *
+ * @example
+ * ```ts
+ * takeWhile([1, 2, 3, 1, 2], n => n < 3) // [1, 2]
+ * ```
+ */
+export function takeWhile<T>(
+  source: ReadableSignal<T[]>,
+  predicate: (item: T, index: number) => boolean,
+): ReturnType<typeof computed<T[]>>
+export function takeWhile<T>(
+  source: T[],
+  predicate: (item: T, index: number) => boolean,
+): T[]
+export function takeWhile<T>(
+  source: ReadableSignal<T[]> | T[],
+  predicate: (item: T, index: number) => boolean,
+): any {
+  return reactive(source, (arr: T[]) => {
+    const result: T[] = []
+    for (let i = 0; i < arr.length; i++) {
+      if (!predicate(arr[i] as T, i)) break
+      result.push(arr[i] as T)
+    }
+    return result
+  })
+}
+
+/**
+ * Skip items from the start while the predicate returns true.
+ * Returns remaining items from the first non-matching item.
+ *
+ * @example
+ * ```ts
+ * dropWhile([1, 2, 3, 1, 2], n => n < 3) // [3, 1, 2]
+ * ```
+ */
+export function dropWhile<T>(
+  source: ReadableSignal<T[]>,
+  predicate: (item: T, index: number) => boolean,
+): ReturnType<typeof computed<T[]>>
+export function dropWhile<T>(
+  source: T[],
+  predicate: (item: T, index: number) => boolean,
+): T[]
+export function dropWhile<T>(
+  source: ReadableSignal<T[]> | T[],
+  predicate: (item: T, index: number) => boolean,
+): any {
+  return reactive(source, (arr: T[]) => {
+    let i = 0
+    while (i < arr.length && predicate(arr[i] as T, i)) i++
+    return arr.slice(i)
+  })
+}
+
+/**
+ * Deduplicate primitive values using Set.
+ * For objects, use `uniqBy` with a key function instead.
+ *
+ * @example
+ * ```ts
+ * unique([1, 2, 2, 3, 1]) // [1, 2, 3]
+ * ```
+ */
+export function unique<T>(source: ReadableSignal<T[]>): ReturnType<typeof computed<T[]>>
+export function unique<T>(source: T[]): T[]
+export function unique<T>(source: ReadableSignal<T[]> | T[]): any {
+  return reactive(source, (arr: T[]) => [...new Set(arr)])
+}
+
+/**
+ * Pick n random items from the array (Fisher-Yates partial shuffle).
+ * Returns all items if n >= array length.
+ *
+ * @example
+ * ```ts
+ * sample([1, 2, 3, 4, 5], 2) // e.g. [3, 1]
+ * ```
+ */
+export function sample<T>(source: ReadableSignal<T[]>, n: number): ReturnType<typeof computed<T[]>>
+export function sample<T>(source: T[], n: number): T[]
+export function sample<T>(source: ReadableSignal<T[]> | T[], n: number): any {
+  return reactive(source, (arr: T[]) => {
+    const copy = [...arr]
+    const count = Math.min(n, copy.length)
+    // Fisher-Yates partial shuffle — only shuffle the first `count` positions
+    for (let i = 0; i < count; i++) {
+      const j = i + Math.floor(Math.random() * (copy.length - i))
+      const tmp = copy[i]
+      copy[i] = copy[j] as T
+      copy[j] = tmp as T
+    }
+    return copy.slice(0, count)
+  })
+}
+
 /** Map over values of a Record. Useful after groupBy. */
 export function mapValues<T, U>(
   source: ReadableSignal<Record<string, T>>,

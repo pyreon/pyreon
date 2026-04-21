@@ -71,6 +71,75 @@ export function max<T>(source: ReadableSignal<T[]> | T[], key?: KeyOf<T>): any {
   })
 }
 
+/**
+ * Fold an array into a single value via a reducer function.
+ *
+ * @example
+ * ```ts
+ * const items = signal([{ price: 10 }, { price: 20 }])
+ * const total = rx.reduce(items, (acc, item) => acc + item.price, 0) // Computed<number>
+ * ```
+ */
+export function reduce<T, U>(
+  source: ReadableSignal<T[]>,
+  reducer: (acc: U, item: T, index: number) => U,
+  initial: U,
+): ReturnType<typeof computed<U>>
+export function reduce<T, U>(
+  source: T[],
+  reducer: (acc: U, item: T, index: number) => U,
+  initial: U,
+): U
+export function reduce<T, U>(
+  source: ReadableSignal<T[]> | T[],
+  reducer: (acc: U, item: T, index: number) => U,
+  initial: U,
+): any {
+  return reactive(source, (arr: T[]) => arr.reduce(reducer, initial))
+}
+
+/**
+ * Check if every item matches a predicate.
+ *
+ * @example
+ * ```ts
+ * const users = signal([{ active: true }, { active: true }])
+ * const allActive = rx.every(users, u => u.active) // Computed<boolean>
+ * ```
+ */
+export function every<T>(
+  source: ReadableSignal<T[]>,
+  predicate: (item: T, index: number) => boolean,
+): ReturnType<typeof computed<boolean>>
+export function every<T>(source: T[], predicate: (item: T, index: number) => boolean): boolean
+export function every<T>(
+  source: ReadableSignal<T[]> | T[],
+  predicate: (item: T, index: number) => boolean,
+): any {
+  return reactive(source, (arr: T[]) => arr.every(predicate))
+}
+
+/**
+ * Check if any item matches a predicate.
+ *
+ * @example
+ * ```ts
+ * const users = signal([{ admin: false }, { admin: true }])
+ * const hasAdmin = rx.some(users, u => u.admin) // Computed<boolean>
+ * ```
+ */
+export function some<T>(
+  source: ReadableSignal<T[]>,
+  predicate: (item: T, index: number) => boolean,
+): ReturnType<typeof computed<boolean>>
+export function some<T>(source: T[], predicate: (item: T, index: number) => boolean): boolean
+export function some<T>(
+  source: ReadableSignal<T[]> | T[],
+  predicate: (item: T, index: number) => boolean,
+): any {
+  return reactive(source, (arr: T[]) => arr.some(predicate))
+}
+
 /** Average of numeric values. Optionally by key. */
 export function average<T>(
   source: ReadableSignal<T[]>,

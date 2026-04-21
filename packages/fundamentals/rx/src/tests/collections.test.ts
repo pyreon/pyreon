@@ -2,18 +2,26 @@ import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import {
   chunk,
+  compact,
+  dropWhile,
   filter,
   find,
+  first,
   flatten,
   groupBy,
   keyBy,
   last,
   map,
   mapValues,
+  partition,
+  reverse,
+  sample,
   skip,
   sortBy,
   take,
+  takeWhile,
   uniqBy,
+  unique,
 } from '../collections'
 
 type User = { id: number; name: string; role: string; active: boolean }
@@ -209,5 +217,179 @@ describe('collections — signal values (reactive)', () => {
 
     src.set({ a: 5 })
     expect(doubled()).toEqual({ a: 10 })
+  })
+})
+
+// ─── New collection functions ───────────────────────────────────────────────
+
+describe('first', () => {
+  it('plain array', () => {
+    expect(first([10, 20, 30])).toBe(10)
+    expect(first([])).toBeUndefined()
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 2, 3])
+    const head = first(src)
+    expect(head()).toBe(1)
+    src.set([99])
+    expect(head()).toBe(99)
+    src.set([])
+    expect(head()).toBeUndefined()
+  })
+})
+
+describe('compact', () => {
+  it('removes falsy values', () => {
+    expect(compact([0, 1, null, 2, '', 3, false, undefined])).toEqual([1, 2, 3])
+    expect(compact([])).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal<(number | null | false)[]>([1, null, 2, false, 3])
+    const clean = compact(src)
+    expect(clean()).toEqual([1, 2, 3])
+    src.set([0, null, false])
+    expect(clean()).toEqual([])
+  })
+})
+
+describe('reverse', () => {
+  it('returns reversed copy without mutating original', () => {
+    const arr = [1, 2, 3]
+    expect(reverse(arr)).toEqual([3, 2, 1])
+    expect(arr).toEqual([1, 2, 3]) // not mutated
+  })
+
+  it('signal returns computed', () => {
+    const src = signal(['a', 'b', 'c'])
+    const rev = reverse(src)
+    expect(rev()).toEqual(['c', 'b', 'a'])
+    src.set(['x', 'y'])
+    expect(rev()).toEqual(['y', 'x'])
+  })
+
+  it('empty array', () => {
+    expect(reverse([])).toEqual([])
+  })
+})
+
+describe('partition', () => {
+  it('splits by predicate', () => {
+    const [even, odd] = partition([1, 2, 3, 4, 5], (n) => n % 2 === 0)
+    expect(even).toEqual([2, 4])
+    expect(odd).toEqual([1, 3, 5])
+  })
+
+  it('empty array returns two empty arrays', () => {
+    const [a, b] = partition([], () => true)
+    expect(a).toEqual([])
+    expect(b).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 2, 3, 4])
+    const parts = partition(src, (n) => n > 2)
+    expect(parts()).toEqual([[3, 4], [1, 2]])
+    src.set([10, 20])
+    expect(parts()).toEqual([[10, 20], []])
+  })
+})
+
+describe('takeWhile', () => {
+  it('takes while predicate true', () => {
+    expect(takeWhile([1, 2, 3, 1, 2], (n) => n < 3)).toEqual([1, 2])
+  })
+
+  it('all match', () => {
+    expect(takeWhile([1, 2], (n) => n < 10)).toEqual([1, 2])
+  })
+
+  it('none match', () => {
+    expect(takeWhile([5, 6], (n) => n < 3)).toEqual([])
+  })
+
+  it('empty array', () => {
+    expect(takeWhile([], () => true)).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 2, 5, 1])
+    const tw = takeWhile(src, (n) => n < 5)
+    expect(tw()).toEqual([1, 2])
+    src.set([10, 1, 2])
+    expect(tw()).toEqual([])
+  })
+})
+
+describe('dropWhile', () => {
+  it('drops while predicate true', () => {
+    expect(dropWhile([1, 2, 3, 1, 2], (n) => n < 3)).toEqual([3, 1, 2])
+  })
+
+  it('all match — returns empty', () => {
+    expect(dropWhile([1, 2], (n) => n < 10)).toEqual([])
+  })
+
+  it('none match — returns all', () => {
+    expect(dropWhile([5, 6], (n) => n < 3)).toEqual([5, 6])
+  })
+
+  it('empty array', () => {
+    expect(dropWhile([], () => true)).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 2, 5, 1])
+    const dw = dropWhile(src, (n) => n < 5)
+    expect(dw()).toEqual([5, 1])
+    src.set([10, 1])
+    expect(dw()).toEqual([10, 1])
+  })
+})
+
+describe('unique', () => {
+  it('deduplicates primitives', () => {
+    expect(unique([1, 2, 2, 3, 1])).toEqual([1, 2, 3])
+    expect(unique(['a', 'b', 'a'])).toEqual(['a', 'b'])
+  })
+
+  it('empty array', () => {
+    expect(unique([])).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 1, 2, 2, 3])
+    const u = unique(src)
+    expect(u()).toEqual([1, 2, 3])
+    src.set([5, 5, 5])
+    expect(u()).toEqual([5])
+  })
+})
+
+describe('sample', () => {
+  it('returns n items from array', () => {
+    const result = sample([1, 2, 3, 4, 5], 3)
+    expect(result).toHaveLength(3)
+    // all items from original
+    for (const r of result) expect([1, 2, 3, 4, 5]).toContain(r)
+  })
+
+  it('n >= length returns all items', () => {
+    const result = sample([1, 2], 5)
+    expect(result).toHaveLength(2)
+    expect(result.sort()).toEqual([1, 2])
+  })
+
+  it('empty array', () => {
+    expect(sample([], 3)).toEqual([])
+  })
+
+  it('signal returns computed', () => {
+    const src = signal([1, 2, 3, 4, 5])
+    const s = sample(src, 2)
+    expect(s()).toHaveLength(2)
+    src.set([10, 20])
+    expect(s()).toHaveLength(2)
   })
 })
