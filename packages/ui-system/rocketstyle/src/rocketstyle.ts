@@ -1,6 +1,6 @@
 import { compose, config, hoistNonReactStatics, omit, pick, render } from '@pyreon/ui-core'
 import { LocalThemeManager } from './cache'
-import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS } from './constants'
+import { CONFIG_KEYS, PSEUDO_KEYS, PSEUDO_META_KEYS, STYLING_KEYS, __DEV__ } from './constants'
 import createLocalProvider from './context/createLocalProvider'
 import { useLocalContext } from './context/localContext'
 import { rocketstyleAttrsHoc } from './hoc'
@@ -87,6 +87,24 @@ const rocketComponent: RocketComponent = (options) => {
   // --------------------------------------------------------
   const ThemeManager = new LocalThemeManager()
 
+  // ── Per-definition caches (shared across all instances) ──────────────
+  // getDimensionsMap + Object.keys(reservedPropNames) are theme-independent
+  // (dimension structure comes from .sizes()/.states()/.variants() chain,
+  // not from runtime theme values). Cache them so 50 instances of the same
+  // component definition skip the rebuild entirely.
+  const _dimensionsCache = new WeakMap<object, { keysMap: Record<string, unknown>; keywords: Record<string, true | undefined> }>()
+  const _reservedKeysCache = new WeakMap<object, string[]>()
+
+  // Pre-compute merged key arrays once per definition (not per mount)
+  const ALL_PSEUDO_KEYS = [...PSEUDO_KEYS, ...PSEUDO_META_KEYS]
+  // Static portion of omit keys — PSEUDO_KEYS + filterAttrs + 'pseudo' are definition-scoped.
+  // RESERVED_STYLING_PROPS_KEYS is dimension-dependent but also cached per definition.
+  // 'pseudo' is included here so we can skip the destructuring spread of mergeProps.
+  const STATIC_OMIT_KEYS = ['pseudo', ...PSEUDO_KEYS, ...(options.filterAttrs ?? [])]
+  // Pre-built Set for omit() — avoids per-call Set allocation. Built once the
+  // dimension-dependent reserved keys are known (first mount), then reused.
+  const _omitSetCache = new WeakMap<string[], Set<string>>()
+
   // --------------------------------------------------------
   // COMPOSE - high-order components
   // --------------------------------------------------------
@@ -140,12 +158,24 @@ const rocketComponent: RocketComponent = (options) => {
       return helper.get(initialTheme)
     })()
 
-    const { keysMap: dimensions, keywords: reservedPropNames } = getDimensionsMap({
-      themes: initialDimensionThemes,
-      useBooleans: options.useBooleans,
-    })
+    // Cache getDimensionsMap per dimension-themes identity — all instances
+    // of the same component definition share the same dimension structure.
+    let dimResult = _dimensionsCache.get(initialDimensionThemes as object)
+    if (!dimResult) {
+      dimResult = getDimensionsMap({
+        themes: initialDimensionThemes,
+        useBooleans: options.useBooleans,
+      })
+      _dimensionsCache.set(initialDimensionThemes as object, dimResult)
+    }
+    const { keysMap: dimensions, keywords: reservedPropNames } = dimResult
 
-    const RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
+    // Cache Object.keys() result — same dimension structure = same keys
+    let RESERVED_STYLING_PROPS_KEYS = _reservedKeysCache.get(reservedPropNames as object)
+    if (!RESERVED_STYLING_PROPS_KEYS) {
+      RESERVED_STYLING_PROPS_KEYS = Object.keys(reservedPropNames)
+      _reservedKeysCache.set(reservedPropNames as object, RESERVED_STYLING_PROPS_KEYS)
+    }
 
     // --------------------------------------------------
     // $rocketstyle as a FUNCTION ACCESSOR — fully reactive.
@@ -228,7 +258,7 @@ const rocketComponent: RocketComponent = (options) => {
       // Read pseudo props fresh each call — props may have reactive getters
       // from _rp() wrapping. Reading inside the accessor (which runs in an
       // effect) ensures changes to pseudo props like active={isDark()} are tracked.
-      const propPseudo = pick(props, [...PSEUDO_KEYS, ...PSEUDO_META_KEYS])
+      const propPseudo = pick(props, ALL_PSEUDO_KEYS)
 
       return {
         ...rocketstate,
@@ -237,34 +267,39 @@ const rocketComponent: RocketComponent = (options) => {
     }
 
     // --------------------------------------------------
-    // Static mergeProps for final prop filtering (non-dimension props)
-    // --------------------------------------------------
-    const { pseudo: _pseudo, ...mergeProps } = {
-      ...localCtx,
-      ...props,
-    }
-
-    // --------------------------------------------------
     // final props passed to WrappedComponent
     // --------------------------------------------------
-    const finalProps: Record<string, any> = {
-      ...omit(mergeProps, [
-        ...RESERVED_STYLING_PROPS_KEYS,
-        ...PSEUDO_KEYS,
-        ...options.filterAttrs,
-      ]),
-      ...(options.passProps ? pick(mergeProps, options.passProps) : {}),
-      ref: props.ref,
-      // Function accessors — DynamicStyled wraps them in a computed() so
-      // mode/dimension changes produce a new CSS class reactively. The
-      // computed tracks only these two accessors; the resolve itself runs
-      // untracked to prevent exponential cascade from theme deep-reads.
-      $rocketstyle: $rocketstyleAccessor,
-      $rocketstate: $rocketstateAccessor,
+    // Cache a pre-built Set for omit() — avoids building a new Set from
+    // the key array on every mount. Same dimension structure = same Set.
+    let omitSet = _omitSetCache.get(RESERVED_STYLING_PROPS_KEYS)
+    if (!omitSet) {
+      omitSet = new Set([...RESERVED_STYLING_PROPS_KEYS, ...STATIC_OMIT_KEYS])
+      _omitSetCache.set(RESERVED_STYLING_PROPS_KEYS, omitSet)
     }
 
-    // development debugging
-    if (process.env.NODE_ENV !== 'production') {
+    // Merge localCtx + props without an intermediate spread object.
+    // omit() handles 'pseudo' removal (included in STATIC_OMIT_KEYS).
+    const mergeProps = localCtx ? { ...localCtx, ...props } : props
+
+    // omit() already returns a fresh object — assign directly onto it
+    // instead of spreading into another {} (saves one object allocation).
+    const finalProps = omit(mergeProps as Record<string, unknown>, omitSet) as Record<string, any>
+
+    if (options.passProps) {
+      const passed = pick(mergeProps, options.passProps)
+      for (const k in passed) finalProps[k] = passed[k]
+    }
+
+    finalProps.ref = props.ref
+    // Function accessors — DynamicStyled wraps them in a computed() so
+    // mode/dimension changes produce a new CSS class reactively. The
+    // computed tracks only these two accessors; the resolve itself runs
+    // untracked to prevent exponential cascade from theme deep-reads.
+    finalProps.$rocketstyle = $rocketstyleAccessor
+    finalProps.$rocketstate = $rocketstateAccessor
+
+    // development debugging — tree-shaken in production via import.meta.env.DEV
+    if (__DEV__) {
       finalProps['data-rocketstyle'] = componentName
 
       if (options.DEBUG) {

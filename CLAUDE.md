@@ -107,6 +107,14 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - Dimensions: `state`, `size`, `variant`, `theme`, + custom
 - Dark/light mode via `useDarkMode` dimension
 - Each dimension maps prop values to CSS via `styled()` templates
+- **Per-definition caching architecture**: all caches are created once per `rocketComponent()` call (component definition) and shared across all instances via WeakMap:
+  - `_dimensionsCache` — `getDimensionsMap` result keyed on dimension-themes object identity
+  - `_reservedKeysCache` — `Object.keys(reservedPropNames)` keyed on keywords object identity
+  - `_omitSetCache` — pre-built `Set<string>` for `omit()` keyed on reserved-keys array identity (avoids per-mount Set allocation)
+  - `ALL_PSEUDO_KEYS` / `STATIC_OMIT_KEYS` — merged key arrays computed once
+  - `LocalThemeManager` — WeakMap tiers for baseTheme, dimensionThemes, and per-mode resolved themes
+- **getTheme in-place merge**: dimension slices merged directly onto `finalTheme` instead of creating a new `{}` target per `merge()` call. Pseudo-state defaults use a frozen shared `EMPTY_PSEUDO` object instead of 6 `{}` allocations per call
+- **Dev guard**: uses `__DEV__` (backed by `import.meta.env.DEV`) — tree-shaken to zero bytes in production
 
 #### @pyreon/kinetic (Animations)
 

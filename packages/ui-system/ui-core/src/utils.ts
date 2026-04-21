@@ -1,11 +1,18 @@
+/**
+ * Returns a copy of `obj` without the specified keys.
+ *
+ * Accepts either an array of keys (builds a Set internally) or a
+ * pre-built `Set<string>` for hot paths where the same key list is
+ * reused across many calls (avoids per-call Set allocation).
+ */
 export const omit = <T extends Record<string, any>>(
   obj: T | null | undefined,
-  keys?: readonly (string | keyof T)[],
+  keys?: readonly (string | keyof T)[] | Set<string>,
 ): Partial<T> => {
   if (obj == null) return {} as Partial<T>
-  if (!keys || keys.length === 0) return { ...obj }
+  if (!keys || (keys instanceof Set ? keys.size === 0 : keys.length === 0)) return { ...obj }
+  const keysSet = keys instanceof Set ? keys : new Set(keys as readonly string[])
   const result: Record<string, any> = {}
-  const keysSet = new Set(keys as readonly string[])
   for (const key in obj) {
     if (Object.hasOwn(obj, key) && !keysSet.has(key)) {
       result[key] = obj[key]

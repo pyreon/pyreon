@@ -203,10 +203,27 @@ function renderEffectFullTrack(deps: Set<() => void>[], run: () => void, fn: () 
 export function renderEffect(fn: () => void): () => void {
   const deps: Set<() => void>[] = []
   let disposed = false
+  let isFirstRun = true
 
   const run = () => {
     if (disposed) return
-    renderEffectFullTrack(deps, run, fn)
+    // After first run, if deps haven't changed structure, we can skip
+    // the full cleanup+retrack path. However, renderEffect deps CAN
+    // change (unlike _bind), so we always do the full track.
+    // Optimization: skip cleanup on first run (deps are empty).
+    if (isFirstRun) {
+      isFirstRun = false
+      setDepsCollector(deps)
+      _setActiveEffect(run)
+      try {
+        fn()
+      } finally {
+        _restoreActiveEffect()
+        setDepsCollector(null)
+      }
+    } else {
+      renderEffectFullTrack(deps, run, fn)
+    }
   }
 
   run()
