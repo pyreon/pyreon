@@ -39,7 +39,7 @@ The compiler performs three sequential optimization passes on your JSX source co
 2. **Static VNode hoisting** -- Fully static JSX expressions inside expression containers are lifted to module scope.
 3. **Reactive wrapping** -- Dynamic expressions containing signal reads are wrapped in `() =>` arrow functions.
 
-Each pass is applied during a single AST walk using the TypeScript parser. The compiler uses positional string replacements via an O(n) left-to-right string builder rather than full AST-to-code generation, keeping the output close to the original source and preserving source map compatibility.
+Each pass is applied during a single AST walk. The compiler has a **dual-backend architecture**: a Rust native binary (napi-rs, 3.7-8.9x faster) using `oxc_parser`/`oxc_ast` Rust crates directly, with an automatic JS fallback via `oxc-parser` when the native binary isn't available. Both backends use positional string replacements via an O(n) left-to-right string builder, keeping the output close to the original source.
 
 ## Pass 1: Reactive Wrapping
 
@@ -906,9 +906,22 @@ A parent element with both element children and expression children is not eligi
 
 ## Implementation Details
 
-The compiler is built on the TypeScript parser (`ts.createSourceFile`) for accurate JSX position tracking. It collects string-level replacements using character offsets, then applies them in a single left-to-right pass via a string builder (`parts.push()` + `join()`). This O(n) approach avoids the overhead of full AST-to-code generation and keeps the output close to the original source.
+The compiler uses a **dual-backend architecture**:
 
-The implementation is a single recursive `walk()` function that visits every node in the source file. Template emission is checked first to avoid double-processing elements that get compiled to `_tpl()` calls. When a template-eligible subtree is found, the entire subtree is replaced with a single `_tpl()` call and the walker does not recurse into it.
+- **Rust native binary** (`native/src/lib.rs`): the primary path, 3.7-8.9x faster. Uses `oxc_parser`/`oxc_ast` Rust crates for zero-copy AST traversal. Compiled to a platform-specific `.node` binary via napi-rs.
+- **JS fallback** (`src/jsx.ts`): uses `oxc-parser` (Rust NAPI binding) for parsing + a JS reactive pass. Activated automatically when the native binary isn't available (CI, WASM environments, unsupported platforms).
+
+Both backends collect positional string replacements, then apply them in a single left-to-right O(n) pass. Prop-derived variable resolution is fully AST-based — `collect_prop_derived_idents` walks `IdentifierReference` nodes in the expression subtree, never scanning source text. This prevents false matches inside string literals, comments, or template literal quasis.
+
+The implementation is a single recursive walk that visits every node in the source file. Template emission is checked first to avoid double-processing elements that get compiled to `_tpl()` calls. When a template-eligible subtree is found, the entire subtree is replaced with a single `_tpl()` call and the walker does not recurse into it.
+
+Performance (Pyreon reactive pass only):
+
+| File size | JS fallback | Rust native | Speedup |
+| --- | --- | --- | --- |
+| Small (9 lines) | 112K ops/sec | 410K ops/sec | 3.7x |
+| Medium (24 lines) | 12.6K ops/sec | 103K ops/sec | 8.2x |
+| Large (500+ lines) | 309 ops/sec | 1,544 ops/sec | 5.0x |
 
 ## Exports Summary
 

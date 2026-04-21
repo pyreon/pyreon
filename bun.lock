@@ -311,6 +311,9 @@
     "packages/core/compiler": {
       "name": "@pyreon/compiler",
       "version": "0.13.1",
+      "dependencies": {
+        "oxc-parser": "^0.123.0",
+      },
       "peerDependencies": {
         "typescript": ">=5.0.0",
       },

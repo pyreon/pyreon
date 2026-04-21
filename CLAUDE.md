@@ -26,7 +26,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 | `@pyreon/reactivity`     | signal, computed, effect, onCleanup, batch, createSelector, createStore, untrack                                                              |
 | `@pyreon/core`           | VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId |
 | `@pyreon/runtime-dom`    | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements                                |
-| `@pyreon/compiler`       | JSX transform with smart `shouldWrap`, static hoisting, per-text-node `_bind`, pure call detection, spread templates                           |
+| `@pyreon/compiler`       | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates   |
 | `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers                                                     |
 | `@pyreon/router`         | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params                  |
 | `@pyreon/head`           | useHead, HeadProvider, renderWithHead                                                                                                         |
@@ -547,7 +547,14 @@ Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle
 
 ### JSX Compiler
 
-`shouldWrap` only wraps if `containsCall(node)` is true.
+**Dual-backend architecture**: Rust native binary (napi-rs, 3.7-8.9x faster) with automatic JS fallback.
+
+- **Rust path** (`packages/core/compiler/native/`): full reactive pass in Rust using `oxc_parser`/`oxc_ast` crates directly — zero JSON serialization, zero JS object traversal. Single-pass recursive walk with `FxHashMap`-cached `isDynamic` analysis. 2,800+ lines of Rust, compiled via `cargo build --release` to a ~1MB `.node` binary.
+- **JS fallback** (`src/jsx.ts`): uses `oxc-parser` (Rust NAPI binding) for parsing + JS reactive pass. Activated automatically when the native binary isn't available (CI, WASM, wrong platform).
+- **Auto-detection**: `transformJSX()` loads the native binary via `createRequire(import.meta.url)` (ESM-safe), falls back per-call with try/catch so a Rust panic doesn't crash the Vite dev server.
+- **527 tests**: 347 original + 180 cross-backend equivalence tests verifying identical output between JS and Rust on Unicode, TypeScript syntax, control flow, classes, string collisions, circular refs, and real-world patterns.
+
+`shouldWrap` only wraps if the fused `isDynamic` check finds a non-pure call or props/prop-derived access.
 Static JSX nodes hoisted to module scope as `const _$h0 = ...`.
 Template emission: JSX element trees with ≥1 DOM element emit `_tpl()` + `_bind()`.
 Supports mixed element+expression children (via `childNodes[]` indexing), multiple expressions, and fragment inlining.
@@ -555,7 +562,7 @@ Reactive text uses `document.createTextNode()` + `.data` (not `.textContent`).
 Per-text-node independent `_bind()`: each text node gets its own `_bind()` call for fine-grained reactivity (instead of grouping all bindings).
 Pure static call detection: 40+ functions treated as pure (Math.*, JSON.*, Object.keys/values/entries, Array.isArray, etc.) — not wrapped in reactive getters.
 Spread props on root element: when a root element has `{...props}`, emit `_tpl()` + `_applyProps()` instead of falling back to `h()` calls.
-Reactive props inlining: the compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites. `const x = props.y ?? 'default'; return <div>{x}</div>` compiles to `_bind(() => { t.data = (props.y ?? 'default') })` — fully reactive. Transitive resolution supported: `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`. Only `const` is tracked (`let`/`var` are mutable, unsafe to inline). Non-JSX usage (e.g., `console.log(x)`) stays static (uses captured value). **Circular references are safe**: `const a = b + props.x; const b = a + 1` compiles without crashing — `resolveExprTransitive` uses a `visited: Set<string>` to break cycles, leaving the cyclic identifier as-is (falls back to the captured const value at runtime).
+Reactive props inlining: the compiler auto-detects `const` variables derived from `props.*` or `splitProps` results and inlines them at JSX use sites. `const x = props.y ?? 'default'; return <div>{x}</div>` compiles to `_bind(() => { t.data = (props.y ?? 'default') })` — fully reactive. Transitive resolution is fully AST-based: `collect_prop_derived_idents` walks `IdentifierReference` nodes in the expression subtree (never string-scans source text). `const a = props.x; const b = a + 1` inlines `b` as `((props.x) + 1)`. Only `const` is tracked (`let`/`var` are mutable, unsafe to inline). Non-JSX usage (e.g., `console.log(x)`) stays static (uses captured value). **Circular references are safe**: cycle detection via `resolving` set breaks infinite recursion, leaving the cyclic identifier as-is (falls back to captured const value at runtime).
 
 ### Context providing pattern
 

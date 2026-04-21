@@ -41,6 +41,9 @@
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "oxc-parser": "^0.123.0"
+  },
   "peerDependencies": {
     "typescript": ">=5.0.0"
   }
