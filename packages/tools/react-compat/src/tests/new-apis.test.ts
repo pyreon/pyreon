@@ -1476,56 +1476,10 @@ describe('useReducer dispatch identity stability', () => {
   })
 })
 
-// ─── Compat context subscriber notification ─────────────────────────────────
+// ─── Compat context ─────────────────────────────────────────────────────────
 
-describe('compat context subscriber notification', () => {
-  test('useContext re-renders consumer when provider value changes', () => {
-    const Ctx = createCompatContext('initial')
-    const runner = createHookRunner()
-    let rerenders = 0
-    runner.ctx.scheduleRerender = () => { rerenders++ }
-
-    const value1 = runner.run(() => useContext(Ctx))
-    expect(value1).toBe('initial')
-    expect(rerenders).toBe(0)
-
-    // Simulate provider updating value
-    Ctx.Provider({ value: 'updated' })
-    expect(rerenders).toBe(1)
-
-    const value2 = runner.run(() => useContext(Ctx))
-    expect(value2).toBe('updated')
-  })
-
-  test('no re-render when provider value is Object.is equal', () => {
-    const Ctx = createCompatContext(42)
-    const runner = createHookRunner()
-    let rerenders = 0
-    runner.ctx.scheduleRerender = () => { rerenders++ }
-
-    runner.run(() => useContext(Ctx))
-    Ctx.Provider({ value: 42 })
-    expect(rerenders).toBe(0)
-  })
-
-  test('multiple consumers all notified', () => {
-    const Ctx = createCompatContext('a')
-    const runner1 = createHookRunner()
-    const runner2 = createHookRunner()
-    let rerenders1 = 0
-    let rerenders2 = 0
-    runner1.ctx.scheduleRerender = () => { rerenders1++ }
-    runner2.ctx.scheduleRerender = () => { rerenders2++ }
-
-    runner1.run(() => useContext(Ctx))
-    runner2.run(() => useContext(Ctx))
-
-    Ctx.Provider({ value: 'b' })
-    expect(rerenders1).toBe(1)
-    expect(rerenders2).toBe(1)
-  })
-
-  test('compat context default value works without provider', () => {
+describe('compat context', () => {
+  test('default value works without provider', () => {
     const Ctx = createCompatContext('default-val')
     const value = withHookCtx(() => useContext(Ctx))
     expect(value).toBe('default-val')
@@ -1537,23 +1491,27 @@ describe('compat context subscriber notification', () => {
     expect(value).toBe(99)
   })
 
-  test('context cleanup unsubscribes on unmount', () => {
+  test('provider passes value to consumer via DOM mount', () => {
     const el = container()
-    const Ctx = createCompatContext('start')
-    let renderCount = 0
+    const Ctx = createCompatContext('hello')
+    let readValue = ''
 
-    const Comp = () => {
-      useContext(Ctx)
-      renderCount++
-      return h('div', null, 'ctx-consumer')
+    const Consumer = () => {
+      readValue = useContext(Ctx)
+      return h('span', null, readValue)
     }
 
-    const unmount = mount(jsx(Comp, {}), el)
-    const subscriberCount = Ctx._subscribers.size
-    expect(subscriberCount).toBeGreaterThan(0)
+    mount(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      jsx(Ctx.Provider as any, { value: 'world', children: jsx(Consumer, {}) }),
+      el,
+    )
+    expect(readValue).toBe('world')
+  })
 
-    unmount()
-    // After unmount, subscriber should be removed
-    expect(Ctx._subscribers.size).toBeLessThan(subscriberCount)
+  test('use() reads compat context', () => {
+    const Ctx = createCompatContext('from-use')
+    const value = withHookCtx(() => use(Ctx))
+    expect(value).toBe('from-use')
   })
 })

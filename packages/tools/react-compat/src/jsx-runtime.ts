@@ -194,9 +194,14 @@ export function jsx(
   const propsWithKey = (key != null ? { ...rest, key } : rest) as Props
 
   if (typeof type === 'function') {
+    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+    // Native Pyreon components (e.g. context Provider) skip compat wrapping
+    const NATIVE = Symbol.for('pyreon:native-compat')
+    if ((type as unknown as Record<symbol, boolean>)[NATIVE]) {
+      return h(type as ComponentFn, componentProps)
+    }
     // Wrap React-style component for re-render support
     const wrapped = wrapCompatComponent(type)
-    const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
     return h(wrapped, componentProps)
   }
 

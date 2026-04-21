@@ -21,6 +21,7 @@ import {
   ErrorBoundary,
   h,
   Portal,
+  provide as pyreonProvide,
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'
@@ -234,48 +235,75 @@ export function useRef<T>(initial?: T): { current: T | null } {
 const COMPAT_CTX = Symbol.for('pyreon:compat-ctx')
 
 /**
- * Compat-specific context with subscriber notification.
+ * Compat-specific context with subscriber notification and tree-scoped nesting.
  *
- * React's context model: when a Provider re-renders with a new value, all
- * consumers that called `useContext` re-render. Pyreon's native `createContext`
- * is static — it doesn't notify consumers. This compat implementation adds
- * a subscriber set so `useContext` can subscribe to value changes.
+ * Uses Pyreon's native context stack for tree-scoped Provider nesting (inner
+ * Providers override outer ones for their subtree), with a subscriber set
+ * layered on top for React-style consumer re-rendering.
  */
 export interface CompatContext<T> {
-  /** Brand marker so `useContext` can distinguish compat contexts from Pyreon native contexts */
+  /** Brand marker so `useContext` can distinguish compat contexts */
   readonly [COMPAT_CTX_BRAND]: true
   /** Default value when no Provider is mounted */
   _defaultValue: T
-  /** Current value from the nearest Provider (or default) */
-  _currentValue: T
-  /** Set of subscriber callbacks (each triggers a consumer re-render) */
+  /** Pyreon native context for tree-scoped value+subscriber storage */
+  _pyreonCtx: Context<{ value: T; subscribers: Set<() => void> }>
+  /** Subscribers at the default (no-Provider) level */
   _subscribers: Set<() => void>
-  /** React-compatible Provider component */
-  Provider: (props: { value: T; children?: VNodeChild }) => VNodeChild
+  /** React-compatible Provider component (native Pyreon, NOT compat-wrapped).
+   * Returns a reactive accessor `() => VNodeChild` for Pyreon's renderer. */
+  Provider: (props: Record<string, unknown>) => unknown
 }
 
 const COMPAT_CTX_BRAND: typeof COMPAT_CTX = COMPAT_CTX
 
+// Tag the Provider so wrapCompatComponent skips it (it's already a native component)
+const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
+
 /**
  * React-compatible `createContext` — creates a context with a Provider that
+ * supports nested Providers (inner overrides outer for its subtree) and
  * notifies all `useContext` consumers when its value changes.
  */
 export function createContext<T>(defaultValue: T): CompatContext<T> {
+  // Pyreon native context: each Provider pushes { value, subscribers } onto
+  // the tree-scoped stack. Consumers read the nearest frame via useContext.
+  const pyreonCtx = pyreonCreateContext<{ value: T; subscribers: Set<() => void> }>({
+    value: defaultValue,
+    subscribers: new Set(),
+  })
+
+  // Default-level subscribers (for consumers with no Provider above them)
+  const defaultSubscribers = new Set<() => void>()
+
+  // Provider is a NATIVE Pyreon component (not compat-wrapped).
+  // It calls provide() once during setup to push onto the context stack,
+  // then returns a reactive accessor that updates the frame value on re-render.
+  const Provider = (props: Record<string, unknown>) => {
+    // Setup (runs once per mount):
+    const frame = { value: (props as { value: T }).value, subscribers: new Set<() => void>() }
+    pyreonProvide(pyreonCtx, frame)
+
+    // Return reactive accessor for children (re-evaluated when props change)
+    return () => {
+      const { value, children } = props as { value: T; children?: VNodeChild }
+      // On re-render: update the frame value and notify subscribers
+      if (!Object.is(frame.value, value)) {
+        frame.value = value
+        for (const sub of frame.subscribers) sub()
+      }
+      return children ?? null
+    }
+  }
+  // Mark as native so jsx() doesn't wrap it with wrapCompatComponent
+  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
+
   const ctx: CompatContext<T> = {
     [COMPAT_CTX_BRAND]: true as const,
     _defaultValue: defaultValue,
-    _currentValue: defaultValue,
-    _subscribers: new Set(),
-    Provider: (props: { value: T; children?: VNodeChild }) => {
-      if (!Object.is(ctx._currentValue, props.value)) {
-        ctx._currentValue = props.value
-        // Notify all subscribed consumers to re-render
-        for (const sub of ctx._subscribers) sub()
-      } else {
-        ctx._currentValue = props.value
-      }
-      return props.children ?? null
-    },
+    _pyreonCtx: pyreonCtx,
+    _subscribers: defaultSubscribers,
+    Provider,
   }
   return ctx
 }
@@ -284,26 +312,29 @@ export function createContext<T>(defaultValue: T): CompatContext<T> {
  * React-compatible `useContext` — reads the current context value and
  * subscribes the calling component to future value changes.
  *
+ * Reads from Pyreon's tree-scoped context stack (correct nesting) and
+ * subscribes to the nearest Provider's subscriber set for re-rendering.
+ *
  * Works with both compat contexts (from this module's `createContext`) and
  * Pyreon native contexts (from `@pyreon/core`).
  */
 export function useContext<T>(context: CompatContext<T> | Context<T>): T {
-  // Compat context path — subscribe to value changes
   if (COMPAT_CTX in context) {
     const compatCtx = context as CompatContext<T>
+    // Read from Pyreon's tree-scoped stack (correct nesting)
+    const frame = pyreonUseContext(compatCtx._pyreonCtx)
     const renderCtx = getCurrentCtx()
     if (renderCtx) {
       const idx = getHookIndex()
       if (renderCtx.hooks.length <= idx) {
-        // First render — subscribe to context changes
+        // Subscribe to the frame's subscriber set
         const sub = () => renderCtx.scheduleRerender()
-        compatCtx._subscribers.add(sub)
-        renderCtx.hooks.push({ _contextUnsub: () => compatCtx._subscribers.delete(sub) })
+        frame.subscribers.add(sub)
+        renderCtx.hooks.push({ _contextUnsub: () => frame.subscribers.delete(sub) })
       }
     }
-    return compatCtx._currentValue
+    return frame.value
   }
-  // Pyreon native context fallback
   return pyreonUseContext(context as Context<T>)
 }
 
