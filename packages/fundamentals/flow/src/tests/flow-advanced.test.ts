@@ -841,7 +841,7 @@ describe('createFlow — advanced', () => {
       })
 
       // Start animated layout (duration > 0 triggers rAF loop)
-      flow.layout('layered', { duration: 500 })
+      flow.layout('layered', { animationDuration: 500 })
       // Dispose immediately — should cancel the animation frame
       expect(() => flow.dispose()).not.toThrow()
     })
@@ -865,8 +865,8 @@ describe('createFlow — advanced', () => {
       })
 
       // Start two layouts — second should cancel first
-      flow.layout('layered', { duration: 500 })
-      flow.layout('layered', { duration: 500 })
+      flow.layout('layered', { animationDuration: 500 })
+      flow.layout('layered', { animationDuration: 500 })
 
       // Let a frame tick
       await new Promise<void>((r) => requestAnimationFrame(() => r()))
