@@ -29,7 +29,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -40,7 +40,6 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
 
   typecheck:
     name: Typecheck
@@ -55,7 +54,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -66,9 +65,8 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -117,7 +115,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -128,9 +126,8 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -166,7 +163,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -177,9 +174,8 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -201,7 +197,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -212,9 +208,8 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
           key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
@@ -252,7 +247,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -263,7 +258,6 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Compute affected filter
         id: affected
         run: |
@@ -330,7 +324,7 @@ jobs:
           bun-version: latest
       - name: Cache node_modules
         if: steps.changes.outputs.should_run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -372,7 +366,7 @@ jobs:
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -383,21 +377,20 @@ jobs:
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - run: bun run coverage
 
   audit:
     name: Dependency Audit
     needs: install
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         id: node-modules-cache
         with:
           path: |
@@ -407,12 +400,15 @@ jobs:
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: node-modules-${{ runner.os }}-bun-
+      - name: Cache bootstrap (lib/) builds
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+          restore-keys: bootstrap-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-        if: steps.node-modules-cache.outputs.cache-hit != 'true'
       - name: Check for untrusted dependencies
         run: bun pm untrusted
         continue-on-error: true
       - name: Verify no lockfile drift
-        run: |
-          bun install
-          git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
+        run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
