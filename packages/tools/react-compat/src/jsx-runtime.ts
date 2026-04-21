@@ -153,6 +153,10 @@ function wrapCompatComponent(reactComponent: Function): ComponentFn {
           const sub = hook as { unsubscribe?: () => void }
           if (typeof sub.unsubscribe === 'function') sub.unsubscribe()
         }
+        if (hook && typeof hook === 'object' && '_contextUnsub' in hook) {
+          const ctxHook = hook as { _contextUnsub?: () => void }
+          if (typeof ctxHook._contextUnsub === 'function') ctxHook._contextUnsub()
+        }
       }
     })
 

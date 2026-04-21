@@ -16,7 +16,14 @@ export type { Props, VNode, VNodeChild } from '@pyreon/core'
 export { Fragment, h as createElement, h, createRef } from '@pyreon/core'
 
 import type { Context, VNode, VNodeChild } from '@pyreon/core'
-import { createContext, ErrorBoundary, h, Portal, Suspense, useContext } from '@pyreon/core'
+import {
+  createContext as pyreonCreateContext,
+  ErrorBoundary,
+  h,
+  Portal,
+  Suspense,
+  useContext as pyreonUseContext,
+} from '@pyreon/core'
 import { batch } from '@pyreon/reactivity'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
@@ -49,19 +56,22 @@ export function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T
   const idx = getHookIndex()
 
   if (ctx.hooks.length <= idx) {
-    ctx.hooks.push(typeof initial === 'function' ? (initial as () => T)() : initial)
+    const val = typeof initial === 'function' ? (initial as () => T)() : initial
+    // Store both value and a STABLE setter in one hook slot so setter identity
+    // never changes across renders (React guarantee).
+    const entry = { value: val, setter: null as unknown as (v: T | ((prev: T) => T)) => void }
+    entry.setter = (v: T | ((prev: T) => T)) => {
+      const current = entry.value
+      const next = typeof v === 'function' ? (v as (prev: T) => T)(current) : v
+      if (Object.is(current, next)) return
+      entry.value = next
+      ctx.scheduleRerender()
+    }
+    ctx.hooks.push(entry)
   }
 
-  const value = ctx.hooks[idx] as T
-  const setter = (v: T | ((prev: T) => T)) => {
-    const current = ctx.hooks[idx] as T
-    const next = typeof v === 'function' ? (v as (prev: T) => T)(current) : v
-    if (Object.is(current, next)) return
-    ctx.hooks[idx] = next
-    ctx.scheduleRerender()
-  }
-
-  return [value, setter]
+  const entry = ctx.hooks[idx] as { value: T; setter: (v: T | ((prev: T) => T)) => void }
+  return [entry.value, entry.setter]
 }
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
@@ -87,19 +97,21 @@ export function useReducer<S, A>(
     } else {
       initial = initialArg
     }
-    ctx.hooks.push(initial)
+    // Store both value and a STABLE dispatch in one hook slot so dispatch identity
+    // never changes across renders (React guarantee).
+    const entry = { value: initial, dispatch: null as unknown as (action: A) => void }
+    entry.dispatch = (action: A) => {
+      const current = entry.value
+      const next = reducer(current, action)
+      if (Object.is(current, next)) return
+      entry.value = next
+      ctx.scheduleRerender()
+    }
+    ctx.hooks.push(entry)
   }
 
-  const state = ctx.hooks[idx] as S
-  const dispatch = (action: A) => {
-    const current = ctx.hooks[idx] as S
-    const next = reducer(current, action)
-    if (Object.is(current, next)) return
-    ctx.hooks[idx] = next
-    ctx.scheduleRerender()
-  }
-
-  return [state, dispatch]
+  const entry = ctx.hooks[idx] as { value: S; dispatch: (action: A) => void }
+  return [entry.value, entry.dispatch]
 }
 
 // ─── Effects ─────────────────────────────────────────────────────────────────
@@ -219,7 +231,81 @@ export function useRef<T>(initial?: T): { current: T | null } {
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
-export { createContext, useContext }
+const COMPAT_CTX = Symbol.for('pyreon:compat-ctx')
+
+/**
+ * Compat-specific context with subscriber notification.
+ *
+ * React's context model: when a Provider re-renders with a new value, all
+ * consumers that called `useContext` re-render. Pyreon's native `createContext`
+ * is static — it doesn't notify consumers. This compat implementation adds
+ * a subscriber set so `useContext` can subscribe to value changes.
+ */
+export interface CompatContext<T> {
+  /** Brand marker so `useContext` can distinguish compat contexts from Pyreon native contexts */
+  readonly [COMPAT_CTX_BRAND]: true
+  /** Default value when no Provider is mounted */
+  _defaultValue: T
+  /** Current value from the nearest Provider (or default) */
+  _currentValue: T
+  /** Set of subscriber callbacks (each triggers a consumer re-render) */
+  _subscribers: Set<() => void>
+  /** React-compatible Provider component */
+  Provider: (props: { value: T; children?: VNodeChild }) => VNodeChild
+}
+
+const COMPAT_CTX_BRAND: typeof COMPAT_CTX = COMPAT_CTX
+
+/**
+ * React-compatible `createContext` — creates a context with a Provider that
+ * notifies all `useContext` consumers when its value changes.
+ */
+export function createContext<T>(defaultValue: T): CompatContext<T> {
+  const ctx: CompatContext<T> = {
+    [COMPAT_CTX_BRAND]: true as const,
+    _defaultValue: defaultValue,
+    _currentValue: defaultValue,
+    _subscribers: new Set(),
+    Provider: (props: { value: T; children?: VNodeChild }) => {
+      if (!Object.is(ctx._currentValue, props.value)) {
+        ctx._currentValue = props.value
+        // Notify all subscribed consumers to re-render
+        for (const sub of ctx._subscribers) sub()
+      } else {
+        ctx._currentValue = props.value
+      }
+      return props.children ?? null
+    },
+  }
+  return ctx
+}
+
+/**
+ * React-compatible `useContext` — reads the current context value and
+ * subscribes the calling component to future value changes.
+ *
+ * Works with both compat contexts (from this module's `createContext`) and
+ * Pyreon native contexts (from `@pyreon/core`).
+ */
+export function useContext<T>(context: CompatContext<T> | Context<T>): T {
+  // Compat context path — subscribe to value changes
+  if (COMPAT_CTX in context) {
+    const compatCtx = context as CompatContext<T>
+    const renderCtx = getCurrentCtx()
+    if (renderCtx) {
+      const idx = getHookIndex()
+      if (renderCtx.hooks.length <= idx) {
+        // First render — subscribe to context changes
+        const sub = () => renderCtx.scheduleRerender()
+        compatCtx._subscribers.add(sub)
+        renderCtx.hooks.push({ _contextUnsub: () => compatCtx._subscribers.delete(sub) })
+      }
+    }
+    return compatCtx._currentValue
+  }
+  // Pyreon native context fallback
+  return pyreonUseContext(context as Context<T>)
+}
 
 // ─── ID ──────────────────────────────────────────────────────────────────────
 
@@ -557,10 +643,14 @@ const _promiseCache = new WeakMap<
  * `use(fetch('/api'))` creates a new promise each render and will
  * cause infinite suspension.
  */
-export function use<T>(resource: Context<T> | Promise<T>): T {
-  // Context path
+export function use<T>(resource: Context<T> | CompatContext<T> | Promise<T>): T {
+  // Compat context path
+  if (resource && typeof resource === 'object' && COMPAT_CTX in resource) {
+    return useContext(resource as CompatContext<T>)
+  }
+  // Pyreon native context path
   if (resource && typeof resource === 'object' && 'id' in resource && 'defaultValue' in resource) {
-    return useContext(resource as Context<T>)
+    return pyreonUseContext(resource as Context<T>)
   }
   // Promise path — suspend via throw
   const promise = resource as Promise<T>

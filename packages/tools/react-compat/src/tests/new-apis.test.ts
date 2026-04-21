@@ -1,4 +1,5 @@
-import { createContext, h } from '@pyreon/core'
+import { createContext as pyreonCreateContext, h } from '@pyreon/core'
+import type { VNodeChild } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import type { RenderContext } from '../jsx-runtime'
 import { beginRender, endRender, jsx } from '../jsx-runtime'
@@ -7,6 +8,7 @@ import {
   Children,
   cloneElement,
   Component,
+  createContext as createCompatContext,
   createRef,
   flushSync,
   forwardRef,
@@ -18,6 +20,7 @@ import {
   StrictMode,
   use,
   useActionState,
+  useContext,
   useDebugValue,
   useEffect,
   useInsertionEffect,
@@ -318,7 +321,7 @@ describe('useSyncExternalStore', () => {
 
 describe('use', () => {
   test('reads context value', () => {
-    const Ctx = createContext('hello')
+    const Ctx = pyreonCreateContext('hello')
     const result = use(Ctx)
     expect(result).toBe('hello')
   })
@@ -917,7 +920,7 @@ describe('real-world integration patterns', () => {
   })
 
   test('context provider chain', () => {
-    const ThemeCtx = createContext('light')
+    const ThemeCtx = pyreonCreateContext('light')
     const result = use(ThemeCtx)
     expect(result).toBe('light')
   })
@@ -1245,7 +1248,7 @@ describe('Children.only edge', () => {
 
 describe('Children.toArray deep nesting', () => {
   test('flattens deeply nested arrays', () => {
-    const children = [h('a', null), [h('b', null), [h('c', null)]]]
+    const children = [h('a', null), [h('b', null), [h('c', null)]]] as VNodeChild[]
     const arr = Children.toArray(children)
     expect(arr).toHaveLength(3)
   })
@@ -1417,5 +1420,140 @@ describe('layout effect cleanup on unmount', () => {
     expect(cleanupRan).toBe(false)
     unmount()
     expect(cleanupRan).toBe(true)
+  })
+})
+
+// ─── useState setter identity stability ─────────────────────────────────────
+
+describe('useState setter identity stability', () => {
+  test('setter has stable identity across renders', () => {
+    const runner = createHookRunner()
+    const [, setter1] = runner.run(() => useState(0))
+    setter1(5)
+    const [, setter2] = runner.run(() => useState(0))
+    expect(setter1).toBe(setter2)
+  })
+
+  test('setter reads latest value when called multiple times', () => {
+    const runner = createHookRunner()
+    const [, setter] = runner.run(() => useState(0))
+    setter(1)
+    setter((prev) => prev + 1) // should read 1, not 0
+    const [value] = runner.run(() => useState(0))
+    expect(value).toBe(2)
+  })
+
+  test('setter identity stable even without state changes', () => {
+    const runner = createHookRunner()
+    const [, setter1] = runner.run(() => useState('hello'))
+    const [, setter2] = runner.run(() => useState('hello'))
+    const [, setter3] = runner.run(() => useState('hello'))
+    expect(setter1).toBe(setter2)
+    expect(setter2).toBe(setter3)
+  })
+})
+
+// ─── useReducer dispatch identity stability ─────────────────────────────────
+
+describe('useReducer dispatch identity stability', () => {
+  test('dispatch has stable identity across renders', () => {
+    const runner = createHookRunner()
+    const reducer = (s: number, a: number) => s + a
+    const [, dispatch1] = runner.run(() => useReducer(reducer, 0))
+    dispatch1(5)
+    const [, dispatch2] = runner.run(() => useReducer(reducer, 0))
+    expect(dispatch1).toBe(dispatch2)
+  })
+
+  test('dispatch reads latest value when called multiple times', () => {
+    const runner = createHookRunner()
+    const reducer = (s: number, a: number) => s + a
+    const [, dispatch] = runner.run(() => useReducer(reducer, 0))
+    dispatch(10)
+    dispatch(5)
+    const [value] = runner.run(() => useReducer(reducer, 0))
+    expect(value).toBe(15)
+  })
+})
+
+// ─── Compat context subscriber notification ─────────────────────────────────
+
+describe('compat context subscriber notification', () => {
+  test('useContext re-renders consumer when provider value changes', () => {
+    const Ctx = createCompatContext('initial')
+    const runner = createHookRunner()
+    let rerenders = 0
+    runner.ctx.scheduleRerender = () => { rerenders++ }
+
+    const value1 = runner.run(() => useContext(Ctx))
+    expect(value1).toBe('initial')
+    expect(rerenders).toBe(0)
+
+    // Simulate provider updating value
+    Ctx.Provider({ value: 'updated' })
+    expect(rerenders).toBe(1)
+
+    const value2 = runner.run(() => useContext(Ctx))
+    expect(value2).toBe('updated')
+  })
+
+  test('no re-render when provider value is Object.is equal', () => {
+    const Ctx = createCompatContext(42)
+    const runner = createHookRunner()
+    let rerenders = 0
+    runner.ctx.scheduleRerender = () => { rerenders++ }
+
+    runner.run(() => useContext(Ctx))
+    Ctx.Provider({ value: 42 })
+    expect(rerenders).toBe(0)
+  })
+
+  test('multiple consumers all notified', () => {
+    const Ctx = createCompatContext('a')
+    const runner1 = createHookRunner()
+    const runner2 = createHookRunner()
+    let rerenders1 = 0
+    let rerenders2 = 0
+    runner1.ctx.scheduleRerender = () => { rerenders1++ }
+    runner2.ctx.scheduleRerender = () => { rerenders2++ }
+
+    runner1.run(() => useContext(Ctx))
+    runner2.run(() => useContext(Ctx))
+
+    Ctx.Provider({ value: 'b' })
+    expect(rerenders1).toBe(1)
+    expect(rerenders2).toBe(1)
+  })
+
+  test('compat context default value works without provider', () => {
+    const Ctx = createCompatContext('default-val')
+    const value = withHookCtx(() => useContext(Ctx))
+    expect(value).toBe('default-val')
+  })
+
+  test('useContext works with Pyreon native context fallback', () => {
+    const Ctx = pyreonCreateContext(99)
+    const value = useContext(Ctx)
+    expect(value).toBe(99)
+  })
+
+  test('context cleanup unsubscribes on unmount', () => {
+    const el = container()
+    const Ctx = createCompatContext('start')
+    let renderCount = 0
+
+    const Comp = () => {
+      useContext(Ctx)
+      renderCount++
+      return h('div', null, 'ctx-consumer')
+    }
+
+    const unmount = mount(jsx(Comp, {}), el)
+    const subscriberCount = Ctx._subscribers.size
+    expect(subscriberCount).toBeGreaterThan(0)
+
+    unmount()
+    // After unmount, subscriber should be removed
+    expect(Ctx._subscribers.size).toBeLessThan(subscriberCount)
   })
 })
