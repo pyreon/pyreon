@@ -86,6 +86,16 @@ export function createFlow<TData = Record<string, unknown>>(
   const selectedNodes = computed(() => [...selectedNodeIds()])
   const selectedEdges = computed(() => [...selectedEdgeIds()])
 
+  // ── Animation frame tracking ─────────────────────────────────────────────
+  // Prevents frame leaks when layout()/animateViewport() are called multiple
+  // times or when the instance is disposed mid-animation.
+  let _layoutFrameId: number | null = null
+  let _viewportFrameId: number | null = null
+
+  // ── Monotonic paste counter ─────────────────────────────────────────────
+  // Avoids Date.now() + random collision risk under rapid paste operations.
+  let _pasteCounter = 0
+
   // ── Listeners ────────────────────────────────────────────────────────────
 
   const connectListeners = new Set<(connection: Connection) => void>()
@@ -379,7 +389,13 @@ export function createFlow<TData = Record<string, unknown>>(
       return
     }
 
-    // Animated transition — interpolate positions over duration
+    // Animated transition — interpolate positions over duration.
+    // Cancel any in-flight layout animation to prevent frame stacking.
+    if (_layoutFrameId !== null) {
+      cancelAnimationFrame(_layoutFrameId)
+      _layoutFrameId = null
+    }
+
     const startPositions = new Map(currentNodes.map((n) => [n.id, { ...n.position }]))
     const targetPositions = new Map(positions.map((p) => [p.id, p.position]))
 
@@ -408,10 +424,14 @@ export function createFlow<TData = Record<string, unknown>>(
         )
       })
 
-      if (t < 1) requestAnimationFrame(animateFrame)
+      if (t < 1) {
+        _layoutFrameId = requestAnimationFrame(animateFrame)
+      } else {
+        _layoutFrameId = null
+      }
     }
 
-    requestAnimationFrame(animateFrame)
+    _layoutFrameId = requestAnimationFrame(animateFrame)
   }
 
   // ── Batch ────────────────────────────────────────────────────────────────
@@ -500,7 +520,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
     // Create new nodes with offset positions and new ids
     for (const node of clipboard.nodes) {
-      const newId = `${node.id}-copy-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const newId = `${node.id}-copy-${++_pasteCounter}`
       idMap.set(node.id, newId)
       newNodes.push({
         ...node,
@@ -967,6 +987,12 @@ export function createFlow<TData = Record<string, unknown>>(
     target: Partial<{ x: number; y: number; zoom: number }>,
     duration = 300,
   ): void {
+    // Cancel any in-flight viewport animation
+    if (_viewportFrameId !== null) {
+      cancelAnimationFrame(_viewportFrameId)
+      _viewportFrameId = null
+    }
+
     const start = { ...viewport.peek() }
     const end = {
       x: target.x ?? start.x,
@@ -986,15 +1012,29 @@ export function createFlow<TData = Record<string, unknown>>(
         zoom: start.zoom + (end.zoom - start.zoom) * eased,
       })
 
-      if (t < 1) requestAnimationFrame(frame)
+      if (t < 1) {
+        _viewportFrameId = requestAnimationFrame(frame)
+      } else {
+        _viewportFrameId = null
+      }
     }
 
-    requestAnimationFrame(frame)
+    _viewportFrameId = requestAnimationFrame(frame)
   }
 
   // ── Dispose ──────────────────────────────────────────────────────────────
 
   function dispose(): void {
+    // Cancel any in-flight animations to prevent stale state mutations
+    if (_layoutFrameId !== null) {
+      cancelAnimationFrame(_layoutFrameId)
+      _layoutFrameId = null
+    }
+    if (_viewportFrameId !== null) {
+      cancelAnimationFrame(_viewportFrameId)
+      _viewportFrameId = null
+    }
+
     connectListeners.clear()
     nodesChangeListeners.clear()
     nodeClickListeners.clear()

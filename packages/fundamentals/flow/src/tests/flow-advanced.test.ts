@@ -790,4 +790,90 @@ describe('createFlow — advanced', () => {
       expect(flow.edges()[0]!.type).toBe('straight')
     })
   })
+
+  describe('paste ID uniqueness (monotonic counter)', () => {
+    it('multiple pastes produce unique node IDs', () => {
+      const flow = createFlow({
+        nodes: [
+          { id: 'a', position: { x: 0, y: 0 }, data: {} },
+        ],
+      })
+
+      flow.selectNode('a')
+      flow.copySelected()
+
+      // Paste 3 times rapidly
+      flow.paste()
+      flow.paste()
+      flow.paste()
+
+      expect(flow.nodes()).toHaveLength(4) // 1 original + 3 pastes
+      const ids = flow.nodes().map((n) => n.id)
+      const uniqueIds = new Set(ids)
+      expect(uniqueIds.size).toBe(4) // all unique
+    })
+
+    it('pasted IDs are deterministic (counter-based, not random)', () => {
+      const flow = createFlow({
+        nodes: [
+          { id: 'n1', position: { x: 0, y: 0 }, data: {} },
+        ],
+      })
+
+      flow.selectNode('n1')
+      flow.copySelected()
+      flow.paste()
+
+      const pastedNode = flow.nodes().find((n) => n.id !== 'n1')
+      expect(pastedNode).toBeDefined()
+      expect(pastedNode!.id).toMatch(/^n1-copy-\d+$/)
+    })
+  })
+
+  describe('dispose cancels pending animations', () => {
+    it('dispose after layout does not throw', () => {
+      const flow = createFlow({
+        nodes: [
+          { id: '1', position: { x: 0, y: 0 }, data: {} },
+          { id: '2', position: { x: 100, y: 100 }, data: {} },
+        ],
+        edges: [{ source: '1', target: '2' }],
+      })
+
+      // Start animated layout (duration > 0 triggers rAF loop)
+      flow.layout('layered', { animationDuration: 500 })
+      // Dispose immediately — should cancel the animation frame
+      expect(() => flow.dispose()).not.toThrow()
+    })
+
+    it('dispose after animateViewport does not throw', () => {
+      const flow = createFlow({
+        nodes: [{ id: '1', position: { x: 0, y: 0 }, data: {} }],
+      })
+
+      flow.animateViewport({ x: 100, y: 100, zoom: 2 }, 500)
+      expect(() => flow.dispose()).not.toThrow()
+    })
+
+    it('calling layout twice cancels the first animation', async () => {
+      const flow = createFlow({
+        nodes: [
+          { id: '1', position: { x: 0, y: 0 }, data: {} },
+          { id: '2', position: { x: 100, y: 100 }, data: {} },
+        ],
+        edges: [{ source: '1', target: '2' }],
+      })
+
+      // Start two layouts — second should cancel first
+      flow.layout('layered', { animationDuration: 500 })
+      flow.layout('layered', { animationDuration: 500 })
+
+      // Let a frame tick
+      await new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+      // Should not have double-applied positions
+      expect(flow.nodes()).toHaveLength(2)
+      flow.dispose()
+    })
+  })
 })
