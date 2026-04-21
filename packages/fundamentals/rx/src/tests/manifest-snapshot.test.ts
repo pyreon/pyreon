@@ -7,14 +7,14 @@ import manifest from '../manifest'
 
 describe('gen-docs — rx snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions. Functions detect signals by checking for a \`.subscribe\` method. Pass the signal itself (\`items\`), not an accessor wrapper (\`() => items()\`). Accessor wrappers produce a static result."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/rx — Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions. Functions detect signals by checking for a \`.subscribe\` method. Pass the signal itself (\`items\`), not an accessor wrapper (\`() => items()\`). Accessor wrappers produce a static result."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/rx — Reactive Transforms
 
-      Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a \`Signal<T[]>\` and get a \`Computed<T[]>\` that auto-tracks and re-derives when the source changes; pass a plain \`T[]\` and get a static result. 24 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues), aggregation (count, sum, min, max, average), operators (distinct, scan, combine), timing (debounce, throttle), and search. \`pipe(source, ...ops)\` composes transforms left-to-right. Also exported as a namespaced \`rx\` object for dot-notation usage.
+      Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a \`Signal<T[]>\` and get a \`Computed<T[]>\` that auto-tracks and re-derives when the source changes; pass a plain \`T[]\` and get a static result. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. \`pipe(source, ...ops)\` composes transforms left-to-right. Also exported as a namespaced \`rx\` object for dot-notation usage.
 
       \`\`\`typescript
       import { signal } from '@pyreon/reactivity'

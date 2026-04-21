@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/rx',
   title: 'Reactive Transforms',
   tagline:
-    'Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 24 functions',
+    'Signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce, throttle, 37 functions',
   description:
-    'Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. 24 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues), aggregation (count, sum, min, max, average), operators (distinct, scan, combine), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.',
+    'Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.',
   category: 'universal',
   longExample: `import { signal } from '@pyreon/reactivity'
 import { rx, pipe, filter, sortBy, map, groupBy, take, sum, debounce, search } from '@pyreon/rx'
@@ -56,7 +56,7 @@ const throttled = rx.throttle(users, 100) // Computed that emits at most every 1
 const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
   features: [
     'Every function overloaded: Signal<T[]> → Computed, T[] → plain',
-    '24 functions: filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search',
+    '37 functions across 6 categories: collections (21), aggregation (8), operators (5), timing (2), search (1), pipe (1)',
     'pipe(source, ...ops) composes transforms left-to-right',
     'Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)',
     'Individual named exports for tree-shaking',
@@ -67,9 +67,9 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
     {
       name: 'rx',
       kind: 'constant',
-      signature: 'Readonly<{ filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search, pipe }>',
+      signature: 'Readonly<{ filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, count, sum, min, max, average, reduce, every, some, distinct, scan, combine, zip, merge, debounce, throttle, search, pipe }>',
       summary:
-        'Namespaced object exposing all 24 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.',
+        'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.',
       example: `const active = rx.filter(users, u => u.active)      // Computed<User[]>
 const sorted = rx.sortBy(active, 'name')             // Computed<User[]>
 const total = rx.sum(users, u => u.age)              // Computed<number>

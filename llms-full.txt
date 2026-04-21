@@ -1719,7 +1719,7 @@ useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
 
 ## @pyreon/rx — Reactive Transforms
 
-Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. 24 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues), aggregation (count, sum, min, max, average), operators (distinct, scan, combine), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
+Signal-aware reactive data transforms for Pyreon. Every function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
 
 ```typescript
 import { signal } from '@pyreon/reactivity'

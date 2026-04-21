@@ -2289,12 +2289,12 @@ const theme = enrichTheme({
   // <gen-docs:api-reference:start @pyreon/rx>
 
   'rx/rx': {
-    signature: 'Readonly<{ filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, count, sum, min, max, average, distinct, scan, combine, debounce, throttle, search, pipe }>',
+    signature: 'Readonly<{ filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, count, sum, min, max, average, reduce, every, some, distinct, scan, combine, zip, merge, debounce, throttle, search, pipe }>',
     example: `const active = rx.filter(users, u => u.active)      // Computed<User[]>
 const sorted = rx.sortBy(active, 'name')             // Computed<User[]>
 const total = rx.sum(users, u => u.age)              // Computed<number>
 const grouped = rx.groupBy(users, u => u.department) // Computed<Map<string, User[]>>`,
-    notes: 'Namespaced object exposing all 24 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter.',
+    notes: 'Namespaced object exposing all 37 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result. See also: pipe, filter.',
     mistakes: `- Expecting \`rx.filter(signal, pred)\` to return a plain array — signal inputs always produce \`Computed\` outputs. Call the result to read: \`active()\`
 - Passing a signal accessor (\`() => items()\`) instead of the signal itself — pass \`items\` not \`() => items()\`; the function checks for \`.subscribe\` to detect signals`,
   },

@@ -67,6 +67,8 @@
 - **Nulling WebSocket handlers before `close()`**: `ws.onmessage = null; ws.close()` — a queued message arriving between null-assignment and close fires a null handler and crashes. Always `close()` FIRST, then null the handlers.
 - **`intentionalClose` reset on reactive dependency change**: If a user explicitly calls `close()` on a WebSocket subscription and a reactive dependency (URL, enabled) changes, don't silently override `intentionalClose` and reconnect. Respect the user's explicit close unless `enabled` was explicitly provided and transitions to `true`.
 - **Silent plugin/init error swallowing**: `catch (_err) { /* silent */ }` in plugin runners or async initialization hides bugs. Always log in `__DEV__` mode and call user-provided `onError` callbacks. Reference: `store/src/index.ts` (plugins), `storage/src/indexed-db.ts` (IndexedDB init).
+- **Untracked `requestAnimationFrame` loops**: `requestAnimationFrame(animateFrame)` inside animation functions without storing the frame ID leaks frames when the function is called again or the instance is disposed mid-animation. Always store the ID (`_frameId = requestAnimationFrame(fn)`), cancel previous (`cancelAnimationFrame(_frameId)`) before starting new, and cancel in `dispose()`. Reference: `flow/src/flow.ts` — `_layoutFrameId` / `_viewportFrameId`.
+- **`Date.now()` + `Math.random()` for unique IDs**: Under rapid operations (paste, clone), `Date.now()` returns the same value within a millisecond and `Math.random().toString(36).slice(2, 6)` has only ~1.67M combinations — collision probability is non-trivial. Use a monotonic counter instead. Reference: `flow/src/flow.ts` — `_pasteCounter`.
 
 ## Documentation Mistakes
 
