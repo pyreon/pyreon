@@ -413,13 +413,19 @@ impl<'a> Ctx<'a> {
 /// True for string/number/boolean/null literals and no-substitution template
 /// literals. `undefined` is an Identifier in ESTree, NOT static.
 fn is_static(expr: &Expression) -> bool {
-    matches!(
-        expr,
+    match expr {
         Expression::StringLiteral(_)
-            | Expression::NumericLiteral(_)
-            | Expression::BooleanLiteral(_)
-            | Expression::NullLiteral(_)
-    ) || matches!(expr, Expression::TemplateLiteral(tpl) if tpl.expressions.is_empty())
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_) => true,
+        Expression::TemplateLiteral(tpl) => tpl.expressions.is_empty(),
+        Expression::TSAsExpression(e) => is_static(&e.expression),
+        Expression::TSSatisfiesExpression(e) => is_static(&e.expression),
+        Expression::TSNonNullExpression(e) => is_static(&e.expression),
+        Expression::TSTypeAssertion(e) => is_static(&e.expression),
+        Expression::ParenthesizedExpression(p) => is_static(&p.expression),
+        _ => false,
+    }
 }
 
 fn is_static_jsx_attr_value(value: &JSXAttributeValue) -> bool {
@@ -505,6 +511,16 @@ fn is_dynamic_impl(expr: &Expression, ctx: &mut Ctx) -> bool {
             }
         }
     }
+    // Props access via optional chaining
+    if let Expression::ChainExpression(c) = expr {
+        if let ChainElement::StaticMemberExpression(m) = &c.expression {
+            if let Expression::Identifier(obj) = &m.object {
+                if ctx.props_names.contains(obj.name.as_str()) {
+                    return true;
+                }
+            }
+        }
+    }
     // Prop-derived variable reference
     if let Expression::Identifier(id) = expr {
         if ctx.prop_derived_vars.contains_key(id.name.as_str()) {
@@ -559,6 +575,24 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
             }
             ObjectPropertyKind::SpreadProperty(s) => is_dynamic(&s.argument, ctx),
         }),
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => {
+                if !is_pure_static_call(call) {
+                    return true;
+                }
+                is_dynamic(&call.callee, ctx)
+                    || call.arguments.iter().any(|a| match a {
+                        Argument::SpreadElement(s) => is_dynamic(&s.argument, ctx),
+                        _ => a.as_expression().map_or(false, |e| is_dynamic(e, ctx)),
+                    })
+            }
+            ChainElement::StaticMemberExpression(m) => is_dynamic(&m.object, ctx),
+            ChainElement::ComputedMemberExpression(m) => {
+                is_dynamic(&m.object, ctx) || is_dynamic(&m.expression, ctx)
+            }
+            ChainElement::PrivateFieldExpression(p) => is_dynamic(&p.object, ctx),
+            ChainElement::TSNonNullExpression(e) => is_dynamic(&e.expression, ctx),
+        },
         Expression::AssignmentExpression(a) => is_dynamic(&a.right, ctx),
         Expression::AwaitExpression(a) => is_dynamic(&a.argument, ctx),
         Expression::YieldExpression(y) => {
@@ -567,6 +601,11 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::NewExpression(_) => true,
         // Don't recurse into function expressions
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        // TypeScript expression wrappers — recurse through
+        Expression::TSAsExpression(e) => is_dynamic(&e.expression, ctx),
+        Expression::TSSatisfiesExpression(e) => is_dynamic(&e.expression, ctx),
+        Expression::TSNonNullExpression(e) => is_dynamic(&e.expression, ctx),
+        Expression::TSTypeAssertion(e) => is_dynamic(&e.expression, ctx),
         // JSX elements: recurse into attributes and children to detect calls
         Expression::JSXElement(el) => {
             // Check attributes for dynamic expressions
@@ -671,6 +710,32 @@ fn accesses_props(expr: &Expression, ctx: &Ctx) -> bool {
             }
             accesses_props(&m.object, ctx) || accesses_props(&m.expression, ctx)
         }
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::StaticMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    if ctx.props_names.contains(obj.name.as_str()) {
+                        return true;
+                    }
+                }
+                accesses_props(&m.object, ctx)
+            }
+            ChainElement::ComputedMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    if ctx.props_names.contains(obj.name.as_str()) {
+                        return true;
+                    }
+                }
+                accesses_props(&m.object, ctx) || accesses_props(&m.expression, ctx)
+            }
+            ChainElement::CallExpression(call) => {
+                accesses_props(&call.callee, ctx)
+                    || call.arguments.iter().any(|a| {
+                        a.as_expression().map_or(false, |e| accesses_props(e, ctx))
+                    })
+            }
+            ChainElement::PrivateFieldExpression(p) => accesses_props(&p.object, ctx),
+            ChainElement::TSNonNullExpression(e) => accesses_props(&e.expression, ctx),
+        },
         Expression::Identifier(id) => ctx.prop_derived_vars.contains_key(id.name.as_str()),
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
         _ => expr_children_any_accesses_props(expr, ctx),
@@ -869,6 +934,9 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
 
 /// Walk the initializer text, find Identifier references to prop-derived vars,
 /// and replace them with their resolved text (recursively).
+///
+/// Uses string-level scanning with word-boundary and string-literal awareness
+/// to avoid replacing occurrences inside string/template literals.
 fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> String {
     if ctx.prop_derived_vars.is_empty() {
         return text.to_string();
@@ -876,9 +944,11 @@ fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> S
 
     let _end_offset = base_offset + text.len() as u32;
 
-    // We need to find identifiers within the byte range [base_offset, end_offset)
-    // that are prop-derived variables. Since we don't have the AST sub-tree conveniently,
-    // we do a simple text-based scan for identifiers that match prop-derived var names.
+    // Build a set of byte ranges that are inside string literals (single-quoted,
+    // double-quoted, or backtick template literals). We skip any identifier match
+    // whose start falls inside one of these ranges.
+    let string_ranges = find_string_literal_ranges(text);
+
     let var_names: Vec<String> = ctx.prop_derived_vars.keys().cloned().collect();
     let mut replacements: Vec<(usize, usize, String)> = Vec::new();
 
@@ -914,7 +984,9 @@ fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> S
                     }
                     text_bytes[idx] != b'.'
                 };
-                if before_ok && after_ok && not_property {
+                // Check it's not inside a string literal
+                let not_in_string = !string_ranges.iter().any(|&(s, e)| start >= s && start < e);
+                if before_ok && after_ok && not_property && not_in_string {
                     let resolved = resolve_var_to_string(var_name, ctx);
                     replacements.push((start, end, format!("({})", resolved)));
                 }
@@ -947,6 +1019,53 @@ fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> S
     }
     result.push_str(&text[last..]);
     result
+}
+
+/// Find byte ranges of string literal contents (including quotes) in source text.
+/// Handles single-quoted, double-quoted, and backtick template strings.
+/// Returns Vec<(start, end)> where start..end covers the entire quoted region.
+fn find_string_literal_ranges(text: &str) -> Vec<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut ranges = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'\'' || b == b'"' || b == b'`' {
+            let quote = b;
+            let start = i;
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' {
+                    i += 2; // skip escaped char
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1; // past closing quote
+                    break;
+                }
+                i += 1;
+            }
+            ranges.push((start, i));
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
+            // Line comment — skip to end of line
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+        } else if b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'*' {
+            // Block comment — skip to */
+            i += 2;
+            while i + 1 < bytes.len() {
+                if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
+    }
+    ranges
 }
 
 /// Slice source text for an expression, resolving prop-derived vars if needed.
@@ -1134,6 +1253,28 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                 }
             }
         }
+        Statement::ForInStatement(f) => {
+            walk_expression(&f.right, ctx);
+            walk_statement(&f.body, ctx);
+        }
+        Statement::ForOfStatement(f) => {
+            walk_expression(&f.right, ctx);
+            walk_statement(&f.body, ctx);
+        }
+        Statement::DoWhileStatement(d) => {
+            walk_statement(&d.body, ctx);
+            walk_expression(&d.test, ctx);
+        }
+        Statement::ThrowStatement(t) => {
+            walk_expression(&t.argument, ctx);
+        }
+        Statement::LabeledStatement(l) => {
+            walk_statement(&l.body, ctx);
+        }
+        Statement::WithStatement(w) => {
+            walk_expression(&w.object, ctx);
+            walk_statement(&w.body, ctx);
+        }
         _ => {}
     }
 }
@@ -1282,6 +1423,33 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 walk_expression(expr, ctx);
             }
         }
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => {
+                walk_expression(&call.callee, ctx);
+                for arg in &call.arguments {
+                    match arg {
+                        Argument::SpreadElement(spread) => walk_expression(&spread.argument, ctx),
+                        _ => {
+                            if let Some(e) = arg.as_expression() {
+                                walk_expression(e, ctx);
+                            }
+                        }
+                    }
+                }
+            }
+            ChainElement::StaticMemberExpression(m) => walk_expression(&m.object, ctx),
+            ChainElement::ComputedMemberExpression(m) => {
+                walk_expression(&m.object, ctx);
+                walk_expression(&m.expression, ctx);
+            }
+            ChainElement::PrivateFieldExpression(p) => walk_expression(&p.object, ctx),
+            ChainElement::TSNonNullExpression(e) => walk_expression(&e.expression, ctx),
+        },
+        Expression::TSAsExpression(e) => walk_expression(&e.expression, ctx),
+        Expression::TSSatisfiesExpression(e) => walk_expression(&e.expression, ctx),
+        Expression::TSNonNullExpression(e) => walk_expression(&e.expression, ctx),
+        Expression::TSTypeAssertion(e) => walk_expression(&e.expression, ctx),
+        Expression::TSInstantiationExpression(e) => walk_expression(&e.expression, ctx),
         _ => {}
     }
 }
@@ -2383,6 +2551,18 @@ fn stmt_contains_jsx(stmt: &Statement) -> bool {
                     .map_or(false, |s| stmt_contains_jsx(s))
         }
         Statement::BlockStatement(block) => block.body.iter().any(|s| stmt_contains_jsx(s)),
+        Statement::TryStatement(t) => {
+            t.block.body.iter().any(|s| stmt_contains_jsx(s))
+                || t.handler.as_ref().map_or(false, |h| h.body.body.iter().any(|s| stmt_contains_jsx(s)))
+                || t.finalizer.as_ref().map_or(false, |f| f.body.iter().any(|s| stmt_contains_jsx(s)))
+        }
+        Statement::ForStatement(f) => stmt_contains_jsx(&f.body),
+        Statement::ForInStatement(f) => stmt_contains_jsx(&f.body),
+        Statement::ForOfStatement(f) => stmt_contains_jsx(&f.body),
+        Statement::WhileStatement(w) => stmt_contains_jsx(&w.body),
+        Statement::DoWhileStatement(d) => stmt_contains_jsx(&d.body),
+        Statement::SwitchStatement(s) => s.cases.iter().any(|c| c.consequent.iter().any(|s| stmt_contains_jsx(s))),
+        Statement::LabeledStatement(l) => stmt_contains_jsx(&l.body),
         _ => false,
     }
 }
@@ -2502,6 +2682,40 @@ fn reads_from_props(expr: &Expression, props_names: &FxHashSet<String>) -> bool 
             ObjectPropertyKind::ObjectProperty(prop) => reads_from_props(&prop.value, props_names),
             ObjectPropertyKind::SpreadProperty(s) => reads_from_props(&s.argument, props_names),
         }),
+        // TypeScript expression wrappers
+        Expression::TSAsExpression(e) => reads_from_props(&e.expression, props_names),
+        Expression::TSSatisfiesExpression(e) => reads_from_props(&e.expression, props_names),
+        Expression::TSNonNullExpression(e) => reads_from_props(&e.expression, props_names),
+        Expression::TSTypeAssertion(e) => reads_from_props(&e.expression, props_names),
+        // Optional chaining
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => {
+                reads_from_props(&call.callee, props_names)
+                    || call.arguments.iter().any(|a| {
+                        a.as_expression()
+                            .map_or(false, |e| reads_from_props(e, props_names))
+                    })
+            }
+            ChainElement::StaticMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    if props_names.contains(obj.name.as_str()) {
+                        return true;
+                    }
+                }
+                reads_from_props(&m.object, props_names)
+            }
+            ChainElement::ComputedMemberExpression(m) => {
+                if let Expression::Identifier(obj) = &m.object {
+                    if props_names.contains(obj.name.as_str()) {
+                        return true;
+                    }
+                }
+                reads_from_props(&m.object, props_names)
+                    || reads_from_props(&m.expression, props_names)
+            }
+            ChainElement::PrivateFieldExpression(p) => reads_from_props(&p.object, props_names),
+            ChainElement::TSNonNullExpression(e) => reads_from_props(&e.expression, props_names),
+        },
         _ => false,
     }
 }
@@ -2549,6 +2763,28 @@ fn references_prop_derived(expr: &Expression, prop_derived: &FxHashMap<String, S
                         .map_or(false, |e| references_prop_derived(e, prop_derived))
                 })
         }
+        // TypeScript expression wrappers
+        Expression::TSAsExpression(e) => references_prop_derived(&e.expression, prop_derived),
+        Expression::TSSatisfiesExpression(e) => references_prop_derived(&e.expression, prop_derived),
+        Expression::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
+        Expression::TSTypeAssertion(e) => references_prop_derived(&e.expression, prop_derived),
+        // Optional chaining
+        Expression::ChainExpression(c) => match &c.expression {
+            ChainElement::CallExpression(call) => {
+                references_prop_derived(&call.callee, prop_derived)
+                    || call.arguments.iter().any(|a| {
+                        a.as_expression()
+                            .map_or(false, |e| references_prop_derived(e, prop_derived))
+                    })
+            }
+            ChainElement::StaticMemberExpression(m) => references_prop_derived(&m.object, prop_derived),
+            ChainElement::ComputedMemberExpression(m) => {
+                references_prop_derived(&m.object, prop_derived)
+                    || references_prop_derived(&m.expression, prop_derived)
+            }
+            ChainElement::PrivateFieldExpression(p) => references_prop_derived(&p.object, prop_derived),
+            ChainElement::TSNonNullExpression(e) => references_prop_derived(&e.expression, prop_derived),
+        },
         _ => false,
     }
 }
