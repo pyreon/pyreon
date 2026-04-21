@@ -12,7 +12,7 @@ Organize component styles by dimensions — states, sizes, variants — instead 
 - **Pseudo-state detection** — hover, focus, pressed tracked via signals and context
 - **Light/dark mode** — theme callbacks receive a mode parameter
 - **Provider/Consumer** — propagate parent state to children through context
-- **WeakMap caching** — computed themes cached per component instance
+- **Multi-tier WeakMap caching** — dimension maps, reserved keys, omit Sets, and theme results cached per component definition (shared across all instances). Per-mount allocations near zero for same-definition components
 - **TypeScript inference** — dimension values and prop types inferred through the chain
 
 ## Installation
@@ -336,6 +336,22 @@ Button.theme((theme, mode) => ({
 ```
 
 Use `inversed: true` in `.config()` to flip the mode for a component subtree.
+
+## Performance
+
+Rocketstyle uses a multi-tier caching architecture to minimize per-mount allocations:
+
+- **Per-definition caches** (shared across all instances via `WeakMap`):
+  - `_dimensionsCache` — `getDimensionsMap` result keyed on dimension-themes identity
+  - `_reservedKeysCache` — `Object.keys(reservedPropNames)` keyed on keywords identity
+  - `_omitSetCache` — pre-built `Set<string>` for `omit()` (avoids per-mount Set construction)
+  - `ALL_PSEUDO_KEYS` / `STATIC_OMIT_KEYS` — merged key arrays computed once
+- **Theme cache** (`LocalThemeManager`): `WeakMap` tiers for baseTheme, dimensionThemes, and per-mode resolved themes
+- **getTheme in-place merge**: dimension slices merged directly onto `finalTheme` instead of allocating a new target per `merge()` call
+- **Frozen `EMPTY_PSEUDO`**: shared frozen `{}` for pseudo-state defaults instead of 6 allocations per call
+- **Dev guard**: uses `__DEV__` (`import.meta.env.DEV`) — tree-shaken to zero bytes in production
+
+For a 150-component page with 8 dimensions each: ~1,350 Set allocations, ~300 array spreads, and ~150 map rebuilds eliminated vs naive implementation.
 
 ## Peer Dependencies
 

@@ -55,7 +55,7 @@ batch(() => {
 
 ### Scopes
 
-- **`effectScope(): EffectScope`** -- Creates a scope that collects effects for bulk disposal.
+- **`effectScope(): EffectScope`** -- Creates a scope that collects effects for bulk disposal. Internal arrays (`_effects`, `_updateHooks`) are lazy-allocated on first use -- scopes with no effects cost only the object itself.
 - **`getCurrentScope(): EffectScope | undefined`** -- Returns the active effect scope.
 - **`setCurrentScope(scope)`** -- Manually sets the current effect scope.
 

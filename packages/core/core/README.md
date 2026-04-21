@@ -44,6 +44,13 @@ function Counter() {
 - **`onUpdate(fn)`** -- Runs after each reactive update.
 - **`onErrorCaptured(fn)`** -- Captures errors thrown by descendant components.
 
+Lifecycle hook arrays are lazy-allocated -- `LifecycleHooks.mount`/`.unmount`/`.update`/`.error` start as `null` and are only allocated on first hook registration. Components with no hooks (the majority) pay zero allocation cost.
+
+### Props Reactivity
+
+- **`makeReactiveProps(raw)`** -- Converts compiler-emitted `_rp()` wrappers into getter properties. Uses a scan-first strategy: checks for any branded reactive prop before allocating the result object. Static-only components return `raw` immediately with no allocation.
+- **`_rp(fn)`** -- Brands a function as a reactive prop wrapper (compiler-emitted, not user-facing).
+
 ### Context
 
 - **`createContext<T>(defaultValue?): Context<T>`** -- Creates a context with an optional default.

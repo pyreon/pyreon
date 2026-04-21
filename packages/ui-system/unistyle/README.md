@@ -194,6 +194,10 @@ When using `normalize: true` (default), missing breakpoints inherit from the pre
 | @pyreon/reactivity | >= 0.0.1 |
 | @pyreon/ui-core    | >= 0.0.1 |
 
+## Performance
+
+The `styles()` function reuses module-level `Set<number>` and `fragments[]` containers, cleared on each synchronous call instead of allocating per-call. Combined with the Tier 1 key-to-index lookup (iterates ~10-20 descriptors per component instead of ~257), this eliminates ~160 allocations per 80-component page.
+
 ## License
 
 MIT

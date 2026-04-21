@@ -80,13 +80,17 @@ isEmpty({ a: 1 }) // => false
 
 #### omit / pick
 
-Create objects without or with only specified keys. Accept nullable inputs.
+Create objects without or with only specified keys. Accept nullable inputs. `omit()` also accepts a pre-built `Set<string>` for hot paths where the same key list is reused across many calls (avoids per-call Set allocation).
 
 ```ts
 import { omit, pick } from '@pyreon/ui-core'
 
 omit({ a: 1, b: 2, c: 3 }, ['b']) // => { a: 1, c: 3 }
 pick({ a: 1, b: 2, c: 3 }, ['a', 'b']) // => { a: 1, b: 2 }
+
+// Hot-path usage with pre-built Set (used by rocketstyle):
+const omitSet = new Set(['b', 'c'])
+omit({ a: 1, b: 2, c: 3 }, omitSet) // => { a: 1 }
 ```
 
 #### set / get

@@ -115,6 +115,17 @@ const App = () => (
 
 `TransitionProps`, `TransitionGroupProps`, `KeepAliveProps`, `SanitizeFn`, `DevtoolsComponentEntry`, `PyreonDevtools`
 
+## Production Performance
+
+The mount pipeline is optimized for zero unnecessary allocations:
+
+- **Devtools gated on `__DEV__`** -- Component ID generation (`Math.random`), parent/child tracking (`_mountingStack`), and `registerComponent`/`unregisterComponent` are all behind `if (__DEV__)`. Vite tree-shakes the entire devtools module from production bundles.
+- **Lazy LifecycleHooks** -- `mount`/`unmount`/`update`/`error` arrays start as `null`, allocated on first hook registration. Components with no hooks (80%+) skip all hook iteration.
+- **Lazy mountCleanups** -- Only allocated when an `onMount` callback returns a cleanup function.
+- **makeReactiveProps scan-first** -- Scans for `_rp()` brands before allocating the getter-backed object. Static-only components return `raw` immediately.
+- **renderEffect first-run skip** -- Skips cleanup on first run since the deps array is empty.
+- **Text .data no-op writes** -- `_bindText` and `_bindDirect` skip DOM writes when the value hasn't changed.
+
 ## Dev-mode warnings — bundler tree-shake
 
 Dev warnings are gated on `import.meta.env?.DEV`. Tree-shake behavior depends on both the source pattern and the consumer bundler:
