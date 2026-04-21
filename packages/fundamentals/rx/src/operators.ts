@@ -1,5 +1,6 @@
 import { computed, effect, signal } from '@pyreon/reactivity'
 import type { ReadableSignal } from './types'
+import { isSignal } from './types'
 
 /**
  * Distinct — skip consecutive duplicate values from a signal.
@@ -72,4 +73,62 @@ export function combine(...args: any[]): any {
   const fn = args[args.length - 1] as (...vals: any[]) => any
   const sources = args.slice(0, -1) as ReadableSignal<any>[]
   return computed(() => fn(...sources.map((s) => s())))
+}
+
+/**
+ * Zip multiple arrays element-by-element. Truncates to the shortest array.
+ * Signal inputs produce a reactive Computed that updates when any source changes.
+ *
+ * @example
+ * ```ts
+ * const names = signal(['Alice', 'Bob'])
+ * const ages = signal([30, 25])
+ * const pairs = rx.zip(names, ages) // Computed<[string, number][]>
+ * // [['Alice', 30], ['Bob', 25]]
+ * ```
+ */
+export function zip<A, B>(
+  a: ReadableSignal<A[]> | A[],
+  b: ReadableSignal<B[]> | B[],
+): ReturnType<typeof computed<[A, B][]>>
+export function zip<A, B>(a: A[], b: B[]): [A, B][]
+export function zip<A, B, C>(
+  a: ReadableSignal<A[]> | A[],
+  b: ReadableSignal<B[]> | B[],
+  c: ReadableSignal<C[]> | C[],
+): ReturnType<typeof computed<[A, B, C][]>>
+export function zip<A, B, C>(a: A[], b: B[], c: C[]): [A, B, C][]
+export function zip(...sources: any[]): any {
+  const hasSignal = sources.some(isSignal)
+  const resolve = () => {
+    const arrays = sources.map((s) => (isSignal(s) ? (s as ReadableSignal<any>)() : s)) as any[][]
+    const minLen = Math.min(...arrays.map((a) => a.length))
+    const result: any[][] = []
+    for (let i = 0; i < minLen; i++) {
+      result.push(arrays.map((a) => a[i]))
+    }
+    return result
+  }
+  return hasSignal ? computed(resolve) : resolve()
+}
+
+/**
+ * Concatenate multiple arrays into one. Signal inputs produce a reactive Computed.
+ *
+ * @example
+ * ```ts
+ * const a = signal([1, 2])
+ * const b = signal([3, 4])
+ * const all = rx.merge(a, b) // Computed<number[]> → [1, 2, 3, 4]
+ * ```
+ */
+export function merge<T>(a: ReadableSignal<T[]>, ...rest: (ReadableSignal<T[]> | T[])[]): ReturnType<typeof computed<T[]>>
+export function merge<T>(...sources: T[][]): T[]
+export function merge<T>(...sources: any[]): any {
+  const hasSignal = sources.some(isSignal)
+  const resolve = () => {
+    const arrays = sources.map((s) => (isSignal(s) ? (s as ReadableSignal<any>)() : s)) as T[][]
+    return arrays.flat()
+  }
+  return hasSignal ? computed(resolve) : resolve()
 }

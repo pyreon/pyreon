@@ -1,6 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { combine, distinct, scan } from '../operators'
+import { combine, distinct, merge, scan, zip } from '../operators'
 
 describe('distinct', () => {
   it('skips consecutive duplicate values', () => {
@@ -149,5 +149,107 @@ describe('combine', () => {
 
     c.set(200)
     expect(sum()).toBe(222)
+  })
+})
+
+// ─── zip ────────────────────────────────────────────────────────────────────
+
+describe('zip', () => {
+  it('zips two plain arrays element-by-element', () => {
+    expect(zip(['a', 'b', 'c'], [1, 2, 3])).toEqual([
+      ['a', 1],
+      ['b', 2],
+      ['c', 3],
+    ])
+  })
+
+  it('truncates to shortest array', () => {
+    expect(zip(['a', 'b'], [1, 2, 3, 4])).toEqual([
+      ['a', 1],
+      ['b', 2],
+    ])
+  })
+
+  it('empty arrays', () => {
+    expect(zip([], [])).toEqual([])
+    expect(zip(['a'], [])).toEqual([])
+  })
+
+  it('three arrays', () => {
+    expect(zip(['a', 'b'], [1, 2], [true, false])).toEqual([
+      ['a', 1, true],
+      ['b', 2, false],
+    ])
+  })
+
+  it('signal inputs return reactive computed', () => {
+    const names = signal(['Alice', 'Bob'])
+    const ages = signal([30, 25])
+    const pairs = zip(names, ages)
+    expect(pairs()).toEqual([
+      ['Alice', 30],
+      ['Bob', 25],
+    ])
+
+    names.set(['Charlie'])
+    expect(pairs()).toEqual([['Charlie', 30]])
+
+    ages.set([40, 50])
+    expect(pairs()).toEqual([['Charlie', 40]])
+  })
+
+  it('mixed signal and plain array', () => {
+    const names = signal(['Alice', 'Bob'])
+    const ages = [30, 25]
+    const pairs = zip(names, ages)
+    expect(pairs()).toEqual([
+      ['Alice', 30],
+      ['Bob', 25],
+    ])
+
+    names.set(['Charlie', 'Dave', 'Eve'])
+    expect(pairs()).toEqual([
+      ['Charlie', 30],
+      ['Dave', 25],
+    ])
+  })
+})
+
+// ─── merge ─────────────────���─────────────────────────────��──────────────────
+
+describe('merge', () => {
+  it('concatenates plain arrays', () => {
+    expect(merge([1, 2], [3, 4], [5])).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('empty arrays', () => {
+    expect(merge([], [])).toEqual([])
+  })
+
+  it('single array', () => {
+    expect(merge([1, 2, 3])).toEqual([1, 2, 3])
+  })
+
+  it('signal inputs return reactive computed', () => {
+    const a = signal([1, 2])
+    const b = signal([3, 4])
+    const all = merge(a, b)
+    expect(all()).toEqual([1, 2, 3, 4])
+
+    a.set([10])
+    expect(all()).toEqual([10, 3, 4])
+
+    b.set([20, 30])
+    expect(all()).toEqual([10, 20, 30])
+  })
+
+  it('mixed signal and plain array', () => {
+    const a = signal([1, 2])
+    const b = [3, 4]
+    const all = merge(a, b)
+    expect(all()).toEqual([1, 2, 3, 4])
+
+    a.set([10])
+    expect(all()).toEqual([10, 3, 4])
   })
 })
