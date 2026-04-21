@@ -248,6 +248,7 @@ struct Hoist {
 
 struct Ctx<'a> {
     source: &'a str,
+    program: &'a Program<'a>,
     line_index: LineIndex,
     ssr: bool,
 
@@ -279,9 +280,10 @@ struct Ctx<'a> {
 }
 
 impl<'a> Ctx<'a> {
-    fn new(source: &'a str, ssr: bool) -> Self {
+    fn new(source: &'a str, program: &'a Program<'a>, ssr: bool) -> Self {
         Ctx {
             source,
+            program,
             line_index: LineIndex::new(source),
             ssr,
             replacements: Vec::new(),
@@ -887,7 +889,182 @@ fn is_children_expression(expr: &Expression, expr_text: &str) -> bool {
 
 // ─── Prop-derived variable resolution ────────────────────────────────────────
 
+/// Walk a statement looking for a VariableDeclarator whose init span matches.
+fn find_init_in_statement<'a>(stmt: &'a Statement<'a>, target: Span) -> Option<&'a Expression<'a>> {
+    match stmt {
+        Statement::VariableDeclaration(decl) => {
+            for d in &decl.declarations {
+                if let Some(init) = &d.init {
+                    if init.span() == target {
+                        return Some(init);
+                    }
+                }
+            }
+            None
+        }
+        Statement::FunctionDeclaration(f) => {
+            if let Some(body) = &f.body {
+                for s in &body.statements {
+                    if let Some(e) = find_init_in_statement(s, target) {
+                        return Some(e);
+                    }
+                }
+            }
+            None
+        }
+        Statement::BlockStatement(b) => {
+            for s in &b.body {
+                if let Some(e) = find_init_in_statement(s, target) {
+                    return Some(e);
+                }
+            }
+            None
+        }
+        Statement::IfStatement(if_stmt) => {
+            if let Some(e) = find_init_in_statement(&if_stmt.consequent, target) {
+                return Some(e);
+            }
+            if let Some(alt) = &if_stmt.alternate {
+                if let Some(e) = find_init_in_statement(alt, target) {
+                    return Some(e);
+                }
+            }
+            None
+        }
+        Statement::ForStatement(f) => {
+            if let Some(init) = &f.init {
+                if let ForStatementInit::VariableDeclaration(decl) = init {
+                    for d in &decl.declarations {
+                        if let Some(init_expr) = &d.init {
+                            if init_expr.span() == target {
+                                return Some(init_expr);
+                            }
+                        }
+                    }
+                }
+            }
+            find_init_in_statement(&f.body, target)
+        }
+        Statement::ForInStatement(f) => find_init_in_statement(&f.body, target),
+        Statement::ForOfStatement(f) => find_init_in_statement(&f.body, target),
+        Statement::WhileStatement(w) => find_init_in_statement(&w.body, target),
+        Statement::DoWhileStatement(d) => find_init_in_statement(&d.body, target),
+        Statement::SwitchStatement(s) => {
+            for case in &s.cases {
+                for stmt in &case.consequent {
+                    if let Some(e) = find_init_in_statement(stmt, target) {
+                        return Some(e);
+                    }
+                }
+            }
+            None
+        }
+        Statement::TryStatement(t) => {
+            for s in &t.block.body {
+                if let Some(e) = find_init_in_statement(s, target) {
+                    return Some(e);
+                }
+            }
+            if let Some(handler) = &t.handler {
+                for s in &handler.body.body {
+                    if let Some(e) = find_init_in_statement(s, target) {
+                        return Some(e);
+                    }
+                }
+            }
+            if let Some(finalizer) = &t.finalizer {
+                for s in &finalizer.body {
+                    if let Some(e) = find_init_in_statement(s, target) {
+                        return Some(e);
+                    }
+                }
+            }
+            None
+        }
+        Statement::LabeledStatement(l) => find_init_in_statement(&l.body, target),
+        Statement::WithStatement(w) => find_init_in_statement(&w.body, target),
+        Statement::ExportDefaultDeclaration(exp) => {
+            if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &exp.declaration {
+                if let Some(body) = &func.body {
+                    for s in &body.statements {
+                        if let Some(e) = find_init_in_statement(s, target) {
+                            return Some(e);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        Statement::ExportNamedDeclaration(exp) => {
+            if let Some(decl) = &exp.declaration {
+                match decl {
+                    Declaration::VariableDeclaration(vd) => {
+                        for d in &vd.declarations {
+                            if let Some(init) = &d.init {
+                                if init.span() == target {
+                                    return Some(init);
+                                }
+                            }
+                        }
+                    }
+                    Declaration::FunctionDeclaration(func) => {
+                        if let Some(body) = &func.body {
+                            for s in &body.statements {
+                                if let Some(e) = find_init_in_statement(s, target) {
+                                    return Some(e);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        Statement::ClassDeclaration(class) => {
+            for element in &class.body.body {
+                match element {
+                    ClassElement::MethodDefinition(method) => {
+                        if let Some(body) = &method.value.body {
+                            for s in &body.statements {
+                                if let Some(e) = find_init_in_statement(s, target) {
+                                    return Some(e);
+                                }
+                            }
+                        }
+                    }
+                    ClassElement::StaticBlock(block) => {
+                        for s in &block.body {
+                            if let Some(e) = find_init_in_statement(s, target) {
+                                return Some(e);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Find the initializer expression in the program AST by its span.
+fn find_init_expression_by_span<'a>(
+    program: &'a Program<'a>,
+    target: Span,
+) -> Option<&'a Expression<'a>> {
+    for stmt in &program.body {
+        if let Some(expr) = find_init_in_statement(stmt, target) {
+            return Some(expr);
+        }
+    }
+    None
+}
+
 /// Resolve prop-derived var to its inlined text (with transitive resolution).
+/// Uses AST-based identifier resolution to correctly skip identifiers inside
+/// string literals, comments, template literal quasis, and property-name positions.
 fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     if let Some(cached) = ctx.resolved_cache.get(var_name) {
         return cached.clone();
@@ -920,8 +1097,45 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
     }
     ctx.resolving.insert(var_name.to_string());
     let span = ctx.prop_derived_vars.get(var_name).copied().unwrap();
-    let raw_text = ctx.source[span.start as usize..span.end as usize].to_string();
-    let resolved = resolve_identifiers_in_text(&raw_text, span.start, ctx);
+
+    // Copy the shared program reference before mutable operations
+    let program = ctx.program;
+    let resolved = if let Some(init_expr) = find_init_expression_by_span(program, span) {
+        // AST-based resolution: find identifier references to prop-derived vars
+        let prop_derived_vars_snapshot: FxHashMap<String, Span> =
+            ctx.prop_derived_vars.clone();
+        let mut idents: Vec<(u32, u32, String)> = Vec::new();
+        collect_prop_derived_idents(init_expr, &prop_derived_vars_snapshot, &mut idents);
+
+        if idents.is_empty() {
+            ctx.source[span.start as usize..span.end as usize].to_string()
+        } else {
+            // Sort by position, deduplicate overlapping
+            idents.sort_by_key(|i| i.0);
+            let mut deduped: Vec<(u32, u32, String)> = Vec::new();
+            for ident in idents {
+                if deduped.last().map_or(true, |last| ident.0 >= last.1) {
+                    deduped.push(ident);
+                }
+            }
+
+            // Build replacement string using absolute source offsets
+            let mut result = String::new();
+            let mut last = span.start;
+            for (start, end, ref ident_name) in &deduped {
+                result.push_str(&ctx.source[last as usize..*start as usize]);
+                let resolved_ident = resolve_var_to_string(ident_name, ctx);
+                result.push_str(&format!("({})", resolved_ident));
+                last = *end;
+            }
+            result.push_str(&ctx.source[last as usize..span.end as usize]);
+            result
+        }
+    } else {
+        // Fallback: return raw source text unchanged (shouldn't happen in practice)
+        ctx.source[span.start as usize..span.end as usize].to_string()
+    };
+
     ctx.resolving.remove(var_name);
     ctx.resolved_cache.insert(var_name.to_string(), resolved.clone());
     resolved
@@ -1210,87 +1424,6 @@ fn collect_prop_derived_idents_in_assignment_target(
     }
 }
 
-/// Resolve prop-derived vars in an initializer's source text using string-level
-/// scanning with word-boundary awareness. Used only by `resolve_var_to_string`
-/// for transitive resolution of initializer expressions (where we don't have
-/// the AST node readily available). The direct `slice_expr` path uses the
-/// AST-based `resolve_expr_with_props` instead.
-fn resolve_identifiers_in_text(text: &str, base_offset: u32, ctx: &mut Ctx) -> String {
-    if ctx.prop_derived_vars.is_empty() {
-        return text.to_string();
-    }
-
-    let _end_offset = base_offset + text.len() as u32;
-    let var_names: Vec<String> = ctx.prop_derived_vars.keys().cloned().collect();
-    let mut replacements: Vec<(usize, usize, String)> = Vec::new();
-
-    for var_name in &var_names {
-        let var_bytes = var_name.as_bytes();
-        let text_bytes = text.as_bytes();
-        let mut pos = 0;
-        while pos + var_bytes.len() <= text_bytes.len() {
-            if let Some(found) = text[pos..].find(var_name.as_str()) {
-                let start = pos + found;
-                let end = start + var_bytes.len();
-                // Check word boundary: char before and after must not be identifier chars
-                let before_ok = if start == 0 {
-                    true
-                } else {
-                    let b = text_bytes[start - 1];
-                    !b.is_ascii_alphanumeric() && b != b'_' && b != b'$'
-                };
-                let after_ok = if end >= text_bytes.len() {
-                    true
-                } else {
-                    let b = text_bytes[end];
-                    !b.is_ascii_alphanumeric() && b != b'_' && b != b'$'
-                };
-                // Check it's not a property access position (preceded by '.')
-                let not_property = if start == 0 {
-                    true
-                } else {
-                    // Walk backwards skipping whitespace
-                    let mut idx = start - 1;
-                    while idx > 0 && text_bytes[idx].is_ascii_whitespace() {
-                        idx -= 1;
-                    }
-                    text_bytes[idx] != b'.'
-                };
-                if before_ok && after_ok && not_property {
-                    let resolved = resolve_var_to_string(var_name, ctx);
-                    replacements.push((start, end, format!("({})", resolved)));
-                }
-                pos = end;
-            } else {
-                break;
-            }
-        }
-    }
-
-    if replacements.is_empty() {
-        return text.to_string();
-    }
-
-    replacements.sort_by_key(|r| r.0);
-    // Deduplicate overlapping ranges
-    let mut deduped: Vec<(usize, usize, String)> = Vec::new();
-    for r in replacements {
-        if deduped.last().map_or(true, |last| r.0 >= last.1) {
-            deduped.push(r);
-        }
-    }
-
-    let mut result = String::new();
-    let mut last = 0;
-    for (start, end, replacement) in &deduped {
-        result.push_str(&text[last..*start]);
-        result.push_str(replacement);
-        last = *end;
-    }
-    result.push_str(&text[last..]);
-    result
-}
-
 /// Slice source text for an expression, resolving prop-derived vars if needed.
 /// Uses AST-based resolution to correctly skip identifiers inside string
 /// literals, comments, template literal quasis, and property-name positions.
@@ -1330,7 +1463,7 @@ pub fn transform_jsx(code: String, filename: String, ssr: bool) -> TransformResu
         };
     }
 
-    let mut ctx = Ctx::new(&code, ssr);
+    let mut ctx = Ctx::new(&code, &ret.program, ssr);
     walk_program(&ret.program, &mut ctx);
     ctx.build_result()
 }
