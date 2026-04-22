@@ -98,6 +98,20 @@ export interface TransformOptions {
    * `@pyreon/runtime-server` can walk the VNode tree. Default: false.
    */
   ssr?: boolean
+
+  /**
+   * Known signal variable names from resolved imports.
+   * The Vite plugin maintains a cross-module signal export registry and
+   * passes imported signal names here so the compiler can auto-call them
+   * in JSX even though the `signal()` declaration is in another file.
+   *
+   * @example
+   * // store.ts: export const count = signal(0)
+   * // component.tsx: import { count } from './store'
+   * transformJSX(code, 'component.tsx', { knownSignals: ['count'] })
+   * // {count} in JSX → {() => count()}
+   */
+  knownSignals?: string[]
 }
 
 // ─── oxc ESTree helpers ───────────────────────────────────────────────────────
@@ -395,7 +409,7 @@ export function transformJSX_JS(
   // references to these identifiers are auto-called: `{x}` → `{x()}`.
   // This makes signals look like plain JS variables in templates while
   // maintaining fine-grained reactivity.
-  const signalVars = new Set<string>()
+  const signalVars = new Set<string>(options.knownSignals)
 
   // ── Scope-aware signal shadowing ──────────────────────────────────────────
   // When a function/block declares a variable with the same name as a signal

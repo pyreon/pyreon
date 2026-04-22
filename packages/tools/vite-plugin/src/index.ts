@@ -137,6 +137,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   let isBuild = false
   let projectRoot = ''
 
+  // ── Cross-module signal export registry ─────────────────────────────────
+  // Tracks which modules export signal() declarations so imported signals
+  // can be auto-called in JSX across file boundaries.
+  // Key: resolved module ID, Value: set of exported signal names
+  const signalExportRegistry = new Map<string, Set<string>>()
+
   return {
     name: 'pyreon',
     enforce: 'pre',
@@ -198,7 +204,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
-    transform(code, id, transformOptions) {
+    async transform(code, id, transformOptions) {
       const ext = getExt(id)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
@@ -213,11 +219,21 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         return
       }
 
+      // ── Scan for exported signal declarations (populate registry) ──────
+      // This runs on every .tsx/.jsx file so the registry is built as modules
+      // are processed. Later modules can look up earlier ones' signal exports.
+      scanSignalExports(code, id, signalExportRegistry)
+
+      // ── Resolve imported signals from the registry ─────────────────────
+      // Check each import in this file: if the imported module has signal
+      // exports in the registry, pass them as knownSignals to the compiler.
+      const knownSignals = await resolveImportedSignals(code, id, signalExportRegistry, this)
+
       // Vite passes `ssr: true` when transforming for the SSR module graph
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
       // `h()` calls in that mode so `runtime-server` can render to a string.
       const isSsr = transformOptions?.ssr === true
-      const result = transformJSX(code, id, { ssr: isSsr })
+      const result = transformJSX(code, id, { ssr: isSsr, knownSignals })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
@@ -551,6 +567,92 @@ function isAssetRequest(url: string): boolean {
 //
 // Inlined here so it's available without a filesystem read. This is the
 // compiled-to-JS version of hmr-runtime.ts — kept in sync manually.
+
+// ─── Cross-module signal auto-call helpers ──────────────────────────────────
+
+/**
+ * Scan a module's source for exported signal declarations and register them.
+ *
+ * Detects patterns:
+ *   export const count = signal(0)
+ *   export const theme = signal('light')
+ *
+ * Uses simple regex — no AST parse needed since we're just looking for
+ * `export const <name> = signal(` patterns.
+ */
+function scanSignalExports(code: string, moduleId: string, registry: Map<string, Set<string>>): void {
+  // Match: export const <name> = signal(
+  // Also match: export const <name> = signal<Type>(
+  const EXPORT_SIGNAL_RE = /export\s+const\s+(\w+)\s*=\s*signal\s*[<(]/g
+  let match: RegExpExecArray | null
+  const signals = new Set<string>()
+
+  while ((match = EXPORT_SIGNAL_RE.exec(code)) !== null) {
+    signals.add(match[1]!)
+  }
+
+  if (signals.size > 0) {
+    registry.set(moduleId, signals)
+  } else {
+    // Clean up if module no longer exports signals (e.g. after edit)
+    registry.delete(moduleId)
+  }
+}
+
+/**
+ * Resolve imported signal names from the signal export registry.
+ *
+ * For each import in the source, resolves the module and checks if it has
+ * signal exports in the registry. Returns the local names of imported signals.
+ */
+async function resolveImportedSignals(
+  code: string,
+  _moduleId: string,
+  registry: Map<string, Set<string>>,
+  pluginCtx: { resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null> },
+): Promise<string[]> {
+  if (registry.size === 0) return []
+
+  const knownSignals: string[] = []
+
+  // Match import statements: import { name1, name2 as alias } from 'source'
+  const IMPORT_RE = /import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
+  let match: RegExpExecArray | null
+
+  while ((match = IMPORT_RE.exec(code)) !== null) {
+    const specifiers = match[1]!
+    const source = match[2]!
+
+    // Resolve the import to get the module ID
+    let resolvedId: string | null = null
+    try {
+      const resolved = await pluginCtx.resolve(source, _moduleId, { skipSelf: true })
+      resolvedId = resolved?.id ?? null
+    } catch {
+      continue
+    }
+
+    if (!resolvedId) continue
+    const exportedSignals = registry.get(resolvedId)
+    if (!exportedSignals) continue
+
+    // Parse import specifiers: "count, theme as t, other"
+    for (const spec of specifiers.split(',')) {
+      const trimmed = spec.trim()
+      if (!trimmed) continue
+
+      const parts = trimmed.split(/\s+as\s+/)
+      const importedName = parts[0]!.trim()
+      const localName = (parts[1] ?? parts[0])!.trim()
+
+      if (exportedSignals.has(importedName)) {
+        knownSignals.push(localName)
+      }
+    }
+  }
+
+  return knownSignals
+}
 
 const HMR_RUNTIME_SOURCE = `
 const REGISTRY_KEY = "__pyreon_hmr_registry__";

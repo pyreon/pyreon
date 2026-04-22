@@ -1811,6 +1811,31 @@ describe('JSX transform — signal auto-call', () => {
     // (they're outside the component function body scan)
   })
 
+  test('knownSignals option enables cross-module auto-call', () => {
+    const code = 'import { count } from "./store"; function App() { return <div>{count}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
+    expect(result).toContain('count()')
+    expect(result).toContain('_bind')
+  })
+
+  test('knownSignals with alias — local name is used', () => {
+    const code = 'import { count as c } from "./store"; function App() { return <div>{c}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['c'] }).code
+    expect(result).toContain('c()')
+  })
+
+  test('knownSignals does not double-call already-called signals', () => {
+    const code = 'import { count } from "./store"; function App() { return <div>{count()}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
+    expect(result).not.toContain('count()()')
+  })
+
+  test('knownSignals respects scope shadowing', () => {
+    const code = 'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
+    expect(result).not.toContain('.data = count()')
+  })
+
   test('props.x is still inlined alongside signal auto-call', () => {
     const result = t('function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }')
     expect(result).toContain('show()')
