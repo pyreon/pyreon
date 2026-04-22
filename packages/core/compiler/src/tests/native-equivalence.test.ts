@@ -302,7 +302,7 @@ describeNative('Native vs JS equivalence — SSR mode', () => {
 describeNative('Native vs JS equivalence — warnings', () => {
   test('<For> without by produces warning', () => {
     const js = transformJSX_JS('<For each={items}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false)
+    const rs = nativeTransform!('<For each={items}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
     expect(rs.warnings.length).toBe(js.warnings.length)
     if (js.warnings.length > 0) {
       expect(rs.warnings[0]!.code).toBe(js.warnings[0]!.code)
@@ -310,7 +310,7 @@ describeNative('Native vs JS equivalence — warnings', () => {
   })
   test('<For> with by has no warning', () => {
     const js = transformJSX_JS('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false)
+    const rs = nativeTransform!('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
     expect(rs.warnings.length).toBe(js.warnings.length)
   })
 })
