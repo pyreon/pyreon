@@ -260,6 +260,9 @@ function resolveChildInstance(): ChildInstance | undefined {
 
 // ─── JSX functions ───────────────────────────────────────────────────────────
 
+// Tag used by compat context Providers to skip compat wrapping
+const _NATIVE_COMPAT = Symbol.for('pyreon:native-compat')
+
 export function jsx(
   type: string | ComponentFn | symbol,
   props: Props & { children?: VNodeChild | VNodeChild[] },
@@ -270,6 +273,12 @@ export function jsx(
 
   if (typeof type === 'function') {
     if (_nativeComponents.has(type)) {
+      const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
+      return h(type as ComponentFn, componentProps)
+    }
+
+    // Native compat components (e.g. context Providers) skip compat wrapping
+    if ((type as unknown as Record<symbol, boolean>)[_NATIVE_COMPAT]) {
       const componentProps = children !== undefined ? { ...propsWithKey, children } : propsWithKey
       return h(type as ComponentFn, componentProps)
     }

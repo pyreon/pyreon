@@ -7,26 +7,36 @@ import {
   createEffect,
   createMemo,
   createRenderEffect,
+  createResource,
   createRoot,
   createSelector,
   createSignal,
+  createStore,
   ErrorBoundary,
   For,
+  from,
   getOwner,
+  indexArray,
   lazy,
+  mapArray,
   Match,
   mergeProps,
+  observable,
   on,
   onCleanup,
   onMount,
+  produce,
   runWithOwner,
   Show,
+  startTransition,
   Suspense,
   Switch,
   splitProps,
   untrack,
   useContext,
+  useTransition,
 } from '../index'
+import type { Accessor, Component, ParentComponent, Setter, Signal } from '../index'
 import type { RenderContext } from '../jsx-runtime'
 import { beginRender, endRender } from '../jsx-runtime'
 
@@ -620,6 +630,11 @@ describe('@pyreon/solid-compat', () => {
     expect(useContext(Ctx)).toBe('default-value')
   })
 
+  it('createContext returns object with Provider', () => {
+    const Ctx = createContext('test')
+    expect(typeof Ctx.Provider).toBe('function')
+  })
+
   // ─── Re-exports ───────────────────────────────────────────────────────
 
   it('Show is exported', () => {
@@ -781,6 +796,357 @@ describe('@pyreon/solid-compat', () => {
   it('runWithOwner returns value from fn', () => {
     const result = runWithOwner(null, () => 'hello')
     expect(result).toBe('hello')
+  })
+
+  // ─── createSignal equals option ────────────────────────────────────────
+
+  it('createSignal default skips update on same value (===)', () => {
+    let effectRuns = 0
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(5)
+      createEffect(() => {
+        count()
+        effectRuns++
+      })
+      expect(effectRuns).toBe(1)
+      setCount(5) // same value
+      expect(effectRuns).toBe(1) // no re-run
+      setCount(6)
+      expect(effectRuns).toBe(2)
+      dispose()
+    })
+  })
+
+  it('createSignal equals: false always notifies', () => {
+    let effectRuns = 0
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(5, { equals: false })
+      createEffect(() => {
+        count()
+        effectRuns++
+      })
+      expect(effectRuns).toBe(1)
+      setCount(5) // same value but equals: false
+      expect(effectRuns).toBe(2)
+      dispose()
+    })
+  })
+
+  it('createSignal custom equals function', () => {
+    let effectRuns = 0
+    createRoot((dispose) => {
+      const [obj, setObj] = createSignal(
+        { id: 1, name: 'a' },
+        { equals: (prev, next) => prev.id === next.id },
+      )
+      createEffect(() => {
+        obj()
+        effectRuns++
+      })
+      expect(effectRuns).toBe(1)
+      setObj({ id: 1, name: 'b' }) // same id
+      expect(effectRuns).toBe(1)
+      setObj({ id: 2, name: 'b' }) // different id
+      expect(effectRuns).toBe(2)
+      dispose()
+    })
+  })
+
+  // ─── createSignal getter/setter identity stability ────────────────────
+
+  it('createSignal returns stable getter/setter in component context', () => {
+    const runner = createHookRunner()
+    const [getter1, setter1] = runner.run(() => createSignal(0))
+    const [getter2, setter2] = runner.run(() => createSignal(0))
+    expect(getter1).toBe(getter2)
+    expect(setter1).toBe(setter2)
+  })
+
+  // ─── createResource ──────────────────────────────────────────────────
+
+  it('createResource with fetcher only', async () => {
+    const [data] = createResource(() => Promise.resolve(42))
+    // While loading, data() throws the fetch promise (Suspense integration)
+    expect(() => data()).toThrow()
+    expect(data.loading).toBe(true)
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(data()).toBe(42)
+    expect(data.loading).toBe(false)
+    expect(data.error).toBeUndefined()
+    expect(data.latest).toBe(42)
+  })
+
+  it('createResource with sync fetcher', () => {
+    const [data] = createResource(() => 'sync-value')
+    expect(data()).toBe('sync-value')
+    expect(data.loading).toBe(false)
+  })
+
+  it('createResource with source and fetcher', async () => {
+    const [userId, setUserId] = createSignal(1)
+
+    createRoot(async (dispose) => {
+      const [data] = createResource(userId, async (id) => `user-${id}`)
+
+      await new Promise((r) => setTimeout(r, 10))
+      expect(data()).toBe('user-1')
+
+      setUserId(2)
+      await new Promise((r) => setTimeout(r, 10))
+      expect(data()).toBe('user-2')
+
+      dispose()
+    })
+  })
+
+  it('createResource mutate updates data', async () => {
+    const [data, { mutate }] = createResource(() => Promise.resolve(10))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data()).toBe(10)
+
+    mutate(99)
+    expect(data()).toBe(99)
+    expect(data.latest).toBe(99)
+  })
+
+  it('createResource mutate with updater function', async () => {
+    const [data, { mutate }] = createResource(() => Promise.resolve(10))
+    await new Promise((r) => setTimeout(r, 10))
+
+    mutate((prev) => (prev ?? 0) + 5)
+    expect(data()).toBe(15)
+  })
+
+  it('createResource handles errors', async () => {
+    const [data] = createResource(() => Promise.reject(new Error('fail')))
+    await new Promise((r) => setTimeout(r, 10))
+
+    // data() throws the error (ErrorBoundary catches this)
+    expect(() => data()).toThrow('fail')
+    expect(data.error).toBeInstanceOf(Error)
+    expect(data.error?.message).toBe('fail')
+    expect(data.loading).toBe(false)
+  })
+
+  it('createResource handles sync errors', () => {
+    const [data] = createResource(() => {
+      throw new Error('sync-fail')
+    })
+
+    // data() throws the error
+    expect(() => data()).toThrow('sync-fail')
+    expect(data.error?.message).toBe('sync-fail')
+    expect(data.loading).toBe(false)
+  })
+
+  it('createResource with falsy source skips fetch', () => {
+    let fetchCount = 0
+    const [enabled] = createSignal(false)
+
+    createRoot((dispose) => {
+      createResource(enabled, () => {
+        fetchCount++
+        return 'fetched'
+      })
+      expect(fetchCount).toBe(0)
+      dispose()
+    })
+  })
+
+  it('createResource refetch re-fetches', async () => {
+    let fetchCount = 0
+    const [, { refetch }] = createResource(async () => {
+      fetchCount++
+      return fetchCount
+    })
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(fetchCount).toBe(1)
+
+    refetch()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(fetchCount).toBe(2)
+  })
+
+  // ─── createStore / produce ────────────────────────────────────────────
+
+  it('createStore returns reactive proxy and setter', () => {
+    const [store, setStore] = createStore({ count: 0, name: 'test' })
+    expect(store.count).toBe(0)
+    expect(store.name).toBe('test')
+
+    setStore((s: { count: number; name: string }) => {
+      s.count = 5
+    })
+    expect(store.count).toBe(5)
+  })
+
+  it('createStore proxy is reactive in effects', () => {
+    let effectRuns = 0
+    createRoot((dispose) => {
+      const [store, setStore] = createStore({ value: 1 })
+      createEffect(() => {
+        void store.value // read through proxy triggers signal read
+        effectRuns++
+      })
+      expect(effectRuns).toBe(1)
+      setStore((s: { value: number }) => {
+        s.value = 2
+      })
+      expect(effectRuns).toBe(2)
+      dispose()
+    })
+  })
+
+  it('createStore proxy prevents direct mutation', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const [store] = createStore({ count: 0 })
+    ;(store as Record<string, unknown>).count = 5
+    expect(warn).toHaveBeenCalledWith(
+      '[Pyreon] Direct mutation on store is not supported. Use the setter function.',
+    )
+    warn.mockRestore()
+  })
+
+  it('produce creates a reusable updater', () => {
+    const increment = produce<{ count: number }>((s) => {
+      s.count++
+    })
+    const result = increment({ count: 5 })
+    expect(result.count).toBe(6)
+  })
+
+  // ─── startTransition / useTransition ──────────────────────────────────
+
+  it('startTransition runs fn synchronously', () => {
+    let ran = false
+    startTransition(() => {
+      ran = true
+    })
+    expect(ran).toBe(true)
+  })
+
+  it('useTransition returns [isPending, start]', () => {
+    const [isPending, start] = useTransition()
+    expect(isPending()).toBe(false)
+    let ran = false
+    start(() => {
+      ran = true
+    })
+    expect(ran).toBe(true)
+    expect(isPending()).toBe(false)
+  })
+
+  // ─── observable ───────────────────────────────────────────────────────
+
+  it('observable converts signal to subscribable', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      const obs = observable(count)
+      const values: number[] = []
+      const sub = obs.subscribe({ next: (v) => values.push(v) })
+
+      expect(values).toEqual([0])
+      setCount(1)
+      expect(values).toEqual([0, 1])
+
+      sub.unsubscribe()
+      setCount(2)
+      expect(values).toEqual([0, 1]) // no more updates
+
+      dispose()
+    })
+  })
+
+  // ─── from ─────────────────────────────────────────────────────────────
+
+  it('from with producer function', () => {
+    createRoot((dispose) => {
+      let setter: ((v: number) => void) | undefined
+      const value = from<number>((set) => {
+        setter = set
+        return () => {} // cleanup
+      })
+      expect(value()).toBeUndefined()
+      setter!(42)
+      expect(value()).toBe(42)
+      dispose()
+    })
+  })
+
+  it('from with observable', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      const obs = observable(count)
+      const derived = from(obs)
+
+      // from subscribes to observable, initial value propagated
+      expect(derived()).toBe(0)
+      setCount(5)
+      expect(derived()).toBe(5)
+
+      dispose()
+    })
+  })
+
+  // ─── mapArray ─────────────────────────────────────────────────────────
+
+  it('mapArray maps items with reactive index', () => {
+    createRoot((dispose) => {
+      const [list] = createSignal(['a', 'b', 'c'])
+      const mapped = mapArray(list, (item, index) => `${item}-${index()}`)
+      expect(mapped()).toEqual(['a-0', 'b-1', 'c-2'])
+      dispose()
+    })
+  })
+
+  it('mapArray updates when source changes', () => {
+    createRoot((dispose) => {
+      const [list, setList] = createSignal([1, 2, 3])
+      const doubled = mapArray(list, (item) => item * 2)
+      expect(doubled()).toEqual([2, 4, 6])
+      setList([4, 5])
+      expect(doubled()).toEqual([8, 10])
+      dispose()
+    })
+  })
+
+  // ─── indexArray ───────────────────────────────────────────────────────
+
+  it('indexArray maps items with static index', () => {
+    createRoot((dispose) => {
+      const [list] = createSignal(['x', 'y', 'z'])
+      const mapped = indexArray(list, (item, index) => `${item()}-${index}`)
+      expect(mapped()).toEqual(['x-0', 'y-1', 'z-2'])
+      dispose()
+    })
+  })
+
+  it('indexArray updates when source changes', () => {
+    createRoot((dispose) => {
+      const [list, setList] = createSignal([10, 20])
+      const doubled = indexArray(list, (item) => item() * 2)
+      expect(doubled()).toEqual([20, 40])
+      setList([30])
+      expect(doubled()).toEqual([60])
+      dispose()
+    })
+  })
+
+  // ─── Type exports ─────────────────────────────────────────────────────
+
+  it('type exports are usable', () => {
+    // These are compile-time checks — just verify they don't cause runtime errors
+    const _accessor: Accessor<number> = () => 42
+    const _setter: Setter<number> = () => {}
+    const _signal: Signal<number> = [_accessor, _setter]
+    const _component: Component<{ name: string }> = () => null
+    const _parent: ParentComponent<{ title: string }> = () => null
+    expect(_signal).toHaveLength(2)
+    expect(typeof _component).toBe('function')
+    expect(typeof _parent).toBe('function')
   })
 
   // ─── JSX runtime ───────────────────────────────────────────────────────
