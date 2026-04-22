@@ -33,7 +33,7 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join as pathJoin, resolve as pathResolve } from 'node:path'
+import { join as pathJoin } from 'node:path'
 import { generateContext, transformJSX } from '@pyreon/compiler'
 import type { Plugin, ViteDevServer } from 'vite'
 

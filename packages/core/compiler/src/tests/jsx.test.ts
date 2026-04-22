@@ -1812,14 +1812,10 @@ describe('JSX transform — signal auto-call', () => {
     expect(result).toContain('handler()')
   })
 
-  test('signal outside component function is NOT tracked', () => {
+  test('module-scope signal IS tracked and auto-called', () => {
     const result = t('const globalSig = signal(0); function C() { return <div>{globalSig}</div> }')
-    // Global signals outside component scope — not tracked (no component context)
-    // globalSig is detected as a signal only inside component functions
-    // Actually, the scan runs at all function levels, so this SHOULD be tracked
-    // if the signal() call is at module scope and used in a component
-    // For now, this tests that module-scope signals are NOT tracked
-    // (they're outside the component function body scan)
+    // Module-scope signal declarations are tracked by the single-pass walk
+    expect(result).toContain('globalSig()')
   })
 
   test('knownSignals option enables cross-module auto-call', () => {
