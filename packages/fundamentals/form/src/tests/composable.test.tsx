@@ -1,5 +1,6 @@
 /** @jsxImportSource @pyreon/core */
 import { h } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { field } from '../field'
@@ -230,5 +231,146 @@ describe('<Form> + <Submit>', () => {
 
     mount(h(Form, { of: form }, h(AgeInput, {})), ctr)
     expect(value).toBe(25)
+  })
+})
+
+// ─── setInitialValues ───────────────────────────────────────────────────────
+
+describe('setInitialValues', () => {
+  it('updates field values and clears state', () => {
+    const name = field('name', '')
+    const email = field('email', '')
+    const form = useForm({ fields: [name, email], onSubmit: () => {} })
+
+    // Simulate user typing
+    form.fields.name.setValue('dirty')
+    form.fields.name.touched.set(true)
+
+    // Async data arrives
+    form.setInitialValues({ name: 'Alice', email: 'alice@example.com' })
+
+    expect(form.fields.name.value()).toBe('Alice')
+    expect(form.fields.email.value()).toBe('alice@example.com')
+    expect(form.fields.name.touched()).toBe(false)
+    expect(form.fields.name.dirty()).toBe(false)
+  })
+
+  it('partial update only affects specified fields', () => {
+    const name = field('name', 'Bob')
+    const email = field('email', 'bob@test.com')
+    const form = useForm({ fields: [name, email], onSubmit: () => {} })
+
+    form.setInitialValues({ email: 'new@test.com' })
+
+    expect(form.fields.name.value()).toBe('Bob') // unchanged
+    expect(form.fields.email.value()).toBe('new@test.com')
+  })
+})
+
+// ─── Reactive initialValues ─────────────────────────────────────────────────
+
+describe('reactive initialValues accessor', () => {
+  it('auto-resets when accessor returns new values', async () => {
+    const data = signal<{ name: string } | null>(null)
+
+    const form = useForm({
+      initialValues: () => ({ name: data()?.name ?? '' }),
+      onSubmit: () => {},
+    })
+
+    expect(form.fields.name.value()).toBe('')
+
+    // Simulate query data arriving
+    data.set({ name: 'Alice' })
+    await new Promise<void>((r) => setTimeout(r, 10))
+
+    expect(form.fields.name.value()).toBe('Alice')
+  })
+})
+
+// ─── disabled / readOnly ────────────────────────────────────────────────────
+
+describe('disabled / readOnly', () => {
+  it('form-level disabled signal is reactive', () => {
+    const name = field('name', 'test')
+    const form = useForm({ fields: [name], onSubmit: () => {} })
+
+    expect(form.disabled()).toBe(false)
+    form.disabled.set(true)
+    expect(form.disabled()).toBe(true)
+  })
+
+  it('field-level disabled is independent', () => {
+    const name = field('name', 'test')
+    const form = useForm({ fields: [name], onSubmit: () => {} })
+
+    form.fields.name.disabled.set(true)
+    expect(form.fields.name.disabled()).toBe(true)
+    expect(form.disabled()).toBe(false) // form is not disabled
+  })
+
+  it('register() includes disabled/readOnly computed (form OR field)', () => {
+    const name = field('name', 'test')
+    const form = useForm({ fields: [name], onSubmit: () => {} })
+
+    const reg = form.register('name' as never)
+    expect(reg.disabled!()).toBe(false)
+    expect(reg.readOnly!()).toBe(false)
+
+    // Field-level disabled
+    form.fields.name.disabled.set(true)
+    expect(reg.disabled!()).toBe(true)
+
+    // Reset field, set form-level
+    form.fields.name.disabled.set(false)
+    form.disabled.set(true)
+    expect(reg.disabled!()).toBe(true) // form takes priority
+  })
+
+  it('disabled fields excluded from submit values', async () => {
+    const name = field('name', 'Alice')
+    const email = field('email', 'alice@test.com')
+    const onSubmit = vi.fn()
+    const form = useForm({ fields: [name, email], onSubmit })
+
+    // Disable email field
+    form.fields.email.disabled.set(true)
+
+    await form.handleSubmit()
+
+    // onSubmit should NOT receive email
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Alice' })
+  })
+
+  it('readOnly fields included in submit values', async () => {
+    const name = field('name', 'Alice')
+    const email = field('email', 'alice@test.com')
+    const onSubmit = vi.fn()
+    const form = useForm({ fields: [name, email], onSubmit })
+
+    form.fields.email.readOnly.set(true)
+
+    await form.handleSubmit()
+
+    // readOnly fields ARE included
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Alice', email: 'alice@test.com' })
+  })
+
+  it('<Form disabled> sets form-level disabled', () => {
+    const name = field('name', '')
+    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const ctr = document.createElement('div')
+
+    mount(h(Form, { of: form, disabled: true }), ctr)
+    expect(form.disabled()).toBe(true)
+  })
+
+  it('<Form readOnly> sets form-level readOnly', () => {
+    const name = field('name', '')
+    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const ctr = document.createElement('div')
+
+    mount(h(Form, { of: form, readOnly: true }), ctr)
+    expect(form.readOnly()).toBe(true)
   })
 })

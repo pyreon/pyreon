@@ -1,8 +1,8 @@
 /** @jsxImportSource @pyreon/core */
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import { FormProvider } from './context'
-import { useFormContext } from './context'
+import { effect } from '@pyreon/reactivity'
+import { FormProvider, useFormContext } from './context'
 import type { FormState } from './types'
 
 // ─── <Form> ─────────────────────────────────────────────────────────────────
@@ -13,6 +13,18 @@ export interface FormProps<TValues extends Record<string, unknown>> extends Prop
   children?: VNodeChild
   /** Optional CSS class for the <form> element. */
   class?: string
+  /**
+   * Disable all form fields. Disabled fields are excluded from submit values.
+   * Accepts a boolean or a reactive accessor (e.g. `query.isFetching`).
+   * Form-level disabled always takes priority over field-level.
+   */
+  disabled?: boolean | (() => boolean)
+  /**
+   * Make all form fields read-only. Read-only fields are included in submit values.
+   * Accepts a boolean or a reactive accessor (e.g. `mutation.isPending`).
+   * Form-level readOnly always takes priority over field-level.
+   */
+  readOnly?: boolean | (() => boolean)
 }
 
 /**
@@ -21,7 +33,7 @@ export interface FormProps<TValues extends Record<string, unknown>> extends Prop
  *
  * @example
  * ```tsx
- * <Form of={form}>
+ * <Form of={form} disabled={query.isFetching} readOnly={mutation.isPending}>
  *   <EmailInput />
  *   <PasswordInput />
  *   <Submit>Login</Submit>
@@ -29,6 +41,28 @@ export interface FormProps<TValues extends Record<string, unknown>> extends Prop
  * ```
  */
 export const Form: ComponentFn<FormProps<Record<string, unknown>>> = (props) => {
+  // Sync disabled/readOnly props to form signals
+  const syncDisabled = () => {
+    const v = props.disabled
+    props.of.disabled.set(typeof v === 'function' ? v() : v ?? false)
+  }
+  const syncReadOnly = () => {
+    const v = props.readOnly
+    props.of.readOnly.set(typeof v === 'function' ? v() : v ?? false)
+  }
+
+  // If accessor, track reactively
+  if (typeof props.disabled === 'function') {
+    effect(syncDisabled)
+  } else {
+    syncDisabled()
+  }
+  if (typeof props.readOnly === 'function') {
+    effect(syncReadOnly)
+  } else {
+    syncReadOnly()
+  }
+
   return h(
     FormProvider,
     { form: props.of },
@@ -45,21 +79,18 @@ export interface SubmitProps extends Props {
 }
 
 /**
- * Submit button that auto-disables while the form is submitting.
+ * Submit button that auto-disables while the form is submitting or disabled.
  * Must be inside a `<Form>` or `<FormProvider>`.
- *
- * @example
- * ```tsx
- * <Form of={form}>
- *   <Submit>Login</Submit>
- * </Form>
- * ```
  */
 export const Submit: ComponentFn<SubmitProps> = (props) => {
   const form = useFormContext()
   return h(
     'button',
-    { type: 'submit', disabled: form.isSubmitting, class: props.class },
+    {
+      type: 'submit',
+      disabled: () => form.isSubmitting() || form.disabled(),
+      class: props.class,
+    },
     props.children ?? 'Submit',
   )
 }
