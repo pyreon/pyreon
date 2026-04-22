@@ -37,16 +37,41 @@ export interface UseMutationResult<
 }
 
 /**
+ * Extended mutation options — adds `invalidates` for auto-invalidation on success.
+ */
+export interface MutationOptions<
+  TData = unknown,
+  TError = DefaultError,
+  TVariables = void,
+  TContext = unknown,
+> extends MutationObserverOptions<TData, TError, TVariables, TContext> {
+  /**
+   * Query keys to invalidate automatically on successful mutation.
+   * Saves the boilerplate of writing `onSuccess: () => client.invalidateQueries(...)`.
+   *
+   * @example
+   * ```ts
+   * const createPost = useMutation({
+   *   mutationFn: (data) => fetch('/api/posts', { method: 'POST', body: JSON.stringify(data) }),
+   *   invalidates: [['posts'], ['stats']],
+   * })
+   * ```
+   */
+  invalidates?: import('@tanstack/query-core').QueryKey[]
+}
+
+/**
  * Run a mutation (create / update / delete). Returns reactive signals for
  * pending / success / error state plus `mutate` and `mutateAsync` functions.
  *
  * @example
+ * ```ts
  * const mutation = useMutation({
  *   mutationFn: (data: CreatePostInput) =>
  *     fetch('/api/posts', { method: 'POST', body: JSON.stringify(data) }).then(r => r.json()),
- *   onSuccess: () => client.invalidateQueries({ queryKey: ['posts'] }),
+ *   invalidates: [['posts']], // auto-invalidates on success
  * })
- * // h('button', { onClick: () => mutation.mutate({ title: 'New' }) }, 'Create')
+ * ```
  */
 export function useMutation<
   TData = unknown,
@@ -54,10 +79,24 @@ export function useMutation<
   TVariables = void,
   TContext = unknown,
 >(
-  options: MutationObserverOptions<TData, TError, TVariables, TContext>,
+  options: MutationOptions<TData, TError, TVariables, TContext>,
 ): UseMutationResult<TData, TError, TVariables, TContext> {
   const client = useQueryClient()
-  const observer = new MutationObserver<TData, TError, TVariables, TContext>(client, options)
+  const { invalidates, ...coreOptions } = options
+
+  // Wire auto-invalidation into onSuccess
+  const finalOptions = { ...coreOptions } as MutationObserverOptions<TData, TError, TVariables, TContext>
+  if (invalidates && invalidates.length > 0) {
+    const userOnSuccess = options.onSuccess
+    finalOptions.onSuccess = (data, variables, onMutateResult, context) => {
+      for (const key of invalidates) {
+        client.invalidateQueries({ queryKey: key })
+      }
+      userOnSuccess?.(data, variables, onMutateResult, context)
+    }
+  }
+
+  const observer = new MutationObserver<TData, TError, TVariables, TContext>(client, finalOptions)
   const initial = observer.getCurrentResult()
 
   // Fine-grained signals: each field is independent so only effects that read
