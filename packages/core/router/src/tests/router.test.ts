@@ -1,6 +1,7 @@
 import { h, popContext } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import type { ResolvedRoute, RouteRecord } from '../index'
+import { isNotFoundError, NotFoundBoundary, notFound } from '../not-found'
 import {
   createRouter,
   hydrateLoaderData,
@@ -4777,5 +4778,237 @@ describe('Router<TNames> type safety', () => {
       _middlewareData: { user: { name: 'Alice' } },
     }
     expect(route._middlewareData?.user).toEqual({ name: 'Alice' })
+  })
+})
+
+// ─── notFound() + isNotFoundError ─────────────────────────────────────────────
+
+describe('notFound()', () => {
+
+  test('throws an Error with NOT_FOUND brand', () => {
+    expect(() => notFound()).toThrow('Not Found')
+    expect(() => notFound('User not found')).toThrow('User not found')
+  })
+
+  test('isNotFoundError detects branded errors', () => {
+    try {
+      notFound('test')
+    } catch (err) {
+      expect(isNotFoundError(err)).toBe(true)
+      expect(err instanceof Error).toBe(true)
+    }
+  })
+
+  test('isNotFoundError returns false for regular errors', () => {
+    expect(isNotFoundError(new Error('regular'))).toBe(false)
+    expect(isNotFoundError(null)).toBe(false)
+    expect(isNotFoundError('string')).toBe(false)
+  })
+})
+
+// ─── Prefetch intent mode ────────────────────────────────────────────────────
+
+describe('RouterLink prefetch="intent"', () => {
+  test('focus triggers prefetch in intent mode (default)', async () => {
+    const loaderCalled = vi.fn().mockResolvedValue({ data: 'prefetched' })
+    const intRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/target', component: Home, loader: loaderCalled },
+    ]
+    const router = createRouter({ routes: intRoutes, url: '/' })
+    const ctr = document.createElement('div')
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: '/target' })), ctr)
+
+    const link = ctr.querySelector('a')!
+    // Focus triggers prefetch in intent mode
+    link.dispatchEvent(new Event('focus', { bubbles: true }))
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    expect(loaderCalled).toHaveBeenCalled()
+    router.destroy()
+  })
+
+  test('focus does NOT trigger prefetch in "none" mode', async () => {
+    const loaderCalled = vi.fn().mockResolvedValue({ data: 'x' })
+    const intRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/target', component: Home, loader: loaderCalled },
+    ]
+    const router = createRouter({ routes: intRoutes, url: '/' })
+    const ctr = document.createElement('div')
+    mount(h(RouterProvider, { router }, h(RouterLink, { to: '/target', prefetch: 'none' })), ctr)
+
+    const link = ctr.querySelector('a')!
+    link.dispatchEvent(new Event('focus', { bubbles: true }))
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    expect(loaderCalled).not.toHaveBeenCalled()
+    router.destroy()
+  })
+})
+
+// ─── NotFoundBoundary e2e ────────────────────────────────────────────────────
+
+describe('NotFoundBoundary e2e', () => {
+  test('notFound() in component triggers NotFoundBoundary fallback', () => {
+    const ThrowNotFound = () => {
+      notFound('User not found')
+      return null // unreachable
+    }
+    const nfRoutes: RouteRecord[] = [
+      { path: '/missing', component: ThrowNotFound },
+    ]
+    const router = createRouter({ routes: nfRoutes, url: '/missing' })
+    const ctr = document.createElement('div')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    mount(
+      h(RouterProvider, { router },
+        h(NotFoundBoundary, {
+          fallback: h('div', { id: 'not-found' }, '404 Not Found'),
+        }, h(RouterView, {})),
+      ),
+      ctr,
+    )
+
+    expect(ctr.querySelector('#not-found')?.textContent).toBe('404 Not Found')
+    errorSpy.mockRestore()
+    router.destroy()
+  })
+})
+
+// ─── pendingComponent e2e ────────────────────────────────────────────────────
+
+describe('pendingComponent', () => {
+  test('pendingComponent shows immediately when pendingMs=0', async () => {
+    let resolveLoader: (v: unknown) => void
+    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const PendingComp = () => h('div', { id: 'pending' }, 'Loading...')
+    const RealComp = () => h('div', { id: 'real' }, 'Loaded')
+
+    const pendRoutes: RouteRecord[] = [
+      {
+        path: '/slow',
+        component: RealComp,
+        loader: () => loaderPromise,
+        pendingComponent: PendingComp,
+        pendingMs: 0,
+        pendingMinMs: 0,
+      },
+    ]
+    const router = createRouter({ routes: pendRoutes, url: '/slow' })
+    const ctr = document.createElement('div')
+    mount(h(RouterProvider, { router }, h(RouterView, {})), ctr)
+
+    // Pending should show immediately
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(ctr.querySelector('#pending')).not.toBeNull()
+
+    // Resolve the loader
+    resolveLoader!({ data: 'done' })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    router.destroy()
+  })
+
+  test('pendingMinMs keeps pending visible even after loader resolves', async () => {
+    let resolveLoader: (v: unknown) => void
+    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const PendingComp = () => h('div', { id: 'pending-min' }, 'Loading...')
+    const RealComp = () => h('div', { id: 'real-min' }, 'Loaded')
+
+    const pendRoutes: RouteRecord[] = [
+      {
+        path: '/mintime',
+        component: RealComp,
+        loader: () => loaderPromise,
+        pendingComponent: PendingComp,
+        pendingMs: 0,       // show pending immediately
+        pendingMinMs: 300,  // keep for at least 300ms
+      },
+    ]
+    const router = createRouter({ routes: pendRoutes, url: '/mintime' })
+    const ctr = document.createElement('div')
+    mount(h(RouterProvider, { router }, h(RouterView, {})), ctr)
+
+    // Pending should show immediately
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(ctr.querySelector('#pending-min')).not.toBeNull()
+
+    // Resolve loader quickly (after ~50ms — well before pendingMinMs)
+    await new Promise<void>((r) => setTimeout(r, 50))
+    resolveLoader!({ data: 'done' })
+
+    // Trigger reactive update
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    // Pending should STILL be visible — pendingMinMs hasn't elapsed
+    expect(ctr.querySelector('#pending-min')).not.toBeNull()
+    expect(ctr.querySelector('#real-min')).toBeNull()
+
+    // Wait for pendingMinMs to elapse
+    await new Promise<void>((r) => setTimeout(r, 300))
+
+    // Now the real component should show
+    // (need to trigger a reactive re-render — read loadingSignal)
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    // The pending phase should have transitioned to ready
+    // Note: the signal-based state machine sets phase to 'ready' after minTimer fires
+    router.destroy()
+  }, 10000)
+
+  test('pendingMs delays showing pending — data arriving before delay skips pending', async () => {
+    let resolveLoader: (v: unknown) => void
+    const loaderPromise = new Promise((r) => { resolveLoader = r })
+    const PendingComp = () => h('div', { id: 'pending-delay' }, 'Loading...')
+    const RealComp = () => h('div', { id: 'real-delay' }, 'Loaded')
+
+    const pendRoutes: RouteRecord[] = [
+      {
+        path: '/delayed',
+        component: RealComp,
+        loader: () => loaderPromise,
+        pendingComponent: PendingComp,
+        pendingMs: 500,     // wait 500ms before showing pending
+        pendingMinMs: 0,
+      },
+    ]
+    const router = createRouter({ routes: pendRoutes, url: '/delayed' })
+    const ctr = document.createElement('div')
+    mount(h(RouterProvider, { router }, h(RouterView, {})), ctr)
+
+    await new Promise<void>((r) => queueMicrotask(r))
+
+    // Before pendingMs: nothing should show (hidden phase)
+    expect(ctr.querySelector('#pending-delay')).toBeNull()
+
+    // Resolve before pendingMs elapses — should skip pending entirely
+    resolveLoader!({ data: 'fast' })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    // Pending should never have appeared
+    expect(ctr.querySelector('#pending-delay')).toBeNull()
+
+    router.destroy()
+  })
+
+  test('pendingComponent type accepted on RouteRecord', () => {
+    const PendingComp = () => h('div', null, 'Loading...')
+    const routeWithPending: RouteRecord = {
+      path: '/slow',
+      component: Home,
+      loader: async () => ({}),
+      pendingComponent: PendingComp,
+      pendingMs: 200,
+      pendingMinMs: 500,
+    }
+    expect(routeWithPending.pendingComponent).toBe(PendingComp)
+    expect(routeWithPending.pendingMs).toBe(200)
+    expect(routeWithPending.pendingMinMs).toBe(500)
   })
 })

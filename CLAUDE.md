@@ -449,6 +449,9 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `useTypedSearchParams` guards NaN — non-numeric strings coerce to `0` not `NaN`
 - `_middlewareData` properly typed on `ResolvedRoute` (no `as any` casts)
 - Prefetch cache capped at 50 entries to prevent unbounded memory growth
+- `prefetch="intent"` (default) — prefetches on hover AND focus (keyboard + mouse). Also: `"hover"`, `"viewport"`, `"none"`
+- `notFound()` + `NotFoundBoundary` — throw `notFound()` in a loader or component to trigger a 404 boundary. `isNotFoundError()` type guard for custom handling
+- `pendingComponent` per route — shown while loader runs, with `pendingMs` (delay before showing) and `pendingMinMs` (minimum display time). Signal-based state machine: hidden → pending → ready
 
 ### @pyreon/hooks
 

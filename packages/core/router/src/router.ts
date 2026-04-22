@@ -757,6 +757,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
   }
 
   async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
+    router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
       if (__DEV__) {
         // oxlint-disable-next-line no-console
@@ -850,6 +851,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     _readyPromise,
     _onError: onError,
     _maxCacheSize: maxCacheSize,
+    _navigationStartTime: Date.now(),
 
     async push(
       location:

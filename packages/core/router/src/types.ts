@@ -207,6 +207,16 @@ export interface RouteRecord<TPath extends string = string> {
   staleWhileRevalidate?: boolean
   /** Component rendered when this route's loader throws an error */
   errorComponent?: ComponentFn
+  /**
+   * Component rendered while this route's loader is running.
+   * Only shown after `pendingMs` (default: 0) to avoid flash on fast loads.
+   * Once shown, displayed for at least `pendingMinMs` (default: 200) to avoid flicker.
+   */
+  pendingComponent?: ComponentFn
+  /** Delay in ms before showing pendingComponent (default: 0). Prevents flash on fast loaders. */
+  pendingMs?: number
+  /** Minimum display time in ms for pendingComponent once shown (default: 200). Prevents flicker. */
+  pendingMinMs?: number
   /** Per-route middleware — runs before guards, can accumulate context data. */
   middleware?: RouteMiddleware | RouteMiddleware[]
 }
@@ -367,4 +377,6 @@ export interface RouterInstance extends Router {
   _readyResolve: (() => void) | null
   /** The isReady() promise instance */
   _readyPromise: Promise<void>
+  /** Timestamp when the current navigation started — used for pendingMs timing */
+  _navigationStartTime: number
 }

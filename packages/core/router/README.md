@@ -113,3 +113,38 @@ Route changes are wrapped in `document.startViewTransition()` automatically when
 | `finished` | Full animation completed | no -- `.catch()` only |
 
 `afterEach` hooks and scroll restoration fire after the VT callback completes, so they observe the new route state when invoked.
+
+## notFound()
+
+Throw `notFound()` in a loader or component to render a 404 boundary:
+
+```tsx
+import { notFound, NotFoundBoundary, RouterView } from '@pyreon/router'
+
+// Route loader:
+{ path: '/user/:id', component: UserPage, loader: async ({ params }) => {
+  const user = await fetchUser(params.id)
+  if (!user) notFound()
+  return user
+}}
+
+// App layout:
+<NotFoundBoundary fallback={<NotFoundPage />}>
+  <RouterView />
+</NotFoundBoundary>
+```
+
+## Pending Components
+
+Show a skeleton while route loaders run:
+
+```ts
+{
+  path: '/dashboard',
+  component: Dashboard,
+  loader: fetchDashboardData,
+  pendingComponent: DashboardSkeleton,
+  pendingMs: 200,     // delay before showing skeleton (avoid flash)
+  pendingMinMs: 500,  // minimum display time (avoid flicker)
+}
+```
