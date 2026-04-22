@@ -644,7 +644,6 @@ describe('jsx-runtime coverage', () => {
 
   it('layout effects with cleanup run correctly', async () => {
     const cleanups: string[] = []
-    const runner = createHookRunner()
 
     // Push layout effects into context DURING a render pass so the
     // jsx-runtime's actual runLayoutEffects function executes them
@@ -940,7 +939,6 @@ describe('jsx-runtime layout/schedule effects', () => {
 
   it('component unmount prevents scheduled re-renders (scheduleRerender unmounted check)', async () => {
     let rerenderAttempts = 0
-    const originalWarn = console.warn
 
     function Comp() {
       const [count, setCount] = createSignal(0)

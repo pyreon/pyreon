@@ -784,18 +784,6 @@ export function createStore<T extends object>(
     return path.split('.').reduce((o, k) => (o as Record<string, unknown>)?.[k], obj)
   }
 
-  function setByPath(obj: unknown, pathParts: (string | number)[], value: unknown): void {
-    if (pathParts.length === 0) return
-    let current = obj as Record<string | number, unknown>
-    for (let i = 0; i < pathParts.length - 1; i++) {
-      const key = pathParts[i]
-      if (key === undefined) return
-      current = current[key] as Record<string | number, unknown>
-    }
-    const lastKey = pathParts[pathParts.length - 1]
-    if (lastKey !== undefined) current[lastKey] = value
-  }
-
   function getSignal(path: string): ReturnType<typeof pyreonSignal> {
     let sig = signals.get(path)
     if (!sig) {
