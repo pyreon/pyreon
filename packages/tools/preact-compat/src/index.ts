@@ -101,7 +101,14 @@ export class Component<
 > {
   props: P
   state: S
-  private _stateSignal: ReturnType<typeof signal<S>>
+  _stateSignal: ReturnType<typeof signal<S>>
+  _lastResult?: VNodeChild
+
+  // Lifecycle methods (overridden by subclasses)
+  componentDidMount?(): void
+  componentDidUpdate?(): void
+  componentWillUnmount?(): void
+  shouldComponentUpdate?(nextProps: P, nextState: S): boolean
 
   constructor(props: P) {
     this.props = props

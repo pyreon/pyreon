@@ -324,6 +324,33 @@ export function useImperativeHandle<T>(
  */
 export function useDebugValue<T>(_value: T, _format?: (v: T) => unknown): void {}
 
+// ─── useTransition ──────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useTransition` — returns `[isPending, startTransition]`.
+ *
+ * In Pyreon's signal-based reactivity there is no concept of concurrent
+ * rendering lanes. The callback is executed synchronously and `isPending`
+ * is always `false`. This shim exists so Preact/React code that uses
+ * `useTransition` compiles and runs without changes.
+ */
+export function useTransition(): [boolean, (fn: () => void) => void] {
+  return [false, (fn) => fn()]
+}
+
+// ─── useDeferredValue ───────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `useDeferredValue` — returns the value as-is.
+ *
+ * In Pyreon's signal-based reactivity there are no concurrent rendering lanes,
+ * so the value is never "deferred". This shim exists so Preact/React code that
+ * uses `useDeferredValue` compiles and runs without changes.
+ */
+export function useDeferredValue<T>(value: T): T {
+  return value
+}
+
 // ─── useErrorBoundary ────────────────────────────────────────────────────────
 
 /**

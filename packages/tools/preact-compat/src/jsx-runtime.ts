@@ -12,6 +12,7 @@
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import { Fragment, h, onUnmount } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import type { Component } from './index'
 
 export { Fragment }
 
@@ -83,6 +84,80 @@ function scheduleEffects(ctx: RenderContext, entries: EffectEntry[]): void {
 
 const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
 
+// ─── Class component detection ──────────────────────────────────────────────
+
+function isClassComponent(type: Function): boolean {
+  return type.prototype != null && typeof type.prototype.render === 'function'
+}
+
+// ─── Class component wrapping ───────────────────────────────────────────────
+
+function wrapClassComponent(ClassComp: Function): ComponentFn {
+  const wrapped = ((props: Props) => {
+    const instance = new (ClassComp as new (props: Props) => Component)(props)
+    const version = signal(0)
+    let updateScheduled = false
+
+    // Override setState to trigger re-render via version signal
+    const origSetState = instance.setState.bind(instance)
+    instance.setState = (partial: Partial<Record<string, unknown>>) => {
+      origSetState(partial)
+      if (!updateScheduled) {
+        updateScheduled = true
+        queueMicrotask(() => {
+          updateScheduled = false
+          version.set(version.peek() + 1)
+        })
+      }
+    }
+
+    // Override forceUpdate
+    instance.forceUpdate = () => {
+      version.set(version.peek() + 1)
+    }
+
+    // Lifecycle: componentWillUnmount
+    let didMountFired = false
+    onUnmount(() => {
+      if (typeof instance.componentWillUnmount === 'function') {
+        instance.componentWillUnmount()
+      }
+    })
+
+    // Return reactive accessor for re-renders
+    return () => {
+      const ver = version() // track for re-renders
+      instance.props = props // update props on re-render
+
+      // shouldComponentUpdate only applies after mount (ver > 0 means setState/forceUpdate)
+      if (didMountFired && ver > 0 && typeof instance.shouldComponentUpdate === 'function') {
+        if (!instance.shouldComponentUpdate(props, instance.state)) {
+          return instance._lastResult // skip render
+        }
+      }
+
+      const result = instance.render()
+      instance._lastResult = result
+
+      // componentDidMount fires once after the initial render settles
+      if (!didMountFired) {
+        didMountFired = true
+        if (typeof instance.componentDidMount === 'function') {
+          queueMicrotask(() => instance.componentDidMount!())
+        }
+      } else if (ver > 0) {
+        // componentDidUpdate only fires on explicit re-renders (setState/forceUpdate)
+        if (typeof instance.componentDidUpdate === 'function') {
+          queueMicrotask(() => instance.componentDidUpdate!())
+        }
+      }
+
+      return result
+    }
+  }) as unknown as ComponentFn
+  return wrapped
+}
+
 // ─── Component wrapping ──────────────────────────────────────────────────────
 
 const _wrapperCache = new WeakMap<Function, ComponentFn>()
@@ -90,6 +165,13 @@ const _wrapperCache = new WeakMap<Function, ComponentFn>()
 function wrapCompatComponent(preactComponent: Function): ComponentFn {
   let wrapped = _wrapperCache.get(preactComponent)
   if (wrapped) return wrapped
+
+  // Handle class components (those with prototype.render)
+  if (isClassComponent(preactComponent)) {
+    wrapped = wrapClassComponent(preactComponent)
+    _wrapperCache.set(preactComponent, wrapped)
+    return wrapped
+  }
 
   // The wrapper returns a reactive accessor (() => VNodeChild) which Pyreon's
   // mountChild treats as a reactive expression via mountReactive.

@@ -1,16 +1,18 @@
-import type { VNodeChild } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { h as pyreonH } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import {
   forwardRef,
   memo,
   useDebugValue,
+  useDeferredValue,
   useEffect,
   useImperativeHandle,
   useMemo,
   useReducer,
   useRef,
   useState,
+  useTransition,
 } from '../hooks'
 import {
   cloneElement,
@@ -776,5 +778,305 @@ describe('real-world patterns', () => {
     dispose()
     count.value = 100
     expect(effectValue).toBe(10) // disposed, no longer tracking
+  })
+})
+
+// ─── Class component rendering via JSX runtime ─────────────────────────────
+
+describe('class component rendering', () => {
+  test('class component renders via jsx()', () => {
+    const el = container()
+    class Hello extends Component<{ name: string }> {
+      override render() {
+        return pyreonH('span', null, `Hello ${this.props.name}`)
+      }
+    }
+    mount(jsx(Hello as unknown as ComponentFn, { name: 'World' }), el)
+    expect(el.textContent).toBe('Hello World')
+  })
+
+  test('class component renders with initial state', () => {
+    const el = container()
+    class Counter extends Component<Record<string, never>, { count: number }> {
+      constructor(props: Record<string, never>) {
+        super(props)
+        this.state = { count: 42 }
+      }
+      override render() {
+        return pyreonH('span', null, String(this.state.count))
+      }
+    }
+    mount(jsx(Counter as unknown as ComponentFn, {}), el)
+    expect(el.textContent).toBe('42')
+  })
+
+  test('class component with children prop', () => {
+    const el = container()
+    class Wrapper extends Component<{ children?: VNodeChild }> {
+      override render() {
+        return pyreonH('div', null, this.props.children ?? '')
+      }
+    }
+    mount(jsx(Wrapper as unknown as ComponentFn, { children: 'inner' }), el)
+    expect(el.textContent).toBe('inner')
+  })
+})
+
+// ─── Class component setState triggers re-render ────────────────────────────
+
+describe('class component setState re-render', () => {
+  test('setState triggers DOM update', async () => {
+    const el = container()
+    let instance: InstanceType<typeof Counter> | undefined
+
+    class Counter extends Component<Record<string, never>, { count: number }> {
+      constructor(props: Record<string, never>) {
+        super(props)
+        this.state = { count: 0 }
+        instance = this
+      }
+      override render() {
+        return pyreonH('span', null, String(this.state.count))
+      }
+    }
+    mount(jsx(Counter as unknown as ComponentFn, {}), el)
+    expect(el.textContent).toBe('0')
+
+    instance!.setState({ count: 5 })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.textContent).toBe('5')
+  })
+
+  test('forceUpdate triggers DOM update', async () => {
+    const el = container()
+    let instance: InstanceType<typeof Comp> | undefined
+    let renderCount = 0
+
+    class Comp extends Component {
+      constructor(props: Record<string, unknown>) {
+        super(props)
+        instance = this
+      }
+      override render() {
+        renderCount++
+        return pyreonH('span', null, `render-${renderCount}`)
+      }
+    }
+    mount(jsx(Comp as unknown as ComponentFn, {}), el)
+    const initialRenders = renderCount
+
+    instance!.forceUpdate()
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(renderCount).toBeGreaterThan(initialRenders)
+  })
+})
+
+// ─── Class component lifecycle methods ──────────────────────────────────────
+
+describe('class component lifecycle', () => {
+  test('componentDidMount fires after first render', async () => {
+    const el = container()
+    let didMount = false
+
+    class Comp extends Component {
+      override componentDidMount() {
+        didMount = true
+      }
+      override render() {
+        return pyreonH('span', null, 'mounted')
+      }
+    }
+    mount(jsx(Comp as unknown as ComponentFn, {}), el)
+    expect(didMount).toBe(false) // not yet — queued via microtask
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(didMount).toBe(true)
+  })
+
+  test('componentDidUpdate fires after setState re-render', async () => {
+    const el = container()
+    let didUpdateCount = 0
+    let instance: InstanceType<typeof Comp> | undefined
+
+    class Comp extends Component<Record<string, never>, { x: number }> {
+      constructor(props: Record<string, never>) {
+        super(props)
+        this.state = { x: 0 }
+        instance = this
+      }
+      override componentDidUpdate() {
+        didUpdateCount++
+      }
+      override render() {
+        return pyreonH('span', null, String(this.state.x))
+      }
+    }
+    mount(jsx(Comp as unknown as ComponentFn, {}), el)
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(didUpdateCount).toBe(0) // didMount, not didUpdate
+
+    instance!.setState({ x: 1 })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(didUpdateCount).toBe(1)
+  })
+
+  test('componentWillUnmount fires on unmount', async () => {
+    const el = container()
+    let willUnmount = false
+
+    class Comp extends Component {
+      override componentWillUnmount() {
+        willUnmount = true
+      }
+      override render() {
+        return pyreonH('span', null, 'will-unmount')
+      }
+    }
+    const dispose = mount(jsx(Comp as unknown as ComponentFn, {}), el)
+    expect(willUnmount).toBe(false)
+
+    if (typeof dispose === 'function') dispose()
+    // Unmount callback should have fired
+    expect(willUnmount).toBe(true)
+  })
+
+  test('shouldComponentUpdate can prevent re-render', async () => {
+    const el = container()
+    let renderCount = 0
+    let instance: InstanceType<typeof Comp> | undefined
+
+    class Comp extends Component<Record<string, never>, { x: number }> {
+      constructor(props: Record<string, never>) {
+        super(props)
+        this.state = { x: 0 }
+        instance = this
+      }
+      override shouldComponentUpdate(_nextProps: Record<string, never>, nextState: { x: number }) {
+        return nextState.x > 1 // only re-render when x > 1
+      }
+      override render() {
+        renderCount++
+        return pyreonH('span', null, String(this.state.x))
+      }
+    }
+    mount(jsx(Comp as unknown as ComponentFn, {}), el)
+    const initialRenders = renderCount
+    expect(el.textContent).toBe('0')
+
+    instance!.setState({ x: 1 })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    // shouldComponentUpdate returns false for x=1, render skipped
+    expect(renderCount).toBe(initialRenders)
+    expect(el.textContent).toBe('0')
+
+    instance!.setState({ x: 2 })
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    // shouldComponentUpdate returns true for x=2, render runs
+    expect(renderCount).toBe(initialRenders + 1)
+    expect(el.textContent).toBe('2')
+  })
+})
+
+// ─── Context Provider tree scoping ──────────────────────────────────────────
+
+describe('context provider tree scoping', () => {
+  test('Provider passes value to nested useContext', () => {
+    const el = container()
+    const Ctx = createContext('default')
+    let received = ''
+
+    const Child = () => {
+      received = useContext(Ctx)
+      return pyreonH('span', null, received)
+    }
+
+    const App = () => {
+      return pyreonH(Ctx.Provider as unknown as string, { value: 'provided' }, jsx(Child, {}))
+    }
+
+    mount(jsx(App, {}), el)
+    expect(received).toBe('provided')
+  })
+
+  test('nested Providers override parent value', () => {
+    const el = container()
+    const Ctx = createContext('default')
+    let outerVal = ''
+    let innerVal = ''
+
+    const OuterChild = () => {
+      outerVal = useContext(Ctx)
+      return pyreonH('span', null, outerVal)
+    }
+
+    const InnerChild = () => {
+      innerVal = useContext(Ctx)
+      return pyreonH('span', null, innerVal)
+    }
+
+    const App = () => {
+      return pyreonH(
+        Ctx.Provider as unknown as string,
+        { value: 'outer' },
+        jsx(OuterChild, {}),
+        pyreonH(Ctx.Provider as unknown as string, { value: 'inner' }, jsx(InnerChild, {})),
+      )
+    }
+
+    mount(jsx(App, {}), el)
+    expect(outerVal).toBe('outer')
+    expect(innerVal).toBe('inner')
+  })
+})
+
+// ─── useTransition / useDeferredValue ───────────────────────────────────────
+
+describe('useTransition', () => {
+  test('returns [false, startTransition] where startTransition runs fn synchronously', () => {
+    const [isPending, startTransition] = withHookCtx(() => useTransition())
+    expect(isPending).toBe(false)
+    let ran = false
+    startTransition(() => {
+      ran = true
+    })
+    expect(ran).toBe(true)
+  })
+
+  test('works inside a mounted component', async () => {
+    const el = container()
+    let triggerTransition: () => void = () => {}
+
+    const Comp = () => {
+      const [count, setCount] = useState(0)
+      const [, startTransition] = useTransition()
+      triggerTransition = () => startTransition(() => setCount((c) => c + 1))
+      return pyreonH('span', null, String(count))
+    }
+
+    mount(jsx(Comp, {}), el)
+    expect(el.textContent).toBe('0')
+
+    triggerTransition()
+    await new Promise<void>((r) => queueMicrotask(r))
+    await new Promise<void>((r) => queueMicrotask(r))
+    expect(el.textContent).toBe('1')
+  })
+})
+
+describe('useDeferredValue', () => {
+  test('returns the value as-is', () => {
+    const result = withHookCtx(() => useDeferredValue(42))
+    expect(result).toBe(42)
+  })
+
+  test('returns objects by reference', () => {
+    const obj = { a: 1 }
+    const result = withHookCtx(() => useDeferredValue(obj))
+    expect(result).toBe(obj)
   })
 })
