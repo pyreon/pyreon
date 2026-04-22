@@ -4,8 +4,9 @@
  * Preact-compatible API shim that runs on Pyreon's reactive engine.
  *
  * Provides the core Preact API surface: h, Fragment, render, hydrate,
- * Component class, createContext, createRef, cloneElement, toChildArray,
- * isValidElement, and the options hook object.
+ * Component class, PureComponent, createContext, createRef, cloneElement,
+ * toChildArray, isValidElement, createPortal, lazy, Suspense, ErrorBoundary,
+ * and the options hook object.
  *
  * For hooks, import from "@pyreon/preact-compat/hooks".
  * For signals, import from "@pyreon/preact-compat/signals".
@@ -14,8 +15,12 @@
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
 import {
   createRef,
+  ErrorBoundary,
   Fragment,
+  lazy,
+  Portal,
   provide,
+  Suspense,
   createContext as pyreonCreateContext,
   h as pyreonH,
   useContext,
@@ -59,6 +64,9 @@ export interface PreactContext<T> {
   Provider: ComponentFn<{ value: T; children?: VNodeChild }>
 }
 
+// Tag the Provider so wrapCompatComponent skips it (it's already a native component)
+const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
+
 /**
  * Preact-compatible createContext — returns a context with a `.Provider` component.
  */
@@ -68,6 +76,8 @@ export function createContext<T>(defaultValue: T): PreactContext<T> {
     provide(ctx, props.value)
     return props.children
   }) as ComponentFn<{ value: T; children?: VNodeChild }>
+  // Mark as native so jsx() doesn't wrap it with wrapCompatComponent
+  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
   return { ...ctx, Provider }
 }
 
@@ -129,13 +139,25 @@ export class Component<
   }
 }
 
+// ─── PureComponent ──────────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible PureComponent — extends Component.
+ * In Pyreon's compat layer this behaves identically to Component
+ * (signal-based reactivity already avoids unnecessary re-renders).
+ */
+export class PureComponent<
+  P extends Props = Props,
+  S extends Record<string, unknown> = Record<string, unknown>,
+> extends Component<P, S> {}
+
 // ─── cloneElement ────────────────────────────────────────────────────────────
 
 /**
  * Clone a VNode with merged props (like Preact's cloneElement).
  */
 export function cloneElement(vnode: VNode, props?: Props, ...children: VNodeChild[]): VNode {
-  const mergedProps = { ...vnode.props, ...(props ?? {}) }
+  const mergedProps = props ? { ...vnode.props, ...props } : { ...vnode.props }
   const mergedChildren = children.length > 0 ? children : vnode.children
   return {
     type: vnode.type,
@@ -185,6 +207,19 @@ export function isValidElement(x: unknown): x is VNode {
   )
 }
 
+// ─── createPortal ───────────────────────────────────────────────────────────
+
+/**
+ * Preact-compatible `createPortal(children, target)`.
+ */
+export function createPortal(children: VNodeChild, target: Element): VNodeChild {
+  return Portal({ target, children })
+}
+
+// ─── Suspense / lazy / ErrorBoundary ─────────────────────────────────────────
+
+export { ErrorBoundary, lazy, Suspense }
+
 // ─── options ─────────────────────────────────────────────────────────────────
 
 /**
@@ -192,3 +227,7 @@ export function isValidElement(x: unknown): x is VNode {
  * with libraries that check for `options._hook`, `options.vnode`, etc.
  */
 export const options: Record<string, unknown> = {}
+
+// ─── version ────────────────────────────────────────────────────────────────
+
+export const version = '10.0.0-pyreon'

@@ -10,6 +10,7 @@ import {
   batch as pyreonBatch,
   computed as pyreonComputed,
   effect as pyreonEffect,
+  runUntracked as pyreonRunUntracked,
   signal as pyreonSignal,
 } from '@pyreon/reactivity'
 
@@ -63,8 +64,7 @@ export function computed<T>(fn: () => T): ReadonlySignal<T> {
       return c()
     },
     peek(): T {
-      // computed doesn't have peek — just read the value untracked
-      return c()
+      return pyreonRunUntracked(() => c())
     },
   }
 }
