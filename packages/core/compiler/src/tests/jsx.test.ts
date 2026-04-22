@@ -2017,6 +2017,28 @@ describe('JSX transform — signal auto-call', () => {
     // let is VariableDeclaration kind=let — it should shadow
     expect(result).toContain('.data = show()')  // outer: auto-called
   })
+
+  test('knownSignals with empty array does not crash', () => {
+    const code = 'function App() { return <div>hello</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: [] }).code
+    expect(result).toContain('hello')
+  })
+
+  test('knownSignals combined with local signal declarations', () => {
+    const code = 'import { count } from "./store"; function App() { const local = signal(0); return <div>{count}{local}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
+    // Both the imported signal (via knownSignals) and the local signal should be auto-called
+    expect(result).toContain('count()')
+    expect(result).toContain('local()')
+  })
+
+  test('knownSignals with default import name', () => {
+    // When a default import resolves to a signal, the local name should be auto-called
+    const code = 'import count from "./store"; function App() { return <div>{count}</div> }'
+    const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
+    expect(result).toContain('count()')
+    expect(result).toContain('_bind')
+  })
 })
 
 // ─── Additional branch coverage for >= 90% ─────────────────────────────────
