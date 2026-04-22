@@ -29,6 +29,7 @@ import {
   onUnmount,
   onUpdate,
   popContext,
+  Portal,
   pushContext,
   h as pyreonH,
   useContext,
@@ -48,6 +49,7 @@ import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 const V_IS_REF = Symbol('__v_isRef')
 const V_IS_READONLY = Symbol('__v_isReadonly')
+const V_SKIP = Symbol('__v_skip')
 const V_RAW = Symbol('__v_raw')
 
 // ─── Ref ──────────────────────────────────────────────────────────────────────
@@ -225,6 +227,8 @@ const rawMap = new WeakMap<object, object>()
  * call `scheduleRerender()`.
  */
 export function reactive<T extends object>(obj: T): T {
+  if ((obj as Record<symbol, boolean>)[V_SKIP]) return obj
+
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -287,7 +291,12 @@ function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
     get(target, key) {
       if (key === V_IS_READONLY) return true
       if (key === V_RAW) return target
-      return Reflect.get(target, key)
+      const value = Reflect.get(target, key)
+      // Recursively wrap nested objects in readonly
+      if (value !== null && typeof value === 'object' && !isRef(value)) {
+        return _createReadonlyProxy(value as object)
+      }
+      return value
     },
     set(_target, key) {
       // Internal symbols used for identification are allowed
@@ -388,11 +397,125 @@ export interface WatchOptions {
 type WatchSource<T> = Ref<T> | (() => T)
 
 /**
- * Watches a reactive source and calls `cb` when it changes.
+ * Watches a reactive source (or array of sources) and calls `cb` when it changes.
  *
  * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
+  source: WatchSource<T>,
+  cb: (newValue: T, oldValue: T | undefined) => void,
+  options?: WatchOptions,
+): () => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function watch<T extends readonly WatchSource<any>[]>(
+  sources: [...T],
+  cb: (
+    newValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V : never },
+    oldValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V | undefined : never },
+  ) => void,
+  options?: WatchOptions,
+): () => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function watch<T>(
+  source: WatchSource<T> | WatchSource<T>[],
+  cb: (newValue: T, oldValue: T | undefined) => void,
+  options?: WatchOptions,
+): () => void {
+  // Array of sources — multi-watch
+  if (Array.isArray(source)) {
+    return _watchArray(
+      source as WatchSource<unknown>[],
+      cb as (newValue: unknown, oldValue: unknown) => void,
+      options,
+    )
+  }
+  return _watchSingle(source as WatchSource<T>, cb, options)
+}
+
+function _watchArray(
+  sources: WatchSource<unknown>[],
+  cb: (newValues: unknown, oldValues: unknown) => void,
+  options?: WatchOptions,
+): () => void {
+  const getters = sources.map((s) => (isRef(s) ? () => (s as Ref).value : (s as () => unknown)))
+
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
+
+    let oldValues: unknown[] | undefined
+    let initialized = false
+
+    if (options?.immediate) {
+      const current = getters.map((g) => g())
+      cb(current, getters.map(() => undefined))
+      oldValues = current
+      initialized = true
+    }
+
+    let running = false
+    const combined = pyreonComputed(() => getters.map((g) => g()))
+    const e = effect(() => {
+      if (running) return
+      running = true
+      try {
+        const newValues = combined()
+        if (initialized) {
+          cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
+        }
+        oldValues = [...newValues]
+        initialized = true
+      } finally {
+        running = false
+      }
+    })
+
+    const stop = () => e.dispose()
+    ctx.hooks[idx] = stop
+    ctx.unmountCallbacks.push(stop)
+    return stop
+  }
+
+  // Outside component
+  let oldValues: unknown[] | undefined
+  let initialized = false
+
+  if (options?.immediate) {
+    const current = getters.map((g) => g())
+    cb(current, getters.map(() => undefined))
+    oldValues = current
+    initialized = true
+  }
+
+  let running = false
+  const combined = pyreonComputed(() => getters.map((g) => g()))
+  const e = effect(() => {
+    if (running) return
+    running = true
+    try {
+      const newValues = combined()
+      if (initialized) {
+        cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
+      }
+      oldValues = [...newValues]
+      initialized = true
+    } finally {
+      running = false
+    }
+  })
+
+  const stop = () => e.dispose()
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
+}
+
+function _watchSingle<T>(
   source: WatchSource<T>,
   cb: (newValue: T, oldValue: T | undefined) => void,
   options?: WatchOptions,
@@ -465,7 +588,13 @@ export function watch<T>(
     }
   })
 
-  return () => e.dispose()
+  const stop = () => e.dispose()
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
 }
 
 /**
@@ -506,7 +635,14 @@ export function watchEffect(fn: () => void): () => void {
       running = false
     }
   })
-  return () => e.dispose()
+  const stop = () => e.dispose()
+  // Register with current effect scope if one is active
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -692,23 +828,293 @@ export { Fragment, pyreonH as h }
 interface App {
   /** Mount the application into a DOM element. Returns an unmount function. */
   mount(el: string | Element): () => void
+  /** Install a plugin. */
+  use(plugin: { install: (app: App) => void }): App
+  /** Provide a value to the entire app tree. */
+  provide<T>(key: string | symbol, value: T): App
 }
 
 /**
  * Creates a Pyreon application instance — Vue 3 `createApp()` compatible.
  */
 export function createApp(component: ComponentFn, props?: Props): App {
-  return {
+  const provisions: Array<{ key: string | symbol; value: unknown }> = []
+
+  const app: App = {
     mount(el: string | Element): () => void {
       const container = typeof el === 'string' ? document.querySelector(el) : el
       if (!container) {
         throw new Error(`Cannot find mount target: ${el}`)
       }
+      // Push app-level provisions before mounting
+      for (const { key, value } of provisions) {
+        const ctx = getOrCreateContext(key)
+        pushContext(new Map([[ctx.id, value]]))
+      }
       const vnode = pyreonH(component, props ?? null)
       return pyreonMount(vnode, container)
     },
+    use(plugin: { install: (app: App) => void }): App {
+      plugin.install(app)
+      return app
+    },
+    provide<T>(key: string | symbol, value: T): App {
+      provisions.push({ key, value })
+      return app
+    },
+  }
+
+  return app
+}
+
+// ─── isReactive / isReadonly / isProxy / markRaw ─────────────────────────────
+
+/**
+ * Returns `true` if the value was created by `reactive()`.
+ */
+export function isReactive(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && rawMap.has(value as object)
+}
+
+/**
+ * Returns `true` if the value was created by `readonly()`.
+ */
+export function isReadonly(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    (value as Record<symbol, unknown>)[V_IS_READONLY] === true
+  )
+}
+
+/**
+ * Returns `true` if the value is either reactive or readonly.
+ */
+export function isProxy(value: unknown): boolean {
+  return isReactive(value) || isReadonly(value)
+}
+
+/**
+ * Marks an object so that `reactive()` will return it as-is (not wrapped).
+ */
+export function markRaw<T extends object>(obj: T): T {
+  ;(obj as Record<symbol, boolean>)[V_SKIP] = true
+  return obj
+}
+
+// ─── effectScope / getCurrentScope / onScopeDispose ──────────────────────────
+
+export interface EffectScopeCompat {
+  /** Run a function within this scope. Returns undefined if scope is stopped. */
+  run<T>(fn: () => T): T | undefined
+  /** Stop the scope and dispose all collected effects/cleanups. */
+  stop(): void
+  /** Whether the scope is still active. */
+  active: boolean
+}
+
+let _currentEffectScope: EffectScopeCompat | null = null
+
+/**
+ * Creates an effect scope that collects reactive effects for grouped disposal.
+ *
+ * @param detached - If true, the scope is not collected by a parent scope.
+ */
+export function effectScope(detached?: boolean): EffectScopeCompat {
+  const cleanups: (() => void)[] = []
+  let active = true
+
+  const scope: EffectScopeCompat = {
+    get active() {
+      return active
+    },
+    run<T>(fn: () => T): T | undefined {
+      if (!active) return undefined
+      const prev = _currentEffectScope
+      _currentEffectScope = scope
+      try {
+        return fn()
+      } finally {
+        _currentEffectScope = prev
+      }
+    },
+    stop() {
+      if (!active) return
+      active = false
+      for (const fn of cleanups) fn()
+      cleanups.length = 0
+    },
+  }
+
+  // Auto-collect in parent scope unless detached
+  if (!detached && _currentEffectScope) {
+    const parentCleanups = (_currentEffectScope as EffectScopeCompat & { _cleanups?: (() => void)[] })
+      ._cleanups
+    if (parentCleanups) parentCleanups.push(() => scope.stop())
+  }
+  ;(scope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups = cleanups
+
+  return scope
+}
+
+/**
+ * Returns the current active effect scope, or undefined if none.
+ */
+export function getCurrentScope(): EffectScopeCompat | undefined {
+  return _currentEffectScope ?? undefined
+}
+
+/**
+ * Registers a cleanup function on the current effect scope.
+ */
+export function onScopeDispose(fn: () => void): void {
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(fn)
   }
 }
+
+// ─── onErrorCaptured / onRenderTracked / onRenderTriggered ───────────────────
+
+/**
+ * Registers an error capture handler.
+ * No direct equivalent in Pyreon — stored but not actively used.
+ */
+export function onErrorCaptured(fn: (err: Error) => boolean | void): void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return
+    ctx.hooks[idx] = fn
+  }
+}
+
+/**
+ * Dev-only lifecycle hook — no-op in Pyreon.
+ */
+export function onRenderTracked(
+  _fn: (event: { key: string; type: string }) => void,
+): void {
+  // Dev-only hook — no equivalent in Pyreon
+}
+
+/**
+ * Dev-only lifecycle hook — no-op in Pyreon.
+ */
+export function onRenderTriggered(
+  _fn: (event: { key: string; type: string }) => void,
+): void {
+  // Dev-only hook — no equivalent in Pyreon
+}
+
+// ─── Teleport / KeepAlive ────────────────────────────────────────────────────
+
+/**
+ * Teleport — renders children into a different DOM element.
+ * Maps to Pyreon's Portal.
+ */
+export function Teleport(props: {
+  to: string | Element
+  children?: VNodeChild
+}): VNodeChild {
+  const target =
+    typeof props.to === 'string' ? document.querySelector(props.to) : props.to
+  if (!target) return props.children ?? null
+  return Portal({ target, children: props.children ?? null })
+}
+
+/**
+ * KeepAlive — not supported in Pyreon. Renders children as-is.
+ */
+export function KeepAlive(props: { children?: VNodeChild }): VNodeChild {
+  return props.children ?? null
+}
+
+// ─── watchPostEffect / watchSyncEffect ───────────────────────────────────────
+
+/**
+ * Runs a watchEffect that flushes after DOM updates.
+ * In Pyreon, same as `watchEffect()`.
+ */
+export function watchPostEffect(fn: () => void): () => void {
+  return watchEffect(fn)
+}
+
+/**
+ * Runs a watchEffect that flushes synchronously.
+ * In Pyreon, same as `watchEffect()`.
+ */
+export function watchSyncEffect(fn: () => void): () => void {
+  return watchEffect(fn)
+}
+
+// ─── customRef ───────────────────────────────────────────────────────────────
+
+/**
+ * Creates a customized ref with explicit control over dependency tracking
+ * and update triggering.
+ */
+export function customRef<T>(
+  factory: (
+    track: () => void,
+    trigger: () => void,
+  ) => { get: () => T; set: (v: T) => void },
+): Ref<T> {
+  const s = signal(0)
+  const { get, set } = factory(
+    () => { s(); return undefined as never }, // track — reading the signal subscribes
+    () => s.set(s.peek() + 1), // trigger — bump version to re-notify
+  )
+  return {
+    [V_IS_REF]: true as const,
+    get value(): T {
+      return get()
+    },
+    set value(v: T) {
+      set(v)
+    },
+  } as Ref<T>
+}
+
+// ─── version ─────────────────────────────────────────────────────────────────
+
+/**
+ * Compatibility version string — indicates Vue 3 API compatibility.
+ */
+export const version = '3.5.0-pyreon'
+
+// ─── Type exports ────────────────────────────────────────────────────────────
+
+export type { ComponentFn as Component } from '@pyreon/core'
+export type { VNodeChild as VNode } from '@pyreon/core'
+
+/** Vue-compatible PropType — a callable that returns T. */
+export type PropType<T> = { (): T }
+
+/** Extract prop types from a component's props definition. */
+export type ExtractPropTypes<T> = {
+  [K in keyof T]: T[K] extends PropType<infer V> ? V : T[K]
+}
+
+/** Vue-compatible emits options type. */
+export type EmitsOptions = Record<string, (...args: unknown[]) => void>
+
+/** Vue-compatible setup context. */
+export type SetupContext = {
+  emit: (event: string, ...args: unknown[]) => void
+  slots: Record<string, () => VNodeChild>
+  attrs: Record<string, unknown>
+}
+
+/** Vue-compatible plugin interface. */
+export type Plugin = { install: (app: App) => void }
+
+/** Vue-compatible directive type (stub). */
+export type Directive = Record<string, unknown>
+
+/** Vue-compatible injection key with type branding. */
+export type InjectionKey<T> = symbol & { __type: T }
 
 // ─── Additional re-exports ────────────────────────────────────────────────────
 
