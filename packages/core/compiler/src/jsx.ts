@@ -390,6 +390,13 @@ export function transformJSX_JS(
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
 
+  // ── Signal variable tracking (for auto-call in JSX) ──────────────────────
+  // Tracks `const x = signal(...)` declarations. In JSX expressions, bare
+  // references to these identifiers are auto-called: `{x}` → `{x()}`.
+  // This makes signals look like plain JS variables in templates while
+  // maintaining fine-grained reactivity.
+  const signalVars = new Set<string>()
+
   function readsFromProps(node: N): boolean {
     if (node.type === 'MemberExpression' && node.object?.type === 'Identifier') {
       if (propsNames.has(node.object.name)) return true
@@ -434,7 +441,11 @@ export function transformJSX_JS(
       if (node.kind !== 'const') continue
       if (callbackDepth > 0) continue
       if (decl.id?.type === 'Identifier' && decl.init) {
-        if (isStatefulCall(decl.init)) continue
+        if (isStatefulCall(decl.init)) {
+          // Track signal() declarations for auto-call in JSX
+          if (isSignalCall(decl.init)) signalVars.add(decl.id.name)
+          continue
+        }
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
           propDerivedVars.set(decl.id.name, { start: decl.init.start as number, end: decl.init.end as number })
@@ -570,6 +581,17 @@ export function transformJSX_JS(
       const parent = findParent(node)
       if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
         // This is a property name position, not a reference — fall through
+      } else {
+        return true
+      }
+    }
+    // Signal variable reference — treated as dynamic (will be auto-called)
+    if (node.type === 'Identifier' && signalVars.has(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+        // Property name position — not a reference
+      } else if (parent && parent.type === 'CallExpression' && parent.callee === node) {
+        // Already being called: signal() — don't double-flag
       } else {
         return true
       }
@@ -1122,12 +1144,77 @@ export function transformJSX_JS(
   }
 
   function sliceExpr(expr: N): string {
+    let result: string
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
       const start = expr.start as number
       const end = expr.end as number
-      return resolveIdentifiersInText(code.slice(start, end), start, expr)
+      result = resolveIdentifiersInText(code.slice(start, end), start, expr)
+    } else {
+      result = code.slice(expr.start as number, expr.end as number)
     }
-    return code.slice(expr.start as number, expr.end as number)
+
+    // Auto-call signal variables: replace bare `x` with `x()` in the expression.
+    // Only applies to identifiers that are NOT already being called (not `x()`).
+    if (signalVars.size > 0 && referencesSignalVar(expr)) {
+      result = autoCallSignals(result, expr)
+    }
+
+    return result
+  }
+
+  /** Check if an expression references any tracked signal variable. */
+  function referencesSignalVar(node: N): boolean {
+    if (node.type === 'Identifier' && signalVars.has(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
+      if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
+      return true
+    }
+    let found = false
+    forEachChildFast(node, (child) => {
+      if (found) return
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
+      if (referencesSignalVar(child)) found = true
+    })
+    return found
+  }
+
+  /** Auto-insert () after signal variable references in the expression source.
+   *  Uses the AST to find exact Identifier positions — never scans raw text. */
+  function autoCallSignals(text: string, expr: N): string {
+    const start = expr.start as number
+    // Collect signal identifier positions that need auto-calling
+    const idents: { start: number; end: number }[] = []
+
+    function findSignalIdents(node: N): void {
+      if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
+      if (node.type === 'Identifier' && signalVars.has(node.name)) {
+        const parent = findParent(node)
+        // Skip property name positions
+        if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
+        // Skip if already being called: signal()
+        if (parent && parent.type === 'CallExpression' && parent.callee === node) return
+        // Skip declaration positions
+        if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
+        idents.push({ start: node.start as number, end: node.end as number })
+      }
+      forEachChildFast(node, findSignalIdents)
+    }
+    findSignalIdents(expr)
+
+    if (idents.length === 0) return text
+
+    // Sort by position and insert () after each identifier
+    idents.sort((a, b) => a.start - b.start)
+    const parts: string[] = []
+    let lastPos = start
+    for (const id of idents) {
+      parts.push(code.slice(lastPos, id.end))
+      parts.push('()')  // auto-call
+      lastPos = id.end
+    }
+    parts.push(code.slice(lastPos, start + text.length))
+    return parts.join('')
   }
 }
 
@@ -1156,6 +1243,13 @@ function isStatefulCall(node: N): boolean {
   const callee = node.callee
   if (callee?.type === 'Identifier') return STATEFUL_CALLS.has(callee.name)
   return false
+}
+
+/** Check if a call expression is specifically `signal(...)`. */
+function isSignalCall(node: N): boolean {
+  if (node.type !== 'CallExpression') return false
+  const callee = node.callee
+  return callee?.type === 'Identifier' && callee.name === 'signal'
 }
 
 function isChildrenExpression(node: N, expr: string): boolean {
