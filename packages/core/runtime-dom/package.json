@@ -28,6 +28,16 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./transition": {
+      "bun": "./src/transition-entry.ts",
+      "import": "./lib/transition-entry.js",
+      "types": "./lib/types/transition-entry.d.ts"
+    },
+    "./keep-alive": {
+      "bun": "./src/keep-alive-entry.ts",
+      "import": "./lib/keep-alive-entry.js",
+      "types": "./lib/types/keep-alive-entry.d.ts"
     }
   },
   "publishConfig": {

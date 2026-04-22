@@ -107,9 +107,21 @@ const App = () => (
 - **`Transition`** -- Animates a single child on enter/leave with CSS classes or JS hooks.
 - **`TransitionGroup`** -- Animates a list of keyed children, including move transitions.
 
+Also available as a separate subpath export for apps that don't use animations:
+
+```ts
+import { Transition, TransitionGroup } from '@pyreon/runtime-dom/transition'
+```
+
 ### KeepAlive
 
 - **`KeepAlive`** -- Caches inactive component subtrees instead of destroying them.
+
+Also available as a separate subpath export:
+
+```ts
+import { KeepAlive } from '@pyreon/runtime-dom/keep-alive'
+```
 
 ### Types
 
