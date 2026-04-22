@@ -36,60 +36,67 @@ function createBuildPlugin(opts?: PyreonPluginOptions) {
   return plugin
 }
 
-function transform(plugin: ReturnType<typeof pyreonPlugin>, code: string, id: string) {
+async function transform(plugin: ReturnType<typeof pyreonPlugin>, code: string, id: string) {
   const transformHook = plugin.transform as (
-    this: { warn: (msg: string) => void },
+    this: { warn: (msg: string) => void; resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null> },
     code: string,
     id: string,
-  ) => { code: string; map: null } | undefined
+  ) => Promise<{ code: string; map: null } | undefined>
   const warnings: string[] = []
-  return transformHook.call({ warn: (msg: string) => warnings.push(msg) }, code, id)
+  return transformHook.call(
+    {
+      warn: (msg: string) => warnings.push(msg),
+      resolve: async () => null, // no cross-module resolution in unit tests
+    },
+    code,
+    id,
+  )
 }
 
 // ─── HMR injection ──────────────────────────────────────────────────────────
 
 describe('HMR injection', () => {
-  it('injects HMR accept for modules with component exports', () => {
+  it('injects HMR accept for modules with component exports', async () => {
     const plugin = createPlugin()
     const code = `
 import { h } from "@pyreon/core"
 export function App() { return h("div", null, "hello") }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('import.meta.hot.accept()')
   })
 
-  it('injects HMR for exported const components', () => {
+  it('injects HMR for exported const components', async () => {
     const plugin = createPlugin()
     const code = `
 import { h } from "@pyreon/core"
 export const Header = () => h("header", null, "nav")
 `
-    const result = transform(plugin, code, '/src/Header.tsx')
+    const result = await transform(plugin, code, '/src/Header.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('import.meta.hot')
   })
 
-  it('does not inject HMR for modules without component exports or signals', () => {
+  it('does not inject HMR for modules without component exports or signals', async () => {
     const plugin = createPlugin()
     // Only lowercase exports — no component-like names (uppercase first letter)
     const code = `
 export const formatDate = (d) => d.toISOString()
 export const maxItems = 100
 `
-    const result = transform(plugin, code, '/src/utils.tsx')
+    const result = await transform(plugin, code, '/src/utils.tsx')
     expect(result).toBeDefined()
     expect(result!.code).not.toContain('import.meta.hot')
   })
 
-  it('does not inject HMR in build mode', () => {
+  it('does not inject HMR in build mode', async () => {
     const plugin = createBuildPlugin()
     const code = `
 import { h } from "@pyreon/core"
 export function App() { return h("div", null, "hello") }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     expect(result!.code).not.toContain('import.meta.hot')
   })
@@ -98,7 +105,7 @@ export function App() { return h("div", null, "hello") }
 // ─── Signal rewriting ────────────────────────────────────────────────────────
 
 describe('signal rewriting', () => {
-  it('rewrites module-scope signal() to __hmr_signal()', () => {
+  it('rewrites module-scope signal() to __hmr_signal()', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -106,7 +113,7 @@ import { h } from "@pyreon/core"
 const count = signal(0)
 export function Counter() { return h("div", null, count()) }
 `
-    const result = transform(plugin, code, '/src/Counter.tsx')
+    const result = await transform(plugin, code, '/src/Counter.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('__hmr_signal(')
     expect(result!.code).toContain('"count"')
@@ -114,19 +121,19 @@ export function Counter() { return h("div", null, count()) }
     expect(result!.code).toContain('__hmr_dispose')
   })
 
-  it('rewrites exported signals', () => {
+  it('rewrites exported signals', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
 export const theme = signal("light")
 export function App() { return null }
 `
-    const result = transform(plugin, code, '/src/theme.tsx')
+    const result = await transform(plugin, code, '/src/theme.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('__hmr_signal("/src/theme.tsx", "theme", signal, "light")')
   })
 
-  it('does not rewrite signal() inside functions to __hmr_signal (but injects name)', () => {
+  it('does not rewrite signal() inside functions to __hmr_signal (but injects name)', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -136,7 +143,7 @@ export function Counter() {
   return h("div", null, local())
 }
 `
-    const result = transform(plugin, code, '/src/Counter.tsx')
+    const result = await transform(plugin, code, '/src/Counter.tsx')
     expect(result).toBeDefined()
     // The signal inside the function body should NOT be rewritten to __hmr_signal
     expect(result!.code).not.toContain('__hmr_signal')
@@ -144,7 +151,7 @@ export function Counter() {
     expect(result!.code).toContain('signal(0, { name: "local" })')
   })
 
-  it('rewrites multiple module-scope signals', () => {
+  it('rewrites multiple module-scope signals', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -152,13 +159,13 @@ const count = signal(0)
 const name = signal("world")
 export function App() { return null }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('"count"')
     expect(result!.code).toContain('"name"')
   })
 
-  it('handles signal with complex initial values', () => {
+  it('handles signal with complex initial values', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -166,21 +173,21 @@ const items = signal([1, 2, 3])
 const config = signal({ theme: "dark", size: 14 })
 export function App() { return null }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     expect(result!.code).toContain('__hmr_signal')
     expect(result!.code).toContain('[1, 2, 3]')
     expect(result!.code).toContain('{ theme: "dark", size: 14 }')
   })
 
-  it('does not rewrite signal in build mode', () => {
+  it('does not rewrite signal in build mode', async () => {
     const plugin = createBuildPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
 const count = signal(0)
 export function App() { return null }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     expect(result!.code).not.toContain('__hmr_signal')
     // No signal names in production builds
@@ -188,7 +195,7 @@ export function App() { return null }
     expect(result!.code).not.toContain('{ name:')
   })
 
-  it('skips signal naming when options already provided', () => {
+  it('skips signal naming when options already provided', async () => {
     const plugin = createPlugin()
     const code = `
 import { signal } from "@pyreon/reactivity"
@@ -197,7 +204,7 @@ export function App() {
   return null
 }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
     // Should not double-inject name
     expect(result!.code).toContain('signal(0, { name: "custom" })')
@@ -207,38 +214,38 @@ export function App() {
 // ─── File extension filtering ────────────────────────────────────────────────
 
 describe('file extension filtering', () => {
-  it('transforms .tsx files', () => {
+  it('transforms .tsx files', async () => {
     const plugin = createPlugin()
     const code = `export function App() { return null }`
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeDefined()
   })
 
-  it('transforms .jsx files', () => {
+  it('transforms .jsx files', async () => {
     const plugin = createPlugin()
     const code = `export function App() { return null }`
-    const result = transform(plugin, code, '/src/App.jsx')
+    const result = await transform(plugin, code, '/src/App.jsx')
     expect(result).toBeDefined()
   })
 
-  it('ignores .ts files', () => {
+  it('ignores .ts files', async () => {
     const plugin = createPlugin()
     const code = `export const x = 1`
-    const result = transform(plugin, code, '/src/utils.ts')
+    const result = await transform(plugin, code, '/src/utils.ts')
     expect(result).toBeUndefined()
   })
 
-  it('ignores .js files', () => {
+  it('ignores .js files', async () => {
     const plugin = createPlugin()
     const code = `export const x = 1`
-    const result = transform(plugin, code, '/src/utils.js')
+    const result = await transform(plugin, code, '/src/utils.js')
     expect(result).toBeUndefined()
   })
 
-  it('handles query strings in file paths', () => {
+  it('handles query strings in file paths', async () => {
     const plugin = createPlugin()
     const code = `export function App() { return null }`
-    const result = transform(plugin, code, '/src/App.tsx?v=123')
+    const result = await transform(plugin, code, '/src/App.tsx?v=123')
     expect(result).toBeDefined()
   })
 })
@@ -246,31 +253,31 @@ describe('file extension filtering', () => {
 // ─── Compat mode ─────────────────────────────────────────────────────────────
 
 describe('compat mode', () => {
-  it('skips Pyreon JSX transform in react compat mode', () => {
+  it('skips Pyreon JSX transform in react compat mode', async () => {
     const plugin = createPlugin({ compat: 'react' })
     const code = `
 import { useState } from "react"
 export function App() { const [x] = useState(0); return null }
 `
-    const result = transform(plugin, code, '/src/App.tsx')
+    const result = await transform(plugin, code, '/src/App.tsx')
     expect(result).toBeUndefined()
   })
 
-  it('skips transform in preact compat mode', () => {
+  it('skips transform in preact compat mode', async () => {
     const plugin = createPlugin({ compat: 'preact' })
-    const result = transform(plugin, 'export function App() { return null }', '/src/App.tsx')
+    const result = await transform(plugin, 'export function App() { return null }', '/src/App.tsx')
     expect(result).toBeUndefined()
   })
 
-  it('skips transform in vue compat mode', () => {
+  it('skips transform in vue compat mode', async () => {
     const plugin = createPlugin({ compat: 'vue' })
-    const result = transform(plugin, 'export function App() { return null }', '/src/App.tsx')
+    const result = await transform(plugin, 'export function App() { return null }', '/src/App.tsx')
     expect(result).toBeUndefined()
   })
 
-  it('skips transform in solid compat mode', () => {
+  it('skips transform in solid compat mode', async () => {
     const plugin = createPlugin({ compat: 'solid' })
-    const result = transform(plugin, 'export function App() { return null }', '/src/App.tsx')
+    const result = await transform(plugin, 'export function App() { return null }', '/src/App.tsx')
     expect(result).toBeUndefined()
   })
 })
@@ -278,13 +285,13 @@ export function App() { const [x] = useState(0); return null }
 // ─── Plugin config ───────────────────────────────────────────────────────────
 
 describe('plugin config', () => {
-  it('sets resolve.conditions: ["bun"] for workspace source resolution', () => {
+  it('sets resolve.conditions: ["bun"] for workspace source resolution', async () => {
     const plugin = pyreonPlugin()
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as Record<string, any>
     expect(config.resolve.conditions).toEqual(['bun'])
   })
 
-  it('sets JSX import source to @pyreon/core by default', () => {
+  it('sets JSX import source to @pyreon/core by default', async () => {
     const plugin = pyreonPlugin()
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as {
       oxc: { jsx: { importSource: string } }
@@ -292,7 +299,7 @@ describe('plugin config', () => {
     expect(config.oxc.jsx.importSource).toBe('@pyreon/core')
   })
 
-  it('sets JSX import source to compat package in compat mode', () => {
+  it('sets JSX import source to compat package in compat mode', async () => {
     const plugin = pyreonPlugin({ compat: 'react' })
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as {
       oxc: { jsx: { importSource: string } }
@@ -300,7 +307,7 @@ describe('plugin config', () => {
     expect(config.oxc.jsx.importSource).toBe('@pyreon/react-compat')
   })
 
-  it('excludes compat packages from optimizeDeps', () => {
+  it('excludes compat packages from optimizeDeps', async () => {
     const plugin = pyreonPlugin({ compat: 'react' })
     const config = getConfigHook(plugin)({}, { command: 'serve' }) as {
       optimizeDeps: { exclude: string[] }
@@ -309,7 +316,7 @@ describe('plugin config', () => {
     expect(config.optimizeDeps.exclude).toContain('react-dom')
   })
 
-  it('adds SSR build config when isSsrBuild', () => {
+  it('adds SSR build config when isSsrBuild', async () => {
     const plugin = pyreonPlugin({ ssr: { entry: './src/entry-server.ts' } })
     const config = getConfigHook(plugin)({}, { command: 'build', isSsrBuild: true }) as {
       build: { ssr: boolean; rollupOptions: { input: string } }
@@ -331,7 +338,7 @@ describe('virtual module resolution', () => {
     expect(resolved).toBe('\0pyreon/hmr-runtime')
   })
 
-  it('loads HMR runtime source for internal ID', () => {
+  it('loads HMR runtime source for internal ID', async () => {
     const plugin = createPlugin()
     const load = plugin.load as (id: string) => string | undefined
     const source = load('\0pyreon/hmr-runtime')
@@ -341,7 +348,7 @@ describe('virtual module resolution', () => {
     expect(source).toContain('__pyreon_hmr_registry__')
   })
 
-  it('returns undefined for non-virtual IDs', () => {
+  it('returns undefined for non-virtual IDs', async () => {
     const plugin = createPlugin()
     const load = plugin.load as (id: string) => string | undefined
     expect(load('/src/App.tsx')).toBeUndefined()
@@ -356,12 +363,12 @@ describe('asset request filtering', () => {
   // For direct testing, we'd need to export it — instead we verify
   // the plugin's SSR middleware config exists when ssr option is set.
 
-  it('configureServer returns middleware function when SSR enabled', () => {
+  it('configureServer returns middleware function when SSR enabled', async () => {
     const plugin = pyreonPlugin({ ssr: { entry: './src/entry-server.ts' } })
     expect(plugin.configureServer).toBeDefined()
   })
 
-  it('configureServer is defined even without SSR (for context generation)', () => {
+  it('configureServer is defined even without SSR (for context generation)', async () => {
     const plugin = pyreonPlugin()
     expect(plugin.configureServer).toBeDefined()
   })

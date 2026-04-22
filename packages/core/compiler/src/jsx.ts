@@ -98,6 +98,20 @@ export interface TransformOptions {
    * `@pyreon/runtime-server` can walk the VNode tree. Default: false.
    */
   ssr?: boolean
+
+  /**
+   * Known signal variable names from resolved imports.
+   * The Vite plugin maintains a cross-module signal export registry and
+   * passes imported signal names here so the compiler can auto-call them
+   * in JSX even though the `signal()` declaration is in another file.
+   *
+   * @example
+   * // store.ts: export const count = signal(0)
+   * // component.tsx: import { count } from './store'
+   * transformJSX(code, 'component.tsx', { knownSignals: ['count'] })
+   * // {count} in JSX → {() => count()}
+   */
+  knownSignals?: string[]
 }
 
 // ─── oxc ESTree helpers ───────────────────────────────────────────────────────
@@ -390,6 +404,70 @@ export function transformJSX_JS(
   const propsNames = new Set<string>()
   const propDerivedVars = new Map<string, { start: number; end: number }>()
 
+  // ── Signal variable tracking (for auto-call in JSX) ──────────────────────
+  // Tracks `const x = signal(...)` declarations. In JSX expressions, bare
+  // references to these identifiers are auto-called: `{x}` → `{x()}`.
+  // This makes signals look like plain JS variables in templates while
+  // maintaining fine-grained reactivity.
+  const signalVars = new Set<string>(options.knownSignals)
+
+  // ── Scope-aware signal shadowing ──────────────────────────────────────────
+  // When a function/block declares a variable with the same name as a signal
+  // (e.g. `const show = 'text'` shadowing module-scope `const show = signal(false)`),
+  // that name is NOT a signal within that scope. The shadowedSignals set tracks
+  // names that are currently shadowed by a closer non-signal declaration.
+  const shadowedSignals = new Set<string>()
+
+  /** Check if an identifier name is an active (non-shadowed) signal variable. */
+  function isActiveSignal(name: string): boolean {
+    return signalVars.has(name) && !shadowedSignals.has(name)
+  }
+
+  /** Find variable declarations and parameters in a function that shadow signal names. */
+  function findShadowingNames(node: N): string[] {
+    const shadows: string[] = []
+    // Check function parameters
+    for (const param of node.params ?? []) {
+      if (param.type === 'Identifier' && signalVars.has(param.name)) {
+        shadows.push(param.name)
+      }
+      // Handle destructured parameters: ({ name }) => ...
+      if (param.type === 'ObjectPattern') {
+        for (const prop of param.properties ?? []) {
+          const val = prop.value ?? prop.key
+          if (val?.type === 'Identifier' && signalVars.has(val.name)) {
+            shadows.push(val.name)
+          }
+        }
+      }
+      // Handle array destructured parameters: ([a, b]) => ...
+      if (param.type === 'ArrayPattern') {
+        for (const el of param.elements ?? []) {
+          if (el?.type === 'Identifier' && signalVars.has(el.name)) {
+            shadows.push(el.name)
+          }
+        }
+      }
+    }
+    // Check top-level variable declarations in the function body
+    const body = node.body
+    const stmts = body?.body ?? body?.statements
+    if (!Array.isArray(stmts)) return shadows
+    for (const stmt of stmts) {
+      if (stmt.type === 'VariableDeclaration') {
+        for (const decl of stmt.declarations ?? []) {
+          if (decl.id?.type === 'Identifier' && signalVars.has(decl.id.name)) {
+            // Only shadow if it's NOT a signal() call
+            if (!decl.init || !isSignalCall(decl.init)) {
+              shadows.push(decl.id.name)
+            }
+          }
+        }
+      }
+    }
+    return shadows
+  }
+
   function readsFromProps(node: N): boolean {
     if (node.type === 'MemberExpression' && node.object?.type === 'Identifier') {
       if (propsNames.has(node.object.name)) return true
@@ -434,7 +512,11 @@ export function transformJSX_JS(
       if (node.kind !== 'const') continue
       if (callbackDepth > 0) continue
       if (decl.id?.type === 'Identifier' && decl.init) {
-        if (isStatefulCall(decl.init)) continue
+        if (isStatefulCall(decl.init)) {
+          // Track signal() declarations for auto-call in JSX
+          if (isSignalCall(decl.init)) signalVars.add(decl.id.name)
+          continue
+        }
         // Direct prop read OR transitive (references another prop-derived var)
         if (readsFromProps(decl.init) || referencesPropDerived(decl.init)) {
           propDerivedVars.set(decl.id.name, { start: decl.init.start as number, end: decl.init.end as number })
@@ -574,6 +656,17 @@ export function transformJSX_JS(
         return true
       }
     }
+    // Signal variable reference — treated as dynamic (will be auto-called)
+    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) {
+        // Property name position — not a reference
+      } else if (parent && parent.type === 'CallExpression' && parent.callee === node) {
+        // Already being called: signal() — don't double-flag
+      } else {
+        return true
+      }
+    }
     // Don't recurse into nested functions
     if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return false
     // Recurse into children
@@ -619,13 +712,20 @@ export function transformJSX_JS(
 
   function walkNode(node: N): void {
     // ── Component function detection (was pass 1) ──
-    if (node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+    const isFunction = node.type === 'FunctionDeclaration' || node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression'
+    let scopeShadows: string[] | null = null
+    if (isFunction) {
       // Track callback nesting for prop-derived var exclusion
       const parent = findParent(node)
       const isCallbackArg = parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
       if (isCallbackArg) _callbackDepth++
       // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
+      // Track signal name shadowing for scope awareness
+      if (signalVars.size > 0) {
+        scopeShadows = findShadowingNames(node)
+        for (const name of scopeShadows) shadowedSignals.add(name)
+      }
     }
 
     // ── Variable declaration collection (was pass 1 + 2) ──
@@ -636,7 +736,7 @@ export function transformJSX_JS(
     // ── JSX processing (was pass 3) ──
     if (node.type === 'JSXElement') {
       if (!isSelfClosing(node) && tryTemplateEmit(node)) {
-        // Template emitted — don't recurse into this subtree
+        // Template emitted — don't recurse into this subtree (JSXElement is never a function)
         return
       }
       checkForWarnings(node)
@@ -647,15 +747,12 @@ export function transformJSX_JS(
         if (child.type === 'JSXExpressionContainer') handleJsxExpression(child)
         else walkNode(child)
       }
-      // Restore callback depth if this was a function
-      if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
-        const parent = findParent(node)
-        if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) _callbackDepth--
-      }
+      // Note: JSXElement is never a function, so no callback depth or scope cleanup needed here
       return
     }
     if (node.type === 'JSXExpressionContainer') {
       handleJsxExpression(node)
+      // Note: JSXExpressionContainer is never a function, no scope cleanup needed
       return
     }
 
@@ -663,10 +760,12 @@ export function transformJSX_JS(
     forEachChildFast(node, walkNode)
 
     // Restore callback depth after leaving function
-    if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+    if (isFunction) {
       const parent = findParent(node)
       if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)) _callbackDepth--
     }
+    // Restore signal shadowing
+    if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)
   }
 
   walkNode(program)
@@ -1122,12 +1221,83 @@ export function transformJSX_JS(
   }
 
   function sliceExpr(expr: N): string {
+    let result: string
     if (propDerivedVars.size > 0 && accessesProps(expr)) {
       const start = expr.start as number
       const end = expr.end as number
-      return resolveIdentifiersInText(code.slice(start, end), start, expr)
+      result = resolveIdentifiersInText(code.slice(start, end), start, expr)
+    } else {
+      result = code.slice(expr.start as number, expr.end as number)
     }
-    return code.slice(expr.start as number, expr.end as number)
+
+    // Auto-call signal variables: replace bare `x` with `x()` in the expression.
+    // Only applies to identifiers that are NOT already being called (not `x()`).
+    if (signalVars.size > 0 && signalVars.size > shadowedSignals.size && referencesSignalVar(expr)) {
+      result = autoCallSignals(result, expr)
+    }
+
+    return result
+  }
+
+  /** Check if an expression references any tracked signal variable. */
+  function referencesSignalVar(node: N): boolean {
+    if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+      const parent = findParent(node)
+      if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return false
+      if (parent && parent.type === 'CallExpression' && parent.callee === node) return false // already called
+      return true
+    }
+    let found = false
+    forEachChildFast(node, (child) => {
+      if (found) return
+      if (child.type === 'ArrowFunctionExpression' || child.type === 'FunctionExpression') return
+      if (referencesSignalVar(child)) found = true
+    })
+    return found
+  }
+
+  /** Auto-insert () after signal variable references in the expression source.
+   *  Uses the AST to find exact Identifier positions — never scans raw text. */
+  function autoCallSignals(text: string, expr: N): string {
+    const start = expr.start as number
+    // Collect signal identifier positions that need auto-calling
+    const idents: { start: number; end: number }[] = []
+
+    function findSignalIdents(node: N): void {
+      if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
+      if (node.type === 'Identifier' && isActiveSignal(node.name)) {
+        const parent = findParent(node)
+        // Skip property name positions (obj.name)
+        if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
+        // Skip if already being called: signal()
+        if (parent && parent.type === 'CallExpression' && parent.callee === node) return
+        // Skip declaration positions
+        if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
+        // Skip object property keys and shorthand properties ({ name } or { name: val })
+        // Inserting () after a shorthand key produces name() which is a method shorthand — invalid
+        if (parent && (parent.type === 'Property' || parent.type === 'ObjectProperty')) {
+          if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
+          if (parent.key === node && !parent.computed) return // { name: val } — key position
+        }
+        idents.push({ start: node.start as number, end: node.end as number })
+      }
+      forEachChildFast(node, findSignalIdents)
+    }
+    findSignalIdents(expr)
+
+    if (idents.length === 0) return text
+
+    // Sort by position and insert () after each identifier
+    idents.sort((a, b) => a.start - b.start)
+    const parts: string[] = []
+    let lastPos = start
+    for (const id of idents) {
+      parts.push(code.slice(lastPos, id.end))
+      parts.push('()')  // auto-call
+      lastPos = id.end
+    }
+    parts.push(code.slice(lastPos, start + text.length))
+    return parts.join('')
   }
 }
 
@@ -1156,6 +1326,13 @@ function isStatefulCall(node: N): boolean {
   const callee = node.callee
   if (callee?.type === 'Identifier') return STATEFUL_CALLS.has(callee.name)
   return false
+}
+
+/** Check if a call expression creates a callable reactive value (`signal(...)` or `computed(...)`). */
+function isSignalCall(node: N): boolean {
+  if (node.type !== 'CallExpression') return false
+  const callee = node.callee
+  return callee?.type === 'Identifier' && (callee.name === 'signal' || callee.name === 'computed')
 }
 
 function isChildrenExpression(node: N, expr: string): boolean {

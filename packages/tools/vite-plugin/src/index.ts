@@ -32,7 +32,7 @@
  *   vite build --ssr src/entry-server.ts --outDir dist/server   # server bundle
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join as pathJoin } from 'node:path'
 import { generateContext, transformJSX } from '@pyreon/compiler'
 import type { Plugin, ViteDevServer } from 'vite'
@@ -137,6 +137,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
   let isBuild = false
   let projectRoot = ''
 
+  // ── Cross-module signal export registry ─────────────────────────────────
+  // Tracks which modules export signal() declarations so imported signals
+  // can be auto-called in JSX across file boundaries.
+  // Key: normalized module ID, Value: set of exported signal names
+  const signalExportRegistry = new Map<string, Set<string>>()
+  // Cache resolved import specifiers to avoid redundant resolution calls
+  const resolveCache = new Map<string, string | null>()
+
   return {
     name: 'pyreon',
     enforce: 'pre',
@@ -180,6 +188,15 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
+    // ── Pre-scan all source files for signal exports ──────────────────────
+    async buildStart() {
+      // Pre-scan all source files for signal exports so the registry
+      // is complete before any transforms run. This solves the build
+      // ordering problem where component.tsx is transformed before
+      // store.ts — without pre-scanning, the registry would be empty.
+      await prescanSignalExports(projectRoot, signalExportRegistry)
+    },
+
     // ── Virtual module + compat alias resolution ─────────────────────────────
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
@@ -198,7 +215,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
       }
     },
 
-    transform(code, id, transformOptions) {
+    async transform(code, id, transformOptions) {
       const ext = getExt(id)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
@@ -213,11 +230,22 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin {
         return
       }
 
+      // ── Scan for exported signal declarations (populate registry) ──────
+      // This runs on every .tsx/.jsx file so the registry is built
+      // incrementally. buildStart pre-scans all files, but this handles
+      // files created/modified after buildStart (dev mode HMR).
+      scanSignalExports(code, normalizeModuleId(id), signalExportRegistry)
+
+      // ── Resolve imported signals from the registry ─────────────────────
+      // Check each import in this file: if the imported module has signal
+      // exports in the registry, pass them as knownSignals to the compiler.
+      const knownSignals = await resolveImportedSignals(code, id, signalExportRegistry, this, resolveCache)
+
       // Vite passes `ssr: true` when transforming for the SSR module graph
       // (both build --ssr and dev `ssrLoadModule`). The compiler emits plain
       // `h()` calls in that mode so `runtime-server` can render to a string.
       const isSsr = transformOptions?.ssr === true
-      const result = transformJSX(code, id, { ssr: isSsr })
+      const result = transformJSX(code, id, { ssr: isSsr, knownSignals })
       // Surface compiler warnings in the terminal
       for (const w of result.warnings) {
         this.warn(`${w.message} (${id}:${w.line}:${w.column})`)
@@ -551,6 +579,211 @@ function isAssetRequest(url: string): boolean {
 //
 // Inlined here so it's available without a filesystem read. This is the
 // compiled-to-JS version of hmr-runtime.ts — kept in sync manually.
+
+// ─── Cross-module signal auto-call helpers ──────────────────────────────────
+
+/**
+ * Normalize a Vite module ID by stripping query strings (?v=..., ?t=...)
+ * and resolving to an absolute path for consistent registry lookups.
+ */
+function normalizeModuleId(id: string): string {
+  const queryIndex = id.indexOf('?')
+  return queryIndex >= 0 ? id.slice(0, queryIndex) : id
+}
+
+/**
+ * Pre-scan all source files in the project for signal exports.
+ *
+ * Called from `buildStart` so the registry is fully populated before any
+ * transforms run. This solves the build ordering problem where component.tsx
+ * is transformed before store.ts — without pre-scanning, the registry would
+ * be empty and imported signals would not be auto-called.
+ */
+async function prescanSignalExports(root: string, registry: Map<string, Set<string>>): Promise<void> {
+  const files: string[] = []
+
+  function walk(dir: string) {
+    try {
+      for (const entry of readdirSync(dir)) {
+        if (entry.startsWith('.') || entry === 'node_modules' || entry === 'dist' || entry === 'lib' || entry === 'build') continue
+        const full = pathJoin(dir, entry)
+        try {
+          const stat = statSync(full)
+          if (stat.isDirectory()) walk(full)
+          else if (/\.(ts|tsx|js|jsx)$/.test(entry)) files.push(full)
+        } catch {
+          /* permission error, etc. */
+        }
+      }
+    } catch {
+      /* dir doesn't exist */
+    }
+  }
+
+  walk(root)
+
+  for (const file of files) {
+    try {
+      const code = readFileSync(file, 'utf-8')
+      scanSignalExports(code, file, registry)
+    } catch {
+      /* read error */
+    }
+  }
+}
+
+/**
+ * Scan a module's source for exported signal declarations and register them.
+ *
+ * Detects patterns:
+ *   1. `export const x = signal(...)` or `export const x = computed(...)` — inline export
+ *   2. `const x = signal(...); export { x }` — separate declaration + named export
+ *   3. `export default signal(...)` — default export (tracked as 'default')
+ *
+ * Re-exports (`export { x } from './signals'`) are NOT detected — the source
+ * module must be scanned directly. This is a known limitation.
+ *
+ * Uses simple regex — no AST parse needed.
+ */
+function scanSignalExports(code: string, moduleId: string, registry: Map<string, Set<string>>): void {
+  const normalizedId = normalizeModuleId(moduleId)
+  let match: RegExpExecArray | null
+  const signals = new Set<string>()
+
+  // Pattern 1: export const x = signal(...) or export const x = computed(...)
+  const EXPORT_CONST_RE = /export\s+const\s+(\w+)\s*=\s*(?:signal|computed)\s*[<(]/g
+  while ((match = EXPORT_CONST_RE.exec(code)) !== null) {
+    signals.add(match[1]!)
+  }
+
+  // Pattern 2: const x = signal(...) followed by export { x }
+  // First, find all local `const x = signal(` or `const x = computed(` declarations
+  const localSignals = new Set<string>()
+  const LOCAL_SIGNAL_RE = /(?:^|[\s;])const\s+(\w+)\s*=\s*(?:signal|computed)\s*[<(]/gm
+  while ((match = LOCAL_SIGNAL_RE.exec(code)) !== null) {
+    localSignals.add(match[1]!)
+  }
+
+  // Then check named exports: export { x, y as z }
+  if (localSignals.size > 0) {
+    const NAMED_EXPORT_RE = /export\s*\{([^}]+)\}/g
+    while ((match = NAMED_EXPORT_RE.exec(code)) !== null) {
+      // Skip re-exports (export { x } from '...')
+      const afterBrace = code.slice(match.index + match[0].length).trimStart()
+      if (afterBrace.startsWith('from')) continue
+
+      for (const spec of match[1]!.split(',')) {
+        const trimmed = spec.trim()
+        if (!trimmed) continue
+        const parts = trimmed.split(/\s+as\s+/)
+        const localName = parts[0]!.trim()
+        const exportedName = (parts[1] ?? parts[0])!.trim()
+        if (localSignals.has(localName)) {
+          signals.add(exportedName)
+        }
+      }
+    }
+  }
+
+  // Pattern 3: export default signal(...) or export default computed(...) — tracked as 'default'
+  if (/export\s+default\s+(?:signal|computed)\s*[<(]/.test(code)) {
+    signals.add('default')
+  }
+
+  if (signals.size > 0) {
+    registry.set(normalizedId, signals)
+  } else {
+    // Clean up if module no longer exports signals (e.g. after edit)
+    registry.delete(normalizedId)
+  }
+}
+
+/**
+ * Resolve imported signal names from the signal export registry.
+ *
+ * For each import in the source, resolves the module and checks if it has
+ * signal exports in the registry. Returns the local names of imported signals.
+ *
+ * Handles named imports (`import { x } from ...`) and default imports
+ * (`import x from ...` — matched against 'default' in the registry).
+ */
+async function resolveImportedSignals(
+  code: string,
+  _moduleId: string,
+  registry: Map<string, Set<string>>,
+  pluginCtx: { resolve: (id: string, importer?: string, options?: { skipSelf: boolean }) => Promise<{ id: string } | null> },
+  resolveCache: Map<string, string | null>,
+): Promise<string[]> {
+  if (registry.size === 0) return []
+
+  const knownSignals: string[] = []
+  let match: RegExpExecArray | null
+
+  /** Resolve a source specifier to a normalized module ID, using the cache. */
+  async function resolveSource(source: string): Promise<string | null> {
+    const cacheKey = `${_moduleId}::${source}`
+    if (resolveCache.has(cacheKey)) return resolveCache.get(cacheKey) ?? null
+    let resolvedId: string | null = null
+    try {
+      const resolved = await pluginCtx.resolve(source, _moduleId, { skipSelf: true })
+      resolvedId = resolved?.id ? normalizeModuleId(resolved.id) : null
+    } catch {
+      /* resolve error */
+    }
+    resolveCache.set(cacheKey, resolvedId)
+    return resolvedId
+  }
+
+  // Named imports: import { name1, name2 as alias } from 'source'
+  // Excludes `import type { ... }` — type-only imports have no runtime value
+  const IMPORT_RE = /import\s+(?!type\s)\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g
+  while ((match = IMPORT_RE.exec(code)) !== null) {
+    const specifiers = match[1]!
+    const source = match[2]!
+
+    const resolvedId = await resolveSource(source)
+    if (!resolvedId) continue
+    const exportedSignals = registry.get(resolvedId)
+    if (!exportedSignals) continue
+
+    // Parse import specifiers: "count, theme as t, other"
+    for (const spec of specifiers.split(',')) {
+      const trimmed = spec.trim()
+      if (!trimmed) continue
+
+      const parts = trimmed.split(/\s+as\s+/)
+      const importedName = parts[0]!.trim()
+      const localName = (parts[1] ?? parts[0])!.trim()
+
+      if (exportedSignals.has(importedName)) {
+        knownSignals.push(localName)
+      }
+    }
+  }
+
+  // Default imports: import count from './store'
+  // Excludes: `import { ... }`, `import type X`, `import * as X`
+  const DEFAULT_IMPORT_RE = /import\s+(?!type\s)(\w+)\s+from\s*['"]([^'"]+)['"]/g
+  while ((match = DEFAULT_IMPORT_RE.exec(code)) !== null) {
+    // Skip if this is actually a `import type X from` pattern
+    const fullMatch = match[0]
+    if (/import\s+type\s+/.test(fullMatch)) continue
+
+    const localName = match[1]!
+    const source = match[2]!
+
+    const resolvedId = await resolveSource(source)
+    if (!resolvedId) continue
+    const exportedSignals = registry.get(resolvedId)
+    if (!exportedSignals) continue
+
+    if (exportedSignals.has('default')) {
+      knownSignals.push(localName)
+    }
+  }
+
+  return knownSignals
+}
 
 const HMR_RUNTIME_SOURCE = `
 const REGISTRY_KEY = "__pyreon_hmr_registry__";
