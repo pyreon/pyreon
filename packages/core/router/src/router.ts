@@ -606,6 +606,60 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     return runGlobalGuards(guards, to, from, gen)
   }
 
+  /** Default cache key: path + serialized params */
+  function defaultLoaderKey(record: RouteRecord, ctx: Pick<LoaderContext, 'params' | 'query'>): string {
+    return `${record.path}:${JSON.stringify(ctx.params)}`
+  }
+
+  /** Get cache key for a route record + context. */
+  function getCacheKey(record: RouteRecord, ctx: Pick<LoaderContext, 'params' | 'query'>): string {
+    return record.loaderKey ? record.loaderKey(ctx) : defaultLoaderKey(record, ctx)
+  }
+
+  /** Check if a cached entry is still fresh (not expired by gcTime). */
+  function isCacheFresh(entry: { timestamp: number }, record: RouteRecord): boolean {
+    const gcTime = record.gcTime ?? 300_000 // 5 min default
+    if (gcTime === 0) return false // caching disabled
+    return Date.now() - entry.timestamp < gcTime
+  }
+
+  /**
+   * Execute a loader with cache + dedup:
+   * 1. Cache hit + fresh → return cached data (skip loader entirely)
+   * 2. In-flight for same key → dedup (return existing promise)
+   * 3. Otherwise → run loader, cache result, clean up in-flight
+   */
+  function executeLoader(record: RouteRecord, loaderCtx: LoaderContext): Promise<unknown> {
+    if (!record.loader) return Promise.resolve(undefined)
+
+    const key = getCacheKey(record, loaderCtx)
+
+    // 1. Cache hit — skip for SWR routes (they always revalidate via the SWR path)
+    if (!record.staleWhileRevalidate) {
+      const cached = router._loaderCache.get(key)
+      if (cached && isCacheFresh(cached, record)) {
+        return Promise.resolve(cached.data)
+      }
+    }
+
+    // 2. Dedup in-flight
+    const inflight = router._loaderInflight.get(key)
+    if (inflight) return inflight
+
+    // 3. Execute
+    const promise = record.loader(loaderCtx).then((data) => {
+      router._loaderCache.set(key, { data, timestamp: Date.now() })
+      router._loaderInflight.delete(key)
+      return data
+    }).catch((err) => {
+      router._loaderInflight.delete(key)
+      throw err
+    })
+
+    router._loaderInflight.set(key, promise)
+    return promise
+  }
+
   async function runBlockingLoaders(
     records: RouteRecord[],
     to: ResolvedRoute,
@@ -614,7 +668,7 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
   ): Promise<boolean> {
     const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
     const results = await Promise.allSettled(
-      records.map((r) => (r.loader ? r.loader(loaderCtx) : Promise.resolve(undefined))),
+      records.map((r) => executeLoader(r, loaderCtx)),
     )
     if (gen !== _navGen) return false
     for (let i = 0; i < records.length; i++) {
@@ -631,10 +685,14 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     const loaderCtx: LoaderContext = { params: to.params, query: to.query, signal: ac.signal }
     for (const r of records) {
       if (!r.loader) continue
+      // Bypass cache for revalidation — always fetch fresh
       r.loader(loaderCtx)
         .then((data) => {
           if (!ac.signal.aborted) {
             router._loaderData.set(r, data)
+            // Update cache with fresh data
+            const key = getCacheKey(r, loaderCtx)
+            router._loaderCache.set(key, { data, timestamp: Date.now() })
             // Bump loadingSignal to trigger reactive re-render with fresh data
             loadingSignal.update((n) => n + 1)
             loadingSignal.update((n) => n - 1)
@@ -897,6 +955,8 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
     _onError: onError,
     _maxCacheSize: maxCacheSize,
     _navigationStartTime: Date.now(),
+    _loaderCache: new Map(),
+    _loaderInflight: new Map(),
 
     async push(
       location:
@@ -1008,6 +1068,27 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
       )
     },
 
+    invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)) {
+      if (!keyOrPredicate) {
+        // Invalidate all
+        router._loaderCache.clear()
+        router._loaderInflight.clear()
+        return
+      }
+      if (typeof keyOrPredicate === 'string') {
+        router._loaderCache.delete(keyOrPredicate)
+        router._loaderInflight.delete(keyOrPredicate)
+        return
+      }
+      // Predicate
+      for (const key of [...router._loaderCache.keys()]) {
+        if (keyOrPredicate(key)) {
+          router._loaderCache.delete(key)
+          router._loaderInflight.delete(key)
+        }
+      }
+    },
+
     destroy() {
       if (_popstateHandler) window.removeEventListener('popstate', _popstateHandler)
       if (_hashchangeHandler) window.removeEventListener('hashchange', _hashchangeHandler)
@@ -1018,6 +1099,8 @@ export function createRouter<TNames extends string = string>(options: RouterOpti
       router._blockers.clear()
       componentCache.clear()
       router._loaderData.clear()
+      router._loaderCache.clear()
+      router._loaderInflight.clear()
       router._abortController?.abort()
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation

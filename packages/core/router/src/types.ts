@@ -212,6 +212,23 @@ export interface RouteRecord<TPath extends string = string> {
    * Only applies when navigating to a route that already has cached loader data.
    */
   staleWhileRevalidate?: boolean
+  /**
+   * Cache key function for loader data. Returns a string key derived from
+   * route params/query. When the key matches cached data, the loader is
+   * skipped (cache hit). Default: `path + JSON.stringify(params)`.
+   *
+   * @example
+   * ```ts
+   * loaderKey: ({ params }) => `user-${params.id}`
+   * ```
+   */
+  loaderKey?: (ctx: Pick<LoaderContext, 'params' | 'query'>) => string
+  /**
+   * Time in ms to keep cached loader data before garbage collection.
+   * Default: 300000 (5 minutes). Set to 0 to disable caching.
+   * Stale data is still served immediately if `staleWhileRevalidate` is true.
+   */
+  gcTime?: number
   /** Component rendered when this route's loader throws an error */
   errorComponent?: ComponentFn
   /**
@@ -367,6 +384,13 @@ export interface Router<TNames extends string = string> {
    * call this for the same `url` you initialised the router with.
    */
   preload(path: string): Promise<void>
+  /**
+   * Invalidate cached loader data. Forces loaders to re-run on next navigation.
+   * - No args: invalidate ALL cached loader data
+   * - String: invalidate by cache key (as returned by `loaderKey`)
+   * - Function: invalidate entries where the predicate returns true
+   */
+  invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)): void
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
   destroy(): void
 }
@@ -409,4 +433,8 @@ export interface RouterInstance extends Router {
   _readyPromise: Promise<void>
   /** Timestamp when the current navigation started — used for pendingMs timing */
   _navigationStartTime: number
+  /** Key-based loader cache: cacheKey → { data, timestamp } */
+  _loaderCache: Map<string, { data: unknown; timestamp: number }>
+  /** In-flight loader dedup: cacheKey → Promise */
+  _loaderInflight: Map<string, Promise<unknown>>
 }
