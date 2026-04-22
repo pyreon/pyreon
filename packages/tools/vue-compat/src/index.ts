@@ -47,7 +47,7 @@ import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
-const V_IS_REF = Symbol('__v_isRef')
+const V_IS_REF = Symbol.for('__v_isRef')
 const V_IS_READONLY = Symbol('__v_isReadonly')
 const V_SKIP = Symbol('__v_skip')
 const V_RAW = Symbol('__v_raw')
@@ -144,6 +144,16 @@ export function isRef(val: unknown): val is Ref {
  */
 export function unref<T>(r: T | Ref<T>): T {
   return isRef(r) ? r.value : r
+}
+
+/**
+ * Unwraps a ref, calls a getter, or returns the value as-is.
+ * Vue 3.3+ API for normalizing ref/getter/value inputs.
+ */
+export function toValue<T>(source: Ref<T> | (() => T) | T): T {
+  if (isRef(source)) return source.value
+  if (typeof source === 'function') return (source as () => T)()
+  return source
 }
 
 // ─── Computed ─────────────────────────────────────────────────────────────────
@@ -286,6 +296,43 @@ export function readonly<T extends object>(obj: T): Readonly<T> {
   return _createReadonlyProxy(obj)
 }
 
+/**
+ * Returns a shallow readonly proxy — only top-level properties throw on set.
+ * Nested objects are NOT wrapped in readonly (unlike `readonly()`).
+ */
+export function shallowReadonly<T extends object>(obj: T): Readonly<T> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as Readonly<T>
+
+    const proxy = _createShallowReadonlyProxy(obj)
+    ctx.hooks[idx] = proxy
+    return proxy
+  }
+
+  return _createShallowReadonlyProxy(obj)
+}
+
+function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
+  const proxy = new Proxy(obj, {
+    get(target, key) {
+      if (key === V_IS_READONLY) return true
+      if (key === V_RAW) return target
+      return Reflect.get(target, key)
+      // NO recursive wrapping — shallow
+    },
+    set(_target, key) {
+      if (key === V_IS_READONLY || key === V_RAW) return true
+      throw new Error(`Cannot set property "${String(key)}" on a readonly object`)
+    },
+    deleteProperty(_target, key) {
+      throw new Error(`Cannot delete property "${String(key)}" from a readonly object`)
+    },
+  })
+  return proxy as Readonly<T>
+}
+
 function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
   const proxy = new Proxy(obj, {
     get(target, key) {
@@ -392,6 +439,8 @@ export interface WatchOptions {
   immediate?: boolean
   /** Ignored in Pyreon — dependencies are tracked automatically. */
   deep?: boolean
+  /** Accepted for compatibility but not meaningfully differentiated in Pyreon. */
+  flush?: 'pre' | 'post' | 'sync'
 }
 
 type WatchSource<T> = Ref<T> | (() => T)
@@ -777,20 +826,32 @@ export function provide<T>(key: string | symbol, value: T): void {
 
 /**
  * Injects a value provided by an ancestor component.
+ * Supports Vue 3's factory default pattern: `inject(key, () => expensiveDefault, true)`.
  */
-export function inject<T>(key: string | symbol, defaultValue?: T): T | undefined {
+export function inject<T>(
+  key: string | symbol,
+  defaultValue?: T | (() => T),
+  treatDefaultAsFactory?: boolean,
+): T | undefined {
   const ctx = getOrCreateContext<T>(key)
   const value = useContext(ctx)
-  return value !== undefined ? value : defaultValue
+  if (value !== undefined) return value
+  if (defaultValue === undefined) return undefined
+  if (treatDefaultAsFactory && typeof defaultValue === 'function') {
+    return (defaultValue as () => T)()
+  }
+  return defaultValue as T
 }
 
 // ─── defineComponent ──────────────────────────────────────────────────────────
 
 interface ComponentOptions<P extends Props = Props> {
   /** The setup function — called once during component initialization. */
-  setup: (props: P) => (() => VNodeChild) | VNodeChild
+  setup: (props: P, ctx?: SetupContext) => (() => VNodeChild) | VNodeChild
   /** Optional name for debugging. */
   name?: string
+  /** Prop definitions (not validated at runtime, used for type documentation). */
+  props?: Record<string, unknown>
 }
 
 /**
@@ -804,7 +865,17 @@ export function defineComponent<P extends Props = Props>(
     return options as ComponentFn<P>
   }
   const comp = (props: P) => {
-    const result = options.setup(props)
+    // Create a minimal SetupContext
+    const setupCtx: SetupContext = {
+      emit: (event: string, ...args: unknown[]) => {
+        const handlerKey = `on${event.charAt(0).toUpperCase()}${event.slice(1)}`
+        const handler = (props as Record<string, unknown>)[handlerKey]
+        if (typeof handler === 'function') (handler as (...a: unknown[]) => void)(...args)
+      },
+      slots: {},
+      attrs: props as Record<string, unknown>,
+    }
+    const result = options.setup(props, setupCtx)
     if (typeof result === 'function') {
       return (result as () => VNodeChild)()
     }

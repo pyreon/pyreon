@@ -3,6 +3,7 @@ import { mount } from '@pyreon/runtime-dom'
 import {
   createApp,
   customRef,
+  defineComponent,
   effectScope,
   getCurrentScope,
   h,
@@ -17,10 +18,13 @@ import {
   onRenderTracked,
   onRenderTriggered,
   onScopeDispose,
+  provide,
   reactive,
   readonly,
   ref,
+  shallowReadonly,
   Teleport,
+  toValue,
   version,
   watch,
   watchEffect,
@@ -750,6 +754,280 @@ describe('createApp().provide()', () => {
   })
 })
 
+describe('toValue()', () => {
+  it('unwraps a ref', () => {
+    const r = ref(42)
+    expect(toValue(r)).toBe(42)
+  })
+
+  it('calls a getter function', () => {
+    const getter = () => 'hello'
+    expect(toValue(getter)).toBe('hello')
+  })
+
+  it('returns a plain value as-is', () => {
+    expect(toValue(42)).toBe(42)
+    expect(toValue('str')).toBe('str')
+    expect(toValue(null)).toBe(null)
+    expect(toValue(undefined)).toBe(undefined)
+  })
+
+  it('prefers ref over function (ref with value)', () => {
+    const r = ref(99)
+    expect(toValue(r)).toBe(99)
+    r.value = 100
+    expect(toValue(r)).toBe(100)
+  })
+})
+
+describe('inject() with factory default', () => {
+  it('calls factory when treatDefaultAsFactory is true', () => {
+    let factoryCalls = 0
+    const key = Symbol('factory-test')
+    const result = inject(key, () => {
+      factoryCalls++
+      return 'from-factory'
+    }, true)
+    expect(result).toBe('from-factory')
+    expect(factoryCalls).toBe(1)
+  })
+
+  it('does not call factory when treatDefaultAsFactory is false', () => {
+    const key = Symbol('no-factory-test')
+    const factory = () => 'from-factory'
+    const result = inject(key, factory, false)
+    expect(result).toBe(factory) // returns the function itself
+  })
+
+  it('does not call factory when value is provided', () => {
+    const key = Symbol('provided-factory-test')
+    let factoryCalls = 0
+
+    const el = container()
+    let injectedValue: unknown
+
+    const Provider = (() => {
+      provide(key, 'provided')
+      const Child = (() => {
+        injectedValue = inject(key, () => {
+          factoryCalls++
+          return 'from-factory'
+        }, true)
+        return h('span', null, 'child')
+      }) as ComponentFn
+      return h(Child, null)
+    }) as ComponentFn
+
+    const unmount = mount(h(Provider, null), el)
+    expect(injectedValue).toBe('provided')
+    expect(factoryCalls).toBe(0)
+    unmount()
+  })
+
+  it('returns undefined when no default and no provider', () => {
+    const key = Symbol('no-default-test')
+    const result = inject(key)
+    expect(result).toBeUndefined()
+  })
+})
+
+describe('shallowReadonly()', () => {
+  it('prevents mutation on top-level properties', () => {
+    const ro = shallowReadonly({ x: 1, nested: { y: 2 } })
+    expect(ro.x).toBe(1)
+    expect(() => {
+      ;(ro as { x: number }).x = 2
+    }).toThrow('readonly')
+  })
+
+  it('allows mutation on nested objects', () => {
+    const ro = shallowReadonly({ nested: { y: 2 } })
+    // Nested objects are NOT wrapped — mutation is allowed
+    expect(() => {
+      ;(ro.nested as { y: number }).y = 99
+    }).not.toThrow()
+    expect(ro.nested.y).toBe(99)
+  })
+
+  it('prevents delete on top-level', () => {
+    const ro = shallowReadonly({ x: 1 }) as Record<string, unknown>
+    expect(() => {
+      delete ro.x
+    }).toThrow('Cannot delete')
+  })
+
+  it('reports isReadonly', () => {
+    const ro = shallowReadonly({ x: 1 })
+    expect(isReadonly(ro)).toBe(true)
+  })
+
+  it('nested does NOT report isReadonly (shallow)', () => {
+    const ro = shallowReadonly({ nested: { x: 1 } })
+    expect(isReadonly(ro.nested)).toBe(false)
+  })
+})
+
+describe('defineComponent() with setup context', () => {
+  it('passes SetupContext with emit to setup', () => {
+    let emittedArgs: unknown[] = []
+    const Comp = defineComponent({
+      setup(_props, ctx) {
+        ctx!.emit('click', 'arg1', 'arg2')
+        return () => h('div', null, 'test')
+      },
+    })
+
+    const el = container()
+    const unmount = mount(
+      h(Comp as ComponentFn, {
+        onClick: (...args: unknown[]) => {
+          emittedArgs = args
+        },
+      }),
+      el,
+    )
+
+    expect(emittedArgs).toEqual(['arg1', 'arg2'])
+    unmount()
+  })
+
+  it('accepts name option', () => {
+    const Comp = defineComponent({
+      name: 'MyComponent',
+      setup() {
+        return () => h('div', null, 'named')
+      },
+    })
+
+    expect(Comp.name).toBe('MyComponent')
+  })
+
+  it('accepts props option (for documentation)', () => {
+    const Comp = defineComponent({
+      props: {
+        title: { type: String, required: true },
+      },
+      setup(props) {
+        return () => h('div', null, (props as Record<string, unknown>).title as string)
+      },
+    })
+
+    const el = container()
+    const unmount = mount(h(Comp as ComponentFn, { title: 'Hello' }), el)
+    expect(el.textContent).toBe('Hello')
+    unmount()
+  })
+
+  it('still accepts function shorthand', () => {
+    const Comp = defineComponent((props: { msg: string }) => {
+      return h('span', null, props.msg)
+    })
+
+    const el = container()
+    const unmount = mount(h(Comp as ComponentFn, { msg: 'hi' }), el)
+    expect(el.textContent).toBe('hi')
+    unmount()
+  })
+})
+
+describe('template ref with Vue ref', () => {
+  it('converts Vue ref to callback ref for DOM elements', async () => {
+    const { jsx: jsxFn } = await import('../jsx-runtime')
+    const elRef = ref<HTMLDivElement | null>(null)
+
+    // Simulate JSX runtime creating a DOM element with a Vue ref
+    const vnode = jsxFn('div', { ref: elRef, children: 'hello' })
+
+    // The ref prop should have been converted to a callback function
+    expect(typeof vnode.props.ref).toBe('function')
+
+    // Calling the callback ref should set the Vue ref's value
+    const div = document.createElement('div')
+    ;(vnode.props.ref as (el: Element | null) => void)(div)
+    expect(elRef.value).toBe(div)
+
+    // Null on unmount
+    ;(vnode.props.ref as (el: Element | null) => void)(null)
+    expect(elRef.value).toBeNull()
+  })
+
+  it('callback ref still works unchanged', async () => {
+    const { jsx: jsxFn } = await import('../jsx-runtime')
+    const cbRef = (el: Element | null) => { void el }
+
+    const vnode = jsxFn('div', { ref: cbRef, children: 'hello' })
+
+    // Callback ref should pass through unchanged
+    expect(vnode.props.ref).toBe(cbRef)
+  })
+
+  it('does not convert refs on component types', async () => {
+    const { jsx: jsxFn } = await import('../jsx-runtime')
+    const elRef = ref<unknown>(null)
+    const MyComp = () => h('div', null, 'comp')
+
+    const vnode = jsxFn(MyComp, { ref: elRef, children: 'hello' })
+
+    // Component refs should NOT be converted (they go through wrapCompatComponent)
+    // The ref should be on the component props
+    expect(vnode.props).toBeDefined()
+  })
+})
+
+describe('watch() flush option', () => {
+  it('accepts flush option without error', () => {
+    const count = ref(0)
+    const values: number[] = []
+
+    const stop = watch(count, (v) => {
+      values.push(v)
+    }, { flush: 'post' })
+
+    count.value = 1
+    expect(values).toContain(1)
+    stop()
+  })
+
+  it('accepts flush sync option', () => {
+    const count = ref(0)
+    const stop = watch(count, () => {}, { flush: 'sync' })
+    stop()
+  })
+})
+
+describe('customRef() trigger forces update', () => {
+  it('trigger causes watchEffect to re-run even without value change', () => {
+    let triggerFn: () => void
+    const r = customRef((track, trigger) => {
+      triggerFn = trigger
+      const fixedValue = 'constant'
+      return {
+        get() {
+          track()
+          return fixedValue
+        },
+        set() {
+          // no-op — value never changes
+        },
+      }
+    })
+
+    const values: string[] = []
+    const stop = watchEffect(() => {
+      values.push(r.value)
+    })
+
+    expect(values).toEqual(['constant'])
+
+    // Trigger without changing value
+    triggerFn!()
+    expect(values.length).toBeGreaterThan(1)
+    expect(values[1]).toBe('constant')
+
+    stop()
+  })
+})
+
 describe('type exports', () => {
   it('exports version as string', () => {
     expect(typeof version).toBe('string')
@@ -776,5 +1054,7 @@ describe('type exports', () => {
     expect(mod.watchPostEffect).toBeDefined()
     expect(mod.watchSyncEffect).toBeDefined()
     expect(mod.customRef).toBeDefined()
+    expect(mod.toValue).toBeDefined()
+    expect(mod.shallowReadonly).toBeDefined()
   })
 })

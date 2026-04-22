@@ -165,6 +165,21 @@ export function jsx(
     return h(wrapped, componentProps)
   }
 
+  // DOM element: convert Vue ref ({ value }) to callback ref for Pyreon's runtime-dom
+  if (typeof type === 'string' && propsWithKey.ref != null) {
+    const r = propsWithKey.ref
+    if (
+      typeof r === 'object' &&
+      r !== null &&
+      (r as Record<symbol, unknown>)[Symbol.for('__v_isRef')] === true
+    ) {
+      const vueRef = r as { value: unknown }
+      propsWithKey.ref = (el: Element | null) => {
+        vueRef.value = el
+      }
+    }
+  }
+
   // DOM element or symbol (Fragment): children go in vnode.children
   const childArray = children === undefined ? [] : Array.isArray(children) ? children : [children]
 
