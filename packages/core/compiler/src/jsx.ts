@@ -1267,12 +1267,18 @@ export function transformJSX_JS(
       if ((node.start as number) >= start + text.length || (node.end as number) <= start) return
       if (node.type === 'Identifier' && isActiveSignal(node.name)) {
         const parent = findParent(node)
-        // Skip property name positions
+        // Skip property name positions (obj.name)
         if (parent && parent.type === 'MemberExpression' && parent.property === node && !parent.computed) return
         // Skip if already being called: signal()
         if (parent && parent.type === 'CallExpression' && parent.callee === node) return
         // Skip declaration positions
         if (parent && parent.type === 'VariableDeclarator' && parent.id === node) return
+        // Skip object property keys and shorthand properties ({ name } or { name: val })
+        // Inserting () after a shorthand key produces name() which is a method shorthand — invalid
+        if (parent && (parent.type === 'Property' || parent.type === 'ObjectProperty')) {
+          if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
+          if (parent.key === node && !parent.computed) return // { name: val } — key position
+        }
         idents.push({ start: node.start as number, end: node.end as number })
       }
       forEachChildFast(node, findSignalIdents)
