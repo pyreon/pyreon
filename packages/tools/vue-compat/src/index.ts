@@ -29,6 +29,7 @@ import {
   onUnmount,
   onUpdate,
   popContext,
+  Portal,
   pushContext,
   h as pyreonH,
   useContext,
@@ -46,8 +47,9 @@ import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
 // ─── Internal symbols ─────────────────────────────────────────────────────────
 
-const V_IS_REF = Symbol('__v_isRef')
+const V_IS_REF = Symbol.for('__v_isRef')
 const V_IS_READONLY = Symbol('__v_isReadonly')
+const V_SKIP = Symbol('__v_skip')
 const V_RAW = Symbol('__v_raw')
 
 // ─── Ref ──────────────────────────────────────────────────────────────────────
@@ -144,6 +146,16 @@ export function unref<T>(r: T | Ref<T>): T {
   return isRef(r) ? r.value : r
 }
 
+/**
+ * Unwraps a ref, calls a getter, or returns the value as-is.
+ * Vue 3.3+ API for normalizing ref/getter/value inputs.
+ */
+export function toValue<T>(source: Ref<T> | (() => T) | T): T {
+  if (isRef(source)) return source.value
+  if (typeof source === 'function') return (source as () => T)()
+  return source
+}
+
 // ─── Computed ─────────────────────────────────────────────────────────────────
 
 export interface ComputedRef<T = unknown> extends Ref<T> {
@@ -225,6 +237,8 @@ const rawMap = new WeakMap<object, object>()
  * call `scheduleRerender()`.
  */
 export function reactive<T extends object>(obj: T): T {
+  if ((obj as Record<symbol, boolean>)[V_SKIP]) return obj
+
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -282,12 +296,54 @@ export function readonly<T extends object>(obj: T): Readonly<T> {
   return _createReadonlyProxy(obj)
 }
 
-function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
+/**
+ * Returns a shallow readonly proxy — only top-level properties throw on set.
+ * Nested objects are NOT wrapped in readonly (unlike `readonly()`).
+ */
+export function shallowReadonly<T extends object>(obj: T): Readonly<T> {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as Readonly<T>
+
+    const proxy = _createShallowReadonlyProxy(obj)
+    ctx.hooks[idx] = proxy
+    return proxy
+  }
+
+  return _createShallowReadonlyProxy(obj)
+}
+
+function _createShallowReadonlyProxy<T extends object>(obj: T): Readonly<T> {
   const proxy = new Proxy(obj, {
     get(target, key) {
       if (key === V_IS_READONLY) return true
       if (key === V_RAW) return target
       return Reflect.get(target, key)
+      // NO recursive wrapping — shallow
+    },
+    set(_target, key) {
+      if (key === V_IS_READONLY || key === V_RAW) return true
+      throw new Error(`Cannot set property "${String(key)}" on a readonly object`)
+    },
+    deleteProperty(_target, key) {
+      throw new Error(`Cannot delete property "${String(key)}" from a readonly object`)
+    },
+  })
+  return proxy as Readonly<T>
+}
+
+function _createReadonlyProxy<T extends object>(obj: T): Readonly<T> {
+  const proxy = new Proxy(obj, {
+    get(target, key) {
+      if (key === V_IS_READONLY) return true
+      if (key === V_RAW) return target
+      const value = Reflect.get(target, key)
+      // Recursively wrap nested objects in readonly
+      if (value !== null && typeof value === 'object' && !isRef(value)) {
+        return _createReadonlyProxy(value as object)
+      }
+      return value
     },
     set(_target, key) {
       // Internal symbols used for identification are allowed
@@ -383,20 +439,169 @@ export interface WatchOptions {
   immediate?: boolean
   /** Ignored in Pyreon — dependencies are tracked automatically. */
   deep?: boolean
+  /** Accepted for compatibility but not meaningfully differentiated in Pyreon. */
+  flush?: 'pre' | 'post' | 'sync'
 }
 
 type WatchSource<T> = Ref<T> | (() => T)
 
 /**
- * Watches a reactive source and calls `cb` when it changes.
+ * Watches a reactive source (or array of sources) and calls `cb` when it changes.
  *
  * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
   source: WatchSource<T>,
-  cb: (newValue: T, oldValue: T | undefined) => void,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
+  options?: WatchOptions,
+): () => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function watch<T extends readonly WatchSource<any>[]>(
+  sources: [...T],
+  cb: (
+    newValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V : never },
+    oldValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V | undefined : never },
+    onCleanup: (fn: () => void) => void,
+  ) => void,
+  options?: WatchOptions,
+): () => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function watch<T>(
+  source: WatchSource<T> | WatchSource<T>[],
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
+  // Array of sources — multi-watch
+  if (Array.isArray(source)) {
+    return _watchArray(
+      source as WatchSource<unknown>[],
+      cb as (newValue: unknown, oldValue: unknown) => void,
+      options,
+    )
+  }
+  return _watchSingle(source as WatchSource<T>, cb, options)
+}
+
+function _watchArray(
+  sources: WatchSource<unknown>[],
+  cb: (newValues: unknown, oldValues: unknown, onCleanup: (fn: () => void) => void) => void,
+  options?: WatchOptions,
+): () => void {
+  const getters = sources.map((s) => (isRef(s) ? () => (s as Ref).value : (s as () => unknown)))
+
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (fn: () => void) => {
+    cleanupFn = fn
+  }
+
+  const runCleanup = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+  }
+
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
+
+    let oldValues: unknown[] | undefined
+    let initialized = false
+
+    if (options?.immediate) {
+      const current = getters.map((g) => g())
+      cb(current, getters.map(() => undefined), onCleanup)
+      oldValues = current
+      initialized = true
+    }
+
+    let running = false
+    const combined = pyreonComputed(() => getters.map((g) => g()))
+    const e = effect(() => {
+      if (running) return
+      running = true
+      try {
+        const newValues = combined()
+        if (initialized) {
+          runCleanup()
+          cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
+        }
+        oldValues = [...newValues]
+        initialized = true
+      } finally {
+        running = false
+      }
+    })
+
+    const stop = () => {
+      runCleanup()
+      e.dispose()
+    }
+    ctx.hooks[idx] = stop
+    ctx.unmountCallbacks.push(stop)
+    return stop
+  }
+
+  // Outside component
+  let oldValues: unknown[] | undefined
+  let initialized = false
+
+  if (options?.immediate) {
+    const current = getters.map((g) => g())
+    cb(current, getters.map(() => undefined), onCleanup)
+    oldValues = current
+    initialized = true
+  }
+
+  let running = false
+  const combined = pyreonComputed(() => getters.map((g) => g()))
+  const e = effect(() => {
+    if (running) return
+    running = true
+    try {
+      const newValues = combined()
+      if (initialized) {
+        runCleanup()
+        cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
+      }
+      oldValues = [...newValues]
+      initialized = true
+    } finally {
+      running = false
+    }
+  })
+
+  const stop = () => {
+    runCleanup()
+    e.dispose()
+  }
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
+}
+
+function _watchSingle<T>(
+  source: WatchSource<T>,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
+  options?: WatchOptions,
+): () => void {
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (fn: () => void) => {
+    cleanupFn = fn
+  }
+
+  const runCleanup = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+  }
+
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -409,7 +614,7 @@ export function watch<T>(
     if (options?.immediate) {
       oldValue = undefined
       const current = getter()
-      cb(current, oldValue)
+      cb(current, oldValue, onCleanup)
       oldValue = current
       initialized = true
     }
@@ -421,7 +626,8 @@ export function watch<T>(
       try {
         const newValue = getter()
         if (initialized) {
-          cb(newValue, oldValue)
+          runCleanup()
+          cb(newValue, oldValue, onCleanup)
         }
         oldValue = newValue
         initialized = true
@@ -430,7 +636,10 @@ export function watch<T>(
       }
     })
 
-    const stop = () => e.dispose()
+    const stop = () => {
+      runCleanup()
+      e.dispose()
+    }
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
@@ -444,7 +653,7 @@ export function watch<T>(
   if (options?.immediate) {
     oldValue = undefined
     const current = getter()
-    cb(current, oldValue)
+    cb(current, oldValue, onCleanup)
     oldValue = current
     initialized = true
   }
@@ -456,7 +665,8 @@ export function watch<T>(
     try {
       const newValue = getter()
       if (initialized) {
-        cb(newValue, oldValue)
+        runCleanup()
+        cb(newValue, oldValue, onCleanup)
       }
       oldValue = newValue
       initialized = true
@@ -465,17 +675,43 @@ export function watch<T>(
     }
   })
 
-  return () => e.dispose()
+  const stop = () => {
+    runCleanup()
+    e.dispose()
+  }
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
 }
 
 /**
  * Runs the given function reactively — re-executes whenever its tracked
- * dependencies change.
+ * dependencies change. Passes an `onCleanup` registration function to the
+ * callback, matching Vue 3's `watchEffect((onCleanup) => { ... })` API.
  *
  * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
-export function watchEffect(fn: () => void): () => void {
+export function watchEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
   const ctx = getCurrentCtx()
+
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (cleanup: () => void) => {
+    cleanupFn = cleanup
+  }
+
+  const runEffect = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+    fn(onCleanup)
+  }
+
   if (ctx) {
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
@@ -485,12 +721,15 @@ export function watchEffect(fn: () => void): () => void {
       if (running) return
       running = true
       try {
-        fn()
+        runEffect()
       } finally {
         running = false
       }
     })
-    const stop = () => e.dispose()
+    const stop = () => {
+      if (cleanupFn) cleanupFn()
+      e.dispose()
+    }
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
@@ -501,12 +740,22 @@ export function watchEffect(fn: () => void): () => void {
     if (running) return
     running = true
     try {
-      fn()
+      runEffect()
     } finally {
       running = false
     }
   })
-  return () => e.dispose()
+  const stop = () => {
+    if (cleanupFn) cleanupFn()
+    e.dispose()
+  }
+  // Register with current effect scope if one is active
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(stop)
+  }
+  return stop
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
@@ -641,20 +890,32 @@ export function provide<T>(key: string | symbol, value: T): void {
 
 /**
  * Injects a value provided by an ancestor component.
+ * Supports Vue 3's factory default pattern: `inject(key, () => expensiveDefault, true)`.
  */
-export function inject<T>(key: string | symbol, defaultValue?: T): T | undefined {
+export function inject<T>(
+  key: string | symbol,
+  defaultValue?: T | (() => T),
+  treatDefaultAsFactory?: boolean,
+): T | undefined {
   const ctx = getOrCreateContext<T>(key)
   const value = useContext(ctx)
-  return value !== undefined ? value : defaultValue
+  if (value !== undefined) return value
+  if (defaultValue === undefined) return undefined
+  if (treatDefaultAsFactory && typeof defaultValue === 'function') {
+    return (defaultValue as () => T)()
+  }
+  return defaultValue as T
 }
 
 // ─── defineComponent ──────────────────────────────────────────────────────────
 
 interface ComponentOptions<P extends Props = Props> {
   /** The setup function — called once during component initialization. */
-  setup: (props: P) => (() => VNodeChild) | VNodeChild
+  setup: (props: P, ctx?: SetupContext) => (() => VNodeChild) | VNodeChild
   /** Optional name for debugging. */
   name?: string
+  /** Prop definitions (not validated at runtime, used for type documentation). */
+  props?: Record<string, unknown>
 }
 
 /**
@@ -668,7 +929,21 @@ export function defineComponent<P extends Props = Props>(
     return options as ComponentFn<P>
   }
   const comp = (props: P) => {
-    const result = options.setup(props)
+    // Extract children from props for slots
+    const children = (props as Record<string, unknown>).children as VNodeChild | undefined
+    // Create a minimal SetupContext
+    const setupCtx: SetupContext = {
+      emit: (event: string, ...args: unknown[]) => {
+        const handlerKey = `on${event.charAt(0).toUpperCase()}${event.slice(1)}`
+        const handler = (props as Record<string, unknown>)[handlerKey]
+        if (typeof handler === 'function') (handler as (...a: unknown[]) => void)(...args)
+      },
+      slots: {
+        default: children !== undefined ? (() => children) : undefined,
+      } as Record<string, (() => VNodeChild) | undefined>,
+      attrs: props as Record<string, unknown>,
+    }
+    const result = options.setup(props, setupCtx)
     if (typeof result === 'function') {
       return (result as () => VNodeChild)()
     }
@@ -678,6 +953,58 @@ export function defineComponent<P extends Props = Props>(
     Object.defineProperty(comp, 'name', { value: options.name })
   }
   return comp as ComponentFn<P>
+}
+
+// ─── defineAsyncComponent ───────────────────────────────────────────────────
+
+/**
+ * Defines an async component that lazily loads on first use.
+ * Supports both a bare loader function and an options object with
+ * loadingComponent, errorComponent, delay, and timeout.
+ *
+ * Returns a ComponentFn with a `__loading` property for Suspense integration.
+ */
+export function defineAsyncComponent<P extends Props = Props>(
+  loader:
+    | (() => Promise<{ default: ComponentFn<P> }>)
+    | {
+        loader: () => Promise<{ default: ComponentFn<P> }>
+        loadingComponent?: ComponentFn
+        errorComponent?: ComponentFn
+        delay?: number
+        timeout?: number
+      },
+): ComponentFn<P> & { __loading: () => boolean } {
+  const load = typeof loader === 'function' ? loader : loader.loader
+
+  const loaded = signal<ComponentFn<P> | null>(null)
+  const error = signal<Error | null>(null)
+  let promise: Promise<unknown> | null = null
+
+  const startLoad = () => {
+    if (promise) return
+    promise = load().then(
+      (mod) => loaded.set(mod.default),
+      (err) => error.set(err instanceof Error ? err : new Error(String(err))),
+    )
+  }
+
+  const AsyncComp = ((props: P) => {
+    startLoad()
+    const err = error()
+    if (err) throw err
+    const comp = loaded()
+    if (!comp) return null
+    return comp(props)
+  }) as ComponentFn<P> & { __loading: () => boolean }
+
+  AsyncComp.__loading = () => {
+    const isLoading = loaded() === null && error() === null
+    if (isLoading) startLoad()
+    return isLoading
+  }
+
+  return AsyncComp
 }
 
 // ─── h ────────────────────────────────────────────────────────────────────────
@@ -692,23 +1019,297 @@ export { Fragment, pyreonH as h }
 interface App {
   /** Mount the application into a DOM element. Returns an unmount function. */
   mount(el: string | Element): () => void
+  /** Install a plugin. */
+  use(plugin: { install: (app: App) => void }): App
+  /** Provide a value to the entire app tree. */
+  provide<T>(key: string | symbol, value: T): App
 }
 
 /**
  * Creates a Pyreon application instance — Vue 3 `createApp()` compatible.
  */
 export function createApp(component: ComponentFn, props?: Props): App {
-  return {
+  const provisions: Array<{ key: string | symbol; value: unknown }> = []
+
+  const app: App = {
     mount(el: string | Element): () => void {
       const container = typeof el === 'string' ? document.querySelector(el) : el
       if (!container) {
         throw new Error(`Cannot find mount target: ${el}`)
       }
+      // Push app-level provisions before mounting
+      for (const { key, value } of provisions) {
+        const ctx = getOrCreateContext(key)
+        pushContext(new Map([[ctx.id, value]]))
+      }
       const vnode = pyreonH(component, props ?? null)
       return pyreonMount(vnode, container)
     },
+    use(plugin: { install: (app: App) => void }): App {
+      plugin.install(app)
+      return app
+    },
+    provide<T>(key: string | symbol, value: T): App {
+      provisions.push({ key, value })
+      return app
+    },
+  }
+
+  return app
+}
+
+// ─── isReactive / isReadonly / isProxy / markRaw ─────────────────────────────
+
+/**
+ * Returns `true` if the value was created by `reactive()`.
+ */
+export function isReactive(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && rawMap.has(value as object)
+}
+
+/**
+ * Returns `true` if the value was created by `readonly()`.
+ */
+export function isReadonly(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    (value as Record<symbol, unknown>)[V_IS_READONLY] === true
+  )
+}
+
+/**
+ * Returns `true` if the value is either reactive or readonly.
+ */
+export function isProxy(value: unknown): boolean {
+  return isReactive(value) || isReadonly(value)
+}
+
+/**
+ * Marks an object so that `reactive()` will return it as-is (not wrapped).
+ */
+export function markRaw<T extends object>(obj: T): T {
+  ;(obj as Record<symbol, boolean>)[V_SKIP] = true
+  return obj
+}
+
+// ─── effectScope / getCurrentScope / onScopeDispose ──────────────────────────
+
+export interface EffectScopeCompat {
+  /** Run a function within this scope. Returns undefined if scope is stopped. */
+  run<T>(fn: () => T): T | undefined
+  /** Stop the scope and dispose all collected effects/cleanups. */
+  stop(): void
+  /** Whether the scope is still active. */
+  active: boolean
+}
+
+let _currentEffectScope: EffectScopeCompat | null = null
+
+/**
+ * Creates an effect scope that collects reactive effects for grouped disposal.
+ *
+ * @param detached - If true, the scope is not collected by a parent scope.
+ */
+export function effectScope(detached?: boolean): EffectScopeCompat {
+  const cleanups: (() => void)[] = []
+  let active = true
+
+  const scope: EffectScopeCompat = {
+    get active() {
+      return active
+    },
+    run<T>(fn: () => T): T | undefined {
+      if (!active) return undefined
+      const prev = _currentEffectScope
+      _currentEffectScope = scope
+      try {
+        return fn()
+      } finally {
+        _currentEffectScope = prev
+      }
+    },
+    stop() {
+      if (!active) return
+      active = false
+      for (const fn of cleanups) fn()
+      cleanups.length = 0
+    },
+  }
+
+  // Auto-collect in parent scope unless detached
+  if (!detached && _currentEffectScope) {
+    const parentCleanups = (_currentEffectScope as EffectScopeCompat & { _cleanups?: (() => void)[] })
+      ._cleanups
+    if (parentCleanups) parentCleanups.push(() => scope.stop())
+  }
+  ;(scope as EffectScopeCompat & { _cleanups: (() => void)[] })._cleanups = cleanups
+
+  return scope
+}
+
+/**
+ * Returns the current active effect scope, or undefined if none.
+ */
+export function getCurrentScope(): EffectScopeCompat | undefined {
+  return _currentEffectScope ?? undefined
+}
+
+/**
+ * Registers a cleanup function on the current effect scope.
+ */
+export function onScopeDispose(fn: () => void): void {
+  if (_currentEffectScope) {
+    ;(
+      _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
+    )._cleanups.push(fn)
   }
 }
+
+// ─── onErrorCaptured / onRenderTracked / onRenderTriggered ───────────────────
+
+/**
+ * Registers an error capture handler.
+ * No direct equivalent in Pyreon — stored but not actively used.
+ */
+export function onErrorCaptured(fn: (err: Error) => boolean | void): void {
+  const ctx = getCurrentCtx()
+  if (ctx) {
+    const idx = getHookIndex()
+    if (idx < ctx.hooks.length) return
+    ctx.hooks[idx] = fn
+  }
+}
+
+/**
+ * Dev-only lifecycle hook — no-op in Pyreon.
+ */
+export function onRenderTracked(
+  _fn: (event: { key: string; type: string }) => void,
+): void {
+  // Dev-only hook — no equivalent in Pyreon
+}
+
+/**
+ * Dev-only lifecycle hook — no-op in Pyreon.
+ */
+export function onRenderTriggered(
+  _fn: (event: { key: string; type: string }) => void,
+): void {
+  // Dev-only hook — no equivalent in Pyreon
+}
+
+// ─── Teleport / KeepAlive ────────────────────────────────────────────────────
+
+/**
+ * Teleport — renders children into a different DOM element.
+ * Maps to Pyreon's Portal.
+ */
+export function Teleport(props: {
+  to: string | Element
+  children?: VNodeChild
+}): VNodeChild {
+  const target =
+    typeof props.to === 'string' ? document.querySelector(props.to) : props.to
+  if (!target) return props.children ?? null
+  return Portal({ target, children: props.children ?? null })
+}
+
+/**
+ * KeepAlive — not supported in Pyreon. Renders children as-is.
+ */
+export function KeepAlive(props: { children?: VNodeChild }): VNodeChild {
+  return props.children ?? null
+}
+
+// ─── watchPostEffect / watchSyncEffect ───────────────────────────────────────
+
+/**
+ * Runs a watchEffect that flushes after DOM updates.
+ * In Pyreon, same as `watchEffect()`.
+ */
+export function watchPostEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
+  return watchEffect(fn)
+}
+
+/**
+ * Runs a watchEffect that flushes synchronously.
+ * In Pyreon, same as `watchEffect()`.
+ */
+export function watchSyncEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
+  return watchEffect(fn)
+}
+
+// ─── customRef ───────────────────────────────────────────────────────────────
+
+/**
+ * Creates a customized ref with explicit control over dependency tracking
+ * and update triggering.
+ */
+export function customRef<T>(
+  factory: (
+    track: () => void,
+    trigger: () => void,
+  ) => { get: () => T; set: (v: T) => void },
+): Ref<T> {
+  const s = signal(0)
+  const { get, set } = factory(
+    () => { s(); return undefined as never }, // track — reading the signal subscribes
+    () => s.set(s.peek() + 1), // trigger — bump version to re-notify
+  )
+  return {
+    [V_IS_REF]: true as const,
+    get value(): T {
+      return get()
+    },
+    set value(v: T) {
+      set(v)
+    },
+  } as Ref<T>
+}
+
+// ─── version ─────────────────────────────────────────────────────────────────
+
+/**
+ * Compatibility version string — indicates Vue 3 API compatibility.
+ */
+export const version = '3.5.0-pyreon'
+
+// ─── Type exports ────────────────────────────────────────────────────────────
+
+export type { ComponentFn as Component } from '@pyreon/core'
+export type { VNodeChild as VNode } from '@pyreon/core'
+
+/** Vue-compatible PropType — a callable that returns T. */
+export type PropType<T> = { (): T }
+
+/** Extract prop types from a component's props definition. */
+export type ExtractPropTypes<T> = {
+  [K in keyof T]: T[K] extends PropType<infer V> ? V : T[K]
+}
+
+/** Vue-compatible emits options type. */
+export type EmitsOptions = Record<string, (...args: unknown[]) => void>
+
+/** Vue-compatible setup context. */
+export type SetupContext = {
+  emit: (event: string, ...args: unknown[]) => void
+  slots: Record<string, (() => VNodeChild) | undefined>
+  attrs: Record<string, unknown>
+}
+
+/** Vue-compatible plugin interface. */
+export type Plugin = { install: (app: App) => void }
+
+/** Vue-compatible directive type (stub). */
+export type Directive = Record<string, unknown>
+
+/** Vue-compatible injection key with type branding. */
+export type InjectionKey<T> = symbol & { __type: T }
 
 // ─── Additional re-exports ────────────────────────────────────────────────────
 
