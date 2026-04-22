@@ -452,6 +452,8 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `prefetch="intent"` (default) — prefetches on hover AND focus (keyboard + mouse). Also: `"hover"`, `"viewport"`, `"none"`
 - `notFound()` + `NotFoundBoundary` — throw `notFound()` in a loader or component to trigger a 404 boundary. `isNotFoundError()` type guard for custom handling
 - `pendingComponent` per route — shown while loader runs, with `pendingMs` (delay before showing) and `pendingMinMs` (minimum display time). Signal-based state machine: hidden → pending → ready
+- `validateSearch` per route — transform raw query strings into typed values. Accepts any `(raw: Record<string, string>) => T` function — works with Zod `.parse`, Valibot, or plain functions. Result available on `route.search` and via `useValidatedSearch<T>()`
+- `useValidatedSearch<T>()` — reactive accessor for validated search params with structural sharing (shallow-equal check prevents re-renders when unrelated query params change)
 
 ### @pyreon/hooks
 

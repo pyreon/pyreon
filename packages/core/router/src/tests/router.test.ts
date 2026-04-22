@@ -22,6 +22,7 @@ import {
   useSearchParams,
   useTransition,
   useTypedSearchParams,
+  useValidatedSearch,
 } from '../index'
 import type { RouteMiddleware } from '../index'
 import {
@@ -5010,5 +5011,87 @@ describe('pendingComponent', () => {
     expect(routeWithPending.pendingComponent).toBe(PendingComp)
     expect(routeWithPending.pendingMs).toBe(200)
     expect(routeWithPending.pendingMinMs).toBe(500)
+  })
+})
+
+// ─── validateSearch + useValidatedSearch ──────────────────────────────────────
+
+describe('validateSearch', () => {
+  test('resolveRoute runs validateSearch on matched route', () => {
+    const vsRoutes: RouteRecord[] = [
+      {
+        path: '/search',
+        component: Home,
+        validateSearch: (raw) => ({
+          page: Number(raw.page) || 1,
+          q: raw.q ?? '',
+        }),
+      },
+    ]
+    const router = createRouter({ routes: vsRoutes, url: '/search?page=3&q=hello' })
+    const route = router.currentRoute()
+    expect(route.search).toEqual({ page: 3, q: 'hello' })
+    router.destroy()
+  })
+
+  test('validateSearch defaults when params missing', () => {
+    const vsRoutes: RouteRecord[] = [
+      {
+        path: '/search',
+        component: Home,
+        validateSearch: (raw) => ({
+          page: Number(raw.page) || 1,
+          q: raw.q ?? '',
+        }),
+      },
+    ]
+    const router = createRouter({ routes: vsRoutes, url: '/search' })
+    const route = router.currentRoute()
+    expect(route.search).toEqual({ page: 1, q: '' })
+    router.destroy()
+  })
+
+  test('validateSearch error falls back to raw query', () => {
+    const vsRoutes: RouteRecord[] = [
+      {
+        path: '/broken',
+        component: Home,
+        validateSearch: () => { throw new Error('schema fail') },
+      },
+    ]
+    const router = createRouter({ routes: vsRoutes, url: '/broken?foo=bar' })
+    const route = router.currentRoute()
+    expect(route.search).toEqual({ foo: 'bar' })
+    router.destroy()
+  })
+
+  test('routes without validateSearch have empty search', () => {
+    const router = createRouter({ routes, url: '/about' })
+    const route = router.currentRoute()
+    expect(route.search).toEqual({})
+    router.destroy()
+  })
+
+  test('useValidatedSearch returns typed accessor with structural sharing', () => {
+    const vsRoutes: RouteRecord[] = [
+      {
+        path: '/items',
+        component: Home,
+        validateSearch: (raw) => ({
+          page: Number(raw.page) || 1,
+        }),
+      },
+    ]
+    const router = createRouter({ routes: vsRoutes, url: '/items?page=5' })
+    const ctr = document.createElement('div')
+    let searchResult: Record<string, unknown> | undefined
+    const TestComp = () => {
+      const search = useValidatedSearch<{ page: number }>()
+      searchResult = search()
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(searchResult).toEqual({ page: 5 })
+    router.destroy()
   })
 })

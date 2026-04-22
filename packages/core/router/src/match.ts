@@ -563,6 +563,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       hash,
       matched: staticMatch.matchedChain,
       meta: staticMatch.meta,
+      search: runValidateSearch(staticMatch.matchedChain, query),
     }
   }
 
@@ -584,6 +585,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
           hash,
           matched: match.matched,
           meta: mergeMeta(match.matched),
+          search: runValidateSearch(match.matched, query),
         }
       }
     }
@@ -599,6 +601,7 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       hash,
       matched: dynMatch.matched,
       meta: mergeMeta(dynMatch.matched),
+      search: runValidateSearch(dynMatch.matched, query),
     }
   }
 
@@ -612,10 +615,31 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       hash,
       matched: w.matchedChain,
       meta: w.meta,
+      search: runValidateSearch(w.matchedChain, query),
     }
   }
 
-  return { path: cleanPath, params: {}, query, hash, matched: [], meta: {} }
+  return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
+}
+
+/** Run validateSearch from the deepest matched route that has one. */
+function runValidateSearch(
+  matched: RouteRecord[],
+  query: Record<string, string>,
+): Record<string, unknown> {
+  // Walk from leaf to root — first validateSearch wins (most specific route)
+  for (let i = matched.length - 1; i >= 0; i--) {
+    const validate = matched[i]?.validateSearch
+    if (validate) {
+      try {
+        return validate(query)
+      } catch {
+        // Validation failed — return raw query as-is
+        return { ...query }
+      }
+    }
+  }
+  return {}
 }
 
 /** Merge meta from matched routes (leaf takes precedence) */

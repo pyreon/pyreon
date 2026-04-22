@@ -70,6 +70,7 @@ export {
   useSearchParams,
   useTransition,
   useTypedSearchParams,
+  useValidatedSearch,
 } from './router'
 // Types
 // Data loaders

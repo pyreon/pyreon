@@ -148,3 +148,38 @@ Show a skeleton while route loaders run:
   pendingMinMs: 500,  // minimum display time (avoid flicker)
 }
 ```
+
+## Validated Search Params
+
+Type-safe query string validation per route — works with Zod, Valibot, or plain functions:
+
+```ts
+import { useValidatedSearch } from '@pyreon/router'
+
+// Route config:
+{
+  path: '/search',
+  component: SearchPage,
+  validateSearch: (raw) => ({
+    page: Number(raw.page) || 1,
+    q: raw.q ?? '',
+  }),
+}
+
+// With Zod:
+{
+  path: '/search',
+  component: SearchPage,
+  validateSearch: z.object({
+    page: z.coerce.number().default(1),
+    q: z.string().default(''),
+  }).parse,
+}
+
+// In component:
+const search = useValidatedSearch<{ page: number; q: string }>()
+search().page // number — typed + validated
+search().q    // string — typed + validated
+```
+
+Structural sharing: `useValidatedSearch()` returns the same object reference when the validated values haven't changed, preventing unnecessary downstream re-renders.

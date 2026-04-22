@@ -344,6 +344,51 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
   return [get, set]
 }
 
+/**
+ * Read the validated search params from the current route's `validateSearch`.
+ * Returns a reactive accessor that re-evaluates when the route changes.
+ *
+ * The generic `T` should match the return type of your `validateSearch` function.
+ *
+ * @example
+ * ```tsx
+ * // Route config:
+ * { path: '/search', validateSearch: (raw) => ({
+ *   page: Number(raw.page) || 1,
+ *   q: raw.q ?? '',
+ * }), component: SearchPage }
+ *
+ * // In SearchPage:
+ * const search = useValidatedSearch<{ page: number; q: string }>()
+ * // search().page — typed as number
+ * // search().q — typed as string
+ * ```
+ */
+export function useValidatedSearch<T extends Record<string, unknown> = Record<string, unknown>>(): () => T {
+  const router = _getRouter()
+  // Structural sharing: cache the previous result and return it if
+  // shallow-equal to the new one. Prevents downstream re-renders when
+  // unrelated query params change but the validated subset didn't.
+  let prev: T | null = null
+  return () => {
+    const next = router.currentRoute().search as T
+    if (prev && shallowEqual(prev, next)) return prev
+    prev = next
+    return next
+  }
+}
+
+/** Shallow equality check for plain objects — keys + strict value comparison. */
+function shallowEqual<T extends Record<string, unknown>>(a: T, b: T): boolean {
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  for (const key of keysA) {
+    if (a[key] !== b[key]) return false
+  }
+  return true
+}
+
 function _getRouter(): RouterInstance {
   const router = (useContext(RouterContext) ?? _activeRouter) as RouterInstance | null
   if (!router)
