@@ -459,6 +459,7 @@ Key optimizations: `_tpl()` (cloneNode), `_bind()` (static-dep tracking), `TextN
 - `pendingComponent` per route — shown while loader runs, with `pendingMs` (delay before showing) and `pendingMinMs` (minimum display time). Signal-based state machine: hidden → pending → ready
 - `validateSearch` per route — transform raw query strings into typed values. Accepts any `(raw: Record<string, string>) => T` function — works with Zod `.parse`, Valibot, or plain functions. Result available on `route.search` and via `useValidatedSearch<T>()`
 - `useValidatedSearch<T>()` — reactive accessor for validated search params with structural sharing (shallow-equal check prevents re-renders when unrelated query params change)
+- **Loader cache** — key-based caching with dedup and TTL. `loaderKey: ({ params }) => \`user-${params.id}\`` controls cache identity. `gcTime` (default 5min) controls expiry. `router.invalidateLoader(key?)` clears cache entries. In-flight dedup prevents duplicate requests for the same key. SWR routes bypass cache for revalidation.
 
 ### @pyreon/hooks
 

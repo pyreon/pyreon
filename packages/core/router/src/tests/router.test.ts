@@ -5095,3 +5095,166 @@ describe('validateSearch', () => {
     router.destroy()
   })
 })
+
+// ─── Loader cache ───────────────────────────────────────────────────────────
+
+describe('loader cache', () => {
+  test('cached loader data is reused on second navigation (same params)', async () => {
+    let callCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/user/:id',
+        component: Home,
+        loader: async ({ params }) => {
+          callCount++
+          return { id: params.id, name: `User ${params.id}` }
+        },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/user/42')
+    expect(callCount).toBe(1)
+
+    // Navigate away then back — same params, cache hit
+    await router.push('/')
+    await router.push('/user/42')
+    expect(callCount).toBe(1) // NOT called again — cache hit
+
+    router.destroy()
+  })
+
+  test('different params produce different cache keys → loader runs again', async () => {
+    let callCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/user/:id',
+        component: Home,
+        loader: async () => { callCount++; return {} },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/user/1')
+    expect(callCount).toBe(1)
+
+    await router.push('/user/2')
+    expect(callCount).toBe(2) // different key → fresh load
+
+    router.destroy()
+  })
+
+  test('custom loaderKey controls cache identity', async () => {
+    let callCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/items',
+        component: Home,
+        loaderKey: ({ query }) => `items-page-${query.page ?? '1'}`,
+        loader: async () => { callCount++; return [] },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/items?page=1')
+    expect(callCount).toBe(1)
+
+    // Same page → cache hit
+    await router.push('/')
+    await router.push('/items?page=1')
+    expect(callCount).toBe(1)
+
+    // Different page → cache miss
+    await router.push('/items?page=2')
+    expect(callCount).toBe(2)
+
+    router.destroy()
+  })
+
+  test('gcTime=0 disables caching', async () => {
+    let callCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/data',
+        component: Home,
+        gcTime: 0,
+        loader: async () => { callCount++; return {} },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/data')
+    expect(callCount).toBe(1)
+
+    await router.push('/')
+    await router.push('/data')
+    expect(callCount).toBe(2) // no cache — always runs
+
+    router.destroy()
+  })
+
+  test('invalidateLoader() clears cache', async () => {
+    let callCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/data',
+        component: Home,
+        loader: async () => { callCount++; return {} },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/data')
+    expect(callCount).toBe(1)
+
+    // Invalidate all
+    router.invalidateLoader()
+
+    await router.push('/')
+    await router.push('/data')
+    expect(callCount).toBe(2) // cache was cleared → runs again
+
+    router.destroy()
+  })
+
+  test('invalidateLoader(key) clears specific cache entry', async () => {
+    let dataCallCount = 0
+    let itemsCallCount = 0
+    const cacheRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/data',
+        component: Home,
+        loaderKey: () => 'data-key',
+        loader: async () => { dataCallCount++; return {} },
+      },
+      {
+        path: '/items',
+        component: Home,
+        loaderKey: () => 'items-key',
+        loader: async () => { itemsCallCount++; return [] },
+      },
+    ]
+    const router = createRouter({ routes: cacheRoutes, url: '/' })
+
+    await router.push('/data')
+    await router.push('/items')
+    expect(dataCallCount).toBe(1)
+    expect(itemsCallCount).toBe(1)
+
+    // Invalidate only 'data-key'
+    router.invalidateLoader('data-key')
+
+    await router.push('/data')
+    await router.push('/items')
+    expect(dataCallCount).toBe(2) // re-fetched
+    expect(itemsCallCount).toBe(1) // still cached
+
+    router.destroy()
+  })
+})
