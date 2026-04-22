@@ -1,5 +1,6 @@
 import type { ComponentFn, Props, VNodeChild } from '@pyreon/core'
 import { createRef, ErrorBoundary, h, onUnmount, provide, useContext } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
@@ -117,17 +118,18 @@ export interface RouterLinkProps extends Props {
   exact?: boolean
   /**
    * Prefetch strategy for loader data:
-   *   - "hover" (default) — prefetch when the user hovers over the link
+   *   - "intent" (default) — prefetch on hover AND focus (covers mouse + keyboard)
+   *   - "hover" — prefetch on hover only
    *   - "viewport" — prefetch when the link scrolls into the viewport
    *   - "none" — no prefetching
    */
-  prefetch?: 'hover' | 'viewport' | 'none'
+  prefetch?: 'intent' | 'hover' | 'viewport' | 'none'
   children?: VNodeChild | null
 }
 
 export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
   const router = useContext(RouterContext)
-  const prefetchMode = props.prefetch ?? 'hover'
+  const prefetchMode = props.prefetch ?? 'intent'
 
   const handleClick = (e: MouseEvent) => {
     e.preventDefault()
@@ -139,9 +141,17 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     }
   }
 
-  const handleMouseEnter = () => {
-    if (prefetchMode !== 'hover' || !router) return
+  const triggerPrefetch = () => {
+    if (!router) return
     prefetchRoute(router as RouterInstance, props.to)
+  }
+
+  const handleMouseEnter = () => {
+    if (prefetchMode === 'hover' || prefetchMode === 'intent') triggerPrefetch()
+  }
+
+  const handleFocus = () => {
+    if (prefetchMode === 'intent') triggerPrefetch()
   }
 
   const inst = router as RouterInstance | null
@@ -194,7 +204,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
 
   return h(
     'a',
-    { ...rest, ref, href, class: activeClass, 'aria-current': ariaCurrent, onClick: handleClick, onMouseEnter: handleMouseEnter },
+    { ...rest, ref, href, class: activeClass, 'aria-current': ariaCurrent, onClick: handleClick, onMouseEnter: handleMouseEnter, onFocus: handleFocus },
     children ?? props.to,
   )
 }
@@ -292,10 +302,116 @@ function renderLoaderContent(
   routeProps: Record<string, unknown>,
 ): VNodeChild {
   const data = router._loaderData.get(record)
-  if (data === undefined && record.errorComponent) {
+
+  if (data !== undefined) {
+    return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+  }
+
+  // Data not yet available — show pending component if configured
+  if (record.pendingComponent) {
+    return h(PendingLoader as unknown as ComponentFn, {
+      router,
+      record,
+      Comp,
+      routeProps,
+    })
+  }
+
+  if (record.errorComponent) {
     return h(record.errorComponent, routeProps)
   }
   return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+}
+
+/**
+ * Signal-based pending component with timing control.
+ *
+ * State machine: hidden → pending → ready
+ * - hidden: initial state, nothing shown (lasts pendingMs)
+ * - pending: pendingComponent shown (lasts at least pendingMinMs)
+ * - ready: real component shown (loader data arrived + minTime elapsed)
+ */
+function PendingLoader(props: {
+  router: RouterInstance
+  record: RouteRecord
+  Comp: ComponentFn
+  routeProps: Record<string, unknown>
+}): VNodeChild {
+  const { router, record, Comp, routeProps } = props
+  const pendingMs = record.pendingMs ?? 0
+  const pendingMinMs = record.pendingMinMs ?? 200
+
+  type Phase = 'hidden' | 'pending' | 'ready'
+  const phase = signal<Phase>(pendingMs === 0 ? 'pending' : 'hidden')
+
+  let pendingTimer: ReturnType<typeof setTimeout> | null = null
+  let minTimer: ReturnType<typeof setTimeout> | null = null
+  let minTimeElapsed = pendingMs === 0 ? false : true // if no delay, minTime matters
+  let dataReady = false
+
+  if (pendingMs === 0) {
+    // Show pending immediately, start minTime countdown
+    minTimeElapsed = false
+    minTimer = setTimeout(() => {
+      minTimeElapsed = true
+      minTimer = null
+      if (dataReady) phase.set('ready')
+    }, pendingMinMs)
+  } else {
+    // Delay before showing pending
+    pendingTimer = setTimeout(() => {
+      pendingTimer = null
+      if (dataReady) {
+        // Data arrived during delay — skip pending entirely
+        phase.set('ready')
+      } else {
+        phase.set('pending')
+        minTimeElapsed = false
+        minTimer = setTimeout(() => {
+          minTimeElapsed = true
+          minTimer = null
+          if (dataReady) phase.set('ready')
+        }, pendingMinMs)
+      }
+    }, pendingMs)
+  }
+
+  // Watch for loader data arrival
+  const checkData = () => {
+    const data = router._loaderData.get(record)
+    if (data !== undefined) {
+      dataReady = true
+      if (phase.peek() === 'hidden') {
+        // Data arrived before pendingMs — skip pending, go straight to ready
+        if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null }
+        phase.set('ready')
+      } else if (minTimeElapsed) {
+        phase.set('ready')
+      }
+      // else: pending is showing but minTime hasn't elapsed — wait for minTimer
+    }
+  }
+
+  // Poll via loadingSignal reactivity — re-checks when navigation completes
+  // This runs inside the reactive accessor below
+
+  onUnmount(() => {
+    if (pendingTimer) clearTimeout(pendingTimer)
+    if (minTimer) clearTimeout(minTimer)
+  })
+
+  return (() => {
+    // Track router's loading signal to re-run when loader completes
+    router._loadingSignal()
+    checkData()
+
+    const p = phase()
+    if (p === 'hidden') return null
+    if (p === 'pending') return h(record.pendingComponent!, routeProps)
+    // ready
+    const data = router._loaderData.get(record)
+    return h(LoaderDataProvider, { data, children: h(Comp, routeProps) })
+  }) as unknown as VNodeChild
 }
 
 /**
