@@ -9,17 +9,17 @@ This project uses Pyreon Zero, a signal-based full-stack meta-framework. Do NOT 
 - Use `effect()` not `useEffect`
 - Use `onMount` / `onUnmount` not `useEffect` with deps
 - Use `signal.set(value)` or `signal.update(fn)` to write signals
-- Read signals by calling them: `count()` not `count`
+- In JSX, signals and computeds are **auto-called** — just write `{count}` not `{count()}`
+- Outside JSX, call signals explicitly: `count()` to read, `count.set(5)` to write
 
 ## JSX
 
 - Use `class=` not `className`
 - Use `for=` not `htmlFor`
 - Use camelCase events: `onClick`, `onMouseEnter`, `onLoad` (not `onclick`, `onmouseenter`)
-- Use `srcSet` not `srcset`, `fetchPriority` not `fetchpriority`
-- Reactive text: `{() => count()}`
-- Conditional: `{() => show() ? <A /> : null}`
-- Lists: `{() => items().map(item => <Item />)}`
+- Signal auto-call in JSX: `{count}` — compiler inserts `()` for you
+- Conditional: `{show ? <A /> : null}` — signals auto-called inside expressions too
+- Lists: `{items().map(item => <Item />)}` — `.map()` still needs explicit `()`
 - Events: `onClick={() => ...}`
 - JSX import source is `@pyreon/core` (auto-configured, no manual import needed)
 
