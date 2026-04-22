@@ -34,50 +34,133 @@ import {
   computed as pyreonComputed,
   createSelector as pyreonCreateSelector,
   effect as pyreonEffect,
+  onCleanup as pyreonOnCleanup,
   signal as pyreonSignal,
   runUntracked,
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 
+// ─── Type exports (Solid API surface) ───────────────────────────────────────
+
+/** Solid-compatible read accessor type */
+export type Accessor<T> = () => T
+
+/** Solid-compatible setter type */
+export type Setter<T> = (v: T | ((prev: T) => T)) => void
+
+/** Solid-compatible signal tuple type */
+export type Signal<T> = [Accessor<T>, Setter<T>]
+
+/** Solid-compatible owner type */
+export type Owner = EffectScope
+
+/** Solid-compatible component type */
+export type Component<P = object> = (props: P) => VNodeChild
+
+/** Solid-compatible parent component type (includes children) */
+export type ParentComponent<P = object> = (props: P & { children?: VNodeChild }) => VNodeChild
+
+/** Solid-compatible flow component type */
+export type FlowComponent<P = object> = Component<P>
+
+/** Solid-compatible void component type (no children) */
+export type VoidComponent<P = object> = Component<P>
+
 // ─── createSignal ────────────────────────────────────────────────────────────
 
 export type SignalGetter<T> = () => T
 export type SignalSetter<T> = (v: T | ((prev: T) => T)) => void
 
-export function createSignal<T>(initialValue: T): [SignalGetter<T>, SignalSetter<T>] {
+export interface CreateSignalOptions<T> {
+  equals?: false | ((prev: T, next: T) => boolean)
+}
+
+/** Hook entry for createSignal — stores signal + stable getter/setter references */
+interface SignalHookEntry<T> {
+  signal: ReturnType<typeof pyreonSignal<T>>
+  getter: SignalGetter<T>
+  setter: SignalSetter<T>
+}
+
+/**
+ * When `equals: false`, Pyreon's internal `Object.is` dedup must be bypassed.
+ * We wrap values in a `{ v: T }` box so every `.set()` creates a new reference
+ * that passes the internal `Object.is` check. The getter unwraps transparently.
+ */
+interface Boxed<T> {
+  v: T
+}
+
+export function createSignal<T>(
+  initialValue: T,
+  options?: CreateSignalOptions<T>,
+): [SignalGetter<T>, SignalSetter<T>] {
+  const neverEqual = options?.equals === false
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = pyreonSignal<T>(initialValue)
-    }
-    const s = ctx.hooks[idx] as ReturnType<typeof pyreonSignal<T>>
-    const { scheduleRerender } = ctx
+      const { scheduleRerender } = ctx
 
-    const getter: SignalGetter<T> = () => s()
-    const setter: SignalSetter<T> = (v) => {
-      if (typeof v === 'function') {
-        s.update(v as (prev: T) => T)
+      let getter: SignalGetter<T>
+      let setter: SignalSetter<T>
+
+      if (neverEqual) {
+        // Boxed mode — bypass Pyreon's Object.is dedup
+        const s = pyreonSignal<Boxed<T>>({ v: initialValue })
+        getter = () => s().v
+        setter = (v) => {
+          const prev = s.peek().v
+          const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
+          s.set({ v: next }) // new object always passes Object.is
+          scheduleRerender()
+        }
       } else {
-        s.set(v)
+        const s = pyreonSignal<T>(initialValue)
+        getter = () => s()
+        setter = (v) => {
+          const prev = s.peek()
+          const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
+          if (shouldSkipUpdate(prev, next, options)) return
+          s.set(next)
+          scheduleRerender()
+        }
       }
-      scheduleRerender()
+
+      ctx.hooks[idx] = { signal: null, getter, setter } as unknown as SignalHookEntry<T>
+    }
+    const entry = ctx.hooks[idx] as SignalHookEntry<T>
+    return [entry.getter, entry.setter]
+  }
+
+  // Outside component — plain Pyreon signal
+  if (neverEqual) {
+    const s = pyreonSignal<Boxed<T>>({ v: initialValue })
+    const getter: SignalGetter<T> = () => s().v
+    const setter: SignalSetter<T> = (v) => {
+      const prev = s.peek().v
+      const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
+      s.set({ v: next })
     }
     return [getter, setter]
   }
 
-  // Outside component — plain Pyreon signal
   const s = pyreonSignal<T>(initialValue)
   const getter: SignalGetter<T> = () => s()
   const setter: SignalSetter<T> = (v) => {
-    if (typeof v === 'function') {
-      s.update(v as (prev: T) => T)
-    } else {
-      s.set(v)
-    }
+    const prev = s.peek()
+    const next = typeof v === 'function' ? (v as (prev: T) => T)(prev) : v
+    if (shouldSkipUpdate(prev, next, options)) return
+    s.set(next)
   }
   return [getter, setter]
+}
+
+/** Solid default: skip update when prev === next. Custom `equals` fn for user-defined comparison. */
+function shouldSkipUpdate<T>(prev: T, next: T, options?: CreateSignalOptions<T>): boolean {
+  if (typeof options?.equals === 'function') return options.equals(prev, next)
+  return prev === next
 }
 
 // ─── createEffect ────────────────────────────────────────────────────────────
@@ -422,6 +505,274 @@ export function runWithOwner<T>(owner: EffectScope | null, fn: () => T): T {
   } finally {
     setCurrentScope(prev)
   }
+}
+
+// ─── createResource ─────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible resource — async data fetching with reactive source tracking.
+ * Returns `[resource, { mutate, refetch }]` where `resource()` is the data accessor
+ * with `.loading`, `.error`, and `.latest` reactive properties.
+ */
+export interface Resource<T> {
+  (): T | undefined
+  loading: boolean
+  error: Error | undefined
+  latest: T | undefined
+}
+
+export type ResourceReturn<T> = [
+  Resource<T>,
+  { mutate: (v: T | ((prev: T | undefined) => T)) => void; refetch: () => void },
+]
+
+export function createResource<T>(
+  fetcher: (info: { value: T | undefined }) => Promise<T> | T,
+): ResourceReturn<T>
+export function createResource<T, S = true>(
+  source: (() => S) | true,
+  fetcher: (source: S, info: { value: T | undefined }) => Promise<T> | T,
+): ResourceReturn<T>
+export function createResource<T, S = true>(
+  sourceOrFetcher:
+    | (() => S)
+    | true
+    | ((info: { value: T | undefined }) => Promise<T> | T),
+  maybeFetcher?: (source: S, info: { value: T | undefined }) => Promise<T> | T,
+): ResourceReturn<T> {
+  const hasSource = maybeFetcher !== undefined
+  const source = hasSource ? (sourceOrFetcher as (() => S) | true) : (() => true as S)
+  const fetcher = (
+    hasSource ? maybeFetcher : sourceOrFetcher
+  ) as (source: S, info: { value: T | undefined }) => Promise<T> | T
+
+  const [data, setData] = createSignal<T | undefined>(undefined)
+  const [loading, setLoading] = createSignal(false)
+  const [error, setError] = createSignal<Error | undefined>(undefined)
+
+  let latestValue: T | undefined
+
+  const doFetch = () => {
+    const src = typeof source === 'function' ? (source as () => S)() : source
+    if (src === false || src === null || src === undefined) return
+    setLoading(true)
+    setError(undefined)
+    try {
+      const result = fetcher(src as S, { value: latestValue })
+      if (result instanceof Promise) {
+        result.then(
+          (val) => {
+            latestValue = val
+            setData(() => val)
+            setLoading(false)
+          },
+          (err) => {
+            setError(() => (err instanceof Error ? err : new Error(String(err))))
+            setLoading(false)
+          },
+        )
+      } else {
+        latestValue = result
+        setData(() => result)
+        setLoading(false)
+      }
+    } catch (err) {
+      setError(() => (err instanceof Error ? err : new Error(String(err))))
+      setLoading(false)
+    }
+  }
+
+  // Auto-fetch on source change
+  if (hasSource && typeof source === 'function') {
+    createEffect(() => {
+      ;(source as () => S)() // track source
+      doFetch()
+    })
+  } else {
+    doFetch() // fetch immediately
+  }
+
+  // Build the resource accessor with reactive properties
+  const resource = (() => data()) as Resource<T>
+  Object.defineProperty(resource, 'loading', {
+    get: () => loading(),
+    enumerable: true,
+  })
+  Object.defineProperty(resource, 'error', {
+    get: () => error(),
+    enumerable: true,
+  })
+  Object.defineProperty(resource, 'latest', {
+    get: () => latestValue,
+    enumerable: true,
+  })
+
+  const mutate = (v: T | ((prev: T | undefined) => T)) => {
+    if (typeof v === 'function') {
+      const next = (v as (prev: T | undefined) => T)(data())
+      latestValue = next
+      setData(() => next)
+    } else {
+      latestValue = v
+      setData(() => v)
+    }
+  }
+
+  const refetch = () => doFetch()
+
+  return [resource, { mutate, refetch }]
+}
+
+// ─── createStore / produce ──────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `createStore` — creates a reactive proxy-based store.
+ * Returns `[store, setStore]` where store is a proxy that reads from a signal
+ * and setStore accepts a mutator function that operates on a draft copy.
+ */
+export function createStore<T extends object>(
+  initialValue: T,
+): [T, (fn: (state: T) => void) => void] {
+  const [state, setState] = createSignal<T>(initialValue, { equals: false })
+
+  const proxy = new Proxy({} as T, {
+    get(_target, prop) {
+      return (state() as Record<PropertyKey, unknown>)[prop as string]
+    },
+    has(_target, prop) {
+      return prop in (state() as object)
+    },
+    ownKeys() {
+      return Reflect.ownKeys(state() as object)
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      return Object.getOwnPropertyDescriptor(state(), prop)
+    },
+    set() {
+      // oxlint-disable-next-line no-console
+      console.warn('[Pyreon] Direct mutation on store is not supported. Use the setter function.')
+      return true
+    },
+  })
+
+  const setStore = (fn: (state: T) => void) => {
+    const draft = structuredClone(state())
+    fn(draft)
+    setState(() => draft)
+  }
+
+  return [proxy, setStore]
+}
+
+/**
+ * Solid-compatible `produce` — creates an Immer-like updater function for stores.
+ * Returns a function that clones the state, applies mutations, and returns the result.
+ */
+export function produce<T extends object>(fn: (state: T) => void): (state: T) => T {
+  return (state: T) => {
+    const draft = structuredClone(state)
+    fn(draft)
+    return draft
+  }
+}
+
+// ─── startTransition / useTransition ────────────────────────────────────────
+
+/**
+ * Solid-compatible `startTransition` — runs a function as a transition.
+ * In Pyreon, this is a no-op wrapper that calls the function synchronously.
+ */
+export function startTransition(fn: () => void): void {
+  fn()
+}
+
+/**
+ * Solid-compatible `useTransition` — returns `[isPending, startTransition]`.
+ * In Pyreon, transitions are not deferred — isPending is always false.
+ */
+export function useTransition(): [() => boolean, (fn: () => void) => void] {
+  return [() => false, (fn) => fn()]
+}
+
+// ─── observable / from (interop) ────────────────────────────────────────────
+
+interface Observer<T> {
+  next: (v: T) => void
+}
+
+interface Subscription {
+  unsubscribe: () => void
+}
+
+interface Observable<T> {
+  subscribe: (observer: Observer<T>) => Subscription
+}
+
+/**
+ * Solid-compatible `observable` — converts a signal accessor to an observable.
+ * Returns an object with a `subscribe` method that tracks signal changes.
+ */
+export function observable<T>(input: () => T): Observable<T> {
+  return {
+    subscribe(observer: Observer<T>) {
+      const e = pyreonEffect(() => {
+        observer.next(input())
+      })
+      return { unsubscribe: () => e.dispose() }
+    },
+  }
+}
+
+/**
+ * Solid-compatible `from` — converts an observable or producer into a signal accessor.
+ * Accepts either a producer function `(setter) => cleanup` or an observable with `.subscribe()`.
+ */
+export function from<T>(
+  producer:
+    | ((setter: (v: T) => void) => () => void)
+    | Observable<T>,
+): () => T | undefined {
+  const [value, setValue] = createSignal<T | undefined>(undefined)
+
+  if (typeof producer === 'function') {
+    const cleanup = producer((v) => setValue(() => v))
+    pyreonOnCleanup(cleanup)
+  } else {
+    const sub = producer.subscribe({ next: (v) => setValue(() => v) })
+    pyreonOnCleanup(() => sub.unsubscribe())
+  }
+
+  return value
+}
+
+// ─── mapArray / indexArray ───────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `mapArray` — maps a reactive list by item identity.
+ * Each item is a static value, while the index is a reactive accessor.
+ */
+export function mapArray<T, U>(
+  list: () => readonly T[],
+  mapFn: (item: T, index: () => number) => U,
+): () => U[] {
+  return createMemo(() => {
+    const items = list()
+    return items.map((item, i) => mapFn(item, () => i))
+  })
+}
+
+/**
+ * Solid-compatible `indexArray` — maps a reactive list by index position.
+ * Each item is a reactive accessor, while the index is a static number.
+ */
+export function indexArray<T, U>(
+  list: () => readonly T[],
+  mapFn: (item: () => T, index: number) => U,
+): () => U[] {
+  return createMemo(() => {
+    const items = list()
+    return items.map((item, i) => mapFn(() => item, i))
+  })
 }
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────
