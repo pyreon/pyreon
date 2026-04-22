@@ -630,6 +630,11 @@ describe('@pyreon/solid-compat', () => {
     expect(useContext(Ctx)).toBe('default-value')
   })
 
+  it('createContext returns object with Provider', () => {
+    const Ctx = createContext('test')
+    expect(typeof Ctx.Provider).toBe('function')
+  })
+
   // ─── Re-exports ───────────────────────────────────────────────────────
 
   it('Show is exported', () => {
@@ -861,7 +866,8 @@ describe('@pyreon/solid-compat', () => {
 
   it('createResource with fetcher only', async () => {
     const [data] = createResource(() => Promise.resolve(42))
-    expect(data()).toBeUndefined()
+    // While loading, data() throws the fetch promise (Suspense integration)
+    expect(() => data()).toThrow()
     expect(data.loading).toBe(true)
 
     await new Promise((r) => setTimeout(r, 10))
@@ -917,7 +923,8 @@ describe('@pyreon/solid-compat', () => {
     const [data] = createResource(() => Promise.reject(new Error('fail')))
     await new Promise((r) => setTimeout(r, 10))
 
-    expect(data()).toBeUndefined()
+    // data() throws the error (ErrorBoundary catches this)
+    expect(() => data()).toThrow('fail')
     expect(data.error).toBeInstanceOf(Error)
     expect(data.error?.message).toBe('fail')
     expect(data.loading).toBe(false)
@@ -928,7 +935,8 @@ describe('@pyreon/solid-compat', () => {
       throw new Error('sync-fail')
     })
 
-    expect(data()).toBeUndefined()
+    // data() throws the error
+    expect(() => data()).toThrow('sync-fail')
     expect(data.error?.message).toBe('sync-fail')
     expect(data.loading).toBe(false)
   })
@@ -969,7 +977,7 @@ describe('@pyreon/solid-compat', () => {
     expect(store.count).toBe(0)
     expect(store.name).toBe('test')
 
-    setStore((s) => {
+    setStore((s: { count: number; name: string }) => {
       s.count = 5
     })
     expect(store.count).toBe(5)
@@ -984,7 +992,7 @@ describe('@pyreon/solid-compat', () => {
         effectRuns++
       })
       expect(effectRuns).toBe(1)
-      setStore((s) => {
+      setStore((s: { value: number }) => {
         s.value = 2
       })
       expect(effectRuns).toBe(2)

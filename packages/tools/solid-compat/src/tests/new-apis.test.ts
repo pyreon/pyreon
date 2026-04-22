@@ -11,10 +11,9 @@
  *   __loading forwarding on lazy
  */
 
-import type { ComponentFn } from '@pyreon/core'
+import type { ComponentFn, Props } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { effect as pyreonEffect, signal as pyreonSignal } from '@pyreon/reactivity'
 import {
   batch,
   createEffect,
@@ -204,7 +203,7 @@ describe('createStore proxy traps', () => {
 
   it('multiple property updates in one setter call', () => {
     const [store, setStore] = createStore({ a: 1, b: 2, c: 3 })
-    setStore((s) => {
+    setStore((s: { a: number; b: number; c: number }) => {
       s.a = 10
       s.b = 20
       s.c = 30
@@ -217,7 +216,7 @@ describe('createStore proxy traps', () => {
   it('nested property access through proxy', () => {
     const [store, setStore] = createStore({ nested: { value: 'deep' } })
     expect(store.nested.value).toBe('deep')
-    setStore((s) => {
+    setStore((s: { nested: { value: string } }) => {
       s.nested = { value: 'updated' }
     })
     expect(store.nested.value).toBe('updated')
@@ -228,7 +227,7 @@ describe('createStore proxy traps', () => {
 
 describe('lazy error handling', () => {
   it('lazy handles loader rejection', async () => {
-    const Lazy = lazy(() => Promise.reject(new Error('load-failed')))
+    const Lazy = lazy<Props>(() => Promise.reject(new Error('load-failed')))
     // Trigger load
     expect(Lazy.__loading()).toBe(true)
 
@@ -245,7 +244,7 @@ describe('lazy error handling', () => {
   })
 
   it('lazy handles non-Error rejection', async () => {
-    const Lazy = lazy(() => Promise.reject('string-error'))
+    const Lazy = lazy<Props>(() => Promise.reject('string-error'))
     Lazy.__loading() // trigger load
 
     try {
@@ -259,7 +258,7 @@ describe('lazy error handling', () => {
 
   it('lazy catch handler sets error and resets promise', async () => {
     // Verify the catch branch: err instanceof Error check + error.set + promise = null + re-throw
-    const Lazy = lazy(() => Promise.reject(new Error('catch-test')))
+    const Lazy = lazy<Props>(() => Promise.reject(new Error('catch-test')))
 
     // preload() returns the load promise
     const p = Lazy.preload()
@@ -315,6 +314,8 @@ describe('createResource edge cases', () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(data.error).toBeInstanceOf(Error)
     expect(data.error?.message).toBe('string-rejection')
+    // data() throws the error
+    expect(() => data()).toThrow('string-rejection')
   })
 
   it('sync fetcher that throws non-Error', () => {
@@ -323,6 +324,8 @@ describe('createResource edge cases', () => {
     })
     expect(data.error).toBeInstanceOf(Error)
     expect(data.error?.message).toBe('string-throw')
+    // data() throws the error
+    expect(() => data()).toThrow('string-throw')
   })
 
   it('resource.latest persists after error', async () => {
@@ -362,7 +365,8 @@ describe('createResource edge cases', () => {
 
     const [data] = createResource(() => promise)
     expect(data.loading).toBe(true)
-    expect(data()).toBeUndefined()
+    // While loading, data() throws the fetch promise for Suspense
+    expect(() => data()).toThrow()
 
     resolvePromise!('done')
     await new Promise((r) => setTimeout(r, 10))
@@ -704,28 +708,29 @@ describe('real-world integration patterns', () => {
       todos: [],
     })
 
-    setStore((s) => {
+    setStore((s: { todos: { text: string; done: boolean }[] }) => {
       s.todos.push({ text: 'Buy milk', done: false })
     })
     expect(store.todos).toHaveLength(1)
-    expect(store.todos[0].text).toBe('Buy milk')
+    expect((store.todos as unknown as { text: string }[])[0]!.text).toBe('Buy milk')
 
-    setStore((s) => {
+    setStore((s: { todos: { text: string; done: boolean }[] }) => {
       s.todos.push({ text: 'Walk dog', done: false })
-      s.todos[0].done = true
+      s.todos[0]!.done = true
     })
     expect(store.todos).toHaveLength(2)
-    expect(store.todos[0].done).toBe(true)
+    expect((store.todos as unknown as { done: boolean }[])[0]!.done).toBe(true)
   })
 
   it('produce with createStore', () => {
     const [store, setStore] = createStore({ items: [1, 2, 3] })
+    // Use reconcile pattern: produce returns a function that takes old state and returns new
     const addItem = produce<{ items: number[] }>((s) => {
       s.items.push(4)
     })
-    setStore((s) => {
-      const result = addItem(s)
-      Object.assign(s, result)
+    // Apply produce result via functional setter path
+    setStore((s: { items: number[] }) => {
+      Object.assign(s, addItem({ items: [...s.items] }))
     })
     // The store was cloned and mutated
     expect(store.items).toContain(4)
@@ -999,7 +1004,288 @@ describe('jsx-runtime layout/schedule effects', () => {
 
 // ─── import mergeProps and splitProps ────────────────────────────────────────
 
-import { mergeProps, splitProps } from '../index'
+import {
+  createContext,
+  createUniqueId,
+  Index,
+  mergeProps,
+  on,
+  reconcile,
+  splitProps,
+  unwrap,
+  useContext,
+} from '../index'
 
 // Import Show separately for the native component test
 import { Show } from '../index'
+
+// ─── createEffect with prev value ───────────────────────────────────────────
+
+describe('createEffect with prev value', () => {
+  it('passes prev value on subsequent calls', () => {
+    const values: (number | undefined)[] = []
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(1)
+      createEffect<number>((prev) => {
+        values.push(prev)
+        return count()
+      }, 0)
+      expect(values).toEqual([0]) // first call gets initialValue
+      setCount(5)
+      expect(values).toEqual([0, 1]) // second call gets prev result (1)
+      dispose()
+    })
+  })
+
+  it('works without initial value', () => {
+    const values: (number | undefined)[] = []
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(1)
+      createEffect<number>((prev) => {
+        values.push(prev)
+        return count()
+      })
+      expect(values).toEqual([undefined]) // first call gets undefined
+      setCount(2)
+      expect(values).toEqual([undefined, 1])
+      dispose()
+    })
+  })
+})
+
+// ─── createMemo with prev value ─────────────────────────────────────────────
+
+describe('createMemo with prev value', () => {
+  it('passes prev value on subsequent calls', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(1)
+      const sum = createMemo<number>((prev) => (prev ?? 0) + count(), 0)
+      expect(sum()).toBe(1) // 0 + 1
+      setCount(5)
+      expect(sum()).toBe(6) // 1 + 5
+      dispose()
+    })
+  })
+
+  it('works without initial value', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(10)
+      const memo = createMemo<number>((prev) => (prev ?? 0) + count())
+      expect(memo()).toBe(10) // 0 + 10
+      setCount(5)
+      expect(memo()).toBe(15) // 10 + 5
+      dispose()
+    })
+  })
+})
+
+// ─── on() with defer option ─────────────────────────────────────────────────
+
+describe('on() with defer option', () => {
+  it('skips first execution when defer is true', () => {
+    createRoot((dispose) => {
+      const [count, setCount] = createSignal(0)
+      const results: unknown[] = []
+
+      const tracker = on(
+        count,
+        (input, prevInput, prevValue) => {
+          results.push({ input, prevInput, prevValue })
+          return input
+        },
+        { defer: true },
+      )
+
+      createEffect(() => {
+        tracker()
+      })
+
+      // First execution deferred — fn not called
+      expect(results).toHaveLength(0)
+
+      setCount(5)
+      // Now fn is called with current and prev
+      expect(results).toHaveLength(1)
+      expect((results[0] as Record<string, unknown>).input).toBe(5)
+      expect((results[0] as Record<string, unknown>).prevInput).toBe(0)
+
+      dispose()
+    })
+  })
+
+  it('without defer executes immediately', () => {
+    createRoot((dispose) => {
+      const [count] = createSignal(0)
+      const results: unknown[] = []
+
+      const tracker = on(count, (input) => {
+        results.push(input)
+        return input
+      })
+
+      createEffect(() => {
+        tracker()
+      })
+
+      expect(results).toHaveLength(1)
+      expect(results[0]).toBe(0)
+
+      dispose()
+    })
+  })
+})
+
+// ─── Context with Provider nesting ──────────────────────────────────────────
+
+describe('createContext with Provider nesting', () => {
+  it('createContext creates context with default value', () => {
+    const Ctx = createContext('default-value')
+    expect(useContext(Ctx)).toBe('default-value')
+  })
+
+  it('createContext returns object with Provider', () => {
+    const Ctx = createContext('test')
+    expect(typeof Ctx.Provider).toBe('function')
+    expect(Ctx.defaultValue).toBe('test')
+    expect(Ctx.id).toBeDefined()
+  })
+
+  it('Provider overrides context value for subtree', () => {
+    const Ctx = createContext('outer')
+
+    let innerValue: string | undefined
+
+    function Consumer() {
+      innerValue = useContext(Ctx)
+      return jsx('span', { children: innerValue })
+    }
+
+    function App() {
+      return jsx(Ctx.Provider as ComponentFn, {
+        value: 'inner',
+        children: jsx(Consumer, {}),
+      })
+    }
+
+    const container = document.createElement('div')
+    mount(jsx(App, {}), container)
+
+    expect(innerValue).toBe('inner')
+  })
+
+  it('useContext without Provider returns default', () => {
+    const Ctx = createContext(42)
+    expect(useContext(Ctx)).toBe(42)
+  })
+
+  it('createContext without default returns undefined', () => {
+    const Ctx = createContext<string>()
+    expect(useContext(Ctx)).toBeUndefined()
+  })
+})
+
+// ─── createStore path-based setter ──────────────────────────────────────────
+
+describe('createStore path-based setter', () => {
+  it('sets top-level key via path', () => {
+    const [store, setStore] = createStore({ name: 'old', count: 0 })
+    setStore('name', 'new')
+    expect(store.name).toBe('new')
+    expect(store.count).toBe(0)
+  })
+
+  it('sets nested key via path', () => {
+    const [store, setStore] = createStore({ user: { name: 'old' } })
+    setStore('user', 'name', 'new')
+    expect(store.user.name).toBe('new')
+  })
+
+  it('supports functional update at path', () => {
+    const [store, setStore] = createStore({ count: 5 })
+    setStore('count', (prev: number) => prev + 1)
+    expect(store.count).toBe(6)
+  })
+})
+
+// ─── reconcile / unwrap ─────────────────────────────────────────────────────
+
+describe('reconcile', () => {
+  it('returns a function that replaces state', () => {
+    const replacer = reconcile({ a: 1, b: 2 })
+    const result = replacer({ a: 99, b: 99 })
+    expect(result).toEqual({ a: 1, b: 2 })
+  })
+})
+
+describe('unwrap', () => {
+  it('returns a deep clone', () => {
+    const original = { nested: { value: 1 } }
+    const cloned = unwrap(original)
+    expect(cloned).toEqual(original)
+    // Should be a different object (cloned)
+    expect(cloned).not.toBe(original)
+    expect(cloned.nested).not.toBe(original.nested)
+  })
+})
+
+// ─── Index component ────────────────────────────────────────────────────────
+
+describe('Index component', () => {
+  it('maps items with reactive accessor and static index', () => {
+    createRoot((dispose) => {
+      const items = ['a', 'b', 'c']
+      const result = Index({
+        each: items,
+        children: (item, index) => `${item()}-${index}`,
+      })
+      // Index returns a reactive accessor
+      const accessor = result as () => unknown[]
+      expect(accessor()).toEqual(['a-0', 'b-1', 'c-2'])
+      dispose()
+    })
+  })
+})
+
+// ─── createUniqueId ─────────────────────────────────────────────────────────
+
+describe('createUniqueId', () => {
+  it('returns unique strings', () => {
+    const id1 = createUniqueId()
+    const id2 = createUniqueId()
+    expect(id1).not.toBe(id2)
+    expect(id1.startsWith('solid-')).toBe(true)
+    expect(id2.startsWith('solid-')).toBe(true)
+  })
+})
+
+// ─── createResource Suspense integration ────────────────────────────────────
+
+describe('createResource Suspense integration', () => {
+  it('resource accessor throws promise when loading', () => {
+    const [data] = createResource(() => new Promise<number>((r) => setTimeout(() => r(42), 100)))
+    expect(data.loading).toBe(true)
+    // data() should throw the promise for Suspense
+    try {
+      data()
+      expect.unreachable('should have thrown')
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(Promise)
+    }
+  })
+
+  it('resource accessor throws error when errored', async () => {
+    const [data] = createResource(() => Promise.reject(new Error('boom')))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data.loading).toBe(false)
+    expect(data.error).toBeInstanceOf(Error)
+    // data() should throw the error for ErrorBoundary
+    expect(() => data()).toThrow('boom')
+  })
+
+  it('resource accessor returns data when resolved', async () => {
+    const [data] = createResource(() => Promise.resolve(42))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data.loading).toBe(false)
+    expect(data()).toBe(42)
+  })
+})

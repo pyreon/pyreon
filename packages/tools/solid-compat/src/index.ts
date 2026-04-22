@@ -13,7 +13,7 @@
  *   import { createSignal, createEffect } from "solid-js"  // aliased by vite plugin
  */
 
-import type { ComponentFn, LazyComponent, Props, VNodeChild } from '@pyreon/core'
+import type { ComponentFn, Context, LazyComponent, Props, VNodeChild } from '@pyreon/core'
 import {
   ErrorBoundary,
   For,
@@ -21,6 +21,7 @@ import {
   createContext as pyreonCreateContext,
   onMount as pyreonOnMount,
   onUnmount as pyreonOnUnmount,
+  provide as pyreonProvide,
   useContext as pyreonUseContext,
   Show,
   Suspense,
@@ -168,23 +169,28 @@ function shouldSkipUpdate<T>(prev: T, next: T, options?: CreateSignalOptions<T>)
 /**
  * Solid-compatible `createEffect` — creates a reactive side effect.
  *
+ * Supports the `(prev) => next` signature with an optional initial value,
+ * matching Solid's `createEffect<T>(fn: (prev: T) => T, initialValue: T)`.
+ *
  * In component context: hook-indexed, only created on first render. The effect
  * uses Pyreon's native tracking so signal reads are automatically tracked.
  * A re-entrance guard prevents infinite loops from signal writes inside
  * the effect.
  */
-export function createEffect(fn: () => void): void {
+export function createEffect<T>(fn: ((prev?: T) => T) | (() => void), initialValue?: T): void {
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return // Already registered on first render
 
+    let prevValue: T | undefined = initialValue
     let running = false
     const e = pyreonEffect(() => {
       if (running) return
       running = true
       try {
-        fn()
+        const result = (fn as (prev?: T) => T)(prevValue)
+        if (result !== undefined) prevValue = result
       } finally {
         running = false
       }
@@ -196,7 +202,11 @@ export function createEffect(fn: () => void): void {
   }
 
   // Outside component
-  pyreonEffect(fn)
+  let prevValue: T | undefined = initialValue
+  pyreonEffect(() => {
+    const result = (fn as (prev?: T) => T)(prevValue)
+    if (result !== undefined) prevValue = result
+  })
 }
 
 // ─── createRenderEffect ──────────────────────────────────────────────────────
@@ -218,22 +228,36 @@ export { createEffect as createComputed }
 /**
  * Solid-compatible `createMemo` — derives a value from reactive sources.
  *
+ * Supports the `(prev) => next` signature with an optional initial value,
+ * matching Solid's `createMemo<T>(fn: (prev: T) => T, initialValue: T)`.
+ *
  * In component context: hook-indexed, only created on first render.
  * Uses Pyreon's native computed for auto-tracking.
  */
-export function createMemo<T>(fn: () => T): () => T {
+export function createMemo<T>(fn: ((prev?: T) => T) | (() => T), initialValue?: T): () => T {
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
     if (idx >= ctx.hooks.length) {
-      ctx.hooks[idx] = pyreonComputed(fn)
+      let prevValue: T | undefined = initialValue
+      const c = pyreonComputed(() => {
+        const result = (fn as (prev?: T) => T)(prevValue)
+        prevValue = result
+        return result
+      })
+      ctx.hooks[idx] = c
     }
     const c = ctx.hooks[idx] as ReturnType<typeof pyreonComputed<T>>
     return () => c()
   }
 
   // Outside component
-  const c = pyreonComputed(fn)
+  let prevValue: T | undefined = initialValue
+  const c = pyreonComputed(() => {
+    const result = (fn as (prev?: T) => T)(prevValue)
+    prevValue = result
+    return result
+  })
   return () => c()
 }
 
@@ -261,6 +285,7 @@ export function on<S extends (() => unknown) | AccessorArray, V>(
     S extends () => infer R ? R : S extends readonly (() => infer R)[] ? R[] : never,
     V
   >,
+  options?: { defer?: boolean },
 ): () => V | undefined {
   type D = S extends () => infer R ? R : S extends readonly (() => infer R)[] ? R[] : never
 
@@ -276,6 +301,11 @@ export function on<S extends (() => unknown) | AccessorArray, V>(
 
     if (!initialized) {
       initialized = true
+      if (options?.defer) {
+        // When defer=true, skip the first execution — just capture deps
+        prevInput = input
+        return prevValue
+      }
       prevValue = fn(input, undefined, undefined)
       prevInput = input
       return prevValue
@@ -489,7 +519,64 @@ export function lazy<P extends Props>(
 
 // ─── createContext / useContext ───────────────────────────────────────────────
 
-export { pyreonCreateContext as createContext, pyreonUseContext as useContext }
+const SOLID_CTX = Symbol.for('pyreon:solid-ctx')
+
+/**
+ * Solid-compatible context with a Provider component that uses Pyreon's
+ * native tree-scoped context stack for proper nesting (inner Provider
+ * overrides outer for its subtree).
+ */
+export interface SolidContext<T> {
+  readonly [SOLID_CTX_BRAND]: true
+  readonly id: symbol
+  readonly defaultValue: T | undefined
+  Provider: (props: Record<string, unknown>) => unknown
+}
+
+const SOLID_CTX_BRAND: typeof SOLID_CTX = SOLID_CTX
+
+// Tag the Provider so wrapCompatComponent in jsx-runtime skips it
+const NATIVE_COMPONENT = Symbol.for('pyreon:native-compat')
+
+/**
+ * Solid-compatible `createContext` — creates a context with a `.Provider`
+ * component. Uses Pyreon's native context stack for tree-scoped nesting.
+ */
+export function createContext<T>(defaultValue?: T): SolidContext<T> {
+  const pyreonCtx = pyreonCreateContext<T>(defaultValue as T)
+
+  // Provider is a NATIVE Pyreon component — not compat-wrapped.
+  // It calls provide() once during setup to push onto the context stack.
+  const Provider = (props: Record<string, unknown>) => {
+    const { value, children } = props as { value: T; children?: VNodeChild }
+    pyreonProvide(pyreonCtx, value)
+    return children ?? null
+  }
+  ;(Provider as unknown as Record<symbol, boolean>)[NATIVE_COMPONENT] = true
+
+  const ctx: SolidContext<T> = {
+    [SOLID_CTX_BRAND]: true as const,
+    id: pyreonCtx.id,
+    defaultValue,
+    Provider,
+  }
+  return ctx
+}
+
+/**
+ * Solid-compatible `useContext` — reads the nearest provided value for a context.
+ * Works with both compat contexts (from this module's `createContext`) and
+ * Pyreon native contexts (from `@pyreon/core`).
+ */
+export function useContext<T>(context: SolidContext<T> | Context<T>): T {
+  if (SOLID_CTX in context) {
+    const solidCtx = context as SolidContext<T>
+    // Reconstruct a Pyreon context with the same id to read from the stack
+    const pyreonCtx = { id: solidCtx.id, defaultValue: solidCtx.defaultValue as T } as Context<T>
+    return pyreonUseContext(pyreonCtx)
+  }
+  return pyreonUseContext(context as Context<T>)
+}
 
 // ─── getOwner / runWithOwner ─────────────────────────────────────────────────
 
@@ -513,6 +600,10 @@ export function runWithOwner<T>(owner: EffectScope | null, fn: () => T): T {
  * Solid-compatible resource — async data fetching with reactive source tracking.
  * Returns `[resource, { mutate, refetch }]` where `resource()` is the data accessor
  * with `.loading`, `.error`, and `.latest` reactive properties.
+ *
+ * When the resource is loading and read inside a Suspense boundary, the accessor
+ * throws the fetch promise so Suspense can catch it. It also integrates with
+ * Pyreon's `__loading` protocol so `<Suspense>` can detect it.
  */
 export interface Resource<T> {
   (): T | undefined
@@ -551,6 +642,7 @@ export function createResource<T, S = true>(
   const [error, setError] = createSignal<Error | undefined>(undefined)
 
   let latestValue: T | undefined
+  let fetchPromise: Promise<T> | null = null
 
   const doFetch = () => {
     const src = typeof source === 'function' ? (source as () => S)() : source
@@ -560,19 +652,23 @@ export function createResource<T, S = true>(
     try {
       const result = fetcher(src as S, { value: latestValue })
       if (result instanceof Promise) {
+        fetchPromise = result
         result.then(
           (val) => {
             latestValue = val
+            fetchPromise = null
             setData(() => val)
             setLoading(false)
           },
           (err) => {
+            fetchPromise = null
             setError(() => (err instanceof Error ? err : new Error(String(err))))
             setLoading(false)
           },
         )
       } else {
         latestValue = result
+        fetchPromise = null
         setData(() => result)
         setLoading(false)
       }
@@ -592,8 +688,14 @@ export function createResource<T, S = true>(
     doFetch() // fetch immediately
   }
 
-  // Build the resource accessor with reactive properties
-  const resource = (() => data()) as Resource<T>
+  // Build the resource accessor — throws for Suspense when loading
+  const resource = (() => {
+    if (loading() && fetchPromise) throw fetchPromise // Suspense catches this
+    const err = error()
+    if (err) throw err // ErrorBoundary catches this
+    return data()
+  }) as Resource<T>
+
   Object.defineProperty(resource, 'loading', {
     get: () => loading(),
     enumerable: true,
@@ -626,42 +728,156 @@ export function createResource<T, S = true>(
 // ─── createStore / produce ──────────────────────────────────────────────────
 
 /**
- * Solid-compatible `createStore` — creates a reactive proxy-based store.
- * Returns `[store, setStore]` where store is a proxy that reads from a signal
- * and setStore accepts a mutator function that operates on a draft copy.
+ * Solid-compatible `createStore` — creates a deeply reactive proxy-based store.
+ *
+ * Returns `[store, setStore]` where:
+ * - `store` is a recursive proxy that lazily creates per-path signals for fine-grained tracking
+ * - `setStore` supports Solid's path-based setter API:
+ *   - `setStore('key', value)` — set a top-level key
+ *   - `setStore('nested', 'key', value)` — set a nested path
+ *   - `setStore('key', prev => next)` — functional update at a path
+ *   - `setStore(fn)` — mutator function (receives a draft clone)
  */
+export type SetStoreFunction<_T> = {
+  (...args: unknown[]): void
+}
+
 export function createStore<T extends object>(
   initialValue: T,
-): [T, (fn: (state: T) => void) => void] {
-  const [state, setState] = createSignal<T>(initialValue, { equals: false })
+): [T, SetStoreFunction<T>] {
+  const signals = new Map<string, ReturnType<typeof pyreonSignal>>()
+  let raw: T = structuredClone(initialValue)
 
-  const proxy = new Proxy({} as T, {
-    get(_target, prop) {
-      return (state() as Record<PropertyKey, unknown>)[prop as string]
-    },
-    has(_target, prop) {
-      return prop in (state() as object)
-    },
-    ownKeys() {
-      return Reflect.ownKeys(state() as object)
-    },
-    getOwnPropertyDescriptor(_target, prop) {
-      return Object.getOwnPropertyDescriptor(state(), prop)
-    },
-    set() {
-      // oxlint-disable-next-line no-console
-      console.warn('[Pyreon] Direct mutation on store is not supported. Use the setter function.')
-      return true
-    },
-  })
+  function getByPath(obj: unknown, path: string): unknown {
+    if (!path) return obj
+    return path.split('.').reduce((o, k) => (o as Record<string, unknown>)?.[k], obj)
+  }
 
-  const setStore = (fn: (state: T) => void) => {
-    const draft = structuredClone(state())
-    fn(draft)
-    setState(() => draft)
+  function setByPath(obj: unknown, pathParts: (string | number)[], value: unknown): void {
+    if (pathParts.length === 0) return
+    let current = obj as Record<string | number, unknown>
+    for (let i = 0; i < pathParts.length - 1; i++) {
+      const key = pathParts[i]
+      if (key === undefined) return
+      current = current[key] as Record<string | number, unknown>
+    }
+    const lastKey = pathParts[pathParts.length - 1]
+    if (lastKey !== undefined) current[lastKey] = value
+  }
+
+  function getSignal(path: string): ReturnType<typeof pyreonSignal> {
+    let sig = signals.get(path)
+    if (!sig) {
+      const value = getByPath(raw, path)
+      sig = pyreonSignal(value)
+      signals.set(path, sig)
+    }
+    return sig
+  }
+
+  function resolveValue(basePath: string): unknown {
+    return basePath ? getByPath(raw, basePath) : raw
+  }
+
+  function makeProxy(basePath: string): unknown {
+    // Use a dummy target — all reads go through `raw` via `resolveValue`
+    return new Proxy({} as object, {
+      get(_target, prop) {
+        if (typeof prop === 'symbol') return (resolveValue(basePath) as Record<symbol, unknown>)?.[prop]
+        const path = basePath ? `${basePath}.${String(prop)}` : String(prop)
+        const sig = getSignal(path)
+        sig() // track read
+        const value = getByPath(raw, path)
+        if (value !== null && typeof value === 'object') {
+          return makeProxy(path)
+        }
+        return value
+      },
+      has(_target, prop) {
+        const current = resolveValue(basePath)
+        return current !== null && typeof current === 'object' && prop in (current as object)
+      },
+      ownKeys(_target) {
+        // Track the base path so effects re-run when keys change
+        if (basePath) getSignal(basePath)()
+        else getSignal('__keys__')()
+        const current = resolveValue(basePath)
+        return current !== null && typeof current === 'object'
+          ? Reflect.ownKeys(current as object)
+          : []
+      },
+      getOwnPropertyDescriptor(_target, prop) {
+        const current = resolveValue(basePath)
+        if (current !== null && typeof current === 'object') {
+          return Object.getOwnPropertyDescriptor(current, prop)
+        }
+        return undefined
+      },
+      set() {
+        // oxlint-disable-next-line no-console
+        console.warn('[Pyreon] Direct mutation on store is not supported. Use the setter function.')
+        return true
+      },
+    })
+  }
+
+  const proxy = makeProxy('') as T
+
+  function updateRaw(newRaw: T) {
+    const oldRaw = raw
+    raw = newRaw
+
+    // Update all tracked signals whose values changed
+    for (const [path, sig] of signals) {
+      const oldVal = getByPath(oldRaw, path)
+      const newVal = getByPath(newRaw, path)
+      if (!Object.is(oldVal, newVal)) {
+        sig.set(newVal)
+      }
+    }
+  }
+
+  const setStore: SetStoreFunction<T> = (...args: unknown[]) => {
+    if (args.length === 1 && typeof args[0] === 'function') {
+      // Function form: setStore(state => { state.x = 1 })
+      const draft = structuredClone(raw)
+      ;(args[0] as (state: T) => void)(draft)
+      updateRaw(draft)
+    } else if (args.length >= 2) {
+      // Path form: setStore('user', 'name', 'Jane') or setStore('key', fn)
+      const value = args[args.length - 1]
+      const pathParts = args.slice(0, -1) as (string | number)[]
+      const draft = structuredClone(raw)
+
+      if (typeof value === 'function') {
+        const pathStr = pathParts.join('.')
+        const currentVal = getByPath(raw, pathStr)
+        setByPath(draft, pathParts, (value as (prev: unknown) => unknown)(currentVal))
+      } else {
+        setByPath(draft, pathParts, value)
+      }
+
+      updateRaw(draft)
+    }
   }
 
   return [proxy, setStore]
+}
+
+/**
+ * Solid-compatible `reconcile` — replaces the entire store state with the given value.
+ * Used with setStore: `setStore(reconcile(newData))`
+ */
+export function reconcile<T extends object>(value: T): (state: T) => T {
+  return () => value
+}
+
+/**
+ * Solid-compatible `unwrap` — returns a deep clone of the store's raw data,
+ * stripping the reactive proxy.
+ */
+export function unwrap<T>(value: T): T {
+  return structuredClone(value) as T
 }
 
 /**
@@ -773,6 +989,40 @@ export function indexArray<T, U>(
     const items = list()
     return items.map((item, i) => mapFn(() => item, i))
   })
+}
+
+// ─── Index ──────────────────────────────────────────────────────────────────
+
+/**
+ * Solid-compatible `Index` — like `For` but keyed by index.
+ * Items are reactive accessors, indices are static numbers.
+ *
+ * In Solid, `<Index>` keeps DOM nodes stable per index position.
+ * Here we use a computed that maps items to `(item: () => T, index: number)`.
+ */
+export function Index<T>(props: {
+  each: readonly T[] | (() => readonly T[])
+  children: (item: () => T, index: number) => VNodeChild
+}): VNodeChild {
+  const list = typeof props.each === 'function'
+    ? (props.each as () => readonly T[])
+    : () => props.each as readonly T[]
+  const mapped = createMemo(() => {
+    const items = list()
+    return items.map((item, i) => props.children(() => item, i))
+  })
+  return (() => mapped()) as unknown as VNodeChild
+}
+
+// ─── createUniqueId ─────────────────────────────────────────────────────────
+
+let _uniqueIdCounter = 0
+
+/**
+ * Solid-compatible `createUniqueId` — returns a unique string identifier.
+ */
+export function createUniqueId(): string {
+  return `solid-${(_uniqueIdCounter++).toString(36)}`
 }
 
 // ─── Re-exports from @pyreon/core ──────────────────────────────────────────────
