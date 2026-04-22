@@ -465,3 +465,34 @@ describe('resolveRoute — wildcard patterns', () => {
     expect(r.matched[r.matched.length - 1]?.component).toBe(NotFound)
   })
 })
+
+// ─── + as space in query parsing (application/x-www-form-urlencoded) ────────
+
+describe('parseQuery — + as space', () => {
+  it('decodes + as space in values', () => {
+    expect(parseQuery('name=john+doe')).toEqual({ name: 'john doe' })
+  })
+
+  it('decodes + as space in keys', () => {
+    expect(parseQuery('first+name=Alice')).toEqual({ 'first name': 'Alice' })
+  })
+
+  it('handles mixed + and %20', () => {
+    expect(parseQuery('a=hello+world&b=foo%20bar')).toEqual({
+      a: 'hello world',
+      b: 'foo bar',
+    })
+  })
+
+  it('handles multiple + in a value', () => {
+    expect(parseQuery('q=one+two+three')).toEqual({ q: 'one two three' })
+  })
+})
+
+describe('parseQueryMulti — + as space', () => {
+  it('decodes + as space in values', () => {
+    expect(parseQueryMulti('tag=hello+world&tag=foo+bar')).toEqual({
+      tag: ['hello world', 'foo bar'],
+    })
+  })
+})

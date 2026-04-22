@@ -323,7 +323,10 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
     const result: Record<string, unknown> = {}
     for (const [key, type] of Object.entries(schema)) {
       const raw = query[key]
-      if (type === 'number') result[key] = raw !== undefined ? Number(raw) : 0
+      if (type === 'number') {
+        const n = raw !== undefined ? Number(raw) : 0
+        result[key] = Number.isNaN(n) ? 0 : n
+      }
       else if (type === 'boolean') result[key] = raw === 'true' || raw === '1'
       else result[key] = raw ?? ''
     }
@@ -390,7 +393,7 @@ export function useMiddlewareData(): () => Record<string, unknown> {
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
 
-export function createRouter(options: RouterOptions | RouteRecord[]): Router {
+export function createRouter<TNames extends string = string>(options: RouterOptions | RouteRecord[]): Router<TNames> {
   const opts: RouterOptions = Array.isArray(options) ? { routes: options } : options
   const {
     routes,
@@ -986,7 +989,7 @@ export function createRouter(options: RouterOptions | RouteRecord[]): Router {
     }
   })
 
-  return router
+  return router as unknown as Router<TNames>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1014,6 +1017,13 @@ function resolveNamedPath(
 ): string {
   const record = index.get(name)
   if (!record) {
+    if (__DEV__) {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[Pyreon Router] Unknown route name "${name}". ` +
+        `Available names: ${[...index.keys()].join(', ') || '(none)'}. Falling back to "/".`,
+      )
+    }
     return '/'
   }
   let path = buildPath(record.path, params)

@@ -6,17 +6,22 @@ import type { ResolvedRoute, RouteMeta, RouteRecord } from './types'
  * Parse a query string into key-value pairs. Duplicate keys are overwritten
  * (last value wins). Use `parseQueryMulti` to preserve duplicates as arrays.
  */
+/** Decode a query component: `+` → space (per application/x-www-form-urlencoded), then URI-decode. */
+function decodeQueryComponent(raw: string): string {
+  return decodeURIComponent(raw.replace(/\+/g, ' '))
+}
+
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return {}
   const result: Record<string, string> = {}
   for (const part of qs.split('&')) {
     const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
-      const key = decodeURIComponent(part)
+      const key = decodeQueryComponent(part)
       if (key) result[key] = ''
     } else {
-      const key = decodeURIComponent(part.slice(0, eqIdx))
-      const val = decodeURIComponent(part.slice(eqIdx + 1))
+      const key = decodeQueryComponent(part.slice(0, eqIdx))
+      const val = decodeQueryComponent(part.slice(eqIdx + 1))
       if (key) result[key] = val
     }
   }
@@ -38,11 +43,11 @@ export function parseQueryMulti(qs: string): Record<string, string | string[]> {
     let key: string
     let val: string
     if (eqIdx < 0) {
-      key = decodeURIComponent(part)
+      key = decodeQueryComponent(part)
       val = ''
     } else {
-      key = decodeURIComponent(part.slice(0, eqIdx))
-      val = decodeURIComponent(part.slice(eqIdx + 1))
+      key = decodeQueryComponent(part.slice(0, eqIdx))
+      val = decodeQueryComponent(part.slice(eqIdx + 1))
     }
     if (!key) continue
     const existing = result[key]

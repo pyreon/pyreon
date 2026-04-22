@@ -185,7 +185,13 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
 
   return h(
     'a',
-    { ...rest, ref, href, class: activeClass, onClick: handleClick, onMouseEnter: handleMouseEnter },
+    { ...rest, ref, href, class: activeClass, 'aria-current': () => {
+      if (!router) return undefined
+      const current = router.currentRoute().path
+      const target = props.to
+      if (typeof target !== 'string') return undefined
+      return current === target ? 'page' : undefined
+    }, onClick: handleClick, onMouseEnter: handleMouseEnter },
     children ?? props.to,
   )
 }

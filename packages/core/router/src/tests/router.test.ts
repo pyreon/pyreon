@@ -358,10 +358,13 @@ describe('router navigation', () => {
     expect(router.currentRoute().query.q).toBe('hello')
   })
 
-  test('push with unknown named route falls back to /', async () => {
+  test('push with unknown named route falls back to / and warns', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const router = createRouter({ routes, url: '/about' })
     await router.push({ name: 'nonexistent' })
     expect(router.currentRoute().path).toBe('/')
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown route name "nonexistent"'))
+    warnSpy.mockRestore()
   })
 
   test('back() does not throw in SSR (no window)', () => {
@@ -4264,6 +4267,21 @@ describe('useTypedSearchParams', () => {
     }
     mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
     expect(result!.page).toBe(0)
+    router.destroy()
+  })
+
+  it('guards NaN: non-numeric string coerces to 0 instead of NaN', () => {
+    const router = createRouter({ routes: tspRoutes, url: '/search?page=abc' })
+    const ctr = document.createElement('div')
+    let result: { page: number } | undefined
+    const TestComp = () => {
+      const [params] = useTypedSearchParams({ page: 'number' })
+      result = params() as { page: number }
+      return null
+    }
+    mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
+    expect(result!.page).toBe(0) // not NaN
+    expect(Number.isNaN(result!.page)).toBe(false)
     router.destroy()
   })
 
