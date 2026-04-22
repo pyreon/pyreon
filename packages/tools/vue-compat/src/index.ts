@@ -453,7 +453,7 @@ type WatchSource<T> = Ref<T> | (() => T)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
   source: WatchSource<T>,
-  cb: (newValue: T, oldValue: T | undefined) => void,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -462,13 +462,14 @@ export function watch<T extends readonly WatchSource<any>[]>(
   cb: (
     newValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V : never },
     oldValues: { [K in keyof T]: T[K] extends WatchSource<infer V> ? V | undefined : never },
+    onCleanup: (fn: () => void) => void,
   ) => void,
   options?: WatchOptions,
 ): () => void
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function watch<T>(
   source: WatchSource<T> | WatchSource<T>[],
-  cb: (newValue: T, oldValue: T | undefined) => void,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
   // Array of sources — multi-watch
@@ -484,10 +485,22 @@ export function watch<T>(
 
 function _watchArray(
   sources: WatchSource<unknown>[],
-  cb: (newValues: unknown, oldValues: unknown) => void,
+  cb: (newValues: unknown, oldValues: unknown, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
   const getters = sources.map((s) => (isRef(s) ? () => (s as Ref).value : (s as () => unknown)))
+
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (fn: () => void) => {
+    cleanupFn = fn
+  }
+
+  const runCleanup = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+  }
 
   const ctx = getCurrentCtx()
   if (ctx) {
@@ -499,7 +512,7 @@ function _watchArray(
 
     if (options?.immediate) {
       const current = getters.map((g) => g())
-      cb(current, getters.map(() => undefined))
+      cb(current, getters.map(() => undefined), onCleanup)
       oldValues = current
       initialized = true
     }
@@ -512,7 +525,8 @@ function _watchArray(
       try {
         const newValues = combined()
         if (initialized) {
-          cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
+          runCleanup()
+          cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
         }
         oldValues = [...newValues]
         initialized = true
@@ -521,7 +535,10 @@ function _watchArray(
       }
     })
 
-    const stop = () => e.dispose()
+    const stop = () => {
+      runCleanup()
+      e.dispose()
+    }
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
@@ -533,7 +550,7 @@ function _watchArray(
 
   if (options?.immediate) {
     const current = getters.map((g) => g())
-    cb(current, getters.map(() => undefined))
+    cb(current, getters.map(() => undefined), onCleanup)
     oldValues = current
     initialized = true
   }
@@ -546,7 +563,8 @@ function _watchArray(
     try {
       const newValues = combined()
       if (initialized) {
-        cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined))
+        runCleanup()
+        cb([...newValues], oldValues ? [...oldValues] : getters.map(() => undefined), onCleanup)
       }
       oldValues = [...newValues]
       initialized = true
@@ -555,7 +573,10 @@ function _watchArray(
     }
   })
 
-  const stop = () => e.dispose()
+  const stop = () => {
+    runCleanup()
+    e.dispose()
+  }
   if (_currentEffectScope) {
     ;(
       _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
@@ -566,9 +587,21 @@ function _watchArray(
 
 function _watchSingle<T>(
   source: WatchSource<T>,
-  cb: (newValue: T, oldValue: T | undefined) => void,
+  cb: (newValue: T, oldValue: T | undefined, onCleanup: (fn: () => void) => void) => void,
   options?: WatchOptions,
 ): () => void {
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (fn: () => void) => {
+    cleanupFn = fn
+  }
+
+  const runCleanup = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+  }
+
   const ctx = getCurrentCtx()
   if (ctx) {
     const idx = getHookIndex()
@@ -581,7 +614,7 @@ function _watchSingle<T>(
     if (options?.immediate) {
       oldValue = undefined
       const current = getter()
-      cb(current, oldValue)
+      cb(current, oldValue, onCleanup)
       oldValue = current
       initialized = true
     }
@@ -593,7 +626,8 @@ function _watchSingle<T>(
       try {
         const newValue = getter()
         if (initialized) {
-          cb(newValue, oldValue)
+          runCleanup()
+          cb(newValue, oldValue, onCleanup)
         }
         oldValue = newValue
         initialized = true
@@ -602,7 +636,10 @@ function _watchSingle<T>(
       }
     })
 
-    const stop = () => e.dispose()
+    const stop = () => {
+      runCleanup()
+      e.dispose()
+    }
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
@@ -616,7 +653,7 @@ function _watchSingle<T>(
   if (options?.immediate) {
     oldValue = undefined
     const current = getter()
-    cb(current, oldValue)
+    cb(current, oldValue, onCleanup)
     oldValue = current
     initialized = true
   }
@@ -628,7 +665,8 @@ function _watchSingle<T>(
     try {
       const newValue = getter()
       if (initialized) {
-        cb(newValue, oldValue)
+        runCleanup()
+        cb(newValue, oldValue, onCleanup)
       }
       oldValue = newValue
       initialized = true
@@ -637,7 +675,10 @@ function _watchSingle<T>(
     }
   })
 
-  const stop = () => e.dispose()
+  const stop = () => {
+    runCleanup()
+    e.dispose()
+  }
   if (_currentEffectScope) {
     ;(
       _currentEffectScope as EffectScopeCompat & { _cleanups: (() => void)[] }
@@ -648,12 +689,29 @@ function _watchSingle<T>(
 
 /**
  * Runs the given function reactively — re-executes whenever its tracked
- * dependencies change.
+ * dependencies change. Passes an `onCleanup` registration function to the
+ * callback, matching Vue 3's `watchEffect((onCleanup) => { ... })` API.
  *
  * Inside a component: hook-indexed, created once. Disposed on unmount.
  */
-export function watchEffect(fn: () => void): () => void {
+export function watchEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
   const ctx = getCurrentCtx()
+
+  let cleanupFn: (() => void) | undefined
+  const onCleanup = (cleanup: () => void) => {
+    cleanupFn = cleanup
+  }
+
+  const runEffect = () => {
+    if (cleanupFn) {
+      cleanupFn()
+      cleanupFn = undefined
+    }
+    fn(onCleanup)
+  }
+
   if (ctx) {
     const idx = getHookIndex()
     if (idx < ctx.hooks.length) return ctx.hooks[idx] as () => void
@@ -663,12 +721,15 @@ export function watchEffect(fn: () => void): () => void {
       if (running) return
       running = true
       try {
-        fn()
+        runEffect()
       } finally {
         running = false
       }
     })
-    const stop = () => e.dispose()
+    const stop = () => {
+      if (cleanupFn) cleanupFn()
+      e.dispose()
+    }
     ctx.hooks[idx] = stop
     ctx.unmountCallbacks.push(stop)
     return stop
@@ -679,12 +740,15 @@ export function watchEffect(fn: () => void): () => void {
     if (running) return
     running = true
     try {
-      fn()
+      runEffect()
     } finally {
       running = false
     }
   })
-  const stop = () => e.dispose()
+  const stop = () => {
+    if (cleanupFn) cleanupFn()
+    e.dispose()
+  }
   // Register with current effect scope if one is active
   if (_currentEffectScope) {
     ;(
@@ -865,6 +929,8 @@ export function defineComponent<P extends Props = Props>(
     return options as ComponentFn<P>
   }
   const comp = (props: P) => {
+    // Extract children from props for slots
+    const children = (props as Record<string, unknown>).children as VNodeChild | undefined
     // Create a minimal SetupContext
     const setupCtx: SetupContext = {
       emit: (event: string, ...args: unknown[]) => {
@@ -872,7 +938,9 @@ export function defineComponent<P extends Props = Props>(
         const handler = (props as Record<string, unknown>)[handlerKey]
         if (typeof handler === 'function') (handler as (...a: unknown[]) => void)(...args)
       },
-      slots: {},
+      slots: {
+        default: children !== undefined ? (() => children) : undefined,
+      } as Record<string, (() => VNodeChild) | undefined>,
       attrs: props as Record<string, unknown>,
     }
     const result = options.setup(props, setupCtx)
@@ -885,6 +953,58 @@ export function defineComponent<P extends Props = Props>(
     Object.defineProperty(comp, 'name', { value: options.name })
   }
   return comp as ComponentFn<P>
+}
+
+// ─── defineAsyncComponent ───────────────────────────────────────────────────
+
+/**
+ * Defines an async component that lazily loads on first use.
+ * Supports both a bare loader function and an options object with
+ * loadingComponent, errorComponent, delay, and timeout.
+ *
+ * Returns a ComponentFn with a `__loading` property for Suspense integration.
+ */
+export function defineAsyncComponent<P extends Props = Props>(
+  loader:
+    | (() => Promise<{ default: ComponentFn<P> }>)
+    | {
+        loader: () => Promise<{ default: ComponentFn<P> }>
+        loadingComponent?: ComponentFn
+        errorComponent?: ComponentFn
+        delay?: number
+        timeout?: number
+      },
+): ComponentFn<P> & { __loading: () => boolean } {
+  const load = typeof loader === 'function' ? loader : loader.loader
+
+  const loaded = signal<ComponentFn<P> | null>(null)
+  const error = signal<Error | null>(null)
+  let promise: Promise<unknown> | null = null
+
+  const startLoad = () => {
+    if (promise) return
+    promise = load().then(
+      (mod) => loaded.set(mod.default),
+      (err) => error.set(err instanceof Error ? err : new Error(String(err))),
+    )
+  }
+
+  const AsyncComp = ((props: P) => {
+    startLoad()
+    const err = error()
+    if (err) throw err
+    const comp = loaded()
+    if (!comp) return null
+    return comp(props)
+  }) as ComponentFn<P> & { __loading: () => boolean }
+
+  AsyncComp.__loading = () => {
+    const isLoading = loaded() === null && error() === null
+    if (isLoading) startLoad()
+    return isLoading
+  }
+
+  return AsyncComp
 }
 
 // ─── h ────────────────────────────────────────────────────────────────────────
@@ -1108,7 +1228,9 @@ export function KeepAlive(props: { children?: VNodeChild }): VNodeChild {
  * Runs a watchEffect that flushes after DOM updates.
  * In Pyreon, same as `watchEffect()`.
  */
-export function watchPostEffect(fn: () => void): () => void {
+export function watchPostEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
   return watchEffect(fn)
 }
 
@@ -1116,7 +1238,9 @@ export function watchPostEffect(fn: () => void): () => void {
  * Runs a watchEffect that flushes synchronously.
  * In Pyreon, same as `watchEffect()`.
  */
-export function watchSyncEffect(fn: () => void): () => void {
+export function watchSyncEffect(
+  fn: (onCleanup: (fn: () => void) => void) => void,
+): () => void {
   return watchEffect(fn)
 }
 
@@ -1174,7 +1298,7 @@ export type EmitsOptions = Record<string, (...args: unknown[]) => void>
 /** Vue-compatible setup context. */
 export type SetupContext = {
   emit: (event: string, ...args: unknown[]) => void
-  slots: Record<string, () => VNodeChild>
+  slots: Record<string, (() => VNodeChild) | undefined>
   attrs: Record<string, unknown>
 }
 

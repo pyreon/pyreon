@@ -3,6 +3,7 @@ import { mount } from '@pyreon/runtime-dom'
 import {
   createApp,
   customRef,
+  defineAsyncComponent,
   defineComponent,
   effectScope,
   getCurrentScope,
@@ -1056,5 +1057,247 @@ describe('type exports', () => {
     expect(mod.customRef).toBeDefined()
     expect(mod.toValue).toBeDefined()
     expect(mod.shallowReadonly).toBeDefined()
+    expect(mod.defineAsyncComponent).toBeDefined()
+  })
+})
+
+// ─── watchEffect onCleanup ──────────────────────────────────────────────────
+
+describe('watchEffect onCleanup', () => {
+  it('passes onCleanup to the callback', () => {
+    let cleaned = false
+    const r = ref(1)
+    const stop = watchEffect((onCleanup) => {
+      void r.value // track
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    expect(cleaned).toBe(false)
+    r.value = 2 // triggers re-run → cleanup called before re-execution
+    expect(cleaned).toBe(true)
+    stop()
+  })
+
+  it('runs cleanup on stop', () => {
+    let cleaned = false
+    const stop = watchEffect((onCleanup) => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    expect(cleaned).toBe(false)
+    stop()
+    expect(cleaned).toBe(true)
+  })
+
+  it('runs previous cleanup before re-execution', () => {
+    const events: string[] = []
+    const r = ref(0)
+    const stop = watchEffect((onCleanup) => {
+      const val = r.value
+      events.push(`run:${val}`)
+      onCleanup(() => events.push(`cleanup:${val}`))
+    })
+    expect(events).toEqual(['run:0'])
+    r.value = 1
+    expect(events).toEqual(['run:0', 'cleanup:0', 'run:1'])
+    r.value = 2
+    expect(events).toEqual(['run:0', 'cleanup:0', 'run:1', 'cleanup:1', 'run:2'])
+    stop()
+    // stop should also run the last cleanup
+    expect(events).toEqual(['run:0', 'cleanup:0', 'run:1', 'cleanup:1', 'run:2', 'cleanup:2'])
+  })
+
+  it('works without onCleanup being called', () => {
+    const r = ref(0)
+    const values: number[] = []
+    const stop = watchEffect(() => {
+      values.push(r.value)
+    })
+    r.value = 1
+    expect(values).toEqual([0, 1])
+    stop()
+  })
+
+  it('works inside hook context', () => {
+    let cleaned = false
+    const r = ref(0)
+    const { ctx } = withHookCtx(() => {
+      watchEffect((onCleanup) => {
+        void r.value
+        onCleanup(() => {
+          cleaned = true
+        })
+      })
+    })
+    expect(cleaned).toBe(false)
+    r.value = 1
+    expect(cleaned).toBe(true)
+    // Dispose via unmount callbacks
+    for (const cb of ctx.unmountCallbacks) cb()
+  })
+})
+
+// ─── watchPostEffect / watchSyncEffect onCleanup ────────────────────────────
+
+describe('watchPostEffect onCleanup', () => {
+  it('passes onCleanup to the callback', () => {
+    let cleaned = false
+    const r = ref(0)
+    const stop = watchPostEffect((onCleanup) => {
+      void r.value
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    r.value = 1
+    expect(cleaned).toBe(true)
+    stop()
+  })
+})
+
+describe('watchSyncEffect onCleanup', () => {
+  it('passes onCleanup to the callback', () => {
+    let cleaned = false
+    const r = ref(0)
+    const stop = watchSyncEffect((onCleanup) => {
+      void r.value
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    r.value = 1
+    expect(cleaned).toBe(true)
+    stop()
+  })
+})
+
+// ─── watch onCleanup (3rd parameter) ────────────────────────────────────────
+
+describe('watch onCleanup', () => {
+  it('passes onCleanup as 3rd argument to callback', () => {
+    let cleaned = false
+    const r = ref(0)
+    const stop = watch(r, (_newVal, _oldVal, onCleanup) => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    r.value = 1
+    expect(cleaned).toBe(false) // first cb, no previous cleanup
+    r.value = 2 // second change → cleanup from first callback runs
+    expect(cleaned).toBe(true)
+    stop()
+  })
+
+  it('runs cleanup on stop', () => {
+    let cleaned = false
+    const r = ref(0)
+    const stop = watch(r, (_newVal, _oldVal, onCleanup) => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    r.value = 1 // trigger first callback
+    expect(cleaned).toBe(false)
+    stop()
+    expect(cleaned).toBe(true)
+  })
+
+  it('passes onCleanup to array watch callback', () => {
+    let cleaned = false
+    const a = ref(0)
+    const b = ref(0)
+    const stop = watch([a, b] as const, (_newVals, _oldVals, onCleanup) => {
+      onCleanup(() => {
+        cleaned = true
+      })
+    })
+    a.value = 1
+    expect(cleaned).toBe(false)
+    b.value = 1 // second change → cleanup from first callback
+    expect(cleaned).toBe(true)
+    stop()
+  })
+})
+
+// ─── defineAsyncComponent ───────────────────────────────────────────────────
+
+describe('defineAsyncComponent', () => {
+  it('loads component from loader', async () => {
+    const MyComp: ComponentFn = () => 'loaded'
+    const AsyncComp = defineAsyncComponent(async () => ({
+      default: MyComp,
+    }))
+    expect(AsyncComp.__loading()).toBe(true)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(AsyncComp.__loading()).toBe(false)
+  })
+
+  it('returns null while loading', () => {
+    const AsyncComp = defineAsyncComponent(
+      () => new Promise<{ default: ComponentFn }>(() => {}), // never resolves
+    )
+    const result = AsyncComp({})
+    expect(result).toBeNull()
+  })
+
+  it('throws error on load failure', async () => {
+    const AsyncComp = defineAsyncComponent(async () => {
+      throw new Error('load failed')
+    })
+    // Trigger loading
+    AsyncComp.__loading()
+    await new Promise((r) => setTimeout(r, 10))
+    expect(() => AsyncComp({})).toThrow('load failed')
+  })
+
+  it('accepts options object form', async () => {
+    const MyComp: ComponentFn = () => 'options-loaded'
+    const AsyncComp = defineAsyncComponent({
+      loader: async () => ({ default: MyComp }),
+    })
+    expect(AsyncComp.__loading()).toBe(true)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(AsyncComp.__loading()).toBe(false)
+  })
+})
+
+// ─── defineComponent slots ──────────────────────────────────────────────────
+
+describe('defineComponent slots', () => {
+  it('setup receives slots.default from children', () => {
+    let capturedSlots: Record<string, (() => unknown) | undefined> = {}
+    const Comp = defineComponent({
+      setup(_props, ctx) {
+        capturedSlots = ctx!.slots as Record<string, (() => unknown) | undefined>
+        return () => h('div', null, 'test')
+      },
+    })
+
+    const el = container()
+    const vnode = h(Comp as ComponentFn, null, 'child content')
+    const unmount = mount(vnode, el)
+
+    expect(typeof capturedSlots.default).toBe('function')
+    expect(capturedSlots.default!()).toBe('child content')
+    unmount()
+  })
+
+  it('slots.default is undefined when no children', () => {
+    let capturedSlots: Record<string, (() => unknown) | undefined> = {}
+    const Comp = defineComponent({
+      setup(_props, ctx) {
+        capturedSlots = ctx!.slots as Record<string, (() => unknown) | undefined>
+        return () => h('div', null, 'test')
+      },
+    })
+
+    const el = container()
+    const unmount = mount(h(Comp as ComponentFn, null), el)
+
+    expect(capturedSlots.default).toBeUndefined()
+    unmount()
   })
 })
