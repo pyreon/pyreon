@@ -34,6 +34,10 @@ export interface FieldState<T = unknown> {
   touched: Signal<boolean>
   /** Whether the field value differs from its initial value. */
   dirty: Signal<boolean>
+  /** Whether this field is disabled (reactive). Disabled fields are excluded from submit values. */
+  disabled: Signal<boolean>
+  /** Whether this field is read-only (reactive). Read-only fields are included in submit values. */
+  readOnly: Signal<boolean>
   /** Set the field value. */
   setValue: (value: T) => void
   /** Mark the field as touched (typically on blur). */
@@ -48,6 +52,10 @@ export interface FieldRegisterProps<T> {
   onInput: (e: Event) => void
   onBlur: () => void
   checked?: Accessor<boolean>
+  /** Reactive disabled state — true when form OR field is disabled. */
+  disabled?: Accessor<boolean>
+  /** Reactive readOnly state — true when form OR field is read-only. */
+  readOnly?: Accessor<boolean>
 }
 
 export interface FormState<TValues extends Record<string, unknown>> {
@@ -98,11 +106,28 @@ export interface FormState<TValues extends Record<string, unknown>> {
   reset: () => void
   /** Validate all fields and return whether the form is valid. */
   validate: () => Promise<boolean>
+  /**
+   * Update initial values and reset all fields to the new values.
+   * Useful when async data (e.g. from a query) arrives after form creation.
+   * Clears all errors, touched, and dirty state.
+   */
+  setInitialValues: (values: Partial<TValues>) => void
+  /** Whether the entire form is disabled (signal). Disabled fields are excluded from submit values. */
+  disabled: Signal<boolean>
+  /** Whether the entire form is read-only (signal). Read-only fields are included in submit values. */
+  readOnly: Signal<boolean>
 }
 
 export interface UseFormOptions<TValues extends Record<string, unknown>> {
-  /** Initial values for each field. */
-  initialValues: TValues
+  /**
+   * Initial values for each field. Can be:
+   * - A static object: `{ email: '', password: '' }`
+   * - A reactive accessor: `() => query.data() ?? { email: '', password: '' }`
+   *
+   * When a function is provided, the form watches it and resets fields
+   * when the returned values change (e.g. when async data loads).
+   */
+  initialValues: TValues | (() => TValues)
   /** Called with validated values on successful submit. */
   onSubmit: (values: TValues) => void | Promise<void>
   /** Per-field validators. Receives field value and all form values. */

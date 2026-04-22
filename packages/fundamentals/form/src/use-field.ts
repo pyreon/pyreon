@@ -12,13 +12,17 @@ export interface UseFieldResult<T> {
   touched: Signal<boolean>
   /** Whether the field value differs from initial (reactive signal). */
   dirty: Signal<boolean>
+  /** Whether this field is disabled (reactive signal). */
+  disabled: Signal<boolean>
+  /** Whether this field is read-only (reactive signal). */
+  readOnly: Signal<boolean>
   /** Set the field value. */
   setValue: (value: T) => void
   /** Mark the field as touched. */
   setTouched: () => void
   /** Reset the field to its initial value. */
   reset: () => void
-  /** Register props for input binding. */
+  /** Register props for input binding (includes disabled/readOnly). */
   register: (opts?: { type?: 'checkbox' | 'number' }) => FieldRegisterProps<T>
   /** Whether the field has an error (computed). */
   hasError: Computed<boolean>
@@ -91,6 +95,8 @@ export function useField(
     error: fieldState.error,
     touched: fieldState.touched,
     dirty: fieldState.dirty,
+    disabled: fieldState.disabled,
+    readOnly: fieldState.readOnly,
     setValue: fieldState.setValue,
     setTouched: fieldState.setTouched,
     reset: fieldState.reset,

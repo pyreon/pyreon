@@ -96,7 +96,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   // ── Legacy path ───────────────────────────────────────────────────────
   const opts = options as UseFormOptions<Record<string, unknown>>
-  const { initialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = opts
+  const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = opts
+
+  // Resolve initialValues — static object or reactive accessor
+  const initialValues = typeof rawInitialValues === 'function'
+    ? (rawInitialValues as () => Record<string, unknown>)()
+    : rawInitialValues
 
   // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
   const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
@@ -132,6 +137,22 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     return values
   }
 
+  // Helper for submit — excludes disabled fields from payload.
+  // Form-level disabled always takes priority over field-level.
+  const getSubmitValues = (): TValues => {
+    const values = {} as TValues
+    const formIsDisabled = formDisabled.peek()
+    for (const [name] of fieldEntries) {
+      const f = fields[name]
+      // Form-level disabled → ALL fields excluded
+      // Field-level disabled → only that field excluded
+      if (formIsDisabled || f?.disabled.peek()) continue
+      ;(values as Record<string, unknown>)[name] =
+        f?.value.peek() ?? (currentInitials as Record<string, unknown>)[name]
+    }
+    return values
+  }
+
   // Clear all pending debounce timers
   const clearAllTimers = () => {
     for (const key of Object.keys(debounceTimers)) {
@@ -143,6 +164,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   const isValidating = signal(false)
   const submitError = signal<unknown>(undefined)
+  const formDisabled = signal(false)
+  const formReadOnly = signal(false)
+
+  // Track current initial values (mutable for setInitialValues)
+  let currentInitials = { ...initialValues }
 
   // Track whether the form has been disposed (unmounted)
   let disposed = false
@@ -152,6 +178,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const errorSig = signal<ValidationError>(undefined)
     const touchedSig = signal(false)
     const dirtySig = signal(false)
+    const fieldDisabled = signal(false)
+    const fieldReadOnly = signal(false)
 
     // Initialize validation version
     validationVersions[name] = 0
@@ -217,6 +245,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       error: errorSig,
       touched: touchedSig,
       dirty: dirtySig,
+      disabled: fieldDisabled,
+      readOnly: fieldReadOnly,
       setValue: (value: TValues[typeof name]) => {
         valueSig.set(value)
         // Deep comparison for objects/arrays, reference for primitives
@@ -364,7 +394,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
     isSubmitting.set(true)
     try {
-      await onSubmit(getValues())
+      await onSubmit(getSubmitValues())
     } catch (err) {
       submitError.set(err)
       throw err
@@ -452,8 +482,43 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       props.checked = computed(() => Boolean(fieldState.value()))
     }
 
+    // Form-level takes priority, field-level is the fallback
+    props.disabled = computed(() => formDisabled() || fieldState.disabled())
+    props.readOnly = computed(() => formReadOnly() || fieldState.readOnly())
+
     registerCache.set(cacheKey, props as FieldRegisterProps<unknown>)
     return props
+  }
+
+  // ── setInitialValues: update initials + reset fields ──────────────────
+  const setInitialValues = (newValues: Partial<TValues>) => {
+    Object.assign(currentInitials, newValues)
+    for (const [name] of fieldEntries) {
+      if (name in newValues) {
+        const val = (newValues as Record<string, unknown>)[name] as TValues[typeof name]
+        fields[name].value.set(val)
+        fields[name].error.set(undefined)
+        fields[name].touched.set(false)
+        fields[name].dirty.set(false)
+      }
+    }
+  }
+
+  // ── Reactive initialValues accessor watcher ───────��─────────────────
+  if (typeof rawInitialValues === 'function') {
+    effect(() => {
+      const next = (rawInitialValues as () => Record<string, unknown>)()
+      if (!next) return
+      // Only reset if values actually changed
+      let changed = false
+      for (const [name] of fieldEntries) {
+        if (!structuredEqual((currentInitials as Record<string, unknown>)[name], (next as Record<string, unknown>)[name])) {
+          changed = true
+          break
+        }
+      }
+      if (changed) setInitialValues(next as Partial<TValues>)
+    })
   }
 
   return {
@@ -475,6 +540,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     handleSubmit,
     reset,
     validate,
+    setInitialValues,
+    disabled: formDisabled,
+    readOnly: formReadOnly,
   }
 }
 
