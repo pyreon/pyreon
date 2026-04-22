@@ -275,8 +275,12 @@ struct Ctx<'a> {
     callback_depth: u32,
 
     /// Whether the current JSX element's parent is another JSX element/fragment.
-    /// Used to decide whether template call output needs wrapping in {}.
     parent_is_jsx: bool,
+
+    /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
+    signal_vars: FxHashSet<String>,
+    /// Shadowed signal names in current scope (for scope-aware auto-call)
+    shadowed_signals: FxHashSet<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -305,6 +309,8 @@ impl<'a> Ctx<'a> {
             is_dynamic_cache: FxHashMap::default(),
             callback_depth: 0,
             parent_is_jsx: false,
+            signal_vars: FxHashSet::default(),
+            shadowed_signals: FxHashSet::default(),
         }
     }
 
@@ -476,6 +482,128 @@ fn is_stateful_call_expr(expr: &Expression) -> bool {
     false
 }
 
+/// Check if a call expression is `signal(...)` or `computed(...)`.
+fn is_signal_call_expr(expr: &Expression) -> bool {
+    if let Expression::CallExpression(call) = expr {
+        if let Expression::Identifier(id) = &call.callee {
+            let name = id.name.as_str();
+            return name == "signal" || name == "computed";
+        }
+    }
+    false
+}
+
+/// Check if an identifier name is an active (non-shadowed) signal variable.
+fn is_active_signal(name: &str, ctx: &Ctx) -> bool {
+    ctx.signal_vars.contains(name) && !ctx.shadowed_signals.contains(name)
+}
+
+/// Find variable declarations and parameters in a function that shadow signal names.
+fn find_shadowing_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
+    let mut shadows = Vec::new();
+    // Check function parameters
+    for param in &node.params.items {
+        match &param.pattern {
+            BindingPattern::BindingIdentifier(id) => {
+                if ctx.signal_vars.contains(id.name.as_str()) {
+                    shadows.push(id.name.to_string());
+                }
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
+                        if ctx.signal_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                for el in arr.elements.iter().flatten() {
+                    if let BindingPattern::BindingIdentifier(id) = el {
+                        if ctx.signal_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    // Check top-level variable declarations in the function body
+    if let Some(body) = &node.body {
+        for stmt in &body.statements {
+            if let Statement::VariableDeclaration(decl) = stmt {
+                for declarator in &decl.declarations {
+                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                        if ctx.signal_vars.contains(id.name.as_str()) {
+                            if let Some(init) = &declarator.init {
+                                if !is_signal_call_expr(init) {
+                                    shadows.push(id.name.to_string());
+                                }
+                            } else {
+                                shadows.push(id.name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    shadows
+}
+
+/// Arrow function variant of find_shadowing_names.
+fn find_shadowing_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    let mut shadows = Vec::new();
+    for param in &node.params.items {
+        match &param.pattern {
+            BindingPattern::BindingIdentifier(id) => {
+                if ctx.signal_vars.contains(id.name.as_str()) {
+                    shadows.push(id.name.to_string());
+                }
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
+                        if ctx.signal_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                for el in arr.elements.iter().flatten() {
+                    if let BindingPattern::BindingIdentifier(id) = el {
+                        if ctx.signal_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for stmt in &node.body.statements {
+        if let Statement::VariableDeclaration(decl) = stmt {
+            for declarator in &decl.declarations {
+                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                    if ctx.signal_vars.contains(id.name.as_str()) {
+                        if let Some(init) = &declarator.init {
+                            if !is_signal_call_expr(init) {
+                                shadows.push(id.name.to_string());
+                            }
+                        } else {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    shadows
+}
+
 /// Fused isDynamic: contains non-pure call OR accesses props/prop-derived vars.
 /// Cached by span.start.
 fn is_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
@@ -521,10 +649,10 @@ fn is_dynamic_impl(expr: &Expression, ctx: &mut Ctx) -> bool {
     // Prop-derived variable reference
     if let Expression::Identifier(id) = expr {
         if ctx.prop_derived_vars.contains_key(id.name.as_str()) {
-            // We don't have parent context here in Rust — so we conservatively
-            // mark it as dynamic. The JS version checks parent for property-name
-            // position, but in practice prop-derived vars are rarely used as
-            // non-computed property names.
+            return true;
+        }
+        // Signal variable reference — treated as dynamic (will be auto-called)
+        if is_active_signal(id.name.as_str(), ctx) {
             return true;
         }
     }
@@ -1429,10 +1557,224 @@ fn collect_prop_derived_idents_in_assignment_target(
 /// literals, comments, template literal quasis, and property-name positions.
 fn slice_expr(expr: &Expression, ctx: &mut Ctx) -> String {
     let span = expr.span();
-    if !ctx.prop_derived_vars.is_empty() && accesses_props(expr, ctx) {
+    let mut result = if !ctx.prop_derived_vars.is_empty() && accesses_props(expr, ctx) {
         resolve_expr_with_props(expr, ctx)
     } else {
         ctx.source[span.start as usize..span.end as usize].to_string()
+    };
+
+    // Auto-call signal variables: insert () after bare signal identifiers
+    if !ctx.signal_vars.is_empty()
+        && ctx.signal_vars.len() > ctx.shadowed_signals.len()
+        && references_signal_var(expr, ctx)
+    {
+        result = auto_call_signals(&result, expr, ctx);
+    }
+
+    result
+}
+
+/// Check if an expression references any active signal variable.
+fn references_signal_var(expr: &Expression, ctx: &Ctx) -> bool {
+    if let Expression::Identifier(id) = expr {
+        if is_active_signal(id.name.as_str(), ctx) {
+            return true;
+        }
+    }
+    match expr {
+        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
+        Expression::BinaryExpression(b) => {
+            references_signal_var(&b.left, ctx) || references_signal_var(&b.right, ctx)
+        }
+        Expression::LogicalExpression(l) => {
+            references_signal_var(&l.left, ctx) || references_signal_var(&l.right, ctx)
+        }
+        Expression::ConditionalExpression(c) => {
+            references_signal_var(&c.test, ctx)
+                || references_signal_var(&c.consequent, ctx)
+                || references_signal_var(&c.alternate, ctx)
+        }
+        Expression::UnaryExpression(u) => references_signal_var(&u.argument, ctx),
+        Expression::ParenthesizedExpression(p) => references_signal_var(&p.expression, ctx),
+        Expression::TemplateLiteral(t) => t.expressions.iter().any(|e| references_signal_var(e, ctx)),
+        Expression::CallExpression(call) => {
+            references_signal_var(&call.callee, ctx)
+                || call.arguments.iter().any(|a| {
+                    a.as_expression().map_or(false, |e| references_signal_var(e, ctx))
+                })
+        }
+        Expression::ObjectExpression(obj) => obj.properties.iter().any(|p| {
+            match p {
+                ObjectPropertyKind::ObjectProperty(prop) => {
+                    references_signal_var(&prop.value, ctx)
+                        || (prop.computed && prop.key.as_expression().map_or(false, |e| references_signal_var(e, ctx)))
+                }
+                ObjectPropertyKind::SpreadProperty(s) => references_signal_var(&s.argument, ctx),
+            }
+        }),
+        Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| {
+            el.as_expression().map_or(false, |e| references_signal_var(e, ctx))
+        }),
+        Expression::StaticMemberExpression(m) => references_signal_var(&m.object, ctx),
+        Expression::ComputedMemberExpression(m) => {
+            references_signal_var(&m.object, ctx) || references_signal_var(&m.expression, ctx)
+        }
+        Expression::SequenceExpression(s) => s.expressions.iter().any(|e| references_signal_var(e, ctx)),
+        Expression::AssignmentExpression(a) => references_signal_var(&a.right, ctx),
+        Expression::TSAsExpression(e) => references_signal_var(&e.expression, ctx),
+        Expression::TSNonNullExpression(e) => references_signal_var(&e.expression, ctx),
+        _ => false,
+    }
+}
+
+/// Auto-insert () after signal variable references in expression source text.
+fn auto_call_signals(text: &str, expr: &Expression, ctx: &Ctx) -> String {
+    let base = expr.span().start;
+    let end_offset = base + text.len() as u32;
+    let mut idents: Vec<(u32, u32)> = Vec::new();
+    collect_signal_idents(expr, ctx, &mut idents, base, end_offset);
+
+    if idents.is_empty() {
+        return text.to_string();
+    }
+
+    idents.sort_by_key(|&(start, _)| start);
+    let mut result = String::new();
+    let mut last = base;
+    for &(start, end) in &idents {
+        result.push_str(&ctx.source[last as usize..end as usize]);
+        result.push_str("()");
+        last = end;
+    }
+    result.push_str(&ctx.source[last as usize..end_offset as usize]);
+    result
+}
+
+/// Collect Identifier positions that need auto-calling.
+fn collect_signal_idents(
+    expr: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+) {
+    let span = expr.span();
+    if span.start >= range_end || span.end <= range_start {
+        return;
+    }
+
+    if let Expression::Identifier(id) = expr {
+        if is_active_signal(id.name.as_str(), ctx) {
+            out.push((id.span.start, id.span.end));
+        }
+        return;
+    }
+
+    // Skip nested functions
+    if matches!(expr, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)) {
+        return;
+    }
+
+    // Skip callee position (already being called)
+    if let Expression::CallExpression(call) = expr {
+        // Don't collect the callee if it's the signal being called
+        for arg in &call.arguments {
+            if let Some(e) = arg.as_expression() {
+                collect_signal_idents(e, ctx, out, range_start, range_end);
+            }
+        }
+        // Only collect callee if it's NOT an identifier signal (would double-call)
+        if let Expression::Identifier(id) = &call.callee {
+            if !is_active_signal(id.name.as_str(), ctx) {
+                collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
+            }
+        } else {
+            collect_signal_idents(&call.callee, ctx, out, range_start, range_end);
+        }
+        return;
+    }
+
+    // Skip property name positions on member expressions
+    if let Expression::StaticMemberExpression(m) = expr {
+        collect_signal_idents(&m.object, ctx, out, range_start, range_end);
+        return; // don't collect .property
+    }
+
+    // Skip shorthand object properties
+    if let Expression::ObjectExpression(obj) = expr {
+        for prop in &obj.properties {
+            if let ObjectPropertyKind::ObjectProperty(p) = prop {
+                if p.shorthand {
+                    continue; // { name } — can't auto-call
+                }
+                if !p.computed {
+                    // Only collect value, not key
+                    collect_signal_idents(&p.value, ctx, out, range_start, range_end);
+                } else {
+                    collect_signal_idents(&p.value, ctx, out, range_start, range_end);
+                    if let PropertyKey::StaticIdentifier(_) = &p.key {
+                        // static key — skip
+                    } else if let Some(e) = p.key.as_expression() {
+                        collect_signal_idents(e, ctx, out, range_start, range_end);
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    // Generic recursion for other expression types
+    match expr {
+        Expression::BinaryExpression(b) => {
+            collect_signal_idents(&b.left, ctx, out, range_start, range_end);
+            collect_signal_idents(&b.right, ctx, out, range_start, range_end);
+        }
+        Expression::LogicalExpression(l) => {
+            collect_signal_idents(&l.left, ctx, out, range_start, range_end);
+            collect_signal_idents(&l.right, ctx, out, range_start, range_end);
+        }
+        Expression::ConditionalExpression(c) => {
+            collect_signal_idents(&c.test, ctx, out, range_start, range_end);
+            collect_signal_idents(&c.consequent, ctx, out, range_start, range_end);
+            collect_signal_idents(&c.alternate, ctx, out, range_start, range_end);
+        }
+        Expression::UnaryExpression(u) => {
+            collect_signal_idents(&u.argument, ctx, out, range_start, range_end);
+        }
+        Expression::ParenthesizedExpression(p) => {
+            collect_signal_idents(&p.expression, ctx, out, range_start, range_end);
+        }
+        Expression::TemplateLiteral(t) => {
+            for e in &t.expressions {
+                collect_signal_idents(e, ctx, out, range_start, range_end);
+            }
+        }
+        Expression::SequenceExpression(s) => {
+            for e in &s.expressions {
+                collect_signal_idents(e, ctx, out, range_start, range_end);
+            }
+        }
+        Expression::ArrayExpression(a) => {
+            for el in &a.elements {
+                if let Some(e) = el.as_expression() {
+                    collect_signal_idents(e, ctx, out, range_start, range_end);
+                }
+            }
+        }
+        Expression::ComputedMemberExpression(m) => {
+            collect_signal_idents(&m.object, ctx, out, range_start, range_end);
+            collect_signal_idents(&m.expression, ctx, out, range_start, range_end);
+        }
+        Expression::AssignmentExpression(a) => {
+            collect_signal_idents(&a.right, ctx, out, range_start, range_end);
+        }
+        Expression::TSAsExpression(e) => {
+            collect_signal_idents(&e.expression, ctx, out, range_start, range_end);
+        }
+        Expression::TSNonNullExpression(e) => {
+            collect_signal_idents(&e.expression, ctx, out, range_start, range_end);
+        }
+        _ => {}
     }
 }
 
@@ -1444,7 +1786,12 @@ fn slice_span(span: Span, ctx: &Ctx) -> String {
 // ─── Main entry ──────────────────────────────────────────────────────────────
 
 #[napi]
-pub fn transform_jsx(code: String, filename: String, ssr: bool) -> TransformResult {
+pub fn transform_jsx(
+    code: String,
+    filename: String,
+    ssr: bool,
+    known_signals: Option<Vec<String>>,
+) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
         .with_module(true)
@@ -1464,6 +1811,14 @@ pub fn transform_jsx(code: String, filename: String, ssr: bool) -> TransformResu
     }
 
     let mut ctx = Ctx::new(&code, &ret.program, ssr);
+
+    // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
+    if let Some(signals) = known_signals {
+        for name in signals {
+            ctx.signal_vars.insert(name);
+        }
+    }
+
     walk_program(&ret.program, &mut ctx);
     ctx.build_result()
 }
@@ -1491,11 +1846,17 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
         }
         Statement::FunctionDeclaration(func) => {
             maybe_register_component_props_fn(func, ctx);
+            let shadows = if !ctx.signal_vars.is_empty() {
+                let s = find_shadowing_names(func, ctx);
+                for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                s
+            } else { vec![] };
             if let Some(body) = &func.body {
                 for stmt in &body.statements {
                     walk_statement(stmt, ctx);
                 }
             }
+            for name in &shadows { ctx.shadowed_signals.remove(name); }
         }
         Statement::ReturnStatement(ret) => {
             if let Some(arg) = &ret.argument {
@@ -1519,13 +1880,18 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             for element in &class.body.body {
                 match element {
                     ClassElement::MethodDefinition(method) => {
-                        // Method value is a Function
                         maybe_register_component_props_fn(&method.value, ctx);
+                        let shadows = if !ctx.signal_vars.is_empty() {
+                            let s = find_shadowing_names(&method.value, ctx);
+                            for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                            s
+                        } else { vec![] };
                         if let Some(body) = &method.value.body {
                             for stmt in &body.statements {
                                 walk_statement(stmt, ctx);
                             }
                         }
+                        for name in &shadows { ctx.shadowed_signals.remove(name); }
                     }
                     ClassElement::PropertyDefinition(prop) => {
                         if let Some(value) = &prop.value {
@@ -1601,11 +1967,17 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             match &exp.declaration {
                 ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
                     maybe_register_component_props_fn(func, ctx);
+                    let shadows = if !ctx.signal_vars.is_empty() {
+                        let s = find_shadowing_names(func, ctx);
+                        for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                        s
+                    } else { vec![] };
                     if let Some(body) = &func.body {
                         for stmt in &body.statements {
                             walk_statement(stmt, ctx);
                         }
                     }
+                    for name in &shadows { ctx.shadowed_signals.remove(name); }
                 }
                 _ => {
                     if let Some(expr) = exp.declaration.as_expression() {
@@ -1627,11 +1999,17 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                     }
                     Declaration::FunctionDeclaration(func) => {
                         maybe_register_component_props_fn(func, ctx);
+                        let shadows = if !ctx.signal_vars.is_empty() {
+                            let s = find_shadowing_names(func, ctx);
+                            for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                            s
+                        } else { vec![] };
                         if let Some(body) = &func.body {
                             for stmt in &body.statements {
                                 walk_statement(stmt, ctx);
                             }
                         }
+                        for name in &shadows { ctx.shadowed_signals.remove(name); }
                     }
                     _ => {}
                 }
@@ -1680,17 +2058,30 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             maybe_register_component_props_arrow(arrow, ctx);
             let old = ctx.parent_is_jsx;
             ctx.parent_is_jsx = false;
+            // Track signal name shadowing for scope awareness
+            let shadows = if !ctx.signal_vars.is_empty() {
+                let s = find_shadowing_names_arrow(arrow, ctx);
+                for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                s
+            } else { vec![] };
             walk_arrow_body(arrow, ctx);
+            for name in &shadows { ctx.shadowed_signals.remove(name); }
             ctx.parent_is_jsx = old;
         }
         Expression::FunctionExpression(func) => {
             let old = ctx.parent_is_jsx;
             ctx.parent_is_jsx = false;
+            let shadows = if !ctx.signal_vars.is_empty() {
+                let s = find_shadowing_names(func, ctx);
+                for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                s
+            } else { vec![] };
             if let Some(body) = &func.body {
                 for stmt in &body.statements {
                     walk_statement(stmt, ctx);
                 }
             }
+            for name in &shadows { ctx.shadowed_signals.remove(name); }
             ctx.parent_is_jsx = old;
         }
         Expression::CallExpression(call) => {
@@ -2557,7 +2948,9 @@ fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<String> {
             return None;
         }
         if let Expression::Identifier(_) = &call.callee {
-            return Some(slice_expr(&call.callee, ctx));
+            // Use raw slice — NOT slice_expr — to avoid auto-calling the callee.
+            // _bindText needs the signal FUNCTION reference, not its called value.
+            return Some(slice_span(call.callee.span(), ctx));
         }
         return None;
     }
@@ -3014,6 +3407,10 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
         if let BindingPattern::BindingIdentifier(id) = &declarator.id {
             if let Some(init) = &declarator.init {
                 if is_stateful_call_expr(init) {
+                    // Track signal() and computed() declarations for auto-call
+                    if is_signal_call_expr(init) {
+                        ctx.signal_vars.insert(id.name.to_string());
+                    }
                     continue;
                 }
                 if reads_from_props(init, &ctx.props_names)

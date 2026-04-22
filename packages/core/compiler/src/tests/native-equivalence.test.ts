@@ -7,7 +7,7 @@
 import { transformJSX_JS } from '../jsx'
 
 // Load native if available
-let nativeTransform: ((code: string, filename: string, ssr: boolean) => {
+let nativeTransform: ((code: string, filename: string, ssr: boolean, knownSignals: string[] | null) => {
   code: string; usesTemplates?: boolean | null; warnings: Array<{ message: string; line: number; column: number; code: string }>
 }) | null = null
 
@@ -23,13 +23,19 @@ const describeNative = nativeTransform ? describe : describe.skip
 
 function compare(input: string, filename = 'test.tsx') {
   const js = transformJSX_JS(input, filename)
-  const rs = nativeTransform!(input, filename, false)
+  const rs = nativeTransform!(input, filename, false, null)
+  expect(rs.code).toBe(js.code)
+}
+
+function compareWithSignals(input: string, knownSignals: string[]) {
+  const js = transformJSX_JS(input, 'test.tsx', { knownSignals })
+  const rs = nativeTransform!(input, 'test.tsx', false, knownSignals)
   expect(rs.code).toBe(js.code)
 }
 
 function compareSsr(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true })
-  const rs = nativeTransform!(input, 'test.tsx', true)
+  const rs = nativeTransform!(input, 'test.tsx', true, null)
   expect(rs.code).toBe(js.code)
 }
 
@@ -296,7 +302,7 @@ describeNative('Native vs JS equivalence — SSR mode', () => {
 describeNative('Native vs JS equivalence — warnings', () => {
   test('<For> without by produces warning', () => {
     const js = transformJSX_JS('<For each={items}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false)
+    const rs = nativeTransform!('<For each={items}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
     expect(rs.warnings.length).toBe(js.warnings.length)
     if (js.warnings.length > 0) {
       expect(rs.warnings[0]!.code).toBe(js.warnings[0]!.code)
@@ -304,7 +310,7 @@ describeNative('Native vs JS equivalence — warnings', () => {
   })
   test('<For> with by has no warning', () => {
     const js = transformJSX_JS('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>')
-    const rs = nativeTransform!('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false)
+    const rs = nativeTransform!('<For each={items} by={(i) => i.id}>{(item) => <li>{item}</li>}</For>', 'test.tsx', false, null)
     expect(rs.warnings.length).toBe(js.warnings.length)
   })
 })
@@ -535,4 +541,114 @@ describeNative('Native vs JS equivalence — additional edge cases', () => {
       return <div>{props.data}</div>
     }
   `))
+})
+
+// ─── Signal auto-call cross-backend equivalence ─────────────────────────────
+
+describeNative('Native vs JS equivalence — signal auto-call', () => {
+  test('bare signal in text child', () => compare(
+    'function C() { const name = signal("Vít"); return <div>{name}</div> }',
+  ))
+  test('signal in attribute', () => compare(
+    'function C() { const show = signal(false); return <div class={show ? "active" : ""}></div> }',
+  ))
+  test('already called NOT double-called', () => compare(
+    'function C() { const count = signal(0); return <div>{count()}</div> }',
+  ))
+  test('computed auto-called', () => compare(
+    'function C() { const d = computed(() => 2); return <div>{d}</div> }',
+  ))
+  test('signal in ternary', () => compare(
+    'function C() { const show = signal(false); return <div>{show ? "yes" : "no"}</div> }',
+  ))
+  test('signal in template literal', () => compare(
+    'function C() { const name = signal("world"); return <div>{`hello ${name}`}</div> }',
+  ))
+  test('signal in component prop with _rp', () => compare(
+    'function C() { const val = signal(42); return <MyComp value={val} /> }',
+  ))
+  test('multiple signals', () => compare(
+    'function C() { const a = signal(1); const b = signal(2); return <div>{a + b}</div> }',
+  ))
+  test('signal + computed together', () => compare(
+    'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
+  ))
+  test('non-signal const NOT auto-called', () => compare(
+    'function C() { const x = 42; return <div>{x}</div> }',
+  ))
+  test('shorthand property NOT auto-called', () => compare(
+    'function C() { const name = signal("x"); return <div>{t("hi", { name })}</div> }',
+  ))
+  test('non-shorthand property value auto-called', () => compare(
+    'function C() { const name = signal("x"); return <div>{t("hi", { label: name })}</div> }',
+  ))
+  test('signal in object property value', () => compare(
+    'function C() { const x = signal(0); return <div>{({val: x})}</div> }',
+  ))
+  test('signal as member expression object', () => compare(
+    'function C() { const x = signal(0); return <div>{x.toString()}</div> }',
+  ))
+  test('signal in computed property access', () => compare(
+    'function C() { const idx = signal(0); return <div>{arr[idx]}</div> }',
+  ))
+  test('shadowed by inner const', () => compare(`
+    const show = signal(false)
+    function Inner() {
+      const show = 'not a signal'
+      return <div>{show}</div>
+    }
+  `))
+  test('shadowed by function parameter', () => compare(`
+    const count = signal(0)
+    function Display(count) {
+      return <div>{count}</div>
+    }
+  `))
+  test('shadowed by destructured parameter', () => compare(`
+    const name = signal('Vít')
+    function Greet({ name }) {
+      return <div>{name}</div>
+    }
+  `))
+  test('export default function with shadow', () => compare(`
+    const show = signal(false)
+    export default function App(show) {
+      return <div>{show}</div>
+    }
+  `))
+  test('export named function with shadow', () => compare(`
+    const show = signal(false)
+    export function App(show) {
+      return <div>{show}</div>
+    }
+  `))
+  test('module-scope signal auto-called', () => compare(
+    'const globalSig = signal(0); function C() { return <div>{globalSig}</div> }',
+  ))
+  test('props + signal in same expression', () => compare(
+    'function C(props) { const show = signal(false); const label = props.label; return <div class={show ? label : "default"}></div> }',
+  ))
+})
+
+describeNative('Native vs JS equivalence — knownSignals cross-module', () => {
+  test('imported signal auto-called', () => compareWithSignals(
+    'import { count } from "./store"; function App() { return <div>{count}</div> }',
+    ['count'],
+  ))
+  test('imported signal with alias', () => compareWithSignals(
+    'import { count as c } from "./store"; function App() { return <div>{c}</div> }',
+    ['c'],
+  ))
+  test('imported signal not double-called', () => compareWithSignals(
+    'import { count } from "./store"; function App() { return <div>{count()}</div> }',
+    ['count'],
+  ))
+  test('imported signal respects shadow', () => compareWithSignals(
+    'import { count } from "./store"; function App() { const count = "shadow"; return <div>{count}</div> }',
+    ['count'],
+  ))
+  test('knownSignals combined with local signals', () => compareWithSignals(
+    'import { theme } from "./store"; function App() { const count = signal(0); return <div class={theme}>{count}</div> }',
+    ['theme'],
+  ))
 })

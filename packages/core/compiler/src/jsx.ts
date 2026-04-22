@@ -40,7 +40,7 @@ import { dirname, join } from 'node:path'
 //
 // Uses createRequire for ESM compatibility — __dirname and require() don't
 // exist in ESM modules.
-type NativeTransformFn = (code: string, filename: string, ssr: boolean) => TransformResult
+type NativeTransformFn = (code: string, filename: string, ssr: boolean, knownSignals: string[] | null) => TransformResult
 let nativeTransformJsx: NativeTransformFn | null = null
 
 try {
@@ -198,7 +198,7 @@ export function transformJSX(
   // of crashing the Vite dev server.
   if (nativeTransformJsx) {
     try {
-      return nativeTransformJsx(code, filename, options.ssr === true)
+      return nativeTransformJsx(code, filename, options.ssr === true, options.knownSignals ?? null)
     } catch {
       // Native transform failed — fall through to JS implementation
     }
