@@ -50,6 +50,33 @@ const form = useForm({
 
 `useForm` must be called inside a Pyreon component (it uses `onUnmount` for debounce timer cleanup).
 
+<Playground title="Form with Validation" :height="150">
+const email = signal('')
+const error = signal('')
+const submitted = signal('')
+
+const validate = () => {
+  if (!email()) return error.set('Email is required')
+  if (!email().includes('@')) return error.set('Invalid email')
+  error.set('')
+  submitted.set('Submitted: ' + email())
+}
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('input', {
+    placeholder: 'Email',
+    value: email,
+    onInput: (e) => email.set(e.target.value),
+    style: { padding: '6px 12px', border: '1px solid #ddd', borderRadius: '4px', width: '200px' },
+  }),
+  h('button', { onClick: validate, style: { marginLeft: '8px' } }, 'Submit'),
+  h('div', { style: { color: 'red', fontSize: '13px', marginTop: '4px' } }, () => error()),
+  h('div', { style: { color: 'green', fontSize: '13px', marginTop: '4px' } }, () => submitted()),
+)
+mount(ui, app)
+</Playground>
+
 ### The Accessor Type
 
 Throughout the form API, you will see `Accessor<T>` used for read-only reactive values. This is a union type that covers both `Signal<T>` and `Computed<T>`:
@@ -555,6 +582,25 @@ const form = useForm({
 // No validation on blur or change
 // Errors only appear after form.handleSubmit()
 ```
+
+<Playground title="Disabled + ReadOnly Fields" :height="120">
+const name = signal('Alice')
+const email = signal('alice@example.com')
+const disabled = signal(false)
+const readOnly = signal(false)
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },
+    h('label', {}, h('input', { type: 'checkbox', onInput: () => disabled.update(v => !v) }), ' Disabled'),
+    h('label', {}, h('input', { type: 'checkbox', onInput: () => readOnly.update(v => !v) }), ' ReadOnly'),
+  ),
+  h('input', { value: name, onInput: (e) => name.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', marginBottom: '4px', width: '200px' } }),
+  h('input', { value: email, onInput: (e) => email.set(e.target.value), disabled: disabled, readOnly: readOnly, style: { padding: '6px', width: '200px' } }),
+  h('div', { style: { marginTop: '8px', fontSize: '13px' } }, () => 'Values: ' + name() + ', ' + email()),
+)
+mount(ui, app)
+</Playground>
 
 ## Form-Level State
 

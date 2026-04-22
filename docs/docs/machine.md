@@ -49,6 +49,25 @@ machine.send('FETCH')
 machine() // 'loading'
 ```
 
+<Playground title="State Machine" :height="100">
+const state = signal('idle')
+const transitions = { idle: { FETCH: 'loading' }, loading: { SUCCESS: 'done', ERROR: 'error' }, done: {}, error: { RETRY: 'loading' } }
+const send = (event) => {
+  const next = transitions[state()]?.[event]
+  if (next) state.set(next)
+}
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', { style: { fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' } }, () => 'State: ' + state()),
+  h('button', { onClick: () => send('FETCH') }, 'FETCH'),
+  h('button', { onClick: () => send('SUCCESS'), style: { marginLeft: '8px' } }, 'SUCCESS'),
+  h('button', { onClick: () => send('ERROR'), style: { marginLeft: '8px' } }, 'ERROR'),
+  h('button', { onClick: () => send('RETRY'), style: { marginLeft: '8px' } }, 'RETRY'),
+)
+mount(ui, app)
+</Playground>
+
 ## Why State Machines?
 
 State machines prevent impossible states. Compare:

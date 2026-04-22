@@ -49,6 +49,26 @@ const top10 = rx.take(sorted, 10)
 // top10() re-derives automatically when users changes
 ```
 
+<Playground title="Reactive Filter + Sort" :height="120">
+const items = signal([
+  { name: 'Banana', price: 2 },
+  { name: 'Apple', price: 1 },
+  { name: 'Cherry', price: 3 },
+  { name: 'Date', price: 1 },
+])
+
+// Reactive pipeline — re-derives when items changes
+const cheap = computed(() => items().filter(i => i.price <= 2))
+const sorted = computed(() => [...cheap()].sort((a, b) => a.name.localeCompare(b.name)))
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', {}, () => 'Cheap items (sorted): ' + sorted().map(i => i.name).join(', ')),
+  h('button', { onClick: () => items.update(prev => [...prev, { name: 'Elderberry', price: 1 }]) }, 'Add Elderberry ($1)'),
+)
+mount(ui, app)
+</Playground>
+
 ## Signal Overloading
 
 Every function detects whether the input is callable (a signal/computed) or a plain value:
@@ -140,6 +160,22 @@ Transform values of an object/record:
 ```tsx
 const counts = rx.mapValues(grouped, arr => arr.length)
 ```
+
+<Playground title="Aggregation" :height="100">
+const scores = signal([85, 92, 78, 95, 88, 72, 90])
+
+const total = computed(() => scores().reduce((a, b) => a + b, 0))
+const avg = computed(() => total() / (scores().length || 1))
+const best = computed(() => Math.max(...scores()))
+
+const app = document.getElementById('app')
+const ui = h('div', {},
+  h('div', {}, () => 'Scores: ' + scores().join(', ')),
+  h('div', {}, () => 'Total: ' + total() + ' | Average: ' + avg().toFixed(1) + ' | Best: ' + best()),
+  h('button', { onClick: () => scores.update(s => [...s, Math.floor(Math.random() * 30) + 70]) }, 'Add Random Score'),
+)
+mount(ui, app)
+</Playground>
 
 ## Aggregation
 
