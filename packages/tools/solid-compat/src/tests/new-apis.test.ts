@@ -46,7 +46,7 @@ import type {
   VoidComponent,
 } from '../index'
 import type { RenderContext } from '../jsx-runtime'
-import { beginRender, endRender, jsx } from '../jsx-runtime'
+import { beginRender, endRender, getCurrentCtx, jsx } from '../jsx-runtime'
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -642,39 +642,30 @@ describe('jsx-runtime coverage', () => {
     const cleanups: string[] = []
     const runner = createHookRunner()
 
-    // Simulate layout effects with cleanup
-    runner.ctx.pendingLayoutEffects = [
-      {
-        fn: () => {
-          cleanups.push('effect1-run')
-          return () => {
-            cleanups.push('effect1-cleanup')
-          }
-        },
-        deps: undefined,
-        cleanup: undefined,
-      },
-    ]
+    // Push layout effects into context DURING a render pass so the
+    // jsx-runtime's actual runLayoutEffects function executes them
+    const el = document.createElement('div')
+    document.body.appendChild(el)
 
-    // Manually run layout effects (this is normally done by the jsx-runtime wrapper)
-    const { pendingLayoutEffects } = runner.ctx
-    for (const entry of pendingLayoutEffects) {
-      if (entry.cleanup) entry.cleanup()
-      const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
+    let pushed = false
+    const Comp = () => {
+      const ctx = getCurrentCtx()!
+      if (!pushed) {
+        pushed = true
+        ctx.pendingLayoutEffects.push({
+          fn: () => {
+            cleanups.push('layout-run')
+            return () => { cleanups.push('layout-cleanup') }
+          },
+          deps: undefined,
+          cleanup: undefined,
+        })
+      }
+      return h('div', null, 'test')
     }
 
-    expect(cleanups).toEqual(['effect1-run'])
-
-    // Run again with existing cleanup
-    runner.ctx.pendingLayoutEffects = [pendingLayoutEffects[0]]
-    for (const entry of runner.ctx.pendingLayoutEffects) {
-      if (entry.cleanup) entry.cleanup()
-      const cleanup = entry.fn()
-      entry.cleanup = typeof cleanup === 'function' ? cleanup : undefined
-    }
-
-    expect(cleanups).toEqual(['effect1-run', 'effect1-cleanup', 'effect1-run'])
+    mount(jsx(Comp as ComponentFn, {}), el)
+    expect(cleanups).toContain('layout-run')
   })
 })
 
