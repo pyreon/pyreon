@@ -7,30 +7,40 @@ on:
     branches: [main]
   merge_group:
 
-# Cancel in-progress runs for the same branch/PR. For merge_group events,
-# github.ref is the merge queue's synthetic ref (refs/heads/gh-readonly-queue/...),
-# distinct from PR refs, so queued runs don't cancel each other inappropriately.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Restrict all jobs to read-only by default
 permissions:
   contents: read
 
+# ── Shared cache keys ──────────────────────────────────────────────────────
+# Defined here so every job uses the exact same strings.
+env:
+  NM_KEY: node-modules-${{ github.run_id }}
+  BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
+
 jobs:
+  # ── Install: checkout + install + bootstrap, then save caches ───────────
+  # Downstream jobs restore these caches by run_id — guaranteed fresh,
+  # no stale restore-keys matches, no redundant bun install calls.
   install:
     name: Install
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      affected-filter: ${{ steps.affected.outputs.filter }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      # Try to restore a previous lockfile-matched cache (fast path)
+      - name: Restore node_modules
+        id: nm-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
@@ -38,8 +48,61 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
+      # Save under run_id so downstream jobs get an exact match (no stale data)
+      - name: Save node_modules for this run
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      # Also save under the lockfile hash for future runs
+      - name: Save node_modules (lockfile key)
+        if: steps.nm-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+      # Bootstrap builds lib/ for all packages
+      - name: Restore bootstrap
+        id: bs-restore
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+      - name: Save bootstrap for this run
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+      - name: Save bootstrap (content key)
+        if: steps.bs-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
+      # Compute affected filter once — shared via output to all downstream jobs
+      - name: Compute affected filter
+        id: affected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
+            echo "filter=$FILTER" >> $GITHUB_OUTPUT
+          else
+            echo "filter=--filter=*" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Shared setup anchor (YAML anchor not supported, so we repeat) ───────
+  # Every downstream job: checkout → setup-bun → restore run_id caches.
+  # No bun install needed — caches are guaranteed fresh from Install job.
 
   typecheck:
     name: Typecheck
@@ -48,60 +111,54 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
-          restore-keys: bootstrap-${{ runner.os }}-
-      - name: Compute affected filter
-        id: affected
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
-            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
-            echo "filter=$FILTER" >> $GITHUB_OUTPUT
-          else
-            echo "filter=--filter=*" >> $GITHUB_OUTPUT
-          fi
+          key: ${{ env.BOOTSTRAP_KEY }}
       - name: Run typecheck
         run: |
-          FILTER="${{ steps.affected.outputs.filter }}"
+          FILTER="${{ needs.install.outputs.affected-filter }}"
           if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping typecheck."
+            echo "No affected packages — skipping."
             exit 0
           fi
-          # set -f disables shell glob expansion so --filter=* reaches bun
-          # literally (bun does its own glob matching against workspace names).
           set -f
           bun run $FILTER typecheck
 
-  # Note: matrix sharding (vitest --shard=i/n) was considered and rejected.
-  # Branch protection required-status checks pin the literal job name "Test";
-  # adding `strategy.matrix.shard: [1,2,3,4]` would rename the contexts to
-  # "Test (shard 1)" etc. and break protection. The simpler alternative
-  # (sharding via a sibling job named "Test Shard" while keeping "Test"
-  # gated to push/merge_group) was also evaluated, but the affected-filter
-  # + node_modules cache + bootstrap-lib cache combo already brings PR runs
-  # well under the threshold where sharding would pay for itself. Revisit
-  # if Test wall-clock on push:main creeps past ~5 min.
+  lint:
+    name: Lint
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      - name: Run lint
+        run: bun run lint
+      - name: Enforce pyreon/require-browser-smoke-test
+        run: bun run lint:browser-smoke
+
   test:
     name: Test
     needs: install
@@ -109,44 +166,26 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
-          restore-keys: bootstrap-${{ runner.os }}-
-      - name: Compute affected filter
-        id: affected
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
-            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
-            echo "filter=$FILTER" >> $GITHUB_OUTPUT
-          else
-            echo "filter=--filter=*" >> $GITHUB_OUTPUT
-          fi
+          key: ${{ env.BOOTSTRAP_KEY }}
       - name: Run tests
         run: |
-          FILTER="${{ steps.affected.outputs.filter }}"
+          FILTER="${{ needs.install.outputs.affected-filter }}"
           if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping tests."
+            echo "No affected packages — skipping."
             exit 0
           fi
           set -f
@@ -162,18 +201,14 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
+          key: ${{ env.NM_KEY }}
       - name: Cache Playwright browsers
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
@@ -191,120 +226,66 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
-          restore-keys: bootstrap-${{ runner.os }}-
-      - name: Compute affected filter
-        id: affected
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
-            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
-            echo "filter=$FILTER" >> $GITHUB_OUTPUT
-          else
-            echo "filter=--filter=*" >> $GITHUB_OUTPUT
-          fi
+          key: ${{ env.BOOTSTRAP_KEY }}
       - name: Run build
         run: |
-          FILTER="${{ steps.affected.outputs.filter }}"
+          FILTER="${{ needs.install.outputs.affected-filter }}"
           if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping build."
+            echo "No affected packages — skipping."
             exit 0
           fi
           set -f
           bun run $FILTER build
 
-  lint:
-    name: Lint
+  coverage:
+    name: Coverage
     needs: install
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - name: Compute affected filter
-        id: affected
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
-            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
-            echo "filter=$FILTER" >> $GITHUB_OUTPUT
-          else
-            echo "filter=--filter=*" >> $GITHUB_OUTPUT
-          fi
-      - name: Run lint
-        run: |
-          FILTER="${{ steps.affected.outputs.filter }}"
-          if [ -z "$FILTER" ]; then
-            echo "No affected packages — skipping lint."
-            exit 0
-          fi
-          # oxlint is path-based and very fast; the affected filter only gates
-          # the empty-changes case (skip when nothing to lint).
-          bun run lint
-      - name: Enforce pyreon/require-browser-smoke-test
-        # Runs the focused `pyreon/require-browser-smoke-test` rule across
-        # every package. Not gated on the affected filter because adding or
-        # renaming a smoke test in any package affects the contract for the
-        # whole monorepo. Also verifies that PHASE_5_PENDING_PACKAGES
-        # exemptions haven't gone stale (package now has a browser test
-        # but is still listed as exempt).
-        run: bun run lint:browser-smoke
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+      - run: bun run coverage
 
   docs-sync:
     name: Docs Sync
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Only run when inputs that could change generator output are touched.
-    # Prevents docs-sync from burning CI minutes on PRs that touch only
-    # source code in migrated packages (those updates are caught by the
-    # package's own tests, not docs-sync).
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
       - name: Detect whether docs-sync inputs changed
         id: changes
-        # Compares the PR's range against the base. If any file matching
-        # the patterns below changed, `should_run=true`. For push events
-        # (non-PR) on main and merge_group events, always run.
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
@@ -322,26 +303,46 @@ jobs:
         if: steps.changes.outputs.should_run == 'true'
         with:
           bun-version: latest
-      - name: Cache node_modules
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         if: steps.changes.outputs.should_run == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
         with:
           path: |
             node_modules
             packages/*/*/node_modules
             examples/*/node_modules
             docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-        if: steps.changes.outputs.should_run == 'true' && steps.node-modules-cache.outputs.cache-hit != 'true'
+          key: ${{ env.NM_KEY }}
       - name: Check manifest-generated docs are in sync
         if: steps.changes.outputs.should_run == 'true'
-        # Single source of truth for "in sync": gen-docs --check exits 1
-        # if any generated file would change, printing a minimal diff.
-        # Failure message tells reviewers the fix.
         run: bun run gen-docs --check
+
+  audit:
+    name: Dependency Audit
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            packages/*/*/node_modules
+            examples/*/node_modules
+            docs/node_modules
+          key: ${{ env.NM_KEY }}
+      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: packages/*/*/lib
+          key: ${{ env.BOOTSTRAP_KEY }}
+      - name: Check for untrusted dependencies
+        run: bun pm untrusted
+        continue-on-error: true
+      - name: Verify no lockfile drift
+        run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
 
   secrets-scan:
     name: Secrets Scan
@@ -354,61 +355,3 @@ jobs:
       - uses: trufflesecurity/trufflehog@47e7b7cd74f578e1e3145d48f669f22fd1330ca6 # v3.94.3
         with:
           extra_args: --only-verified
-
-  coverage:
-    name: Coverage
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
-        with:
-          path: |
-            node_modules
-            packages/*/*/node_modules
-            examples/*/node_modules
-            docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - run: bun install --frozen-lockfile
-      - run: bun run coverage
-
-  audit:
-    name: Dependency Audit
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
-      - name: Cache node_modules
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        id: node-modules-cache
-        with:
-          path: |
-            node_modules
-            packages/*/*/node_modules
-            examples/*/node_modules
-            docs/node_modules
-          key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: node-modules-${{ runner.os }}-bun-
-      - name: Cache bootstrap (lib/) builds
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: packages/*/*/lib
-          key: bootstrap-${{ runner.os }}-${{ hashFiles('packages/**/src/**', 'packages/**/package.json', 'packages/**/tsconfig.json') }}
-          restore-keys: bootstrap-${{ runner.os }}-
-      - run: bun install --frozen-lockfile
-      - name: Check for untrusted dependencies
-        run: bun pm untrusted
-        continue-on-error: true
-      - name: Verify no lockfile drift
-        run: git diff --exit-code bun.lock || (echo "::error::Lockfile is out of sync with package.json" && exit 1)
