@@ -554,7 +554,9 @@ Client: `hydrateIslands({ Name: () => import(...) })` — strategies: load, idle
 - **Auto-detection**: `transformJSX()` loads the native binary via `createRequire(import.meta.url)` (ESM-safe), falls back per-call with try/catch so a Rust panic doesn't crash the Vite dev server.
 - **527 tests**: 347 original + 180 cross-backend equivalence tests verifying identical output between JS and Rust on Unicode, TypeScript syntax, control flow, classes, string collisions, circular refs, and real-world patterns.
 
-`shouldWrap` only wraps if the fused `isDynamic` check finds a non-pure call or props/prop-derived access.
+**Signal auto-call**: `const x = signal(...)` and `const x = computed(...)` declarations are tracked. Bare references in JSX are auto-called: `{x}` → `{() => x()}`. Scope-aware — shadowed variables (inner `const x = 'text'`, function parameters, destructured params) are NOT auto-called. Already-called signals (`x()`) are NOT double-called. Cross-module support via the Vite plugin's signal export registry (pre-scans all files in `buildStart`, detects `export const x = signal(`, separate `export { x }`, and `export default signal(`). The `knownSignals: string[]` option on `TransformOptions` seeds the compiler with imported signal names. **Note**: the Rust native binary does not yet implement signal auto-call — the JS fallback path is used when signals are detected.
+
+`shouldWrap` only wraps if the fused `isDynamic` check finds a non-pure call, props/prop-derived access, or signal variable reference.
 Static JSX nodes hoisted to module scope as `const _$h0 = ...`.
 Template emission: JSX element trees with ≥1 DOM element emit `_tpl()` + `_bind()`.
 Supports mixed element+expression children (via `childNodes[]` indexing), multiple expressions, and fragment inlining.

@@ -43,12 +43,33 @@ Each pass is applied during a single AST walk. The compiler has a **dual-backend
 
 ## Pass 1: Reactive Wrapping
 
+### Signal Auto-Call
+
+Signals and computeds declared via `const x = signal(...)` or `const x = computed(...)` are **automatically called** in JSX — no `()` needed:
+
+```tsx
+const count = signal(0)
+const doubled = computed(() => count() * 2)
+
+// You write (plain JavaScript):
+<div class={count > 0 ? 'active' : ''}>{doubled}</div>
+
+// Compiler emits (fully reactive):
+<div class={() => count() > 0 ? 'active' : ''}>{() => doubled()}</div>
+```
+
+This makes Pyreon the first signal framework where JSX looks like plain JavaScript. The feature is:
+
+- **Scope-aware** — inner variables that shadow a signal name are NOT auto-called
+- **Cross-module** — the Vite plugin pre-scans all files for `export const x = signal(...)` exports and resolves imports
+- **Safe** — already-called signals (`count()`) are NOT double-called; `import type` is excluded
+
 ### How It Works
 
 Dynamic expressions in JSX are wrapped in arrow functions so the Pyreon runtime can re-evaluate them when their dependencies change:
 
 ```tsx
-// Input
+// Input (explicit calls — also works)
 <div class={active() ? "on" : "off"}>{count()}</div>
 
 // Output
